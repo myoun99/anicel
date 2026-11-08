@@ -6,7 +6,8 @@
 //! every run ([`Composite::chained`](super::Composite)) — each page of a
 //! frame laid, each step of a stroke drawn above a blurred folder. The old
 //! canvas held the folders under the pen (`heldNodes`, BelowThePen) and the
-//! frames made ahead held theirs; here one hold does both.
+//! frames made ahead held theirs; here one kind of hold does both, each in
+//! the room the app gives it.
 //!
 //! 🚨THE APP GIVES THE NUMBER, BY WHAT THE CHAIN SHOWS: a number is one
 //! picture of a folder or a row — its signature, compared whole, never a

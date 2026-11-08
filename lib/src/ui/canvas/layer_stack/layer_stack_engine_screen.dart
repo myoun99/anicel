@@ -62,8 +62,7 @@ final class EngineStackScreen {
   /// [frame]'s rows planned by the one translator and handed to [lay] with
   /// the kept frame — made again over the world the frame holds where it
   /// is not the one kept. Each node's chain is held as what the node shows
-  /// ([_LayerStackPaintPass._pictureOf]) in the space it runs in, on this
-  /// paper ([_holding]).
+  /// ([_LayerStackPaintPass._pictureOf]) on this paper ([_holding]).
   void _laid(
     StackedFrame frame,
     void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
@@ -121,11 +120,9 @@ final class EngineStackScreen {
     null => null,
     final holds => (
       held: holds.held,
-      idOf: (node, space) => switch (origins[node]) {
+      idOf: (node) => switch (origins[node]) {
         final origin? => switch (pass._pictureOf(origin)) {
-          final picture? => holds.idOf(
-            (picture: picture, space: space, paper: paper),
-          ),
+          final picture? => holds.idOf((picture: picture, paper: paper)),
           null => null,
         },
         null => null,

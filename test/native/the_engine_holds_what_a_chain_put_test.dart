@@ -39,7 +39,8 @@ import '../helpers/engine_screen_pins.dart';
 /// revision shows; so does a blurred row, an adjustment crossfaded at part
 /// mix, and a row reading a blur map, whose picture is the map's too. One
 /// that shows another picture, or a row drawn live, runs it, as does one
-/// on another paper or drawn in another space. What is held fits the room
+/// on another paper; a row a posed lens reads as its map lays what its
+/// chain put where it shows by itself. What is held fits the room
 /// it is given, the hold used longest ago let go first, and the engine
 /// counts what it keeps; a store's screens hold in the store's.
 void main() {
@@ -69,6 +70,13 @@ void main() {
   );
   final blur = fx(EffectKind.blur, {'blurriness': 24});
   final edged = fx(EffectKind.blur, {'blurriness': 24, 'repeatEdgePixels': 1});
+
+  /// A lens blur reading its map off the row of [map].
+  ResolvedLayerEffect lensOn(BrushFrameKey map) => fx(
+    EffectKind.cameraLensBlur,
+    {'blurRadius': 6, 'blurFocalDistance': 128},
+    layers: {'blurMapLayer': map.layerId},
+  );
   FramePage pageOf(CanvasSize size) => (
     canvasSize: size,
     pasteboardReach: PasteboardReach.whole,
@@ -158,16 +166,7 @@ void main() {
     // What it shows is the map's too: the row's own signature is not.
     'a row through a lens reading its map off the cel': [
       CompositeReadsRows(
-        node: rowOf(
-          outside,
-          effects: [
-            fx(
-              EffectKind.cameraLensBlur,
-              {'blurRadius': 6, 'blurFocalDistance': 128},
-              layers: {'blurMapLayer': inside.layerId},
-            ),
-          ],
-        ),
+        node: rowOf(outside, effects: [lensOn(inside)]),
         rows: {
           inside.layerId: [rowOf(inside)],
         },
@@ -320,34 +319,33 @@ void main() {
     );
   });
 
-  test('🚨a row a moved lens reads as its map runs its chain in its space', () {
+  test('🚨a row a posed lens reads as its map lays what its chain put', () {
+    // Its chain puts its own pixels, wherever it is laid: one hold, one run.
+    final read = CompositeReadsRows<CanvasStackRow>(
+      node: rowOf(
+        outside,
+        placement: const GuideTransform(1, 0, 0, 1, 64, 0),
+        effects: [lensOn(inside)],
+      ),
+      rows: {
+        inside.layerId: [
+          rowOf(inside, effects: [edged]),
+        ],
+      },
+    );
     final tree = [
       rowOf(inside, effects: [edged]),
-      CompositeReadsRows(
-        node: rowOf(
-          outside,
-          placement: const GuideTransform(1, 0, 0, 1, 64, 0),
-          effects: [
-            fx(
-              EffectKind.cameraLensBlur,
-              {'blurRadius': 6, 'blurFocalDistance': 128},
-              layers: {'blurMapLayer': inside.layerId},
-            ),
-          ],
-        ),
-        rows: {
-          inside.layerId: [
-            rowOf(inside, effects: [edged]),
-          ],
-        },
-      ),
+      read,
     ];
+    final weighed = holdsIn(1 << 30);
+    laidWith(weighed, frameOf(5, tree: [read]));
     final holds = holdsIn(1 << 30);
 
     expect(
       laidWith(holds, frameOf(5, tree: tree)),
       laid(frameOf(5, tree: tree)),
     );
+    expect(holds.heldBytes, weighed.heldBytes, reason: 'its map held as it');
   });
 
   test('🚨the engine counts what the holds keep, and gives it back', () {
@@ -374,11 +372,17 @@ void main() {
   test('past the room the hold used longest ago is let go of', () {
     final weighed = holdsIn(1 << 30);
     laidWith(weighed, frameOf(5));
+    final before = GpuHeldChains.liveBytes;
     final holds = holdsIn(weighed.heldBytes);
     laidWith(holds, frameOf(5));
     laidWith(holds, frameOf(7, revision: 2));
 
     expect(holds.heldBytes, weighed.heldBytes);
+    expect(
+      GpuHeldChains.liveBytes - before,
+      holds.heldBytes,
+      reason: 'the engine let go of it too',
+    );
     expect(
       laidWith(holds, frameOf(11, revision: 2)),
       laid(frameOf(7)),

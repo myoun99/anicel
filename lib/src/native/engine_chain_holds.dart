@@ -3,11 +3,11 @@ import 'package:gpu_engine/gpu_engine.dart';
 import '../core/lru.dart';
 
 /// 🚨★WHAT A FRAME'S CHAINS PUT, HELD ON THE ENGINE (folder holding, 관제
-/// 2026-11-08 22:14 — the canvas's nodes held under and over its pen and
-/// the frames' made ahead, one hold): the plans' chains keep what they put
-/// in one [GpuHeldChains] under a number for each picture a chain shows
-/// ([idOf]), so a step of a stroke above a blurred folder, or a frame made
-/// ahead of the same folder, runs none of its chain again.
+/// 2026-11-08 22:14 — what the canvas held under and over its pen and what
+/// the frames made ahead held, one kind of hold): the plans' chains keep
+/// what they put in one [GpuHeldChains] under a number for each picture a
+/// chain shows ([idOf]), so a step of a stroke above a blurred folder, or a
+/// frame made ahead of the same folder, runs none of its chain again.
 ///
 /// 🚨THE KEY IS WHAT THE CHAIN SHOWS, COMPARED WHOLE — never a hash, so no
 /// other picture's put is laid for it. The four cache questions (관제 11-08
@@ -18,8 +18,12 @@ import '../core/lru.dart';
 /// are the engine's, counted where it keeps and lets go
 /// ([GpuHeldChains.liveBytes]), each weighed here once its run is done
 /// ([settle]).
-// ⏳Given its room by the playback line where the frames' pictures move onto
-// the engine (flip lane ⓑ): the census reads it there, beside them.
+// ⏳Two of these where the frames' pictures move onto the engine (flip lane
+// ⓑ), each in the room the playback line gives what it stands for: the
+// canvas's in the nodes' (`HeldNodesLine.bytesForNodes` — 🗣️유저 2026-10-27
+// Q3 = c, the frames made ahead give way to them), the frames' made ahead
+// in what the line has free (`bytesLeftFree` — F-529-Q1, no picture gives
+// way to them). The census reads both there.
 final class EngineChainHolds {
   /// Holds fitting what [room] answers, asked each time they fit.
   EngineChainHolds({required int Function() room}) : _room = room;

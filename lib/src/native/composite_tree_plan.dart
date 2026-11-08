@@ -164,7 +164,7 @@ GpuSampling gpuSamplingOf(ui.FilterQuality quality) =>
 /// own ([CompositeBackdropBlend]).
 ///
 /// Under [holding], a node's chain is held by the number it gives the node
-/// in the space the chain runs in ([ChainHolding]).
+/// ([ChainHolding]).
 // ⏳Tests alone lay a tree till the screen does (screen-on-the-engine c6).
 void planCompositeTree(
   GpuPlan plan,
@@ -176,12 +176,19 @@ void planCompositeTree(
 }) => _TreePlan(_TileLaying(plan, hold, paper), letters, holding)._lay(nodes);
 
 /// Where the chains a plan runs are held past it ([GpuHeldChains]): the
-/// hold, and the number [idOf] gives the chain of a node run in a space —
-/// the canvas where null, else a row's own — or null for one that runs each
-/// time.
+/// hold, and the number [idOf] gives the chain of a node — null for one
+/// that runs each time.
+///
+/// ⛔NO SPACE IN THE NUMBER: a chain puts its node's own pixels wherever
+/// the node is laid, and the one op that reads the space it runs in — a
+/// lens drawing its map there — is refused in a map (the engine's 「a
+/// chain reads a map whose rows read a map」), as a buffer's chain is in a
+/// posed row's ([_TreePlan._bufferOf]). So a row a posed lens reads as its
+/// map lays what its chain put on the canvas, and runs it once. 🔜Where a
+/// map's rows may read maps, the space a chain runs in joins the number.
 typedef ChainHolding = ({
   GpuHeldChains held,
-  int? Function(CompositeNode<EngineRow> node, LayerPlacement? space) idOf,
+  int? Function(CompositeNode<EngineRow> node) idOf,
 });
 
 class _TreePlan {
@@ -288,7 +295,7 @@ class _TreePlan {
       space: _space,
       reads: reads,
     );
-    _hold(chain, shows, _space);
+    _hold(chain, shows);
     plan.close(
       opacity: _strengthOf(group.opacity),
       mode: mode,
@@ -323,7 +330,7 @@ class _TreePlan {
       space: _space,
       reads: reads,
     );
-    _hold(chain, shows, _space);
+    _hold(chain, shows);
     plan.close(
       mode: GpuBlend.normal,
       chain: chain,
@@ -360,7 +367,7 @@ class _TreePlan {
       return;
     }
     if (row.surface.tiles.isNotEmpty || row.held.isNotEmpty) {
-      _hold(_picture(row, mode, reads, pose), shows, pose.space);
+      _hold(_picture(row, mode, reads, pose), shows);
     }
     if (row.mark case final mark?) {
       _mark(mark, pose.posed);
@@ -521,18 +528,14 @@ class _TreePlan {
     return (chain: chain, colour: colour);
   }
 
-  /// [chain], if any, held as what [shows] is in [space], where [holding]
-  /// gives it a number.
-  void _hold(
-    int? chain,
-    CompositeNode<EngineRow>? shows,
-    LayerPlacement? space,
-  ) {
+  /// [chain], if any, held as what [shows] is, where [holding] gives it a
+  /// number.
+  void _hold(int? chain, CompositeNode<EngineRow>? shows) {
     final holding = this.holding;
     if (chain == null || shows == null || holding == null) {
       return;
     }
-    if (holding.idOf(shows, space) case final id?) {
+    if (holding.idOf(shows) case final id?) {
       plan.chainHeld(chain, holding.held, id);
     }
   }
