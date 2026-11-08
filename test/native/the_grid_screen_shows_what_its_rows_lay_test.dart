@@ -9,6 +9,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/screen_texture.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
@@ -130,7 +131,6 @@ void main() {
     double left = 20,
     Axis axis = Axis.horizontal,
   }) {
-    final across = axis == Axis.horizontal;
     final slotted = TimelineGridScreenSlot(
       key: slot,
       clip: clip,
@@ -142,15 +142,17 @@ void main() {
         alignment: Alignment.topLeft,
         child: Padding(
           padding: EdgeInsets.only(left: left),
-          child: SizedBox(
-            width: across ? viewport : 100,
-            height: across ? 100 : viewport,
+          child: sizedAlong(
+            axis,
+            along: viewport,
+            across: 100,
             child: SingleChildScrollView(
               controller: scroll,
               scrollDirection: axis,
-              child: SizedBox(
-                width: across ? content : 100,
-                height: across ? 100 : content,
+              child: sizedAlong(
+                axis,
+                along: content,
+                across: 100,
                 child: TimelineGridScreenHost(
                   child: Stack(
                     children: [

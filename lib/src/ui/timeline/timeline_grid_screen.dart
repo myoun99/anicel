@@ -389,7 +389,8 @@ class _RenderGridScreen extends RenderBox {
     }
     final texture = screen._texture!;
     final laid = screen._laid;
-    if (laid != null && _covers(MatrixUtils.transformRect(toView, laid.at), shown)) {
+    if (laid != null &&
+        _covers(MatrixUtils.transformRect(toView, laid.at), shown)) {
       return laid;
     }
     final window = _windowOf(texture, shown);
