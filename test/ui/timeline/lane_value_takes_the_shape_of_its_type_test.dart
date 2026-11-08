@@ -4,6 +4,7 @@ import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_editing.dart'
     show parseArgbInput;
@@ -11,6 +12,7 @@ import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart'
     show PanelFlyoutButton, flyoutRowsOf;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
@@ -291,6 +293,12 @@ void main() {
                 onSetValue: (_, row, _, input) =>
                     commits.add((laneId: row.laneId, input: input)),
               ),
+              // Stood on, so its plate is the wash you see the panel through.
+              currentRowHooks: TimelineCurrentRowHooks(
+                currentRow: ValueNotifier(
+                  const LaneRowAddress(LayerId('cel'), 'fx:k:keyOperation'),
+                ),
+              ),
             ),
           ),
         ),
@@ -324,6 +332,7 @@ void main() {
                     .decoration!
                 as BoxDecoration)
             .color!;
+    expect(plate.a, lessThan(1), reason: 'a plate the panel shows through');
     expect(
       FaceGround.of(tester.element(button)),
       isSameColorAs(Color.alphaBlend(plate, AppColors.surface)),
