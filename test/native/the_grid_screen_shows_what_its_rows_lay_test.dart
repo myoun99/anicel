@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,8 +88,13 @@ void main() {
   /// A grid of [row], 60 × 10 at (10, 20) — of none where it is null —,
   /// inside a scroll of 400 across driven by [scroll]: a viewport 100
   /// across, 20 in from the view's left edge, so the screen stands where
-  /// the viewport's clip puts it, not the view's.
-  Widget aGrid(_Row? row, {ScrollController? scroll}) => Directionality(
+  /// the viewport's clip puts it, not the view's. The row is drawn within
+  /// [clip] where there is one.
+  Widget aGrid(
+    _Row? row, {
+    ScrollController? scroll,
+    TimelineGridScreenClip? clip,
+  }) => Directionality(
     textDirection: TextDirection.ltr,
     child: Align(
       alignment: Alignment.topLeft,
@@ -113,6 +119,7 @@ void main() {
                         width: 60,
                         height: 10,
                         child: TimelineGridScreenSlot(
+                          clip: clip,
                           child: CustomPaint(painter: row),
                         ),
                       ),
@@ -236,6 +243,72 @@ void main() {
     expect(surface.fingerprint(), fingerprintBytes(screenOf([])));
   });
 
+  testWidgets('a row drawn within a clip lays its tile within the clip, '
+      'each part of the tile where it stood', (tester) async {
+    aSmallView(tester);
+    // A quarter of the row at each end: red's first half, green's last.
+    final clip = _Rects.of([
+      const Rect.fromLTWH(0, 0, 15, 10),
+      const Rect.fromLTWH(45, 0, 15, 10),
+    ]);
+    await tester.pumpWidget(aGrid(_Row(() => tile), clip: clip));
+    await tester.pump();
+
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(20, 50, red), (110, 140, green)])),
+    );
+  });
+
+  testWidgets('a row built again within another clip lays within that one', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(
+      aGrid(row, clip: _Rects.of([const Rect.fromLTWH(0, 0, 30, 10)])),
+    );
+    await tester.pump();
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(20, 80, red)])),
+      reason: '⛔premise: the left half alone',
+    );
+
+    await tester.pumpWidget(
+      aGrid(row, clip: _Rects.of([const Rect.fromLTWH(30, 0, 30, 10)])),
+    );
+    await tester.pump();
+
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(80, 140, green)])),
+    );
+  });
+
+  testWidgets('a clip that moves by itself lays the row again within it', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final at = ValueNotifier([const Rect.fromLTWH(0, 0, 30, 10)]);
+    addTearDown(at.dispose);
+    await tester.pumpWidget(aGrid(_Row(() => tile), clip: _Rects(at)));
+    await tester.pump();
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(20, 80, red)])),
+      reason: '⛔premise: the left half alone',
+    );
+
+    at.value = [const Rect.fromLTWH(30, 0, 30, 10)];
+    await tester.pump();
+
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(80, 140, green)])),
+    );
+  });
+
   testWidgets('before the engine is open a row lays nothing', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);
@@ -281,4 +354,20 @@ class _Row extends CustomPainter {
 
   @override
   bool shouldRepaint(_Row oldDelegate) => false;
+}
+
+/// A clip of the rects [at] holds, which clips again as they move.
+class _Rects extends TimelineGridScreenClip {
+  _Rects(this.at) : super(reclip: at);
+
+  _Rects.of(List<Rect> rects) : this(ValueNotifier(rects));
+
+  final ValueListenable<List<Rect>> at;
+
+  @override
+  List<Rect> rectsIn(Size size) => at.value;
+
+  @override
+  bool shouldReclip(_Rects oldClipper) =>
+      !listEquals(oldClipper.at.value, at.value);
 }
