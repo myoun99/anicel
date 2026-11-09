@@ -134,9 +134,11 @@ void main() {
       );
     });
 
-    testWidgets('it stands BEHIND the other two: a kanji is the first face\'s '
-        'and Hangul the second\'s', (tester) async {
-      final faces = await facesOf(tester, name: '漢한', action: '漢한');
+    testWidgets('it stands BEHIND the other two: a kanji is the first face\'s, '
+        'Hangul and the keyboard\'s `~`, which it has too, the second\'s', (
+      tester,
+    ) async {
+      final faces = await facesOf(tester, name: '漢한~', action: '漢한~');
       expect(faces, containsAll(['NanumGothicBold', 'NanumGothic']));
       expect(faces.where((face) => face.startsWith('NotoSansSC')), isEmpty);
     });
