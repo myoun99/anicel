@@ -284,6 +284,13 @@ Pointer<Uint32> _tileWords(
   return words;
 }
 
+/// A read back the engine refused: the tiles' bytes never came. Named so a
+/// caller can tell it from what its own work threw — a save, from a file
+/// that refused it (`SaveFailureCause.engineRead`).
+final class GpuReadFailed extends StateError {
+  GpuReadFailed(super.message);
+}
+
 /// The engine's pages of tiles (rust/src/kernels/pool): each tile stored
 /// lands in a fresh slot of its cel and stays there until let go.
 class GpuPool {
@@ -344,7 +351,7 @@ class GpuPool {
   void read(List<GpuTile> tiles, Pointer<Uint8> into) => using((arena) {
     final words = _tileWords(arena, tiles.length, 1, tiles);
     if (!rust.poolRead(_pool, _engine._engine, words, tiles.length, into)) {
-      throw StateError(_lastError());
+      throw GpuReadFailed(_lastError());
     }
   });
 

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
+
 /// Why a save did not reach its file — the part a person can act on, read
 /// off the error the platform gave.
 ///
@@ -26,6 +28,10 @@ enum SaveFailureCause {
   /// (the coordinated replace answered no — Apple, Android).
   replaceRefused,
 
+  /// The engine did not give the drawing's bytes back: no file is to
+  /// blame, and a failed copy would ask for the same bytes.
+  engineRead,
+
   /// Anything else: the error's own words are all there is.
   unknown,
 }
@@ -45,6 +51,9 @@ SaveFailureCause saveFailureCauseOf(
   required String projectPath,
   bool? onWindows,
 }) {
+  if (error is GpuReadFailed) {
+    return SaveFailureCause.engineRead;
+  }
   if (error is SaveNotSwappedIn && error.refusedByProvider) {
     return SaveFailureCause.replaceRefused;
   }

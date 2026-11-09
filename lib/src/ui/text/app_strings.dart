@@ -771,6 +771,8 @@ enum AppStrings {
   String get saveFailedDiskFull => _s('saveFailedDiskFull');
   String get saveFailedLocationGone => _s('saveFailedLocationGone');
   String get saveFailedReplaceRefused => _s('saveFailedReplaceRefused');
+  String get saveFailedEngineRead => _s('saveFailedEngineRead');
+  String get saveFailedEngineReadNoCopy => _s('saveFailedEngineReadNoCopy');
   String get saveFailedUnknown => _s('saveFailedUnknown');
   String get saveFailedCopyKept => _s('saveFailedCopyKept');
   String get saveFailedNoCopy => _s('saveFailedNoCopy');
@@ -2721,6 +2723,12 @@ enum AppStrings {
     'saveFailedReplaceRefused':
         'This location (a cloud or Files provider) refused to replace the '
         'file.',
+    'saveFailedEngineRead':
+        'The graphics card did not give the drawing back, so the file was '
+        'not changed.',
+    'saveFailedEngineReadNoCopy':
+        'A failed copy would need the same read, so none was made — save '
+        'again before closing the program.',
     'saveFailedUnknown': 'An error occurred while writing the file.',
     'saveFailedCopyKept':
         'Your work so far is kept in a failed copy inside the app. The '
@@ -4187,6 +4195,9 @@ enum AppStrings {
     'saveFailedLocationGone':
         '保存先にアクセスできません — ドライブが外されたか、ネットワークが切れたか、フォルダーが削除されました。',
     'saveFailedReplaceRefused': 'この場所（クラウド・ファイルアプリ）がファイルの置き換えを拒否しました。',
+    'saveFailedEngineRead': 'グラフィックカードから絵を読み戻せなかったため、ファイルは変更していません。',
+    'saveFailedEngineReadNoCopy':
+        '失敗版も同じ読み戻しが必要なので作っていません — プログラムを閉じる前にもう一度保存してください。',
     'saveFailedUnknown': 'ファイルの書き込み中にエラーが起きました。',
     'saveFailedCopyKept':
         'ここまでの作業はアプリ内の失敗版に保存してあります。失敗版はプログラムを閉じると消えます — 残すには「失敗版をバックアップ…」で好きな場所に保存してください。',
@@ -6050,6 +6061,9 @@ enum AppStrings {
     'saveFailedLocationGone':
         '저장할 곳에 닿을 수 없습니다 — 드라이브가 빠졌거나, 네트워크가 끊겼거나, 폴더가 지워졌습니다.',
     'saveFailedReplaceRefused': '이 위치(클라우드·파일 앱)가 파일을 바꿔 쓰는 것을 거부했습니다.',
+    'saveFailedEngineRead': '그래픽 카드에서 그림을 읽어 오지 못해 파일을 바꾸지 않았습니다.',
+    'saveFailedEngineReadNoCopy':
+        '실패본도 같은 읽기가 필요해 만들지 않았습니다 — 프로그램을 닫기 전에 다시 저장해 보세요.',
     'saveFailedUnknown': '파일을 쓰는 중에 오류가 났습니다.',
     'saveFailedCopyKept':
         '지금까지의 작업은 앱 안의 실패본에 저장해 두었습니다. 실패본은 프로그램을 닫으면 사라집니다 — 남기려면 「실패본 백업…」으로 원하는 곳에 저장하세요.',
@@ -7944,6 +7958,12 @@ enum AppStrings {
     'saveFailedReplaceRefused':
         "Cet emplacement (un service cloud ou l'app Fichiers) a refusé de "
         'remplacer le fichier.',
+    'saveFailedEngineRead':
+        "La carte graphique n'a pas rendu le dessin : le fichier n'a pas été "
+        'modifié.',
+    'saveFailedEngineReadNoCopy':
+        "Une copie d'échec demanderait la même lecture : aucune n'a été "
+        'créée — enregistrez à nouveau avant de fermer le programme.',
     'saveFailedUnknown':
         "Une erreur s'est produite pendant l'écriture du fichier.",
     'saveFailedCopyKept':
@@ -9917,6 +9937,8 @@ enum AppStrings {
     'saveFailedDiskFull': '保存位置的空间不足。',
     'saveFailedLocationGone': '无法访问保存位置——驱动器已移除、网络已断开，或文件夹已被删除。',
     'saveFailedReplaceRefused': '此位置（云端或“文件”应用）拒绝替换该文件。',
+    'saveFailedEngineRead': '无法从显卡读回画面，文件未作更改。',
+    'saveFailedEngineReadNoCopy': '失败副本同样需要读回，因此未创建——请在关闭程序前再次保存。',
     'saveFailedUnknown': '写入文件时出错。',
     'saveFailedCopyKept':
         '目前的工作已保存在应用内的失败副本中。程序关闭后失败副本会消失——如需保留，请用“备份失败副本…”保存到您选择的位置。',

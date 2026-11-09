@@ -105,6 +105,6 @@ void main() {
     expect(read.sublist(0, gpuTileBytes), bytes[1].asTypedList(gpuTileBytes));
     expect(read.sublist(gpuTileBytes), bytes[0].asTypedList(gpuTileBytes));
     pool.release(second);
-    expect(() => pool.read([second], into), throwsStateError);
+    expect(() => pool.read([second], into), throwsA(isA<GpuReadFailed>()));
   });
 }

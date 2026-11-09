@@ -492,6 +492,11 @@ class ProjectFileDoor {
     List<String> leftBehind,
   ) async {
     final cause = saveFailureCauseOf(error, projectPath: filePath);
+    // The failed copy asks the engine for the same bytes, and could only
+    // say the same — with a file in the room to show for it.
+    if (cause == SaveFailureCause.engineRead) {
+      return SaveFailure(cause: cause, error: error);
+    }
     final copy = _file.failedCopy ?? FailedSaveCopies.addressFor(filePath);
     try {
       await _writeFailedCopy(copy, filePath, told: told);

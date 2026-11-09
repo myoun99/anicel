@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anicel/src/services/persistence/save_failure.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
 import '../../helpers/os_file_modes.dart';
 import '../../helpers/temp_dir.dart';
@@ -36,6 +37,13 @@ void main() {
     projectPath: '${folder.path}/missing.anicel',
     onWindows: false,
   );
+
+  test('🚨a read the engine refused is told by its own name', () {
+    expect(
+      saveFailureCauseOf(GpuReadFailed('lost'), projectPath: 'x.anicel'),
+      SaveFailureCause.engineRead,
+    );
+  });
 
   test('Windows: a sharing or lock violation is another program holding '
       'the file', () {

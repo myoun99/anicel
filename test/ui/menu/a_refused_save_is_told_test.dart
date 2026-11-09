@@ -138,6 +138,18 @@ void main() {
     expect(live(tester, 'save-failure-back-up'), isFalse);
   });
 
+  test('🚨a read the engine refused sends nobody to Save As: another file '
+      'would ask for the same bytes', () {
+    final strings = AppText.strings;
+
+    final message = saveFailureMessage(
+      const SaveFailure(cause: SaveFailureCause.engineRead, error: 'x'),
+    );
+
+    expect(message, contains(strings.saveFailedEngineReadNoCopy));
+    expect(message, isNot(contains(strings.saveFailedNoCopy)));
+  });
+
   testWidgets('every reason reads as its own sentence', (tester) async {
     final strings = AppText.strings;
     final sentences = {
@@ -146,6 +158,7 @@ void main() {
       SaveFailureCause.diskFull: strings.saveFailedDiskFull,
       SaveFailureCause.locationGone: strings.saveFailedLocationGone,
       SaveFailureCause.replaceRefused: strings.saveFailedReplaceRefused,
+      SaveFailureCause.engineRead: strings.saveFailedEngineRead,
       SaveFailureCause.unknown: strings.saveFailedUnknown,
     };
     expect(sentences.keys, SaveFailureCause.values);

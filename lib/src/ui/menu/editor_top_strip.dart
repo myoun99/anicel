@@ -1875,11 +1875,14 @@ String saveFailureMessage(SaveFailure failure) {
     SaveFailureCause.diskFull => strings.saveFailedDiskFull,
     SaveFailureCause.locationGone => strings.saveFailedLocationGone,
     SaveFailureCause.replaceRefused => strings.saveFailedReplaceRefused,
+    SaveFailureCause.engineRead => strings.saveFailedEngineRead,
     SaveFailureCause.unknown => strings.saveFailedUnknown,
   };
-  final where = failure.failedCopy == null
-      ? strings.saveFailedNoCopy
-      : strings.saveFailedCopyKept;
+  final where = failure.failedCopy != null
+      ? strings.saveFailedCopyKept
+      : failure.cause == SaveFailureCause.engineRead
+      ? strings.saveFailedEngineReadNoCopy
+      : strings.saveFailedNoCopy;
   return '$why\n\n$where\n\n${strings.saveFailedRetry}';
 }
 

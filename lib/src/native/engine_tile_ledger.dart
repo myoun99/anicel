@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show RootIsolateToken;
 
 import 'package:collection/collection.dart' show ListExtensions;
 import 'package:ffi/ffi.dart';
@@ -41,8 +42,10 @@ import 'app_gpu_engine.dart';
 /// collection brings (`DrawingEngines.giveBackOnceCollected`) may land
 /// before them.
 ///
-/// One an isolate, as the engine is ([appGpuEngine]): a worker that asked
-/// would open its own (ⓗ — no law says otherwise).
+/// The main isolate's alone ([instance]): a worker that asked would open an
+/// engine of its own and read its tiles there — stored over from the CPU's
+/// bytes today, and nothing at all once the engine's are the only ones
+/// (저장's review of the flip lane, 11-09; ⓗ had let a worker open its own).
 // ⏳The screen asks after its view is swapped (screen-on-the-engine c6).
 class EngineTileLedger {
   /// A ledger of a pool of its own on [engine], making no page past
@@ -54,10 +57,18 @@ class EngineTileLedger {
       _byteBudget = byteBudget;
 
   /// The app's, on its engine — opened the first time anything asks.
-  static EngineTileLedger get instance => _instance ??= EngineTileLedger(
-    appGpuEngine,
-    byteBudget: _appByteBudget,
-  );
+  ///
+  /// Refused on a worker, by name ([TileLedgerAskedOnAWorker]).
+  static EngineTileLedger get instance {
+    if (RootIsolateToken.instance == null) {
+      throw TileLedgerAskedOnAWorker();
+    }
+    return _instance ??= EngineTileLedger(
+      appGpuEngine,
+      byteBudget: _appByteBudget,
+    );
+  }
+
   static EngineTileLedger? _instance;
 
   /// The app's, where anything has opened it — none for a warning to open.
@@ -154,7 +165,15 @@ final GpuEngine _engine;
   /// [cel]'s ([TileHold.slotsOf]): what a save, a cel cooled and an undo
   /// record parked read of the tiles (flip lane ⓓ). Waits for the GPU.
   void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) =>
-      held((hold) => pool.read(hold.slotsOf(cel, tiles), into));
+      held((hold) {
+        debugBeforeRead?.call(tiles);
+        pool.read(hold.slotsOf(cel, tiles), into);
+      });
+
+  /// Test seam: told each [read]'s tiles before it asks the engine — how a
+  /// test counts them, or has one refused as a device refuses it.
+  @visibleForTesting
+  static void Function(List<BitmapTile> tiles)? debugBeforeRead;
 
   /// Each of [tiles]' bytes read back ([read]) and handed to [use] in order
   /// — a view good only inside [use] —, [readBatch] tiles a read, through
@@ -361,4 +380,11 @@ final class TileHold {
     }
     return _ledger._slotsOf(this, cel, tiles);
   }
+}
+
+/// A worker asked for the app's ledger ([EngineTileLedger.instance]): the
+/// engine and the tiles' slots are the main isolate's.
+final class TileLedgerAskedOnAWorker extends StateError {
+  TileLedgerAskedOnAWorker()
+    : super('the tile ledger is the main isolate\'s; a worker asked for it');
 }
