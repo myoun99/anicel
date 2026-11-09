@@ -154,7 +154,7 @@ void main() {
   ExportFrameRenderer rendererOf(EditorSessionManager s) {
     final renderer = ExportFrameRenderer(
       session: s,
-      background: const ui.Color(0x00000000),
+      ground: const ui.Color(0x00000000),
     );
     addTearDown(renderer.dispose);
     return renderer;
@@ -485,7 +485,7 @@ void main() {
         Future<int> reach(ExportLayerFx fx) async {
           final renderer = ExportFrameRenderer(
             session: s,
-            background: const ui.Color(0x00000000),
+            ground: const ui.Color(0x00000000),
             layerFx: fx,
           );
           addTearDown(renderer.dispose);

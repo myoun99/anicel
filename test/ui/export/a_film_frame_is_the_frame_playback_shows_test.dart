@@ -202,14 +202,11 @@ void main() {
       );
     }
 
-    /// The cut's frame as a film's frame and a picture of the sequence.
-    ///
-    /// ⏳7′ (exports on the engine): a panel's picture is laid by the engine
-    /// now and a still is not yet, so the two are not compared until a still
-    /// goes through the same plan — then to the byte. 🗣️유저 11-08: 「지금
-    /// 화면이랑 맞출필요는없어. 어차피 더 개선되는방향성이고, 바뀌고 나서만
-    /// 동일하면되」.
-    Future<({Uint8List video, Uint8List still})> routes(double zoom) async {
+    /// The cut's frame as a film's frame, a picture of the sequence and a
+    /// panel's picture as wide as the film.
+    Future<({Uint8List video, Uint8List still, Uint8List panel})> routes(
+      double zoom,
+    ) async {
       final s = session(poseAt(zoom));
       addTearDown(s.dispose);
       final renderer = ExportFrameRenderer(session: s);
@@ -221,15 +218,28 @@ void main() {
           await renderer.videoRun([task], ExportSizeMode.camera).frame(0),
         ),
         still: await stillOf(s),
+        panel: await bytesOf(
+          await PanelPictures(
+            session: s,
+          ).render(cut, 0, width: frameSize.width),
+        ),
       );
     }
 
     for (final zoom in [0.47, 0.42, 0.94]) {
       testWidgets('🎯at a zoom of $zoom, a film\'s frame and a picture of the '
-          'sequence are one picture', (tester) async {
+          'sequence are one picture, and a panel\'s picture is the picture '
+          'of the sequence, byte for byte', (tester) async {
         await tester.runAsync(() async {
-          final (:video, :still) = await routes(zoom);
+          final (:video, :still, :panel) = await routes(zoom);
           expect(still.length, frameSize.width * frameSize.height * 4);
+          // 🗣️유저 11-08: 「지금화면이랑 맞출필요는없어. 어차피 더
+          // 개선되는방향성이고, 바뀌고 나서만 동일하면되」 — both are the
+          // frame's one picture through one view on one paper now (7′,
+          // `frameShot`). ↩️A panel was cut from that picture while a still
+          // composed its rows again through the camera: a few levels apart,
+          // and only beside a still at a camera moved by the panel's snap.
+          expect(panel, still);
           // The film lays the cut's picture — composed on clear — on its
           // stage's paper, as playback lays it: rounded once more than a
           // picture composed straight onto its ground.
@@ -247,7 +257,7 @@ void main() {
         'film with its own ink — none lost between the samples, none '
         'doubled', (tester) async {
       await tester.runAsync(() async {
-        final (:video, still: _) = await routes(0.42);
+        final (:video, still: _, panel: _) = await routes(0.42);
         // The film's second row: canvas rows 49.8–52.2, between the lines
         // across at 45 and 54.
         const y = 1;
@@ -491,10 +501,54 @@ void main() {
         });
       });
 
+      testWidgets('🎯through a camera at $where, the cut takes nothing of a '
+          'pixel the canvas covers in part: a picture of the sequence is the '
+          'panel\'s picture, cut where the film is, byte for byte', (
+        tester,
+      ) async {
+        await tester.runAsync(() async {
+          final (s, renderer) = filmAt(pose);
+          final cut = s.requireActiveCut;
+          final still = await bytesOf(
+            await renderer.renderComposite(
+              ExportFrameTask(cut: cut, frameIndex: 0),
+              ExportSizeMode.camera,
+            ),
+          );
+          final (r, _, _, _) = pixelOf(still, canvas.width, 30, foot);
+          expect(
+            r,
+            inExclusiveRange(0x10, 0xFF),
+            reason: 'LIVENESS: the edge falls inside a pixel',
+          );
+          final panel = await bytesOf(
+            await PanelPictures(
+              session: s,
+            ).render(cut, 0, width: canvas.width),
+          );
+          final apart = <String>[
+            for (var y = 0; y < canvas.height; y += 1)
+              for (var x = 0; x < canvas.width; x += 1)
+                if (pixelOf(still, canvas.width, x, y) !=
+                    pixelOf(panel, canvas.width, x, y))
+                  '($x, $y): ${pixelOf(still, canvas.width, x, y)} → '
+                      '${pixelOf(panel, canvas.width, x, y)}',
+          ];
+          // ↩️Beside the still at a camera moved by the panel's snap, while
+          // a still composed its rows again through the camera — until both
+          // were the frame's one picture through one view (7′, `frameShot`).
+          expect(apart, isEmpty);
+        });
+      });
     }
 
-    testWidgets('🎯where nothing is drawn over it, the paper\'s edge — an '
-        'output pixel in, where it yields to the rows — is anti-aliased', (
+    // ↩️The paper yielded the output pixel the canvas's edge falls inside
+    // to the rows (#15) while a camera render composed its rows apart from
+    // its paper, on Flutter. Composed in one picture with them on the
+    // engine and reduced with them (7′), ink drawn to the edge leaves no
+    // paper past it (above) — and the paper reaches the canvas's edge.
+    testWidgets('🎯where nothing is drawn over it, the paper reaches the '
+        'canvas\'s edge — anti-aliased where the edge falls inside a pixel', (
       tester,
     ) async {
       await tester.runAsync(() async {
@@ -507,24 +561,22 @@ void main() {
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
           ], ExportSizeMode.camera).frame(0),
         );
-        // The paper's foot an output pixel — 2.5 canvas pixels — up from
-        // the canvas's, at canvas row 35.5: film row
-        // 19 + (35.5 − 19.7) × 0.4 = 25.32.
+        // The canvas's foot, at canvas row 38: film row
+        // 19 + (38 − 19.7) × 0.4 = 26.32.
         expect(
           pixelOf(film, canvas.width, 30, 24),
           (255, 255, 255, 255),
           reason: 'LIVENESS: the paper above its foot',
         );
-        final (r, _, _, _) = pixelOf(film, canvas.width, 30, 25);
+        final (r, _, _, _) = pixelOf(film, canvas.width, 30, 26);
         expect(r, inExclusiveRange(0x20, 0xE0), reason: 'paper over apron');
       });
     });
 
-    testWidgets('🎯a canvas too small to give an output pixel up keeps its '
-        'paper whole — it does not vanish', (tester) async {
+    testWidgets('🎯a canvas a few output pixels wide keeps its paper — it '
+        'does not vanish', (tester) async {
       await tester.runAsync(() async {
-        // At a quarter, two film pixels a side: an output pixel in from each
-        // edge leaves nothing.
+        // At a quarter, two film pixels a side.
         const small = CanvasSize(width: 8, height: 8);
         final (s, renderer) = filmAt(
           CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 0.25),
@@ -549,7 +601,12 @@ void main() {
           (0, 0, 0, 255),
           reason: 'the floor past the pasteboard\'s wall (I-109)',
         );
-        expect(pixelOf(film, small.width, 4, 4), (255, 255, 255, 255));
+        // Reduced as the canvas reduces it — a level's texel spreads the
+        // apron a little into a two-pixel paper: paper still, over apron.
+        final (r, g, b, a) = pixelOf(film, small.width, 4, 4);
+        expect((b, a), (255, 255));
+        expect(r, greaterThan(0x80), reason: 'more paper than apron');
+        expect(g, r);
       });
     });
   });

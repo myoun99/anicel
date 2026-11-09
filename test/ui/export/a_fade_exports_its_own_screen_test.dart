@@ -83,7 +83,7 @@ void main() {
     // project's paper — green on both, so the paper is one colour.
     final image = await ExportFrameRenderer(
       session: manager,
-      background: const ui.Color(green),
+      ground: const ui.Color(green),
     ).videoRun([
           ExportFrameTask(cut: manager.requireActiveCut, frameIndex: frame),
         ], mode).frame(0);

@@ -613,8 +613,9 @@ class PlaybackPrerenderScheduler {
   /// again, and never rested; a run that renders first waits for the walk
   /// to rest.
   ///
-  /// ★The law the export holds its rows by ([HeldRows]: by what a row does
-  /// weigh, never letting go of one shown sooner). ⛔Not the media viewer's
+  /// ★The law the export held its rows by (`HeldRows`, until exports went
+  /// on the engine — 7′): by what a row does weigh, never letting go of one
+  /// shown sooner. ⛔Not the media viewer's
   /// `keeping` — the page that landed and nothing else: its room is asked by
   /// the very size that lands. Here, keeping only what landed would let go
   /// of the picture before it, and the walk would make the two in turn.

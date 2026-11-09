@@ -166,6 +166,17 @@ GpuSampling gpuSamplingOf(ui.FilterQuality quality) =>
 /// row reads what it is laid on, so the backdrop needs no picture of its
 /// own ([CompositeBackdropBlend]).
 ///
+/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan (유저 2026-10-22
+/// 「골은 b」): the backdrop is read where the frame is drawn, the way the
+/// GPU's own blend reads its target. 🔬On the Windows app (10-22, r12) a
+/// stroke under a multiply row came to the screen 21.3ms after its input,
+/// against 30.0 with the backdrop rasterised and 22.5 with the GPU's own
+/// multiply; the whole canvas composed both ways was the same bytes. An
+/// off-screen raster cost about 6.5ms of the raster thread whatever its
+/// size (r10), which is what the backdrop's route paid three times a step.
+/// (Moved here from the walk's `_composeInTheFrame` when the exports went
+/// on the engine — 7′.)
+///
 /// Under [holding], a node's chain is held by the number it gives the node
 /// ([ChainHolding]).
 // ⏳Tests alone lay a tree till the screen does (screen-on-the-engine c6).

@@ -64,7 +64,7 @@ void main() {
 
       final transparent = ExportFrameRenderer(
         session: manager,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       final clear = await transparent.renderComposite(
         task,
@@ -87,7 +87,7 @@ void main() {
       );
       final renderer = ExportFrameRenderer(
         session: manager,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       final baked = await renderer
           .videoRun([gap], ExportSizeMode.camera)
@@ -115,7 +115,7 @@ void main() {
       );
       final renderer = ExportFrameRenderer(
         session: manager,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       final there = await renderer
           .videoRun([gap], ExportSizeMode.camera)
@@ -201,7 +201,7 @@ void main() {
       final covered = twoTracks(coverDuration: 8);
       final coveredRenderer = ExportFrameRenderer(
         session: covered,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       final coveredFrame = await coveredRenderer.videoRun(
         [
@@ -232,7 +232,7 @@ void main() {
       final uncovered = twoTracks(coverDuration: 2);
       final uncoveredRenderer = ExportFrameRenderer(
         session: uncovered,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       final uncoveredFrame = await uncoveredRenderer.videoRun(
         [

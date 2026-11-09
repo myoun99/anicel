@@ -290,7 +290,7 @@ void main() {
       straight(
         await ExportFrameRenderer(
           session: session,
-          background: const ui.Color(0x00000000),
+          ground: const ui.Color(0x00000000),
         ).renderComposite(frameOf(session), ExportSizeMode.canvas),
       );
 

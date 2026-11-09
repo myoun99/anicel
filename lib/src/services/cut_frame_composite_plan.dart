@@ -1769,43 +1769,27 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
 
 /// [ghosts] of [cut]'s frame [frameIndex] by themselves, each onion row's in
 /// stack order: what a picture of the screen lays over its frame where they
-/// lie on top — the tree `EditingCanvas.ghostsOverAt` stacks, its surfaces
-/// resolved as [planCutFrameCompositeTree] resolves them.
-List<CompositeNode<CutFrameCompositeLayer>> planCutFrameGhosts({
+/// lie on top — the tree `EditingCanvas.ghostsOverAt` stacks, and a file of
+/// the frame as it is shown (`ExportFrameRenderer.renderAsShown`).
+List<CompositeNode<CutFrameCompositeRow>> ghostsAlone({
   required Cut cut,
   required int frameIndex,
   required Iterable<CutFrameCompositeGhost> ghosts,
-  required CelReading reading,
-}) => _withSurfaces(
-  readingTheirRows(
-    [for (final ghost in ghosts) CompositeLeaf<CutFrameCompositeRow>(ghost)],
-    cut: cut,
-    frameIndex: frameIndex,
-    liveLayerId: null,
-  ),
+}) => readingTheirRows(
+  [for (final ghost in ghosts) CompositeLeaf<CutFrameCompositeRow>(ghost)],
   cut: cut,
   frameIndex: frameIndex,
-  reading: reading,
+  liveLayerId: null,
 );
 
 /// Row [row] of [cut] at [frameIndex] as a chain that reads it reads it
-/// ([_rowAsRead]), its surfaces resolved as [planCutFrameCompositeTree]
-/// resolves them: what a route that lays a row by itself hands
-/// [withTheRowsTheyRead]. Null for no row there.
-List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
+/// ([_rowAsRead]), no row live: what a route that lays a row by itself
+/// hands [withTheRowsTheyRead]. Null for no row there.
+List<CompositeNode<CutFrameCompositeRow>>? rowAsRead({
   required Cut cut,
   required LayerId row,
   required int frameIndex,
-  required CelReading reading,
-}) => switch (_rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null)) {
-  final read? => _withSurfaces(
-    read,
-    cut: cut,
-    frameIndex: frameIndex,
-    reading: reading,
-  ),
-  null => null,
-};
+}) => _rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null);
 
 /// [nodes] of [cut] with each leaf's surface read by [reading]
 /// ([planCutFrameCompositeTree]), and every chain's plugins run as it says.

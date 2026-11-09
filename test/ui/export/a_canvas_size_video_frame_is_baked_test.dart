@@ -152,7 +152,7 @@ void main() {
   }) async {
     final renderer = ExportFrameRenderer(
       session: session,
-      background: white,
+      ground: white,
       layerFx: layerFx,
     );
     final image = outputSize == null
@@ -465,7 +465,7 @@ void main() {
         Future<Uint8List> still(EditorSessionManager session) async {
           final image = await ExportFrameRenderer(
             session: session,
-            background: green,
+            ground: green,
           ).renderComposite(taskOf(session), ExportSizeMode.canvas);
           final bytes = await image.toByteData(
             format: ui.ImageByteFormat.rawRgba,

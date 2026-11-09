@@ -12,8 +12,8 @@ import '../playback/frame_picture_view.dart';
 import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart' show exportFrameGround;
-import '../panel_pictures.dart'
-    show panelFrame, panelView, panelViewOnRaster;
+import '../frame_shots.dart' show panelViewOnRaster;
+import '../panel_pictures.dart' show panelFrame, panelView;
 import '../sheet_painting.dart';
 import 'conte_fonts.dart';
 import 'conte_picture_ink.dart';

@@ -457,17 +457,7 @@ const _imageHolders = <String, String>{
       'held reports its total (_report) to where the census reads it '
       '(viewerRasterBytes, storyboardThumbnailBytes, sheetImageBytes) — '
       '↩️until 10-30 three fields, each its own holding',
-  'lib/src/ui/export/held_rows.dart → _rows':
-      'an export run\'s row pictures: every change in what they hold is '
-      'told to playback\'s line (onHeld, PlaybackCacheBudget.lend), which '
-      'the census reads (lentBytes)',
-  'lib/src/ui/export/held_rows.dart → _inUse':
-      'the held rows ONE picture is made of — of _rows, not a holding '
-      'beside them',
   // … and what one draw, one edit or one render holds while it lasts.
-  'lib/src/ui/export/held_rows.dart → _passing':
-      'the rows composed for one picture alone, let go once it is made '
-      '(during) — the working set of a render',
   'lib/src/ui/canvas/subtree_image_composite.dart → _images':
       'what one effect chain\'s picture draws while it is laid (_Laying), '
       'let go once that picture is recorded — the working set of a chain',

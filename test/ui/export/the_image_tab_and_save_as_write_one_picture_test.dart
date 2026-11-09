@@ -94,7 +94,7 @@ void main() {
           format: format,
           layerFx: ExportLayerFx.on,
           alphaVideo: alphaVideo,
-        ).renderService.background;
+        ).ground;
 
     test('the ground: none where the file keeps alpha, the format\'s colour '
         'under any other still, white under a video', () {

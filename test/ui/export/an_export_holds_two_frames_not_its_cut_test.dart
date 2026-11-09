@@ -27,24 +27,27 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
-import 'package:anicel/src/ui/export/held_rows.dart';
 
 import '../../helpers/cels_parked_cold.dart';
-import '../../helpers/no_guides_laid.dart';
 
-/// 🚨★★★**AN EXPORT HOLDS THE CELS OF TWO FRAMES, NOT OF ITS CUT** (card
-/// `render-reads-thaw-into-hot`).
+/// 🚨★★★**AN EXPORT HOLDS THE PICTURES OF TWO FRAMES, NOT OF ITS CUT**
+/// (card `render-reads-thaw-into-hot`).
 ///
 /// A render reads a cel as a LOOK — decoded for the render, never kept by
-/// the store — so what the renderer holds is held outside every budget.
-/// It held its CUT's cels for the whole run (07-29, when a read was free
-/// because every cel was hot): on a long cut, every drawing at the canvas's
-/// size at once. It holds what the frame it draws read and what the frame
-/// before read — a drawing held across frames is read once for the run of
-/// them, and nothing older stays.
+/// the store. It held its CUT's cels for the whole run (07-29, when a read
+/// was free because every cel was hot): on a long cut, every drawing at the
+/// canvas's size at once. It holds the pictures of the frame it draws and
+/// of the frame before — a frame made of what the frame before was made of
+/// is that frame's picture, and nothing older stays.
+///
+/// ↩️Until the exports went on the engine (7′) the renderer read its cels
+/// and composed its rows itself, held on playback's line (`HeldRows`), and
+/// these tests counted its reads and its rows. A cel is read where
+/// playback reads it now (`FramePictures.readInStack`, into playback's
+/// layer images, on playback's line), and what is held of it is
+/// playback's law, pinned with playback.
 void main() {
   // One tile at the engine's side.
   const tileSide = defaultCelTileSize;
@@ -177,32 +180,20 @@ void main() {
         };
 
     for (final MapEntry(key: door, value: open) in doors.entries) {
-      testWidgets('🎯$door: holds this frame and the one before, and reads a '
-          'held drawing once for its run', (tester) async {
+      testWidgets('🎯$door: reads every drawing of the cut as a look — the '
+          'store keeps each one cold', (tester) async {
         await tester.runAsync(() async {
           final s = session();
           addTearDown(s.dispose);
           final keys = parkEvery(s);
           final cut = s.requireActiveCut;
           final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
           final frameAt = open(renderer, cut);
 
-          for (final index in [0, 1, 2]) {
+          for (var index = 0; index < cut.duration; index += 1) {
             (await frameAt(index)).dispose();
           }
-          expect(renderer.debugCelReads, 1, reason: 'f1 held 0–2: read once');
-          expect(renderer.debugHeldSurfaceCount, 1, reason: 'LIVENESS: f1');
-
-          for (final index in [3, 4, 5]) {
-            (await frameAt(index)).dispose();
-            expect(
-              renderer.debugHeldSurfaceCount,
-              lessThanOrEqualTo(2),
-              reason: 'frame $index: this frame and the one before',
-            );
-          }
-          expect(renderer.debugCelReads, 4);
-          expect(renderer.debugHeldSurfaceCount, 2, reason: 'f3 and f4');
 
           final store = s.renderCaches.brushFrameStore;
           expect(store.hotBakedBytes, 0, reason: 'the reads were looks');
@@ -213,39 +204,6 @@ void main() {
       });
     }
 
-    testWidgets('a cel export holds the cel it draws and the one before', (
-      tester,
-    ) async {
-      await tester.runAsync(() async {
-        final s = session();
-        addTearDown(s.dispose);
-        parkEvery(s);
-        final cut = s.requireActiveCut;
-        final layer = cut.layers.firstWhere((layer) => layer.id == layerId);
-        final renderer = ExportFrameRenderer(session: s);
-
-        for (final drawing in layer.frames) {
-          final image = await renderer.renderCelGroup(
-            ExportCelGroupTask(
-              cut: cut,
-              baseLayer: layer,
-              members: [layer],
-              memberFrames: [drawing],
-              baseFrame: drawing,
-              celName: drawing.id.value,
-              fileName: '${drawing.id.value}.png',
-            ),
-            ExportSizeMode.canvas,
-            guideColor: noGuidesLaid,
-          );
-          image!.dispose();
-          expect(renderer.debugHeldSurfaceCount, lessThanOrEqualTo(2));
-        }
-        expect(renderer.debugCelReads, 4, reason: 'LIVENESS: every cel read');
-        expect(renderer.debugHeldSurfaceCount, 2, reason: 'f3 and f4');
-      });
-    });
-
     testWidgets('what the export draws is the drawing — a look reads the '
         'pixels a use would', (tester) async {
       await tester.runAsync(() async {
@@ -255,7 +213,7 @@ void main() {
 
         final image = await ExportFrameRenderer(
           session: s,
-          background: const ui.Color(0x00000000),
+          ground: const ui.Color(0x00000000),
         ).renderComposite(
           ExportFrameTask(cut: s.requireActiveCut, frameIndex: 3),
           ExportSizeMode.canvas,
@@ -325,54 +283,34 @@ void main() {
         ),
     ], mode);
 
-    testWidgets('an O.L frame is ONE frame — its two cuts do not start one '
-        'each, so both drawings are read once for the run', (tester) async {
-      await tester.runAsync(() async {
-        final s = mixing(['c2-drawing']);
-        addTearDown(s.dispose);
-        parkEvery(s);
-        final renderer = ExportFrameRenderer(session: s);
-        final run = mixedRun(renderer, s, ExportSizeMode.canvas);
-
-        for (var index = 0; index < 4; index += 1) {
-          (await run.frame(index)).dispose();
-        }
-
-        expect(
-          renderer.debugCelReads,
-          2,
-          reason: 'each cut\'s drawing, once — not once a frame',
-        );
-        expect(renderer.debugHeldSurfaceCount, 2, reason: 'LIVENESS: both');
-      });
-    });
-
     for (final mode in ExportSizeMode.values) {
-      testWidgets('🎯${mode.name}: the cut an O.L brings in is part of the '
-          'run — a drawing of it shown again is the row composed for it', (
-        tester,
-      ) async {
+      testWidgets('🎯${mode.name}: an O.L frame is ONE frame — its two cuts '
+          'do not start one each, so over two held drawings a frame makes '
+          'its mix alone', (tester) async {
         await tester.runAsync(() async {
-          final s = mixing(['d1', 'd2', 'd1', 'd2']);
+          final s = mixing(['c2-drawing']);
           addTearDown(s.dispose);
           parkEvery(s);
           final renderer = ExportFrameRenderer(session: s);
           addTearDown(renderer.dispose);
           final run = mixedRun(renderer, s, mode);
 
-          for (var index = 0; index < 4; index += 1) {
+          (await run.frame(0)).dispose();
+          final made = renderer.debugPicturesMade;
+          expect(
+            made,
+            greaterThanOrEqualTo(3),
+            reason: 'LIVENESS: each cut\'s picture, and the mix',
+          );
+          for (var index = 1; index < 4; index += 1) {
             (await run.frame(index)).dispose();
+            expect(
+              renderer.debugPicturesMade,
+              made + index,
+              reason: 'frame $index: both cuts\' pictures are the frame '
+                  'before\'s — not one let go by the other\'s start',
+            );
           }
-          expect(
-            renderer.debugCelReads,
-            5,
-            reason: 'LIVENESS: d1 and d2 are each read again',
-          );
-          expect(
-            renderer.debugRowsMade,
-            3,
-            reason: 'c1\'s drawing, d1 and d2 — once each',
-          );
         });
       });
     }
@@ -508,80 +446,10 @@ void main() {
         });
       });
 
-      testWidgets('$door: the row that holds while another changes is read '
-          'ONCE — a held picture keeps the cels it is made of', (tester) async {
-        await tester.runAsync(() async {
-          final s = sessionOf([cut()]);
-          addTearDown(s.dispose);
-          parkEvery(s);
-          final (:renderer, :frameAt) = over(s);
-
-          for (final index in [0, 1, 2, 3]) {
-            (await frameAt(index)).dispose();
-          }
-          expect(
-            renderer.debugCelReads,
-            3,
-            reason: 'a1 once, b1, b2 — a1 is not read again at frame 2, where '
-                'only B changes after a frame that read nothing',
-          );
-        });
-      });
-
-      // 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」.
-      testWidgets('🎯$door: the row that holds while another changes is '
-          'COMPOSED once — a held picture keeps the rows it is made of', (
-        tester,
-      ) async {
-        await tester.runAsync(() async {
-          final s = sessionOf([cut()]);
-          addTearDown(s.dispose);
-          parkEvery(s);
-          final (:renderer, :frameAt) = over(s);
-
-          for (final index in [0, 1, 2, 3]) {
-            (await frameAt(index)).dispose();
-          }
-          expect(
-            renderer.debugRowsMade,
-            3,
-            reason: 'a1 once, b1, b2 — frame 2 composes b2 alone',
-          );
-        });
-      });
-
-      // 🔬Measured 2026-10-13 on the user's film (card `video-export-speed`):
-      // 958 of 1,594 row rasters were of cels composed before.
-      testWidgets('🎯$door: a drawing that leaves and comes back is the row '
-          'composed for it — read again, and composed once', (tester) async {
-        await tester.runAsync(() async {
-          final s = sessionOf([cycle()]);
-          addTearDown(s.dispose);
-          parkEvery(s);
-          final (:renderer, :frameAt) = over(s);
-          final heldBefore = HeldRows.debugHeld;
-
-          for (final index in [0, 1, 2, 3]) {
-            (await frameAt(index)).dispose();
-            expect(
-              HeldRows.debugHeld - heldBefore,
-              2,
-              reason: 'frame $index: a1 and b1 — b2 and b3 are each shown at '
-                  'one frame alone',
-            );
-          }
-          expect(
-            renderer.debugCelReads,
-            5,
-            reason: 'LIVENESS: b1 is read again at frame 3 — another surface',
-          );
-          expect(renderer.debugRowsMade, 4, reason: 'a1, b1, b2, b3');
-        });
-      });
-
-      testWidgets('🚨$door: a frame drawn with held rows is the frame drawn '
-          'without them, byte for byte — and a line with no room holds '
-          'none', (tester) async {
+      // 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」 —
+      // what holds of a cel is playback's own now (the file's head).
+      testWidgets('🚨$door: a frame drawn with room on playback\'s line is '
+          'the frame drawn with none, byte for byte', (tester) async {
         await tester.runAsync(() async {
           Future<List<Uint8List>> run({required bool room}) async {
             final s = sessionOf([cycle()]);
@@ -597,82 +465,12 @@ void main() {
               frames.add(await bytesOf(image));
               image.dispose();
             }
-            expect(
-              renderer.debugRowsMade,
-              room ? 4 : 8,
-              reason: 'LIVENESS: no room, and every row of every frame is '
-                  'composed',
-            );
             return frames;
           }
 
           final held = await run(room: true);
           final none = await run(room: false);
           expect(held, none);
-        });
-      });
-
-      testWidgets('$door: the rows are held on playback\'s line while the run '
-          'goes — each until no frame ahead shows it — and it is all handed '
-          'back when the run ends', (tester) async {
-        await tester.runAsync(() async {
-          final s = sessionOf([cut()]);
-          addTearDown(s.dispose);
-          parkEvery(s);
-          final (:renderer, :frameAt) = over(s);
-          final line = s.playbackRig.playbackCache;
-          final heldBefore = HeldRows.debugHeld;
-          const row = tileSide * tileSide * 4;
-
-          (await frameAt(0)).dispose();
-          expect(line.lentBytes, 2 * row, reason: 'a1 and b1');
-          (await frameAt(2)).dispose();
-          expect(
-            line.lentBytes,
-            2 * row,
-            reason: 'a1 and b2 — no frame from 2 on shows b1',
-          );
-          expect(HeldRows.debugHeld - heldBefore, 2);
-
-          renderer.dispose();
-          expect(line.lentBytes, 0);
-          expect(HeldRows.debugHeld, heldBefore);
-        });
-      });
-
-      testWidgets('🚨$door: a line lowered under what is held takes it back '
-          'at the next frame — even one that is the picture before it', (
-        tester,
-      ) async {
-        // The storage session's review (2026-10-08): an OS memory warning
-        // halves playback's line while the run goes, and the rows held
-        // before it stood over the lowered line as long as their picture
-        // was held — through a span of frames that shows the same picture.
-        await tester.runAsync(() async {
-          final s = sessionOf([cut()]);
-          addTearDown(s.dispose);
-          parkEvery(s);
-          final (:renderer, :frameAt) = over(s);
-          addTearDown(renderer.dispose);
-          final line = s.playbackRig.playbackCache;
-          final heldBefore = HeldRows.debugHeld;
-
-          (await frameAt(0)).dispose();
-          expect(line.lentBytes, greaterThan(0), reason: 'LIVENESS: held');
-          final made = renderer.debugPicturesMade;
-
-          // Lowered while the run goes — the memory tab's allowance here;
-          // an OS memory warning lowers the same cap (floored far above
-          // this fixture's rows).
-          line.playbackCacheByteBudget = 0;
-          (await frameAt(1)).dispose();
-          expect(
-            renderer.debugPicturesMade,
-            made,
-            reason: 'LIVENESS: frame 1 is frame 0\'s picture',
-          );
-          expect(line.lentBytes, 0);
-          expect(HeldRows.debugHeld, heldBefore);
         });
       });
 
@@ -702,14 +500,12 @@ void main() {
     }
 
     testWidgets('the camera moving over a held drawing: every frame is its '
-        'own picture, and the rows under them are composed ONCE', (
-      tester,
-    ) async {
+        'own picture', (tester) async {
       // ↩️It was the cut's PICTURE that was made once — a canvas-space
       // composite the camera projected — until the film drew its cut
       // through the camera as the canvas does (card video-export-speed-Q2):
       // a picture is of its view now, and what the camera moves over is
-      // the rows it is made of.
+      // the cels it is made of.
       await tester.runAsync(() async {
         final s = sessionOf([
           cut(
@@ -733,9 +529,7 @@ void main() {
 
         final first = await frameAt(0);
         final made = renderer.debugPicturesMade;
-        final rows = renderer.debugRowsMade;
         expect(made, 2, reason: 'LIVENESS: the cut\'s picture and the frame');
-        expect(rows, 2, reason: 'LIVENESS: a1 and b1');
         final moved = await frameAt(1);
         expect(moved.isCloneOf(first), isFalse, reason: 'the camera moved');
         expect(
@@ -743,11 +537,6 @@ void main() {
           made + 2,
           reason: 'the cut through the camera where it stands now, and the '
               'frame',
-        );
-        expect(
-          renderer.debugRowsMade,
-          rows,
-          reason: 'the rows are the ones they were',
         );
         final [before, after] = [
           for (final image in [first, moved]) await bytesOf(image),
@@ -839,11 +628,6 @@ void main() {
             held.dispose();
             plain.dispose();
           }
-          expect(
-            renderer.debugRowsMade,
-            4,
-            reason: 'LIVENESS: a1 and b1 were held — a1, b1, b2, b3',
-          );
         });
       });
     }

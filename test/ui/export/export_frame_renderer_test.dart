@@ -100,7 +100,7 @@ void main() {
         final image =
             await ExportFrameRenderer(
               session: session,
-              background: const ui.Color(0x00000000),
+              ground: const ui.Color(0x00000000),
             ).renderCelGroup(
               ExportCelGroupTask(
                 cut: cut,

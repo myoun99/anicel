@@ -145,7 +145,7 @@ void main() {
     });
     final renderer = ExportFrameRenderer(
       session: s,
-      background: const ui.Color(0x00000000),
+      ground: const ui.Color(0x00000000),
     );
     addTearDown(renderer.dispose);
     final cel = cut.layers.last;

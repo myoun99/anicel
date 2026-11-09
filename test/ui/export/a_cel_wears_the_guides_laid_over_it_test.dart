@@ -154,7 +154,7 @@ void main() {
   ExportFrameRenderer rendererOf(EditorSessionManager session) =>
       ExportFrameRenderer(
         session: session,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
 
   /// The cel of [session]'s cut as [mode] writes it on a clear ground, the

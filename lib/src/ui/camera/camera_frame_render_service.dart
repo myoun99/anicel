@@ -28,18 +28,13 @@ import '../canvas/layer_image_draw.dart';
 import '../canvas/paper_background.dart' show paintProjectPaper;
 import '../canvas/subtree_image_composite.dart' show RowPainter;
 import '../canvas/tiled_surface_compose.dart';
+import '../frame_shots.dart' show CameraOverlayPass;
 import '../playback/camera_shot.dart' show outlineThrough, shotClipOnScreen;
 
 /// Test hatch: every row composed whole — what the byte-for-byte pins
 /// render the ink against (`a_row_drawn_from_its_ink_is_the_same_bytes_test`).
 @visibleForTesting
 bool debugComposesRowsWhole = false;
-
-/// What a render lays over its picture, in CANVAS space under the camera's
-/// projection — handed the scale that projection rasters a canvas pixel at,
-/// which a `Canvas` will not tell anyone: a pass that rasters a picture of
-/// its own (an SE tag with its row's effects) asks it as a folder does.
-typedef CameraOverlayPass = void Function(ui.Canvas canvas, double rasterScale);
 
 /// Renders a composited cut frame as seen through the camera.
 ///

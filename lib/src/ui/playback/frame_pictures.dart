@@ -221,14 +221,19 @@ class FramePictures implements PlaybackPictures {
   /// [asOf] asks the key the stack had with one cel as it was then
   /// ([celNow]): a frame whose key that is changed in that cel alone — what
   /// a stroke's landing moves (`FramePictureView`).
+  ///
+  /// [page] is the page the picture is drawn on where it is not the one
+  /// [picture] is ([pageOf]) — a file's rows on the ground it is made on
+  /// (`frameShot`).
   FramePictureKey keyOfStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     CelAsOf? asOf,
+    FramePage? page,
   }) => framePictureKeyOf(
     _drawnOf(nodes, asOf: asOf),
     cutId: picture.cut.id,
-    page: pageOf(picture),
+    page: page ?? pageOf(picture),
     revisionOf: (cel) => cel == asOf?.cel ? asOf!.revision : _revisionOf(cel),
   );
 
@@ -345,10 +350,14 @@ class FramePictures implements PlaybackPictures {
     DemandedPicture picture,
   ) => stackedCelsOf(_drawnOf(nodes)).every((cel) => inHand(cel, picture));
 
-  /// Whether [cel]'s stored pixels on [picture]'s page are read and laid
-  /// out already — drawn without a reading ([frameAsItStands]).
-  bool inHand(BrushFrameKey cel, DemandedPicture picture) => layerImages
-      .storedSurfaceIsInHand(cel, canvasSize: pageOf(picture).canvasSize);
+  /// Whether [cel]'s stored pixels on [picture]'s page — or [page] — are
+  /// read and laid out already — drawn without a reading
+  /// ([frameAsItStands]).
+  bool inHand(BrushFrameKey cel, DemandedPicture picture, {FramePage? page}) =>
+      layerImages.storedSurfaceIsInHand(
+        cel,
+        canvasSize: (page ?? pageOf(picture)).canvasSize,
+      );
 
   /// Thaws every cel [picture] draws that is not in hand already, at once,
   /// off the UI thread ([LayerFrameImageCache.readIn]) — none another frame
@@ -357,15 +366,17 @@ class FramePictures implements PlaybackPictures {
   Future<void> readIn(DemandedPicture picture) =>
       readInStack(stackOf(picture), picture);
 
-  /// [readIn] for the cels [nodes] — a screen's own stack — draw.
+  /// [readIn] for the cels [nodes] — a screen's own stack — draw, on
+  /// [picture]'s page or [page] ([keyOfStack]).
   Future<void> readInStack(
     List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) {
-    final canvasSize = pageOf(picture).canvasSize;
+    DemandedPicture picture, {
+    FramePage? page,
+  }) {
+    final canvasSize = (page ?? pageOf(picture)).canvasSize;
     return Future.wait([
       for (final cel in stackedCelsOf(_drawnOf(nodes)))
-        if (!inHand(cel, picture))
+        if (!inHand(cel, picture, page: page))
           layerImages.readIn(cel, canvasSize: canvasSize),
     ]);
   }
@@ -441,12 +452,15 @@ class FramePictures implements PlaybackPictures {
   /// canvas's size (`ExportFrameRenderer.renderPicture`) — 🔬S5_BA cut 352,
   /// 68 rows: about 180 Mpx a picture, seconds of a Surface Pro 11's GPU
   /// each time the pen came up.
+  ///
+  /// On [picture]'s page, or [page] ([keyOfStack]).
   Future<EngineFramePicture?> pictureOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     required bool Function() shouldAbort,
+    FramePage? page,
   }) async {
-    var key = keyOfStack(nodes, picture);
+    var key = keyOfStack(nodes, picture, page: page);
     if (!store.holds(key)) {
       if (_isThere(key) ||
           !await _make(
@@ -456,11 +470,12 @@ class FramePictures implements PlaybackPictures {
             due: notDue,
             shownNow: false,
             keepsNodes: false,
+            page: page,
           )) {
         return null;
       }
       // Asked once it is made: a cel it was made without is noted then.
-      key = keyOfStack(nodes, picture);
+      key = keyOfStack(nodes, picture, page: page);
     }
     return store.peek(key);
   }
@@ -492,6 +507,8 @@ class FramePictures implements PlaybackPictures {
   /// profile): the standing order warmed in 444–523 ms against 132–166 ms
   /// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
   /// 691–816 ms.
+  ///
+  /// On [picture]'s page, or [page] ([keyOfStack]).
   Future<bool> _make(
     List<CompositeNode<CanvasStackRow>> Function() nodesOf,
     DemandedPicture picture, {
@@ -499,21 +516,22 @@ class FramePictures implements PlaybackPictures {
     required bool Function() due,
     required bool shownNow,
     required bool keepsNodes,
+    FramePage? page,
   }) async {
     if (shouldAbort()) {
       return false;
     }
-    await readInStack(nodesOf(), picture);
+    await readInStack(nodesOf(), picture, page: page);
     if (shouldAbort()) {
       return false;
     }
     final nodes = nodesOf();
     final film = picture.ghosts == FrameGhosts.inPlace
-        ? keyOfStack(stackWithoutGhosts(nodes), picture)
+        ? keyOfStack(stackWithoutGhosts(nodes), picture, page: page)
         : null;
-    final made = drawingNow(nodes, picture);
+    final made = drawingNow(nodes, picture, page: page);
     // Asked once the drawing is: a cel it was made without is noted now.
-    final key = keyOfStack(nodes, picture);
+    final key = keyOfStack(nodes, picture, page: page);
     final ghosts = film != null && store.holds(film)
         ? made.frame.whereTheGhostsShow
         : null;
@@ -593,17 +611,20 @@ class FramePictures implements PlaybackPictures {
   /// asked after this ([keyOfStack]) is of the picture it gave.
   ///
   /// ⚠️Reads a cel not in hand on this thread ([readIn] first).
+  ///
+  /// On [picture]'s page, or [page] ([keyOfStack]).
   FrameDrawingNow drawingNow(
     List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) {
-    final page = pageOf(picture);
+    DemandedPicture picture, {
+    FramePage? page,
+  }) {
+    final on = page ?? pageOf(picture);
     (Object, StackTrace)? thrown;
     final frame = stackedFrameOf(
       nodes,
-      page: page,
+      page: on,
       surfaceOf: (cel) => _drawn(cel)
-          ? _readNow(cel, page, (error, stack) => thrown ??= (error, stack))
+          ? _readNow(cel, on, (error, stack) => thrown ??= (error, stack))
           : null,
       revisionOf: _revisionOf,
     );

@@ -1,10 +1,7 @@
 import 'dart:ui' as ui;
 
-import 'package:collection/collection.dart' show lowerBound;
 import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_frame_key.dart';
 import '../../models/camera_path_settings.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
@@ -18,7 +15,6 @@ import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ExportLayerFx;
 import '../../models/frame.dart';
-import '../../models/frame_id.dart';
 import '../../models/fx_plugin_binding.dart';
 import '../../models/import/import_warning.dart'
     show ImportWarning, layerEffectsNotApplied, unsupportedLayerKind;
@@ -26,15 +22,12 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
-import '../../models/movie_cel.dart';
 import '../../models/onion_skin_settings.dart' show OnionSkinPlacement;
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
-import '../../services/brush_frame_store.dart' show CelRead;
 import '../../models/composite_tree.dart';
 import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
-import '../../services/fx_plugins/device_fx_plugin_binding.dart';
 import '../../services/layer_as_output.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/se_name_tag_paint.dart';
@@ -54,27 +47,31 @@ import '../../services/camera_frame_corners.dart'
 import '../../models/sheet_marks.dart' show SheetMark;
 import '../../models/sheet_paint_layer.dart';
 import '../../services/camera_path.dart';
-import '../../services/camera_projection_matrix.dart'
-    show cameraMovesPixelsWhole;
 import '../camera/camera_frame_overlay.dart' show paintCameraDim;
-import '../camera/camera_frame_render_service.dart';
 import '../camera/camera_path_overlay.dart';
+import '../canvas/canvas_layer_stack_view.dart'
+    show
+        CanvasActiveLayerRow,
+        CanvasLayerImageRequest,
+        CanvasStackRow,
+        FramePage;
 import '../canvas/guide_overlay.dart' show paintGuideLines;
 import '../conte/conte_fonts.dart' show conteTextStyle;
 import '../sheet_painting.dart';
 import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../editor_session_manager.dart';
+import '../frame_shots.dart';
+import '../playback/stacked_frame_picture.dart' show stackOfDrawnCels;
+import '../../services/playback/frame_demand.dart';
 import '../playback/playback_frame_painter.dart';
 import '../playback/transition_veil_paint.dart';
 import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
-import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../timeline/memo_token.dart';
 import 'export_plan.dart';
 import 'held_pictures.dart';
-import 'held_rows.dart';
 import 'offscreen_raster.dart';
 import 'still_image_encoders.dart'
     show ExportLayerFolder, ExportLayerNode, ExportLayerRow;
@@ -85,13 +82,10 @@ import '../text/app_strings.dart';
 /// picture drawn live stands on too.
 const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 
-/// Where a cel stands in the project: its cut, its row, its drawing.
-typedef _CelAt = (CutId, LayerId, FrameId);
-
 /// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
-/// row and the cut it is a row of, its drawing there and that drawing's
-/// picture, the effects it wears, and where its file's picture stands on
-/// the paper — its reference fx alone, null for every other row.
+/// row and the cut it is a row of, its drawing there, the effects it
+/// wears, and where its file's picture stands on the paper — its reference
+/// fx alone, null for every other row.
 ///
 /// 🗣️I-65-Q7 (유저 2026-10-25): 「참조 fx 만 따른다」 — 「트랜스폼은 기본만켬에서
 /// 빠진다고 몇번이나 말했잖아」: a cel goes out on its paper, so the row's
@@ -104,7 +98,6 @@ typedef _CelRow = ({
   Cut cut,
   Layer layer,
   Frame frame,
-  BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
   LayerPlacement? placement,
 });
@@ -123,20 +116,22 @@ typedef _CelGroup = ({
   CameraOverlayPass? camera,
 });
 
-/// Renders export output straight from the brush store, every cel at its
-/// own pixels, so exports never depend on the playback caches.
+/// Renders export output on the engine: each cut's picture is the frame's
+/// one picture, shot through its view as a panel's is ([frameShot]) — so a
+/// film, a still and a panel of one frame through one view on one paper
+/// are one picture.
 ///
-/// It reads the store as a LOOK ([CelRead.look]) and holds only what the
-/// frame it draws and the one before it read ([_startFrame]).
+/// ↩️It rendered straight from the brush store, every cel read as a LOOK
+/// (`CelRead.look`) and composited again on Flutter through the camera
+/// (`CameraFrameRenderService`), its rows held between the frames of a
+/// run (`HeldRows`) — until exports went on the engine (7′).
 class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
-    CameraFrameRenderService? renderService,
     this.layerFx,
     this.keepsRowsApart = false,
-    ui.Color background = exportFrameGround,
-  }) : renderService =
-           renderService ?? CameraFrameRenderService(background: background);
+    this.ground = exportFrameGround,
+  });
 
   /// A renderer for a run written in [format], on the ground its files are
   /// made on: none where the file keeps its alpha — a still asked for RGBA,
@@ -155,7 +150,7 @@ class ExportFrameRenderer {
          session: session,
          layerFx: layerFx,
          keepsRowsApart: format.keepsRowsApart,
-         background: groundFor(format, alphaVideo: alphaVideo),
+         ground: groundFor(format, alphaVideo: alphaVideo),
        );
 
   /// The ground [ExportFrameRenderer.forFormat] makes a run written in
@@ -171,7 +166,12 @@ class ExportFrameRenderer {
       : const ui.Color(0xFFFFFFFF);
 
   final EditorSessionManager session;
-  final CameraFrameRenderService renderService;
+
+  /// What a picture of this renderer's fills its whole output with, beyond
+  /// the canvas's edges too — and lays its rows on where no paper is laid
+  /// with them ([_pageOf]). Opaque or nothing: the export's grounds are
+  /// white, black or none.
+  final ui.Color ground;
 
   /// What the export window's 레이어 FX keeps of the rows
   /// ([layerAsOutput]) — or null for a picture of the SCREEN, which no
@@ -194,28 +194,16 @@ class ExportFrameRenderer {
   /// those effects.
   final bool keepsRowsApart;
 
-  /// The cels the frame being drawn has read, and the ones the frame before
-  /// it read — all this renderer holds (card `render-reads-thaw-into-hot`).
-  /// A LOOK is decoded for the render and never kept by the store, so what
-  /// is held here is held outside every budget.
-  ///
-  /// ↩️It held its CUT's cels for the whole run (07-29, #780 — every cel was
-  /// hot then, so a read held nothing new): on a long cut, every drawing at
-  /// the canvas's size at once. Two frames are all the cache is for — a
-  /// drawing held across a run of frames is read once for the run.
-  var _thisFrame = <_CelAt, BitmapSurface?>{};
-  var _frameBefore = <_CelAt, BitmapSurface?>{};
-
   /// The pictures the frame a run draws is made of and the ones the
   /// frame before it was made of, each under what it was made of: a cut's
-  /// whole picture in its own canvas space, and the finished frame. Held
-  /// for one more frame like the cels above ([HeldPictures]), and GPU
-  /// pictures, so let go by hand ([dispose]).
+  /// shot, and the finished frame. Held for one more frame ([HeldPictures]),
+  /// and GPU pictures, so let go by hand ([dispose]).
   ///
-  /// 🚨A CUT'S PICTURE IS KEYED BY ITS SIGNATURE
-  /// ([computeCutFrameCompositeSignature]) — the law the playback cache is
-  /// addressed by. A drawing held across a run of frames is composited once
-  /// for the run, however the camera moves over it.
+  /// 🚨A CUT'S SHOT IS KEYED BY ITS PICTURE'S KEY
+  /// ([FramePictures.keyOfStack]) — the law the engine keeps a frame's
+  /// picture by — and by the view and what is drawn over it. A drawing held
+  /// across a run of frames is shot once for the run while the camera
+  /// stands; the engine composes it once however the camera moves.
   ///
   /// ↩️Every frame composited every row again, and read the result back
   /// (F-289, measured 2026-10-07 on the user's own film: of its 1,857
@@ -223,155 +211,26 @@ class ExportFrameRenderer {
   /// 1,483 are that frame's picture, camera and all).
   final HeldPictures _pictures = HeldPictures();
 
-  /// The rows the cut pictures of a run are made of, each held until
-  /// no frame ahead of the run shows it — so the picture a frame changes on
-  /// composes only the rows it has not composed before (F-289-Q21). Their
-  /// room is lent by playback's line of the memory allowance, whose caches
-  /// give way to them while the run goes.
-  late final HeldRows _rows = HeldRows(
-    room: () => session.playbackRig.playbackCache.lendableBytes,
-    onHeld: session.playbackRig.playbackCache.lend,
-    addressOf: (surface) => _celAddresses[surface] ?? surface,
-    nextShown: (address, from) => _run?.nextShown(address, from),
-    laidTexelForTexel: () => _run?.laidTexelForTexel ?? false,
-  );
-
-  /// The address of each cel this renderer has read ([_readSurface]) — what
-  /// its row is held under.
-  final _celAddresses = Expando<_CelAddress>('cel address');
-
-  /// The frames of the run being drawn, and the cels each shows
-  /// ([videoRun], [stillRun]).
-  _ShownAhead? _run;
-
   /// How many pictures this renderer has had to make (test hook) — a frame
   /// that is the picture before it makes none.
   @visibleForTesting
   int get debugPicturesMade => _pictures.made;
 
-  /// How many row pictures this renderer has composed (test hook) — a row a
-  /// held picture is made of composes once.
-  @visibleForTesting
-  int get debugRowsMade => _rows.made;
-
-  /// Starts the next frame: what the frame before the last one read is let
-  /// go, and what the last one read is kept for one more.
+  /// Starts the next frame: what the frame before the last one held is let
+  /// go, and what the last one held is kept for one more.
   ///
   /// ⚠️Once per frame a caller asked for — a transition's two cuts are one
-  /// frame, and the composite inside a video frame starts none ([_composite]).
-  void _startFrame() {
-    _frameBefore = _thisFrame;
-    _thisFrame = {};
-    _pictures.nextFrame();
-    _rows.nextFrame();
-  }
+  /// frame, and the cut picture inside a video frame starts none
+  /// ([_cutPicture]).
+  void _startFrame() => _pictures.nextFrame();
 
-  /// Lets go of the pictures and the rows a run held. The run's to
-  /// call when its last frame is out.
-  void dispose() {
-    _pictures.dispose();
-    _rows.dispose();
-  }
+  /// Lets go of the pictures a run held. The run's to call when its last
+  /// frame is out.
+  void dispose() => _pictures.dispose();
 
-  /// Keeps the cels [signature]'s picture is made of for one more frame.
-  ///
-  /// A held picture reads no cel, so the cels under it would be let go
-  /// while it stands — and the frame ONE row changes on would read every
-  /// row of the cut again.
-  void _carryCelsOf(CutId cut, CutFrameCompositeSignature signature) {
-    for (final layer in signature.layers) {
-      final at = (cut, layer.layerId, layer.frameId);
-      if (!_thisFrame.containsKey(at) && _frameBefore.containsKey(at)) {
-        _thisFrame[at] = _frameBefore[at];
-      }
-    }
-  }
-
-  /// What runs the plugins [cut]'s chains run in this render
-  /// ([deviceFxPluginBinding]): the device's builds, the project's frame
-  /// rate, and the rows' cels as this render reads them ([_surfaceFor]).
-  FxPluginBinding _pluginsOf(Cut cut) => deviceFxPluginBinding(
-    runnerFor: session.fxPlugins.runnerFor,
-    frameRate: session.repository.requireProject().frameRate,
-    surfaceOf: (layer, frame) => _surfaceFor(cut, layer, frame),
-    outcomes: session.fxPlugins.outcomes,
-  );
-
-  /// How this render reads [cut]'s cels ([CelReading]): each as it
-  /// reads it ([_surfaceFor]), through the plugins it runs
-  /// ([_pluginsOf]).
-  CelReading _readingOf(Cut cut) => (
-    surfaces: (layer, frame) => _surfaceFor(cut, layer, frame),
-    plugins: _pluginsOf(cut),
-  );
-
-  BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
-    // 🚨A MOVIE's pictures are read through, never held here: a movie is a
-    // full-canvas picture per FRAME, and the store's budget decides how long
-    // one lives; [_hydrate] puts back what a frame needs.
-    if (movieCelOf(frame.id) != null) {
-      return _readSurface(cut, layer, frame);
-    }
-    final at = (cut.id, layer.id, frame.id);
-    return _thisFrame.putIfAbsent(
-      at,
-      () => _frameBefore.containsKey(at)
-          ? _frameBefore[at]
-          : _readSurface(cut, layer, frame),
-    );
-  }
-
-  BitmapSurface? _readSurface(Cut cut, Layer layer, Frame frame) {
-    _celReads += 1;
-    final address = _celAddress(cut, layer.id, frame.id);
-    // R19 P3b: the baked raster is the truth — a READ-ONLY reference
-    // (valid display cache first, else baked; the coordinator donates
-    // on every commit, undo and redo); null = an empty cel.
-    //
-    // 🚨A LOOK: a cel that is cold or only in the file is decoded for this
-    // render and nothing is kept. ↩️It thawed into the hot tier (the cold
-    // tier, R20-A1, made a read do that) — measured 09-28, the storyboard's
-    // pictures of a 13-cut film took the tier from 149 to 529MB and pushed
-    // the cut being drawn toward cooling. A look still decodes at the
-    // canvas's size, which is why those pictures render one at a time
-    // ([StoryboardCutThumbnailStore]).
-    final surface = session.renderCaches.brushFrameStore
-        .currentSurfaceWithoutReplay(
-          address.key,
-          canvasSize: cut.canvasSize,
-          read: CelRead.look,
-        );
-    if (surface != null) {
-      _celAddresses[surface] = address;
-    }
-    return surface;
-  }
-
-  /// Where [cut]'s cel of [layerId] at [frameId] lives, and which revision
-  /// of it is there — the identity the playback cache keys a cut's picture
-  /// by ([_signatureOf]), and so the one a row of it is held under.
-  _CelAddress _celAddress(Cut cut, LayerId layerId, FrameId frameId) {
-    final key = session.brushFrameKeyForCut(cut, layerId, frameId);
-    return (
-      key: key,
-      revision: session.renderCaches.brushFrameStore.sourceRevisionOf(key),
-    );
-  }
-
-  int _celReads = 0;
-
-  /// How many cels this renderer has read from the store (test hook).
-  @visibleForTesting
-  int get debugCelReads => _celReads;
-
-  /// How many surfaces the renderer holds right now (test hook) — a movie's
-  /// pictures are never among them.
-  @visibleForTesting
-  int get debugHeldSurfaceCount => {
-    for (final frame in [_thisFrame, _frameBefore])
-      for (final MapEntry(:key, :value) in frame.entries)
-        if (value != null) key,
-  }.length;
+  /// What runs the plugins [cut]'s chains run in this render: the device's,
+  /// as the canvas runs them (`EditorSessionManager.fxPluginsIn`).
+  FxPluginBinding _pluginsOf(Cut cut) => session.fxPluginsIn(cut);
 
   /// Decodes the movie pictures [cut] shows at [frameIndex] before its
   /// composite is planned: export walks frames nobody is looking at, so
@@ -484,13 +343,124 @@ class ExportFrameRenderer {
     return [for (final contribution in contributions) contribution.opacity];
   }
 
-  /// The pictures that stand on nothing: TRANSPARENT backing. A track of
-  /// the stack's, so an upper track's picture never blanks the tracks below
-  /// — the paper belongs to the bottom covered track, and its unit lays it
-  /// ([_stackUnit]); and a row of a layered cel's, which the file lays over
-  /// the rows under it ([celGroupRows]).
-  static const CameraFrameRenderService _transparentRenderService =
-      CameraFrameRenderService(background: ui.Color(0x00000000));
+  /// The ground of the pictures that stand on nothing: TRANSPARENT. A track
+  /// of the stack's, so an upper track's picture never blanks the tracks
+  /// below — the paper belongs to the bottom covered track, and its unit
+  /// lays it ([_stackUnit]); and a row of a layered file's, which the file
+  /// lays over the rows under it ([frameRows], [celGroupRows]).
+  static const ui.Color _clear = ui.Color(0x00000000);
+
+  /// The page [cut]'s rows are laid on here: [paper] with them where the
+  /// route lays one — a stage's, a canvas-size film's, the picture 「다른
+  /// 이름으로 저장」 writes — and else the [ground] the picture is made on,
+  /// as the rows' paper; nothing under them on a clear one.
+  ///
+  /// ⚖️THE GROUND IS THE PAPER OF A PICTURE THAT LAYS NONE — what a blend
+  /// over its backdrop and an adjustment read below the rows, as on the
+  /// canvas they read its paper (↩️the old composite laid the ground as its
+  /// tree's bottom row, `onUnderlay`). So a still and a panel of one frame
+  /// through one view on one paper are one picture
+  /// (`a_film_frame_is_the_frame_playback_shows_test`). My call, not the
+  /// user's.
+  ///
+  /// A page with no paper reads as the screen's does ([PlaybackRig
+  /// .framePictures]): a track over the stage, on the project's paper
+  /// unpainted, is the picture playback made of it.
+  FramePage _pageOf(Cut cut, ui.Color ground, ProjectBackground? paper) {
+    final under =
+        paper ??
+        (ground.a > 0 ? ProjectBackground.color(ground.toARGB32()) : null);
+    return (
+      canvasSize: cut.canvasSize,
+      pasteboardReach: session.repository.requireProject().pasteboardReach,
+      paintPaper: under != null,
+      paperBackground: under ?? session.projectSettings.projectBackground,
+    );
+  }
+
+  /// [cut]'s frame [frameIndex] on [page], with the onion's [ghosts] in it
+  /// as they lie: what the engine keeps its picture under ([frameShot]).
+  static DemandedPicture _frameOn(
+    Cut cut,
+    int frameIndex,
+    FramePage page, {
+    FrameGhosts ghosts = FrameGhosts.none,
+  }) => (
+    cut: cut,
+    frameIndex: frameIndex,
+    paintPaper: page.paintPaper,
+    ghosts: ghosts,
+  );
+
+  /// [nodes] — a tree of [cut]'s frame [frameIndex] — shot through [view]
+  /// ([frameShot]) at [outputSize], on [ground] — this renderer's own unless
+  /// another is named ([_clear]) — with [paper] laid with the rows
+  /// ([_pageOf]), cut at the canvas's edge where [cutsToTheCanvas] says,
+  /// and [over] laid over the picture.
+  Future<ui.Image> _shot(
+    Cut cut,
+    int frameIndex,
+    List<CompositeNode<CanvasStackRow>> nodes, {
+    required CameraView view,
+    CanvasSize? outputSize,
+    ui.Color? ground,
+    ProjectBackground? paper,
+    FrameGhosts ghosts = FrameGhosts.none,
+    bool cutsToTheCanvas = true,
+    CameraOverlayPass? over,
+  }) {
+    final on = ground ?? this.ground;
+    final page = _pageOf(cut, on, paper);
+    return frameShot(
+      session,
+      pictures: session.playbackRig.framePictures,
+      nodes: nodes,
+      frame: _frameOn(cut, frameIndex, page, ghosts: ghosts),
+      page: page,
+      view: view,
+      output: outputSize ?? view.frameSize,
+      ground: on,
+      cutsToTheCanvas: cutsToTheCanvas,
+      over: over,
+    );
+  }
+
+  /// [task]'s tree as the canvas stacks it ([EditingCanvas.stackAt]) — of
+  /// the cut as this render sees it ([_cutForRender]), no row live — with
+  /// each onion row's [ghosts] directly under its drawing where some are
+  /// given.
+  List<CompositeNode<CanvasStackRow>> _nodesFor(
+    ExportFrameTask task, {
+    Map<LayerId, List<CutFrameCompositeGhost>>? ghosts,
+  }) => session.editingCanvas
+      .stackAt(
+        cut: task.cut,
+        stackCut: _cutForRender(task.cut),
+        frameIndex: task.frameIndex,
+        drawingLayerId: null,
+        ghosts: ghosts,
+      )
+      .nodes;
+
+  /// [rows] — a tree of the cut [task]'s frame is made of, as this render
+  /// sees it ([_cutForRender]) — as the canvas stacks them
+  /// ([EditingCanvas.stackOfRows]).
+  List<CompositeNode<CanvasStackRow>> _stackOf(
+    ExportFrameTask task,
+    List<CompositeNode<CutFrameCompositeRow>> rows,
+  ) => session.editingCanvas.stackOfRows(
+    task.cut,
+    task.frameIndex,
+    rows,
+    stackCut: _cutForRender(task.cut),
+  );
+
+  /// Whether [cut]'s cel of [layer] at [frame] shows anything — the
+  /// store's own word for it ([BrushFrameStore.celHasRenderableContent]).
+  bool _hasArtwork(Cut cut, Layer layer, Frame frame) =>
+      session.renderCaches.brushFrameStore.celHasRenderableContent(
+        session.brushFrameKeyForCut(cut, layer.id, frame.id),
+      );
 
   /// The multi-track layout, built once per export run (the project is
   /// frozen while a run streams).
@@ -522,13 +492,14 @@ class ExportFrameRenderer {
     ExportFrameTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
-  }) {
+  }) async {
     _startFrame();
-    return _composite(
-      task,
-      _viewFor(task.cut, task.frameIndex, mode),
+    return _shot(
+      task.cut,
+      task.frameIndex,
+      await _cutNodes(task, _stillChainOf(task)),
+      view: _viewFor(task.cut, task.frameIndex, mode),
       outputSize: outputSize,
-      trackEffects: _stillChainOf(task),
     );
   }
 
@@ -559,37 +530,33 @@ class ExportFrameRenderer {
     final cut = task.cut;
     final view = _viewFor(cut, task.frameIndex, mode);
     await _hydrate(cut, task.frameIndex);
-    return renderService.renderThroughCamera(
-      nodes: _nodesAsShown(task),
-      pose: view.pose,
-      cameraFrameSize: view.frameSize,
+    return _shot(
+      cut,
+      task.frameIndex,
+      _nodesAsShown(task),
+      view: view,
       outputSize: outputSize,
-      canvasSize: cut.canvasSize,
-      cutsToTheCanvas: true,
       paper: paper,
-      overlayPass: _shownOver(task, view, guideInk),
+      ghosts: _ghostsInPlace ? FrameGhosts.inPlace : FrameGhosts.none,
+      over: _shownOver(task, view, guideInk),
     );
   }
+
+  /// Whether the canvas lays the onion's ghosts each directly under its
+  /// row's drawing ([OnionSkinPlacement.inPlace]) — else over the frame's
+  /// every row.
+  bool get _ghostsInPlace =>
+      session.onionSkin.settings.value.placement == OnionSkinPlacement.inPlace;
 
   /// [task]'s tree under the V row's chain, as [renderComposite] lays it,
   /// with its onion ghosts where the canvas lays them
   /// ([OnionSkinPlacement]): each directly under its row's drawing, or over
   /// the frame's every row.
-  List<CompositeNode<CutFrameCompositeLayer>> _nodesAsShown(
-    ExportFrameTask task,
-  ) {
-    final inPlace =
-        session.onionSkin.settings.value.placement ==
-        OnionSkinPlacement.inPlace;
-    final ghosts = _ghostsOf(task);
+  List<CompositeNode<CanvasStackRow>> _nodesAsShown(ExportFrameTask task) {
+    final inPlace = _ghostsInPlace;
     return [
       ...underTheCutsFx(
-        planCutFrameCompositeTree(
-          cut: _cutForRender(task.cut),
-          frameIndex: task.frameIndex,
-          reading: _readingOf(task.cut),
-          ghostsOf: inPlace ? (row) => ghosts[row.id] ?? const [] : null,
-        ),
+        _nodesFor(task, ghosts: inPlace ? _ghostsOf(task) : null),
         _stillChainOf(task),
       ),
       if (!inPlace) ..._ghostsAlone(task),
@@ -606,15 +573,16 @@ class ExportFrameRenderer {
         null,
       );
 
-  /// [task]'s onion ghosts by themselves.
-  List<CompositeNode<CutFrameCompositeLayer>> _ghostsAlone(
-    ExportFrameTask task,
-  ) => planCutFrameGhosts(
-    cut: _cutForRender(task.cut),
-    frameIndex: task.frameIndex,
-    ghosts: _ghostsOf(task).values.expand((ghosts) => ghosts),
-    reading: _readingOf(task.cut),
-  );
+  /// [task]'s onion ghosts by themselves ([ghostsAlone]).
+  List<CompositeNode<CanvasStackRow>> _ghostsAlone(ExportFrameTask task) =>
+      _stackOf(
+        task,
+        ghostsAlone(
+          cut: _cutForRender(task.cut),
+          frameIndex: task.frameIndex,
+          ghosts: _ghostsOf(task).values.expand((ghosts) => ghosts),
+        ),
+      );
 
   /// What the canvas draws over [task]'s picture on the picture's own
   /// pixels, through [view], in the order it stacks them (`_overlayStack`):
@@ -731,19 +699,27 @@ class ExportFrameRenderer {
     final view = _viewFor(cut, task.frameIndex, mode);
     final over = _shownOver(task, view, guideInk);
     final ghosts = _ghostsAlone(task);
-    if (over == null && ghosts.isEmpty) {
+    final store = session.renderCaches.brushFrameStore;
+    if (over == null &&
+        stackOfDrawnCels(
+          ghosts,
+          drawn: store.celHasRenderableContent,
+        ).isEmpty) {
       return null;
     }
     return ExportLayerRow(
       name: AppText.notation.exOnScreen,
-      draw: () => _transparentRenderService.renderThroughCamera(
-        nodes: ghosts,
-        pose: view.pose,
-        cameraFrameSize: view.frameSize,
-        canvasSize: cut.canvasSize,
-        cutsToTheCanvas: true,
-        overlayPass: over,
-      ),
+      draw: () async {
+        await _hydrate(cut, task.frameIndex);
+        return _shot(
+          cut,
+          task.frameIndex,
+          _ghostsAlone(task),
+          view: view,
+          ground: _clear,
+          over: over,
+        );
+      },
     );
   }
 
@@ -768,21 +744,21 @@ class ExportFrameRenderer {
   }) {
     final frameIndex = task.frameIndex;
     final view = _viewFor(task.cut, frameIndex, mode);
-    // A picture of the file: what [laid] hands over, by itself on
-    // [service]'s ground, through the view and cut at the canvas's edge as
-    // the frame is ([_composite]).
+    // A picture of the file: what [laid] hands over, by itself on [ground],
+    // through the view and cut at the canvas's edge as the frame is
+    // ([_shot]).
     Future<ui.Image> drawn(
-      CameraFrameRenderService service, {
-      List<CompositeNode<CutFrameCompositeLayer>> Function()? laid,
+      ui.Color ground, {
+      List<CompositeNode<CanvasStackRow>> Function()? laid,
       ProjectBackground? paper,
     }) async {
       await _hydrate(task.cut, frameIndex);
-      return service.renderThroughCamera(
-        nodes: laid?.call() ?? const [],
-        pose: view.pose,
-        cameraFrameSize: view.frameSize,
-        canvasSize: task.cut.canvasSize,
-        cutsToTheCanvas: true,
+      return _shot(
+        task.cut,
+        frameIndex,
+        laid?.call() ?? const [],
+        view: view,
+        ground: ground,
         paper: paper,
       );
     }
@@ -813,7 +789,7 @@ class ExportFrameRenderer {
           ),
           blendMode: layer.blendMode,
           visible: layer.isVisible,
-          draw: () => drawn(_transparentRenderService),
+          draw: () => drawn(_clear),
         );
       } else {
         node = switch (layerDrawingAt(
@@ -829,7 +805,7 @@ class ExportFrameRenderer {
             visible: layer.isVisible,
             clipped: clipsToLayerBelow(layer),
             draw: () => drawn(
-              _transparentRenderService,
+              _clear,
               laid: () => _laidAlone(task, layer, drawing),
             ),
           ),
@@ -840,10 +816,10 @@ class ExportFrameRenderer {
       }
     }
     return [
-      if (renderService.background.a > 0 || paper != null)
+      if (ground.a > 0 || paper != null)
         ExportLayerRow(
           name: AppText.notation.exBackground,
-          draw: () => drawn(renderService, paper: paper),
+          draw: () => drawn(ground, paper: paper),
         ),
       ...?childrenOf[null],
     ];
@@ -851,53 +827,49 @@ class ExportFrameRenderer {
 
   /// [layer]'s [drawing] in [task]'s frame by itself — whole, in no blend,
   /// its pose and its effects on it, reading the rows they name as the
-  /// film reads them ([planRowAsRead]), its cel number with them
+  /// film reads them ([readingTheirRows]), its cel number with them
   /// ([celNumberedRow]): the picture a layered file lays by the row's own
   /// strength and blend ([frameRows]). Nothing where it exposes no cel
   /// here, or one with nothing on it.
-  List<CompositeNode<CutFrameCompositeLayer>> _laidAlone(
+  List<CompositeNode<CanvasStackRow>> _laidAlone(
     ExportFrameTask task,
     Layer layer,
     ({Frame? frame, ResolvedRowRender render}) drawing,
   ) {
     final cut = task.cut;
     final frame = drawing.frame;
-    final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
-    if (frame == null || surface == null) {
+    if (frame == null || !_hasArtwork(cut, layer, frame)) {
       return const [];
     }
-    return withTheRowsTheyRead(
-      celNumberedRow(
-        paint: _alone(drawing.render.effects),
-        rowOf: (paint) => CutFrameCompositeLayer(
-          surface: surface,
-          opacity: paint.opacity,
-          blendMode: paint.blendMode,
-          placement: drawing.render.placement,
-          effects: _pluginsOf(cut)(
-            paint.effects,
-            cut: cut,
-            frameIndex: task.frameIndex,
+    return _stackOf(
+      task,
+      readingTheirRows(
+        celNumberedRow(
+          paint: _alone(drawing.render.effects),
+          rowOf: (paint) => CutFrameCompositeEntry(
+            layer: layer,
+            frame: frame,
+            opacity: paint.opacity,
+            blendMode: paint.blendMode,
+            placement: drawing.render.placement,
+            effects: paint.effects,
           ),
+          text: celNumberText(
+            rowName: layer.name,
+            drawingName: frame.name,
+            kind: layer.kind,
+          ),
+          paper: cut.canvasSize,
+          // By itself in its picture: the file clips the picture, not a
+          // node.
+          asOnePicture: false,
         ),
-        text: celNumberText(
-          rowName: layer.name,
-          drawingName: frame.name,
-          kind: layer.kind,
-        ),
-        paper: cut.canvasSize,
-        // By itself in its picture: the file clips the picture, not a node.
-        asOnePicture: false,
-      ),
-      effectsOf: (row) => row.effects,
-      // Read off the cut as the file lays it ([_cutForRender]): a folder's
-      // chain no row of the file holds is out of a map as it is out of the
-      // file — I-117-Q2 「층을 지키고 그 효과는 뺀다」.
-      drawnOf: (row, _) => planRowAsRead(
+        // Read off the cut as the file lays it ([_cutForRender]): a
+        // folder's chain no row of the file holds is out of a map as it is
+        // out of the file — I-117-Q2 「층을 지키고 그 효과는 뺀다」.
         cut: _cutForRender(cut),
-        row: row,
         frameIndex: task.frameIndex,
-        reading: _readingOf(cut),
+        liveLayerId: null,
       ),
     );
   }
@@ -942,11 +914,12 @@ class ExportFrameRenderer {
     final view = cameraViewOver(region);
     _startFrame();
     await _hydrate(cut, frameIndex);
-    return renderService.renderThroughCamera(
-      nodes: _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
-      pose: view.pose,
-      cameraFrameSize: view.frameSize,
-      canvasSize: cut.canvasSize,
+    return _shot(
+      cut,
+      frameIndex,
+      _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
+      view: view,
+      cutsToTheCanvas: false,
     );
   }
 
@@ -969,40 +942,15 @@ class ExportFrameRenderer {
         ExportSizeMode.canvas => cameraViewOver(cut.canvasSize.canvasRect),
       };
 
-  /// [renderComposite] inside a frame that has already started, through
-  /// [view], under the V row's [trackEffects] ([underTheCutsFx]), with
-  /// [nameTags] drawn over the picture — each handed in resolved, so a
-  /// caller that keys the picture ([_cutPicture]) keys it by the very chain
-  /// and tags that are drawn — and its rows from [rows] when a held picture
-  /// keeps them. On [service]'s ground, this renderer's own unless another
-  /// is named ([_transparentRenderService]), with [paper] laid under the rows
-  /// where a stage's picture carries its own.
-  ///
-  /// Cut at its canvas's edge: a film shows no pasteboard, and a picture of
-  /// a sequence is one of its frames.
-  Future<ui.Image> _composite(
+  /// [task]'s tree ([_nodesFor]) under the V row's [trackEffects]
+  /// ([underTheCutsFx]) — asked once the movie pictures it shows are in
+  /// ([_hydrate]): where a movie's picture was laid is where its row lies.
+  Future<List<CompositeNode<CanvasStackRow>>> _cutNodes(
     ExportFrameTask task,
-    CameraView view, {
-    CanvasSize? outputSize,
-    List<ResolvedLayerEffect> trackEffects = const [],
-    List<ResolvedSeNameTag> nameTags = const [],
-    ProjectBackground? paper,
-    RowPictures? rows,
-    CameraFrameRenderService? service,
-  }) async {
-    final cut = task.cut;
-    await _hydrate(cut, task.frameIndex);
-    return (service ?? renderService).renderThroughCamera(
-      nodes: underTheCutsFx(_nodesFor(task), trackEffects),
-      pose: view.pose,
-      cameraFrameSize: view.frameSize,
-      outputSize: outputSize,
-      canvasSize: cut.canvasSize,
-      cutsToTheCanvas: true,
-      paper: paper,
-      rows: rows,
-      overlayPass: _nameTagsOver(cut, nameTags),
-    );
+    List<ResolvedLayerEffect> trackEffects,
+  ) async {
+    await _hydrate(task.cut, task.frameIndex);
+    return underTheCutsFx(_nodesFor(task), trackEffects);
   }
 
   /// [nameTags] over [cut]'s picture. Null for none.
@@ -1017,18 +965,6 @@ class ExportFrameRenderer {
           canvasSize: cut.canvasSize,
           rasterScale: rasterScale,
         );
-
-  /// [task]'s composite tree, of the cut as this render sees it
-  /// ([_cutForRender]): the window's 레이어 FX is expressed by rendering
-  /// that VIEW of the cut rather than by threading an override through the
-  /// plan.
-  List<CompositeNode<CutFrameCompositeLayer>> _nodesFor(
-    ExportFrameTask task,
-  ) => planCutFrameCompositeTree(
-    cut: _cutForRender(task.cut),
-    frameIndex: task.frameIndex,
-    reading: _readingOf(task.cut),
-  );
 
   /// The BACKDROP ground (R3b) under a video frame — null when nothing is
   /// laid down at all, which is what [preserveAlpha] asks for.
@@ -1078,35 +1014,49 @@ class ExportFrameRenderer {
     ),
   )).clone();
 
-  /// What [cut]'s picture at [frameIndex] is made of — the playback cache's
-  /// own identity of it, of the cut as this render sees it
-  /// ([_cutForRender]).
-  CutFrameCompositeSignature _signatureOf(Cut cut, int frameIndex) =>
-      computeCutFrameCompositeSignature(
-        cut: _cutForRender(cut),
-        frameIndex: frameIndex,
-        revisionOf: (layerId, frameId) =>
-            _celAddress(cut, layerId, frameId).revision,
-      );
-
-  /// [cut]'s whole picture at [frameIndex] as [route] draws it, held
-  /// ([_pictures]) under the signature of what it is made of — and the
-  /// cels it is made of kept with it ([_carryCelsOf]), and the row
-  /// pictures [render] made it of ([_rows]). The renderer's own: nobody it
-  /// is handed to disposes it.
+  /// [task]'s cut's picture through [view] at [outputSize] — under the V
+  /// row's [trackEffects], with [nameTags] drawn over it, on [ground] with
+  /// [paper] laid with its rows ([_shot]) — held ([_pictures]) under the key
+  /// the engine keeps its picture by ([FramePictures.keyOfStack]), the
+  /// ground, and [route]: whatever of the shot that key does not say —
+  /// which of the renders it is, the view it is drawn through, its size and
+  /// what is drawn over it. The renderer's own: nobody it is handed to
+  /// disposes it.
   ///
-  /// [route] is whatever of [render] the signature does not say: which of
-  /// the renders it is, the view it is drawn through, and what is drawn
-  /// over it.
+  /// Cut at its canvas's edge: a film shows no pasteboard, and a picture of
+  /// a sequence is one of its frames.
   Future<ui.Image> _cutPicture(
-    Cut cut,
-    int frameIndex, {
+    ExportFrameTask task,
+    CameraView view, {
     required Object route,
-    required Future<ui.Image> Function(RowPictures rows) render,
-  }) {
-    final signature = _signatureOf(cut, frameIndex);
-    _carryCelsOf(cut.id, signature);
-    return _pictures.of((route, signature), () => _rows.during(render));
+    CanvasSize? outputSize,
+    List<ResolvedLayerEffect> trackEffects = const [],
+    List<ResolvedSeNameTag> nameTags = const [],
+    ui.Color? ground,
+    ProjectBackground? paper,
+  }) async {
+    final cut = task.cut;
+    final nodes = await _cutNodes(task, trackEffects);
+    final on = ground ?? this.ground;
+    final page = _pageOf(cut, on, paper);
+    final key = session.playbackRig.framePictures.keyOfStack(
+      nodes,
+      _frameOn(cut, task.frameIndex, page),
+      page: page,
+    );
+    return _pictures.of(
+      (route, key, on),
+      () => _shot(
+        cut,
+        task.frameIndex,
+        nodes,
+        view: view,
+        outputSize: outputSize,
+        ground: on,
+        paper: paper,
+        over: _nameTagsOver(cut, nameTags),
+      ),
+    );
   }
 
   /// [cut]'s picture at [frameIndex] over its whole canvas, its paper laid
@@ -1128,108 +1078,36 @@ class ExportFrameRenderer {
     CanvasSize? outputSize,
   }) {
     final nameTags = session.seEntries.seNameTagsForCutFrame(cut, frameIndex);
-    final paper = session.projectSettings.projectBackground;
+    final view = _viewFor(cut, frameIndex, ExportSizeMode.canvas);
     return _cutPicture(
-      cut,
-      frameIndex,
-      route: (
-        'canvas',
-        seNameTagSignature(nameTags),
-        ByList(trackEffects),
-        paper,
-        outputSize,
-      ),
-      render: (rows) => _composite(
-        ExportFrameTask(cut: cut, frameIndex: frameIndex),
-        _viewFor(cut, frameIndex, ExportSizeMode.canvas),
-        outputSize: outputSize,
-        trackEffects: trackEffects,
-        nameTags: nameTags,
-        paper: paper,
-        rows: rows,
-      ),
+      ExportFrameTask(cut: cut, frameIndex: frameIndex),
+      view,
+      route: ('canvas', seNameTagSignature(nameTags), view, outputSize),
+      outputSize: outputSize,
+      trackEffects: trackEffects,
+      nameTags: nameTags,
+      paper: session.projectSettings.projectBackground,
     );
   }
 
   /// A video run of [plan] in [mode] — its frames, drawn in order
-  /// ([ExportRun.frame]), every row held from the frame that composes it
-  /// until no frame ahead shows it ([HeldRows]). Each frame is made of the
-  /// cuts [_cutsOfVideoFrame] names, each drawn through its view
-  /// ([_viewFor]).
+  /// ([ExportRun.frame]), each made of the cuts the frame shows
+  /// ([renderVideoFrame]), each drawn through its view ([_viewFor]).
   ExportRun videoRun(
     List<ExportFrameTask> plan,
     ExportSizeMode mode, {
     bool preserveAlpha = false,
-  }) => _runOf(
-    plan,
-    mode,
-    cutsOf: (task) => _cutsOfVideoFrame(task, mode),
+  }) => ExportRun._(
+    plan: plan,
     draw: (task) => renderVideoFrame(task, mode, preserveAlpha: preserveAlpha),
   );
 
   /// A run of STILLS of [plan] in [mode] — a picture sequence's frames,
   /// each the picture [renderComposite] makes of its task, held as a video
   /// run holds its own: a frame made of what the frame before it was made
-  /// of is that frame's picture, handed again ([_stillFrame]), and every
-  /// row is held until no frame ahead shows it.
+  /// of is that frame's picture, handed again ([_stillFrame]).
   ExportRun stillRun(List<ExportFrameTask> plan, ExportSizeMode mode) =>
-      _runOf(
-        plan,
-        mode,
-        cutsOf: (task) => [(task.cut, task.frameIndex)],
-        draw: (task) => _stillFrame(task, mode),
-      );
-
-  /// A run of [plan] in [mode] whose frames [draw] draws, each made of the
-  /// cuts [cutsOf] names.
-  ///
-  /// What each frame shows is read here, for the whole run at once: the cels
-  /// of every cut the frame is made of, as that cut's picture names them
-  /// ([_signatureOf]).
-  ///
-  /// Its rows are laid down texel for texel when every cut of every frame
-  /// is seen through a view that moves canvas pixels whole — a canvas-size
-  /// run always, a camera-size one when its cameras stand on whole pixels
-  /// throughout. A camera that leaves them for a frame has its rows composed
-  /// whole: a row composed as its ink for one frame would be laid back whole
-  /// at every frame after ([RowPictures.laidTexelForTexel]).
-  ///
-  /// ⚠️A movie's pictures are installed as the run reaches them ([_hydrate]),
-  /// and an installed picture moves its cel's revision — so a movie row whose
-  /// picture the run installs is read under another address than the one
-  /// read here, and is composed for its picture alone.
-  ExportRun _runOf(
-    List<ExportFrameTask> plan,
-    ExportSizeMode mode, {
-    required List<(Cut, int)> Function(ExportFrameTask task) cutsOf,
-    required Future<ui.Image> Function(ExportFrameTask task) draw,
-  }) {
-    final shown = <_CelAddress, List<int>>{};
-    var laidTexelForTexel = true;
-    for (final (index, task) in plan.indexed) {
-      for (final (cut, frameIndex) in cutsOf(task)) {
-        final view = _viewFor(cut, frameIndex, mode);
-        laidTexelForTexel =
-            laidTexelForTexel &&
-            cameraMovesPixelsWhole(view.pose, view.frameSize);
-        for (final layer in _signatureOf(cut, frameIndex).layers) {
-          final frames = shown.putIfAbsent(
-            _celAddress(cut, layer.layerId, layer.frameId),
-            () => [],
-          );
-          if (frames.isEmpty || frames.last != index) {
-            frames.add(index);
-          }
-        }
-      }
-    }
-    return ExportRun._(
-      this,
-      plan: plan,
-      draw: draw,
-      shown: _ShownAhead(shown, laidTexelForTexel: laidTexelForTexel),
-    );
-  }
+      ExportRun._(plan: plan, draw: (task) => _stillFrame(task, mode));
 
   /// The picture [renderComposite] makes of [task] in [mode] — at its full
   /// size, without the names — held as a cut's picture is ([_cutPicture]),
@@ -1241,30 +1119,14 @@ class ExportFrameRenderer {
   ) async {
     _startFrame();
     final view = _viewFor(task.cut, task.frameIndex, mode);
-    final trackEffects = _stillChainOf(task);
     final picture = await _cutPicture(
-      task.cut,
-      task.frameIndex,
-      route: ('still', view, ByList(trackEffects)),
-      render: (rows) =>
-          _composite(task, view, trackEffects: trackEffects, rows: rows),
+      task,
+      view,
+      route: ('still', view),
+      trackEffects: _stillChainOf(task),
     );
     return picture.clone();
   }
-
-  /// The cuts video frame [task] is made of in [mode], each at its own
-  /// frame — the track stack's positions, or what the canvas-size frame
-  /// mixes ([_canvasFrameOf]).
-  List<(Cut, int)> _cutsOfVideoFrame(
-    ExportFrameTask task,
-    ExportSizeMode mode,
-  ) => switch (mode) {
-    ExportSizeMode.camera => [
-      for (final position in _stackPositionsOf(task))
-        (position.cut, position.localFrameIndex),
-    ],
-    ExportSizeMode.canvas => _canvasFrameOf(task).cuts,
-  };
 
   /// What a CANVAS-size video frame is made of: no cut in a gap; the cuts a
   /// transition reaching across this frame's boundary mixes, where they
@@ -1611,18 +1473,13 @@ class ExportFrameRenderer {
     // lays it (`FramePage.paintPaper`).
     final paper = isStage ? session.projectSettings.projectBackground : null;
     final picture = await _cutPicture(
-      cut,
-      frameIndex,
-      route: ('stack', view, ByList(trackEffects), paper, outputSize),
-      render: (rows) => _composite(
-        ExportFrameTask(cut: cut, frameIndex: frameIndex),
-        view,
-        outputSize: outputSize,
-        trackEffects: trackEffects,
-        paper: paper,
-        rows: rows,
-        service: _transparentRenderService,
-      ),
+      ExportFrameTask(cut: cut, frameIndex: frameIndex),
+      view,
+      route: ('stack', view, outputSize),
+      outputSize: outputSize,
+      trackEffects: trackEffects,
+      ground: _clear,
+      paper: paper,
     );
     final project = session.repository.requireProject();
     // A preview's size of the frame is the view playback shows a frame at
@@ -1715,27 +1572,29 @@ class ExportFrameRenderer {
       // [clips] laid it last in [stack].
       stack.addAll(over);
     }
-    final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
     final frameIndex = celGroupFirstExposure(task);
-    final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
-      stack,
-      (laid) => _laidInTheCel(laid, cutOf: cutOf, frameIndex: frameIndex),
-    );
-    return renderService.renderThroughCamera(
-      nodes: _readingOnPaper(
+    return _shot(
+      task.cut,
+      frameIndex,
+      _celStack(
         composeOverTheirBackdrops(
-          shown,
-          blendOf: (layer) => layer.blendMode,
-          paintedNormal: (layer) => layer.paintedNormal(),
+          stack,
+          blendOf: (laid) => laid.paint.blendMode,
+          paintedNormal: (laid) => (
+            row: laid.row,
+            paint: (
+              opacity: laid.paint.opacity,
+              blendMode: LayerBlendMode.normal,
+              effects: laid.paint.effects,
+            ),
+          ),
         ),
-        cutOf: cutOf,
         frameIndex: frameIndex,
       ),
-      pose: cel.view.pose,
-      cameraFrameSize: cel.view.frameSize,
-      canvasSize: task.cut.canvasSize,
+      view: cel.view,
       outputSize: outputSize,
-      overlayPass: _laidOver([cel.guides, cel.camera]),
+      cutsToTheCanvas: false,
+      over: _laidOver([cel.guides, cel.camera]),
     );
   }
 
@@ -1762,29 +1621,26 @@ class ExportFrameRenderer {
     if (cel == null) {
       return const [];
     }
+    final frameIndex = celGroupFirstExposure(task);
     Future<ui.Image> drawn(
-      CameraFrameRenderService service, {
-      List<CompositeNode<CutFrameCompositeLayer>> nodes = const [],
-      CameraOverlayPass? overlayPass,
-    }) => service.renderThroughCamera(
-      nodes: nodes,
-      pose: cel.view.pose,
-      cameraFrameSize: cel.view.frameSize,
-      canvasSize: task.cut.canvasSize,
-      overlayPass: overlayPass,
+      ui.Color ground, {
+      List<CompositeNode<CanvasStackRow>> nodes = const [],
+      CameraOverlayPass? over,
+    }) => _shot(
+      task.cut,
+      frameIndex,
+      nodes,
+      view: cel.view,
+      ground: ground,
+      cutsToTheCanvas: false,
+      over: over,
     );
     ExportLayerRow laidOver(String name, CameraOverlayPass pass) =>
-        ExportLayerRow(
-          name: name,
-          draw: () => drawn(_transparentRenderService, overlayPass: pass),
-        );
+        ExportLayerRow(name: name, draw: () => drawn(_clear, over: pass));
     final strings = AppText.notation;
     return [
-      if (renderService.background.a > 0)
-        ExportLayerRow(
-          name: strings.exBackground,
-          draw: () => drawn(renderService),
-        ),
+      if (ground.a > 0)
+        ExportLayerRow(name: strings.exBackground, draw: () => drawn(ground)),
       for (final row in cel.rows)
         ExportLayerRow(
           name: row.layer.name,
@@ -1793,24 +1649,13 @@ class ExportFrameRenderer {
           // Photoshop clips as the row does (I-92) — the switch as the row
           // holds it, as [frameRows] carries it.
           clipped: clipsToLayerBelow(row.layer),
-          draw: () {
-            final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
-            return drawn(
-              _transparentRenderService,
-              nodes: _readingOnPaper(
-                mapCompositeLeaves(
-                  _celNumbered(row, _alone(row.effects), asOnePicture: false),
-                  (laid) => _laidInTheCel(
-        laid,
-        cutOf: cutOf,
-        frameIndex: celGroupFirstExposure(task),
-      ),
-                ),
-                cutOf: cutOf,
-                frameIndex: celGroupFirstExposure(task),
-              ),
-            );
-          },
+          draw: () => drawn(
+            _clear,
+            nodes: _celStack(
+              _celNumbered(row, _alone(row.effects), asOnePicture: false),
+              frameIndex: frameIndex,
+            ),
+          ),
         ),
       if (cel.guides case final guides?) laidOver(strings.exLayGuides, guides),
       if (cel.camera case final camera?) laidOver(strings.tlKindCamera, camera),
@@ -1837,15 +1682,13 @@ class ExportFrameRenderer {
       if (frame == null) {
         return;
       }
-      final surface = _surfaceFor(cut, layer, frame);
-      if (surface == null) {
+      if (!_hasArtwork(cut, layer, frame)) {
         return;
       }
       rows.add((
         cut: cut,
         layer: layer,
         frame: frame,
-        surface: surface,
         // R6: the members' EFFECTS are the chain each row wears in its cut
         // ([chainWornBy] — an attached row its base's, short of the cel
         // number), as the tab's 레이어 FX keeps it ([chainAsOutput]) — the
@@ -1918,53 +1761,68 @@ class ExportFrameRenderer {
   static RowPaint _alone(List<ResolvedLayerEffect> effects) =>
       (opacity: 1, blendMode: LayerBlendMode.normal, effects: effects);
 
-  /// [laid]'s row as the cel lays it, by its paint — the row's cut kept by
-  /// it in [cutOf], for what its chain reads ([_readingOnPaper]).
-  CutFrameCompositeLayer _laidInTheCel(
-    _CelLaid laid, {
-    required Map<CutFrameCompositeLayer, Cut> cutOf,
-    required int frameIndex,
-  }) {
-    final layer = CutFrameCompositeLayer(
-      surface: laid.row.surface,
-      opacity: laid.paint.opacity,
-      blendMode: laid.paint.blendMode,
-      placement: laid.row.placement,
-      effects: _pluginsOf(laid.row.cut)(
-        laid.paint.effects,
-        cut: laid.row.cut,
-        frameIndex: frameIndex,
-      ),
-    );
-    cutOf[layer] = laid.row.cut;
-    return layer;
-  }
-
-  /// [nodes] of a cel — each row's cut in [cutOf] — with each row whose
-  /// chain reads rows of its cut reading them ([withTheRowsTheyRead]) as
-  /// the cel lays its own: on paper ([_onPaper]), at the frame the cel is
-  /// sampled at ([frameIndex], [celGroupFirstExposure]).
+  /// [stack] — a cel's rows, each as the cel lays it by its paint — as the
+  /// canvas stacks rows: each row's cel by its key, its chain run as the
+  /// device runs it ([_pluginsOf]) at the frame the cel is sampled at
+  /// ([frameIndex], [celGroupFirstExposure]), and each whose chain reads
+  /// rows of its cut reading them ([withTheRowsTheyRead]) as the cel lays
+  /// its own: on paper ([_onPaper]).
   ///
   /// 🗣️I-132-Q26 a (유저 2026-10-29): 「셀처럼 종이 그대로 읽는다」 — the cel
   /// the map's row exposes there, where it is drawn on its paper, at its
   /// own strength (Q24 b); a folder as what it holds (Q25 a).
-  List<CompositeNode<CutFrameCompositeLayer>> _readingOnPaper(
-    List<CompositeNode<CutFrameCompositeLayer>> nodes, {
-    required Map<CutFrameCompositeLayer, Cut> cutOf,
+  List<CompositeNode<CanvasStackRow>> _celStack(
+    List<CompositeNode<_CelLaid>> stack, {
     required int frameIndex,
-  }) => withTheRowsTheyRead(
-    nodes,
-    effectsOf: (layer) => layer.effects,
-    drawnOf: (row, by) => switch (cutOf[by]) {
-      final cut? => planRowAsRead(
-        cut: _onPaper(cut),
-        row: row,
-        frameIndex: frameIndex,
-        reading: _readingOf(cut),
-      ),
-      null => null,
-    },
-  );
+  }) {
+    final cutOf = Map<CanvasStackRow, Cut>.identity();
+    CanvasStackRow laidInTheCel(_CelLaid laid) {
+      final row = laid.row;
+      final request = CanvasLayerImageRequest(
+        frameKey: session.brushFrameKeyForCut(
+          row.cut,
+          row.layer.id,
+          row.frame.id,
+        ),
+        opacity: laid.paint.opacity,
+        blendMode: laid.paint.blendMode,
+        placement: row.placement,
+        effects: _pluginsOf(
+          row.cut,
+        )(laid.paint.effects, cut: row.cut, frameIndex: frameIndex),
+      );
+      cutOf[request] = row.cut;
+      return request;
+    }
+
+    return withTheRowsTheyRead(
+      mapCompositeLeaves<_CelLaid, CanvasStackRow>(stack, laidInTheCel),
+      effectsOf: _effectsOf,
+      drawnOf: (row, by) => switch (cutOf[by]) {
+        final cut? => switch (rowAsRead(
+          cut: _onPaper(cut),
+          row: row,
+          frameIndex: frameIndex,
+        )) {
+          final read? => session.editingCanvas.stackOfRows(
+            cut,
+            frameIndex,
+            read,
+            stackCut: _onPaper(cut),
+          ),
+          null => null,
+        },
+        null => null,
+      },
+    );
+  }
+
+  /// [row]'s chain, whole.
+  static List<ResolvedLayerEffect> _effectsOf(CanvasStackRow row) =>
+      switch (row) {
+        CanvasLayerImageRequest(:final effects) => effects,
+        CanvasActiveLayerRow(:final effects) => effects,
+      };
 
   /// [cut] as a cel lays its rows: as the window's 레이어 FX keeps each
   /// ([_asOutput]), on its paper — no row's transform moving it, only a
@@ -2066,12 +1924,14 @@ class ExportFrameRenderer {
     if (pass == null) {
       return null;
     }
-    return _transparentRenderService.renderThroughCamera(
-      nodes: const [],
-      pose: view.pose,
-      cameraFrameSize: view.frameSize,
-      canvasSize: cut.canvasSize,
-      overlayPass: pass,
+    return _shot(
+      cut,
+      0,
+      const [],
+      view: view,
+      ground: _clear,
+      cutsToTheCanvas: false,
+      over: pass,
     );
   }
 
@@ -2110,34 +1970,22 @@ class ExportFrameRenderer {
 /// The frames of a run — a video's ([ExportFrameRenderer.videoRun]) or a
 /// picture sequence's ([ExportFrameRenderer.stillRun]).
 final class ExportRun {
-  ExportRun._(
-    this._renderer, {
+  ExportRun._({
     required List<ExportFrameTask> plan,
     required Future<ui.Image> Function(ExportFrameTask task) draw,
-    required _ShownAhead shown,
   }) : _plan = plan,
-       _draw = draw,
-       _shown = shown;
+       _draw = draw;
 
-  final ExportFrameRenderer _renderer;
   final List<ExportFrameTask> _plan;
   final Future<ui.Image> Function(ExportFrameTask task) _draw;
-  final _ShownAhead _shown;
 
   /// Frame [index] of the run, a picture of the caller's own to dispose.
   ///
-  /// ⚠️One at a time, in order: a row is held for the frames ahead of the
-  /// one asked for last, and a frame that starts lets go of the rows no
-  /// frame from it on shows — which a frame still being drawn would lose.
-  Future<ui.Image> frame(int index) {
-    _shown.at = index;
-    _renderer._run = _shown;
-    return _draw(_plan[index]);
-  }
+  /// ⚠️One at a time, in order: a frame holds what the frame after it may
+  /// show again for one more frame ([HeldPictures]), and lets go of what
+  /// the frame before it held.
+  Future<ui.Image> frame(int index) => _draw(_plan[index]);
 }
-
-/// Which cel, at which revision of it.
-typedef _CelAddress = ({BrushFrameKey key, int revision});
 
 /// The cuts a canvas-size video frame mixes, when a transition puts two in
 /// one space ([ExportFrameRenderer._sharedTransitionSpace]).
@@ -2147,30 +1995,6 @@ typedef _SharedTransitionSpace = ({
   List<double> weights,
   int globalFrame,
 });
-
-/// The frames of a run each cel shows, in order, and the frame being
-/// drawn ([at]) — what tells a held row how long it is wanted.
-final class _ShownAhead {
-  _ShownAhead(this._frames, {required this.laidTexelForTexel});
-
-  final Map<_CelAddress, List<int>> _frames;
-
-  /// Whether every picture of the run lays its rows down texel for texel
-  /// ([HeldRows]' other question, [RowPictures.laidTexelForTexel]).
-  final bool laidTexelForTexel;
-
-  int at = 0;
-
-  /// [HeldRows]' question ([RowNextShown]).
-  int? nextShown(Object address, int from) {
-    final frames = _frames[address];
-    if (frames == null) {
-      return null;
-    }
-    final next = lowerBound(frames, at + from);
-    return next == frames.length ? null : frames[next] - at;
-  }
-}
 
 // --- what a video frame is made of ------------------------------------------
 //

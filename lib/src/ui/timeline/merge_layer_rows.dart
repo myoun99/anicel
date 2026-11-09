@@ -281,7 +281,7 @@ final class _Laying {
     : wall = session.pasteboardOf(cut.canvasSize),
       _renderer = ExportFrameRenderer(
         session: session,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
 
   final EditorSessionManager session;

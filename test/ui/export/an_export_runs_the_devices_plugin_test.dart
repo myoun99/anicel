@@ -337,7 +337,7 @@ ExportFrameRenderer _rendererOf(
 }) {
   final renderer = ExportFrameRenderer(
     session: s,
-    background: const ui.Color(0x00000000),
+    ground: const ui.Color(0x00000000),
     keepsRowsApart: apart,
   );
   addTearDown(renderer.dispose);

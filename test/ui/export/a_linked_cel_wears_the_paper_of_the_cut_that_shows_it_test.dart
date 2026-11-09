@@ -172,7 +172,7 @@ void main() {
         ) async {
           final image = await ExportFrameRenderer(
             session: session,
-            background: const ui.Color(0x00000000),
+            ground: const ui.Color(0x00000000),
           ).renderCelGroup(
             plan.cels.singleWhere((task) => task.fileName == file),
             ExportSizeMode.canvas,

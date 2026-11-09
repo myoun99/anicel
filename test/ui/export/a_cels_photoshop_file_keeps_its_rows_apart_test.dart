@@ -157,7 +157,7 @@ void main() {
   }
 
   List<ExportLayerRow> rowsOf(EditorSessionManager session, ui.Color ground) =>
-      ExportFrameRenderer(session: session, background: ground).celGroupRows(
+      ExportFrameRenderer(session: session, ground: ground).celGroupRows(
         celOf(session),
         ExportSizeMode.canvas,
         guideColor: noGuidesLaid,
@@ -195,7 +195,7 @@ void main() {
       paint(session, onA: {(2, 2): gray}, onShade: {(2, 2): blue});
       final picture = (await ExportFrameRenderer(
         session: session,
-        background: white,
+        ground: white,
       ).renderCelGroup(
         celOf(session),
         ExportSizeMode.canvas,
@@ -231,7 +231,7 @@ void main() {
         );
         final picture = (await ExportFrameRenderer(
           session: session,
-          background: white,
+          ground: white,
         ).renderCelGroup(
           celOf(session),
           ExportSizeMode.canvas,
@@ -297,7 +297,7 @@ void main() {
       (tester) async {
     await tester.runAsync(() async {
       final session = film();
-      final renderer = ExportFrameRenderer(session: session, background: white);
+      final renderer = ExportFrameRenderer(session: session, ground: white);
       final task = celOf(session);
 
       expect(
@@ -319,31 +319,6 @@ void main() {
     });
   });
 
-  testWidgets('drawn after the cel\'s picture, its rows read no cel the '
-      'picture did not', (tester) async {
-    await tester.runAsync(() async {
-      final session = film();
-      draw(session);
-      final renderer = ExportFrameRenderer(session: session, background: clear);
-      final task = celOf(session);
-      (await renderer.renderCelGroup(
-        task,
-        ExportSizeMode.canvas,
-        guideColor: noGuidesLaid,
-      ))!.dispose();
-      final read = renderer.debugCelReads;
-
-      for (final row in renderer.celGroupRows(
-        task,
-        ExportSizeMode.canvas,
-        guideColor: noGuidesLaid,
-      )) {
-        (await row.draw()).dispose();
-      }
-      expect(renderer.debugCelReads, read);
-    });
-  });
-
   testWidgets('written, they are the document\'s rows over the cel\'s '
       'picture — names, strengths, blends and pixels as drawn, a colour as '
       'it is where its alpha is half', (tester) async {
@@ -355,7 +330,7 @@ void main() {
         onA: {(1, 1): black, (2, 1): half},
         onShade: {(2, 2): blue},
       );
-      final renderer = ExportFrameRenderer(session: session, background: white);
+      final renderer = ExportFrameRenderer(session: session, ground: white);
       final task = celOf(session);
       final picture = (await renderer.renderCelGroup(
         task,

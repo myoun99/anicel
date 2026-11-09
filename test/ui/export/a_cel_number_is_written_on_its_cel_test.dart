@@ -454,7 +454,7 @@ void main() {
           await ExportFrameRenderer(
             session: session,
             layerFx: fx,
-            background: const ui.Color(0x00000000),
+            ground: const ui.Color(0x00000000),
           ).renderCelGroup(
             ExportCelGroupTask(
               cut: cut,

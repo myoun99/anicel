@@ -262,7 +262,7 @@ void main() {
     final drawn = await tester.runAsync(() async {
       final renderer = ExportFrameRenderer(
         session: s,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       try {
         final image = await renderer.renderOver(cut, frame, wall.rect);

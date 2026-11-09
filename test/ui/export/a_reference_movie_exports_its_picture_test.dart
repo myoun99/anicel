@@ -106,27 +106,4 @@ void main() {
     });
     await tester.pumpAndSettle();
   });
-
-  testWidgets('the export holds none of the take\'s pictures itself', (
-    tester,
-  ) async {
-    final s = await placed(tester);
-
-    await tester.runAsync(() async {
-      final renderer = ExportFrameRenderer(session: s);
-      for (var frame = 0; frame < 4; frame += 1) {
-        final image = await renderer.renderComposite(
-          ExportFrameTask(cut: s.requireActiveCut, frameIndex: frame),
-          ExportSizeMode.canvas,
-        );
-        image.dispose();
-      }
-      expect(
-        renderer.debugHeldSurfaceCount,
-        0,
-        reason: 'the store\'s budget decides how long a picture lives',
-      );
-    });
-    await tester.pumpAndSettle();
-  });
 }

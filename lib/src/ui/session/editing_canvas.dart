@@ -142,29 +142,57 @@ class EditingCanvas {
   /// stack order — drawn as the same ghosts are in place.
   List<CompositeNode<CanvasStackRow>> ghostsOverAt(Cut cut, int frameIndex) {
     final dragPreview = _dragPreview.value;
-    return EditingStackMap(
-      opacityVerbs: _opacityVerbs,
-      project: _project,
-      cut: cut,
+    return _mapOf(
+      cut,
       stackCut: cut,
-      dragPreview: dragPreview,
       frameIndex: frameIndex,
-      activeLayerId: null,
-      movieLaidAt: _movieLaidAt,
-      plugins: _pluginsIn(cut),
+      dragPreview: dragPreview,
     ).mapTree(
-      readingTheirRows(
-        [
-          for (final ghosts in _ghostsAt(cut, frameIndex, dragPreview).values)
-            for (final ghost in ghosts)
-              CompositeLeaf<CutFrameCompositeRow>(ghost),
-        ],
+      ghostsAlone(
         cut: cut,
         frameIndex: frameIndex,
-        liveLayerId: null,
+        ghosts: _ghostsAt(cut, frameIndex, dragPreview).values.expand(
+          (ghosts) => ghosts,
+        ),
       ),
     );
   }
+
+  /// [rows] — a tree of [stackCut]'s frame [frameIndex], [cut] as stored —
+  /// as the stack draws them, no row live and no drag in flight: a frame a
+  /// file lays its own way (`ExportFrameRenderer`: a layered file's row by
+  /// itself, the onion's ghosts by themselves, the rows a cel's chain reads).
+  List<CompositeNode<CanvasStackRow>> stackOfRows(
+    Cut cut,
+    int frameIndex,
+    List<CompositeNode<CutFrameCompositeRow>> rows, {
+    Cut? stackCut,
+  }) => _mapOf(
+    cut,
+    stackCut: stackCut ?? cut,
+    frameIndex: frameIndex,
+  ).mapTree(rows);
+
+  /// The one map of a tree of [cut]'s rows onto the stack ([EditingStackMap])
+  /// — [stackCut] as it composites, [activeLayerId]'s row live, [dragPreview]
+  /// the drag it shows.
+  EditingStackMap _mapOf(
+    Cut cut, {
+    required Cut stackCut,
+    required int frameIndex,
+    LayerId? activeLayerId,
+    TimelineDragPreview? dragPreview,
+  }) => EditingStackMap(
+    opacityVerbs: _opacityVerbs,
+    project: _project,
+    cut: cut,
+    stackCut: stackCut,
+    dragPreview: dragPreview,
+    frameIndex: frameIndex,
+    activeLayerId: activeLayerId,
+    movieLaidAt: _movieLaidAt,
+    plugins: _pluginsIn(cut),
+  );
 
   /// [stack] as a RUN shows it: the same tree with no row standing live. A
   /// run draws on nothing, so the frame is the picture the warmer made of
@@ -303,16 +331,12 @@ class EditingCanvas {
     Map<LayerId, List<CutFrameCompositeGhost>>? ghosts,
   }) {
     final shown = stackCut ?? cut;
-    final walk = EditingStackMap(
-      opacityVerbs: _opacityVerbs,
-      project: _project,
-      cut: cut,
+    final walk = _mapOf(
+      cut,
       stackCut: shown,
-      dragPreview: dragPreview,
       frameIndex: frameIndex,
       activeLayerId: drawingLayerId,
-      movieLaidAt: _movieLaidAt,
-      plugins: _pluginsIn(cut),
+      dragPreview: dragPreview,
     );
     final drawing = drawingLayerId == null
         ? null
