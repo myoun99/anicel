@@ -230,21 +230,14 @@ void main() {
     final render = tester.renderObject<RenderCustomPaint>(_cutBlocks());
     expect(render.debugNeedsPaint, isFalse, reason: 'the premise: settled');
     // A picture of the row's cut at a height no block asks for, rendered
-    // and landed on both clocks, with no frame drawn after it.
+    // and landed on the real clock, with no frame drawn after it.
     final thumbnails = painter.thumbnails!;
     final cut = painter.entries.first.cut;
     thumbnails.resolve(cut, 0, shownHeight: 1000);
     expect(thumbnails.pending(), isTrue, reason: 'the premise: it renders');
-    final deadline = DateTime.now().add(waitPatience);
-    while (thumbnails.pending() && DateTime.now().isBefore(deadline)) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.idle();
-    }
     expect(
-      thumbnails.pending(),
-      isFalse,
+      await tester.runAsync(() => pollUntil(() => !thumbnails.pending())),
+      isTrue,
       reason: 'the premise: it landed',
     );
     expect(render.debugNeedsPaint, isTrue, reason: 'the folded row heard it');

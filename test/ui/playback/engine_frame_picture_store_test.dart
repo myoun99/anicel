@@ -295,6 +295,88 @@ void main() {
     expect(told, 1, reason: 'what it shows changed');
   });
 
+  group('a step on its way to another key', () {
+    const marked = (-20, 10, 40, 50);
+    const rect = Rect.fromLTRB(-20, 10, 40, 50);
+    final routes = <String, Future<bool> Function(
+      EngineFramePictureStore<String> store,
+      StackedFrame frame,
+    )>{
+      'patch': (store, frame) async =>
+          store.patch(from: 'a', to: 'b', rect: rect, frame: frame),
+      'patchThrough': (store, frame) => store.patchThrough(
+        from: 'a',
+        to: 'b',
+        rect: rect,
+        frame: frame,
+        stands: () => true,
+      ),
+    };
+
+    for (final MapEntry(key: route, value: write) in routes.entries) {
+      test('🚨through $route, leaves a picture another screen shows as it '
+          'was, and the step is in a copy under the key', () async {
+        final store = storeOf();
+        final want = laidBy(cel(5));
+        final laid = (await store.lay('a', frameOf(cel(5))))!
+          ..hold()
+          ..hold();
+        var told = 0;
+        laid.addListener(() => told += 1);
+        final changed = cel(5, marked: marked);
+
+        expect(await write(store, frameOf(changed)), isTrue);
+
+        expect(store.peek('a'), same(laid), reason: 'the other screen\'s');
+        expect(shownBy(laid), want);
+        expect(told, 0, reason: 'what it shows did not change');
+        final copy = store.peek('b')!;
+        expect(copy, isNot(same(laid)));
+        expect(shownBy(copy), laidBy(changed));
+        laid
+          ..release()
+          ..release();
+      });
+
+      test('through $route, goes into a picture only its writer shows',
+          () async {
+        final store = storeOf();
+        final laid = (await store.lay('a', frameOf(cel(5))))!..hold();
+        var told = 0;
+        laid.addListener(() => told += 1);
+        final changed = cel(5, marked: marked);
+
+        expect(await write(store, frameOf(changed)), isTrue);
+
+        expect(store.holds('a'), isFalse);
+        expect(store.peek('b'), same(laid));
+        expect(shownBy(laid), laidBy(changed));
+        expect(told, 1);
+        laid.release();
+      });
+    }
+
+    test('under the one key, is written in for every screen showing it — '
+        'a picture under a key is that key\'s', () async {
+      final store = storeOf();
+      final laid = (await store.lay('a', frameOf(cel(5))))!
+        ..hold()
+        ..hold();
+      var told = 0;
+      laid.addListener(() => told += 1);
+      final changed = cel(5, marked: marked);
+
+      store.patch(from: 'a', to: 'a', rect: rect, frame: frameOf(changed));
+
+      expect(store.peek('a'), same(laid));
+      expect(shownBy(laid), laidBy(changed));
+      expect(told, 1);
+      laid
+        ..release()
+        ..release();
+    });
+  });
+
   test('🚨a frame laid over a film is the film\'s picture where it is not '
       'fresh, and its own frame where it is', () async {
     final store = storeOf();

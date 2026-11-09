@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -67,7 +68,7 @@ void main() {
           at: corner,
           size: 2,
           tipShape: BrushTipShape.square,
-          tileSize: 4,
+          tileSize: defaultCelTileSize,
         );
       }
     }

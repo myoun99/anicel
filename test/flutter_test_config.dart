@@ -218,6 +218,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // test ends.
   debugOpenEngineScreen = _screenOnASurface;
   debugLayerOfScreen = screenDrawnAsAPicture;
+  // A zoom's stop rasters what it stretched, on the engine a session's
+  // pictures open: no test but the one that fires it by hand is about that,
+  // and one left armed outlives the tree.
+  TimelineGridTileStore.instance.debugZoomTimer = (_, _) => const _NoStop();
   tearDown(_freeScreenSurfaces);
   // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
   // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
@@ -252,6 +256,20 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
     );
   });
   await testMain();
+}
+
+/// A zoom's stop that does not come.
+final class _NoStop implements Timer {
+  const _NoStop();
+
+  @override
+  void cancel() {}
+
+  @override
+  bool get isActive => false;
+
+  @override
+  int get tick => 0;
 }
 
 /// The surfaces the grids' screens opened on in this test.

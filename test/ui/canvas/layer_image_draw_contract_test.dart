@@ -365,7 +365,7 @@ void main() {
 /// timeline/timeline_row_cells_painter — a row's grid tile is laid on its
 /// grid's screen (`TimelineGridScreenSlot`), the GPU engine's picture onto
 /// the engine's texture, not drawn on the row's canvas (`_layTile`).
-const int _knownRawDraws = 29;
+const int _knownRawDraws = 28;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../core/sync_image_upload.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
@@ -61,19 +61,6 @@ import 'canvas/canvas_layer_stack_view.dart' show EngineStackScreen;
 /// came up — and showed the pasteboard inside the camera's frame, which a
 /// film cuts.
 class PanelPictures {
-  /// [pixels] — premultiplied RGBA, [width] × [height] — as an image.
-  static Future<ui.Image> _imageOf(Uint8List pixels, int width, int height) {
-    final image = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      pixels,
-      width,
-      height,
-      ui.PixelFormat.rgba8888,
-      image.complete,
-    );
-    return image.future;
-  }
-
   PanelPictures({required this.session, this.giveWay});
 
   final EditorSessionManager session;
@@ -142,7 +129,9 @@ class PanelPictures {
       }
 
       showOn(target);
-      shot = await _imageOf(target.read(), output.width, output.height);
+      shot = pictureOf(
+        PremultipliedRows(target.read(), output.width, output.height),
+      );
       final frame = ui.Offset.zero &
           ui.Size(output.width.toDouble(), output.height.toDouble());
       final recorder = ui.PictureRecorder();

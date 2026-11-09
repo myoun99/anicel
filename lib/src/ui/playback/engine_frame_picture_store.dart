@@ -63,38 +63,17 @@ class EngineFramePicture extends ChangeNotifier {
     _freedIfUnheld();
   }
 
+  /// Whether one besides the one writing into it shows it: who writes into
+  /// a picture shows it.
+  bool get _shownByAnother => _holds > 1;
+
   void _composed(
     StackedFrame frame, {
     ui.Rect? changed,
     EngineChainHolds? holds,
-  }) {
-    _screen.compose(frame, changed: changed, holds: holds);
-    notifyListeners();
-  }
+  }) => _screen.compose(frame, changed: changed, holds: holds);
 
-  /// [_composed], its plug-ins' steps run first: nothing goes in until
-  /// they have (🗣️I-132-Q34 a), nor at all where it [stands] no more then.
-  Future<bool> _composedThrough(
-    StackedFrame frame, {
-    required ui.Rect changed,
-    required bool Function() stands,
-    EngineChainHolds? holds,
-  }) async {
-    final went = await FxPluginStages.recordedThrough<bool>(
-      () {
-        if (!stands()) {
-          return false;
-        }
-        _screen.compose(frame, changed: changed, holds: holds);
-        return true;
-      },
-      discard: (_) {},
-    );
-    if (went) {
-      notifyListeners();
-    }
-    return went;
-  }
+  void _written() => notifyListeners();
 
   /// Laid before it is handed to anyone: no one to tell.
   void _composedOver(
@@ -216,7 +195,7 @@ class EngineFramePictureStore<K extends Object> {
     }
     // A turn for each lay: one asked for the screen meanwhile goes to the
     // front.
-    unawaited(tools.then((_) => _layFirst(), onError: _noEngine));
+    _aTurn();
     return lay.done.future;
   }
 
@@ -235,6 +214,13 @@ class EngineFramePictureStore<K extends Object> {
   ///
   /// Answers false where there is no picture under [from]. [holds] says
   /// where its chains' puts are held, if anywhere.
+  ///
+  /// 🚨A PICTURE ANOTHER SCREEN SHOWS STAYS WHAT IT IS ON ITS WAY TO ANOTHER
+  /// KEY: there [from] goes on answering with it, and [to] with a copy of
+  /// it, composed where it changed. Two frames that stack alike are one
+  /// picture — every page of nothing stacks nothing —, and the step of a
+  /// pen on the one showed on the other (`FramePictureKey.standingOn`'s
+  /// law; a stroke across two conte cells, 2026-11-09).
   bool patch({
     required K from,
     required K to,
@@ -246,9 +232,53 @@ class EngineFramePictureStore<K extends Object> {
     if (entry == null) {
       return false;
     }
-    entry.picture._composed(frame, changed: rect, holds: holds);
-    _moved(entry, from: from, to: to);
+    _stepTaken(
+      entry,
+      _stepped(entry.picture, from, to, frame, rect, holds),
+      from: from,
+      to: to,
+    );
     return true;
+  }
+
+  /// [frame] composed where it changed, at [rect], for the picture of
+  /// [from] on its way to [to]: into [picture] — or over it, where that
+  /// stays for another screen ([patch]). Answers the picture it is in.
+  EngineFramePicture _stepped(
+    EngineFramePicture picture,
+    K from,
+    K to,
+    StackedFrame frame,
+    ui.Rect rect,
+    EngineChainHolds? holds,
+  ) {
+    if (from == to || !picture._shownByAnother) {
+      picture._composed(frame, changed: rect, holds: holds);
+      return picture;
+    }
+    final copy = _aPicture();
+    try {
+      copy._composedOver(picture, frame, fresh: rect, holds: holds);
+    } on Object {
+      copy._letGo();
+      rethrow;
+    }
+    return copy;
+  }
+
+  /// [made], the picture a step of [entry]'s is in, answers to [to].
+  void _stepTaken(
+    _Entry entry,
+    EngineFramePicture made, {
+    required K from,
+    required K to,
+  }) {
+    if (identical(made, entry.picture)) {
+      made._written();
+      _moved(entry, from: from, to: to);
+    } else {
+      _answers(to, _Entry(made)..lastUsed = ++_clock);
+    }
   }
 
   /// [patch] of a frame that waits for its plugins: composed in once they
@@ -267,16 +297,23 @@ class EngineFramePictureStore<K extends Object> {
     if (entry == null) {
       return false;
     }
-    final went = await entry.picture._composedThrough(
-      frame,
-      changed: rect,
-      holds: holds,
-      stands: () => stands() && identical(_entries[from], entry),
+    // Its plug-ins' steps run first: nothing goes in until they have
+    // (🗣️I-132-Q34 a).
+    final made = await FxPluginStages.recordedThrough<EngineFramePicture?>(
+      () => stands() && identical(_entries[from], entry)
+          ? _stepped(entry.picture, from, to, frame, rect, holds)
+          : null,
+      discard: (made) {
+        if (!identical(made, entry.picture)) {
+          made?._letGo();
+        }
+      },
     );
-    if (went) {
-      _moved(entry, from: from, to: to);
+    if (made == null) {
+      return false;
     }
-    return went;
+    _stepTaken(entry, made, from: from, to: to);
+    return true;
   }
 
   /// Moves the picture of [from] to [to] as it is — the caller vouches that
@@ -296,8 +333,12 @@ class EngineFramePictureStore<K extends Object> {
   /// answered with before is let go — nothing could ask for it again.
   void _moved(_Entry entry, {required K from, required K to}) {
     _entries.remove(from);
-    final there = _entries[to];
-    _entries[to] = entry;
+    _answers(to, entry);
+  }
+
+  void _answers(K key, _Entry entry) {
+    final there = _entries[key];
+    _entries[key] = entry;
     there?.picture._letGo();
   }
 
@@ -386,6 +427,13 @@ class EngineFramePictureStore<K extends Object> {
   /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
   /// meanwhile waits on it, not laid a second time over it. A key a
   /// picture moved to meanwhile ([move]) answers with it: one picture a key.
+  /// A turn of the lays once the tools are open, in no one's zone as
+  /// [tools] is: a lay asked from under a test's fake clock would stand at
+  /// the front, its awaits never run, and every lay behind it wait for ever.
+  void _aTurn() => Zone.root.run(
+    () => unawaited(tools.then((_) => _layFirst(), onError: _noEngine)),
+  );
+
   void _layFirst() {
     if (_lays.isEmpty) {
       return;
@@ -412,10 +460,7 @@ class EngineFramePictureStore<K extends Object> {
   /// back for the lays behind it.
   Future<void> _lay(_Lay<K> lay) async {
     lay.running = true;
-    final (:composite, :letters) = _opened!;
-    final picture = EngineFramePicture._(
-      EngineStackScreen(composite, letters),
-    );
+    final picture = _aPicture();
     try {
       await FxPluginStages.recordedThrough<void>(
         () => _composedAs(lay, picture),
@@ -437,9 +482,14 @@ class EngineFramePictureStore<K extends Object> {
       final owed = _turnsOwed;
       _turnsOwed = 0;
       for (var turn = 0; turn < owed; turn += 1) {
-        unawaited(tools.then((_) => _layFirst(), onError: _noEngine));
+        _aTurn();
       }
     }
+  }
+
+  EngineFramePicture _aPicture() {
+    final (:composite, :letters) = _opened!;
+    return EngineFramePicture._(EngineStackScreen(composite, letters));
   }
 
   void _composedAs(_Lay<K> lay, EngineFramePicture picture) {
@@ -467,6 +517,25 @@ final class _Entry {
   int lastUsed = 0;
 }
 
+/// What a lay comes to, in no one's zone as the turns are: askers of the
+/// one picture wait on it together, and it is not the first asker's clock
+/// to hold. A failure goes as a value and each asker's reading throws it:
+/// an error does not cross into a zone other than its own.
+final class _LayAnswer {
+  final Completer<EngineFramePicture? Function()> _read = Zone.root.run(
+    Completer<EngineFramePicture? Function()>.new,
+  );
+
+  bool get isCompleted => _read.isCompleted;
+
+  Future<EngineFramePicture?> get future => _read.future.then((read) => read());
+
+  void complete(EngineFramePicture? picture) => _read.complete(() => picture);
+
+  void completeError(Object error, StackTrace stack) =>
+      _read.complete(() => Error.throwWithStackTrace(error, stack));
+}
+
 final class _Lay<K> {
   _Lay(this.key, this.frame, this.over, this.holds);
 
@@ -477,7 +546,7 @@ final class _Lay<K> {
 
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];
-  final Completer<EngineFramePicture?> done = Completer();
+  final _LayAnswer done = _LayAnswer();
 
   /// Whether it is being laid: its turn has come, and its plug-ins' steps
   /// are on their way.

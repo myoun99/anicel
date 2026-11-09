@@ -162,6 +162,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final images = blueCels(['drawn']);
     final run = runOf(images);
+    await itsToolsOpen(tester, run.pictures.store);
     final drawn = keyOf('drawn');
 
     await pumpGhosts(tester, run, const [], frame: 0, drawnLive: {drawn});

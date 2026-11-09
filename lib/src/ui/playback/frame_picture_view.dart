@@ -733,7 +733,8 @@ class _FramePictureViewState extends State<FramePictureView> {
   ) => _showsUnstored(tokens) ? key.standingOn(this) : key;
 
   /// The picture shown is kept under [key] from here on — held there for
-  /// this view.
+  /// this view: the one [key] answers with, another where the one shown
+  /// stayed for another screen ([EngineFramePictureStore.patch]).
   void _keepAs(FramePictureKey key) {
     final kept = _keptAs!;
     if (key == kept) {
@@ -742,6 +743,15 @@ class _FramePictureViewState extends State<FramePictureView> {
     _store.retainPin(key);
     _store.releasePin(kept);
     _keptAs = key;
+    final shown = _shown!;
+    final there = _store.peek(key)!;
+    if (!identical(there, shown)) {
+      shown
+        ..removeListener(_written)
+        ..release();
+      _shown = there.hold();
+      there.addListener(_written);
+    }
   }
 
   /// What the live rows moved since the picture shown last held them goes

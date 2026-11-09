@@ -258,7 +258,7 @@ final class _Stage {
   /// [output] as a picture, the step's own until it is let go of.
   ui.Image? get image => _image ??= switch (output) {
     null => null,
-    final made => pictureOf(_PremultipliedRows(made, width, height)),
+    final made => pictureOf(PremultipliedRows(made, width, height)),
   };
 
   /// Whether it has been run — [output] null after it is a plugin that
@@ -367,26 +367,4 @@ final class _Stage {
     _image = null;
     output = null;
   }
-}
-
-/// Premultiplied rgba rows held in a list, as the picture door reads them
-/// ([pictureOf]).
-final class _PremultipliedRows implements PictureBytes {
-  _PremultipliedRows(this._premultiplied, this.width, this.height);
-
-  final Uint8List _premultiplied;
-
-  @override
-  final int width;
-
-  @override
-  final int height;
-
-  @override
-  T readStraight<T>(T Function(Uint8List straight) use) =>
-      use(straightRgbaFor(_premultiplied));
-
-  @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
-      use(_premultiplied);
 }

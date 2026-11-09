@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -41,7 +39,7 @@ Layer screenDrawnAsAPicture({
     );
   }
   final image = pictureOf(
-    _ScreenRead(surface.width, surface.height, surface.read()),
+    PremultipliedRows(surface.read(), surface.width, surface.height),
   );
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImageRect(
@@ -53,40 +51,4 @@ Layer screenDrawnAsAPicture({
   );
   image.dispose();
   return PictureLayer(rect)..picture = recorder.endRecording();
-}
-
-/// A screen's pixels read back, premultiplied, for the door to a picture.
-final class _ScreenRead implements PictureBytes {
-  _ScreenRead(this.width, this.height, this._premultiplied);
-
-  @override
-  final int width;
-  @override
-  final int height;
-  final Uint8List _premultiplied;
-
-  @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
-      use(_premultiplied);
-
-  /// Each channel rounded back: the door's premultiply of it is the channel
-  /// it came from, to the level, at every alpha.
-  @override
-  T readStraight<T>(T Function(Uint8List straight) use) {
-    final straight = Uint8List(_premultiplied.length);
-    for (var at = 0; at < straight.length; at += 4) {
-      final alpha = _premultiplied[at + 3];
-      straight[at + 3] = alpha;
-      if (alpha == 0) {
-        continue;
-      }
-      for (var channel = at; channel < at + 3; channel += 1) {
-        straight[channel] = math.min(
-          255,
-          (_premultiplied[channel] * 510 + alpha) ~/ (2 * alpha),
-        );
-      }
-    }
-    return use(straight);
-  }
 }

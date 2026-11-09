@@ -252,6 +252,8 @@ void main() {
   }) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
+    final run = picturesOf((_, _) => const []);
+    await itsToolsOpen(tester, run.pictures.store);
     await tester.pumpWidget(
       MaterialApp(
         home: Align(
@@ -270,7 +272,7 @@ void main() {
                 ),
                 // Nothing drawn: what shows is the stage alone.
                 stackOf: (_, _) => const [],
-                pictures: picturesOf((_, _) => const []),
+                pictures: run,
                 cameraFrameSize: cameraFrameSize,
                 cameraViewEnabled: cameraViewEnabled,
                 cameraPoseOf: (cut, frameIndex) =>
@@ -285,6 +287,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
     final render =
         screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final rgba = (await tester.runAsync<Uint8List>(() async {

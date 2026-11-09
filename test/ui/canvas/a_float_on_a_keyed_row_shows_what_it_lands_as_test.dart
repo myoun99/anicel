@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -237,29 +235,13 @@ void main() {
   /// (Vulkan, 10-24) the multisampled raster blended them — at 1:1 a
   /// landing read grey 64 on nine pixels the box had carried black.
   Future<Uint8List> composite(WidgetTester tester) async {
-    final paint = find
-        .descendant(
-          of: theFramesPicture(within: mainCanvasPanel()),
-          matching: find.byType(CustomPaint),
-        )
-        .evaluate()
-        .firstWhere((e) => (e.widget as CustomPaint).painter != null);
-    final size = (paint.renderObject! as RenderBox).size;
-    final dpr = tester.view.devicePixelRatio;
-    final recorder = ui.PictureRecorder();
-    (paint.widget as CustomPaint).painter!.paint(
-      Canvas(recorder, Offset.zero & size * dpr)..scale(dpr),
-      size,
+    final shot = await shotOfBox(
+      tester,
+      tester.renderObject<RenderBox>(
+        theFrameScreenIn(theFramesPicture(within: mainCanvasPanel())),
+      ),
     );
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(
-      (size.width * dpr).round(),
-      (size.height * dpr).round(),
-    );
-    picture.dispose();
-    final bytes = await tester.runAsync(image.toByteData);
-    image.dispose();
-    return Uint8List.fromList(bytes!.buffer.asUint8List());
+    return shot.rgba;
   }
 
   /// Lets a step land: its frames, and the one thing here drawn off the

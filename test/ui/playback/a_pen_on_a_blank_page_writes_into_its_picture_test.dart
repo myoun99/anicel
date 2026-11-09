@@ -43,8 +43,8 @@ import '../../helpers/settle_async.dart';
 /// (`a_stroke_is_written_into_the_picture_shown_test`).
 void main() {
   opensTheEnginesScreens();
-  const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
   const viewSize = Size(48, 40);
   const under = Color(0xFF203040);
   const cel = BrushFrameKey(

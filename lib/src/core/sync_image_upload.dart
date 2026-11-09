@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'rgba_premultiply.dart';
+
 /// One rgba8888 image's worth of bytes that can become a picture, readable
 /// STRAIGHT or PREMULTIPLIED. The door ([pictureOf]) reads the form THIS
 /// engine takes and only that one, so a source makes each form on demand —
@@ -19,6 +21,28 @@ abstract interface class PictureBytes {
   /// Premultiplied rgba8888 rows — Skia's mul-div-255 rounding, the app's
   /// own `premultiplyRgbaInPlace` — valid only inside [use].
   T readPremultiplied<T>(T Function(Uint8List premultiplied) use);
+}
+
+/// Premultiplied rgba rows held in a list, as the door reads them
+/// ([pictureOf]).
+final class PremultipliedRows implements PictureBytes {
+  PremultipliedRows(this._premultiplied, this.width, this.height);
+
+  final Uint8List _premultiplied;
+
+  @override
+  final int width;
+
+  @override
+  final int height;
+
+  @override
+  T readStraight<T>(T Function(Uint8List straight) use) =>
+      use(straightRgbaFor(_premultiplied));
+
+  @override
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
+      use(_premultiplied);
 }
 
 /// 🚨★★★THE ONE DOOR FROM BYTES TO A PICTURE — synchronous on every engine

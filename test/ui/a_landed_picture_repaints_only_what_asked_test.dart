@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/solid_png_fixture.dart';
 import '../helpers/project_scratch_folder.dart';
@@ -49,6 +50,7 @@ import '../helpers/until_the_brushes_land.dart';
 /// zoom every cut on the film lands a picture, and the storyboard's ruler,
 /// rows and chrome were rebuilt once for each.
 void main() {
+  opensTheEnginesScreens();
   Future<void> open(WidgetTester tester, String tab) async {
     await tester.tap(find.byKey(ValueKey<String>(tab)));
     await tester.pumpAndSettle();
@@ -111,7 +113,12 @@ void main() {
         width;
     expect(landed(), isFalse, reason: 'the premise: not held at that width');
     expect(
-      await tester.runAsync(() => pollUntil(landed)),
+      await tester.runAsync(
+        () => pollUntil(() {
+          turnThePumpedClock(tester);
+          return landed();
+        }),
+      ),
       isTrue,
       reason: 'the premise: the picture landed',
     );
@@ -344,6 +351,9 @@ void main() {
                 .painter!
             as StoryboardCutBlocksPainter;
     final thumbnails = painter.thumbnails!;
+    // ⚠️The ones on screen first: one render goes at a time, and the width
+    // below would wait behind them whether or not the pen held it.
+    await settlePictures(tester, thumbnails);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
@@ -380,7 +390,10 @@ void main() {
 
       session.setBrushInputActive(false);
       expect(
-        await pollUntil(() => landed(cut)),
+        await pollUntil(() {
+          turnThePumpedClock(tester);
+          return landed(cut);
+        }),
         isTrue,
         reason: 'the pen up and the edits quiet, the picture is made',
       );
