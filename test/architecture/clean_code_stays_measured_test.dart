@@ -988,11 +988,10 @@ void main() {
   /// four of the store it replaces (`FramePictureStore.lay` — the key, the
   /// frame, whether the screen shows it now, and whether its asker is
   /// gone, F-529). 🔬`clean_code_diff` against the lane's base
-  /// (`63d034dba`) names it added and nothing gone; the old store's goes
-  /// at ⓔ without moving the count, as it takes four. ⛔Not bundled to
+  /// (`63d034dba`) names it added and nothing gone. ⛔Not bundled to
   /// fit: whether it is wanted first, whether it is wanted at all, and what
   /// it lies over are three questions, each asked by a caller of its own.
-  const wideSignatures = 464;
+  const wideSignatures = 465;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
