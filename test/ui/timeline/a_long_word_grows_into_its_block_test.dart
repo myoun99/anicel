@@ -270,9 +270,8 @@ void main() {
     }
 
     // Across the block (x 0-47), where the word's band holds ink: one run
-    // per letter. The letters are the engine's own faces' outlines, set
-    // where the test face lays them (em-wide), so a letter is not its
-    // advance — the narrowing shows in how far apart they start.
+    // per letter. A letter is not its advance — the narrowing shows in how
+    // far apart they start.
     final layout = painter.cellWordSetFor(
       0,
       model.glyph,
