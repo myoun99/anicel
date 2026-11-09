@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -100,6 +101,36 @@ void main() {
     final a = await pictures.of('a', render);
     expect(a.debugDisposed, isFalse);
     expect(made, hasLength(1));
+  });
+
+  test('🚨asked again before it lands, both askers are handed one picture: '
+      'the one that lands second is let go — held once', () async {
+    final both = await Future.wait([
+      pictures.of('a', render),
+      pictures.of('a', render),
+    ]);
+
+    expect(identical(both.first, both.last), isTrue);
+    expect(made, hasLength(2), reason: 'a render out is not shared');
+    final second = made.singleWhere((picture) => picture != both.first);
+    expect(second.debugDisposed, isTrue, reason: 'out of reach otherwise');
+    expect(both.first.debugDisposed, isFalse);
+    expect(HeldPictures.debugHeld - heldBefore, 1);
+  });
+
+  test('🚨a picture that lands after the run is over is let go, and its ask '
+      'fails — nothing is held', () async {
+    final landing = Completer<void>();
+    final asked = pictures.of('a', () async {
+      await landing.future;
+      return render();
+    });
+    pictures.dispose();
+    landing.complete();
+
+    await expectLater(asked, throwsStateError);
+    expect(made.single.debugDisposed, isTrue);
+    expect(HeldPictures.debugHeld, heldBefore);
   });
 
   test('dispose lets go of this frame\'s and the frame before\'s', () async {

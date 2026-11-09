@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/export/png_sequence_export_service.dart'
     show ExportWriteSummary;
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/export_preview_probe.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -67,6 +69,7 @@ class _HeldVideoRun extends VideoExportService {
 /// one bar. A run that writes a frame in a few milliseconds would spend
 /// most of them on that.
 void main() {
+  opensTheEnginesScreens();
   late Directory temp;
 
   setUp(() async {
@@ -130,6 +133,8 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }

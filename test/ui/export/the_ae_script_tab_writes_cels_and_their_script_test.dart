@@ -128,18 +128,20 @@ void main() {
     ),
   );
 
-  /// One pixel of [colour] at ([x], [y]) on an empty canvas.
+  /// One pixel of [colour] at ([x], [y]) on an empty canvas — its one tile
+  /// at the engine's side, past the canvas's edge.
   BitmapSurface dot((int, int, int, int) colour, int x, int y) {
-    final pixels = Uint8List(8 * 8 * 4);
-    final i = (y * 8 + x) * 4;
+    const tile = defaultCelTileSize;
+    final pixels = Uint8List(tile * tile * 4);
+    final i = (y * tile + x) * 4;
     pixels[i] = colour.$1;
     pixels[i + 1] = colour.$2;
     pixels[i + 2] = colour.$3;
     pixels[i + 3] = colour.$4;
     return BitmapSurface(
       canvasSize: size,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: tile,
+      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels)},
     );
   }
 

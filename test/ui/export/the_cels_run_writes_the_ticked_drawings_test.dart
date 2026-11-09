@@ -58,7 +58,9 @@ void main() {
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
-  const size = CanvasSize(width: 8, height: 8);
+  // One tile, at the engine's side.
+  const side = defaultCelTileSize;
+  const size = CanvasSize(width: side, height: side);
   const cutId = CutId('cut');
   const black = (0, 0, 0, 255);
   const red = (255, 0, 0, 255);
@@ -117,16 +119,16 @@ void main() {
 
   /// One pixel of [colour] at ([x], [y]) on an empty canvas.
   BitmapSurface dot((int, int, int, int) colour, int x, int y) {
-    final pixels = Uint8List(8 * 8 * 4);
-    final i = (y * 8 + x) * 4;
+    final pixels = Uint8List(side * side * 4);
+    final i = (y * side + x) * 4;
     pixels[i] = colour.$1;
     pixels[i + 1] = colour.$2;
     pixels[i + 2] = colour.$3;
     pixels[i + 3] = colour.$4;
     return BitmapSurface(
       canvasSize: size,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: side,
+      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: pixels)},
     );
   }
 

@@ -16,6 +16,9 @@ class HeldPictures {
   var _thisFrame = <Object, ui.Image>{};
   var _frameBefore = <Object, ui.Image>{};
 
+  /// Whether the run is over ([dispose]).
+  bool _over = false;
+
   /// How many pictures [of] has had to make — a frame that is made of what
   /// the frame before it was made of makes none.
   int get made => _made;
@@ -31,15 +34,41 @@ class HeldPictures {
   ///
   /// The holder's own: nobody it is handed to disposes it. A [render] that
   /// fails holds nothing.
+  ///
+  /// 🚨ONE PICTURE IS HELD UNDER A KEY: a render that lands where another
+  /// landed first while it was out is let go, and its asker is handed the
+  /// one held. 🚨A PICTURE THAT LANDS AFTER THE RUN IS OVER IS LET GO, AND
+  /// ITS ASK FAILS: nothing is held once [dispose] is called, and whoever
+  /// would be handed it does not let go of it — the run it was for is over.
+  /// ↩️An engine's picture lands in real time (7′): two asks for one key
+  /// before either landed put the first out of reach, and one landing after
+  /// a window closed over its preview stayed held for good. (A render out
+  /// is not handed to a second asker: a test's seam asks again in real time
+  /// for what it asked under a faked clock, which never lands there.)
   Future<ui.Image> of(Object key, Future<ui.Image> Function() render) async {
-    final held = _thisFrame[key] ?? _frameBefore.remove(key);
+    final held = _heldUnder(key);
     if (held != null) {
-      return _thisFrame[key] = held;
+      return held;
     }
     _made += 1;
     final picture = await render();
+    if (_over) {
+      picture.dispose();
+      throw StateError('the run this picture was made for is over');
+    }
+    final landedFirst = _heldUnder(key);
+    if (landedFirst != null) {
+      picture.dispose();
+      return landedFirst;
+    }
     debugHeld += 1;
     return _thisFrame[key] = picture;
+  }
+
+  /// The picture held under [key], now this frame's, or null.
+  ui.Image? _heldUnder(Object key) {
+    final held = _thisFrame[key] ?? _frameBefore.remove(key);
+    return held == null ? null : _thisFrame[key] = held;
   }
 
   /// Starts the next frame: what the frame before the last one asked for,
@@ -51,8 +80,10 @@ class HeldPictures {
     _thisFrame = {};
   }
 
-  /// Lets go of every picture held.
+  /// Lets go of every picture held — and of every one still out, once it
+  /// lands ([of]).
   void dispose() {
+    _over = true;
     for (final held in [_thisFrame, _frameBefore]) {
       held.forEach(_letGo);
       held.clear();

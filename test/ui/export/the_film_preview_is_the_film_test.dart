@@ -197,6 +197,33 @@ void main() {
     });
   });
 
+  // The paper is a film's (Q1): a picture of the screen — the image tab's,
+  // a panel's — stands on its renderer's ground alone, as it did while it
+  // composed its rows on that ground. On the engine that ground is the
+  // page its picture is made on (7′), not the project's paper.
+  testWidgets('🎯a still stands on its ground alone, whatever the paper — in '
+      'either size', (tester) async {
+    await tester.runAsync(() async {
+      final session = sessionOn(const ProjectBackground.color(cream));
+      inkLeftHalf(session);
+      final renderer = ExportFrameRenderer(session: session);
+      addTearDown(renderer.dispose);
+      for (final mode in ExportSizeMode.values) {
+        final still = await bytesOf(
+          await renderer.renderComposite(first(session), mode),
+        );
+        expect(
+          (
+            pixelOf(still, eighth, 4 * eighth, tileSide),
+            pixelOf(still, 6 * eighth, 4 * eighth, tileSide),
+          ),
+          (ink, (255, 255, 255, 255)),
+          reason: 'the ink, and the white ground where it is not ($mode)',
+        );
+      }
+    });
+  });
+
   testWidgets('under a paper that is NONE a canvas-size film lays nothing: '
       'clear where it keeps its clear colour, the white it stands on where '
       'it is opaque', (tester) async {

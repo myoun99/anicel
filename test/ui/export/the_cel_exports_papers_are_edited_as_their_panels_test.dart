@@ -49,6 +49,7 @@ import 'package:anicel/src/ui/shortcuts/editor_key_funnel.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_paper.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -65,6 +66,7 @@ import '../../helpers/paper_editing_kit.dart';
 /// window takes the editor's tool keys and its undo; and what the window
 /// shows is what the film is after them.
 void main() {
+  opensTheEnginesScreens();
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -609,6 +611,8 @@ void main() {
     await press(tester, 'top-strip-project-button');
     await tester.pumpAndSettle();
     await press(tester, 'menu-file-export');
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     final window = tester.widget<ExportDialog>(find.byType(ExportDialog));
     expect(window.keys, isNotNull);

@@ -50,6 +50,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
@@ -67,6 +68,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
 
 void main() {
+  opensTheEnginesScreens();
   late Directory temp;
 
   setUp(() {
@@ -434,6 +436,9 @@ void main() {
       await tester.ensureVisible(rgb);
       await tester.tap(rgb);
       await tester.pump();
+      // The preview's own pictures land in real time: landed before the run
+      // is counted, they are no part of what the run held.
+      await tester.settleExportPreview();
       final before = PngSequenceExportService.debugEncodes;
       final heldBefore = HeldPictures.debugHeld;
       await tester.runAsync(state.export);
@@ -521,6 +526,8 @@ void main() {
       final size = find.byKey(const ValueKey<String>('export-size'));
       await tester.ensureVisible(size);
       await tester.tap(size);
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey<String>('export-size-camera')),
@@ -632,6 +639,8 @@ void main() {
       await tester.ensureVisible(size);
       expect(tester.widget<PanelFlyoutButton>(size).label, 'Camera 32×18');
       await tester.tap(size);
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       final canvasRow = find.byKey(
         const ValueKey<String>('export-size-canvas'),
@@ -641,6 +650,8 @@ void main() {
       expect(find.textContaining('Canvas 8×8'), findsOneWidget);
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.camera);
       await tester.tap(canvasRow);
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.canvas);
       expect(
@@ -699,6 +710,8 @@ void main() {
       await tester.ensureVisible(size);
       expect(tester.widget<PanelFlyoutButton>(size).label, '카메라 32×18');
       await tester.tap(size);
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       expect(find.textContaining('캔버스 8×8'), findsOneWidget);
       await tester.tapAt(const Offset(4, 4));
@@ -1335,7 +1348,7 @@ void main() {
         timesheetInkPageKey(const CutId('cut'), 0),
         BitmapSurface(
           canvasSize: const CanvasSize(width: 16, height: 16),
-          tileSize: 8,
+          tileSize: defaultCelTileSize,
           tiles: const {},
         ).withPhotos([
           photoOf(
@@ -1570,8 +1583,12 @@ void main() {
     /// Opens the codec list and picks [codec] from it.
     Future<void> pickCodec(WidgetTester tester, String codec) async {
       await tester.tap(find.byKey(codecButton));
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       await tester.tap(codecRow(codec));
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
     }
 
@@ -1678,6 +1695,8 @@ void main() {
       expect(codecShown(tester), ExportVideoCodec.h264.label);
 
       await tester.tap(find.byKey(codecButton));
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       for (final codec in ExportVideoCodec.codecsFor(
         ExportVideoContainer.mov,
@@ -1694,6 +1713,8 @@ void main() {
       expect(codecRow('h265'), findsNothing, reason: 'MP4 alone holds it');
 
       await tester.tap(codecRow('prores4444'));
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       expect(codecShown(tester), 'ProRes 4444');
     });
@@ -1712,6 +1733,8 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.byKey(codecButton));
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       expect(
         tester.widget<PopupMenuItem<PanelFlyoutItem>>(codecRow('h265')).enabled,
@@ -2051,18 +2074,20 @@ void main() {
 
 /// A 16px surface inked solid red — what a landed stroke leaves in a store.
 BitmapSurface _redSurface() {
-  final pixels = Uint8List(8 * 8 * 4);
-  for (var i = 0; i < pixels.length; i += 4) {
-    pixels[i] = 0xFF;
-    pixels[i + 3] = 0xFF;
+  const side = 16;
+  const tile = defaultCelTileSize;
+  // One tile at the engine's side, inked over the surface's 16 px alone.
+  final pixels = Uint8List(tile * tile * 4);
+  for (var y = 0; y < side; y += 1) {
+    for (var x = 0; x < side; x += 1) {
+      final i = (y * tile + x) * 4;
+      pixels[i] = 0xFF;
+      pixels[i + 3] = 0xFF;
+    }
   }
   return BitmapSurface(
-    canvasSize: const CanvasSize(width: 16, height: 16),
-    tileSize: 8,
-    tiles: {
-      for (var y = 0; y < 2; y += 1)
-        for (var x = 0; x < 2; x += 1)
-          TileCoord(x: x, y: y): BitmapTile(size: 8, pixels: pixels),
-    },
+    canvasSize: const CanvasSize(width: side, height: side),
+    tileSize: tile,
+    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels)},
   );
 }

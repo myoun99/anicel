@@ -49,6 +49,7 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
@@ -61,6 +62,7 @@ import '../../helpers/text_finders.dart';
 /// under the preview, the cut's rows as the timeline draws them: a switch on
 /// every row, a block for every drawing.
 void main() {
+  opensTheEnginesScreens();
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -443,6 +445,8 @@ void main() {
 
     Future<void> pickTheKeyLabelAgain() async {
       await tapKey(tester, 'export-cels-label-picker');
+      await tester.pump();
+      await tester.settleExportPreview();
       await tester.pumpAndSettle();
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
@@ -1149,6 +1153,8 @@ void main() {
     );
 
     await tapKey(tester, 'export-cels-label-picker');
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('layer-mark-option-none')));
     await tester.pumpAndSettle();
@@ -1191,6 +1197,8 @@ void main() {
     );
 
     await tapKey(tester, 'export-cels-take-picker');
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('layer-take-option-latest')),
@@ -1211,6 +1219,8 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('layer-take-option-latest')),
     );
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.take, isNull);
     expect(celCount(tester), AppText.strings.exWrittenCount(4));
