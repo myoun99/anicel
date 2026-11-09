@@ -993,8 +993,8 @@ void main() {
   /// it lies over are three questions, each asked by a caller of its own.
   ///
   /// ⚠️465 → 468 on 2026-11-10, four names in and one out
-  /// (gpu-canonical-store 7′, the exports on the engine): `frameShot` (ten)
-  /// is the ONE door every picture of a frame that goes to a file or a
+  /// (gpu-canonical-store 7′, the exports on the engine): `frameShot` (ten,
+  /// eleven since the looks below) is the ONE door every picture of a frame that goes to a file or a
   /// panel takes, and its parameters are what a shot is — the pictures it
   /// asks, the stack and the frame they are of, the page they are drawn on,
   /// the view and the raster they are shown through, the ground under
@@ -1010,7 +1010,14 @@ void main() {
   /// (`9d682dae1`) names those four added and that one gone. ⛔Not bundled
   /// to fit: a shot's view, its page and what is laid over it are asked by
   /// different routes, each of its own.
-  const wideSignatures = 468;
+  ///
+  /// ⚠️468 → 469 the same day, one name in (gpu-canonical-store-Q10, 유저
+  /// 「추천대로 법 지키도록」): `FramePictures.pictureOf` (five) takes the
+  /// looks a render reads its cels through (`CelLooks`) — the one thing a
+  /// render's making differs from playback's in, asked by the shot that
+  /// holds them. 🔬`clean_code_diff` against the 7′ commit before it names
+  /// that one added.
+  const wideSignatures = 469;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

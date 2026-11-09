@@ -9,6 +9,7 @@ import '../../models/composite_tree.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../native/engine_chain_holds.dart';
 import '../../services/cel_content_notes.dart';
+import '../../services/cel_looks.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
@@ -368,11 +369,18 @@ class FramePictures implements PlaybackPictures {
 
   /// [readIn] for the cels [nodes] — a screen's own stack — draw, on
   /// [picture]'s page or [page] ([keyOfStack]).
+  ///
+  /// A render's [looks] read nothing ahead: a look thaws nothing, and its
+  /// cels are read as the frame is drawn ([drawingNow]).
   Future<void> readInStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     FramePage? page,
+    CelLooks? looks,
   }) {
+    if (looks != null) {
+      return Future<void>.value();
+    }
     final canvasSize = (page ?? pageOf(picture)).canvasSize;
     return Future.wait([
       for (final cel in stackedCelsOf(_drawnOf(nodes)))
@@ -453,12 +461,14 @@ class FramePictures implements PlaybackPictures {
   /// 68 rows: about 180 Mpx a picture, seconds of a Surface Pro 11's GPU
   /// each time the pen came up.
   ///
-  /// On [picture]'s page, or [page] ([keyOfStack]).
+  /// On [picture]'s page, or [page] ([keyOfStack]); its cels read as
+  /// [looks] says where a render makes it ([drawingNow]).
   Future<EngineFramePicture?> pictureOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     required bool Function() shouldAbort,
     FramePage? page,
+    CelLooks? looks,
   }) async {
     var key = keyOfStack(nodes, picture, page: page);
     if (!store.holds(key)) {
@@ -471,6 +481,7 @@ class FramePictures implements PlaybackPictures {
             shownNow: false,
             keepsNodes: false,
             page: page,
+            looks: looks,
           )) {
         return null;
       }
@@ -508,7 +519,8 @@ class FramePictures implements PlaybackPictures {
   /// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
   /// 691–816 ms.
   ///
-  /// On [picture]'s page, or [page] ([keyOfStack]).
+  /// On [picture]'s page, or [page] ([keyOfStack]); its cels read as
+  /// [looks] says ([drawingNow]).
   Future<bool> _make(
     List<CompositeNode<CanvasStackRow>> Function() nodesOf,
     DemandedPicture picture, {
@@ -517,11 +529,12 @@ class FramePictures implements PlaybackPictures {
     required bool shownNow,
     required bool keepsNodes,
     FramePage? page,
+    CelLooks? looks,
   }) async {
     if (shouldAbort()) {
       return false;
     }
-    await readInStack(nodesOf(), picture, page: page);
+    await readInStack(nodesOf(), picture, page: page, looks: looks);
     if (shouldAbort()) {
       return false;
     }
@@ -529,7 +542,7 @@ class FramePictures implements PlaybackPictures {
     final film = picture.ghosts == FrameGhosts.inPlace
         ? keyOfStack(stackWithoutGhosts(nodes), picture, page: page)
         : null;
-    final made = drawingNow(nodes, picture, page: page);
+    final made = drawingNow(nodes, picture, page: page, looks: looks);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture, page: page);
     final ghosts = film != null && store.holds(film)
@@ -612,11 +625,18 @@ class FramePictures implements PlaybackPictures {
   ///
   /// ⚠️Reads a cel not in hand on this thread ([readIn] first).
   ///
+  /// 🚨★★★A RENDER'S CELS ARE LOOKS (`gpu-canonical-store-Q10`, 유저
+  /// 2026-11-10 「추천대로 법 지키도록」): a picture made for a file or a panel
+  /// reads each cel through its [looks] ([CelLooks]) — the store left as it
+  /// stood — and the app's own screens read them as a use, in hand from
+  /// then on ([LayerFrameImageCache.storedSurfaceOrNull]).
+  ///
   /// On [picture]'s page, or [page] ([keyOfStack]).
   FrameDrawingNow drawingNow(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     FramePage? page,
+    CelLooks? looks,
   }) {
     final on = page ?? pageOf(picture);
     (Object, StackTrace)? thrown;
@@ -624,7 +644,12 @@ class FramePictures implements PlaybackPictures {
       nodes,
       page: on,
       surfaceOf: (cel) => _drawn(cel)
-          ? _readNow(cel, on, (error, stack) => thrown ??= (error, stack))
+          ? _readNow(
+              cel,
+              on,
+              (error, stack) => thrown ??= (error, stack),
+              looks: looks,
+            )
           : null,
       revisionOf: _revisionOf,
     );
@@ -652,20 +677,25 @@ class FramePictures implements PlaybackPictures {
     return thrown;
   }
 
-  /// [cel]'s stored pixels on [page], read on this thread — or null, the
-  /// cel noted, where they are held at another canvas size or [thrown]
-  /// says why they cannot be read.
+  /// [cel]'s stored pixels on [page], read on this thread — through
+  /// [looks] where a render reads them ([drawingNow]) — or null, the cel
+  /// noted, where they are held at another canvas size or [thrown] says why
+  /// they cannot be read.
   BitmapSurface? _readNow(
     BrushFrameKey cel,
     FramePage page,
-    void Function(Object error, StackTrace stack) thrown,
-  ) {
+    void Function(Object error, StackTrace stack) thrown, {
+    CelLooks? looks,
+  }) {
+    final canvasSize = page.canvasSize;
     final BitmapSurface? stored;
     try {
-      stored = layerImages.storedSurfaceOrNull(
-        cel,
-        canvasSize: page.canvasSize,
-      );
+      stored = looks == null
+          ? layerImages.storedSurfaceOrNull(cel, canvasSize: canvasSize)
+          : layerImages.unreadable.notingNow(
+              cel,
+              () => looks.surfaceOf(cel, canvasSize: canvasSize),
+            );
     } on Object catch (error, stack) {
       thrown(error, stack);
       return null;

@@ -11,6 +11,7 @@ import '../native/app_gpu_engine.dart';
 import '../native/screen_texture.dart';
 import '../services/camera_frame_corners.dart' show CameraView;
 import '../services/camera_projection_matrix.dart';
+import '../services/cel_looks.dart';
 import '../services/playback/frame_demand.dart';
 import '../services/viewport_transform_matrix.dart' show viewportOfSimilarity;
 import 'canvas/canvas_layer_stack_view.dart'
@@ -52,6 +53,11 @@ typedef CameraOverlayPass = void Function(ui.Canvas canvas, double rasterScale);
 /// On [frame]'s page, or [page] where the picture is drawn on another
 /// ([FramePictures.keyOfStack]): a file's rows on the ground it is made on.
 ///
+/// 🚨★★★ITS CELS ARE LOOKS ([CelLooks]; `gpu-canonical-store-Q10`, 유저
+/// 2026-11-10 「추천대로 법 지키도록」): what a shot reads leaves the store as
+/// it found it. Held by [looks] where a run holds them across its frames,
+/// else for this shot alone.
+///
 /// ⚠️[nodes] are asked of the frame after its movie cels are hydrated
 /// (`MovieCelHydrator.hydrate`): where a movie's picture was laid is part
 /// of where its row lies.
@@ -66,17 +72,27 @@ Future<ui.Image> frameShot(
   required ui.Color ground,
   bool cutsToTheCanvas = true,
   CameraOverlayPass? over,
+  CelLooks? looks,
 }) async {
+  final looking = looks ?? CelLooks(session.renderCaches.brushFrameStore);
   final picture = await pictures.pictureOf(
     nodes,
     frame,
     shouldAbort: _stays,
     page: page,
+    looks: looking,
   );
   final asItStands = picture == null
       ? await pictures
-            .readInStack(nodes, frame, page: page)
-            .then((_) => pictures.drawingNow(nodes, frame, page: page))
+            .readInStack(nodes, frame, page: page, looks: looking)
+            .then(
+              (_) => pictures.drawingNow(
+                nodes,
+                frame,
+                page: page,
+                looks: looking,
+              ),
+            )
       : null;
   final onTheRaster = panelViewOnRaster(view, output);
   final tools = await session.renderCaches.framePictureStore.tools;

@@ -26,6 +26,7 @@ import '../../models/onion_skin_settings.dart' show OnionSkinPlacement;
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../models/composite_tree.dart';
+import '../../services/cel_looks.dart';
 import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_as_output.dart';
@@ -61,7 +62,8 @@ import '../sheet_painting.dart';
 import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../editor_session_manager.dart';
 import '../frame_shots.dart';
-import '../playback/stacked_frame_picture.dart' show stackOfDrawnCels;
+import '../playback/stacked_frame_picture.dart'
+    show stackOfDrawnCels, stackedCelsOf;
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_frame_painter.dart';
 import '../playback/transition_veil_paint.dart';
@@ -121,10 +123,13 @@ typedef _CelGroup = ({
 /// film, a still and a panel of one frame through one view on one paper
 /// are one picture.
 ///
-/// ↩️It rendered straight from the brush store, every cel read as a LOOK
-/// (`CelRead.look`) and composited again on Flutter through the camera
-/// (`CameraFrameRenderService`), its rows held between the frames of a
-/// run (`HeldRows`) — until exports went on the engine (7′).
+/// Its cels are read as LOOKS ([CelLooks]) and held for the frame it draws
+/// and the one before it ([_startFrame]).
+///
+/// ↩️It rendered straight from the brush store and composited every row
+/// again on Flutter through the camera (`CameraFrameRenderService`), its
+/// rows held between the frames of a run (`HeldRows`) — until exports went
+/// on the engine (7′).
 class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
@@ -216,17 +221,39 @@ class ExportFrameRenderer {
   @visibleForTesting
   int get debugPicturesMade => _pictures.made;
 
+  /// The cels the frame a run draws looked at, and the ones the frame
+  /// before it did ([CelLooks]): a cel drawn by frames in a row is read once
+  /// for the row, and the store is left as it stood.
+  late final CelLooks _looks = CelLooks(
+    session.renderCaches.brushFrameStore,
+  );
+
+  /// How many cels this renderer has read from the store (test hook) — a
+  /// cel the frame before it looked at reads none.
+  @visibleForTesting
+  int get debugCelReads => _looks.reads;
+
+  /// How many cels this renderer holds right now (test hook).
+  @visibleForTesting
+  int get debugCelsHeld => _looks.held;
+
   /// Starts the next frame: what the frame before the last one held is let
   /// go, and what the last one held is kept for one more.
   ///
   /// ⚠️Once per frame a caller asked for — a transition's two cuts are one
   /// frame, and the cut picture inside a video frame starts none
   /// ([_cutPicture]).
-  void _startFrame() => _pictures.nextFrame();
+  void _startFrame() {
+    _pictures.nextFrame();
+    _looks.nextFrame();
+  }
 
-  /// Lets go of the pictures a run held. The run's to call when its last
-  /// frame is out.
-  void dispose() => _pictures.dispose();
+  /// Lets go of the pictures and the cels a run held. The run's to call
+  /// when its last frame is out.
+  void dispose() {
+    _pictures.dispose();
+    _looks.letGo();
+  }
 
   /// What runs the plugins [cut]'s chains run in this render: the device's,
   /// as the canvas runs them (`EditorSessionManager.fxPluginsIn`).
@@ -422,6 +449,7 @@ class ExportFrameRenderer {
       ground: on,
       cutsToTheCanvas: cutsToTheCanvas,
       over: over,
+      looks: _looks,
     );
   }
 
@@ -1044,6 +1072,10 @@ class ExportFrameRenderer {
       _frameOn(cut, task.frameIndex, page),
       page: page,
     );
+    // The frame shows these cels whether its picture is made or handed
+    // again: a held one reads none of them, and the frame after it that
+    // changes one row would read every row again.
+    _looks.carry(stackedCelsOf(nodes), canvasSize: page.canvasSize);
     return _pictures.of(
       (route, key, on),
       () => _shot(
