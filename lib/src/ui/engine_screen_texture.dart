@@ -75,7 +75,6 @@ final class EngineScreenTexture {
     required double devicePixelRatio,
   }) {
     final texture = _texture!;
-    final id = texture.nextTextureId;
     texture.present((next) => draw(next, (texture.width, texture.height)));
     return debugLayerOfScreen(
       rect:
@@ -84,7 +83,8 @@ final class EngineScreenTexture {
             texture.width / devicePixelRatio,
             texture.height / devicePixelRatio,
           ),
-      textureId: id,
+      // After it is presented: a frame that failed stands as it stood.
+      textureId: texture.textureId.value,
       filterQuality: FilterQuality.none,
     );
   }

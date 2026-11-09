@@ -5,7 +5,7 @@
 
 use std::sync::OnceLock;
 
-use super::{Chain, MapTiles, Op, laid_as, reaching, tiles_of};
+use super::{Chain, ChainRead, MapTiles, Op, laid_as, reaching, tiles_of};
 use crate::kernels::composite::tests::{
     KEY_GREEN, KEY_RED, Pool, contrast, half, key_run, keyed_by_hand, pixel_at, rig as composite_rig,
     spotted, texel,
@@ -279,6 +279,63 @@ fn a_chain_refuses_a_map_still_to_be_drawn() {
         map: Some(map),
     };
     assert!(chained(tiles(|x, y| texel(95, x, y)), &[op]).is_none());
+}
+
+/// A plug-in's step reads what the chain had come to: what the op before
+/// it put is handed on as it is, and what the host is given of it is those
+/// pixels, clear past the tiles the chain ran over.
+#[test]
+fn a_read_keeps_what_the_chain_came_to_and_hands_it_on() {
+    let side = TILE as i32;
+    let came_to = |x, y| texel(96, x, y);
+    let read = ChainRead::default();
+    let out = chained(tiles(came_to), &[Op::Read(read.clone())]).expect("chain");
+    assert_same(&held(&out), &pixels().map(|(x, y)| came_to(x, y)).collect::<Vec<_>>());
+
+    // A pixel left of the chain's rectangle, then pixels of its first two
+    // tiles either side of their seam, one row a tile up.
+    let (left, right, y) = (-side - 1, -side + 2, side - 1);
+    let bytes = read
+        .pixels(composite_rig().engine, [left, y, right, y + 1])
+        .expect("kept");
+    let want: Vec<u8> = (left..right)
+        .flat_map(|x| if x < -side { 0 } else { came_to(x, y) }.to_le_bytes())
+        .collect();
+    assert_eq!(bytes, want);
+}
+
+/// A plug-in's picture replaces what the op before it put: its pixels at
+/// its place, across a seam of tiles, and nothing outside it.
+#[test]
+fn a_put_lays_its_pixels_at_its_picture_and_nothing_else() {
+    let side = TILE as i32;
+    let [left, top, right, bottom] = [side - 2, side - 1, side + 3, side + 1];
+    let made = |x, y| texel(97, x, y);
+    let inside = |x, y| (left..right).contains(&x) && (top..bottom).contains(&y);
+    let pixels_of_it: Vec<u8> = (top..bottom)
+        .flat_map(|y| (left..right).flat_map(move |x| made(x, y).to_le_bytes()))
+        .collect();
+    let put = Op::Put {
+        picture: [left, top, right, bottom],
+        pixels: pixels_of_it.into(),
+    };
+    let out = chained(tiles(|x, y| texel(98, x, y)), &[put]).expect("chain");
+    let want: Vec<u32> = pixels()
+        .map(|(x, y)| if inside(x, y) { made(x, y) } else { 0 })
+        .collect();
+    assert_same(&held(&out), &want);
+}
+
+/// A picture of the wrong size is refused, by what it was: laid anyway, its
+/// rows would land sheared.
+#[test]
+fn a_put_of_the_wrong_size_is_refused() {
+    let put = Op::Put {
+        picture: [0, 0, 2, 2],
+        pixels: vec![0u8; 15].into(),
+    };
+    assert!(chained(tiles(|x, y| texel(99, x, y)), &[put]).is_none());
+    assert_eq!(crate::last_error(), "15 bytes put over [0, 0, 2, 2]");
 }
 
 /// A chain runs over its output's tiles grown by whole tiles, as many each

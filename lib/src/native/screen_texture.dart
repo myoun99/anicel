@@ -1,7 +1,13 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart'
-    show ValueListenable, ValueNotifier, visibleForTesting;
+    show
+        ErrorDescription,
+        FlutterError,
+        FlutterErrorDetails,
+        ValueListenable,
+        ValueNotifier,
+        visibleForTesting;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -11,14 +17,6 @@ import 'package:gpu_engine/gpu_engine.dart';
 /// own, alternated, on Windows, iOS, macOS and Linux; a SurfaceProducer's
 /// window on Android. The frame grids show their tiles through one already
 /// (`TimelineGridScreenHost`, grid-on-the-engine ④).
-// ⏳The canvas view's widget reads this at the end of the flip lane (관제 11-08 15:02 ⓐ):
-// the live row's held pixels — the stroke being drawn in its CPU buffer,
-// the selection's float, a lift's float, a fill's range — are drawn by the
-// walk inside their row, under the rows above it, and the engine reads only
-// its pool's tiles. A texture shown before those pixels are engine rows
-// shows no stroke until pen-up, or lays a float over the rows above it;
-// parting the walk from the engine by what is held is what CLAUDE.md's
-// absolute rule 2 forbids.
 sealed class ScreenTexture {
   ScreenTexture(this.width, this.height, {required int surfaces})
     : _bytes = width * height * 4 * surfaces {
@@ -50,9 +48,14 @@ sealed class ScreenTexture {
   /// [surface] alone, presented onto and shown by no texture Flutter
   /// knows: what a test reads a screen back from ([GpuSurface.fingerprint])
   /// — `flutter test` registers no texture. The surface stays the test's;
-  /// [id] is the texture id its layer names.
+  /// [id] is the texture id its layer names, and [nextId] the one a frame
+  /// presented goes on to show by, [id] again unless named.
   @visibleForTesting
-  factory ScreenTexture.debugOnSurface(GpuSurface surface, {int id}) =
+  factory ScreenTexture.debugOnSurface(
+    GpuSurface surface, {
+    int id,
+    int? nextId,
+  }) =
       _SurfaceTexture;
 
   final int width;
@@ -69,7 +72,28 @@ sealed class ScreenTexture {
   /// it. [draw] waits for the GPU before it returns, as every kernel that
   /// writes a texture the screen shows does ([GpuScreen.show]): Flutter
   /// shows what it is handed as it is.
-  void present(void Function(GpuTarget next) draw);
+  ///
+  /// 🚨A frame [draw] cannot finish — the GPU past the engine's limit
+  /// (`Engine::wait`) — leaves Flutter showing what it showed and is
+  /// reported by name, and whatever is painting goes on. 🗣️관제 2026-11-08,
+  /// after a pin stood 13 minutes in that wait: 「멈춘 화면보다 이름 있는
+  /// 실패」.
+  void present(void Function(GpuTarget next) draw) {
+    try {
+      _present(draw);
+    } on StateError catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'screen texture',
+          context: ErrorDescription('drawing the next frame of a screen'),
+        ),
+      );
+    }
+  }
+
+  void _present(void Function(GpuTarget next) draw);
 
   /// Frees the texture, once Flutter shows it no more.
   Future<void> free() {
@@ -130,7 +154,7 @@ final class _AlternatedTextures extends ScreenTexture {
   int get nextTextureId => _textures[_next].id;
 
   @override
-  void present(void Function(GpuTarget next) draw) {
+  void _present(void Function(GpuTarget next) draw) {
     draw(_surfaces[_next]);
     final texture = _textures[_next];
     texture.show(0);
@@ -152,21 +176,26 @@ final class _AlternatedTextures extends ScreenTexture {
 }
 
 final class _SurfaceTexture extends ScreenTexture {
-  _SurfaceTexture(this._surface, {int id = 0})
+  _SurfaceTexture(this._surface, {int id = 0, int? nextId})
     : _id = ValueNotifier(id),
+      _nextId = nextId ?? id,
       super(_surface.width, _surface.height, surfaces: 1);
 
   final GpuSurface _surface;
   final ValueNotifier<int> _id;
+  final int _nextId;
 
   @override
   ValueListenable<int> get textureId => _id;
 
   @override
-  int get nextTextureId => _id.value;
+  int get nextTextureId => _nextId;
 
   @override
-  void present(void Function(GpuTarget next) draw) => draw(_surface);
+  void _present(void Function(GpuTarget next) draw) {
+    draw(_surface);
+    _id.value = _nextId;
+  }
 
   @override
   Future<void> _free() async => _id.dispose();
@@ -193,7 +222,7 @@ final class _WindowTexture extends ScreenTexture {
   int get nextTextureId => _window.textureId;
 
   @override
-  void present(void Function(GpuTarget next) draw) {
+  void _present(void Function(GpuTarget next) draw) {
     draw(_window);
     _window.present();
   }

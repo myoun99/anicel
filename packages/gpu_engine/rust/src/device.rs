@@ -2,8 +2,18 @@
 //! draws with so a shared texture lives on the GPU that reads it.
 
 use std::sync::mpsc;
+use std::time::Duration;
 
 use crate::{copy_out, fail, last_error, platform};
+
+/// How long [`Engine::wait`] stays in the driver before it answers that the
+/// GPU did not finish: a failure with a name rather than a screen that
+/// stands still (관제 2026-11-08, after a pin stood 13 minutes in this wait:
+/// 「멈춘 화면보다 이름 있는 실패」).
+// ⏳My number, not measured: far past a screen frame's milliseconds, and
+// long enough that a heavy export frame does not fail falsely. To be settled
+// from the Surface's slowest waits, as the reading watch's three seconds were.
+const WAIT_LIMIT: Duration = Duration::from_secs(30);
 
 /// One wgpu device and its queue.
 #[derive(Clone)]
@@ -124,14 +134,26 @@ impl Engine {
         }
     }
 
-    /// Blocks until the GPU has finished everything submitted — polled on
-    /// the engine's thread ([`EngineThread`]), the caller waiting outside
-    /// the driver.
+    /// Blocks until the GPU has finished everything submitted, or fails by
+    /// name at [`WAIT_LIMIT`] — polled on the engine's thread
+    /// ([`EngineThread`]), the caller waiting outside the driver.
     pub(crate) fn wait(&self) -> Option<()> {
+        self.wait_within(WAIT_LIMIT)
+    }
+
+    fn wait_within(&self, limit: Duration) -> Option<()> {
         let device = self.device.clone();
         let polled = self.thread.run(move || {
-            let polled = device.poll(wgpu::PollType::wait_indefinitely());
-            polled.map(|_| ()).map_err(|error| format!("poll: {error}"))
+            let polled = device.poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(limit),
+            });
+            polled.map(|_| ()).map_err(|error| match error {
+                wgpu::PollError::Timeout => {
+                    format!("the GPU did not finish within {limit:?}")
+                }
+                error => format!("poll: {error}"),
+            })
         })?;
         polled.map_or_else(fail, Some)
     }
@@ -520,6 +542,33 @@ mod tests {
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
         let polled_on = answered.try_recv().expect("the map answered inside the wait");
         assert_ne!(polled_on, std::thread::current().id());
+    }
+
+    #[test]
+    fn a_wait_past_its_limit_says_the_gpu_did_not_finish_and_the_engine_stands() {
+        const SIDE: u64 = 64 << 20;
+        let engine = first_engine();
+        let buffer = |usage| {
+            engine.device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: SIDE,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
+        let from = buffer(wgpu::BufferUsages::COPY_SRC);
+        let to = buffer(wgpu::BufferUsages::COPY_DST);
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        for _ in 0..16 {
+            encoder.copy_buffer_to_buffer(&from, 0, &to, 0, SIDE);
+        }
+        engine.queue.submit([encoder.finish()]);
+
+        assert_eq!(engine.wait_within(std::time::Duration::ZERO), None);
+        assert_eq!(last_error(), "the GPU did not finish within 0ns");
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
     }
 
     #[test]

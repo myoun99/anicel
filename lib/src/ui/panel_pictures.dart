@@ -17,6 +17,7 @@ import 'editor_session_manager.dart';
 import 'export/export_frame_renderer.dart' show exportFrameGround;
 import 'playback/camera_shot.dart' show clipToTheCanvas;
 import 'canvas/canvas_layer_stack_view.dart' show EngineStackScreen;
+import 'canvas/fx_plugin_stages.dart';
 
 /// A panel's picture — a storyboard block's, a conte cell's, on screen and
 /// on a page written to a file: [render]s [cut] at a frame through its
@@ -108,7 +109,7 @@ class PanelPictures {
     ui.Image? shot;
     ui.Picture? recorded;
     try {
-      void showOn(GpuTarget onto) {
+      Future<void> showOn(GpuTarget onto) async {
         if (picture != null) {
           picture.show(
             onto,
@@ -120,15 +121,19 @@ class PanelPictures {
         }
         final screen = EngineStackScreen(tools.composite, tools.letters);
         try {
-          screen
-            ..compose(asItStands!.frame)
-            ..show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
+          // Its plug-ins' steps run first, as a picture's are when it is
+          // laid (🗣️I-132-Q34 a).
+          await FxPluginStages.recordedThrough<void>(
+            () => screen.compose(asItStands!.frame),
+            discard: (_) {},
+          );
+          screen.show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
         } finally {
           screen.free();
         }
       }
 
-      showOn(target);
+      await showOn(target);
       shot = pictureOf(
         PremultipliedRows(target.read(), output.width, output.height),
       );
