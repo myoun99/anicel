@@ -13,6 +13,7 @@ import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
 import '../../models/layer_effect.dart';
 import '../../models/tile_coord.dart';
+import '../../native/engine_tile_ledger.dart';
 import '../../services/brush_live_stroke_rasterizer.dart'
     show
         ActiveStrokePixelSource,
@@ -185,7 +186,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// exactly like the committed tile images.
   Map<TileCoord, ui.Image> get tileImages {
     pictureOwed();
-    return _PicturesOf(_shown);
+    return _PicturesOf(this);
   }
 
   /// 🚨★★★THE TILE EACH COORDINATE SHOWS, where the overlay REPLACES the
@@ -197,9 +198,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   Map<TileCoord, BitmapTile> get shownTiles {
     pictureOwed();
     return {
-      for (final MapEntry(key: coord, value: (:tile, image: _, revision: _))
-          in _shown.entries)
-        coord: ?tile,
+      for (final MapEntry(key: coord, value: shown) in _shown.entries)
+        coord: ?shown.tile,
     };
   }
 
@@ -266,6 +266,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         _install(entry.coord, (
           image: BitmapTileImageCache.pictureOfTile(shown),
           tile: shown,
+          landed: null,
           revision: entry.revision,
         ));
       }
@@ -352,6 +353,10 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// [blended] kept as the stroke's result at [coord] ([_landed]).
   void _keepLanded(TileCoord coord, PreBlendedOverlayTile blended) {
+    final replaced = _landed[coord];
+    if (replaced != null && blended.landed != null) {
+      EngineTileLedger.instance.retire(replaced);
+    }
     try {
       _landed[coord] = _tileOf(blended);
     } finally {
@@ -362,11 +367,13 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// [result] — a whole tile of the stroke's result, pre-blended against
   /// the cel — as a tile of its own: the rasterizer's resident bytes are
   /// blended again in place.
-  BitmapTile _tileOf(PictureBytes result) => BitmapTile.written(
-    size: tileSize,
-    write: (bytes) =>
-        result.readStraight((straight) => bytes.setAll(0, straight)),
-  );
+  BitmapTile _tileOf(PictureBytes result) =>
+      (result is PreBlendedOverlayTile ? result.landed : null) ??
+      BitmapTile.written(
+        size: tileSize,
+        write: (bytes) =>
+            result.readStraight((straight) => bytes.setAll(0, straight)),
+      );
 
   /// The cel with the stroke's result laid in ([_landed]), as its row shows
   /// it — run through the chain whole — pictured at every coordinate it or
@@ -391,6 +398,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       _install(coord, (
         image: BitmapTileImageCache.pictureOfTile(tile),
         tile: tile,
+        landed: null,
         revision: null,
       ));
     }
@@ -434,7 +442,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// the old one could pass for the new one's.
   void dropStaged() {
     for (final staged in _staged.values) {
-      staged.image.dispose();
+      staged.image?.dispose();
     }
     _staged.clear();
   }
@@ -572,7 +580,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   void _stagePreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
     try {
       // Never on screen, so nothing can still be drawing it.
-      _staged.remove(coord)?.image.dispose();
+      _staged.remove(coord)?.image?.dispose();
       _staged[coord] = _shownOf(coord, blended, revision: blended.revision);
     } finally {
       blended.free();
@@ -595,10 +603,20 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     required int? revision,
   }) {
     if (!preBlended) {
-      return (image: pictureOf(result), tile: null, revision: revision);
+      return (
+        image: pictureOf(result),
+        tile: null,
+        landed: null,
+        revision: revision,
+      );
     }
     final landed = _tileOf(result);
     final shown = tileShownFor(coord, landed);
+    if (result is PreBlendedOverlayTile && result.landed != null) {
+      // No picture: the screen lays the tile, and one read back to make a
+      // picture of it would cost every tile of every frame ([_imageAt]).
+      return (image: null, tile: shown, landed: landed, revision: revision);
+    }
     return (
       // Shown as it is, the result is pictured from its own bytes: the door
       // reads the premultiplied ones the blend already made.
@@ -606,6 +624,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
           ? pictureOf(result)
           : BitmapTileImageCache.pictureOfTile(shown),
       tile: shown,
+      landed: null,
       revision: revision,
     );
   }
@@ -615,9 +634,41 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   void _install(TileCoord coord, _Shown shown) {
     final previous = _shown[coord];
     if (previous != null) {
-      DeferredImageDisposer.instance.retire(previous.image);
+      _letGo(previous);
     }
     _shown[coord] = shown;
+  }
+
+  /// What [shown] holds, let go: its picture past the frames that may still
+  /// be drawing it, the slot of the tile the engine laid at once — a frame
+  /// composes before anything lands over it.
+  void _letGo(_Shown shown) {
+    final image = shown.image;
+    if (image != null) {
+      DeferredImageDisposer.instance.retire(image);
+    }
+    final landed = shown.landed;
+    if (landed != null) {
+      EngineTileLedger.instance.retire(landed);
+    }
+  }
+
+  /// [coord]'s picture, made from its tile the first time it is asked where
+  /// none was — the engine's results, which only a screen that draws
+  /// pictures asks for ([_shownOf]).
+  ui.Image? _imageAt(TileCoord coord) {
+    final shown = _shown[coord];
+    if (shown == null || shown.image != null) {
+      return shown?.image;
+    }
+    final image = BitmapTileImageCache.pictureOfTile(shown.tile!);
+    _shown[coord] = (
+      image: image,
+      tile: shown.tile,
+      landed: shown.landed,
+      revision: shown.revision,
+    );
+    return image;
   }
 
   /// [coord]'s picture as a screen drawing it REDUCED samples it — carrying
@@ -631,15 +682,17 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// the coordinate change once and patches the same bytes once.
   ui.Image? chainedTileImageAt(TileCoord coord) {
     pictureOwed();
-    final shown = _shown[coord];
-    if (shown == null || carriesChain(shown.image)) {
-      return shown?.image;
+    final image = _imageAt(coord);
+    if (image == null || carriesChain(image)) {
+      return image;
     }
-    final chained = chainedPictureOf(shown.image);
-    DeferredImageDisposer.instance.retire(shown.image);
+    final shown = _shown[coord]!;
+    final chained = chainedPictureOf(image);
+    DeferredImageDisposer.instance.retire(image);
     _shown[coord] = (
       image: chained,
       tile: shown.tile,
+      landed: shown.landed,
       revision: shown.revision,
     );
     return chained;
@@ -658,7 +711,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       return null;
     }
     _moves = [];
-    return _shown.remove(coord)!.image;
+    final taken = _shown.remove(coord)!;
+    final landed = taken.landed;
+    if (landed != null) {
+      EngineTileLedger.instance.retire(landed);
+    }
+    return taken.image;
   }
 
   /// Clears the overlay and retires its tile pictures; the single
@@ -683,12 +741,17 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _owed.clear();
     _owedFrom = null;
     _moves = [];
+    for (final tile in _landed.values) {
+      if (tile.isOnEngine) {
+        EngineTileLedger.instance.retire(tile);
+      }
+    }
     _landed.clear();
     for (final shown in _shown.values) {
       // The overlay being cleared is what the on-screen frame currently
       // shows (e.g. the stroke at commit); defer disposal past the frames
       // that may still reference it.
-      DeferredImageDisposer.instance.retire(shown.image);
+      _letGo(shown);
     }
     _shown.clear();
   }
@@ -700,20 +763,26 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 /// shows, on the promotable road — pen-up hands the picture to the adopted
 /// tile ONLY when the two revisions agree: a stale one pinned onto a fresher
 /// tile would show the wrong pixels for as long as that tile lives.
-typedef _Shown = ({ui.Image image, BitmapTile? tile, int? revision});
+typedef _Shown = ({
+  ui.Image? image,
+  BitmapTile? tile,
+  BitmapTile? landed,
+  int? revision,
+});
 
 /// The pictures of [_shown], by coordinate — a view, so a paint's reads
 /// make no map.
 final class _PicturesOf extends UnmodifiableMapBase<TileCoord, ui.Image> {
-  _PicturesOf(this._shown);
+  _PicturesOf(this._overlay);
 
-  final Map<TileCoord, _Shown> _shown;
-
-  @override
-  ui.Image? operator [](Object? key) => _shown[key]?.image;
+  final ActiveStrokeOverlayModel _overlay;
 
   @override
-  Iterable<TileCoord> get keys => _shown.keys;
+  ui.Image? operator [](Object? key) =>
+      key is TileCoord ? _overlay._imageAt(key) : null;
+
+  @override
+  Iterable<TileCoord> get keys => _overlay._shown.keys;
 }
 
 /// A place in the moves of an overlay's pictures

@@ -51,6 +51,14 @@ TileInkBounds inkBoundsOfWords(
   );
 }
 
+/// What reads the pixels of a tile the engine made
+/// ([BitmapTile.onEngine]): the engine's tile ledger, which a model cannot
+/// import.
+abstract interface class TilePixelsOnEngine {
+  /// Reads [tile]'s pixels into [into], a tile's bytes.
+  void readInto(BitmapTile tile, Pointer<Uint8> into);
+}
+
 /// Where tile blocks come from, as one isolate tells another: the engine's
 /// allocator by its functions' addresses, or `malloc` when that isolate runs
 /// without one (both zero). [BitmapTile.blocks] reads it, [tileBlocksHere]
@@ -154,9 +162,28 @@ class BitmapTile implements Finalizable {
     return BitmapTile._adopt(size, pixels);
   }
 
-  BitmapTile._adopt(this.size, Pointer<Uint8> pixels)
-    : _pixels = pixels,
-      _view = pixels.asTypedList(bytesFor(size)) {
+  BitmapTile._adopt(this.size, Pointer<Uint8> pixels) : _onEngine = null {
+    _hold(pixels);
+  }
+
+  /// A tile whose pixels are the engine's alone: [on] reads them here only
+  /// for a caller that asks for bytes. [hasInk] where its maker knows.
+  ///
+  /// ⏳A caller still on the CPU reads a copy that stays with the tile, flip
+  /// lane ⓒ's bridge: each writer moved to the engine is one less, and ⓔ
+  /// deletes the bytes with the last.
+  BitmapTile.onEngine({
+    required this.size,
+    required TilePixelsOnEngine on,
+    bool? hasInk,
+  }) : _onEngine = on,
+       _hasInk = hasInk {
+    _validateSize(size);
+  }
+
+  void _hold(Pointer<Uint8> pixels) {
+    _block = pixels;
+    _bytes = pixels.asTypedList(bytesFor(size));
     final engine = QaNativeEngine.instance;
     (engine == null ? _mallocFinalizer : engine.tileFinalizer).attach(
       this,
@@ -165,6 +192,10 @@ class BitmapTile implements Finalizable {
       externalSize: bytesFor(size),
     );
   }
+
+  /// Whether the engine made it: its pixels are there, and read here only
+  /// for a caller that asks.
+  bool get isOnEngine => _onEngine != null;
 
   /// Throws for a [size] no tile takes — what every constructor asks first.
   static void checkSize(int size) => _validateSize(size);
@@ -199,8 +230,32 @@ class BitmapTile implements Finalizable {
 
 
   final int size;
-  final Pointer<Uint8> _pixels;
-  final Uint8List _view;
+
+  /// Where a tile the engine made reads its pixels from; null for one made
+  /// here, whose bytes are held from the start.
+  final TilePixelsOnEngine? _onEngine;
+  Pointer<Uint8>? _block;
+  Uint8List? _bytes;
+
+  Pointer<Uint8> get _pixels {
+    _view;
+    return _block!;
+  }
+
+  Uint8List get _view => _bytes ?? _readBack();
+
+  Uint8List _readBack() {
+    _hold(_allocate(bytesFor(size)));
+    try {
+      _onEngine!.readInto(this, _block!);
+      return _bytes!;
+    } catch (_) {
+      // The block stays with the tile's finalizer; a garbage view must not.
+      _block = null;
+      _bytes = null;
+      rethrow;
+    }
+  }
 
   /// A defensive COPY of the pixel bytes (cold paths: codec, json,
   /// stamp/lift builds). Hot paths use [readPixels]/[copyPixelsInto].

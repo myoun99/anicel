@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/floor_math.dart';
 import '../core/lru.dart';
@@ -12,9 +13,14 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
+import '../models/brush_tip_mask.dart';
+import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
+import '../native/app_gpu_engine.dart';
+import '../native/engine_strokes.dart';
+import '../native/engine_tile_ledger.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_blur_picture.dart';
 import 'brush_dab_dirty_region.dart';
@@ -24,6 +30,7 @@ import 'brush_stroke_blend.dart'
     show
         bitmapSurfaceRegionPixels,
         preBlendStrokeOverlayPixels,
+        separableBlendModeNativeId,
         strokeBlendModeNativeId,
         strokeCoverageMask,
         strokeOpacityCoverage;
@@ -45,12 +52,20 @@ typedef _PremultipliedTile = ({Uint8List view, void Function() free});
 /// door's Impeller road). Either way the engine's form is made once and
 /// the other never.
 class PreBlendedOverlayTile implements PictureBytes {
+  /// A result the engine laid: [landed], its tile, the bytes read from it
+  /// only where a caller on the CPU asks.
+  PreBlendedOverlayTile._landed(this.landed, this.size, this.revision)
+    : _straight = Uint8List(0),
+      _scratch = null,
+      _premultiplyNow = null;
+
   PreBlendedOverlayTile._fused(
     this._straight,
     this.size,
     this.revision,
     QaStampScratch scratch,
-  ) : _scratch = scratch,
+  ) : landed = null,
+      _scratch = scratch,
       _premultiplyNow = null;
 
   PreBlendedOverlayTile._lazy(
@@ -58,8 +73,13 @@ class PreBlendedOverlayTile implements PictureBytes {
     this.size,
     this.revision,
     _PremultipliedTile Function() premultiplyNow,
-  ) : _scratch = null,
+  ) : landed = null,
+      _scratch = null,
       _premultiplyNow = premultiplyNow;
+
+  /// The tile the engine laid this result in; null on the routes that hold
+  /// its bytes here.
+  final BitmapTile? landed;
 
   /// The resident straight result — a view onto the rasterizer's own
   /// buffer, valid until the next blend at this coordinate.
@@ -76,10 +96,21 @@ class PreBlendedOverlayTile implements PictureBytes {
   int get height => size;
 
   @override
-  T readStraight<T>(T Function(Uint8List straight) use) => use(_straight);
+  T readStraight<T>(T Function(Uint8List straight) use) {
+    final tile = landed;
+    return tile == null
+        ? use(_straight)
+        : tile.readPixels((_, straight) => use(straight));
+  }
 
   @override
   T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
+    final tile = landed;
+    if (tile != null) {
+      return tile.readPixels(
+        (_, straight) => use(premultipliedRgbaCopy(straight)),
+      );
+    }
     final fused = _scratch;
     if (fused != null) {
       return use(fused.view);
@@ -228,6 +259,22 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   final Map<int, Uint16List> _seconds = <int, Uint16List>{};
   final Map<int, QaNativeTileBuffer> _nativeSeconds =
       <int, QaNativeTileBuffer>{};
+
+  /// The stroke on the engine: any on its grid but a blur's, which has no
+  /// stroke tiles to pile. Null till its first dab, and where this grid is
+  /// not the engine's, which keeps to the routes below.
+  ///
+  /// ⏳Both routes stand till ⓔ deletes the C one with the grids only tests
+  /// still ask for.
+  GpuStroke? _engineStroke;
+
+  bool get _onEngine => tileSize == gpuTileSide;
+
+  /// The dabs a [blendFrom] call lays, piled together when it ends.
+  final List<GpuDab> _engineDabs = [];
+
+  /// The call's paper and second tip, which every dab of a stroke shares.
+  BrushDabPlan? _engineDabsOf;
 
   /// Whether the stroke has a second tip — the first dab says so, as every
   /// dab of such a stroke carries its view ([BrushDab.dual]).
@@ -392,11 +439,19 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   int get blendedDabCount => _blendedDabCount;
 
   /// Number of allocated stroke tiles (test/debug oracle for sparseness).
-  int get allocatedTileCount => _tiles.length;
+  int get allocatedTileCount =>
+      _onEngine ? _tileCoords.length : _tiles.length;
 
   /// Drops the stroke's tiles so the rasterizer can host the next stroke
   /// (native buffers return to the engine's free list).
   void clear() {
+    final stroke = _engineStroke;
+    if (stroke != null) {
+      EngineStrokes.giveBack(stroke);
+      _engineStroke = null;
+    }
+    _engineDabs.clear();
+    _engineDabsOf = null;
     final native = _native;
     if (native != null) {
       for (final buffer in _nativeBuffers.values) {
@@ -521,6 +576,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     required BrushBlendMode mode,
     required bool erase,
   }) {
+    if (_engineStroke case final stroke? when _blur == null) {
+      return _landedOnEngine(stroke, coords, base, mode, erase);
+    }
     final results = List<PreBlendedOverlayTile?>.filled(coords.length, null);
     final native = _native;
     // Tiles this batch will actually blend, paired with their slot.
@@ -675,6 +733,198 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   }
 
   static void _nothing() {}
+
+  /// The results at [coords] on the engine: a coordinate the stroke has not
+  /// reached, or the selection takes none of, has none.
+  List<PreBlendedOverlayTile?> _landedOnEngine(
+    GpuStroke stroke,
+    List<TileCoord> coords,
+    BitmapSurface base,
+    BrushBlendMode mode,
+    bool erase,
+  ) {
+    final results = List<PreBlendedOverlayTile?>.filled(coords.length, null);
+    final slots = [
+      for (var slot = 0; slot < coords.length; slot += 1)
+        if (_lands(coords[slot])) slot,
+    ];
+    final landed = _landOnEngine(
+      stroke,
+      [for (final slot in slots) coords[slot]],
+      base,
+      mode,
+      erase,
+      compared: false,
+    );
+    for (var at = 0; at < slots.length; at += 1) {
+      final coord = coords[slots[at]];
+      results[slots[at]] = PreBlendedOverlayTile._landed(
+        landed[at].tile,
+        tileSize,
+        _tileRevisions[_tileKey(coord.x, coord.y)] ?? 0,
+      );
+    }
+    return results;
+  }
+
+  /// Whether [coord] is one the stroke reached and the selection may take.
+  bool _lands(TileCoord coord) {
+    if (!_tileCoords.containsKey(_tileKey(coord.x, coord.y))) {
+      return false;
+    }
+    final clip = selectionClip;
+    return clip == null || clip.mayCover(_regionOf(coord));
+  }
+
+  DirtyRegion _regionOf(TileCoord coord) => DirtyRegion(
+    left: coord.x * tileSize,
+    top: coord.y * tileSize,
+    rightExclusive: (coord.x + 1) * tileSize,
+    bottomExclusive: (coord.y + 1) * tileSize,
+  );
+
+  /// What the stroke makes of [coords] over [base]: its dabs laid at the
+  /// slider's ceiling in the stroke's mode, under the selection.
+  List<LandedStrokeTile> _landOnEngine(
+    GpuStroke stroke,
+    List<TileCoord> coords,
+    BitmapSurface base,
+    BrushBlendMode mode,
+    bool erase, {
+    required bool compared,
+  }) {
+    if (coords.isEmpty) {
+      return const [];
+    }
+    final mask = _selectionMaskOver(coords);
+    try {
+      return EngineTileLedger.instance.land(
+        _strokesCel,
+        stroke,
+        [
+          for (final coord in coords)
+            (column: coord.x, row: coord.y, under: base.tileAt(coord)),
+        ],
+        // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
+        opacity: (strokeOpacity * 65535).round(),
+        mode: _engineModeOf(mode, erase),
+        mask: mask,
+        compared: compared,
+      );
+    } finally {
+      mask?.free();
+    }
+  }
+
+  /// The pages a stroke's results take: all strokes', a few pages between
+  /// them, whatever cels they land on.
+  static final Object _strokesCel = Object();
+
+  static int _engineModeOf(BrushBlendMode mode, bool erase) {
+    if (erase || mode == BrushBlendMode.erase) {
+      return GpuBlend.erase;
+    }
+    return mode == BrushBlendMode.color
+        ? GpuBlend.normal
+        : strokeBlendModeNativeId(mode);
+  }
+
+  /// The selection over the box of [coords], a byte a pixel; null with no
+  /// selection.
+  GpuMask? _selectionMaskOver(List<TileCoord> coords) {
+    final clip = selectionClip;
+    if (clip == null) {
+      return null;
+    }
+    final region = coords.map(_regionOf).reduce((a, b) => a.union(b));
+    final width = region.rightExclusive - region.left;
+    final height = region.bottomExclusive - region.top;
+    return GpuMask(
+      appGpuComposite,
+      clip.maskFor(
+        left: region.left,
+        top: region.top,
+        width: width,
+        height: height,
+      ),
+      x: region.left,
+      y: region.top,
+      width: width,
+      height: height,
+    );
+  }
+
+  /// The tile of [mask] as the engine reads a bitmap: once per mask.
+  static GpuDabTexture _textureOf(BrushTipMask mask) =>
+      _textures[mask] ??= GpuDabTexture(mask.alphaNormalized, mask.size);
+  static final Expando<GpuDabTexture> _textures = Expando('dab textures');
+
+  /// [plan] as the engine piles it.
+  GpuDab _gpuDabOf(BrushDabPlan plan) {
+    final tip = plan.tip;
+    final profile = tip.profile;
+    final mask = tip.tipMask;
+    return GpuDab(
+      centreX: plan.centerX,
+      centreY: plan.centerY,
+      left: plan.left,
+      top: plan.top,
+      right: plan.rightExclusive,
+      bottom: plan.bottomExclusive,
+      colour:
+          plan.sourceR |
+          plan.sourceG << 8 |
+          plan.sourceB << 16 |
+          (plan.sourceAlphaNorm * 255).round() << 24,
+      opacity: plan.dabOpacity,
+      flow: plan.dabFlow,
+      contrast: plan.aaContrast,
+      threshold: plan.aaThreshold,
+      edgeHeld: plan.edgeHeld,
+      erase: plan.erase,
+      second: plan.second,
+      round: profile == null
+          ? null
+          : (
+              coverage: profile.coverage,
+              pile: profile.pile,
+              scale: profile.scale,
+              reach: tip.reach,
+              inner: profile.inner,
+              rowLength: profile.rowLength,
+            ),
+      tip: mask == null ? null : _textureOf(mask),
+      radius: tip.radius,
+      cos: tip.tipCos,
+      sin: tip.tipSin,
+      roundness: 1.0 / tip.inverseRoundness,
+      evening: plan.evening,
+      density: plan.textureMask == null ? null : plan.textureDensity,
+    );
+  }
+
+  /// The call's dabs on the engine, together: before anything reads the
+  /// tiles they touched.
+  void _pileOnEngine() {
+    if (_engineDabs.isEmpty) {
+      return;
+    }
+    final first = _engineDabsOf!;
+    final paper = first.textureMask;
+    final dual = first.dual;
+    (_engineStroke ??= EngineStrokes.take()).pile(
+      _engineDabs,
+      paper: paper == null ? null : _textureOf(paper),
+      paperScale: first.textureScale,
+      paperHeight: first.textureMode == BrushTextureMode.height,
+      secondMode: dual == null
+          ? null
+          : separableBlendModeNativeId(dual.compositeMode),
+      secondDensity: dual?.density ?? 1,
+    );
+    _engineDabs.clear();
+    _engineDabsOf = null;
+  }
 
   /// Which composite the stroke lands with — the eraser and the plain
   /// colour brush ride the stamp kernels, everything else the brush
@@ -980,6 +1230,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       base.tileSize == tileSize,
       'promotion requires the stroke grid to be the surface grid',
     );
+    if (_engineStroke case final stroke? when _blur == null) {
+      return _promotedFromEngine(stroke, base, mode, erase);
+    }
     final promoted = <PromotedStrokeTile>[];
     for (final key in _tileCoords.keys.toList()) {
       final coord = _tileCoords[key]!;
@@ -1015,6 +1268,35 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       promoted.add(PromotedStrokeTile(coord, tile, result.revision));
     }
     return promoted;
+  }
+
+  /// The finished tiles on the engine: the same call that showed the stroke
+  /// (유저 09-17), comparing each result with the tile under it. A coordinate
+  /// left with no ink is a blank tile, which the commit drops.
+  List<PromotedStrokeTile> _promotedFromEngine(
+    GpuStroke stroke,
+    BitmapSurface base,
+    BrushBlendMode mode,
+    bool erase,
+  ) {
+    final coords = _tileCoords.values.where(_lands).toList();
+    final landed = _landOnEngine(
+      stroke,
+      coords,
+      base,
+      mode,
+      erase,
+      compared: true,
+    );
+    return [
+      for (var at = 0; at < landed.length; at += 1)
+        if (landed[at].change != GpuChange.same)
+          PromotedStrokeTile(
+            coords[at],
+            landed[at].tile ?? BitmapTile.blank(size: tileSize),
+            _tileRevisions[_tileKey(coords[at].x, coords[at].y)] ?? 0,
+          ),
+    ];
   }
 
   /// A blur dab rewrote [region]: every tile it reaches is touched, and its
@@ -1067,6 +1349,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
   @override
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {
+    _viewsFromEngine();
     var remaining = count;
     var sourceX = x;
     var writeOffset = targetOffset;
@@ -1091,6 +1374,24 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       remaining -= spanCount;
       sourceX += spanCount;
       writeOffset += spanCount * 4;
+    }
+  }
+
+  /// The engine's view of the stroke as [_tiles], for what still reads it
+  /// on the CPU: a host whose overlay grid is not its surface's.
+  void _viewsFromEngine() {
+    final stroke = _engineStroke;
+    if (stroke == null || _blur != null) {
+      return;
+    }
+    final coords = _tileCoords.values.toList();
+    final landed = EngineTileLedger.instance.land(_strokesCel, stroke, [
+      for (final coord in coords) (column: coord.x, row: coord.y, under: null),
+    ], mode: GpuBlend.normal);
+    for (var at = 0; at < coords.length; at += 1) {
+      final tile = landed[at].tile!;
+      _tiles[_tileKey(coords[at].x, coords[at].y)] = tile.pixels;
+      EngineTileLedger.instance.retire(tile);
     }
   }
 
@@ -1136,6 +1437,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       // The call's native dabs land here, together — and before anything
       // reads the tiles they touched.
       _dabBatch?.flush();
+      _pileOnEngine();
     }
     _blendedDabCount = math.max(_blendedDabCount, dabs.length);
     if (touched != null) {
@@ -1198,6 +1500,18 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
     if (dab.dual != null) {
       _secondTip = true;
+    }
+    if (_onEngine) {
+      _engineDabs.add(_gpuDabOf(plan));
+      _engineDabsOf ??= plan;
+      for (var tileY = plan.tileYStart; tileY <= plan.tileYEnd; tileY += 1) {
+        for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
+          final key = _tileKey(tileX, tileY);
+          _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
+          _tileCoords[key] ??= TileCoord(x: tileX, y: tileY);
+        }
+      }
+      return plan.clip;
     }
 
     // R21: the C kernel runs the live blend exactly like the commit —

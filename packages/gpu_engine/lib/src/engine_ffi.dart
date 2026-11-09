@@ -47,6 +47,62 @@ final class GridPicture extends Opaque {}
 
 final class GridLay extends Opaque {}
 
+final class DabTexture extends Opaque {}
+
+final class Stroke extends Opaque {}
+
+/// `DabSpec` (rust/src/kernels/dab/abi.rs), field by field.
+final class DabSpec extends Struct {
+  @Double()
+  external double centreX;
+  @Double()
+  external double centreY;
+  @Double()
+  external double opacity;
+  @Double()
+  external double flow;
+  @Double()
+  external double contrast;
+  @Double()
+  external double radius;
+  @Double()
+  external double cos;
+  @Double()
+  external double sin;
+  @Double()
+  external double roundness;
+  @Double()
+  external double scale;
+  @Double()
+  external double reach;
+  @Double()
+  external double inner;
+  @Double()
+  external double density;
+  external Pointer<DabTexture> texture;
+  external Pointer<Double> coverage;
+  external Pointer<Double> pile;
+  external Pointer<Double> evening;
+  @Size()
+  external int entries;
+  @Uint32()
+  external int rowLength;
+  @Uint32()
+  external int flags;
+  @Int32()
+  external int left;
+  @Int32()
+  external int top;
+  @Int32()
+  external int right;
+  @Int32()
+  external int bottom;
+  @Uint32()
+  external int colour;
+  @Uint32()
+  external int pad;
+}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -1126,4 +1182,90 @@ external bool gridLay(
   Pointer<Pointer<GridPicture>> pictures,
   Pointer<Double> boxes,
   int count,
+);
+
+@Native<Pointer<DabTexture> Function(Pointer<Double>, Uint32)>(
+  symbol: 'gpu_engine_dab_texture_new',
+)
+external Pointer<DabTexture> dabTextureNew(Pointer<Double> texels, int side);
+
+@Native<Void Function(Pointer<DabTexture>)>(
+  symbol: 'gpu_engine_dab_texture_free',
+)
+external void dabTextureFree(Pointer<DabTexture> texture);
+
+@Native<Pointer<Stroke> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_stroke_new',
+)
+external Pointer<Stroke> strokeNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Stroke>)>(symbol: 'gpu_engine_stroke_free')
+external void strokeFree(Pointer<Stroke> stroke);
+
+@Native<Uint64 Function(Pointer<Stroke>)>(symbol: 'gpu_engine_stroke_bytes')
+external int strokeBytes(Pointer<Stroke> stroke);
+
+@Native<Void Function(Pointer<Stroke>, Pointer<Engine>)>(
+  symbol: 'gpu_engine_stroke_clear',
+)
+external void strokeClear(Pointer<Stroke> stroke, Pointer<Engine> engine);
+
+@Native<
+  Bool Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<DabSpec>,
+    Size,
+    Pointer<DabTexture>,
+    Double,
+    Bool,
+    Int32,
+    Double,
+  )
+>(symbol: 'gpu_engine_stroke_pile')
+external bool strokePile(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<DabSpec> dabs,
+  int count,
+  Pointer<DabTexture> paper,
+  double paperScale,
+  bool paperHeight,
+  int secondMode,
+  double secondDensity,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Uint32,
+    Uint32,
+    Pointer<MaskPlane>,
+    Bool,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_stroke_land')
+external int strokeLand(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  int mode,
+  Pointer<MaskPlane> mask,
+  bool compared,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
 );

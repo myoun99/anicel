@@ -558,15 +558,19 @@ mod tests {
         };
         let from = buffer(wgpu::BufferUsages::COPY_SRC);
         let to = buffer(wgpu::BufferUsages::COPY_DST);
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        for _ in 0..16 {
-            encoder.copy_buffer_to_buffer(&from, 0, &to, 0, SIDE);
-        }
-        engine.queue.submit([encoder.finish()]);
-
-        assert_eq!(engine.wait_within(std::time::Duration::ZERO), None);
+        // Another test's wait on the shared engine can have waited this copy
+        // out, and a GPU can finish one before the poll: some round is late.
+        let late = (0..64).any(|_| {
+            let mut encoder = engine
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            for _ in 0..16 {
+                encoder.copy_buffer_to_buffer(&from, 0, &to, 0, SIDE);
+            }
+            engine.queue.submit([encoder.finish()]);
+            engine.wait_within(std::time::Duration::ZERO).is_none()
+        });
+        assert!(late, "every wait of no time found the GPU done");
         assert_eq!(last_error(), "the GPU did not finish within 0ns");
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
     }

@@ -47,7 +47,7 @@ import 'app_gpu_engine.dart';
 /// bytes today, and nothing at all once the engine's are the only ones
 /// (저장's review of the flip lane, 11-09; ⓗ had let a worker open its own).
 // ⏳The screen asks after its view is swapped (screen-on-the-engine c6).
-class EngineTileLedger {
+class EngineTileLedger implements TilePixelsOnEngine {
   /// A ledger of a pool of its own on [engine], making no page past
   /// [byteBudget] but for the tiles a call holds — none but the OS's where
   /// null.
@@ -129,6 +129,118 @@ final GpuEngine _engine;
   /// full pool. A probe.
   int get slotCount => _slotCount;
   int _slotCount = 0;
+
+  /// How many slots [retire] has let go that [_stored] still lists.
+  int _retired = 0;
+
+  /// Retired slots [_stored] may list before they are swept out.
+  static const int _retiredSwept = 4096;
+
+  /// Lets [tile]'s slot go now, not with the tile: a tile its maker knows
+  /// nothing reads again — the result a stroke showed, made anew at the next
+  /// frame. Asked for pixels after this, the tile throws. Its collection
+  /// would be seconds away, and a stroke's slots a frame's worth each.
+  void retire(BitmapTile tile) {
+    final slot = _slots[tile];
+    if (slot == null) {
+      return;
+    }
+    _slots[tile] = null;
+    _letGoWithTile.detach(slot);
+    _letGo(slot);
+    _retired += 1;
+    if (_retired > _retiredSwept) {
+      _stored.removeWhere((slot) => slot.out);
+      _retired = 0;
+    }
+  }
+
+  @override
+  void readInto(BitmapTile tile, Pointer<Uint8> into) {
+    final slot = _slots[tile];
+    if (slot == null) {
+      throw StateError('a tile the engine made was read after it was let go');
+    }
+    pool.read([slot.at], into);
+  }
+
+  /// A tile of the slot [at], which it now holds: the only copy of its
+  /// pixels, so nothing but its collection or [retire] lets it go.
+  BitmapTile _adopted(GpuTile at, {bool? hasInk}) {
+    final tile = BitmapTile.onEngine(
+      size: gpuTileSide,
+      on: this,
+      hasInk: hasInk,
+    );
+    final slot = _Slot(tile, at, only: true);
+    _slots[tile] = slot;
+    _letGoWithTile.attach(tile, slot, detach: slot);
+    _stored.add(slot);
+    _slotCount += 1;
+    return tile;
+  }
+
+  /// What [stroke] makes of the tiles [asks]: `GpuStroke.land`, each result
+  /// a tile of its own, on [cel]'s pages. A full pool lets go what no call
+  /// holds, then stores past the budget, as [_store] does: what is on the
+  /// way to the screen has no fallback.
+  List<LandedStrokeTile> land(
+    Object cel,
+    GpuStroke stroke,
+    List<StrokeTileAsk> asks, {
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+    bool compared = false,
+  }) => held((hold) {
+    final under = hold.slotsOf(cel, [
+      for (final ask in asks) ?ask.under,
+    ]);
+    var next = 0;
+    final asked = <GpuStrokeAsk>[
+      for (final ask in asks)
+        (
+          column: ask.column,
+          row: ask.row,
+          under: ask.under == null ? null : under[next++],
+        ),
+    ];
+    List<GpuLanded> landOf(List<GpuStrokeAsk> asked) => stroke.land(
+      appGpuComposite,
+      pool,
+      _cels.putIfAbsent(cel, pool.cel),
+      asked,
+      opacity: opacity,
+      mode: mode,
+      mask: mask,
+      compared: compared,
+    );
+    final landed = landOf(asked);
+    if (landed.length < asked.length) {
+      _letGoWhere((tile) => !_holds.any((hold) => hold._tiles.contains(tile)));
+      pool.makeNoPagePast(_unbounded);
+      try {
+        landed.addAll(landOf(asked.sublist(landed.length)));
+      } finally {
+        pool.makeNoPagePast(_byteBudget ?? _unbounded);
+      }
+      if (landed.length < asked.length) {
+        throw StateError(
+          'the device lands ${landed.length} of the ${asked.length} tiles '
+          'a stroke made',
+        );
+      }
+    }
+    return [
+      for (final (:change, :tile) in landed)
+        (
+          change: change,
+          tile: tile == null
+              ? null
+              : _adopted(tile, hasInk: compared ? true : null),
+        ),
+    ];
+  });
 
   /// Lets [slot] go, once: its tile's finalizer and a walk that found the
   /// tile collected first both come to it.
@@ -322,8 +434,11 @@ final GpuEngine _engine;
   /// collected — and sweeps what is let go out of [_stored].
   void _letGoWhere(bool Function(BitmapTile? tile) goes) {
     _stored.removeWhere((slot) {
+      if (slot.out) {
+        return true;
+      }
       final tile = slot.tile.target;
-      if (!goes(tile)) {
+      if ((tile != null && slot.only) || !goes(tile)) {
         return false;
       }
       if (tile != null) {
@@ -341,13 +456,26 @@ final GpuEngine _engine;
   }
 }
 
+/// A tile a stroke was asked for: its [column] and [row], and the cel's tile
+/// there, if it has one.
+typedef StrokeTileAsk = ({int column, int row, BitmapTile? under});
+
+/// What a stroke made of a tile asked: what it is beside the tile under it,
+/// and the tile, where one landed.
+typedef LandedStrokeTile = ({GpuChange change, BitmapTile? tile});
+
 /// A slot a tile has here, its tile held weakly: being stored must not keep
 /// a tile alive.
 final class _Slot {
-  _Slot(BitmapTile tile, this.at) : tile = WeakReference(tile);
+  _Slot(BitmapTile tile, this.at, {this.only = false})
+    : tile = WeakReference(tile);
 
   final WeakReference<BitmapTile> tile;
   final GpuTile at;
+
+  /// Whether the engine holds the only copy of the tile's pixels — none to
+  /// store again from, so a full pool does not let it go.
+  final bool only;
 
   /// Let go already — by its tile's finalizer, a full pool or a give-back.
   bool out = false;

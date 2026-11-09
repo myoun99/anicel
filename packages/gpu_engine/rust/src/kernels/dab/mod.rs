@@ -32,8 +32,10 @@
 // which 관제 opens (gpu-canonical-store 21:41).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod abi;
 pub(crate) mod blur;
 pub(crate) mod stamp;
+pub(crate) mod stroke;
 #[cfg(test)]
 mod tests;
 

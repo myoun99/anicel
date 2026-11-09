@@ -15,6 +15,11 @@ import 'gpu_adapter_choice.dart';
 GpuEngine get appGpuEngine => _engine ??= _opener()();
 GpuEngine? _engine;
 
+/// The executor on [appGpuEngine], compiled the first time anything asks:
+/// one for the frames and the strokes alike.
+GpuComposite get appGpuComposite => _composite ??= GpuComposite(appGpuEngine);
+GpuComposite? _composite;
+
 /// How [debugGpuAdapterChoice] opens the engine — read on this isolate:
 /// one [GpuEngine.opening] runs has its own, at the choice's default.
 GpuEngine Function() _opener() => switch (debugGpuAdapterChoice) {

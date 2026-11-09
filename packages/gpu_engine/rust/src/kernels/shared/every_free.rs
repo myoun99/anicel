@@ -9,6 +9,9 @@ use std::collections::BTreeSet;
 use super::source_scan::files_where;
 use crate::device::gpu_engine_close;
 use crate::kernels::cel_pixel::abi::{gpu_engine_ink_free, gpu_engine_ink_new};
+use crate::kernels::dab::abi::{
+    gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_stroke_free, gpu_engine_stroke_new,
+};
 use crate::kernels::composite::abi::{
     gpu_engine_chain_read_free, gpu_engine_chain_read_new, gpu_engine_composite_free, gpu_engine_composite_new,
     gpu_engine_composited_free, gpu_engine_held_free,
@@ -59,7 +62,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 20] {
+fn frees() -> [(&'static str, fn(&'static str)); 22] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -84,6 +87,16 @@ fn frees() -> [(&'static str, fn(&'static str)); 20] {
             gives_back(name, made, gpu_engine_mask_free)
         }),
         ("gpu_engine_held_free", |name| gives_back(name, gpu_engine_held_new(), gpu_engine_held_free)),
+        ("gpu_engine_stroke_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_stroke_new(first_engine()) };
+            gives_back(name, made, gpu_engine_stroke_free)
+        }),
+        ("gpu_engine_dab_texture_free", |name| {
+            let texels = [0.5f64; 4];
+            // SAFETY: four texels, a side of two.
+            gives_back(name, unsafe { gpu_engine_dab_texture_new(texels.as_ptr(), 2) }, gpu_engine_dab_texture_free);
+        }),
         ("gpu_engine_chain_read_free", |name| {
             gives_back(name, gpu_engine_chain_read_new(), gpu_engine_chain_read_free)
         }),

@@ -64,7 +64,7 @@ pub(crate) struct MaskPlane {
 }
 
 impl MaskPlane {
-    fn mask(&self) -> Mask<'_> {
+    pub(crate) fn mask(&self) -> Mask<'_> {
         Mask { plane: &self.plane, at: self.at, size: self.size }
     }
 }

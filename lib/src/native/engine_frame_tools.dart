@@ -11,7 +11,8 @@ typedef EngineFrameTools = ({GpuComposite composite, EngineLetters letters});
 /// [openAppGpuEngine] opens: a store of frames' pictures is made before the
 /// engine is open, and what it is asked for waits for this.
 Future<EngineFrameTools> get appEngineFrameTools => _tools ??= () async {
-  final composite = GpuComposite(await openAppGpuEngine());
+  await openAppGpuEngine();
+  final composite = appGpuComposite;
   return _open = (
     composite: composite,
     letters: await EngineLetters.open(composite),

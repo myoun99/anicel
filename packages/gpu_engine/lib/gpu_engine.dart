@@ -393,6 +393,273 @@ class GpuPool {
   void free() => rust.poolFree(_pool);
 }
 
+/// A bitmap dabs read — a tip's or the paper's — kept for the piles that read
+/// it, and let go with this object.
+final class GpuDabTexture implements Finalizable {
+  /// [texels], [side] × [side] on 0..=1 row after row.
+  factory GpuDabTexture(Float64List texels, int side) {
+    final made = using(
+      (arena) => rust.dabTextureNew(_doubles(arena, texels), side),
+    );
+    if (made == nullptr) {
+      throw StateError(_lastError());
+    }
+    final texture = GpuDabTexture._(made);
+    _freed.attach(texture, made.cast());
+    return texture;
+  }
+
+  GpuDabTexture._(this._texture);
+
+  static final NativeFinalizer _freed = NativeFinalizer(
+    Native.addressOf<NativeFunction<Void Function(Pointer<rust.DabTexture>)>>(
+      rust.dabTextureFree,
+    ).cast(),
+  );
+
+  final Pointer<rust.DabTexture> _texture;
+}
+
+/// A round tip's two tables and how they are read
+/// (rust/src/kernels/dab/mod.rs `RoundProfile`).
+typedef GpuRoundTip = ({
+  Float64List coverage,
+  Float64List pile,
+  double scale,
+  double reach,
+  double inner,
+  int rowLength,
+});
+
+/// A dab as a stroke piles it (rust/src/kernels/dab/mod.rs `Dab`). Its tip
+/// is [round] where that is not null, the bitmap [tip] over [-[radius],
+/// [radius]] where that is not, else square.
+final class GpuDab {
+  const GpuDab({
+    required this.centreX,
+    required this.centreY,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+    required this.colour,
+    required this.opacity,
+    required this.flow,
+    required this.contrast,
+    this.threshold = false,
+    this.edgeHeld = false,
+    this.erase = false,
+    this.second = false,
+    this.round,
+    this.tip,
+    this.radius = 0,
+    this.cos = 1,
+    this.sin = 0,
+    this.roundness = 1,
+    this.evening,
+    this.density,
+  });
+
+  final double centreX;
+  final double centreY;
+
+  /// The pixels it may touch, [left, top, right, bottom).
+  final int left;
+  final int top;
+  final int right;
+  final int bottom;
+
+  /// Red, green, blue and alpha, from the low byte.
+  final int colour;
+  final double opacity;
+  final double flow;
+
+  /// A contrast about half; 1 leaves the coverage as it is. Not read where
+  /// [threshold] cuts it at half.
+  final double contrast;
+  final bool threshold;
+  final bool edgeHeld;
+  final bool erase;
+
+  /// Whether it piles on the stroke's second plane.
+  final bool second;
+  final GpuRoundTip? round;
+  final GpuDabTexture? tip;
+  final double radius;
+  final double cos;
+  final double sin;
+
+  /// The tip's minor axis over its major.
+  final double roundness;
+
+  /// The table it lays its share through, 1026 entries, or none.
+  final Float64List? evening;
+
+  /// How much of the paper it takes, where it meets the paper.
+  final double? density;
+}
+
+/// What a landed tile is beside the one under it
+/// (rust/src/kernels/write/mod.rs `Change`).
+enum GpuChange { same, inked, cleared }
+
+/// A tile a stroke was asked for: its [column] and [row] and the cel's tile
+/// there, if it has one.
+typedef GpuStrokeAsk = ({int column, int row, GpuTile? under});
+
+/// What a stroke made of a tile asked: what it is, and where it landed.
+typedef GpuLanded = ({GpuChange change, GpuTile? tile});
+
+/// A stroke's tiles on the GPU and what it makes of a cel
+/// (rust/src/kernels/dab/stroke.rs).
+class GpuStroke {
+  /// A stroke of no tiles on [engine], its kernels compiled.
+  factory GpuStroke(GpuEngine engine) {
+    final stroke = rust.strokeNew(engine._engine);
+    if (stroke == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuStroke._(engine, stroke);
+  }
+
+  GpuStroke._(this._engine, this._stroke);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Stroke> _stroke;
+
+  /// The bytes of the pages made.
+  int get bytes => rust.strokeBytes(_stroke);
+
+  /// Piles [dabs], in their order, over [paper] — at [paperScale] px a
+  /// texel, 高さ where [paperHeight] — with a second tip shown by
+  /// [secondMode] at [secondDensity] where the stroke has one. Submits the
+  /// work.
+  void pile(
+    List<GpuDab> dabs, {
+    GpuDabTexture? paper,
+    double paperScale = 1,
+    bool paperHeight = false,
+    int? secondMode,
+    double secondDensity = 1,
+  }) => using((arena) {
+    final tables = Map<Float64List, Pointer<Double>>.identity();
+    Pointer<Double> table(Float64List values) =>
+        tables.putIfAbsent(values, () => _doubles(arena, values));
+    final specs = arena<rust.DabSpec>(_held(dabs.length));
+    for (var at = 0; at < dabs.length; at++) {
+      final dab = dabs[at];
+      final round = dab.round;
+      specs[at]
+        ..centreX = dab.centreX
+        ..centreY = dab.centreY
+        ..opacity = dab.opacity
+        ..flow = dab.flow
+        ..contrast = dab.contrast
+        ..radius = dab.radius
+        ..cos = dab.cos
+        ..sin = dab.sin
+        ..roundness = dab.roundness
+        ..scale = round?.scale ?? 0
+        ..reach = round?.reach ?? 0
+        ..inner = round?.inner ?? 0
+        ..density = dab.density ?? 0
+        ..texture = dab.tip?._texture ?? nullptr
+        ..coverage = round == null ? nullptr : table(round.coverage)
+        ..pile = round == null ? nullptr : table(round.pile)
+        ..evening = dab.evening == null ? nullptr : table(dab.evening!)
+        ..entries = round?.coverage.length ?? 0
+        ..rowLength = round?.rowLength ?? 0
+        ..flags =
+            (dab.threshold ? 1 : 0) |
+            (dab.edgeHeld ? 2 : 0) |
+            (dab.erase ? 4 : 0) |
+            (dab.second ? 8 : 0) |
+            (dab.density != null ? 16 : 0)
+        ..left = dab.left
+        ..top = dab.top
+        ..right = dab.right
+        ..bottom = dab.bottom
+        ..colour = dab.colour;
+    }
+    if (!rust.strokePile(
+      _stroke,
+      _engine._engine,
+      specs,
+      dabs.length,
+      paper?._texture ?? nullptr,
+      paperScale,
+      paperHeight,
+      secondMode ?? -1,
+      secondDensity,
+    )) {
+      throw StateError(_lastError());
+    }
+  });
+
+  /// Lays the stroke on the tiles [asks] at [opacity] (65535 whole) in
+  /// [mode], under [mask] if any, each result in a fresh slot of [cel] of
+  /// [pool]. Where [compared], a result compares with the tile under it
+  /// first — waiting for the GPU — and takes no slot where it is that tile
+  /// or has no ink left. As many of [asks], the first, as [pool] has room
+  /// for.
+  List<GpuLanded> land(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuStrokeAsk> asks, {
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+    bool compared = false,
+  }) => using((arena) {
+    final count = asks.length;
+    final coordinates = arena<Int32>(_held(2 * count));
+    final under = arena<Uint32>(_held(count));
+    final places = arena<Uint32>(_held(count));
+    final changes = arena<Uint8>(_held(count));
+    for (var at = 0; at < count; at++) {
+      final (:column, :row, under: tile) = asks[at];
+      coordinates[2 * at] = column;
+      coordinates[2 * at + 1] = row;
+      under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+    }
+    final landed = rust.strokeLand(
+      _stroke,
+      _engine._engine,
+      composite._composite,
+      pool._pool,
+      cel,
+      coordinates,
+      under,
+      count,
+      opacity,
+      mode,
+      mask?._mask ?? nullptr,
+      compared,
+      places,
+      changes,
+    );
+    if (landed < 0) {
+      throw StateError(_lastError());
+    }
+    return [
+      for (var at = 0; at < landed; at++)
+        (
+          change: GpuChange.values[changes[at]],
+          tile: places[at] == _noTile
+              ? null
+              : (page: places[at] >> 16, slot: places[at] & 0xFFFF),
+        ),
+    ];
+  });
+
+  /// Clears what the stroke wrote and lets its tiles go; the pages stay.
+  void clear() => rust.strokeClear(_stroke, _engine._engine);
+
+  /// Frees the stroke; before its engine is closed.
+  void free() => rust.strokeFree(_stroke);
+}
+
 /// The blends the executor has beside the app's table of 1 to 27 — the C
 /// engine's stroke ids, which blend.wgsl follows (`BLEND_NORMAL` and on):
 /// the app names those itself (brush_stroke_blend.dart), these only the

@@ -63,7 +63,7 @@ const MOST_NAMED: usize = u16::MAX as usize + 1;
 /// A cel the pool stores tiles for — what names the pages its tiles go to
 /// first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Cel(u32);
+pub(crate) struct Cel(pub(crate) u32);
 
 /// The pool makes no page more: past its bytes, past the OS's budget,
 /// refused by the driver, or past what a `TileAt` names.

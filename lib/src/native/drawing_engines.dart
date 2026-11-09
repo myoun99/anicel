@@ -1,3 +1,4 @@
+import 'engine_strokes.dart';
 import 'engine_tile_ledger.dart';
 import 'qa_native_engine.dart';
 
@@ -15,6 +16,7 @@ abstract final class DrawingEngines {
   static void respondToMemoryPressure() {
     QaNativeEngine.respondToMemoryPressure();
     EngineTileLedger.opened?.respondToMemoryPressure();
+    EngineStrokes.letGoIdle();
   }
 
   /// Gives back what [respondToMemoryPressure] gives back once [holder] has

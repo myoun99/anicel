@@ -114,6 +114,7 @@ class BrushDabPlan {
     required this.textureDensity,
     required this.textureOneMinusDensity,
     required this.textureMode,
+    required this.textureScale,
     required this.tipULattice,
     required this.tipVLattice,
     required this.textureULattice,
@@ -193,6 +194,9 @@ class BrushDabPlan {
 
   /// How the paper meets the coverage — see [BrushDab.textureMode].
   final BrushTextureMode textureMode;
+
+  /// Canvas pixels a texel of the paper — see [BrushDab.textureScale].
+  final double textureScale;
 
   final BrushTipMaskAxisLattice? tipULattice;
   final BrushTipMaskAxisLattice? tipVLattice;
@@ -288,6 +292,7 @@ class BrushDabPlan {
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
       textureMode: dab.textureMode,
+      textureScale: dab.textureScale,
       tipULattice: unrotatedTip
           ? BrushTipMaskAxisLattice.compute(
               mask: tipMask,
