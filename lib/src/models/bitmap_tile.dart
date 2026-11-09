@@ -462,3 +462,20 @@ void _validatePixelLength(int length, int size) {
     );
   }
 }
+
+/// How a reader is handed tiles' bytes: each of [tiles] in order, a view
+/// good only inside [use].
+typedef TileBytesOf =
+    void Function(List<BitmapTile> tiles, void Function(Uint8List bytes) use);
+
+/// [tiles]' own bytes, each read where it lies ([BitmapTile.readPixels]):
+/// the tile is the receiver there, so its buffer cannot be finalized out
+/// from under the view.
+void readTilesInPlace(
+  List<BitmapTile> tiles,
+  void Function(Uint8List bytes) use,
+) {
+  for (final tile in tiles) {
+    tile.readPixels((_, view) => use(view));
+  }
+}

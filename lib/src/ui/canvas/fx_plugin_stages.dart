@@ -9,7 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/layer_effect.dart';
-import '../../services/brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
+import '../../services/brush_stroke_blend.dart' show engineSurfaceRegionPixels;
 import '../../services/cel_plugin_pass.dart'
     show fxPluginRowsOf, fxPluginValuesOf;
 import '../../services/cel_text_laying.dart';
@@ -273,7 +273,7 @@ final class _Stage {
       rightExclusive: ((left + width) / scale).ceil(),
       bottomExclusive: ((top + height) / scale).ceil(),
     );
-    final straight = bitmapSurfaceRegionPixels(
+    final straight = engineSurfaceRegionPixels(
       celSurfaceWithTextsLaid(row),
       region,
     );

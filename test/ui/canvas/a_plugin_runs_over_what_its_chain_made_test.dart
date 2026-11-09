@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
@@ -165,17 +166,21 @@ void main() {
             // A cel green at its (1, 0).
             map: BitmapSurface(
               canvasSize: const CanvasSize(width: 4, height: height),
-              tileSize: 4,
+              tileSize: defaultCelTileSize,
               tiles: {
                 TileCoord(x: 0, y: 0): BitmapTile(
-                  size: 4,
-                  pixels: Uint8List(4 * 4 * 4)..setAll(4, green),
+                  size: defaultCelTileSize,
+                  pixels: Uint8List(BitmapTile.bytesFor(defaultCelTileSize))
+                    ..setAll(4, green),
                 ),
               },
             ),
           },
         ),
       );
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+      var reads = 0;
+      EngineTileLedger.debugBeforeRead = (_) => reads += 1;
       final picture = source();
 
       // The paper two pixels into the picture: its first pixel lies two
@@ -205,6 +210,7 @@ void main() {
         greens,
         reason: 'the cel\'s (1, 0), where it lies on this grid',
       );
+      expect(reads, 1, reason: 'the row is read back from the engine');
     });
   }
 

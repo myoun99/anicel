@@ -28,7 +28,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/placed_tile.dart';
 import '../models/tiles_covering.dart';
-import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
+import 'brush_stroke_blend.dart' show engineSurfaceRegionPixels;
 import 'cel_text_laying.dart';
 
 /// [surface] — a cel's picture, its texts laid and its keys applied —
@@ -122,7 +122,7 @@ BitmapSurface? _rendered(
     pixels: picture == null
         ? Uint8List(input.width * input.height * 4)
         : _premultiplied(
-            bitmapSurfaceRegionPixels(celSurfaceWithTextsLaid(picture), input),
+            engineSurfaceRegionPixels(celSurfaceWithTextsLaid(picture), input),
           ),
     width: input.width,
     height: input.height,

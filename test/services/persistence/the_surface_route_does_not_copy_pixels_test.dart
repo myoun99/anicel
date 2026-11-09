@@ -67,9 +67,9 @@ void main() {
     expect(each.contains('Uint8List.sublistView'), isTrue, reason: copies);
     expect(each.contains('.pixels'), isFalse, reason: copies);
     final worker = File(
-      'lib/src/services/persistence/thaw_in_worker.dart',
+      'lib/src/models/bitmap_tile.dart',
     ).readAsStringSync();
-    final inPlace = worker.substring(worker.indexOf('void _readInPlace('));
+    final inPlace = worker.substring(worker.indexOf('void readTilesInPlace('));
     expect(inPlace.contains('readPixels'), isTrue, reason: 'setup: it reads');
     expect(inPlace.contains('.pixels'), isFalse, reason: copies);
   });

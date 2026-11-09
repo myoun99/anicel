@@ -21,8 +21,11 @@ import '../../helpers/a_plugin_that_shifts.dart';
 /// fill landed. Each way a picture changes that is not a dab is here; each
 /// says nothing, and the canvas falls back on the tiles it sees change.
 void main() {
-  const canvasSize = CanvasSize(width: 64, height: 64);
-  const tileSize = 8;
+  const canvasSize = CanvasSize(
+    width: 8 * defaultCelTileSize,
+    height: 8 * defaultCelTileSize,
+  );
+  const tileSize = defaultCelTileSize;
   final farTile = TileCoord(x: 7, y: 7);
   final tile = BitmapTile.blank(size: tileSize);
 

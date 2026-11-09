@@ -5,12 +5,15 @@ import 'dart:typed_data';
 
 import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart' show BrushDualView;
+import '../models/brush_frame_key.dart';
 import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
+import '../native/engine_tile_ledger.dart';
 import 'brush_stamp_span_kernel.dart';
 
 /// BB-1 (R26 #9): the stroke-level blend kernel.
@@ -38,7 +41,11 @@ import 'brush_stamp_span_kernel.dart';
 
 /// The surface's straight-RGBA pixels within [bounds], BOUNDS-LOCAL
 /// (row-major, stride = bounds width). Missing tiles read transparent.
-Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
+Uint8List bitmapSurfaceRegionPixels(
+  BitmapSurface surface,
+  DirtyRegion bounds, {
+  TileBytesOf bytesOf = readTilesInPlace,
+}) {
   final width = bounds.rightExclusive - bounds.left;
   final height = bounds.bottomExclusive - bounds.top;
   final region = Uint8List(width * height * 4);
@@ -46,30 +53,36 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
     return region;
   }
   final tileSize = surface.tileSize;
-  for (final covered in tilesCovering(surface, bounds)) {
-    final worldLeft = covered.worldLeft;
-    final worldTop = covered.worldTop;
+  final covering = tilesCovering(surface, bounds).toList();
+  var next = 0;
+  bytesOf([for (final covered in covering) covered.tile], (tilePixels) {
+    final covered = covering[next];
+    next += 1;
     final copyLeft = covered.left;
-    final copyTop = covered.top;
-    final copyRight = covered.rightExclusive;
-    final copyBottom = covered.bottomExclusive;
-    final rowBytes = (copyRight - copyLeft) * 4;
-    // Inside readPixels: the tile is the receiver, so its buffer cannot
-    // be finalized out from under these reads (see BitmapTile.readPixels —
-    // the live rasterizer's copy of this exact loop, `_copyBaseRectInto`,
-    // is where that bug was caught).
-    covered.tile.readPixels((_, tilePixels) {
-      for (var y = copyTop; y < copyBottom; y += 1) {
-        final srcOffset =
-            ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
-        final dstOffset =
-            ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
-        region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
-      }
-    });
-  }
+    final rowBytes = (covered.rightExclusive - copyLeft) * 4;
+    for (var y = covered.top; y < covered.bottomExclusive; y += 1) {
+      final srcOffset =
+          ((y - covered.worldTop) * tileSize + (copyLeft - covered.worldLeft)) *
+          4;
+      final dstOffset =
+          ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
+      region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
+    }
+  });
   return region;
 }
+
+/// [bitmapSurfaceRegionPixels], each tile read back from the engine: what a
+/// plugin is handed (flip lane ⓓ-4). Waits for the GPU.
+Uint8List engineSurfaceRegionPixels(
+  BitmapSurface surface,
+  DirtyRegion bounds,
+) => bitmapSurfaceRegionPixels(
+  surface,
+  bounds,
+  bytesOf: (tiles, use) =>
+      EngineTileLedger.instance.readEach(BrushFrameKey.noCel, tiles, use),
+);
 
 /// THE selection rule (R26 #18): scales a straight-alpha stroke buffer's
 /// ALPHA by [mask]'s coverage, in place.

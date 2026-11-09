@@ -391,10 +391,6 @@ BitmapSurface laidCelSurface(
 /// floor, as the blob's did.
 const int anicelCelBinaryVersion = 5;
 
-/// How a cel's writer is handed its tiles' bytes: each of [tiles] in order,
-/// a view good only inside [use].
-typedef TileBytesOf =
-    void Function(List<BitmapTile> tiles, void Function(Uint8List bytes) use);
 
 /// A cel's stream, taken straight off its SURFACE — without the defensive
 /// pixel copy per tile that building an [AnicelCelEntry] first would make.

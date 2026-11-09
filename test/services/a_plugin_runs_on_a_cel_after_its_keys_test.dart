@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -34,8 +35,10 @@ import '../helpers/a_plugin_that_shifts.dart';
 /// the cut is known: its build, the frame, and the rows it reads as their
 /// own cels hold them.
 void main() {
-  const tileSize = 4;
-  const paper = CanvasSize(width: 8, height: 4);
+  const tileSize = defaultCelTileSize;
+  const paper = CanvasSize(width: 2 * tileSize, height: tileSize);
+  // The bytes of (-2, 1) in the tile left of the paper.
+  const pastTheWall = (2 * tileSize - 2) * 4;
 
   final description = FxPluginDescription.fromJson({
     'spec': 1,
@@ -180,20 +183,37 @@ void main() {
   });
 
   group('the pass', () {
+    test('🚨reads the cel back from the engine, every tile in one ask', () {
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+      final read = <int>[];
+      EngineTileLedger.debugBeforeRead = (tiles) => read.add(tiles.length);
+
+      celSurfaceAsShown(celWith({(1, 1): red, (tileSize + 1, 1): green}), [
+        plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
+      ]);
+
+      expect(read, [2]);
+    });
+
     test('moves a pixel across a tile\'s edge — the cel is one picture', () {
       final runner = ShiftingFxPlugin();
-      final cel = celWith({(3, 1): red});
+      final cel = celWith({(tileSize - 1, 1): red});
 
       final shown = celSurfaceAsShown(cel, [
         plugin(run: fxPluginRunOf(runner)),
       ]);
 
-      expect(pixelOf(shown, 4, 1), red);
-      expect(pixelOf(shown, 3, 1), [0, 0, 0, 0]);
+      expect(pixelOf(shown, tileSize, 1), red);
+      expect(pixelOf(shown, tileSize - 1, 1), [0, 0, 0, 0]);
       expect(shown.tileAt(TileCoord(x: 0, y: 0)), isNull,
           reason: 'a tile left clear is dropped, as a commit drops one');
       // The paper, wider by the reach the plugin named, at its place.
-      expect(runner.inputs.single, (left: -1, top: -1, width: 10, height: 6));
+      expect(runner.inputs.single, (
+        left: -1,
+        top: -1,
+        width: paper.width + 2,
+        height: paper.height + 2,
+      ));
     });
 
     test('takes in the ink past the paper too, and reaches no further than '
@@ -207,7 +227,8 @@ void main() {
           // (-2, 1): on the pasteboard, left of the paper.
           TileCoord(x: -1, y: 0): BitmapTile(
             size: tileSize,
-            pixels: Uint8List(tileSize * tileSize * 4)..setAll(24, red),
+            pixels: Uint8List(tileSize * tileSize * 4)
+              ..setAll(pastTheWall, red),
           ),
         },
       );
@@ -216,8 +237,19 @@ void main() {
         plugin(run: fxPluginRunOf(runner)),
       ]);
 
-      expect(runner.inputs.single, (left: -4, top: 0, width: 12, height: 4));
-      expect(shown.tileAt(TileCoord(x: -1, y: 0))!.pixels.sublist(24, 28), red);
+      expect(runner.inputs.single, (
+        left: -tileSize,
+        top: 0,
+        width: paper.width + tileSize,
+        height: paper.height,
+      ));
+      expect(
+        shown
+            .tileAt(TileCoord(x: -1, y: 0))!
+            .pixels
+            .sublist(pastTheWall, pastTheWall + 4),
+        red,
+      );
 
       final far = ShiftingFxPlugin(by: 1000);
       celSurfaceAsShown(celWith({(1, 1): red}), [
@@ -225,11 +257,16 @@ void main() {
       ]);
       expect(
         far.inputs.single,
-        (left: -8, top: -8, width: 24, height: 20),
+        (
+          left: -paper.width,
+          top: -paper.width,
+          width: 3 * paper.width,
+          height: paper.height + 2 * paper.width,
+        ),
         reason: 'as far as the cel is long, and no further',
       );
 
-      final edge = celSurfaceAsShown(celWith({(7, 1): red}), [
+      final edge = celSurfaceAsShown(celWith({(paper.width - 1, 1): red}), [
         plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
       ]);
       expect(
@@ -262,13 +299,13 @@ void main() {
       ]);
 
       // Row 1 of the tile left of the paper: its last pixel is x -1, in the
-      // plugin's reach; its first is x -4, past it.
+      // plugin's reach; its first is a tile left of the paper, past it.
       final row = shown
           .tileAt(TileCoord(x: -1, y: 0))!
           .pixels
           .sublist(tileSize * 4, tileSize * 8);
       expect(
-        [row.sublist(12, 16), row.sublist(0, 4)],
+        [row.sublist((tileSize - 1) * 4, tileSize * 4), row.sublist(0, 4)],
         [green, [0, 0, 0, 0]],
       );
     });
@@ -295,7 +332,7 @@ void main() {
       ]);
 
       // No reach: the paper itself.
-      const at = (2 * 8 + 5) * 4;
+      final at = (2 * paper.width + 5) * 4;
       expect(runner.lastInput.sublist(at, at + 4), [100, 50, 25, 128]);
       expect(pixelOf(shown, 5, 2), [199, 100, 50, 128]);
     });
@@ -312,7 +349,7 @@ void main() {
 
       expect(runner.lastValues, [0, 0, 0, 0, 0, 0, 0, 0]);
       final layer = runner.lastLayers.single;
-      expect((layer.left, layer.top, layer.width), (0, 0, 8));
+      expect((layer.left, layer.top, layer.width), (0, 0, paper.width));
       const at = 6 * 4;
       expect(layer.pixels.sublist(at, at + 4), green);
     });
@@ -446,7 +483,7 @@ void main() {
       -30, 0, 0, 0, //
       0x33 / 255, 0x66 / 255, 0x99 / 255, 0x80 / 255,
       3, 1, 0, 0,
-      4, 2, 0, 0, // at rest: the paper's middle
+      tileSize, tileSize / 2, 0, 0, // at rest: the paper's middle
       1, 0, 0, 0,
       1, 0, 0, 0,
       -1, 0, 0, 0,
