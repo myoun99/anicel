@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
 import '../core/in_flight.dart';
 import '../models/bitmap_surface.dart';
@@ -1702,7 +1703,16 @@ class BrushFrameStore {
       // two were matched on purpose (fixing one alone would make it a
       // copy of the other), so they moved together. One copy of the
       // payload instead of four — see [compressAnicelPayloadInWorker].
-      final body = encodeCelEntryFromSurface(key, surface);
+      final Uint8List body;
+      try {
+        body = encodeCelEntryFromSurface(key, surface);
+      } on GpuReadFailed {
+        // A cel the engine will not give back cannot be parked, and no one
+        // waits on this pass to be told: it ends as a refused park ends
+        // it, the cel still hot (저장's review of the flip lane, 11-09).
+        _coolingStoodDown = true;
+        return;
+      }
       final compressed = await compressAnicelPayloadInWorker(body);
       final blob = AnicelCelBlob.fromCompressedBody(
         key: key,

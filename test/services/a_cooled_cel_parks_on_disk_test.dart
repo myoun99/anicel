@@ -15,6 +15,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
 /// 🚨★★★**A COOLED CEL IS UNSAVED WORK, AND IT NOW LIVES ON DISK.**
 ///
@@ -199,5 +201,29 @@ void main() {
 
     expect(store.isCelCold(k1), isFalse);
     expect(store.celHasRenderableContent(k1), isTrue);
+  });
+
+  test('🚨 a read the engine refuses is a park refused — no one waits on the '
+      'pass to be told, the cel stays HOT, and no pass runs again', () async {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    var reads = 0;
+    EngineTileLedger.debugBeforeRead = (_) {
+      reads += 1;
+      throw GpuReadFailed('lost');
+    };
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    store.storeBakedSurface(k1, inked(11));
+    store.storeBakedSurface(key('f2'), inked(13));
+
+    await store.drainCooling();
+
+    expect(reads, 1, reason: 'the pass ended at the first refusal');
+    expect(store.isCelCold(k1), isFalse);
+    expect(store.celHasRenderableContent(k1), isTrue);
+
+    store.coolToBudget();
+    await store.drainCooling();
+    expect(reads, 1, reason: 'stood down, as after a refused park');
   });
 }
