@@ -14,7 +14,7 @@ use crate::kernels::blend::mode::{
     DIFFERENCE, ERASE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, PLUS, SCREEN,
 };
 use crate::kernels::chain::{Chained, Op};
-use crate::kernels::dab::stamp::tests::stamps;
+use crate::kernels::dab::stamp::tests::{EVERYWHERE, stamps};
 use crate::kernels::dab::stamp::{Paint, Source, Stamped};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
@@ -2770,7 +2770,7 @@ fn a_picture_s_stamp_lands_as_its_words() {
     let words = [RED, RED & 0x00ff_ffff | 128 << 24, 0x00ff_ffff];
     let pixels = words_buffer(rig().engine, "picture", &words, wgpu::BufferUsages::STORAGE);
     let boxed = Boxed { pixels: &pixels, size: (3, 1) };
-    let source = Source::Picture { picture: &boxed, at: (127, 5) };
+    let source = Source::Picture { picture: &boxed, at: (127, 5), within: EVERYWHERE };
     let (out, tiles) = stamped_on_blue(&source, NORMAL);
     let at = |x, y| pixel_at(&out, &tiles, x, y);
     let blue = bytes_of(BLUE);

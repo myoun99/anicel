@@ -180,24 +180,26 @@ final GpuEngine _engine;
     return tile;
   }
 
-  /// What [stroke] makes of the tiles [asks]: `GpuStroke.land`, each result
-  /// a tile of its own, on [cel]'s pages. A full pool lets go what no call
-  /// holds, then stores past the budget, as [_store] does: what is on the
-  /// way to the screen has no fallback.
-  List<LandedStrokeTile> land(
+  /// The pages what lands takes: every stroke's and stamp's result, a few
+  /// pages between them, whatever cels they land on.
+  static final Object landedCel = Object();
+
+  /// What [by] makes of the tiles [asks] — `GpuStroke.land`,
+  /// `GpuStampLanding.land` —, each result a tile of its own, on [cel]'s
+  /// pages; [compared], [by]'s, says the results' ink is known. A full pool
+  /// lets go what no call holds, then stores past the budget, as [_store]
+  /// does: what is on the way to the screen has no fallback.
+  List<LandedTile> land(
     Object cel,
-    GpuStroke stroke,
-    List<StrokeTileAsk> asks, {
-    int opacity = 65535,
-    required int mode,
-    GpuMask? mask,
+    List<TileAsk> asks, {
+    required LandedBy by,
     bool compared = false,
   }) => held((hold) {
     final under = hold.slotsOf(cel, [
       for (final ask in asks) ?ask.under,
     ]);
     var next = 0;
-    final asked = <GpuStrokeAsk>[
+    final asked = <GpuTileAsk>[
       for (final ask in asks)
         (
           column: ask.column,
@@ -205,16 +207,8 @@ final GpuEngine _engine;
           under: ask.under == null ? null : under[next++],
         ),
     ];
-    List<GpuLanded> landOf(List<GpuStrokeAsk> asked) => stroke.land(
-      appGpuComposite,
-      pool,
-      _cels.putIfAbsent(cel, pool.cel),
-      asked,
-      opacity: opacity,
-      mode: mode,
-      mask: mask,
-      compared: compared,
-    );
+    List<GpuLanded> landOf(List<GpuTileAsk> asked) =>
+        by(pool, _cels.putIfAbsent(cel, pool.cel), asked);
     final landed = landOf(asked);
     if (landed.length < asked.length) {
       _letGoWhere((tile) => !_holds.any((hold) => hold._tiles.contains(tile)));
@@ -227,7 +221,7 @@ final GpuEngine _engine;
       if (landed.length < asked.length) {
         throw StateError(
           'the device lands ${landed.length} of the ${asked.length} tiles '
-          'a stroke made',
+          'it was asked for',
         );
       }
     }
@@ -456,13 +450,17 @@ final GpuEngine _engine;
   }
 }
 
-/// A tile a stroke was asked for: its [column] and [row], and the cel's tile
-/// there, if it has one.
-typedef StrokeTileAsk = ({int column, int row, BitmapTile? under});
+/// A tile a landing was asked for: its [column] and [row], and the cel's
+/// tile there, if it has one.
+typedef TileAsk = ({int column, int row, BitmapTile? under});
 
-/// What a stroke made of a tile asked: what it is beside the tile under it,
-/// and the tile, where one landed.
-typedef LandedStrokeTile = ({GpuChange change, BitmapTile? tile});
+/// What a landing made of a tile asked: what it is beside the tile under
+/// it, and the tile, where one landed.
+typedef LandedTile = ({GpuChange change, BitmapTile? tile});
+
+/// What makes a landing of the tiles asked, on a cel of a pool.
+typedef LandedBy =
+    List<GpuLanded> Function(GpuPool pool, int cel, List<GpuTileAsk> asked);
 
 /// A slot a tile has here, its tile held weakly: being stored must not keep
 /// a tile alive.

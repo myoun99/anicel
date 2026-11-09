@@ -1,12 +1,18 @@
 //! A stroke's C ABI (flip lane ⓒ): the app piles its dabs on a stroke, and
 //! asks it what it makes of the tiles of a cel.
 
-use super::stroke::{Asked, Laid, Stroke};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use super::landing::{Asked, Laid};
+use super::stamp::{Source, StampLanding};
+use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::Engine;
+use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::{Composite, NO_TILE, TileAt};
 use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::warp::Boxed;
 use crate::kernels::write::Change;
 
 /// The entries of a table of evening (`Dab::evening`).
@@ -249,30 +255,49 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
     changes: *mut u8,
 ) -> isize {
     // SAFETY: see the function's contract.
-    let (stroke, engine, composite, pool, asks, under) = unsafe {
-        (
-            &*stroke,
-            &*engine,
-            &*composite,
-            &mut *pool,
-            std::slice::from_raw_parts(asks, 2 * count),
-            std::slice::from_raw_parts(under, count),
-        )
-    };
-    let asked: Vec<Asked> = asks
-        .chunks_exact(2)
-        .zip(under)
-        .map(|(tile, &word)| Asked { column: tile[0], row: tile[1], under: TileAt::of_word(word) })
-        .collect();
+    let (stroke, engine, composite, pool) =
+        unsafe { (&*stroke, &*engine, &*composite, &mut *pool) };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count) };
     // SAFETY: see the function's contract.
     let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
     let laid = Laid { opacity, mode, mask: mask.as_ref() };
-    let Some(landed) = stroke.land(engine, (composite, pool, Cel(cel)), &asked, &laid, compared)
-    else {
+    let landed = stroke.land(engine, (composite, pool, Cel(cel)), &asked, &laid, compared);
+    // SAFETY: see the function's contract.
+    unsafe { reported(landed, places, changes) }
+}
+
+/// The tiles a landing is asked: `asks` their column and row, `under` the
+/// cel's tile at each as a tile set names one.
+///
+/// # Safety
+/// `asks` holds `2 × count` and `under` `count`.
+unsafe fn asked_of(asks: *const i32, under: *const u32, count: usize) -> Vec<Asked> {
+    // SAFETY: see the function's contract.
+    let (asks, under) = unsafe {
+        (std::slice::from_raw_parts(asks, 2 * count), std::slice::from_raw_parts(under, count))
+    };
+    asks.chunks_exact(2)
+        .zip(under)
+        .map(|(tile, &word)| Asked { column: tile[0], row: tile[1], under: TileAt::of_word(word) })
+        .collect()
+}
+
+/// Writes each landed tile's `places` and `changes`, and returns how many
+/// landed; -1 where the landing failed.
+///
+/// # Safety
+/// `places` and `changes` hold as many as were asked, and no more land.
+unsafe fn reported(
+    landed: Option<Vec<(Change, Option<TileAt>)>>,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    let Some(landed) = landed else {
         return -1;
     };
     for (at, (change, place)) in landed.iter().enumerate() {
-        // SAFETY: `places` and `changes` hold `count` each, and no more land.
+        // SAFETY: see the function's contract.
         unsafe {
             *places.add(at) = place.map_or(NO_TILE, TileAt::word);
             *changes.add(at) = match change {
@@ -283,4 +308,130 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
         }
     }
     landed.len() as isize
+}
+
+/// A stamp's picture kept on the GPU: a selection moved lands the same one
+/// at each step of the drag, its upload once.
+pub struct StampPicture {
+    pixels: wgpu::Buffer,
+    size: (u32, u32),
+}
+
+/// The bytes of every stamp's picture the app keeps, counted where they are
+/// made and let go, for the memory census.
+static STAMP_PICTURE_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// A picture of `width` × `height` straight RGBA8 pixels at `rgba`, row
+/// after row. Null where it holds no pixel; see the last error.
+///
+/// # Safety
+/// `engine` is live and `rgba` holds `width × height × 4`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
+    engine: *const Engine,
+    rgba: *const u8,
+    width: u32,
+    height: u32,
+) -> *mut StampPicture {
+    if width == 0 || height == 0 {
+        fail::<()>(format!("a picture of {width}x{height} holds no pixel"));
+        return std::ptr::null_mut();
+    }
+    let bytes = u64::from(width) * u64::from(height) * 4;
+    // SAFETY: see the function's contract.
+    let (engine, rgba) = unsafe { (&*engine, std::slice::from_raw_parts(rgba, bytes as usize)) };
+    let pixels = wgpu::util::DeviceExt::create_buffer_init(
+        &engine.device,
+        &wgpu::util::BufferInitDescriptor {
+            label: Some("stamp picture"),
+            contents: rgba,
+            usage: wgpu::BufferUsages::STORAGE,
+        },
+    );
+    STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
+    Box::into_raw(Box::new(StampPicture { pixels, size: (width, height) }))
+}
+
+/// # Safety
+/// `picture` came from `gpu_engine_stamp_picture_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stamp_picture_free(picture: *mut StampPicture) {
+    if !picture.is_null() {
+        // SAFETY: see the function's contract.
+        let picture = unsafe { Box::from_raw(picture) };
+        STAMP_PICTURE_BYTES.fetch_sub(picture.pixels.size(), Ordering::Relaxed);
+    }
+}
+
+/// The bytes of every stamp's picture the app keeps.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_stamp_picture_bytes() -> u64 {
+    STAMP_PICTURE_BYTES.load(Ordering::Relaxed)
+}
+
+/// What lands a stamp on a cel, its kernels compiled. Null on failure; see
+/// the last error.
+///
+/// # Safety
+/// `engine` is live; the landing is freed before it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stamp_landing_new(engine: *const Engine) -> *mut StampLanding {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    StampLanding::new(engine).map_or(std::ptr::null_mut(), |landing| Box::into_raw(Box::new(landing)))
+}
+
+/// # Safety
+/// `landing` came from `gpu_engine_stamp_landing_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stamp_landing_free(landing: *mut StampLanding) {
+    if !landing.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(landing) });
+    }
+}
+
+/// Lays `picture`, its top-left pixel at (`left`, `top`), what of it lies
+/// `within` the canvas's [left, top, right, bottom), on the `count` tiles
+/// asked as [`gpu_engine_stroke_land`] says, compared: at `opacity` in
+/// `mode`, under `mask` if not null. Returns as it does.
+///
+/// # Safety
+/// As [`gpu_engine_stroke_land`]'s, `picture` live on `engine` and `within`
+/// holding four.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stamp_land(
+    landing: *const StampLanding,
+    engine: *const Engine,
+    composite: *const Composite,
+    pool: *mut Pool,
+    cel: u32,
+    picture: *const StampPicture,
+    left: i32,
+    top: i32,
+    within: *const i32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mode: u32,
+    mask: *const MaskPlane,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (landing, engine, composite, pool, picture, within) = unsafe {
+        (&*landing, &*engine, &*composite, &mut *pool, &*picture, *within.cast::<[i32; 4]>())
+    };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count) };
+    // SAFETY: see the function's contract.
+    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+    let laid = Laid { opacity, mode, mask: mask.as_ref() };
+    let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+    let source = Source::Picture { picture: &boxed, at: (left, top), within };
+    let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
+    // SAFETY: see the function's contract.
+    unsafe { reported(landed, places, changes) }
 }

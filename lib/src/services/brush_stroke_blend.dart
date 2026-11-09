@@ -13,6 +13,8 @@ import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuBlend;
+
 import '../native/engine_tile_ledger.dart';
 import 'brush_stamp_span_kernel.dart';
 
@@ -177,6 +179,17 @@ void applySelectionMaskToStrokeAlpha({
 /// The C-side `QA_STROKE_BLEND_*` id for [mode] (BB-N1, ABI 22) — a fixed
 /// FFI contract; both tables MUST stay in lockstep. color/erase never
 /// reach the blend kernel (they ride the ordinary stamp path).
+/// The blend the engine lands a stroke's picture in — the eraser's where
+/// [erase], the plain one for a brush that only paints.
+int engineBlendModeOf(BrushBlendMode mode, {required bool erase}) {
+  if (erase || mode == BrushBlendMode.erase) {
+    return GpuBlend.erase;
+  }
+  return mode == BrushBlendMode.color
+      ? GpuBlend.normal
+      : strokeBlendModeNativeId(mode);
+}
+
 int strokeBlendModeNativeId(BrushBlendMode mode) {
   return switch (mode) {
     // ⛔`behind` is the one id that is NOT separable — it is a porter-duff

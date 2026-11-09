@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:gpu_engine/gpu_engine.dart';
+
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -13,10 +15,14 @@ import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/pasteboard_bounds.dart';
+import '../models/placed_tile.dart';
 import '../models/tile_coord.dart';
+import '../native/app_gpu_engine.dart';
+import '../native/engine_tile_ledger.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
+import 'brush_live_stroke_rasterizer.dart';
 import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
@@ -47,6 +53,9 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
 }) {
+  if (surface.tileSize == gpuTileSide) {
+    return _materializedOnEngine(surface, sequence);
+  }
   // Strokes clip at the PASTEBOARD (as far past the canvas as the
   // project's size reaches, the canvas itself when it is off — I-109),
   // not the canvas — drawing off the stage is the point.
@@ -137,6 +146,159 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     changedCoords: changedCoords,
     probeName: 'commit.putTiles',
   );
+}
+
+/// [sequence] laid on [surface] by the engine (flip lane ⓒ), in its order:
+/// a run of brush dabs piled and laid as one stroke, each stamp by itself —
+/// a lift's landing means what it says only dab by dab. What each lands on
+/// is what the one before it left.
+BrushSurfaceMaterialization _materializedOnEngine(
+  BitmapSurface surface,
+  BrushDabSequence sequence,
+) {
+  var landed = surface;
+  final changed = <TileCoord>{};
+  void put(List<PlacedTile> tiles) {
+    if (tiles.isNotEmpty) {
+      landed = landed.putMaterializedTiles(tiles);
+      changed.addAll(tiles.map((tile) => tile.coord));
+    }
+  }
+
+  final dabs = sequence.dabs;
+  var at = 0;
+  while (at < dabs.length) {
+    final first = dabs[at];
+    final stamp = first.stamp;
+    if (stamp != null) {
+      at += 1;
+      put(
+        _stampOnEngine(
+          landed,
+          stamp,
+          stamp.landingRect(first.center),
+          opacity: first.opacity,
+          mode: engineBlendModeOf(BrushBlendMode.color, erase: first.erase),
+        ),
+      );
+      continue;
+    }
+    var end = at + 1;
+    while (end < dabs.length &&
+        dabs[end].stamp == null &&
+        dabs[end].erase == first.erase) {
+      end += 1;
+    }
+    put(_strokeOnEngine(landed, dabs.sublist(at, end), erase: first.erase));
+    at = end;
+  }
+  final coords = changed.toList()..sort(TileCoord.compareRowMajor);
+  return BrushSurfaceMaterialization(
+    surface: landed,
+    dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
+  );
+}
+
+/// [dabs] piled and laid on [surface] as the live stroke is: the tiles they
+/// change.
+List<PlacedTile> _strokeOnEngine(
+  BitmapSurface surface,
+  List<BrushDab> dabs, {
+  required bool erase,
+}) {
+  final rasterizer = BrushLiveStrokeRasterizer(
+    pasteboard: surface.pasteboard,
+    tileSize: surface.tileSize,
+  )..blendFrom(dabs, from: 0);
+  try {
+    return [
+      for (final promoted in rasterizer.promoteStrokeTiles(
+        base: surface,
+        mode: BrushBlendMode.color,
+        erase: erase,
+      ))
+        (coord: promoted.coord, tile: promoted.tile),
+    ];
+  } finally {
+    rasterizer.clear();
+  }
+}
+
+/// The pictures of the stamps landed, each uploaded once: a selection moved
+/// lands the same one at each step of the drag.
+final Expando<GpuStampPicture> _stampPictures = Expando();
+
+/// [stamp] over [landing], what the pasteboard's wall leaves of it — a
+/// selection dropped past the stage's edge keeps its pixels there —, laid
+/// on [surface]: the tiles it changes, a blank one where none is left.
+List<PlacedTile> _stampOnEngine(
+  BitmapSurface surface,
+  BrushStampImage stamp,
+  DirtyRegion landing, {
+  required double opacity,
+  required int mode,
+}) {
+  final picture = _stampPictures[stamp] ??= GpuStampPicture(
+    appGpuEngine,
+    stamp.rgba,
+    stamp.width,
+    stamp.height,
+  );
+  return _pictureOnEngine(
+    surface,
+    picture,
+    landing,
+    opacity: opacity,
+    mode: mode,
+  );
+}
+
+/// [picture] over [landing], at [opacity] in [mode].
+List<PlacedTile> _pictureOnEngine(
+  BitmapSurface surface,
+  GpuStampPicture picture,
+  DirtyRegion landing, {
+  required double opacity,
+  required int mode,
+}) {
+  final clip = landing.intersection(surface.pasteboard.region);
+  if (clip == null || opacity == 0.0) {
+    return const [];
+  }
+  final tileSize = surface.tileSize;
+  final (:firstX, :lastX, :firstY, :lastY) = clip.tileRange(tileSize: tileSize);
+  final coords = [
+    for (var y = firstY; y <= lastY; y += 1)
+      for (var x = firstX; x <= lastX; x += 1) TileCoord(x: x, y: y),
+  ];
+  final landed = EngineTileLedger.instance.land(
+    EngineTileLedger.landedCel,
+    [
+      for (final coord in coords)
+        (column: coord.x, row: coord.y, under: surface.tileAt(coord)),
+    ],
+    by: (pool, cel, asked) => appGpuStampLanding.land(
+      appGpuComposite,
+      pool,
+      cel,
+      picture,
+      left: landing.left,
+      top: landing.top,
+      within: (clip.left, clip.top, clip.rightExclusive, clip.bottomExclusive),
+      asks: asked,
+      opacity: (opacity * 65535).round(),
+      mode: mode,
+    ),
+    compared: true,
+  );
+  return [
+    for (var at = 0; at < landed.length; at += 1)
+      if (landed[at].change != GpuChange.same)
+        (
+          coord: coords[at],
+          tile: landed[at].tile ?? BitmapTile.blank(size: tileSize),
+        ),
+  ];
 }
 
 /// The commit tail both landings share: the CHANGED scratch tiles become
@@ -330,6 +492,23 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
+    );
+  }
+  if (surface.tileSize == gpuTileSide) {
+    // One landing whatever the blend: the engine lays the stroke's picture
+    // in its mode.
+    final tiles = _pictureOnEngine(
+      surface,
+      GpuStampPicture(appGpuEngine, strokePixels, width, height),
+      bounds,
+      opacity: 1,
+      mode: engineBlendModeOf(blendMode, erase: erase),
+    );
+    final coords = [for (final tile in tiles) tile.coord]
+      ..sort(TileCoord.compareRowMajor);
+    return BrushSurfaceMaterialization(
+      surface: coords.isEmpty ? surface : surface.putMaterializedTiles(tiles),
+      dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
     );
   }
   BrushDab boundsStampDab({

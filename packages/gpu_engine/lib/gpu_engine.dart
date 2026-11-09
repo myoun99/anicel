@@ -503,12 +503,50 @@ final class GpuDab {
 /// (rust/src/kernels/write/mod.rs `Change`).
 enum GpuChange { same, inked, cleared }
 
-/// A tile a stroke was asked for: its [column] and [row] and the cel's tile
+/// A tile a landing was asked for: its [column] and [row] and the cel's tile
 /// there, if it has one.
-typedef GpuStrokeAsk = ({int column, int row, GpuTile? under});
+typedef GpuTileAsk = ({int column, int row, GpuTile? under});
 
-/// What a stroke made of a tile asked: what it is, and where it landed.
+/// What a landing made of a tile asked: what it is, and where it landed.
 typedef GpuLanded = ({GpuChange change, GpuTile? tile});
+
+/// [asks] as a landing's call takes them, and what it wrote read back.
+List<GpuLanded> _landed(
+  List<GpuTileAsk> asks,
+  int Function(
+    Arena arena,
+    Pointer<Int32> asks,
+    Pointer<Uint32> under,
+    Pointer<Uint32> places,
+    Pointer<Uint8> changes,
+  )
+  call,
+) => using((arena) {
+  final count = asks.length;
+  final coordinates = arena<Int32>(_held(2 * count));
+  final under = arena<Uint32>(_held(count));
+  final places = arena<Uint32>(_held(count));
+  final changes = arena<Uint8>(_held(count));
+  for (var at = 0; at < count; at++) {
+    final (:column, :row, under: tile) = asks[at];
+    coordinates[2 * at] = column;
+    coordinates[2 * at + 1] = row;
+    under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+  }
+  final landed = call(arena, coordinates, under, places, changes);
+  if (landed < 0) {
+    throw StateError(_lastError());
+  }
+  return [
+    for (var at = 0; at < landed; at++)
+      (
+        change: GpuChange.values[changes[at]],
+        tile: places[at] == _noTile
+            ? null
+            : (page: places[at] >> 16, slot: places[at] & 0xFFFF),
+      ),
+  ];
+});
 
 /// A stroke's tiles on the GPU and what it makes of a cel
 /// (rust/src/kernels/dab/stroke.rs).
@@ -606,24 +644,14 @@ class GpuStroke {
     GpuComposite composite,
     GpuPool pool,
     int cel,
-    List<GpuStrokeAsk> asks, {
+    List<GpuTileAsk> asks, {
     int opacity = 65535,
     required int mode,
     GpuMask? mask,
     bool compared = false,
-  }) => using((arena) {
-    final count = asks.length;
-    final coordinates = arena<Int32>(_held(2 * count));
-    final under = arena<Uint32>(_held(count));
-    final places = arena<Uint32>(_held(count));
-    final changes = arena<Uint8>(_held(count));
-    for (var at = 0; at < count; at++) {
-      final (:column, :row, under: tile) = asks[at];
-      coordinates[2 * at] = column;
-      coordinates[2 * at + 1] = row;
-      under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
-    }
-    final landed = rust.strokeLand(
+  }) => _landed(
+    asks,
+    (_, coordinates, under, places, changes) => rust.strokeLand(
       _stroke,
       _engine._engine,
       composite._composite,
@@ -631,33 +659,128 @@ class GpuStroke {
       cel,
       coordinates,
       under,
-      count,
+      asks.length,
       opacity,
       mode,
       mask?._mask ?? nullptr,
       compared,
       places,
       changes,
-    );
-    if (landed < 0) {
-      throw StateError(_lastError());
-    }
-    return [
-      for (var at = 0; at < landed; at++)
-        (
-          change: GpuChange.values[changes[at]],
-          tile: places[at] == _noTile
-              ? null
-              : (page: places[at] >> 16, slot: places[at] & 0xFFFF),
-        ),
-    ];
-  });
+    ),
+  );
 
   /// Clears what the stroke wrote and lets its tiles go; the pages stay.
   void clear() => rust.strokeClear(_stroke, _engine._engine);
 
   /// Frees the stroke; before its engine is closed.
   void free() => rust.strokeFree(_stroke);
+}
+
+/// A stamp's picture on the GPU, straight RGBA8: a selection moved lands
+/// the same one at each step of the drag, its upload once. Goes with the
+/// object.
+final class GpuStampPicture implements Finalizable {
+  /// [rgba], [width] × [height] row after row.
+  factory GpuStampPicture(
+    GpuEngine engine,
+    Uint8List rgba,
+    int width,
+    int height,
+  ) {
+    final made = using((arena) {
+      final bytes = arena<Uint8>(_held(rgba.length));
+      bytes.asTypedList(rgba.length).setAll(0, rgba);
+      return rust.stampPictureNew(engine._engine, bytes, width, height);
+    });
+    if (made == nullptr) {
+      throw StateError(_lastError());
+    }
+    final picture = GpuStampPicture._(made);
+    _freed.attach(picture, made.cast(), externalSize: rgba.length);
+    return picture;
+  }
+
+  GpuStampPicture._(this._picture);
+
+  static final NativeFinalizer _freed = NativeFinalizer(
+    Native.addressOf<NativeFunction<Void Function(Pointer<rust.StampPicture>)>>(
+      rust.stampPictureFree,
+    ).cast(),
+  );
+
+  /// The bytes of every picture alive, for the memory census.
+  static int get liveBytes => rust.stampPictureBytes();
+
+  final Pointer<rust.StampPicture> _picture;
+}
+
+/// What lands a stamp on a cel (rust/src/kernels/dab/stamp.rs).
+class GpuStampLanding {
+  /// Its kernels compiled on [engine].
+  factory GpuStampLanding(GpuEngine engine) {
+    final landing = rust.stampLandingNew(engine._engine);
+    if (landing == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuStampLanding._(engine, landing);
+  }
+
+  GpuStampLanding._(this._engine, this._landing);
+
+  final GpuEngine _engine;
+  final Pointer<rust.StampLanding> _landing;
+
+  /// Lays [picture], its top-left pixel at ([left], [top]), what of it lies
+  /// [within] the canvas's (left, top, right, bottom), on the tiles [asks]
+  /// at [opacity] (65535 whole) in [mode], under [mask] if any. Each result
+  /// compares with the tile under it, and takes a fresh slot of [cel] of
+  /// [pool] where it is neither that tile nor empty. As many of [asks], the
+  /// first, as [pool] has room for.
+  List<GpuLanded> land(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    GpuStampPicture picture, {
+    required int left,
+    required int top,
+    required (int, int, int, int) within,
+    required List<GpuTileAsk> asks,
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => _landed(
+    asks,
+    (arena, coordinates, under, places, changes) {
+      final (l, t, r, b) = within;
+      final box = arena<Int32>(4);
+      box[0] = l;
+      box[1] = t;
+      box[2] = r;
+      box[3] = b;
+      return rust.stampLand(
+        _landing,
+        _engine._engine,
+        composite._composite,
+        pool._pool,
+        cel,
+        picture._picture,
+        left,
+        top,
+        box,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask?._mask ?? nullptr,
+        places,
+        changes,
+      );
+    },
+  );
+
+  /// Frees it; before its engine is closed.
+  void free() => rust.stampLandingFree(_landing);
 }
 
 /// The blends the executor has beside the app's table of 1 to 27 — the C

@@ -20,6 +20,16 @@ GpuEngine? _engine;
 GpuComposite get appGpuComposite => _composite ??= GpuComposite(appGpuEngine);
 GpuComposite? _composite;
 
+/// What lands a stamp on [appGpuEngine], compiled the first time anything
+/// asks ([warmAppStampLanding] asks ahead of the first).
+GpuStampLanding get appGpuStampLanding =>
+    _stampLanding ??= GpuStampLanding(appGpuEngine);
+GpuStampLanding? _stampLanding;
+
+/// [appGpuStampLanding]'s kernels compiled ahead of the first fill or
+/// paste, which would otherwise wait for them.
+void warmAppStampLanding() => appGpuStampLanding;
+
 /// How [debugGpuAdapterChoice] opens the engine — read on this isolate:
 /// one [GpuEngine.opening] runs has its own, at the choice's default.
 GpuEngine Function() _opener() => switch (debugGpuAdapterChoice) {

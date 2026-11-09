@@ -282,9 +282,9 @@ void main() {
     final cel = Object();
     BitmapTile land() => ledger.land(
       cel,
-      made,
       [(column: 0, row: 0, under: null)],
-      mode: GpuBlend.normal,
+      by: (pool, cel, asked) =>
+          made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
     ).single.tile!;
     final first = land();
     final filler = [
@@ -320,9 +320,9 @@ void main() {
     final cel = Object();
     final landed = ledger.land(
       cel,
-      made,
       [(column: 0, row: 0, under: null)],
-      mode: GpuBlend.normal,
+      by: (pool, cel, asked) =>
+          made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
     ).single.tile!;
     expect(ledger.slotOf(landed), isNotNull);
     // The page full, the next store is past its budget, which lets go every

@@ -2,6 +2,7 @@ import 'dart:io' show ProcessInfo;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuStampPicture;
 
 import '../../native/engine_strokes.dart';
 import '../../native/engine_tile_ledger.dart';
@@ -278,7 +279,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
         bytes:
             BitmapTileImageCache.liveImageBytes +
             EngineTileLedger.appPoolBytes +
-            EngineStrokes.idleBytes,
+            EngineStrokes.idleBytes + GpuStampPicture.liveBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest

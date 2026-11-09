@@ -16,9 +16,10 @@
 //! the tiles it covers (`_stampPieces`) for its CPU's sake; here a tile it
 //! covers none of is laid as nothing, and the write path keeps the cel's
 //! tile there (`kernels/write`) — knowing which tiles those are before the
-//! plan is made would wait for the GPU to say. Where a stamp lands — the
-//! app clips a landing to the pasteboard's wall — is the landing's extent,
-//! not the stamp's.
+//! plan is made would wait for the GPU to say. The app clips a landing to
+//! the pasteboard's wall: a picture says what the wall left of it (`within`),
+//! a mask's box is made to it. ⛔Not the plan's extent, which cuts every row:
+//! a cel laid past the wall (`laidBounds`) keeps what lies there.
 //!
 //! Under a gradient (I-160, `_gradientRgba`) each pixel is the gradient's
 //! colour at its centre instead: this file turns the gradient's ends into
@@ -29,15 +30,18 @@
 #[path = "stamp_tests.rs"]
 pub(crate) mod tests;
 
+use super::landing::{self, Asked, Laid, Over};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_BYTES, TileSet};
+use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
+use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
     Encoded, PREMULTIPLY_WGSL, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane, tiles_a_page, whole,
     words_buffer,
 };
 use crate::kernels::warp::Boxed;
+use crate::kernels::write::{Change, Write};
 
 /// The stops a gradient is looked up in, `FillGradient.stops`' count
 /// (`_gradientStops`): four to each level a channel takes.
@@ -62,6 +66,8 @@ pub(crate) enum Source<'a> {
     Picture {
         picture: &'a Boxed<'a>,
         at: (i32, i32),
+        /// What of the canvas it lands on — [left, top, right, bottom).
+        within: [i32; 4],
     },
 }
 
@@ -113,7 +119,7 @@ struct Read<'a> {
     stride: u32,
     given: &'a wgpu::Buffer,
     pipeline: &'a wgpu::ComputePipeline,
-    rest: [u32; 7],
+    rest: [u32; 8],
     stops: Option<wgpu::Buffer>,
 }
 
@@ -224,19 +230,29 @@ impl Stamps {
                         along_x,
                         along_y,
                         u32::from(whole),
+                        0,
                     ],
                     stops,
                 })
             }
-            Source::Picture { picture, at } => {
+            Source::Picture { picture, at, within } => {
                 picture.checked()?;
+                let (width, height) = (picture.size.0 as i32, picture.size.1 as i32);
+                let left = at.0.max(within[0]);
+                let top = at.1.max(within[1]);
+                let right = (at.0 + width).min(within[2]);
+                let bottom = (at.1 + height).min(within[3]);
+                if right <= left || bottom <= top {
+                    return fail(format!("nothing of a picture at {at:?} lies in {within:?}"));
+                }
+                let origin = (top - at.1) as u32 * picture.size.0 + (left - at.0) as u32;
                 Some(Read {
-                    at,
-                    size: picture.size,
+                    at: (left, top),
+                    size: ((right - left) as u32, (bottom - top) as u32),
                     stride: picture.size.0,
                     given: picture.pixels,
                     pipeline: &self.picture,
-                    rest: [0; 7],
+                    rest: [0, 0, 0, 0, 0, 0, 0, origin],
                     stops: None,
                 })
             }
@@ -244,6 +260,38 @@ impl Stamps {
     }
 }
 
+/// What lands a stamp on a cel: the stamp's passes and the write path's.
+pub(crate) struct StampLanding {
+    stamps: Stamps,
+    write: Write,
+}
+
+impl StampLanding {
+    /// Its kernels compiled — or nothing, where the device binds too few
+    /// storage buffers a stage for them.
+    pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        Some(Self { stamps: Stamps::new(engine), write: Write::new(engine)? })
+    }
+
+    /// Lays `source` on the tiles `asked`, each result compared with the
+    /// tile under it and in a fresh slot of `cel` where it differs: a stamp
+    /// is a finished landing (`landing::land`).
+    pub(crate) fn land(
+        &self,
+        engine: &Engine,
+        (composite, pool, cel): (&Composite, &mut Pool, Cel),
+        source: &Source,
+        asked: &[Asked],
+        laid: &Laid,
+    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+        if asked.is_empty() {
+            return Some(Vec::new());
+        }
+        let Stamped { pages, set } = self.stamps.stamp(engine, source, pool.pages().len() as u16)?;
+        let over = Over { pages: &pages, set };
+        landing::land(engine, (composite, &self.write, pool, cel), over, asked, laid, true)
+    }
+}
 
 /// `gradient` as stamp.wgsl reads it over `mask`: its shape, its `from` and
 /// `to − from` in 1/256 px — each rounded once —, and its stops, each

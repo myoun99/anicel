@@ -51,6 +51,10 @@ final class DabTexture extends Opaque {}
 
 final class Stroke extends Opaque {}
 
+final class StampPicture extends Opaque {}
+
+final class StampLanding extends Opaque {}
+
 /// `DabSpec` (rust/src/kernels/dab/abi.rs), field by field.
 final class DabSpec extends Struct {
   @Double()
@@ -1266,6 +1270,75 @@ external int strokeLand(
   int mode,
   Pointer<MaskPlane> mask,
   bool compared,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
+);
+
+@Native<
+  Pointer<StampPicture> Function(Pointer<Engine>, Pointer<Uint8>, Uint32, Uint32)
+>(symbol: 'gpu_engine_stamp_picture_new')
+external Pointer<StampPicture> stampPictureNew(
+  Pointer<Engine> engine,
+  Pointer<Uint8> rgba,
+  int width,
+  int height,
+);
+
+@Native<Void Function(Pointer<StampPicture>)>(
+  symbol: 'gpu_engine_stamp_picture_free',
+)
+external void stampPictureFree(Pointer<StampPicture> picture);
+
+@Native<Uint64 Function()>(symbol: 'gpu_engine_stamp_picture_bytes')
+external int stampPictureBytes();
+
+@Native<Pointer<StampLanding> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_stamp_landing_new',
+)
+external Pointer<StampLanding> stampLandingNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<StampLanding>)>(
+  symbol: 'gpu_engine_stamp_landing_free',
+)
+external void stampLandingFree(Pointer<StampLanding> landing);
+
+@Native<
+  IntPtr Function(
+    Pointer<StampLanding>,
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<StampPicture>,
+    Int32,
+    Int32,
+    Pointer<Int32>,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    UintPtr,
+    Uint32,
+    Uint32,
+    Pointer<MaskPlane>,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_stamp_land')
+external int stampLand(
+  Pointer<StampLanding> landing,
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<StampPicture> picture,
+  int left,
+  int top,
+  Pointer<Int32> within,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  int mode,
+  Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
 );

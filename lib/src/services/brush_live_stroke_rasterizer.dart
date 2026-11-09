@@ -29,6 +29,7 @@ import 'selection_clip.dart';
 import 'brush_stroke_blend.dart'
     show
         bitmapSurfaceRegionPixels,
+        engineBlendModeOf,
         preBlendStrokeOverlayPixels,
         separableBlendModeNativeId,
         strokeBlendModeNativeId,
@@ -786,7 +787,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
   /// What the stroke makes of [coords] over [base]: its dabs laid at the
   /// slider's ceiling in the stroke's mode, under the selection.
-  List<LandedStrokeTile> _landOnEngine(
+  List<LandedTile> _landOnEngine(
     GpuStroke stroke,
     List<TileCoord> coords,
     BitmapSurface base,
@@ -800,16 +801,22 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final mask = _selectionMaskOver(coords);
     try {
       return EngineTileLedger.instance.land(
-        _strokesCel,
-        stroke,
+        EngineTileLedger.landedCel,
         [
           for (final coord in coords)
             (column: coord.x, row: coord.y, under: base.tileAt(coord)),
         ],
-        // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
-        opacity: (strokeOpacity * 65535).round(),
-        mode: _engineModeOf(mode, erase),
-        mask: mask,
+        by: (pool, cel, asked) => stroke.land(
+          appGpuComposite,
+          pool,
+          cel,
+          asked,
+          // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
+          opacity: (strokeOpacity * 65535).round(),
+          mode: engineBlendModeOf(mode, erase: erase),
+          mask: mask,
+          compared: compared,
+        ),
         compared: compared,
       );
     } finally {
@@ -817,18 +824,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
   }
 
-  /// The pages a stroke's results take: all strokes', a few pages between
-  /// them, whatever cels they land on.
-  static final Object _strokesCel = Object();
-
-  static int _engineModeOf(BrushBlendMode mode, bool erase) {
-    if (erase || mode == BrushBlendMode.erase) {
-      return GpuBlend.erase;
-    }
-    return mode == BrushBlendMode.color
-        ? GpuBlend.normal
-        : strokeBlendModeNativeId(mode);
-  }
 
   /// The selection over the box of [coords], a byte a pixel; null with no
   /// selection.
@@ -1390,9 +1385,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
     _viewsAt = _blendedDabCount;
     final coords = _tileCoords.values.toList();
-    final landed = EngineTileLedger.instance.land(_strokesCel, stroke, [
-      for (final coord in coords) (column: coord.x, row: coord.y, under: null),
-    ], mode: GpuBlend.normal);
+    final landed = EngineTileLedger.instance.land(
+      EngineTileLedger.landedCel,
+      [
+        for (final coord in coords)
+          (column: coord.x, row: coord.y, under: null),
+      ],
+      by: (pool, cel, asked) =>
+          stroke.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
+    );
     for (var at = 0; at < coords.length; at += 1) {
       final tile = landed[at].tile!;
       _tiles[_tileKey(coords[at].x, coords[at].y)] = tile.pixels;

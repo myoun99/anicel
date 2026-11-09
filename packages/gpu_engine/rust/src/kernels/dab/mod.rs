@@ -34,6 +34,7 @@
 
 pub(crate) mod abi;
 pub(crate) mod blur;
+pub(crate) mod landing;
 pub(crate) mod stamp;
 pub(crate) mod stroke;
 #[cfg(test)]

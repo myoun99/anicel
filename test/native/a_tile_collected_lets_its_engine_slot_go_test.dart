@@ -63,9 +63,14 @@ void main() {
     void landAndDrop() {
       final tile = ledger.land(
         a,
-        stroke,
         [(column: 0, row: 0, under: null)],
-        mode: GpuBlend.normal,
+        by: (pool, cel, asked) => stroke.land(
+          appGpuComposite,
+          pool,
+          cel,
+          asked,
+          mode: GpuBlend.normal,
+        ),
       ).single.tile;
       expect(tile!.isOnEngine, isTrue);
     }

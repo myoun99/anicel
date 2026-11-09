@@ -18,16 +18,11 @@ mod tests;
 
 use std::collections::HashMap;
 
+use super::landing::{self, Asked, Laid, Over, box_of};
 use super::{Dab, Dabs, Paper, Second, StrokeTile};
 use crate::device::Engine;
-use crate::fail;
-use crate::kernels::blend::mode;
-use crate::kernels::composite::{
-    Composite, Composited, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet,
-};
-use crate::kernels::mask::Mask;
+use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::pool::{Cel, Pool};
-use crate::kernels::shared::ResampleMap;
 use crate::kernels::write::{Change, Write};
 
 /// The tiles a page of the stroke's holds: its planes' 16 MiB, its view's 8
@@ -37,26 +32,6 @@ use crate::kernels::write::{Change, Write};
 const TILES_A_PAGE: usize = 128;
 /// A tile's bytes on the planes: two words a pixel.
 const PLANE_TILE_BYTES: u64 = TILE_TEXELS * 8;
-/// A row's opacity at whole, the executor's 16-bit scale.
-const WHOLE: u32 = 65535;
-
-/// How the stroke lays on a cel: at `opacity` (65535 whole) in `mode`
-/// (blend.wgsl's ids), under the selection `mask` if any.
-pub(crate) struct Laid<'a> {
-    pub(crate) opacity: u32,
-    pub(crate) mode: u32,
-    pub(crate) mask: Option<&'a Mask<'a>>,
-}
-
-/// A coordinate asked of a stroke: its tile's column and row, and the cel's
-/// tile there, if it has one.
-#[derive(Clone, Copy)]
-pub(crate) struct Asked {
-    pub(crate) column: i32,
-    pub(crate) row: i32,
-    pub(crate) under: Option<TileAt>,
-}
-
 /// The kernels a stroke runs and the pages it has made, its tiles on them.
 pub(crate) struct Stroke {
     dabs: Dabs,
@@ -128,70 +103,22 @@ impl Stroke {
         make_pages(engine, &mut self.view, pages, TILE_BYTES, "stroke view");
     }
 
-    /// What the stroke makes of the tiles `asked`, tile after tile in their
-    /// order: each the cel's with the stroke laid on it as `laid` says.
-    /// Submits the work, the caller waits.
-    fn made(
-        &self,
-        engine: &Engine,
-        composite: &Composite,
-        pool: &[wgpu::Buffer],
-        asked: &[Asked],
-        laid: &Laid,
-    ) -> Option<Composited> {
+    /// The stroke's tiles at the coordinates `asked`, in their box, on a
+    /// plan's pages from `first` on.
+    fn view_of(&self, asked: &[Asked], first: u16) -> Option<TileSet> {
         let (x0, y0, columns, rows) = box_of(asked)?;
-        // The stroke's pages follow the pool's: a plan's tiles name a place
-        // on its one list of pages.
-        let first = pool.len() as u16;
-        let pages: Vec<wgpu::Buffer> = pool.iter().chain(&self.view).cloned().collect();
-        let mut under = vec![None; columns as usize * rows as usize];
-        let mut view = under.clone();
+        let mut tiles = vec![None; columns as usize * rows as usize];
         for ask in asked {
             let at = (ask.row - y0) as usize * columns as usize + (ask.column - x0) as usize;
-            under[at] = ask.under;
-            view[at] = self.tiles.get(&(ask.column, ask.row)).map(|&TileAt { page, slot }| {
+            tiles[at] = self.tiles.get(&(ask.column, ask.row)).map(|&TileAt { page, slot }| {
                 TileAt { page: first + page, slot }
             });
         }
-        let set = |tiles| TileSet { x0, y0, columns, rows, tiles };
-        let sets = [set(under), set(view)];
-        let row = |set, opacity, mode, masked| Step::Row {
-            set,
-            keys: None,
-            chain: None,
-            map: ResampleMap::moved(0, 0),
-            matrix: None,
-            opacity,
-            mode,
-            masked,
-        };
-        let steps = [
-            row(0, WHOLE, mode::NORMAL, false),
-            row(1, laid.opacity, laid.mode, laid.mask.is_some()),
-        ];
-        let plan = Plan {
-            pages: &pages,
-            sets: &sets,
-            keys: &[],
-            matrices: &[],
-            chains: &[],
-            steps: &steps,
-            mask: laid.mask,
-        };
-        let tiles: Vec<(i32, i32)> = asked.iter().map(|ask| (ask.column, ask.row)).collect();
-        let side = TILE as i32;
-        let extent = [x0 * side, y0 * side, (x0 + columns as i32) * side, (y0 + rows as i32) * side];
-        composite.run(engine, &plan, &tiles, extent, composite.widest())
+        Some(TileSet { x0, y0, columns, rows, tiles })
     }
 
-    /// Lays the stroke on the tiles `asked` and puts each result in a fresh
-    /// slot of `cel`. Where `compared`, a result compares with the tile
-    /// under it first — waiting for the GPU — and takes no slot where it is
-    /// that tile (`Change::Same`) or has no ink left (`Change::Cleared`): a
-    /// finished stroke's question. Unasked, every result is `Change::Inked`
-    /// and a slot — a stroke on its way, whose frame does not wait.
-    ///
-    /// As many of `asked`, the first, as the pool has room for.
+    /// Lays the stroke on the tiles `asked`, each result in a fresh slot of
+    /// `cel`: `landing::land`.
     pub(crate) fn land(
         &self,
         engine: &Engine,
@@ -203,28 +130,9 @@ impl Stroke {
         if asked.is_empty() {
             return Some(Vec::new());
         }
-        let out = self.made(engine, composite, pool.pages(), asked, laid)?.out;
-        let changes = if compared {
-            let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
-            self.write.changed(engine, pool.pages(), &out, &under)?
-        } else {
-            vec![Change::Inked; asked.len()]
-        };
-        let mut landed = Vec::with_capacity(asked.len());
-        let mut writes = Vec::with_capacity(asked.len());
-        for (index, change) in changes.into_iter().enumerate() {
-            if change != Change::Inked {
-                landed.push((change, None));
-                continue;
-            }
-            let Ok(at) = pool.fresh(engine, cel) else {
-                break;
-            };
-            writes.push((index, at));
-            landed.push((change, Some(at)));
-        }
-        Write::put(engine, pool.pages(), &out, &writes)?;
-        Some(landed)
+        let set = self.view_of(asked, pool.pages().len() as u16)?;
+        let over = Over { pages: &self.view, set };
+        landing::land(engine, (composite, &self.write, pool, cel), over, asked, laid, compared)
     }
 
     /// Clears what the stroke wrote and lets its tiles go; the pages stay
@@ -297,19 +205,4 @@ fn reached_by(tiles: &HashMap<(i32, i32), TileAt>, dabs: &[Dab]) -> Vec<StrokeTi
         .collect();
     made.sort_by_key(|tile| (tile.at.page, tile.at.slot));
     made
-}
-
-/// The top-left column and row of the box of tiles `asked`, and how many of
-/// each it takes — or nothing, where it holds more words than one call can.
-fn box_of(asked: &[Asked]) -> Option<(i32, i32, u32, u32)> {
-    let column = |ask: &Asked| ask.column;
-    let row = |ask: &Asked| ask.row;
-    let x0 = asked.iter().map(column).min()?;
-    let y0 = asked.iter().map(row).min()?;
-    let columns = (asked.iter().map(column).max()? - x0 + 1) as u32;
-    let rows = (asked.iter().map(row).max()? - y0 + 1) as u32;
-    if u64::from(columns) * u64::from(rows) > u64::from(u32::MAX) {
-        return fail(format!("a box of {columns} × {rows} tiles"));
-    }
-    Some((x0, y0, columns, rows))
 }
