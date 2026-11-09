@@ -4,24 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/layer_blend_mode.dart';
-import 'package:anicel/src/models/project_background.dart';
-import 'package:anicel/src/models/rgba_color.dart';
-import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/services/bitmap_tile_rgba.dart';
-import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
-import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/models/composite_tree.dart';
-import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★A GROUP IS AN IMAGE — AND IT IS THE SAME PIXELS `saveLayer` MADE.
 ///
@@ -554,124 +539,6 @@ void main() {
         'still draw, not silently vanish');
     expect(escaped, 0, reason: 'the clamped blit must stay inside the bounds '
         'the saveLayer clipped to');
-  });
-
-  group('the stack tells the group what scale it is at', () {
-    // 🚨A `Canvas` will not say what its CTM is at, so the walk carries the
-    // number. Cut that wire and the group still draws — at the WRONG
-    // resolution, which no route-parity test can see because both routes
-    // would be cut together. This reads the number the group settled on.
-    const canvasSize = CanvasSize(width: 400, height: 300);
-
-    BitmapSurfacePainter inkedPage() {
-      var tile = BitmapTile.blank(size: 256);
-      tile = writeRgbaColorToBitmapTile(
-        tile: tile,
-        x: 4,
-        y: 4,
-        color: RgbaColor(r: 0, g: 0, b: 255, a: 255),
-      );
-      return BitmapSurfacePainter(
-        surface: BitmapSurface(
-          canvasSize: canvasSize,
-          tileSize: 256,
-          tiles: {TileCoord(x: 0, y: 0): tile},
-        ),
-        showTransparentBackground: false,
-      );
-    }
-
-    Future<void> paintFolder(
-      WidgetTester tester, {
-      required bool directWalk,
-      required double devicePixelRatio,
-    }) async {
-      tester.view.devicePixelRatio = devicePixelRatio;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      debugLastSubtreeRaster = null;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 200,
-                height: 150,
-                child: TheFrameAsItStands(
-                  nodes: [
-                    // ↩️A multiply folder, until an advanced blend went
-                    // over its backdrop (a-blurred-folder-cut-by-the-view-
-                    // moves-on-vulkan), and an add one until it did too
-                    // (brush-fidelity Q3); a strength below 1 needs the
-                    // buffer.
-                    const CompositeGroup<CanvasStackRow>(
-                      children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
-                      opacity: 0.5,
-                      blendMode: LayerBlendMode.normal,
-                    ),
-                  ],
-                  imageCache: LayerFrameImageCache(
-                    frameStore: BrushFrameStore(),
-                  ),
-                  canvasSize: canvasSize,
-                  viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
-                  activeSurfacePainter: inkedPage(),
-                  paintPaper: true,
-                  paperBackground: ProjectBackground.defaultBackground,
-                  debugDisableSingleBuffer: directWalk,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      // A pump builds and lays out; the number only moves inside
-      // CustomPainter.paint.
-      final painted = tester
-          .widgetList<CustomPaint>(
-            find.descendant(
-              of: find.byType(TheFrameAsItStands),
-              matching: find.byType(CustomPaint),
-            ),
-          )
-          .where((paint) => paint.painter != null)
-          .toList();
-      expect(painted, isNotEmpty);
-      const size = Size(200, 150);
-      final recorder = ui.PictureRecorder();
-      painted.first.painter!.paint(Canvas(recorder, Offset.zero & size), size);
-      recorder.endRecording().dispose();
-    }
-
-    testWidgets('the direct walk hands down zoom x devicePixelRatio', (
-      tester,
-    ) async {
-      await paintFolder(tester, directWalk: true, devicePixelRatio: 3);
-      expect(
-        debugLastSubtreeRaster,
-        isNotNull,
-        reason: 'the folder never rasterised at all',
-      );
-      expect(
-        debugLastSubtreeRaster!.scale,
-        3,
-        reason: 'drawn straight under the viewport transform, the group has '
-            'to match the CTM it lands in — a group rasterised at 1 while its '
-            'siblings draw at 3 is a soft folder next to sharp layers',
-      );
-    });
-
-    testWidgets('the canvas-resolution buffer hands down 1', (tester) async {
-      await paintFolder(tester, directWalk: false, devicePixelRatio: 3);
-      expect(debugLastSubtreeRaster, isNotNull);
-      expect(
-        debugLastSubtreeRaster!.scale,
-        1,
-        reason: 'the buffer records at canvas resolution, so a group inside '
-            'it is at canvas resolution too — this is the route that matches '
-            'the export',
-      );
-    });
   });
 
   test('an adjustment crossfade is the pixels the two saveLayers made', () async {

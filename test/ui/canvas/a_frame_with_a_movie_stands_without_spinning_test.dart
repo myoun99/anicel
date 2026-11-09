@@ -193,19 +193,10 @@ void main() {
       stackOf: (_) => nodes,
     ).pictures;
 
-    final recorder = ui.PictureRecorder();
-    pictures
-        .frameAsItStands(nodes, picture)
-        .drawing
-        .draw(ui.Canvas(recorder));
-    final drawn = recorder.endRecording();
-    final rgba = (await tester.runAsync(() async {
-      final image = await drawn.toImage(8, 8);
-      drawn.dispose();
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      return bytes!.buffer.asUint8List();
-    }))!;
+    final rgba = pixelsOfFrame(
+      pictures.frameAsItStands(nodes, picture),
+      const ui.Rect.fromLTWH(0, 0, 8, 8),
+    );
 
     const middle = (8 * 4 + 4) * 4;
     expect(

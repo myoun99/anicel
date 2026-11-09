@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -16,20 +17,17 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
-import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -53,21 +51,15 @@ typedef _Cel = ({
   _RowPaint paint,
 });
 
-/// 🚨★★★A FRAME'S ONE PICTURE IS WHAT THE CANVAS SHOWS OF IT
-/// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」).
+/// A FRAME'S WORLD IS THE PAGE AND WHAT ITS ROWS DRAW (one-picture-per-frame,
+/// D7-2-Q3=a — 「합성기는 하나」): ink past the page is in it, and what repeats
+/// the paper's edge is cut to the paper.
 ///
-/// The picture a frame is kept as is drawn off the tree the screen stacks
-/// ([stackedFrameOf]) by the canvas's own body (`frameDrawingOf`)
-/// with every row from its tiles, where the canvas draws that SAME tree as
-/// it stands while the picture is not there (`TheFrameAsItStands`) — ↩️each
-/// row as its cel's image, until no screen drew a row's image
-/// (one-picture-per-frame ②-5b-1). At 100% the two must be one picture,
-/// byte for byte, wherever the canvas shows the world — the page, and the
-/// pasteboard round it — through every road the body has: rows over one
-/// another, a blend over its backdrop and the paper, a blurred folder, a
-/// pose, a colour key, an adjustment, ink past the page, a blend inside a
-/// folder.
+/// ↩️It stood as the frame's picture and the canvas as it stands being one
+/// picture byte for byte, while they were two routes (until the engine laid
+/// both, flip lane ⓑ).
 void main() {
+  opensTheEnginesScreens();
   const tileSize = defaultCelTileSize;
   // 3 × 2 tiles: a pose and a blur reach across their edges.
   const canvasSize = CanvasSize(width: 3 * tileSize, height: 2 * tileSize);
@@ -208,75 +200,6 @@ void main() {
       image.dispose();
       return data!.buffer.asUint8List();
     }))!;
-  }
-
-  /// The frame's one picture of [scene], drawn as the frame picture store
-  /// records what it lays ([FramePictureStore.lay]) — in world coordinates,
-  /// cut by nothing of its own — over the world [canvasShows] shows. The
-  /// store rasters a rect wider than [FrameDrawing.extent] (its levels'
-  /// grid), so whatever the drawing lays past its extent is read here too.
-  Future<Uint8List> pictureShows(
-    WidgetTester tester,
-    List<CompositeNode<_Cel>> scene,
-    BrushFrameStore store,
-  ) async {
-    final previews = BrushFrameDisplayCacheService(
-      frameStore: store,
-      canvasSize: canvasSize,
-    );
-    // The SAME tree the canvas is handed: a frame's picture is keyed and
-    // drawn off what the screen stacks.
-    final drawing = stackedFrameOf(
-      asTheCanvasAsks(scene),
-      page: (
-        canvasSize: canvasSize,
-        pasteboardReach: PasteboardReach.whole,
-        paintPaper: true,
-        paperBackground: paper,
-      ),
-      surfaceOf: (cel) => previews.prepareFramePreview(cel).previewSurface,
-    ).drawing;
-    final world = Rect.fromLTWH(
-      -margin.toDouble(),
-      -margin.toDouble(),
-      viewSize.width,
-      viewSize.height,
-    );
-    return (await tester.runAsync(() async {
-      final recorder = ui.PictureRecorder();
-      // As a consumer shows it: nothing past the extent, and the drawing
-      // unclipped, so anything it draws past its extent shows.
-      final canvas = Canvas(recorder)
-        ..translate(-world.left, -world.top)
-        ..clipRect(world);
-      drawing.draw(canvas);
-      final image = await recorder.endRecording().toImage(
-        world.width.toInt(),
-        world.height.toInt(),
-      );
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      return data!.buffer.asUint8List();
-    }))!;
-  }
-
-  /// The pixels where [a] and [b] differ by more than [by] in a channel, as
-  /// `(x, y): a → b` in world pixels.
-  List<String> differences(Uint8List a, Uint8List b, {int by = 0}) {
-    final width = viewSize.width.toInt();
-    final out = <String>[];
-    for (var i = 0; i < a.length; i += 4) {
-      final pixelA = a.sublist(i, i + 4);
-      final pixelB = b.sublist(i, i + 4);
-      if (pixelA.indexed.any(
-        (entry) => (entry.$2 - pixelB[entry.$1]).abs() > by,
-      )) {
-        final x = (i ~/ 4) % width - margin;
-        final y = (i ~/ 4) ~/ width - margin;
-        out.add('($x, $y): $pixelA → $pixelB');
-      }
-    }
-    return out;
   }
 
   /// The alpha of world pixel ([x], [y]) in [shot].
@@ -453,61 +376,6 @@ void main() {
     ],
   };
 
-  // 🚨 Decision (2026-10-24, the one-frame compositor): a blur may round
-  // apart by 2 in a channel, and only a blur. The canvas blurred a cel row
-  // as its row image (an image filter on an image), the frame's picture
-  // blurs it as a layer of its tiles (the same filter on a saveLayer) — two
-  // engine passes. Measured here: the Skia test runner rounds them 1 apart
-  // where a tail falls, Impeller is exact; the sister pin measured 1–2 on
-  // Impeller at sigma 3 and 6 (`a_group_is_an_image_test.dart`). The two
-  // passes stop being two when the canvas draws every row from its tiles —
-  // the row image is what the switch deletes. Every other scene is exact.
-  //
-  // 🔬2026-10-25, one-picture-per-frame ②-5b-1: the canvas draws every row
-  // from its tiles now, and the two scenes still round apart — 122 pixels
-  // of the blurred folder, each by 1 — so the row image was not what set
-  // them apart. ⚠️Not known what does: the screen draws the frame as it
-  // stands straight onto the screen's raster, the picture is laid in a
-  // raster of its own and then drawn; that is the difference left, not a
-  // measured cause.
-  const blurs = {
-    'a blurred folder of two rows at half opacity',
-    'a blurred row with ink on the pasteboard',
-    'a row repeating the paper\'s edge, with ink on the pasteboard',
-    'a folder repeating the paper\'s edge, with ink on the pasteboard',
-  };
-
-  for (final MapEntry(key: name, value: scene) in scenes.entries) {
-    testWidgets('$name: the frame\'s picture is the canvas\'s, byte for '
-        'byte', (tester) async {
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final store = storeOf(scene);
-
-      final canvas = await canvasShows(tester, scene, store);
-      final picture = await pictureShows(tester, scene, store);
-
-      expect(
-        alphaAt(canvas, 3 * tileSize ~/ 2, tileSize),
-        255,
-        reason: 'the canvas showed no paper — the comparison would be '
-            'between two empty pictures',
-      );
-      final differing = differences(
-        canvas,
-        picture,
-        by: blurs.contains(name) ? 2 : 0,
-      );
-      expect(
-        differing,
-        isEmpty,
-        reason: 'the frame\'s one picture is not what the canvas shows of '
-            'the frame: ${differing.length} pixels, the first '
-            '${differing.take(6).join(', ')}',
-      );
-    });
-  }
-
   for (final name in [
     'a row repeating the paper\'s edge, with ink on the pasteboard',
     'a folder repeating the paper\'s edge, with ink on the pasteboard',
@@ -537,7 +405,7 @@ void main() {
     final scene = scenes['ink on the pasteboard round the page']!;
     final store = storeOf(scene);
 
-    final picture = await pictureShows(tester, scene, store);
+    final picture = await canvasShows(tester, scene, store);
 
     // Inside the tile left of the page, and the one right of its foot.
     expect(

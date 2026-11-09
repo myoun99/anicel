@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -39,6 +40,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// so, and its one picture is made of it) and the camera (the export's),
 /// over the same shapes.
 void main() {
+  opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // A row in multiply is composed over its backdrop in the shader.

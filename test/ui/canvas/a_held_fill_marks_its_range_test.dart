@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -36,6 +37,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// outside the row's own opacity — and a mark that moves is patched where
 /// it was and where it is, as a landing preview is.
 void main() {
+  opensTheEnginesScreens();
   const side = 32;
   const canvasSize = CanvasSize(width: side, height: side);
 
@@ -48,7 +50,9 @@ void main() {
   );
 
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: tiles);
+      onTheEnginesTiles(
+        BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: tiles),
+      );
 
   /// The mark of a closed, hard range [width]×[height] at ([left], [top]).
   FillRangeMark markOf(int left, int top, int width, int height) =>
@@ -88,17 +92,9 @@ void main() {
     ),
   );
 
-  /// [frame] as its picture is drawn, its premultiplied bytes.
-  Future<Uint8List> bytesOf(WidgetTester tester, StackedFrame frame) async {
-    final recorder = ui.PictureRecorder();
-    frame.drawing.draw(Canvas(recorder));
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(side, side);
-    picture.dispose();
-    final data = await tester.runAsync(image.toByteData);
-    image.dispose();
-    return data!.buffer.asUint8List();
-  }
+  /// [frame] as its picture is laid, its premultiplied bytes.
+  Future<Uint8List> bytesOf(WidgetTester tester, StackedFrame frame) async =>
+      pixelsOfFrame(frame, const Rect.fromLTWH(0, 0, side * 1.0, side * 1.0));
 
   List<int> pixelAt(Uint8List bytes, int x, int y) {
     final at = (y * side + x) * 4;
@@ -107,7 +103,7 @@ void main() {
 
   group('the mark in the stack', () {
     late ActiveStrokeOverlayModel overlay;
-    setUp(() => overlay = ActiveStrokeOverlayModel(tileSize: 16));
+    setUp(() => overlay = ActiveStrokeOverlayModel(tileSize: defaultCelTileSize));
     tearDown(() => overlay.dispose());
 
     BitmapSurfacePainter liveOn(BitmapSurface surface) => BitmapSurfacePainter(

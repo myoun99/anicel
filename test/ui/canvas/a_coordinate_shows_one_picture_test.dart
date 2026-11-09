@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -41,7 +42,8 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// white paper), a stroked block two (128). Nearest — what the stroke's
 /// tiles used to be reduced by — reads 0 or 255 there, never 128.
 void main() {
-  const tileSize = 8;
+  opensTheEnginesScreens();
+  const tileSize = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 32, height: 32);
   final cache = BitmapTileImageCache.instance;
   const black = [0, 0, 0, 255];
@@ -204,11 +206,8 @@ void main() {
     });
     expect(
       overlay.tileImages.keys.toSet(),
-      {
-        for (var ty = 0; ty < 2; ty += 1)
-          for (var tx = 0; tx < 2; tx += 1) TileCoord(x: tx, y: ty),
-      },
-      reason: 'the stroke touched the top-left four tiles',
+      {TileCoord(x: 0, y: 0)},
+      reason: 'the stroke touched the top-left tile',
     );
 
     // 32×32 canvas px in an 8×8 view: one device pixel per 4×4 block.
@@ -232,8 +231,14 @@ void main() {
     await paintBytes(tester, painterOf(tester), logicalSize);
     final whileDrawing = await paintBytes(tester, painterOf(tester), logicalSize);
     // The paper's outer level pixel is yielded (#15): read the interior.
+    // ⚠️Short of the stroke's edge, which the display's reduction reads a
+    // little past a block (`stage_at`). 🗣️유저 11-08: 「지금화면이랑
+    // 맞출필요는없어 … 바뀌고 나서만 동일하면되」.
     for (var y = 1; y < 7; y += 1) {
       for (var x = 1; x < 7; x += 1) {
+        if ((x == 3 || x == 4) && y <= 4 || (y == 3 || y == 4) && x <= 4) {
+          continue;
+        }
         final stroked = x < 4 && y < 4;
         expect(
           red(whileDrawing, x, y, 8),
@@ -252,7 +257,7 @@ void main() {
       mode: BrushBlendMode.color,
       erase: false,
     );
-    expect(promoted, hasLength(4));
+    expect(promoted, hasLength(1));
     final placed = <PlacedTile>[];
     for (final entry in promoted) {
       final image = overlay.takeTileImageAt(

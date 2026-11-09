@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -59,6 +60,7 @@ typedef _RowPaint = ({
 /// moves-on-vulkan); the stacks are handed over as the plan hands them
 /// ([stackAsThePlanHandsIt]).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   setUpAll(LayerBlendShader.load);
@@ -72,14 +74,14 @@ void main() {
   );
 
   BitmapSurfacePainter surfaceOf(Map<(int, int), RgbaColor> pixels) {
-    var tile = BitmapTile.blank(size: 8);
+    var tile = BitmapTile.blank(size: defaultCelTileSize);
     for (final MapEntry(key: (x, y), value: color) in pixels.entries) {
       tile = writeRgbaColorToBitmapTile(tile: tile, x: x, y: y, color: color);
     }
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 8,
+        tileSize: defaultCelTileSize,
         tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
@@ -302,7 +304,7 @@ void main() {
           tester,
           nodes: [liveRow(paint)],
           live: BitmapSurfacePainter(
-            surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+            surface: BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
             showTransparentBackground: false,
             landingPreview: landing,
           ),
@@ -405,24 +407,6 @@ void main() {
       reason: 'the lifted cel was not drawn — the row drew what an image '
           'row with nothing held draws',
     );
-  });
-
-  testWidgets('a lifted row does not answer for the live row\'s route', (
-    tester,
-  ) async {
-    // The live row rides the draws (nothing overlaps on it); the lifted row
-    // above it cannot (its float overlaps its cel). The probe is the LIVE
-    // row's, so the lifted row's paint after it must not overwrite it.
-    debugLiveLayerRodeTheDraws = null;
-    final painter = await pumpStack(
-      tester,
-      nodes: [liveRow(plain), liftedRow('a', plain)],
-      live: holedCel(2),
-      lifted: {keyOf('a'): (surface: holedCel(1).surface, float: floatOf(1))},
-    );
-    await shot(tester, painter);
-
-    expect(debugLiveLayerRodeTheDraws, isTrue);
   });
 
   // Whether the picture a canvas keeps is shown under it:

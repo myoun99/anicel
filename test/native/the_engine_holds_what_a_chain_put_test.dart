@@ -23,10 +23,6 @@ import 'package:anicel/src/native/engine_chain_holds.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/composite_tree_paint.dart'
-    show BelowThePen;
-import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
-    show HeldSubtreeRasters;
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -188,14 +184,7 @@ void main() {
     tree ?? trees['a blurred folder']!,
     page: pageOf(size),
     surfaceOf: (key) => cel(key == inside ? seed : 3, size),
-    held: (
-      pictures: (
-        rasters: HeldSubtreeRasters(bytes: () => 0),
-        keeps: NodesKept.none,
-        below: BelowThePen.inCells,
-      ),
-      revisionOf: (key) => key == inside ? revision : 1,
-    ),
+    revisionOf: (key) => key == inside ? revision : 1,
   );
 
   /// The frame of the folder holding the row a pen draws on, drawn live
@@ -212,14 +201,7 @@ void main() {
       ),
       painters: LiftedRowPainters(),
     ),
-    held: (
-      pictures: (
-        rasters: HeldSubtreeRasters(bytes: () => 0),
-        keeps: NodesKept.none,
-        below: BelowThePen.inCells,
-      ),
-      revisionOf: (_) => 1,
-    ),
+    revisionOf: (_) => 1,
   );
 
   /// Holds fitting [room], let go of at the test's end.

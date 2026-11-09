@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -44,6 +45,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// Both walks, the editing stack (playback's too) and the camera (the
 /// export's), each against its own control.
 void main() {
+  opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(LayerBlendShader.load);
@@ -59,10 +61,12 @@ void main() {
       ..[1] = 60
       ..[2] = 128
       ..[3] = 255;
-    return BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: 4,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 4, pixels: pixels)},
+    return onTheEnginesTiles(
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 4,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 4, pixels: pixels)},
+      ),
     );
   }
 

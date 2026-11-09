@@ -1,6 +1,7 @@
 @Tags(['impeller'])
 library;
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -32,6 +33,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// ⚠️IMPELLER ONLY: Skia has no shader filter, so on the default runner
 /// nothing is read in the frame and this skips.
 void main() {
+  opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(LayerBlendShader.load);

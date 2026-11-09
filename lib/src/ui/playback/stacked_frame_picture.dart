@@ -130,18 +130,15 @@ CompositeLayerSignature _signatureOf(_StackedCel stacked, int revision) =>
 ///
 /// Each row signed as the frame's key signs it, its cel at [revisionOf]'s
 /// revision ([framePictureKeyOf]) — what a chain is held under on the engine
-/// (`EngineStackScreen`); under [held], its nodes find the pictures they
-/// were drawn into before ([HeldNodePictures]).
+/// (`EngineStackScreen`).
 StackedFrame stackedFrameOf(
   List<CompositeNode<CanvasStackRow>> nodes, {
   required FramePage page,
   required BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
   ({LiveRows rows, LiftedRowPainters painters})? live,
-  ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})?
-  held,
   int Function(BrushFrameKey cel)? revisionOf,
 }) {
-  final revision = revisionOf ?? held?.revisionOf;
+  final revision = revisionOf;
   StoredRow? rowOf(
     CanvasStackRow row,
     BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
@@ -174,7 +171,6 @@ StackedFrame stackedFrameOf(
     bareRowOf: (row) =>
         rowOf(row, (_) => BitmapSurface(canvasSize: page.canvasSize)),
     live: live,
-    held: held?.pictures,
   );
 }
 

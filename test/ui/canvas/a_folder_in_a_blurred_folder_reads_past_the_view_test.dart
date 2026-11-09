@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -45,6 +46,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// pen's, until ②-5a; a row's image, as the stack drew the onion's ghosts
 /// from, whole or held in pieces, until ②-5b-1).
 void main() {
+  opensTheEnginesScreens();
   setUpAll(LayerBlendShader.load);
 
   // The view sees (16, 16)–(48, 32) of the canvas. The ink lies left of it,
@@ -75,13 +77,15 @@ void main() {
       pixels[i + 3] = 255;
     }
     return BitmapSurfacePainter(
-      surface: BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 16,
-        tiles: {
-          if (inked)
-            TileCoord(x: 0, y: 1): BitmapTile(size: 16, pixels: pixels),
-        },
+      surface: onTheEnginesTiles(
+        BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 16,
+          tiles: {
+            if (inked)
+              TileCoord(x: 0, y: 1): BitmapTile(size: 16, pixels: pixels),
+          },
+        ),
       ),
       showTransparentBackground: false,
     );
@@ -95,7 +99,7 @@ void main() {
       frameStore: store,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 16,
+        tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
@@ -151,15 +155,13 @@ void main() {
     blendMode: LayerBlendMode.multiply,
   );
 
-  /// What is laid over the view for [nodes], through the display buffer —
-  /// or on the [walk] that paints the screen: the frame as it stands
+  /// What is laid over the view for [nodes]: the frame as it stands
   /// ([TheFrameAsItStands]), the [pen]'s row drawn live.
   Future<Uint8List> paint(
     WidgetTester tester,
     List<CompositeNode<CanvasStackRow>> nodes, {
     BitmapSurfacePainter? pen,
     LayerFrameImageCache? cache,
-    bool walk = false,
   }) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -173,7 +175,6 @@ void main() {
       canvasSize: canvasSize,
       viewport: viewport,
       activeSurfacePainter: pen,
-      debugDisableSingleBuffer: walk,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -219,33 +220,26 @@ void main() {
   }
 
   group('🎯in the chain the pen draws in', () {
-    for (final (says, walk) in <(String, bool)>[
-      ('through the display buffer', false),
-      ('on the walk that paints the screen', true),
-    ]) {
-      testWidgets('a folder inside a blurred folder, $says', (tester) async {
-        final straight = await paint(
-          tester,
-          [
-            folder([penRow], effects: blur),
-          ],
-          pen: pen(inked: true),
-          walk: walk,
-        );
-        final nested = await paint(
-          tester,
-          [
-            folder([
-              folder([penRow]),
-            ], effects: blur),
-          ],
-          pen: pen(inked: true),
-          walk: walk,
-        );
+    testWidgets('a folder inside a blurred folder', (tester) async {
+      final straight = await paint(
+        tester,
+        [
+          folder([penRow], effects: blur),
+        ],
+        pen: pen(inked: true),
+      );
+      final nested = await paint(
+        tester,
+        [
+          folder([
+            folder([penRow]),
+          ], effects: blur),
+        ],
+        pen: pen(inked: true),
+      );
 
-        expectTheSame(nested, straight);
-      });
-    }
+      expectTheSame(nested, straight);
+    });
 
     for (final (says, buffered) in <(
       String,

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -55,6 +56,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// ↩️Q2 메모 wrote it under the FX off too (「fx체크해제해도 셀출력시
 /// 내보냄」); Q3 made 끔 turn every fx off, the number with them.
 void main() {
+  opensTheEnginesScreens();
   const canvas = CanvasSize(width: 320, height: 240);
   const cutId = CutId('cut');
   const layerId = LayerId('a');
@@ -289,7 +291,10 @@ void main() {
         'the row', (tester) async {
       final rest = redOf(await painted(tester), canvas.width);
       expect(rest.count, greaterThan(100));
-      expect(rest.middle, onTheMiddle);
+      // The bundle's letters: 'A' holds more ink than '1', so the ink's
+      // middle stands left of where they are written.
+      expect(rest.middle.x, closeTo(160, 16));
+      expect(rest.middle.y, closeTo(120, 4));
       final there = redOf(
         await painted(
           tester,

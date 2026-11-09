@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -16,7 +17,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -28,9 +28,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/composite_tree_paint.dart';
 import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
-import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🗣️I-132-Q21 a (유저 2026-10-28): a camera lens blur reads its blur map's
@@ -44,6 +42,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// canvas's own road and on the camera's, the export's. Read where the
 /// blurred row's own pixels lie instead, the seam would stand [shift] over.
 void main() {
+  opensTheEnginesScreens();
   setUpAll(IrisBlurShader.load);
 
   const width = 64;
@@ -81,12 +80,14 @@ void main() {
         pixels.setAll((y * width + x) * 4, rgbaAt(x, y));
       }
     }
-    return BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: width,
-      tiles: {
-        TileCoord(x: 0, y: 0): BitmapTile(size: width, pixels: pixels),
-      },
+    return onTheEnginesTiles(
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: width,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(size: width, pixels: pixels),
+        },
+      ),
     );
   }
 
@@ -181,107 +182,14 @@ void main() {
         page: page,
         surfaceOf: (key) => key == cel ? checker : depth,
       );
-      final recorder = ui.PictureRecorder();
-      frame.drawing.draw(Canvas(recorder));
-      final picture = recorder.endRecording();
-      final image = picture.toImageSync(width, height);
-      picture.dispose();
-      addTearDown(image.dispose);
-      return bytesOf(tester, image);
+      return pixelsOfFrame(
+        frame,
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      );
     }
 
     await expectReadWhereItShows(drawn);
   });
-
-  // What a folder or an adjustment reads is part of what it draws: the
-  // picture of it a frame holds is kept under both ([CompositeReadsRows]).
-  final readers =
-      <
-        String,
-        CompositeNode<CanvasStackRow> Function(
-          List<CompositeNode<CanvasStackRow>> children,
-          List<ResolvedLayerEffect> effects,
-        )
-      >{
-        'a folder': (children, effects) => CompositeGroup(
-          children: children,
-          opacity: 1,
-          blendMode: LayerBlendMode.normal,
-          effects: effects,
-        ),
-        'an adjustment': (children, effects) =>
-            CompositeAdjustment(children: children, effects: effects, mix: 1),
-      };
-  for (final MapEntry(key: name, value: readerOf) in readers.entries) {
-    testWidgets('🚨$name that reads a map is held with the map it read — '
-        'the map drawn on since, it is drawn again', (tester) async {
-      final held = HeldSubtreeRasters(bytes: () => 1 << 20);
-      addTearDown(held.clear);
-      final flipped = surfaceOf(
-        (x, _) =>
-            x < seam ? const [0xFF, 0xFF, 0xFF, 0xFF] : const [0, 0, 0, 0xFF],
-      );
-      var drawnOn = false;
-      final nodes = <CompositeNode<CanvasStackRow>>[
-        CompositeReadsRows(
-          node: readerOf(
-            [
-              const CompositeLeaf(
-                CanvasLayerImageRequest(frameKey: cel, opacity: 1),
-              ),
-            ],
-            [lens(mapped: true)],
-          ),
-          rows: {
-            map: [
-              const CompositeLeaf(
-                CanvasLayerImageRequest(frameKey: mapCel, opacity: 1),
-              ),
-            ],
-          },
-        ),
-      ];
-      StackedFrame frameOf({bool? keeps}) => stackedFrameOf(
-        nodes,
-        page: page,
-        surfaceOf: (key) => key == cel
-            ? checker
-            : drawnOn
-            ? flipped
-            : depth,
-        held: switch (keeps) {
-          final keeps? => (
-            pictures: (
-              rasters: held,
-              keeps: keeps ? NodesKept.onlyDrawn : NodesKept.none,
-              below: keeps ? BelowThePen.whole : BelowThePen.inCells,
-            ),
-            revisionOf: (key) => key == mapCel && drawnOn ? 2 : 1,
-          ),
-          null => null,
-        },
-      );
-      Future<Uint8List> drawn(StackedFrame frame) async {
-        final recorder = ui.PictureRecorder();
-        frame.drawing.draw(Canvas(recorder)..clipRect(frame.drawing.extent));
-        final picture = recorder.endRecording();
-        final image = picture.toImageSync(width, height);
-        picture.dispose();
-        addTearDown(image.dispose);
-        return bytesOf(tester, image);
-      }
-
-      await drawn(frameOf(keeps: true));
-      expect(held.length, 1, reason: '⛔premise: it was kept');
-      debugSubtreeRasterCount = 0;
-      await drawn(frameOf(keeps: false));
-      expect(debugSubtreeRasterCount, 0, reason: '⛔premise: it is cut from');
-
-      drawnOn = true;
-      final again = await drawn(frameOf(keeps: false));
-      expect(again, await drawn(frameOf()));
-    });
-  }
 
   testWidgets('on the camera\'s road, the export\'s', (tester) async {
     const service = CameraFrameRenderService(background: Color(0x00000000));

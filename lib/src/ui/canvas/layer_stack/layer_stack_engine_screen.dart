@@ -4,8 +4,22 @@ part of '../canvas_layer_stack_view.dart';
 /// rows folded into the engine's ([EngineRow]) and laid by the one
 /// translator ([planCompositeTree]) onto the frame the engine keeps
 /// ([GpuScreen]) — the world a frame's picture holds, the page and every
-/// row's content ([StackedFrame.drawing]) — and shown through the view's
+/// row's content ([StackedFrame.extent]) — and shown through the view's
 /// camera onto a target: a [ScreenTexture]'s next ([ScreenTexture.present]).
+///
+/// 🚨★★★ONE PICTURE AT THE FRAME'S OWN RESOLUTION, RESAMPLED ONCE, AT EVERY
+/// ZOOM: 유저 (D7-2-Q2, 2026-10-24) 「배율이 어떻든 항상 원본 한장 … 100%랑
+/// 통일하되, 그런 문제는 통일한 이후 극한으로 해결하고싶어」, 10-25
+/// 「원본기준으로 해서 쓸데없는 소재 없애고 거기서 극한 최적화 해야지」;
+/// F-215 「on하든off하든 바뀌는게 없어야」. So no row is asked how it looks
+/// at this zoom, and ink parked on the pasteboard composes with the rest
+/// (유저 2026-08-15 「페이스트보드도 룰러할때 보이게」).
+///
+/// ↩️The stack composed into one buffer of the view at the frame's
+/// resolution (2026-08-16), and past a side of 8192 fell to a walk of its
+/// rows on the screen, the safety net 유저 asked for in place of anything
+/// more (2026-09-16: 「안전망만 존재하면 문제없고」), until the engine kept a
+/// frame in tiles: it has no such side.
 final class EngineStackScreen {
   /// A screen of [composite]'s, laying cel numbers in [letters].
   EngineStackScreen(this._composite, this._letters);
@@ -157,9 +171,9 @@ final class EngineStackScreen {
   };
 
   /// The kept frame through [viewport] at [devicePixelRatio] onto [target]
-  /// of [size] texels, columns by rows, one a device pixel — the camera the
-  /// walk draws through ([applyViewportTransform]), its pan snapped as
-  /// there — waiting for the GPU ([GpuScreen.show]).
+  /// of [size] texels, columns by rows, one a device pixel — the camera a
+  /// view's content stands under ([applyViewportTransform]), its pan snapped
+  /// to whole device pixels — waiting for the GPU ([GpuScreen.show]).
   void show(
     GpuTarget target,
     (int, int) size, {
@@ -233,7 +247,7 @@ extension on _LayerStackPaintPass {
   /// surface row its slot ([_slotOf]) — its tiles as its painter shows
   /// them, a live stroke's in their place ([BitmapSurfacePainter
   /// .shownSurface]), kept under its cel's lineage, what a hand holds over
-  /// them where the walk draws it ([_heldOver]) and the range a fill holds
+  /// them ([_heldOver]) and the range a fill holds
   /// on it, marked under the mask [maskOf] gives its cover ([_markOn]).
   EngineRow _engineRowOf(
     _PaintRow row,
@@ -276,8 +290,8 @@ extension on _LayerStackPaintPass {
     );
   }
 
-  /// The range a fill holds on [slot]'s row, as the walk marks it over the
-  /// row ([FillRangeMark]) — none where it holds none.
+  /// The range a fill holds on [slot]'s row, marked over the row
+  /// ([FillRangeMark]) — none where it holds none.
   EngineMark? _markOn(
     _SurfaceSlot slot,
     GpuMask Function(FloodFillRegion cover) maskOf,
@@ -292,7 +306,9 @@ extension on _LayerStackPaintPass {
 
   /// What a hand holds over [slot]'s row: each float its painter draws over
   /// it ([BitmapSurfacePainter.floatsOver]), by the tiles it holds, in the
-  /// row's own pixels.
+  /// row's own pixels — under the row's own opacity and effects, as what it
+  /// lands as (유저 확정 A: 「프리뷰는 원래 그런거」: a half-opacity row
+  /// previews a transform at half opacity).
   List<EngineHeld> _heldOver(_SurfaceSlot slot) => [
     for (final (:preview, :canvasToRow) in slot.painter.floatsOver(slot.shown))
       for (final held in preview.heldTiles) _engineHeldOf(held, canvasToRow),

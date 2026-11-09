@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -34,6 +35,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// `saveLayer`. That is the only configuration where the live layer
 /// rasterises to an image — a plainly buffered one keeps the cheaper layer.
 void main() {
+  opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(ColourKeyShader.load);
@@ -41,7 +43,7 @@ void main() {
   const canvasSize = CanvasSize(width: 32, height: 32);
 
   BitmapSurfacePainter whiteSurface() {
-    var tile = BitmapTile.blank(size: 8);
+    var tile = BitmapTile.blank(size: defaultCelTileSize);
     for (var x = 0; x < 8; x++) {
       for (var y = 0; y < 8; y++) {
         tile = writeRgbaColorToBitmapTile(
@@ -55,7 +57,7 @@ void main() {
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 8,
+        tileSize: defaultCelTileSize,
         tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,

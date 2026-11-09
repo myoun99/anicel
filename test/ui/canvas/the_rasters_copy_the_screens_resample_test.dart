@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -45,7 +46,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// editing stack's display buffer, until it drew no row's image,
 /// one-picture-per-frame ②-5b-1). A route that draws onto the screen, or
 /// through a projection that moves the image off the pixel grid, has to
-/// resample it with the filter its zoom chose: the editing stack's walk, and
+/// resample it with the filter its zoom chose: the editing stack's, and
 /// the camera render where it turns, zooms or stands between pixels.
 ///
 /// ↩️The camera resampled at every pose, the identity too: a sort of the
@@ -56,11 +57,12 @@ import '../../helpers/the_frame_as_it_stands.dart';
 ///
 /// ⚠️The copies are read off the draw counter because their pixels cannot
 /// tell: in this runner a bilinear draw at 1:1 IS a copy (it is not on
-/// Impeller Vulkan, Android's default). The walk's resample is pixels too:
+/// Impeller Vulkan, Android's default). The screen's resample is pixels too:
 /// copied off the grid the image would snap to whole pixels where the filter
 /// blends them, and an identity pose — which only ever resamples — is the
 /// reference that needs no second route.
 void main() {
+  opensTheEnginesScreens();
   group('the editing stack', () {
     const canvasSize = CanvasSize(width: 150, height: 101);
     const view = Size(176, 128);
@@ -80,7 +82,7 @@ void main() {
         frameStore: store,
         sessionStore: BrushFrameEditSessionStore(
           canvasSize: canvasSize,
-          tileSize: 16,
+          tileSize: defaultCelTileSize,
         ),
         historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
@@ -108,11 +110,10 @@ void main() {
     }
 
     /// The stack's screen for one row of the ink, [posed] with the identity
-    /// pose or not, on the buffer or the walk.
+    /// pose or not.
     Future<Uint8List> screen(
       WidgetTester tester, {
       required CanvasViewport viewport,
-      required bool walk,
       required bool posed,
     }) async {
       final images = LayerFrameImageCache(frameStore: storeWithInk());
@@ -157,7 +158,6 @@ void main() {
                       paperBackground: const ProjectBackground.color(
                         0xFFF4EEE0,
                       ),
-                      debugDisableSingleBuffer: walk,
                     ),
                   ),
                 ),
@@ -184,24 +184,18 @@ void main() {
     // Half zoom with a pan off the pixel grid.
     final halfOffGrid = CanvasViewport(zoom: 0.5, panX: 30.5, panY: 20.25);
 
-    // ↩️Below 100% the buffer copied each level image, until a row was drawn
-    // from its cel's tiles and no level image was made (one-picture-per-frame
-    // ②-5b-1); and the walk copied nothing, by the counter, until no screen
-    // drew a row's image.
-    testWidgets('the walk resamples: off the grid the row draws as a pose '
+    testWidgets('the screen resamples: off the grid the row draws as a pose '
         'that moves nothing draws it', (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
       final plain = await screen(
         tester,
         viewport: halfOffGrid,
-        walk: true,
         posed: false,
       );
       final posed = await screen(
         tester,
         viewport: halfOffGrid,
-        walk: true,
         posed: true,
       );
       var differing = 0;

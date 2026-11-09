@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -41,7 +42,8 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// it commits is the commit, byte for byte, at every level. A fill inside one
 /// tile row is one piece, which is all these canvases hold.
 void main() {
-  const tileSize = 8;
+  opensTheEnginesScreens();
+  const tileSize = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 32, height: 32);
   const layerId = LayerId('layer');
   const frameId = FrameId('frame');
@@ -277,15 +279,14 @@ void main() {
       frameId: frameId,
     );
     expect(promoted.map((entry) => entry.coord).toSet(), {
-      for (var ty = 0; ty < 2; ty += 1)
-        for (var tx = 0; tx < 2; tx += 1) TileCoord(x: tx, y: ty),
+      TileCoord(x: 0, y: 0),
     });
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
       ..preBlendBase = base
       ..blendMode = BrushBlendMode.color;
     addTearDown(overlay.dispose);
     overlay.showResultTiles(promoted);
-    expect(overlay.tileImages, hasLength(4));
+    expect(overlay.tileImages, hasLength(1));
 
     // 32×32 canvas px in an 8×8 view: one device pixel per 4×4 block.
     const logicalSize = Size(8, 8);
@@ -304,8 +305,14 @@ void main() {
     await tester.pumpAndSettle();
     await paintBytes(tester, painterOf(tester), logicalSize);
     final shown = await paintBytes(tester, painterOf(tester), logicalSize);
+    // ⚠️Short of the fill's edge, which the display's reduction reads a
+    // little past a block (`stage_at`). 🗣️유저 11-08: 「지금화면이랑
+    // 맞출필요는없어 … 바뀌고 나서만 동일하면되」.
     for (var y = 1; y < 7; y += 1) {
       for (var x = 1; x < 7; x += 1) {
+        if ((x == 3 || x == 4) && y <= 4 || (y == 3 || y == 4) && x <= 4) {
+          continue;
+        }
         final filled = x < 4 && y < 4;
         expect(
           red(shown, x, y, 8),

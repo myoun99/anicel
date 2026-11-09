@@ -10,11 +10,16 @@ import 'package:flutter/rendering.dart'
         OffsetLayer,
         RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuTarget;
+import 'package:anicel/src/core/floor_math.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_chain_holds.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
@@ -297,16 +302,111 @@ Future<void> itsToolsOpen(
 
 /// [picture]'s pixels over [world] at 100%, read back from the GPU:
 /// premultiplied RGBA, row after row.
-Uint8List pixelsOfPicture(EngineFramePicture picture, ui.Rect world) {
+Uint8List pixelsOfPicture(EngineFramePicture picture, ui.Rect world) =>
+    _shownOver(
+      world,
+      (target, size, viewport) => picture.show(
+        target,
+        size,
+        viewport: viewport,
+        devicePixelRatio: 1,
+      ),
+    );
+
+/// [surface]'s pixels laid out again on the tiles the engine stores: a
+/// fixture's tile size is how it counts its pixels, and a frame is laid from
+/// these.
+BitmapSurface onTheEnginesTiles(BitmapSurface surface) {
+  const side = defaultCelTileSize;
+  final laid = <TileCoord, Uint8List>{};
+  for (final MapEntry(key: at, value: tile) in surface.tiles.entries) {
+    final pixels = tile.pixels;
+    for (var y = 0; y < tile.size; y += 1) {
+      for (var x = 0; x < tile.size; x += 1) {
+        final worldX = at.x * surface.tileSize + x;
+        final worldY = at.y * surface.tileSize + y;
+        final from = (y * tile.size + x) * 4;
+        final to = ((worldY % side) * side + worldX % side) * 4;
+        laid.putIfAbsent(
+            TileCoord(x: floorDiv(worldX, side), y: floorDiv(worldY, side)),
+            () => Uint8List(side * side * 4),
+          )
+          .setRange(to, to + 4, pixels, from);
+      }
+    }
+  }
+  return BitmapSurface(
+    canvasSize: surface.canvasSize,
+    pasteboardReach: surface.pasteboardReach,
+    tiles: {
+      for (final MapEntry(:key, :value) in laid.entries)
+        key: BitmapTile(size: side, pixels: value),
+    },
+    texts: surface.texts,
+    photos: surface.photos,
+    laidBounds: surface.laidBounds,
+  );
+}
+
+/// What a float showing [rgba] over the whole pixels of [where] holds where
+/// it lands, on the tiles the engine stores.
+Map<TileCoord, BitmapTile> tilesOfColorOver(
+  ui.Rect where,
+  List<int> rgba,
+) {
+  const side = defaultCelTileSize;
+  final laid = <TileCoord, Uint8List>{};
+  for (var y = where.top.floor(); y < where.bottom.ceil(); y += 1) {
+    for (var x = where.left.floor(); x < where.right.ceil(); x += 1) {
+      final to = ((y % side) * side + x % side) * 4;
+      laid
+          .putIfAbsent(
+            TileCoord(x: floorDiv(x, side), y: floorDiv(y, side)),
+            () => Uint8List(side * side * 4),
+          )
+          .setRange(to, to + 4, rgba);
+    }
+  }
+  return {
+    for (final MapEntry(:key, :value) in laid.entries)
+      key: BitmapTile(size: side, pixels: value),
+  };
+}
+
+/// The premultiplied RGBA [frame] lays over [world], a canvas pixel a pixel,
+/// on the engine ([opensTheEnginesScreens]).
+Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world) {
+  final (:composite, :letters) = appEngineFrameToolsOpen!;
+  final screen = EngineStackScreen(composite, letters);
+  try {
+    screen.compose(frame);
+    return _shownOver(
+      world,
+      (target, size, viewport) => screen.show(
+        target,
+        size,
+        viewport: viewport,
+        devicePixelRatio: 1,
+      ),
+    );
+  } finally {
+    screen.free();
+  }
+}
+
+Uint8List _shownOver(
+  ui.Rect world,
+  void Function(GpuTarget target, (int, int) size, CanvasViewport viewport)
+  show,
+) {
   final width = world.width.round();
   final height = world.height.round();
   final target = shownSurfaceOf(width, height);
   try {
-    picture.show(
+    show(
       target,
       (width, height),
-      viewport: CanvasViewport(panX: -world.left, panY: -world.top),
-      devicePixelRatio: 1,
+      CanvasViewport(panX: -world.left, panY: -world.top),
     );
     return target.read();
   } finally {

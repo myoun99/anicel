@@ -1,49 +1,33 @@
-import 'dart:ui' show PictureRecorder;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
-import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/models/composite_tree.dart';
-import '../../helpers/the_frame_as_it_stands.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
-/// 🚨ONE RESOLUTION AT EVERY ZOOM — the editing canvas composites the way
-/// playback, the camera and the export do, and keeps doing it however far
-/// you zoom out.
+/// 🚨A FRAME COVERS ITS PAGE AND WHAT ITS ROWS DRAW — however far a view
+/// zooms out, and never the pasteboard it could draw on: three pages a side
+/// is nine times what a frame holds.
 ///
-/// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
-/// far enough and that rect spans the whole pasteboard — 5×5 canvases then,
-/// 11700×8270 on a 2340×1654 page; 3×3 since H2, which is why the page
-/// below is larger — which exceeds the buffer cap and drops the paint onto
-/// the SCREEN-resolution fallback. That fallback is the one place the
-/// editing canvas stops matching the other routes.
-///
-/// Bounding by CONTENT keeps the buffer at the page (3000×2000 below), which
-/// never reaches the cap. This pins that as a NUMBER rather than an argument.
+/// ↩️It stood as the editing canvas's buffer staying under its cap at every
+/// zoom, until the engine kept a frame in tiles and no buffer had a cap.
 void main() {
-  // 🧪MEASURED, not assumed: the pasteboard is the canvas grown by ONE canvas
-  // per side, so it is 3× the page per axis. A 2340×1654 page tops out at
-  // 7020×4962 — UNDER the 8192 cap, which is why a first version of this
-  // test could not tell the two bounds apart. 3000×2000 crosses it: its
-  // pasteboard is 9000×6000.
   const canvasSize = CanvasSize(width: 3000, height: 2000);
+  const row = CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1));
 
   BitmapSurfacePainter inkedPage() {
-    var tile = BitmapTile.blank(size: 256);
-    tile = writeRgbaColorToBitmapTile(
-      tile: tile,
+    final tile = writeRgbaColorToBitmapTile(
+      tile: BitmapTile.blank(size: defaultCelTileSize),
       x: 4,
       y: 4,
       color: RgbaColor(r: 0, g: 0, b: 255, a: 255),
@@ -51,112 +35,45 @@ void main() {
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 256,
         tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
     );
   }
 
-  Future<void> paintAt(
-    WidgetTester tester,
-    double zoom, {
-    double panX = 0,
-    double panY = 0,
-    bool inFolder = false,
-  }) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        key: ValueKey<String>('zoom-$zoom'),
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 400,
-              height: 300,
-              child: TheFrameAsItStands(
-                nodes: inFolder
-                    ? [
-                        // ↩️In multiply, until every advanced blend went
-                        // over its backdrop in the shader (a-blurred-
-                        // folder-cut-by-the-view-moves-on-vulkan), and in
-                        // add until it did too (brush-fidelity Q3); a
-                        // strength below 1 buffers as a group.
-                        const CompositeGroup<CanvasStackRow>(
-                          children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
-                          opacity: 0.5,
-                          blendMode: LayerBlendMode.normal,
-                        ),
-                      ]
-                    : const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
-                imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
-                canvasSize: canvasSize,
-                viewport: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
-                activeSurfacePainter: inkedPage(),
-                paintPaper: true,
-                paperBackground: ProjectBackground.defaultBackground,
-              ),
-            ),
-          ),
-        ),
+  Rect worldOf(List<CompositeNode<CanvasStackRow>> nodes) => stackedFrameOf(
+    nodes,
+    page: (
+      canvasSize: canvasSize,
+      pasteboardReach: PasteboardReach.whole,
+      paintPaper: true,
+      paperBackground: ProjectBackground.defaultBackground,
+    ),
+    surfaceOf: (_) => null,
+    live: (
+      rows: (
+        activeSurfacePainter: inkedPage(),
+        floatOverlay: null,
+        liftedRows: const {},
       ),
-    );
-    await tester.pumpAndSettle();
-    // 🚨PAINT EXPLICITLY. A widget test's pump builds and lays out, and the
-    // counter this asserts on only moves inside CustomPainter.paint — a
-    // pump alone left it at zero and the mutation went unnoticed.
-    final painted = tester
-        .widgetList<CustomPaint>(
-          find.descendant(
-            of: find.byType(TheFrameAsItStands),
-            matching: find.byType(CustomPaint),
-          ),
-        )
-        .where((paint) => paint.painter != null)
-        .toList();
-    expect(painted, isNotEmpty, reason: 'the stack must mount a painter');
-    const size = Size(400, 300);
-    final recorder = PictureRecorder();
-    painted.first.painter!.paint(Canvas(recorder, Offset.zero & size), size);
-    recorder.endRecording().dispose();
-  }
+      painters: LiftedRowPainters(),
+    ),
+  ).extent;
 
-  testWidgets('zooming out never drops the composite to screen resolution', (
-    tester,
-  ) async {
-    // ⛔The counter is global; a stale value from another test would make
-    // this one report on work it never did.
-    debugCappedFallbacks = 0;
-
-    // Fit-to-page and well past it — at 0.02 the 400×300 window pulls back a
-    // canvas-space rect far wider than the page, and the OLD bounds handed
-    // the whole pasteboard to the buffer.
-    await paintAt(tester, 1.0);
-    await paintAt(tester, 0.2);
-    // 🚨THE CASE THAT USED TO FALL THROUGH. Zoomed out to 2% AND panned so
-    // the whole pasteboard sits inside the window — that is when the old
-    // bounds handed the buffer a rect past the cap (9000×6000 for this
-    // page; 11700×8270 on the 5×5 one this was written against), and
-    // the paint dropped to screen resolution. Without the pan the visible
-    // rect only ever caught the positive quadrant and never reached it.
-    await paintAt(tester, 0.02, panX: 200, panY: 150);
-
-    expect(
-      debugCappedFallbacks,
-      0,
-      reason: 'a 3000×2000 page bounds to itself, not to its 9000×6000 '
-          'pasteboard, so no zoom reaches the cap and falls to screen resolution',
-    );
+  test('a row inside the page covers the page', () {
+    expect(worldOf(const [row]), canvasSize.canvasRect);
   });
 
-  testWidgets('a folder buffer stays inside the composite that holds it', (
-    tester,
-  ) async {
-    debugCappedFallbacks = 0;
-    // ⛔Bounded by the VIEW, a folder at this zoom asked for the whole
-    // pasteboard — 9× the page — inside a buffer that is only the page.
-    // The containment assert in the paint is what catches that; this scene
-    // is what makes it run.
-    await paintAt(tester, 0.02, panX: 200, panY: 150, inFolder: true);
-    expect(debugCappedFallbacks, 0);
+  test('so does a folder holding it', () {
+    expect(
+      worldOf(const [
+        CompositeGroup<CanvasStackRow>(
+          children: [row],
+          opacity: 0.5,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ]),
+      canvasSize.canvasRect,
+    );
   });
 }
