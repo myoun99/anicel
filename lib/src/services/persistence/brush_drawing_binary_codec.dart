@@ -5,14 +5,17 @@
 /// production v1 file was ever written.)
 library;
 
+import 'dart:async' show FutureOr;
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:isolate' show TransferableTypedData;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart' show malloc;
 
 import 'anicel_payload_codec.dart';
+import '../../core/on_a_worker.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -120,8 +123,8 @@ typedef CelParts<P> = ({
 typedef AnicelLaidCel = CelParts<int>;
 
 /// [surface] in plain parts, each tile's pixels as [pixelsOf] gives them:
-/// the copy [AnicelCelEntry.fromSurface] makes, or the blocks' addresses
-/// ([withCelBlocks]) — the way back of [_surfaceOf], one for both.
+/// the copy [AnicelCelEntry.fromSurface] makes, or the tiles' places
+/// ([onAWorkerWithCelCopy]) — the way back of [_surfaceOf], one for both.
 CelParts<P> _partsOf<P>(
   BitmapSurface surface,
   P Function(BitmapTile tile) pixelsOf,
@@ -153,62 +156,85 @@ List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
     (id: photo.id, reference: jsonEncode(photo.reference.toJson())),
 ];
 
-/// What [use] makes of [surface] with each tile's pixels named by the
-/// ADDRESS of its bytes, read back from the engine into one block [blocks]
-/// gives, for a worker to read them where they lie ([copiedCelSurface]) —
-/// the way there of [laidCelSurface].
+/// [job]'s answer, made on a worker of a copy of the hot cel [surface]: a
+/// surface that isolate owns and frees as its own, behind the wall the
+/// picture stands behind here — which its parts do not carry.
 ///
-/// 🚨The addresses are good only inside [use]: the block goes when it ends.
-Future<T> withCelBlocks<T>(
+/// A worker has no engine ([EngineTileLedger.instance]), so it asks this
+/// isolate for the tiles ([onAWorkerAsking]).
+///
+/// 🚨A BATCH AT A TIME, THROUGH ONE BLOCK [blocks] GIVES, NEVER THE CEL
+/// WHOLE: a block of every tile was 132 MiB on this isolate for a cel of
+/// 5800² inked whole (저장's review of the flip lane, 11-09), what
+/// [EngineTileLedger.readEach] was written not to ask for.
+Future<T> onAWorkerWithCelCopy<T>(
   BrushFrameKey key,
   BitmapSurface surface,
-  Future<T> Function(AnicelLaidCel at) use, {
+  FutureOr<T> Function(BitmapSurface copy) job, {
   Allocator blocks = malloc,
 }) async {
-  final bytes = BitmapTile.bytesFor(surface.tileSize);
   // By the tile itself: a tile's == compares, and hashes, every byte.
-  final offsets = Map<BitmapTile, int>.identity();
-  _partsOf(
+  final indices = Map<BitmapTile, int>.identity();
+  final parts = _partsOf(
     surface,
-    (tile) => offsets.putIfAbsent(tile, () => offsets.length * bytes),
+    (tile) => indices.putIfAbsent(tile, () => indices.length),
   );
+  final tiles = [...indices.keys];
+  const batch = EngineTileLedger.readBatch;
+  final bytes = BitmapTile.bytesFor(surface.tileSize);
   // One tile's at the least: C may answer a malloc of 0 with null, which
   // package:ffi throws for.
-  final capacity = math.max(1, offsets.length) * bytes;
+  final capacity = math.max(1, math.min(tiles.length, batch)) * bytes;
   final block = blocks<Uint8>(capacity);
   try {
-    final into = block.asTypedList(capacity);
-    var at = 0;
-    EngineTileLedger.instance.readEach(key.cel, [...offsets.keys], (tile) {
-      into.setAll(at, tile);
-      at += bytes;
-    });
-    return await use(
-      _partsOf(surface, (tile) => block.address + offsets[tile]!),
+    return await onAWorkerAsking<int, TransferableTypedData, T>(
+      (first) {
+        final asked = tiles.sublist(
+          first,
+          math.min(first + batch, tiles.length),
+        );
+        EngineTileLedger.instance.read(key.cel, asked, block);
+        return TransferableTypedData.fromList([
+          block.asTypedList(asked.length * bytes),
+        ]);
+      },
+      _onACopyOf(parts, tiles.length, surface.pasteboardReach, job),
     );
   } finally {
     blocks.free(block);
   }
 }
 
-/// [laid]'s blocks — another isolate's, read where they lie
-/// ([withCelBlocks]) — copied into tiles of this one: a surface this isolate
-/// owns, whose tiles it frees as its own, behind the wall the picture
-/// [standsBehind] there — which its parts do not carry.
-BitmapSurface copiedCelSurface(
-  AnicelLaidCel laid, {
-  required PasteboardReach standsBehind,
-}) {
-  final bytes = BitmapTile.bytesFor(laid.tileSize);
-  return _surfaceOf(
-    laid,
-    (address) => BitmapTile(
-      size: laid.tileSize,
-      pixels: Pointer<Uint8>.fromAddress(address).asTypedList(bytes),
-    ),
-    standsBehind: standsBehind,
+/// [job] on a copy of [parts] — each tile named by its place among the
+/// [tileCount] it asks for, a tile at two places one tile there too.
+///
+/// ⚠️Made HERE: the closure crosses, and one made beside the answer would
+/// carry the surface's tiles, which no isolate message carries
+/// (`_reportingInto`).
+FutureOr<T> Function(Future<TransferableTypedData> Function(int first) ask)
+_onACopyOf<T>(
+  CelParts<int> parts,
+  int tileCount,
+  PasteboardReach standsBehind,
+  FutureOr<T> Function(BitmapSurface copy) job,
+) => (ask) async {
+  final bytes = BitmapTile.bytesFor(parts.tileSize);
+  final tiles = <BitmapTile>[];
+  while (tiles.length < tileCount) {
+    final read = (await ask(tiles.length)).materialize().asUint8List();
+    for (var at = 0; at < read.length; at += bytes) {
+      tiles.add(
+        BitmapTile(
+          size: parts.tileSize,
+          pixels: Uint8List.sublistView(read, at, at + bytes),
+        ),
+      );
+    }
+  }
+  return job(
+    _surfaceOf(parts, (index) => tiles[index], standsBehind: standsBehind),
   );
-}
+};
 
 /// [parts] made a surface, each tile's pixels made a tile by [tileOf]: the
 /// copy [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's

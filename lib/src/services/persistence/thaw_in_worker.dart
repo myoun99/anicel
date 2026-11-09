@@ -184,11 +184,10 @@ Future<BitmapSurface?> cutHotCelInWorker(
       : surfaceBehindReach(surface, reach, crossed: crossed);
 }
 
-/// A hot cel's [surface] — read back from the engine ([withCelBlocks])
-/// — copied into a worker's own tiles ([copiedCelSurface]), made anew there
-/// by [remake], laid into this isolate's tile blocks and adopted behind the
-/// wall [remake] left it at; null where [remake] leaves the picture as it
-/// is.
+/// A hot cel's [surface] — copied into a worker's own tiles
+/// ([onAWorkerWithCelCopy]) — made anew there by [remake], laid into this
+/// isolate's tile blocks and adopted behind the wall [remake] left it at;
+/// null where [remake] leaves the picture as it is.
 ///
 /// ⚠️A laid cel carries no wall of its own, so the wall crosses beside it:
 /// adopted with none and walled on the main isolate, every tile the wall
@@ -199,28 +198,35 @@ Future<BitmapSurface?> _remakeHotCelInWorker(
   BitmapSurface surface,
   BitmapSurface? Function(BitmapSurface copy) remake,
 ) async {
-  final standsBehind = surface.pasteboardReach;
-  final blocks = BitmapTile.blocks;
-  final made = await withCelBlocks(
+  final made = await onAWorkerWithCelCopy(
     key,
     surface,
-    (at) => onAWorker(() {
-      final made = remake(copiedCelSurface(at, standsBehind: standsBehind));
-      return made == null
-          ? null
-          : (
-              laid: layCelEntry(
-                AnicelCelEntry.fromSurface(key, made),
-                tileBlocksHere(blocks),
-              ),
-              standsBehind: made.pasteboardReach,
-            );
-    }),
+    _remadeAndLaid(key, BitmapTile.blocks, remake),
   );
   return made == null
       ? null
       : laidCelSurface(made.laid, standsBehind: made.standsBehind);
 }
+
+/// What a worker makes of a hot cel's copy ([_remakeHotCelInWorker]) — made
+/// HERE, the closure crossing with only these.
+({AnicelLaidCel laid, PasteboardReach standsBehind})? Function(BitmapSurface)
+_remadeAndLaid(
+  BrushFrameKey key,
+  TileBlocks blocks,
+  BitmapSurface? Function(BitmapSurface copy) remake,
+) => (copy) {
+  final made = remake(copy);
+  return made == null
+      ? null
+      : (
+          laid: layCelEntry(
+            AnicelCelEntry.fromSurface(key, made),
+            tileBlocksHere(blocks),
+          ),
+          standsBehind: made.pasteboardReach,
+        );
+};
 
 /// [blob]'s picture as [wall] moves `from` the wall its store keeps it at
 /// `to` another ([cutBehindReach]), worked out on a worker: null when the

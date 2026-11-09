@@ -68,6 +68,60 @@ FutureOr<T> Function() _reportingInto<T>(
 ) =>
     () => job(_whenTheBarMoves(told.send));
 
+/// [job] on a worker ([onAWorker]), handed an `ask` that puts a question to
+/// [answer] on THIS isolate and waits for what it says: what a job needs of
+/// something only this isolate has, a piece at a time.
+///
+/// ⚠️What [answer] throws is thrown here as it was thrown, the job stopped
+/// by it — a worker's error would lose its type at the wall, and with it
+/// what the caller tells it apart by. So [answer] answers something: null
+/// is how a refusal crosses.
+Future<T> onAWorkerAsking<Q, A extends Object, T>(
+  A Function(Q question) answer,
+  FutureOr<T> Function(Future<A> Function(Q question) ask) job,
+) async {
+  if (debugWorkersRunHere) {
+    return Future<T>.sync(() => job((question) async => answer(question)));
+  }
+  final asked = ReceivePort();
+  (Object, StackTrace)? refused;
+  asked.listen((message) {
+    final (question, reply) = message as (Q, SendPort);
+    try {
+      reply.send(answer(question));
+    } on Object catch (error, stack) {
+      refused = (error, stack);
+      reply.send(null);
+    }
+  });
+  try {
+    return await Isolate.run(_askingInto<Q, A, T>(asked.sendPort, job));
+  } on Object {
+    if (refused case (final error, final stack)) {
+      Error.throwWithStackTrace(error, stack);
+    }
+    rethrow;
+  } finally {
+    asked.close();
+  }
+}
+
+/// [job] asking into [asked] — the closure that crosses, made HERE for the
+/// reason [_reportingInto] is.
+FutureOr<T> Function() _askingInto<Q, A extends Object, T>(
+  SendPort asked,
+  FutureOr<T> Function(Future<A> Function(Q question) ask) job,
+) =>
+    () => job((question) async {
+      final heard = ReceivePort();
+      asked.send((question, heard.sendPort));
+      final answer = await heard.first;
+      if (answer == null) {
+        throw StateError('this isolate would not answer the worker');
+      }
+      return answer as A;
+    });
+
 void _heardByNobody(double fraction) {}
 
 /// [report], told only when the bar moves by half a percent or reaches its
