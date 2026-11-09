@@ -214,19 +214,21 @@ fn what_the_device_will_not_compile_comes_back_as_why() {
 
 #[test]
 fn a_foreign_shader_reads_no_word_a_workgroup_before_it_left() {
+    // 🔬256 words over 64 workgroups read clean with the zeroing off on the
+    // RTX 4080; the whole 16 KiB over 4096 reddens every run (2026-11-09).
     const LEFT_OVER: &str = "
         @group(0) @binding(0) var<storage, read_write> seen: array<u32>;
-        var<workgroup> left: array<u32, 256>;
+        var<workgroup> left: array<u32, 4096>;
         @compute @workgroup_size(1)
         fn main(@builtin(global_invocation_id) at: vec3<u32>) {
             var any = 0u;
-            for (var i = 0u; i < 256u; i++) {
+            for (var i = 0u; i < 4096u; i++) {
                 any |= left[i];
-                left[i] = 0xFFFFFFFFu;
+                left[i] = (at.x + 1u) * 0x01010101u + i;
             }
             seen[at.x] = any;
         }";
-    const GROUPS: u32 = 64;
+    const GROUPS: u32 = 4096;
     let engine = first_engine();
     let pipeline = pipeline_or_why(engine, &[LEFT_OVER], "main").expect("compiled");
     let size = u64::from(GROUPS) * 4;
