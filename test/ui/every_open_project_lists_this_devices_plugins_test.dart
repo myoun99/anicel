@@ -1,3 +1,4 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:convert';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -16,6 +17,7 @@ import '../helpers/settle_async.dart';
 /// app starts, and kept while any tab is; a session born without it keeps
 /// its own and lets it go with itself.
 void main() {
+  opensTheEnginesScreens();
   testWidgets('every open project lists the one the app read, and closing '
       'one of them leaves it to the others', (tester) async {
     await tester.runAsync(() async {

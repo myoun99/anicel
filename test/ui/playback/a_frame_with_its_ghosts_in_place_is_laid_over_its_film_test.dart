@@ -43,6 +43,7 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 /// Laid by pictures of their own beside the session's, from its cels and
 /// trees: one laid whole, one over the film laid first.
 void main() {
+  opensTheEnginesScreens();
   setUpAll(LayerBlendShader.load);
   setUpAll(DirectionalBlurShader.load);
 
@@ -59,7 +60,7 @@ void main() {
   final current = CanvasPoint(x: 32, y: 52);
   // Where no ghost shows, nor any spread of one: past the cells of a
   // blur round them (`blurReductionCell`).
-  final away = CanvasPoint(x: 32, y: 112);
+  final away = CanvasPoint(x: 320, y: 64);
 
   Layer drawing(
     String id, {
@@ -406,7 +407,7 @@ void main() {
         red.brushFrameKeyForCut(
           red.requireActiveCut,
           const LayerId('red'),
-          const FrameId('red'),
+          const FrameId('red-0'),
         ),
         canvasSize: canvasSize,
         at: CanvasPoint(x: 320, y: 64),

@@ -1,3 +1,4 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -29,6 +30,7 @@ import '../helpers/poll_until.dart';
 /// frame's one picture, the one the canvas and a run show: a frame the
 /// warmer has made is no work for a panel.
 void main() {
+  opensTheEnginesScreens();
   const canvas = CanvasSize(width: 64, height: 64);
 
   /// A cut of one row whose cel is black on its left half.
@@ -72,10 +74,10 @@ void main() {
         ],
       ),
     );
-    final pixels = Uint8List(64 * 64 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var y = 0; y < 64; y += 1) {
       for (var x = 0; x < 32; x += 1) {
-        pixels[(y * 64 + x) * 4 + 3] = 255;
+        pixels[(y * defaultCelTileSize + x) * 4 + 3] = 255;
       }
     }
     session.renderCaches.brushFrameStore.storeBakedSurface(
@@ -84,10 +86,10 @@ void main() {
         const LayerId('a'),
         const FrameId('f'),
       ),
-      BitmapSurface(canvasSize: canvas, tileSize: 64).putTiles([
+      BitmapSurface(canvasSize: canvas).putTiles([
         (
           coord: TileCoord(x: 0, y: 0),
-          tile: BitmapTile(size: 64, pixels: pixels),
+          tile: BitmapTile(size: defaultCelTileSize, pixels: pixels),
         ),
       ]),
     );

@@ -41,7 +41,10 @@ void opensTheEnginesScreens() {
 /// The store of a file's frames' pictures, on the app's engine
 /// ([opensTheEnginesScreens]).
 EngineFramePictureStore<FramePictureKey> aStoreOfPictures() =>
-    EngineFramePictureStore(tools: () => appEngineFrameTools);
+    EngineFramePictureStore(
+      tools: () => appEngineFrameTools,
+      openAlready: () => appEngineFrameToolsOpen,
+    );
 
 /// The pictures of the frames [stackOf] stacks, of [images]' cels, kept by
 /// [store] — on a page of [canvasSize] with no wall — their background work

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:async';
 import 'dart:io';
@@ -39,6 +40,7 @@ import '../../helpers/wait_window.dart';
 /// still has drawings that only exist while it holds that file open.
 /// The two vanished-file tests are that half.
 void main() {
+  opensTheEnginesScreens();
   late Directory folder;
   /// ONE mouse per test (see `editor_top_strip_test`): a second
   /// `addPointer` for the same device trips `MouseTracker`'s assertion.

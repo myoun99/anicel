@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// BACKDROP there — a dip, half an O.L on each side of the boundary. The
 /// other cut is what takes that share, and it brings its own paper.
 void main() {
+  opensTheEnginesScreens();
   const paperArgb = 0xFF00FF00;
 
   // Strict: two green papers mixed are exactly green, while a red wash of

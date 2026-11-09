@@ -42,9 +42,9 @@ import '../../helpers/settle_async.dart';
 /// drew (one-picture-per-frame ②-5b-1).
 void main() {
   opensTheEnginesScreens();
-  const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 16);
-  const viewSize = Size(32, 16);
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: tileSize);
+  const viewSize = Size(2.0 * tileSize, 1.0 * tileSize);
   const under = Color(0xFF000000);
   const red = [0xFF, 0x00, 0x00, 0xFF];
   const blue = [0x00, 0x00, 0xFF, 0xFF];

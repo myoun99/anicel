@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/gestures.dart';
@@ -41,6 +42,7 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// the pins below walk the ROUTES — a key, the tool rail, a frame walk —
 /// and each one has to come out in one of the two buckets.
 void main() {
+  opensTheEnginesScreens();
   const frameA = FrameId('tl-frame-a');
   const frameB = FrameId('tl-frame-b');
   const layerId = LayerId('tl-layer');

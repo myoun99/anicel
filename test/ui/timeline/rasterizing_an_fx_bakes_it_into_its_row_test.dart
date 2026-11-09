@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -65,6 +66,7 @@ import '../../helpers/wait_window.dart';
 /// Q4 switches off what changes the picture at its defaults; Q8 bakes no
 /// row without a picture of its own.
 void main() {
+  opensTheEnginesScreens();
   // The difference blend below is an advanced one, drawn by the shader.
   setUpAll(LayerBlendShader.load);
 
@@ -73,18 +75,29 @@ void main() {
   const green = [0, 160, 0, 255];
   const bright = EffectId('e-bright');
 
-  /// Opaque tiles of [rgba] at [coords], 16 pixels a side.
+  /// Opaque squares of [rgba] 16 pixels a side, [coords] counting them.
   BitmapSurface inkAt(List<TileCoord> coords, List<int> rgba) {
-    final pixels = Uint8List(16 * 16 * 4);
-    for (var i = 0; i < pixels.length; i += 4) {
-      pixels.setRange(i, i + 4, rgba);
+    const side = 16;
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
+    for (final coord in coords) {
+      for (var y = coord.y * side; y < (coord.y + 1) * side; y += 1) {
+        for (var x = coord.x * side; x < (coord.x + 1) * side; x += 1) {
+          pixels.setRange(
+            (y * defaultCelTileSize + x) * 4,
+            (y * defaultCelTileSize + x + 1) * 4,
+            rgba,
+          );
+        }
+      }
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 16,
+      tileSize: defaultCelTileSize,
       tiles: {
-        for (final coord in coords)
-          coord: BitmapTile(size: 16, pixels: Uint8List.fromList(pixels)),
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: defaultCelTileSize,
+          pixels: pixels,
+        ),
       },
     );
   }

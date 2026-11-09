@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -29,6 +30,7 @@ import '../../helpers/wait_window.dart';
 /// target decides the point is inside it and hands the paths on. A test
 /// that called the handler would survive the target losing its callback.
 void main() {
+  opensTheEnginesScreens();
   late Directory folder;
 
   setUp(() {

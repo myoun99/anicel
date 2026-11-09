@@ -103,14 +103,21 @@ class EngineFramePicture extends ChangeNotifier {
 class EngineFramePictureStore<K extends Object> {
   /// Pictures laid with [tools], once they are there: a store is made
   /// before the engine is open, and what it is asked for waits for it.
-  EngineFramePictureStore({required Future<EngineFrameTools> Function() tools})
-    : _open = tools;
+  ///
+  /// [openAlready] answers them where they are open by now, with no turn to
+  /// wait: a store made after the engine opened paints from its first frame.
+  EngineFramePictureStore({
+    required Future<EngineFrameTools> Function() tools,
+    EngineFrameTools? Function()? openAlready,
+  }) : _open = tools,
+       _openAlready = openAlready;
 
   final Future<EngineFrameTools> Function() _open;
+  final EngineFrameTools? Function()? _openAlready;
   Future<EngineFrameTools>? _opening;
 
   /// What a picture is laid with — null until the engine is open.
-  EngineFrameTools? get toolsOpen => _opened;
+  EngineFrameTools? get toolsOpen => _opened ??= _openAlready?.call();
   EngineFrameTools? _opened;
 
   /// What [toolsOpen] waits for, opened the first time it is asked: a

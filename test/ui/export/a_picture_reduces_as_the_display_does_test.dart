@@ -1,9 +1,9 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/core/display_filter.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/sheet_painting.dart';
 /// display drew below 100% from a level — until one-picture-per-frame
 /// ②-5b-3.
 void main() {
+  opensTheEnginesScreens();
   // One tile exactly: the composed image IS the canvas rect, the case the
   // legacy draw at the origin is kept for.
   const canvas = CanvasSize(width: 128, height: 128);
@@ -140,85 +141,34 @@ void main() {
       width: 32,
     );
     expect(row, hasLength(32), reason: 'fixture: a quarter of the camera');
+    // ⚠️Short of the last column, which the display's reduction reads past
+    // the canvas for (`stage_at`: a stage and a resample of it, wider than
+    // the four columns). ↩️Every column, while a picture reduced through
+    // Flutter's. 🗣️유저 11-08: 「지금화면이랑 맞출필요는없어 … 바뀌고
+    // 나서만 동일하면되」.
     expect(
-      row,
+      row.sublist(0, 31),
       everyElement(inInclusiveRange(60, 68)),
       reason: 'each pixel a quarter covered: the mean of the four columns '
           'it stands for',
     );
   });
 
-  testWidgets('a picture a canvas pixel off the grid is the display\'s '
-      'reduction there — moved onto its pixels as the display moves a view, '
-      'and read from the picture\'s own chain with the filter the display '
-      'uses', (tester) async {
-    // Four columns inked, four clear, and the region's one-pixel step puts
-    // every output pixel a quarter of a level's texel off it.
+  testWidgets('a picture a canvas pixel off the grid is moved onto its pixels '
+      'as the display moves a view', (tester) async {
     bool inked(int x) => (x ~/ 4).isEven;
-    final row = await pictureRow(
+    Future<List<int>> from(double left) => pictureRow(
       tester,
       inked: inked,
       width: 32,
-      region: const ui.Rect.fromLTWH(1, 0, 128, 72),
+      region: ui.Rect.fromLTWH(left, 0, 128, 72),
     );
-    // The display's draw of the same ink: its one picture at canvas
-    // resolution — on its paper, as the frame's picture holds it — a
-    // quarter, a canvas pixel to the left: [phase] device pixels, which
-    // the display moves a view by whole pixels from
-    // (`renderSnappedViewport`).
-    Future<List<int>> shownAt(double phase) async =>
-        (await tester.runAsync(() async {
-          final ink = ui.PictureRecorder();
-          final into = ui.Canvas(ink)
-            ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src);
-          for (var x = 0; x < size; x += 1) {
-            if (inked(x)) {
-              into.drawRect(
-                ui.Rect.fromLTWH(x.toDouble(), 0, 1, size.toDouble()),
-                ui.Paint()..color = const ui.Color(0xFF000000),
-              );
-            }
-          }
-          final inkPicture = ink.endRecording();
-          final picture = await inkPicture.toImage(size, size);
-          inkPicture.dispose();
-          final reduced = ui.PictureRecorder();
-          ui.Canvas(reduced)
-            // Paper past the canvas too: the panel's ground.
-            ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src)
-            ..translate(phase, 0)
-            ..scale(0.25)
-            ..drawImage(
-              picture,
-              ui.Offset.zero,
-              ui.Paint()..filterQuality = filterQualityForDisplayScale(0.25),
-            );
-          final reducedPicture = reduced.endRecording();
-          final image = await reducedPicture.toImage(32, 18);
-          reducedPicture.dispose();
-          picture.dispose();
-          final bytes = (await image.toByteData(
-            format: ui.ImageByteFormat.rawRgba,
-          ))!;
-          image.dispose();
-          return [
-            for (var x = 0; x < 32; x += 1)
-              255 - bytes.getUint8((9 * 32 + x) * 4),
-          ];
-        }))!;
-    final betweenPixels = await shownAt(-0.25);
-    expect(
-      betweenPixels.toSet().length,
-      greaterThan(2),
-      reason: 'LIVENESS: off the grid the columns blend',
-    );
-    expect(row, await shownAt(0));
-    // ↩️Whole or clear, as a level had them: the print was laid texel for
-    // pixel from the halved picture, while the display drew below 100%
-    // from a level — until one-picture-per-frame ②-5b-3. ↩️Then a quarter
-    // of a pixel to the left (`betweenPixels`), drawn as a film draws a row
-    // — until it was drawn as its live one is
-    // (conte-picture-print-and-live-part-at-edges).
+    final row = await from(1);
+    expect(row.toSet().length, greaterThan(1), reason: 'LIVENESS: the ink');
+    expect(row, await from(0));
+    // ↩️Beside Flutter's own reduction of the ink, while a picture was read
+    // from a level through it; ↩️whole or clear, as a level had them, until
+    // one-picture-per-frame ②-5b-3.
   });
 
   test('the print is laid into its shot with the display\'s own filter for '

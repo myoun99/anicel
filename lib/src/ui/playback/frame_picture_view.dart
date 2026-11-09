@@ -26,6 +26,7 @@ import '../engine_screen_texture.dart';
 import 'camera_shot.dart' show outlineOnScreen, shotClipOnScreen;
 import 'engine_frame_picture_store.dart';
 import 'frame_pictures.dart';
+import '../widgets/still_raster.dart';
 import 'stacked_frame_picture.dart';
 
 /// What a screen showing frames takes from their maker: the signal that a
@@ -1144,24 +1145,31 @@ class _RenderFrameScreen extends RenderBox {
       offset: offset,
       devicePixelRatio: _devicePixelRatio,
     );
-    context.pushClipRect(true, offset, Offset.zero & size, (context, offset) {
-      final canvasSize = _cutAtCanvas;
-      if (canvasSize == null) {
-        context.addLayer(layer);
-        return;
-      }
-      final cut = shotClipOnScreen(
-        outlineOnScreen(canvasSize, _viewport, _devicePixelRatio),
-        _devicePixelRatio,
-      );
-      context.pushClipPath(
-        true,
-        offset,
-        Offset.zero & size,
-        Path()..addPolygon(cut.corners, true),
-        (context, _) => context.addLayer(layer),
-        clipBehavior: cut.behavior,
-      );
-    });
+    // Live between what a still region holds: no image can vouch for a
+    // texture, and the conte's picture stands in a dock.
+    context.pushLayer(TickSceneLayer(alwaysLive: true)..size = size, (
+      context,
+      offset,
+    ) {
+      context.pushClipRect(true, offset, Offset.zero & size, (context, offset) {
+        final canvasSize = _cutAtCanvas;
+        if (canvasSize == null) {
+          context.addLayer(layer);
+          return;
+        }
+        final cut = shotClipOnScreen(
+          outlineOnScreen(canvasSize, _viewport, _devicePixelRatio),
+          _devicePixelRatio,
+        );
+        context.pushClipPath(
+          true,
+          offset,
+          Offset.zero & size,
+          Path()..addPolygon(cut.corners, true),
+          (context, _) => context.addLayer(layer),
+          clipBehavior: cut.behavior,
+        );
+      });
+    }, offset);
   }
 }

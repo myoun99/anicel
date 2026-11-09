@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -33,7 +34,8 @@ import '../../helpers/pill_row_clipboard.dart';
 /// a mirror of it carrying the same picture — what the screen shows does not
 /// change, so it must not change on any frame.
 void main() {
-  const tile = 256;
+  opensTheEnginesScreens();
+  const tile = defaultCelTileSize;
 
   /// A tile of [rgba] at the cut's top-left corner.
   BitmapSurface ink(CanvasSize canvasSize, List<int> rgba) {
@@ -239,6 +241,7 @@ void main() {
       (await bluePixels(tester), await pixelsOf(tester, 1) > 100),
       (0, true),
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a ROW\'s 링크 독립 leaves its attach\'s picture on the screen '

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -24,6 +25,7 @@ import '../../helpers/wait_window.dart';
 /// its tooltip naming the fx (「fx 이름 래스터라이즈」); and Q8 「폴더 · 조정 레이어 둘 다
 /// 버튼이 꺼진다」: there, lit off in its place.
 void main() {
+  opensTheEnginesScreens();
   Future<EditorSessionManager> theApp(WidgetTester tester) async {
     // The WHOLE app: the lanes are HomePage's state.
     await tester.binding.setSurfaceSize(const Size(1280, 1200));

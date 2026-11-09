@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/settle_async.dart';
 
 /// D15 (유저 2026-08-21): 「①트랙이 보여야 하는데 프레임이 보임 ②심지어
 /// 수정 전 구버전 간편오버레이가 보임 — 설마 사본 멋대로 만든 건가?」
@@ -236,7 +237,12 @@ void main() {
     thumbnails.resolve(cut, 0, shownHeight: 1000);
     expect(thumbnails.pending(), isTrue, reason: 'the premise: it renders');
     expect(
-      await tester.runAsync(() => pollUntil(() => !thumbnails.pending())),
+      await tester.runAsync(
+        () => pollUntil(() {
+          turnThePumpedClock(tester);
+          return !thumbnails.pending();
+        }),
+      ),
       isTrue,
       reason: 'the premise: it landed',
     );

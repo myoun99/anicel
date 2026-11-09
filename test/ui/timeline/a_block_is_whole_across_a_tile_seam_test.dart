@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import 'dart:async';
+
 import '../../helpers/a_shown_surface.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -32,6 +34,8 @@ void main() {
   const cell = 29.9328;
 
   setUpAll(openAppGpuEngine);
+  // The zoom's stop is what bakes a tile here.
+  setUpAll(() => TimelineGridTileStore.instance.debugZoomTimer = Timer.new);
   setUp(TimelineGridTileStore.instance.clear);
   tearDown(TimelineGridTileStore.instance.clear);
 

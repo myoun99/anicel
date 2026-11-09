@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ import '../../helpers/rail_group_button.dart';
 /// row's frame, the place window, Import — and each reads what the
 /// timeline actually paints, because that is what they saw.
 void main() {
+  opensTheEnginesScreens();
   late Directory tempDir;
 
   setUp(() async {

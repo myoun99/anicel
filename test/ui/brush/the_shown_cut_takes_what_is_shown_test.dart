@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -33,6 +34,7 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// (스포이드도)」 — memo 「잘라내기의 원본삭제는 fx같은 삭제불가능한건
 /// 삭제안한다거나 그런식」 · Q2 「보이는 레이어 전부의 그 영역」.
 void main() {
+  opensTheEnginesScreens();
   const a = LayerId('row-a');
   const b = LayerId('row-b');
   const hidden = LayerId('row-hidden');

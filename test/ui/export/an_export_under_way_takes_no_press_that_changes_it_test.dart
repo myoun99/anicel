@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -124,6 +125,7 @@ typedef _Window = ({
 /// press of its own ([ControlPressClaim]) and tells the reader nothing, as
 /// the switch rows do.
 void main() {
+  opensTheEnginesScreens();
   late Directory temp;
 
   setUp(() {

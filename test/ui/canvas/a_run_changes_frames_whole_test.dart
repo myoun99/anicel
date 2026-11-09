@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -44,7 +45,7 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 void main() {
   opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 16, height: 16);
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   const blue = 0xFF0000FF;
   const red = 0xFFFF0000;
   final screen = GlobalKey();
@@ -133,11 +134,11 @@ void main() {
     ),
   );
 
-  Future<void> pumpScreen(WidgetTester tester, Widget view) {
+  Future<void> pumpScreen(WidgetTester tester, Widget view) async {
     // One canvas pixel a device pixel at 100%: the middle is the middle.
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    return tester.pumpWidget(
+    await tester.pumpWidget(
       MaterialApp(
         home: Center(
           child: RepaintBoundary(
@@ -147,6 +148,8 @@ void main() {
         ),
       ),
     );
+    // A screen's first frame opens its texture.
+    await tester.pump();
   }
 
   /// The canvas playing a run: [cel]'s frame, as the run's maker made it.

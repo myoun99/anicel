@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat;
 import 'package:flutter/gestures.dart';
@@ -53,6 +54,7 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// It is also the rig that answers in PIXELS what the panel fixtures cannot:
 /// a pending move's hole (the last test here).
 void main() {
+  opensTheEnginesScreens();
   const frameA = FrameId('rt-frame-a');
   const frameB = FrameId('rt-frame-b');
   const layerId = LayerId('rt-layer');

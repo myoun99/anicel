@@ -97,17 +97,21 @@ void main() {
 
   final screen = GlobalKey();
 
-  Future<void> pump(WidgetTester tester, Widget picture) => tester.pumpWidget(
-    MaterialApp(
-      home: Align(
-        alignment: Alignment.topLeft,
-        child: RepaintBoundary(
-          key: screen,
-          child: SizedBox.fromSize(size: box, child: picture),
+  Future<void> pump(WidgetTester tester, Widget picture) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: screen,
+            child: SizedBox.fromSize(size: box, child: picture),
+          ),
         ),
       ),
-    ),
-  );
+    );
+    // A screen's first frame opens its texture.
+    await tester.pump();
+  }
 
   /// What the last pump put on the screen, in device pixels.
   Future<Shot> onScreen(WidgetTester tester) async {

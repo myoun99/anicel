@@ -1,3 +1,4 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -56,6 +57,7 @@ class _LateLanguage extends AppLanguageSettingsStore {
 /// and goes through the one door a drop on the window goes through (F-282-Q5,
 /// 유저 2026-10-09: 「최대한 통일하고싶음」).
 void main() {
+  opensTheEnginesScreens();
   late Directory folder;
 
   setUp(() {

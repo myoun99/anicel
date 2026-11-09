@@ -1,3 +1,4 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ import '../helpers/surface_rgba_in_place.dart';
 /// there. What is the bake's own: the picture is the CANVAS's, so a row
 /// drawn somewhere else on the canvas takes it where that row shows it.
 void main() {
+  opensTheEnginesScreens();
   EditorWorkspace workspaceOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace));
 

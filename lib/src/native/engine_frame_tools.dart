@@ -12,6 +12,14 @@ typedef EngineFrameTools = ({GpuComposite composite, EngineLetters letters});
 /// engine is open, and what it is asked for waits for this.
 Future<EngineFrameTools> get appEngineFrameTools => _tools ??= () async {
   final composite = GpuComposite(await openAppGpuEngine());
-  return (composite: composite, letters: await EngineLetters.open(composite));
+  return _open = (
+    composite: composite,
+    letters: await EngineLetters.open(composite),
+  );
 }();
 Future<EngineFrameTools>? _tools;
+
+/// [appEngineFrameTools] where they are open already: a store made after
+/// that has no turn to wait before its first paint.
+EngineFrameTools? get appEngineFrameToolsOpen => _open;
+EngineFrameTools? _open;

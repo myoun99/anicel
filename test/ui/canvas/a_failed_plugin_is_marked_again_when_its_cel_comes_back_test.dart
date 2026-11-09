@@ -1,6 +1,7 @@
 @Tags(['gpu'])
 library;
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -36,6 +37,7 @@ import '../../helpers/settle_async.dart';
 /// — leaves the header the record of another run, or none. This drives the
 /// whole app: the plugin fails on a cel of paper alone.
 void main() {
+  opensTheEnginesScreens();
   const paper = [64, 192, 96, 255];
   const effectId = EffectId('shift');
   const textToolTrack = TrackId('text-tool-track');
