@@ -380,14 +380,11 @@ class _RenderGridScreen extends RenderBox {
   /// moment all of them are known to have come to rest.
   ({Rect at, int id})? _composited() {
     final screen = _screen;
-    final texture = screen._texture;
-    if (!attached || texture == null) {
-      return null;
-    }
     final (:toView, :shown) = _measured();
     if (shown.isEmpty) {
       return null;
     }
+    final texture = screen._texture!;
     final laid = screen._laid;
     if (laid != null &&
         _covers(MatrixUtils.transformRect(toView, laid.at), shown)) {

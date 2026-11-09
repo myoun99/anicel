@@ -294,15 +294,18 @@ void main() {
     await tester.pumpWidget(aGrid(row));
     await tester.pump();
 
+    // A mark no lay would leave: laid again, the screen would come up clear.
     final lay = GpuGridLay(appGpuEngineOpen.value!);
     addTearDown(lay.free);
-    lay.lay(surface, (0, 0, 512, 512), const []);
-    final wiped = surface.fingerprint();
+    lay.lay(surface, (0, 0, 512, 512), [
+      (picture: tile.picture, from: (0, 0, 120, 20), onto: (0, 0, 120, 20)),
+    ]);
+    final marked = surface.fingerprint();
 
     await tester.pumpWidget(aGrid(row, left: 200));
     await tester.pump();
 
-    expect(surface.fingerprint(), wiped);
+    expect(surface.fingerprint(), marked);
   });
 
   testWidgets('a box never in the view opens no screen', (tester) async {
