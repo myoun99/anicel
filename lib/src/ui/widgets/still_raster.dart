@@ -67,7 +67,8 @@ import 'static_raster.dart';
 /// texture, a platform view, a follower pinned to a leader elsewhere, a
 /// backdrop filter reading what is behind the region, a layer type this
 /// file does not know — makes the region stand down for as long as it
-/// holds one.
+/// holds one, unless it stands under a tick that is always live
+/// ([TickSceneLayer.alwaysLive]).
 ///
 /// ## Where it is, and where not
 ///
@@ -675,7 +676,7 @@ class _StillLayer extends OffsetLayer {
   /// film frame threw away — two images a page again, and the first film
   /// frame after every turn drawn live (10-12, cut 302: 55 of 55).
   bool _moving(TickSceneLayer tick) =>
-      _frame - tick._movedAloneAt <= _movingFor;
+      tick.alwaysLive || _frame - tick._movedAloneAt <= _movingFor;
 
   /// Marks the ticks that changed in this frame as moved alone, unless the
   /// region changed in it too. A tick looked at for the first time is a
@@ -898,6 +899,9 @@ class _StillLayer extends OffsetLayer {
       own?.add(layer);
       out.add(layer);
       if (layer case TickSceneLayer(:final offset)) {
+        if (layer.alwaysLive) {
+          return true;
+        }
         final held = <Object?>[offset];
         final itsOwn = <Object?>[offset];
         for (var child = layer.firstChild;
@@ -1586,6 +1590,16 @@ class _Strata {
 /// every tick in the timeline read as covered and the region was never
 /// still (10-12).
 class TickSceneLayer extends OffsetLayer {
+  TickSceneLayer({this.alwaysLive = false});
+
+  /// 🚨Drawn live between its region's strata in every frame, and not
+  /// looked into: what it holds is not the region's image to keep, and
+  /// says nothing of what it shows. A texture is this — the frame grid's
+  /// screen (`timeline_grid_screen.dart`) drew a dock live for as long as it
+  /// showed one, 🔬the raster's p50 0.80 → 2.45 ms under a stroke on a dock
+  /// that did not change (S5_BA's cut 352, the main PC, 11-09).
+  final bool alwaysLive;
+
   /// The box the tick paints in, at [offset] — for the region's
   /// diagnostics.
   Size size = Size.zero;

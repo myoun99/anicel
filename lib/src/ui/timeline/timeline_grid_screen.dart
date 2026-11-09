@@ -10,6 +10,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import '../../native/app_gpu_engine.dart';
 import '../../native/screen_texture.dart';
 import '../layout/device_grid.dart';
+import '../widgets/still_raster.dart';
 import 'timeline_grid_tile_picture.dart';
 
 /// How a grid's screen is opened: [ScreenTexture.open]. A test reads one
@@ -332,16 +333,21 @@ class _RenderGridScreen extends RenderBox {
     super.detach();
   }
 
-  // Only where it lays: a layer of a texture is what keeps a dock from
-  // being held as a still image (`StillRaster`), and a grid with no screen
-  // is one like any other. It says what it shows all the same, or no
-  // texture would ever open.
+  // Only where it lays: a grid with no screen is one like any other. It says
+  // what it shows all the same, or no texture would ever open. ↩️A texture
+  // under no tick kept a dock from being held as a still image (`StillRaster`)
+  // for as long as it showed one: under one always live, the region draws it
+  // between what it holds (11-09, card the-grid-screen-keeps-the-dock-from-baking).
   @override
   void paint(PaintingContext context, Offset offset) {
     final laid = _screen.lays;
     _measured();
     if (laid) {
-      context.addLayer(_ScreenLayer(this));
+      context.addLayer(
+        TickSceneLayer(alwaysLive: true)
+          ..size = size
+          ..append(_ScreenLayer(this)),
+      );
     }
   }
 

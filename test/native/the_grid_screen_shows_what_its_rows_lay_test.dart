@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
+import 'package:anicel/src/ui/widgets/still_raster.dart';
 
 import '../helpers/a_shown_surface.dart';
 import '../helpers/census_where_textures_are_ram.dart';
@@ -216,6 +217,20 @@ void main() {
     expect(shown.rect, const Rect.fromLTWH(-78, -78, 256, 256));
     // The id the screen presented by: a texture on a surface has 0.
     expect(shown.textureId, 0);
+  });
+
+  testWidgets('a screen stands under a tick its dock draws live', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+    await tester.pump();
+
+    final shown = tester.layers.whereType<TextureLayer>().single;
+    expect(
+      shown.parent,
+      isA<TickSceneLayer>().having((tick) => tick.alwaysLive, 'alwaysLive', true),
+    );
   });
 
   testWidgets('a scroll moves the screen with its rows and lays nothing', (
