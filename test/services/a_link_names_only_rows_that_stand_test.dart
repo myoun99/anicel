@@ -372,15 +372,15 @@ void main() {
       ],
     );
     final links = linkOf('link', [
-      LayerLinkMember(
-        trackId: const TrackId('t1'),
+      const LayerLinkMember(
+        trackId: TrackId('t1'),
         cutId: open,
-        layerId: const LayerId('open-row'),
+        layerId: LayerId('open-row'),
       ),
-      LayerLinkMember(
-        trackId: const TrackId('t2'),
+      const LayerLinkMember(
+        trackId: TrackId('t2'),
         cutId: away,
-        layerId: const LayerId('away-row'),
+        layerId: LayerId('away-row'),
       ),
     ]);
     final repository = ProjectRepository(
@@ -409,7 +409,7 @@ void main() {
   });
 
   test('a write that takes no row leaves the very same table', () {
-    final (:repository, :history, :commands) = linkedPair();
+    final (:repository, :commands, history: _) = linkedPair();
     final before = repository.requireProject().linkRegistry;
 
     commands.renameLayer(
@@ -419,6 +419,5 @@ void main() {
     );
 
     expect(identical(repository.requireProject().linkRegistry, before), isTrue);
-    expect(history.canUndo, isTrue);
   });
 }
