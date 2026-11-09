@@ -1660,6 +1660,18 @@ class BrushFrameStore {
         });
   }
 
+  /// [surface]'s stream to park, or null where the engine will not give it
+  /// back: no one waits on a cooling pass to be told, so that ends the pass
+  /// as a refused park ends it, the cel still hot (저장's review of the
+  /// flip lane, 11-09).
+  Uint8List? _bytesToPark(BrushFrameKey key, BitmapSurface surface) {
+    try {
+      return encodeCelEntryFromSurface(key, surface);
+    } on GpuReadFailed {
+      return null;
+    }
+  }
+
   /// Cools LRU hot cels until the budget holds, one at a time: snapshot
   /// bytes on the main isolate, COMPRESS in a background isolate, then
   /// commit the swap ONLY if the cel's surface is still the identical
@@ -1703,13 +1715,8 @@ class BrushFrameStore {
       // two were matched on purpose (fixing one alone would make it a
       // copy of the other), so they moved together. One copy of the
       // payload instead of four — see [compressAnicelPayloadInWorker].
-      final Uint8List body;
-      try {
-        body = encodeCelEntryFromSurface(key, surface);
-      } on GpuReadFailed {
-        // A cel the engine will not give back cannot be parked, and no one
-        // waits on this pass to be told: it ends as a refused park ends
-        // it, the cel still hot (저장's review of the flip lane, 11-09).
+      final body = _bytesToPark(key, surface);
+      if (body == null) {
         _coolingStoodDown = true;
         return;
       }

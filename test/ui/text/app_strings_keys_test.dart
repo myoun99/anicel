@@ -356,6 +356,8 @@ void main() {
     'saveFailedDiskFull': (s) => s.saveFailedDiskFull,
     'saveFailedLocationGone': (s) => s.saveFailedLocationGone,
     'saveFailedReplaceRefused': (s) => s.saveFailedReplaceRefused,
+    'saveFailedEngineRead': (s) => s.saveFailedEngineRead,
+    'saveFailedEngineReadNoCopy': (s) => s.saveFailedEngineReadNoCopy,
     'saveFailedUnknown': (s) => s.saveFailedUnknown,
     'saveFailedCopyKept': (s) => s.saveFailedCopyKept,
     'saveFailedNoCopy': (s) => s.saveFailedNoCopy,
