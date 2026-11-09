@@ -253,6 +253,22 @@ void main() {
       expect(cut!.tiles.keys, [TileCoord(x: 0, y: 0)]);
     });
 
+    test('a move keeps the wall its picture stands behind', () async {
+      final surface = surfaceOf([tile(200)], reach: PasteboardReach.quarter);
+
+      final moved = await moveHotCelInWorker(
+        key,
+        surface,
+        move: (
+          canvasSize: surface.canvasSize,
+          dx: defaultCelTileSize,
+          dy: 0,
+        ),
+      );
+
+      expect(moved.pasteboardReach, PasteboardReach.quarter);
+    });
+
     test('🚨 a read refused here is thrown by its own name, not as a '
         'worker\'s error', () async {
       final counted = _Counted();
