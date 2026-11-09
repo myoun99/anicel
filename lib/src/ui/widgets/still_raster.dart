@@ -1317,6 +1317,14 @@ class _Strata {
   /// app whatever its size, 09-25; on the Surface the pixels outweigh it —
   /// [StillRaster._lastCaptureFrame]), and a region cut at every tick has
   /// several strata.
+  ///
+  /// ⚠️What stands over a tick that is always live is taken like the rest: a
+  /// frame grid's rows stand over the grid's screen, and a picture reaches its
+  /// boundary's whole box ([_lowest]), so the image holds what of the grid the
+  /// dock shows a second time — 1.52 times the dock (11-09). ⛔Drawn as
+  /// painted instead, in no image, it costs the raster twice what the part of
+  /// the image saves: 🔬a stroke on S5_BA's cut 352 (main PC, profile), p50
+  /// 1.7–2.2 → 3.5–3.7 ms quiet, 4.0–4.7 → 8.4–11.1 under 18 test processes.
   static _Strata take(
     _Layout layout,
     Size size,

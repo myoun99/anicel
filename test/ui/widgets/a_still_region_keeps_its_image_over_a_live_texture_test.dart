@@ -38,7 +38,11 @@ void main() {
     }
   }
 
-  Widget aRegion(ValueNotifier<int> added, {required bool alwaysLive}) =>
+  Widget aRegion(
+    ValueNotifier<int> added, {
+    required bool alwaysLive,
+    Widget? over,
+  }) =>
       Directionality(
         textDirection: TextDirection.ltr,
         child: Center(
@@ -54,6 +58,7 @@ void main() {
                     child: ColoredBox(color: Color(0xFF1E88E5)),
                   ),
                   _Textured(added, alwaysLive: alwaysLive),
+                  ?over,
                 ],
               ),
             ),
@@ -89,6 +94,40 @@ void main() {
 
     expect(added.value - before, 5);
     expect(region(tester).debugCaptureCount, taken, reason: 'not retaken');
+  });
+
+  testWidgets('what stands over it stands over it in the scene', (
+    tester,
+  ) async {
+    const over = Color(0xFFFF0000);
+    final added = ValueNotifier<int>(0);
+    addTearDown(added.dispose);
+    await tester.pumpWidget(
+      aRegion(
+        added,
+        alwaysLive: true,
+        over: const ColoredBox(color: over),
+      ),
+    );
+    await standStill(tester);
+    final still = region(tester);
+    expect(still.debugDrawnFromImage, isTrue, reason: '⛔premise');
+
+    final shown = (await tester.runAsync(
+      () => (still.debugLayer! as OffsetLayer).toImage(
+        Offset.zero & still.size,
+      ),
+    ))!;
+    addTearDown(shown.dispose);
+    final bytes = (await tester.runAsync(
+      () => shown.toByteData(format: ui.ImageByteFormat.rawRgba),
+    ))!;
+    final at = (shown.height ~/ 2 * shown.width + shown.width ~/ 2) * 4;
+    expect(
+      [for (var i = 0; i < 3; i += 1) bytes.getUint8(at + i)],
+      [255, 0, 0],
+      reason: 'over the texture, which is green, and over the ground',
+    );
   });
 
   testWidgets('under any other tick it still stands the region down', (
@@ -146,5 +185,11 @@ class _CountedTexture extends TextureLayer {
   void addToScene(ui.SceneBuilder builder) {
     added.value += 1;
     super.addToScene(builder);
+    // A texture's pixels are the engine's: a test's scene shows none.
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(rect, Paint()..color = const Color(0xFF00FF00));
+    final green = recorder.endRecording();
+    builder.addPicture(Offset.zero, green);
+    green.dispose();
   }
 }
