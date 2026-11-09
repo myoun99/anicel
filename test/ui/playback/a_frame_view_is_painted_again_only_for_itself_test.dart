@@ -36,10 +36,10 @@ void main() {
   final screen = GlobalKey();
 
   /// The screen the frame view's paint laid last.
-  TextureLayer? laid(WidgetTester tester) {
-    TextureLayer? inside(Layer layer) {
-      if (layer case final TextureLayer texture) {
-        return texture;
+  Layer? laid(WidgetTester tester) {
+    Layer? inside(Layer layer) {
+      if (layer is PictureLayer) {
+        return layer;
       }
       if (layer is! ContainerLayer) {
         return null;

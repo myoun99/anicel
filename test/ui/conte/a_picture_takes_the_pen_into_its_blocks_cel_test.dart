@@ -610,6 +610,7 @@ void main() {
       'pen-up', (tester) async {
     final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
+    await itsToolsOpen(tester, session.renderCaches.framePictureStore);
     final ink = await pumpTheTab(tester, session);
 
     final cell = layoutConteSheet(
@@ -682,6 +683,7 @@ void main() {
       isFalse,
       reason: 'drawn on the picture only: the cell\'s ink got nothing',
     );
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨a picture of a row that keys its colours tells the pen\'s '
@@ -890,6 +892,7 @@ void main() {
         fxPlugins: fxPlugins,
       );
       addTearDown(session.dispose);
+      await itsToolsOpen(tester, session.renderCaches.framePictureStore);
       final rows = BrushFrameStore();
       final ink = ConteInkController(rowStore: rows);
       addTearDown(ink.dispose);
@@ -987,18 +990,13 @@ void main() {
       final render = tester.renderObject<RenderRepaintBoundary>(
         find.byKey(boundary),
       );
-      final screen = (await tester.runAsync(() async {
+      return (await tester.runAsync(() async {
         final image = await render.toImage(pixelRatio: ratio);
         final data = await image.toByteData();
         final screen = _Screen(data!.buffer.asUint8List(), image.width, ratio);
         image.dispose();
         return screen;
       }))!;
-      layTheScreensOver(render, ratio, (
-        rgba: screen.rgba,
-        width: screen.width,
-      ));
-      return screen;
     }
 
     /// The point [fraction] of the way across [slot].

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
@@ -1124,26 +1123,16 @@ class _RenderFrameScreen extends RenderBox {
     if (_ground case final ground?) {
       context.canvas.drawRect(offset & size, Paint()..color = ground);
     }
-    final texture = _shownThrough.texture!;
-    final id = texture.nextTextureId;
-    texture.present(
-      (next) => _view._show(
+    final layer = _shownThrough.presented(
+      (next, size) => _view._show(
         _asItStands,
         next,
-        (texture.width, texture.height),
+        size,
         viewport: _viewport,
         devicePixelRatio: _devicePixelRatio,
       ),
-    );
-    final layer = TextureLayer(
-      rect:
-          offset &
-          Size(
-            texture.width / _devicePixelRatio,
-            texture.height / _devicePixelRatio,
-          ),
-      textureId: id,
-      filterQuality: ui.FilterQuality.none,
+      offset: offset,
+      devicePixelRatio: _devicePixelRatio,
     );
     context.pushClipRect(true, offset, Offset.zero & size, (context, offset) {
       final canvasSize = _cutAtCanvas;

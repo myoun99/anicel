@@ -7,13 +7,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show
-        ClipPathLayer,
-        ClipRectLayer,
-        ContainerLayer,
-        Layer,
         OffsetLayer,
-        RenderRepaintBoundary,
-        TextureLayer;
+        RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -152,9 +147,7 @@ Widget onAScreen(
   ),
 );
 
-/// What [screen] shows, at the window's ratio: what Flutter painted, and
-/// each engine screen in its layers over it, read back from its surface —
-/// `flutter test` shows no texture.
+/// What [screen] shows, at the window's ratio.
 Future<Shot> shotOf(WidgetTester tester, GlobalKey screen) async {
   final render = screen.currentContext!.findRenderObject()!
       as RenderRepaintBoundary;
@@ -166,86 +159,7 @@ Future<Shot> shotOf(WidgetTester tester, GlobalKey screen) async {
     image.dispose();
     return (rgba: data!.buffer.asUint8List(), width: width);
   });
-  layTheScreensOver(render, ratio, shot!);
-  return shot;
-}
-
-/// Every screen in [layer] and under it laid over [shot], [at] its offset
-/// inside [clips], in logical pixels.
-void _layScreens(
-  Layer layer,
-  Offset at,
-  List<bool Function(Offset)> clips,
-  double ratio,
-  Shot shot,
-) {
-  if (layer case final TextureLayer texture) {
-    _layScreen(texture, at, clips, ratio, shot);
-    return;
-  }
-  if (layer is! ContainerLayer) {
-    return;
-  }
-  final (inside, offset) = switch (layer) {
-    final ClipRectLayer clip => (
-      [...clips, clip.clipRect!.shift(at).contains],
-      at,
-    ),
-    final ClipPathLayer clip => (
-      [...clips, clip.clipPath!.shift(at).contains],
-      at,
-    ),
-    final OffsetLayer moved when !identical(moved, layer.parent) => (
-      clips,
-      at + moved.offset,
-    ),
-    _ => (clips, at),
-  };
-  for (var child = layer.firstChild; child != null; child = child.nextSibling) {
-    _layScreens(child, offset, inside, ratio, shot);
-  }
-}
-
-/// [texture]'s screen over [shot], src-over, one texel a device pixel.
-void _layScreen(
-  TextureLayer texture,
-  Offset at,
-  List<bool Function(Offset)> clips,
-  double ratio,
-  Shot shot,
-) {
-  final surface = shownScreens[texture.textureId];
-  if (surface == null) {
-    return;
-  }
-  final pixels = surface.read();
-  final height = shot.rgba.length ~/ 4 ~/ shot.width;
-  final left = ((texture.rect.left + at.dx) * ratio).round();
-  final top = ((texture.rect.top + at.dy) * ratio).round();
-  for (var y = 0; y < surface.height; y += 1) {
-    final row = y + top;
-    if (row < 0 || row >= height) {
-      continue;
-    }
-    for (var x = 0; x < surface.width; x += 1) {
-      final column = x + left;
-      if (column < 0 || column >= shot.width) {
-        continue;
-      }
-      final centre = Offset((column + 0.5) / ratio, (row + 0.5) / ratio);
-      if (!clips.every((inside) => inside(centre))) {
-        continue;
-      }
-      final from = (y * surface.width + x) * 4;
-      final to = (row * shot.width + column) * 4;
-      final away = 255 - pixels[from + 3];
-      for (var channel = 0; channel < 4; channel += 1) {
-        shot.rgba[to + channel] =
-            pixels[from + channel] +
-            (shot.rgba[to + channel] * away + 127) ~/ 255;
-      }
-    }
-  }
+  return shot!;
 }
 
 /// Each pixel [a] and [b] show differently — more than [by] apart in a
@@ -265,11 +179,6 @@ List<String> differences(Shot a, Shot b, {int by = 0}) => [
 /// is nothing to wait for. A frame is asked for all the same, or the screen
 /// would not be read as it now is.
 Future<void> inThePicture(WidgetTester tester) => tester.pump();
-
-/// Each engine screen in [render]'s layers laid over [shot], what Flutter
-/// painted of [render] at [ratio]: `flutter test` shows no texture.
-void layTheScreensOver(RenderObject render, double ratio, Shot shot) =>
-    _layScreens(render.debugLayer!, Offset.zero, const [], ratio, shot);
 
 /// A store that says which keys were laid, which a step was written into
 /// and which a landing moved a picture to.
@@ -365,8 +274,7 @@ Future<Shot> shotOfBox(WidgetTester tester, RenderBox box) async {
     image.dispose();
     return (rgba: data!.buffer.asUint8List(), width: width);
   });
-  layTheScreensOver(box, ratio, shot!);
-  return shot;
+  return shot!;
 }
 
 /// The box a frame's screen paints in, inside [view].

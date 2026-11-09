@@ -310,8 +310,7 @@ void main() {
       image.dispose();
       return (rgba: data!.buffer.asUint8List(), width: width, height: height);
     });
-    layTheScreensOver(render, ratio, (rgba: shot!.rgba, width: shot.width));
-    return shot;
+    return shot!;
   }
 
   /// The RGBA of device pixel ([x], [y]).

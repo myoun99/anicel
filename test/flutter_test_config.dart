@@ -217,6 +217,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // engine, each grid's screen opens on a surface of its own, freed as the
   // test ends.
   debugOpenEngineScreen = _screenOnASurface;
+  debugLayerOfScreen = screenDrawnAsAPicture;
   tearDown(_freeScreenSurfaces);
   // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
   // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a

@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/rendering.dart' show Layer, TextureLayer;
+import 'dart:ui' show FilterQuality, Offset, Rect, Size;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../native/app_gpu_engine.dart';
@@ -11,6 +13,16 @@ import '../native/screen_texture.dart';
 @visibleForTesting
 Future<ScreenTexture> Function(GpuEngine engine, int width, int height)
 debugOpenEngineScreen = ScreenTexture.open;
+
+/// The layer a screen's texture is shown by. A test's draws what the texture
+/// holds, read back: `flutter test` shows no texture.
+@visibleForTesting
+Layer Function({
+  required Rect rect,
+  required int textureId,
+  required FilterQuality filterQuality,
+})
+debugLayerOfScreen = TextureLayer.new;
 
 /// The step a screen's sides are rounded up to, in device pixels
 /// (grid-on-the-engine ④ D1 ⑥, 관제 2026-11-09 08:07 E②): a panel dragged a
@@ -53,6 +65,28 @@ final class EngineScreenTexture {
     return texture != null &&
         texture.width >= width &&
         texture.height >= height;
+  }
+
+  /// What [draw] puts on the next target of the texture open, [draw] told
+  /// its size, shown by a layer from [offset], one texel a device pixel.
+  Layer presented(
+    void Function(GpuTarget next, (int, int) size) draw, {
+    required Offset offset,
+    required double devicePixelRatio,
+  }) {
+    final texture = _texture!;
+    final id = texture.nextTextureId;
+    texture.present((next) => draw(next, (texture.width, texture.height)));
+    return debugLayerOfScreen(
+      rect:
+          offset &
+          Size(
+            texture.width / devicePixelRatio,
+            texture.height / devicePixelRatio,
+          ),
+      textureId: id,
+      filterQuality: FilterQuality.none,
+    );
   }
 
   void start() => appGpuEngineOpen.addListener(open);
