@@ -137,7 +137,7 @@ Uint8List _materializedBytes(
 }) {
   final result = materializeBrushDabSequenceOnBitmapSurface(
     surface:
-        baseSurface ?? BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        baseSurface ?? BitmapSurface(canvasSize: _canvasSize),
     sequence: BrushDabSequence(dabs),
   );
   return _surfaceBytes(result.surface);
@@ -333,7 +333,7 @@ void main() {
           _dab(x: 8.5 + i * 4.0, y: 12.5, color: 0xCC994411, sequence: i),
       ];
       final base = materializeBrushDabSequenceOnBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         sequence: BrushDabSequence(baseDabs),
       ).surface;
 
@@ -390,7 +390,7 @@ void main() {
           ),
       ];
       final base = materializeBrushDabSequenceOnBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         sequence: BrushDabSequence(baseDabs),
       ).surface;
 
@@ -443,7 +443,7 @@ void main() {
           ),
       ];
       final base = materializeBrushDabSequenceOnBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         sequence: BrushDabSequence(baseDabs),
       ).surface;
 
@@ -494,7 +494,7 @@ void main() {
       rasterizer.blendFrom(strokeDabs, from: 0);
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
-        surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+        surface: BitmapSurface(canvasSize: _canvasSize),
         strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
       );
@@ -517,7 +517,7 @@ void main() {
       final recorder = ui.PictureRecorder();
       BitmapSurfacePainter(
         surface:
-            baseSurface ?? BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+            baseSurface ?? BitmapSurface(canvasSize: _canvasSize),
         overlayModel: model,
         showTransparentBackground: false,
         // The shared tile-image cache's stale fallback is keyed by
@@ -620,7 +620,7 @@ void main() {
           ),
         ];
         final base = materializeBrushDabSequenceOnBitmapSurface(
-          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+          surface: BitmapSurface(canvasSize: _canvasSize),
           sequence: BrushDabSequence(baseDabs),
         ).surface;
 
@@ -672,7 +672,7 @@ void main() {
           ),
         ];
         final base = materializeBrushDabSequenceOnBitmapSurface(
-          surface: BitmapSurface(canvasSize: _canvasSize, tileSize: 64),
+          surface: BitmapSurface(canvasSize: _canvasSize),
           sequence: BrushDabSequence(baseDabs),
         ).surface;
 

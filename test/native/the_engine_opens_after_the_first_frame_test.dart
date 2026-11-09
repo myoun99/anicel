@@ -16,7 +16,7 @@ void main() {
     expect(
       RegExp(
         r'waitUntilFirstFrameRasterized\.then\(\s*\(_\)\s*=>\s*'
-        r'openAppGpuEngine\(\),?\s*\)',
+        r'openAppGpuEngine\(\)\.then\(',
       ).hasMatch(source),
       isTrue,
       reason: 'main asks for the engine once the first frame is rastered',

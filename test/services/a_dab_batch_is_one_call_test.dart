@@ -212,8 +212,10 @@ void main() {
       return;
     }
     final dabs = [for (var i = 0; i < 60; i += 1) dabAt(i)];
+    // ⏳The C kernel's call, on a grid the engine does not take (ⓔ).
     final raster = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+      tileSize: 64,
     );
     raster.blendFrom(dabs.sublist(0, 30));
     expect(QaNativeEngine.debugDabBatchCalls, 1);

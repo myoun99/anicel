@@ -312,24 +312,24 @@ void main() {
       QaNativeEngine.debugForceDartFallback = false;
       expect(QaNativeEngine.instance, isNotNull);
 
-      const liveTile = 128;
+      const liveTile = 64;
       const bigCanvas = CanvasSize(width: 256, height: 256);
       final random = Random(451);
-      // Base on a DIFFERENT grid (64) than the stroke tiles (128): the
+      // Base on a DIFFERENT grid (32) than the stroke tiles (64): the
       // base-rect copy walks multiple base tiles per overlay tile.
       final baseTiles = <TileCoord, BitmapTile>{};
       for (var tileY = 0; tileY < 2; tileY += 1) {
         for (var tileX = 0; tileX < 2; tileX += 1) {
           final coord = TileCoord(x: tileX, y: tileY);
           baseTiles[coord] = BitmapTile(
-            size: 64,
-            pixels: randomPixels(random, 64 * 64 * 4),
+            size: 32,
+            pixels: randomPixels(random, 32 * 32 * 4),
           );
         }
       }
       final base = BitmapSurface(
         canvasSize: bigCanvas,
-        tileSize: 64,
+        tileSize: 32,
         tiles: baseTiles,
       );
 

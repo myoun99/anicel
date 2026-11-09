@@ -732,8 +732,8 @@ class GpuStampLanding {
 
   /// Lays [picture], its top-left pixel at ([left], [top]), what of it lies
   /// [within] the canvas's (left, top, right, bottom), on the tiles [asks]
-  /// at [opacity] (65535 whole) in [mode], under [mask] if any. Each result
-  /// compares with the tile under it, and takes a fresh slot of [cel] of
+  /// at [opacity] (65535 whole) in [mode]. Each result compares with the
+  /// tile under it, and takes a fresh slot of [cel] of
   /// [pool] where it is neither that tile nor empty. As many of [asks], the
   /// first, as [pool] has room for.
   List<GpuLanded> land(
@@ -747,7 +747,6 @@ class GpuStampLanding {
     required List<GpuTileAsk> asks,
     int opacity = 65535,
     required int mode,
-    GpuMask? mask,
   }) => _landed(
     asks,
     (arena, coordinates, under, places, changes) {
@@ -772,7 +771,6 @@ class GpuStampLanding {
         asks.length,
         opacity,
         mode,
-        mask?._mask ?? nullptr,
         places,
         changes,
       );

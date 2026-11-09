@@ -578,8 +578,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     required BrushBlendMode mode,
     required bool erase,
   }) {
-    if (_engineStroke case final stroke? when _blur == null) {
-      return _landedOnEngine(stroke, coords, base, mode, erase);
+    if (_engineStroke != null && _blur == null) {
+      return _landedOnEngine(coords, base, mode, erase);
     }
     final results = List<PreBlendedOverlayTile?>.filled(coords.length, null);
     final native = _native;
@@ -739,7 +739,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// The results at [coords] on the engine: a coordinate the stroke has not
   /// reached, or the selection takes none of, has none.
   List<PreBlendedOverlayTile?> _landedOnEngine(
-    GpuStroke stroke,
     List<TileCoord> coords,
     BitmapSurface base,
     BrushBlendMode mode,
@@ -751,11 +750,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         if (_lands(coords[slot])) slot,
     ];
     final landed = _landOnEngine(
-      stroke,
       [for (final slot in slots) coords[slot]],
       base,
-      mode,
-      erase,
+      engineBlendModeOf(mode, erase: erase),
       compared: false,
     );
     for (var at = 0; at < slots.length; at += 1) {
@@ -788,13 +785,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// What the stroke makes of [coords] over [base]: its dabs laid at the
   /// slider's ceiling in the stroke's mode, under the selection.
   List<LandedTile> _landOnEngine(
-    GpuStroke stroke,
     List<TileCoord> coords,
     BitmapSurface base,
-    BrushBlendMode mode,
-    bool erase, {
+    int mode, {
     required bool compared,
   }) {
+    final stroke = _engineStroke!;
     if (coords.isEmpty) {
       return const [];
     }
@@ -813,7 +809,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           asked,
           // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
           opacity: (strokeOpacity * 65535).round(),
-          mode: engineBlendModeOf(mode, erase: erase),
+          mode: mode,
           mask: mask,
           compared: compared,
         ),
@@ -1226,8 +1222,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       base.tileSize == tileSize,
       'promotion requires the stroke grid to be the surface grid',
     );
-    if (_engineStroke case final stroke? when _blur == null) {
-      return _promotedFromEngine(stroke, base, mode, erase);
+    if (_engineStroke != null && _blur == null) {
+      return _promotedFromEngine(base, mode, erase);
     }
     final promoted = <PromotedStrokeTile>[];
     for (final key in _tileCoords.keys.toList()) {
@@ -1270,18 +1266,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// (유저 09-17), comparing each result with the tile under it. A coordinate
   /// left with no ink is a blank tile, which the commit drops.
   List<PromotedStrokeTile> _promotedFromEngine(
-    GpuStroke stroke,
     BitmapSurface base,
     BrushBlendMode mode,
     bool erase,
   ) {
     final coords = _tileCoords.values.where(_lands).toList();
     final landed = _landOnEngine(
-      stroke,
       coords,
       base,
-      mode,
-      erase,
+      engineBlendModeOf(mode, erase: erase),
       compared: true,
     );
     return [

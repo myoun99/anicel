@@ -1318,7 +1318,6 @@ external void stampLandingFree(Pointer<StampLanding> landing);
     UintPtr,
     Uint32,
     Uint32,
-    Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
   )
@@ -1338,7 +1337,6 @@ external int stampLand(
   int count,
   int opacity,
   int mode,
-  Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
 );

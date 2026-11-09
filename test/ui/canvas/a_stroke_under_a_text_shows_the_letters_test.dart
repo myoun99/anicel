@@ -1,3 +1,8 @@
+// The first stroke compiles the executor and the stroke's kernels: 40 s on
+// a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 

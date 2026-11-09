@@ -173,12 +173,19 @@ BrushSurfaceMaterialization _materializedOnEngine(
     if (stamp != null) {
       at += 1;
       put(
-        _stampOnEngine(
+        _pictureOnEngine(
           landed,
-          stamp,
+          _stampPictures[stamp] ??= GpuStampPicture(
+            appGpuEngine,
+            stamp.rgba,
+            stamp.width,
+            stamp.height,
+          ),
           stamp.landingRect(first.center),
-          opacity: first.opacity,
-          mode: engineBlendModeOf(BrushBlendMode.color, erase: first.erase),
+          (
+            opacity: first.opacity,
+            mode: engineBlendModeOf(BrushBlendMode.color, erase: first.erase),
+          ),
         ),
       );
       continue;
@@ -228,39 +235,17 @@ List<PlacedTile> _strokeOnEngine(
 /// lands the same one at each step of the drag.
 final Expando<GpuStampPicture> _stampPictures = Expando();
 
-/// [stamp] over [landing], what the pasteboard's wall leaves of it — a
+/// [picture] over [landing], what the pasteboard's wall leaves of it — a
 /// selection dropped past the stage's edge keeps its pixels there —, laid
-/// on [surface]: the tiles it changes, a blank one where none is left.
-List<PlacedTile> _stampOnEngine(
-  BitmapSurface surface,
-  BrushStampImage stamp,
-  DirtyRegion landing, {
-  required double opacity,
-  required int mode,
-}) {
-  final picture = _stampPictures[stamp] ??= GpuStampPicture(
-    appGpuEngine,
-    stamp.rgba,
-    stamp.width,
-    stamp.height,
-  );
-  return _pictureOnEngine(
-    surface,
-    picture,
-    landing,
-    opacity: opacity,
-    mode: mode,
-  );
-}
-
-/// [picture] over [landing], at [opacity] in [mode].
+/// on [surface] as [laid] says: the tiles it changes, a blank one where
+/// none is left.
 List<PlacedTile> _pictureOnEngine(
   BitmapSurface surface,
   GpuStampPicture picture,
-  DirtyRegion landing, {
-  required double opacity,
-  required int mode,
-}) {
+  DirtyRegion landing,
+  ({double opacity, int mode}) laid,
+) {
+  final (:opacity, :mode) = laid;
   final clip = landing.intersection(surface.pasteboard.region);
   if (clip == null || opacity == 0.0) {
     return const [];
@@ -501,8 +486,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
       surface,
       GpuStampPicture(appGpuEngine, strokePixels, width, height),
       bounds,
-      opacity: 1,
-      mode: engineBlendModeOf(blendMode, erase: erase),
+      (opacity: 1, mode: engineBlendModeOf(blendMode, erase: erase)),
     );
     final coords = [for (final tile in tiles) tile.coord]
       ..sort(TileCoord.compareRowMajor);

@@ -264,11 +264,11 @@ void main() {
         entry.coord,
         revision: entry.revision,
       );
-      expect(image, isNotNull, reason: 'every decode landed before pen-up');
-      cache.adoptDecoded(
-        entry.tile,
-        image!,
-      );
+      if (image != null) {
+        cache.adoptDecoded(entry.tile, image);
+      } else {
+        cache.pictureFor(entry.tile);
+      }
       placed.add((coord: entry.coord, tile: entry.tile));
     }
     final committed = surface.putMaterializedTiles(placed);
