@@ -1705,46 +1705,15 @@ final class FillRange {
             cover: cover.buffer.asUint32List(0, mask.length ~/ 4),
           )
         : null;
-    // The covered runs of the row that starts at [offset] in the mask, each
-    // pixel of them covered in [cover].
-    List<int> runsFrom(int offset) {
-      // [words] and [cut] are the method's, and a capture checked inside a
-      // loop is read past its check by the AOT compiler — a null one kills
-      // the release build
-      // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
-      final wordsNow = words;
-      final cutNow = cut;
-      final runs = <int>[];
-      var inside = false;
-      var x = 0;
-      while (x < width) {
-        final at = offset + x;
-        if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
-          final word = wordsNow.mask[at >> 2];
-          if (inside ? word == 0xFFFFFFFF : word == 0) {
-            wordsNow.cover[at >> 2] = word;
-            x += 4;
-            continue;
-          }
-        }
-        final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
-        if (covered) {
-          cover[at] = 255;
-        }
-        if (covered != inside) {
-          runs.add(x);
-          inside = covered;
-        }
-        x += 1;
-      }
-      if (inside) {
-        runs.add(width);
-      }
-      return runs;
-    }
-
+    final rows = _RowsCovered(
+      width: width,
+      mask: mask,
+      cover: cover,
+      cut: cut,
+      words: words,
+    );
     final outline = pixelRunContours(
-      [for (var y = 0; y < finished.height; y += 1) runsFrom(y * width)],
+      [for (var y = 0; y < finished.height; y += 1) rows.from(y * width)],
       left: finished.left,
       top: finished.top,
       width: width,
@@ -1759,6 +1728,57 @@ final class FillRange {
         mask: cover,
       ),
     );
+  }
+}
+
+/// The rows of a fill's [mask] read for what they cover
+/// ([FillRange.coveredWithin]), each covered pixel marked in [cover].
+final class _RowsCovered {
+  _RowsCovered({
+    required this.width,
+    required this.mask,
+    required this.cover,
+    required this.cut,
+    required this.words,
+  });
+
+  final int width;
+  final Uint8List mask;
+  final Uint8List cover;
+  final Uint8List? cut;
+  final ({Uint32List mask, Uint32List cover})? words;
+
+  /// The covered runs of the row that starts at [offset] in the mask.
+  List<int> from(int offset) {
+    final wordsNow = words;
+    final cutNow = cut;
+    final runs = <int>[];
+    var inside = false;
+    var x = 0;
+    while (x < width) {
+      final at = offset + x;
+      if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
+        final word = wordsNow.mask[at >> 2];
+        if (inside ? word == 0xFFFFFFFF : word == 0) {
+          wordsNow.cover[at >> 2] = word;
+          x += 4;
+          continue;
+        }
+      }
+      final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
+      if (covered) {
+        cover[at] = 255;
+      }
+      if (covered != inside) {
+        runs.add(x);
+        inside = covered;
+      }
+      x += 1;
+    }
+    if (inside) {
+      runs.add(width);
+    }
+    return runs;
   }
 }
 
