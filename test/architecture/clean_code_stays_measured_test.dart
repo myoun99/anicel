@@ -977,7 +977,11 @@ void main() {
   /// ._layTile`), and the engine narrows a word where Dart averaged its
   /// raster (`boxFilterA8`, ③). 🔬`clean_code_diff` against master
   /// (`0570a2a1b`) names those ten gone and nothing added.
-  const wideSignatures = 463;
+  ///
+  /// ⚠️463 → 464 on 2026-11-09 (connection-round-checklist-Q30, a screen's
+  /// words back to Flutter's raster): `boxFilterA8` came back with the bake
+  /// it averages, the one signature added.
+  const wideSignatures = 464;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
