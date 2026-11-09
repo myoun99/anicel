@@ -151,7 +151,7 @@ void aStrokeIsWrittenIntoThePictureShown({
 
   BrushFrameStore storeWithTheCel() {
     final store = BrushFrameStore();
-    keepInAFile(store, {
+    keepInAFile(store, bytesOf: _readInPlace, {
       key: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: tileSize,
@@ -2177,5 +2177,14 @@ class _OverlayCountingWhoHears extends ActiveStrokeOverlayModel {
   void removeListener(VoidCallback listener) {
     hearing -= 1;
     super.removeListener(listener);
+  }
+}
+
+/// [tiles]' bytes where they lie: tiles of 16², the grid these scenes are
+/// laid out on, which the engine does not store.
+// ⏳Till the screen is off this road (flip lane ⓑ).
+void _readInPlace(List<BitmapTile> tiles, void Function(Uint8List bytes) use) {
+  for (final tile in tiles) {
+    tile.readPixels((_, view) => use(view));
   }
 }
