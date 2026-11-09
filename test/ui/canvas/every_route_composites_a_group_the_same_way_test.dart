@@ -59,7 +59,6 @@ void main() {
 
   /// The routes that composite a tree — through [walk].
   const routes = <String>[
-    'lib/src/ui/canvas/canvas_layer_stack_view.dart',
     'lib/src/ui/camera/camera_frame_render_service.dart',
   ];
 
@@ -79,38 +78,11 @@ void main() {
   /// holding its own copy is how a mutation that fed the FILTERED paint to
   /// the unfiltered pass survived every test in the repo.
   const allowedSaveLayers = <String, int>{
-    // The ACTIVE SURFACE's own buffer, and it STAYS a saveLayer. ⛔Not a
-    // to-do — 🧪the numbers, on a 2340x1654 page whose pasteboard hint is
-    // 7020x4962, output 1200x800, 20 runs after warm-up:
-    //
-    //   saveLayer(pasteboard)                    1245us
-    //   saveLayer(content∩view 1200x800)         1321us   <- same, noise
-    //   toImageSync(content∩view 1200x800)+blit  4268us   <- 3.2x
-    //   toImageSync(pasteboard)+blit            40478us   <- 32.5x
-    //
-    // Two things fall out. A saveLayer's bounds are a HINT Skia takes the
-    // intersection of with the current clip, so the alarming-looking
-    // pasteboard rect costs the same as a tight one — measured, not
-    // reasoned. And `toImageSync` allocates exactly what it is asked for,
-    // so converting costs 3.2x even AFTER fixing the bound.
-    //
-    // A group was worth that; this is not. A group's pixels are what a
-    // folder effect has to sample, and converting it put four routes on one
-    // code path. The live layer is a LEAF: there is no sub-tree inside it,
-    // and its own colour key runs on the CPU over its source bytes anyway
-    // (EffectKind.runsOnSourcePixels), so the conversion would buy
-    // uniformity alone — on the path a stroke redraws every step.
-    //
-    // ⚠️Software rasteriser (flutter_tester). The RATIO is what travels; the
-    // absolute numbers do not.
-    'lib/src/ui/canvas/canvas_layer_stack_view.dart': 1,
     'lib/src/ui/camera/camera_frame_render_service.dart': 0,
     walk: 0,
   };
 
   List<String> codeLines(String path) {
-    // The library, host and parts: the stack view keeps its paint in a
-    // part since the Round 6 cut.
     final lines = librarySource(path).split('\n');
     return [
       for (final line in lines)

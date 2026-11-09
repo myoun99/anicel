@@ -365,7 +365,11 @@ void main() {
 /// timeline/timeline_row_cells_painter — a row's grid tile is laid on its
 /// grid's screen (`TimelineGridScreenSlot`), the GPU engine's picture onto
 /// the engine's texture, not drawn on the row's canvas (`_layTile`).
-const int _knownRawDraws = 28;
+/// **27** on 2026-11-09 (flip lane ⓑ): a frame's picture is the engine's,
+/// shown and not drawn — gone from canvas/display_resample,
+/// playback/frame_picture_store and playback/frame_pictures; a panel's shot
+/// is laid 1:1 over its ground in panel_pictures, read back from the engine.
+const int _knownRawDraws = 27;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'
