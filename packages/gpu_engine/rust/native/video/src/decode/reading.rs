@@ -46,9 +46,12 @@ mod tests;
 /// call that does not return — is a stall. The stall is seen within twice
 /// this: the watch looks once a window.
 ///
-/// ⚠️PROVISIONAL until the 1080p measurement on the board card lands: the
-/// slowest whole read seen so far is 341 ms (Surface, 1080p, a seek to the
-/// last frame — a walk of many calls, so one call's slowest is below it).
+/// 🔬Three seconds, from the slowest WHOLE read measured (board card,
+/// 2026-11-09; the rule set before measuring: under 1 s → 3 s, over → three
+/// times it): 359 ms on the Surface (1080p, 200 runs, 25,600 reads — the
+/// seek to the last frame, a walk of about 120 pictures) and 2.34 s on the
+/// main PC under load (20 runs, the same walk). Both are walks of many
+/// calls, so one call's slowest — what this measures — is well inside.
 pub(super) const STALL: Duration = Duration::from_secs(3);
 
 /// What a movie answers once a fresh reader has stood too.
