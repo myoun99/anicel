@@ -38,7 +38,9 @@ typedef LinksLeft = ({
 ///
 /// ⛔Dead members must never linger in the table: mirror fan-outs would hit
 /// missing layers. A cut deleted (`DeleteCutCommand`) and a timeline deleted
-/// (I-150) leave the same way.
+/// (I-150) leave the same way. The write gate holds that of every row
+/// (`projectWithItsLinksStanding`) and moves no cel; a cut leaving is swept
+/// here, ahead of it, for the pictures it has to hand on.
 LinksLeft linksWithoutCuts(Project project, Set<CutId> gone) {
   final groups = <LayerLinkGroup>[];
   final rekeys = <CelRekey>[];

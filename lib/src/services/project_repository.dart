@@ -36,6 +36,7 @@ import '../models/project_font_file.dart';
 import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
+import '../models/layer_link_standing.dart' show projectWithItsLinksStanding;
 import '../models/track_conte_laying.dart'
     show
         ConteHeadPut,
@@ -329,7 +330,9 @@ class ProjectRepository {
   /// ([projectWithItsContesLaid], F-343) — what a write did to one cut's
   /// conte made the track's, every cut's conte laid from it, and the rows
   /// it gave a 겸용 pair one layer — so the six below read every conte as it
-  /// stands. Then, of every cut:
+  /// stands. Second, of the LINK TABLE: it names only rows that stand
+  /// ([projectWithItsLinksStanding]), so the six below read no dead member.
+  /// Then, of every cut:
   /// 1. COVERING IMAGE rows ([cutWithCoveringImageRows]): an image
   ///    layer's stored timeline is ONE real 1-frame block at index 0 plus
   ///    a fixed end-side HOLD whose ghosts fill to the cut's drawn end
@@ -405,16 +408,19 @@ class ProjectRepository {
   ).project;
 
   /// The tracks' contes laid against [laidAgainst] — not at all when it is
-  /// null — then the six invariants over every cut [memo] does not already
-  /// hold settled, and the memo the next write reads.
+  /// null — the link table held to the rows that stand, then the six
+  /// invariants over every cut [memo] does not already hold settled, and
+  /// the memo the next write reads.
   static ({Project project, Map<CutId, _Settled> settled}) _settle(
     Project written, {
     required Map<CutId, _Settled> memo,
     required Map<CutId, _Settled>? laidAgainst,
   }) {
-    final project = laidAgainst == null
-        ? written
-        : _withContesLaid(written, against: laidAgainst);
+    final project = projectWithItsLinksStanding(
+      laidAgainst == null
+          ? written
+          : _withContesLaid(written, against: laidAgainst),
+    );
     final handlesByCut = transitionHandlesByCut(project);
     final settled = <CutId, _Settled>{};
     final tracks = mappedOrSame(project.tracks, (track) {
