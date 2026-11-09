@@ -88,6 +88,31 @@ void main() {
     expect(region[3], 0);
   });
 
+  test('a region across two tiles takes each one\'s bytes at its own place',
+      () {
+    const tileSize = 4;
+    BitmapTile solid(int red) => BitmapTile(
+      size: tileSize,
+      pixels: Uint8List(tileSize * tileSize * 4)
+        ..fillRange(0, tileSize * tileSize * 4, red),
+    );
+    final surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      tileSize: tileSize,
+      tiles: {
+        TileCoord(x: 0, y: 0): solid(10),
+        TileCoord(x: 1, y: 0): solid(20),
+      },
+    );
+
+    final region = bitmapSurfaceRegionPixels(
+      surface,
+      DirtyRegion(left: 3, top: 0, rightExclusive: 5, bottomExclusive: 1),
+    );
+
+    expect(region, [10, 10, 10, 10, 20, 20, 20, 20]);
+  });
+
   test('the commit round trip: a multiply stroke lands the product over '
       'existing ink, unbolended pixels survive byte-exact, one undo '
       'restores everything', () {

@@ -16,29 +16,34 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_read_source.dart';
 
 void main() {
+  const side = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  /// An 8×8 surface (2×2 tiles of 4) with straight-RGBA [pixels] set at
+  /// An 8×8 surface with straight-RGBA [pixels] set at
   /// canvas points.
   BitmapSurface surfaceWithPixels(Map<(int, int), List<int>> pixels) {
     final tiles = <TileCoord, Uint8List>{};
     for (final entry in pixels.entries) {
       final (x, y) = entry.key;
-      final coord = TileCoord(x: x ~/ 4, y: y ~/ 4);
-      final buffer = tiles.putIfAbsent(coord, () => Uint8List(4 * 4 * 4));
-      final index = ((y % 4) * 4 + (x % 4)) * 4;
+      final coord = TileCoord(x: x ~/ side, y: y ~/ side);
+      final buffer = tiles.putIfAbsent(
+        coord,
+        () => Uint8List(side * side * 4),
+      );
+      final index = ((y % side) * side + (x % side)) * 4;
       buffer.setAll(index, entry.value);
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: side,
       tiles: {
         for (final entry in tiles.entries)
-          entry.key: BitmapTile(size: 4, pixels: entry.value),
+          entry.key: BitmapTile(size: side, pixels: entry.value),
       },
     );
   }
@@ -97,21 +102,67 @@ void main() {
 
     test('reads OFF-canvas pixels through negative tiles (floorDiv — the '
         'eyedropper picks pasteboard artwork)', () {
-      // Canvas point (-3, 2) lives on tile (-1, 0) at local (1, 2)
-      // (Dart % is Euclidean: -3 % 4 == 1).
-      final buffer = Uint8List(4 * 4 * 4);
-      buffer.setAll((2 * 4 + 1) * 4, [0xAA, 0xBB, 0xCC, 0xFF]);
+      // Canvas point (-3, 2) lives on tile (-1, 0) at local (side - 3, 2)
+      // (Dart % is Euclidean).
+      final buffer = Uint8List(side * side * 4);
+      buffer.setAll((2 * side + side - 3) * 4, [0xAA, 0xBB, 0xCC, 0xFF]);
       final surface = BitmapSurface(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: side,
         tiles: {
           TileCoord(x: -1, y: 0): BitmapTile(
-            size: 4,
+            size: side,
             pixels: buffer,
           ),
         },
       );
       expect(surfacePixelRgba(surface, -3, 2), 0xAABBCCFF);
+    });
+
+    test('🚨a tile is read back from the engine once, however many picks '
+        'land on it — and another tile is read when the pointer gets there',
+        () {
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+      final reads = <int>[];
+      EngineTileLedger.debugBeforeRead = (tiles) => reads.add(tiles.length);
+      final surface = surfaceWithPixels({
+        (1, 1): [1, 2, 3, 255],
+        (2, 1): [4, 5, 6, 255],
+      });
+      final other = surfaceWithPixels({
+        (1, 1): [1, 2, 3, 255],
+      });
+
+      expect(surfacePixelRgba(surface, 1, 1), 0x010203FF);
+      expect(surfacePixelRgba(surface, 2, 1), 0x040506FF);
+      expect(reads, [1]);
+
+      expect(surfacePixelRgba(other, 1, 1), 0x010203FF);
+      expect(reads, [1, 1], reason: 'alike is not the same tile');
+    });
+
+    test('a tile no pick has come back to in a long while is let go', () {
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+      var reads = 0;
+      EngineTileLedger.debugBeforeRead = (_) => reads += 1;
+      final first = surfaceWithPixels({
+        (1, 1): [1, 2, 3, 255],
+      });
+
+      surfacePixelRgba(first, 1, 1);
+      for (var at = 0; at < 64; at += 1) {
+        surfacePixelRgba(
+          surfaceWithPixels({
+            (1, 1): [1, 2, 3, 255],
+          }),
+          1,
+          1,
+        );
+      }
+      expect(reads, 65);
+
+      surfacePixelRgba(first, 1, 1);
+      expect(reads, 66);
     });
   });
 

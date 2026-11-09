@@ -38,8 +38,12 @@ final class Lru<K, V> {
     this.entryCap,
     this.inUse,
     this.letGo,
+    bool byIdentity = false,
   }) : assert(limit != null || entryCap != null, 'an Lru with no bound'),
-       _costOf = costOf ?? _one;
+       _costOf = costOf ?? _one,
+       _entries = byIdentity
+           ? LinkedHashMap<K, V>.identity()
+           : LinkedHashMap<K, V>();
 
   /// How much it may hold — entries, or whatever [costOf] counts. Asked
   /// each time it fits, never kept. Null: [entryCap] alone.
@@ -64,7 +68,7 @@ final class Lru<K, V> {
 
   final int Function(V value) _costOf;
 
-  final LinkedHashMap<K, V> _entries = LinkedHashMap<K, V>();
+  final LinkedHashMap<K, V> _entries;
   int _held = 0;
 
   static int _one(Object? _) => 1;
