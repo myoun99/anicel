@@ -27,14 +27,19 @@ struct Laid {
 @group(0) @binding(1) var tile: texture_2d<f32>;
 @group(0) @binding(2) var screen: texture_storage_2d<__FORMAT__, write>;
 
-// A pixel before the tile wraps past either side, as a u32.
+// 🚨THE TILE'S OWN TEXEL, NOT resample.wgsl's "0 OUTSIDE IT" (card
+// the-grid-screen-lets-a-frame-line-through-a-white-block): this pass lays
+// only the pixels whose centres the box holds, so each of them is inside
+// the tile — but for R1's fixed point. Its scale is a Q.20 word, and at a
+// stretch a centre on the tile's edge lands a hair past that edge: read as
+// 0, S5 at 312 % showed a column of the sheet through a block. Nearest and
+// the copy are all that reach this (lay.rs `laid_by`), so outside can only
+// be that hair.
 fn resample_texel(source: u32, x: i32, y: i32) -> u32 {
-  if (u32(x) >= laid.width || u32(y) >= laid.height) {
-    return 0u;
-  }
+  let last = vec2<i32>(i32(laid.width) - 1, i32(laid.height) - 1);
   // The one float step: an 8-bit unorm texel read as a float packs back to
   // its byte on every device, as grid.wgsl's store comes back.
-  return pack4x8unorm(textureLoad(tile, vec2<i32>(x, y), 0));
+  return pack4x8unorm(textureLoad(tile, clamp(vec2<i32>(x, y), vec2<i32>(0), last), 0));
 }
 
 @compute @workgroup_size(8, 8, 1)

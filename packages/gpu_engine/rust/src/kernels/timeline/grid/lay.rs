@@ -154,6 +154,9 @@ fn covered(onto: [f64; 4], [left, top, right, bottom]: [u32; 4]) -> Option<[u32;
 /// stands on while it is rastered (a zoom's) is stretched by whole texels,
 /// not smoothed, and a tile at a fraction of a pixel stands on the nearest
 /// pixel, not between two (`standInFor`, timeline_grid_tile_store.dart).
+/// ↩️Its host's texel has not been 0 past an edge since 11-09: a hair past
+/// one reads the tile's own (lay.wgsl's `resample_texel`). Whether that
+/// ends Blend's fade was not tried.
 fn laid_by() -> ResampleMode {
     ResampleMode::Nearest
 }

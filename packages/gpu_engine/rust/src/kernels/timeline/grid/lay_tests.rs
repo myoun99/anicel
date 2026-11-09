@@ -2,6 +2,8 @@
 //! tile pass draws (tests.rs has it checked), laid and read back here alone
 //! — a test may read a screen, the app never does (관제 11-05 14:02).
 
+use std::ops::Range;
+
 use super::super::{GridPicture, GridTile};
 use super::{GridLay, Laid};
 use crate::device::{Engine, storage_texture};
@@ -119,6 +121,64 @@ fn tiles_laid_off_whole_pixels_join_with_no_seam() {
     let bytes = laid_on(engine, &screen, [0, 0, 8, 1], &laid);
     let pixels: Vec<[u8; 4]> = (0..8).map(|x| at(&bytes, 8, x, 0)).collect();
     assert_eq!(pixels, [RED, RED, RED, GREEN, GREEN, GREEN, CLEAR, CLEAR]);
+}
+
+/// The span [from, to) of a strip a pixel thick, along x or down y.
+fn strip(down: bool, from: f64, to: f64) -> [f64; 4] {
+    if down { [0.0, from, 1.0, to] } else { [from, 0.0, to, 1.0] }
+}
+
+/// A strip's tile of one colour.
+fn strip_tile(engine: &Engine, down: bool, length: u32, colour: [u8; 4]) -> GridPicture {
+    plain(engine, if down { (1, length) } else { (length, 1) }, colour)
+}
+
+/// `laid` over the pixels `span` of a strip, read back along it.
+fn strip_laid(engine: &Engine, down: bool, length: u32, span: Range<u32>, laid: &[Laid]) -> Vec<[u8; 4]> {
+    let (width, height) = if down { (1, length) } else { (length, 1) };
+    let screen = storage_texture(&engine.device, width, height, RGBA);
+    let rect = if down { [0, span.start, 1, span.end] } else { [span.start, 0, span.end, 1] };
+    let bytes = laid_on(engine, &screen, rect, laid);
+    span.map(|p| if down { at(&bytes, width, 0, p) } else { at(&bytes, width, p, 0) }).collect()
+}
+
+// A span of 539 points at a ratio of 1.5 ends at 808.5 and its tile is 809
+// wide, so a tile is stretched by 809/808.5 and the next one starts on a
+// pixel's centre. R1's scale is a Q.20 word, a hair under that stretch: the
+// pixel on the edge landed 0.0004 before the tile (S5 at 312 %, a column of
+// the sheet showing through a block, card
+// the-grid-screen-lets-a-frame-line-through-a-white-block).
+#[test]
+fn a_pixel_centred_on_a_tiles_edge_reads_the_tile() {
+    let engine = first_engine();
+    for down in [false, true] {
+        let (red, green) = (strip_tile(engine, down, 809, RED), strip_tile(engine, down, 809, GREEN));
+        let whole = strip(down, 0.0, 809.0);
+        let laid = [
+            Laid { picture: &red, from: whole, onto: strip(down, 0.0, 808.5) },
+            Laid { picture: &green, from: whole, onto: strip(down, 808.5, 1617.0) },
+        ];
+        let pixels = strip_laid(engine, down, 1700, 806..811, &laid);
+        assert_eq!(pixels, [RED, RED, GREEN, GREEN, GREEN], "down: {down}");
+    }
+}
+
+// The far end of the same stretch, its scale a hair over it this time, and
+// a centre a double's noise inside the box: the last pixel landed on the
+// column after the tile's.
+#[test]
+fn a_pixel_centred_a_hair_inside_a_tiles_far_edge_reads_the_tile() {
+    let engine = first_engine();
+    for down in [false, true] {
+        let red = strip_tile(engine, down, 811, RED);
+        let laid = [Laid {
+            picture: &red,
+            from: strip(down, 0.0, 811.0),
+            onto: strip(down, 0.0, 810.5 + 1e-9),
+        }];
+        let pixels = strip_laid(engine, down, 900, 808..813, &laid);
+        assert_eq!(pixels, [RED, RED, RED, CLEAR, CLEAR], "down: {down}");
+    }
 }
 
 #[test]
