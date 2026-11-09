@@ -201,6 +201,12 @@ void main() {
     expect(() => tile.pixels, throwsStateError);
     expect(() => tile.pixels, throwsStateError, reason: 'twice alike');
     stroke.clear();
+    // Its slot is the next tile's: the one let go must not read that.
+    final next = rasterizer()..blendFrom([dab(64, 64)], from: 0);
+    final taken = promoted(next, surfaceOf(const {})).single.tile;
+    expect(() => tile.pixels, throwsStateError, reason: 'its slot taken');
+    expect(taken.isOnEngine, isTrue);
+    next.clear();
   });
 
   test('a finished result knows it has ink without reading it', () {
@@ -311,16 +317,28 @@ void main() {
         contrast: 1,
       ),
     ]);
+    final cel = Object();
     final landed = ledger.land(
-      Object(),
+      cel,
       made,
       [(column: 0, row: 0, under: null)],
       mode: GpuBlend.normal,
     ).single.tile!;
     expect(ledger.slotOf(landed), isNotNull);
-    // Past its budget a store lets go every tile no call holds.
+    // The page full, the next store is past its budget, which lets go every
+    // tile no call holds.
+    final filler = [
+      for (var n = 1; n < ledger.pool.bytes ~/ gpuTileBytes; n++)
+        BitmapTile.blank(size: gpuTileSide),
+    ];
+    ledger.held((held) => held.slotsOf(cel, filler));
     final hold = solid([1, 2, 3, 255]);
-    ledger.held((held) => held.slotsOf(Object(), [hold]));
+    ledger.held((held) => held.slotsOf(cel, [hold]));
+    expect(
+      ledger.slotOf(filler.first),
+      isNull,
+      reason: 'LIVENESS: the full pool did let go what it can store again',
+    );
     expect(ledger.slotOf(landed), isNotNull);
     expect(at(landed.pixels, 12, 12), [200, 100, 50, 255]);
   });

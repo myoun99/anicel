@@ -107,6 +107,11 @@ void main() {
       dab(0, tipMask: tip, size: 64, roundness: 0.5, angleDegrees: 70),
     ],
     'no anti-alias': [dab(0, antiAlias: BrushAntiAlias.none)],
+    // Under squareReadRadius, their tables read by the pixel's square.
+    'small round tips': [
+      for (final (at, size) in const [(0, 1.0), (1, 2.0), (2, 3.0), (3, 5.0)])
+        dab(at, x: 90.37 + 12.0 * at, y: 70.81, size: size, hardness: 1),
+    ],
     'paper that multiplies': [
       dab(0, textureMask: paper, textureScale: 2, textureDensity: 0.7),
     ],
