@@ -19,6 +19,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 
 /// 🚨WHAT A PROGRAM COMMITS LANDS ON THE ENGINE (flip lane ⓒ): a fill, a
@@ -71,6 +72,19 @@ void main() {
   ) => materializeBrushDabSequenceOnBitmapSurface(
     surface: surface,
     sequence: BrushDabSequence(dabs),
+  );
+
+  BrushDab brush({required int sequence, bool erase = false}) => BrushDab(
+    center: CanvasPoint(x: 40, y: 40),
+    color: 0xFFC86432,
+    size: 20,
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: sequence,
+    erase: erase,
   );
 
   BitmapSurface empty({PasteboardReach reach = PasteboardReach.whole}) =>
@@ -202,18 +216,6 @@ void main() {
   });
 
   test('brush dabs land as one stroke, on what the stamp before left', () {
-    BrushDab brush({required int sequence, bool erase = false}) => BrushDab(
-      center: CanvasPoint(x: 40, y: 40),
-      color: 0xFFC86432,
-      size: 20,
-      opacity: 1,
-      flow: 1,
-      hardness: 1,
-      tipShape: BrushTipShape.square,
-      pressure: 1,
-      sequence: sequence,
-      erase: erase,
-    );
     final result = landed(empty(), [
       dabOf(solid(64, 64, const [10, 20, 30, 255]), left: 8, top: 8),
       brush(sequence: 1, erase: true),
@@ -227,6 +229,53 @@ void main() {
 
     final over = landed(empty(), [brush(sequence: 0)]);
     expect(pixelAt(over.surface, 40, 40), const [200, 100, 50, 255]);
+  });
+
+  test('a brush that paints and one that erases are two strokes', () {
+    final result = landed(painted, [
+      brush(sequence: 0),
+      brush(sequence: 1, erase: true),
+    ]);
+    expect(pixelAt(result.surface, 40, 40), const [0, 0, 0, 0]);
+  });
+
+  test('a stamp after brush dabs lands by itself, on what they left', () {
+    final result = landed(empty(), [
+      brush(sequence: 0),
+      dabOf(
+        solid(4, 4, const [1, 2, 3, 255], id: 'over'),
+        left: 38,
+        top: 38,
+        sequence: 1,
+      ),
+    ]);
+    expect(pixelAt(result.surface, 39, 39), const [1, 2, 3, 255]);
+    expect(pixelAt(result.surface, 35, 35), const [200, 100, 50, 255]);
+  });
+
+  test('a stamp the wall cuts on its left and top reads on from what it '
+      'left', () {
+    final stamp = BrushStampImage(
+      id: 'where',
+      width: 20,
+      height: 10,
+      rgba: Uint8List.fromList([
+        for (var y = 0; y < 10; y += 1)
+          for (var x = 0; x < 20; x += 1) ...[x * 10, y * 10, 0, 255],
+      ]),
+    );
+    final result = landed(empty(reach: PasteboardReach.none), [
+      dabOf(stamp, left: -5, top: -3),
+    ]);
+    expect(pixelAt(result.surface, 0, 0), const [50, 30, 0, 255]);
+    expect(pixelAt(result.surface, 14, 6), const [190, 90, 0, 255]);
+  });
+
+  test('a landing reads back nothing it made', () {
+    final ledger = EngineTileLedger.instance;
+    final before = ledger.debugTileReads;
+    landed(empty(), [dabOf(solid(10, 10, ink), left: 10, top: 20)]);
+    expect(ledger.debugTileReads, before);
   });
 
   test('a stamp landed again is uploaded once', () {

@@ -247,7 +247,7 @@ List<PlacedTile> _pictureOnEngine(
 ) {
   final (:opacity, :mode) = laid;
   final clip = landing.intersection(surface.pasteboard.region);
-  if (clip == null || opacity == 0.0) {
+  if (clip == null) {
     return const [];
   }
   final tileSize = surface.tileSize;

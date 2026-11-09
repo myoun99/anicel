@@ -31,7 +31,7 @@ void main() {
   const canvas = CanvasSize(width: 320, height: 256);
 
   /// The most two rounding routes part, in levels of a premultiplied byte.
-  const roundsApart = 3;
+  const roundsApart = 1;
 
   BrushDab dab(
     int sequence, {

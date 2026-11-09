@@ -155,8 +155,14 @@ final GpuEngine _engine;
     }
   }
 
+  /// The tiles the engine made that were read back: what a landing must not
+  /// wait for.
+  @visibleForTesting
+  int debugTileReads = 0;
+
   @override
   void readInto(BitmapTile tile, Pointer<Uint8> into) {
+    debugTileReads += 1;
     final slot = _slots[tile];
     if (slot == null) {
       throw StateError('a tile the engine made was read after it was let go');

@@ -300,3 +300,10 @@ fn a_full_pool_lands_the_first_it_has_room_for() {
     let landed = f.land(&asks, &NORMAL_WHOLE, false);
     assert!(landed.is_empty());
 }
+
+#[test]
+fn a_stroke_asked_nothing_lands_nothing() {
+    let mut f = fixture();
+    f.pile(&[square([10, 10, 20, 20], RED)]);
+    assert!(f.land(&[], &NORMAL_WHOLE, true).is_empty());
+}

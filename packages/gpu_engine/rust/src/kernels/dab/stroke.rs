@@ -136,12 +136,12 @@ impl Stroke {
     }
 
     /// Clears what the stroke wrote and lets its tiles go; the pages stay
-    /// for the next. Submits the work.
+    /// for the next. Submits the work. Its view needs none: a pile writes
+    /// the whole of it on every tile it reaches, before anything reads it.
     pub(crate) fn clear(&mut self, engine: &Engine) {
         let mut encoder =
             engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         clear_written(&mut encoder, &self.planes, self.tiles.len(), PLANE_TILE_BYTES);
-        clear_written(&mut encoder, &self.view, self.tiles.len(), TILE_BYTES);
         clear_written(&mut encoder, &self.levels, self.tiles.len(), TILE_BYTES);
         engine.queue.submit([encoder.finish()]);
         self.tiles.clear();
