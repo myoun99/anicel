@@ -212,6 +212,8 @@ fn a_lay_lands_its_clear_before_it_lays_a_tile() {
                  land_storage_writes(&mut encoder, target);\n        \
                  encode_on(engine, &mut encoder, tiles);";
     assert!(include_str!("lay.rs").replace("\r\n", "\n").contains(block));
+    let barrier = "state: wgpu::TextureUses::STORAGE_READ_WRITE,";
+    assert!(include_str!("../../shared/dispatch.rs").contains(barrier));
 }
 
 #[test]
