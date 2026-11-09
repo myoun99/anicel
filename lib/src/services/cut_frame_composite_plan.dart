@@ -54,7 +54,10 @@ class CutFrameCompositeLayer {
     this.placement,
     List<ResolvedLayerEffect> effects = const [],
     this.tint,
-  }) : surface = celSurfaceAsShown(surface, effects),
+  }) : surface = celSurfaceAsShown(
+         surface,
+         splitSourceEffects(effects).source,
+       ),
        effects = splitSourceEffects(effects).paint;
 
   CutFrameCompositeLayer._paintedNormal(CutFrameCompositeLayer row)

@@ -139,6 +139,44 @@ void main() {
       expect(split([p, q]), [[p], [q]]);
       expect(split([b, p]), [<ResolvedLayerEffect>[], [b, p]]);
     });
+
+    group('🚨is all a row lays on its cel', () {
+      CutFrameCompositeLayer rowOf(
+        BitmapSurface cel,
+        List<ResolvedLayerEffect> effects,
+      ) => CutFrameCompositeLayer(surface: cel, opacity: 1, effects: effects);
+
+      test('a plugin past an app effect is the chain\'s alone', () {
+        final cel = celWith({(3, 0): red});
+        final runner = ShiftingFxPlugin(by: 1);
+        final past = plugin(run: fxPluginRunOf(runner));
+
+        final row = rowOf(cel, [blur(), past]);
+
+        expect(identical(row.surface, cel), isTrue);
+        expect(runner.renders, 0);
+        expect(row.effects, hasLength(2));
+      });
+
+      test('so is a key past one', () {
+        final cel = celWith({(3, 0): green});
+
+        expect(identical(rowOf(cel, [blur(), key()]).surface, cel), isTrue);
+      });
+
+      test('a plugin at its head is run, the key after it left to the '
+          'chain', () {
+        final cel = celWith({(3, 0): green});
+        final runner = ShiftingFxPlugin(by: 1);
+        final a = key();
+
+        final row = rowOf(cel, [plugin(run: fxPluginRunOf(runner)), a]);
+
+        expect(runner.renders, 1);
+        expect(pixelOf(row.surface, 4, 0), green);
+        expect(row.effects, [a]);
+      });
+    });
   });
 
   group('the pass', () {
