@@ -137,14 +137,17 @@ pub(crate) fn flat((across, down): (u32, u32)) -> (u32, u32, u32) {
 }
 
 /// 🚨What write-only storage bindings of `target` have written so far lands
-/// before anything encoded after this touches it. wgpu's DX12 puts a UAV
-/// barrier between two uses of a texture only when the first was read-write
-/// (wgpu-hal 30.0.1, `transition_textures`), so two dispatches writing one
-/// pixel through write-only bindings overlap on the GPU and either may land
-/// last 🔬(11-09, RTX 4080: a clear and a tile on each of 2048 pixels in one
-/// pass, 19 % of the pixels cleared away, none of 819,200 with this between
-/// them). Leaving read-write for the next dispatch's write-only is what
-/// makes the barrier, and no texture needs a usage more for it.
+/// before what is encoded after this touches it, between two passes. wgpu's
+/// DX12 puts a UAV barrier between two uses of a texture only when the first
+/// was read-write (wgpu-hal 30.0.1, `transition_textures`), so dispatches
+/// writing one pixel through write-only bindings overlap on the GPU and
+/// either may land last. 🔬11-09, RTX 4080, a clear and a tile on each pixel:
+/// a fifth of the pixels cleared away in one pass (38,683 of 204,800), none
+/// of 163,840 in two. ⚠️Two passes held with or without this call there, and
+/// D3D12 does not promise it: within one submission a later command list may
+/// start before an earlier one has finished (`ExecuteCommandLists`' Remarks).
+/// Leaving read-write for the next dispatch's write-only is what makes the
+/// barrier, and no texture needs a usage more for it.
 pub(crate) fn land_storage_writes(encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture) {
     encoder.transition_resources(
         std::iter::empty(),

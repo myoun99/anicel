@@ -5,8 +5,7 @@
 use std::ops::Range;
 
 use super::super::{GridPicture, GridTile};
-use super::{GridLay, Laid, mapped};
-use crate::kernels::shared::{Encoded, ResampleMap, encode_on, flat, land_storage_writes, whole, words_buffer};
+use super::{GridLay, Laid};
 use crate::device::{Engine, storage_texture};
 use crate::testing::{first_engine, last_error};
 
@@ -203,53 +202,9 @@ fn a_bgra_screen_holds_the_same_pixels_in_its_order() {
     assert_eq!(laid_on(engine, &screen, [0, 0, 1, 1], &laid), [0, 0, 255, 255]);
 }
 
-// A clear and then a tile on each pixel, in one encoder: what a lay does
-// once, as often as a test can ask it. Unbarriered on an RTX 4080 a fifth
-// of these pixels were cleared away (`land_storage_writes`).
-#[test]
-fn a_tile_over_a_clear_is_never_cleared_away() {
-    let engine = first_engine();
-    let mut lay = GridLay::new();
-    let [clear, tile_pass] = lay.pipelines(engine, RGBA).expect("the passes");
-    let tile = plain(engine, (1, 1), RED);
-    let tile_view = tile.texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let across = 512;
-    let screen = storage_texture(&engine.device, across, 1, RGBA);
-    let screen_view = screen.create_view(&wgpu::TextureViewDescriptor::default());
-    let record = |pixel: u32, map: Option<ResampleMap>| {
-        let (width, height, map) = map.map_or((0, 0, [0; ResampleMap::WORDS]), |map| (1, 1, map.words()));
-        let words: Vec<u32> = [pixel, 0, 1, 1, width, height].into_iter().chain(map).collect();
-        words_buffer(engine, "grid laid", &words, wgpu::BufferUsages::STORAGE)
-    };
-    let records: Vec<(wgpu::Buffer, wgpu::Buffer)> = (0..across)
-        .map(|pixel| {
-            let edge = f64::from(pixel);
-            let one = Laid { picture: &tile, from: [0.0, 0.0, 1.0, 1.0], onto: [edge, 0.0, edge + 1.0, 1.0] };
-            (record(pixel, None), record(pixel, mapped(&one, &screen)))
-        })
-        .collect();
-    let on_screen = wgpu::BindingResource::TextureView(&screen_view);
-    let mut encoder = engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    for (clearing, laying) in &records {
-        let mut cleared = whole(&[(0, clearing)]);
-        cleared.push(wgpu::BindGroupEntry { binding: 2, resource: on_screen.clone() });
-        encode_on(engine, &mut encoder, &[Encoded { pipeline: &clear, bound: cleared, groups: flat((1, 1)) }]);
-        land_storage_writes(&mut encoder, &screen);
-        let mut laid = whole(&[(0, laying)]);
-        laid.push(wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&tile_view) });
-        laid.push(wgpu::BindGroupEntry { binding: 2, resource: on_screen.clone() });
-        encode_on(engine, &mut encoder, &[Encoded { pipeline: &tile_pass, bound: laid, groups: flat((1, 1)) }]);
-    }
-    engine.queue.submit([encoder.finish()]);
-    engine.wait().expect("the GPU is done");
-    let bytes = engine.read_texture(&screen).expect("the screen reads back");
-    let cleared = (0..across).filter(|&x| at(&bytes, across, x, 0) != RED).count();
-    assert_eq!(cleared, 0);
-}
-
-// ⚠️By its text: a lay has one clear to lose, and lost it about once in
-// forty thousand under load, too seldom for its pixels to pin that it asks
-// for the barrier the test above shows is enough.
+// ⚠️By their text, for what no pixel here shows: a lay has one clear to
+// lose and lost it about once in forty thousand under load, and two passes
+// held on this GPU with or without the barrier (`land_storage_writes`).
 #[test]
 fn a_lay_lands_its_clear_before_it_lays_a_tile() {
     let block = "let (clear, tiles) = encoded.split_at(1);\n        \
