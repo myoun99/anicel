@@ -28,7 +28,6 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectLaneId;
 
-import '../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 import '../helpers/app_faces.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/settle_async.dart';
@@ -324,7 +323,7 @@ void main() {
         0,
         reason: 'back on the frame: nothing of the stroke in its picture',
       );
-    }, skip: noFlutterGpu != null);
+    });
   }
 
   testWidgets('an empty block with a cel number shows the number as a drawn '
@@ -389,7 +388,7 @@ void main() {
       0,
       reason: 'another row active: the number shows',
     );
-  }, skip: noFlutterGpu != null);
+  });
 
   testWidgets('a block never drawn on shows its cel number however the '
       'canvas stands — its row active or another, the frame left and come '
@@ -431,7 +430,7 @@ void main() {
     for (final MapEntry(key: how, value: shown) in seen.entries) {
       expect(apart(numbered, shown), 0, reason: 'never drawn on, $how');
     }
-  }, skip: noFlutterGpu != null);
+  });
 
   // 🗣️F-489 — an unnamed drawing's number is its row's name and the mark
   // picked in Preferences, and a pick rewrites it where the canvas stands.
@@ -453,5 +452,5 @@ void main() {
     AppFrameGridSettings.settings.value = const AppFrameGridSettings();
     await settle(tester);
     expect(apart(two, await shot(tester, places.letters)), 0);
-  }, skip: noFlutterGpu != null);
+  });
 }

@@ -122,8 +122,10 @@ void main() {
 
   EngineFramePictureStore<String> storeOf() {
     final store = EngineFramePictureStore<String>(
-      composite: engine.composite,
-      letters: engine.letters,
+      tools: Future.value((
+        composite: engine.composite,
+        letters: engine.letters,
+      )),
     );
     addTearDown(store.dispose);
     return store;
@@ -474,8 +476,10 @@ void main() {
       'none', () async {
     final before = GpuScreen.liveBytes;
     final store = EngineFramePictureStore<String>(
-      composite: engine.composite,
-      letters: engine.letters,
+      tools: Future.value((
+        composite: engine.composite,
+        letters: engine.letters,
+      )),
     );
     await store.lay('a', frameOf(cel(5)));
     await store.lay('b', frameOf(cel(6)));

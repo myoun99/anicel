@@ -1,16 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// ↩️What a run borrows of the line, and a cel's ink-corner cost, were
 /// pinned on the row images here, until a frame's one picture was all the
 /// line kept (one-picture-per-frame ②-5b-1) — the borrowing is pinned on
 /// the pictures (`the_budget_keeps_what_the_canvas_shows_test`).
 void main() {
+  opensTheEnginesScreens();
   /// The frames' pictures, none laid.
-  FramePictureStore<FramePictureKey> pictures() {
-    final store = FramePictureStore<FramePictureKey>();
+  EngineFramePictureStore<FramePictureKey> pictures() {
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return store;
   }

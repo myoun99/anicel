@@ -42,11 +42,18 @@ sealed class ScreenTexture {
       ? _WindowTexture(await engine.window(width, height), width, height)
       : _AlternatedTextures(engine, width, height);
 
+  /// A surface of [width] × [height] on [engine], laid as this platform's
+  /// screens are: what a picture for a file is shown on and read back from.
+  static GpuSurface surfaceOf(GpuEngine engine, int width, int height) =>
+      engine.surface(width, height, bgra: _AlternatedTextures._showsBgra);
+
   /// [surface] alone, presented onto and shown by no texture Flutter
   /// knows: what a test reads a screen back from ([GpuSurface.fingerprint])
-  /// — `flutter test` registers no texture. The surface stays the test's.
+  /// — `flutter test` registers no texture. The surface stays the test's;
+  /// [id] is the texture id its layer names.
   @visibleForTesting
-  factory ScreenTexture.debugOnSurface(GpuSurface surface) = _SurfaceTexture;
+  factory ScreenTexture.debugOnSurface(GpuSurface surface, {int id}) =
+      _SurfaceTexture;
 
   final int width;
   final int height;
@@ -145,17 +152,18 @@ final class _AlternatedTextures extends ScreenTexture {
 }
 
 final class _SurfaceTexture extends ScreenTexture {
-  _SurfaceTexture(this._surface)
-    : super(_surface.width, _surface.height, surfaces: 1);
+  _SurfaceTexture(this._surface, {int id = 0})
+    : _id = ValueNotifier(id),
+      super(_surface.width, _surface.height, surfaces: 1);
 
   final GpuSurface _surface;
-  final ValueNotifier<int> _id = ValueNotifier(0);
+  final ValueNotifier<int> _id;
 
   @override
   ValueListenable<int> get textureId => _id;
 
   @override
-  int get nextTextureId => 0;
+  int get nextTextureId => _id.value;
 
   @override
   void present(void Function(GpuTarget next) draw) => draw(_surface);

@@ -226,6 +226,26 @@ class GpuSurface extends GpuTarget {
     return hash.value;
   });
 
+  /// The surface's pixels read back from the GPU: straight from its
+  /// texture, premultiplied, RGBA whichever way it is laid, row after row
+  /// with nothing between.
+  Uint8List read() => using((arena) {
+    final count = width * height * 4;
+    final bytes = arena<Uint8>(_held(count));
+    if (!rust.surfaceRead(_engine._engine, _surface, bytes, count)) {
+      throw GpuReadFailed(_lastError());
+    }
+    final pixels = Uint8List.fromList(bytes.asTypedList(count));
+    if (bgra) {
+      for (var at = 0; at < count; at += 4) {
+        final blue = pixels[at];
+        pixels[at] = pixels[at + 2];
+        pixels[at + 2] = blue;
+      }
+    }
+    return pixels;
+  });
+
   /// What a D3D11 device of Flutter's adapter sees when it opens the
   /// handle, as ANGLE will; null when it cannot open it, and off Windows,
   /// where Flutter draws with no ANGLE.

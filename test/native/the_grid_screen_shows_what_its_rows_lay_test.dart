@@ -10,6 +10,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
+import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
@@ -36,7 +37,7 @@ void main() {
   final asked = <(int, int)>[];
   const red = [255, 0, 0, 255];
   const green = [0, 255, 0, 255];
-  final opener = debugOpenTimelineGridScreen;
+  final opener = debugOpenEngineScreen;
 
   setUpAll(() async {
     final engine = await openAppGpuEngine();
@@ -56,11 +57,11 @@ void main() {
     grid.free();
   });
   tearDownAll(() {
-    debugOpenTimelineGridScreen = opener;
+    debugOpenEngineScreen = opener;
     tile.letGo();
   });
   setUp(() {
-    debugOpenTimelineGridScreen = (_, width, height) async {
+    debugOpenEngineScreen = (_, width, height) async {
       asked.add((width, height));
       surface = shownSurfaceOf(width, height);
       surfaces.add(surface);
@@ -559,7 +560,7 @@ void main() {
   testWidgets('before the engine is open a row lays nothing', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);
-    debugOpenTimelineGridScreen = (_, _, _) => Completer<ScreenTexture>().future;
+    debugOpenEngineScreen = (_, _, _) => Completer<ScreenTexture>().future;
     await tester.pumpWidget(aGrid(row));
     await tester.pump();
 
@@ -824,7 +825,7 @@ void main() {
     expect(row.laidLast, isTrue, reason: '⛔premise: laid on the one opened');
 
     final opening = Completer<ScreenTexture>();
-    debugOpenTimelineGridScreen = (_, _, _) => opening.future;
+    debugOpenEngineScreen = (_, _, _) => opening.future;
     tester.view.physicalSize = const Size(600, 200);
     await tester.pump();
     // The frame it outgrew the screen in: its rows have laid on it, and it

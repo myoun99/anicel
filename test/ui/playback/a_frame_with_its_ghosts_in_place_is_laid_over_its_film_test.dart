@@ -26,13 +26,12 @@ import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 
-import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 import '../../helpers/draw_on_current_frame.dart';
+import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🗣️onion-ghosts-in-place ② (유저 2026-10-26 「보통 합성이 아닌 경우라도
 /// 최대한 극한으로 개선해보자」): a frame with its ghosts in place is laid
@@ -50,6 +49,8 @@ void main() {
   // Past a piece across ([FramePictureStore] lays a picture a piece at a
   // time, on Flutter GPU): two of them, every ghost in the first.
   const canvasSize = CanvasSize(width: 640, height: 128);
+  // The page and the pasteboard a ghost goes out on.
+  const world = ui.Rect.fromLTRB(-64, 0, 640, 128);
   const pen = LayerId('pen');
   // The pen's cels before and after the playhead, the ghosts at frame 1:
   // one on the left, one on the right — and the drawing between them.
@@ -152,7 +153,7 @@ void main() {
           at: at,
           size: size,
           color: color,
-          tileSize: 16,
+          tileSize: defaultCelTileSize,
         );
     var shade = 0;
     const colors = [0xFF3366CC, 0xC0CC3333, 0xFF33AA55, 0xA0EECC22];
@@ -179,11 +180,7 @@ void main() {
   /// Pictures of [session]'s frames in a store of their own.
   FramePictures besideThe(EditorSessionManager session) {
     final its = session.playbackRig.framePictures;
-    // Pieces of 512, so a page of 640 is laid in two.
-    final store = FramePictureStore<FramePictureKey>(
-      onceSide: 512,
-      pieceSide: 512,
-    );
+    final store = aStoreOfPictures();
     final pictures = FramePictures(
       store: store,
       layerImages: its.layerImages,
@@ -205,24 +202,18 @@ void main() {
     );
   }
 
-  Future<(ui.Rect, Uint8List)> bytesOf(
-    FramePictures pictures,
-    DemandedPicture picture,
-  ) async {
+  /// [picture] over the world round the page a ghost may reach, read back.
+  Uint8List bytesOf(FramePictures pictures, DemandedPicture picture) {
     final made = pictures.store.peek(pictures.keyOf(picture));
     expect(made, isNotNull, reason: '⛔premise: $picture is held');
-    final bytes = (await made!.image.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!;
-    return (made.extent, bytes.buffer.asUint8List());
+    return pixelsOfPicture(made!, world);
   }
 
-  Uint8List pixelOf((ui.Rect, Uint8List) picture, CanvasPoint at) {
-    final (extent, bytes) = picture;
-    final x = at.x.floor() - extent.left.round();
-    final y = at.y.floor() - extent.top.round();
-    final at4 = (y * extent.width.round() + x) * 4;
-    return bytes.sublist(at4, at4 + 4);
+  Uint8List pixelOf(Uint8List picture, CanvasPoint at) {
+    final x = at.x.floor() - world.left.round();
+    final y = at.y.floor() - world.top.round();
+    final at4 = (y * world.width.round() + x) * 4;
+    return picture.sublist(at4, at4 + 4);
   }
 
   ({DemandedPicture inPlace, DemandedPicture film}) atTheHead(
@@ -267,10 +258,7 @@ void main() {
       isNot(over.keyOf(film)),
       reason: '⛔premise: the ghosts are in the frame',
     );
-    final (extent, bytes) = await bytesOf(over, inPlace);
-    final (wholeExtent, wholeBytes) = await bytesOf(whole, inPlace);
-    expect(extent, wholeExtent);
-    expect(bytes, wholeBytes);
+    expect(bytesOf(over, inPlace), bytesOf(whole, inPlace));
   }
 
   final shapes = <String, List<Layer> Function()>{
@@ -375,39 +363,6 @@ void main() {
     );
   });
 
-  // Over its film a frame draws its nodes only where its ghosts show; a
-  // canvas that draws on it holds them in a turn of their own
-  // (`FramePictures.holdNodesOf`).
-  testWidgets('laid over its film for a canvas that draws on it, the frame '
-      'keeps none of its nodes', (tester) async {
-    await tester.runAsync(() async {
-      final session = inked(shapes['rows over and under it']!());
-      final (:inPlace, :film) = atTheHead(session);
-      Future<bool> keptLaidForAPen(FramePictures pictures) async {
-        expect(
-          await pictures.makeShown(
-            pictures.stackOf(inPlace),
-            inPlace,
-            shouldAbort: () => false,
-            keepsNodes: true,
-          ),
-          isTrue,
-          reason: '⛔premise: the frame is laid',
-        );
-        return pictures.heldNodes.holdsAllOf(pictures.keyOf(inPlace));
-      }
-
-      expect(
-        await keptLaidForAPen(besideThe(session)),
-        isTrue,
-        reason: '⛔premise: laid whole for a pen, it keeps them',
-      );
-      final over = besideThe(session);
-      await make(over, film);
-      expect(await keptLaidForAPen(over), isFalse);
-    });
-  });
-
   // A frame covers its page and every row's buffer: past the film's, the
   // frame holds its ghosts alone.
   testWidgets('a ghost out on the pasteboard takes the frame past its film: '
@@ -424,16 +379,12 @@ void main() {
       await make(over, film);
       await make(over, inPlace);
 
-      final (extent, bytes) = await bytesOf(over, inPlace);
-      final (filmExtent, _) = await bytesOf(over, film);
       expect(
-        extent.left,
-        lessThan(filmExtent.left),
+        over.store.bytesOf(over.keyOf(inPlace)),
+        greaterThan(over.store.bytesOf(over.keyOf(film))!),
         reason: '⛔premise: the ghost takes the frame past its film',
       );
-      final (wholeExtent, wholeBytes) = await bytesOf(whole, inPlace);
-      expect(extent, wholeExtent);
-      expect(bytes, wholeBytes);
+      expect(bytesOf(over, inPlace), bytesOf(whole, inPlace));
     });
   });
 
@@ -446,19 +397,38 @@ void main() {
       final (:inPlace, :film) = atTheHead(session);
       final whole = besideThe(session);
       await make(whole, inPlace);
-      final wholePicture = await bytesOf(whole, inPlace);
+      final wholePicture = bytesOf(whole, inPlace);
 
       // A film no frame draws: red from edge to edge, under the film's key.
-      final poisoned = besideThe(session);
-      await poisoned.store.lay(poisoned.keyOf(film), (
-        extent: wholePicture.$1,
-        draw: (canvas) => canvas.drawColor(
-          const ui.Color(0xFFFF0000),
-          ui.BlendMode.src,
+      final red = inked([drawing('red')]);
+      inkCelIn(
+        red.renderCaches.brushFrameStore,
+        red.brushFrameKeyForCut(
+          red.requireActiveCut,
+          const LayerId('red'),
+          const FrameId('red'),
         ),
-      ));
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: 320, y: 64),
+        size: 1280,
+        color: 0xFFFF0000,
+        tileSize: defaultCelTileSize,
+      );
+      final redFilm = red.playbackRig.framePictures;
+      final redFrame = (
+        cut: red.requireActiveCut,
+        frameIndex: 1,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      );
+      await redFilm.readIn(redFrame);
+      final poisoned = besideThe(session);
+      await poisoned.store.lay(
+        poisoned.keyOf(film),
+        redFilm.drawingNow(redFilm.stackOf(redFrame), redFrame).frame,
+      );
       await make(poisoned, inPlace);
-      final laid = await bytesOf(poisoned, inPlace);
+      final laid = bytesOf(poisoned, inPlace);
 
       expect(pixelOf(laid, away), [255, 0, 0, 255], reason: 'the film');
       for (final ghost in [before, after]) {
@@ -471,25 +441,4 @@ void main() {
     });
   });
 
-  // 🚨a-picture-lay-holds-the-raster-thread: the ghosts' place rastered
-  // whole at each piece was the frame's raster again a piece.
-  testWidgets('laid a piece at a time, the ghosts\' place is rastered where '
-      'a piece meets it — not at every piece', (tester) async {
-    await tester.runAsync(() async {
-      final session = inked(shapes['rows over and under it']!());
-      final (:inPlace, :film) = atTheHead(session);
-      final over = besideThe(session);
-      await make(over, film);
-      debugGhostPlaceRasters = 0;
-      await make(over, inPlace);
-
-      final (extent, _) = await bytesOf(over, inPlace);
-      expect(
-        extent.width,
-        greaterThan(512),
-        reason: '⛔premise: laid in more than one piece',
-      );
-      expect(debugGhostPlaceRasters, 1, reason: 'every ghost in one piece');
-    });
-  }, skip: noFlutterGpu != null);
 }

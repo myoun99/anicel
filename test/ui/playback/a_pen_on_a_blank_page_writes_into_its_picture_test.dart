@@ -22,10 +22,8 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/settle_async.dart';
@@ -40,11 +38,11 @@ import '../../helpers/settle_async.dart';
 /// A screen that draws nothing live still makes no picture of a page alone
 /// (`FramePictures.drawsOnlyItsPage`), and draws it as it stands.
 ///
-/// A step's render waits ([RendersHeld.holdsRenders]), its write never lands
-/// ([WritesNeverLand]): a step on its way into the picture is the oracle,
-/// the GPU's own writes are pinned elsewhere
+/// A step written into the picture is the oracle ([StoreTellingItsWrites]);
+/// what it shows is pinned elsewhere
 /// (`a_stroke_is_written_into_the_picture_shown_test`).
 void main() {
+  opensTheEnginesScreens();
   const tileSize = 16;
   const canvasSize = CanvasSize(width: 32, height: 32);
   const viewSize = Size(48, 40);
@@ -99,17 +97,13 @@ void main() {
     lineage: 'a-pen-on-a-blank-page',
   );
 
-  /// The GPU of the page last made ([aPage]).
-  late WritesNeverLand gpu;
-
   /// The cels, their pictures and the store of the frames', torn down after.
-  ({BrushFrameStore cels, StackRun run, FramePictureStore<FramePictureKey> store})
+  ({BrushFrameStore cels, StackRun run, StoreTellingItsWrites store})
   aPage(List<CompositeNode<CanvasStackRow>> Function() nodes) {
     final cels = BrushFrameStore();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    gpu = WritesNeverLand();
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = StoreTellingItsWrites();
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -175,12 +169,11 @@ void main() {
     );
     await lendBothClocks(tester, rounds: 2);
 
-    gpu.holdsRenders = true;
     step(overlay);
     await tester.pump();
     expect(
-      store.landingOf(keptByTheCanvas(tester, blank)),
-      isNotNull,
+      store.landedAt(keptByTheCanvas(tester, blank)),
+      isTrue,
       reason: 'the step is on its way into the page\'s picture',
     );
 
@@ -230,12 +223,11 @@ void main() {
       nodes: nodes,
       live: liveOver(BitmapSurface(canvasSize: canvasSize, tileSize: tileSize)),
     );
-    gpu.holdsRenders = true;
     step(overlay);
     await tester.pump();
     expect(
-      store.landingOf(keptByTheCanvas(tester, blank)),
-      isNotNull,
+      store.landedAt(keptByTheCanvas(tester, blank)),
+      isTrue,
       reason: 'the step is on its way into the page\'s picture — ⛔not the '
           'frame drawn as it stands, the row\'s change untold',
     );
@@ -252,8 +244,8 @@ void main() {
     expect(drawn, isNot(blank), reason: '⛔premise: the frame\'s key moved');
     await standOn(tester, run, nodes: nodes, live: liveOver(stored));
     expect(
-      store.landingOf(drawn),
-      isNotNull,
+      store.landedAt(drawn),
+      isTrue,
       reason: 'the stroke landed on the cel the pen was on: the picture '
           'moves to the frame\'s next key — ⛔not laid again whole',
     );
@@ -301,12 +293,11 @@ void main() {
         liftedRows: const {},
       ),
     );
-    gpu.holdsRenders = true;
     step(overlay);
     await tester.pump();
     expect(
-      store.landingOf(keptByTheCanvas(tester, blank)),
-      isNotNull,
+      store.landedAt(keptByTheCanvas(tester, blank)),
+      isTrue,
       reason: 'the step is on its way into the page\'s picture',
     );
 

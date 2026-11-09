@@ -18,7 +18,6 @@
 @Tags(['gpu'])
 library;
 
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -45,7 +44,7 @@ import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
@@ -144,16 +143,11 @@ void main() {
       rounds: 6,
       step: const Duration(milliseconds: 20),
     );
-    final view = tester.widget<FramePictureView>(theFramesPicture());
-    var landed = false;
-    unawaited(view.run.pictures.store.settled().then((_) => landed = true));
-    expect(await settleAsync(tester, () => landed), isTrue, reason: 'LIVENESS');
     await lendBothClocks(tester, rounds: 2);
   }
 
   /// What the picture under the frame's key — the one every screen takes,
-  /// the view's own after any leaving and coming back — holds at ([x], [y]);
-  /// null where it has no such place.
+  /// the view's own after any leaving and coming back — holds at ([x], [y]).
   Future<List<int>?> pictureAt(WidgetTester tester, double x, double y) async {
     final view = tester.widget<FramePictureView>(theFramesPicture());
     final pictures = view.run.pictures;
@@ -163,18 +157,7 @@ void main() {
     if (there == null) {
       return null;
     }
-    final bytes = await tester.runAsync(() => there.image.toByteData());
-    final extent = there.extent;
-    final width = there.image.width;
-    final height = there.image.height;
-    final px = ((x - extent.left) * width / extent.width).floor();
-    final py = ((y - extent.top) * height / extent.height).floor();
-    if (px < 0 || py < 0 || px >= width || py >= height) {
-      return null;
-    }
-    return [
-      for (var c = 0; c < 4; c++) bytes!.getUint8((py * width + px) * 4 + c),
-    ];
+    return pixelsOfPicture(there, Rect.fromLTWH(x, y, 1, 1));
   }
 
   /// [project] with its row `b` turned 30° about the page's centre — a pose
@@ -442,7 +425,7 @@ void main() {
         'anew', (tester) async {
       final s = await upWithACopyOnThePage(tester);
       await standInSoloOnB(tester, s);
-      FramePicture? shownNow() {
+      EngineFramePicture? shownNow() {
         final view = tester.widget<FramePictureView>(theFramesPicture());
         return view.run.pictures.store.peek(
           view.run.pictures.keyOfStack(view.nodes, view.picture),
@@ -456,7 +439,7 @@ void main() {
       expect(before, isNotNull, reason: '⛔premise: a picture to go into');
       expect(shownNow(), same(before));
       expect(await pictureAt(tester, 20, 20), red);
-    }, skip: noFlutterGpu != null);
+    });
 
     testWidgets('over a drawing and under one', (tester) async {
       final s = await upWithACopyOnThePage(tester);

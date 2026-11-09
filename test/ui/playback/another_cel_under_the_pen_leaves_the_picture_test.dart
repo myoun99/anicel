@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,9 +23,6 @@ import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
-import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -50,6 +45,7 @@ import '../../helpers/settle_async.dart';
 /// asked of the picture is the oracle, the GPU's own writes are pinned
 /// elsewhere (`a_stroke_is_written_into_the_picture_shown_test`).
 void main() {
+  opensTheEnginesScreens();
   const tileSize = defaultCelTileSize;
   // 2 × 2 tiles, the pasteboard round them in view.
   const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
@@ -113,8 +109,7 @@ void main() {
       })
       penOn,
       void Function(TileCoord where) step,
-      _WritesHeld gpu,
-      FramePictureStore<FramePictureKey> store,
+      StoreTellingItsWrites store,
       FramePictureKey picture,
       Future<FramePictureKey> Function(BrushFrameKey cel) landOn,
     })
@@ -137,8 +132,7 @@ void main() {
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final gpu = _WritesHeld();
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = StoreTellingItsWrites();
     addTearDown(store.dispose);
     var nodes = stackUnder(low);
     final run = runOver(
@@ -209,7 +203,6 @@ void main() {
       penOn: penOn,
       step: (where) =>
           overlay.showResultTiles([PromotedStrokeTile(where, stroke, 1)]),
-      gpu: gpu,
       store: store,
       picture: picture,
       landOn: (cel) async {
@@ -231,20 +224,13 @@ void main() {
     );
   }
 
-  bool drawnAsItStands(WidgetTester tester) {
-    final paint = tester.widget<CustomPaint>(
-      find.descendant(
-        of: find.byType(FramePictureView),
-        matching: find.byType(CustomPaint),
-      ),
-    );
-    // ignore: avoid_dynamic_calls
-    return (paint.painter as dynamic).standing.whole as bool;
-  }
+  bool drawnAsItStands(WidgetTester tester) =>
+      // ignore: avoid_dynamic_calls
+      (tester.state(theFramesPicture()) as dynamic).drawnAsItStands as bool;
 
   testWidgets('🚨the screen shows the picture it showed, and the frame is not '
       'drawn as it stands', (tester) async {
-    final (:penOn, step: _, :gpu, store: _, picture: _, landOn: _) =
+    final (:penOn, step: _, :store, picture: _, landOn: _) =
         await aCanvas(tester);
     final before = await shotOf(tester, screen);
 
@@ -252,7 +238,7 @@ void main() {
     await tester.pump();
 
     expect(drawnAsItStands(tester), isFalse);
-    expect(gpu.written, 0, reason: 'nothing changed, so nothing goes in');
+    expect(store.patched, isEmpty, reason: 'nothing changed, so nothing goes in');
     expect(differences(before, await shotOf(tester, screen)), isEmpty);
 
     await tester.pumpWidget(const SizedBox());
@@ -262,18 +248,17 @@ void main() {
       'picture — not the whole frame composed a step at a time', (
     tester,
   ) async {
-    final (:penOn, :step, :gpu, :store, :picture, landOn: _) = await aCanvas(
+    final (:penOn, :step, :store, :picture, landOn: _) = await aCanvas(
       tester,
     );
 
     await penOn(high);
-    gpu.holdsRenders = true;
     step(at);
     await tester.pump();
 
     expect(
-      store.landingOf(keptByTheCanvas(tester, picture)),
-      isNotNull,
+      store.landedAt(keptByTheCanvas(tester, picture)),
+      isTrue,
       reason: 'the step is on its way into the picture',
     );
 
@@ -282,19 +267,18 @@ void main() {
 
   testWidgets('🚨and that stroke, landed, moves the picture to the frame\'s '
       'next key: the cel the pen is on is the one it came to', (tester) async {
-    final (:penOn, :step, :gpu, :store, picture: _, :landOn) = await aCanvas(
+    final (:penOn, :step, :store, picture: _, :landOn) = await aCanvas(
       tester,
     );
 
     await penOn(high);
-    gpu.holdsRenders = true;
     step(at);
     await tester.pump();
     final drawn = await landOn(high);
 
     expect(
-      store.landingOf(drawn),
-      isNotNull,
+      store.landedAt(drawn),
+      isTrue,
       reason: 'moved where it stands, ⛔not laid again whole',
     );
 
@@ -303,7 +287,7 @@ void main() {
 
   testWidgets('a row the pen cannot draw on leaves it too, and back from it '
       'the next stroke is written in', (tester) async {
-    final (:penOn, :step, :gpu, :store, :picture, landOn: _) = await aCanvas(
+    final (:penOn, :step, :store, :picture, landOn: _) = await aCanvas(
       tester,
     );
 
@@ -312,10 +296,9 @@ void main() {
     expect(drawnAsItStands(tester), isFalse);
 
     await penOn(high);
-    gpu.holdsRenders = true;
     step(at);
     await tester.pump();
-    expect(store.landingOf(keptByTheCanvas(tester, picture)), isNotNull);
+    expect(store.landedAt(keptByTheCanvas(tester, picture)), isTrue);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -324,19 +307,22 @@ void main() {
       'holds the frame: what the row left drew goes on being answered for', (
     tester,
   ) async {
-    final (:penOn, :step, :gpu, store: _, picture: _, landOn: _) =
+    final (:penOn, :step, :store, picture: _, landOn: _) =
         await aCanvas(tester);
     step(at);
     await tester.pump();
-    expect(gpu.written, 1, reason: '⛔premise: the step is in the picture');
-    gpu.letTheWritesLand();
+    expect(
+      store.patched,
+      hasLength(1),
+      reason: '⛔premise: the step is in the picture',
+    );
     await lendBothClocks(tester, rounds: 2);
 
     await penOn(high);
     await tester.pump();
 
     expect(
-      drawnAsItStands(tester) || gpu.written > 1,
+      drawnAsItStands(tester) || store.patched.length > 1,
       isTrue,
       reason: 'the picture is drawn over or written into, not left as it is',
     );
@@ -346,7 +332,7 @@ void main() {
 
   testWidgets('⛔nor is one short of a step the row left took: it stays to go '
       'in', (tester) async {
-    final (:penOn, :step, :gpu, store: _, picture: _, landOn: _) =
+    final (:penOn, :step, :store, picture: _, landOn: _) =
         await aCanvas(tester);
 
     // The step shown and no paint since: the picture has not asked for it.
@@ -355,7 +341,7 @@ void main() {
     await tester.pump();
 
     expect(
-      drawnAsItStands(tester) || gpu.written > 0,
+      drawnAsItStands(tester) || store.patched.isNotEmpty,
       isTrue,
       reason: 'the picture is drawn over or written into, not left as it is',
     );
@@ -365,45 +351,14 @@ void main() {
 
   testWidgets('the same cel handed by another painter is told by what moved, '
       'as ever: what its tiles changed goes in', (tester) async {
-    final (:penOn, step: _, :gpu, store: _, picture: _, landOn: _) =
+    final (:penOn, step: _, :store, picture: _, landOn: _) =
         await aCanvas(tester);
 
     await penOn(low, more: {beside: stroke});
     await tester.pump();
 
-    expect(gpu.written, 1);
+    expect(store.patched, hasLength(1));
 
     await tester.pumpWidget(const SizedBox());
-    await tester.pump(theLevelsPause);
   });
-}
-
-/// A GPU that counts the writes asked of it, each of them landing as it is
-/// let ([letTheWritesLand]) — into nothing: the image is what it was.
-class _WritesHeld extends WritesNeverLand {
-  final List<Completer<bool>> _waiting = [];
-
-  /// How many writes were asked.
-  int written = 0;
-
-  void letTheWritesLand() {
-    for (final write in _waiting) {
-      write.complete(true);
-    }
-    _waiting.clear();
-  }
-
-  @override
-  Object? hold(ui.Image image) => image.clone();
-
-  @override
-  ui.Image imageOf(Object held) => (held as ui.Image).clone();
-
-  @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
-    written += 1;
-    final landing = Completer<bool>();
-    _waiting.add(landing);
-    return landing.future;
-  }
 }

@@ -49,6 +49,37 @@ pub unsafe extern "C" fn gpu_engine_surface_fingerprint(
     }
 }
 
+/// Reads the surface back into `out`, `length` bytes: its width × height
+/// texels, row after row with nothing between. False on failure, a length
+/// that is not the surface's among them; see the last error.
+///
+/// # Safety
+/// `engine` and `surface` are live, `surface` was made on `engine`, and
+/// `out` holds `length` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_surface_read(
+    engine: *const Engine,
+    surface: *const Surface,
+    out: *mut u8,
+    length: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (engine, surface) = unsafe { (&*engine, &*surface) };
+    let Some(bytes) = engine.read_texture(&surface.texture) else {
+        return false;
+    };
+    if bytes.len() != length {
+        return crate::fail::<()>(format!(
+            "a surface of {} bytes read into {length}",
+            bytes.len()
+        ))
+        .is_some();
+    }
+    // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

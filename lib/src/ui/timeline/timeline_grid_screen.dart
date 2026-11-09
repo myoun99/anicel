@@ -7,23 +7,11 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
-import '../../native/app_gpu_engine.dart';
 import '../../native/screen_texture.dart';
+import '../engine_screen_texture.dart';
 import '../layout/device_grid.dart';
 import '../widgets/still_raster.dart';
 import 'timeline_grid_tile_picture.dart';
-
-/// How a grid's screen is opened: [ScreenTexture.open]. A test reads one
-/// back through [ScreenTexture.debugOnSurface].
-@visibleForTesting
-Future<ScreenTexture> Function(GpuEngine engine, int width, int height)
-debugOpenTimelineGridScreen = ScreenTexture.open;
-
-/// The step a grid's screen's sides are rounded up to, in device pixels
-/// (grid-on-the-engine ④ D1 ⑥, 관제 2026-11-09 08:07 E②): a panel dragged a
-/// pixel at a time opens another texture once in this far, not at every
-/// pixel.
-const int _screenSideStep = 512;
 
 /// How far past what the view shows a screen holds, in device pixels, along
 /// an axis on which the box goes on past it (공통 2026-11-09, for 관제's F).
@@ -108,20 +96,23 @@ class _GridScreenScope extends InheritedWidget {
 /// the texture it is shown through once the app's engine is open and a row
 /// is there to lay on it (관제 2026-11-09 08:07 E③) — as big as what of the
 /// box the view shows, with room to scroll ([_screenRoom]), its sides rounded
-/// up ([_screenSideStep]), in device pixels.
+/// up ([EngineScreenTexture]), in device pixels.
 final class _GridScreen {
   _RenderGridScreen? _box;
   final Set<_RenderGridScreenSlot> _slots = {};
-  ScreenTexture? _texture;
+
+  /// What it is shown through, as big as what of the box the view showed in
+  /// the frame last composited, and its room.
+  late final EngineScreenTexture _shownThrough = EngineScreenTexture(
+    asks: () => _box != null && _slots.isNotEmpty,
+    opened: (engine) {
+      _lay ??= GpuGridLay(engine);
+      _laysChanged();
+    },
+  );
   GpuGridLay? _lay;
 
-  /// What the texture has to hold, in device pixels: what of the box the
-  /// view showed in the frame last composited, and its room.
-  (int, int) _wanted = (0, 0);
-
-  /// The size a texture is being opened at.
-  (int, int)? _opening;
-  bool _stopped = false;
+  ScreenTexture? get _texture => _shownThrough.texture;
 
   /// Where the rows' tiles were last laid, in the box's own pixels, and the
   /// id what was laid is shown by — null where they are to be laid again.
@@ -131,25 +122,14 @@ final class _GridScreen {
   /// texture is open and holds what it shows. ↩️Any texture open: while a
   /// bigger one opened, the rows laid on the one held, and what of them lay
   /// past its edge was shown nowhere (타임라인/콘티 리뷰 2026-11-09 B).
-  bool get lays => _box != null && _holds(_texture);
+  bool get lays => _box != null && _shownThrough.holdsWhatIsWanted;
 
-  bool _holds(ScreenTexture? texture) {
-    final (width, height) = _wanted;
-    return texture != null &&
-        texture.width >= width &&
-        texture.height >= height;
-  }
-
-  void start() => appGpuEngineOpen.addListener(_open);
+  void start() => _shownThrough.start();
 
   void stop() {
-    _stopped = true;
-    appGpuEngineOpen.removeListener(_open);
-    final texture = _texture;
-    _texture = null;
+    _shownThrough.stop();
     _lay?.free();
     _lay = null;
-    unawaited(texture?.free());
   }
 
   void showBy(_RenderGridScreen box) {
@@ -167,7 +147,7 @@ final class _GridScreen {
 
   void slotCame(_RenderGridScreenSlot slot) {
     _slots.add(slot);
-    unawaited(_open());
+    unawaited(_shownThrough.open());
   }
 
   /// The box tells what of it the view shows, [shown] of [bounds], in device
@@ -188,16 +168,16 @@ final class _GridScreen {
             _sideOf(shown.left, shown.right, bounds.left, bounds.right),
             _sideOf(shown.top, shown.bottom, bounds.top, bounds.bottom),
           );
-    if (wanted == _wanted) {
+    if (wanted == _shownThrough.wanted) {
       return;
     }
     SchedulerBinding.instance.addPostFrameCallback((_) {
       final laid = lays;
-      _wanted = wanted;
+      _shownThrough.wanted = wanted;
       if (lays != laid) {
         _laysChanged();
       }
-      unawaited(_open());
+      unawaited(_shownThrough.open());
     });
   }
 
@@ -206,49 +186,6 @@ final class _GridScreen {
   /// past it.
   static int _sideOf(double from, double to, double boxFrom, double boxTo) =>
       (to - from).toInt() + (from > boxFrom || to < boxTo ? _screenRoom : 0);
-
-  static int _steppedUp(int side) =>
-      (side + _screenSideStep - 1) ~/ _screenSideStep * _screenSideStep;
-
-  /// The size to open a texture at: null where one is being opened at it,
-  /// or none is to be — the engine shut, no box or no row to lay on it, nothing
-  /// to show, or the one held holds it.
-  (int, int)? get _toOpen {
-    final (width, height) = _wanted;
-    if (appGpuEngineOpen.value == null ||
-        _box == null ||
-        _slots.isEmpty ||
-        _holds(_texture) ||
-        width <= 0 ||
-        height <= 0) {
-      return null;
-    }
-    final size = (_steppedUp(width), _steppedUp(height));
-    return size == _opening ? null : size;
-  }
-
-  /// Opens the texture [_toOpen] says; the one it replaces is freed once it
-  /// is shown no more.
-  Future<void> _open() async {
-    final engine = appGpuEngineOpen.value;
-    final asked = _toOpen;
-    if (engine == null || asked == null) {
-      return;
-    }
-    final held = _texture;
-    _opening = asked;
-    final (width, height) = asked;
-    final opened = await debugOpenTimelineGridScreen(engine, width, height);
-    if (_stopped || _opening != asked) {
-      await opened.free();
-      return;
-    }
-    _opening = null;
-    _texture = opened;
-    _lay ??= GpuGridLay(engine);
-    _laysChanged();
-    await held?.free();
-  }
 
   /// A row's paint, or its going, changed what the screen shows: it is
   /// laid again as the frame's scene is built.

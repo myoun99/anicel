@@ -30,13 +30,13 @@ import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// One covered cut's share of the frame as the stack lays it: the unit's
 /// fade, the painter under its picture (the apron, an absent paper's
@@ -63,6 +63,7 @@ typedef _Run = ({
 /// the rest composite transparently), drawn from its rows' images as the
 /// canvas draws them, and uncovered frames stay the void.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   const cameraFrameSize = CanvasSize(width: 4, height: 2);
 
@@ -131,7 +132,7 @@ void main() {
   }) {
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final told = landings ?? ValueNotifier<int>(0);
     if (landings == null) {

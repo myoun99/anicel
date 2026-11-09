@@ -7,7 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
 import '../../native/engine_chain_holds.dart';
-import '../../native/engine_letters.dart';
+import '../../native/engine_frame_tools.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 
@@ -62,8 +62,12 @@ class EngineFramePicture extends ChangeNotifier {
     _freedIfUnheld();
   }
 
-  void _composed(StackedFrame frame, {ui.Rect? changed}) {
-    _screen.compose(frame, changed: changed);
+  void _composed(
+    StackedFrame frame, {
+    ui.Rect? changed,
+    EngineChainHolds? holds,
+  }) {
+    _screen.compose(frame, changed: changed, holds: holds);
     notifyListeners();
   }
 
@@ -72,7 +76,8 @@ class EngineFramePicture extends ChangeNotifier {
     EngineFramePicture film,
     StackedFrame frame, {
     required ui.Rect fresh,
-  }) => _screen.composeOver(film._screen, frame, fresh: fresh);
+    EngineChainHolds? holds,
+  }) => _screen.composeOver(film._screen, frame, fresh: fresh, holds: holds);
 
   void _letGo() {
     _gone = true;
@@ -92,20 +97,20 @@ class EngineFramePicture extends ChangeNotifier {
 /// changed ([patch]), let go of by the playback budget's one order
 /// ([enforceBudget]).
 class EngineFramePictureStore<K extends Object> {
-  /// Pictures composited by [composite], laying cel numbers in [letters]
-  /// and their chains' puts held in [holds], if any — one hold for every
-  /// picture: a frame laid ahead finds what the frame before it put.
-  EngineFramePictureStore({
-    required GpuComposite composite,
-    required EngineLetters letters,
-    EngineChainHolds? holds,
-  }) : _composite = composite,
-       _letters = letters,
-       _holds = holds;
+  /// Pictures laid with [tools], once they are there: a store is made
+  /// before the engine is open, and what it is asked for waits for it.
+  EngineFramePictureStore({required Future<EngineFrameTools> tools}) {
+    _tools = tools.then((opened) => _opened = opened);
+  }
 
-  final GpuComposite _composite;
-  final EngineLetters _letters;
-  final EngineChainHolds? _holds;
+  late final Future<EngineFrameTools> _tools;
+
+  /// What a picture is laid with — null until the engine is open.
+  EngineFrameTools? get toolsOpen => _opened;
+  EngineFrameTools? _opened;
+
+  /// What [toolsOpen] waits for.
+  Future<EngineFrameTools> get tools => _tools;
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -148,12 +153,15 @@ class EngineFramePictureStore<K extends Object> {
   /// [over] lays it over the picture of a film, where that is there when
   /// its turn comes: composited where it is fresh alone, in world pixels,
   /// and the film's elsewhere as it is ([EngineStackScreen.composeOver]).
+  ///
+  /// [holds] says where its chains' puts are held, if anywhere.
   Future<EngineFramePicture?> lay(
     K key,
     StackedFrame frame, {
     bool shownNow = false,
     bool Function() gone = _stays,
     ({K film, ui.Rect fresh})? over,
+    EngineChainHolds? holds,
   }) {
     final there = peek(key);
     if (there != null) {
@@ -170,7 +178,7 @@ class EngineFramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame, over)..askers.add(gone);
+    final lay = _Lay<K>(key, frame, over, holds)..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -178,7 +186,7 @@ class EngineFramePictureStore<K extends Object> {
     }
     // A turn for each lay: one asked for the screen meanwhile goes to the
     // front.
-    scheduleMicrotask(_layFirst);
+    unawaited(_tools.then((_) => _layFirst(), onError: _noEngine));
     return lay.done.future;
   }
 
@@ -195,18 +203,20 @@ class EngineFramePictureStore<K extends Object> {
   /// from the frame's rows, on nothing — nothing of what the tile held is
   /// under it.
   ///
-  /// Answers false where there is no picture under [from].
+  /// Answers false where there is no picture under [from]. [holds] says
+  /// where its chains' puts are held, if anywhere.
   bool patch({
     required K from,
     required K to,
     required ui.Rect rect,
     required StackedFrame frame,
+    EngineChainHolds? holds,
   }) {
     final entry = _entries[from];
     if (entry == null) {
       return false;
     }
-    entry.picture._composed(frame, changed: rect);
+    entry.picture._composed(frame, changed: rect, holds: holds);
     _moved(entry, from: from, to: to);
     return true;
   }
@@ -306,6 +316,14 @@ class EngineFramePictureStore<K extends Object> {
     _entries.clear();
   }
 
+  /// The engine would not open: every lay asked for hears why.
+  void _noEngine(Object error, StackTrace stack) {
+    for (final lay in _lays) {
+      lay.done.completeError(error, stack);
+    }
+    _lays.clear();
+  }
+
   /// Lays the lay at the front, if any is left — [dispose] answers them.
   /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
   /// meanwhile waits on it, not laid a second time over it. A key a
@@ -326,16 +344,22 @@ class EngineFramePictureStore<K extends Object> {
   }
 
   EngineFramePicture _laid(_Lay<K> lay) {
+    final (:composite, :letters) = _opened!;
     final picture = EngineFramePicture._(
-      EngineStackScreen(_composite, _letters, holds: _holds),
+      EngineStackScreen(composite, letters),
     );
     try {
       final over = lay.over;
       final film = over == null ? null : _entries[over.film]?.picture;
       if (over != null && film != null) {
-        picture._composedOver(film, lay.frame, fresh: over.fresh);
+        picture._composedOver(
+          film,
+          lay.frame,
+          fresh: over.fresh,
+          holds: lay.holds,
+        );
       } else {
-        picture._composed(lay.frame);
+        picture._composed(lay.frame, holds: lay.holds);
       }
     } on Object {
       picture._letGo();
@@ -356,11 +380,12 @@ final class _Entry {
 }
 
 final class _Lay<K> {
-  _Lay(this.key, this.frame, this.over);
+  _Lay(this.key, this.frame, this.over, this.holds);
 
   final K key;
   final StackedFrame frame;
   final ({K film, ui.Rect fresh})? over;
+  final EngineChainHolds? holds;
 
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];

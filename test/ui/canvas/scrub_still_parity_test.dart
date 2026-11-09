@@ -33,16 +33,15 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/settle_async.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨★★★ SCRUB ↔ STILL PARITY (device report B2, 2026-08-17).
 ///
@@ -61,6 +60,7 @@ import '../../helpers/settle_async.dart';
 /// (#1101's pan-phase snap — a painter snapping at 1.0 while the picture
 /// snaps at 1.25 is exactly a whole-picture 1px disagreement).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   const background = ProjectBackground.defaultBackground;
   const projectId = ProjectId('project');
@@ -192,7 +192,7 @@ void main() {
   StackRun picturesOf(BrushFrameStore store) {
     final images = LayerFrameImageCache(frameStore: store);
     addTearDown(images.dispose);
-    final pictures = FramePictureStore<FramePictureKey>();
+    final pictures = aStoreOfPictures();
     addTearDown(pictures.dispose);
     final landings = ValueNotifier<int>(0);
     addTearDown(landings.dispose);

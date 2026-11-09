@@ -13,10 +13,8 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨F-244 (저장 2026-10-27, Surface Pro 11): A FRAME VIEW IS PAINTED AGAIN
@@ -28,6 +26,7 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 /// The oracle is the picture the view's paint recorded: a view not painted
 /// again holds the one it held.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 32, height: 32);
   final cut = Cut(
     id: const CutId('c'),
@@ -61,9 +60,7 @@ void main() {
     // Its picture held on its way: the page is drawn as it stands meanwhile
     // — what a commit composed whole. (A page a pen stands on is made a
     // picture of, first-stroke-on-a-new-project-trails 2026-10-28.)
-    final store = FramePictureStore<FramePictureKey>(
-      gpu: WritesNeverLand()..holdsRenders = true,
-    );
+    final store = StoreLayingNothing();
     addTearDown(store.dispose);
     final run = runOver(
       images,

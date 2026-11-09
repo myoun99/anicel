@@ -2,9 +2,18 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuComposite, GpuMask, GpuPlan, GpuPool, GpuScreen, GpuTarget;
+    show
+        GpuComposite,
+        GpuMask,
+        GpuPlan,
+        GpuPool,
+        GpuScreen,
+        GpuTarget,
+        gpuTileBytes,
+        gpuTileSide;
 
 import '../../core/collection_equality.dart';
+import '../../core/floor_math.dart';
 import '../../core/tree_nodes.dart';
 import '../../services/canvas_flood_fill.dart' show FloodFillRegion;
 import '../../services/cut_frame_composite_plan.dart'
@@ -21,7 +30,6 @@ import '../../models/project_background.dart';
 import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../../core/dev_profile.dart';
-import '../playback/frame_picture_store.dart' show FrameDrawing;
 import 'active_stroke_overlay.dart' show OverlayMoveMark;
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
@@ -331,6 +339,10 @@ enum NodesKept {
   onlyDrawn,
 }
 
+/// A frame as its body draws it: [draw] draws it in world coordinates over
+/// all of [extent], and the world outside [extent] is clear.
+typedef FrameDrawing = ({Rect extent, void Function(Canvas canvas) draw});
+
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
 /// frame as a screen stacks it, composed over [FrameDrawing.extent] in
@@ -472,6 +484,10 @@ final class StackedFrame {
       _through(viewport, devicePixelRatio, debugDisableSingleBuffer),
     ).paint(canvas, size),
   );
+
+  /// The world the frame covers, asked afresh each time: a stroke grows
+  /// what the live row covers.
+  Rect get extent => _LayerStackPaintPass(_painter).frameExtent();
 
   /// The frame as the store lays it — its extent asked afresh each time:
   /// a stroke grows what the live row covers.

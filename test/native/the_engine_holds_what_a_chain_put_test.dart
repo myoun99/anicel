@@ -245,13 +245,9 @@ void main() {
     StackedFrame frame, {
     CanvasSize size = canvas,
   }) {
-    final screen = EngineStackScreen(
-      engine.composite,
-      engine.letters,
-      holds: holds,
-    );
+    final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
-    screen.compose(frame);
+    screen.compose(frame, holds: holds);
     return shownBy(
       (target) => screen.show(
         target,
@@ -411,10 +407,12 @@ void main() {
 
   test('a store\'s screens hold their chains\' puts in the store\'s', () async {
     final store = EngineFramePictureStore<String>(
-      composite: engine.composite,
-      letters: engine.letters,
-      holds: holdsIn(1 << 30),
+      tools: Future.value((
+        composite: engine.composite,
+        letters: engine.letters,
+      )),
     );
+    final holds = holdsIn(1 << 30);
     addTearDown(store.dispose);
     int shownOf(EngineFramePicture picture) => shownBy(
       (target) => picture.show(
@@ -426,8 +424,8 @@ void main() {
       canvas,
     );
 
-    final first = shownOf((await store.lay('a', frameOf(5)))!);
-    final next = shownOf((await store.lay('b', frameOf(9)))!);
+    final first = shownOf((await store.lay('a', frameOf(5), holds: holds))!);
+    final next = shownOf((await store.lay('b', frameOf(9), holds: holds))!);
 
     expect(first, laid(frameOf(5)));
     expect(next, first);

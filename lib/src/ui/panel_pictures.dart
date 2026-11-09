@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
+
+import 'package:gpu_engine/gpu_engine.dart';
 
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../native/app_gpu_engine.dart';
+import '../native/screen_texture.dart';
 import '../services/camera_frame_corners.dart' show CameraView, pictureView;
 import '../services/camera_projection_matrix.dart';
 import '../services/playback/frame_demand.dart';
@@ -10,7 +16,7 @@ import '../services/viewport_transform_matrix.dart' show viewportOfSimilarity;
 import 'editor_session_manager.dart';
 import 'export/export_frame_renderer.dart' show exportFrameGround;
 import 'playback/camera_shot.dart' show clipToTheCanvas;
-import 'playback/frame_picture_view.dart' show drawFramePicture;
+import 'canvas/canvas_layer_stack_view.dart' show EngineStackScreen;
 
 /// A panel's picture — a storyboard block's, a conte cell's, on screen and
 /// on a page written to a file: [render]s [cut] at a frame through its
@@ -29,9 +35,9 @@ import 'playback/frame_picture_view.dart' show drawFramePicture;
 /// `EditingCanvas._underTheCutsFx`): a frame the canvas shows under them is
 /// a picture of its own.
 ///
-/// Drawn where the camera lays the canvas on the raster as a conte
-/// picture's live one draws it ([drawFramePicture]: the view snapped, the
-/// display's filter for the scale), cut at the canvas's edge as it is
+/// Shown where the camera lays the canvas on the raster as a conte
+/// picture's live one shows it ([EngineStackScreen.show]: the view snapped,
+/// the display's filter for the scale), cut at the canvas's edge as it is
 /// ([clipToTheCanvas]; a film shows no pasteboard either, 「페이스트보드는
 /// 포함 안 시킴」), on [exportFrameGround]. A frame there is no picture to
 /// cut from — its page alone, one a canvas holds as its own over what no
@@ -55,6 +61,19 @@ import 'playback/frame_picture_view.dart' show drawFramePicture;
 /// came up — and showed the pasteboard inside the camera's frame, which a
 /// film cuts.
 class PanelPictures {
+  /// [pixels] — premultiplied RGBA, [width] × [height] — as an image.
+  static Future<ui.Image> _imageOf(Uint8List pixels, int width, int height) {
+    final image = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      pixels,
+      width,
+      height,
+      ui.PixelFormat.rgba8888,
+      image.complete,
+    );
+    return image.future;
+  }
+
   PanelPictures({required this.session, this.giveWay});
 
   final EditorSessionManager session;
@@ -92,41 +111,55 @@ class PanelPictures {
               .then((_) => pictures.drawingNow(nodes, demanded))
         : null;
     final onTheRaster = panelViewOnRaster(view, output);
-    final frame = ui.Offset.zero &
-        ui.Size(output.width.toDouble(), output.height.toDouble());
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder, frame)
-      ..drawRect(frame, ui.Paint()..color = exportFrameGround);
-    clipToTheCanvas(canvas, cut.canvasSize, onTheRaster, 1);
-    // Its own handle: the picture's image is let go of when a write
-    // replaces it, or the budget the picture.
-    final image = picture?.image.clone();
-    if (picture != null) {
-      drawFramePicture(
-        canvas,
-        (image: image!, extent: picture.extent),
-        viewport: onTheRaster,
-        devicePixelRatio: 1,
-      );
-    } else {
-      asItStands!.frame.paintOnScreen(
-        canvas,
-        frame.size,
-        viewport: onTheRaster,
-        devicePixelRatio: 1,
-      );
-    }
-    final recorded = recorder.endRecording();
+    final tools = await session.renderCaches.framePictureStore.tools;
+    final target = ScreenTexture.surfaceOf(
+      appGpuEngine,
+      output.width,
+      output.height,
+    );
+    final size = (output.width, output.height);
+    ui.Image? shot;
     try {
+      void showOn(GpuTarget onto) {
+        if (picture != null) {
+          picture.show(
+            onto,
+            size,
+            viewport: onTheRaster,
+            devicePixelRatio: 1,
+          );
+          return;
+        }
+        final screen = EngineStackScreen(tools.composite, tools.letters);
+        try {
+          screen
+            ..compose(asItStands!.frame)
+            ..show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
+        } finally {
+          screen.free();
+        }
+      }
+
+      showOn(target);
+      shot = await _imageOf(target.read(), output.width, output.height);
+      final frame = ui.Offset.zero &
+          ui.Size(output.width.toDouble(), output.height.toDouble());
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder, frame)
+        ..drawRect(frame, ui.Paint()..color = exportFrameGround);
+      clipToTheCanvas(canvas, cut.canvasSize, onTheRaster, 1);
+      canvas.drawImage(shot, ui.Offset.zero, ui.Paint());
+      final recorded = recorder.endRecording();
       final made = await recorded.toImage(output.width, output.height);
+      recorded.dispose();
       if (asItStands?.thrown case (final error, final stack)) {
         made.dispose();
         Error.throwWithStackTrace(error, stack);
       }
       return made;
     } finally {
-      recorded.dispose();
-      image?.dispose();
+      target.free();
+      shot?.dispose();
       // 🚨Cut, the picture is left as the panel found it: one a step of
       // the run wants or a screen holds stays, and one made for the panel
       // alone goes ([PlaybackCacheBudget.letGoUnwanted]).

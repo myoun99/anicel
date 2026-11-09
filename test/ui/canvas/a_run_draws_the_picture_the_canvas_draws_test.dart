@@ -40,14 +40,13 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨A RUN DRAWS THE PICTURE THE CANVAS DRAWS STANDING STILL
 /// (playback-picture-is-not-the-canvas-picture, 유저 10-13: 「재생하면
@@ -74,6 +73,7 @@ import '../../helpers/settle_async.dart';
 /// 캔버스처럼)」): the film shows the pasteboard and what is drawn on it as
 /// the canvas shows them standing still.
 void main() {
+  opensTheEnginesScreens();
   const tileSize = defaultCelTileSize;
   // 300 × 190: no whole number of tiles — seams inside it at 128 and 256
   // across and 128 down — and odd on the way down: 150 × 95, 75 × 48 grown
@@ -310,7 +310,8 @@ void main() {
       image.dispose();
       return (rgba: data!.buffer.asUint8List(), width: width, height: height);
     });
-    return shot!;
+    layTheScreensOver(render, ratio, (rgba: shot!.rgba, width: shot.width));
+    return shot;
   }
 
   /// The RGBA of device pixel ([x], [y]).
@@ -339,7 +340,7 @@ void main() {
     LayerFrameImageCache images, {
     ProjectBackground paper = ProjectBackground.defaultBackground,
   }) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final landings = ValueNotifier<int>(0);
     addTearDown(landings.dispose);
@@ -418,11 +419,11 @@ void main() {
     final playing = roadOf(images, paper: paper);
     final running = await shown(tester, road(playing, view), playing);
     expect(
-      pixelAt(still, 0, 0),
+      pixelAt(still, 4, 4),
       fill,
       reason: 'LIVENESS: the cel is on the screen standing still',
     );
-    expect(pixelAt(running, 0, 0), fill, reason: 'LIVENESS: and in the run');
+    expect(pixelAt(running, 4, 4), fill, reason: 'LIVENESS: and in the run');
     return (still: still, running: running);
   }
 

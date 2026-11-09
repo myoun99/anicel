@@ -12,7 +12,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -21,14 +20,13 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// Card playback-picture-weight-estimates (F-365 ③): the warmer asks the
 /// playback line for room before it makes a picture, and it weighed a row as
@@ -39,15 +37,12 @@ import '../../helpers/poll_until.dart';
 /// shape by a row's kind at every level, until no row image was made
 /// (one-picture-per-frame ②-5b-1).
 void main() {
+  opensTheEnginesScreens();
   // Two tiles across and two down, at the engine's side.
   const tileSide = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
-  // The canvas as its picture lies ([pictureExtentOf]).
-  final canvasPicture = pictureExtentOf(canvasSize.canvasRect);
-  final canvasBytes = estimatedImageBytes(
-    canvasPicture.width.round(),
-    canvasPicture.height.round(),
-  );
+  // The canvas as its picture lies.
+  final canvasBytes = EngineStackScreen.bytesOver(canvasSize.canvasRect);
 
   final cut = Cut(
     id: const CutId('c'),
@@ -89,7 +84,7 @@ void main() {
     LayerFrameImageCache images, {
     List<CompositeNode<CanvasStackRow>> Function(int frame)? rowsAt,
   }) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,

@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import '../../services/brush_frame_store.dart' show deviceScaledHotCelBudget;
 import '../../services/memory_pressure_budget.dart';
-import 'frame_picture_store.dart';
+import 'engine_frame_picture_store.dart';
 import 'stacked_frame_picture.dart' show FramePictureKey;
 
 /// Playback render-cache policy constants (single source of truth).
@@ -46,7 +46,7 @@ const int playbackCacheBudgetUnderPressureBytes = 64 * 1024 * 1024;
 typedef FramePictureWantedAt = int? Function(FramePictureKey key);
 
 /// Keeps the playback cache — the frames' pictures every screen shows
-/// ([FramePictureStore]) — inside its byte budget, letting go of the
+/// ([EngineFramePictureStore]) — inside its byte budget, letting go of the
 /// pictures wanted latest (`FramePictures.wantedAt`: 「허용치 = 레이어 그림
 /// 수요 순서」).
 ///
@@ -72,7 +72,7 @@ class PlaybackCacheBudgetEnforcer {
          floor: playbackCacheBudgetUnderPressureBytes,
        );
 
-  final FramePictureStore<FramePictureKey> pictures;
+  final EngineFramePictureStore<FramePictureKey> pictures;
 
   /// The cap in force — [playbackCacheBudgetBytes] until the OS warns. The
   /// lowers-only rule is [MemoryPressureBudget]'s, shared with the cel

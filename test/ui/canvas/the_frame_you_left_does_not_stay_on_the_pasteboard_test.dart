@@ -19,9 +19,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -45,6 +43,7 @@ import '../../helpers/settle_async.dart';
 /// ⛔never the picture you left moved under its key, as a stroke that lands
 /// moves one.
 void main() {
+  opensTheEnginesScreens();
   const tileSize = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
   const view = Size(6.0 * tileSize, 6.0 * tileSize);
@@ -106,7 +105,7 @@ void main() {
       keepInAFile(cels, {a: frameA, b: frameB});
       final images = LayerFrameImageCache(frameStore: cels);
       addTearDown(images.dispose);
-      final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+      final store = aStoreOfPictures();
       addTearDown(store.dispose);
       List<CompositeNode<CanvasStackRow>> stackOn(BrushFrameKey cel) => [
         CompositeLeaf<CanvasStackRow>(

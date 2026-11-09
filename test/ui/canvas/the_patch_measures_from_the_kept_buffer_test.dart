@@ -21,9 +21,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -46,6 +44,7 @@ import '../../helpers/settle_async.dart';
 /// moved is measured from what the PICTURE holds of them, and a paint that
 /// draws the frame as it stands — the float up — moves nothing it holds.
 void main() {
+  opensTheEnginesScreens();
   // Two tiles across, one down — a ring needs a tile the landing does not
   // touch, or the dirty rect is the whole canvas and nothing can go stale.
   const tileSide = defaultCelTileSize;
@@ -116,7 +115,7 @@ void main() {
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final run = runOver(
       images,

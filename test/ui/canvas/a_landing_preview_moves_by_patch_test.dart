@@ -67,7 +67,6 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -77,6 +76,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
 void main() {
+  opensTheEnginesScreens();
   // Two tiles across at the engine's side.
   const tileSide = defaultCelTileSize;
   const side = 2 * tileSide;
@@ -147,7 +147,7 @@ void main() {
   Future<StackRun> standOn(
     WidgetTester tester,
     LayerFrameImageCache images,
-    FramePictureStore<FramePictureKey> store, {
+    StoreTellingItsWrites store, {
     required List<CompositeNode<CanvasStackRow>> nodes,
     required BitmapSurfacePainter live,
     required Key view,
@@ -188,27 +188,23 @@ void main() {
   }
 
   /// [change] made, then the paint after it: what moved is patched into
-  /// [shown]'s picture — held on its way until that is seen — and lands.
+  /// [shown]'s picture.
   Future<void> patchedIn(
     WidgetTester tester,
-    WritesLand gpu,
-    FramePictureStore<FramePictureKey> store,
+    StoreTellingItsWrites store,
     FramePictureKey shown,
     Future<void> Function() change, {
     required String what,
   }) async {
-    gpu.holdsRenders = true;
     await change();
     await tester.pump();
-    final landing = store.landingOf(keptByTheCanvas(tester, shown));
     expect(
-      landing,
-      isNotNull,
+      store.landedAt(keptByTheCanvas(tester, shown)),
+      isTrue,
       reason: 'LIVENESS: $what is patched into the picture — not the frame '
           'drawn as it stands',
     );
-    gpu.letAllThrough();
-    await inThePicture(tester, landing);
+    await inThePicture(tester);
   }
 
   testWidgets('🚨F-344: a LANDING PREVIEW that moves is where it was and '
@@ -286,9 +282,7 @@ void main() {
         CanvasActiveLayerRow(opacity: 1, frameKey: cel),
       ),
     ];
-    final gpu = WritesLand();
-    addTearDown(gpu.letAllThrough);
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = StoreTellingItsWrites();
     addTearDown(store.dispose);
     final run = await standOn(
       tester,
@@ -303,7 +297,7 @@ void main() {
         shot.rgba[(y * shot.width + x) * 4] > 200 &&
         shot.rgba[(y * shot.width + x) * 4 + 1] < 60;
 
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       preview.value = floatAt(2, 2);
     }, what: 'the preview as it comes');
     expect(
@@ -311,7 +305,7 @@ void main() {
       isTrue,
       reason: 'it is drawn where it is',
     );
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       preview.value = floatAt(10, 8);
     }, what: 'the preview as it moves');
     final patched = await shotOf(tester, screen);
@@ -327,7 +321,7 @@ void main() {
     );
 
     // A view of its own, the preview in hand: the frame as it stands.
-    final standing = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    final standing = StoreTellingItsWrites();
     addTearDown(standing.dispose);
     await standOn(
       tester,
@@ -342,7 +336,7 @@ void main() {
       isEmpty,
       reason: 'the patched picture is the frame as it stands',
     );
-  }, skip: noFlutterGpu != null);
+  });
 
   // ↩️A preview that crossed the edge of the live row's extent moved the
   // display buffer's rect, and the carry had to repaint both its places
@@ -396,9 +390,7 @@ void main() {
       pressure: 1,
       sequence: sequence,
     );
-    final gpu = WritesLand();
-    addTearDown(gpu.letAllThrough);
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = StoreTellingItsWrites();
     addTearDown(store.dispose);
     final run = await standOn(
       tester,
@@ -414,7 +406,7 @@ void main() {
     );
     final shown = run.pictures.keyOfStack(nodes, picture);
 
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       await tester.runAsync(() async {
         rasterizer.blendFrom([dabAt(4)], from: 0);
         overlay.updateRegion(
@@ -423,7 +415,7 @@ void main() {
         );
       });
     }, what: 'the first step');
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       await tester.runAsync(() async {
         rasterizer.blendFrom([dabAt(4), dabAt(8, sequence: 1)], from: 1);
         overlay.updateRegion(
@@ -432,7 +424,7 @@ void main() {
         );
       });
     }, what: 'the second step');
-  }, skip: noFlutterGpu != null);
+  });
 
   testWidgets('on the activation frame the tiles draw themselves', (
     tester,

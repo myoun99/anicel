@@ -4,6 +4,7 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -16,7 +17,6 @@ import 'package:anicel/src/ui/canvas/tile_pages.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
-import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 
 /// 🚨★★★A COMMITTED TILE'S PICTURE IS A SLOT OF A PAGE, AND A PAINT LAYS A
 /// PAGE'S SLOTS IN ONE DRAW — THE BYTES ITS OWN PICTURE LAYS
@@ -28,6 +28,17 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 /// (`TilePages`), drawn the moment it is handed out — the GPU's one queue
 /// takes the write first. These pins read the bytes on the engine that
 /// writes pages: Impeller with Flutter GPU.
+/// Why this runner cannot write a page, or null when it can.
+final String? noFlutterGpu = () {
+  try {
+    gpu.gpuContext;
+    return null;
+  } on Exception catch (error) {
+    return 'needs Impeller with Flutter GPU — run with '
+        '`flutter test --enable-impeller --enable-flutter-gpu`: $error';
+  }
+}();
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -142,7 +153,7 @@ void main() {
       expect(pictures.cache.heldFor(tile), isA<TileSlot>());
     }
     expect(shown, await laid((canvas) => ownPicturesOf(canvas, surface)));
-  }, skip: noFlutterGpu);
+  }, skip: noFlutterGpu != null);
 
   // 🔬A colour matrix with an alpha under 255 is 1 apart in an atlas on
   // Impeller, so each slot is laid by itself there (`SlotsByPage`).
@@ -194,7 +205,7 @@ void main() {
           (canvas) => ownPicturesOf(canvas, surface, paint: layerPaint),
         ),
       );
-    }, skip: noFlutterGpu);
+    }, skip: noFlutterGpu != null);
   }
 
   test('a paint lays a page\'s slots in ONE draw — and each by itself where '
@@ -231,7 +242,7 @@ void main() {
     );
     expect(drawn(tinted, #drawAtlas), 0);
     expect(drawn(tinted, #drawImageRect), surface.tiles.length);
-  }, skip: noFlutterGpu);
+  }, skip: noFlutterGpu != null);
 
   test('🚨a slot is written once: a picture recorded before its tile went '
       'lays the same bytes after its page has taken other tiles', () async {
@@ -260,7 +271,7 @@ void main() {
           'tile\'s bytes',
     );
     early.dispose();
-  }, skip: noFlutterGpu);
+  }, skip: noFlutterGpu != null);
 
   test('a page counts whole, and goes once it takes no more and every '
       'slot of it is dead', () async {
@@ -306,7 +317,7 @@ void main() {
       pictures.cache.releasePicture(tile);
     }
     expect(pages.bytes, 128 * 128 * 4, reason: 'its last slot died');
-  }, skip: noFlutterGpu);
+  }, skip: noFlutterGpu != null);
 
   test('a surface composed from tiles in slots is the bytes of their own '
       'pictures — at once, and in turn from the slots held', () async {
@@ -335,7 +346,7 @@ void main() {
     );
     expect(await rgba(inTurn!), expected, reason: 'in turn');
     inTurn.dispose();
-  }, skip: noFlutterGpu);
+  }, skip: noFlutterGpu != null);
 
   test('drawn reduced, a tile in a slot leaves it for a picture of its own '
       'carrying its chain — the slot\'s bytes', () async {
@@ -349,7 +360,7 @@ void main() {
     final own = BitmapTileImageCache.pictureOfTile(tile);
     expect(await rgba(chained), await rgba(own));
     own.dispose();
-  }, skip: noFlutterGpu);
+  }, skip: noFlutterGpu != null);
 }
 
 /// A recording canvas that shows the whole of [bounds], untransformed — as

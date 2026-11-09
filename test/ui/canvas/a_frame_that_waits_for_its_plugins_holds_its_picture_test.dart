@@ -1,7 +1,4 @@
-import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -23,15 +20,12 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
-    show PromotedStrokeTile;
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
     show FramePictureKey;
@@ -58,7 +52,6 @@ void main() {
   const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const under = Color(0xFF203040);
   const ink = [0x00, 0x40, 0x00, 0xFF];
-  const stroke = [0x40, 0x00, 0x00, 0xFF];
   const other = [0x00, 0x00, 0x40, 0xFF];
   const key = BrushFrameKey(
     projectId: ProjectId('p'),
@@ -209,12 +202,12 @@ void main() {
   }
 
   /// A canvas standing on [nodes]' frame — its one row inked from a quarter
-  /// of a tile to half of one, across and down — over a store on [gpu]; what
+  /// of a tile to half of one, across and down — over [store]; what
   /// [screen] shows, the overlay its pen's steps are shown by, and a hand of
   /// the pen's row anew — on another frame's nodes where it is handed them.
   Future<
     ({
-      FramePictureStore<FramePictureKey> store,
+      EngineFramePictureStore<FramePictureKey> store,
       FramePictureKey picture,
       ActiveStrokeOverlayModel overlay,
       Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
@@ -224,9 +217,8 @@ void main() {
   standOn(
     WidgetTester tester,
     GlobalKey screen,
-    List<CompositeNode<CanvasStackRow>> nodes,
-    RendersHeld gpu, {
-    int onceSide = framePictureSide,
+    List<CompositeNode<CanvasStackRow>> nodes, {
+    EngineFramePictureStore<FramePictureKey>? laidBy,
   }) async {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
@@ -276,10 +268,7 @@ void main() {
       showTransparentBackground: false,
       lineage: 'a-frame-that-waits-${nodes.hashCode}',
     );
-    final store = FramePictureStore<FramePictureKey>(
-      gpu: gpu,
-      onceSide: onceSide,
-    );
+    final store = laidBy ?? aStoreOfPictures();
     addTearDown(store.dispose);
     var standing = nodes;
     final run = runOver(
@@ -325,18 +314,6 @@ void main() {
     );
   }
 
-  /// A step of the pen over the tile at [coord].
-  Future<void> aStep(
-    WidgetTester tester,
-    ActiveStrokeOverlayModel overlay,
-    TileCoord coord,
-  ) async {
-    overlay.showResultTiles([
-      PromotedStrokeTile(coord, tileOf(coord, stroke, (_) => true), 1),
-    ]);
-    await tester.pump();
-  }
-
   bool onlyTheScreen(Shot shot) {
     for (var at = 0; at < shot.rgba.length; at += 4) {
       if (Color.fromARGB(
@@ -364,131 +341,15 @@ void main() {
       tester,
     ) async {
       final screen = GlobalKey();
-      final gpu = WritesNeverLand()..holdsRenders = true;
-      addTearDown(gpu.letAllThrough);
       final nodes = nodesOf();
       expect(waitsForItsPlugins(nodes), waits, reason: '⛔premise');
-      await standOn(tester, screen, nodes, gpu);
+      await standOn(tester, screen, nodes, laidBy: StoreLayingNothing());
       await tester.pump();
 
       expect(onlyTheScreen(await shotOf(tester, screen)), waits);
     });
 
-    testWidgets('a frame that $name: a step no patch can follow — past what '
-        'its picture can be widened to — ${waits ? 'leaves the picture shown' : 'draws the frame '
-                  'as it stands'}', (tester) async {
-      final screen = GlobalKey();
-      final gpu = WritesNeverLand();
-      final (:store, :picture, :overlay, handAnew: _) = await standOn(
-        tester,
-        screen,
-        nodesOf(),
-        gpu,
-        onceSide: 1,
-      );
-      expect(
-        await settleAsync(tester, () => store.bytesOf(picture) != null),
-        isTrue,
-        reason: 'LIVENESS: the frame\'s picture is made',
-      );
-      await lendBothClocks(tester, rounds: 2);
-      final before = await shotOf(tester, screen);
-
-      await aStep(tester, overlay, TileCoord(x: -1, y: 0));
-      expect(
-        store.landingOf(keptByTheCanvas(tester, picture)),
-        isNull,
-        reason: '⛔premise: it cannot be widened — no patch goes past it',
-      );
-
-      expect(
-        differences(before, await shotOf(tester, screen)),
-        waits ? isEmpty : isNotEmpty,
-      );
-      await tester.pumpWidget(const SizedBox());
-    });
   }
-
-  // One step on its way at a time, as in every frame (F-512 — a frame that
-  // runs none is pinned by `a_stroke_written_into_the_picture_shown.dart`).
-  testWidgets('a frame that waits for a plugin: once a step is in, the steps '
-      'after it go in together, in the next patch', (tester) async {
-    final screen = GlobalKey();
-    final gpu = _WritesLandWhenLet();
-    final (:store, :picture, :overlay, handAnew: _) = await standOn(
-      tester,
-      screen,
-      inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
-      gpu,
-    );
-    expect(
-      await settleAsync(tester, () => store.bytesOf(picture) != null),
-      isTrue,
-      reason: 'LIVENESS: the frame\'s picture is made',
-    );
-    await lendBothClocks(tester, rounds: 2);
-    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
-    final first = store.landingOf(keptByTheCanvas(tester, picture));
-    await aStep(tester, overlay, TileCoord(x: 1, y: 1));
-    expect(
-      identical(store.landingOf(keptByTheCanvas(tester, picture)), first),
-      isTrue,
-      reason: 'the second waits behind the first',
-    );
-
-    expect(
-      await settleAsync(tester, () => gpu.writesWaiting > 0),
-      isTrue,
-      reason: 'LIVENESS: the first comes to be written',
-    );
-    gpu.landOne();
-    expect(
-      await settleAsync(tester, () {
-        final now = store.landingOf(keptByTheCanvas(tester, picture));
-        return now != null && !identical(now, first);
-      }),
-      isTrue,
-      reason: 'the second goes in once the first is in',
-    );
-    gpu.landAll();
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('a frame that waits for a plugin: a step whose frame stands no '
-      'more once its plugin has run does not go in', (tester) async {
-    final screen = GlobalKey();
-    final gpu = _WritesLandWhenLet()..landsAtOnce = true;
-    final nodes = inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]);
-    final (:store, :picture, :overlay, :handAnew) = await standOn(
-      tester,
-      screen,
-      nodes,
-      gpu,
-    );
-    expect(
-      await settleAsync(tester, () => store.bytesOf(picture) != null),
-      isTrue,
-      reason: 'LIVENESS: the frame\'s picture is made',
-    );
-    await lendBothClocks(tester, rounds: 2);
-    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
-    final step = store.landingOf(keptByTheCanvas(tester, picture));
-    expect(step, isNotNull, reason: '⛔premise: the step is on its way');
-
-    // The pen's row handed anew before the plugin has run: the frame the
-    // step was drawn by stands no more.
-    await handAnew();
-
-    bool? landed;
-    unawaited(step!.then((value) => landed = value));
-    expect(
-      await settleAsync(tester, () => landed != null),
-      isTrue,
-      reason: 'LIVENESS: answered',
-    );
-    expect(landed, isFalse);
-    await tester.pumpWidget(const SizedBox());
-  });
 
   /// The columns [colour] shows in on [shot].
   Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
@@ -511,7 +372,6 @@ void main() {
       tester,
       screen,
       nodes,
-      WritesNeverLand(),
     );
     expect(
       await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -556,13 +416,10 @@ void main() {
   testWidgets('a frame that waits for a plugin, handed another whose picture '
       'is not there yet, stays on the picture it showed', (tester) async {
     final screen = GlobalKey();
-    final gpu = WritesNeverLand();
-    addTearDown(gpu.letAllThrough);
     final (:store, :picture, overlay: _, :handAnew) = await standOn(
       tester,
       screen,
       inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
-      gpu,
     );
     expect(
       await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -573,56 +430,10 @@ void main() {
     final before = await shotOf(tester, screen);
     expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
 
-    gpu.holdsRenders = true;
     await handAnew(inAFolder([aPlugin(ShiftingFxPlugin(by: 3))]));
     await tester.pump();
 
     expect(differences(before, await shotOf(tester, screen)), isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
-}
-
-/// A GPU whose writes go in when let ([landOne]) — or at once, where it
-/// [landsAtOnce] — the texels taken for the picture's own.
-class _WritesLandWhenLet extends RendersHeld {
-  bool landsAtOnce = false;
-  final List<Completer<bool>> _writes = [];
-
-  int get writesWaiting => _writes.length;
-
-  void landOne() => _writes.removeAt(0).complete(true);
-
-  void landAll() {
-    landsAtOnce = true;
-    for (final write in _writes) {
-      write.complete(true);
-    }
-    _writes.clear();
-  }
-
-  @override
-  Object? hold(ui.Image image) => image.clone();
-
-  /// None: its writes take no texels, so a picture is rastered at once.
-  @override
-  Object? allocate(int width, int height) => null;
-
-  @override
-  int levelsOf(Object held) {
-    final image = held as ui.Image;
-    return math.max(image.width, image.height).bitLength;
-  }
-
-  @override
-  ui.Image imageOf(Object held) => (held as ui.Image).clone();
-
-  @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
-    if (landsAtOnce) {
-      return Future.value(true);
-    }
-    final write = Completer<bool>();
-    _writes.add(write);
-    return write.future;
-  }
 }

@@ -21,9 +21,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -43,6 +41,7 @@ import '../../helpers/settle_async.dart';
 /// ↩️It was the canvas's display buffer kept under the float, until the
 /// canvas showed the frame's one picture (one-picture-per-frame ②-5a).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(
     width: defaultCelTileSize,
     height: defaultCelTileSize,
@@ -111,7 +110,7 @@ void main() {
     keepInAFile(cels, {key: solid(blue)});
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final run = runOver(
       images,

@@ -36,9 +36,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
@@ -73,6 +71,7 @@ final class _CountedReads extends LayerFrameImageCache {
 const int _enough = 100;
 
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   final film = BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -108,7 +107,7 @@ void main() {
       );
     final images = _CountedReads(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     // No quiet comes, as none came in the app: the frame laying its
     // picture waits for one, and nothing else ends the stands.
@@ -185,7 +184,7 @@ void main() {
       );
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final pictures = runOver(
       images,

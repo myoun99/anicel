@@ -20,13 +20,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/no_worker_free.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel still in the saved file was
 /// inflated on the UI thread the moment a row's image was made — 16–19 ms a
@@ -36,6 +35,7 @@ import '../../helpers/no_worker_free.dart';
 /// after another, each from its cel, until a frame became one picture
 /// (one-picture-per-frame ②-2).
 void main() {
+  opensTheEnginesScreens();
   // 🚨The road production takes — a REAL worker. The corpus runs every
   // worker's job here ([debugWorkersRunHere]); these tests wait through
   // `runAsync`, so they can wait for one.
@@ -87,7 +87,7 @@ void main() {
   );
 
   FramePictures picturesOf(LayerFrameImageCache images, List<String> cels) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,

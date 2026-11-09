@@ -19,22 +19,23 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_pictures.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import 'dart:ui' as ui;
 
 /// one-picture-per-frame ②-2 (D7-2-Q3=a, 유저 10-24 「쓸데없는 소재를 만들고
 /// 싶지 않은 것」): what the warmer makes ahead of a screen is the frame the
 /// screen shows — one picture, kept under the key of the tree it stacks —
 /// and nothing else.
 void main() {
+  opensTheEnginesScreens();
   // Two tiles across and two down, at the engine's side.
   const tileSize = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
@@ -107,7 +108,7 @@ void main() {
     QuietTurns? quietTurns,
     void Function()? onWalk,
   }) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
@@ -220,7 +221,7 @@ void main() {
       expect(
         await pictures.store.lay(
           key.standingOn(canvas),
-          pictures.drawingNow(nodes, at(0)).frame.drawing,
+          pictures.drawingNow(nodes, at(0)).frame,
         ),
         isNotNull,
         reason: 'LIVENESS: lent to the canvas',
@@ -249,7 +250,7 @@ void main() {
         opacity: 1,
         blendMode: LayerBlendMode.normal,
       );
-      final store = FramePictureStore<FramePictureKey>();
+      final store = aStoreOfPictures();
       addTearDown(store.dispose);
       final pictures = FramePictures(
         store: store,
@@ -360,10 +361,9 @@ void main() {
 
       expect(await pictures.make(frame, shouldAbort: () => false), isTrue);
 
-      final image = pictures.store.peek(pictures.keyOf(frame))!.image;
-      final pixels = (await image.toByteData())!;
+      final picture = pictures.store.peek(pictures.keyOf(frame))!;
       expect(
-        pixels.getUint8((1 * image.width + 1) * 4 + 3),
+        pixelsOfPicture(picture, const ui.Rect.fromLTWH(1, 1, 1, 1))[3],
         0xFF,
         reason: 'its ink',
       );

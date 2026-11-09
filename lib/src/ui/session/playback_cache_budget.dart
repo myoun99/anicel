@@ -131,8 +131,7 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   int get bytesForNodes {
     final room =
         _playbackCacheBudgetEnforcer.lendableBytes() -
-        _lentBytes -
-        _run.pictures.heldNodes.heldBelowBytes;
+        _lentBytes;
     return room < 0 ? 0 : room;
   }
 

@@ -18,7 +18,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -44,6 +44,7 @@ import '../../helpers/settle_async.dart';
 /// was all a screen drew (one-picture-per-frame ②-5b-1) — the zoom asks
 /// nothing of a picture made at the canvas's own resolution.
 void main() {
+  opensTheEnginesScreens();
   const tileSize = defaultCelTileSize;
   const tileCount = 8;
   const canvasSize = CanvasSize(width: tileSize * tileCount, height: tileSize);
@@ -90,7 +91,7 @@ void main() {
 
   /// The cels of [channelOf], each [opaque] in the channel it names, kept
   /// in a file as an opened project keeps them.
-  ({BrushFrameStore cels, StackRun run, FramePictureStore<FramePictureKey> store})
+  ({BrushFrameStore cels, StackRun run, EngineFramePictureStore<FramePictureKey> store})
   celsOf(Map<BrushFrameKey, int> channelOf) {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
@@ -99,7 +100,7 @@ void main() {
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final run = runOver(images, store, canvasSize: canvasSize, stackOf: (_) => []);
     return (cels: cels, run: run, store: store);

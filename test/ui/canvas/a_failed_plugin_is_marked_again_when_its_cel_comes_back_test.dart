@@ -20,7 +20,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
@@ -395,7 +394,7 @@ void main() {
     );
     await lendBothClocks(tester, rounds: 20);
     expect(failed(), isTrue, reason: 'switched on, it fails as before');
-  }, skip: noFlutterGpu != null);
+  });
 
   testWidgets('🚨a plugin on the V row that failed at a value, drew at '
       'another, and is given the first back by an undo is marked failed '
@@ -420,7 +419,7 @@ void main() {
     await pressCtrl(tester, LogicalKeyboardKey.keyZ);
     await lendBothClocks(tester, rounds: 20);
     expect(failed(), isTrue, reason: 'the value it failed at is back');
-  }, skip: noFlutterGpu != null);
+  });
 }
 
 /// Fails at a first value under [draws] on a picture of [paper] alone —

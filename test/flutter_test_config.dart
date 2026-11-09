@@ -23,7 +23,7 @@ import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
+import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import 'helpers/a_shown_surface.dart';
@@ -216,8 +216,8 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // shown by ([ScreenTexture.debugOnSurface]): where a file opens the GPU
   // engine, each grid's screen opens on a surface of its own, freed as the
   // test ends.
-  debugOpenTimelineGridScreen = _gridScreenOnASurface;
-  tearDown(_freeGridScreenSurfaces);
+  debugOpenEngineScreen = _screenOnASurface;
+  tearDown(_freeScreenSurfaces);
   // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
   // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
   // single test, so it is the root group's LAST `tearDownAll` — package:test
@@ -254,21 +254,21 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
 }
 
 /// The surfaces the grids' screens opened on in this test.
-final List<GpuSurface> _gridScreenSurfaces = [];
 
-Future<ScreenTexture> _gridScreenOnASurface(
+Future<ScreenTexture> _screenOnASurface(
   GpuEngine engine,
   int width,
   int height,
 ) async {
   final surface = shownSurfaceOf(width, height);
-  _gridScreenSurfaces.add(surface);
-  return ScreenTexture.debugOnSurface(surface);
+  final id = shownScreens.length + 1;
+  shownScreens[id] = surface;
+  return ScreenTexture.debugOnSurface(surface, id: id);
 }
 
-void _freeGridScreenSurfaces() {
-  for (final surface in _gridScreenSurfaces) {
+void _freeScreenSurfaces() {
+  for (final surface in shownScreens.values) {
     surface.free();
   }
-  _gridScreenSurfaces.clear();
+  shownScreens.clear();
 }

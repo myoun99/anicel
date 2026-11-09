@@ -9,14 +9,11 @@ part of '../canvas_layer_stack_view.dart';
 // ⏳The widget asks it at the end of the flip lane (관제 11-08 15:02 ⓐ);
 // [ScreenTexture] says why.
 final class EngineStackScreen {
-  /// A screen of [composite]'s, laying cel numbers in [letters] and holding
-  /// its chains' puts in [holds], if any.
-  EngineStackScreen(this._composite, this._letters, {EngineChainHolds? holds})
-    : _holds = holds;
+  /// A screen of [composite]'s, laying cel numbers in [letters].
+  EngineStackScreen(this._composite, this._letters);
 
   final GpuComposite _composite;
   final EngineLetters _letters;
-  final EngineChainHolds? _holds;
 
   GpuScreen? _screen;
 
@@ -30,8 +27,14 @@ final class EngineStackScreen {
   /// all of it the first time, and when the world the frame holds is not
   /// the one kept: a stroke past the page grows it. Where it changed is
   /// the caller's to say ([StackedFrame.movedSince]); null is everywhere.
-  void compose(StackedFrame frame, {Rect? changed}) => _laid(
+  /// Its chains' puts are held in [holds], if any.
+  void compose(
+    StackedFrame frame, {
+    Rect? changed,
+    EngineChainHolds? holds,
+  }) => _laid(
     frame,
+    holds,
     (screen, pool, plan, world) =>
         screen.compose(pool, plan, _edgesOf(changed ?? world)),
   );
@@ -46,14 +49,16 @@ final class EngineStackScreen {
     EngineStackScreen film,
     StackedFrame frame, {
     required Rect fresh,
+    EngineChainHolds? holds,
   }) {
     final under = film._screen;
     if (under == null) {
-      compose(frame);
+      compose(frame, holds: holds);
       return;
     }
     _laid(
       frame,
+      holds,
       (screen, pool, plan, _) =>
           screen.composeOver(under, pool, plan, _edgesOf(fresh)),
     );
@@ -61,10 +66,12 @@ final class EngineStackScreen {
 
   /// [frame]'s rows planned by the one translator and handed to [lay] with
   /// the kept frame — made again over the world the frame holds where it
-  /// is not the one kept. Each node's chain is held as what the node shows
-  /// ([_LayerStackPaintPass._pictureOf]) on this paper ([_holding]).
+  /// is not the one kept. Each node's chain is held in [holds], if any, as
+  /// what the node shows ([_LayerStackPaintPass._pictureOf]) on this paper
+  /// ([_holding]).
   void _laid(
     StackedFrame frame,
+    EngineChainHolds? holds,
     void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
     lay,
   ) {
@@ -93,17 +100,17 @@ final class EngineStackScreen {
           mapCompositeLeaves<_PaintRow, EngineRow>(
             pass._rootNodes,
             (row) => pass._engineRowOf(row, _range.of),
-            told: _holds == null ? null : (node, to) => origins[to] = node,
+            told: holds == null ? null : (node, to) => origins[to] = node,
           ),
           hold: hold,
           paper: paper,
           letters: _letters,
-          holding: _holding(pass, origins, paper),
+          holding: _holding(holds, pass, origins, paper),
         );
         lay(screen!, ledger.pool, plan, world);
       } finally {
         plan.free();
-        _holds?.settle();
+        holds?.settle();
       }
     });
     _range.settle();
@@ -113,10 +120,11 @@ final class EngineStackScreen {
   /// [paper], under what the node it came from shows ([origins]) — none
   /// for one that shows a row drawn live ([_LayerStackPaintPass._pictureOf]).
   ChainHolding? _holding(
+    EngineChainHolds? holds,
     _LayerStackPaintPass pass,
     Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>> origins,
     Rect paper,
-  ) => switch (_holds) {
+  ) => switch (holds) {
     null => null,
     final holds => (
       held: holds.held,
@@ -164,6 +172,21 @@ final class EngineStackScreen {
       sampling: gpuSamplingOf(filterQualityForDisplayScale(scale)),
       rect: (0, 0, columns, rows),
     );
+  }
+
+  /// What a frame over the world [extent] will keep: a tile for each it
+  /// meets, before any halving a screen reads ([GpuScreen.bytes]).
+  static int bytesOver(Rect extent) {
+    if (extent.isEmpty) {
+      return gpuTileBytes;
+    }
+    int span(double from, double to) =>
+        floorDiv(to.ceil() - 1, gpuTileSide) -
+        floorDiv(from.floor(), gpuTileSide) +
+        1;
+    return span(extent.left, extent.right) *
+        span(extent.top, extent.bottom) *
+        gpuTileBytes;
   }
 
   /// The bytes the kept frame holds on the GPU ([GpuScreen.bytes]) — none

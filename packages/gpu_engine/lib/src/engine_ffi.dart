@@ -143,6 +143,16 @@ external bool surfaceFingerprint(
   Pointer<Uint32> fingerprint,
 );
 
+@Native<Bool Function(Pointer<Engine>, Pointer<Surface>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_surface_read',
+)
+external bool surfaceRead(
+  Pointer<Engine> engine,
+  Pointer<Surface> surface,
+  Pointer<Uint8> out,
+  int length,
+);
+
 @Native<Uint32 Function(Pointer<Uint8>, Size)>(
   symbol: 'gpu_engine_fingerprint_bytes',
 )
