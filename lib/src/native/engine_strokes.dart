@@ -8,6 +8,14 @@ import 'app_gpu_engine.dart';
 abstract final class EngineStrokes {
   static final List<GpuStroke> _idle = [];
 
+  /// One stroke's kernels compiled ahead of the first pen-down, which would
+  /// otherwise wait for them.
+  static void warm() {
+    if (_idle.isEmpty) {
+      _idle.add(GpuStroke(appGpuEngine));
+    }
+  }
+
   /// A stroke of no tiles.
   static GpuStroke take() =>
       _idle.isEmpty ? GpuStroke(appGpuEngine) : _idle.removeLast();

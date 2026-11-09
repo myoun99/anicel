@@ -452,6 +452,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
     _engineDabs.clear();
     _engineDabsOf = null;
+    _viewsAt = null;
     final native = _native;
     if (native != null) {
       for (final buffer in _nativeBuffers.values) {
@@ -1377,13 +1378,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
   }
 
+  /// How many dabs [_tiles] held when it was last read from the engine.
+  int? _viewsAt;
+
   /// The engine's view of the stroke as [_tiles], for what still reads it
   /// on the CPU: a host whose overlay grid is not its surface's.
   void _viewsFromEngine() {
     final stroke = _engineStroke;
-    if (stroke == null || _blur != null) {
+    if (stroke == null || _blur != null || _viewsAt == _blendedDabCount) {
       return;
     }
+    _viewsAt = _blendedDabCount;
     final coords = _tileCoords.values.toList();
     final landed = EngineTileLedger.instance.land(_strokesCel, stroke, [
       for (final coord in coords) (column: coord.x, row: coord.y, under: null),

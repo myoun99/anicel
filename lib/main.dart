@@ -7,6 +7,7 @@ import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
 import 'src/native/app_gpu_engine.dart' show openAppGpuEngine;
+import 'src/native/engine_strokes.dart' show EngineStrokes;
 import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
@@ -253,7 +254,7 @@ Future<void> main(List<String> handedAtLaunch) async {
   // (medians of five) — so it waits for the raster, which costs nothing.
   unawaited(
     WidgetsBinding.instance.waitUntilFirstFrameRasterized.then(
-      (_) => openAppGpuEngine(),
+      (_) => openAppGpuEngine().then((_) => EngineStrokes.warm()),
     ),
   );
 }

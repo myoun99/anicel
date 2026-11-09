@@ -37,6 +37,47 @@ void main() {
     expect(ledger.held((hold) => hold.slotsOf(a, [aTile()])), [slot]);
   });
 
+  // The first landing compiles the executor: 40 s on a machine this busy.
+  const compiles = Timeout(Duration(minutes: 3));
+
+  test('a tile the engine made lets its slot go', timeout: compiles, () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final stroke = GpuStroke(appGpuEngine);
+    addTearDown(stroke.free);
+    stroke.pile([
+      GpuDab(
+        centreX: 0,
+        centreY: 0,
+        left: 0,
+        top: 0,
+        right: 8,
+        bottom: 8,
+        colour: 0xFFFFFFFF,
+        opacity: 1,
+        flow: 1,
+        contrast: 1,
+      ),
+    ]);
+    // In a call of its own: a tile is Finalizable, and a method called on
+    // it here would keep it alive to the end of this function.
+    void landAndDrop() {
+      final tile = ledger.land(
+        a,
+        stroke,
+        [(column: 0, row: 0, under: null)],
+        mode: GpuBlend.normal,
+      ).single.tile;
+      expect(tile!.isOnEngine, isTrue);
+    }
+
+    landAndDrop();
+    expect(ledger.slotCount, 1);
+
+    await collectGarbageUntil(() => ledger.slotCount == 0);
+
+    expect(ledger.slotCount, 0, reason: 'the slot goes with its tile');
+  });
+
   test('a tile let go by a full pool takes no slot with it when collected',
       () async {
     final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);

@@ -435,7 +435,7 @@ typedef GpuRoundTip = ({
 /// is [round] where that is not null, the bitmap [tip] over [-[radius],
 /// [radius]] where that is not, else square.
 final class GpuDab {
-  const GpuDab({
+  GpuDab({
     required this.centreX,
     required this.centreY,
     required this.left,

@@ -234,8 +234,8 @@ fn tiles_past_a_page_land_from_the_next_and_do_not_read_as_the_pools() {
 #[test]
 fn a_cleared_stroke_starts_from_nothing_and_keeps_its_pages() {
     let mut f = fixture();
-    f.pile(&[square(tile_region(0, 0), RED)]);
-    f.land(&[asked(0, 0, None)], &NORMAL_WHOLE, true);
+    f.pile(&[square(tile_region(0, 0), RED), square(tile_region(1, 0), RED)]);
+    f.land(&[asked(0, 0, None), asked(1, 0, None)], &NORMAL_WHOLE, true);
     let bytes = f.stroke.bytes();
     f.stroke.clear(f.engine);
     assert_eq!(f.stroke.bytes(), bytes);
@@ -246,6 +246,28 @@ fn a_cleared_stroke_starts_from_nothing_and_keeps_its_pages() {
     let result = f.read(landed[0].1.unwrap());
     assert_eq!(pixel(&result, 10, 10), [0, 0, 0, 0]);
     assert_eq!(pixel(&result, 75, 75), CEL_PIXEL);
+    // The slot after it, too: every slot the stroke wrote is cleared.
+    f.pile(&[square([520, 200, 530, 210], CEL_PIXEL)]);
+    assert_eq!(f.stroke.tiles[&(4, 1)], TileAt { page: 0, slot: 1 });
+    let landed = f.land(&[asked(4, 1, None)], &NORMAL_WHOLE, true);
+    assert_eq!(pixel(&f.read(landed[0].1.unwrap()), 10, 10), [0, 0, 0, 0]);
+}
+
+#[test]
+fn a_cleared_second_plane_starts_from_nothing() {
+    let mut f = fixture();
+    let screen = crate::kernels::blend::mode::SCREEN;
+    let first = Dab { second: true, ..square(tile_region(0, 0), RED) };
+    f.stroke.pile(f.engine, &[first], None, Some((screen, 1.0))).expect("a pile");
+    f.stroke.clear(f.engine);
+    // Screen of the second's level over the first's alpha: a level left from
+    // the last stroke would raise this dab's alpha past what it lays.
+    let mut dab = square(tile_region(0, 0), RED);
+    dab.opacity = 0.5;
+    f.stroke.pile(f.engine, &[dab], None, Some((screen, 1.0))).expect("a pile");
+    let landed = f.land(&[asked(0, 0, None)], &NORMAL_WHOLE, false);
+    let alpha = pixel(&f.read(landed[0].1.unwrap()), 64, 64)[3];
+    assert!((127..=128).contains(&alpha), "{alpha}");
 }
 
 #[test]

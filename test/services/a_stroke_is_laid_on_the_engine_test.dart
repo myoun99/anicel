@@ -1,6 +1,12 @@
+// The first stroke compiles the executor and the stroke's kernels: 40 s on
+// a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -8,11 +14,15 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 
 /// 🚨A STROKE ON THE APP'S GRID IS THE ENGINE'S (flip lane ⓒ): its result is
@@ -189,6 +199,129 @@ void main() {
     final tile = promoted(stroke, surfaceOf(const {})).single.tile;
     ledger.retire(tile);
     expect(() => tile.pixels, throwsStateError);
+    expect(() => tile.pixels, throwsStateError, reason: 'twice alike');
     stroke.clear();
+  });
+
+  test('a finished result knows it has ink without reading it', () {
+    final ledger = EngineTileLedger.instance;
+    final stroke = rasterizer()..blendFrom([dab(64, 64)], from: 0);
+    final tile = promoted(stroke, surfaceOf(const {})).single.tile;
+    ledger.retire(tile);
+    expect(tile.hasInk, isTrue);
+    stroke.clear();
+  });
+
+  group('under a selection', () {
+    SelectionClip box(double left, double top, double right, double bottom) =>
+        SelectionClip.outline(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(
+              left: left,
+              top: top,
+              right: right,
+              bottom: bottom,
+            ),
+          ),
+        );
+
+    test('🚨a stroke takes what the selection covers and no more', () {
+      final base = surfaceOf({origin: solid([10, 20, 30, 255])});
+      final stroke = rasterizer()
+        ..selectionClip = box(50, 50, 80, 80)
+        ..blendFrom([dab(64, 64)], from: 0);
+      final bytes = promoted(stroke, base).single.tile.pixels;
+      expect(at(bytes, 60, 60), [200, 100, 50, 255]);
+      expect(at(bytes, 48, 48), [10, 20, 30, 255]);
+      stroke.clear();
+    });
+
+    test('a tile the selection cannot reach lands nothing', () {
+      final base = surfaceOf({origin: solid([10, 20, 30, 255])});
+      final stroke = rasterizer()
+        ..blendFrom([dab(64, 64)], from: 0)
+        ..selectionClip = box(300, 300, 340, 340);
+      expect(promoted(stroke, base), isEmpty);
+      expect(
+        stroke.preBlendedOverlayTiles(
+          coords: [origin],
+          base: base,
+          mode: BrushBlendMode.color,
+          erase: false,
+        ),
+        [isNull],
+      );
+      stroke.clear();
+    });
+  });
+
+  test('a tile landed past the first page of the pool reads as itself', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final made = GpuStroke(appGpuEngine);
+    addTearDown(made.free);
+    made.pile([
+      GpuDab(
+        centreX: 64,
+        centreY: 64,
+        left: 10,
+        top: 10,
+        right: 20,
+        bottom: 20,
+        colour: 0xFF3264C8,
+        opacity: 1,
+        flow: 1,
+        contrast: 1,
+      ),
+    ]);
+    final cel = Object();
+    BitmapTile land() => ledger.land(
+      cel,
+      made,
+      [(column: 0, row: 0, under: null)],
+      mode: GpuBlend.normal,
+    ).single.tile!;
+    final first = land();
+    final filler = [
+      for (var n = 1; n < ledger.pool.bytes ~/ gpuTileBytes; n++)
+        BitmapTile.blank(size: gpuTileSide),
+    ];
+    ledger.held((held) => held.slotsOf(cel, filler));
+    final past = land();
+    expect(ledger.slotOf(first)!.page, 0);
+    expect(ledger.slotOf(past)!.page, 1);
+    expect(at(past.pixels, 12, 12), [200, 100, 50, 255]);
+  });
+
+  test('🚨a full pool lets go what it can store again, not what the engine '
+      'alone holds', () {
+    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 1);
+    final made = GpuStroke(appGpuEngine);
+    addTearDown(made.free);
+    made.pile([
+      GpuDab(
+        centreX: 64,
+        centreY: 64,
+        left: 10,
+        top: 10,
+        right: 20,
+        bottom: 20,
+        colour: 0xFF3264C8,
+        opacity: 1,
+        flow: 1,
+        contrast: 1,
+      ),
+    ]);
+    final landed = ledger.land(
+      Object(),
+      made,
+      [(column: 0, row: 0, under: null)],
+      mode: GpuBlend.normal,
+    ).single.tile!;
+    expect(ledger.slotOf(landed), isNotNull);
+    // Past its budget a store lets go every tile no call holds.
+    final hold = solid([1, 2, 3, 255]);
+    ledger.held((held) => held.slotsOf(Object(), [hold]));
+    expect(ledger.slotOf(landed), isNotNull);
+    expect(at(landed.pixels, 12, 12), [200, 100, 50, 255]);
   });
 }
