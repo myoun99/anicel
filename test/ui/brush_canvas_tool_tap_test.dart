@@ -23,7 +23,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -40,6 +39,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// The sub colour a gradient runs to (I-160-Q3), and as a pixel reads it.
 const _sub = 0xFF00FF00;
@@ -83,7 +83,7 @@ void main() {
   Widget app(Widget panel) => MaterialApp(home: Scaffold(body: panel));
 
   int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
         coordinator.currentSurfaceOf(coordinator.activeFrameKey),
         x,
         y,

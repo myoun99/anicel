@@ -16,7 +16,7 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cache_invalidation_executor.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// R19 P3b coordinator contract: sessions hold the CURRENT surface only,
 /// commits return their surface transition, and [restoreSurfaceSnapshot]
@@ -47,7 +47,7 @@ void main() {
 
   int alphaAt(BrushFrameEditingCoordinator c, int x, int y) {
     // Whole-pixel oracle: 0 = fully transparent, anything else = ink.
-    return surfacePixelRgba(c.currentSurfaceOf(c.activeFrameKey), x, y) ?? 0;
+    return surfaceRgbaInPlace(c.currentSurfaceOf(c.activeFrameKey), x, y) ?? 0;
   }
 
   test('commit returns the surface transition: pre is the pre-stroke '
@@ -240,7 +240,7 @@ void main() {
       expect(alphaAt(canvas, 2, 2), greaterThan(0), reason: 'kept, not '
           'painted over');
       expect(
-        surfacePixelRgba(store.bakedSurfaceOrNull(key('frame-a'))!, 2, 2),
+        surfaceRgbaInPlace(store.bakedSurfaceOrNull(key('frame-a'))!, 2, 2),
         isNot(0),
       );
     });

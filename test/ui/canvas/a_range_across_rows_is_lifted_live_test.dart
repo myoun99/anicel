@@ -13,7 +13,6 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
@@ -24,6 +23,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import '../../helpers/wait_window.dart' show windowBehind;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// F-329 — A FRAME RANGE ACROSS ROWS IS LIFTED, EVERY ROW, WHILE THE BOX IS
 /// OPEN.
@@ -151,7 +151,7 @@ void main() {
         FrameId('${row.value}-$cel'),
       ),
     );
-    return (surfacePixelRgba(surface, x, y) ?? 0) != 0;
+    return (surfaceRgbaInPlace(surface, x, y) ?? 0) != 0;
   }
 
   /// Ctrl+T, and the box opens on the picture.
@@ -191,7 +191,7 @@ void main() {
           'on screen; A floats in the live row, as a cel\'s own lift does',
     );
     expect(
-      surfacePixelRgba(stack.live!.liftedRows.values.single.surface, 75, 75) ?? 0,
+      surfaceRgbaInPlace(stack.live!.liftedRows.values.single.surface, 75, 75) ?? 0,
       0,
       reason: 'B is drawn from its own cel with its hole while the box is '
           'open, not as it stood',

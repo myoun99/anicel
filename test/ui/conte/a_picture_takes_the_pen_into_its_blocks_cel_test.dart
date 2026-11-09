@@ -39,7 +39,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -67,6 +66,7 @@ import 'package:anicel/src/ui/sheet/sheet_photos.dart' show SheetPhotosPainter;
 import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -140,7 +140,7 @@ void main() {
 
   bool inkAt(BitmapSurface? surface, Offset pixel) =>
       surface != null &&
-      (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
+      (surfaceRgbaInPlace(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
           0;
 
   Future<void> stroke(

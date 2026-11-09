@@ -15,7 +15,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -27,6 +26,7 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/rail_group_button.dart';
 import '../../helpers/wait_window.dart' show pumpPastTheWaitWindow;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-163 (유저 2026-11-05): the cut tool's 대상 「표시」 is what is truly
 /// seen, the other layers with it · Q1 「다른 이름으로 저장 한 장으로 통일
@@ -142,7 +142,7 @@ void main() {
     final surface = session.pixelEditing.coordinator!.currentSurfaceOf(
       celOf(session, row),
     );
-    return ((surfacePixelRgba(surface, x, y) ?? 0) & 0xFF) != 0;
+    return ((surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF) != 0;
   }
 
   int alphaAt(CutPiece piece, int x, int y) =>

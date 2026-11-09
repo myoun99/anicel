@@ -7,7 +7,6 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -18,6 +17,7 @@ import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/device_viewport.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-69-Q6 (유저 2026-10-08): 「따른다 — 도형 채우기도 같이 맞춘다」. A
 /// symmetry guide copies what the SHAPE tool draws — its plain line, its
@@ -113,7 +113,7 @@ void main() {
   }
 
   int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      (surfacePixelRgba(
+      (surfaceRgbaInPlace(
             coordinator.currentSurfaceOf(coordinator.activeFrameKey),
             x,
             y,

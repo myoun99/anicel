@@ -18,11 +18,11 @@ import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★WHATEVER DRAWS IN A SELECTION IS CUT BY ONE EDGE
 /// (brush-fidelity-Q11 · Q12, 유저 2026-10-18).
@@ -246,7 +246,7 @@ void main() {
 
   /// The alpha of [surface] along the row at [y].
   List<int> alphas(BitmapSurface surface, int y) => [
-    for (var x = 0; x < 300; x += 1) (surfacePixelRgba(surface, x, y) ?? 0) & 255,
+    for (var x = 0; x < 300; x += 1) (surfaceRgbaInPlace(surface, x, y) ?? 0) & 255,
   ];
 
   BitmapSurface blank() => BitmapSurface(canvasSize: canvas, tileSize: 64);

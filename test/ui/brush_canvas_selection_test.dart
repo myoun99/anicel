@@ -26,7 +26,6 @@ import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show solveHomography;
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -65,6 +64,7 @@ import '../helpers/placement_reading.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/wait_window.dart' show stepBehind, windowBehind;
+import '../helpers/surface_rgba_in_place.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -330,7 +330,7 @@ void main() {
 
   /// The cel's CURRENT pixels — 0/null means transparent.
   int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) {
-    return surfacePixelRgba(
+    return surfaceRgbaInPlace(
           coordinator.currentSurfaceOf(coordinator.activeFrameKey),
           x,
           y,
@@ -687,7 +687,7 @@ void main() {
         if (previewBytes[offset + 3] != 255) {
           continue;
         }
-        final landed = surfacePixelRgba(
+        final landed = surfaceRgbaInPlace(
           currentSurface(env.coordinator),
           left + x,
           top + y,
@@ -875,7 +875,7 @@ void main() {
     final sourceColours = <int>{};
     for (var y = 0; y < 90; y += 1) {
       for (var x = 0; x < 90; x += 1) {
-        final pixel = surfacePixelRgba(before, x, y);
+        final pixel = surfaceRgbaInPlace(before, x, y);
         if (pixel != null && (pixel >> 24) != 0) sourceColours.add(pixel);
       }
     }
@@ -902,7 +902,7 @@ void main() {
     var invented = 0;
     for (var y = 0; y < 90; y += 1) {
       for (var x = 0; x < 90; x += 1) {
-        final pixel = surfacePixelRgba(landed, x, y);
+        final pixel = surfaceRgbaInPlace(landed, x, y);
         if (pixel != null &&
             (pixel >> 24) != 0 &&
             !sourceColours.contains(pixel)) {
@@ -1072,7 +1072,7 @@ void main() {
           .floats
           .single;
       expect(
-        surfacePixelRgba(
+        surfaceRgbaInPlace(
           float.surface!.surface,
           155 - float.surfaceOffset.x.round(),
           50 - float.surfaceOffset.y.round(),
@@ -2203,31 +2203,31 @@ void main() {
       var changed = 0;
       for (var y = 5; y < 85; y += 1) {
         for (var x = 5; x < 85; x += 1) {
-          final onOne = surfacePixelRgba(one, x, y);
-          if (onOne != surfacePixelRgba(before, x, y)) {
+          final onOne = surfaceRgbaInPlace(one, x, y);
+          if (onOne != surfaceRgbaInPlace(before, x, y)) {
             changed += 1;
           }
-          if (onOne != surfacePixelRgba(two, x, y)) {
+          if (onOne != surfaceRgbaInPlace(two, x, y)) {
             fail('the other cel was not bent as the standing one was — at '
-                '($x, $y): ${surfacePixelRgba(two, x, y)}, not $onOne');
+                '($x, $y): ${surfaceRgbaInPlace(two, x, y)}, not $onOne');
           }
         }
       }
       expect(changed, greaterThan(0), reason: '⛔premise: the warp bent it');
-      expect(surfacePixelRgba(one, 100, 100), isNonZero);
+      expect(surfaceRgbaInPlace(one, 100, 100), isNonZero);
       expect(
-        surfacePixelRgba(two, 90, 20),
+        surfaceRgbaInPlace(two, 90, 20),
         isNonZero,
         reason: 'outside the outline the other cel kept its own ink — it '
             'was landed on itself',
       );
-      expect(surfacePixelRgba(two, 100, 100), 0);
-      expect(surfacePixelRgba(one, 90, 20), 0);
+      expect(surfaceRgbaInPlace(two, 100, 100), 0);
+      expect(surfaceRgbaInPlace(one, 90, 20), 0);
 
       env.history.undo();
       await tester.pump();
       expect(
-        surfacePixelRgba(env.coordinator.currentSurfaceOf(keys[1]), 30, 30),
+        surfaceRgbaInPlace(env.coordinator.currentSurfaceOf(keys[1]), 30, 30),
         isNonZero,
         reason: '⛔ONE undo takes BOTH cels back',
       );
@@ -4774,7 +4774,7 @@ void main() {
             return [
               for (var y = 0; y < 120; y += 1)
                 for (var x = 0; x < 120; x += 1)
-                  surfacePixelRgba(surface, x, y) ?? 0,
+                  surfaceRgbaInPlace(surface, x, y) ?? 0,
             ];
           }
 
@@ -5639,7 +5639,7 @@ void main() {
         for (var y = 0; y < 256; y += 1) {
           for (var x = 0; x < 256; x += 1) {
             final alpha = painted[(y * 256 + x) * 4 + 3];
-            final own = surfacePixelRgba(painter.surface, x, y) ?? 0;
+            final own = surfaceRgbaInPlace(painter.surface, x, y) ?? 0;
             if (alpha > 0 && ((own >> 24) & 0xff) == 0) {
               ghost += 1;
             } else if (alpha == 0 && ((own >> 24) & 0xff) > 0) {
@@ -6013,7 +6013,7 @@ void main() {
             // finds nothing extra.
             for (var y = 0; y < 600; y += 2) {
               for (var x = 0; x < 800; x += 2) {
-                final own32 = surfacePixelRgba(painter.surface, x, y) ?? 0;
+                final own32 = surfaceRgbaInPlace(painter.surface, x, y) ?? 0;
                 if (((own32 >> 24) & 0xff) == 0) continue;
                 own += 1;
                 if (!isInk(painted, (y * 800 + x) * 4)) missing += 1;
@@ -6094,7 +6094,7 @@ void main() {
         // call — the exhaustive walk took minutes for no more evidence.
         for (var y = 0; y < 600; y += 2) {
           for (var x = 0; x < 800; x += 2) {
-            final own32 = surfacePixelRgba(floats.first.surface, x, y) ?? 0;
+            final own32 = surfaceRgbaInPlace(floats.first.surface, x, y) ?? 0;
             if (((own32 >> 24) & 0xff) == 0) continue;
             own += 1;
             if (painted[(y * 800 + x) * 4 + 3] == 0) missing += 1;
@@ -6786,7 +6786,7 @@ void main() {
           final cy = y - origin.dy.round();
           final rgba = cx < 0 || cy < 0
               ? 0
-              : (surfacePixelRgba(surface, cx, cy) ?? 0);
+              : (surfaceRgbaInPlace(surface, cx, cy) ?? 0);
           final ink = ((rgba >> 24) & 0xff) != 0;
           final shown = screen[y * 800 + x];
           if (ink) truthInk += 1;
@@ -9001,7 +9001,7 @@ void main() {
     ) async {
       final env = await pumpSelectionPanel(tester);
       final first = env.coordinator.activeFrameKey;
-      final before = surfacePixelRgba(
+      final before = surfaceRgbaInPlace(
         env.coordinator.currentSurfaceOf(first),
         30,
         30,
@@ -9019,7 +9019,7 @@ void main() {
       await env.setTool(CanvasTool.move);
 
       expect(
-        surfacePixelRgba(env.coordinator.currentSurfaceOf(first), 30, 30),
+        surfaceRgbaInPlace(env.coordinator.currentSurfaceOf(first), 30, 30),
         before,
         reason:
             'the frame we walked away from was WRITTEN: a seek is not an '

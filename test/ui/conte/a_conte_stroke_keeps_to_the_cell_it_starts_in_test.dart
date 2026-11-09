@@ -30,7 +30,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -38,6 +37,7 @@ import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️H49 (유저 2026-09-30): 「그냥 선 시작한곳에따라 칸 나누자. 픽쳐칸에서
 /// 그리기시작하면 해당 레이어? 칸에서만 작동하도록. 밖으로 나가면 해당
@@ -582,7 +582,7 @@ void main() {
     final across = band.placement.pixelOf(Offset(slot.right + 55, y));
     var inked = 0;
     for (var dy = -40; dy <= 40; dy += 1) {
-      final rgba = surfacePixelRgba(
+      final rgba = surfaceRgbaInPlace(
         surface,
         across.dx.floor(),
         across.dy.floor() + dy,

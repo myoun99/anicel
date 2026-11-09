@@ -14,15 +14,15 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// R19 P3b: the stroke command owns its pre/post SURFACE references —
 /// undo/redo are byte-exact snapshot restores through the app stack.
 void main() {
   int pixelAt(BrushFrameEditingCoordinator c, int x, int y) =>
-      surfacePixelRgba(c.currentSurfaceOf(c.activeFrameKey), x, y) ?? 0;
+      surfaceRgbaInPlace(c.currentSurfaceOf(c.activeFrameKey), x, y) ?? 0;
 
   test('app-level undo and redo restore the exact pre/post pixels', () {
     final coordinator = _coordinator();

@@ -31,8 +31,8 @@ import 'package:anicel/src/services/brush_dab_share.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 BrushDab _dab(
   double x,
@@ -105,7 +105,7 @@ double _pile(List<BrushDab> dabs) {
   for (var y = 100; y < 300; y += 1) {
     strongest = math.max(
       strongest,
-      (surfacePixelRgba(surface, 200, y) ?? 0) & 0xFF,
+      (surfaceRgbaInPlace(surface, 200, y) ?? 0) & 0xFF,
     );
   }
   return strongest / 255.0;

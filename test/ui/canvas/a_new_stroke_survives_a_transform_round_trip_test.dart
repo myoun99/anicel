@@ -18,7 +18,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -28,6 +27,7 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/panel_finders.dart';
 import '../../helpers/wait_window.dart' show windowBehind;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**F-164 ⑤ — 유저 2026-09-18: 「새로 선을 그어도 긋고나서 커밋하면
 /// 사라짐」**, the last symptom of the report whose first four this round
@@ -119,7 +119,7 @@ void main() {
     return [
       for (var y = 0; y < size.height; y += step)
         for (var x = 0; x < size.width; x += step)
-          if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) (x, y),
+          if ((surfaceRgbaInPlace(surface, x, y) ?? 0) != 0) (x, y),
     ];
   }
 

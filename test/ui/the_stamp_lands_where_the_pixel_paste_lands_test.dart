@@ -29,8 +29,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
-import 'package:anicel/src/services/canvas_color_sampler.dart'
-    show surfacePixelRgba;
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -43,6 +41,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
 import '../helpers/wait_window.dart' show windowBehind;
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**THE CUT TOOL'S STAMP LANDS WHERE 픽셀 붙여넣기 LANDS** (F-293).
 ///
@@ -142,7 +141,7 @@ void main() {
 
   /// [cel]'s straight RGBA at (x, y), as 0xRRGGBBAA — zero where it is clear.
   int pixel(EditorSessionManager session, String cel, int x, int y) =>
-      surfacePixelRgba(celOf(session, cel), x, y) ?? 0;
+      surfaceRgbaInPlace(celOf(session, cel), x, y) ?? 0;
 
   int alphaOf(int rgba) => rgba & 0xFF;
 
@@ -267,8 +266,8 @@ void main() {
     }
     for (var y = box.top; y < box.bottomExclusive; y += 1) {
       for (var x = box.left; x < box.rightExclusive; x += 1) {
-        final want = surfacePixelRgba(a, x, y);
-        final got = surfacePixelRgba(b, x, y);
+        final want = surfaceRgbaInPlace(a, x, y);
+        final got = surfaceRgbaInPlace(b, x, y);
         if (want != got) {
           fail('$why — at ($x, $y): $got, not $want');
         }

@@ -15,7 +15,6 @@ import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
@@ -28,6 +27,7 @@ import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★A STROKE IS THE WINDOW'S IT STARTS IN — 유저 2026-09-30 (H49):
 /// 「그냥 선 시작한곳에따라 칸 나누자 … 일반칸은 일반칸내에서만 지정된 범위
@@ -44,7 +44,7 @@ void main() {
   const cutId = CutId('cut-1');
 
   bool inkAt(BitmapSurface surface, Offset pixel) =>
-      (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
+      (surfaceRgbaInPlace(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
       0;
 
   group('the timesheet', () {

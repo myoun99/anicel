@@ -14,7 +14,6 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
@@ -24,6 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import '../../helpers/wait_window.dart' show windowBehind;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// I-37 — A FOLDER IS LIFTED WHOLE.
 ///
@@ -146,7 +146,7 @@ void main() {
         FrameId('${row.value}-$cel'),
       ),
     );
-    return (surfacePixelRgba(surface, x, y) ?? 0) != 0;
+    return (surfaceRgbaInPlace(surface, x, y) ?? 0) != 0;
   }
 
   /// A few frames — for a selection's marching ants, which never settle.
@@ -198,8 +198,8 @@ void main() {
     for (final MapEntry(:key, value: lifted) in stack.live!.liftedRows.entries) {
       expect(
         (
-          surfacePixelRgba(lifted.surface, 25, 25) ?? 0,
-          surfacePixelRgba(lifted.surface, 75, 75) ?? 0,
+          surfaceRgbaInPlace(lifted.surface, 25, 25) ?? 0,
+          surfaceRgbaInPlace(lifted.surface, 75, 75) ?? 0,
         ),
         (0, 0),
         reason: '${key.frameId.value} is drawn from its own cel, holed',
@@ -331,7 +331,7 @@ void main() {
       find.byType(FramePictureView).first,
     );
     bool shows(LayerId row, int x, int y) =>
-        (surfacePixelRgba(
+        (surfaceRgbaInPlace(
               stack.live!.liftedRows[session.brushFrameKeyForCut(
                     session.requireActiveCut,
                     row,

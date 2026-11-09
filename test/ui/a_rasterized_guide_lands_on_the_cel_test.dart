@@ -21,8 +21,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
-import 'package:anicel/src/services/canvas_color_sampler.dart'
-    show surfacePixelRgba;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
@@ -34,6 +32,7 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/rail_group_button.dart';
 import '../helpers/wait_window.dart' show settleBehindTheWaitWindow;
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️vanishing-point-types-Q5 (유저 2026-10-16): 래스터라이즈 draws 「지금
 /// 레이어의 지금 셀에」 — not the new row the question recommended — and
@@ -113,7 +112,7 @@ void main() {
     expect(ink.bottomExclusive, lessThanOrEqualTo(paper.height));
     final coordinator = session.pixelEditing.coordinator!;
     expect(
-      surfacePixelRgba(
+      surfaceRgbaInPlace(
             coordinator.currentSurfaceOf(coordinator.activeFrameKey),
             100,
             paper.height ~/ 2,

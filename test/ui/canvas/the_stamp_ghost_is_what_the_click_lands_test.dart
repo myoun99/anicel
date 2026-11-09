@@ -18,7 +18,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show SelectionMaskOptions;
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -38,6 +37,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/placement_reading.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️brush-fidelity-Q9 (유저 2026-10-18): 「통일하면 좋음」 — the cut tool's
 /// stamp ghost is what a click there lands, in every blend, normal too: the
@@ -414,7 +414,7 @@ void main() {
       final key = env.coordinator.activeFrameKey;
       final before = env.coordinator.currentSurfaceOf(key);
       expect(
-        surfacePixelRgba(before, corner + 4, corner + 16),
+        surfaceRgbaInPlace(before, corner + 4, corner + 16),
         paintRgba,
         reason: '⛔premise: paint under the piece',
       );
@@ -450,7 +450,7 @@ void main() {
       // ⛔Premises — the scene tells the modes apart, and the selection's
       // softness is in it. The piece's row 16, by column:
       int? inRow(BitmapSurface cel, int column) =>
-          surfacePixelRgba(cel, corner + column, corner + 16);
+          surfaceRgbaInPlace(cel, corner + column, corner + 16);
       expect(
         inRow(landed, 4) == inRow(before, 4),
         blend == BrushBlendMode.darkerColor,

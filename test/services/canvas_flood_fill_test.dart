@@ -23,7 +23,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 
 import '../helpers/fill_pieces.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -625,7 +625,7 @@ void main() {
           for (var x = 0; x < 8; x += 1) {
             final inside = x >= 3 && x <= 4 && y >= 3 && y <= 4;
             expect(
-              surfacePixelRgba(committed, x, y),
+              surfaceRgbaInPlace(committed, x, y),
               inside ? 0x3366CCFF : 0,
               reason: 'pixel ($x, $y)',
             );

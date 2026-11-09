@@ -22,7 +22,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
@@ -32,6 +31,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨A PICTURE OF A CUT WITH NO CONTE ROW DRAWS AS THE CANVAS WOULD (유저 답
 /// conte-drawing-target-Q2 「토글을 따른다 (캔버스와 한 법)」).
@@ -193,7 +193,7 @@ void main() {
       session.brushFrameKeyForCut(cutOf(of), row.id, row.frames.single.id),
     );
     return surface != null &&
-        (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
+        (surfaceRgbaInPlace(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
             0;
   }
 

@@ -23,7 +23,7 @@ import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_dab_coverage.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 BrushDab _dab(
   double x,
@@ -57,7 +57,7 @@ List<int> _alpha(List<BrushDab> dabs) {
   return [
     for (var y = 0; y < _side; y += 1)
       for (var x = 0; x < _side; x += 1)
-        (surfacePixelRgba(surface, x, y) ?? 0) & 0xFF,
+        (surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF,
   ];
 }
 

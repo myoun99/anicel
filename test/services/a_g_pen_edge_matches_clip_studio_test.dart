@@ -36,7 +36,7 @@ import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// Clip Studio's G펜 rows at size 10 and 50, measured 2026-10-01 by the same
 /// method (10–90% band, full band) — board I-50 — and at 100 and 300
@@ -155,7 +155,7 @@ double _ink(BrushAntiAlias step, double size) {
       final surface = _laid(at(-90), at(90), width, height);
       for (var x = 50; x < width - 50; x += 1) {
         for (var y = 0; y < height; y += 1) {
-          sum += ((surfacePixelRgba(surface, x, y) ?? 0) & 0xFF) / 255.0;
+          sum += ((surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF) / 255.0;
         }
         count += 1;
       }
@@ -189,7 +189,7 @@ List<int> _line(
   return [
     for (var y = 0; y < side; y += 1)
       for (var x = 0; x < side; x += 1)
-        (surfacePixelRgba(surface, x, y) ?? 0) & 0xFF,
+        (surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF,
   ];
 }
 
