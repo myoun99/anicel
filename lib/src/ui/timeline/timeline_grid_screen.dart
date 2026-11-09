@@ -258,7 +258,6 @@ final class _GridScreen {
   /// What lays here changed: every row asks again whether it lays its
   /// tiles here, and the box whether it shows what they lay.
   void _laysChanged() {
-    _laid = null;
     for (final slot in _slots) {
       slot.markNeedsPaint();
     }
@@ -352,8 +351,11 @@ class _RenderGridScreen extends RenderBox {
   ({Matrix4 toView, Rect shown}) _measured() {
     final view = owner!.rootNode!;
     final toView = getTransformTo(view);
-    Rect inView(Rect rect) =>
-        _outToDevicePixels(MatrixUtils.transformRect(toView, rect));
+    // ⚠️Asked empty before it is turned: what no clip left anything of is a
+    // rect inside out, and a transform turns it right side out again.
+    Rect inView(Rect rect) => rect.isEmpty
+        ? Rect.zero
+        : _outToDevicePixels(MatrixUtils.transformRect(toView, rect));
     final shown = inView(_shownRect());
     _screen.showed(shown, inView(Offset.zero & size));
     return (toView: toView, shown: shown);
@@ -363,14 +365,12 @@ class _RenderGridScreen extends RenderBox {
   /// grid's own rounding, or a ratio's last bit is a pixel more or less.
   static Rect _outToDevicePixels(Rect rect) {
     const pixels = DeviceGrid(1);
-    return rect.isEmpty
-        ? Rect.zero
-        : Rect.fromLTRB(
-            pixels.position(rect.left),
-            pixels.position(rect.top),
-            pixels.clearance(rect.right),
-            pixels.clearance(rect.bottom),
-          );
+    return Rect.fromLTRB(
+      pixels.position(rect.left),
+      pixels.position(rect.top),
+      pixels.clearance(rect.right),
+      pixels.clearance(rect.bottom),
+    );
   }
 
   /// What this frame shows of the screen — laid first where a row changed
@@ -380,14 +380,14 @@ class _RenderGridScreen extends RenderBox {
   /// moment all of them are known to have come to rest.
   ({Rect at, int id})? _composited() {
     final screen = _screen;
-    if (!attached || !screen.lays) {
+    final texture = screen._texture;
+    if (!attached || texture == null) {
       return null;
     }
     final (:toView, :shown) = _measured();
     if (shown.isEmpty) {
       return null;
     }
-    final texture = screen._texture!;
     final laid = screen._laid;
     if (laid != null &&
         _covers(MatrixUtils.transformRect(toView, laid.at), shown)) {

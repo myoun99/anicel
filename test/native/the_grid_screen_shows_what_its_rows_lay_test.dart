@@ -305,22 +305,31 @@ void main() {
     expect(surface.fingerprint(), wiped);
   });
 
-  // 1536 / 1.35 * 1.35 is 1535.9999999999998: a screen standing exactly on
-  // what it shows would, off by that last bit, be laid again every frame.
+  testWidgets('a box never in the view opens no screen', (tester) async {
+    aSmallView(tester);
+    await tester.pumpWidget(aGrid(_Row(() => tile), left: 200));
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, isEmpty);
+  });
+
+  // 512 × (1 / 1.9) × 1.9 is 511.99999999999994: a screen standing exactly
+  // on what it shows would, off by that last bit, be laid again every frame.
   testWidgets('a frame that moved nothing lays nothing, whatever the last '
       'bit of the ratio', (tester) async {
     tester.view
-      ..physicalSize = const Size(1536, 1536)
-      ..devicePixelRatio = 1.35;
+      ..physicalSize = const Size(512, 512)
+      ..devicePixelRatio = 1.9;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(aGridAtTheRight(_Row(() => tile)));
     await tester.pump();
-    expect(asked, [(1536, 1536)], reason: 'no step more for the last bit');
+    expect(asked, [(512, 512)], reason: 'no step more for the last bit');
     final laid = surface.fingerprint();
 
     final lay = GpuGridLay(appGpuEngineOpen.value!);
     addTearDown(lay.free);
-    lay.lay(surface, (0, 0, 1536, 1536), const []);
+    lay.lay(surface, (0, 0, 512, 512), const []);
     final wiped = surface.fingerprint();
     expect(wiped, isNot(laid), reason: '⛔premise: wiped by hand');
 
