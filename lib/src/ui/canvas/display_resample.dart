@@ -99,69 +99,6 @@ int levelsReadAt(double displayScale) => displayScale >= 1
     ? 0
     : (math.log(1 / displayScale) / math.ln2).floor() + 1;
 
-/// The deepest level of a frame's picture's chain a canvas reads: at its
-/// least zoom on a screen of one device pixel a canvas pixel
-/// ([levelsReadAt]).
-final int deepestLevelACanvasReads = levelsReadAt(CanvasViewport.minZoom);
-
-/// [extent] out to whole texels of [deepestLevelACanvasReads] — the grid a
-/// frame's picture lies on (`FramePictureStore`), and the display buffer
-/// that draws the frame as it stands in its place.
-///
-/// 🔬Still so with nothing drawn beside the picture (F-465, 2026-10-26):
-/// the screen draws a frame as it stands until its picture is there, and
-/// wherever no patch can follow a change, and goes back and forth between
-/// the two — off this grid they were apart by up to 15/255 at 25%, 20%,
-/// 15% and 10% where the view cuts the page or shows its corner, and
-/// turned at 33% (Impeller tester).
-///
-/// 🚨★ONE GRID FOR EVERY IMAGE OF A FRAME THE DISPLAY READS A CHAIN OF
-/// (F-465 again, 유저 실기 Windows 2026-10-25: 「10%에서 발생하는거 확인 …
-/// 소수점배율에서 발생할거같아서 저번 고칠때랑 데자뷰」): a level is the
-/// canvas's grid halved, exactly, only where the image holds whole texels
-/// of it — one of fewer texels stretches over the image — and two images
-/// of one frame show alike past where their content ends only where they
-/// end at one edge: each samples its own edge again past it. ↩️The picture
-/// lay on the grid of the levels its patches write, as deep as a 1920 page
-/// is read above 12.5% — its 1080 rows were 67.5 texels of the level 10%
-/// reads — and the buffer beside it on the grid of the level the display
-/// read: 🔬a page of 270 rows apart from its picture down its edge at 6%,
-/// and at 10% once the picture alone was widened (Impeller tester).
-///
-/// 🔬What it costs: a picture is at most 2^[deepestLevelACanvasReads] − 1
-/// texels a side larger — a 1920×1080 page's 1920×1152.
-ui.Rect frameGridOutward(ui.Rect extent) =>
-    wholeLevelPixelsOutward(extent, deepestLevelACanvasReads);
-
-/// [rect] grown by what a display at [displayScale] reads past it — a
-/// texel of the deepest level it reads ([levelsReadAt]) — out to whole
-/// texels of that level ([wholeLevelPixelsOutward]): a picture of the
-/// frame over it holds, at every level the display reads, the texels the
-/// frame's one picture holds there, and a device pixel inside [rect] reads
-/// nothing past it.
-///
-/// 🚨What lets a frame drawn as it stands show, at the view's edge, what
-/// its one picture shows — the screen goes back and forth between the two
-/// ([frameGridOutward]). ↩️It grew a stroke's step drawn as it stood under
-/// its patch's clip (F-465, 유저 2026-10-25: 「줌 75%에서는 발생
-/// 안하는거같고, 50%에서는 매번」 — a stroke's step at 50% framed in a grey
-/// line for a frame), until the step was written into the picture: cut at
-/// the clip, the buffer's edge was a texel boundary the picture does not
-/// have, its pixel half covered over what lies under the view, and the
-/// pixels inside it sampled off a chain laid on another grid.
-///
-/// ⛔Not grown where the display reads no level (100% and up): nothing
-/// past [rect] is read there, and 🔬a canvas pixel more laid a line of
-/// what lies under the view along a stroke's patch at 150% on the
-/// Impeller tester, where there was none (2026-10-25).
-ui.Rect rectTheDisplayReads(ui.Rect rect, double displayScale) {
-  final levels = levelsReadAt(displayScale);
-  return wholeLevelPixelsOutward(
-    levels == 0 ? rect : rect.inflate((1 << levels).toDouble()),
-    levels,
-  );
-}
-
 /// Whether the OUTER EDGE of what lands on the display — the display
 /// buffer's blit, the paper rect under it, the playback composite that
 /// stands in for both during a scrub — is anti-aliased.
@@ -179,8 +116,8 @@ ui.Rect rectTheDisplayReads(ui.Rect rect, double displayScale) {
 ///
 /// So on an axis-aligned view under `none` the edge is NOT anti-aliased:
 /// it lands where the pixel centres say, the same rule the texels inside
-/// follow, and every route that draws the boundary — cached or live,
-/// buffer or walk, editing or playback — cuts it on the same pixel, and
+/// follow, and every route that draws the boundary cuts it on the same
+/// pixel, and
 /// the leftmost texel keeps its column (an edge ROUNDED inward would have
 /// dropped it). Bilinear (reduced) blends the boundaries inside too, and a
 /// rotated view's edges are diagonals, so anti-aliasing stays there. A
@@ -317,49 +254,6 @@ void clipToTheDisplayEdge(
   displayEdgeRect(canvas, rect, antiAlias: antiAlias, pixelRatio: pixelRatio),
   doAntiAlias: antiAlias,
 );
-
-/// [image]'s [src] laid over [dst] as the display lays an image it is
-/// handed: one at canvas resolution of the world [viewport] shows on a
-/// screen of [devicePixelRatio], under the canvas's transform. It samples
-/// by the scale the draw resamples it by ([filterQualityForDisplayScale])
-/// and cuts its edge by the same law ([displayEdgeAntiAliased]).
-///
-/// 🚨ONE BLIT for every image the display lays over the view — the
-/// canvas's display buffer, and a frame's one picture (`FramePictureView`):
-/// two spellings of it would be two answers to how a frame is shown.
-void drawOnTheDisplay(
-  ui.Canvas canvas,
-  ui.Image image,
-  ui.Rect src,
-  ui.Rect dst, {
-  required CanvasViewport viewport,
-  required double devicePixelRatio,
-}) {
-  final filterQuality = filterQualityForDisplayScale(
-    displayScaleOf(viewport.zoom, devicePixelRatio),
-  );
-  // The image's edge IS the canvas's edge on screen, cut by the same law
-  // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
-  // view it is one more texel boundary, decided by pixel centres, not a
-  // blended line.
-  if (displayEdgeAntiAliased(viewport, devicePixelRatio)) {
-    canvas.drawImageRect(
-      image,
-      src,
-      dst,
-      ui.Paint()..filterQuality = filterQuality,
-    );
-  } else {
-    drawImageRectOnThePixelGrid(
-      canvas,
-      image,
-      src,
-      dst,
-      filterQuality: filterQuality,
-      pixelRatio: devicePixelRatio,
-    );
-  }
-}
 
 /// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel
 /// shows what its centre falls on — with the edge cut on the grid

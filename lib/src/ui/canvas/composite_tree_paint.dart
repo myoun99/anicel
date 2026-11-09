@@ -106,16 +106,6 @@ enum BelowThePen {
 /// lay the pixel between them twice.
 const int belowCellSide = 256;
 
-/// The cells ([belowCellSide]) [rect] lies in, as one rect.
-Rect belowCellsCovering(Rect rect) => rect.isEmpty
-    ? Rect.zero
-    : Rect.fromLTRB(
-        (rect.left / belowCellSide).floorToDouble() * belowCellSide,
-        (rect.top / belowCellSide).floorToDouble() * belowCellSide,
-        (rect.right / belowCellSide).ceilToDouble() * belowCellSide,
-        (rect.bottom / belowCellSide).ceilToDouble() * belowCellSide,
-      );
-
 /// The cells ([belowCellSide]) [rect] lies in, a row at a time.
 Iterable<({int column, int row, Rect rect})> _cellsOver(Rect rect) sync* {
   if (rect.isEmpty) {
@@ -534,7 +524,7 @@ class _CompositeTreeWalk<L> {
   /// picture is, within what reads it and as far past the cell as the
   /// frame's chains read ([SubtreeHolding.cells]) — the walk that draws the
   /// cells stands in the world that far past them too
-  /// (`_LayerStackPaintPass`) — so it is the pixels its one picture holds
+  /// (`_FrameReading`) — so it is the pixels its one picture holds
   /// in the cell.
   void _fillCells(Canvas canvas, _Run<L> run, Rect under) {
     if (run.rasterScale != 1) {

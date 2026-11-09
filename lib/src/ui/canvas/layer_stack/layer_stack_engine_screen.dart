@@ -79,7 +79,7 @@ final class EngineStackScreen {
   /// [frame]'s rows planned by the one translator and handed to [lay] with
   /// the kept frame — made again over the world the frame holds where it
   /// is not the one kept. Each node's chain is held in [holds], if any, as
-  /// what the node shows ([_LayerStackPaintPass._pictureOf]) on this paper
+  /// what the node shows ([_FrameReading._pictureOf]) on this paper
   /// ([_holding]).
   void _laid(
     StackedFrame frame,
@@ -87,7 +87,7 @@ final class EngineStackScreen {
     void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
     lay,
   ) {
-    final pass = _LayerStackPaintPass(frame._painter);
+    final pass = _FrameReading(frame._painter);
     // A frame of nothing keeps one pixel of nothing: shown through any
     // camera, it shows nothing.
     final world = switch (pass.frameExtent()) {
@@ -150,10 +150,10 @@ final class EngineStackScreen {
 
   /// The holding of the chains [pass] plans ([ChainHolding]): a node's, on
   /// [paper], under what the node it came from shows ([origins]) — none
-  /// for one that shows a row drawn live ([_LayerStackPaintPass._pictureOf]).
+  /// for one that shows a row drawn live ([_FrameReading._pictureOf]).
   ChainHolding? _holding(
     EngineChainHolds? holds,
-    _LayerStackPaintPass pass,
+    _FrameReading pass,
     Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>> origins,
     Rect paper,
   ) => switch (holds) {
@@ -242,7 +242,7 @@ final class EngineStackScreen {
   );
 }
 
-extension on _LayerStackPaintPass {
+extension on _FrameReading {
   /// [row] as the engine lays it: the paper a solid over the page, a
   /// surface row its slot ([_slotOf]) — its tiles as its painter shows
   /// them, a live stroke's in their place ([BitmapSurfacePainter

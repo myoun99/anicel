@@ -101,7 +101,7 @@ void main() {
     // the ones that mean "and here is how I sample", which is the
     // question this file no longer gets to answer.
     final source = File(
-      'lib/src/ui/canvas/layer_stack/layer_stack_paint_pass.dart',
+      'lib/src/ui/canvas/layer_stack/layer_stack_engine_screen.dart',
     ).readAsLinesSync();
     final found = <String>[];
     for (var i = 0; i < source.length; i += 1) {
@@ -118,7 +118,7 @@ void main() {
     expect(
       found,
       isEmpty,
-      reason: 'the walk must read _displayQuality, not name a quality — a '
+      reason: 'the screen must read its zoom, not name a quality — a '
           'route that samples differently from the buffered one is T21 '
           'wearing a different hat',
     );

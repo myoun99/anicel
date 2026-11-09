@@ -58,7 +58,7 @@ import '../../native/screen_texture.dart';
 import 'fx_plugin_stages.dart';
 
 part 'layer_stack/layer_stack_engine_screen.dart';
-part 'layer_stack/layer_stack_paint_pass.dart';
+part 'layer_stack/layer_stack_frame_reading.dart';
 
 /// One ROW that paints in the editing canvas's composite tree: a cached
 /// layer image ([CanvasLayerImageRequest]) or the ACTIVE layer's live
@@ -355,7 +355,7 @@ final class StackedFrame {
         live?.painters._drawn(live.rows.liftedRows) ??
         const <BrushFrameKey, _LiftedRowPaint>{};
     return StackedFrame._(
-      _LayerStackPainter(
+      _FrameRows(
         nodes: drawn,
         activeSurfacePainter: live?.rows.activeSurfacePainter,
         floatOverlay: live?.rows.floatOverlay,
@@ -371,15 +371,15 @@ final class StackedFrame {
   StackedFrame._(this._painter);
 
   /// The rows and the page they stand on.
-  final _LayerStackPainter _painter;
+  final _FrameRows _painter;
 
   /// The world the frame covers, asked afresh each time: a stroke grows
   /// what the live row covers.
-  Rect get extent => _LayerStackPaintPass(_painter).frameExtent();
+  Rect get extent => _FrameReading(_painter).frameExtent();
 
   /// What moves the live rows' pixels with no new frame — a stroke's step,
   /// a float's or a lift's drag — as it repaints the canvas's own stack.
-  Listenable get changes => _LayerStackPainter._liveListenable(
+  Listenable get changes => _FrameRows._liveListenable(
     _painter.activeSurfacePainter,
     _painter.floatOverlay,
     _painter.liftedRows,
@@ -387,15 +387,15 @@ final class StackedFrame {
 
   /// Whether where a change of the live rows lands can be told
   /// ([movedSince]) — as a canvas that stands asks before it patches its
-  /// picture ([_LayerStackPainter._liveCanBeTold]).
+  /// picture ([_FrameRows._liveCanBeTold]).
   bool get steady => _painter._liveCanBeTold;
 
   /// What the live row looks like now, to measure its next change from —
-  /// null where it cannot be told ([_LayerStackPainter._liveSurfaceTokens]).
+  /// null where it cannot be told ([_FrameRows._liveSurfaceTokens]).
   LiveSurfaceTokens? get tokens => _painter._liveSurfaceTokens();
 
   /// Where the live row's pixels moved since [since], in world coordinates
-  /// ([_LayerStackPainter._liveDirtyCanvasRect]).
+  /// ([_FrameRows._liveDirtyCanvasRect]).
   ({bool located, Rect? dirty, LiveSurfaceTokens? now}) movedSince(
     LiveSurfaceTokens since,
   ) => _painter._liveDirtyCanvasRect(since: since);
@@ -404,7 +404,7 @@ final class StackedFrame {
   /// it, in world coordinates — all a frame laid with its ghosts in place
   /// differs by from the same frame laid without them: each ghost's ink,
   /// told as a stroke's change of the live row is
-  /// ([_LayerStackPainter._whereAChangeShows]). Empty where none has ink;
+  /// ([_FrameRows._whereAChangeShows]). Empty where none has ink;
   /// null where that cannot be told.
   Rect? get whereTheGhostsShow => _painter._whereTheGhostsShow();
 }
@@ -659,9 +659,9 @@ final class _PaintCelSurface extends _SurfaceRow {
 }
 
 /// What a [StackedFrame] is laid from: its rows and the page they stand on
-/// — one reading of it is a [_LayerStackPaintPass].
-final class _LayerStackPainter {
-  _LayerStackPainter({
+/// — one reading of it is a [_FrameReading].
+final class _FrameRows {
+  _FrameRows({
     required this.nodes,
     this.activeSurfacePainter,
     this.floatOverlay,
@@ -972,7 +972,7 @@ final class _LayerStackPainter {
       case CompositeLeaf(payload: final _SurfaceRow row):
         // A chain of the row's own that spreads is told by its spread, as a
         // folder's is: the row reads it off a raster on the canvas's grid
-        // (`_LayerStackPaintPass._paintSurfaceRow`). ↩️It was not told until
+        // (`_FrameReading._paintSurfaceRow`). ↩️It was not told until
         // that raster (nested-folder-buffers-read-past-the-view-Q1 = c,
         // 2026-10-27): its blur rode a `saveLayer` the patch's clip cut,
         // and at 200% the patch came apart from the frame along the

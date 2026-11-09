@@ -543,12 +543,6 @@ int debugCropsLaidDown = 0;
 @visibleForTesting
 int debugWholesLaidBack = 0;
 
-/// Whether [image] laid at [worldRect] lands texel for texel on a canvas
-/// at canvas resolution — what [drawPosedLayerImage] asks before it draws
-/// at `none`, for a caller that has to know before anything is drawn.
-bool drawsAsTexelCopy(ui.Image image, ui.Rect worldRect) =>
-    _isTexelCopy(image, worldRect, 1);
-
 /// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
 /// whose pixels are [texelScale] canvas units apart: one texel per target
 /// pixel, starting on a whole pixel. ↩️It stood beside `ImagePiece` while a

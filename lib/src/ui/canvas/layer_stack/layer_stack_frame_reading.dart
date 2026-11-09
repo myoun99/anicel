@@ -4,7 +4,7 @@ part of '../canvas_layer_stack_view.dart';
 /// holds (I-37): its painter, the float over it, and the way into its slot
 /// from the canvas that float is told in.
 ///
-/// ⛔One slot reads both ([_LayerStackPaintPass._slotOf]): a lifted row is a
+/// ⛔One slot reads both ([_FrameReading._slotOf]): a lifted row is a
 /// surface with a float over it in its own row's slot, which is what the
 /// live row is while a box is open — two copies of that reading are what
 /// would drift apart.
@@ -52,7 +52,7 @@ class _SurfaceSlot {
   };
 
   /// What the slot draws, in its own space — the law is
-  /// [_LayerStackPaintPass._activeSurfaceExtent]'s (F-85).
+  /// [_FrameReading._activeSurfaceExtent]'s (F-85).
   late final Rect extent = () {
     final drawn = painter.drawnWorldRect;
     final shown = this.shown;
@@ -78,10 +78,10 @@ class _SurfaceSlot {
 /// viewport and the one buffer it resampled once (the audit's cognitive
 /// cut, Round 6, 2026-09-03: `paint` was 784 lines scoring 105), until the
 /// engine laid every frame (flip lane ⓑ).
-class _LayerStackPaintPass {
-  _LayerStackPaintPass(this._painter);
+class _FrameReading {
+  _FrameReading(this._painter);
 
-  final _LayerStackPainter _painter;
+  final _FrameRows _painter;
 
   // Set by [_standInTheWorld], read by what stands on it.
   late final Rect _canvasRect;
