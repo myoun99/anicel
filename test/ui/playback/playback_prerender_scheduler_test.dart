@@ -1675,7 +1675,7 @@ class _Room implements PictureRoom {
 /// were asked in ([letThrough]) — a walk lays one at a time, so the first
 /// waits and the rest queue behind it.
 class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
-  _LaysInTurn() : super(tools: appEngineFrameTools);
+  _LaysInTurn() : super(tools: () => appEngineFrameTools);
 
   final _turns = <int, Completer<void>>{};
   int _asked = 0;

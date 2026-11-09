@@ -605,6 +605,7 @@ class FramePictures implements PlaybackPictures {
       surfaceOf: (cel) => _drawn(cel)
           ? _readNow(cel, page, (error, stack) => thrown ??= (error, stack))
           : null,
+      revisionOf: _revisionOf,
     );
     return (frame: frame, thrown: thrown);
   }
@@ -675,6 +676,7 @@ class FramePictures implements PlaybackPictures {
           ? layerImages.storedSurfaceOrNull(cel, canvasSize: page.canvasSize)
           : null,
       live: live,
+      revisionOf: _revisionOf,
     );
   }
 

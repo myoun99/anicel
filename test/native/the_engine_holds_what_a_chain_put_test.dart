@@ -407,10 +407,10 @@ void main() {
 
   test('a store\'s screens hold their chains\' puts in the store\'s', () async {
     final store = EngineFramePictureStore<String>(
-      tools: Future.value((
+      tools: () async => (
         composite: engine.composite,
         letters: engine.letters,
-      )),
+      ),
     );
     final holds = holdsIn(1 << 30);
     addTearDown(store.dispose);

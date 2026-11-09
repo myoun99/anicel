@@ -580,6 +580,30 @@ class GpuPlan {
   void chainHeld(int chain, GpuHeldChains held, int id) =>
       _checked(rust.planChainHeld(_plan, chain, held._held, id));
 
+  /// Adds to effect chain [chain] a read of what the ops before it put:
+  /// the picture a plug-in's step runs over, [read]'s once this plan has
+  /// run. What it put goes on to the ops after it as it is.
+  void chainRead(int chain, GpuChainRead read) =>
+      _checked(rust.planChainRead(_plan, chain, read._read));
+
+  /// Adds to effect chain [chain] what a plug-in made of [picture] — left,
+  /// top, right, bottom, in the chain's pixels: [straight] RGBA8 row after
+  /// row, in place of what the ops before it put; nothing outside it.
+  void chainPut(
+    int chain,
+    (int, int, int, int) picture,
+    Uint8List straight,
+  ) => _checked(
+    using((arena) {
+      final (left, top, right, bottom) = picture;
+      final edges = arena<Int32>(4);
+      edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
+      final bytes = arena<Uint8>(_held(straight.length));
+      bytes.asTypedList(straight.length).setAll(0, straight);
+      return rust.planChainPut(_plan, chain, edges, bytes, straight.length);
+    }),
+  );
+
   /// Adds to effect chain [chain] fx Gaussian Blur, the Gaussian itself a
   /// way a pass, [across] and [down]: reading [picture] — past it nothing,
   /// or its nearest pixel where it [repeats] (Repeat Edge Pixels) — and
@@ -863,6 +887,33 @@ class GpuPlan {
   void free() => rust.planFree(_plan);
 }
 
+/// The picture an effect chain had come to at a plug-in's step, for the
+/// host to read once the plan that names it ran ([GpuPlan.chainRead]).
+class GpuChainRead {
+  GpuChainRead(this._engine) : _read = rust.chainReadNew();
+
+  final GpuEngine _engine;
+  final Pointer<rust.ChainRead> _read;
+
+  /// The pixels of [picture] — left, top, right, bottom — straight RGBA8
+  /// row after row; null where no plan ran through this read, a chain the
+  /// tiles asked for do not meet being no chain run.
+  Uint8List? pixels((int, int, int, int) picture) => using((arena) {
+    final (left, top, right, bottom) = picture;
+    final edges = arena<Int32>(4);
+    edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
+    final count = (right - left) * (bottom - top) * 4;
+    final bytes = arena<Uint8>(_held(count));
+    if (!rust.chainReadPixels(_engine._engine, _read, edges, bytes, count)) {
+      return null;
+    }
+    return Uint8List.fromList(bytes.asTypedList(count));
+  });
+
+  /// Frees it; a plan that names it keeps its own hold.
+  void free() => rust.chainReadFree(_read);
+}
+
 /// What effect chains put, held past the run that made them
 /// (rust/src/kernels/composite/held.rs), under the numbers the app gives
 /// them ([GpuPlan.chainHeld]) — for as long as it is not freed, or let go.
@@ -948,6 +999,9 @@ class GpuComposite {
 
   final GpuEngine _engine;
   final Pointer<rust.Composite> _composite;
+
+  /// The engine it composes on.
+  GpuEngine get engine => _engine;
 
   /// Composites [plan] of [pool]'s tiles over the output [tiles] — canvas
   /// tile columns and rows — with nothing outside the pixels [extent],

@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::chain::{Chained, MapTiles, Op};
+use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::{Focus, Iris};
@@ -656,6 +656,95 @@ pub unsafe extern "C" fn gpu_engine_plan_chain_held(
     };
     planned.held = Some((held.clone(), id));
     0
+}
+
+/// Adds to effect chain `chain` a read of what the ops before it put
+/// ([`Op::Read`]). 0, or -1 where the plan has no such chain; see the last
+/// error.
+///
+/// # Safety
+/// `plan` and `read` are live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_chain_read(
+    plan: *mut Planned,
+    chain: u32,
+    read: *const ChainRead,
+) -> i32 {
+    // SAFETY: see the function's contract.
+    let (plan, read) = unsafe { (&mut *plan, &*read) };
+    plan.op(chain, Op::Read(read.clone()), None)
+}
+
+/// Adds to effect chain `chain` what a plug-in made of the rectangle
+/// (`left`, `top`) to (`right`, `bottom`): `length` bytes of straight RGBA8
+/// row after row ([`Op::Put`]). 0, or -1 where the plan has no such chain;
+/// see the last error.
+///
+/// # Safety
+/// `plan` is live, and `pixels` holds `length` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_chain_put(
+    plan: *mut Planned,
+    chain: u32,
+    picture: *const i32,
+    pixels: *const u8,
+    length: usize,
+) -> i32 {
+    // SAFETY: see the function's contract: `picture` holds its four edges.
+    let (plan, picture, pixels) = unsafe {
+        (
+            &mut *plan,
+            *picture.cast::<[i32; 4]>(),
+            std::slice::from_raw_parts(pixels, length),
+        )
+    };
+    plan.op(chain, Op::Put { picture, pixels: pixels.into() }, None)
+}
+
+/// A read of a chain's picture for the host ([`ChainRead`]), empty.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_chain_read_new() -> *mut ChainRead {
+    Box::into_raw(Box::default())
+}
+
+/// Lets go of what `read` keeps that no plan names.
+///
+/// # Safety
+/// `read` came from `gpu_engine_chain_read_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_chain_read_free(read: *mut ChainRead) {
+    if !read.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(read) });
+    }
+}
+
+/// Reads into `out`, `length` bytes, what `read` kept of the rectangle its
+/// four edges `picture` name. False where no plan ran through it, or the
+/// device failed; see the last error.
+///
+/// # Safety
+/// `engine` and `read` are live, `picture` holds four edges and `out` holds
+/// `length` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_chain_read_pixels(
+    engine: *const Engine,
+    read: *const ChainRead,
+    picture: *const i32,
+    out: *mut u8,
+    length: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (engine, read, picture) = unsafe { (&*engine, &*read, *picture.cast::<[i32; 4]>()) };
+    let Some(bytes) = read.pixels(engine, picture) else {
+        return false;
+    };
+    if bytes.len() != length {
+        return fail::<()>(format!("{} bytes read into {length}", bytes.len())).is_some();
+    }
+    // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
+    true
 }
 
 /// A hold for what the chains of the plans that name it put

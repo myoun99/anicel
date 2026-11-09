@@ -575,7 +575,7 @@ void aStrokeIsWrittenIntoThePictureShown({
 
 /// A store whose write into a picture is refused where it [refuses].
 class _WritesThrow extends EngineFramePictureStore<FramePictureKey> {
-  _WritesThrow() : super(tools: appEngineFrameTools);
+  _WritesThrow() : super(tools: () => appEngineFrameTools);
 
   bool refuses = false;
 

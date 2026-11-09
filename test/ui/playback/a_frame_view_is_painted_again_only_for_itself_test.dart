@@ -1,5 +1,3 @@
-import 'dart:ui' show Picture;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,8 +21,8 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 /// paper and no row — was composed whole with it at each block moved: 🔬a
 /// 1920×1080 composite a commit, +25ms in profile.
 ///
-/// The oracle is the picture the view's paint recorded: a view not painted
-/// again holds the one it held.
+/// The oracle is the layer the view's paint laid: a view not painted again
+/// holds the one it held.
 void main() {
   opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 32, height: 32);
@@ -37,18 +35,28 @@ void main() {
   );
   final screen = GlobalKey();
 
-  /// What the frame view's paint recorded last.
-  Picture? recorded(WidgetTester tester) {
-    RenderObject? at = tester.renderObject(
-      find.descendant(
-        of: find.byType(FramePictureView),
-        matching: find.byType(CustomPaint),
-      ),
-    );
-    while (at != null && !at.isRepaintBoundary) {
-      at = at.parent;
+  /// The screen the frame view's paint laid last.
+  TextureLayer? laid(WidgetTester tester) {
+    TextureLayer? inside(Layer layer) {
+      if (layer case final TextureLayer texture) {
+        return texture;
+      }
+      if (layer is! ContainerLayer) {
+        return null;
+      }
+      for (var child = layer.firstChild; child != null;) {
+        if (inside(child) case final found?) {
+          return found;
+        }
+        child = child.nextSibling;
+      }
+      return null;
     }
-    return (at!.debugLayer!.firstChild! as PictureLayer).picture;
+
+    return inside(
+      tester.renderObject(theFrameScreenIn(find.byType(FramePictureView)))
+          .debugLayer!,
+    );
   }
 
   testWidgets('a page of paper and no row is not composed again for a '
@@ -61,6 +69,7 @@ void main() {
     // — what a commit composed whole. (A page a pen stands on is made a
     // picture of, first-stroke-on-a-new-project-trails 2026-10-28.)
     final store = StoreLayingNothing();
+    await itsToolsOpen(tester, store);
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -106,6 +115,7 @@ void main() {
     );
 
     await tester.pumpWidget(shown(CanvasViewport(panX: 8, panY: 4)));
+    await tester.pump();
     expect(
       run.pictures.drawsOnlyItsPage(
         run.pictures.keyAsItStands(const [], picture),
@@ -113,13 +123,14 @@ void main() {
       isTrue,
       reason: '⛔전제: the frame is its page alone, drawn as it stands',
     );
-    final before = recorded(tester);
+    final before = laid(tester);
+    expect(before, isNotNull, reason: '⛔전제: the page is on a screen');
 
     commits.value += 1;
     await tester.pump();
 
     expect(
-      recorded(tester),
+      laid(tester),
       same(before),
       reason: '🚨a neighbour laid out again composed the page again',
     );
@@ -127,7 +138,7 @@ void main() {
     await tester.pumpWidget(shown(CanvasViewport(panX: 12, panY: 4)));
 
     expect(
-      recorded(tester),
+      laid(tester),
       isNot(same(before)),
       reason: 'LIVENESS: a view that moved paints the page again',
     );

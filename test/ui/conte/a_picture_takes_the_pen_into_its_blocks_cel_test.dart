@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/conte_book.dart';
@@ -81,6 +82,7 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// live composite (유저 답 conte-picture-display-Q1 「실시간 합성
 /// (정확)」), so the stroke shows in it while it is drawn.
 void main() {
+  opensTheEnginesScreens();
   const canvas = CanvasSize(width: 640, height: 360);
   const cutId = CutId('39');
   const layerId = LayerId('sb');
@@ -624,31 +626,18 @@ void main() {
     final centre = pageTopLeft + cell.pictureRect.center;
     final at = tester.renderObject<RenderBox>(live).globalToLocal(centre);
 
-    /// The live composite's own painter, rasterized: is there ink at [at] —
-    /// anything but the ground it lays under what it draws?
+    /// The live composite's own screen: is there ink at [at] — anything but
+    /// the ground it lays under what it draws?
     Future<bool> showsInk() async {
-      final painter = tester
-          .widgetList<CustomPaint>(
-            find.descendant(of: live, matching: find.byType(CustomPaint)),
-          )
-          .map((paint) => paint.painter)
-          .whereType<CustomPainter>()
-          .first;
-      final size = tester.getSize(live);
-      final bytes = (await tester.runAsync(() async {
-        final recorder = ui.PictureRecorder();
-        painter.paint(Canvas(recorder, Offset.zero & size), size);
-        final image = await recorder.endRecording().toImage(
-          size.width.ceil(),
-          size.height.ceil(),
-        );
-        final data = await image.toByteData(
-          format: ui.ImageByteFormat.rawRgba,
-        );
-        image.dispose();
-        return data!.buffer.asUint8List();
-      }))!;
-      return _inkAt(bytes, size.width.ceil(), at);
+      final shot = await shotOfBox(
+        tester,
+        tester.renderObject<RenderBox>(theFrameScreenIn(live)),
+      );
+      return _inkAt(
+        shot.rgba,
+        shot.width,
+        at * tester.view.devicePixelRatio,
+      );
     }
 
     expect(await showsInk(), isFalse, reason: 'an empty cel');
@@ -998,13 +987,18 @@ void main() {
       final render = tester.renderObject<RenderRepaintBoundary>(
         find.byKey(boundary),
       );
-      return (await tester.runAsync(() async {
+      final screen = (await tester.runAsync(() async {
         final image = await render.toImage(pixelRatio: ratio);
         final data = await image.toByteData();
         final screen = _Screen(data!.buffer.asUint8List(), image.width, ratio);
         image.dispose();
         return screen;
       }))!;
+      layTheScreensOver(render, ratio, (
+        rgba: screen.rgba,
+        width: screen.width,
+      ));
+      return screen;
     }
 
     /// The point [fraction] of the way across [slot].
@@ -1412,26 +1406,16 @@ void main() {
         brushOn.value = true;
         final on = await shoot(tester);
 
-        final live = tester.renderObject<RenderRepaintBoundary>(
-          find
-              .descendant(
-                of: find.byType(FramePictureView),
-                matching: find.byType(RepaintBoundary),
-              )
-              .first,
+        final shot = await shotOfBox(
+          tester,
+          tester.renderObject<RenderBox>(
+            theFrameScreenIn(find.byType(FramePictureView)),
+          ),
         );
-        final (:liveBytes, :printBytes, :size) = (await tester.runAsync(
-          () async {
-            final image = await live.toImage(pixelRatio: 1.25);
-            final liveBytes = (await image.toByteData())!.buffer.asUint8List();
-            final size = (image.width, image.height);
-            image.dispose();
-            return (
-              liveBytes: liveBytes,
-              printBytes: (await printed.toByteData())!.buffer.asUint8List(),
-              size: size,
-            );
-          },
+        final liveBytes = shot.rgba;
+        final size = (shot.width, shot.rgba.length ~/ 4 ~/ shot.width);
+        final printBytes = (await tester.runAsync(
+          () async => (await printed.toByteData())!.buffer.asUint8List(),
         ))!;
         expect(
           size,

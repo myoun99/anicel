@@ -46,7 +46,7 @@ void opensTheEnginesScreens() {
 /// The store of a file's frames' pictures, on the app's engine
 /// ([opensTheEnginesScreens]).
 EngineFramePictureStore<FramePictureKey> aStoreOfPictures() =>
-    EngineFramePictureStore(tools: appEngineFrameTools);
+    EngineFramePictureStore(tools: () => appEngineFrameTools);
 
 /// The pictures of the frames [stackOf] stacks, of [images]' cels, kept by
 /// [store] — on a page of [canvasSize] with no wall — their background work
@@ -268,13 +268,13 @@ Future<void> inThePicture(WidgetTester tester) => tester.pump();
 
 /// Each engine screen in [render]'s layers laid over [shot], what Flutter
 /// painted of [render] at [ratio]: `flutter test` shows no texture.
-void layTheScreensOver(RenderRepaintBoundary render, double ratio, Shot shot) =>
+void layTheScreensOver(RenderObject render, double ratio, Shot shot) =>
     _layScreens(render.debugLayer!, Offset.zero, const [], ratio, shot);
 
 /// A store that says which keys were laid, which a step was written into
 /// and which a landing moved a picture to.
 class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
-  StoreTellingItsWrites() : super(tools: appEngineFrameTools);
+  StoreTellingItsWrites() : super(tools: () => appEngineFrameTools);
 
   final List<FramePictureKey> laid = [];
   final List<FramePictureKey> patched = [];
@@ -338,7 +338,7 @@ class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
 
 /// A store whose lays stay on their way: a frame's picture never comes.
 class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
-  StoreLayingNothing() : super(tools: appEngineFrameTools);
+  StoreLayingNothing() : super(tools: () => appEngineFrameTools);
 
   @override
   Future<EngineFramePicture?> lay(
@@ -352,6 +352,37 @@ class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
 
   static bool _stays() => false;
 }
+
+/// What [box] — a repaint boundary — shows at the window's ratio, as
+/// [shotOf] reads a screen.
+Future<Shot> shotOfBox(WidgetTester tester, RenderBox box) async {
+  final ratio = tester.view.devicePixelRatio;
+  final shot = await tester.runAsync(() async {
+    final layer = box.debugLayer! as OffsetLayer;
+    final image = await layer.toImage(Offset.zero & box.size, pixelRatio: ratio);
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final width = image.width;
+    image.dispose();
+    return (rgba: data!.buffer.asUint8List(), width: width);
+  });
+  layTheScreensOver(box, ratio, shot!);
+  return shot;
+}
+
+/// The box a frame's screen paints in, inside [view].
+Finder theFrameScreenIn(Finder view) => find.descendant(
+  of: view,
+  matching: find.byWidgetPredicate(
+    (widget) => widget is LeafRenderObjectWidget,
+  ),
+);
+
+/// Lets [store]'s tools open before a paint needs them, where no picture
+/// laid will come to paint again.
+Future<void> itsToolsOpen(
+  WidgetTester tester,
+  EngineFramePictureStore<FramePictureKey> store,
+) => tester.runAsync(() => store.tools);
 
 /// [picture]'s pixels over [world] at 100%, read back from the GPU:
 /// premultiplied RGBA, row after row.

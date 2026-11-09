@@ -8,6 +8,7 @@ import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
+import '../canvas/fx_plugin_stages.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 
@@ -71,6 +72,30 @@ class EngineFramePicture extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [_composed], its plug-ins' steps run first: nothing goes in until
+  /// they have (🗣️I-132-Q34 a), nor at all where it [stands] no more then.
+  Future<bool> _composedThrough(
+    StackedFrame frame, {
+    required ui.Rect changed,
+    required bool Function() stands,
+    EngineChainHolds? holds,
+  }) async {
+    final went = await FxPluginStages.recordedThrough<bool>(
+      () {
+        if (!stands()) {
+          return false;
+        }
+        _screen.compose(frame, changed: changed, holds: holds);
+        return true;
+      },
+      discard: (_) {},
+    );
+    if (went) {
+      notifyListeners();
+    }
+    return went;
+  }
+
   /// Laid before it is handed to anyone: no one to tell.
   void _composedOver(
     EngineFramePicture film,
@@ -99,18 +124,23 @@ class EngineFramePicture extends ChangeNotifier {
 class EngineFramePictureStore<K extends Object> {
   /// Pictures laid with [tools], once they are there: a store is made
   /// before the engine is open, and what it is asked for waits for it.
-  EngineFramePictureStore({required Future<EngineFrameTools> tools}) {
-    _tools = tools.then((opened) => _opened = opened);
-  }
+  EngineFramePictureStore({required Future<EngineFrameTools> Function() tools})
+    : _open = tools;
 
-  late final Future<EngineFrameTools> _tools;
+  final Future<EngineFrameTools> Function() _open;
+  Future<EngineFrameTools>? _opening;
 
   /// What a picture is laid with — null until the engine is open.
   EngineFrameTools? get toolsOpen => _opened;
   EngineFrameTools? _opened;
 
-  /// What [toolsOpen] waits for.
-  Future<EngineFrameTools> get tools => _tools;
+  /// What [toolsOpen] waits for, opened the first time it is asked: a
+  /// session laying nothing opens no engine. In no one's zone — what the
+  /// store waits for once is not the first asker's to hold, as a test's
+  /// fake clock would, for ever.
+  Future<EngineFrameTools> get tools => _opening ??= Zone.root.run<Future<EngineFrameTools>>(
+    () => _open().then((opened) => _opened = opened),
+  );
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -186,7 +216,7 @@ class EngineFramePictureStore<K extends Object> {
     }
     // A turn for each lay: one asked for the screen meanwhile goes to the
     // front.
-    unawaited(_tools.then((_) => _layFirst(), onError: _noEngine));
+    unawaited(tools.then((_) => _layFirst(), onError: _noEngine));
     return lay.done.future;
   }
 
@@ -219,6 +249,34 @@ class EngineFramePictureStore<K extends Object> {
     entry.picture._composed(frame, changed: rect, holds: holds);
     _moved(entry, from: from, to: to);
     return true;
+  }
+
+  /// [patch] of a frame that waits for its plugins: composed in once they
+  /// have run, the picture as it is meanwhile; answers whether it went in —
+  /// not where the picture is no more [from]'s by then, or the frame no
+  /// more [stands].
+  Future<bool> patchThrough({
+    required K from,
+    required K to,
+    required ui.Rect rect,
+    required StackedFrame frame,
+    required bool Function() stands,
+    EngineChainHolds? holds,
+  }) async {
+    final entry = _entries[from];
+    if (entry == null) {
+      return false;
+    }
+    final went = await entry.picture._composedThrough(
+      frame,
+      changed: rect,
+      holds: holds,
+      stands: () => stands() && identical(_entries[from], entry),
+    );
+    if (went) {
+      _moved(entry, from: from, to: to);
+    }
+    return went;
   }
 
   /// Moves the picture of [from] to [to] as it is — the caller vouches that
@@ -333,40 +391,70 @@ class EngineFramePictureStore<K extends Object> {
       return;
     }
     final lay = _lays.first;
-    try {
-      final laid = lay.unwanted ? null : peek(lay.key) ?? _laid(lay);
-      lay.done.complete(laid);
-    } on Object catch (error, stack) {
-      lay.done.completeError(error, stack);
-    } finally {
-      _lays.remove(lay);
+    if (lay.running) {
+      _turnsOwed += 1;
+      return;
     }
+    final there = lay.unwanted ? null : peek(lay.key);
+    if (there != null || lay.unwanted) {
+      lay.done.complete(there);
+      _lays.remove(lay);
+      return;
+    }
+    unawaited(_lay(lay));
   }
 
-  EngineFramePicture _laid(_Lay<K> lay) {
+  /// Turns that came with a lay on its way at the front: each lay's own,
+  /// given back once it is done.
+  int _turnsOwed = 0;
+
+  /// Lays [lay]'s picture, its plug-ins' steps run first: a turn comes
+  /// back for the lays behind it.
+  Future<void> _lay(_Lay<K> lay) async {
+    lay.running = true;
     final (:composite, :letters) = _opened!;
     final picture = EngineFramePicture._(
       EngineStackScreen(composite, letters),
     );
     try {
-      final over = lay.over;
-      final film = over == null ? null : _entries[over.film]?.picture;
-      if (over != null && film != null) {
-        picture._composedOver(
-          film,
-          lay.frame,
-          fresh: over.fresh,
-          holds: lay.holds,
-        );
+      await FxPluginStages.recordedThrough<void>(
+        () => _composedAs(lay, picture),
+        discard: (_) {},
+      );
+      if (lay.done.isCompleted) {
+        picture._letGo();
       } else {
-        picture._composed(lay.frame, holds: lay.holds);
+        _entries[lay.key] = _Entry(picture)..lastUsed = ++_clock;
+        lay.done.complete(picture);
       }
-    } on Object {
+    } on Object catch (error, stack) {
       picture._letGo();
-      rethrow;
+      if (!lay.done.isCompleted) {
+        lay.done.completeError(error, stack);
+      }
+    } finally {
+      _lays.remove(lay);
+      final owed = _turnsOwed;
+      _turnsOwed = 0;
+      for (var turn = 0; turn < owed; turn += 1) {
+        unawaited(tools.then((_) => _layFirst(), onError: _noEngine));
+      }
     }
-    _entries[lay.key] = _Entry(picture)..lastUsed = ++_clock;
-    return picture;
+  }
+
+  void _composedAs(_Lay<K> lay, EngineFramePicture picture) {
+    final over = lay.over;
+    final film = over == null ? null : _entries[over.film]?.picture;
+    if (over != null && film != null) {
+      picture._composedOver(
+        film,
+        lay.frame,
+        fresh: over.fresh,
+        holds: lay.holds,
+      );
+    } else {
+      picture._composed(lay.frame, holds: lay.holds);
+    }
   }
 }
 
@@ -390,6 +478,10 @@ final class _Lay<K> {
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];
   final Completer<EngineFramePicture?> done = Completer();
+
+  /// Whether it is being laid: its turn has come, and its plug-ins' steps
+  /// are on their way.
+  bool running = false;
 
   /// Whether every one who asked for it is gone.
   bool get unwanted => askers.every((gone) => gone());

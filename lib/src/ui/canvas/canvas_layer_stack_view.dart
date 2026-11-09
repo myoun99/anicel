@@ -61,6 +61,7 @@ import '../../native/engine_letters.dart';
 import '../../native/engine_range_mask.dart';
 import '../../native/engine_tile_ledger.dart';
 import '../../native/screen_texture.dart';
+import 'fx_plugin_stages.dart';
 
 part 'layer_stack/layer_stack_engine_screen.dart';
 part 'layer_stack/layer_stack_paint_pass.dart';

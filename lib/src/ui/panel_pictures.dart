@@ -119,6 +119,7 @@ class PanelPictures {
     );
     final size = (output.width, output.height);
     ui.Image? shot;
+    ui.Picture? recorded;
     try {
       void showOn(GpuTarget onto) {
         if (picture != null) {
@@ -149,15 +150,15 @@ class PanelPictures {
         ..drawRect(frame, ui.Paint()..color = exportFrameGround);
       clipToTheCanvas(canvas, cut.canvasSize, onTheRaster, 1);
       canvas.drawImage(shot, ui.Offset.zero, ui.Paint());
-      final recorded = recorder.endRecording();
+      recorded = recorder.endRecording();
       final made = await recorded.toImage(output.width, output.height);
-      recorded.dispose();
       if (asItStands?.thrown case (final error, final stack)) {
         made.dispose();
         Error.throwWithStackTrace(error, stack);
       }
       return made;
     } finally {
+      recorded?.dispose();
       target.free();
       shot?.dispose();
       // 🚨Cut, the picture is left as the panel found it: one a step of

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -18,10 +19,14 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/engine_chain_holds.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts;
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
+    show PromotedStrokeTile;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -51,6 +56,7 @@ void main() {
   const canvasSize = CanvasSize(width: 8 * tileSize, height: 8 * tileSize);
   const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const under = Color(0xFF203040);
+  const stroke = [0x40, 0x00, 0x00, 0xFF];
   const ink = [0x00, 0x40, 0x00, 0xFF];
   const other = [0x00, 0x00, 0x40, 0xFF];
   const key = BrushFrameKey(
@@ -314,6 +320,18 @@ void main() {
     );
   }
 
+  /// A step of the pen over the tile at [coord].
+  Future<void> aStep(
+    WidgetTester tester,
+    ActiveStrokeOverlayModel overlay,
+    TileCoord coord,
+  ) async {
+    overlay.showResultTiles([
+      PromotedStrokeTile(coord, tileOf(coord, stroke, (_) => true), 1),
+    ]);
+    await tester.pump();
+  }
+
   bool onlyTheScreen(Shot shot) {
     for (var at = 0; at < shot.rgba.length; at += 4) {
       if (Color.fromARGB(
@@ -343,13 +361,93 @@ void main() {
       final screen = GlobalKey();
       final nodes = nodesOf();
       expect(waitsForItsPlugins(nodes), waits, reason: '⛔premise');
-      await standOn(tester, screen, nodes, laidBy: StoreLayingNothing());
+      final store = StoreLayingNothing();
+      await itsToolsOpen(tester, store);
+      await standOn(tester, screen, nodes, laidBy: store);
       await tester.pump();
 
       expect(onlyTheScreen(await shotOf(tester, screen)), waits);
     });
 
   }
+
+  /// A canvas standing on a frame that waits for a plugin, its picture
+  /// made, over [store].
+  Future<
+    ({
+      ActiveStrokeOverlayModel overlay,
+      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      handAnew,
+    })
+  >
+  standingMade(WidgetTester tester, _WritesWhenLet store) async {
+    final (picture: picture, :overlay, :handAnew, store: _) = await standOn(
+      tester,
+      GlobalKey(),
+      inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
+      laidBy: store,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    return (overlay: overlay, handAnew: handAnew);
+  }
+
+  testWidgets('a frame that waits for a plugin: one write at a time, the '
+      'steps meanwhile going in together, in the next', (tester) async {
+    final store = _WritesWhenLet();
+    addTearDown(store.dispose);
+    final (:overlay, handAnew: _) = await standingMade(tester, store);
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    expect(store.asked, hasLength(1), reason: 'the first is on its way');
+    await aStep(tester, overlay, TileCoord(x: 1, y: 1));
+    await aStep(tester, overlay, TileCoord(x: 2, y: 2));
+    expect(store.asked, hasLength(1), reason: 'the others wait behind it');
+
+    store.letOneGo();
+    expect(
+      await settleAsync(tester, () => store.asked.length == 2),
+      isTrue,
+      reason: 'the next goes once the first is in',
+    );
+    final next = store.asked.last.rect;
+    expect(
+      next.contains(const Offset(tileSize * 1.5, tileSize * 1.5)) &&
+          next.contains(const Offset(tileSize * 2.5, tileSize * 2.5)),
+      isTrue,
+      reason: 'the steps that waited, in one',
+    );
+    store.letAllGo();
+    await lendBothClocks(tester, rounds: 2);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame that waits for a plugin: a step whose frame stands no '
+      'more once its plugin has run does not go in', (tester) async {
+    final store = _WritesWhenLet();
+    addTearDown(store.dispose);
+    final (:overlay, :handAnew) = await standingMade(tester, store);
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    expect(store.asked, hasLength(1), reason: '⛔premise: on its way');
+    // The pen's row handed anew before it goes in: the frame the step was
+    // drawn by stands no more.
+    await handAnew();
+
+    store.letOneGo();
+    expect(
+      await settleAsync(tester, () => store.went.isNotEmpty),
+      isTrue,
+      reason: 'LIVENESS: answered',
+    );
+    expect(store.went, [false]);
+    store.letAllGo();
+    await tester.pumpWidget(const SizedBox());
+  });
 
   /// The columns [colour] shows in on [shot].
   Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
@@ -436,4 +534,50 @@ void main() {
     expect(differences(before, await shotOf(tester, screen)), isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+}
+/// A store whose writes through a frame's plugins go on when let
+/// ([letOneGo]), saying what each was asked and whether it went in.
+class _WritesWhenLet extends EngineFramePictureStore<FramePictureKey> {
+  _WritesWhenLet() : super(tools: () => appEngineFrameTools);
+
+  final List<({Rect rect, Completer<void> go})> asked = [];
+  final List<bool> went = [];
+  int _let = 0;
+  bool _allGo = false;
+
+  void letOneGo() => asked[_let++].go.complete();
+
+  void letAllGo() {
+    _allGo = true;
+    while (_let < asked.length) {
+      letOneGo();
+    }
+  }
+
+  @override
+  Future<bool> patchThrough({
+    required FramePictureKey from,
+    required FramePictureKey to,
+    required Rect rect,
+    required StackedFrame frame,
+    required bool Function() stands,
+    EngineChainHolds? holds,
+  }) async {
+    final go = Completer<void>();
+    asked.add((rect: rect, go: go));
+    if (_allGo) {
+      letOneGo();
+    }
+    await go.future;
+    final did = await super.patchThrough(
+      from: from,
+      to: to,
+      rect: rect,
+      frame: frame,
+      stands: stands,
+      holds: holds,
+    );
+    went.add(did);
+    return did;
+  }
 }

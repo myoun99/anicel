@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -152,13 +151,14 @@ void main() {
     ),
   );
 
-  RenderCustomPaint theView(WidgetTester tester) =>
-      tester.renderObject<RenderCustomPaint>(
-        find.descendant(
-          of: find.byType(FramePictureView),
-          matching: find.byType(CustomPaint),
-        ),
-      );
+  RenderObject theView(WidgetTester tester) => tester.renderObject(
+    find.descendant(
+      of: find.byType(FramePictureView),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is LeafRenderObjectWidget,
+      ),
+    ),
+  );
 
   /// What [shot] shows inside the page, where the cel is ink.
   List<int> onThePage(Shot shot) {
@@ -214,6 +214,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     final (:run, :live) = standing(layingNothing: true);
+    await itsToolsOpen(tester, run.pictures.store);
     final tree = treeOf();
     // ⚠️Held: in this runner a read lands in the microtasks after the
     // frame that asked it.
@@ -262,6 +263,7 @@ void main() {
     const other = [0x90, 0x30, 0x60, 0xFF];
     // Its picture held: what shows is the frame as it stands.
     final (:run, live: _) = standing(layingNothing: true, colour: other);
+    await itsToolsOpen(tester, run.pictures.store);
     expect(
       run.pictures.keyAsItStands(treeOf(), frame),
       first.run.pictures.keyAsItStands(treeOf(), frame),
@@ -288,6 +290,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     final (:run, live: _) = standing(layingNothing: true);
+    await itsToolsOpen(tester, run.pictures.store);
     Widget wholeFramesOnly(bool wholeFrames) => onAScreen(
       screen,
       size: viewSize,

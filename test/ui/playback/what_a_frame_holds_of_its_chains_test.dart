@@ -40,15 +40,25 @@ void main() {
   opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 32, height: 24);
 
-  Layer row(String id, {LayerId? folder}) => Layer(
+  /// The row of cel `a-0` held for two frames, or [turning] to `a-1` at
+  /// the second.
+  Layer row(String id, {LayerId? folder, bool turning = false}) => Layer(
     id: LayerId(id),
     name: id,
     folderId: folder,
-    frames: [Frame(id: FrameId('$id-0'), duration: 2, strokes: const [])],
-    timeline: {0: TimelineExposure.drawing(FrameId('$id-0'), length: 2)},
+    frames: [
+      for (final cel in turning ? const ['0', '1'] : const ['0'])
+        Frame(id: FrameId('$id-$cel'), duration: 1, strokes: const []),
+    ],
+    timeline: turning
+        ? {
+            0: TimelineExposure.drawing(FrameId('$id-0'), length: 1),
+            1: TimelineExposure.drawing(FrameId('$id-1'), length: 1),
+          }
+        : {0: TimelineExposure.drawing(FrameId('$id-0'), length: 2)},
   );
 
-  EditorSessionManager session() {
+  EditorSessionManager session({bool turning = false}) {
     const folder = LayerId('folder');
     return EditorSessionManager(
       initialProject: Project(
@@ -66,7 +76,7 @@ void main() {
                 duration: 2,
                 canvasSize: canvasSize,
                 layers: [
-                  row('a', folder: folder),
+                  row('a', folder: folder, turning: turning),
                   createFolderLayer(id: folder, name: 'F').copyWith(
                     effects: [
                       LayerEffect(
@@ -87,33 +97,35 @@ void main() {
     );
   }
 
-  /// [s] with its row drawn, and the frame [at].
+  /// [s] with the cels of its row drawn, each its own, and the frame [at].
   DemandedPicture drawn(EditorSessionManager s, {int at = 0}) {
     final cut = s.requireActiveCut;
-    BrushFrameEditingCoordinator(
-      initialFrameKey: s.brushFrameKeyForCut(
-        cut,
-        const LayerId('a'),
-        const FrameId('a-0'),
-      ),
-      frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: const BrushHistoryPolicy(),
-    ).commitSourceStroke(
-      sourceDabs: [
-        BrushDab(
-          center: CanvasPoint(x: 12, y: 12),
-          color: 0xFF000000,
-          size: 10,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.square,
-          pressure: 1,
-          sequence: 0,
+    for (final (index, frame) in cut.layers.first.frames.indexed) {
+      BrushFrameEditingCoordinator(
+        initialFrameKey: s.brushFrameKeyForCut(
+          cut,
+          const LayerId('a'),
+          frame.id,
         ),
-      ],
-    );
+        frameStore: s.renderCaches.brushFrameStore,
+        sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 8.0 + 8 * index, y: 12),
+            color: 0xFF000000,
+            size: 10,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.square,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+    }
     return (
       cut: s.requireActiveCut,
       frameIndex: at,
@@ -187,34 +199,42 @@ void main() {
     });
   });
 
-  testWidgets('⚖️the chains laid ahead take what the line has free, the ones '
-      'under a canvas what it can give them', (tester) async {
+  testWidgets('⚖️the chains laid ahead take what the line has free beside '
+      'the pictures: past it the one used longest ago goes', (tester) async {
     await tester.runAsync(() async {
-      Future<({int ahead, int held})> on(int? budget) async {
-        final s = session();
+      /// What is held and what the pictures weigh, the two frames of cels
+      /// of their own laid ahead on a line of [budget].
+      Future<({int ahead, int pictures})> on(int? budget) async {
+        final s = session(turning: true);
         addTearDown(s.dispose);
         if (budget != null) {
           s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(budget);
         }
         final pictures = s.playbackRig.framePictures;
-        final picture = drawn(s);
-        await pictures.make(picture, shouldAbort: () => false);
+        final first = drawn(s);
+        await pictures.make(first, shouldAbort: () => false);
+        await pictures.make(
+          (
+            cut: first.cut,
+            frameIndex: 1,
+            paintPaper: true,
+            ghosts: FrameGhosts.none,
+          ),
+          shouldAbort: () => false,
+        );
         return (
           ahead: pictures.aheadNodes.heldBytes,
-          held: pictures.heldBytes,
+          pictures: s.renderCaches.framePictureStore.estimatedBytes,
         );
       }
 
       final wide = await on(null);
       expect(wide.ahead, greaterThan(0), reason: '⛔premise');
-      final picture = session();
-      addTearDown(picture.dispose);
-      final pictures = picture.playbackRig.framePictures;
-      await pictures.make(drawn(picture), shouldAbort: () => false);
-      final bytes = picture.renderCaches.framePictureStore.estimatedBytes;
 
-      final narrow = await on(bytes + wide.ahead - 1);
-      expect(narrow.ahead, 0, reason: 'no room left beside the picture');
+      final narrow = await on(wide.pictures + wide.ahead - 1);
+      expect(narrow.pictures, wide.pictures, reason: '⛔premise');
+      expect(narrow.ahead, lessThan(wide.ahead));
+      expect(narrow.ahead, greaterThan(0), reason: 'the last stays');
     });
   });
 
@@ -251,7 +271,12 @@ void main() {
       line.respondToMemoryPressure();
       expect(pictures.heldBytes, 0);
 
-      await shown(s, picture);
+      await shown(s, (
+        cut: picture.cut,
+        frameIndex: 0,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      ));
       expect(pictures.heldBytes, greaterThan(0), reason: '⛔premise');
       s.dispose();
       expect(pictures.heldBytes, 0);

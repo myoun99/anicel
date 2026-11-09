@@ -6,8 +6,6 @@ part of '../canvas_layer_stack_view.dart';
 /// ([GpuScreen]) — the world a frame's picture holds, the page and every
 /// row's content ([StackedFrame.drawing]) — and shown through the view's
 /// camera onto a target: a [ScreenTexture]'s next ([ScreenTexture.present]).
-// ⏳The widget asks it at the end of the flip lane (관제 11-08 15:02 ⓐ);
-// [ScreenTexture] says why.
 final class EngineStackScreen {
   /// A screen of [composite]'s, laying cel numbers in [letters].
   EngineStackScreen(this._composite, this._letters);
@@ -82,12 +80,7 @@ final class EngineStackScreen {
       final extent when extent.isEmpty => const Rect.fromLTWH(0, 0, 1, 1),
       final extent => extent,
     };
-    var screen = _screen;
-    if (screen == null || world != _kept) {
-      screen?.free();
-      screen = _screen = GpuScreen(_composite, _edgesOf(world));
-      _kept = world;
-    }
+    final stages = FxPluginStages.recording;
     final ledger = EngineTileLedger.instance;
     final paper = frame._painter.canvasSize.canvasRect;
     final origins =
@@ -106,14 +99,39 @@ final class EngineStackScreen {
           paper: paper,
           letters: _letters,
           holding: _holding(holds, pass, origins, paper),
+          plugins: stages == null
+              ? null
+              : (steps: stages, engine: _composite.engine),
         );
-        lay(screen!, ledger.pool, plan, world);
+        if (stages != null && stages.aRoundComesAfter) {
+          // On no screen: a round with a plug-in's step still to run lays
+          // what the next one reads, and the screen stays on what it holds
+          // (🗣️I-132-Q34 a).
+          final nowhere = GpuScreen(_composite, _edgesOf(world));
+          try {
+            lay(nowhere, ledger.pool, plan, world);
+          } finally {
+            nowhere.free();
+          }
+        } else {
+          lay(_screenOver(world), ledger.pool, plan, world);
+        }
       } finally {
         plan.free();
         holds?.settle();
       }
     });
     _range.settle();
+  }
+
+  /// The screen kept, made again where it is not of [world].
+  GpuScreen _screenOver(Rect world) {
+    if (_screen case final screen? when world == _kept) {
+      return screen;
+    }
+    _screen?.free();
+    _kept = world;
+    return _screen = GpuScreen(_composite, _edgesOf(world));
   }
 
   /// The holding of the chains [pass] plans ([ChainHolding]): a node's, on

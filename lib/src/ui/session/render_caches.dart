@@ -326,7 +326,7 @@ class RenderCaches {
   /// shows ([FramePictureKey]), so an edit asks for another picture and
   /// none needs telling ([FramePictures]).
   late final EngineFramePictureStore<FramePictureKey> framePictureStore =
-      EngineFramePictureStore(tools: appEngineFrameTools);
+      EngineFramePictureStore(tools: () => appEngineFrameTools);
 
   /// A5 — the trailing edge of an edit burst, so the warming queue
   /// restarts ONCE per burst instead of once per dab commit. Only the

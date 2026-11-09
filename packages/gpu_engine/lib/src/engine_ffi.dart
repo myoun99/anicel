@@ -21,6 +21,8 @@ final class MaskPlane extends Opaque {}
 
 final class HeldChains extends Opaque {}
 
+final class ChainRead extends Opaque {}
+
 final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
@@ -464,6 +466,49 @@ external int planChainHeld(
   int chain,
   Pointer<HeldChains> held,
   int id,
+);
+
+@Native<Int32 Function(Pointer<Planned>, Uint32, Pointer<ChainRead>)>(
+  symbol: 'gpu_engine_plan_chain_read',
+)
+external int planChainRead(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<ChainRead> read,
+);
+
+@Native<
+  Int32 Function(Pointer<Planned>, Uint32, Pointer<Int32>, Pointer<Uint8>, Size)
+>(symbol: 'gpu_engine_plan_chain_put')
+external int planChainPut(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<Int32> picture,
+  Pointer<Uint8> pixels,
+  int length,
+);
+
+@Native<Pointer<ChainRead> Function()>(symbol: 'gpu_engine_chain_read_new')
+external Pointer<ChainRead> chainReadNew();
+
+@Native<Void Function(Pointer<ChainRead>)>(symbol: 'gpu_engine_chain_read_free')
+external void chainReadFree(Pointer<ChainRead> read);
+
+@Native<
+  Bool Function(
+    Pointer<Engine>,
+    Pointer<ChainRead>,
+    Pointer<Int32>,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'gpu_engine_chain_read_pixels')
+external bool chainReadPixels(
+  Pointer<Engine> engine,
+  Pointer<ChainRead> read,
+  Pointer<Int32> picture,
+  Pointer<Uint8> out,
+  int length,
 );
 
 @Native<Pointer<HeldChains> Function()>(symbol: 'gpu_engine_held_new')

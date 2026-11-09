@@ -9,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/layer_effect.dart';
+import '../../native/plan_plugins.dart';
 import '../../services/brush_stroke_blend.dart' show engineSurfaceRegionPixels;
 import '../../services/cel_plugin_pass.dart'
     show fxPluginRowsOf, fxPluginValuesOf;
@@ -41,12 +42,23 @@ import '../../services/cel_text_laying.dart';
 /// 🚨STAGES LIVE FOR ONE RECORDING: [recordedThrough] makes them and lets
 /// them go — what they hold is the working set of one picture, and no
 /// route holds them to let go of.
-final class FxPluginStages {
+final class FxPluginStages implements PluginSteps {
   FxPluginStages._();
 
   final List<_Stage> _stages = [];
   int _met = 0;
   bool _missed = false;
+  int _round = 0;
+
+  /// The stages of the recording running here, if one is.
+  static FxPluginStages? get recording {
+    final stages = Zone.current[_zoneKey];
+    return stages is FxPluginStages ? stages : null;
+  }
+
+  /// Whether this round met a step still to be run and another comes after
+  /// it: what it draws is no picture.
+  bool get aRoundComesAfter => _missed && _round < _rounds;
 
   static final Object _zoneKey = Object();
 
@@ -75,8 +87,9 @@ final class FxPluginStages {
     final stages = FxPluginStages._();
     try {
       var made = stages._recording(record);
-      for (var round = 0; stages._missed && round < _rounds; round += 1) {
+      while (stages.aRoundComesAfter) {
         await stages._resolve();
+        stages._round += 1;
         discard(made);
         made = stages._recording(record);
       }
@@ -132,23 +145,61 @@ final class FxPluginStages {
       _unrun += 1;
       return null;
     }
-    return stages._take(input, effect, scale: scale, paper: paper);
+    final met = stages._taken(
+      effect,
+      _ImageInput(input),
+      width: input.width,
+      height: input.height,
+      scale: scale,
+      paper: paper,
+    );
+    // Null where it failed: drawn as if off, as a plugin that fails is
+    // ([FxPluginRunner.render]).
+    return met?.image?.clone();
   }
 
-  ui.Image? _take(
-    ui.Image input,
-    ResolvedLayerEffect effect, {
+  @override
+  ({bool ran, Uint8List? premultiplied}) stepOf(
+    ResolvedLayerEffect effect,
+    PluginStepInput input, {
+    required int width,
+    required int height,
+    required ui.Rect paper,
+  }) {
+    final met = _taken(
+      effect,
+      input,
+      width: width,
+      height: height,
+      scale: 1,
+      paper: paper,
+    );
+    return (ran: met != null, premultiplied: met?.output);
+  }
+
+  /// The stage that met this step and has run; null, [input] held for the
+  /// run, where it is still to be.
+  _Stage? _taken(
+    ResolvedLayerEffect effect,
+    PluginStepInput input, {
+    required int width,
+    required int height,
     required double scale,
     required ui.Rect paper,
   }) {
     final at = _met++;
-    final asked = _Stage(effect, input, scale: scale, paper: paper);
+    final asked = _Stage(
+      effect,
+      input,
+      width: width,
+      height: height,
+      scale: scale,
+      paper: paper,
+    );
     final there = at < _stages.length ? _stages[at] : null;
     if (there != null && there.ran && there.isAskedAs(asked)) {
       asked.dispose();
-      // Null where it failed: drawn as if off, as a plugin that fails is
-      // ([FxPluginRunner.render]).
-      return there.made?.clone();
+      return there;
     }
     // Not run yet, it takes its input as this round met it: the round
     // before may have drawn a step under it as if off.
@@ -164,16 +215,32 @@ final class FxPluginStages {
   }
 }
 
+/// A picture of the walk's as a plugin's step reads it.
+final class _ImageInput implements PluginStepInput {
+  _ImageInput(ui.Image image) : _image = image.clone();
+
+  final ui.Image _image;
+
+  @override
+  Future<Uint8List?> premultiplied() async {
+    final data = await _image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    return data?.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
+
+  @override
+  void free() => _image.dispose();
+}
+
 /// A plugin's step as a recording met it: its input, held until it is run.
 final class _Stage {
   _Stage(
     this.effect,
-    ui.Image input, {
+    PluginStepInput input, {
+    required this.width,
+    required this.height,
     required this.scale,
     required this.paper,
-  }) : _input = input.clone(),
-       width = input.width,
-       height = input.height;
+  }) : _input = input;
 
   final ResolvedLayerEffect effect;
   final double scale;
@@ -181,12 +248,20 @@ final class _Stage {
   final int width;
   final int height;
 
-  ui.Image? _input;
+  PluginStepInput? _input;
 
-  /// What the plugin made, the step's own until it is let go of.
-  ui.Image? made;
+  /// What the plugin made, premultiplied.
+  Uint8List? output;
 
-  /// Whether it has been run — [made] null after it is a plugin that
+  ui.Image? _image;
+
+  /// [output] as a picture, the step's own until it is let go of.
+  ui.Image? get image => _image ??= switch (output) {
+    null => null,
+    final made => pictureOf(_PremultipliedRows(made, width, height)),
+  };
+
+  /// Whether it has been run — [output] null after it is a plugin that
   /// failed.
   bool ran = false;
 
@@ -206,21 +281,17 @@ final class _Stage {
     if (input == null || run == null) {
       return;
     }
-    final data = await input.toByteData(format: ui.ImageByteFormat.rawRgba);
-    if (data == null || _input == null) {
+    final pixels = await input.premultiplied();
+    if (pixels == null || _input == null) {
       return;
     }
-    final pixels = data.buffer.asUint8List(
-      data.offsetInBytes,
-      data.lengthInBytes,
-    );
-    made = _ranThrough(run, pixels);
+    final made = output = _ranThrough(run, pixels);
     run.told?.call(failed: made == null);
   }
 
-  /// [premultiplied] — this step's input — through [run]'s plugin, as a
-  /// picture; null where the plugin fails.
-  ui.Image? _ranThrough(FxPluginRun run, Uint8List premultiplied) {
+  /// [premultiplied] — this step's input — through [run]'s plugin; null
+  /// where the plugin fails.
+  Uint8List? _ranThrough(FxPluginRun run, Uint8List premultiplied) {
     final canvas = CanvasSize(
       width: (paper.width / scale).round(),
       height: (paper.height / scale).round(),
@@ -251,7 +322,7 @@ final class _Stage {
       return null;
     }
     zeroFullyClearPixels(output);
-    return pictureOf(_PremultipliedRows(output, width, height));
+    return output;
   }
 
   /// [row]'s own picture on this step's grid — its first pixel at ([left],
@@ -290,10 +361,11 @@ final class _Stage {
   }
 
   void dispose() {
-    _input?.dispose();
+    _input?.free();
     _input = null;
-    made?.dispose();
-    made = null;
+    _image?.dispose();
+    _image = null;
+    output = null;
   }
 }
 

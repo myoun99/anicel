@@ -128,9 +128,10 @@ CompositeLayerSignature _signatureOf(_StackedCel stacked, int revision) =>
 /// [live], the rows a canvas that stands holds live. A row with none that
 /// a cel number is written on stands bare ([mapCompositeLeaves]).
 ///
-/// Under [held], its nodes find the pictures they were drawn into before
-/// ([HeldNodePictures]) — each row signed as the frame's key signs it, its
-/// cel at the revision [held] reads ([framePictureKeyOf]).
+/// Each row signed as the frame's key signs it, its cel at [revisionOf]'s
+/// revision ([framePictureKeyOf]) — what a chain is held under on the engine
+/// (`EngineStackScreen`); under [held], its nodes find the pictures they
+/// were drawn into before ([HeldNodePictures]).
 StackedFrame stackedFrameOf(
   List<CompositeNode<CanvasStackRow>> nodes, {
   required FramePage page,
@@ -138,7 +139,9 @@ StackedFrame stackedFrameOf(
   ({LiveRows rows, LiftedRowPainters painters})? live,
   ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})?
   held,
+  int Function(BrushFrameKey cel)? revisionOf,
 }) {
+  final revision = revisionOf ?? held?.revisionOf;
   StoredRow? rowOf(
     CanvasStackRow row,
     BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
@@ -157,11 +160,8 @@ StackedFrame stackedFrameOf(
             ),
             tint: stacked.tint,
             ghost: row is CanvasGhostImageRequest,
-            signature: switch (held) {
-              (:final revisionOf, pictures: _) => _signatureOf(
-                stacked,
-                revisionOf(stacked.cel),
-              ),
+            signature: switch (revision) {
+              final revision? => _signatureOf(stacked, revision(stacked.cel)),
               null => null,
             },
           );

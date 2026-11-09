@@ -805,6 +805,10 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// be: a step that did not go in shows as the frame stands, never as the
   /// picture without it (F-509).
   void _writeIn(FramePictureKey key, StackedFrame live, Rect dirty) {
+    if (_waits) {
+      _writeThrough(key, live, dirty);
+      return;
+    }
     final to = _keptUnder(key, _held);
     _writing = true;
     try {
@@ -883,6 +887,60 @@ class _FramePictureViewState extends State<FramePictureView> {
       viewport: viewport,
       devicePixelRatio: devicePixelRatio,
     );
+  }
+
+  /// Where the live rows moved that is still to go through a frame's
+  /// plugins ([_writeThrough]).
+  Rect? _owed;
+
+  /// Whether a write is on its way through them.
+  bool _writingThrough = false;
+
+  /// [_writeIn] of a frame that waits for its plugins: the screen stays on
+  /// the picture as it is until they have run (🗣️I-132-Q34 a), one write at
+  /// a time — the steps meanwhile go in together, in the next. A step whose
+  /// frame stands no more by then does not go in.
+  void _writeThrough(FramePictureKey key, StackedFrame live, Rect dirty) {
+    final owed = _owed?.expandToInclude(dirty) ?? dirty;
+    if (_writingThrough) {
+      _owed = owed;
+      return;
+    }
+    _owed = null;
+    _writingThrough = true;
+    final to = _keptUnder(key, _held);
+    unawaited(
+      _store
+          .patchThrough(
+            from: _keptAs!,
+            to: to,
+            rect: owed,
+            frame: live,
+            holds: _pictures.heldNodes,
+            stands: () => mounted && identical(_live, live),
+          )
+          .then(
+            (went) {
+              _writingThrough = false;
+              if (went && mounted) {
+                _pictures.giveWayToSteps();
+                _keepAs(to);
+              }
+              _writeWhatIsOwed();
+            },
+            onError: (Object error, StackTrace stack) {
+              _writingThrough = false;
+              _report((error, stack), 'writing a step through its plugins');
+            },
+          ),
+    );
+  }
+
+  void _writeWhatIsOwed() {
+    final (owed, live, key) = (_owed, _live, _showing);
+    if (mounted && owed != null && live != null && key != null) {
+      _writeThrough(key, live, owed);
+    }
   }
 
   /// The picture to show, where the frame is not drawn as it stands: a

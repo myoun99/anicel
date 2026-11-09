@@ -443,7 +443,7 @@ const _imageHolders = <String, String>{
   // pictures since grid-on-the-engine ⑤, no `ui.Image`, and are still
   // weighed by `tileImageBytes`, which the test above holds to the census.
   // … holdings counted all along, by a counter of their own file …
-  'lib/src/ui/playback/frame_picture_store.dart → _entries':
+  'lib/src/ui/playback/engine_frame_picture_store.dart → _entries':
       'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
   'lib/src/ui/widgets/still_raster.dart → _owed':
@@ -495,7 +495,7 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
       'one compose\'s picture, in pieces past the side (piecesOver): its '
       'holder keeps and counts them as it did the one image',
-  'lib/src/ui/playback/frame_picture_store.dart → waiting':
+  'lib/src/ui/playback/engine_frame_picture_store.dart → waiting':
       'a patch\'s texels from its render to the write that takes them, a '
       'batch at a time, let go of once written (_writeWaiting) — a write\'s '
       'round trip, never drawn: ↩️billed with their picture while they were '

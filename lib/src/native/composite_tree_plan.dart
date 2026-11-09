@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart';
@@ -6,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import '../core/color_matrix.dart';
 import '../core/display_filter.dart';
 import '../core/draw_space.dart';
+import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/composite_tree.dart';
@@ -49,6 +51,7 @@ import '../ui/canvas/tile_origin.dart' show tileCoordsWorldRect;
 import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
 import 'engine_letters.dart';
 import 'engine_tile_ledger.dart';
+import 'plan_plugins.dart';
 
 /// What a row of a composite tree lays on the engine. Each route folds its
 /// own rows into these ([mapCompositeLeaves]) and [planCompositeTree] lays
@@ -173,7 +176,13 @@ void planCompositeTree(
   required ui.Rect paper,
   required EngineLetters letters,
   ChainHolding? holding,
-}) => _TreePlan(_TileLaying(plan, hold, paper), letters, holding)._lay(nodes);
+  PlanPlugins? plugins,
+}) => _TreePlan(
+  _TileLaying(plan, hold, paper),
+  letters,
+  holding,
+  plugins,
+)._lay(nodes);
 
 /// Where the chains a plan runs are held past it ([GpuHeldChains]): the
 /// hold, and the number [idOf] gives the chain of a node — null for one
@@ -191,12 +200,40 @@ typedef ChainHolding = ({
   int? Function(CompositeNode<EngineRow> node) idOf,
 });
 
+/// [picture] as a chain had come to it, read back ([GpuChainRead]).
+final class _ChainPicture implements PluginStepInput {
+  _ChainPicture(this._read, this._picture);
+
+  final GpuChainRead _read;
+  final (int, int, int, int) _picture;
+
+  @override
+  Future<Uint8List?> premultiplied() async {
+    final pixels = _read.pixels(_picture);
+    if (pixels != null) {
+      premultiplyRgbaInPlace(pixels);
+    }
+    return pixels;
+  }
+
+  @override
+  void free() => _read.free();
+}
+
 class _TreePlan {
-  _TreePlan(this._tiles, this.letters, this.holding);
+  _TreePlan(this._tiles, this.letters, this.holding, this.plugins);
 
   final _TileLaying _tiles;
   final EngineLetters letters;
   final ChainHolding? holding;
+
+  /// What the plug-ins' steps are run through — none where no route waits
+  /// for them, each drawn as if off.
+  final PlanPlugins? plugins;
+
+  /// Whether the chain last asked for ([_chainOf]) has a plug-in's step
+  /// drawn as if off: no picture to hold ([_hold]).
+  bool _chainHasAStepOff = false;
 
   GpuPlan get plan => _tiles.plan;
   ui.Rect get paper => _tiles.paper;
@@ -493,6 +530,7 @@ class _TreePlan {
     required LayerPlacement? space,
     required _Reads reads,
   }) {
+    _chainHasAStepOff = false;
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
     final carried = paintedEffectsOf(steps.finalEffects);
     final last = carried.lastIndexWhere((painted) => painted is GaussianBlur);
@@ -532,7 +570,10 @@ class _TreePlan {
   /// number.
   void _hold(int? chain, CompositeNode<EngineRow>? shows) {
     final holding = this.holding;
-    if (chain == null || shows == null || holding == null) {
+    if (chain == null ||
+        shows == null ||
+        holding == null ||
+        _chainHasAStepOff) {
       return;
     }
     if (holding.idOf(shows) case final id?) {
@@ -619,12 +660,42 @@ class _TreePlan {
       null => const [],
       final blur => [(chain) => _onThePaper(chain, blur, picture)],
     },
-    // ⏳A plug-in's step is the host's: a plan cuts its chain there
-    // (rust/src/kernels/chain/mod.rs).
-    PluginEffect(:final effect) => throw UnsupportedError(
-      'a plug-in on the engine: $effect',
-    ),
+    PluginEffect(:final effect) => _pluginStep(effect, picture),
   };
+
+  /// [effect]'s step: the host's, run over [picture] as the chain has come
+  /// to it, a round of the plan each ([plugins], 🗣️I-132-Q34 a) — what it
+  /// made laid in place of what came before it once it has, and the chain
+  /// read there until. As if off where no route waits for it.
+  List<void Function(int chain)> _pluginStep(
+    ResolvedLayerEffect effect,
+    (int, int, int, int) picture,
+  ) {
+    final plugins = this.plugins;
+    if (plugins == null) {
+      _chainHasAStepOff = true;
+      return const [];
+    }
+    final (left, top, right, bottom) = picture;
+    final read = GpuChainRead(plugins.engine);
+    final step = plugins.steps.stepOf(
+      effect,
+      _ChainPicture(read, picture),
+      width: right - left,
+      height: bottom - top,
+      paper: paper.shift(ui.Offset(-left.toDouble(), -top.toDouble())),
+    );
+    if (!step.ran) {
+      _chainHasAStepOff = true;
+      return [(chain) => plan.chainRead(chain, read)];
+    }
+    return switch (step.premultiplied) {
+      null => const [],
+      final made => [
+        (chain) => plan.chainPut(chain, picture, straightRgbaFor(made)),
+      ],
+    };
+  }
 
   /// A key chain of [keys], one run of them: the tables the CPU walks
   /// them by, a set at a time ([keyRgbaTablesOf]).
