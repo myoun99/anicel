@@ -64,8 +64,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// complexity section refuses.
 /// 🔜**A third rectangle-mean makes it a law**, and then it is extracted and
 /// this comes back down. ↩️`boxFilterA8` went to the GPU engine on
-/// 2026-11-08 (`narrowed_cover`, 86 → 85 below): the brush's mean is the
-/// one left, and a third counts from it.
+/// 2026-11-08 and came back on 2026-11-09 (86 → 85 → 86 below).
 /// 89 → 88 (2026-09-10, the pixel pass's recipe builder). The pair that left:
 ///
 ///     lib/src/services/cel_pixel_overwrite.dart
@@ -240,8 +239,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// bake's average is the destination pixel's own box, by area. Those are
 /// two filters, and the difference is what the bake is for. 🧪Measured the
 /// same day, one raster through each: what a baked word loses through
-/// Blend is in the comment over `boxFilterA8` — over the engine's
-/// `narrowed_cover` since 2026-11-08.
+/// Blend is in the comment over `boxFilterA8`.
 ///
 /// 90 → 89 (2026-10-09, the .clip reader's chains): the pairs
 /// `_DocumentReader._picturesById` · `_track` and `_timelines` · `_track`
@@ -786,8 +784,11 @@ import '../../tool/refactor/clone_scan.dart';
 /// `boxFilterA8` — the average is the engine's `narrowed_cover` now, in
 /// Rust, which this scan does not read. 🔬`clones.dart` on the lane over
 /// its base (`296c7021a`, at 86): that pair gone, none added.
+/// 85 → 86 (2026-11-09, the narrowed word's average back from the GPU
+/// engine, connection-round-checklist-Q30): that pair again, the bake's
+/// Dart average being what 「화면 글자는 전부 Flutter」 reads back into.
 void main() {
-  const ceiling = 85;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

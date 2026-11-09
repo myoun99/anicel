@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// The timeline tile store is one per process. A test's drain can stop on a
-/// real await (a word's first bake reads the engine's faces) that its fake
+/// real await (a word's first bake reads its raster back) that its fake
 /// clock never finishes, with rasters still queued behind it; the next
 /// test's first request starts a drain of its own, which took the earlier
 /// test's rasters first — against that test's painter and resolvers, in
@@ -24,8 +24,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// every test. ⚠️The two tests run in this order on purpose.
 ///
 /// The first holds its drain where its drawing waits, on a wait that never
-/// ends: ↩️an upload was that await until grid-on-the-engine ⑤, and a
-/// faces read the engine has made once answers at once.
+/// ends: ↩️an upload was that await until grid-on-the-engine ⑤.
 void main() {
   setUpAll(openAppGpuEngine);
   var leftBehindAsks = 0;

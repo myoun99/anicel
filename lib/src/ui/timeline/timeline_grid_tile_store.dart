@@ -401,9 +401,8 @@ class TimelineGridTileStore {
     // to another row; Surface, 10-25), each tile ~0.3ms of ops and ~70µs of
     // raster through the door's picture (`pictureOf`, the C raster's before
     // grid-on-the-engine ⑤), ~1.5 tiles a step.
-    // A word never baked before is the one wait left: its bake answers in a
-    // future ([bakeWordCoverage] — the engine's faces are read off the
-    // bundle the first time), which a paint cannot wait for.
+    // A word never baked before is the one wait left: its bake reads the
+    // word back ([bakeWordCoverage]), which a paint cannot wait for.
     final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
     if (stale != null) {
       final baked = _landNow(engine, asked);
@@ -1130,9 +1129,9 @@ class TimelineGridTileStore {
   // --- Glyph A8 bake cache (T3) ---------------------------------------
   //
   // Foreground glyphs bake ONCE per (text, shape-style, DPR) into an A8
-  // coverage bitmap — the letters' ink alone, set and rastered by the GPU
-  // engine ([bakeWordCoverage]); tiles blit them through the op stream's
-  // GLYPH op, tinted with the painter's exact ink per cell.
+  // coverage bitmap (white text rendered off-screen, alpha extracted);
+  // tiles blit them through the op stream's GLYPH op, tinted with the
+  // painter's exact ink per cell.
 
   static const int _glyphCapacity = 1024;
   final BakeOnceLru<String, BakedWordCoverage?> _glyphs =

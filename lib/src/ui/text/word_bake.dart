@@ -1,18 +1,16 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart' show CustomPainter, RendererBinding;
 import 'package:flutter/scheduler.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuWord;
 
 import '../../core/bake_once_lru.dart';
 import '../../core/hashed_once.dart';
 import '../../core/lru.dart';
 import '../../models/rgba_image_bytes.dart';
-import '../../native/engine_faces.dart';
-import '../../native/engine_word.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import '../look_only_frames.dart';
 import '../quiet_turns.dart';
@@ -37,16 +35,22 @@ class BakedWordCoverage {
   final Uint8List alpha;
 }
 
-/// THE bake of a word: [painter] (laid out) narrowed by [fit] at [dpr], as
-/// coverage — what the timeline's tiles blit, and what a screen draws a
-/// narrowed word from ([paintBakedWord]).
+/// THE bake of a word: [painter] (laid out) narrowed by [fit] at [dpr],
+/// read back as coverage — what the timeline's tiles blit, and what a
+/// screen draws a narrowed word from ([paintBakedWord]).
 ///
-/// 🗣️THE GPU ENGINE SETS THE WORD (word-bake-Q1, 유저 2026-11-05: 「엔진이
-/// 글자를 직접 그린다」): each cluster where [painter]'s layout put it
-/// ([EngineWord]), in the app's faces ([EngineFaces]), rastered and
-/// narrowed by `kernels/letters/words.rs`. ↩️Until 2026-11-08 Flutter's
-/// engine rastered a picture of the word and the app read it back and
-/// averaged it here.
+/// 🗣️A SCREEN'S WORD IS FLUTTER'S RASTER (connection-round-checklist-Q30,
+/// 유저 2026-11-09: 「프레임블록같은 ui적인 요소가 플러터고 출력될 것에
+/// 찍히는건 엔진」 · 「출력에보이는거만 동일하면되는데」). What is stamped into
+/// the output is the GPU engine's; a word on a screen is one raster with the
+/// words beside it.
+/// ↩️From 2026-11-08 to 11-09 the GPU engine set this word (word-bake-Q1,
+/// 유저 2026-11-05: 「엔진이 글자를 직접 그린다」). 🔬Beside the un-narrowed
+/// words Flutter draws it stood −1.5 to +0.8 px off the centre of this bake,
+/// mostly higher, inked 0.88 to 1.34 times as much, and 48 of 216 bakes
+/// inked the same rows (flutter_tester, 9–20 px × ratio 1–2 × four words ×
+/// three narrowings): Flutter hints and puts the baseline on a whole pixel,
+/// the engine draws the outline as it is.
 ///
 /// 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
 ///
@@ -72,8 +76,8 @@ class BakedWordCoverage {
 ///
 /// The word is rasterised exactly as the un-narrowed names beside it are —
 /// ONE scale for both axes, its type's own whole number of times
-/// ([wordBakeScale]) — and the narrowing is done after, by averaging that
-/// raster into the narrowed box by area (`narrowed_cover`). A word narrowed
+/// ([wordBakeScale]) — and the narrowing is done here, by averaging that
+/// raster into the narrowed box by area ([boxFilterA8]). A word narrowed
 /// ALONG its line is then, down the line, the very raster its un-narrowed
 /// bake is, taken by the same whole rows — it stands on that bake's rows
 /// whatever draws the glyphs.
@@ -114,33 +118,27 @@ class BakedWordCoverage {
 /// narrowed to 0.7 stood 0.76px high and 0.42px left, beside neighbours
 /// baked at 1 that stood where they should (the 「3a만 … 위에」).
 ///
-/// The coverage is the letters' ink alone, whatever colour [painter] paints
-/// in: the colour, its alpha with it, is laid on where the word is drawn
-/// ([paintBakedWord]). ↩️It was the painted ink's alpha, the colour's own
-/// in it, and the word was tinted with the colour made opaque.
+/// The coverage is the painted ink's ALPHA, whatever colour [painter] paints
+/// in: the letters' ink alone for an opaque colour, so a word painted in
+/// another opaque colour is drawn from the same bake ([_inkless]). A
+/// translucent colour's alpha is in the raster, and the bake is that
+/// colour's own; [paintBakedWord] tints with the colour made opaque.
 ///
-/// Null for a word of no size, and for one the engine is not handed
-/// ([EngineWord.of]): a tile leaves either out (`TimelineGridTileStore`).
+/// Null for a word of no size: a tile leaves it out
+/// (`TimelineGridTileStore`).
 Future<BakedWordCoverage?> bakeWordCoverage(
   TextPainter painter, {
   required ({double x, double y}) fit,
   required double dpr,
   required double? fontSize,
 }) async {
-  final RecordedWord? word;
-  try {
-    word = recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize);
-  } on UnsupportedError {
-    return null;
-  }
+  final word = recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize);
   return word == null ? null : bakeRecordedWord(word);
 }
 
 /// [painter] as [bakeWordCoverage] rasters it — recorded, not yet
 /// rastered: what a paint that asks for a bake keeps of the word, the
-/// painter being that paint's ([BakedWords]). Null for a word of no size;
-/// throws [UnsupportedError] for one the engine is not handed
-/// ([EngineWord.of]).
+/// painter being that paint's ([BakedWords]). Null for a word of no size.
 RecordedWord? recordWord(
   TextPainter painter, {
   required ({double x, double y}) fit,
@@ -150,12 +148,18 @@ RecordedWord? recordWord(
   if (painter.width <= 0 || painter.height <= 0) {
     return null;
   }
+  // The raster is the word as it stands UN-narrowed with one final pixel of
+  // margin round it, [times] times over — one final pixel of margin is that
+  // many of its own.
+  final times = wordBakeScale(fontSize ?? legibleBakeSize).toInt();
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)
+    ..translate(times.toDouble(), times.toDouble())
+    ..scale(dpr * times);
+  painter.paint(canvas, Offset.zero);
   return RecordedWord._(
-    word: EngineWord.of(painter),
-    // The raster is the word as it stands UN-narrowed with one final pixel
-    // of margin round it, this many times over — one final pixel of margin
-    // is that many of its own.
-    times: wordBakeScale(fontSize ?? legibleBakeSize).toInt(),
+    picture: recorder.endRecording(),
+    times: times,
     width: painter.width,
     height: painter.height,
     fit: fit,
@@ -163,11 +167,11 @@ RecordedWord? recordWord(
   );
 }
 
-/// A word recorded for its bake ([recordWord]): its letters as the engine
-/// is handed them, and what its raster takes.
+/// A word recorded for its bake ([recordWord]): its picture, until
+/// [bakeRecordedWord] gives it back, and what reading its raster takes.
 final class RecordedWord {
   RecordedWord._({
-    required this.word,
+    required this.picture,
     required this.times,
     required this.width,
     required this.height,
@@ -175,7 +179,7 @@ final class RecordedWord {
     required this.dpr,
   });
 
-  final EngineWord word;
+  final ui.Picture picture;
   final int times;
   final double width;
   final double height;
@@ -183,45 +187,64 @@ final class RecordedWord {
   final double dpr;
 }
 
-/// [word] set and rastered by the engine as its coverage
-/// ([bakeWordCoverage]) — null where the bake refuses it.
+/// [word]'s raster read back as its coverage ([bakeWordCoverage]); its
+/// picture is given back whatever comes of it.
 Future<BakedWordCoverage?> bakeRecordedWord(RecordedWord word) async {
-  final RecordedWord(:times, :width, :height, :fit, :dpr) = word;
-  final faces = await EngineFaces.inOrderOf(word.word.families);
-  // ⚠️TWO holdings, two arms: the word handed over and its cover, each given
-  // back by structure whatever comes of the bake and the read.
-  final set = GpuWord();
+  final RecordedWord(:picture, :times, :fit, :dpr) = word;
+  final bigWidth = ((word.width * dpr).ceil() + 2) * times;
+  final bigHeight = ((word.height * dpr).ceil() + 2) * times;
+  // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
+  // survive a failed bake; and `toByteData` is awaited, so the image used to
+  // survive a failed read. Both are given back by structure now.
+  final ui.Image image;
   try {
-    word.word.handTo(set);
-    // ⛔No arm for the word that needs no average: the average of one pixel
-    // IS that pixel (`narrowed_cover`), so the raster comes through it as it
-    // is.
-    final cover = set.bake(
-      faces,
-      dpr: dpr,
-      times: times,
-      width: width,
-      height: height,
-      along: fit.x,
-      down: fit.y,
-    );
-    if (cover == null) {
-      return null;
-    }
-    try {
-      return BakedWordCoverage(
-        width: cover.width,
-        height: cover.height,
-        logicalWidth: width * fit.x,
-        logicalHeight: height * fit.y,
-        alpha: cover.read(),
-      );
-    } finally {
-      cover.free();
-    }
+    image = picture.toImageSync(bigWidth, bigHeight);
   } finally {
-    set.free();
+    picture.dispose();
   }
+  final ByteData? data;
+  try {
+    data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  } finally {
+    image.dispose();
+  }
+  if (data == null) {
+    return null;
+  }
+  final big = Uint8List(bigWidth * bigHeight);
+  for (var i = 0; i < big.length; i += 1) {
+    big[i] = data.getUint8(i * 4 + 3);
+  }
+  // The box the word is blitted by: its narrowed ink, and a pixel round it.
+  final width = (word.width * fit.x * dpr).ceil() + 2;
+  final height = (word.height * fit.y * dpr).ceil() + 2;
+  return BakedWordCoverage(
+    width: width,
+    height: height,
+    logicalWidth: word.width * fit.x,
+    logicalHeight: word.height * fit.y,
+    // ⛔No arm for the word that needs no average: the average of one pixel
+    // IS that pixel ([boxFilterA8]), so the raster comes through it as it
+    // is.
+    alpha: boxFilterA8(
+      big,
+      bigWidth,
+      bigHeight,
+      width,
+      height,
+      along: _narrowedSpan(times, fit.x),
+      down: _narrowedSpan(times, fit.y),
+    ),
+  );
+}
+
+/// What a pixel of the narrowed box covers of the raster, along one axis:
+/// the box's pixel 1 — the first past its margin — begins where the
+/// raster's own margin ends ([times] in), and a pixel takes [times] of the
+/// raster's for every [fit] of itself.
+BoxFilterSpan _narrowedSpan(int times, double fit) {
+  final step = times / fit;
+  return (origin: times - step, step: step);
 }
 
 /// Whether a word of type [fontSize] narrowed by [fit] is drawn from its
@@ -259,6 +282,116 @@ double wordBakeScale(double fontSize) {
 /// comparison point and it recovers most of the ink (mean 136 → 212).
 const double legibleBakeSize = 12;
 
+/// Where the pixels of a filtered bitmap lie on its source, along one axis:
+/// pixel `i` covers the source from `origin + i * step`, for `step`.
+typedef BoxFilterSpan = ({double origin, double step});
+
+/// Box-filters an A8 bitmap down to [tw]×[th]: each pixel the mean of the
+/// source it covers, BY AREA — a source pixel it covers in part counts for
+/// that part.
+///
+/// [along] and [down] say what the pixels cover; left out, the whole source
+/// is laid over the whole target. What a pixel covers past the source's
+/// edge is empty.
+///
+/// ⛔AVERAGE, not sample. Point-sampling a big raster back down would
+/// reproduce the blotchiness this exists to remove — the whole gain is
+/// that every source pixel under a destination pixel contributes.
+///
+/// ⛔IN WHOLE NUMBERS (a cover is counted in [_coverUnit]ths of a pixel):
+/// a pixel that covers whole source pixels is their plain mean, a field of
+/// one value stays that value at any ratio, and the average of ONE pixel is
+/// that pixel — which is how a word that needs no average keeps the pixels
+/// it has always had (유저 2026-08-28: 「줌인하면 텍스트는 선명하게
+/// 보고싶다」).
+///
+/// ↩️At a ratio that was no whole number it took every source pixel a
+/// window TOUCHED, whole, so neighbouring windows shared pixels — near
+/// enough while only whole ratios were asked of it. A word narrowed to 0.85
+/// asks for 1.18 pixels a pixel ([bakeWordCoverage]).
+///
+/// ⛔NOT THE APP'S ONE RESAMPLER (`services/resample` — `resampleCoverage`
+/// is how a brush tip's coverage changes size), and not by oversight. Its
+/// Blend weighs under a TENT as wide as the reduction — the pixel's own
+/// box, and a reconstruction on top of it — where a baked word is the box
+/// alone: how much of THIS pixel is ink. 🧪Measured 2026-10-08 (the app's
+/// face on Impeller, one raster through each). Through Blend a 9px name,
+/// which is rasterised twice over and shrunk whether it is narrowed or
+/// not, spreads onto a row this leaves clear, peaks lower (「3a」 at ratio
+/// 1: 149 for 200) and keeps 16–30% less edge contrast; a 12px name
+/// narrowed to a half or under keeps 14–32% less along the line; and past
+/// sixteen source pixels a pixel (`kResampleRadiusCeiling`) Blend stops
+/// averaging, which a narrowing to a twentieth asks of a 9px name — its
+/// ink came out from a fifth short to a third over.
+///
+/// ⛔NOT A PICTURE'S OWN MIP CHAIN EITHER (`display_resample.dart`), which
+/// would spare a paint the wait for its bake. A chain halves both axes at
+/// once, and a word narrows along its line alone: 🧪measured 2026-10-30
+/// (the app's face on Impeller, 52 words × types × narrowings, one raster
+/// through each, `medium`), 34 came out on more rows than this leaves — a
+/// 12px 「12」 narrowed to a quarter inks all 14 rows of its box for 9, peak
+/// 76 for 214, the blur of F-297 back. Even narrowed by a half both ways its
+/// levels stand half a texel off these windows, the margin being one pixel.
+Uint8List boxFilterA8(
+  Uint8List src,
+  int sw,
+  int sh,
+  int tw,
+  int th, {
+  BoxFilterSpan? along,
+  BoxFilterSpan? down,
+}) {
+  final columns = _coversOf(along ?? (origin: 0, step: sw / tw), tw, sw);
+  final rows = _coversOf(down ?? (origin: 0, step: sh / th), th, sh);
+  final out = Uint8List(tw * th);
+  for (var y = 0; y < th; y += 1) {
+    final row = rows[y];
+    for (var x = 0; x < tw; x += 1) {
+      final column = columns[x];
+      var acc = 0;
+      for (var j = 0; j < row.weights.length; j += 1) {
+        final line = (row.first + j) * sw + column.first;
+        var inLine = 0;
+        for (var i = 0; i < column.weights.length; i += 1) {
+          inLine += src[line + i] * column.weights[i];
+        }
+        acc += inLine * row.weights[j];
+      }
+      out[y * tw + x] = acc ~/ (row.whole * column.whole);
+    }
+  }
+  return out;
+}
+
+/// What one filtered pixel covers of its source along one axis: the source
+/// pixels from [first] on, each by its covered part in [_coverUnit]ths, and
+/// the [whole] of the cover — the part past the source's edges counted in.
+typedef _Cover = ({int first, List<int> weights, int whole});
+
+const int _coverUnit = 4096;
+
+List<_Cover> _coversOf(BoxFilterSpan span, int count, int extent) => [
+  for (var index = 0; index < count; index += 1)
+    _coverOf(span.origin + index * span.step, span.step, extent),
+];
+
+_Cover _coverOf(double from, double length, int extent) {
+  final to = from + length;
+  final start = from.floor();
+  final first = math.max(0, start);
+  final weights = <int>[];
+  var whole = 0;
+  for (var pixel = start; pixel < to; pixel += 1) {
+    final covered = math.min(to, pixel + 1.0) - math.max(from, pixel);
+    final weight = (covered * _coverUnit).round();
+    whole += weight;
+    if (pixel >= first && pixel < extent) {
+      weights.add(weight);
+    }
+  }
+  return (first: first, weights: weights, whole: whole);
+}
+
 /// The pixels a bake is cut for: the ROOT TRANSFORM's ratio — null with no
 /// view on screen (a painter called by itself), where no word is baked and
 /// each is painted as it always was.
@@ -285,7 +418,7 @@ double? wordBakePixelRatio() {
 /// same way, from a picture or from decoded pixels alike, at `low`; only a
 /// raster averaged on the CPU — the tiles' bake — came out smooth. So a
 /// narrowed word on a screen is drawn from that bake, as a tile word is.
-/// (`medium` does not speck, and is no answer either: `narrowed_cover`.)
+/// (`medium` does not speck, and is no answer either: [boxFilterA8].)
 ///
 /// Only where the bake would differ: a word whose narrowed type is under
 /// [legibleBakeSize] ([wordIsBaked]). Anything the rasteriser draws well is
@@ -335,11 +468,13 @@ bool paintBakedWord(
       painter.width * fit.x + 2 / dpr,
       painter.height * fit.y + 2 / dpr,
     ),
-    // The colour's own alpha with it: the bake is the letters' ink alone
-    // ([bakeWordCoverage]).
+    // Made opaque: a colour's own alpha is in the bake ([bakeWordCoverage]).
     Paint()
       ..filterQuality = FilterQuality.low
-      ..colorFilter = ColorFilter.mode(color, BlendMode.srcIn),
+      ..colorFilter = ColorFilter.mode(
+        color.withValues(alpha: 1),
+        BlendMode.srcIn,
+      ),
   );
   return true;
 }
@@ -483,15 +618,19 @@ typedef _Word =
 /// is.
 typedef _Bake = HashedOnce<({_Word word, double x, double y})>;
 
-/// [span] with every colour it is set in made one: its bake is the letters'
-/// ink alone, so a word painted in another colour is drawn from the same
-/// bake ([paintBakedWord] tints it). A style painted with a [Paint] of its
-/// own keeps it — the engine is not handed one ([EngineWord.of]) — and so
-/// does one already in the one colour.
+/// [span] with every opaque colour it is set in made one: its bake is the
+/// letters' ink alone, so a word painted in another opaque colour is drawn
+/// from the same bake ([paintBakedWord] tints it). A translucent colour
+/// keeps its own — its alpha is in the raster — as does a style painted with
+/// a [Paint] of its own, and one already in the one colour.
 InlineSpan _inkless(InlineSpan span) => switch (span) {
   TextSpan(:final text, :final style, :final children) => TextSpan(
     text: text,
-    style: style == null || style.foreground != null || style.color == _ink
+    style:
+        style == null ||
+            style.foreground != null ||
+            style.color == _ink ||
+            (style.color?.a ?? 1) != 1
         ? style
         : style.copyWith(color: _ink),
     children: [
@@ -630,14 +769,12 @@ final class BakedWords {
   /// come to nothing: a waiter for another narrowing of the word asks for
   /// its own when it paints again.
   ///
-  /// 🚨THE WORD IS RECORDED IN THE PAINT THAT ASKED, AND RASTERED AND
-  /// UPLOADED IN ITS TURN in the quiet between a run's held frames
+  /// 🚨THE WORD IS RECORDED IN THE PAINT THAT ASKED, AND RASTERED, READ BACK
+  /// AND UPLOADED IN ITS TURN in the quiet between a run's held frames
   /// ([QuietTurns]) — 🔬6–18 of them queued the first pass's page turns
   /// 12–19 ms (release, 2026-10-15). Recorded then because the painter is
   /// that paint's: laid out again, or gone, by the time the turn comes.
   /// The stand-in the word is drawn from meanwhile is what it always was.
-  /// A word the engine is not handed ([recordWord]) is painted as it always
-  /// was too.
   Future<ui.Image?> _land(
     _Bake key,
     RecordedWord? Function() record,

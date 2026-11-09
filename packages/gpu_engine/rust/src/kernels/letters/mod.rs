@@ -26,7 +26,6 @@ pub(crate) mod glyphs_tests;
 mod families_tests;
 #[cfg(test)]
 mod tests;
-pub(crate) mod words;
 
 use wgpu::util::DeviceExt;
 

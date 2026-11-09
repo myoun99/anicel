@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -8,11 +7,7 @@ import '../ui/theme/app_theme.dart' show AppTypography;
 
 /// THE FACES THE GPU ENGINE SETS LETTERS IN: the app's bundled families
 /// ([AppTypography.canvasLetterFaces] — BIZ UDPGothic, 나눔고딕, Noto Sans
-/// SC) read from its bundle once, as one [GpuFaces] the process keeps, and
-/// laid in whatever order of them a style goes down — the canvas letters'
-/// own, or the UI's, which a Chinese UI begins with Noto Sans SC
-/// ([AppTypography.fallbackFor]) — sharing those files
-/// ([GpuFaces.ordered]).
+/// SC) read from its bundle once, as one [GpuFaces] the process keeps.
 ///
 /// ⚠️ONE COPY OF THE FILES: they are 31 MB (BIZ UDPGothic 9.3, 나눔고딕
 /// 4.1, Noto Sans SC 17.7), held from the first letters the engine sets to
@@ -37,34 +32,4 @@ abstract final class EngineFaces {
           Uint8List.sublistView(await rootBundle.load(file)),
       ],
   ]);
-
-  /// The bundled families [families] names, in its order — made the first
-  /// time that order is asked for and kept. Throws [UnsupportedError] for a
-  /// family the app does not bundle: the engine is handed no other face.
-  static Future<GpuFaces> inOrderOf(List<String> families) async {
-    final all = await bundled();
-    final order = [for (final family in families) _placeOf(family)];
-    if (listEquals(order, _bundledOrder)) {
-      return all;
-    }
-    return _ordered[order.join(',')] ??= all.ordered(order);
-  }
-
-  static final Map<String, GpuFaces> _ordered = {};
-
-  static final List<int> _bundledOrder = [
-    for (final (place, _) in AppTypography.canvasLetterFaces.indexed) place,
-  ];
-
-  static int _placeOf(String family) {
-    final place = AppTypography.canvasLetterFaces.indexWhere(
-      (face) => face.family == family,
-    );
-    if (place < 0) {
-      throw UnsupportedError(
-        'letters in a face the engine is not handed: $family',
-      );
-    }
-    return place;
-  }
 }

@@ -46,29 +46,14 @@ struct Counting;
 
 thread_local! {
     static HELD: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
-    static MOST: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
 }
 
 pub fn held() -> isize {
     HELD.with(std::cell::Cell::get)
 }
 
-/// `f`'s answer, and the most this thread held from the heap while it ran
-/// over what it held before — what a call took at its peak, given back or
-/// not.
-pub fn most_held_while<T>(f: impl FnOnce() -> T) -> (T, isize) {
-    let before = held();
-    let outer = MOST.with(|most| most.replace(before));
-    let answer = f();
-    let most = MOST.with(|most| most.replace(outer.max(most.get())));
-    (answer, most - before)
-}
-
 fn count(bytes: isize) {
-    let _ = HELD.try_with(|held| {
-        held.set(held.get() + bytes);
-        let _ = MOST.try_with(|most| most.set(most.get().max(held.get())));
-    });
+    let _ = HELD.try_with(|held| held.set(held.get() + bytes));
 }
 
 // SAFETY: the system's allocator, counted.

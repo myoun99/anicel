@@ -243,9 +243,7 @@ void main() {
         exposureStateForLayer: stateFor,
         frameNameForLayer: (_, frame) => frame == 0 || frame == 3 ? '12' : null,
         colorScheme: const ColorScheme.dark(),
-        // In no face named: a tile's word is set by the engine in the faces
-        // it is handed, and `base`'s is not one ([EngineWord.of]).
-        baseTextStyle: const TextStyle(fontSize: 14),
+        baseTextStyle: base,
       );
       final ops = await TimelineGridTileStore.instance.debugForegroundOps(
         painter: twice,

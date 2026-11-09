@@ -1232,21 +1232,6 @@ class GpuFaces {
 
   final Pointer<rust.Faces> _faces;
 
-  /// These families in the order [order] names them, each by where it
-  /// stands in this one — sharing their files, and freed on its own,
-  /// before or after these.
-  GpuFaces ordered(List<int> order) {
-    final faces = using((arena) {
-      final at = arena<Uint32>(_held(order.length));
-      at.asTypedList(order.length).setAll(0, order);
-      return rust.facesOrdered(_faces, at, order.length);
-    });
-    if (faces == nullptr) {
-      throw StateError(_lastError());
-    }
-    return GpuFaces._(faces);
-  }
-
   void free() => rust.facesFree(_faces);
 }
 
@@ -1361,96 +1346,6 @@ _clustered(Arena arena, List<GpuCluster> clusters) {
   final bytes = arena<Uint8>(_held(text.length))
     ..asTypedList(text.length).setAll(0, text);
   return (text: bytes, length: text.length, ends: ends, origins: origins);
-}
-
-/// A WORD OF THE APP'S OWN SCREENS (rust/src/kernels/letters/words.rs): its
-/// runs as the app's layout set them, baked into the coverage of its final
-/// device pixels — what a frame grid's tile reads its letters from
-/// ([GpuGrid.draw]) and what a screen draws a narrowed word from. No GPU
-/// is asked: the bake is the engine's, on the CPU.
-class GpuWord {
-  GpuWord() : _word = rust.wordNew();
-
-  final Pointer<rust.Wording> _word;
-
-  /// Adds a run of [clusters] in one style — [size] 64ths of a px,
-  /// [weight] a `FontWeight`'s value — where the word's layout set it.
-  void run({
-    required int size,
-    required int weight,
-    required bool italic,
-    required List<GpuCluster> clusters,
-  }) => using((arena) {
-    final (:text, :length, :ends, :origins) = _clustered(arena, clusters);
-    _done(
-      rust.wordRun(
-        _word,
-        size,
-        weight,
-        italic,
-        text,
-        length,
-        ends,
-        origins,
-        clusters.length,
-      ),
-    );
-  });
-
-  /// The word — its box [width] × [height] px of its layout — set in
-  /// [faces] at [dpr] device pixels a px, rastered [times] times over and
-  /// narrowed to [along] and [down] of itself, each over 0 and 1 at the
-  /// most; null where the bake refuses it, and the word is painted as it
-  /// always was.
-  GpuWordCover? bake(
-    GpuFaces faces, {
-    required double dpr,
-    required int times,
-    required double width,
-    required double height,
-    required double along,
-    required double down,
-  }) {
-    final cover = rust.wordBake(
-      _word,
-      faces._faces,
-      dpr,
-      times,
-      width,
-      height,
-      along,
-      down,
-    );
-    return cover == nullptr ? null : GpuWordCover._(cover);
-  }
-
-  void free() => rust.wordFree(_word);
-}
-
-/// A word's coverage ([GpuWord.bake]): a byte a pixel, [width] ×
-/// [height] row by row, a pixel of margin round its ink.
-class GpuWordCover {
-  factory GpuWordCover._(Pointer<rust.WordCover> cover) => using((arena) {
-    final size = arena<Uint32>(2);
-    rust.wordCoverSize(cover, size);
-    return GpuWordCover._sized(cover, size[0], size[1]);
-  });
-
-  GpuWordCover._sized(this._cover, this.width, this.height);
-
-  final Pointer<rust.WordCover> _cover;
-  final int width;
-  final int height;
-
-  /// Its bytes, row by row.
-  Uint8List read() => using((arena) {
-    final count = width * height;
-    final bytes = arena<Uint8>(_held(count));
-    rust.wordCoverRead(_cover, bytes, count);
-    return Uint8List.fromList(bytes.asTypedList(count));
-  });
-
-  void free() => rust.wordCoverFree(_cover);
 }
 
 /// The A8 atlas a frame grid's tile reads its letters from: [alpha], row

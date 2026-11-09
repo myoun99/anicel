@@ -14,7 +14,6 @@ use crate::fail;
 use crate::kernels::composite::Composite;
 
 use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
-use super::words::{self, WordCover};
 use super::{Lettered, Pass, set};
 
 /// A picture of letters as the app builds it: its passes, bottom to top.
@@ -100,24 +99,8 @@ pub unsafe extern "C" fn gpu_engine_faces_new(
     Faces::new(set_in).map_or(std::ptr::null_mut(), |faces| Box::into_raw(Box::new(faces)))
 }
 
-/// The families of `faces` in the order `order` names them — `count`
-/// places in the order `faces` holds them —, sharing their files: freed on
-/// its own, before or after `faces`. Null on failure; see the last error.
-///
 /// # Safety
-/// `faces` came from `gpu_engine_faces_new` or this, and `order` holds
-/// `count`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_faces_ordered(faces: *const Faces, order: *const u32, count: usize) -> *mut Faces {
-    // SAFETY: see the function's contract.
-    let (faces, order) = unsafe { (&*faces, std::slice::from_raw_parts(order, count)) };
-    faces
-        .ordered(order)
-        .map_or(std::ptr::null_mut(), |faces| Box::into_raw(Box::new(faces)))
-}
-
-/// # Safety
-/// `faces` came from `gpu_engine_faces_new` or `gpu_engine_faces_ordered`.
+/// `faces` came from `gpu_engine_faces_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_faces_free(faces: *mut Faces) {
     if !faces.is_null() {
@@ -275,139 +258,6 @@ unsafe fn clusters_of(
         return fail(format!("the clusters end at {start}, the letters at {length}"));
     }
     Some(clusters)
-}
-
-/// A word as the app builds it: its runs, each in one style.
-#[derive(Default)]
-pub(crate) struct Wording {
-    shapes: Vec<Placed>,
-}
-
-/// A word of no run.
-#[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_word_new() -> *mut Wording {
-    Box::into_raw(Box::default())
-}
-
-/// # Safety
-/// `word` came from `gpu_engine_word_new`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_word_free(word: *mut Wording) {
-    if !word.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(word) });
-    }
-}
-
-/// Adds to `word` a run of letters in one style — `size` 64ths of a px,
-/// `weight` — `FontWeight`'s, 1 to 1000 — and `italic` — standing where
-/// the word's layout set it: `text`, `length` bytes of UTF-8, cut into
-/// `count` clusters, the i-th ending at byte `ends[i]` and set with its
-/// box's left and its line's baseline at `origins[2i]`, `origins[2i + 1]`,
-/// 64ths of a px. False on failure; see the last error.
-///
-/// # Safety
-/// `word` is live, `text` holds `length` bytes and `ends` `count` words,
-/// `origins` `2 × count`.
-#[unsafe(no_mangle)]
-#[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_word_run(
-    word: *mut Wording,
-    size: i32,
-    weight: u32,
-    italic: bool,
-    text: *const u8,
-    length: usize,
-    ends: *const u32,
-    origins: *const i32,
-    count: usize,
-) -> bool {
-    // SAFETY: see the function's contract.
-    let word = unsafe { &mut *word };
-    let Some(weight) = weight_of(weight) else {
-        return false;
-    };
-    // SAFETY: see the function's contract.
-    let Some(clusters) = (unsafe { clusters_of(text, length, ends, origins, count) }) else {
-        return false;
-    };
-    word.shapes.push(Placed {
-        at: Affine { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 },
-        shape: Shape::Letters(Run {
-            size,
-            weight,
-            italic,
-            clusters,
-        }),
-    });
-    true
-}
-
-/// Bakes `word` — its box `width` × `height` px of its layout — set in
-/// `faces` at `dpr` device pixels a px, rastered `times` times over and
-/// narrowed to `along` and `down` of itself — the narrowings the app drew
-/// it at, counted in [`words::WHOLE`]ths ([`words::bake`]): its coverage,
-/// a byte a pixel with a pixel of margin round it. Null on failure, and
-/// for a word the bake refuses — the app paints that one as it always did;
-/// see the last error.
-///
-/// # Safety
-/// `word` and `faces` are live.
-#[unsafe(no_mangle)]
-#[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_word_bake(
-    word: *const Wording,
-    faces: *const Faces,
-    dpr: f64,
-    times: u32,
-    width: f64,
-    height: f64,
-    along: f64,
-    down: f64,
-) -> *mut WordCover {
-    // SAFETY: see the function's contract.
-    let (word, faces) = unsafe { (&*word, &*faces) };
-    // A narrowing that is no number, none or past whole comes out of its
-    // parts' range, and the bake refuses it.
-    let narrowed = [along, down].map(|fit| (fit * f64::from(words::WHOLE)).round() as u32);
-    let baked = words::bake(faces, &word.shapes, dpr, times, [width, height], narrowed);
-    baked.map_or(std::ptr::null_mut(), |cover| Box::into_raw(Box::new(cover)))
-}
-
-/// `cover`'s width and height, written to `size`.
-///
-/// # Safety
-/// `cover` is live and `size` holds two words.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_word_cover_size(cover: *const WordCover, size: *mut u32) {
-    // SAFETY: see the function's contract.
-    let cover = unsafe { &*cover };
-    // SAFETY: as above.
-    unsafe { *size.cast::<[u32; 2]>() = [cover.width, cover.height] };
-}
-
-/// Copies `cover`'s bytes — a byte a pixel, row by row — into `bytes`,
-/// `capacity` of them at most.
-///
-/// # Safety
-/// `cover` is live and `bytes` holds `capacity`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_word_cover_read(cover: *const WordCover, bytes: *mut u8, capacity: usize) {
-    // SAFETY: see the function's contract.
-    let cover = unsafe { &*cover };
-    let count = cover.bytes.len().min(capacity);
-    // SAFETY: `bytes` holds `capacity`, and `count` is no more.
-    unsafe { std::ptr::copy_nonoverlapping(cover.bytes.as_ptr(), bytes, count) };
-}
-
-/// # Safety
-/// `cover` came from `gpu_engine_word_bake`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_word_cover_free(cover: *mut WordCover) {
-    if !cover.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(cover) });
-    }
 }
 
 /// Adds to the pass begun last a box or a line — `rect`, [left, top,
