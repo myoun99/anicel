@@ -7,6 +7,7 @@ import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/ui/text/cel_text_bake.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -331,6 +332,20 @@ void main() {
       });
       expect(after[TileCoord(x: 1, y: 1)], same(before[TileCoord(x: 1, y: 1)]));
       expect(after[TileCoord(x: 2, y: 1)], same(before[TileCoord(x: 2, y: 1)]));
+    });
+
+    test('🚨the last plate is read back from the engine, only where the new '
+        'one has a tile', () async {
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+      final before = await baked(said([run('ab')]));
+      final reads = <int>[];
+      EngineTileLedger.debugBeforeRead = (tiles) => reads.add(tiles.length);
+
+      await baked(said([run('abc')]));
+      expect(reads, isEmpty, reason: 'no last plate to read');
+
+      await baked(said([run('a')]), previous: before);
+      expect(reads, [1], reason: 'the tile the text left is not asked');
     });
 
     test('a tile that changed is the new one', () async {

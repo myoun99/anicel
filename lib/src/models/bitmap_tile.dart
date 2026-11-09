@@ -418,14 +418,15 @@ class BitmapTile implements Finalizable {
       other is BitmapTile && other.size == size && _samePixelsAs(other);
 
   /// Whether [other], a tile of this one's size, holds this one's pixels.
-  bool _samePixelsAs(BitmapTile other) {
+  bool _samePixelsAs(BitmapTile other) => holdsBytes(other._view);
+
+  /// Whether [bytes], a tile's worth lying on a word's edge, are this
+  /// tile's pixels.
+  bool holdsBytes(Uint8List bytes) {
     // RGBA: one 32-bit word is one pixel.
     final count = size * size;
     final mine = _view.buffer.asUint32List(_view.offsetInBytes, count);
-    final theirs = other._view.buffer.asUint32List(
-      other._view.offsetInBytes,
-      count,
-    );
+    final theirs = bytes.buffer.asUint32List(bytes.offsetInBytes, count);
     for (var i = 0; i < count; i += 1) {
       if (mine[i] != theirs[i]) {
         return false;
