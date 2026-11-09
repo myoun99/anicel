@@ -305,3 +305,26 @@ fn with_no_room_a_spare_is_resized_rather_than_one_more_kept() {
     }
     assert_eq!(spares.len(), SPARES, "never more than {SPARES} kept");
 }
+
+/// Every backend's walk says it is alive after each picture it pulls: the
+/// watch is on progress, and a backend that never said so would have each
+/// long walk — a far seek on a long GOP — called a stall and its movie
+/// stopped.
+///
+/// ⚠️A scan of the source, not a run: each walk runs only on its own OS, and
+/// a build runs one of them. Its body is the text from `pub fn read(` to the
+/// method's closing brace.
+#[test]
+fn every_backend_says_it_is_alive_inside_its_walk() {
+    let backends = [
+        ("windows.rs", include_str!("../windows.rs")),
+        ("apple.rs", include_str!("../apple.rs")),
+        ("android.rs", include_str!("../android.rs")),
+    ];
+    for (name, source) in backends {
+        let read = source.split("pub fn read(").nth(1).unwrap_or_else(|| panic!("{name} has a read"));
+        let body = &read[..read.find("\n    }").unwrap_or_else(|| panic!("{name}'s read ends"))];
+        let walk = body.find("for _ in 0..WALK").unwrap_or_else(|| panic!("{name}'s read walks"));
+        assert!(body[walk..].contains("alive();"), "{name}'s walk never says it is alive");
+    }
+}
