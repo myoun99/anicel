@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 /// A range moved on the same frames onto another row of its attach group
 /// trades the rows' PICTURES: no cel, name, exposure or link moves.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const tileSize = 256;
 
   /// A session whose base has cels on frames 0 and 2, under [mirrors]
