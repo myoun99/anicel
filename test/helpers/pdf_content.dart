@@ -86,6 +86,26 @@ List<Offset> pdfTextOrigins(Uint8List pdf) => [
           Offset(x, y),
 ];
 
+/// The `/BaseFont` of every font the pages set words in: each `/F<n> size Tf`
+/// read through object n of the file.
+Set<String> pdfFontsSetIn(Uint8List pdf) {
+  final text = latin1.decode(pdf);
+  String baseFontOf(String object) {
+    final body = RegExp(
+      '(?<!\\d)$object 0 obj(.*?)endobj',
+      dotAll: true,
+    ).firstMatch(text)![1]!;
+    return RegExp(r'/BaseFont\s*/([^\s/<>\[\]()]+)').firstMatch(body)![1]!;
+  }
+
+  return {
+    for (final tokens in _streamTokens(pdf))
+      for (var i = 2; i < tokens.length; i += 1)
+        if (tokens[i] == 'Tf' && tokens[i - 2].startsWith('/F'))
+          baseFontOf(tokens[i - 2].substring(2)),
+  };
+}
+
 /// Where each image is laid: the `w 0 0 h x y cm` before every `Do`, as the
 /// rect it spans.
 List<Rect> pdfImagePlacements(Uint8List pdf) => [

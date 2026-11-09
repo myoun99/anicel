@@ -140,7 +140,8 @@ BIZ UDPGothic draws Japanese, Latin, French accents and kanji; 나눔고딕 draw
 Hangul behind it. The conte PDF embeds the same two into exported files
 (2026-09-25; it used to ship M PLUS 1p and IBM Plex Sans KR for that). The
 third, Noto Sans SC, draws the Chinese UI in front of those two (유저
-2026-11-05).
+2026-11-05), and stands behind them in every other UI and in the conte and its
+PDF, for a letter neither has (유저 2026-11-08).
 
 All are licensed under the **SIL Open Font License 1.1** (OFL), obtained
 from the Google Fonts collection (`github.com/google/fonts`, `ofl/` tree):
@@ -151,16 +152,21 @@ from the Google Fonts collection (`github.com/google/fonts`, `ofl/` tree):
 | `BIZUDPGothic-Bold.ttf` | BIZ UDPGothic | The BIZ UDGothic Project Authors | 앱 UI · 콘티 PDF |
 | `NanumGothic-Regular.ttf` | Nanum Gothic | NHN Corporation | 앱 UI · 콘티 PDF |
 | `NanumGothic-Bold.ttf` | Nanum Gothic | NHN Corporation | 앱 UI · 콘티 PDF |
-| `NotoSansSC-Variable.ttf` | Noto Sans SC | Adobe (Reserved Font Name 'Source') | 중국어 앱 UI |
+| `NotoSansSC-Regular.ttf` | Noto Sans SC | Adobe (Reserved Font Name 'Source') | 중국어 앱 UI · 콘티 PDF |
+| `NotoSansSC-Bold.ttf` | Noto Sans SC | Adobe (Reserved Font Name 'Source') | 중국어 앱 UI · 콘티 PDF |
 
 **The two `BIZUDPGothic-*.ttf` files are a modified version**: U+007E is taken
 out of their cmaps, so that 나눔고딕 draws the keyboard's `~` in the middle of a
 line (유저 2026-11-01, F-524-Q1) — the glyphs and every other table are as
 obtained. BIZ UDPGothic declares no reserved font name.
 
-`NotoSansSC-Variable.ttf` is Google Fonts' `NotoSansSC[wght].ttf` as obtained,
-renamed only; its license text is `OFL-NotoSansSC.txt`, the `OFL.txt` beside
-it there.
+`NotoSansSC-Regular.ttf` and `NotoSansSC-Bold.ttf` are Google Fonts' fixed
+weights 400 and 700 of the family, as served from `fonts.gstatic.com` (v41),
+renamed only; their license text is `OFL-NotoSansSC.txt`, the family's `OFL.txt`.
+
+`packages/gpu_engine/rust/testdata/NotoSansSC-Variable.ttf` is Google Fonts'
+`NotoSansSC[wght].ttf`, renamed only, under the same license. It is the engine's
+test fixture for a variable face and is not in the app's bundle.
 
 The OFL permits bundling and embedding; the fonts remain under their own
 license, and their reserved font names are not used for any derivative.

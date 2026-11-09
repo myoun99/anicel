@@ -32,6 +32,14 @@ pub(crate) fn file(name: &str) -> Vec<u8> {
     std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"))
 }
 
+/// A face kept for these tests alone, outside the app's bundle: the app
+/// ships no variable face, and a face a person brings may be one.
+pub(crate) fn testdata(name: &str) -> Vec<u8> {
+    let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let path = format!("{dir}/testdata/{name}");
+    std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"))
+}
+
 /// The app's canvas letters' families, in their order: BIZ UDPGothic,
 /// 나눔고딕, Noto Sans SC (app_theme.dart; engine-canvas-letters-Q2).
 pub(super) fn faces() -> &'static Faces {
@@ -40,7 +48,7 @@ pub(super) fn faces() -> &'static Faces {
         Faces::new(vec![
             Family::of_files(vec![file("BIZUDPGothic-Regular.ttf"), file("BIZUDPGothic-Bold.ttf")]).unwrap(),
             Family::of_files(vec![file("NanumGothic-Regular.ttf"), file("NanumGothic-Bold.ttf")]).unwrap(),
-            Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap(),
+            Family::of_files(vec![file("NotoSansSC-Regular.ttf"), file("NotoSansSC-Bold.ttf")]).unwrap(),
         ])
         .unwrap()
     })

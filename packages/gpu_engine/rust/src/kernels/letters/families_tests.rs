@@ -9,7 +9,7 @@ use zeno::{Command, Vector};
 use super::glyphs::{
     Affine, Face, Faces, Family, Paint, Placed, Shape, backwards, bolder_by, by_family, covered, grown, twice_the_area,
 };
-use super::glyphs_tests::{IDENTITY, faces, file, here, run};
+use super::glyphs_tests::{IDENTITY, faces, file, here, run, testdata};
 
 /// A file's first face, said to be `width`, `slant` and `weight`.
 fn said(name: &str, (width, slant, weight): (i32, usize, i32)) -> Face {
@@ -85,7 +85,7 @@ fn a_run_of_any_weight_takes_its_face_as_skia_does() {
 
 #[test]
 fn a_varying_face_is_set_at_the_weight_the_run_asks() {
-    let family = || Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap();
+    let family = || Family::of_files(vec![testdata("NotoSansSC-Variable.ttf")]).unwrap();
     let noto = Faces::new(vec![family()]).unwrap();
     let (semibold, bold) = (set_in(&noto, "业", (600, false)), set_in(&noto, "业", (700, false)));
     assert!((semibold.at, &semibold.bytes) != (bold.at, &bold.bytes), "600 is its own outline, not 700's");
@@ -141,7 +141,7 @@ fn a_run_leans_where_its_face_is_not_italic() {
 
 #[test]
 fn a_variable_face_is_set_at_the_runs_weight_and_not_drawn_bolder() {
-    let noto = Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap();
+    let noto = Family::of_files(vec![testdata("NotoSansSC-Variable.ttf")]).unwrap();
     assert!(!noto.at(700, false).bolder, "its wght is 700, not its file's 400");
     let only_regular = Family::of_files(vec![file("BIZUDPGothic-Regular.ttf")]).unwrap();
     assert!(only_regular.at(700, false).bolder);

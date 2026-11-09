@@ -9,8 +9,8 @@ import '../ui/theme/app_theme.dart' show AppTypography;
 /// ([AppTypography.canvasLetterFaces] — BIZ UDPGothic, 나눔고딕, Noto Sans
 /// SC) read from its bundle once, as one [GpuFaces] the process keeps.
 ///
-/// ⚠️ONE COPY OF THE FILES: they are 31 MB (BIZ UDPGothic 9.3, 나눔고딕
-/// 4.1, Noto Sans SC 17.7), held from the first letters the engine sets to
+/// ⚠️ONE COPY OF THE FILES: they are 35 MB (BIZ UDPGothic 9.3, 나눔고딕
+/// 4.1, Noto Sans SC 21.7), held from the first letters the engine sets to
 /// the process' end — a second [GpuFaces] read from the bundle again would
 /// hold them twice.
 abstract final class EngineFaces {

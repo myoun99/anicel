@@ -156,14 +156,17 @@ void main() {
       AppTypography.familyFor(AppLanguage.ja),
       ...AppTypography.bundledFallback,
     ]);
-    // Its one file is declared UNDER its family, as the others' are.
+    // Its files are declared UNDER its family, as the others' are.
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final start = pubspec.indexOf(RegExp(r'- family: Noto Sans SC\r?\n'));
     expect(start, isNot(-1));
     final next = pubspec.indexOf('- family:', start + 1);
     expect(
       pubspec.substring(start, next == -1 ? null : next),
-      contains('- asset: ${AppTypography.chineseFile}'),
+      allOf(
+        contains('- asset: ${AppTypography.chineseFiles.regular}'),
+        contains('- asset: ${AppTypography.chineseFiles.bold}'),
+      ),
     );
   });
 
@@ -184,7 +187,7 @@ void main() {
     expect(han, isNotEmpty, reason: '⛔전제: 표의 한자를 읽었다');
     final covered = TtfParser(
       ByteData.view(
-        File('assets/fonts/NotoSansSC-Variable.ttf').readAsBytesSync().buffer,
+        File(AppTypography.chineseFiles.regular).readAsBytesSync().buffer,
       ),
     ).charToGlyphIndexMap;
     expect([
@@ -220,8 +223,8 @@ void main() {
     // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」. 콘티(PDF 가
     // 이 파일을 박는다)와 텍스트 셀은 UI 언어와 무관하게 이 둘로 찍는다.
     // 🗣️connection-round-checklist-Q21 (11-08): the UI goes on to the Chinese
-    // face behind these two; whether the conte does too is
-    // connection-round-checklist-Q22, unanswered — until then it does not.
+    // face behind these two. 🗣️connection-round-checklist-Q22 (11-08): 「콘티도
+    // 끝에 Noto Sans SC 를 더한다」 — the document goes on to it too.
     expect(
       AppTypography.bundledFamily,
       AppTypography.familyFor(AppLanguage.ja),

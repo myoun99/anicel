@@ -657,7 +657,7 @@ abstract final class AppTypography {
   static List<String> fallbackFor(AppLanguage language) =>
       language == AppLanguage.zhHans
       ? const <String>[_family, ..._fallback]
-      : const <String>[..._fallback, _chineseFamily];
+      : documentFallback;
 
   /// [style] in the face the app speaks in now.
   ///
@@ -707,9 +707,17 @@ abstract final class AppTypography {
   /// The Chinese UI's face, in front of [_family] ([familyFor]).
   static const String _chineseFamily = 'Noto Sans SC';
 
-  /// The one file behind [_chineseFamily] as `pubspec.yaml` declares it —
-  /// variable, its weight set by the style's.
-  static const String chineseFile = 'assets/fonts/NotoSansSC-Variable.ttf';
+  /// The two files behind [_chineseFamily] as `pubspec.yaml` declares them.
+  ///
+  /// 🗣️connection-round-checklist-Q32 (유저 2026-11-09): 「가변 글꼴을 이 두
+  /// 파일로 바꾼다」 — the conte's PDF embeds them, and the PDF writer copies
+  /// a file's default outlines alone. ↩️One variable file until then, its
+  /// weight set by the style's and its default outlines weight 100: the PDF
+  /// would have printed those letters thin.
+  static const ({String regular, String bold}) chineseFiles = (
+    regular: 'assets/fonts/NotoSansSC-Regular.ttf',
+    bold: 'assets/fonts/NotoSansSC-Bold.ttf',
+  );
 
   /// 🚨THE BUNDLED FACES, whatever the UI language — for what has to print
   /// the same on every machine and in every file (유저 2026-09-25: 「글꼴
@@ -724,6 +732,18 @@ abstract final class AppTypography {
   /// jobs these two already do.
   static const String bundledFamily = _family;
   static const List<String> bundledFallback = _fallback;
+
+  /// What a document's words fall back on, in the order its PDF embeds them:
+  /// [bundledFallback], then the Chinese face — the order of every UI but the
+  /// Chinese one ([fallbackFor]).
+  ///
+  /// 🗣️connection-round-checklist-Q22 (유저 2026-11-08): 「콘티도 끝에 Noto
+  /// Sans SC 를 더한다」. ↩️A letter neither of the two has was the OS's face's
+  /// on the conte's screen, and the first face's empty box in its PDF.
+  static const List<String> documentFallback = <String>[
+    ..._fallback,
+    _chineseFamily,
+  ];
 
   /// The files behind [bundledFamily] and [bundledFallback], as
   /// `pubspec.yaml` declares them under those names — what a PDF embeds.
@@ -755,7 +775,10 @@ abstract final class AppTypography {
           family: _fallback.single,
           files: [bundledFallbackFiles.regular, bundledFallbackFiles.bold],
         ),
-        (family: _chineseFamily, files: [chineseFile]),
+        (
+          family: _chineseFamily,
+          files: [chineseFiles.regular, chineseFiles.bold],
+        ),
       ];
 }
 

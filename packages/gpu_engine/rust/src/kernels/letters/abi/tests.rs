@@ -20,7 +20,8 @@ fn handed() -> *mut Faces {
         (file("BIZUDPGothic-Bold.ttf"), 0),
         (file("NanumGothic-Regular.ttf"), 1),
         (file("NanumGothic-Bold.ttf"), 1),
-        (file("NotoSansSC-Variable.ttf"), 2),
+        (file("NotoSansSC-Regular.ttf"), 2),
+        (file("NotoSansSC-Bold.ttf"), 2),
     ];
     faces_of(&files)
 }

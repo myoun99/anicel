@@ -156,7 +156,7 @@ pub(crate) const WEIGHTS: std::ops::RangeInclusive<u16> = 1..=1000;
 
 impl Family {
     /// The family of `files` — the app's own (BIZ UDPGothic's regular and
-    /// bold, Noto Sans SC's one variable file) and a face a person brought
+    /// bold) and a face a person brought, which may be one variable file,
     /// alike: each file's first face, in the order the engine was handed
     /// them, which breaks a tie. A file that holds no face is passed over;
     /// `None` if none does.

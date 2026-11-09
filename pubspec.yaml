@@ -170,11 +170,16 @@ flutter:
         - asset: assets/fonts/NanumGothic-Bold.ttf
           weight: 700
     # The Chinese UI's face (유저 2026-11-05, gpu-int-spec-word-bake-Q2:
-    # 「중국어 글꼴을 번들한다」). ONE variable file: since Flutter 3.41 a
-    # style's weight sets its `wght` axis too, so bold needs no second file.
+    # 「중국어 글꼴을 번들한다」), in two fixed weights (유저 2026-11-09,
+    # connection-round-checklist-Q32: 「가변 글꼴을 이 두 파일로 바꾼다」): the
+    # conte's PDF embeds them, and its writer copies a file's default outlines
+    # alone, which in the variable file were weight 100.
+    # ↩️It was one variable file, a style's weight setting its `wght` axis.
     - family: Noto Sans SC
       fonts:
-        - asset: assets/fonts/NotoSansSC-Variable.ttf
+        - asset: assets/fonts/NotoSansSC-Regular.ttf
+        - asset: assets/fonts/NotoSansSC-Bold.ttf
+          weight: 700
 
   # Fragment shaders. `flutter: shaders:` compiles each to the SPIR-V a
   # `FragmentProgram.fromAsset` loads; the path here is the asset key.

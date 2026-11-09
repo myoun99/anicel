@@ -18,9 +18,10 @@ Future<void> loadTheAppFaces() async {
   for (final (family, files) in _faces) {
     await loadFace(family, weightsOf(files));
   }
-  await loadFace(AppTypography.familyFor(AppLanguage.zhHans), [
-    ByteData.view(File(AppTypography.chineseFile).readAsBytesSync().buffer),
-  ]);
+  await loadFace(
+    AppTypography.familyFor(AppLanguage.zhHans),
+    weightsOf(AppTypography.chineseFiles),
+  );
 }
 
 /// [weights] — one face's files, read whole — under the name [family].

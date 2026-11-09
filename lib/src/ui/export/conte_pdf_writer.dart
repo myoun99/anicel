@@ -43,21 +43,26 @@ import '../theme/app_theme.dart' show AppTypography;
 ///
 /// Fonts: the app's bundled faces ([AppTypography.bundledFiles] — BIZ
 /// UDPGothic for Latin, kana and kanji; 나눔고딕 behind it for Hangul and
-/// the keyboard's `~` ([AppTypography] says why), the order the app's own
-/// text resolves in), both weights, per-run selection by glyph coverage so
-/// mixed-script lines print whole. Both are OFL (THIRD_PARTY.md).
+/// the keyboard's `~` ([AppTypography] says why); Noto Sans SC last, for what
+/// neither has ([AppTypography.documentFallback] — the order the app's own
+/// text resolves in)), both weights, per-run selection by glyph coverage so
+/// mixed-script lines print whole. All are OFL (THIRD_PARTY.md).
 class ContePdfFonts {
   ContePdfFonts._({
     required this.regular,
     required this.bold,
     required this.hangul,
     required this.hangulBold,
+    required this.chinese,
+    required this.chineseBold,
   });
 
   final ByteData regular;
   final ByteData bold;
   final ByteData hangul;
   final ByteData hangulBold;
+  final ByteData chinese;
+  final ByteData chineseBold;
 
   /// Loads the bundled OFL fonts for EMBEDDING (rootBundle) — the files
   /// `pubspec.yaml` declares as the app's faces, which the engine measures
@@ -65,11 +70,14 @@ class ContePdfFonts {
   static Future<ContePdfFonts> load() async {
     const face = AppTypography.bundledFiles;
     const behind = AppTypography.bundledFallbackFiles;
+    const last = AppTypography.chineseFiles;
     return ContePdfFonts._(
       regular: await rootBundle.load(face.regular),
       bold: await rootBundle.load(face.bold),
       hangul: await rootBundle.load(behind.regular),
       hangulBold: await rootBundle.load(behind.bold),
+      chinese: await rootBundle.load(last.regular),
+      chineseBold: await rootBundle.load(last.bold),
     );
   }
 }
@@ -141,6 +149,8 @@ Future<Uint8List> writeContePdf({
     bold: PdfTtfFont(document, fonts.bold),
     hangul: PdfTtfFont(document, fonts.hangul),
     hangulBold: PdfTtfFont(document, fonts.hangulBold),
+    chinese: PdfTtfFont(document, fonts.chinese),
+    chineseBold: PdfTtfFont(document, fonts.chineseBold),
     pictures: {
       for (final entry in pictures.entries) entry.key: embed(entry.value),
     },
@@ -169,6 +179,8 @@ class _ContePdfPageWriter {
     required this.bold,
     required this.hangul,
     required this.hangulBold,
+    required this.chinese,
+    required this.chineseBold,
     required this.pictures,
     required this.images,
     required this.inkPictures,
@@ -180,6 +192,8 @@ class _ContePdfPageWriter {
   final PdfTtfFont bold;
   final PdfTtfFont hangul;
   final PdfTtfFont hangulBold;
+  final PdfTtfFont chinese;
+  final PdfTtfFont chineseBold;
   final Map<SheetPictureKey, PdfImage> pictures;
   final Map<String, PdfImage> images;
   final Map<BrushFrameKey, PdfImage> inkPictures;
@@ -366,24 +380,24 @@ class _ContePdfPageWriter {
       font.font.charToGlyphIndexMap.containsKey(rune);
 
   /// Splits [text] into per-font runs, the order the engine resolves the
-  /// same line in: the app's face where it has the glyph, 나눔고딕 behind
-  /// it where it does not but Hangul does; unknown-to-both stays on the
-  /// app's face (its notdef says honestly that the glyph is missing).
+  /// same line in: the app's face where it has the glyph, then 나눔고딕,
+  /// then Noto Sans SC; unknown-to-all stays on the app's face (its notdef
+  /// says honestly that the glyph is missing).
   List<({PdfTtfFont font, String text})> _runsFor(
     String text, {
     required bool isBold,
   }) {
-    final preferred = isBold ? bold : regular;
-    final behind = isBold ? hangulBold : hangul;
+    final faces = isBold
+        ? [bold, hangulBold, chineseBold]
+        : [regular, hangul, chinese];
     final runs = <({PdfTtfFont font, String text})>[];
     final buffer = StringBuffer();
     PdfTtfFont? current;
     for (final rune in text.runes) {
-      final font = _covers(preferred, rune)
-          ? preferred
-          : _covers(behind, rune)
-          ? behind
-          : preferred;
+      final font = faces.firstWhere(
+        (face) => _covers(face, rune),
+        orElse: () => faces.first,
+      );
       if (current != null && font != current && buffer.isNotEmpty) {
         runs.add((font: current, text: buffer.toString()));
         buffer.clear();
