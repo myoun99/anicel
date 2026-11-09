@@ -991,7 +991,26 @@ void main() {
   /// (`63d034dba`) names it added and nothing gone. ⛔Not bundled to
   /// fit: whether it is wanted first, whether it is wanted at all, and what
   /// it lies over are three questions, each asked by a caller of its own.
-  const wideSignatures = 465;
+  ///
+  /// ⚠️465 → 468 on 2026-11-10, four names in and one out
+  /// (gpu-canonical-store 7′, the exports on the engine): `frameShot` (ten)
+  /// is the ONE door every picture of a frame that goes to a file or a
+  /// panel takes, and its parameters are what a shot is — the pictures it
+  /// asks, the stack and the frame they are of, the page they are drawn on,
+  /// the view and the raster they are shown through, the ground under
+  /// them, whether they are cut at the canvas, and what is laid over them.
+  /// `ExportFrameRenderer._shot` (ten) is the renderer's spelling of it —
+  /// the page made of its ground and paper, the ghosts a route asks — and
+  /// `_cutPicture` (eight) holds a cut's shot under the key the engine
+  /// keeps its picture by. `EditingCanvas._mapOf` (five) is the one map of
+  /// a tree onto the stack that the canvas, a ghost's film and an export's
+  /// rows are each mapped by (the third made it one), its parameters the
+  /// map's own. `ExportFrameRenderer._composite` went with the rows the
+  /// renderer composed itself. 🔬`clean_code_diff` against the lane's base
+  /// (`9d682dae1`) names those four added and that one gone. ⛔Not bundled
+  /// to fit: a shot's view, its page and what is laid over it are asked by
+  /// different routes, each of its own.
+  const wideSignatures = 468;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

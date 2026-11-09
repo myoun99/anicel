@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/cels_parked_cold.dart';
+
 /// What an output keeps of the cut's heads (I-65, 유저 2026-10-25):
 ///
 /// * Q11 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면 빠짐 — 카메라 행도
@@ -104,25 +106,23 @@ void main() {
       ),
     );
     addTearDown(session.dispose);
-    const tile = 256;
+    const tile = defaultCelTileSize;
     const ink = (10 * tile + 10) * 4;
     final pixels = Uint8List(tile * tile * 4)
       ..fillRange(ink, ink + 3, 128)
       ..[ink + 3] = 255;
-    session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-      key: session.brushFrameKeyForCut(
+    parkCold(session.renderCaches.brushFrameStore, {
+      session.brushFrameKeyForCut(
         session.requireActiveCut,
         layerId,
         drawing.id,
-      ),
-      previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
-          .putTiles([
-            (
-              coord: TileCoord(x: 0, y: 0),
-              tile: BitmapTile(size: tile, pixels: pixels),
-            ),
-          ]),
-    );
+      ): BitmapSurface(canvasSize: canvas, tileSize: tile).putTiles([
+        (
+          coord: TileCoord(x: 0, y: 0),
+          tile: BitmapTile(size: tile, pixels: pixels),
+        ),
+      ]),
+    });
     return session;
   }
 

@@ -248,12 +248,15 @@ void main() {
           halfSide * halfSide * 4,
           reason: 'at the size asked ($mode)',
         );
-        // Inside the edge: a reduced render's paper yields the pixel the
-        // canvas's edge falls in to the rows (#15).
+        // A pixel in from the ink's edge: reduced as the canvas reduces
+        // (7′, the engine's filter for the scale), the ink reaches the
+        // first column of paper past it. ↩️Read at that column while a
+        // reduced render's paper yielded the pixel the canvas's edge falls
+        // in to the rows (#15).
         expect(
           (
             pixelOf(half, eighth, 2 * eighth, halfSide),
-            pixelOf(half, 2 * eighth, 2 * eighth, halfSide),
+            pixelOf(half, 3 * eighth, 2 * eighth, halfSide),
           ),
           (ink, creamPixel),
           reason: 'the ink on the left, the paper on the right ($mode)',
@@ -308,7 +311,7 @@ void main() {
           (
             small.length,
             pixelOf(small, eighth, 2 * eighth, halfSide),
-            pixelOf(small, 2 * eighth, 2 * eighth, halfSide),
+            pixelOf(small, 3 * eighth, 2 * eighth, halfSide),
           ),
           (halfSide * halfSide * 4, ink, creamPixel),
           reason: 'not the picture held from the size before ($mode)',

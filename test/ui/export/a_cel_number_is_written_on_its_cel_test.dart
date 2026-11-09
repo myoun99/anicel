@@ -46,6 +46,7 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/text/cel_number_paint.dart' show celNumberExtent;
 
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/placement_reading.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
@@ -408,7 +409,7 @@ void main() {
         ),
       );
       addTearDown(session.dispose);
-      const tile = 256;
+      const tile = defaultCelTileSize;
       final pixels = Uint8List(tile * tile * 4)..[3] = 255;
       final green = Uint8List(tile * tile * 4);
       for (var at = 0; at < green.length; at += 4) {
@@ -416,24 +417,26 @@ void main() {
           ..[at + 1] = 255
           ..[at + 3] = 255;
       }
+      // Green all over: every tile the paper spans.
+      final everyTile = [
+        for (var y = 0; y * tile < canvas.height; y += 1)
+          for (var x = 0; x * tile < canvas.width; x += 1) (x, y),
+      ];
+      BitmapSurface surfaceOf({required bool all}) =>
+          BitmapSurface(canvasSize: canvas, tileSize: tile).putTiles([
+            for (final (x, y) in all ? everyTile : const [(0, 0)])
+              (
+                coord: TileCoord(x: x, y: y),
+                tile: BitmapTile(size: tile, pixels: all ? green : pixels),
+              ),
+          ]);
       final cut = session.requireActiveCut;
-      for (final id in [layerId, attachId]) {
-        final all = clipped && id == attachId;
-        session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-          key: session.brushFrameKeyForCut(cut, id, drawing.id),
-          previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
-              .putTiles([
-                for (final (x, y)
-                    in all
-                        ? const [(0, 0), (1, 0), (0, 1), (1, 1)]
-                        : const [(0, 0)])
-                  (
-                    coord: TileCoord(x: x, y: y),
-                    tile: BitmapTile(size: tile, pixels: all ? green : pixels),
-                  ),
-              ]),
-        );
-      }
+      parkCold(session.renderCaches.brushFrameStore, {
+        for (final id in [layerId, attachId])
+          session.brushFrameKeyForCut(cut, id, drawing.id): surfaceOf(
+            all: clipped && id == attachId,
+          ),
+      });
       return session;
     }
 
@@ -481,7 +484,11 @@ void main() {
       await tester.runAsync(() async {
         final letters = redOf(await celOf([number]), canvas.width);
         expect(letters.count, greaterThan(100));
-        expect(letters.middle, onTheMiddle);
+        // The bundle's letters, as on the editing canvas above — the cel is
+        // the engine's picture too (7′): 'A' holds more ink than '1', so
+        // the ink's middle stands left of where they are written.
+        expect(letters.middle.x, closeTo(160, 16));
+        expect(letters.middle.y, closeTo(120, 4));
         expect(redOf(await celOf(const []), canvas.width).count, 0);
       });
       await tester.pumpAndSettle();

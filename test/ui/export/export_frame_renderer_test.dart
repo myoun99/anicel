@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/no_guides_laid.dart';
 
 /// The renderer must consume the store's VALID display cache read-only (the
@@ -74,19 +75,20 @@ void main() {
       );
       // Tamper the (valid) display cache with a RED sentinel pixel at (0,0):
       // reading the cache shows red, the baked truth cannot.
-      final sentinelPixels = Uint8List(256 * 256 * 4);
+      const tile = defaultCelTileSize;
+      final sentinelPixels = Uint8List(tile * tile * 4);
       sentinelPixels[0] = 255;
       sentinelPixels[3] = 255;
       session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
         key: frameKey,
         previewSurface: BitmapSurface(
           canvasSize: cut.canvasSize,
-          tileSize: 256,
+          tileSize: tile,
         ).putTiles([
           (
             coord: TileCoord(x: 0, y: 0),
             tile: BitmapTile(
-              size: 256,
+              size: tile,
               pixels: sentinelPixels,
             ),
           ),
@@ -305,9 +307,9 @@ void main() {
         duration: 1,
         strokes: const [],
       );
-      // One mid-grey pixel at (4,4), seeded through the display cache the
-      // renderer reads (the same route the case above uses).
-      const tile = 256;
+      // One mid-grey pixel at (4,4), parked cold in the store as a kept cel
+      // is.
+      const tile = defaultCelTileSize;
       final pixels = Uint8List(tile * tile * 4);
       final offset = (4 * cut.canvasSize.width + 4) * 4;
       const tileOffset = (4 * tile + 4) * 4;
@@ -315,15 +317,17 @@ void main() {
       pixels[tileOffset + 1] = 0x80;
       pixels[tileOffset + 2] = 0x80;
       pixels[tileOffset + 3] = 255;
-      session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-        key: session.brushFrameKeyForCut(cut, layer.id, frame.id),
-        previewSurface: BitmapSurface(
+      parkCold(session.renderCaches.brushFrameStore, {
+        session.brushFrameKeyForCut(cut, layer.id, frame.id): BitmapSurface(
           canvasSize: cut.canvasSize,
-          tileSize: 256,
+          tileSize: tile,
         ).putTiles([
-          (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: tile, pixels: pixels)),
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(size: tile, pixels: pixels),
+          ),
         ]),
-      );
+      });
       session.effectsAndFx.updateLayerEffects(layer.id, [
         LayerEffect(
           id: const EffectId('fx'),
@@ -389,8 +393,8 @@ void main() {
         duration: 1,
         strokes: const [],
       );
-      // One mid-grey pixel at (4,4), through the display cache.
-      const tile = 256;
+      // One mid-grey pixel at (4,4), parked cold in the store.
+      const tile = defaultCelTileSize;
       final pixels = Uint8List(tile * tile * 4);
       final offset = (4 * cut.canvasSize.width + 4) * 4;
       const tileOffset = (4 * tile + 4) * 4;
@@ -398,18 +402,17 @@ void main() {
       pixels[tileOffset + 1] = 0x80;
       pixels[tileOffset + 2] = 0x80;
       pixels[tileOffset + 3] = 255;
-      session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-        key: session.brushFrameKeyForCut(cut, layer.id, frame.id),
-        previewSurface: BitmapSurface(
+      parkCold(session.renderCaches.brushFrameStore, {
+        session.brushFrameKeyForCut(cut, layer.id, frame.id): BitmapSurface(
           canvasSize: cut.canvasSize,
-          tileSize: 256,
+          tileSize: tile,
         ).putTiles([
           (
             coord: TileCoord(x: 0, y: 0),
             tile: BitmapTile(size: tile, pixels: pixels),
           ),
         ]),
-      );
+      });
       // Brightness keyed: none on the cut's first frame, +60 on its third.
       session.effectsAndFx.updateLayerEffects(layer.id, [
         LayerEffect(

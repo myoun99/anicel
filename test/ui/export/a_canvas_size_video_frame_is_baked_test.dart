@@ -333,8 +333,12 @@ void main() {
         final (_, g, b, _) = pixelOf(frame, eighth, 2 * eighth, side: half);
         expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut\'s ink');
         expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut\'s ink');
+        // A pixel in from the ink's edge: reduced as the canvas reduces
+        // (7′, the engine's filter for the scale), the ink reaches the
+        // first column of paper past it. ↩️Read at that column while each
+        // cut was laid by a box of whole pixels.
         expect(
-          pixelOf(frame, 2 * eighth, 2 * eighth, side: half),
+          pixelOf(frame, 3 * eighth, 2 * eighth, side: half),
           (0, 255, 0, 255),
           reason: 'both papers — not the left of a whole-size picture',
         );

@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/cels_parked_cold.dart';
+
 /// **I-105** — the cut's guides laid over a cel are written into its file
 /// as 래스터라이즈 bakes them: the perspective guides the canvas shows
 /// (I-105-Q1), each the faint line the canvas draws at rest, on the paper
@@ -112,19 +114,20 @@ void main() {
       ),
     );
     addTearDown(session.dispose);
-    const tile = 256;
+    const tile = defaultCelTileSize;
     final pixels = Uint8List(tile * tile * 4)..[3] = 255;
     final cut = session.requireActiveCut;
-    session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-      key: session.brushFrameKeyForCut(cut, layerId, drawing.id),
-      previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
-          .putTiles([
-            (
-              coord: TileCoord(x: 0, y: 0),
-              tile: BitmapTile(size: tile, pixels: pixels),
-            ),
-          ]),
-    );
+    parkCold(session.renderCaches.brushFrameStore, {
+      session.brushFrameKeyForCut(cut, layerId, drawing.id): BitmapSurface(
+        canvasSize: canvas,
+        tileSize: tile,
+      ).putTiles([
+        (
+          coord: TileCoord(x: 0, y: 0),
+          tile: BitmapTile(size: tile, pixels: pixels),
+        ),
+      ]),
+    });
     return session;
   }
 

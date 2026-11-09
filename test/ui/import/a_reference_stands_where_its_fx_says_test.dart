@@ -1109,9 +1109,15 @@ void main() {
           ),
         ),
         'halved': halved,
-        'turned 45°': TransformTrack.empty().copyWith(
-          rotation: PropertyTrack<double>().withKey(0, 45),
-        ),
+        // ↩️Turned 45° until the frame was the engine's picture (7′): the
+        // checker's squares are a pixel and the paper stands on whole
+        // coordinates, so at 45° the probe's diagonal falls exactly on a
+        // texel's edge, where the bake and the engine each take either
+        // texel of it (`raster_cel_import.dart`) — 13 of its 169 apart, every
+        // one on that diagonal and no other (🔬2026-11-10). At 30° no pixel's
+        // centre is within 0.013 of an edge. Back to 45° when the bake lays
+        // its picture with the engine's kernel (brush/rendering's lane).
+        'turned 30°': turnedOnce,
       };
       for (final MapEntry(key: how, value: fx) in poses.entries) {
         testWidgets(how, (tester) async {

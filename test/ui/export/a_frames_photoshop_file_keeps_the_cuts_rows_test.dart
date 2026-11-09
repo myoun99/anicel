@@ -59,7 +59,11 @@ import '../../helpers/temp_dir.dart';
 /// 것을 알리듯이」. Its picture is the one its rows lay up: the cut's without
 /// what no row of it holds — the cost the answer was chosen at.
 void main() {
-  const size = CanvasSize(width: 8, height: 8);
+  // One tile, at the engine's side.
+  const size = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
 
   // A row in multiply is composed over its backdrop in the shader.
   setUpAll(LayerBlendShader.load);
@@ -135,7 +139,12 @@ void main() {
       transformTrack: posed
           ? TransformTrack(
               keyframes: {
-                0: TransformPose(center: CanvasPoint(x: 5, y: 4)),
+                0: TransformPose(
+                  center: CanvasPoint(
+                    x: size.width / 2 + 1,
+                    y: size.height / 2,
+                  ),
+                ),
               },
             )
           : null,
@@ -202,9 +211,12 @@ void main() {
         session.brushFrameKeyForCut(cut, LayerId(row), FrameId('$row-1')),
         BitmapSurface(
           canvasSize: size,
-          tileSize: 8,
+          tileSize: defaultCelTileSize,
           tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: only({dot: rgba})),
+            TileCoord(x: 0, y: 0): BitmapTile(
+              size: defaultCelTileSize,
+              pixels: only({dot: rgba}),
+            ),
           },
         ),
       );

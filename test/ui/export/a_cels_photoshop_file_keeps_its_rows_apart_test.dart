@@ -36,7 +36,11 @@ import '../../helpers/no_guides_laid.dart';
 /// drawn as itself and carrying its strength and blend for the file to lay
 /// it by — over the ground the picture stands on, where it has one.
 void main() {
-  const size = CanvasSize(width: 8, height: 8);
+  // One tile, at the engine's side.
+  const size = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
 
   // A row in multiply is composed over its backdrop in the shader.
   setUpAll(LayerBlendShader.load);
@@ -117,9 +121,12 @@ void main() {
           session.brushFrameKeyForCut(cut, LayerId(row), cel),
           BitmapSurface(
             canvasSize: size,
-            tileSize: 8,
+            tileSize: defaultCelTileSize,
             tiles: {
-              TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: only(paint)),
+              TileCoord(x: 0, y: 0): BitmapTile(
+                size: defaultCelTileSize,
+                pixels: only(paint),
+              ),
             },
           ),
         );
