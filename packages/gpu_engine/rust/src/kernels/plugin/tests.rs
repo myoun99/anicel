@@ -7,7 +7,7 @@
 use fx_wgsl::{Cut, Frame, open};
 
 use super::Plugin;
-use crate::kernels::shared::pipeline_or_why;
+use crate::kernels::shared::{Encoded, encode, pipeline_or_why, whole};
 use crate::testing::first_engine;
 
 const INVERT: &str = include_str!("../../../native/fx_wgsl/fixtures/invert.wgsl");
@@ -210,6 +210,34 @@ fn what_the_device_will_not_compile_comes_back_as_why() {
     let why = pipeline_or_why(first_engine(), &["@compute @workgroup_size(1) fn main() { let x: u32 = 1.5; }"], "main")
         .expect_err("refused");
     assert!(!why.is_empty());
+}
+
+#[test]
+fn a_foreign_shader_reads_no_word_a_workgroup_before_it_left() {
+    const LEFT_OVER: &str = "
+        @group(0) @binding(0) var<storage, read_write> seen: array<u32>;
+        var<workgroup> left: array<u32, 256>;
+        @compute @workgroup_size(1)
+        fn main(@builtin(global_invocation_id) at: vec3<u32>) {
+            var any = 0u;
+            for (var i = 0u; i < 256u; i++) {
+                any |= left[i];
+                left[i] = 0xFFFFFFFFu;
+            }
+            seen[at.x] = any;
+        }";
+    const GROUPS: u32 = 64;
+    let engine = first_engine();
+    let pipeline = pipeline_or_why(engine, &[LEFT_OVER], "main").expect("compiled");
+    let size = u64::from(GROUPS) * 4;
+    let seen = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    encode(engine, &[Encoded { pipeline: &pipeline, bound: whole(&[(0, &seen)]), groups: (GROUPS, 1, 1) }]);
+    assert_eq!(crate::testing::read_buffer(engine, &seen), vec![0u8; size as usize]);
 }
 
 
