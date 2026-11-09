@@ -13,7 +13,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{
     Encoded, PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, encode_on,
-    fits, flat, pipeline, storage_format, whole, words_buffer,
+    fits, flat, land_storage_writes, pipeline, storage_format, whole, words_buffer,
 };
 
 use super::GridPicture;
@@ -58,8 +58,8 @@ impl GridLay {
 
     /// The pixels `rect` of `target`, [left, top, right, bottom): clear, and
     /// each of `laid` over the pixels whose centres its `onto` holds, by R1
-    /// from its `from` ([`laid_by`]) — a later one over an earlier where two
-    /// meet —, premultiplied as Flutter reads a surface. The rest of `target` is left
+    /// from its `from` ([`laid_by`]) — where two hold one pixel either may land,
+    /// which no row lays —, premultiplied as Flutter reads a surface. The rest of `target` is left
     /// as it was. Waits for the GPU. None, with the last error, for a rect
     /// not in the target, a format a screen cannot store, or a tile laid from
     /// past its picture, from no box or onto none.
@@ -106,7 +106,10 @@ impl GridLay {
             })
             .collect();
         let mut encoder = engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encode_on(engine, &mut encoder, &encoded);
+        let (clear, tiles) = encoded.split_at(1);
+        encode_on(engine, &mut encoder, clear);
+        land_storage_writes(&mut encoder, target);
+        encode_on(engine, &mut encoder, tiles);
         engine.queue.submit([encoder.finish()]);
         engine.wait()
     }

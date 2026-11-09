@@ -136,8 +136,29 @@ pub(crate) fn flat((across, down): (u32, u32)) -> (u32, u32, u32) {
     (across, down, 1)
 }
 
+/// 🚨What write-only storage bindings of `target` have written so far lands
+/// before anything encoded after this touches it. wgpu's DX12 puts a UAV
+/// barrier between two uses of a texture only when the first was read-write
+/// (wgpu-hal 30.0.1, `transition_textures`), so two dispatches writing one
+/// pixel through write-only bindings overlap on the GPU and either may land
+/// last 🔬(11-09, RTX 4080: a clear and a tile on each of 2048 pixels in one
+/// pass, 19 % of the pixels cleared away, none of 819,200 with this between
+/// them). Leaving read-write for the next dispatch's write-only is what
+/// makes the barrier, and no texture needs a usage more for it.
+pub(crate) fn land_storage_writes(encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture) {
+    encoder.transition_resources(
+        std::iter::empty(),
+        std::iter::once(wgpu::TextureTransition {
+            texture: target,
+            selector: None,
+            state: wgpu::TextureUses::STORAGE_READ_WRITE,
+        }),
+    );
+}
+
 /// Encodes `dispatches` in order on `encoder`, in one compute pass — each
-/// dispatch sees what the ones before it put (wgpu orders a pass's
+/// dispatch sees what the ones before it put in a buffer or a read-write
+/// binding, not a write-only one's ([`land_storage_writes`]; wgpu orders a pass's
 /// dispatches as it would passes). Submitting is the caller's: a kernel
 /// that copies between its dispatches, or times the GPU's work alone,
 /// submits where it does now. The crate's one compute pass: `one_pass.rs`

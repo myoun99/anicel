@@ -41,7 +41,7 @@ pub(crate) mod tests;
 use crate::device::Engine;
 
 pub(crate) use dispatch::{
-    Encoded, encode, encode_on, fits, flat, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
+    Encoded, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
     whole, words_buffer,
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
