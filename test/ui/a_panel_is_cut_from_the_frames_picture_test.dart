@@ -178,7 +178,15 @@ void main() {
     await tester.runAsync(() async {
       final session = halfInked(
         plugins: plugins,
-        effects: [shiftingFxPluginLayerEffect()],
+        // A plugin past the cel's own pixels: a step of the chain.
+        effects: [
+          LayerEffect(
+            id: const EffectId('bright'),
+            kind: EffectKind.brightnessContrast,
+            parameters: {'brightness': EffectParameter(value: 0.5)},
+          ),
+          shiftingFxPluginLayerEffect(),
+        ],
       );
       addTearDown(session.dispose);
       final cut = session.requireActiveCut;
@@ -201,7 +209,7 @@ void main() {
       image.dispose();
       // The ink ended at the panel's middle, 8; the plug-in took it 8 of
       // the canvas's pixels on, 4 of the panel's.
-      expect(bytes.getUint8((8 * 16 + 10) * 4), 0);
+      expect(bytes.getUint8((8 * 16 + 10) * 4), lessThan(255));
       expect(bytes.getUint8((8 * 16 + 13) * 4), 255);
     });
   });
