@@ -20,6 +20,10 @@
 //! document is a handle into a few slots; each backend still holds exactly
 //! one document per `Reader`.
 //!
+//! A READ THAT NEVER COMES BACK (2026-11-09): each document's reader lives
+//! on a thread of its own, watched; one that stops answering is let go and
+//! the frame asked of a reader opened afresh — `reading.rs` says why.
+//!
 //! Absence is an ANSWER, never a crash: a build whose `os` is `none.rs`
 //! says so, and the app says 「no video decoder in this build」 instead of
 //! failing as a corrupt file.
@@ -30,8 +34,12 @@
 #![cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 
 use std::borrow::Cow;
-use std::ffi::{CStr, c_char};
+use std::ffi::{CStr, CString, c_char};
 use std::sync::{Mutex, PoisonError};
+
+use reading::{Reading, Wanted};
+
+mod reading;
 
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
@@ -86,8 +94,13 @@ struct Opened {
 /// the PICTURES are the caller's, copied out on every read.
 const DOCS: usize = 8;
 
+/// What a backend says when its stream has no more pictures. ⚠️One
+/// sentence for every backend that can tell: the reading thread asks a fresh
+/// reader again when it is said of a frame the movie holds.
+const PAST_THE_END: &str = "past the end of the stream";
+
 /// What the law makes of a backend's [`Opened`].
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Shape {
     stored: (i32, i32),
     /// 0, 90, 180 or 270.
@@ -98,16 +111,28 @@ struct Shape {
     frame_count: i64,
 }
 
-/// One open movie: its backend's reader and what the law made of it.
+/// One open movie: the thread that reads it and what the law made of it.
 struct Doc {
-    reader: os::Reader,
+    /// What was opened — the path and the span — to open it again when its
+    /// reader stops answering ([`reading`]).
+    source: (CString, Option<(i64, i64, bool)>),
+    /// None once a reader opened afresh stopped answering too: 「could not
+    /// be read」 from then on.
+    reading: Option<Reading>,
     shape: Shape,
     /// The frame the reader is positioned to deliver next, when known.
     next: Option<i64>,
-    /// Where a turned frame is decoded before it is turned upright: grown
-    /// once, kept across frames, and only for a movie with a turn — an
-    /// upright one must not pay a whole-frame copy for the sideways one.
-    scratch: Vec<u8>,
+}
+
+/// The backend's reader, as the reading thread asks it.
+impl reading::Pull for os::Reader {
+    fn reposition(&mut self, index: i64, rate: (i32, i32)) -> Result<(), Why> {
+        os::Reader::reposition(self, index, rate)
+    }
+
+    fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
+        os::Reader::read(self, index, rate, rgba, alive)
+    }
 }
 
 /// 🚨**A LOCK A SLOT, not one for the decoder.** The C picked a global
@@ -285,8 +310,11 @@ unsafe fn open(path: *const c_char, span: Option<(i64, i64, bool)>) -> i32 {
         set_error("too many movies are open at once");
         return 0;
     };
-    let opened = os::Reader::open(path, span)
-        .and_then(|(reader, opened)| Ok(Doc { reader, shape: settle(opened)?, next: None, scratch: Vec::new() }));
+    let opened = os::Reader::open(path, span).and_then(|(reader, opened)| {
+        let shape = settle(opened)?;
+        let reading = Reading::spawn(reader, shape)?;
+        Ok(Doc { source: (path.to_owned(), span), reading: Some(reading), shape, next: None })
+    });
     match opened {
         Ok(doc) => {
             *SLOTS[index].lock().unwrap_or_else(PoisonError::into_inner) = Some(doc);
@@ -421,11 +449,12 @@ fn frame(doc: &mut Doc, index: i64, out: &mut [u8]) -> Result<(), Why> {
     // the reader somewhere this cannot name, and a stale 「next」 would skip
     // the reposition that recovers it.
     doc.next = None;
-    if !positioned {
-        doc.reader.reposition(index, doc.shape.rate)?;
-    }
-    let (reader, shape) = (&mut doc.reader, &doc.shape);
-    upright(shape, &mut doc.scratch, out, |into| reader.read(index, shape.rate, into))?;
+    let wanted = Wanted { index, reposition: !positioned, inside: index < doc.shape.frame_count };
+    let (source, shape) = (&doc.source, doc.shape);
+    reading::read(&mut doc.reading, &wanted, out, reading::STALL, || {
+        let (reader, _) = os::Reader::open(&source.0, source.1)?;
+        Reading::spawn(reader, shape)
+    })?;
     // Positioned on the frame AFTER this one: asking for it next needs no
     // reposition at all.
     doc.next = Some(index + 1);
@@ -464,8 +493,9 @@ fn upright(
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_video_decode_close(handle: i32) {
     let Some(mut slot) = slot_of(handle) else { return };
-    // The reader closes as it drops — under the slot's lock, so a read on
-    // it finishes first and no other close lets go of what replaces it.
+    // The reader closes as it drops — on its reading thread, which is joined
+    // under the slot's lock, so a read on it finishes first, the file is let
+    // go before this returns, and no other close lets go of what replaces it.
     slot.take();
     drop(slot);
     release(handle as usize - 1);

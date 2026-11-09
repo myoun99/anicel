@@ -21,6 +21,14 @@
 //! and a little memory stay until the process ends, and whether the hang is
 //! gone is known only by the next sighting not coming — it never reproduced
 //! (13,000 runs, 2026-10-16).
+//!
+//! 🔄**It came (2026-11-09, main PC):** with MF up the whole time, the first
+//! ReadSample after a seek back still stood for good — about once in 2,000
+//! runs of the decoder's read order (board
+//! a-seek-back-can-leave-the-movie-read-waiting-forever). Down to zero and
+//! back up was not the only way in. Starting once stays the rule — it is
+//! still how MF asks to be used — and a reader that stands is now let go
+//! and opened afresh (`video/src/decode/reading.rs`).
 
 use std::sync::Mutex;
 

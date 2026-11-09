@@ -12,7 +12,7 @@ use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Variant::{VT_I8, VT_UI8};
 use windows::core::{GUID, PCWSTR};
 
-use super::{Opened, Rate, Why, frame_ticks, sample_reaches, ticks_at};
+use super::{Opened, PAST_THE_END, Rate, Why, frame_ticks, sample_reaches, ticks_at};
 
 pub const SUPPORTED: bool = true;
 
@@ -40,9 +40,9 @@ pub struct Reader {
     bottom_up: bool,
 }
 
-// SAFETY: the source reader is a free-threaded MF object, and a movie's is
-// called from whichever thread an isolate is on, one call at a time under
-// its slot's lock — as the C's slot was.
+// SAFETY: the source reader is a free-threaded MF object; a movie's is opened
+// on the caller's thread and then called only from its reading thread
+// (`reading.rs`), one call at a time.
 unsafe impl Send for Reader {}
 
 impl Reader {
@@ -127,7 +127,7 @@ impl Reader {
 
     /// Walks forward to the picture for `index` and writes it, straight RGBA
     /// at the stored size.
-    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8]) -> Result<(), Why> {
+    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
         let target = ticks_at(index, TICKS, rate);
         let frame = frame_ticks(TICKS, rate);
         for _ in 0..WALK {
@@ -135,8 +135,9 @@ impl Reader {
             // SAFETY: a plain COM call; the out-parameters are this frame's.
             unsafe { self.reader.ReadSample(VIDEO, 0, None, Some(&mut flags), Some(&mut stamp), Some(&mut sample)) }
                 .map_err(|_| "the reader failed mid-stream")?;
+            alive();
             if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
-                return Err("past the end of the stream".into());
+                return Err(PAST_THE_END.into());
             }
             // None is a gap or a format change: keep reading.
             let Some(sample) = sample else { continue };

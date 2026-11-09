@@ -37,7 +37,7 @@ use objc2_core_video::{
 };
 use objc2_foundation::{NSData, NSDictionary, NSNumber, NSString, NSURL};
 
-use super::{Opened, Rate, Why, frame_ticks, sample_reaches, ticks_at};
+use super::{Opened, PAST_THE_END, Rate, Why, frame_ticks, sample_reaches, ticks_at};
 
 pub const SUPPORTED: bool = true;
 
@@ -67,10 +67,10 @@ pub struct Reader {
     stored: (usize, usize),
 }
 
-// SAFETY: the asset, its track and the reader are called from whichever
-// thread an isolate is on, one call at a time under the slot's lock — as the
-// C's slot was; the span the loader answers from on its own queue is behind
-// a lock of its own.
+// SAFETY: the asset, its track and the reader are opened on the caller's
+// thread and then called only from the movie's reading thread (`reading.rs`),
+// one call at a time; the span the loader answers from on its own queue is
+// behind a lock of its own.
 unsafe impl Send for Reader {}
 
 impl Reader {
@@ -200,7 +200,7 @@ impl Reader {
     /// 🚨★★★**FORWARD, NOT A SEEK.** The reader is already standing on the
     /// next picture whenever the law asks for it, which is what makes the walk
     /// below empty in the common case.
-    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8]) -> Result<(), Why> {
+    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
         let Some((reader, output)) = &self.reading else {
             return Err("no document is open".into());
         };
@@ -208,10 +208,12 @@ impl Reader {
         autoreleasepool(|_| {
             for _ in 0..WALK {
                 // SAFETY: the output of a reader that started.
-                let Some(sample) = (unsafe { output.copyNextSampleBuffer() }) else {
+                let next = unsafe { output.copyNextSampleBuffer() };
+                alive();
+                let Some(sample) = next else {
                     // SAFETY: a property read on a reader of our own.
                     let failed = unsafe { reader.status() } == AVAssetReaderStatus::Failed;
-                    return Err(if failed { "the reader failed mid-stream" } else { "past the end of the stream" }.into());
+                    return Err(if failed { "the reader failed mid-stream" } else { PAST_THE_END }.into());
                 };
                 // SAFETY: a sample of our own.
                 let stamp = micros(unsafe { sample.presentation_time_stamp() });

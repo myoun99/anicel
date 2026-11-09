@@ -20,7 +20,7 @@ impl Reader {
         Err("no video decoder in this build".into())
     }
 
-    pub fn read(&mut self, _index: i64, _rate: (i32, i32), _rgba: &mut [u8]) -> Result<(), Why> {
+    pub fn read(&mut self, _index: i64, _rate: (i32, i32), _rgba: &mut [u8], _alive: &dyn Fn()) -> Result<(), Why> {
         Err("no video decoder in this build".into())
     }
 }

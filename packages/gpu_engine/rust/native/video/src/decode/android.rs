@@ -55,9 +55,9 @@ pub struct Reader {
     stored: (usize, usize),
 }
 
-// SAFETY: the NDK's media objects belong to no thread; a movie's is called
-// from whichever thread an isolate is on, one call at a time under its
-// slot's lock — as the C's slot was.
+// SAFETY: the NDK's media objects belong to no thread; a movie's is opened
+// on the caller's thread and then called only from its reading thread
+// (`reading.rs`), one call at a time.
 unsafe impl Send for Reader {}
 
 impl Reader {
@@ -153,7 +153,7 @@ impl Reader {
         Ok(())
     }
 
-    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8]) -> Result<(), Why> {
+    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
         let target = ticks_at(index, TICKS, rate);
         let frame = frame_ticks(TICKS, rate);
         // Each read starts feeding afresh, as the C's did.
@@ -165,6 +165,7 @@ impl Reader {
             let mut info = AMediaCodecBufferInfo { offset: 0, size: 0, presentationTimeUs: 0, flags: 0 };
             // SAFETY: a plain NDK call; `info` is a local.
             let out = unsafe { AMediaCodec_dequeueOutputBuffer(self.codec.codec, &mut info, WAIT_US) };
+            alive();
             // Below 0: try again, or a format change read below.
             let Ok(out) = usize::try_from(out) else { continue };
             let wrote = sample_reaches(info.presentationTimeUs, target, frame).then(|| self.copy(out, rgba));
