@@ -472,19 +472,6 @@ class SessionRowButtonPresses {
     description: 'Toggle layer mute',
   );
 
-  /// Solo is monitoring — never saved, never exported — so it spreads like
-  /// the rest and leaves nothing to undo, as the eye's Solo does (F-125).
-  void toggleSolo(LayerId pressed) => session.rowSelectionVerbs.pressAcross(
-    pressed,
-    valueOf: (id) => _ifRow(
-      id,
-      _hasSpeaker,
-      (id) => session.visibilitySolo.soloedSeLayerIds.value.contains(id),
-    ),
-    flip: session.visibilitySolo.toggleLayerSolo,
-    description: 'Toggle solo',
-  );
-
   /// The Total bar (I-145-Q1 「따로 한 값 — 두 입구」, F-577): the row's Total,
   /// written as a value typed into its 「오디오」 group's lane is — one field,
   /// two doors. The Total holds no keys, so the frame names nothing.

@@ -342,27 +342,13 @@ void main() {
       expect([r.row(r.s1).muted, r.row(r.s2).muted], [false, false]);
     });
 
-    test('solo inside the selection solos every selected SE row, and '
-        'leaves nothing to undo', () {
-      final r = _Rig();
-      r.select([r.s1, r.s2]);
-      final depth = r.s.historyManager.undoCount;
-
-      r.presses.toggleSolo(r.s1);
-
-      expect(r.s.visibilitySolo.soloedSeLayerIds.value, {r.s1, r.s2});
-      expect(r.s.historyManager.undoCount, depth, reason: 'monitoring');
-    });
-
-    test('pressed outside the selection, it is that row\'s alone', () {
+    test('the speaker pressed outside the selection is that row\'s alone', () {
       final r = _Rig();
       r.select([r.s2, r.a]);
 
       r.presses.toggleMute(r.s1);
-      r.presses.toggleSolo(r.s1);
 
       expect([r.row(r.s1).muted, r.row(r.s2).muted], [true, false]);
-      expect(r.s.visibilitySolo.soloedSeLayerIds.value, {r.s1});
     });
   });
 

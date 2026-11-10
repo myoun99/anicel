@@ -253,22 +253,6 @@ void main() {
     expect(scheduled, isEmpty);
   });
 
-  test('⛔SOLO narrows to itself — a row that is not soloed is silent', () {
-    final project = projectWith(
-      cuts: [cut('c1')],
-      sound: (start: 2, length: 3),
-    );
-    final scheduled = buildAudioPlaybackSchedule(
-      window: window(trackStart: 0, frames: 10),
-      project: project,
-      rate: rate,
-      durationSecondsFor: (_) => 100,
-      soloedLayerIds: {const LayerId('somebody-else')},
-    );
-
-    expect(scheduled, isEmpty);
-  });
-
   group('the row\'s sound rides every entry (I-140)', () {
     Project soundedWith(
       SeSound sound, {

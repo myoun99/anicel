@@ -1029,7 +1029,8 @@ class _StoryboardRowsAndLabels {
   /// for the same layer, so its sheet toggle (B5③ 2026-08-17, superseding
   /// UI-R9 #5's empty slot — ordered twice: the flag is a LAYER field and
   /// the row's layer is track-owned, so it needs no cut to act), its
-  /// speaker opening the row's mixer (R10 R3), and no waveform-hide eye
+  /// speaker muting it beside its Total bar (F-577 — ↩️the speaker opened
+  /// the row's mixer, R10 R3), and no waveform-hide eye
   /// (UI-R7 #8 — ↩️said while the twirled-down Audio lane was the big
   /// waveform; the lane went with I-140).
   ///

@@ -324,12 +324,10 @@ enum AppStrings {
   /// '{count}' is replaced with the dropped-frame count.
   String get recordDroppedFramesTemplate => _s('recordDroppedFramesTemplate');
 
-  // --- Mix controls (AUDIO-PRO R1; the SE mixer, R10 R3) ---
-  String get layerAudioTitle => _s('layerAudioTitle');
+  // --- Mix controls (AUDIO-PRO R1; the S row's speaker, F-577) ---
   String get audioGainLabel => _s('audioGainLabel');
   String get audioPanLabel => _s('audioPanLabel');
   String get audioMute => _s('audioMute');
-  String get audioSolo => _s('audioSolo');
 
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
@@ -2401,11 +2399,9 @@ enum AppStrings {
     'recordPlacementFailed': 'The recording could not be placed.',
     'recordDroppedFramesTemplate':
         'Recorded, but {count} frames were dropped (the machine could not keep up) — check the take.',
-    'layerAudioTitle': 'Layer Audio',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Pan',
     'audioMute': 'Mute',
-    'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
@@ -3846,11 +3842,9 @@ enum AppStrings {
     'recordPlacementFailed': '録音を配置できませんでした。',
     'recordDroppedFramesTemplate':
         '録音しましたが{count}フレームが欠落しました（処理が追いつきませんでした）— テイクを確認してください。',
-    'layerAudioTitle': 'レイヤーオーディオ',
     'audioGainLabel': 'ゲイン',
     'audioPanLabel': 'パン',
     'audioMute': 'ミュート',
-    'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
@@ -5720,11 +5714,9 @@ enum AppStrings {
     'recordPlacementFailed': '녹음을 배치하지 못했습니다.',
     'recordDroppedFramesTemplate':
         '녹음됐지만 {count}프레임이 유실됐습니다(처리가 따라가지 못함) — 테이크를 확인하세요.',
-    'layerAudioTitle': '레이어 오디오',
     'audioGainLabel': '게인',
     'audioPanLabel': '팬',
     'audioMute': '음소거',
-    'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
@@ -7598,11 +7590,9 @@ enum AppStrings {
     'recordPlacementFailed': 'La prise n\'a pas pu être placée.',
     'recordDroppedFramesTemplate':
         'Enregistré, mais {count} trames ont été perdues (la machine n\'a pas suivi) — vérifiez la prise.',
-    'layerAudioTitle': 'Audio du calque',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Panoramique',
     'audioMute': 'Muet',
-    'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
@@ -9635,11 +9625,9 @@ enum AppStrings {
     'recordTakeEmpty': '录音为空 — 没有可放置的内容。',
     'recordPlacementFailed': '录音未能放置。',
     'recordDroppedFramesTemplate': '已录音，但丢失了 {count} 帧（机器未能跟上）— 请检查这条录音。',
-    'layerAudioTitle': '图层音频',
     'audioGainLabel': '增益',
     'audioPanLabel': '声像',
     'audioMute': '静音',
-    'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',

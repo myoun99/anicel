@@ -576,7 +576,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     appSettings: appSettings,
-    soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
     renderCaches: renderCaches,
     settings: projectSettings,
     audioConformStore: audioConformStore,
@@ -1744,7 +1743,6 @@ class EditorSessionManager extends ChangeNotifier
         fxPlugins.dispose();
       }
     },
-    visibilitySolo.dispose,
     editingFrameCursor.dispose,
     frameScrub.dispose,
     frameSeekCommitted.dispose,
@@ -2401,9 +2399,9 @@ class EditorSessionManager extends ChangeNotifier
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
-  /// listener and by the SE solo — the one mix switch that bypasses
-  /// history (mute, fader and pan are edits and undo).
-  @override
+  /// listener — every mix switch is an edit and undoes (mute, the Total,
+  /// the keyed volume and the pan). ↩️The SE solo bypassed history and
+  /// fired it too, until F-577 took the solo away.
   void refreshLiveAudioSchedule() {
     if (playbackRig.audioDeviceTransport.carryingPlayback) {
       playbackRig.audioDeviceTransport.refreshSchedule();
@@ -2527,9 +2525,6 @@ class EditorSessionManager extends ChangeNotifier
   /// a dialog raised by whichever happened to be on screen is a second copy
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
-
-  // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
-  // The solo set is [VisibilitySolo.soloedSeLayerIds], held by its toggle.
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
