@@ -173,11 +173,12 @@ void main() {
   ) async {
     await loadTheAppFaces();
     final widths = <AppLanguage, double>{};
-    // Korean on the AE Script tab, whose kinds are the rows' alone — their
-    // strip is under the least there. ↩️The Cels tab's, until the film
-    // joined its documents' strip (I-151) and stood that one wider.
+    // ⚠️No language's strip is under the least now — the least is asked of
+    // [ExportCelsBoard.rulesWidthFor] below. ↩️Korean on the AE Script tab
+    // was, until 「이미지」 took 「미술」's pill (F-578-Q4: 174.6 against
+    // 168, measured); the Cels tab's before it, until the film joined its
+    // documents' strip (I-151) and stood that one wider.
     final tabs = {
-      AppLanguage.ko: ExportTab.aeScript,
       AppLanguage.ja: ExportTab.cels,
     };
     for (final MapEntry(key: language, value: tab) in tabs.entries) {
@@ -234,10 +235,14 @@ void main() {
       session.playbackRig.prerenderScheduler.cancel();
       await tester.pumpWidget(const SizedBox.shrink());
     }
-    expect(widths[AppLanguage.ko], ExportCelsBoard.leastRulesWidth);
     expect(
       widths[AppLanguage.ja],
       greaterThan(ExportCelsBoard.leastRulesWidth),
+    );
+    expect(
+      ExportCelsBoard.rulesWidthFor(ExportCelsBoard.leastRulesWidth / 2),
+      ExportCelsBoard.leastRulesWidth,
+      reason: 'rules that need less stand at their least',
     );
   });
 }

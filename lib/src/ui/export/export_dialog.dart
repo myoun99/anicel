@@ -4228,7 +4228,7 @@ class ExportDialogState extends State<ExportDialog> {
       case ExportCelKind.video ||
           ExportCelKind.cel ||
           ExportCelKind.conte ||
-          ExportCelKind.art ||
+          ExportCelKind.image ||
           ExportCelKind.direction:
         return null;
     }

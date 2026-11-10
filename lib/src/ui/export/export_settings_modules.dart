@@ -1300,7 +1300,8 @@ String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   // The conte ROW's word (콘티), not the sheet panel's (콘티 용지): the kind
   // is the row's drawings, written as cels are.
   ExportCelKind.conte => AppText.strings.tlKindStoryboard,
-  ExportCelKind.art => AppText.strings.exArtLabel,
+  // The image ROW's word too — the kind is the image rows (F-578-Q4).
+  ExportCelKind.image => AppText.strings.tlKindImage,
   ExportCelKind.direction => AppText.strings.exSelDirection,
   ExportCelKind.timesheet => AppText.strings.panelTimesheet,
   ExportCelKind.envelope => AppText.strings.panelEnvelope,

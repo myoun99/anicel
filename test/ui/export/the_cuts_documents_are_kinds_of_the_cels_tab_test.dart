@@ -189,7 +189,7 @@ void main() {
 
     expect(state.debugSpecs.cels.kinds, {
       ExportCelKind.cel,
-      ExportCelKind.art,
+      ExportCelKind.image,
       ExportCelKind.timesheet,
     });
     expect(tester.celsBoardRowIds, ['a', 'document-timesheet']);
@@ -269,7 +269,7 @@ void main() {
     expect(keysOf(stripOf(ExportCelKind.cel)), [
       'export-cels-kind-cel',
       'export-cels-kind-conte',
-      'export-cels-kind-art',
+      'export-cels-kind-image',
       'export-cels-kind-direction',
     ]);
     expect(keysOf(stripOf(ExportCelKind.timesheet)), [

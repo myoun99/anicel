@@ -359,7 +359,7 @@ void main() {
     // The kinds' defaults: 셀 and 미술. The filters': 기준 and 부속 on, 시트
     // off. And the label reads its own name — nothing has left its rule.
     expect(pill(tester, 'export-cels-kind-cel').selected, isTrue);
-    expect(pill(tester, 'export-cels-kind-art').selected, isTrue);
+    expect(pill(tester, 'export-cels-kind-image').selected, isTrue);
     expect(pill(tester, 'export-cels-kind-conte').selected, isFalse);
     expect(pill(tester, 'export-cels-kind-direction').selected, isFalse);
     expect(pill(tester, 'export-cels-select-base').selected, isTrue);
@@ -1120,7 +1120,7 @@ void main() {
       ExportCelKind.cel: strings.exCels,
       // The conte ROW's word (콘티) — not the sheet panel's (콘티 용지).
       ExportCelKind.conte: strings.tlKindStoryboard,
-      ExportCelKind.art: strings.exArtLabel,
+      ExportCelKind.image: strings.tlKindImage,
       ExportCelKind.direction: strings.exSelDirection,
       // A document wears its panel's name.
       ExportCelKind.timesheet: strings.panelTimesheet,
@@ -1257,9 +1257,9 @@ void main() {
     expect(state.debugSpecs.cels.applyPaper, isFalse);
     expect(pill(tester, 'export-cels-apply-paper').selected, isFalse);
 
-    await tapKey(tester, 'export-cels-kind-art');
+    await tapKey(tester, 'export-cels-kind-image');
     expect(state.debugSpecs.cels.kinds, {ExportCelKind.cel});
-    expect(pill(tester, 'export-cels-kind-art').selected, isFalse);
+    expect(pill(tester, 'export-cels-kind-image').selected, isFalse);
   });
 
   testWidgets('🗣️접두사: a text field a kind in the naming module — what is '
@@ -1281,7 +1281,7 @@ void main() {
       {
         ExportCelKind.cel: '',
         ExportCelKind.conte: '',
-        ExportCelKind.art: '_',
+        ExportCelKind.image: '_',
         ExportCelKind.direction: '_',
         ExportCelKind.timesheet: '_',
         ExportCelKind.envelope: '_',
@@ -1294,9 +1294,9 @@ void main() {
     expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.cel), 'k_');
     expect(tester.exportPreviewLine, 'k_A1.png · 1 / 2');
 
-    await tester.enterText(field(ExportCelKind.art), '');
+    await tester.enterText(field(ExportCelKind.image), '');
     await tester.pump();
-    expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.art), '');
+    expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.image), '');
 
     // The field typed in last pulled the column to itself.
     final reset = find.descendant(
@@ -1309,7 +1309,7 @@ void main() {
     await tester.pump();
     expect(state.debugSpecs.cels.naming, const ExportCelNaming());
     expect(typedIn(ExportCelKind.cel), '');
-    expect(typedIn(ExportCelKind.art), '_');
+    expect(typedIn(ExportCelKind.image), '_');
     expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 

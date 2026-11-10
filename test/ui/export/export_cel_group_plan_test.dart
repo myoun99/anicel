@@ -40,7 +40,7 @@ void main() {
   const paper = LayerMark.paper(LayerProcess.layout);
   const withDirection = {
     ExportCelKind.cel,
-    ExportCelKind.art,
+    ExportCelKind.image,
     ExportCelKind.direction,
   };
   // 디렉션 alone: the drawing filters off, the direction kind written.
@@ -539,14 +539,14 @@ void main() {
 
     expect(filesWith(const ExportCelNaming()), ['A1.png', '_BG1.png']);
     expect(
-      filesWith(const ExportCelNaming().withPrefix(ExportCelKind.art, '')),
+      filesWith(const ExportCelNaming().withPrefix(ExportCelKind.image, '')),
       ['A1.png', 'BG1.png'],
     );
     expect(
       filesWith(
         const ExportCelNaming()
             .withPrefix(ExportCelKind.cel, 'x-')
-            .withPrefix(ExportCelKind.art, 'bg_'),
+            .withPrefix(ExportCelKind.image, 'bg_'),
       ),
       ['x-A1.png', 'bg_BG1.png'],
     );

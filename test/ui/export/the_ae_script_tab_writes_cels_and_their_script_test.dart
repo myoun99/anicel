@@ -266,7 +266,7 @@ void main() {
 
     Finder byKey(String key) => find.byKey(ValueKey<String>(key));
     expect(byKey('export-cels-kind-cel'), findsOneWidget);
-    expect(byKey('export-cels-kind-art'), findsOneWidget);
+    expect(byKey('export-cels-kind-image'), findsOneWidget);
     expect(byKey('export-cels-kind-conte'), findsOneWidget);
     // ae-script-export-Q3: a direction is a guide in AE, and so is the
     // camera's path — the two switches.
@@ -292,7 +292,7 @@ void main() {
 
     final state = await pumpAeScript(tester, session, temp);
     await tester.tap(
-      find.byKey(const ValueKey<String>('export-cels-kind-art')),
+      find.byKey(const ValueKey<String>('export-cels-kind-image')),
     );
     await tester.pump();
 

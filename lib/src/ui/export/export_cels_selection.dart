@@ -60,7 +60,7 @@ ExportCelKind? exportCelKindOf(Layer layer, List<Layer> layers) {
   return switch (owner?.kind) {
     LayerKind.instruction => ExportCelKind.direction,
     LayerKind.storyboard => ExportCelKind.conte,
-    LayerKind.image => ExportCelKind.art,
+    LayerKind.image => ExportCelKind.image,
     LayerKind.animation => ExportCelKind.cel,
     _ => null,
   };

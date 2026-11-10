@@ -1499,7 +1499,6 @@ enum AppStrings {
   String get exSelDirection => _s('exSelDirection');
   String get exSelCustom => _s('exSelCustom');
   String get exPaperLabel => _s('exPaperLabel');
-  String get exArtLabel => _s('exArtLabel');
   String get exTakeLatest => _s('exTakeLatest');
   String get exFolders => _s('exFolders');
   String get exNameParts => _s('exNameParts');
@@ -3083,7 +3082,6 @@ enum AppStrings {
     'exSelDirection': 'Direction',
     'exSelCustom': 'Custom',
     'exPaperLabel': 'Paper',
-    'exArtLabel': 'Art',
     'exTakeLatest': 'Latest',
     'exFolders': 'Folders',
     'exNameParts': 'Name',
@@ -4748,7 +4746,6 @@ enum AppStrings {
     'exSelDirection': 'ディレクション',
     'exSelCustom': 'カスタム',
     'exPaperLabel': '用紙',
-    'exArtLabel': '美術',
     'exTakeLatest': '最新',
     'exFolders': 'フォルダ作成',
     'exNameParts': '名前指定',
@@ -6620,7 +6617,6 @@ enum AppStrings {
     'exSelDirection': '디렉션',
     'exSelCustom': '커스텀',
     'exPaperLabel': '용지',
-    'exArtLabel': '미술',
     'exTakeLatest': '최신',
     'exFolders': '폴더 생성',
     'exNameParts': '이름 지정',
@@ -8556,7 +8552,6 @@ enum AppStrings {
     'exSelDirection': 'Direction',
     'exSelCustom': 'Personnalisé',
     'exPaperLabel': 'Papier',
-    'exArtLabel': 'Décor',
     'exTakeLatest': 'Dernière',
     'exFolders': 'Dossiers',
     'exNameParts': 'Nom',
@@ -10488,7 +10483,6 @@ enum AppStrings {
     'exSelDirection': '指示',
     'exSelCustom': '自定义',
     'exPaperLabel': '用纸',
-    'exArtLabel': '美术',
     'exTakeLatest': '最新',
     'exFolders': '创建文件夹',
     'exNameParts': '命名',

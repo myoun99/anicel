@@ -21,7 +21,7 @@ import 'package:anicel/src/ui/export/export_cels_selection.dart';
 void main() {
   const withDirection = {
     ExportCelKind.cel,
-    ExportCelKind.art,
+    ExportCelKind.image,
     ExportCelKind.direction,
   };
   const key = LayerMark(process: LayerProcess.key);
@@ -235,9 +235,9 @@ void main() {
         },
         {
           'a': ExportCelKind.cel,
-          'still': ExportCelKind.art,
-          'bg': ExportCelKind.art,
-          'bgc': ExportCelKind.art,
+          'still': ExportCelKind.image,
+          'bg': ExportCelKind.image,
+          'bgc': ExportCelKind.image,
           'ac': ExportCelKind.cel,
           's': ExportCelKind.conte,
           'inst': ExportCelKind.direction,
@@ -271,7 +271,7 @@ void main() {
       expect(
         cels(
           layers,
-          spec: const CelsExportSpec(kinds: {ExportCelKind.art}, label: keyAd),
+          spec: const CelsExportSpec(kinds: {ExportCelKind.image}, label: keyAd),
         ),
         ['bgc', 'book'],
       );
@@ -290,13 +290,13 @@ void main() {
         layer('bgad', kind: LayerKind.image, mark: keyAd),
       ];
       expect(
-        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.art})),
+        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.image})),
         ['bg'],
       );
       expect(
         cels(
           layers,
-          spec: const CelsExportSpec(kinds: {ExportCelKind.art}, label: keyAd),
+          spec: const CelsExportSpec(kinds: {ExportCelKind.image}, label: keyAd),
         ),
         ['bgad'],
       );
@@ -332,7 +332,7 @@ void main() {
       expect(
         cels(
           layers,
-          spec: const CelsExportSpec(kinds: {ExportCelKind.art}),
+          spec: const CelsExportSpec(kinds: {ExportCelKind.image}),
           delta: delta,
         ),
         ['bg'],
@@ -360,7 +360,7 @@ void main() {
       ];
       expect(listed(const CelsExportSpec()), ['a', 'f', 'bg', 'g', 'ac']);
       expect(
-        listed(const CelsExportSpec(kinds: {ExportCelKind.art})),
+        listed(const CelsExportSpec(kinds: {ExportCelKind.image})),
         ['bg', 'g'],
         reason: 'a kind that is off takes its rows — and the folder that '
             'held only those — out of the list',
