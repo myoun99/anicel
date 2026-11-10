@@ -430,6 +430,14 @@ void main() {
       pictures.bytesToMake(at(3));
       await pictures.readIn(at(3));
       expect(images.read, 1, reason: '⛔not read again at the same content');
+
+      pictures.store.letGo(pictures.keyOf(at(3)));
+      expect(
+        pictures.standingOf(at(3)).state,
+        PictureState.toCome,
+        reason: '⛔nor one once its picture is let go: made again, as any '
+            'frame not there — given up, b would never be shown again',
+      );
     });
   });
 
