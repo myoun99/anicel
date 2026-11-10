@@ -780,9 +780,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
     ),
   );
 
-  /// The box every button at the end of the name stands in — the link
-  /// badge, a reference row's file, an SE row's speaker, the camera's path
-  /// — the header graph's ([LaneGraphToggle]), so the five are one button.
+  /// The box every glyph button of a row's own stands in — at the end of
+  /// the name the link badge and a reference row's file, in the blend
+  /// column an SE row's speaker and the camera's path (F-577) — the header
+  /// graph's ([LaneGraphToggle]), so the five are one button.
   ///
   /// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
   /// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨.
@@ -1149,8 +1150,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// R27 #6: the blend mode, RIGHTMOST — the user's placement. Within a
   /// host that HAS the column, non-compositing kinds keep the slot so rows
-  /// and the legend header stay aligned; hosts without it (the storyboard's
-  /// track rail) skip the column outright, exactly like the onion cell.
+  /// and the legend header stay aligned — two of them fill it with their
+  /// own buttons ([_blendCell], F-577); a host without it skips the column
+  /// outright, exactly like the onion cell (↩️the storyboard's track rail
+  /// was one until I-73, 2026-10-08).
   Widget? _blendChip(BuildContext context) {
     final onSelected = onLayerBlendModeSelected;
     if (onSelected == null || !layerKindShowsBlendControl(layer.kind)) {
