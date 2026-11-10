@@ -737,11 +737,6 @@ external void compositeChains(
   Pointer<Engine> engine,
 );
 
-@Native<Bool Function(Pointer<Composite>)>(
-  symbol: 'gpu_engine_composite_chains_stand',
-)
-external bool compositeChainsStand(Pointer<Composite> composite);
-
 @Native<Void Function(Pointer<Composite>)>(symbol: 'gpu_engine_composite_free')
 external void compositeFree(Pointer<Composite> composite);
 

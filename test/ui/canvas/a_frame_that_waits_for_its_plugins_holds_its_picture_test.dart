@@ -48,7 +48,6 @@ import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/a_shown_surface.dart';
 import '../../helpers/an_effect_sampled.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
-import '../../helpers/poll_until.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「머문다 — … 결과가 올 때까지 그
@@ -577,12 +576,11 @@ void main() {
       return GpuComposite.opening(appGpuEngine, bgra: bgra);
     }))!;
     // ⚠️Before the store that lays with it is made: freed after it.
-    addTearDown(() async {
-      // ⚠️Freed only once its chains are compiled: a compile on its way
-      // holds it. Asked of the engine, in real time — the compile's future
-      // is on the test's clock, which pumps no more.
-      unawaited(composite.compileChains());
-      if (await pollUntil(() => !composite.chainsAreToCome)) {
+    addTearDown(() {
+      // ⚠️Freed only once its chains' compile is through: one on its way
+      // holds it. Every test here waits for that; one that failed before
+      // it leaves the composite to the process.
+      if (!composite.chainsAreToCome) {
         composite.free();
       }
     });

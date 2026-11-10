@@ -1049,8 +1049,7 @@ pub unsafe extern "C" fn gpu_engine_composite_shows(composite: *const Composite,
 /// Compiles the effect chains' blurs on the calling thread if they are not
 /// compiled, and waits where another thread is at it
 /// ([`Composite::chains`]): an app asks off the thread its frames are built
-/// on, and runs no plan that names a chain before
-/// `gpu_engine_composite_chains_stand`.
+/// on, and runs no plan that names a chain before this has returned.
 ///
 /// # Safety
 /// `composite` and `engine` are live.
@@ -1059,17 +1058,6 @@ pub unsafe extern "C" fn gpu_engine_composite_chains(composite: *const Composite
     // SAFETY: see the function's contract.
     let (composite, engine) = unsafe { (&*composite, &*engine) };
     composite.chains(engine);
-}
-
-/// Whether the effect chains' blurs are compiled: whether a plan that
-/// names a chain compiles nothing where it runs.
-///
-/// # Safety
-/// `composite` is live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_composite_chains_stand(composite: *const Composite) -> bool {
-    // SAFETY: see the function's contract.
-    unsafe { &*composite }.chains_stand()
 }
 
 /// # Safety

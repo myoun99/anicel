@@ -539,12 +539,6 @@ impl Composite {
         self.chain.get_or_init(|| Chain::new(engine))
     }
 
-    /// Whether the effect chains' blurs are compiled: whether a plan that
-    /// names a chain compiles nothing where it runs.
-    pub(crate) fn chains_stand(&self) -> bool {
-        self.chain.get().is_some()
-    }
-
     /// All this device lets a pass take.
     pub(crate) fn widest(&self) -> Budget {
         Budget {

@@ -1606,11 +1606,13 @@ class GpuComposite {
   /// compiles them where it is run else — all seven, for any chain: 🔬6.5 s
   /// of a stopped UI as S5 opened, Surface Pro 11 (gpu-canonical-store ⑦).
   ///
-  /// False once that compile has been through and left them uncompiled:
-  /// the plan's run is then what compiles them, and what says why it
-  /// cannot — nothing waits for a compile that will not come.
-  bool get chainsAreToCome =>
-      !_chainsTried && !rust.compositeChainsStand(_composite);
+  /// False once that compile has been through, where it left them
+  /// uncompiled too: the plan's run is then what compiles them, and what
+  /// says why it cannot — nothing waits for a compile that will not come.
+  /// ↩️The engine was asked whether they stood besides (11-10): nothing
+  /// makes them stand while a frame would wait but this compile, whose end
+  /// says so — with the engine's word turned off no pin moved.
+  bool get chainsAreToCome => !_chainsThrough;
 
   /// The chains' kernels compiled off this isolate, which goes on
   /// meanwhile: one compile, however many ask. ⚠️The executor is freed only
@@ -1618,10 +1620,10 @@ class GpuComposite {
   Future<void> compileChains() => _chains ??= _chainsOff(
     _composite.address,
     _engine._engine.address,
-  ).whenComplete(() => _chainsTried = true);
+  ).whenComplete(() => _chainsThrough = true);
 
   Future<void>? _chains;
-  bool _chainsTried = false;
+  bool _chainsThrough = false;
 
   static Future<void> _chainsOff(int composite, int engine) => Isolate.run(
     () => rust.compositeChains(
