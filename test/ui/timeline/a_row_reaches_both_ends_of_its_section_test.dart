@@ -330,7 +330,7 @@ void main() {
         addTearDown(session.dispose);
         session.selectLayer(const LayerId('near'));
 
-        session.folders.detachActiveLayer();
+        session.folders.detachRows();
 
         expect(_layerOf(session, 'near').attachedToLayerId, isNull);
         expect(_pictures(session), ['near', 'far', 'base']);

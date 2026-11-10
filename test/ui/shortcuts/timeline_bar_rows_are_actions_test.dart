@@ -261,7 +261,7 @@ void main() {
         'runPixelClipboardVerb(',
         'createCut',
         'createLinkedCutFromActiveCut',
-        'detachActiveLayer',
+        'detachRows',
         'toggleTargetLayerKind',
         'addAttachedLayer',
         'selectRowSpan',

@@ -1131,7 +1131,7 @@ void main() {
         final mirror = s.activeLayer!.id;
         final band = _band(s);
 
-        s.folders.detachActiveLayer();
+        s.folders.detachRows();
 
         final let = _layer(s, mirror.value);
         expect(

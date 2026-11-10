@@ -320,8 +320,8 @@ class TimelineBarMenus {
         label: editorActionLabel(EditorActionIds.layerDetach),
         shortcuts: const [EditorActionIds.layerDetach],
         icon: Icons.link_off,
-        enabled: serves && session.folders.canDetachActiveLayer,
-        onSelected: session.folders.detachActiveLayer,
+        enabled: serves && session.folders.canDetachRows,
+        onSelected: session.folders.detachRows,
       ),
       // R5 #5: IMPORT AUDIO left. The media pool is the one entrance —
       // it links an audio asset onto a frame block, which is the shape the
