@@ -2979,10 +2979,10 @@ class _ImportDialogState extends State<ImportDialog> {
     if (row is! _FolderLayerRow) {
       return null;
     }
-    final template = _parsed!.correctsOnlyItsBaseCels(row.layer)
-        ? AppText.strings.tlDropAttachSyncedTemplate
-        : AppText.strings.tlDropAttachFreeTemplate;
-    return template.replaceAll('{name}', row.layer.symbol);
+    return AppText.strings.tlDropAttach(
+      row.layer.symbol,
+      synced: _parsed!.correctsOnlyItsBaseCels(row.layer),
+    );
   }
 
   /// [value] as the 넣을 곳 of [rows]: a destination kept for each, or —
@@ -3167,7 +3167,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // PICK, not the user's word: a letter and four digits a side and a
     // four-digit count, which a scan's 「A0001」 fills and a folder's
     // 「A1–A21 (22장)」 leaves room in. One line to change.
-    keepsRoomFor: AppText.strings.imRunSpan('A0001', 'A9999', 9999),
+    keepsRoomFor: [AppText.strings.imRunSpan('A0001', 'A9999', 9999)],
     valueOf: _optionAnswerOf,
     appliesTo: (path) => _optionAsked(path) != null,
     enabledFor: (path, value) => switch (value) {
@@ -3248,6 +3248,24 @@ class _ImportDialogState extends State<ImportDialog> {
     return _asksSound(path) ? _OptionAsked.sound : null;
   }
 
+  /// The room a place is said in, whatever the layer is named (🗣️F-582-Q1,
+  /// 유저 2026-11-10: 「넣을 곳도 같은 법으로 — 고정 길이 · 넘치면 생략 ·
+  /// 호버로 전체」; [ImportColumn.keepsRoomFor]). A place carries a name in
+  /// two shapes — the row and the cell a drop aimed at ([_spotLabel]), and
+  /// the symbol a folder's correction rides ([_attachWord]) — and which is
+  /// the widest is the language's to say, so the room is of each.
+  ///
+  /// ⚠️How long is THIS SESSION'S PICK, not the user's word: an eight-letter
+  /// row with a three-digit cell, and a four-letter symbol (「BOOK」). The
+  /// app's cut takes a word's END, so a longer name loses its cell or its
+  /// 「(싱크)」 first — the cost the answer was given with. One list to
+  /// change.
+  List<String> get _placeRoom => [
+    AppText.strings.imIntoRowCell('ABCDEFGH', 999),
+    for (final synced in const [true, false])
+      AppText.strings.tlDropAttach('BOOK', synced: synced),
+  ];
+
   /// Where each file goes: a new layer, a new cut, a new project (I-156) —
   /// the SE rows, for a sound — or the media pool alone (「미디어」, F-282:
   /// the window's 「풀 / 타임라인」 strip, one answer for the whole batch,
@@ -3272,6 +3290,7 @@ class _ImportDialogState extends State<ImportDialog> {
         _LeftOut() => AppText.strings.imExcluded,
         _ => '',
       },
+      keepsRoomFor: _placeRoom,
       // A sound's place is the SE rows' own rule (유저 2026-09-11: 「SE1부터
       // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — the one placement a
       // sound has.

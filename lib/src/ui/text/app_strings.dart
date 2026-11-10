@@ -1046,6 +1046,15 @@ enum AppStrings {
   String get tlDropOutOfFolder => _s('tlDropOutOfFolder');
   String get tlDropAttachSyncedTemplate => _s('tlDropAttachSyncedTemplate');
   String get tlDropAttachFreeTemplate => _s('tlDropAttachFreeTemplate');
+
+  /// An attach in words — the row it rides by [name], and whether it rides
+  /// SYNCED or free (「A에 어태치 (싱크)」). The timeline's drag caret, the
+  /// import window's place of a folder's correction, and the room that
+  /// place keeps were three spellings of it.
+  String tlDropAttach(String name, {required bool synced}) =>
+      (synced ? tlDropAttachSyncedTemplate : tlDropAttachFreeTemplate)
+          .replaceAll('{name}', name);
+
   String get tlDropDetachAttach => _s('tlDropDetachAttach');
 
   /// ⑦: the one landing a folder attach has no home for — an organizer

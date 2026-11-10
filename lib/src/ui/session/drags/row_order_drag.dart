@@ -505,10 +505,12 @@ class RowOrderDrag {
       );
       // SYNCED and FREE are different promises about the row's timing, so
       // the caret names which one rather than just "attach".
-      final template = mode == AttachedMode.synced
-          ? AppText.strings.tlDropAttachSyncedTemplate
-          : AppText.strings.tlDropAttachFreeTemplate;
-      return base == null ? null : template.replaceAll('{name}', base.name);
+      return base == null
+          ? null
+          : AppText.strings.tlDropAttach(
+              base.name,
+              synced: mode == AttachedMode.synced,
+            );
     }
     // A folder carried out of a group detaches its MEMBERS, not the row the
     // pointer holds, so the question is whether anything detaches at all.

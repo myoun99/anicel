@@ -104,10 +104,12 @@ class ImportColumn<T> {
   /// symbol it rides, 「A에 어태치 (싱크)」.
   final String? Function(String path, T value)? wordOf;
 
-  /// The longest word this column keeps room for, where its rows say words
-  /// of their own ([wordOf]): the column is laid out for THIS and for its
-  /// answers' labels, never for what a row says, and a row's longer word is
-  /// cut and says its whole on hover ([EllipsisText]). Null where the
+  /// The words this column keeps room for, where its rows say words of
+  /// their own ([wordOf], or an answer's label that carries a name): the
+  /// column is laid out for the widest of THESE and of its answers' labels,
+  /// never for what a row says, and a row's longer word is cut and says its
+  /// whole on hover ([EllipsisText]). One of each shape a row's word takes,
+  /// since which is the widest is the language's to say. Null where the
   /// column is as wide as the widest word a row says.
   ///
   /// 🗣️F-582, 유저 2026-11-10: 「미디어 임포트시 옵션행이 길이에 따라 커져서
@@ -117,7 +119,12 @@ class ImportColumn<T> {
   /// was measured by what its rows said (I-76, `6f2017e72` — nobody had
   /// asked for that), so a run of long file names widened the list, and
   /// again each time its span was picked on the preview.
-  final String? keepsRoomFor;
+  ///
+  /// 🗣️F-582-Q1 (유저 2026-11-10: 「넣을 곳도 같은 법으로 — 고정 길이 ·
+  /// 넘치면 생략 · 호버로 전체」): the place column keeps one too — a long
+  /// layer's name no longer widens the window — and its rows' words take
+  /// more than one shape, so the room is of several words.
+  final List<String>? keepsRoomFor;
 
   /// The word [path]'s row says for [value].
   String wordFor(String path, T value) =>
@@ -287,7 +294,7 @@ class _ImportTableMetrics {
                 // A room the column keeps is its width whatever its rows
                 // say ([ImportColumn.keepsRoomFor]), as the resolution's is.
                 if (column.keepsRoomFor case final kept?)
-                  kept
+                  ...kept
                 else
                   for (final row in rows)
                     if (column.appliesTo(row.path)) column.cellWordOf(row.path),

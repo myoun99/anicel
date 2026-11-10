@@ -450,7 +450,10 @@ void main() {
         'background_street_night_0001–background_street_night_0240 (240)';
 
     /// A question whose rows say a word of their own, as a run's span is.
-    ImportColumn<Object?> span(String word, {String? keepsRoomFor = room}) =>
+    ImportColumn<Object?> span(
+      String word, {
+      List<String>? keepsRoomFor = const [room],
+    }) =>
         ImportColumn<Object?>(
           id: 'span',
           label: 'Span',
@@ -521,6 +524,27 @@ void main() {
       // as wide as the widest word a row says.
       expect(narrowest(span('A1', keepsRoomFor: null)), lessThan(kept.$2));
       expect(narrowest(span(long, keepsRoomFor: null)), greaterThan(kept.$2));
+    });
+
+    // 🗣️F-582-Q1 (유저 2026-11-10: 「넣을 곳도 같은 법으로」): a place's word
+    // takes more than one shape, and which is the widest is the language's.
+    testWidgets('🚨a room of several words is the widest of them, in '
+        'whatever order they are kept', (tester) async {
+      await pumpSaying(tester, room);
+      double narrowest(List<String> kept) => ImportFileTable.minimumWidth(
+        tester.element(find.byType(ImportFileTable)),
+        rows: [row('a.png')],
+        columns: [span('A1', keepsRoomFor: kept)],
+      );
+      final widest = narrowest(const [room]);
+
+      expect(narrowest(const [room, 'A1–A2 (2)']), widest);
+      expect(narrowest(const ['A1–A2 (2)', room]), widest);
+      expect(
+        narrowest(const ['A1–A2 (2)']),
+        lessThan(widest),
+        reason: '⛔전제: the shorter one alone is a narrower room',
+      );
     });
 
     testWidgets('🚨a word longer than the room is cut, and says its whole '
