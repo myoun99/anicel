@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
-    show attachedMirrorCelId, attachedRowAsShown;
+    show attachedMirrorCelId, attachedRowAsShown, isSyncedAttachedLayer;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -1725,6 +1725,21 @@ void main() {
         }[shownAt(there, s2, 0)],
         const CutId('d'),
         reason: 'the cel the cut d shows is drawn of what the cut d showed',
+      );
+      // 🗣️-Q1 own-cel (유저 11-11): 「컷마다 제 셀로 — 두 컷 다 계속
+      // 따라간다」.
+      expect(
+        [
+          for (final row in [plan.result, there])
+            (isSyncedAttachedLayer(row), row.attachedToLayerId),
+        ],
+        [(true, s.id), (true, s2.id)],
+        reason: 'both cuts still follow their conte',
+      );
+      expect(
+        plan.result.baseFrameLinks[const FrameId('s-1')],
+        isNot(there.baseFrameLinks[const FrameId('s-1')]),
+        reason: 'each cut links the panel 1 to a cel of its own',
       );
     });
   });

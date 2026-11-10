@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
-    show attachedMirrorCelId;
+    show attachedMirrorCelId, isSyncedAttachedLayer;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -2268,6 +2268,32 @@ void main() {
           {for (final picture in drawn) picture.from.id},
           {cutId, s.requireActiveCut.id},
           reason: 'what each cut showed is baked — neither lost',
+        );
+        // 🗣️conte-pair-…-Q1 own-cel (유저 11-11): 「컷마다 제 셀로 — 두
+        // 컷 다 계속 따라간다」.
+        final riders = [
+          plan.riders.single,
+          plan.others.single.layers.byId(twin)!,
+        ];
+        expect(
+          [for (final rider in riders) isSyncedAttachedLayer(rider)],
+          [true, true],
+          reason: 'both cuts\' riders still ride the row',
+        );
+        expect(
+          riders.first.baseFrameLinks.keys,
+          riders.last.baseFrameLinks.keys,
+          reason: 'over the same cels of the row',
+        );
+        expect(
+          {
+            for (final key in riders.first.baseFrameLinks.keys)
+              if (riders.first.baseFrameLinks[key] !=
+                  riders.last.baseFrameLinks[key])
+                key,
+          },
+          isNotEmpty,
+          reason: 'each cut links a cel of the row to a cel of its own',
         );
       });
 

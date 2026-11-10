@@ -1,6 +1,6 @@
 import '../../models/attached_layer_mount.dart' show detachedLayer;
 import '../../models/attached_layer_resolve.dart'
-    show attachedMirrorCelId, fxCarrierOf, isSyncedAttachedLayer;
+    show fxCarrierOf, isSyncedAttachedLayer;
 import '../../models/attached_mode.dart';
 import '../../models/audio_clip.dart';
 import '../../models/canvas_point.dart';
@@ -35,6 +35,7 @@ import 'layer_merge_plan.dart'
         rowsKeyedAcrossCuts,
         runsByPicture,
         tailedName;
+import 'synced_cel_ids.dart';
 import 'timeline_showing.dart';
 
 /// The frames a press of RASTERIZE bakes, from [start] to [end]
@@ -1038,7 +1039,9 @@ typedef _Minting = ({
 /// rider parts where its own picture does, as the row does. A synced one
 /// rides the row's cels one for one: a cel for each of the row's new ones
 /// it shows one over, under the id its group's mirror of that cel is
-/// minted by ([attachedMirrorCelId]), as a merge's synced rider takes.
+/// minted by — or a cel of its own where another use's picture over
+/// that cel took the mirror first ([SyncedCelIds]), as a merge's
+/// result on the conte takes.
 ({List<({Cut cut, Layer row})> rows, List<LayerMergePicture> pictures})
 _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
   final uses = taking._uses;
@@ -1054,6 +1057,10 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
       for (final self in taking._selves)
         if (_linkKey(self.keys, self.row.id) == mintedUnder) self,
     ];
+    final synced = SyncedCelIds(
+      mintedUnder,
+      () => minting.mintFrameId(mintedUnder),
+    );
     final bank = _bankOf(
       [
         for (final riding in ridings)
@@ -1063,8 +1070,7 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
       ],
       // A self bakes nothing, so a rider shows every new cel first.
       (place, run) => isSyncedAttachedLayer(ridings[place].rider)
-          ? attachedMirrorCelId(
-              mintedUnder,
+          ? synced.over(
               ridden[ridings[place].use].held.celAt[run.first.start]!,
             )
           : minting.mintFrameId(mintedUnder),

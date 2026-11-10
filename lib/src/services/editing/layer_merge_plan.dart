@@ -39,6 +39,7 @@ import '../layer_pose_matrix.dart'
 import '../playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_spans.dart';
 import '../project_lookup.dart' show requireCut, requireCutPosition;
+import 'synced_cel_ids.dart';
 
 /// Why a merge's row may show otherwise than the rows it was made of did —
 /// what the press warns of (I-78-Q1 「포토샵 · 클튜처럼 (+경고)」).
@@ -533,11 +534,11 @@ LayerMergePlan planLayerMerge(
   for (final layer in layers) {
     final first = all[layer.first];
     final keptUnder = _resultIdIn(takings, first, first);
+    final synced = SyncedCelIds(keptUnder, () => mintFrameId(keptUnder));
     final bank = _bankOf(
       [for (final index in layer) parts[index]],
       (part, spans) => switch (part.follows) {
-        final conte? => attachedMirrorCelId(
-          keptUnder,
+        final conte? => synced.over(
           exposedFrameIdAt(conte.timeline, spans.first.start)!,
         ),
         null => mintFrameId(keptUnder),
