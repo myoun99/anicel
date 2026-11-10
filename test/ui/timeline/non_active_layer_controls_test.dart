@@ -376,7 +376,8 @@ void main() {
           );
         });
 
-        testWidgets('SE speaker opens the mixer without stealing the target', (
+        // F-577: the speaker is a mute toggle. ↩️It opened the mixer.
+        testWidgets('SE speaker mutes its row without stealing the target', (
           tester,
         ) async {
           final session = await pumpRail(tester, way);
@@ -389,9 +390,9 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(
-            find.byKey(const ValueKey<String>('se-layer-mixer')),
-            findsOneWidget,
-            reason: 'the speaker did not open its own row\'s mixer',
+            session.layers.firstWhere((l) => l.id == se).muted,
+            isTrue,
+            reason: 'the speaker did not mute its own row',
           );
           expect(
             session.activeLayerId,

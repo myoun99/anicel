@@ -18,11 +18,15 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/audio_clips.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundTotalVolumeLaneId;
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/number_pad_keyboard.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// ⑨b SE audio UX: the row's mute speaker and its 「오디오」 group (I-140 —
 /// ↩️the audio lane's AE-style offset value field, then the lane itself).
@@ -127,17 +131,20 @@ void main() {
     expect(Layer.fromJson(json).muted, isFalse);
   });
 
-  testWidgets('the SE speaker opens the MIXER in both orientations, and '
-      'mute lives inside it (view state, not undoable)', (tester) async {
+  // 🗣️F-577 (유저 2026-11-10): 「사운드버튼은 단순하게 음소거/비음소거
+  // 역할만 하는 토글버튼되도록」. ↩️It was a door to the SE mixer (R10 R3).
+  testWidgets('the SE speaker is a mute toggle in both orientations, and its '
+      'glyph reads the mute', (tester) async {
     // The x-sheet's header is the rail stood up, laid out whole and seen
     // through the window its panel can spare (`layer_rail_window.dart`): a
-    // short dock cuts its tail, and the speaker is in that tail. This test
-    // is about the DOOR being the same in both orientations, so give the
-    // dock the height a user working in the sheet would.
+    // short dock cuts its tail, and the speaker is in that tail — the blend
+    // column ends it (F-577). This test is about the TOGGLE being the same
+    // in both orientations, so give the dock the height a user working in
+    // the sheet would.
     // -300 → -322 (I-89 ③, 2026-10-11): the header grew 22 — a header
-    // graph's slot, kept for its lanes since (I-89-Q17 A) — and the speaker
-    // stands after it. The hand stops the dock at half the window (결정 8),
-    // so the window pays twice that: 1000 → 1044.
+    // graph's slot, kept for its lanes since (I-89-Q17 A). The hand stops
+    // the dock at half the window (결정 8), so the window pays twice that:
+    // 1000 → 1044.
     await tester.binding.setSurfaceSize(const Size(1200, 1044));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
@@ -148,19 +155,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await _ensureVisibleAndTap(
-      tester,
-      find.named('timeline-layer-mute-sea-voice'),
-    );
-    expect(
-      find.byKey(const ValueKey<String>('se-layer-mixer')),
-      findsOneWidget,
-      reason: 'the speaker is a door now — R10 R3',
-    );
-
-    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
-    await tester.pumpAndSettle();
+    final speaker = find.named('timeline-layer-mute-sea-voice');
+    expect(tester.appIconButton(speaker).icon, Icons.volume_up);
+    await _ensureVisibleAndTap(tester, speaker);
     expect(_seLayer(repository).muted, isTrue);
+    expect(
+      tester.appIconButton(speaker).icon,
+      Icons.volume_off,
+      reason: 'the rail row memo sees the mute',
+    );
 
     // The cel row carries no speaker — SE rows only.
     expect(
@@ -168,13 +171,7 @@ void main() {
       findsNothing,
     );
 
-    // Dismiss: a pointer down anywhere outside closes it (the shared
-    // anchored-window rule).
-    await tester.tapAt(Offset.zero);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey<String>('se-layer-mixer')), findsNothing);
-
-    // The X-sheet header carries the same door.
+    // The X-sheet header carries the same toggle.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
@@ -183,29 +180,82 @@ void main() {
       tester,
       find.named('xsheet-layer-mute-sea-voice'),
     );
-    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
-    await tester.pumpAndSettle();
     expect(_seLayer(repository).muted, isFalse);
   });
 
+  // 🗣️I-145 (유저 2026-10-30) Q1 「따로 한 값 — 두 입구」, and F-577: the
+  // second door is the bar beside the speaker.
+  group('the Total bar is the row\'s Total — the 「오디오」 group\'s lane', () {
+    final bar = find.named('timeline-layer-total-volume-sea-voice');
 
-  testWidgets('the mixer carries solo beside mute. Solo tints the RAIL '
-      'speaker, which the rail memo could not see before', (tester) async {
-    await _pumpHome(tester, onRepositoryCreated: (_) {});
+    String lane(EditorSessionManager session) => session.laneVerbs
+        .laneValueAt(
+          _seLayerId,
+          seSoundTotalVolumeLaneId,
+          0,
+          frameIsGlobal: true,
+        )!;
 
-    final speaker = find.named('timeline-layer-mute-sea-voice');
-    IconButtonReading speakerIcon() => tester.appIconButton(speaker);
-    expect(speakerIcon().iconColor, isNull, reason: 'not soloed yet');
+    testWidgets('🎯a drag moves the bar and writes at the release alone, '
+        'as one undo, and the lane reads what it wrote', (tester) async {
+      final session = EditorSessionManager(initialProject: _project());
+      addTearDown(session.dispose);
+      await pumpTimelineHostOn(tester, session, surface: const Size(1400, 600));
+      expect(tester.widget<FieldSlider>(bar).value, 1.0, reason: 'CONTROL');
 
-    await _ensureVisibleAndTap(tester, speaker);
-    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-solo')));
-    await tester.pumpAndSettle();
-    expect(
-      speakerIcon().iconColor,
-      isNotNull,
-      reason: 'solo is SESSION state — the rail row memo must compare it or '
-          'the tint never arrives',
-    );
+      final drag = await tester.startGesture(tester.getCenter(bar));
+      await drag.moveBy(const Offset(-10, 0));
+      await drag.moveBy(const Offset(-10, 0));
+      await tester.pump();
+      expect(
+        tester.widget<FieldSlider>(bar).value,
+        lessThan(1.0),
+        reason: 'CONTROL: the bar follows the hand',
+      );
+      expect(
+        _seLayer(session.repository).seSound.totalVolume,
+        1.0,
+        reason: 'nothing written while it moves',
+      );
+
+      await drag.up();
+      await tester.pumpAndSettle();
+      final total = _seLayer(session.repository).seSound.totalVolume;
+      expect(total, lessThan(1.0));
+      expect(tester.widget<FieldSlider>(bar).value, total);
+      expect(
+        lane(session),
+        '${(total * 100).toStringAsFixed(2)}%',
+        reason: 'one field, two doors',
+      );
+
+      session.undo();
+      await tester.pumpAndSettle();
+      expect(_seLayer(session.repository).seSound.totalVolume, 1.0);
+    });
+
+    testWidgets('a value typed into the lane stands on the bar', (
+      tester,
+    ) async {
+      final session = EditorSessionManager(initialProject: _project());
+      addTearDown(session.dispose);
+      await pumpTimelineHostOn(tester, session, surface: const Size(1400, 600));
+      session.laneVerbs.setLaneValueAt(
+        _seLayerId,
+        seSoundTotalVolumeLaneId,
+        3,
+        '150',
+        frameIsGlobal: true,
+        description: 'Type',
+        scaleLinked: false,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<FieldSlider>(bar).value,
+        closeTo(1.5, 1e-9),
+        reason: 'past 100%: the bar reaches the Total\'s 200',
+      );
+    });
   });
 
   /// 🗣️I-140 (유저 2026-10-28): the row's sound is its 「오디오」 group —

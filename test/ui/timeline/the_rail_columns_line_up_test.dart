@@ -58,7 +58,8 @@ void main() {
         onLayerOpacityChanged: (_, _) {},
         onToggleLayerTimesheet: (_) {},
         onLayerMarkSelected: (_, _) {},
-        onOpenLayerMixer: (_, _) {},
+        onToggleLayerMute: (_) {},
+        onLayerTotalVolumeChangeEnd: (_, _) {},
         onLayerBlendModeSelected: (_, _) {},
       );
 
@@ -131,35 +132,43 @@ void main() {
     );
   });
 
-  // 🗣️F-443 (유저 2026-10-23): 「se레이어의 사운드버튼도 se레이어만 쓰는데
-  // 자리 고정으로 차지하는거 비효율적이니 동일하게 위에서 말한 규칙적용해서
-  // 위치옮김」 — the rule being a row's own button taking its room out of
-  // the name, as the link and the reference do.
-  testWidgets('🚨the speaker is one of the sound\'s name\'s buttons, at its '
-      'end — and no row keeps a column for it', (tester) async {
+  // 🗣️F-577 (유저 2026-11-10): 「s행은 블렌드행이 비어있으니 그 행 왼쪽에
+  // 사운드버튼두고, 그 오른쪽에 총 볼륨 막대 둠 … 불투명도막대랑 완전 동일한
+  // 디자인/크기. 블렌드영역의 중앙정렬로」. ↩️The speaker ended the name
+  // (F-443) and opened a mixer holding the Total.
+  testWidgets('🚨the speaker and then the Total stand in the sound\'s blend '
+      'column, centred under the legend\'s blend, and the name keeps no room '
+      'for them', (tester) async {
     await pumpRail(tester);
     final speaker = part(tester, 'mute', sound);
-    final name = part(tester, 'name', sound);
-    expect(speaker.top, greaterThanOrEqualTo(name.top - 4));
-    expect(speaker.left, greaterThan(name.left));
+    final total = part(tester, 'total-volume', sound);
+    final column = legend(tester, 'blend');
     expect(
-      speaker.right,
-      closeTo(name.right, 0.01),
-      reason: 'the row folds nothing, so the speaker ends its name, as the '
-          'reference does (F-454). ↩️It stood a fold slot short',
+      total.left,
+      closeTo(speaker.right, 0.01),
+      reason: 'the bar right after the speaker',
     );
-    for (final layer in [picture, sound]) {
-      expect(
-        part(tester, 'opacity', layer).left -
-            part(tester, 'visibility', layer).right,
-        closeTo(layerControlChipGap / 2, 0.01),
-        reason: '${layer.name}: the bar right after the eye',
-      );
-    }
     expect(
-      part(tester, 'name', picture).right,
-      closeTo(name.right, 0.01),
+      speaker.left - column.left,
+      closeTo(column.right - total.right, 0.01),
+      reason: 'the two, centred in the blend\'s room',
+    );
+    expect(speaker.left, greaterThanOrEqualTo(column.left - 0.01));
+    expect(
+      speaker.left,
+      greaterThan(part(tester, 'name', sound).right),
+      reason: 'out of the name',
+    );
+    expect(
+      part(tester, 'name', sound).right,
+      closeTo(part(tester, 'name', picture).right, 0.01),
       reason: 'the name\'s room is one extent on every row',
+    );
+    expect(
+      part(tester, 'opacity', sound).left -
+          part(tester, 'visibility', sound).right,
+      closeTo(layerControlChipGap / 2, 0.01),
+      reason: 'the sound\'s opacity bar right after the eye, as a picture\'s',
     );
   });
 
@@ -207,6 +216,32 @@ void main() {
       expect(hundred, greaterThan(20), reason: 'measured in the app\'s face');
       expect(hundred, lessThanOrEqualTo(room), reason: 'it fits');
       expect(room - hundred, lessThan(1), reason: 'and no more than that');
+    });
+  }
+
+  for (final scale in [1.0, 1.5, 2.0]) {
+    testWidgets('at $scale× the Total is the opacity bar\'s size and the '
+        'speaker the eye\'s, both whole in the blend column', (tester) async {
+      await pumpRail(tester, scale: scale);
+      expect(
+        part(tester, 'total-volume', sound).size,
+        part(tester, 'opacity', sound).size,
+        reason: 'F-577 「불투명도막대랑 완전 동일한 디자인/크기」',
+      );
+      expect(
+        part(tester, 'mute', sound).size,
+        part(tester, 'visibility', sound).size,
+        reason: 'F-409: no button in a narrower box than the eye\'s',
+      );
+      final column = legend(tester, 'blend');
+      expect(
+        part(tester, 'mute', sound).left,
+        greaterThanOrEqualTo(column.left - 0.01),
+      );
+      expect(
+        part(tester, 'total-volume', sound).right,
+        lessThanOrEqualTo(column.right + 0.01),
+      );
     });
   }
 

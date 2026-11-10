@@ -53,25 +53,29 @@ void main() {
   Track trackOf(EditorSessionManager session) =>
       session.repository.requireProject().tracks.first;
 
-  testWidgets('an S row\'s speaker has opened its mixer before it is '
-      'released', (tester) async {
+  // F-577: the speaker is a mute toggle. ↩️It opened the S row's mixer.
+  testWidgets('an S row\'s speaker has muted the row before it is '
+      'released, and the release does not flip it back', (tester) async {
     final session = await pumpRail(tester);
     final se = trackOf(session).seLayers.first.id;
-    final mixer = find.byKey(const ValueKey<String>('se-layer-mixer'));
+    bool muted() => trackOf(
+      session,
+    ).seLayers.firstWhere((layer) => layer.id == se).muted;
+    expect(muted(), isFalse, reason: '⛔전제');
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.named('storyboard-layer-mute-$se')),
     );
     await tester.pumpAndSettle();
     expect(
-      mixer,
-      findsOneWidget,
+      muted(),
+      isTrue,
       reason: '「레이어 쪽 버튼은 탭다운」 — the speaker is no swipe column, '
           'so only the ROW puts it on the press',
     );
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(mixer, findsOneWidget, reason: 'and the release keeps it open');
+    expect(muted(), isTrue, reason: 'one press, one flip');
   });
 
   testWidgets('every row of the rail puts its buttons on the press — the S '

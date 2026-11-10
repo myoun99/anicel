@@ -18,7 +18,6 @@ import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
-import 'timeline/se_layer_mixer.dart';
 import 'brush/transform_tool_options.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
@@ -671,18 +670,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // same wiring (F-101).
             onDropMediaAssetOnSeBlock: sessionSeBlockDrop(_session),
             onAddLayer: _session.layerStack.addLayer,
-            isLayerSoloed: (layerId) => _session
-                .visibilitySolo
-                .soloedSeLayerIds
-                .value
-                .contains(layerId),
-            onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-              showSeLayerMixer(
-                anchorContext,
-                session: _session,
-                layerId: layerId,
-              ),
-            ),
+            onToggleLayerMute: _rowPresses.toggleMute,
+            onLayerTotalVolumeChangeEnd: _rowPresses.setTotalVolume,
             onOpenLayerReference: (anchorContext, layerId) =>
                 showLayerReferencePopover(
                   anchorContext,

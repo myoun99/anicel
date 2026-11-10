@@ -5,7 +5,7 @@
 // 블렌드 이런거 다 선택범위 내부 레이어 조절하면 선택범위 레이어 모두 적용.
 // 언두하나. 바깥 레이어 조절하면 바깥 그 레이어만 조절」.
 //
-// Every button is pressed the way the rails and the SE mixer press it —
+// Every button is pressed the way the rails press it —
 // through [SessionRowButtonPresses] — and each has its counter-case: the
 // press OUTSIDE the selection, which must leave the selected rows alone.
 // That the two hosts' rails reach this wiring at all is pinned on real
@@ -290,7 +290,43 @@ void main() {
     });
   });
 
-  group('the SE mixer', () {
+  group("the S row's blend cell — its speaker and its Total (F-577)", () {
+    test('the Total inside the selection sets every selected SE row — as '
+        'one undo; a drawing row in the selection is passed by', () {
+      final r = _Rig();
+      r.select([r.s1, r.s2, r.a]);
+
+      r.presses.setTotalVolume(r.s1, 0.5);
+
+      expect(
+        [for (final id in [r.s1, r.s2]) r.row(id).seSound.totalVolume],
+        [0.5, 0.5],
+      );
+      expect(
+        r.row(r.a).seSound.totalVolume,
+        1.0,
+        reason: 'a drawing row stands no Total bar',
+      );
+      r.s.undo();
+      expect(
+        [for (final id in [r.s1, r.s2]) r.row(id).seSound.totalVolume],
+        [1.0, 1.0],
+        reason: 'one undo for the whole press',
+      );
+    });
+
+    test('the Total pressed outside the selection is that row\'s alone', () {
+      final r = _Rig();
+      r.select([r.s2, r.a]);
+
+      r.presses.setTotalVolume(r.s1, 1.5);
+
+      expect(
+        [r.row(r.s1).seSound.totalVolume, r.row(r.s2).seSound.totalVolume],
+        [1.5, 1.0],
+      );
+    });
+
     test('mute inside the selection mutes every selected SE row — as one '
         'undo; a drawing row in the selection is passed by', () {
       final r = _Rig();

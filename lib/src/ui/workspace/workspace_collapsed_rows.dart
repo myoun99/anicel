@@ -301,9 +301,6 @@ class _WorkspaceCollapsedRows {
       // reads it — not a second opinion, the same getters.
       fxState: session.effectsAndFx.layerFxState(layer.id),
       onionSkinEnabled: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
-      isLayerSoloed: session.visibilitySolo.soloedSeLayerIds.value.contains(
-        layer.id,
-      ),
       linkPartners: session.layerVerbs.linkPartnersOf(layer.id),
       syncPartners: session.layerVerbs.syncPartnersOf(layer.id),
       // A row HAS lanes when its lanes are not empty — the same question the
@@ -336,7 +333,8 @@ class _WorkspaceCollapsedRows {
       onToggleLayerOnionSkin: (_) {},
       onToggleLanes: (_) {},
       onToggleLayerClip: (_) {},
-      onOpenLayerMixer: (_, _) {},
+      onToggleLayerMute: (_) {},
+      onLayerTotalVolumeChangeEnd: (_, _) {},
       onOpenLayerReference: (_, _) async {},
       onOpenLayerLinks: (_, _, _) async {},
       onOpenCameraPath: (_) async {},

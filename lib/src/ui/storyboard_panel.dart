@@ -741,9 +741,9 @@ class StoryboardPanel extends StatefulWidget {
     this.fxPluginOutcomes,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
-    this.onOpenLayerMixer,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onOpenCameraPath,
-    this.isLayerSoloed,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
@@ -1370,18 +1370,15 @@ class StoryboardPanel extends StatefulWidget {
   // wired to the same session methods the timeline host uses.
   final ValueChanged<LayerId>? onToggleLayerVisibility;
 
-  /// The SE row's speaker, which opens the row's mixer anchored under
-  /// itself (R10 R3) — the same door the two timeline rails mount, so the
-  /// storyboard rail stops being the one that can only mute.
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
+  /// The S row's speaker — a mute toggle — and its Total bar's release, in
+  /// the blend column: the same two the timeline rails mount (F-577).
+  final ValueChanged<LayerId>? onToggleLayerMute;
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
 
   /// The camera row's path button — the timeline's camera row's, which this
   /// rail's camera row is (I-89 ④).
   final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
-
-  /// Whether that row is soloed (the speaker's accent tint).
-  final bool Function(LayerId layerId)? isLayerSoloed;
 
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
 
@@ -3521,8 +3518,8 @@ class _StoryboardRailHead extends KeptPiece {
     this.onToggleLayerTimesheet,
     this.onToggleLayerOnionSkin,
     this.onionSkinEnabled = false,
-    this.onOpenLayerMixer,
-    this.soloed = false,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onLayerBlendModeSelected,
     this.onLayerOpacityChangeEnd,
     this.onToggleLayerFx,
@@ -3596,11 +3593,11 @@ class _StoryboardRailHead extends KeptPiece {
   final ValueChanged<LayerId>? onToggleLayerOnionSkin;
   final bool onionSkinEnabled;
 
-  /// An S row's speaker, opening its mixer under itself, and whether the
-  /// row is soloed (the speaker's accent).
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
-  final bool soloed;
+  /// An S row's speaker, a mute toggle, and its Total bar's release
+  /// (F-577).
+  final ValueChanged<LayerId>? onToggleLayerMute;
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -3646,8 +3643,8 @@ class _StoryboardRailHead extends KeptPiece {
     onToggleLayerTimesheet != null,
     onToggleLayerOnionSkin != null,
     onionSkinEnabled,
-    onOpenLayerMixer != null,
-    soloed,
+    onToggleLayerMute != null,
+    onLayerTotalVolumeChangeEnd != null,
     onLayerBlendModeSelected != null,
     onToggleLayerFx != null,
     ByIdentity(opacityDragPreview),
@@ -3670,7 +3667,8 @@ class _StoryboardRailHead extends KeptPiece {
     final toggleFx = onToggleLayerFx;
     final toggleGroupFold = onToggleGroupFold;
     final toggleSheet = onToggleLayerTimesheet;
-    final openMixer = onOpenLayerMixer;
+    final toggleMute = onToggleLayerMute;
+    final endTotal = onLayerTotalVolumeChangeEnd;
     return TimelineLayerControlsRow(
       chromeless: chromeless,
       depth: depth,
@@ -3700,10 +3698,10 @@ class _StoryboardRailHead extends KeptPiece {
       // head stands it as every other row does.
       onToggleLayerOnionSkin: (_) => onToggleLayerOnionSkin?.call(rowId),
       onionSkinEnabled: onionSkinEnabled,
-      onOpenLayerMixer: openMixer == null
+      onToggleLayerMute: toggleMute == null ? null : (_) => toggleMute(rowId),
+      onLayerTotalVolumeChangeEnd: endTotal == null
           ? null
-          : (anchorContext, _) => openMixer(anchorContext, rowId),
-      isLayerSoloed: soloed,
+          : (_, share) => endTotal(rowId, share),
       onLayerBlendModeSelected: pickBlend == null
           ? null
           : (_, mode) => pickBlend(rowId, mode),

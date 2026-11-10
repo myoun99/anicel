@@ -43,7 +43,6 @@ import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart'
     show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
-import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart'
     show ReadyRunsOfTheDocument;
@@ -1095,23 +1094,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // Timeline-parity layer controls on the ACTIVE cut's SE
                     // rows — the SAME session hooks the timeline host wires.
                     onToggleLayerVisibility: _rowPresses.toggleVisibility,
-                    onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-                      showSeLayerMixer(
-                        anchorContext,
-                        session: _session,
-                        layerId: layerId,
-                      ),
-                    ),
+                    onToggleLayerMute: _rowPresses.toggleMute,
+                    onLayerTotalVolumeChangeEnd: _rowPresses.setTotalVolume,
                     onOpenCameraPath: (anchorContext) =>
                         showCameraPathSettings(
                           anchorContext,
                           _session.appSettings.setCameraPathSettings,
                         ),
-                    isLayerSoloed: (layerId) => _session
-                        .visibilitySolo
-                        .soloedSeLayerIds
-                        .value
-                        .contains(layerId),
                     onLayerOpacityChanged: _rowPresses.previewOpacity,
                     onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
                     onLayerMarkSelected: _rowPresses.pickMark,

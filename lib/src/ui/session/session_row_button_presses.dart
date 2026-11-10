@@ -22,8 +22,7 @@ import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
 /// them — the one wiring behind the timeline rail (the x-sheet's column
-/// headers are that rail stood up), the storyboard's rows, and the SE
-/// mixer their speaker opens.
+/// headers are that rail stood up) and the storyboard's rows.
 ///
 /// 🚨A PRESS INSIDE THE ROW SELECTION IS A PRESS ON EVERY SELECTED ROW, as
 /// one undo; outside it, that row's alone (row-buttons-act-on-the-selection,
@@ -464,11 +463,11 @@ class SessionRowButtonPresses {
     }, description: 'Set opacity');
   }
 
-  // ── the SE mixer: the speaker's window, pressed as the speaker ────────
+  // ── the S row's blend cell: its speaker and its Total bar ─────────
 
   void toggleMute(LayerId pressed) => session.rowSelectionVerbs.pressAcross(
     pressed,
-    valueOf: (id) => _ifRow(id, _hasMixer, (id) => _row(id)!.muted),
+    valueOf: (id) => _ifRow(id, _hasSpeaker, (id) => _row(id)!.muted),
     flip: session.layerSwitches.toggleLayerMuted,
     description: 'Toggle layer mute',
   );
@@ -479,20 +478,20 @@ class SessionRowButtonPresses {
     pressed,
     valueOf: (id) => _ifRow(
       id,
-      _hasMixer,
+      _hasSpeaker,
       (id) => session.visibilitySolo.soloedSeLayerIds.value.contains(id),
     ),
     flip: session.visibilitySolo.toggleLayerSolo,
     description: 'Toggle solo',
   );
 
-  /// The window's bar (I-145-Q1 「따로 한 값 — 두 입구」): the row's Total,
+  /// The Total bar (I-145-Q1 「따로 한 값 — 두 입구」, F-577): the row's Total,
   /// written as a value typed into its 「오디오」 group's lane is — one field,
   /// two doors. The Total holds no keys, so the frame names nothing.
   void setTotalVolume(LayerId pressed, double share) =>
       session.rowSelectionVerbs.pickAcross(pressed, (id) {
         final layer = _row(id);
-        if (layer != null && _hasMixer(layer)) {
+        if (layer != null && _hasSpeaker(layer)) {
           session.laneVerbs.setLaneValueAt(
             id,
             seSoundTotalVolumeLaneId,
@@ -505,8 +504,9 @@ class SessionRowButtonPresses {
         }
       }, description: 'Set total volume');
 
-  /// The rows the speaker is drawn on (`_muteButton` in the rail row).
-  static bool _hasMixer(Layer layer) => layer.kind == LayerKind.se;
+  /// The rows the speaker is drawn on (`_speaker` in the rail row's blend
+  /// cell, F-577).
+  static bool _hasSpeaker(Layer layer) => layer.kind == LayerKind.se;
 
   /// The rows a slider press moves: what the slider of each row it acts on
   /// moves ([_sliderRowsOf]).

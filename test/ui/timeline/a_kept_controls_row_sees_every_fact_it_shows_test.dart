@@ -64,7 +64,6 @@ void main() {
     bool onionSkinEnabled = false,
     List<String> linkPartners = const ['other'],
     List<String> syncPartners = const ['elsewhere'],
-    bool soloed = false,
     AttachedPlacement? attachArrow,
     bool sourceIsShort = false,
     bool memberAttached = false,
@@ -97,7 +96,6 @@ void main() {
         // A fresh list at every ask, as the session hands them out.
         layerLinkPartnersOf: (_) => [...linkPartners],
         layerSyncPartnersOf: (_) => [...syncPartners],
-        isLayerSoloed: (_) => soloed,
         attachArrowPlacementOf: (_) => attachArrow,
         layerSourceIsShortOf: (_) => sourceIsShort,
         opacityDragPreview: opacityDragPreview,
@@ -143,7 +141,6 @@ void main() {
     'onionSkinEnabled': () => facts(onionSkinEnabled: true),
     'linkPartners': () => facts(linkPartners: const ['another']),
     'syncPartners': () => facts(syncPartners: const ['another']),
-    'soloed': () => facts(soloed: true),
     'attachArrow': () => facts(attachArrow: AttachedPlacement.below),
     'isReferenceSourceShort': () => facts(sourceIsShort: true),
     'wearsBaseComposite': () => facts(memberAttached: true),

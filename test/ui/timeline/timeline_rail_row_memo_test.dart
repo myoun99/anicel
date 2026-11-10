@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerMarkChip;
@@ -42,6 +43,10 @@ void main() {
       'kind': (layer) => layer.copyWith(kind: LayerKind.se),
       'opacity': (layer) => layer.copyWith(opacity: layer.opacity / 2),
       'muted': (layer) => layer.copyWith(muted: !layer.muted),
+      // F-577: an S row's Total is the bar in its blend column.
+      'seSound.totalVolume': (layer) => layer.copyWith(
+        seSound: SeSound(totalVolume: layer.seSound.totalVolume / 2),
+      ),
       'mark': (layer) => layer.copyWith(
         mark: layer.mark == LayerMark.none ? const LayerMark(process: LayerProcess.layout) : LayerMark.none,
       ),

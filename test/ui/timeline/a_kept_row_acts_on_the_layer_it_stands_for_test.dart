@@ -222,7 +222,20 @@ void main() {
         ),
         'the speaker': (
           (tester) => tapNamed(tester, '$rail-layer-mute-${_two.sound}'),
-          'mixer ${_two.sound}',
+          'mute ${_two.sound}',
+        ),
+        'the Total bar': (
+          (tester) async {
+            await tester.drag(
+              find.named('$rail-layer-total-volume-${_two.sound}'),
+              const {
+                TimelineOrientation.horizontal: Offset(-30, 0),
+                TimelineOrientation.vertical: Offset(0, 30),
+              }[orientation]!,
+            );
+            await tester.pumpAndSettle();
+          },
+          'total ${_two.sound}',
         ),
         'the camera\'s graph button': (
           (tester) => tapNamed(tester, '$rail-layer-graph-${_two.camera}'),
@@ -618,8 +631,8 @@ Widget _panel(
             id.value.startsWith('draw') ? const ['Elsewhere'] : const [],
         onOpenLayerLinks: (_, id, _) async => hear('links', id),
         onOpenLayerReference: (_, id) async => hear('reference', id),
-        isLayerSoloed: (_) => false,
-        onOpenLayerMixer: (_, id) => hear('mixer', id),
+        onToggleLayerMute: (id) => hear('mute', id),
+        onLayerTotalVolumeChangeEnd: (id, _) => hear('total', id),
         laneGraphVerbs: (
           toggle: (key) => heard.add('graph $key'),
           togglePin: (_) {},

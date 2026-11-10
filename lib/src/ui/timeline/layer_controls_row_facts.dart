@@ -67,12 +67,6 @@ typedef LayerControlsRowFacts = ({
   // The cut the row's cut is in the other timelines, when the row is one
   // they share (a 동기컷, I-150-Q3) — compared like [linkPartners].
   ByList<String> syncPartners,
-  // Solo is SESSION state, not a Layer field, so the layer comparison
-  // cannot see it: the speaker's accent tint went stale the moment
-  // solo moved anywhere but this row. It has always been shown here —
-  // R10 R3 only made it settable from every rail, which is what turned
-  // a latent staleness into one a user would hit.
-  bool soloed,
   // The arrow reads the STACK (a folder's direction is its position
   // against its base), so the Layer comparison cannot see it change.
   AttachedPlacement? attachArrow,
@@ -145,7 +139,6 @@ LayerControlsRowFacts layerControlsRowFacts(
     onionSkinEnabled: hooks.layerOnionSkinEnabledOf?.call(id) ?? false,
     linkPartners: ByList(hooks.layerLinkPartnersOf?.call(id) ?? const []),
     syncPartners: ByList(hooks.layerSyncPartnersOf?.call(id) ?? const []),
-    soloed: hooks.isLayerSoloed?.call(id) ?? false,
     attachArrow: hooks.attachArrowPlacementOf?.call(id),
     isReferenceSourceShort: hooks.layerSourceIsShortOf?.call(id) ?? false,
     wearsBaseComposite: attachRowWearsBaseComposite(row.layer, grid.layers),
@@ -193,12 +186,12 @@ Widget layerControlsRowFrom(
     onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
     onLayerMarkSelected: hooks.onLayerMarkSelected,
     onToggleLayerClip: hooks.onToggleLayerClip,
-    onOpenLayerMixer: hooks.onOpenLayerMixer,
+    onToggleLayerMute: hooks.onToggleLayerMute,
+    onLayerTotalVolumeChangeEnd: hooks.onLayerTotalVolumeChangeEnd,
     onOpenLayerReference: hooks.onOpenLayerReference,
     onOpenLayerLinks: hooks.onOpenLayerLinks,
     onOpenCameraPath: hooks.onOpenCameraPath,
     isReferenceSourceShort: facts.isReferenceSourceShort,
-    isLayerSoloed: facts.soloed,
     attachArrowPlacement: facts.attachArrow,
     hasLanes: facts.hasLanes,
     lanesExpanded: facts.lanesExpanded,

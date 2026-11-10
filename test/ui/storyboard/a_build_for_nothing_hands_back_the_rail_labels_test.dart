@@ -34,7 +34,6 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
-import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
@@ -506,22 +505,6 @@ void main() {
     expect([
       for (final chip in before.grip!()) chip.label,
     ], unorderedEquals(['S1', 'Rain']));
-  });
-
-  testWidgets('🚨a solo the session answers is what the S row\'s speaker '
-      'shows — no part of its layer', (tester) async {
-    final session = await pumpPanel(tester, film());
-    final speaker = find.named('storyboard-layer-mute-t1-s1');
-    bool soloed() =>
-        (tester.widget<RailGlyphButton>(speaker).glyph as RailIconGlyph)
-            .color ==
-        Theme.of(tester.element(speaker)).colorScheme.primary;
-    expect(soloed(), isFalse, reason: 'premise');
-
-    session.visibilitySolo.toggleLayerSolo(const LayerId('t1-s1'));
-    await tester.pump();
-
-    expect(soloed(), isTrue);
   });
 
   testWidgets('the V row\'s fx switch shows the track\'s fx as the session '

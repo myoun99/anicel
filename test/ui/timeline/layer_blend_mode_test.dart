@@ -258,25 +258,37 @@ void main() {
     );
   });
 
+  // 🗣️F-577 (유저 2026-11-10): 「레전드행의 블렌드 일괄조작은 지금처럼
+  // 카메라랑 s행 무시」 — their blend cells hold their own buttons now.
   test('R27 #6: the legend bulk sets every DISPLAYED compositing row and '
-      'leaves the rest alone', () {
+      'leaves the rest alone — the camera row and an S row', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
+    s.layerStack.addLayerOfKind(LayerKind.se);
     final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
+    final sound = s.layers.firstWhere((l) => l.kind == LayerKind.se);
     final drawing = s.layers.firstWhere(
       (l) => l.kind == LayerKind.animation,
     );
 
-    s.layerSwitches.setBlendModeForLayers({drawing.id, camera.id}, LayerBlendMode.screen);
+    s.layerSwitches.setBlendModeForLayers({
+      drawing.id,
+      camera.id,
+      sound.id,
+    }, LayerBlendMode.screen);
 
+    LayerBlendMode blendOf(Layer layer) =>
+        s.layers.firstWhere((l) => l.id == layer.id).blendMode;
+    expect(blendOf(drawing), LayerBlendMode.screen);
     expect(
-      s.layers.firstWhere((l) => l.id == drawing.id).blendMode,
-      LayerBlendMode.screen,
-    );
-    expect(
-      s.layers.firstWhere((l) => l.id == camera.id).blendMode,
+      blendOf(camera),
       LayerBlendMode.normal,
       reason: 'the camera row does not composite artwork',
+    );
+    expect(
+      blendOf(sound),
+      LayerBlendMode.normal,
+      reason: 'nor does an S row',
     );
   });
 }

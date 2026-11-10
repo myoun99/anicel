@@ -200,6 +200,11 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// ⚠️Not every slider is integral and this does not claim they are: brush
   /// SIZE goes down to 0.7, the pressure curve is a gamma, and the transform
   /// tool's scale is the exception 유저 named in the same sentence.
+  ///
+  /// [percents] is how far the bar reaches, in whole per cent — 100 for an
+  /// opacity. 🗣️F-577 (유저 2026-11-10: 「총 볼륨 막대 … 불투명도막대랑 완전
+  /// 동일한 디자인/크기」): an S row's Total is this very bar, to its 200
+  /// (`SeSound.maxVolume`).
   const FieldSlider.opacity({
     super.key,
     this.name,
@@ -216,6 +221,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.upright = false,
     this.readout,
     this.stepsRun,
+    int percents = 100,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
@@ -230,8 +236,8 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        ),
        min = 0,
        fillOrigin = null,
-       max = 1,
-       divisions = 100,
+       max = percents / 100,
+       divisions = percents,
        stops = null,
        levels = null,
        floor = null,

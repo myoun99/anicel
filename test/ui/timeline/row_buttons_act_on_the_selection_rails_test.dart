@@ -122,6 +122,25 @@ void main() {
 
       expect([_row(s, a).opacity, _row(s, b).opacity], [0.3, 0.3]);
     });
+
+    testWidgets('its speaker, pressed on a selected S row, mutes every '
+        'selected S row (F-577)', (tester) async {
+      final (s, s1, s2) = await _timelineSoundRail(tester);
+
+      await tester.tap(find.named('timeline-layer-mute-$s1'));
+      await tester.pumpAndSettle();
+
+      expect([_row(s, s1).muted, _row(s, s2).muted], [true, true]);
+    });
+
+    testWidgets('its Total bar, released on a selected S row, sets every '
+        'selected S row (F-577)', (tester) async {
+      final (s, s1, s2) = await _timelineSoundRail(tester);
+
+      await _dragTheTotal(tester, 'timeline-layer-total-volume-$s1');
+
+      _expectOneTotalBelowFull(s, s1, s2);
+    });
   });
 
   group('the storyboard rail', () {
@@ -179,7 +198,46 @@ void main() {
 
       expect([_row(s, s1).opacity, _row(s, s2).opacity], [0.3, 0.3]);
     });
+
+    testWidgets('its speaker, pressed on a selected S row, mutes every '
+        'selected S row (F-577)', (tester) async {
+      final (s, s1, s2) = await _storyboardRail(tester);
+
+      await tester.tap(find.named('storyboard-layer-mute-$s1').first);
+      await tester.pumpAndSettle();
+
+      expect([_row(s, s1).muted, _row(s, s2).muted], [true, true]);
+    });
+
+    testWidgets('its Total bar, released on a selected S row, sets every '
+        'selected S row (F-577)', (tester) async {
+      final (s, s1, s2) = await _storyboardRail(tester);
+
+      await _dragTheTotal(tester, 'storyboard-layer-total-volume-$s1');
+
+      _expectOneTotalBelowFull(s, s1, s2);
+    });
   });
+}
+
+/// Drags the Total bar named [name] toward silence and lets go.
+Future<void> _dragTheTotal(WidgetTester tester, String name) async {
+  await tester.drag(find.named(name).first, const Offset(-20, 0));
+  await tester.pumpAndSettle();
+}
+
+/// Both rows at one Total, and below the 100% they started at.
+void _expectOneTotalBelowFull(
+  EditorSessionManager s,
+  LayerId s1,
+  LayerId s2,
+) {
+  final totals = [
+    _row(s, s1).seSound.totalVolume,
+    _row(s, s2).seSound.totalVolume,
+  ];
+  expect(totals.first, lessThan(1.0), reason: 'the bar moved it');
+  expect(totals.last, totals.first, reason: 'and the selection with it');
 }
 
 /// The rail's two-state buttons by their key, each read as the button
@@ -221,6 +279,23 @@ Future<(EditorSessionManager, LayerId, LayerId)> _timelineRail(
   _select(s, cels);
   await tester.pumpAndSettle();
   return (s, cels[0], cels[1]);
+}
+
+/// The timeline tab over two S rows of the cut, both selected.
+Future<(EditorSessionManager, LayerId, LayerId)> _timelineSoundRail(
+  WidgetTester tester,
+) async {
+  final s = _session();
+  s.layerStack.addLayerOfKind(LayerKind.se);
+  s.layerStack.addLayerOfKind(LayerKind.se);
+  await pumpTimelineHostOn(tester, s, surface: _roomy, pixelsPerFrame: 24);
+  final ses = [
+    for (final layer in s.layers)
+      if (layer.kind == LayerKind.se) layer.id,
+  ];
+  _select(s, ses);
+  await tester.pumpAndSettle();
+  return (s, ses[0], ses[1]);
 }
 
 /// The storyboard tab with the track's two S rows selected.

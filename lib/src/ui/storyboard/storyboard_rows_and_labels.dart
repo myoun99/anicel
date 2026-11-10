@@ -1069,8 +1069,8 @@ class _StoryboardRowsAndLabels {
         opacityDragPreview: widget.opacityDragPreview,
         onLayerMarkSelected: widget.onLayerMarkSelected,
         onToggleLayerTimesheet: _sheetToggleOf(layer.id),
-        onOpenLayerMixer: widget.onOpenLayerMixer,
-        soloed: widget.isLayerSoloed?.call(layer.id) ?? false,
+        onToggleLayerMute: widget.onToggleLayerMute,
+        onLayerTotalVolumeChangeEnd: widget.onLayerTotalVolumeChangeEnd,
         onToggleLayerFx: widget.onToggleLayerFx,
         // This rail has the blend column: an S row keeps its slot empty, so
         // its columns stand over every other row's — the sweep's bands

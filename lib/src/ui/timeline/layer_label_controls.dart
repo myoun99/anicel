@@ -1,4 +1,6 @@
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestEntry;
 
@@ -296,7 +298,14 @@ const double layerOpacitySlotWidth = 44;
 ///
 /// 58 → 62 (F-409): the chip keeps its 58 and the slot pays its
 /// chip gap (`layerRailTrailingCells`).
-const double layerBlendSlotWidth = 62;
+///
+/// 62 → 66 (F-577, 유저 2026-11-10: 「s행은 블렌드행이 비어있으니 그 행
+/// 왼쪽에 사운드버튼두고, 그 오른쪽에 총 볼륨 막대 둠 … 불투명도막대랑 완전
+/// 동일한 디자인/크기」): an S row stands its speaker — in the box the eye
+/// stands in (F-409) — and its Total, the opacity bar at that bar's own
+/// length, in this column, so the column is an opacity column and a button
+/// wide. The chip takes the 4 it gains.
+const double layerBlendSlotWidth = layerOpacitySlotWidth + layerGraphSlotWidth;
 
 /// The rail's columns that hold WORDS — the opacity bar's digits, the
 /// blend chip's mode and a lane's value boxes ([layerLaneValueSlotWidth])
@@ -337,11 +346,17 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
   if (remembered != null && remembered.key == key) {
     return remembered.columns;
   }
+  final opacity =
+      layerOpacitySlotWidth + FieldSlider.widthGrowthIn(context, const ['100']);
   final columns = (
-    opacity:
-        layerOpacitySlotWidth +
-        FieldSlider.widthGrowthIn(context, const ['100']),
-    blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
+    opacity: opacity,
+    // As much wider as its widest word, and never narrower than an S row's
+    // speaker and Total ([layerBlendSlotWidth]) — the bar grows with its
+    // digits, the speaker's box does not.
+    blend: math.max(
+      layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
+      opacity + layerGraphSlotWidth,
+    ),
     // Two boxes, each as much wider as its name and its widest number.
     laneValue:
         layerLaneValueSlotWidth +

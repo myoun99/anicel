@@ -102,7 +102,8 @@ Future<void> _pumpPanel(
   CutId? activeCutId = const CutId('lane-cut'),
   void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)? onSetCutFade,
   ValueChanged<LayerId>? onToggleLayerVisibility,
-  void Function(BuildContext anchorContext, LayerId layerId)? onOpenLayerMixer,
+  ValueChanged<LayerId>? onToggleLayerMute,
+  void Function(LayerId layerId, double share)? onLayerTotalVolumeChangeEnd,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   StoryboardRowFramePress? onRowFramePress,
   TimelineCommaDragCallbacks? seCommaDrag,
@@ -141,7 +142,8 @@ Future<void> _pumpPanel(
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
             onToggleLayerVisibility: onToggleLayerVisibility,
-            onOpenLayerMixer: onOpenLayerMixer,
+            onToggleLayerMute: onToggleLayerMute,
+            onLayerTotalVolumeChangeEnd: onLayerTotalVolumeChangeEnd,
             onLayerOpacityChanged: onLayerOpacityChanged,
             seCommaDrag: seCommaDrag,
             trackFxStateOf: trackFxStateOf,
@@ -641,16 +643,19 @@ void main() {
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
     testWidgets('the rail carries the ACTIVE cut layer\'s eye/speaker/opacity '
-        'controls with the shared session hooks — and R10 R3 gave THIS rail '
-        'the mixer door the timeline rails had', (tester) async {
+        'and Total with the shared session hooks — the speaker a mute '
+        'toggle and the Total written at its release (F-577)', (tester) async {
       final visibilityToggles = <LayerId>[];
-      final mixerOpens = <LayerId>[];
+      final mutes = <LayerId>[];
       final opacityChanges = <(LayerId, double)>[];
+      final totals = <(LayerId, double)>[];
       await _pumpPanel(
         tester,
         project: _project(),
         onToggleLayerVisibility: visibilityToggles.add,
-        onOpenLayerMixer: (_, layerId) => mixerOpens.add(layerId),
+        onToggleLayerMute: mutes.add,
+        onLayerTotalVolumeChangeEnd: (layerId, share) =>
+            totals.add((layerId, share)),
         onLayerOpacityChanged: (layerId, opacity) =>
             opacityChanges.add((layerId, opacity)),
       );
@@ -666,12 +671,24 @@ void main() {
         const Offset(-20, 0),
       );
       await tester.pumpAndSettle();
+      final total = await tester.startGesture(
+        tester.getCenter(find.named('storyboard-layer-total-volume-lane-se')),
+      );
+      await total.moveBy(const Offset(-10, 0));
+      await total.moveBy(const Offset(-10, 0));
+      await tester.pump();
+      expect(totals, isEmpty, reason: 'nothing written while it moves');
+      await total.up();
+      await tester.pumpAndSettle();
 
       expect(visibilityToggles, [const LayerId('lane-se')]);
-      expect(mixerOpens, [const LayerId('lane-se')]);
+      expect(mutes, [const LayerId('lane-se')]);
       expect(opacityChanges, isNotEmpty);
       expect(opacityChanges.last.$1, const LayerId('lane-se'));
       expect(opacityChanges.last.$2, lessThan(1));
+      expect(totals, hasLength(1));
+      expect(totals.single.$1, const LayerId('lane-se'));
+      expect(totals.single.$2, lessThan(1));
     });
 
     testWidgets('pressing an S row selects the row and the frame under the '
