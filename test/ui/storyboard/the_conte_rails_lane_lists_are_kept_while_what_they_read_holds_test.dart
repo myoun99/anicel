@@ -30,6 +30,40 @@ typedef _Ask = ({
   StoryboardLaneReads reads,
 });
 
+/// [of] with the lists it is handed in place of its own, each the very
+/// object handed: a [Track] wraps every list it is built with anew, so a
+/// copy of one changes all its lists at once — no fact a lane list reads
+/// off a track could be changed alone (card
+/// a-track-copy-wraps-its-unchanged-lists-anew).
+class _TrackOf implements Track {
+  _TrackOf(
+    this.of, {
+    List<LayerEffect>? effects,
+    Set<String>? expandedLaneGroups,
+    List<Layer>? seLayers,
+  }) : effects = effects ?? of.effects,
+       expandedLaneGroups = expandedLaneGroups ?? of.expandedLaneGroups,
+       seLayers = seLayers ?? of.seLayers;
+
+  final Track of;
+
+  @override
+  TrackId get id => of.id;
+
+  @override
+  final List<LayerEffect> effects;
+
+  @override
+  final Set<String> expandedLaneGroups;
+
+  @override
+  final List<Layer> seLayers;
+
+  @override
+  Object? noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
 /// 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail (11-08):
 /// THE CONTE RAIL'S LANE LISTS ARE KEPT WHILE WHAT THEY ARE READ FROM HOLDS.
 ///
@@ -191,14 +225,15 @@ void main() {
     row: cel,
     readAgain: {
       'its chain': (ask) => (
-        track: ask.track.copyWith(effects: [...ask.track.effects]),
+        track: _TrackOf(ask.track, effects: [...ask.track.effects]),
         cut: ask.cut,
         layer: ask.layer,
         stood: ask.stood,
         reads: ask.reads,
       ),
       'its twirls': (ask) => (
-        track: ask.track.copyWith(
+        track: _TrackOf(
+          ask.track,
           expandedLaneGroups: {...ask.track.expandedLaneGroups},
         ),
         cut: ask.cut,
@@ -252,7 +287,7 @@ void main() {
         reads: ask.reads,
       ),
       'the track\'s S rows': (ask) => (
-        track: ask.track.copyWith(seLayers: [...ask.track.seLayers]),
+        track: _TrackOf(ask.track, seLayers: [...ask.track.seLayers]),
         cut: ask.cut,
         layer: ask.layer,
         stood: ask.stood,
