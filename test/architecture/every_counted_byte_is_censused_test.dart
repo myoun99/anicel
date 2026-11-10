@@ -188,20 +188,13 @@ const _notCensused = <String, String>{
   // — Budgets, not holdings. A ceiling is not memory in use.
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':
       'a CEILING. What is actually held is counted by the playback cache — '
-      'the layer images — which the census already reads',
-  'lib/src/ui/session/playback_cache_budget.dart → lendableBytes':
-      'a CEILING — how much an export run may hold on playback\'s line; '
-      'what it holds is lentBytes, which the census reads',
+      'the frames\' pictures — which the census already reads',
 
   // — A PART of a holding the census reads whole.
   'lib/src/ui/canvas/tile_pages.dart → bytes':
       'one TilePages\' own pages — a part of liveBytes, which the census '
       'reads whole through liveImageBytes (`tileImages`); a test weighs its '
       'own pages by it, where another test\'s tiles may die meanwhile',
-  'lib/src/ui/canvas/subtree_image_composite.dart → heldBelowBytes':
-      'the rasters held below a pen — a part of heldBytes, which the '
-      'census reads (`framePictures`); the line weighs the nodes over the '
-      'pen by it',
 
   // — On DISK, not in RAM. The census is a RAM readout.
   'lib/src/services/brush_frame_store.dart → coldBakedBytes':
@@ -413,8 +406,6 @@ const _imageHolders = <String, String>{
       'a cut block borrows one picture per cell from the storyboard '
       'thumbnail store, which owns and counts them (thumbnailBytes); the '
       'block only carries them into a paint',
-  'lib/src/ui/canvas/subtree_image_composite.dart → _held':
-      'counted:heldBytes',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _pictures':
       'counted:liveImageBytes',
   'lib/src/ui/canvas/tile_pages.dart → _open': 'counted:liveBytes',

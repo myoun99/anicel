@@ -112,7 +112,7 @@ void main() {
     // 낡지않을구조로」 — the tab asks this, so a cache that gains a ceiling
     // moves inside without a word of UI changing.
     expect(CacheBudgetLine.covers('drawings'), isTrue);
-    expect(CacheBudgetLine.covers('layerImages'), isTrue, reason: 'playback');
+    expect(CacheBudgetLine.covers('framePictures'), isTrue, reason: 'playback');
     expect(CacheBudgetLine.covers('enginePool'), isTrue);
     expect(CacheBudgetLine.covers('imageCache'), isTrue);
     expect(CacheBudgetLine.covers('engineScratch'), isFalse);

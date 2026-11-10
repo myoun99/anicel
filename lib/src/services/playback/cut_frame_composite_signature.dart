@@ -448,7 +448,7 @@ class CutFrameCompositeSignature {
   final CanvasSize canvasSize;
 
   /// The composite TREE, bottom → top, matching
-  /// [planCutFrameCompositeTree] order.
+  /// [resolveCutFrameCompositeTree] order.
   final List<CompositeNodeSignature> nodes;
 
   /// Every painted layer under [nodes], depth-first bottom → top — for

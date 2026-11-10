@@ -91,9 +91,9 @@ class PlaybackCacheBudgetEnforcer {
   /// way the cel store cools after halving.
   bool respondToMemoryPressure() => _budget.respondToMemoryPressure();
 
-  /// [lentBytes] is what a borrower holds on this line — an export run's
-  /// row pictures (F-289-Q21) — and comes off the cache's share first: it
-  /// gives way to it, and takes it back when it is lent no more.
+  /// [lentBytes] is what a borrower holds on this line — the pictures of a
+  /// frame's nodes — and comes off the cache's share first: it gives way to
+  /// it, and takes it back when it is lent no more.
   ///
   /// [wantedAt] is when each picture is next shown: the ones wanted latest
   /// go first. The frame under the playhead stays whatever the cap.

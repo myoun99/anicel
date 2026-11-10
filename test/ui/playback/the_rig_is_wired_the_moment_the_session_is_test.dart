@@ -556,14 +556,6 @@ void main() {
               '2026-10-10; then it played the canvas\'s row images',
         );
 
-        // An export run borrows half the line.
-        rig.playbackCache.lend(2 * picture);
-        expect(
-          [held(s, 0), held(s, 2)],
-          [true, true],
-          reason: 'what is left of the line holds them',
-        );
-        rig.playbackCache.lend(0);
       });
     });
 

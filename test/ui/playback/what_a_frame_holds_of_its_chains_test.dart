@@ -247,7 +247,6 @@ void main() {
       final line = s.playbackRig.playbackCache;
       final picture = drawn(s);
       final budget = line.playbackCacheByteBudget;
-      final lendable = line.lendableBytes;
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       int censused() => collectMemoryCensus([s]).items
           .firstWhere((item) => item.id == 'framePictures')
@@ -260,7 +259,6 @@ void main() {
       expect(held, greaterThan(0), reason: '⛔premise: the folder is held');
 
       expect(line.bytes, budget - held);
-      expect(line.lendableBytes, lendable - held);
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       expect(
         censused() - before,

@@ -49,10 +49,9 @@ enum CacheBudgetLine {
 
   undo({'undo'}),
 
-  /// The frames' pictures every screen shows, and the canvas's row images
-  /// beside them — one line, the pictures claiming it first
-  /// (`PlaybackCacheBudgetEnforcer`).
-  playback({'framePictures', 'layerImages'}),
+  /// The frames' pictures every screen shows — the pictures claiming it
+  /// first (`PlaybackCacheBudgetEnforcer`).
+  playback({'framePictures'}),
 
   /// ONE viewer's pages; each mounted viewer keeps its own.
   viewerPages({'viewerPages'}),

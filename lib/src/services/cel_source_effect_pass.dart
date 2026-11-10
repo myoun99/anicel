@@ -9,7 +9,7 @@
 /// 셰이더가 답이 아니고 cpu에서 더 개선하는 방향을 찾아야지」*.
 ///
 /// ★IT RUNS IN THE SHARED VISIT, which is the whole reason it is in
-/// `services/`. `planCutFrameComposite`/`planCutFrameCompositeTree` resolve
+/// `services/`. `resolveCutFrameCompositeTree` and what maps it resolve
 /// every route's surfaces — editing stack, playback cache, camera, export —
 /// so a key applied here is applied to all four by construction rather than
 /// by four call sites remembering to ([[derived-cel-projection-pattern]]:

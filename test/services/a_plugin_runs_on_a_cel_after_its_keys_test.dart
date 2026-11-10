@@ -1,3 +1,4 @@
+import '../helpers/a_cut_as_surfaces.dart';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';

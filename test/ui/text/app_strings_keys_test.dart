@@ -328,7 +328,6 @@ void main() {
     'memoryItemSheetInk': (s) => s.memoryItemSheetInk,
     'memoryItemUndo': (s) => s.memoryItemUndo,
     'memoryItemFramePictures': (s) => s.memoryItemFramePictures,
-    'memoryItemLayerImages': (s) => s.memoryItemLayerImages,
     'memoryItemBrushTips': (s) => s.memoryItemBrushTips,
     'memoryItemPanelRasters': (s) => s.memoryItemPanelRasters,
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,

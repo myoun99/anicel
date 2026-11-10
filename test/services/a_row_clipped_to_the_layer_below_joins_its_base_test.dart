@@ -1,3 +1,4 @@
+import '../helpers/a_cut_as_surfaces.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/bitmap_surface.dart';

@@ -94,7 +94,6 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'sheetInk' => strings.memoryItemSheetInk,
       'undo' => strings.memoryItemUndo,
       'framePictures' => strings.memoryItemFramePictures,
-      'layerImages' => strings.memoryItemLayerImages,
       'brushTips' => strings.memoryItemBrushTips,
       'panelRasters' => strings.memoryItemPanelRasters,
       'viewerPages' => strings.memoryItemViewerPages,

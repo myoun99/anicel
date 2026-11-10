@@ -1,3 +1,4 @@
+import '../helpers/a_cut_as_surfaces.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';

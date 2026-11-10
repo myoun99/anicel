@@ -10,7 +10,6 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
-import '../models/fx_plugin_binding.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
@@ -171,21 +170,13 @@ double _ownStrengthAt(Layer layer, Layer carrier, int frameIndex) =>
 typedef LayerFrameSurfaceResolver =
     BitmapSurface? Function(Layer layer, Frame frame);
 
-/// How a route reads each row's cel: its surface ([surfaces]), and
-/// what runs the plugins the row's chain runs ([plugins]) — null for a
-/// route that runs none.
-typedef CelReading = ({
-  LayerFrameSurfaceResolver surfaces,
-  FxPluginBinding? plugins,
-});
-
 /// One ROW that paints in a cut frame's composite tree, bottom → top: an
 /// entry resolved from stored pixels, or the row being DRAWN ON with none
 /// exposed here.
 ///
 /// Built by [resolveCutFrameCompositeTree] and mapped — never rebuilt —
-/// into the shapes the routes need: surfaces for the paint routes
-/// ([planCutFrameCompositeTree]) and identities for the playback cache
+/// into the shapes the routes need: the rows a frame stacks
+/// (`EditingStackMap`) and identities for the playback cache
 /// ([computeCutFrameCompositeSignature]). One structure, so playback,
 /// export and the editing canvas cannot drift.
 sealed class CutFrameCompositeRow {
@@ -1744,29 +1735,6 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
   );
 }
 
-/// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
-/// entries whose frame has no artwork drop out, and a group left empty by
-/// that drops with them (an empty buffer is a wasted saveLayer) — save one
-/// a cel number is written on, which stands bare ([mapCompositeLeaves]).
-///
-/// [reading]: how each row's cel is read ([CelReading]). [ghostsOf]: each
-/// row's ghosts, as [resolveCutFrameCompositeTree] places them.
-List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
-  required Cut cut,
-  required int frameIndex,
-  required CelReading reading,
-  List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
-}) => _withSurfaces(
-  resolveCutFrameCompositeTree(
-    cut: cut,
-    frameIndex: frameIndex,
-    ghostsOf: ghostsOf,
-  ),
-  cut: cut,
-  frameIndex: frameIndex,
-  reading: reading,
-);
-
 /// [ghosts] of [cut]'s frame [frameIndex] by themselves, each onion row's in
 /// stack order: what a picture of the screen lays over its frame where they
 /// lie on top — the tree `EditingCanvas.ghostsOverAt` stacks, and a file of
@@ -1790,71 +1758,6 @@ List<CompositeNode<CutFrameCompositeRow>>? rowAsRead({
   required LayerId row,
   required int frameIndex,
 }) => _rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null);
-
-/// [nodes] of [cut] with each leaf's surface read by [reading]
-/// ([planCutFrameCompositeTree]), and every chain's plugins run as it says.
-List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
-  List<CompositeNode<CutFrameCompositeRow>> nodes, {
-  required Cut cut,
-  required int frameIndex,
-  required CelReading reading,
-}) {
-  List<ResolvedLayerEffect> boundAt(List<ResolvedLayerEffect> chain, int at) =>
-      reading.plugins?.call(chain, cut: cut, frameIndex: at) ?? chain;
-  List<ResolvedLayerEffect> bound(List<ResolvedLayerEffect> chain) =>
-      boundAt(chain, frameIndex);
-  // Laid as the canvas lays it (`EditingStackMap`): at its peg's strength
-  // and tint, no pose, its chain run at the frame its peg reaches.
-  CutFrameCompositeLayer? ghostOf(
-    CutFrameCompositeGhost ghost,
-    LayerFrameSurfaceResolver surfaceOf,
-  ) {
-    final cel = ghost.layer.frameById(ghost.frameId);
-    final surface = cel == null ? null : surfaceOf(ghost.layer, cel);
-    return surface == null
-        ? null
-        : CutFrameCompositeLayer(
-            surface: surface,
-            opacity: ghost.opacity,
-            blendMode: ghost.blendMode,
-            effects: boundAt(ghost.effects, ghost.frameIndex),
-            tint: ghost.tint,
-          );
-  }
-
-  CutFrameCompositeLayer? layerOf(
-    CutFrameCompositeRow row,
-    LayerFrameSurfaceResolver surfaceOf,
-  ) => switch (row) {
-    // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
-    // tree for a live row, and only it owns the surface to fill the slot
-    // with; every other route resolves surfaces from stored frames.
-    // Reached here it would be a caller handing a live row to a route
-    // that cannot draw it, so it contributes nothing rather than guessing.
-    CutFrameCompositeLiveRow() => null,
-    CutFrameCompositeGhost() => ghostOf(row, surfaceOf),
-    CutFrameCompositeEntry() => switch (surfaceOf(row.layer, row.frame)) {
-      final surface? => CutFrameCompositeLayer(
-        surface: surface,
-        opacity: row.opacity,
-        blendMode: row.blendMode,
-        placement: row.placement,
-        effects: bound(row.effects),
-      ),
-      null => null,
-    },
-  };
-
-  return List.unmodifiable(
-    mapCompositeLeaves(
-      nodes,
-      (row) => layerOf(row, reading.surfaces),
-      bare: (row) =>
-          layerOf(row, (_, _) => BitmapSurface(canvasSize: cut.canvasSize)),
-      chains: bound,
-    ),
-  );
-}
 
 /// The frame exposed at [frameIndex]: the drawing block covering the index
 /// (same semantics as TimelineController.resolveFrameForLayer — uncovered

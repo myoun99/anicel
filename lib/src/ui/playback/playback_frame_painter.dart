@@ -226,8 +226,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     Rect? frameRect;
     if (pose != null) {
       // The camera's output frame takes the canvas's place in viewport
-      // space; the projection inside it matches
-      // CameraFrameRenderService.renderThroughCamera.
+      // space; the projection inside it is the camera's own
+      // ([cameraProjectionMatrix]).
       final frameSize = cameraFrameSize!;
       frameRect = Rect.fromLTWH(
         0,
@@ -318,7 +318,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         canvasSize: canvasSize,
         // Device pixels per canvas pixel under the view and, through the
         // camera, its projection — whose turn keeps scale, so its zoom is
-        // the whole of it (as `renderThroughCamera` reads it).
+        // the whole of it.
         rasterScale:
             displayScaleOf(resolvedViewport?.zoom ?? 1, devicePixelRatio) *
             (pose?.zoom.abs() ?? 1),

@@ -103,7 +103,6 @@ void main() {
       'sheetInk',
       'undo',
       'framePictures',
-      'layerImages',
       'brushTips',
       'panelRasters',
       'viewerPages',
