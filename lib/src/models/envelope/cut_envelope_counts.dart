@@ -44,9 +44,9 @@ class CutEnvelopeCelCount {
 List<CutEnvelopeCelCount> cutEnvelopeCelCounts(Cut cut) {
   final byName = <String, Map<LayerProcess, int>>{};
   for (final layer in cut.layers) {
-    if (layerTakesSheetCelColumn(layer)) {
+    if (celStageOf(layer) case final stage?
+        when layerTakesSheetCelColumn(layer)) {
       final stages = byName.putIfAbsent(layer.name, () => {});
-      final stage = celStageOf(layer);
       stages[stage] = (stages[stage] ?? 0) + layer.frames.length;
     }
   }

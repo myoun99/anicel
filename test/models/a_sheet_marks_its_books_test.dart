@@ -1,10 +1,10 @@
-// D24 후반 — THE SHEET MARKS ITS BOOKS (유저 2026-09-25, 사진 셋; 09-26
-// 「이름 bg든 북이든 구별없이 이미지레이어면서 미술이면 수정공정뭐던간에
-// 북표시」): an image row labelled 美術, whatever its name and its revise,
-// is a book; it sits at the boundary of the cel columns under it, tagged
-// with its row's name and its picture's; several at one boundary share a
-// tag (`a,b`); none under the first cel column, the one over the last
-// marked.
+// D24 후반 — THE SHEET MARKS ITS BOOKS (유저 2026-09-25, 사진 셋; F-578
+// 11-10 「이미지레이어고 타임시트on이면 북으로 인식」): an image row the
+// ACTION block counts — LO, ラフ原, 原画 or no label —, whatever its name
+// and its revise, is a book; it sits at the boundary of the cel columns
+// under it, tagged with its row's name and its picture's; several at one
+// boundary share a tag (`a,b`); none under the first cel column, the one
+// over the last marked. ↩️An image row labelled 美術 was the book (09-26).
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -36,7 +36,7 @@ var _pictures = 0;
 Layer picture(
   String name, {
   String? frame,
-  LayerMark mark = const LayerMark(process: LayerProcess.art),
+  LayerMark mark = const LayerMark(process: LayerProcess.layout),
   bool onTimesheet = true,
   String? attachedTo,
 }) {
@@ -102,14 +102,14 @@ void main() {
           'LO',
           frame: '3',
           mark: const LayerMark(
-            process: LayerProcess.art,
+            process: LayerProcess.layout,
             revise: LayerRevise.director,
           ),
         ),
         picture(
           'BOOK',
           frame: '4',
-          mark: const LayerMark(process: LayerProcess.layout),
+          mark: const LayerMark(process: LayerProcess.paper),
         ),
       ]),
     ).actionBooks.tagged;
@@ -118,6 +118,35 @@ void main() {
       (boundary: 1, label: 'BOOK1'),
       (boundary: 3, label: 'BOOK2,LO3'),
     ]);
+  });
+
+  test('🗣️F-578: an image row is a book where a cel row would print in '
+      'the ACTION block — LO, ラフ原, 原画 and no label; never the conte\'s, '
+      'the paper\'s, 動画 or 仕上げ', () {
+    // 유저 2026-11-10: Q3 「용지라벨만 북에서 빼는거 ok이고, 애초에
+    // 레이아웃,러프원,원화 이외 공정이면 북쪽에 안넣음」 · Q5 「라벨없음도
+    // 액션란 취급인걸로 ok」.
+    const books = {
+      null,
+      LayerProcess.art,
+      LayerProcess.layout,
+      LayerProcess.roughKey,
+      LayerProcess.key,
+    };
+    for (final process in [null, ...LayerProcess.values]) {
+      final marked = SheetSources.of(
+        cut: cutOf([
+          cels('A'),
+          picture('BOOK', frame: '1', mark: LayerMark(process: process)),
+        ]),
+      ).actionBooks.tagged;
+
+      expect(
+        marked,
+        books.contains(process) ? [(boundary: 1, label: 'BOOK1')] : isEmpty,
+        reason: '$process',
+      );
+    }
   });
 
   test('a picture without a name tags the book with its row\'s alone', () {
@@ -142,7 +171,7 @@ void main() {
           id: const LayerId('book'),
           name: 'BOOK',
           kind: LayerKind.image,
-          mark: const LayerMark(process: LayerProcess.art),
+          mark: const LayerMark(process: LayerProcess.layout),
           frames: [cel('theirs', '7'), cel('mine', '2')],
           timeline: const {
             0: TimelineExposure.drawing(FrameId('mine'), length: 1),
@@ -175,7 +204,7 @@ void main() {
     expect(books, isEmpty);
   });
 
-  test('only an image row is a book — another row labelled 美術 is not', () {
+  test('only an image row is a book — another row labelled LO is not', () {
     final books = SheetSources.of(
       cut: cutOf([
         cels('A'),
@@ -184,7 +213,7 @@ void main() {
           name: 'BOOK',
           kind: LayerKind.storyboard,
           frames: const [],
-          mark: const LayerMark(process: LayerProcess.art),
+          mark: const LayerMark(process: LayerProcess.layout),
         ),
       ]),
     ).actionBooks.tagged;

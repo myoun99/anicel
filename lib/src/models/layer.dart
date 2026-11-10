@@ -767,10 +767,14 @@ bool layerCarriesTimesheetToggle(Layer layer) =>
 /// an EMPTY column (its timing lives on its base), a free one printed its
 /// own cel numbers, and the envelope counted both, while the rail showed
 /// no switch to turn any of it off.
+///
+/// And a row the sheet counts at all ([celStageOf]): a conte- or
+/// paper-labelled cel row prints in no block (F-578).
 bool layerTakesSheetCelColumn(Layer layer) =>
     layerCarriesTimesheetToggle(layer) &&
     layer.kind == LayerKind.animation &&
-    layer.onTimesheet;
+    layer.onTimesheet &&
+    celStageOf(layer) != null;
 
 /// F-406: whether this layer's cel column is the timesheet's CELL block's
 /// rather than its ACTION block's — a row whose colour label is 動画 or
@@ -778,39 +782,61 @@ bool layerTakesSheetCelColumn(Layer layer) =>
 /// 타임시트용지패널의 CELL란에 표시하도록. 액션란에는 표시안함. 동화의 어떤
 /// 수정공정이던 CELL란표시」 · 10-21, F-431: 「시아게 공정쪽 레이어도
 /// 동일하게 CELL란에 등록」).
-bool layerTakesTheCelBlock(Layer layer) =>
-    celStageOf(layer) != LayerProcess.key;
+bool layerTakesTheCelBlock(Layer layer) => switch (celStageOf(layer)) {
+  LayerProcess.inbetween || LayerProcess.finish => true,
+  _ => false,
+};
 
-/// The stage a cel row's drawings are counted under on paper, by its
-/// colour label whatever its revise: 動画 ([LayerProcess.inbetween]) and
-/// 仕上げ ([LayerProcess.finish]) — the CELL block's rows — and 原画
-/// ([LayerProcess.key]) for every other: the ACTION block's.
+/// The stage a row's work is counted under on paper, by its colour label
+/// whatever its revise — or null for a row the sheet does not count: 原画
+/// ([LayerProcess.key]) for the ACTION block's rows — LO, ラフ原, 原画 and a
+/// row with no label —, 動画 ([LayerProcess.inbetween]) and 仕上げ
+/// ([LayerProcess.finish]) for the CELL block's, and none for the conte's
+/// and the paper's.
 ///
 /// 🗣️F-498 (유저 2026-10-29): 「원화 세는건 타임시트용지패널이랑 맞추고
 /// (액션란이 원화), 동화도 그거 맞추고(셀란. 이 경우는 색라벨이 동화쪽일때만.
 /// 어떤 수정이던.). 시아게도 색라벨 맞춰서. 이런 법 하나로 통일. 뭐가 원화,
-/// 뭐가 동화로 인식되는지 라는 법」 — the sheet's two blocks
-/// ([layerTakesTheCelBlock]) and the cut envelope's counts
-/// (`cutEnvelopeCelCounts`) read this one answer. ↩️The envelope counted
-/// every cel row's drawings as 原画 and estimated its 動画 off them.
-LayerProcess celStageOf(Layer layer) => switch (layer.mark.process) {
+/// 뭐가 동화로 인식되는지 라는 법」 · 🗣️F-578 (유저 2026-11-10):
+/// 「애초에 레이아웃,러프원,원화 이외 공정이면 북쪽에 안넣음. 이건
+/// 애니메이션레이어도 마찬가지임. 그런것들 법 통일」, Q5: 「라벨없음도 액션란
+/// 취급인걸로 ok. 액션란 취급인건 컷봉투의 원화 갯수 샌다던가 그런거도 다 법
+/// 통일하는거 잊지말고」 — a cel row's column and its block
+/// ([layerTakesSheetCelColumn] · [layerTakesTheCelBlock]), an image row's
+/// book ([layerMarksSheetBook]), the XDTS export and the cut envelope's
+/// counts (`cutEnvelopeCelCounts`) read this one answer.
+/// ↩️The envelope counted every cel row's drawings as 原画 and estimated its
+/// 動画 off them (until F-498). ↩️Every label but 動画 and 仕上げ was 原画: a
+/// conte- or paper-labelled cel row printed in the ACTION block (until
+/// F-578).
+LayerProcess? celStageOf(Layer layer) => switch (layer.mark.process) {
+  null ||
+  LayerProcess.art ||
+  LayerProcess.layout ||
+  LayerProcess.roughKey ||
+  LayerProcess.key => LayerProcess.key,
   LayerProcess.inbetween => LayerProcess.inbetween,
   LayerProcess.finish => LayerProcess.finish,
-  _ => LayerProcess.key,
+  LayerProcess.conte || LayerProcess.paper => null,
 };
 
 /// D24 후반: whether this layer marks a BOOK on the sheet — an image row
-/// whose colour label is 美術, whatever its revise and whatever its name
-/// (유저 2026-09-26: 「이름 bg든 북이든 구별없이 이미지레이어면서 미술이면
-/// 수정공정뭐던간에 북표시하는거 잊지말고」 — ⛔never by the name BG/BOOK).
+/// the ACTION block counts ([celStageOf]), whatever its name, with its
+/// sheet switch on: the cel column's law with the image row's words.
 ///
-/// The cel column's law with the image row's words: the row's sheet
-/// switch is the flag the note above kept for this.
+/// 🗣️F-578 (유저 2026-11-10): 「이미지레이어고 타임시트on이면 북으로
+/// 인식하게 하는게 제일 확실한듯」, and the books lie by the ACTION block's
+/// law (「레이아웃,러프원,원화 이외 공정이면 북쪽에 안넣음」 — a paper-
+/// labelled row is not a book, Q3; one with no label is, Q5).
+/// ⛔Never by the name BG/BOOK (유저 2026-09-26). ↩️It was an image row
+/// labelled 美術, whatever its revise (09-26: 「이름 bg든 북이든 구별없이
+/// 이미지레이어면서 미술이면 수정공정뭐던간에 북표시하는거 잊지말고」), until
+/// F-578 took 美術 out of the labels.
 bool layerMarksSheetBook(Layer layer) =>
     layerCarriesTimesheetToggle(layer) &&
     layer.kind == LayerKind.image &&
     layer.onTimesheet &&
-    layer.mark.process == LayerProcess.art;
+    celStageOf(layer) == LayerProcess.key;
 
 /// Whether this layer's lines print on paper — an SE row with its sheet
 /// switch on: the timesheet's SE column, the XDTS export and the conte
