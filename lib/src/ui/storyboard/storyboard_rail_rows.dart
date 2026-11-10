@@ -95,6 +95,12 @@ class _StoryboardRailRows {
   }
 
   final StoryboardRailInputs? _inputs;
+
+  /// The rail's lane lists, each kept while what it is read from holds.
+  late final KeptStoryboardLanes _lanes = KeptStoryboardLanes(
+    () => _in.project,
+  );
+
   StoryboardPanel? _ownOf;
   late StoryboardRailInputs _own;
 
@@ -102,43 +108,25 @@ class _StoryboardRailRows {
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
 
-  /// One V track's EFFECT lanes, below its Transform group — the same rows a
-  /// layer's chain gets, one level up: this chain filters the whole
-  /// composited cut (user 2026-08-08). Values resolve at GLOBAL frames, the
-  /// axis the keys live on. Its groups open as the track keeps them, by
-  /// lane id as a layer row keeps its own (F-360, `Track.expandedLaneGroups`).
-  List<PropertyLaneRow> _trackEffectLanes(Track track) {
-    if (track.effects.isEmpty) {
-      return const [];
-    }
-    return effectPropertyLanes(
-      track.effects,
-      // A track's chain is no cut's: it names no row.
-      cutRows: const [],
-      isExpanded: (effectId) =>
-          track.expandedLaneGroups.contains(effectGroupLaneId(effectId)),
-      valueAt: (effectId, parameterId, time) => effectParameterValueAtTime(
-        track.effects,
-        effectId,
-        parameterId,
-        time,
-      ),
-      hasPlugin: _state.widget.hasFxPlugin,
-      pluginOutcomes: switch (_state.widget.fxPluginOutcomes) {
-        final outcomes? => (outcomes: outcomes, owner: track.id),
-        null => null,
-      },
-    );
-  }
+  /// One V track's EFFECT lanes as committed ([trackEffectLanes]), the
+  /// same lanes while what they are read from holds
+  /// ([KeptStoryboardLanes]). A chain a drag in flight shows is read anew
+  /// ([trackEffectLanes] itself): it is no list a kept row shows.
+  List<PropertyLaneRow> _trackEffectLanes(Track track) =>
+      _lanes.trackEffects(track, _laneReads);
+
+  /// What every row's lanes are read with on this rail, the row aside.
+  StoryboardLaneReads get _laneReads => (
+    expandedGroupKeys: _in.expandedLaneGroupKeys,
+    poseCentre: _in.poseDisplaySize,
+    hasPlugin: _state.widget.hasFxPlugin,
+    outcomes: _state.widget.fxPluginOutcomes,
+  );
 
   /// The layer the V row's own lanes are worn by on this rail — its lane
   /// carrier ([trackTransformLaneCarrierId]) — by its labels, its strips
   /// and the graphs over them alike.
-  static Layer _trackLaneCarrier(Track track) => Layer(
-    id: trackTransformLaneCarrierId(track.id),
-    name: 'V',
-    frames: const [],
-  );
+  Layer _trackLaneCarrier(Track track) => _lanes.carrierOf(track);
 
   /// The V row's OWN lanes — its Transform group when it has one, then its
   /// EFFECT chain.
@@ -159,19 +147,13 @@ class _StoryboardRailRows {
     ];
   }
 
-  /// One S row's lanes: THE list an SE row twirls down ([propertyLanesForRow],
-  /// F-101), read on this track's rail — the row itself at the rail's global
-  /// frame (the same raw-track resolution the timeline's value column uses —
-  /// fx bypass never touches authoring values), an unkeyed pose in the middle
-  /// of the camera frame. No cut is consulted: the row belongs to the track.
-  ///
-  /// C5 (2026-08-17) holds by construction: the list is the timeline's lane
-  /// law's own, so an S row twirls down exactly the lanes its timeline twin
-  /// draws. ↩️The storyboard once mounted the Audio lane off the twirl alone,
-  /// and an empty S row showed a waveform strip its twin never drew.
+  /// One S row's lanes as committed ([seRowLanes]), the same lanes while
+  /// what they are read from holds ([KeptStoryboardLanes]).
   List<PropertyLaneRow> _seLanes(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    return layer == null ? const [] : _seLanesOf(track, layer);
+    return layer == null
+        ? const []
+        : _lanes.seRow(track, slot, layer, _laneReads);
   }
 
   /// [_seLanes] read off [layer] — the S row as committed, or as a lane edit
@@ -182,18 +164,18 @@ class _StoryboardRailRows {
     Layer layer, {
     Set<String>? expandedGroupKeys,
   }) {
-    return propertyLanesForRow(
-      layer: layer,
-      rows: track.seLayers,
-      expandedGroupKeys:
-          expandedGroupKeys ?? _in.expandedLaneGroupKeys,
-      valueSourceAt: (frameIndex) => (layer: layer, frame: frameIndex),
-      // The display size comes from the SESSION, exactly as the V row's
-      // lanes take it — never from "the cut that happens to be open", which
-      // made another track's S row show its values as defaults.
-      poseCentre: _in.poseDisplaySize,
-      hasPlugin: _state.widget.hasFxPlugin,
-      pluginOutcomes: _state.widget.fxPluginOutcomes,
+    final reads = _laneReads;
+    return seRowLanes(
+      track,
+      layer,
+      expandedGroupKeys == null
+          ? reads
+          : (
+              expandedGroupKeys: expandedGroupKeys,
+              poseCentre: reads.poseCentre,
+              hasPlugin: reads.hasPlugin,
+              outcomes: reads.outcomes,
+            ),
     );
   }
 
@@ -429,7 +411,7 @@ class _StoryboardRailRows {
   /// it is the row of the cut the session stands in ([stood]): only there
   /// are its lanes valued, edited and followed. Null while no cut holds a
   /// row there.
-  ({Cut cut, Layer layer, bool stood})? _inHand(
+  ProjectionRowInHand? _inHand(
     Track track,
     TimelineRowAddress row,
   ) {
@@ -485,11 +467,7 @@ class _StoryboardRailRows {
   /// of the track's first camera, with nothing to read their values in.
   List<PropertyLaneRow> _cameraLanes(Track track) =>
       switch (_inHand(track, LayerRowAddress(trackCameraRowId(track.id)))) {
-        (:final cut, :final layer, :final stood) => cameraPropertyLanes(
-          layer,
-          cut.camera.track,
-          canvasSize: stood ? cut.canvasSize : null,
-        ),
+        final inHand? => _lanes.camera(track, inHand),
         null => const [],
       };
 
@@ -545,22 +523,13 @@ class _StoryboardRailRows {
     );
   }
 
-  /// [row]'s lanes in [cut] — THE list its timeline row twirls down
-  /// ([propertyLanesForRow]), with its groups twirled as the timeline's
-  /// are; [valued] reads them at a frame of the cut's own.
+  /// [row]'s lanes in [cut] ([conteRowLanes]), read anew — a row as a
+  /// drag in flight shows it.
   List<PropertyLaneRow> _conteRowLanes(
     Cut cut,
     Layer row, {
     required bool valued,
-  }) => propertyLanesForRow(
-    layer: row,
-    rows: cut.layers,
-    expandedGroupKeys: _in.expandedLaneGroupKeys,
-    valueSourceAt: valued ? (frame) => (layer: row, frame: frame) : null,
-    poseCentre: valued ? cut.canvasSize : null,
-    hasPlugin: _state.widget.hasFxPlugin,
-    pluginOutcomes: _state.widget.fxPluginOutcomes,
-  );
+  }) => conteRowLanes(cut, row, _laneReads, valued: valued);
 
   /// The lanes [track]'s conte row at [seat] twirls down: those of its row
   /// in hand ([_inHand]) — valued in the cut the session stands in, or,
@@ -568,11 +537,7 @@ class _StoryboardRailRows {
   /// values in — the timeline's lanes of the row, a rider's own (I-99).
   List<PropertyLaneRow> _conteLanes(Track track, int seat) =>
       switch (_inHand(track, _conteRow(track, seat))) {
-        (:final cut, :final layer, :final stood) => _conteRowLanes(
-          cut,
-          layer,
-          valued: stood,
-        ),
+        final inHand? => _lanes.conteRow(track, seat, inHand, _laneReads),
         null => const [],
       };
 
@@ -1073,7 +1038,7 @@ class _StoryboardRailRows {
     final rasterize = _state.widget.onRasterizeLaneGroup;
     final reset = _state.widget.onResetLaneGroup;
     final rows = _state._rows.laneLabels(
-      carrier: labels.shown.copyWith(id: projection.rowId),
+      carrier: wornByRow(labels.shown, projection.rowId),
       lanes: labels.lanes,
       groupKeyOf: (lane) => laneGroupKey(labels.shown.id, lane.laneId),
       follow: stood == null ? null : follow,
@@ -1095,6 +1060,8 @@ class _StoryboardRailRows {
           : (frame) => seek(stood.cut.id, frame),
       // I-89 ①: by the row's own id, which this rail keys its graphs by.
       graphVerbs: _laneGraphVerbs,
+      // The verbs and [follow] edit and seek the layer and the cut stood in.
+      closesOver: (ByIdentity(stood?.layer), stood?.cut.id),
     );
     return _state._rows.laneRows(
       projection.rowId,
@@ -1248,27 +1215,36 @@ class _StoryboardRailRows {
                     ? lane
                     : laneAsPreviewed(
                         lane,
-                        _trackEffectLanes(track.copyWith(effects: previewed)),
+                        trackEffectLanes(
+                          track.copyWith(effects: previewed),
+                          _laneReads,
+                        ),
                       ),
               ),
             ),
+            // On the track as it stands at the press ([_actOnTrack]): a
+            // label is kept past the pass it was built in.
             onToggleGroupEnabled:
                 _state.widget.onToggleTrackEffectEnabled == null
                 ? null
                 : (lane) {
                     final parsed = parseEffectLaneId(lane.laneId);
                     if (parsed != null) {
-                      _state.widget.onToggleTrackEffectEnabled!(
-                        track,
-                        parsed.effectId,
+                      _actOnTrack(
+                        track.id,
+                        (now) => _state.widget.onToggleTrackEffectEnabled
+                            ?.call(now, parsed.effectId),
                       );
                     }
                   },
             onResetGroup: _state.widget.onResetTrackEffectGroup == null
                 ? null
-                : (lane) => _state.widget.onResetTrackEffectGroup!(
-                    track,
-                    lane.laneId,
+                : (lane) => _actOnTrack(
+                    track.id,
+                    (now) => _state.widget.onResetTrackEffectGroup?.call(
+                      now,
+                      lane.laneId,
+                    ),
                   ),
             active: true,
             onSelectFrame: _state.widget.onSeekGlobalFrame,
@@ -2437,7 +2413,7 @@ class _StoryboardRailRows {
 
   /// The projection row [rowId] names, IN HAND ([_inHand]) — null for an
   /// id of any other row, and for a row no cut holds a layer for.
-  ({Cut cut, Layer layer, bool stood})? _rowInHand(LayerId rowId) {
+  ProjectionRowInHand? _rowInHand(LayerId rowId) {
     final trackId = trackIdOfProjectionRow(rowId);
     final track = trackId == null ? null : _trackNamed(trackId);
     return track == null ? null : _inHand(track, LayerRowAddress(rowId));
@@ -2667,13 +2643,14 @@ class _StoryboardRailRows {
           laneGraphLineAmong(
             key,
             rows: [_trackLaneCarrier(track)],
-            lanesOf: (_, open) => _trackEffectLanes(
+            lanesOf: (_, open) => trackEffectLanes(
               track.copyWith(
                 effects: timelineDragPreviewTrackEffectsFor(preview, track.id),
                 expandedLaneGroups: {
                   for (final group in open) ?parseLaneGroupKey(group)?.laneId,
                 },
               ),
+              _laneReads,
             ),
           );
       if (line != null) {
@@ -2796,7 +2773,7 @@ class _StoryboardRailRows {
         display: head == null
             ? null
             : TimelineDisplayRow.layer(
-                head.copyWith(id: rowId),
+                wornByRow(head, rowId),
                 layerIndex: 0,
               ),
         graph: null,
@@ -2913,7 +2890,7 @@ class _StoryboardRailRows {
         display: head == null
             ? null
             : TimelineDisplayRow.layer(
-                head.copyWith(id: rowId),
+                wornByRow(head, rowId),
                 layerIndex: 0,
               ),
         graph: null,
@@ -2943,10 +2920,8 @@ class _StoryboardRailRows {
     LayerId rowId,
     List<PropertyLaneRow> lanes,
   ) {
-    final carrier = _inHand(
-      track,
-      LayerRowAddress(rowId),
-    )?.layer.copyWith(id: rowId);
+    final inHand = _inHand(track, LayerRowAddress(rowId))?.layer;
+    final carrier = inHand == null ? null : wornByRow(inHand, rowId);
     for (final lane in lanes) {
       slots.add((
         row: null,
@@ -3286,7 +3261,7 @@ class _StoryboardRailRows {
         ? lane
         : laneAsPreviewed(
             lane,
-            _trackEffectLanes(track.copyWith(effects: effects)),
+            trackEffectLanes(track.copyWith(effects: effects), _laneReads),
           );
     // The fx chain's strips, row for row with its labels — the rail and the
     // strips share no scaffolding, so the two lists are built from the SAME

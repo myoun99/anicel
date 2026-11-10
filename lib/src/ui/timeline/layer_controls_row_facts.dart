@@ -11,17 +11,16 @@ import '../../models/layer_kind.dart' show LayerFxState;
 import '../../models/timeline_row_address.dart';
 import '../text/app_strings.dart' show AppText;
 import 'berth_row.dart';
-import 'lane_graph.dart' show LaneGraphsView, TimelineGraphSeat;
 import 'lane_graph_seats.dart' show laneGraphHeadedBy;
 import 'layer_label_controls.dart' show LayerRailColumnWidths;
-import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart' show LayerRowDragInputs;
 import 'memo_token.dart';
-import 'property_lane_model.dart' show PropertyLaneRow, TimelineDisplayRow;
+import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'row_berths.dart';
 import 'timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_lane_rows.dart' show TimelineLaneControlsRow;
 import 'timeline_layer_controls_row.dart';
 
 /// What a layer's CONTROLS ROW is built from — every fact it SHOWS, read off
@@ -212,76 +211,23 @@ Widget layerControlsRowFrom(
   );
 }
 
-/// What a LANE's controls row is built from — its name, keys and value on
-/// the rail, a column's header turned on its side on the sheet
-/// ([TimelineLaneControlsRow]) — read off a grid's hooks for one display
-/// row: ONE reading for both grids, as a layer's row has.
-///
-/// 🚨Card a-rail-lane-row-is-drawn-again-on-every-host-pass (2026-11-07):
-/// lane rows were built again at every pass of their host — a runway step
-/// past the cut's end, a notify that changed nothing — and a row's tick
-/// layer, handed a new child, was laid out and painted again: the row's
-/// still region threw its image away and took another (🔬the six lane rows
-/// of one twirled-open layer, at one runway step). ↩️They stood unkept
-/// because their lane models were new objects at every pass; a host that
-/// hands its lanes back as the same objects while what they are read from
-/// holds ([KeptTimelineLanes]) makes a lane a fact by identity, as a
-/// listenable is. A host that reads them anew builds its lane rows anew,
-/// as every pass did before.
-///
-/// ⛔As a layer row's, its VERBS are not facts. The row reads the four
-/// metrics below and no other.
-typedef LaneControlsRowFacts = ({
-  // The lane is made of its layer, and the row's drag gate previews the
-  // layer.
-  ByIdentity<Layer> layer,
-  ByIdentity<PropertyLaneRow> lane,
-  TimelineGraphSeat? seat,
-  bool folded,
-  double layerRowHeight,
-  double layerControlsWidth,
-  double sectionLabelGutterWidth,
-  LayerRailColumnWidths railColumns,
-  double? mainExtent,
-  LayerRailOptionalColumns optionalColumns,
-  LaneGraphsView laneGraphs,
-  // What the row listens to itself: the preview its gate reads, the frame
-  // it reads its value at and the row stood on.
-  ByIdentity<ValueListenable<TimelineDragPreview?>?> dragPreview,
-  ByIdentity<ValueListenable<int>> frameCursor,
-  ByIdentity<ValueListenable<TimelineRowAddress?>?> currentRow,
-});
-
-/// The facts of [row]'s lane controls row as [grid] tells them.
-LaneControlsRowFacts laneControlsRowFacts(
-  TimelineDisplayRow row,
-  LayerControlsRowGrid grid,
-) {
-  final hooks = grid.hooks;
-  return (
-    layer: ByIdentity(row.layer),
-    lane: ByIdentity(row.lane!),
-    seat: row.graph,
-    folded: row.folded,
-    layerRowHeight: grid.metrics.layerRowHeight,
-    layerControlsWidth: grid.metrics.layerControlsWidth,
-    sectionLabelGutterWidth: grid.metrics.sectionLabelGutterWidth,
-    railColumns: grid.metrics.railColumns,
-    mainExtent: grid.mainExtent,
-    optionalColumns: hooks.optionalRailColumns,
-    laneGraphs: hooks.laneGraphs,
-    dragPreview: ByIdentity(hooks.dragPreview),
-    frameCursor: ByIdentity(hooks.frameCursor),
-    currentRow: ByIdentity(hooks.currentRowHooks?.currentRow),
-  );
-}
-
-/// What a kept lane controls row was built from: its facts and what its
-/// drag wrapper was built from.
+/// What a kept lane controls row was built from: the row its drag gate
+/// builds for the committed layer — kept by that row's own facts
+/// ([TimelineLaneControlsRow.facts]) — the preview the gate follows, and
+/// what its drag wrapper was built from.
 typedef LaneControlsRowInputs = ({
-  LaneControlsRowFacts facts,
+  TimelineLaneControlsRow committed,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
   LayerRowDragInputs drag,
 });
+
+/// What a kept lane controls row is kept by: the row its drag gate builds
+/// for the committed layer, by that row's own facts
+/// ([TimelineLaneControlsRow.facts]), and the preview the gate follows.
+Object? laneControlsRowKeptBy(
+  TimelineLaneControlsRow committed,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
+) => (ByIdentity(dragPreview), committed.facts);
 
 /// What a kept controls row was built from: its facts and what its drag
 /// wrapper was built from.
@@ -315,7 +261,7 @@ final class KeptLayerControlsRows {
 
   final Widget Function(TimelineDisplayRow row, Widget built) drags;
   final KeptByBerth<LayerControlsRowFacts> _rows = KeptByBerth();
-  final KeptByBerth<LaneControlsRowFacts> _lanes = KeptByBerth();
+  final KeptByBerth<Object?> _lanes = KeptByBerth();
   final KeptByBerth<_LayerControlsRowWrap> _wrapped = KeptByBerth();
 
   /// [row]'s controls row in its berth of [berths] (F-244): the row
@@ -350,7 +296,12 @@ final class KeptLayerControlsRows {
   ) => _wrap(
     berths,
     row,
-    _lanes.keep(berths, row, inputs.facts, build),
+    _lanes.keep(
+      berths,
+      row,
+      laneControlsRowKeptBy(inputs.committed, inputs.dragPreview),
+      build,
+    ),
     inputs.drag,
   );
 

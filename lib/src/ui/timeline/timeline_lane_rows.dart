@@ -90,7 +90,7 @@ import 'axis_turn.dart';
 import 'still_row.dart';
 import 'timeline_frame_geometry.dart'
     show TimelineFrameAxisBox, TimelineFrameGeometryHandle;
-import 'memo_token.dart' show ByList;
+import 'memo_token.dart' show ByIdentity, ByList;
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
 /// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
@@ -266,6 +266,67 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// the label (R10 #19's rail half). Null leaves the label inert and
   /// unwashed, which is what a passive host wants.
   final TimelineCurrentRowHooks? currentRowHooks;
+
+  /// What the row is built from, each as the row reads it — THE facts
+  /// every host keeps a lane's row by: the timeline's rail, the sheet's
+  /// headers turned on their side, the conte's rail. ONE list, beside
+  /// the fields it lists, so a field added here is a fact there.
+  ///
+  /// 🚨Card a-rail-lane-row-is-drawn-again-on-every-host-pass (2026-11-07):
+  /// lane rows were built again at every pass of their host — a runway step
+  /// past the cut's end, a notify that changed nothing — and a row's tick
+  /// layer, handed a new child, was laid out and painted again: the row's
+  /// still region threw its image away and took another (🔬the six lane rows
+  /// of one twirled-open layer, at one runway step). ↩️They stood unkept
+  /// because their lane models were new objects at every pass; a host that
+  /// hands its lanes back as the same objects while what they are read from
+  /// holds (`KeptLaneLists`) makes a lane a fact by identity, as a
+  /// listenable is. A host that reads them anew builds its lane rows anew,
+  /// as every pass did before. 🔬Card the-conte-rails-lane-rows-are-built-
+  /// again-with-the-rail (11-08): the conte's rail was that host — a pick
+  /// of an S row drew both tracks' fx heads again — and the third to keep
+  /// the row, so its facts came here from the timeline's grids
+  /// (`laneControlsRowFacts`, read off a grid's hooks).
+  ///
+  /// ⛔Its VERBS are not facts: a host binds them once, closing over the
+  /// stable session (R13-2, `KeptPiece.facts`), so whether there is one is
+  /// the fact, never which. Of [metrics] the row reads the four below and
+  /// no other — a zoom step moves none of them.
+  Object? get facts => (
+    // The lane is made of its layer.
+    layer: ByIdentity(layer),
+    lane: ByIdentity(lane),
+    seat: seat,
+    folded: folded,
+    layerRowHeight: metrics.layerRowHeight,
+    layerControlsWidth: metrics.layerControlsWidth,
+    sectionLabelGutterWidth: metrics.sectionLabelGutterWidth,
+    railColumns: metrics.railColumns,
+    axis: axis,
+    keyPrefix: keyPrefix,
+    width: width,
+    height: height,
+    leadingInset: leadingInset,
+    optionalColumns: optionalColumns,
+    laneGraphs: laneGraphs,
+    // What the row listens to itself: the frame it reads its value at and
+    // the row stood on.
+    frameCursor: ByIdentity(frameCursor),
+    currentRow: ByIdentity(currentRowHooks?.currentRow),
+    verbs: (
+      onSelectFrame != null,
+      laneEdit != null,
+      laneEdit?.valueLink != null,
+      onToggleLaneGroup != null,
+      onToggleLaneGroupEnabled != null,
+      onSetLaneGroupBasis != null,
+      onRasterizeLaneGroup != null,
+      onResetLaneGroup != null,
+      laneGraphVerbs != null,
+      currentRowHooks?.onStandOnLane != null,
+      currentRowHooks?.onSettledPress != null,
+    ),
+  );
 
   @override
   State<TimelineLaneControlsRow> createState() =>

@@ -23,13 +23,15 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/layer_controls_row_facts.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show LayerRailOptionalColumns, noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneControlsRow;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:archive/archive.dart';
@@ -42,8 +44,10 @@ import '../../helpers/temp_dir.dart';
 /// 🚨Card a-rail-lane-row-is-drawn-again-on-every-host-pass (2026-11-07):
 /// A KEPT LANE ROW SEES EVERY FACT IT SHOWS.
 ///
-/// Both grids keep a lane's controls row while [laneControlsRowFacts]
-/// answers the same, and the lane is one of those facts by identity — so
+/// Every host keeps a lane's controls row while the row's facts
+/// (`TimelineLaneControlsRow.facts`) answer the same — both grids with the
+/// preview their drag gate follows ([laneControlsRowKeptBy]), and the
+/// conte's rail — and the lane is one of those facts by identity — so
 /// the host hands a layer's lanes back as the same objects while all they
 /// are read from holds ([KeptTimelineLanes]). A read left out of either is
 /// a row kept across a change of it. This changes one at a time, as the
@@ -298,65 +302,115 @@ void main() {
       pinned: [],
     );
 
-    LaneControlsRowFacts facts({
+    // What every host keeps a lane's row by: the row's own facts, as the
+    // grids hand it with the preview its drag gate follows
+    // ([laneControlsRowKeptBy]) and the conte's rail keeps it. Every verb is
+    // a fresh closure at every ask, as at every build of a host; [without]
+    // names the verbs left off.
+    Object? facts({
       Layer? of,
       PropertyLaneRow shows = lane,
       TimelineGraphSeat? graph,
       bool folded = false,
       TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
-      double? mainExtent,
-      bool onion = false,
+      Axis axis = Axis.horizontal,
+      String keyPrefix = 'timeline',
+      double? width,
+      double? height,
+      double leadingInset = 0,
+      LayerRailOptionalColumns optionalColumns = noOptionalRailColumns,
       LaneGraphsView laneGraphs = LaneGraphsView.none,
       ValueListenable<int>? cursor,
       ValueListenable<TimelineDragPreview?>? dragPreview,
       ValueListenable<TimelineRowAddress?>? standing,
-      void Function(int)? onSelectFrame,
-    }) => laneControlsRowFacts(
-      TimelineDisplayRow.lane(
-        of ?? layer,
-        shows,
-        layerIndex: 0,
-        graph: graph,
-        folded: folded,
-      ),
-      (
-        hooks: TimelineGridHooks(
-          activeLayer: ValueNotifier<LayerId?>(null),
+      bool linked = false,
+      Set<String> without = const {},
+    }) {
+      bool has(String verb) => !without.contains(verb);
+      return laneControlsRowKeptBy(
+        TimelineLaneControlsRow(
+          layer: of ?? layer,
+          lane: shows,
+          metrics: metrics,
           frameCursor: cursor ?? cursorA,
-          playbackFrameCount: 24,
-          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: onSelectFrame ?? (_) {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          onToggleLayerOnionSkin: onion ? (_) {} : null,
-          laneGraphs: laneGraphs,
-          dragPreview: dragPreview ?? previewA,
+          onSelectFrame: has('onSelectFrame') ? (_) {} : null,
+          laneEdit: has('laneEdit')
+              ? PropertyLaneEditCallbacks(
+                  onToggleKeyAt: (_, _, _) {},
+                  valueLink: linked
+                      ? (
+                          changes: ValueNotifier(0),
+                          isOn: () => false,
+                          toggle: () {},
+                        )
+                      : null,
+                )
+              : null,
+          onToggleLaneGroup: has('onToggleLaneGroup') ? (_, _) {} : null,
+          onToggleLaneGroupEnabled: has('onToggleLaneGroupEnabled')
+              ? (_, _) {}
+              : null,
+          onSetLaneGroupBasis: has('onSetLaneGroupBasis')
+              ? (_, _, _) {}
+              : null,
+          onRasterizeLaneGroup: has('onRasterizeLaneGroup')
+              ? (_, _) => null
+              : null,
+          onResetLaneGroup: has('onResetLaneGroup') ? (_, _) {} : null,
+          axis: axis,
+          keyPrefix: keyPrefix,
+          width: width,
+          height: height,
+          leadingInset: leadingInset,
           currentRowHooks: TimelineCurrentRowHooks(
             currentRow: standing ?? standingA,
+            onStandOnLane: has('onStandOnLane') ? (_, _) {} : null,
+            onSettledPress: has('onSettledPress') ? () {} : null,
           ),
+          optionalColumns: optionalColumns,
+          laneGraphs: laneGraphs,
+          laneGraphVerbs: has('laneGraphVerbs')
+              ? (
+                  toggle: (_) {},
+                  togglePin: (_) {},
+                  plot: (_, _) {},
+                  resize: (_, _) {},
+                  enlarge: (_) {},
+                  pen: (_) {},
+                  transformBox: (_) {},
+                  snap: (_) {},
+                )
+              : null,
+          seat: graph,
+          folded: folded,
         ),
-        layers: [layer],
-        metrics: metrics,
-        axis: Axis.horizontal,
-        keyPrefix: 'timeline',
-        mainExtent: mainExtent,
-      ),
-    );
+        dragPreview ?? previewA,
+      );
+    }
 
     test('the same facts, asked again, are the same facts — and a verb is '
         'not one', () {
       expect(
-        facts(onSelectFrame: (_) {}),
-        facts(onSelectFrame: (_) {}),
-        reason: 'fresh hooks and a fresh closure at every build would miss '
-            'the memo at every build',
+        facts(),
+        facts(),
+        reason: 'fresh verbs at every build would miss the memo at every '
+            'build',
       );
     });
 
-    final changes = <String, LaneControlsRowFacts Function()>{
+    const verbs = {
+      'onSelectFrame',
+      'laneEdit',
+      'onToggleLaneGroup',
+      'onToggleLaneGroupEnabled',
+      'onSetLaneGroupBasis',
+      'onRasterizeLaneGroup',
+      'onResetLaneGroup',
+      'laneGraphVerbs',
+      'onStandOnLane',
+      'onSettledPress',
+    };
+    final changes = <String, Object? Function()>{
       'layer': () => facts(of: layer.copyWith(name: 'Row')),
       // The same lane read again: a new object, its value read anew.
       'lane': () => facts(
@@ -389,14 +443,22 @@ void main() {
           ),
         ),
       ),
-      'mainExtent': () => facts(mainExtent: 180),
-      'optionalColumns': () => facts(onion: true),
+      'axis': () => facts(axis: Axis.vertical),
+      'keyPrefix': () => facts(keyPrefix: 'xsheet'),
+      'width': () => facts(width: 180),
+      'height': () => facts(height: 30),
+      'leadingInset': () => facts(leadingInset: 12),
+      'optionalColumns': () =>
+          facts(optionalColumns: (onion: true, blend: false)),
       'laneGraphs': () => facts(
         laneGraphs: const LaneGraphsView(pinned: {'row|rotation'}),
       ),
       'frameCursor': () => facts(cursor: cursorB),
       'dragPreview': () => facts(dragPreview: previewB),
       'currentRow': () => facts(standing: standingB),
+      'laneEdit.valueLink': () => facts(linked: true),
+      for (final verb in verbs) 'whether there is $verb': () =>
+          facts(without: {verb}),
     };
     for (final change in changes.entries) {
       test('${change.key} is a fact the row shows — it must change the '

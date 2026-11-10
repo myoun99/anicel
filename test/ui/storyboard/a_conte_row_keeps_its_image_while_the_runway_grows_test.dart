@@ -170,22 +170,25 @@ void main() {
     fail('rows still drawn live after 600 frames');
   }
 
+  /// Both tracks on the conte, [cell] a frame.
+  Future<void> pumpConte(WidgetTester tester) => pumpStoryboardHost(
+    tester,
+    Project(
+      id: const ProjectId('conte-runway'),
+      name: 'Conte runway',
+      createdAt: DateTime.utc(2026, 11, 7),
+      tracks: [track(0), track(1)],
+      // Past the cuts, so the press on the ruler below stands on no cut
+      // wherever the drag takes it.
+      trailingFrames: 60,
+    ),
+    surface: const Size(1400, 900),
+    pixelsPerFrame: cell,
+  );
+
   testWidgets('the conte\'s rows keep their images through a growth of the '
       'runway', (tester) async {
-    await pumpStoryboardHost(
-      tester,
-      Project(
-        id: const ProjectId('conte-runway'),
-        name: 'Conte runway',
-        createdAt: DateTime.utc(2026, 11, 7),
-        tracks: [track(0), track(1)],
-        // Past the cuts, so the press on the ruler below stands on no cut
-        // wherever the drag takes it.
-        trailingFrames: 60,
-      ),
-      surface: const Size(1400, 900),
-      pixelsPerFrame: cell,
-    );
+    await pumpConte(tester);
     final position = tester
         .widget<SingleChildScrollView>(
           find.byKey(
@@ -283,6 +286,50 @@ void main() {
     );
     expect(live, isEmpty, reason: 'the runway grew under them');
     await hand.up();
+    await tester.pumpAndSettle();
+  });
+
+  // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail (11-08):
+  // a pick of an S row moves the current row, which only the rows it
+  // leaves and lands on show — and the lane rows of both tracks' fx drew
+  // themselves again and let their images go, built anew with the rail.
+  testWidgets('the conte\'s rows keep their images through a pick of an S '
+      'row, but the rows it moves between', (tester) async {
+    await pumpConte(tester);
+    final before = await untilEveryRowIsAnImage(tester);
+    final taken = [for (final row in before) row.region.debugCaptureCount];
+    expect(
+      [
+        for (final row in before)
+          if (row.name.contains('-fx-group:')) row.name,
+      ],
+      hasLength(2),
+      reason: '⛔premise: each track\'s fx head stands as an image',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-se-label-t0-1')),
+      warnIfMissed: false,
+    );
+    await tester.pump();
+    await frame(tester);
+
+    final drawnAgain = [
+      for (final (index, (:name, :region)) in before.indexed)
+        if (!region.debugDrawnFromImage ||
+            region.debugCaptureCount != taken[index])
+          name,
+    ];
+    expect(
+      drawnAgain,
+      unorderedEquals([
+        'storyboard-se-label-t0-1',
+        'storyboard-track-select-t0',
+        'storyboard-cut-blocks-t0',
+      ]),
+      reason: 'the current row moved from the V row of t0 to its S1, and '
+          'no other row shows it',
+    );
     await tester.pumpAndSettle();
   });
 }

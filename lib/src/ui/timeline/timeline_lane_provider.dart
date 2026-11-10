@@ -62,10 +62,39 @@ List<PropertyLaneRow> timelineLanesForLayer({
   );
 }
 
+/// Lane lists handed back — the same list, the same lanes — while what
+/// each is read from holds: THE keep of a rail's lane lists, as a lane row
+/// is kept while its lane is the same object
+/// ([TimelineLaneControlsRow.facts]). An owner's list is one
+/// [IdentityMemo]: the caller names what it reads — [of]'s `identity`, the
+/// object it is read off, and `key`, everything else — and says which
+/// owners still live ([keepWhere]). It knows nothing of the rail asking:
+/// the timeline's ([KeptTimelineLanes]) and the conte's
+/// (`KeptStoryboardLanes`) each say their own.
+final class KeptLaneLists<K extends Object> {
+  final Map<K, IdentityMemo<List<PropertyLaneRow>>> _byOwner = {};
+
+  /// [owner]'s lanes: [build]'s, read off [identity] and [key], handed
+  /// back while both hold.
+  List<PropertyLaneRow> of(
+    K owner, {
+    required Object identity,
+    required Object? key,
+    required List<PropertyLaneRow> Function() build,
+  }) => _byOwner
+      .putIfAbsent(owner, IdentityMemo.new)
+      .resolve(identity: identity, key: key, build: build);
+
+  /// Lets go of every owner [live] says no to.
+  void keepWhere(bool Function(K owner) live) =>
+      _byOwner.removeWhere((owner, _) => !live(owner));
+}
+
 /// [timelineLanesForLayer]'s lists as a host's rail asks them: a layer's
 /// handed back — the same list, the same lanes — while all it is read from
-/// holds, so a lane row kept while its lane is the same object
-/// ([LaneControlsRowFacts]) is kept through a pass that changed nothing.
+/// holds ([KeptLaneLists]), so a lane row kept while its lane is the same
+/// object ([TimelineLaneControlsRow.facts]) is kept through a pass that
+/// changed nothing.
 ///
 /// 🔬Card a-rail-lane-row-is-drawn-again-on-every-host-pass (2026-11-07):
 /// read anew at every pass, every lane was a new object, so no lane row
@@ -80,7 +109,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
 /// S row rests in is all it reads of the rest of the project. A layer's
 /// slot lives while the layer is one of the session's rows.
 final class KeptTimelineLanes {
-  final Map<LayerId, IdentityMemo<List<PropertyLaneRow>>> _byLayer = {};
+  final KeptLaneLists<LayerId> _byLayer = KeptLaneLists();
   List<Layer>? _rows;
 
   /// [layer]'s lanes with [expandedGroupKeys] open, as [session] reads
@@ -94,35 +123,34 @@ final class KeptTimelineLanes {
     if (!identical(rows, _rows)) {
       _rows = rows;
       final live = {for (final row in rows) row.id};
-      _byLayer.removeWhere((id, _) => !live.contains(id));
+      _byLayer.keepWhere(live.contains);
     }
-    return _byLayer
-        .putIfAbsent(layer.id, IdentityMemo.new)
-        .resolve(
-          identity: layer,
-          key: (
-            ByIdentity(rows),
-            rowPoseSpace(
-              session.repository.requireProject(),
-              layer,
-              standing: session.activeCutId,
-            ),
-            ByIdentity(expandedGroupKeys),
-            ByIdentity(session.fxPlugins.plugins),
-            ByIdentity(session.fxPlugins.outcomes),
-            // The camera row's lanes are the track a camera drag previews.
-            layer.kind == LayerKind.camera
-                ? ByIdentity(session.camera.activeCutCameraTrack)
-                : null,
-            // A lane's name is a word of the app's language.
-            AppText.settings.value,
-          ),
-          build: () => timelineLanesForLayer(
-            layer: layer,
-            session: session,
-            expandedGroupKeys: expandedGroupKeys,
-          ),
-        );
+    return _byLayer.of(
+      layer.id,
+      identity: layer,
+      key: (
+        ByIdentity(rows),
+        rowPoseSpace(
+          session.repository.requireProject(),
+          layer,
+          standing: session.activeCutId,
+        ),
+        ByIdentity(expandedGroupKeys),
+        ByIdentity(session.fxPlugins.plugins),
+        ByIdentity(session.fxPlugins.outcomes),
+        // The camera row's lanes are the track a camera drag previews.
+        layer.kind == LayerKind.camera
+            ? ByIdentity(session.camera.activeCutCameraTrack)
+            : null,
+        // A lane's name is a word of the app's language.
+        AppText.settings.value,
+      ),
+      build: () => timelineLanesForLayer(
+        layer: layer,
+        session: session,
+        expandedGroupKeys: expandedGroupKeys,
+      ),
+    );
   }
 }
 

@@ -22,7 +22,7 @@ import '../models/fx_plugin_description.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
-    show EffectId, LayerEffect, effectParameterValueAtTime;
+    show EffectId, LayerEffect;
 import '../models/layer_folder.dart'
     show LayerFolderIndex, attachFolderLevelsAbove, attachGroupBaseOf;
 import '../models/layer_id.dart';
@@ -58,6 +58,7 @@ import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
 import 'canvas/view_hand.dart';
+import 'storyboard/storyboard_lane_lists.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import '../services/fx_plugins/fx_plugin_outcomes.dart';
@@ -137,7 +138,7 @@ import 'timeline/timeline_lane_rows.dart'
         timelineLaneKeySpan,
         timelineStretchWordSpan;
 import 'timeline/effect_lane_policy.dart'
-    show effectGroupLaneId, effectPropertyLanes, parseEffectLaneId;
+    show effectGroupLaneId, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart'
     show
         RowLinesBeyond,

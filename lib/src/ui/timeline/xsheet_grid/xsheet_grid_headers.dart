@@ -62,45 +62,52 @@ class _XSheetGridHeaders {
       dragPreview: _state.widget.hooks.dragPreview,
       layer: entry.layer,
       slice: (layer) => laneRowSlice(layer, entry.lane!.laneId),
-      rowBuilder: (context, layer) => TimelineLaneControlsRow(
-        axis: Axis.vertical,
-        keyPrefix: 'xsheet',
-        layer: layer,
-        lane: previewedLaneRow(
-          row: entry,
-          previewLayer: layer,
-          lanesForLayer: _state.widget.hooks.lanesOf,
-        ),
-        metrics: _state._metrics,
-        width: timelineDisplayRowExtent(entry, _state._metrics),
-        // Laid out at the natural extent like every other header; the
-        // rail window above is what cuts it.
-        height: naturalHeaderExtent,
-        frameCursor: _state.widget.hooks.frameCursor,
-        onSelectFrame: _state.widget.hooks.onSelectFrame,
-        laneEdit: _state.widget.hooks.laneEdit,
-        onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-        onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
-        onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
-        onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
-        onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-        currentRowHooks: _state.widget.hooks.currentRowHooks,
-        // The SAME answer the layer's own column header reads, so a
-        // group header's fx lands in the sheet's fx row (R5 #7).
-        optionalColumns: _state.widget.hooks.optionalRailColumns,
-        laneGraphs: _state.widget.hooks.laneGraphs,
-        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
-        seat: entry.graph,
-        folded: entry.folded,
-      ),
+      rowBuilder: (context, layer) => _laneControls(entry, layer),
     );
   }
+
+  /// [entry]'s header as [layer] shows it: the committed layer's is what
+  /// the header is kept by, a preview's what the gate builds mid-drag.
+  TimelineLaneControlsRow _laneControls(
+    TimelineDisplayRow entry,
+    Layer layer,
+  ) => TimelineLaneControlsRow(
+    axis: Axis.vertical,
+    keyPrefix: 'xsheet',
+    layer: layer,
+    lane: previewedLaneRow(
+      row: entry,
+      previewLayer: layer,
+      lanesForLayer: _state.widget.hooks.lanesOf,
+    ),
+    metrics: _state._metrics,
+    width: timelineDisplayRowExtent(entry, _state._metrics),
+    // Laid out at the natural extent like every other header; the
+    // rail window above is what cuts it.
+    height: naturalHeaderExtent,
+    frameCursor: _state.widget.hooks.frameCursor,
+    onSelectFrame: _state.widget.hooks.onSelectFrame,
+    laneEdit: _state.widget.hooks.laneEdit,
+    onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+    onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
+    onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
+    onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
+    onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+    currentRowHooks: _state.widget.hooks.currentRowHooks,
+    // The SAME answer the layer's own column header reads, so a
+    // group header's fx lands in the sheet's fx row (R5 #7).
+    optionalColumns: _state.widget.hooks.optionalRailColumns,
+    laneGraphs: _state.widget.hooks.laneGraphs,
+    laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
+    seat: entry.graph,
+    folded: entry.folded,
+  );
 
   /// [entry]'s column header, draggable — kept while nothing it is built
   /// from changed: the rail's memo, turned on its side
   /// ([KeptLayerControlsRows], F-244): a commit rebuilt every header of
   /// the sheet. A lane's as the rail's lane rows are
-  /// ([LaneControlsRowFacts]).
+  /// ([TimelineLaneControlsRow.facts]).
   Widget header(TimelineDisplayRow entry) {
     final grid = _controlsRowGrid;
     final drag = layerRowDragInputs(
@@ -113,7 +120,11 @@ class _XSheetGridHeaders {
       return _kept.keepLane(
         _state._berths,
         entry,
-        (facts: laneControlsRowFacts(entry, grid), drag: drag),
+        (
+          committed: _laneControls(entry, entry.layer),
+          dragPreview: grid.hooks.dragPreview,
+          drag: drag,
+        ),
         () => _laneHeader(entry),
       );
     }
