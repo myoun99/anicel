@@ -463,6 +463,13 @@ class FramePictures implements PlaybackPictures {
   ///
   /// On [picture]'s page, or [page] ([keyOfStack]); its cels read as
   /// [looks] says where a render makes it ([drawingNow]).
+  ///
+  /// 🚨HELD FOR THE ONE IT IS HANDED TO, WHO RELEASES IT
+  /// ([EngineFramePicture.hold] — the store's law 「HELD BY WHOEVER SHOWS
+  /// IT」; 관제 11-10 08:48): the store may let it go while the asker is
+  /// still on its way to showing it. ↩️It was handed unheld, and a shot
+  /// (`frameShot`) waits for the engine's tools between this and its show —
+  /// a picture the budget let go in that wait was freed, and its show threw.
   Future<EngineFramePicture?> pictureOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -488,7 +495,7 @@ class FramePictures implements PlaybackPictures {
       // Asked once it is made: a cel it was made without is noted then.
       key = keyOfStack(nodes, picture, page: page);
     }
-    return store.peek(key);
+    return store.peek(key)?.hold();
   }
 
   /// What [heldNodes] weighed when the frames' pictures last gave way to

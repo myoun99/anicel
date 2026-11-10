@@ -82,29 +82,30 @@ Future<ui.Image> frameShot(
     page: page,
     looks: looking,
   );
-  final asItStands = picture == null
-      ? await pictures
-            .readInStack(nodes, frame, page: page, looks: looking)
-            .then(
-              (_) => pictures.drawingNow(
-                nodes,
-                frame,
-                page: page,
-                looks: looking,
-              ),
-            )
-      : null;
-  final onTheRaster = panelViewOnRaster(view, output);
-  final tools = await session.renderCaches.framePictureStore.tools;
-  final target = ScreenTexture.surfaceOf(
-    appGpuEngine,
-    output.width,
-    output.height,
-  );
-  final size = (output.width, output.height);
+  GpuSurface? target;
   ui.Image? shot;
   ui.Picture? recorded;
   try {
+    final asItStands = picture == null
+        ? await pictures
+              .readInStack(nodes, frame, page: page, looks: looking)
+              .then(
+                (_) => pictures.drawingNow(
+                  nodes,
+                  frame,
+                  page: page,
+                  looks: looking,
+                ),
+              )
+        : null;
+    final onTheRaster = panelViewOnRaster(view, output);
+    final tools = await session.renderCaches.framePictureStore.tools;
+    final raster = target = ScreenTexture.surfaceOf(
+      appGpuEngine,
+      output.width,
+      output.height,
+    );
+    final size = (output.width, output.height);
     Future<void> showOn(GpuTarget onto) async {
       if (picture != null) {
         picture.show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
@@ -124,9 +125,9 @@ Future<ui.Image> frameShot(
       }
     }
 
-    await showOn(target);
+    await showOn(raster);
     shot = pictureOf(
-      PremultipliedRows(target.read(), output.width, output.height),
+      PremultipliedRows(raster.read(), output.width, output.height),
     );
     final bounds = ui.Offset.zero &
         ui.Size(output.width.toDouble(), output.height.toDouble());
@@ -153,15 +154,17 @@ Future<ui.Image> frameShot(
     return made;
   } finally {
     recorded?.dispose();
-    target.free();
+    target?.free();
     shot?.dispose();
     // 🚨Shot, the picture is left as the shot found it: one a step of the
     // run wants or a screen holds stays, and one made for the shot alone
-    // goes ([PlaybackCacheBudget.letGoUnwanted]).
+    // goes ([PlaybackCacheBudget.letGoUnwanted]) — the shot's hold on it
+    // released ([FramePictures.pictureOf]), whatever became of the shot.
     if (picture != null) {
       session.playbackRig.playbackCache.letGoUnwanted(
         pictures.keyOfStack(nodes, frame, page: page),
       );
+      picture.release();
     }
   }
 }

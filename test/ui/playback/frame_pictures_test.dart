@@ -19,6 +19,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_pictures.dart';
@@ -177,33 +178,55 @@ void main() {
       final warmed = pictures.store.peek(pictures.keyOf(at(0)));
       expect(warmed, isNotNull, reason: 'LIVENESS: the warmer\'s picture');
 
-      expect(
-        await pictures.pictureOf(
-          pictures.stackOf(at(1)),
-          at(1),
+      Future<EngineFramePicture?> handed(int frame) async {
+        final picture = await pictures.pictureOf(
+          pictures.stackOf(at(frame)),
+          at(frame),
           shouldAbort: () => false,
-        ),
+        );
+        picture?.release();
+        return picture;
+      }
+
+      expect(
+        await handed(1),
         same(warmed),
         reason: 'frame 1 stacks as frame 0 does: nothing made for it',
       );
       final bytes = pictures.store.estimatedBytes;
-      final made = await pictures.pictureOf(
-        pictures.stackOf(at(2)),
-        at(2),
-        shouldAbort: () => false,
-      );
+      final made = await handed(2);
       expect(made, isNotNull);
       expect(made, same(pictures.store.peek(pictures.keyOf(at(2)))));
       expect(pictures.store.estimatedBytes, greaterThan(bytes));
       expect(
-        await pictures.pictureOf(
-          pictures.stackOf(at(3)),
-          at(3),
-          shouldAbort: () => false,
-        ),
+        await handed(3),
         same(made),
         reason: 'made once, for every panel of the frame',
       );
+    });
+  });
+
+  testWidgets('🚨a panel\'s picture is held for it: let go of by the store '
+      'on its way to the show, it stays until the panel releases it (the '
+      'store\'s 「HELD BY WHOEVER SHOWS IT」)', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      final picture = (await pictures.pictureOf(
+        pictures.stackOf(at(0)),
+        at(0),
+        shouldAbort: () => false,
+      ))!;
+      final kept = picture.bytes;
+      expect(kept, greaterThan(0), reason: 'LIVENESS: a frame is kept');
+
+      pictures.store.letGo(pictures.keyOf(at(0)));
+      expect(picture.gone, isTrue, reason: 'LIVENESS: the store let it go');
+      expect(picture.bytes, kept, reason: 'the panel still holds it');
+
+      picture.release();
+      expect(picture.bytes, 0, reason: 'freed once the panel lets go too');
     });
   });
 
