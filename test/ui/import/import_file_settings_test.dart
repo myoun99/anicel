@@ -191,7 +191,12 @@ void main() {
     test('with no cut in hand a placement has one destination — a new cut — '
         'and a new cut is 1:1 (유저 2026-09-12: 「액티브 컷이 없는 상태에서 '
         '캔버스 떨구면 새 컷 고정」)', () {
-      final resolved = resolve(defaults, hasActiveCut: false);
+      // Another fit than the one a file starts on ([MediaFitMode.born]),
+      // which would say nothing of the lock.
+      final resolved = resolve(
+        defaults.copyWith(fit: MediaFitMode.contain),
+        hasActiveCut: false,
+      );
       expect(resolved.into, ImportDestination.newCut);
       expect(resolved.fit, MediaFitMode.none);
     });
@@ -392,6 +397,14 @@ void main() {
     test('a new layer keeps the fit it was given', () {
       final resolved = resolve(defaults.copyWith(fit: MediaFitMode.stretch));
       expect(resolved.fit, MediaFitMode.stretch);
+      expect(importFitLocked(defaults, placing: true), isFalse);
+    });
+
+    test('and the fit a file starts on is 원본 크기 — not locked, the first '
+        'answer (유저 2026-11-10 F-581: 「파일 임포트시, 기본값 지금 비율유지 '
+        '늘림 이건거같은데 기본값은 원본크기로」)', () {
+      expect(seedImportSettings().fit, MediaFitMode.none);
+      expect(resolve(defaults).fit, MediaFitMode.none);
       expect(importFitLocked(defaults, placing: true), isFalse);
     });
 

@@ -455,15 +455,18 @@ void main() {
         expect(bg.timeline[0]!.length, 1);
       });
 
-      test('each row lays its cels with the fit picked for it — contain until '
-          'one is', () {
+      test('each row lays its cels with the fit picked for it — 원본 크기 '
+          'until one is (유저 2026-11-10 F-581: 「기본값은 원본크기로」)', () {
         final plan = planFor('csm_13_074_gen', [
           'A1.png',
           '_BG.png',
-        ], edits: const CutFolderEdits(fits: {'A': MediaFitMode.none}));
+        ], edits: const CutFolderEdits(fits: {'A': MediaFitMode.contain}));
         final [bg, a, ...] = plan.cuts.single.layers;
 
-        expect(plan.fits, {a.id: MediaFitMode.none, bg.id: MediaFitMode.contain});
+        expect(plan.fits, {
+          a.id: MediaFitMode.contain,
+          bg.id: MediaFitMode.none,
+        });
       });
     });
 

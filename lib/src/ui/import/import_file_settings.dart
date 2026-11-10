@@ -76,7 +76,7 @@ class ImportFileSettings {
     this.mode = ImportFileMode.keepInside,
     this.bake = false,
     this.into = ImportDestination.activeCutLayer,
-    this.fit = MediaFitMode.contain,
+    this.fit = MediaFitMode.born,
     // ↩️F-306-Q1 (유저 2026-10-07: 「psd는 기본값 펼치기. 합치기 남김」) —
     // MERGE was the default from 08-14. The import brings everything the
     // file holds, so a PSD comes in as its stack unless the row says merge.

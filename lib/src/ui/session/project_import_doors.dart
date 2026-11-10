@@ -252,7 +252,7 @@ class ProjectImportDoors {
     required ImportDestination destination,
     required bool copyIntoProject,
     bool rasterize = false,
-    MediaFitMode fit = MediaFitMode.contain,
+    MediaFitMode fit = MediaFitMode.born,
     int? lengthFrames,
     int inFrame = 0,
     int? outFrame,
@@ -572,7 +572,7 @@ class ProjectImportDoors {
   Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
-    MediaFitMode fit = MediaFitMode.contain,
+    MediaFitMode fit = MediaFitMode.born,
     int? lengthFrames,
     ImportLayerSpot? spot,
   }) async {
@@ -660,7 +660,7 @@ class ProjectImportDoors {
     required ImportDestination destination,
     required bool copyIntoProject,
     bool rasterize = false,
-    MediaFitMode fit = MediaFitMode.contain,
+    MediaFitMode fit = MediaFitMode.born,
     int inFrame = 0,
     int? outFrame,
     void Function(int done, int total)? onRenderProgress,

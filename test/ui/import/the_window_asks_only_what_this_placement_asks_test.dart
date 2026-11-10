@@ -185,14 +185,45 @@ void main() {
     );
   });
 
+  testWidgets('a file\'s 맞춤 starts on 원본 크기 — the first answer, still '
+      'asked (유저 2026-11-10 F-581: 「파일 임포트시, 기본값 지금 비율유지 '
+      '늘림 이건거같은데 기본값은 원본크기로」)', (tester) async {
+    final png = await tester.runAsync(() => writePng('a.png'));
+    await open(tester, session(), [png!]);
+
+    expect(cellWord(tester, 'fit', png), AppText.strings.imFitOriginal);
+    await tester.ensureVisible(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('fit', png));
+    await tester.pumpAndSettle();
+    expect(openOptions(), {
+      'import-option-fit-none',
+      'import-option-fit-contain',
+      'import-option-fit-stretch',
+    });
+  });
+
   testWidgets('🚨a NEW cut is made at the file\'s own size, so its fit shows '
       '1:1 — locked, not hidden (「1:1로 고정시켜서 노출시키도록. '
       '비활성화된상태로」)', (tester) async {
     final png = await tester.runAsync(() => writePng('a.png'));
     await open(tester, session(), [png!]);
 
+    // The row answers another fit first: the one a file starts on is 1:1
+    // too, and would say nothing of the lock.
+    //
     // The table scrolls sideways when its columns outgrow the window (the
     // test font's glyphs are wide), so a cell is brought into view first.
+    await tester.ensureVisible(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-fit-stretch')),
+    );
+    await tester.pumpAndSettle();
+    expect(cellWord(tester, 'fit', png), AppText.strings.imFitStretch);
+
     await tester.ensureVisible(cell('into', png));
     await tester.pumpAndSettle();
     await tester.tap(cell('into', png));

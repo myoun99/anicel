@@ -488,14 +488,12 @@ void main() {
     ('span\'s end', (tester, _) => keepImportSpan(tester, 1, 2)),
     (
       'place',
-      (tester, files) async {
-        // A new cut takes its picture 1:1 (`importFitLocked`), so the other
-        // row is answered 1:1 too: the rows differ in where they go alone.
-        await answer(tester, 'fit', files['A3']!, 'none');
-        await answer(tester, 'into', files['A1']!, 'newCut');
-      },
+      // A new cut takes its picture 1:1 (`importFitLocked`) and the other
+      // row starts 1:1 ([MediaFitMode.born]): the rows differ in where they
+      // go alone.
+      (tester, files) => answer(tester, 'into', files['A1']!, 'newCut'),
     ),
-    ('fit', (tester, files) => answer(tester, 'fit', files['A1']!, 'none')),
+    ('fit', (tester, files) => answer(tester, 'fit', files['A1']!, 'stretch')),
   ]) {
     testWidgets('two pictures of one run whose rows answer otherwise — '
         'another $differs — bring a layer each', (tester) async {

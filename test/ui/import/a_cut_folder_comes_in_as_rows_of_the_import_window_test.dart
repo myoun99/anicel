@@ -211,7 +211,7 @@ void main() {
 
     final fit = column(tester, 'fit');
     expect(fit.answersFor(a), MediaFitMode.values);
-    expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.contain));
+    expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.none));
     expect(fit.appliesTo(scan), isFalse, reason: 'registered, not placed');
     final fitCell = find.byKey(const ValueKey<String>('import-cell-fit-$a'));
     await tester.ensureVisible(fitCell);
@@ -219,12 +219,12 @@ void main() {
     await tester.tap(fitCell);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-fit-none')),
+      find.byKey(const ValueKey<String>('import-option-fit-stretch')),
     );
     await tester.pumpAndSettle();
     expect(
       column(tester, 'fit').cellWordOf(a),
-      importFitLabel(MediaFitMode.none),
+      importFitLabel(MediaFitMode.stretch),
     );
 
     final option = column(tester, 'option');

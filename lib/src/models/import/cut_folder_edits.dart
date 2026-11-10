@@ -43,10 +43,6 @@ class CutFolderEdits {
   /// with its symbol ([ridesItsBase]).
   final Map<String, ImportDestination> into;
 
-  /// The fit a row comes in with until someone picks another — the one the
-  /// folder import always laid its scans with.
-  static const MediaFitMode bornFit = MediaFitMode.contain;
-
   /// The cut's name: as typed, or the folder's cut number, or the folder's
   /// own name when it holds none.
   String nameOf(CutFolderParseResult parsed) =>
@@ -105,8 +101,9 @@ class CutFolderEdits {
   LayerMark markOfPicture(ParsedPicture picture) =>
       marks[picture.rowKey] ?? LayerMark.bornOfKind(kindOfPicture(picture));
 
-  /// The fit the row keyed [rowKey] is laid with.
-  MediaFitMode fitOf(String rowKey) => fits[rowKey] ?? bornFit;
+  /// The fit the row keyed [rowKey] is laid with: as picked, starting where
+  /// every picture the import window lists starts ([MediaFitMode.born]).
+  MediaFitMode fitOf(String rowKey) => fits[rowKey] ?? MediaFitMode.born;
 
   /// These edits with what is given changed — [cutName] null for the
   /// folder's own name, and kept when not given ([copyWithSentinel]).

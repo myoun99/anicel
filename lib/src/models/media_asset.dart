@@ -133,13 +133,27 @@ enum MediaFitMode {
   /// Stretch to the canvas, ignoring aspect (Premiere's Scale to Frame).
   stretch('stretch'),
 
-  /// Fit inside the canvas keeping aspect (Set to Frame Size) — default.
+  /// Fit inside the canvas keeping aspect (Set to Frame Size).
   contain('contain'),
 
   /// 1:1, centered — the pasteboard keeps the overflow alive.
   none('none');
 
   const MediaFitMode(this.jsonValue);
+
+  /// The fit a picture comes in with until someone answers another — the
+  /// ONE starting answer of the import window's 「맞춤」, for a file's row
+  /// and a cut folder's alike, and of the doors a row's answer is handed to.
+  ///
+  /// 🗣️유저 2026-11-10 (F-581): 「파일 임포트시, 기본값 지금 비율유지 늘림
+  /// 이건거같은데 기본값은 원본크기로」. ↩️[contain], written in three places
+  /// with no decision behind any: the window's rows (2026-08-14), the doors'
+  /// own defaults (07-30), and the cut folder's (07-30 — 「the one the folder
+  /// import always laid its scans with」, each row's since F-429).
+  ///
+  /// ⛔Not what an absent `fit` READS as ([fromJson]) — that is the file's
+  /// spelling of [contain], and it stays.
+  static const MediaFitMode born = none;
 
   final String jsonValue;
 
