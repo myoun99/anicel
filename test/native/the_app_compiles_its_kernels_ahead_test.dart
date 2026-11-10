@@ -40,14 +40,17 @@ import '../helpers/an_effect_sampled.dart';
 /// 🚨★THE THREAD THE APP'S FRAMES ARE BUILT ON COMPILES NO KERNEL (🗣️관제
 /// 2026-11-10 18:14, gpu-canonical-store ⑦: 「선 = UI 스레드가 직접 하는 커널
 /// 컴파일 0개(시작 · S5 열기)」): once the list the app compiles ahead is
-/// through ([compileAppKernelsAhead]), a pen put down, the blur brush, a
+/// through ([compileAppKernelsAhead]), a pen put down — a second while one
+/// stroke is out too —, the blur brush, the scan that finds a cel's ink, a
 /// colour verb, a paste, a grid's tile drawn and laid on a screen, and a
 /// frame shown — one with an effect chain too — build none where they are
 /// asked, each screen laid as this platform lays its own
 /// ([ScreenTexture.bgra]); and the list builds none here itself.
 ///
-/// Counted is every kernel built on this thread ([debugKernelsCompiledHere]),
-/// whether the driver kept it from an earlier run or not.
+/// Counted is every kernel this thread waited on the compile of
+/// ([debugKernelsCompiledHere]), whether the driver kept it from an earlier
+/// run or not — never one the engine has, which is no one's wait
+/// (rust/src/device.rs, `Kernels`).
 void main() {
   // The letters read their faces from the bundle.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -125,8 +128,12 @@ void main() {
   }
 
   test('⛔premise: a kernel built on this thread is counted', () {
+    // On an engine of its own: the app's keeps the grids' from the list,
+    // and what an engine keeps is no thread's to build.
+    final engine = GpuEngine.onFirstAdapter();
+    addTearDown(engine.close);
     late final GpuGrid grid;
-    expect(builtHereBy(() => grid = GpuGrid(appGpuEngine)), greaterThan(0));
+    expect(builtHereBy(() => grid = GpuGrid(engine)), greaterThan(0));
     grid.free();
   });
 
@@ -140,6 +147,21 @@ void main() {
       0,
     );
     expect(builtHereBy(() => EngineStrokes.blurs), 0);
+  });
+
+  // 🗣️관제 2026-11-11 04:09 (④): 「첫 획 · 첫 들어올리기에서도 UI 스레드가
+  // 직접 하는 커널 컴파일 0, `ink_box` 포함」.
+  test('a pen put down while another stroke is out builds none', () {
+    final out = EngineStrokes.take();
+    expect(EngineStrokes.debugIdle, 0, reason: '⛔premise: none kept');
+    late final GpuStroke another;
+    expect(builtHereBy(() => another = EngineStrokes.take()), 0);
+    EngineStrokes.giveBack(another);
+    EngineStrokes.giveBack(out);
+  });
+
+  test('the scan that finds a cel\'s ink builds none', () {
+    expect(builtHereBy(() => GpuInk(appGpuEngine).free()), 0);
   });
 
   test('a colour verb builds none', () {

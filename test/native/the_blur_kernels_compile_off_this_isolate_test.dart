@@ -35,32 +35,32 @@ void main() {
       const Duration(milliseconds: 1),
       (_) => ticks += 1,
     );
-    await EngineStrokes.warm();
+    await EngineStrokes.warmBlurs();
     timer.cancel();
     expect(ticks, greaterThan(0));
   });
 
   test('warmed, they are the ones every stroke is handed', () async {
-    await EngineStrokes.warm();
+    await EngineStrokes.warmBlurs();
     expect(identical(EngineStrokes.blurs, EngineStrokes.blurs), isTrue);
   });
 
   test('asked for while they compile, the app keeps one set', () async {
-    final warming = EngineStrokes.warm();
+    final warming = EngineStrokes.warmBlurs();
     final asked = EngineStrokes.blurs;
     await warming;
     expect(identical(EngineStrokes.blurs, asked), isTrue);
   });
 
   test('warmed twice, they are compiled once', () async {
-    await EngineStrokes.warm();
+    await EngineStrokes.warmBlurs();
     final first = EngineStrokes.blurs;
     var ticks = 0;
     final timer = Timer.periodic(
       const Duration(milliseconds: 1),
       (_) => ticks += 1,
     );
-    await EngineStrokes.warm();
+    await EngineStrokes.warmBlurs();
     timer.cancel();
     expect(identical(EngineStrokes.blurs, first), isTrue);
     expect(ticks, 0, reason: 'nothing off this isolate to wait for');

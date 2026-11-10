@@ -1,7 +1,8 @@
 //! The wgpu device every kernel runs on, opened on the adapter Flutter
 //! draws with so a shared texture lives on the GPU that reads it.
 
-use std::sync::mpsc;
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
 use crate::{copy_out, fail, last_error, platform};
@@ -33,6 +34,55 @@ pub struct Engine {
     /// 10.2 s on the main PC's RTX 4080 with eighteen test files running,
     /// 2026-11-10; 1.2 to 2.5 s each by strips).
     compiling: EngineThread,
+    /// Every kernel the engine has compiled ([`Kernels`]).
+    pub(crate) kernels: Kernels,
+}
+
+/// What one of the engine's kernels is compiled of: its sources joined, its
+/// entry point, the `override` constants set — each value's bits — and
+/// whether its workgroup memory is zeroed.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(crate) struct KernelSource {
+    pub(crate) source: String,
+    pub(crate) entry: String,
+    pub(crate) constants: Vec<(String, u64)>,
+    pub(crate) zeroed: bool,
+}
+
+/// The engine's own kernels, each compiled once whoever asks, and as many
+/// as ask at once: a kernel is what it is compiled of ([`KernelSource`]),
+/// and a pipeline is any caller's to run — each binds a group of its own.
+///
+/// 🗣️관제 2026-11-11 04:09 (gpu-canonical-store ④): 「첫 획 · 첫
+/// 들어올리기에서도 UI 스레드가 직접 하는 커널 컴파일 0」. 🔬Surface Pro 11,
+/// 2026-11-11: a first stroke 1.6–2.0 s after the canvas came found the
+/// list the app compiles ahead not through, and the UI thread compiled the
+/// stroke's three again, in turn with the list's — 1.8–2.0 s of a stopped
+/// UI; `write_changed` was compiled for a stroke and again for a stamp's
+/// landing. ↩️Each owner compiled its own till then, so what was compiling
+/// off the isolate was no one else's to wait for.
+///
+/// Kept as long as the engine: there are as many as the crate has kernels
+/// and the composite has passes, which it kept already.
+#[derive(Clone, Default)]
+pub(crate) struct Kernels(Arc<Mutex<HashMap<KernelSource, Arc<OnceLock<wgpu::ComputePipeline>>>>>);
+
+impl Kernels {
+    /// Where the kernel of `source` is, or will be: made by the first to
+    /// fill it, and waited for there by whoever comes while it is made.
+    pub(crate) fn slot(&self, source: &KernelSource) -> Arc<OnceLock<wgpu::ComputePipeline>> {
+        let mut kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = kept.get(source) {
+            return Arc::clone(slot);
+        }
+        Arc::clone(kept.entry(source.clone()).or_default())
+    }
+
+    /// Test seam: none kept, as a launch finds the engine — what holds a
+    /// kernel keeps it, and the next asked for is compiled.
+    pub(crate) fn forget(&self) {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner).clear();
+    }
 }
 
 /// The queue the kernels submit to, whose submits enter the driver on the
@@ -133,6 +183,7 @@ impl Engine {
                     },
                     thread,
                     compiling,
+                    kernels: Kernels::default(),
                     instance,
                     adapter,
                     device,
@@ -478,6 +529,19 @@ pub unsafe extern "C" fn gpu_engine_video_memory(engine: *const Engine) -> u64 {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     platform::video_memory(&engine.adapter).map_or(0, |memory| memory.used)
+}
+
+/// Test seam: `engine` keeps none of its kernels ([`Kernels`]), as a launch
+/// finds it. For the app's pins of what is compiled where and when, which
+/// a kernel an earlier test compiled would answer for.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_kernels_forget(engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.kernels.forget();
 }
 
 #[cfg(test)]

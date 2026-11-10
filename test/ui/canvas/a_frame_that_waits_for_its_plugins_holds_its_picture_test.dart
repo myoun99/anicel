@@ -635,6 +635,10 @@ void main() {
     final letters = (await tester.runAsync(
       () => EngineLetters.open(composite),
     ))!;
+    // Nor has the engine them: the app's own composite compiled its chains
+    // in the list, and a kernel the engine keeps is any composite's, with
+    // nothing to compile (rust/src/device.rs, `Kernels`).
+    appGpuEngine.debugForgetKernels();
     expect(composite.chainsAreToCome, isTrue, reason: '⛔premise');
     return (
       tools: (composite: composite, letters: letters),

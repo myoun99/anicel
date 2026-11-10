@@ -17,16 +17,22 @@ abstract final class EngineStrokes {
     (blurs) => blurs.free(),
   );
 
-  /// One stroke's kernels and the blur brush's compiled off this isolate,
-  /// ahead of the first pen-down, which would otherwise wait for them:
-  /// 🔬10.2 s on the main PC with eighteen test files running (11-10), the
-  /// app frozen at the first blur of every launch.
+  /// One stroke's kernels compiled off this isolate, ahead of the first
+  /// pen-down, which would otherwise wait for them.
   static Future<void> warm() async {
     if (_idle.isEmpty) {
       _idle.add(await GpuStroke.opening(appGpuEngine));
     }
-    await _blurs.warm();
   }
+
+  /// The blur brush's, ahead of its first stroke: 🔬10.2 s on the main PC
+  /// with eighteen test files running (11-10), the app frozen at the first
+  /// blur of every launch.
+  ///
+  /// ⛔Not with [warm]: its ten kernels are a third of all the app compiles
+  /// ahead (🔬main PC, 2026-11-11), and a pen put down or a selection
+  /// lifted would wait behind every one of them (`compileAppKernelsAhead`).
+  static Future<void> warmBlurs() => _blurs.warm();
 
   /// A stroke of no tiles.
   static GpuStroke take() =>

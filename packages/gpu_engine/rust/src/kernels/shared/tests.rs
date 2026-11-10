@@ -1142,3 +1142,73 @@ fn a_pass_takes_the_tiles_its_binding_holds_past_its_own() {
     assert_eq!(tiles_a_pass(engine, room, 0), Some(1));
     assert!(tiles_a_pass(engine, room, 1).is_none());
 }
+
+/// A kernel of its own for a test: no other asks for these sources, so the
+/// engine has none of it till the test does.
+fn a_kernel_named(name: &str) -> String {
+    let body = "override lit: bool = true;\n@compute @workgroup_size(1)\nfn main() { _ = lit; }";
+    format!("// {name}\n{body}\n")
+}
+
+/// How many kernels this thread has waited on a compile of.
+fn waited_here() -> u64 {
+    super::gpu_engine_kernels_built_here()
+}
+
+// 🚨The engine compiles a kernel once (gpu-canonical-store ④, 2026-11-11;
+// `Kernels` in device.rs has why): who asks again has the same pipeline,
+// and waits on no compile.
+#[test]
+fn a_kernel_the_engine_has_is_the_same_one_and_no_ones_wait() {
+    let engine = first_engine();
+    let source = a_kernel_named("asked for twice");
+    let before = waited_here();
+    let first = pipeline(engine, &[&source], "main");
+    assert_eq!(waited_here() - before, 1, "⛔CONTROL: the first to ask waits for its compile");
+    let again = pipeline(engine, &[&source], "main");
+    assert_eq!(waited_here() - before, 1, "who asks again waits on none");
+    assert!(first == again, "and has the pipeline the first has");
+}
+
+// What a kernel is compiled of is all of it: other constants, other
+// sources, or its workgroup memory left as the device hands it, are other
+// kernels.
+#[test]
+fn a_kernel_of_other_sources_constants_or_memory_is_another() {
+    let engine = first_engine();
+    let source = a_kernel_named("of its own");
+    let plain = pipeline(engine, &[&source], "main");
+    let before = waited_here();
+    let unlit = super::pipeline_with(engine, &[&source], "main", &[("lit", 0.0)]);
+    let unzeroed = super::pipeline_unzeroed(engine, &[&source], "main");
+    let other = pipeline(engine, &[&source, "// and a line more"], "main");
+    assert_eq!(waited_here() - before, 3, "each is compiled");
+    assert!(plain != unlit && plain != unzeroed && plain != other);
+    assert!(unlit != unzeroed && unlit != other && unzeroed != other);
+    assert!(unlit == super::pipeline_with(engine, &[&source], "main", &[("lit", 0.0)]));
+}
+
+// Asked for by two at once, a kernel is compiled by one and waited for by
+// the other: what a pen put down finds, where the list the app compiles
+// ahead is at the stroke's own kernels.
+#[test]
+fn two_that_ask_for_a_kernel_at_once_have_the_one() {
+    let engine = first_engine();
+    let source = a_kernel_named("asked for by two at once");
+    let (begin, begun) = std::sync::mpsc::channel::<()>();
+    let (holding, held_now) = std::sync::mpsc::channel::<()>();
+    let (first, second) = std::thread::scope(|scope| {
+        // The engine's thread for compiling is held till both have asked.
+        let held = scope.spawn(|| {
+            engine.compiling(move || holding.send(()).is_ok() && begun.recv().is_ok())
+        });
+        held_now.recv().expect("the engine's thread is held");
+        let ask = || scope.spawn(|| pipeline(engine, &[&source], "main"));
+        let (first, second) = (ask(), ask());
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        begin.send(()).expect("the engine's thread waits");
+        assert!(held.join().expect("the thread that held it"));
+        (first.join().expect("the first"), second.join().expect("the second"))
+    });
+    assert!(first == second, "each compiled its own");
+}

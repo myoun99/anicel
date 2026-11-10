@@ -40,7 +40,7 @@ pub(crate) mod tests;
 
 use std::cell::Cell;
 
-use crate::device::Engine;
+use crate::device::{Engine, KernelSource};
 
 pub(crate) use dispatch::{
     Encoded, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
@@ -139,8 +139,11 @@ pub(crate) fn pipeline_unzeroed(
     build(engine, sources, entry, &[], false)
 }
 
-/// The engine's own pipeline, compiled on its thread (`EngineThread`, in
-/// `device.rs`, says why) while the caller waits.
+/// The engine's own pipeline: the one it has of these sources, entry and
+/// constants (`Kernels`, in `device.rs`), compiled on its thread
+/// (`EngineThread`, there, says why) while the caller waits where it has
+/// none — and where another caller's compile of it is under way, waited
+/// for behind that one. A kernel the engine has is no thread's wait.
 fn build(
     engine: &Engine,
     sources: &[&str],
@@ -148,12 +151,28 @@ fn build(
     constants: &[(&str, f64)],
     zeroed: bool,
 ) -> wgpu::ComputePipeline {
-    let (device, source, entry) = (engine.device.clone(), sources.join("\n"), entry.to_owned());
-    let constants: Vec<_> = constants.iter().map(|&(name, value)| (name.to_owned(), value)).collect();
+    let of = KernelSource {
+        source: sources.join("\n"),
+        entry: entry.to_owned(),
+        constants: constants
+            .iter()
+            .map(|&(name, value)| (name.to_owned(), value.to_bits()))
+            .collect(),
+        zeroed,
+    };
+    let kept = engine.kernels.slot(&of);
+    if let Some(made) = kept.get() {
+        return made.clone();
+    }
+    let device = engine.device.clone();
     waited_here();
     engine.compiling(move || {
-        let constants: Vec<_> = constants.iter().map(|(name, value)| (name.as_str(), *value)).collect();
-        compiled(&device, source, &entry, &constants, zeroed)
+        let made = kept.get_or_init(|| {
+            let constants =
+                of.constants.iter().map(|(name, bits)| (name.as_str(), f64::from_bits(*bits)));
+            compiled(&device, of.source, &of.entry, &constants.collect::<Vec<_>>(), of.zeroed)
+        });
+        made.clone()
     })
 }
 

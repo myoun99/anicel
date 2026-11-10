@@ -1281,6 +1281,9 @@ external int lastError(Pointer<Uint8> buffer, int capacity);
 @Native<Uint64 Function()>(symbol: 'gpu_engine_kernels_built_here')
 external int kernelsBuiltHere();
 
+@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_kernels_forget')
+external void kernelsForget(Pointer<Engine> engine);
+
 @Native<Pointer<Grid> Function(Pointer<Engine>)>(symbol: 'gpu_engine_grid_new')
 external Pointer<Grid> gridNew(Pointer<Engine> engine);
 

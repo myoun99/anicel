@@ -190,6 +190,11 @@ class GpuEngine {
     return GpuWindow._(this, window, textureId);
   }
 
+  /// Test seam: the engine keeps none of its kernels, as a launch finds it
+  /// (rust/src/device.rs, `Kernels`) — what holds one keeps it, and the
+  /// next asked for is compiled.
+  void debugForgetKernels() => rust.kernelsForget(_engine);
+
   /// Frees the device; every surface must be freed first.
   void close() {
     final fill = _fill;
@@ -2116,13 +2121,20 @@ const _tileInkWords = 6;
 /// The ink scan (rust/src/kernels/cel_pixel/ink.rs): where each of a cel's
 /// tiles on the pool holds ink, as the app's `TileInkBounds` says it.
 class GpuInk {
-  /// The scan on [engine], compiled.
-  factory GpuInk(GpuEngine engine) {
-    final ink = rust.inkNew(engine._engine);
+  /// The scan on [engine], compiled, the caller waiting.
+  factory GpuInk(GpuEngine engine) =>
+      GpuInk._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuInk> opening(GpuEngine engine) async =>
+      GpuInk._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Ink> _compiled(Pointer<rust.Engine> on) {
+    final ink = rust.inkNew(on);
     if (ink == nullptr) {
       throw StateError(_lastError());
     }
-    return GpuInk._(engine, ink);
+    return ink;
   }
 
   GpuInk._(this._engine, this._ink);

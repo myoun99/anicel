@@ -66,13 +66,16 @@ final class AppKernels<T extends Object> {
     return one;
   }
 
-  /// Test seam: gone, as at launch.
+  /// Test seam: gone, as at launch — and with it every kernel the engine
+  /// keeps ([GpuEngine.debugForgetKernels]), or the set would be made
+  /// again of those, with nothing to compile.
   void debugForget() {
     if (_kept case final kept?) {
       _free(kept);
     }
     _kept = null;
     _warming = null;
+    _engine?.debugForgetKernels();
   }
 }
 
