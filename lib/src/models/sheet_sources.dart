@@ -183,6 +183,13 @@ class SheetSources {
   /// 란에는 BOOK표시 안하는 것」. It marked its own since F-406-Q1.
   final List<SheetBooks> actionBooks;
 
+  /// What a sheet tags at each boundary of [actionBooks] ([sheetBookTag]) —
+  /// [shortened] as its format says.
+  List<SheetBook> actionBookTags({required bool shortened}) => [
+    for (final (:boundary, :books) in actionBooks)
+      (boundary: boundary, label: sheetBookTag(books, shortened: shortened)),
+  ];
+
   /// The SE rows, already windowed onto the cut's own frames and clipped
   /// ([clipToSheet]), each with how far into a sound spilled in from an
   /// earlier cut its first frame is

@@ -624,16 +624,9 @@ class TimesheetDocument {
       xdtsColumns: xdtsColumns,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
-      books: List.unmodifiable([
-        for (final (:boundary, :books) in sources.actionBooks)
-          (
-            boundary: boundary,
-            label: sheetBookTag(
-              books,
-              shortened: info.sheetBookNamesShortened,
-            ),
-          ),
-      ]),
+      books: List.unmodifiable(
+        sources.actionBookTags(shortened: info.sheetBookNamesShortened),
+      ),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(

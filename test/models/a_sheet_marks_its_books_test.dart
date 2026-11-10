@@ -68,13 +68,10 @@ Cut cutOf(List<Layer> layers) => Cut(
   layers: layers,
 );
 
-extension on List<SheetBooks> {
+extension on SheetSources {
   /// Each boundary's books as a sheet tags them with every name written
-  /// out ([sheetBookTag] unshortened).
-  List<SheetBook> get tagged => [
-    for (final (:boundary, :books) in this)
-      (boundary: boundary, label: sheetBookTag(books, shortened: false)),
-  ];
+  /// out.
+  List<SheetBook> get tagged => actionBookTags(shortened: false);
 }
 
 /// [names] as books, each `row` or `row:picture`.
@@ -112,7 +109,7 @@ void main() {
           mark: const LayerMark.paper(LayerProcess.layout),
         ),
       ]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, [
       (boundary: 1, label: 'BOOK1'),
@@ -138,7 +135,7 @@ void main() {
           cels('A'),
           picture('BOOK', frame: '1', mark: process == null ? LayerMark.none : labelsOf(process).first),
         ]),
-      ).actionBooks.tagged;
+      ).tagged;
 
       expect(
         marked,
@@ -151,7 +148,7 @@ void main() {
   test('a picture without a name tags the book with its row\'s alone', () {
     final books = SheetSources.of(
       cut: cutOf([cels('A'), picture('BOOK', frame: '  ')]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK')]);
   });
@@ -177,7 +174,7 @@ void main() {
           },
         ),
       ]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK2')]);
   });
@@ -189,7 +186,7 @@ void main() {
         cels('A'),
         picture('BOOK', frame: '1', onTimesheet: false),
       ]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, isEmpty);
   });
@@ -198,7 +195,7 @@ void main() {
       'own (W5)', () {
     final books = SheetSources.of(
       cut: cutOf([cels('A'), picture('BOOK', frame: '1', attachedTo: 'A')]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, isEmpty);
   });
@@ -215,7 +212,7 @@ void main() {
           mark: const LayerMark(process: LayerProcess.layout),
         ),
       ]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, isEmpty);
   });
@@ -227,7 +224,7 @@ void main() {
         cels('B', onTimesheet: false),
         picture('BOOK', frame: '1'),
       ]),
-    ).actionBooks.tagged;
+    ).tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK1')]);
   });
