@@ -1372,6 +1372,8 @@ enum AppStrings {
   String get shortcutRecordNew => _s('shortcutRecordNew');
   String get shortcutTouch => _s('shortcutTouch');
   String get shortcutSearch => _s('shortcutSearch');
+  String get shortcutSearchByKey => _s('shortcutSearchByKey');
+  String get shortcutSearchByKeyClear => _s('shortcutSearchByKeyClear');
   String get shortcutConflictBanner => _s('shortcutConflictBanner');
 
   /// What a clashing action's name does, pressed (I-158): [key] stays on
@@ -3000,6 +3002,8 @@ enum AppStrings {
     'shortcutRecordNew': 'Record new shortcut',
     'shortcutTouch': 'Touch shortcut',
     'shortcutSearch': 'Search actions',
+    'shortcutSearchByKey': 'Search shortcuts',
+    'shortcutSearchByKeyClear': 'Clear shortcut search',
     'shortcutConflictBanner':
         'Some actions share the same key — the highlighted bindings collide.',
     'shortcutClashKeepTemplate': 'Keep {key} on {name} only — off {others}',
@@ -4655,6 +4659,8 @@ enum AppStrings {
     'shortcutRecordNew': '新しいショートカットを記録',
     'shortcutTouch': 'タッチショートカット',
     'shortcutSearch': 'アクションを検索',
+    'shortcutSearchByKey': 'ショートカットを検索',
+    'shortcutSearchByKeyClear': 'ショートカット検索を解除',
     'shortcutConflictBanner':
         '同じキーを共有しているアクションがあります — 強調された割り当てが'
         '衝突しています。',
@@ -6517,6 +6523,8 @@ enum AppStrings {
     'shortcutRecordNew': '새 단축키 기록',
     'shortcutTouch': '터치 단축키',
     'shortcutSearch': '동작 검색',
+    'shortcutSearchByKey': '단축키 검색',
+    'shortcutSearchByKeyClear': '단축키 검색 지우기',
     'shortcutConflictBanner': '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
     'shortcutClashKeepTemplate': '{name}에만 {key} 할당 — {others}에서 해제',
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
@@ -8434,6 +8442,8 @@ enum AppStrings {
     'shortcutRecordNew': 'Enregistrer un nouveau raccourci',
     'shortcutTouch': 'Raccourci tactile',
     'shortcutSearch': 'Rechercher une action',
+    'shortcutSearchByKey': 'Rechercher un raccourci',
+    'shortcutSearchByKeyClear': 'Effacer la recherche de raccourci',
     'shortcutConflictBanner':
         'Certaines actions partagent la même touche — les assignations '
         'surlignées entrent en conflit.',
@@ -10363,6 +10373,8 @@ enum AppStrings {
     'shortcutRecordNew': '录制新快捷键',
     'shortcutTouch': '触摸快捷方式',
     'shortcutSearch': '搜索动作',
+    'shortcutSearchByKey': '搜索快捷键',
+    'shortcutSearchByKeyClear': '清除快捷键搜索',
     'shortcutConflictBanner': '有动作共用同一按键 — 高亮的绑定发生冲突。',
     'shortcutClashKeepTemplate': '仅将{key}分配给{name} — 从{others}移除',
     'shortcutRecordingHint': '请按键…（Esc 取消）',

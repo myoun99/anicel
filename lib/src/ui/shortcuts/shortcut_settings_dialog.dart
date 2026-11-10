@@ -50,10 +50,19 @@ class ShortcutSettingsDialog extends StatefulWidget {
 class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   final TextEditingController _search = TextEditingController();
 
-  /// The action currently recording a new key (null = none). While set, a
-  /// key-event listener captures the next non-modifier press.
-  String? _recordingActionId;
+  /// What the next key pressed is for (null = nothing): a row's new key, or
+  /// the key the list is searched by. While set, a key-event listener
+  /// captures the next non-modifier press.
+  ///
+  /// 🗣️I-168 (유저 2026-11-10): 「동작검색 말고 단축키검색도 생성. 키보드
+  /// 단축키 지정하는거 재사용해서 버튼누르고 단축키입력하면 그 키의 단축키
+  /// 보이게. 리셋버튼으로 리셋」 — ONE recording, two answers to it.
+  _Recording? _recording;
   final FocusNode _recordFocus = FocusNode(debugLabel: 'shortcut-record');
+
+  /// The key the list is searched by ([_recording] took it), or null: the
+  /// list shows the actions that hold it.
+  SingleActivator? _sought;
 
   /// What the window does with its presets, on its bindings.
   _PresetVerbs get _presets => _PresetVerbs(widget.bindings);
@@ -78,10 +87,16 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     }
   }
 
-  void _startRecording(String actionId) {
-    setState(() => _recordingActionId = actionId);
+  void _startRecording(_Recording recording) {
+    setState(() => _recording = recording);
     _recordFocus.requestFocus();
   }
+
+  /// Whether [actionId]'s row is recording its next key.
+  bool _recordsFor(String actionId) => switch (_recording) {
+    _ForAction(actionId: final recording) => recording == actionId,
+    _ => false,
+  };
 
   /// Takes every key off [actionId] — its own default too, which then
   /// stays off until the row is reset. A recording under way for it ends:
@@ -92,41 +107,48 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// list, written to the file and read back); nothing in the window
   /// recorded it — a key could only be replaced by another.
   void _unassign(String actionId) {
-    if (_recordingActionId == actionId) {
-      setState(() => _recordingActionId = null);
+    if (_recordsFor(actionId)) {
+      setState(() => _recording = null);
     }
     widget.bindings.setActivators(actionId, const []);
   }
 
   KeyEventResult _onRecordKey(FocusNode node, KeyEvent event) {
-    final actionId = _recordingActionId;
-    if (actionId == null || event is! KeyDownEvent) {
+    final recording = _recording;
+    if (recording == null || event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.escape) {
-      setState(() => _recordingActionId = null);
+      setState(() => _recording = null);
       return KeyEventResult.handled;
     }
     // Modifier presses alone keep waiting for the real trigger.
     if (isModifierKey(key)) {
       return KeyEventResult.handled;
     }
-    widget.bindings.setActivators(actionId, [
-      // An arrow for a move on the sheet is kept as the timeline reads it
-      // (F-241), so it turns again on the other sheet.
-      widget.bindings.keptActivatorFor(
-        actionId,
-        SingleActivator(
-          key,
-          control: ModifierKeys.isControlPressed,
-          shift: ModifierKeys.isShiftPressed,
-          alt: ModifierKeys.isAltPressed,
-          meta: ModifierKeys.isMetaPressed,
-        ),
-      ),
-    ]);
-    setState(() => _recordingActionId = null);
+    final pressed = SingleActivator(
+      key,
+      control: ModifierKeys.isControlPressed,
+      shift: ModifierKeys.isShiftPressed,
+      alt: ModifierKeys.isAltPressed,
+      meta: ModifierKeys.isMetaPressed,
+    );
+    switch (recording) {
+      case _ForAction(:final actionId):
+        widget.bindings.setActivators(actionId, [
+          // An arrow for a move on the sheet is kept as the timeline reads
+          // it (F-241), so it turns again on the other sheet.
+          widget.bindings.keptActivatorFor(actionId, pressed),
+        ]);
+        setState(() => _recording = null);
+      case _ForSearch():
+        setState(() {
+          _recording = null;
+          _sought = pressed;
+          _openFoundBundles();
+        });
+    }
     return KeyEventResult.handled;
   }
 
@@ -149,6 +171,23 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       definition.shelf.path.any(
         (shelf) => _shelfName(shelf).toLowerCase().contains(query),
       );
+
+  /// Whether [definition] holds the key the list is searched by — the key
+  /// as its row would record it (`keptActivatorFor`), so an arrow is found
+  /// on whichever sheet it was pressed — or no key is sought.
+  bool _holdsSought(EditorActionDefinition definition) => switch (_sought) {
+    null => true,
+    final key => widget.bindings.holds(
+      definition.id,
+      widget.bindings.keptActivatorFor(definition.id, key),
+    ),
+  };
+
+  /// Whether [definition] is found: by its words ([_matches]) and by the
+  /// sought key ([_holdsSought]) — ⚠️MY READING (I-168-Q1's why): the two
+  /// searches together leave what answers both.
+  bool _found(EditorActionDefinition definition, String query) =>
+      _matches(definition, query) && _holdsSought(definition);
 
   /// The BUNDLES standing open — a shelf's, named by [_shelfBundleOf]; a
   /// brush group's, by its title row's action; a root section's, by
@@ -206,10 +245,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     ?_bundleOf(definition),
   ];
 
-  /// The bundles [query] finds something in.
+  /// The bundles the search finds something in ([_found]).
   Set<String> _bundlesFound(String query) => {
     for (final definition in widget.bindings.definitions)
-      if (_matches(definition, query)) ..._foldsOver(definition),
+      if (_found(definition, query)) ..._foldsOver(definition),
   };
 
   /// What stands red: every action a clash takes in — keys or touch alike —
@@ -238,7 +277,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
 
   void _openFoundBundles() {
     final query = _query;
-    if (query.isNotEmpty) {
+    if (query.isNotEmpty || _sought != null) {
       _openBundles.addAll(_bundlesFound(query));
     }
   }
@@ -270,13 +309,16 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     };
     bool shows(EditorActionDefinition definition, String? bundle) {
       if (bundle == null) {
-        return _matches(definition, query);
+        return _found(definition, query);
       }
       if (!found.contains(bundle)) {
         return false;
       }
+      // A title found by its WORDS shows its brushes — those that hold the
+      // key the list is searched by, when one is (I-168).
       return definition.brushPress is BrushGroupPress ||
           (_openBundles.contains(bundle) &&
+              _holdsSought(definition) &&
               (_matches(definition, query) || titlesFound.contains(bundle)));
     }
 
@@ -330,14 +372,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               conflicted: conflicted.contains(definition.id),
               touchConflicted: touchConflicted.contains(definition.id),
               red: clashed.contains(definition.id),
-              recording: _recordingActionId == definition.id,
+              recording: _recordsFor(definition.id),
               depth: depth,
               bundle: bundle,
               bundleOpen: bundle != null && _openBundles.contains(bundle),
               onToggleBundle: bundle == null
                   ? null
                   : () => _toggleBundle(bundle),
-              onRecord: () => _startRecording(definition.id),
+              onRecord: () => _startRecording(_ForAction(definition.id)),
               onUnassign: () => _unassign(definition.id),
             ),
           );
@@ -499,15 +541,32 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('shortcut-search-field'),
-                controller: _search,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  hintText: AppText.strings.shortcutSearch,
-                  isDense: true,
-                ),
-                onChanged: (_) => setState(_openFoundBundles),
+              // ⚠️I-168-Q1 (where the search by key stands) waits for its
+              // answer: beside the search by words is the card's recommend.
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const ValueKey<String>('shortcut-search-field'),
+                      controller: _search,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        hintText: AppText.strings.shortcutSearch,
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setState(_openFoundBundles),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _KeySearch(
+                    sought: _sought,
+                    recording: _recording is _ForSearch,
+                    onRecord: () => _startRecording(const _ForSearch()),
+                    onClear: _sought == null
+                        ? null
+                        : () => setState(() => _sought = null),
+                  ),
+                ],
               ),
               // 🗣️F-318 (유저 2026-10-08): 「동일한 단축키 있을때 빨간
               // 경고메시지가 영어로 뜨고」 — the table has had the sentence
@@ -833,6 +892,118 @@ Widget _twirl(String bundle, {required bool open}) => LayerFoldTwirl(
   onToggle: null,
 );
 
+/// What a recording writes while it waits for its key — a row's, or the
+/// search's (I-168): the one sentence, in the program language.
+Widget _recordingHint(ThemeData theme, String keyValue) => Padding(
+  padding: const EdgeInsets.symmetric(horizontal: 8),
+  child: Text(
+    AppText.strings.shortcutRecordingHint,
+    key: ValueKey<String>(keyValue),
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.primary,
+    ),
+  ),
+);
+
+/// A key as the window shows it — [red] where it clashes.
+Widget _keyChip(ThemeData theme, String label, {bool red = false}) => Chip(
+  label: Text(label, style: theme.textTheme.labelSmall),
+  visualDensity: VisualDensity.compact,
+  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  backgroundColor: red ? theme.colorScheme.errorContainer : null,
+);
+
+/// The ⌨ that starts a recording: a row's new key, or the key the list is
+/// searched by (I-168: 「키보드 단축키 지정하는거 재사용해서」).
+Widget _recordButton({
+  required String keyValue,
+  required String tooltip,
+  required VoidCallback onPressed,
+}) => AppIconButton(
+  keyValue: keyValue,
+  tooltip: tooltip,
+  icon: const Icon(Icons.keyboard),
+  onPressed: onPressed,
+);
+
+/// What the next key pressed is for ([_ShortcutSettingsDialogState]).
+sealed class _Recording {
+  const _Recording();
+}
+
+/// [actionId]'s new key.
+final class _ForAction extends _Recording {
+  const _ForAction(this.actionId);
+
+  final String actionId;
+}
+
+/// The key the list is searched by (I-168).
+final class _ForSearch extends _Recording {
+  const _ForSearch();
+}
+
+/// The search by key beside the search by words (I-168): the rows' own ⌨
+/// — pressed, the next key is the one sought, and the list keeps the
+/// actions that hold it — and a ↺ that lets the key go, dead while none
+/// is sought.
+///
+/// ⛔Its PLACE is always there (「없다가 생기는 UI 금지」): the hint and the
+/// key sought share one slot, laid out as wide as the hint whether or not
+/// it shows.
+class _KeySearch extends StatelessWidget {
+  const _KeySearch({
+    required this.sought,
+    required this.recording,
+    required this.onRecord,
+    required this.onClear,
+  });
+
+  final SingleActivator? sought;
+  final bool recording;
+  final VoidCallback onRecord;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final key = sought;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          alignment: Alignment.centerRight,
+          children: [
+            Visibility.maintain(
+              visible: recording,
+              child: _recordingHint(theme, 'shortcut-search-by-key-hint'),
+            ),
+            if (key != null)
+              Visibility.maintain(
+                visible: !recording,
+                child: KeyedSubtree(
+                  key: const ValueKey<String>('shortcut-search-by-key-sought'),
+                  child: _keyChip(theme, singleActivatorLabel(key)),
+                ),
+              ),
+          ],
+        ),
+        _recordButton(
+          keyValue: 'shortcut-search-by-key',
+          tooltip: AppText.strings.shortcutSearchByKey,
+          onPressed: onRecord,
+        ),
+        AppIconButton(
+          keyValue: 'shortcut-search-by-key-clear',
+          tooltip: AppText.strings.shortcutSearchByKeyClear,
+          icon: const Icon(Icons.restart_alt),
+          onPressed: onClear,
+        ),
+      ],
+    );
+  }
+}
+
 /// One action's row: its name, its keys and touch gesture, and its record ·
 /// unassign · reset buttons — a brush group's title folding its bundle.
 ///
@@ -892,32 +1063,17 @@ class _ActionRow extends StatelessWidget {
     // between its name and its buttons.
     final keys = <Widget>[
       if (recording)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(
-            AppText.strings.shortcutRecordingHint,
-            key: const ValueKey<String>('shortcut-recording-hint'),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.primary,
-            ),
-          ),
-        )
+        _recordingHint(theme, 'shortcut-recording-hint')
       else
         for (final activator in activators)
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: Chip(
-              label: Text(
-                singleActivatorLabel(
-                  bindings.shownActivatorFor(definition.id, activator),
-                ),
-                style: theme.textTheme.labelSmall,
+            child: _keyChip(
+              theme,
+              singleActivatorLabel(
+                bindings.shownActivatorFor(definition.id, activator),
               ),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              backgroundColor: conflicted
-                  ? theme.colorScheme.errorContainer
-                  : null,
+              red: conflicted,
             ),
           ),
       // The TOUCH binding (R11-⑨): one multi-finger gesture per
@@ -1005,10 +1161,9 @@ class _ActionRow extends StatelessWidget {
                   children: keys,
                 ),
               ),
-              AppIconButton(
+              _recordButton(
                 keyValue: 'shortcut-record-${definition.id}',
                 tooltip: AppText.strings.shortcutRecordNew,
-                icon: const Icon(Icons.keyboard),
                 onPressed: onRecord,
               ),
               // Dead on a row with no key: there is nothing to take off.

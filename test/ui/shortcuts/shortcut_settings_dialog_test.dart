@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/brush/tool_library_panel.dart'
     show subToolTilesOf;
@@ -30,22 +31,26 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/text_finders.dart';
 
 void main() {
-  Future<EditorShortcutBindings> pump(WidgetTester tester) async {
-    final bindings = EditorShortcutBindings();
-    addTearDown(bindings.dispose);
+  Future<EditorShortcutBindings> pump(
+    WidgetTester tester, {
+    EditorShortcutBindings? bindings,
+  }) async {
+    final held = bindings ?? EditorShortcutBindings();
+    addTearDown(held.dispose);
     await tester.binding.setSurfaceSize(const Size(900, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ShortcutSettingsDialog(bindings: bindings)),
+        home: Scaffold(body: ShortcutSettingsDialog(bindings: held)),
       ),
     );
     await tester.pump();
-    return bindings;
+    return held;
   }
 
   Finder recordButtons() => find.byWidgetPredicate(
@@ -163,6 +168,180 @@ void main() {
     testWidgets('never smaller than the 520 it stood at', (tester) async {
       final size = await windowOn(tester, const Size(700, 600));
       expect(size.height, 520);
+    });
+  });
+
+  // 🗣️I-168 (유저 2026-11-10): 「동작검색 말고 단축키검색도 생성. 키보드
+  // 단축키 지정하는거 재사용해서 버튼누르고 단축키입력하면 그 키의 단축키
+  // 보이게. 리셋버튼으로 리셋」.
+  group('🗣️I-168: the search by key', () {
+    final seekButton = find.byKey(
+      const ValueKey<String>('shortcut-search-by-key'),
+    );
+    final clearButton = find.byKey(
+      const ValueKey<String>('shortcut-search-by-key-clear'),
+    );
+    const f9 = LogicalKeyboardKey.f9;
+    const save = EditorActionIds.fileSave;
+    const undo = EditorActionIds.undo;
+
+    /// Presses the ⌨ beside the search, then [key] — Ctrl held where
+    /// [control] says.
+    Future<void> seek(
+      WidgetTester tester,
+      LogicalKeyboardKey key, {
+      bool control = false,
+    }) async {
+      await tester.tap(seekButton);
+      await tester.pump();
+      if (control) {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      }
+      await tester.sendKeyEvent(key);
+      if (control) {
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      }
+      await tester.pump();
+    }
+
+    List<String> rowsListed(WidgetTester tester) => [
+      for (final key in listed(tester))
+        if (key.startsWith('shortcut-row-')) key,
+    ];
+
+    testWidgets('the ⌨ beside the search takes the next key, and the list '
+        'keeps the actions that hold it — their shelves open', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      expect(
+        [
+          for (final row in bindings.definitions)
+            if (bindings.holds(row.id, const SingleActivator(f9))) row.id,
+        ],
+        isEmpty,
+        reason: '⛔premise: no one holds F9 out of the box',
+      );
+      bindings
+        ..setActivators(save, const [SingleActivator(f9)])
+        ..setActivators(undo, const [SingleActivator(f9)]);
+      await tester.pump();
+      expect(rowsListed(tester), isEmpty, reason: '⛔premise: all shut');
+
+      await seek(tester, f9);
+      expect(rowsListed(tester), ['shortcut-row-$undo', 'shortcut-row-$save']);
+      expect(bindings.activatorsFor(save), hasLength(1), reason: 'nothing '
+          'was recorded on a row');
+    });
+
+    testWidgets('a key is its modifiers too: Ctrl+F9 is not F9', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      bindings
+        ..setActivators(save, const [SingleActivator(f9)])
+        ..setActivators(undo, const [SingleActivator(f9, control: true)]);
+      await tester.pump();
+
+      await seek(tester, f9);
+      expect(rowsListed(tester), ['shortcut-row-$save']);
+      await seek(tester, f9, control: true);
+      expect(rowsListed(tester), ['shortcut-row-$undo']);
+    });
+
+    testWidgets('the ↺ lets the key go — and stands dead while none is '
+        'sought', (tester) async {
+      final bindings = await pump(tester);
+      bindings.setActivators(save, const [SingleActivator(f9)]);
+      await tester.pump();
+      final all = places(tester);
+      expect(tester.appIconButton(clearButton).onPressed, isNull);
+
+      await seek(tester, f9);
+      expect(places(tester), hasLength(1), reason: '⛔premise: it narrowed');
+      expect(tester.appIconButton(clearButton).onPressed, isNotNull);
+      await tester.tap(clearButton);
+      await tester.pump();
+      expect(places(tester), all);
+      expect(tester.appIconButton(clearButton).onPressed, isNull);
+    });
+
+    testWidgets('Esc while it waits takes nothing — the key sought stays', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      bindings.setActivators(save, const [SingleActivator(f9)]);
+      await tester.pump();
+      await seek(tester, f9);
+
+      await tester.tap(seekButton);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(rowsListed(tester), ['shortcut-row-$save']);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>('shortcut-search-by-key-sought'),
+          ),
+          matching: find.text(singleActivatorLabel(const SingleActivator(f9))),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('with words too, what answers both', (tester) async {
+      final bindings = await pump(tester);
+      bindings
+        ..setActivators(save, const [SingleActivator(f9)])
+        ..setActivators(undo, const [SingleActivator(f9)]);
+      await tester.pump();
+      await tester.enterText(
+        search,
+        actionLabelOf(
+          bindings.definitions.singleWhere((row) => row.id == save),
+        ),
+      );
+      await seek(tester, f9);
+      expect(rowsListed(tester), ['shortcut-row-$save']);
+    });
+
+    // 🗣️F-241: an arrow is kept as the timeline reads it, and the X-sheet
+    // turns a pressed one — the key sought is what it presses there.
+    testWidgets('on the X-sheet an arrow finds what it presses there', (
+      tester,
+    ) async {
+      final sheet = FlipHudController()..framesRunVertically = true;
+      addTearDown(sheet.dispose);
+      await pump(
+        tester,
+        bindings: EditorShortcutBindings()
+          ..setPreset(ShortcutPreset.anicel)
+          ..sheet = sheet,
+      );
+
+      await seek(tester, LogicalKeyboardKey.arrowDown);
+      final rows = rowsListed(tester);
+      expect(rows, contains('shortcut-row-${EditorActionIds.drawingNext}'));
+      expect(
+        rows,
+        isNot(contains('shortcut-row-${EditorActionIds.layerDown}')),
+      );
+    });
+
+    testWidgets('⛔the search line keeps its place: the field is as wide '
+        'while it waits and with a key sought', (tester) async {
+      final bindings = await pump(tester);
+      bindings.setActivators(save, const [SingleActivator(f9)]);
+      await tester.pump();
+      final width = tester.getSize(search).width;
+
+      await tester.tap(seekButton);
+      await tester.pump();
+      expect(tester.getSize(search).width, width, reason: 'waiting');
+      await tester.sendKeyEvent(f9);
+      await tester.pump();
+      expect(tester.getSize(search).width, width, reason: 'F9 sought');
     });
   });
 

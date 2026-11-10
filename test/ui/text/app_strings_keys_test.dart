@@ -568,6 +568,8 @@ void main() {
     'shortcutRecordNew': (s) => s.shortcutRecordNew,
     'shortcutTouch': (s) => s.shortcutTouch,
     'shortcutSearch': (s) => s.shortcutSearch,
+    'shortcutSearchByKey': (s) => s.shortcutSearchByKey,
+    'shortcutSearchByKeyClear': (s) => s.shortcutSearchByKeyClear,
     'shortcutConflictBanner': (s) => s.shortcutConflictBanner,
     'shortcutRecordingHint': (s) => s.shortcutRecordingHint,
     'shortcutPresets': (s) => s.shortcutPresets,
