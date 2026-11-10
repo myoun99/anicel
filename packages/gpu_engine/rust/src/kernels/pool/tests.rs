@@ -207,6 +207,42 @@ fn a_page_past_the_budget_the_os_gives_is_not_made() {
     assert!(small.fits(said(10, Some(10 + page - TILE_BYTES)), page - TILE_BYTES), "grown by less");
 }
 
+// A budget kept to in the OS's place is the bound in it — below what the OS
+// says or past it —, and the OS's is again once none is kept to.
+#[test]
+fn a_budget_kept_to_instead_stands_in_the_os_s_place() {
+    let page = 2 * TILE_BYTES;
+    let mut kept = Pool::sized(2, MOST_NAMED, page).expect("pool");
+    let said = |used, budget| Some(VideoMemory { used, budget });
+    kept.set_budget_instead(Some(page - 1));
+    assert!(!kept.fits(None, page), "where the OS says nothing");
+    assert!(!kept.fits(said(0, Some(u64::MAX)), page), "where the OS gives more");
+    assert!(kept.fits(said(0, Some(0)), page - 1), "where the OS gives less");
+    kept.set_budget_instead(Some(u64::MAX));
+    assert!(kept.fits(said(11, Some(10 + page)), page), "past the OS's");
+    kept.set_budget_instead(None);
+    assert!(!kept.fits(said(11, Some(10 + page)), page), "the OS's again");
+}
+
+// A page is made against the budget kept to: none at a line of nothing, one
+// past any — and where the OS says nothing, what counts against it is the
+// pool's own bytes.
+#[test]
+fn a_page_is_made_within_the_budget_kept_to_instead() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    pool.set_budget_instead(Some(0));
+    assert_eq!(pool.fresh(engine, cel), Err(Full), "a line of nothing");
+    assert_eq!(pool.bytes(), 0);
+    pool.set_budget_instead(Some(u64::MAX));
+    assert_eq!(pool.fresh(engine, cel), Ok(at(0, 0)), "past any budget");
+    let page = pool.bytes();
+    pool.set_budget_instead(Some(page + TILE_BYTES - 1));
+    assert!(!pool.fits(None, TILE_BYTES), "the pool's own bytes count where the OS says none");
+    assert!(pool.fits(None, TILE_BYTES - 1));
+}
+
 /// `count` cels a page each, the page full: the slots of each, in order.
 fn cels_a_page_each(engine: &crate::device::Engine, pool: &mut Pool, count: usize) -> Vec<Vec<TileAt>> {
     let slots = pool.slots();
@@ -528,6 +564,36 @@ fn the_c_abi_moves_a_pool_s_bytes_counts_its_pages_and_gives_them_back() {
         assert!(gpu_engine_pool_release(pool, pages[0], slots[0]));
         gpu_engine_pool_give_back(pool, engine, 0);
         assert_eq!(gpu_engine_pool_bytes(pool), 0);
+        gpu_engine_pool_free(pool);
+    }
+}
+
+// The C ABI keeps a pool to a budget in the OS's place, and to the OS's
+// again where negative.
+#[test]
+fn the_c_abi_keeps_a_pool_to_a_budget_in_the_os_s_place() {
+    use super::{
+        gpu_engine_pool_budget_instead, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new,
+        gpu_engine_pool_store,
+    };
+    let engine = rig().engine;
+    let bytes = le_bytes(&tile(3));
+    let tiles = [bytes.as_ptr()];
+    let (mut pages, mut slots) = ([u16::MAX], [u16::MAX]);
+    // SAFETY: the engine is the tests' own, alive for the run; the tiles,
+    // pages and slots hold one each.
+    unsafe {
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        gpu_engine_pool_budget_instead(pool, 0);
+        let none =
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(none, 0, "kept to nothing, it stores none");
+        gpu_engine_pool_budget_instead(pool, i64::MAX);
+        let one = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(one, 1, "kept to more than any device has, it stores");
+        gpu_engine_pool_budget_instead(pool, -1);
+        assert!((*pool).budget_instead.is_none(), "the OS's again");
         gpu_engine_pool_free(pool);
     }
 }

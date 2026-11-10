@@ -188,6 +188,101 @@ void main() {
     expect(ledger.slotCount, rest.length + 2);
   });
 
+  test('🚨a pool at the line the OS gives moves here the oldest tiles the '
+      'engine alone holds, one read of them, and their slots go', () {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    final ledger = EngineTileLedger(appGpuEngine);
+    final first = ledger.debugOnEngine(tileOf(1));
+    final page = ledger.pool.bytes;
+    ledger.debugKeepToOsBudget(0);
+    final source = tileOf(2);
+    final theirs = [
+      first,
+      for (var tile = 1; tile < page ~/ gpuTileBytes; tile++)
+        ledger.debugOnEngine(source),
+    ];
+    final asked = <int>[];
+    EngineTileLedger.debugBeforeRead = (tiles) => asked.add(tiles.length);
+    final here = tileOf(3);
+
+    ledger.held((hold) {
+      final [slot] = hold.slotsOf(b, [here]);
+
+      expect(laidBack(ledger, [slot]), here.pixels);
+    });
+
+    expect(ledger.pool.bytes, page, reason: 'no page past the line');
+    expect(asked, [EngineTileLedger.readBatch], reason: 'one read, a batch');
+    expect(ledger.slotOf(first), isNull, reason: 'the oldest went');
+    expect(first.isOnlyOnEngine, isFalse);
+    expect(first.pixels, tileOf(1).pixels);
+    expect(ledger.slotOf(theirs.last), isNotNull);
+    expect(theirs.last.isOnlyOnEngine, isTrue);
+    expect(ledger.slotCount, theirs.length - EngineTileLedger.readBatch + 1);
+
+    asked.clear();
+    final into = malloc<Uint8>(3 * gpuTileBytes);
+    addTearDown(() => malloc.free(into));
+    ledger.read(a, [first, theirs.last, here], into);
+
+    expect(into.asTypedList(3 * gpuTileBytes), [
+      ...tileOf(1).pixels,
+      ...source.pixels,
+      ...here.pixels,
+    ]);
+    expect(asked, [1], reason: 'bytes here are not asked of the engine');
+    expect(ledger.slotOf(first), isNull, reason: 'a read stores nothing');
+
+    ledger.held((hold) {
+      final [again] = hold.slotsOf(a, [first]);
+
+      expect(laidBack(ledger, [again]), tileOf(1).pixels);
+    });
+    expect(asked, [1], reason: 'stored again from the bytes here');
+  });
+
+  test('🚨what a call holds is stored past the line the OS gives, and the '
+      'line stands again after', () {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    final ledger = EngineTileLedger(appGpuEngine);
+    final first = ledger.debugOnEngine(tileOf(1));
+    final page = ledger.pool.bytes;
+    ledger.debugKeepToOsBudget(0);
+    final source = tileOf(2);
+    final theirs = [
+      first,
+      for (var tile = 1; tile < page ~/ gpuTileBytes; tile++)
+        ledger.debugOnEngine(source),
+    ];
+    final asked = <int>[];
+    EngineTileLedger.debugBeforeRead = (tiles) => asked.add(tiles.length);
+    final here = tileOf(3);
+
+    ledger.held((hold) {
+      hold.slotsOf(a, theirs);
+      final [past] = hold.slotsOf(b, [here]);
+
+      expect(laidBack(ledger, [past]), here.pixels);
+    });
+
+    expect(ledger.pool.bytes, 2 * page, reason: 'a page past the line');
+    expect(asked, isEmpty, reason: 'what a hold has is not read here');
+    expect(theirs.every((tile) => tile.isOnlyOnEngine), isTrue);
+    expect(ledger.slotCount, theirs.length + 1);
+
+    final rest = blanks(page ~/ gpuTileBytes - 1);
+    ledger.held((hold) => hold.slotsOf(c, rest));
+    expect(ledger.pool.bytes, 2 * page, reason: 'the page has room for them');
+    expect(
+      () => ledger.debugOnEngine(tileOf(4)),
+      throwsStateError,
+      reason: 'the line stands again',
+    );
+    expect(ledger.pool.bytes, 2 * page);
+    expect(ledger.slotOf(here), isNotNull);
+    expect(ledger.slotCount, theirs.length + 1 + rest.length);
+  });
+
   test('the tiles read back are their bytes, in order', () {
     final ledger = EngineTileLedger(appGpuEngine);
     final first = ledger.debugOnEngine(tileOf(10));

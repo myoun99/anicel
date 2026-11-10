@@ -342,4 +342,49 @@ void main() {
     expect(ledger.slotOf(landed), isNotNull);
     expect(at(landed.pixels, 12, 12), [200, 100, 50, 255]);
   });
+
+  test('🚨a stroke lands at the line the OS gives, on the slot of a tile '
+      'whose bytes moved here', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final made = GpuStroke(appGpuEngine);
+    addTearDown(made.free);
+    made.pile([
+      GpuDab(
+        centreX: 64,
+        centreY: 64,
+        left: 10,
+        top: 10,
+        right: 20,
+        bottom: 20,
+        colour: 0xFF3264C8,
+        opacity: 1,
+        flow: 1,
+        contrast: 1,
+      ),
+    ]);
+    final cel = Object();
+    BitmapTile land() => ledger.land(
+      cel,
+      [(column: 0, row: 0, under: null)],
+      by: (pool, cel, asked) =>
+          made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
+    ).single.tile!;
+    final first = land();
+    final page = ledger.pool.bytes;
+    ledger.debugKeepToOsBudget(0);
+    final source = solid([9, 9, 9, 255]);
+    final theirs = [
+      for (var n = 1; n < page ~/ gpuTileBytes; n++)
+        ledger.debugOnEngine(source),
+    ];
+
+    final past = land();
+
+    expect(at(past.pixels, 12, 12), [200, 100, 50, 255]);
+    expect(ledger.pool.bytes, page, reason: 'no page past the line');
+    expect(ledger.slotOf(first), isNull, reason: 'the oldest went');
+    expect(first.isOnlyOnEngine, isFalse);
+    expect(at(first.pixels, 12, 12), [200, 100, 50, 255]);
+    expect(theirs.last.isOnlyOnEngine, isTrue);
+  });
 }

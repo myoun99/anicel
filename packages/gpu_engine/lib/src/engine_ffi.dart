@@ -314,6 +314,11 @@ external bool poolRead(
 )
 external void poolMostBytes(Pointer<Pool> pool, int mostBytes);
 
+@Native<Void Function(Pointer<Pool>, Int64)>(
+  symbol: 'gpu_engine_pool_budget_instead',
+)
+external void poolBudgetInstead(Pointer<Pool> pool, int bytes);
+
 @Native<Void Function(Pointer<Pool>, Pointer<Engine>, Uint64)>(
   symbol: 'gpu_engine_pool_give_back',
 )

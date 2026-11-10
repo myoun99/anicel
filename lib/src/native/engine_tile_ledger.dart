@@ -27,13 +27,28 @@ import 'app_gpu_engine.dart';
 ///
 /// ⛔THE SLOTS A CALL IS HANDED STAY TILL IT RETURNS ([held], ⓓ). Only a
 /// store the pool is full at lets slots go, and only the ones no open hold
-/// has: while the CPU's tiles are the canonical ones (2단계) a tile let go
-/// is stored again when asked, never read back (screen-on-the-engine c4,
-/// 관제 2026-11-07). The tiles a hold has are then stored past
-/// [byteBudget], as the pictures' budget lets go what nobody shows and
-/// never what a paint did (`TilePictureBudget`): a budget refusing what a
-/// call holds would be a failure with no fallback — a cel of 5800² inked
-/// whole is past the 128 MB it gives a device of 2 GB.
+/// has: a tile whose bytes are here is stored again when asked, never read
+/// back (screen-on-the-engine c4, 관제 2026-11-07). The tiles a hold has
+/// are then stored past [byteBudget], as the pictures' budget lets go what
+/// nobody shows and never what a paint did (`TilePictureBudget`): a budget
+/// refusing what a call holds would be a failure with no fallback — a cel
+/// of 5800² inked whole is past the 128 MB it gives a device of 2 GB.
+///
+/// 🚨A TILE THE ENGINE ALONE HOLDS GIVES ITS SLOT ONLY ONCE ITS BYTES ARE
+/// HERE ([BitmapTile.isOnlyOnEngine]), and a pool still full reads them
+/// here to have it: the oldest no hold has, a read's batch at the least —
+/// then, still short, makes a page past the budget the OS gives (Windows
+/// only advises one; past it the process's video memory moves to system
+/// memory, packages/gpu_engine/rust/src/platform/windows.rs). ↩️Till 11-10
+/// such a slot never went and the OS's budget was final: at that line a
+/// stroke's landing threw inside paint and the stroke was gone with no
+/// word, and tiles read from a file were refused their slots — neither of
+/// which master did, its slots all copies of bytes in RAM (measured by
+/// 브러시/렌더링 11-10 on a line lowered in a test, card
+/// gpu-canonical-store). The 11-07 law — 「Full → 셀을 식혀 칸을 놓는다」 —
+/// stood in the pool's notes and nowhere in the code. 🔢"Oldest" is stored
+/// longest ago, not shown longest ago — 브러시/렌더링's pick, to measure.
+/// Only a driver refusing a page fails now.
 ///
 /// The pages nobody holds are given back ([respondToMemoryPressure],
 /// [byteBudget] falling under them) — the slots of tiles collected let go
@@ -108,6 +123,17 @@ final GpuEngine _engine;
 
   int? _byteBudget;
 
+  /// Test seam: keeps the pool to [bytes] in place of the budget the OS
+  /// gives — a device at its line, which no test fills a device to reach;
+  /// the OS's again where null.
+  @visibleForTesting
+  void debugKeepToOsBudget(int? bytes) {
+    _osBudgetInstead = bytes;
+    pool.keepToInsteadOfTheOs(bytes);
+  }
+
+  int? _osBudgetInstead;
+
   /// The OS says memory is tight, or a closed project was collected: every
   /// page nobody holds goes back — what only makes the next store cheaper.
   void respondToMemoryPressure() => _giveBackPast(0);
@@ -171,14 +197,15 @@ final GpuEngine _engine;
   }
 
   /// A tile of the slot [at], which it now holds: the only copy of its
-  /// pixels, so nothing but its collection or [retire] lets it go.
+  /// pixels till they are read here ([BitmapTile.isOnlyOnEngine]), so till
+  /// then nothing but its collection or [retire] lets it go.
   BitmapTile _adopted(GpuTile at, {bool? hasInk}) {
     final tile = BitmapTile.onEngine(
       size: gpuTileSide,
       on: this,
       hasInk: hasInk,
     );
-    final slot = _Slot(tile, at, only: true);
+    final slot = _Slot(tile, at);
     _slots[tile] = slot;
     _letGoWithTile.attach(tile, slot, detach: slot);
     _stored.add(slot);
@@ -203,8 +230,8 @@ final GpuEngine _engine;
   /// What [by] makes of the tiles [asks] — `GpuStroke.land`,
   /// `GpuStampLanding.land` —, each result a tile of its own, on [cel]'s
   /// pages; [compared], [by]'s, says the results' ink is known. A full pool
-  /// lets go what no call holds, then stores past the budget, as [_store]
-  /// does: what is on the way to the screen has no fallback.
+  /// has room made as [_store]'s is ([_shortAsRoomIsMade]): what is on the
+  /// way to the screen has no fallback.
   List<LandedTile> land(
     Object cel,
     List<TileAsk> asks, {
@@ -222,14 +249,11 @@ final GpuEngine _engine;
         by(pool, _cels.putIfAbsent(cel, pool.cel), asked);
     final landed = landOf(asked);
     if (landed.length < asked.length) {
-      _letGoWhere((tile) => !_holds.any((hold) => hold._tiles.contains(tile)));
-      pool.makeNoPagePast(_unbounded);
-      try {
+      final short = _shortAsRoomIsMade(() {
         landed.addAll(landOf(asked.sublist(landed.length)));
-      } finally {
-        pool.makeNoPagePast(_byteBudget ?? _unbounded);
-      }
-      if (landed.length < asked.length) {
+        return asked.length - landed.length;
+      });
+      if (short > 0) {
         throw StateError(
           'the device lands ${landed.length} of the ${asked.length} tiles '
           'it was asked for',
@@ -286,14 +310,15 @@ final GpuEngine _engine;
   /// stored and read straight back while the CPU's tiles were the canonical
   /// ones (flip lane ⓓ, till ⓒ): a park, which runs when memory is tight,
   /// took slots to read what it held, and a full pool threw on the way to
-  /// the user's file (저장's review of the lane, 11-10). A tile of the
-  /// engine's has its slot, so a read stores nothing and that throw has no
-  /// way here.
+  /// the user's file (저장's review of the lane, 11-10). A tile the engine
+  /// alone holds has its slot, so a read stores nothing and that throw has
+  /// no way here; one whose bytes are here gives those, as a tile of the
+  /// CPU's does.
   void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) {
     _refuseOtherGrids(tiles);
     final asked = [
       for (final tile in tiles)
-        if (tile.isOnEngine) tile,
+        if (tile.isOnlyOnEngine) tile,
     ];
     if (asked.isNotEmpty) {
       held((hold) {
@@ -304,22 +329,27 @@ final GpuEngine _engine;
     if (asked.length < tiles.length) {
       _laidInPlace(
         tiles,
-        asked.length,
+        asked,
         into.asTypedList(tiles.length * gpuTileBytes),
       );
     }
   }
 
-  /// [tiles] each at its place in [block], the first [readBack] places of
-  /// which hold the engine's tiles' bytes side by side: from the last tile
-  /// back, so where a tile goes is past every tile still to move.
-  void _laidInPlace(List<BitmapTile> tiles, int readBack, Uint8List block) {
-    var next = readBack;
+  /// [tiles] each at its place in [block], the first places of which hold
+  /// the bytes of [readBack] — those of [tiles] read from the engine, in
+  /// their order — side by side: from the last tile back, so where a tile
+  /// goes is past every tile still to move.
+  void _laidInPlace(
+    List<BitmapTile> tiles,
+    List<BitmapTile> readBack,
+    Uint8List block,
+  ) {
+    var next = readBack.length;
     for (var at = tiles.length - 1; at >= 0; at--) {
       final tile = tiles[at];
       final start = at * gpuTileBytes;
       final end = start + gpuTileBytes;
-      if (tile.isOnEngine) {
+      if (next > 0 && identical(tile, readBack[next - 1])) {
         next -= 1;
         block.setRange(start, end, block, next * gpuTileBytes);
       } else {
@@ -435,28 +465,79 @@ final GpuEngine _engine;
   }
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the
-  /// budget, else past it once what no hold has is let go.
+  /// budget, else as room is made ([_shortAsRoomIsMade]).
   void _store(int cel, List<BitmapTile> tiles) {
     var stored = _put(cel, tiles);
     if (stored == tiles.length) {
       return;
     }
-    _letGoWhere((tile) => !_holds.any((hold) => hold._tiles.contains(tile)));
-    pool.makeNoPagePast(_unbounded);
-    try {
+    final short = _shortAsRoomIsMade(() {
       stored += _put(cel, tiles.sublist(stored));
-    } finally {
-      pool.makeNoPagePast(_byteBudget ?? _unbounded);
-    }
-    // ⚠️No test reaches the throw: past the budget a store falls short only
-    // where the OS's budget or the driver refuses a page, and no test lowers
-    // either (rust/src/kernels/pool/mod.rs says why).
-    if (stored < tiles.length) {
+      return tiles.length - stored;
+    });
+    // ⚠️No test reaches the throw: past both budgets a store falls short
+    // only where the driver refuses a page, which no test has one do.
+    if (short > 0) {
       throw StateError(
         'the device stores $stored of the ${tiles.length} tiles a call holds',
       );
     }
   }
+
+  /// How many tiles are still without a slot once room is made for them:
+  /// [placeRest] places what is left and answers how many still are, asked
+  /// again after each step — the slots no hold has, of tiles whose bytes
+  /// are here, let go and [byteBudget] lifted; the bytes of tiles the engine
+  /// alone holds moved here ([_moveBytesHere]); a page past the OS's budget.
+  int _shortAsRoomIsMade(int Function() placeRest) {
+    _letGoWhere(_noHoldHas);
+    pool.makeNoPagePast(_unbounded);
+    try {
+      var short = placeRest();
+      if (short > 0 && _moveBytesHere(short)) {
+        short = placeRest();
+      }
+      if (short > 0) {
+        pool.keepToInsteadOfTheOs(_unbounded);
+        try {
+          short = placeRest();
+        } finally {
+          pool.keepToInsteadOfTheOs(_osBudgetInstead);
+        }
+      }
+      return short;
+    } finally {
+      pool.makeNoPagePast(_byteBudget ?? _unbounded);
+    }
+  }
+
+  /// Moves here the bytes of the oldest tiles the engine alone holds and no
+  /// hold has — [short] of them, a read's batch at the least: one wait of
+  /// the GPU's frees as many slots as it reads — and lets their slots go;
+  /// whether there was one.
+  bool _moveBytesHere(int short) {
+    final most = math.max(short, readBatch);
+    final going = <BitmapTile>[];
+    for (final slot in _stored) {
+      if (going.length == most) {
+        break;
+      }
+      final tile = slot.out ? null : slot.tile.target;
+      if (tile != null && tile.isOnlyOnEngine && _noHoldHas(tile)) {
+        going.add(tile);
+      }
+    }
+    if (going.isEmpty) {
+      return false;
+    }
+    var next = 0;
+    readEach(landedCel, going, (bytes) => going[next++].keepBytesHere(bytes));
+    _letGoWhere(_noHoldHas);
+    return true;
+  }
+
+  bool _noHoldHas(BitmapTile? tile) =>
+      !_holds.any((hold) => hold._tiles.contains(tile));
 
   /// Stores [tiles] in one store and gives each landed its slot; how many
   /// landed, the first of them.
@@ -479,14 +560,15 @@ final GpuEngine _engine;
   }
 
   /// Lets go the slot of every tile [goes] names — null for a tile
-  /// collected — and sweeps what is let go out of [_stored].
+  /// collected — but one the engine alone holds, which has no bytes to be
+  /// stored again from, and sweeps what is let go out of [_stored].
   void _letGoWhere(bool Function(BitmapTile? tile) goes) {
     _stored.removeWhere((slot) {
       if (slot.out) {
         return true;
       }
       final tile = slot.tile.target;
-      if ((tile != null && slot.only) || !goes(tile)) {
+      if ((tile != null && tile.isOnlyOnEngine) || !goes(tile)) {
         return false;
       }
       if (tile != null) {
@@ -519,15 +601,10 @@ typedef LandedBy =
 /// A slot a tile has here, its tile held weakly: being stored must not keep
 /// a tile alive.
 final class _Slot {
-  _Slot(BitmapTile tile, this.at, {this.only = false})
-    : tile = WeakReference(tile);
+  _Slot(BitmapTile tile, this.at) : tile = WeakReference(tile);
 
   final WeakReference<BitmapTile> tile;
   final GpuTile at;
-
-  /// Whether the engine holds the only copy of the tile's pixels — none to
-  /// store again from, so a full pool does not let it go.
-  final bool only;
 
   /// Let go already — by its tile's finalizer, a full pool or a give-back.
   bool out = false;

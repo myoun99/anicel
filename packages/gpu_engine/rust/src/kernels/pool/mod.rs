@@ -31,18 +31,22 @@
 //! emptied.
 //!
 //! A pool makes no page past the bytes it is given, past the budget the OS
-//! gives this process, nor one the driver refuses: it is [`Full`], one
-//! answer to all three, and its store cools a cel — reads its tiles back,
-//! releases them — and asks again (gpu-canonical-store 11-07 09:00, 관제
-//! 09:04: 「한 증상에 법 하나」).
+//! gives this process — or the one it is told to keep to instead —, nor one
+//! the driver refuses: it is [`Full`], one answer to all three, and its
+//! store cools a cel — reads its tiles back, releases them — and asks again
+//! (gpu-canonical-store 11-07 09:00, 관제 09:04: 「한 증상에 법 하나」).
 //!
 //! The app stores through the C ABI below (connection-round-checklist B,
 //! screen-on-the-engine): tiles it holds on the CPU, each in a fresh slot
-//! of a cel, and back to the pool when it lets one go. While the CPU's
-//! tiles are the canonical ones (2단계), a full pool is answered by letting
-//! tiles not shown go, as the app's tile pictures were: the app's ledger
-//! (lib/src/native/engine_tile_ledger.dart) lets go what none of its calls
-//! holds, and stores what one holds past the bytes it gives.
+//! of a cel, and back to the pool when it lets one go. A full pool is
+//! answered by the app's ledger (lib/src/native/engine_tile_ledger.dart):
+//! it lets go the slots of tiles whose bytes it holds and no call of its
+//! holds, as the app's tile pictures were, then reads to RAM the tiles the
+//! engine alone holds and lets those slots go, and stores what a call holds
+//! past the bytes it gives and, last, past the OS's budget. ↩️Till 11-10 it
+//! did the first alone and the 11-07 law above stood only in these notes: a
+//! tile the engine alone held kept its slot, and at the OS's line a landing
+//! had none.
 
 #[cfg(test)]
 mod tests;
@@ -88,6 +92,9 @@ pub(crate) struct Pool {
     slots: usize,
     most_pages: usize,
     most_bytes: u64,
+    /// The budget kept to in place of the one the OS gives this process —
+    /// the OS's where none ([`Pool::set_budget_instead`]).
+    budget_instead: Option<u64>,
     cels: u32,
 }
 
@@ -110,7 +117,7 @@ impl Pool {
             return fail(format!("a page of {slots} tiles; one holds 1 to {MOST_NAMED}"));
         }
         let pages = Vec::new();
-        Some(Self { buffers: Vec::new(), pages, slots, most_pages, most_bytes, cels: 0 })
+        Some(Self { buffers: Vec::new(), pages, slots, most_pages, most_bytes, budget_instead: None, cels: 0 })
     }
 
     /// The pages, as a plan and the write path take them.
@@ -130,6 +137,15 @@ impl Pool {
     /// allowance moves.
     pub(crate) fn set_most_bytes(&mut self, most_bytes: u64) {
         self.most_bytes = most_bytes;
+    }
+
+    /// Keeps to `budget` in place of the budget the OS gives this process,
+    /// and the OS's again where none: past any budget for the tiles its
+    /// store must place — Windows only advises one, and moves a process
+    /// past it out to system memory (platform/windows.rs, F-569) —, and
+    /// none left as a test has a device at its line.
+    pub(crate) fn set_budget_instead(&mut self, budget: Option<u64>) {
+        self.budget_instead = budget;
     }
 
     /// Gives back the pages nobody's — every slot free —, the last first,
@@ -342,7 +358,8 @@ impl Pool {
         }
         let given_back = self.pages.iter().position(Option::is_none);
         // ⚠️No test lowers the budget the OS gives: `fits` is tried on the
-        // numbers instead.
+        // numbers, and a page here against a budget kept to in its place
+        // ([`Pool::set_budget_instead`]).
         let memory = platform::video_memory(&engine.adapter);
         let grows = self.page_bytes() - given_back.map_or(0, |page| self.buffers[page].size());
         if (given_back.is_none() && self.pages.len() >= self.most_pages) || !self.fits(memory, grows) {
@@ -375,14 +392,15 @@ impl Pool {
         }
     }
 
-    /// Whether the pool's bytes grown by `grows` keep within them and,
-    /// where the OS says one, the budget it gives this process.
+    /// Whether the pool's bytes grown by `grows` keep within them, and what
+    /// this process uses — the OS's count, the pool's own bytes where it
+    /// says none — grown so keeps within the budget: the one kept to
+    /// instead where there is one, else the OS's where it says one.
     fn fits(&self, memory: Option<VideoMemory>, grows: u64) -> bool {
-        let within_os = |memory: VideoMemory| match memory.budget {
-            Some(budget) => memory.used.checked_add(grows).is_some_and(|sum| sum <= budget),
-            None => true,
-        };
-        self.bytes() + grows <= self.most_bytes && memory.is_none_or(within_os)
+        let used = memory.as_ref().map_or(self.bytes(), |memory| memory.used);
+        let budget = self.budget_instead.or(memory.as_ref().and_then(|memory| memory.budget));
+        let within_budget = budget.is_none_or(|budget| used.checked_add(grows).is_some_and(|sum| sum <= budget));
+        self.bytes() + grows <= self.most_bytes && within_budget
     }
 
     fn page_bytes(&self) -> u64 {
@@ -551,6 +569,18 @@ pub unsafe extern "C" fn gpu_engine_pool_most_bytes(pool: *mut Pool, most_bytes:
     // SAFETY: see the function's contract.
     let pool = unsafe { &mut *pool };
     pool.set_most_bytes(most_bytes);
+}
+
+/// Keeps to `bytes` in place of the budget the OS gives this process
+/// ([`Pool::set_budget_instead`]); the OS's again where negative.
+///
+/// # Safety
+/// `pool` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_budget_instead(pool: *mut Pool, bytes: i64) {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &mut *pool };
+    pool.set_budget_instead(u64::try_from(bytes).ok());
 }
 
 /// Gives back the pages nobody holds till the pages hold `most_bytes`

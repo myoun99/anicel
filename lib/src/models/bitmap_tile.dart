@@ -197,6 +197,21 @@ class BitmapTile implements Finalizable {
   /// for a caller that asks.
   bool get isOnEngine => _onEngine != null;
 
+  /// Whether the engine holds the only copy of its pixels — none here to
+  /// store again from, so its slot there is not one a full pool lets go.
+  bool get isOnlyOnEngine => _onEngine != null && _bytes == null;
+
+  /// Holds [bytes] — the pixels of a tile the engine alone holds
+  /// ([isOnlyOnEngine]), read back by whoever holds its slot — as a read of
+  /// its own would ([_readBack]).
+  void keepBytesHere(Uint8List bytes) {
+    assert(isOnlyOnEngine, 'its pixels are here already');
+    _validatePixelLength(bytes.length, size);
+    final block = _allocate(bytes.length);
+    block.asTypedList(bytes.length).setAll(0, bytes);
+    _hold(block);
+  }
+
   /// Throws for a [size] no tile takes — what every constructor asks first.
   static void checkSize(int size) => _validateSize(size);
 

@@ -394,6 +394,11 @@ class GpuPool {
   /// [giveBackPast] — and the next is made only within it.
   void makeNoPagePast(int mostBytes) => rust.poolMostBytes(_pool, mostBytes);
 
+  /// Keeps to [bytes] in place of the budget the OS gives this process;
+  /// the OS's again where null.
+  void keepToInsteadOfTheOs(int? bytes) =>
+      rust.poolBudgetInstead(_pool, bytes ?? -1);
+
   /// Gives back the pages none of whose tiles is held, the last first, till
   /// the pages made hold [mostBytes]; a cel that needs a page again has it
   /// made again (rust/src/kernels/pool/mod.rs).
