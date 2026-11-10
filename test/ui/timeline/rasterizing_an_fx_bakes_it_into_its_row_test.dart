@@ -2207,6 +2207,70 @@ void main() {
         expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
       });
 
+      test("🚨a synced rider showing another cel over the row's one cel in "
+          'each cut: each picture is a cel of its own in the one bank — '
+          'never two cels of one id '
+          '(conte-pair-merge-mints-one-cel-id-for-two-pictures)', () {
+        final s = linkedOf(
+          [
+            rowA(effects: [brightness(keyed: false)]),
+            riderOf('a').copyWith(
+              frames: [
+                Frame(
+                  id: const FrameId('r-1'),
+                  duration: 3,
+                  name: '1',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('r-2'),
+                  duration: 1,
+                  name: '2',
+                  strokes: const [],
+                ),
+              ],
+            ),
+          ],
+          riderTwin: (ridden) => ridden.copyWith(
+            baseFrameLinks: {const FrameId('a-1'): const FrameId('r-2')},
+          ),
+        );
+        expect(
+          [rIn(s).baseFrameLinks, riderTwinOf(s).baseFrameLinks],
+          [
+            {const FrameId('a-1'): const FrameId('r-1')},
+            {const FrameId('a-1'): const FrameId('r-2')},
+          ],
+          reason: "⛔전제: over the row's one cel, each cut shows its own",
+        );
+        final twin = riderTwinOf(s).id;
+
+        final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+
+        final bank = plan.riders.single.frames;
+        final ids = [for (final cel in bank) cel.id];
+        expect(ids.toSet(), hasLength(ids.length), reason: 'one id a cel');
+        expect(
+          plan.others.single.layers.byId(twin)!.frames,
+          bank,
+          reason: 'one bank',
+        );
+        final drawn = [
+          for (final picture in plan.pictures)
+            if (ids.contains(picture.frameId)) picture,
+        ];
+        expect(
+          {for (final picture in drawn) picture.frameId},
+          hasLength(drawn.length),
+          reason: 'one picture a cel',
+        );
+        expect(
+          {for (final picture in drawn) picture.from.id},
+          {cutId, s.requireActiveCut.id},
+          reason: 'what each cut showed is baked — neither lost',
+        );
+      });
+
       group('🗣️Q19 — a rider linked to a row riding one that is no use of the '
           "row, its cels that row's too, which the press does not reach", () {
         const second = CutId('cut2');

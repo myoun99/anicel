@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
-    show attachedMirrorCelId;
+    show attachedMirrorCelId, attachedRowAsShown;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -23,6 +23,8 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show exposedFrameIdAt;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
@@ -1655,6 +1657,75 @@ void main() {
 
       expect(plan.result.attachedMode, AttachedMode.free);
       expect(blocksOf(plan.result), {0: (4, 'R1')});
+    });
+
+    test("🚨a 겸용 pair's cuts showing other pictures over one panel: each "
+        'cut shows what it showed, a cel apiece — never two cels of one id '
+        '(conte-pair-merge-mints-one-cel-id-for-two-pictures)', () {
+      final s = conte('s');
+
+      /// [id] on [s] as the track's row [key], holding `R1` · `R2` · `R3`.
+      Layer onS(String id, String key) {
+        final on = onIt(id, s, key);
+        return on.copyWith(
+          frames: [
+            ...on.frames,
+            Frame(id: FrameId('$id-3'), duration: 1, name: 'R3', strokes: []),
+          ],
+        );
+      }
+
+      /// [row]'s self `<id>d` in the cut `d`, on `s2`, showing `R3` over the
+      /// panel `1`.
+      Layer selfInD(Layer row) => row.copyWith(
+        id: LayerId('${row.id.value}d'),
+        attachedToLayerId: const LayerId('s2'),
+        baseFrameLinks: {
+          ...row.baseFrameLinks,
+          const FrameId('s-1'): FrameId('${row.id.value}-3'),
+        },
+      );
+
+      final (k1, k2) = (onS('k1', 'K1'), onS('k2', 'K2'));
+      final s2 = s.copyWith(id: const LayerId('s2'));
+      final plan = merge(
+        cutOf([s, k1, k2]),
+        ['k1', 'k2'],
+        elsewhere: [
+          cutOf(id: 'd', [s2, selfInD(k1), selfInD(k2)]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['c/k2', 'd/k2d'],
+        ],
+      )!;
+
+      /// The cel [row] shows at [frame], riding [base] or on its own timing.
+      FrameId? shownAt(Layer row, Layer base, int frame) => exposedFrameIdAt(
+        attachedRowAsShown(row, [base, row]).timeline,
+        frame,
+      );
+      final there = rowOf(plan.others.single.layers, 'k2d');
+      final ids = [for (final cel in plan.result.frames) cel.id];
+
+      expect(ids.toSet(), hasLength(ids.length), reason: 'one id a cel');
+      expect(there.frames, plan.result.frames, reason: 'one bank');
+      expect(
+        shownAt(plan.result, s, 0),
+        isNot(shownAt(there, s2, 0)),
+        reason: 'the panel 1 shows R1 here and R3 there',
+      );
+      expect(shownAt(plan.result, s, 2), shownAt(there, s2, 2));
+      expect(
+        {
+          for (final picture in plan.pictures)
+            if (picture.rowId == plan.result.id)
+              picture.frameId: picture.from.id,
+        }[shownAt(there, s2, 0)],
+        const CutId('d'),
+        reason: 'the cel the cut d shows is drawn of what the cut d showed',
+      );
     });
   });
 
