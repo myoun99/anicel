@@ -734,3 +734,63 @@ fn the_abi_carries_a_picture_and_reads_one_back() {
         gpu_engine_stamp_picture_free(handed);
     }
 }
+
+/// 🧪What the test above cannot see (its mutants, 2026-11-11): a move of
+/// whole pixels reads no neighbour, so it hears no floor; and a read counts
+/// a picture's bytes, which its sides swapped make as well.
+#[test]
+fn the_abi_carries_by_the_floor_handed_it_into_a_picture_of_the_sides_asked() {
+    let f = landing();
+    let rgba = le_bytes(&placed(4, 2));
+    // SAFETY: the engine is live and `rgba` holds the picture.
+    let handed = unsafe { gpu_engine_stamp_picture_new(f.engine, rgba.as_ptr(), 4, 2) };
+    assert!(!handed.is_null(), "{}", last_error());
+    let carry = |picture: *const StampPicture, inverse: [f64; 9], floor: f64| {
+        let blend = ResampleMode::Blend as u32;
+        // SAFETY: all three are live and `inverse` holds nine.
+        let carried = unsafe {
+            gpu_engine_stamp_picture_carried(
+                &f.landing,
+                f.engine,
+                picture,
+                inverse.as_ptr(),
+                floor,
+                blend,
+                7,
+                4,
+            )
+        };
+        assert!(!carried.is_null(), "{}", last_error());
+        carried
+    };
+    let read = |picture: *const StampPicture| {
+        let mut into = vec![0xAAu8; 7 * 4 * 4];
+        // SAFETY: both are live and `into` holds the picture.
+        assert!(
+            unsafe { gpu_engine_stamp_picture_read(f.engine, picture, into.as_mut_ptr()) },
+            "{}",
+            last_error(),
+        );
+        le_words(&into)
+    };
+
+    // Half a pixel aside, Blend reads a pixel's neighbours: as far as its
+    // floor.
+    let narrow = carry(handed, moved(2.5, 1.0), 1.0);
+    let wide = carry(handed, moved(2.5, 1.0), 3.0);
+    assert_ne!(read(narrow), read(wide), "a wider floor blends from further");
+
+    // 7 × 4, not 4 × 7: carried again where it lies, it is read by its sides.
+    let whole = carry(handed, moved(2.0, 1.0), 1.0);
+    let again = carry(whole, moved(0.0, 0.0), 1.0);
+    assert_eq!(read(whole).iter().filter(|&&word| word != 0).count(), 4 * 2, "⛔CONTROL");
+    assert_eq!(read(again), read(whole), "carried again where it lies, it is itself");
+
+    // SAFETY: each came from its new, let go of once.
+    unsafe {
+        for picture in [narrow, wide, whole, again] {
+            gpu_engine_stamp_picture_free(picture);
+        }
+        gpu_engine_stamp_picture_free(handed);
+    }
+}
