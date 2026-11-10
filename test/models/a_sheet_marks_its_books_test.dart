@@ -20,6 +20,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 
 Layer cels(String name, {bool onTimesheet = true}) => Layer(
   id: LayerId(name),
@@ -67,6 +68,24 @@ Cut cutOf(List<Layer> layers) => Cut(
   layers: layers,
 );
 
+extension on List<SheetBooks> {
+  /// Each boundary's books as a sheet tags them with every name written
+  /// out ([sheetBookTag] unshortened).
+  List<SheetBook> get tagged => [
+    for (final (:boundary, :books) in this)
+      (boundary: boundary, label: sheetBookTag(books, shortened: false)),
+  ];
+}
+
+/// [names] as books, each `row` or `row:picture`.
+List<SheetBookName> booksNamed(List<String> names) => [
+  for (final name in names)
+    switch (name.split(':')) {
+      [final row, final picture] => (row: row, picture: picture),
+      _ => (row: name, picture: null),
+    },
+];
+
 void main() {
   test('a book sits at the boundary of the cel columns under it, tagged '
       'with its row\'s name and its picture\'s — by its label, never by '
@@ -93,7 +112,7 @@ void main() {
           mark: const LayerMark(process: LayerProcess.layout),
         ),
       ]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, [
       (boundary: 1, label: 'BOOK1'),
@@ -104,7 +123,7 @@ void main() {
   test('a picture without a name tags the book with its row\'s alone', () {
     final books = SheetSources.of(
       cut: cutOf([cels('A'), picture('BOOK', frame: '  ')]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK')]);
   });
@@ -130,7 +149,7 @@ void main() {
           },
         ),
       ]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK2')]);
   });
@@ -142,7 +161,7 @@ void main() {
         cels('A'),
         picture('BOOK', frame: '1', onTimesheet: false),
       ]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, isEmpty);
   });
@@ -151,7 +170,7 @@ void main() {
       'own (W5)', () {
     final books = SheetSources.of(
       cut: cutOf([cels('A'), picture('BOOK', frame: '1', attachedTo: 'A')]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, isEmpty);
   });
@@ -168,7 +187,7 @@ void main() {
           mark: const LayerMark(process: LayerProcess.art),
         ),
       ]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, isEmpty);
   });
@@ -180,7 +199,7 @@ void main() {
         cels('B', onTimesheet: false),
         picture('BOOK', frame: '1'),
       ]),
-    ).actionBooks;
+    ).actionBooks.tagged;
 
     expect(books, [(boundary: 1, label: 'BOOK1')]);
   });
@@ -193,5 +212,65 @@ void main() {
     );
 
     expect(document.books, [(boundary: 1, label: 'BOOK1')]);
+  });
+
+  group('🗣️F-576 (유저 2026-11-09): a tag leaves out the names the book '
+      'before it wrote', () {
+    test('a row named as the one before prints its picture alone — the '
+        'user\'s own example', () {
+      expect(
+        sheetBookTag(
+          booksNamed(['BOOK:1', 'BOOK:2', 'BOOK:3', 'boo:1', 'boo:2', 'BOOK:4']),
+          shortened: true,
+        ),
+        'BOOK1,2,3,boo1,2,BOOK4',
+      );
+    });
+
+    test('a book named as the one before, picture and all, is left out — '
+        'and one with no picture name keeps its row\'s', () {
+      expect(
+        sheetBookTag(
+          booksNamed(['BOOK:1', 'BOOK:2', 'BOOK:2', 'BOOK', 'BOOK']),
+          shortened: true,
+        ),
+        'BOOK1,2,BOOK',
+      );
+    });
+
+    test('taken off, every name is written out', () {
+      expect(
+        sheetBookTag(
+          booksNamed(['BOOK:1', 'BOOK:2', 'BOOK:2', 'BOOK']),
+          shortened: false,
+        ),
+        'BOOK1,BOOK2,BOOK2,BOOK',
+      );
+    });
+
+    test('the sheet tags its books as the work\'s format says — shortened '
+        'unless taken off', () {
+      final cut = cutOf([
+        cels('A'),
+        picture('BOOK', frame: '1'),
+        picture('BOOK', frame: '2'),
+      ]);
+      TimesheetDocument sheet(TimesheetInfo info) => TimesheetDocument.fromCut(
+        cut: cut,
+        projectName: 'P',
+        fps: 24,
+        info: info,
+      );
+
+      expect(sheet(TimesheetInfo.empty).books, [
+        (boundary: 1, label: 'BOOK1,2'),
+      ]);
+      expect(
+        sheet(
+          TimesheetInfo.empty.copyWith(sheetBookNamesShortened: false),
+        ).books,
+        [(boundary: 1, label: 'BOOK1,BOOK2')],
+      );
+    });
   });
 }

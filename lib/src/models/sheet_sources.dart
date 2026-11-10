@@ -181,7 +181,7 @@ class SheetSources {
   /// ↩️F-430 (유저 2026-10-21): the CELL block marks none — 「셀 란은 이런
   /// 북 표시 하지않음. 기본적으로는 액션란이랑 셀 구성이 똑같기 때문에 셀
   /// 란에는 BOOK표시 안하는 것」. It marked its own since F-406-Q1.
-  final List<SheetBook> actionBooks;
+  final List<SheetBooks> actionBooks;
 
   /// The SE rows, already windowed onto the cut's own frames and clipped
   /// ([clipToSheet]), each with how far into a sound spilled in from an
@@ -197,11 +197,17 @@ class SheetSources {
 }
 
 /// A BOOK the sheet marks (D24): [boundary] cel columns up from the
-/// bottom — between column `boundary - 1` and `boundary` — and its tag,
-/// every book at that boundary bottom first, joined by `,` (유저
-/// 2026-09-25: 「같은 축에 여러 북 있으면 … 레이어이름,레이어이름 이런식으로
-/// 사이에 , 넣어서」).
+/// bottom — between column `boundary - 1` and `boundary` — and its tag
+/// ([sheetBookTag]).
 typedef SheetBook = ({int boundary, String label});
+
+/// The books at one [boundary] of a cut's cel columns, bottom first — what
+/// a sheet tags there ([sheetBookTag]).
+typedef SheetBooks = ({int boundary, List<SheetBookName> books});
+
+/// A book's names: its row's, and the cel number of the picture the row
+/// shows — null when the picture has none.
+typedef SheetBookName = ({String row, String? picture});
 
 /// The books [layers] (bottom to top, the cut's order) mark on a sheet,
 /// left to right: every image row [layerMarksSheetBook] answers for, at
@@ -210,33 +216,62 @@ typedef SheetBook = ({int boundary, String label});
 /// ⛔None under the first cel column — 유저 2026-09-25
 /// (timesheet-edge-books-Q1): 「업계에서 보통 A셀 밑, 셀 맨 밑은
 /// 표시안해」. The one over the last column is marked.
-List<SheetBook> sheetBooksOf(List<Layer> layers) {
+List<SheetBooks> sheetBooksOf(List<Layer> layers) {
   var cels = 0;
-  final labels = <int, List<String>>{};
+  final books = <int, List<SheetBookName>>{};
   for (final layer in layers) {
     if (layerTakesSheetCelColumn(layer)) {
       cels += 1;
     } else if (cels > 0 && layerMarksSheetBook(layer)) {
-      (labels[cels] ??= []).add(sheetBookLabel(layer));
+      (books[cels] ??= []).add(sheetBookNameOf(layer));
     }
   }
   return [
-    for (final MapEntry(key: boundary, value: names) in labels.entries)
-      (boundary: boundary, label: names.join(',')),
+    for (final MapEntry(key: boundary, value: names) in books.entries)
+      (boundary: boundary, books: names),
   ];
 }
 
-/// A book's tag: its row's name and the name of the picture the row
-/// holds, run together — 「BOOK」 and 「1」 print 「BOOK1」 — or the row's
-/// name alone when the picture has none (유저 2026-09-25: 「레이어이름이
-/// BOOK인데 프레임이름 없으면 BOOK으로 넣고, BOOK인데 프레임이름1이면
-/// BOOK1이렇게」). An image row holds one picture a cut
-/// ([LayerKind.holdsSingleCel]) — the one its lane shows
-/// ([authoredBlockOf]); its bank may hold other cuts' as well.
-String sheetBookLabel(Layer layer) {
+/// [layer]'s book names: its own, and the cel number of the picture it
+/// holds. An image row holds one picture a cut ([LayerKind.holdsSingleCel])
+/// — the one its lane shows ([authoredBlockOf]); its bank may hold other
+/// cuts' as well.
+SheetBookName sheetBookNameOf(Layer layer) {
   final shown = authoredBlockOf(layer)?.frameId;
   final picture = shown == null ? null : layer.frameById(shown);
-  return '${layer.name}${picture?.celNumber ?? ''}';
+  return (row: layer.name, picture: picture?.celNumber);
+}
+
+/// The tag of the [books] at one boundary: each book's row name and its
+/// picture's run together — 「BOOK」 and 「1」 print 「BOOK1」, a picture
+/// without a name its row's alone (유저 2026-09-25: 「레이어이름이 BOOK인데
+/// 프레임이름 없으면 BOOK으로 넣고, BOOK인데 프레임이름1이면 BOOK1이렇게」)
+/// — joined by `,` (「같은 축에 여러 북 있으면 … 레이어이름,레이어이름
+/// 이런식으로 사이에 , 넣어서」).
+///
+/// 🗣️F-576 (유저 2026-11-09): [shortened] (the format's 「북 이름 생략」,
+/// on unless taken off — `TimesheetInfo.sheetBookNamesShortened`) leaves
+/// out a row name the book before it wrote — 「BOOK1, BOOK2, BOOK3, boo1,
+/// boo2, BOOK4」 prints 「BOOK1,2,3,boo1,2,BOOK4」 — and a book whose
+/// picture is named as the one before it too: 「BOOK1, BOOK2, BOOK2, BOOK,
+/// BOOK」 prints 「BOOK1,2,BOOK」. A book with no picture name keeps its
+/// row's, there being nothing else to print. The user left the rule to us
+/// (「로직 어떻게할지는 맡기고 효율적이고 단순하게만 되면됨」): any picture
+/// name, not only a number, is one a row's name can be left before.
+String sheetBookTag(List<SheetBookName> books, {required bool shortened}) {
+  final words = <String>[];
+  SheetBookName? before;
+  for (final book in books) {
+    final whole = '${book.row}${book.picture ?? ''}';
+    if (!shortened) {
+      words.add(whole);
+    } else if (book != before) {
+      final picture = book.picture;
+      words.add(book.row == before?.row && picture != null ? picture : whole);
+    }
+    before = book;
+  }
+  return words.join(',');
 }
 
 /// The paper [cut] prints its timesheet on at [fps]: the kind it chose,

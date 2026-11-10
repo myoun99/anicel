@@ -830,6 +830,7 @@ enum AppStrings {
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
   String get sheetStretchLineAction => _s('sheetStretchLineAction');
   String get sheetStretchLineCell => _s('sheetStretchLineCell');
+  String get sheetBookNamesShortened => _s('sheetBookNamesShortened');
   String get sheetStretchLineHelp => _s('sheetStretchLineHelp');
   String get sheetStretchLineOn => _s('sheetStretchLineOn');
   String get sheetStretchLineOff => _s('sheetStretchLineOff');
@@ -2778,6 +2779,7 @@ enum AppStrings {
     'sheetVisibleBoxes': 'Visible boxes',
     'sheetStretchLineAction': 'Stretch line · ACTION',
     'sheetStretchLineCell': 'Stretch line · CELL',
+    'sheetBookNamesShortened': 'Book names · repeats left out',
     'sheetStretchLineHelp':
         'Draw the line from the (N+1)th comma of N+ holds and × runs',
     'sheetStretchLineOn': 'On',
@@ -4223,6 +4225,7 @@ enum AppStrings {
     'sheetVisibleBoxes': '表示する枠',
     'sheetStretchLineAction': '引き伸ばし線・ACTION',
     'sheetStretchLineCell': '引き伸ばし線・CELL',
+    'sheetBookNamesShortened': 'BOOK名の繰り返し省略',
     'sheetStretchLineHelp': 'N コマ以上の止め・× で (N+1) コマ目から線を引く',
     'sheetStretchLineOn': 'あり',
     'sheetStretchLineOff': 'なし',
@@ -6097,6 +6100,7 @@ enum AppStrings {
     'sheetVisibleBoxes': '표시할 칸',
     'sheetStretchLineAction': '늘림 선 · 액션란',
     'sheetStretchLineCell': '늘림 선 · 셀란',
+    'sheetBookNamesShortened': '북 이름 반복 생략',
     'sheetStretchLineHelp': 'N코마 이상 止め · ×에서 (N+1)번째 코마부터 선을 긋기',
     'sheetStretchLineOn': '있음',
     'sheetStretchLineOff': '없음',
@@ -8005,6 +8009,7 @@ enum AppStrings {
     'sheetVisibleBoxes': 'Cases visibles',
     'sheetStretchLineAction': "Trait d'extension · ACTION",
     'sheetStretchLineCell': "Trait d'extension · CELL",
+    'sheetBookNamesShortened': 'Noms de BOOK · sans répétition',
     'sheetStretchLineHelp':
         'Tracer le trait à partir du (N+1)e comma des maintiens et des × de N+',
     'sheetStretchLineOn': 'Oui',
@@ -9976,6 +9981,7 @@ enum AppStrings {
     'sheetVisibleBoxes': '显示的栏位',
     'sheetStretchLineAction': '延长线 · ACTION',
     'sheetStretchLineCell': '延长线 · CELL',
+    'sheetBookNamesShortened': 'BOOK名重复省略',
     'sheetStretchLineHelp': '在 N 格以上的保持或 × 中，从第 (N+1) 格开始画线',
     'sheetStretchLineOn': '有',
     'sheetStretchLineOff': '无',

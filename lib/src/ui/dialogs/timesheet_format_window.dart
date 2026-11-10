@@ -76,6 +76,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
   );
   late TimesheetSheetKind? _kind = widget.sheet?.kind;
   late bool _fixedText = widget.initialInfo.sheetFixedText;
+  late bool _shortBooks = widget.initialInfo.sheetBookNamesShortened;
 
   /// The cut's own fixed text as picked — null until one is, so saving
   /// leaves it as it stands.
@@ -117,6 +118,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
         exposureBarThreshold: () => _actionLine.threshold,
         cellExposureBarThreshold: () => _cellLine.threshold,
         sheetFixedText: _fixedText,
+        sheetBookNamesShortened: _shortBooks,
       ),
       kind: _kind,
       cutFixedText: _cutFixedText,
@@ -301,6 +303,21 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
               strings.sheetStretchLineCell,
               'timesheet-format-stretch-line-cell',
               _cellLine,
+            ),
+            AppWindowField(
+              label: strings.sheetBookNamesShortened,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TogglePill(
+                  keyValue: 'timesheet-format-book-names-shortened',
+                  on: _shortBooks,
+                  words: (
+                    on: strings.conteOutlineOn,
+                    off: strings.conteOutlineOff,
+                  ),
+                  onChanged: (on) => setState(() => _shortBooks = on),
+                ),
+              ),
             ),
             _fixedTextField(),
           ],
