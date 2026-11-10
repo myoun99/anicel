@@ -2099,7 +2099,8 @@ fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go
     let engine = Engine::open_first().expect("an adapter");
     let composite = Composite::new(&engine).expect("compile the composite");
     let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
-    let made = || composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner).made(own);
+    let passes = || composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let made = || passes().made(own);
     engine.apart.hold();
     let any = composite.pass(&engine, own);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
