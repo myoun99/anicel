@@ -312,7 +312,7 @@ String exportCelLabelText(LayerMark label) {
     return AppText.strings.tlLayerMarkNone;
   }
   final chip = layerMarkChipText(label);
-  return [chip.process, chip.revise].where((t) => t.isNotEmpty).join(' ');
+  return [chip.process, chip.step].where((t) => t.isNotEmpty).join(' ');
 }
 
 /// The 선택 filters that are on, read as one line — 「기준 · 어태치」,

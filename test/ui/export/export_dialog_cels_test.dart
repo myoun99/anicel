@@ -141,7 +141,7 @@ void main() {
                 layers: [
                   drawing('paper', 'Paper', [
                     frame('p1'),
-                  ], mark: const LayerMark(process: LayerProcess.paper)),
+                  ], mark: const LayerMark.paper(LayerProcess.layout)),
                   drawing('a', 'A', [frame('f1'), frame('f2')]),
                   drawing(
                     'a-color',

@@ -81,6 +81,13 @@ String projectDisplayName(String path) {
 /// F-578: 美術 rows go to LO with the same revise), and the file's
 /// `formatVersion` says 35.
 ///
+/// And a 用紙 label names what it is the paper of (F-578 — 유저: 「용지는
+/// 용지-소재가 아니라 용지-LO 이런식으로」): a stage under `paperOf`, or a
+/// correction under `revise`. An older file's bare `{"process": "paper"}`
+/// names neither and opens as no label, so it is carried by the same hand:
+/// it gains `"paperOf": "layout"` (용지-LO — 유저: every paper row there
+/// is moves to 용지-LO).
+///
 /// v34 (2026-11-04, I-150 ⑤ — 유저 I-150-Q3: 「다른 타임라인끼리는 단순
 /// 겸용컷 작동안하게 … 타임라인 링크컷?으로 작동하게」): the link registry
 /// keeps its 동기컷 (`LayerLinkRegistry.syncs`, written only where there

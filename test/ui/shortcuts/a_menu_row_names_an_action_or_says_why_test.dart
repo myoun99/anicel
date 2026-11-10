@@ -104,10 +104,9 @@ const ledger = <String, Why>{
   "timeline/layer_label_controls.dart | 'layer-mark-option-\${option.keySlug}'":
       Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-none'": Why.aChoice,
-  'timeline/layer_label_controls.dart | revisesFor(process).isEmpty ? '
-          "'layer-mark-option-\${process.jsonValue}' : "
-          "'layer-mark-stage-\${process.jsonValue}'":
-      Why.aChoice,
+  // Every stage opens its labels — 用紙 too since F-578.
+  "timeline/layer_label_controls.dart | 'layer-mark-stage-\${process.jsonValue}'":
+      Why.aSecondLevel,
   "timeline/timeline_row_edit_chrome.dart | 'run-edge-mode-hold'": Why.aChoice,
   "timeline/timeline_row_edit_chrome.dart | 'run-edge-mode-none'": Why.aChoice,
   "timeline/timeline_row_edit_chrome.dart | 'run-edge-mode-repeat'":

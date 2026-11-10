@@ -109,7 +109,7 @@ void main() {
         picture(
           'BOOK',
           frame: '4',
-          mark: const LayerMark(process: LayerProcess.paper),
+          mark: const LayerMark.paper(LayerProcess.layout),
         ),
       ]),
     ).actionBooks.tagged;
@@ -136,7 +136,7 @@ void main() {
       final marked = SheetSources.of(
         cut: cutOf([
           cels('A'),
-          picture('BOOK', frame: '1', mark: LayerMark(process: process)),
+          picture('BOOK', frame: '1', mark: process == null ? LayerMark.none : labelsOf(process).first),
         ]),
       ).actionBooks.tagged;
 

@@ -78,7 +78,7 @@ final _scenes = <String, _Scene>{
 };
 
 final _two = [
-  _picture('tap', mark: const LayerMark(process: LayerProcess.paper)),
+  _picture('tap', mark: const LayerMark.paper(LayerProcess.layout)),
   _picture('csm'),
 ];
 

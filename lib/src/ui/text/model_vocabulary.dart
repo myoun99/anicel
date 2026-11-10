@@ -9,6 +9,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/layer_process.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../services/canvas_selection_region.dart';
 import 'app_strings.dart';
@@ -109,13 +110,43 @@ extension LayerMarkWords on LayerMark {
     if (stage == null) {
       return '';
     }
+    final name = stage.labelFor(language);
+    final second = step;
+    return second == null ? name : '$name ${second.labelFor(language)}';
+  }
+}
+
+/// A label's stage or correction by name ([LabelStep]) — the one place that
+/// pairs each with its table, so a 用紙 label names the stage it is the
+/// paper of in the words a stage's own label uses.
+extension LabelStepWords on LabelStep {
+  String labelFor(AppLanguage language) {
     final strings = AppStrings.of(language);
-    final name = strings.layerProcessName(stage.jsonValue, stage.displayName);
-    final correction = revise;
-    return correction == null
-        ? name
-        : '$name '
-              '${strings.layerReviseName(correction.jsonValue, correction.displayName)}';
+    return switch (this) {
+      final LayerProcess stage => strings.layerProcessName(
+        stage.jsonValue,
+        stage.displayName,
+      ),
+      final LayerRevise correction => strings.layerReviseName(
+        correction.jsonValue,
+        correction.displayName,
+      ),
+    };
+  }
+
+  /// What the label chip writes for it.
+  String abbreviationFor(AppLanguage language) {
+    final strings = AppStrings.of(language);
+    return switch (this) {
+      final LayerProcess stage => strings.layerProcessAbbrev(
+        stage.jsonValue,
+        stage.abbreviation,
+      ),
+      final LayerRevise correction => strings.layerReviseAbbrev(
+        correction.jsonValue,
+        correction.abbreviation,
+      ),
+    };
   }
 }
 

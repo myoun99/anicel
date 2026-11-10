@@ -632,8 +632,8 @@ void main() {
     // second page's off is no file of it (I-162-Q6).
     await pickPaperFormat(tester, 'export-tsformat', 'xdts');
     expect(tester.celsBoardBlocksOf('document-timesheet'), [
-      (layerProcessAbbrev(LayerProcess.key), true),
-      (layerProcessAbbrev(LayerProcess.inbetween), true),
+      (layerStepAbbrev(LayerProcess.key), true),
+      (layerStepAbbrev(LayerProcess.inbetween), true),
     ]);
     expect(listed(tester), ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts']);
     session.playbackRig.prerenderScheduler.cancel();

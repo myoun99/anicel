@@ -17,8 +17,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
         LayerTakeText,
         layerMarkColor,
         layerMarkSlotWidth,
-        layerProcessAbbrev,
-        layerReviseAbbrev;
+        layerStepAbbrev;
 import 'package:anicel/src/ui/timeline/layer_plate_words.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
@@ -307,13 +306,10 @@ void _twoLevelPopover() {
     await tester.pumpAndSettle();
 
     for (final process in LayerProcess.values) {
-      // ⚠️A stage that opens a child is keyed `…-stage-…`; one that IS the
-      // choice (용지, which has no corrections) is keyed `…-option-…`.
-      final key = revisesFor(process).isEmpty
-          ? 'layer-mark-option-${process.jsonValue}'
-          : 'layer-mark-stage-${process.jsonValue}';
+      // ⚠️A stage opens a child, so it is keyed `…-stage-…` — 용지 too since
+      // F-578 (it was the one plain `…-option-…`).
       expect(
-        find.byKey(ValueKey<String>(key)),
+        find.byKey(ValueKey<String>('layer-mark-stage-${process.jsonValue}')),
         findsOneWidget,
         reason: '${process.displayName} 은 첫 겹에 있다',
       );
@@ -367,22 +363,53 @@ void _twoLevelPopover() {
     );
   });
 
-  testWidgets('용지는 수정이 없으므로 두 번째 겹도 없다 — 바로 골라진다', (tester) async {
+  testWidgets('🗣️F-578: 용지의 두 번째 겹은 용지-LO 부터 — 소재 없이, 다른 '
+      '공정 전부와 수정 전부의 용지', (tester) async {
+    // 유저 2026-11-10: 「용지는 용지-소재가 아니라 용지-LO 이런식으로」 ·
+    // 「모든 공정을 넣음. 앞으로 발생하는것도.」 ↩️「용지는 수정공정 존재
+    // 안하도록」(08-27) — 겹 없이 바로 골라지던 항목이었다.
     await tester.pumpWidget(_panel());
     await tester.tap(
       find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
 
-    final paper = find.byKey(
-      const ValueKey<String>('layer-mark-option-paper'),
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+      ),
     );
-    expect(paper, findsOneWidget);
+    await tester.pumpAndSettle();
+
     expect(
-      find.descendant(of: paper, matching: find.byIcon(Icons.chevron_right)),
+      find.byKey(const ValueKey<String>('layer-mark-option-paper')),
       findsNothing,
-      reason: '유저: 「용지는 수정공정 존재 안하도록」 — 겹을 예고하면 안 된다',
+      reason: '용지에는 소재가 없다',
     );
+    final listed = [
+      for (final stage in LayerProcess.values)
+        if (stage != LayerProcess.paper) 'layer-mark-option-paper-${stage.jsonValue}',
+      for (final revise in LayerRevise.values)
+        'layer-mark-option-paper-${revise.jsonValue}',
+    ];
+    for (final key in listed) {
+      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
+    }
+    final top = tester
+        .getTopLeft(
+          find.byKey(const ValueKey<String>('layer-mark-option-paper-layout')),
+        )
+        .dy;
+    for (final key in listed) {
+      expect(
+        tester.getTopLeft(find.byKey(ValueKey<String>(key))).dy,
+        greaterThanOrEqualTo(top),
+        reason: '$key: 용지-LO 가 맨 위다',
+      );
+    }
   });
 }
 
@@ -465,8 +492,8 @@ void _submenuFollowsTheHover() {
       findsOneWidget,
     );
 
-    // 용지는 수정이 없다.
-    await moveTo(tester, mouse, 'layer-mark-option-paper');
+    // 라벨 없음은 겹이 없다(용지도 겹이 없었다 — F-578 까지).
+    await moveTo(tester, mouse, 'layer-mark-option-none');
     expect(
       find.byKey(
         const ValueKey<String>('layer-mark-option-layout-animation-director'),
@@ -515,9 +542,9 @@ void _stageComesFirst() {
 
     // 🚨언어를 명시한다: 축약어도 번역을 타므로(유저 2026-08-28 「프로그램
     // 언어에따라 로컬라이즈」) 기본 영어에서는 IB·IBC 가 나온다.
-    expect(texts.first, layerProcessAbbrev(LayerProcess.inbetween),
+    expect(texts.first, layerStepAbbrev(LayerProcess.inbetween),
         reason: '공정이 먼저 그려진다');
-    expect(texts.last, layerReviseAbbrev(LayerRevise.inbetweenCheck));
+    expect(texts.last, layerStepAbbrev(LayerRevise.inbetweenCheck));
     expect(
       plate.wordRectOf(0).left,
       lessThan(plate.wordRectOf(1).left),
@@ -656,8 +683,8 @@ void _submenuRowsLightUpToo() {
   testWidgets('겹이 달린 행에도 잉크가 있고, 살아 있다', (tester) async {
     await openFlyout(tester);
 
-    // 용지는 수정이 없어 그냥 고르는 행이고, 레이아웃은 겹을 여는 행이다.
-    expect(rowLightsUp(tester, 'layer-mark-option-paper'), isTrue);
+    // 라벨 없음은 그냥 고르는 행이고, 레이아웃은 겹을 여는 행이다.
+    expect(rowLightsUp(tester, 'layer-mark-option-none'), isTrue);
     expect(
       rowLightsUp(tester, 'layer-mark-stage-layout'),
       isTrue,

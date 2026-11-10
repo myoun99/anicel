@@ -30,7 +30,7 @@ void main() {
     revise: LayerRevise.animationDirector,
   );
   const layout = LayerMark(process: LayerProcess.layout);
-  const paper = LayerMark(process: LayerProcess.paper);
+  const paper = LayerMark.paper(LayerProcess.layout);
 
   Layer layer(
     String id, {

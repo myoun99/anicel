@@ -4,7 +4,7 @@ import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
 import '../../models/layer_process.dart';
 import '../../models/xdts_sheet_half.dart';
-import '../timeline/layer_label_controls.dart' show layerProcessAbbrev;
+import '../timeline/layer_label_controls.dart' show layerStepAbbrev;
 import 'export_list_sheet.dart';
 import 'export_plan.dart' show sanitizeExportFileComponent;
 
@@ -72,8 +72,8 @@ class ExportDocumentSheet extends ExportListSheet {
   /// digital sheet file says its block's stage, as a row's label does.
   @override
   String get word => switch (half) {
-    XdtsSheetHalf.genga => layerProcessAbbrev(LayerProcess.key),
-    XdtsSheetHalf.douga => layerProcessAbbrev(LayerProcess.inbetween),
+    XdtsSheetHalf.genga => layerStepAbbrev(LayerProcess.key),
+    XdtsSheetHalf.douga => layerStepAbbrev(LayerProcess.inbetween),
     null => pageCount > 1 ? '${page + 1}' : of.name,
   };
 

@@ -189,7 +189,7 @@ void main() {
       for (final process in [null, ...LayerProcess.values]) {
         final layer = _layer(
           'A',
-          mark: LayerMark(process: process),
+          mark: process == null ? LayerMark.none : labelsOf(process).first,
           frames: 1,
         );
         final rows = cutEnvelopeCelCounts(_cut([layer]));

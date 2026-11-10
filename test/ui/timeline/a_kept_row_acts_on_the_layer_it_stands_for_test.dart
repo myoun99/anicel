@@ -97,8 +97,19 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      Future<void> pick(WidgetTester tester, String opener, String key) async {
+      /// Opens [opener]'s list and picks [key] — through the second level
+      /// [through] opens, when the pick sits there.
+      Future<void> pick(
+        WidgetTester tester,
+        String opener,
+        String key, {
+        String? through,
+      }) async {
         await tapNamed(tester, opener);
+        if (through != null) {
+          await tester.tap(find.byKey(ValueKey<String>(through)));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.byKey(ValueKey<String>(key)));
         await tester.pumpAndSettle();
       }
@@ -167,7 +178,8 @@ void main() {
           (tester) => pick(
             tester,
             '$rail-layer-mark-${_two.draw}',
-            'layer-mark-option-paper',
+            'layer-mark-option-paper-layout',
+            through: 'layer-mark-stage-paper',
           ),
           'mark ${_two.draw}',
         ),

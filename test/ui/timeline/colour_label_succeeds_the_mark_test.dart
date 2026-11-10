@@ -107,12 +107,23 @@ void main() {
     }
   });
 
-  test('용지는 수정이 없고, 콘티는 감독·총감독 둘뿐이다', () {
+  test('🗣️F-578: 용지는 다른 공정 전부와 수정 전부의 용지이고 용지-LO 가 '
+      '먼저다 — 콘티는 감독·총감독 둘뿐이다', () {
+    // 유저 2026-11-10: 「용지라벨은 권한대로. 모든 공정을 넣음. 앞으로
+    // 발생하는것도.」 · 「용지는 용지-소재가 아니라 용지-LO 이런식으로」.
+    // ↩️유저 정정(08-27): 「용지는 수정공정 존재 안하도록」.
+    expect(revisesFor(LayerProcess.paper), LayerRevise.values);
+    final papers = labelsOf(LayerProcess.paper);
+    expect(papers.first, const LayerMark.paper(LayerProcess.layout));
     expect(
-      revisesFor(LayerProcess.paper),
-      isEmpty,
-      reason: '유저 정정: 「용지는 수정공정 존재 안하도록」',
+      papers.map((mark) => mark.step).toSet(),
+      {
+        for (final stage in LayerProcess.values)
+          if (stage != LayerProcess.paper) stage,
+        ...LayerRevise.values,
+      },
     );
+    expect(papers, hasLength(LayerProcess.values.length - 1 + LayerRevise.values.length));
     expect(revisesFor(LayerProcess.conte), [
       LayerRevise.director,
       LayerRevise.chiefDirector,
@@ -367,19 +378,19 @@ void _namesFollowTheLanguage() {
       speak(language);
       for (final process in LayerProcess.values) {
         expect(
-          layerProcessLabel(process),
+          layerStepLabel(process),
           isNotEmpty,
           reason: '$language · ${process.jsonValue}',
         );
-        expect(layerProcessAbbrev(process), isNotEmpty);
+        expect(layerStepAbbrev(process), isNotEmpty);
       }
       for (final revise in LayerRevise.values) {
         expect(
-          layerReviseLabel(revise),
+          layerStepLabel(revise),
           isNotEmpty,
           reason: '$language · ${revise.jsonValue}',
         );
-        expect(layerReviseAbbrev(revise), isNotEmpty);
+        expect(layerStepAbbrev(revise), isNotEmpty);
       }
     }
   });
@@ -389,11 +400,11 @@ void _namesFollowTheLanguage() {
     // ⛔`isNotEmpty` 만으로는 못 잡는다: 표가 통째로 비어 있어도 enum 의 영어가
     // fallback 으로 나와 전부 통과한다. **다르다**를 재야 한다.
     speak(AppLanguage.en);
-    final english = layerProcessLabel(LayerProcess.key);
+    final english = layerStepLabel(LayerProcess.key);
     speak(AppLanguage.ja);
-    final japanese = layerProcessLabel(LayerProcess.key);
+    final japanese = layerStepLabel(LayerProcess.key);
     speak(AppLanguage.ko);
-    final korean = layerProcessLabel(LayerProcess.key);
+    final korean = layerStepLabel(LayerProcess.key);
 
     expect(english, 'Key');
     expect(japanese, isNot(english), reason: '原画');
@@ -410,7 +421,7 @@ void _namesFollowTheLanguage() {
       ),
     );
     expect(text.process, 'LO');
-    expect(text.revise, '작감', reason: '⛔모델의 \'AD\' 가 그대로 나오면 안 된다');
+    expect(text.step, '작감', reason: '⛔모델의 \'AD\' 가 그대로 나오면 안 된다');
   });
 }
 
@@ -461,14 +472,14 @@ void _threeGlyphAbbreviations() {
 
   test('유저가 지정한 셋이 세 글자로 나온다 — 한국어와 일본어 둘 다', () {
     speak(AppLanguage.ko);
-    expect(layerProcessAbbrev(LayerProcess.roughKey), '러프원');
-    expect(layerReviseAbbrev(LayerRevise.chiefAnimationDirector), '총작감');
-    expect(layerReviseAbbrev(LayerRevise.chiefDirector), '총감독');
+    expect(layerStepAbbrev(LayerProcess.roughKey), '러프원');
+    expect(layerStepAbbrev(LayerRevise.chiefAnimationDirector), '총작감');
+    expect(layerStepAbbrev(LayerRevise.chiefDirector), '총감독');
 
     speak(AppLanguage.ja);
-    expect(layerProcessAbbrev(LayerProcess.roughKey), 'ラフ原');
-    expect(layerReviseAbbrev(LayerRevise.chiefAnimationDirector), '総作監');
-    expect(layerReviseAbbrev(LayerRevise.chiefDirector), '総監督');
+    expect(layerStepAbbrev(LayerProcess.roughKey), 'ラフ原');
+    expect(layerStepAbbrev(LayerRevise.chiefAnimationDirector), '総作監');
+    expect(layerStepAbbrev(LayerRevise.chiefDirector), '総監督');
   });
 
   test('세 글자가 상한이다 — 넷째 글자가 들어오면 띠가 감당 못 한다', () {
@@ -478,14 +489,14 @@ void _threeGlyphAbbreviations() {
       speak(language);
       for (final process in LayerProcess.values) {
         expect(
-          layerProcessAbbrev(process).characters.length,
+          layerStepAbbrev(process).characters.length,
           lessThanOrEqualTo(3),
           reason: '$language · ${process.jsonValue}',
         );
       }
       for (final revise in LayerRevise.values) {
         expect(
-          layerReviseAbbrev(revise).characters.length,
+          layerStepAbbrev(revise).characters.length,
           lessThanOrEqualTo(3),
           reason: '$language · ${revise.jsonValue}',
         );
@@ -633,7 +644,7 @@ void _everyLabelSitsAtOneHeight() {
               child: SizedBox.fromSize(
                 size: plate,
                 child: LayerMarkPlate(
-                  mark: LayerMark(process: process),
+                  mark: labelsOf(process).first,
                   axis: axis,
                 ),
               ),
@@ -659,7 +670,7 @@ void _everyLabelSitsAtOneHeight() {
     // ⛔The fill is ASKED, not guessed: the most common value flips to the
     // ink whenever the glyphs cover most of the plate.
     final fill =
-        (layerMarkColor(LayerMark(process: process)).g * 255).round() & 0xFF;
+        (layerMarkColor(labelsOf(process).first).g * 255).round() & 0xFF;
     int? top;
     int? bottom;
     final widths = <int>{};
@@ -718,11 +729,11 @@ void _everyLabelSitsAtOneHeight() {
             ink.shapes,
             greaterThan(5),
             reason:
-                '⛔전제: a REAL face drew ${layerProcessAbbrev(process)} — '
+                '⛔전제: a REAL face drew ${layerStepAbbrev(process)} — '
                 'a box font gives two or three row widths and would measure '
                 'nothing this test is about',
           );
-          drifts[layerProcessAbbrev(process)] = ink.drift;
+          drifts[layerStepAbbrev(process)] = ink.drift;
         }
 
         // ⚠️THE LINE SITS BETWEEN TWO MEASURED THINGS, not at a round number.

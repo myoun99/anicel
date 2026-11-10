@@ -39,7 +39,7 @@ class ExportCelsSelection {
 /// 2026-09-09: 「색라벨은 하나야. 공정이랑 수정 나누지않고」). The take is a
 /// separate question ([CelsExportSpec.take]), so it is not compared here.
 bool markWearsLabel(LayerMark mark, LayerMark label) =>
-    mark.process == label.process && mark.revise == label.revise;
+    mark.process == label.process && mark.step == label.step;
 
 /// The kind [layer] exports as ([ExportCelKind]), or null for a row that
 /// exports nothing of its own: the camera, an SE row, a folder — and a

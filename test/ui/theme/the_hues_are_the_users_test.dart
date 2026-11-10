@@ -52,16 +52,22 @@ void main() {
 
   test('🚨the REVISE colour is the same whatever the stage — 「LO연출이던 '
       '원화연출이던 같은색」, because on paper the revise is what you read', () {
-    for (final process in LayerProcess.values) {
+    // Every label that carries 연출, 용지-연출 among them (F-578).
+    final directed = [
+      for (final mark in everyLayerMark())
+        if (mark.revise == LayerRevise.direction) mark,
+    ];
+    expect(directed, contains(const LayerMark.paper(LayerRevise.direction)));
+    for (final mark in directed) {
       expect(
-        colorOf(LayerMark(process: process, revise: LayerRevise.direction)),
+        colorOf(mark),
         colorOf(
           const LayerMark(
             process: LayerProcess.layout,
             revise: LayerRevise.direction,
           ),
         ),
-        reason: '$process',
+        reason: '$mark',
       );
     }
   });
@@ -70,7 +76,7 @@ void main() {
       'throw on the row that used it', () {
     final seen = <Color>{};
     for (final process in LayerProcess.values) {
-      final color = colorOf(LayerMark(process: process));
+      final color = colorOf(labelsOf(process).first);
       expect(color, isNot(none));
       seen.add(color);
     }
@@ -97,7 +103,7 @@ void main() {
       'through and read as a different colour', () {
     for (final process in LayerProcess.values) {
       expect(
-        colorOf(LayerMark(process: process)).toARGB32() >>> 24,
+        colorOf(labelsOf(process).first).toARGB32() >>> 24,
         0xFF,
         reason: '$process',
       );

@@ -29,7 +29,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerProcessAbbrev;
+    show layerStepAbbrev;
 
 import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/export_cels_alone.dart';
@@ -37,7 +37,7 @@ import '../../helpers/export_cels_alone.dart';
 void main() {
   const key = LayerMark(process: LayerProcess.key);
   const layout = LayerMark(process: LayerProcess.layout);
-  const paper = LayerMark(process: LayerProcess.paper);
+  const paper = LayerMark.paper(LayerProcess.layout);
   const withDirection = {
     ExportCelKind.cel,
     ExportCelKind.art,
@@ -2069,8 +2069,8 @@ void main() {
               (sheet.word, sheet.fullName),
         ],
         [
-          (layerProcessAbbrev(LayerProcess.key), 'TSCUT1_genga_ts'),
-          (layerProcessAbbrev(LayerProcess.inbetween), 'TSCUT1_douga_ts'),
+          (layerStepAbbrev(LayerProcess.key), 'TSCUT1_genga_ts'),
+          (layerStepAbbrev(LayerProcess.inbetween), 'TSCUT1_douga_ts'),
         ],
       );
       // No two blocks of the list answer to one id.

@@ -48,7 +48,13 @@ void main() {
       await tester.tap(find.named('timeline-layer-mark-$a'));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+        find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('layer-mark-option-paper-layout'),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -63,7 +69,7 @@ void main() {
       final (s, a, b) = await _timelineRail(tester);
       s.layerMarks.setLayerMark(
         b,
-        const LayerMark(process: LayerProcess.paper),
+        const LayerMark.paper(LayerProcess.layout),
       );
       await tester.pumpAndSettle();
       final labelOfA = _row(s, a).mark.process;
@@ -144,7 +150,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+        find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('layer-mark-option-paper-layout'),
+        ),
       );
       await tester.pumpAndSettle();
 

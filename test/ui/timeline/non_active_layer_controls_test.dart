@@ -162,13 +162,19 @@ void main() {
           await tester.tap(find.named('$rail-layer-mark-$other'));
           await tester.pumpAndSettle();
           await tester.tap(
-            find.byKey(const ValueKey<String>('layer-mark-option-paper')),
+            find.byKey(const ValueKey<String>('layer-mark-stage-paper')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(
+              const ValueKey<String>('layer-mark-option-paper-layout'),
+            ),
           );
           await tester.pumpAndSettle();
 
           expect(
             session.layers.firstWhere((l) => l.id == other).mark,
-            const LayerMark(process: LayerProcess.paper),
+            const LayerMark.paper(LayerProcess.layout),
             reason: 'the mark pick did not land on its own row',
           );
           expect(
