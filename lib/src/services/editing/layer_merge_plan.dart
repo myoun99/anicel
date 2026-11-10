@@ -1359,7 +1359,7 @@ Layer _onTheConte(
 /// layer's bank holds every cut's picture of it, and an image holds one a
 /// LANE ([LayerKind.holdsSingleCel]) — counted from the bank, two images
 /// each showing one picture in each of two 겸용 cuts merged into an
-/// animation row.
+/// animation row. A rasterize counts its bank: [kindHoldingBank].
 LayerKind kindHoldingPictures(
   LayerKind kind,
   Iterable<Iterable<FrameId>> lanes,
@@ -1369,12 +1369,20 @@ LayerKind kindHoldingPictures(
     ? kind
     : LayerKind.animation;
 
-/// [kindHoldingPictures] of lanes each read as the cel it shows at each
-/// frame — a bake's `celAt`, one map for each use of the row.
-LayerKind kindShowingCelsAt(
-  LayerKind kind,
-  Iterable<Map<int, FrameId>> celAt,
-) => kindHoldingPictures(kind, [for (final lane in celAt) lane.values]);
+/// [kindHoldingPictures] of a rasterize's whole [bank] as one lane — the
+/// fx rasterize's and the reference rasterize's, one law for the two.
+///
+/// 🗣️I-120 (유저 2026-10-21): 「우선 이미지레이어는 참조fx의 래스터라이즈할때처럼
+/// 같은 법 그대로 확장/통일해서 래스터라이즈시 여러장에 적용되야한다면
+/// 애니메이션레이어로 전환해서 프레임만들어서 적용하도록」, and the way
+/// 🗣️I-120-Q22 (2026-11-05) took reads 「셀이 둘 이상이 되면 애니메이션
+/// 레이어가 된다(Q5 법)」 — so a bank of two cels makes an animation row
+/// even where each use shows one. ⚠️Whether a rasterize counts each
+/// use's lane as a merge does (F-572) is F-572-Q2's, not yet answered.
+LayerKind kindHoldingBank(LayerKind kind, Iterable<Frame> bank) =>
+    kindHoldingPictures(kind, [
+      [for (final cel in bank) cel.id],
+    ]);
 
 /// The cels each of [lanes] shows, as [kindHoldingPictures] reads them.
 Iterable<Iterable<FrameId>> _celsShownOn(List<List<_Cel>> lanes) => [
