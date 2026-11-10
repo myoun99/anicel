@@ -1138,9 +1138,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
         children: [
           ...standing,
           if (bar != null)
-            SizedBox(
-              width: _horizontal ? length : null,
-              height: _horizontal ? null : length,
+            alongBox(
+              axis,
+              length,
               child: _horizontal ? bar : Center(child: bar),
             ),
         ],
