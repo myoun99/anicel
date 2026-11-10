@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
-    show attachedMirrorCelId, isSyncedAttachedLayer;
+    show attachedMirrorCelId;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -2276,8 +2276,11 @@ void main() {
           plan.others.single.layers.byId(twin)!,
         ];
         expect(
-          [for (final rider in riders) isSyncedAttachedLayer(rider)],
-          [true, true],
+          [
+            for (final rider in riders)
+              (rider.attachedToLayerId != null, rider.attachedMode),
+          ],
+          [(true, AttachedMode.synced), (true, AttachedMode.synced)],
           reason: 'both cuts\' riders still ride the row',
         );
         expect(
