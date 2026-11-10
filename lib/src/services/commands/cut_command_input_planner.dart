@@ -225,6 +225,10 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,
     clipsToBelow: payload.clipsToBelow,
+    // It folds and twirls as the row it came from (F-579).
+    collapsed: payload.collapsed,
+    lanesExpanded: payload.lanesExpanded,
+    expandedLaneGroups: payload.expandedLaneGroups,
   );
 
   return PasteLayerCommandInputPlan(
