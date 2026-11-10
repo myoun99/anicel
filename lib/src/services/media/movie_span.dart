@@ -6,7 +6,8 @@ import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart';
 import '../../native/qa_video_encoder.dart';
-import '../audio/sound_span.dart' show decodeAudioOfFrames, int16PcmOfFrames;
+import '../audio/sound_span.dart'
+    show decodeAudioOfFrames, int16PcmBefore, int16PcmOfFrames;
 import 'media_byte_source.dart';
 
 /// Writes the movie at [sourcePath] over the project frames [trim] keeps of
@@ -27,7 +28,9 @@ import 'media_byte_source.dart';
 /// is drawing against.
 ///
 /// Its sound is the same span in the source's own time
-/// ([int16PcmOfFrames]), handed to the encoder frame by frame.
+/// ([int16PcmOfFrames]), handed to the encoder frame by frame — behind the
+/// movie's own sound just before the span, where the writer puts a frame
+/// there ([_fillTheLead]).
 ///
 /// Uses the encoder's own budget, as the export does by default.
 ///
@@ -104,6 +107,14 @@ import 'media_byte_source.dart';
 
     var finished = false;
     try {
+      if (sound != null &&
+          !_fillTheLead(
+            encoder,
+            MediaFileBytes(sourcePath),
+            before: pace.frameToSample(kept.first, sound.sampleRate),
+          )) {
+        return (kept: null, failure: encoder.lastError);
+      }
       final frame = Uint8List(info.width * info.height * 4);
       for (var at = kept.first; at <= kept.last; at += 1) {
         final rgba = decoder.frameOf(
@@ -131,4 +142,27 @@ import 'media_byte_source.dart';
   } finally {
     decoder.closeDocument(document);
   }
+}
+
+/// Fills the frame of sound this build's writer puts before a piece's own
+/// ([QaVideoEncoder.audioLead]) with what [source] plays just before its
+/// sample [before], the span's first — the piece's past, as an exported
+/// movie is handed its mix's (`SoundBefore`, video_export_service.dart;
+/// 유저 2026-11-10, board an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2:
+/// 「무음, 범위 앞에 소리가 있으면 그 소리」).
+///
+/// The writer's silence stays where the writer puts no frame, or nothing
+/// lies before the span. False means the encoder refused what it was
+/// handed.
+bool _fillTheLead(
+  QaVideoEncoder encoder,
+  MediaByteSource source, {
+  required int before,
+}) {
+  final samples = encoder.audioLead;
+  if (samples == 0) {
+    return true;
+  }
+  final lead = int16PcmBefore(source, before, count: samples);
+  return lead == null || encoder.writeLead(lead, samples);
 }

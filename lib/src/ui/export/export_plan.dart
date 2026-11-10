@@ -165,6 +165,51 @@ List<ExportFrameTask> buildExportFramePlan({
   return plan;
 }
 
+/// The [count] frames [project]'s timeline holds just before [plan]'s first,
+/// on its track's axis ([cutSpansOf]): the cut's own earlier frames, its
+/// leading gap, the cuts before it — fewer where the track begins sooner,
+/// none for a plan that starts at the track's start.
+///
+/// What a movie whose writer puts a frame of sound before the mix fills it
+/// from (`SoundBefore`, video_export_service.dart; 유저 2026-11-10, board
+/// an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2: 「범위 앞에 소리가 있으면
+/// 그 소리」): these frames' mix is what the timeline sounds like up to the
+/// plan's first frame, so a range written alone is handed the past it has
+/// inside the whole film.
+///
+/// ⚠️A cut written alone has no leading gap in its plan
+/// ([buildExportFramePlan]); it has one here, because the timeline does.
+List<ExportFrameTask> exportFramesBefore(
+  List<ExportFrameTask> plan,
+  int count, {
+  required Project project,
+}) {
+  final first = plan.firstOrNull;
+  if (first == null) {
+    return const [];
+  }
+  final axis = trackAxisOf(project);
+  final track = axis.trackByCutId[first.cut.id];
+  final cutStart = axis.startByCutId[first.cut.id];
+  if (track == null || cutStart == null) {
+    return const [];
+  }
+  // Where the plan begins, on the track's axis.
+  final end = cutStart + first.frameIndex;
+  return [
+    for (final placed in cutSpansOf(track))
+      for (
+        var frame = math.max(
+          end - count,
+          placed.startFrame - placed.cut.leadingGapFrames,
+        );
+        frame < math.min(end, placed.endFrame);
+        frame += 1
+      )
+        ExportFrameTask(cut: placed.cut, frameIndex: frame - placed.startFrame),
+  ];
+}
+
 /// Lays every SE layer's audio clips onto the exported video's timeline,
 /// in FRAMES on the export plan's own axis (frame 0 = the first exported
 /// frame).

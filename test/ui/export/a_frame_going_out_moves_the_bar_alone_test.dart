@@ -40,6 +40,7 @@ class _HeldVideoRun extends VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
+    SoundBefore? soundBefore,
     ExportVideoContainer container = ExportVideoContainer.mp4,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,

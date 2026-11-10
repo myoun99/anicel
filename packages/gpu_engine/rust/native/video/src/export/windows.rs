@@ -363,7 +363,16 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
 /// ↩️Until this, the same day: no frame and no list — 「그대로 둔다」,
 /// 「윈도의 한계」 (-Q1) — for a list meant rewriting the boxes after
 /// `Finalize`, which is what `edit_list` does now.
-const AUDIO_LEAD: i64 = 1024;
+///
+/// WHAT THE FRAME HOLDS: the sound just before the mix where the caller has
+/// it ([write_lead]) — the option the user took reads 「무음, 범위 앞에 소리가
+/// 있으면 그 소리」 — and silence where it has none. A mix that starts in the
+/// middle of a wave comes back closer behind its own past than behind
+/// silence: a 750 Hz cosine starting on its peak, the error of its first 128
+/// samples 0.0045 behind silence and 0.0009 behind itself, its worst sample
+/// 0.026 and 0.002 (unit scale, 48 kHz, measured 2026-11-10). A frame that is
+/// not the mix's own past costs what silence does.
+pub const AUDIO_LEAD: i64 = 1024;
 
 /// `frames` of sound, filled by `fill`, as the stream's next — stamped from
 /// how many it has had.
@@ -382,8 +391,32 @@ fn feed(writer: &mut Writer, frames: i64, fill: impl FnOnce(&mut [u8])) -> bool 
     false
 }
 
+/// What a lead that is not the first frame is told: the list takes off
+/// [AUDIO_LEAD], no more and no less, from the stream's start.
+const NOT_THE_LEAD: &str = "video export: the sound before the mix is one frame, handed before any other";
+
+/// The sound just before the mix, as the frame that goes first — in place
+/// of the silence [write_audio] puts there when handed none.
+///
+/// # Safety
+/// `interleaved` is null or holds `frames` × the channels `open` was given.
+pub unsafe fn write_lead(interleaved: *const i16, frames: i32) -> bool {
+    let mut held = lock(&WRITER);
+    let Some(writer) = held.as_mut().filter(|writer| writer.channels > 0 && !interleaved.is_null()) else {
+        return false;
+    };
+    if writer.audio_samples != 0 || i64::from(frames) != AUDIO_LEAD {
+        set_error(NOT_THE_LEAD);
+        return false;
+    }
+    // SAFETY: the caller's contract.
+    let pcm = unsafe { std::slice::from_raw_parts(interleaved.cast::<u8>(), frames as usize * writer.channels * 2) };
+    feed(writer, AUDIO_LEAD, |target| target.copy_from_slice(pcm))
+}
+
 /// The mix's next `frames`, as Media Foundation's AAC takes them — behind
-/// the frame of silence that goes first ([AUDIO_LEAD]).
+/// the frame that goes first ([AUDIO_LEAD]): the caller's ([write_lead]),
+/// or silence.
 ///
 /// # Safety
 /// `interleaved` is null or holds `frames` × the channels `open` was given.

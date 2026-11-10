@@ -76,6 +76,13 @@ void main() {
     return ftyp && moov;
   }
 
+  /// One flat 64x48 picture, for the movies whose subject is not the picture.
+  Future<ui.Image> flatPicture() {
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
+    return recorder.endRecording().toImage(64, 48);
+  }
+
   test('the capability answer matches the OS', () {
     watch.step('the capability: asking for the encoder');
     final encoder = QaVideoEncoder.instance;
@@ -278,6 +285,86 @@ void main() {
     );
   });
 
+  test('🚨a movie\'s sound is led by what the caller says sounded before it — '
+      'its first samples come back closer than behind silence', () async {
+    final encoder = osVideoEncoderOrSkip();
+    if (encoder == null) {
+      return;
+    }
+    TestWidgetsFlutterBinding.ensureInitialized();
+    // 🗣️유저 2026-11-10 (board an-mp4-reopened-loses-its-first-9-ms-of-
+    // sound-Q2): 「무음, 범위 앞에 소리가 있으면 그 소리」. A tone that was
+    // already sounding and is on its peak where the movie begins: behind
+    // silence that is the hardest first sample there is, behind its own
+    // past an ordinary one.
+    const rate = 48000;
+    int toneAt(int sample) =>
+        (12000 * math.cos(2 * math.pi * 750 * sample / rate)).round();
+    Int16List toneFrom(int first, int count) {
+      final pcm = Int16List(count * 2);
+      for (var index = 0; index < count; index += 1) {
+        pcm[index * 2] = pcm[index * 2 + 1] = toneAt(first + index);
+      }
+      return pcm;
+    }
+
+    final mixPath = '${directory.path}/mix.wav';
+    File(mixPath).writeAsBytesSync(
+      wav16Bytes(toneFrom(0, rate ~/ 2), sampleRate: rate, channels: 2),
+    );
+    final service = VideoExportService(
+      encoderResolver: () => QaVideoEncoder.instance,
+    );
+
+    /// How far the first 128 samples of the movie written as [name] came
+    /// back from the tone's.
+    Future<double> headErrorOf(String name, SoundBefore? soundBefore) async {
+      final outputPath = '${directory.path}/$name.mp4';
+      watch.step('a led movie: exporting $name');
+      final summary = await service.exportVideo(
+        count: 12,
+        renderImage: (_) => flatPicture(),
+        outputFilePath: outputPath,
+        frameRate: ProjectFrameRate.fps24,
+        audioMixPath: mixPath,
+        soundBefore: soundBefore,
+      );
+      expect(summary, (written: 12, processed: 12));
+      watch.step('a led movie: reading the sound of $name back');
+      final sound = decodeAudioFile(outputPath)!;
+      var squares = 0.0;
+      for (var index = 0; index < 128; index += 1) {
+        final error =
+            sound.samples[index * sound.channels] - toneAt(index) / 32768;
+        squares += error * error;
+      }
+      return math.sqrt(squares / 128);
+    }
+
+    final asked = <int>[];
+    final led = await headErrorOf('led', (samples) async {
+      asked.add(samples);
+      return toneFrom(-samples, samples);
+    });
+    expect(
+      asked,
+      encoder.audioLead == 0 ? isEmpty : [encoder.audioLead],
+      reason: 'asked once, for exactly the frame the writer puts there',
+    );
+    if (encoder.audioLead == 0) {
+      // A writer that leads a movie's sound itself is handed nothing, so
+      // there are no two movies to tell apart.
+      return;
+    }
+    final unled = await headErrorOf('unled', null);
+    expect(
+      led,
+      lessThan(unled / 2),
+      reason: '🔬2026-11-10, this tone through Media Foundation\'s AAC: '
+          '0.0009 behind its own past, 0.0045 behind silence',
+    );
+  });
+
 
   test('🚨a job the OS refuses goes to ffmpeg with the frame the movie was '
       'sized by — no frame is rendered twice', () async {
@@ -289,11 +376,7 @@ void main() {
     final rendered = <int>[];
     Future<ui.Image?> render(int index) {
       rendered.add(index);
-      final recorder = ui.PictureRecorder();
-      ui.Canvas(
-        recorder,
-      ).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
-      return recorder.endRecording().toImage(64, 48);
+      return flatPicture();
     }
 
     final service = VideoExportService(
@@ -320,9 +403,7 @@ void main() {
     if (osVideoEncoderOrSkip() == null) {
       return;
     }
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
-    final held = await recorder.endRecording().toImage(64, 48);
+    final held = await flatPicture();
     addTearDown(held.dispose);
     final service = VideoExportService(
       encoderResolver: () => QaVideoEncoder.instance,

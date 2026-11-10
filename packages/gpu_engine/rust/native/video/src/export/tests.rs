@@ -17,8 +17,9 @@ use std::sync::{Mutex, MutexGuard};
 use media::iso_box::{self, Atom};
 
 use super::{
-    qa_video_export_abort, qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_probe,
-    qa_video_export_supported, qa_video_export_write_audio, qa_video_export_write_frame,
+    qa_video_export_abort, qa_video_export_audio_lead, qa_video_export_error, qa_video_export_finish, qa_video_export_open,
+    qa_video_export_probe, qa_video_export_supported, qa_video_export_write_audio, qa_video_export_write_frame,
+    qa_video_export_write_lead,
 };
 
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
@@ -102,6 +103,12 @@ fn tried(path: Option<&str>, shape: Shape) -> i32 {
 /// read back whole; panics where a step is refused.
 fn movie(file: &PathBuf, shape: Shape, frames: i32) -> Vec<u8> {
     assert_eq!(open(Some(file.to_str().unwrap()), shape), 1, "open {shape:?}: {}", last_error());
+    written(file, shape, frames)
+}
+
+/// The open job's movie: `frames` moving frames (and their sound) written,
+/// the job finished, the file read back whole and taken away.
+fn written(file: &PathBuf, shape: Shape, frames: i32) -> Vec<u8> {
     let per_frame = if shape.channels > 0 { shape.sample_rate * shape.fps.1 / shape.fps.0 } else { 0 };
     for frame in 0..frames {
         let rgba = moving(shape.width as usize, shape.height as usize, frame as usize);
@@ -286,6 +293,48 @@ fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
             assert_eq!(pictures[0].list, None, "{name}: the pictures have no list");
         }
     }
+}
+
+/// What Windows's writer says of a lead that is not the frame it puts
+/// first (`windows.rs`, `NOT_THE_LEAD`).
+const NOT_THE_LEAD: &str = "video export: the sound before the mix is one frame, handed before any other";
+
+/// What a writer that puts no frame before the sound says of one handed
+/// to it — this code's words, on every platform but Windows.
+const NO_LEAD_HERE: &str = "video export: this writer puts no frame before the sound";
+
+// The frame before the mix is the caller's to fill where the writer puts one
+// (Windows; 유저 2026-11-10, board
+// an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2: 「무음, 범위 앞에 소리가
+// 있으면 그 소리」): that frame whole and before any other sound, since the
+// list takes 1,024 off the stream's start and no more — and the movie's list
+// reads as it does behind silence, so no second frame went in before the
+// mix. A writer that puts none says so and takes none.
+#[test]
+fn the_frame_before_the_mix_is_the_caller_s_to_fill() {
+    let _one = one_at_a_time();
+    let lead = qa_video_export_audio_lead();
+    assert_eq!(lead, if cfg!(windows) { 1024 } else { 0 }, "the frame this build's writer puts before the mix");
+    let pcm = saw(1025, 2, 0);
+    // SAFETY: `pcm` holds every count of frames it is said to.
+    let hand = |frames: i32| say(|| unsafe { qa_video_export_write_lead(pcm.as_ptr(), frames) });
+    if !cfg!(windows) {
+        assert_eq!(hand(1024), (0, NO_LEAD_HERE.to_owned()), "a writer that puts no frame takes none");
+        return;
+    }
+    let file = temp("lead", MOVIE.container);
+    assert_eq!(open(Some(file.to_str().unwrap()), MOVIE), 1, "open: {}", last_error());
+    for frames in [1023, 1025, 0, -1] {
+        assert_eq!(hand(frames), (0, NOT_THE_LEAD.to_owned()), "a lead of {frames} frames");
+    }
+    assert_eq!(hand(lead).0, 1, "the frame itself: {}", last_error());
+    assert_eq!(hand(lead), (0, NOT_THE_LEAD.to_owned()), "a second lead");
+    let laid = tracks(&written(&file, MOVIE, 24)).unwrap_or_else(|why| panic!("it reads — {why}"));
+    let mut list = vec![0, 0, 0, 0, 0, 0, 0, 1];
+    list.extend_from_slice(&48000u32.to_be_bytes());
+    list.extend_from_slice(&[0, 0, 4, 0, 0, 1, 0, 0]);
+    let sound = laid.iter().find(|track| track.format == "mp4a").and_then(|track| track.list.clone());
+    assert_eq!(sound, Some(list), "its sound starts 1,024 in and plays what was written after the lead");
 }
 
 // The bitrate by hand: an encoder spends what a small frame needs whatever

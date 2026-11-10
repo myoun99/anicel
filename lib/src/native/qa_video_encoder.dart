@@ -55,6 +55,14 @@ external int _writeFrame(Pointer<Uint8> rgba);
 )
 external int _writeAudio(Pointer<Int16> interleaved, int frames);
 
+@Native<Int32 Function()>(symbol: 'qa_video_export_audio_lead')
+external int _audioLead();
+
+@Native<Int32 Function(Pointer<Int16>, Int32)>(
+  symbol: 'qa_video_export_write_lead',
+)
+external int _writeLead(Pointer<Int16> interleaved, int frames);
+
 @Native<Int32 Function()>(symbol: 'qa_video_export_finish')
 external int _finish();
 
@@ -135,11 +143,34 @@ final class QaVideoEncoder {
 
   /// Writes interleaved int16 PCM ([frames] per channel) — call in chunks
   /// alongside the frames so neither side buffers the whole track.
-  bool writeAudio(Int16List interleaved, int frames) {
+  bool writeAudio(Int16List interleaved, int frames) =>
+      _hand(interleaved, frames, _writeAudio);
+
+  /// The frames of sound this build's writer puts before the mix, for the
+  /// caller to fill ([writeLead]) — 0 where it puts none. Windows' writer
+  /// puts one AAC frame there and says so in the movie
+  /// (`export/windows.rs`, `AUDIO_LEAD`).
+  int get audioLead => _audioLead();
+
+  /// Hands the sound just before the mix — [audioLead] frames of it,
+  /// interleaved as the mix is, before any [writeAudio]. Silence goes there
+  /// when none is handed; false, with [lastError] readable, for any other
+  /// count or once sound has gone in.
+  bool writeLead(Int16List interleaved, int frames) =>
+      _hand(interleaved, frames, _writeLead);
+
+  /// THE copy of int16 sound into the engine's reach, for whichever call
+  /// [take]s it (`native_scratch.dart`: the Int16 copy stays here until
+  /// that type has three sites — this is still its one).
+  static bool _hand(
+    Int16List interleaved,
+    int frames,
+    int Function(Pointer<Int16> interleaved, int frames) take,
+  ) {
     final buffer = calloc<Int16>(interleaved.length);
     try {
       buffer.asTypedList(interleaved.length).setAll(0, interleaved);
-      return _writeAudio(buffer, frames) != 0;
+      return take(buffer, frames) != 0;
     } finally {
       calloc.free(buffer);
     }

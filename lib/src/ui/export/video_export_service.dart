@@ -68,6 +68,19 @@ typedef VideoProcessStarter =
 Future<Process> _startProcess(String executable, List<String> arguments) =>
     Process.start(executable, arguments);
 
+/// The mix's own past: [samples] frames of the sound just before the frames
+/// the movie holds, interleaved as the mix is — or null where there is none
+/// to hand, and silence goes there.
+///
+/// Asked once, by a writer that puts a frame of sound before the mix and
+/// says in the movie to play from behind it ([QaVideoEncoder.audioLead] —
+/// Windows'; 유저 2026-11-10, board
+/// an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2: 「무음, 범위 앞에 소리가
+/// 있으면 그 소리」). A mix that starts in the middle of a wave comes back
+/// closer behind its own past than behind silence (`export/windows.rs`,
+/// `AUDIO_LEAD`).
+typedef SoundBefore = Future<Int16List?> Function(int samples);
+
 /// Resolves the OS encoder for this run; null keeps the ffmpeg path.
 /// Widget tests must never bind a real encoder — same gate the audio
 /// device uses.
@@ -256,6 +269,7 @@ class VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
+    SoundBefore? soundBefore,
     ExportVideoContainer container = ExportVideoContainer.mp4,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
@@ -294,6 +308,7 @@ class VideoExportService {
         outputFilePath: outputFilePath,
         frameRate: frameRate,
         audioMixPath: audioMixPath,
+        soundBefore: soundBefore,
         container: container,
         codec: codec,
         alpha: alpha,
@@ -411,6 +426,7 @@ class VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     required String? audioMixPath,
+    required SoundBefore? soundBefore,
     required ExportVideoContainer container,
     required ExportVideoCodec codec,
     required bool alpha,
@@ -451,6 +467,7 @@ class VideoExportService {
         return _OsEncoderFeed(
           encoder: encoder,
           audio: audio,
+          soundBefore: soundBefore,
           frameRate: frameRate,
         );
       }
@@ -599,11 +616,16 @@ class _OsEncoderFeed implements _FrameSink {
   _OsEncoderFeed({
     required this.encoder,
     required this.audio,
+    required this.soundBefore,
     required this.frameRate,
   });
 
   final QaVideoEncoder encoder;
   final ConformPcmStreamReader? audio;
+
+  /// What the frame before [audio] holds, where the caller has it
+  /// ([_fillTheLead]).
+  final SoundBefore? soundBefore;
   final ProjectFrameRate frameRate;
 
   @override
@@ -622,11 +644,32 @@ class _OsEncoderFeed implements _FrameSink {
     if (rgba == null) {
       return false;
     }
+    // Before the first frame, and so before any of its sound.
+    if (written == 0 && !await _fillTheLead()) {
+      return false;
+    }
     if (!encoder.writeFrame(rgba)) {
       return false;
     }
     written += 1;
     return _feedAudioUpTo(written);
+  }
+
+  /// Fills the frame the writer puts before the mix with the mix's own
+  /// past ([soundBefore]). The writer's silence stays where the caller has
+  /// none to hand, where the movie has no sound, and where the writer puts
+  /// no frame ([QaVideoEncoder.audioLead]). False means the encoder refused
+  /// what it was handed and the run is over.
+  Future<bool> _fillTheLead() async {
+    final before = soundBefore;
+    final reader = audio;
+    final samples = encoder.audioLead;
+    if (before == null || reader == null || samples == 0) {
+      return true;
+    }
+    final lead = await before(samples);
+    return lead == null ||
+        encoder.writeLead(lead, lead.length ~/ reader.channels);
   }
 
   /// A CANCELLED run finalizes a playable partial — the pipe path's

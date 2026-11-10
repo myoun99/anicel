@@ -27,7 +27,10 @@
 //!     the encoder that wants it.
 //!   - `write_audio()` takes interleaved int16 PCM chunks, interleaved with
 //!     the frames by the caller so no side buffers the whole track. Windows
-//!     puts a frame of its own before the first (`windows.rs`, `AUDIO_LEAD`).
+//!     puts a frame before the first (`windows.rs`, `AUDIO_LEAD`):
+//!     `audio_lead()` says how long it is — 0 where a writer puts none —
+//!     and `write_lead()` takes the sound just before the mix to fill it,
+//!     silence going there when it is handed none.
 //!   - `finish()` finalizes the file (a cancelled run finalizes a playable
 //!     partial, matching the ffmpeg path's behavior) — and on Windows writes
 //!     into it where its sound starts (`edit_list`); `abort()` discards.
@@ -239,6 +242,37 @@ pub unsafe extern "C" fn qa_video_export_write_frame(rgba: *const u8) -> i32 {
 pub unsafe extern "C" fn qa_video_export_write_audio(interleaved: *const i16, frames: i32) -> i32 {
     // SAFETY: the caller's contract.
     unsafe { os::write_audio(interleaved, frames) as i32 }
+}
+
+/// The frames of sound this build's writer puts before the mix, for the
+/// caller to fill ([`qa_video_export_write_lead`]): 0 where it puts none.
+/// Only Windows' writer puts one (`windows.rs`, `AUDIO_LEAD`) — Apple's and
+/// Android's muxers lay their own start and are handed nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_video_export_audio_lead() -> i32 {
+    #[cfg(windows)]
+    return os::AUDIO_LEAD as i32;
+    #[cfg(not(windows))]
+    0
+}
+
+/// The sound just before the mix — [`qa_video_export_audio_lead`] frames of
+/// it, before any other sound. A writer that puts no frame there takes
+/// none.
+///
+/// # Safety
+/// `interleaved` is null or holds `frames` × the channels `open` was given.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_export_write_lead(interleaved: *const i16, frames: i32) -> i32 {
+    #[cfg(windows)]
+    // SAFETY: the caller's contract.
+    return unsafe { os::write_lead(interleaved, frames) as i32 };
+    #[cfg(not(windows))]
+    {
+        let _ = (interleaved, frames);
+        set_error("video export: this writer puts no frame before the sound");
+        0
+    }
 }
 
 #[unsafe(no_mangle)]

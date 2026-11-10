@@ -14,6 +14,7 @@
 library;
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../models/audio_pcm_scale.dart';
@@ -21,6 +22,7 @@ import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/wav16_header.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/media/media_byte_source.dart' show MediaFileBytes;
 import '../playback/audio_playback_schedule.dart'
     show AudioMixSchedule, ScheduledAudioClip, audioMixScheduleFrom;
 
@@ -89,6 +91,30 @@ Future<bool> writeExportAudioMixWav({
     totalSamples: rate.frameToSample(totalFrames, sampleRate),
   );
   return true;
+}
+
+/// The last [samples] frames of the mix at [path], interleaved as it was
+/// written — behind silence where the mix is shorter than that, for nothing
+/// sounded before it began. Null where the file cannot be read as a mix.
+///
+/// What a writer that puts a frame of sound before a movie's mix is handed
+/// (`SoundBefore`, video_export_service.dart): the mix of the frames before
+/// the movie's first ends where the movie's own begins, so its END is the
+/// movie's past.
+Int16List? exportAudioMixTail(String path, int samples) {
+  final reader = ConformPcmStreamReader.overWav16(MediaFileBytes(path));
+  if (reader == null || samples <= 0) {
+    return null;
+  }
+  final held = math.min(samples, reader.length);
+  final tail = reader.readWindow(reader.length - held, held).samples;
+  // A window that came back short is a file that could not be read.
+  if (tail.length != held * reader.channels) {
+    return null;
+  }
+  final pcm = Int16List(samples * reader.channels);
+  int16PcmOf(tail, into: Int16List.sublistView(pcm, pcm.length - tail.length));
+  return pcm;
 }
 
 /// ONE export mix on its way to disk, in the three phases it always had:

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data' show Int16List;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -3020,6 +3021,7 @@ class ExportDialogState extends State<ExportDialog> {
         outputFilePath: path,
         frameRate: _session.projectSettings.projectFrameRate,
         audioMixPath: audioMixPath,
+        soundBefore: (samples) => _soundBefore(plan, samples),
         container: format.container,
         codec: format.videoCodec,
         alpha: alphaVideo,
@@ -3032,12 +3034,50 @@ class ExportDialogState extends State<ExportDialog> {
       // The pictures the run held from one frame to the next.
       renderer.dispose();
       if (audioMixPath != null) {
-        try {
-          File(audioMixPath).deleteSync();
-        } on Object {
-          // A leftover temp mix is untidy, not an export failure.
-        }
+        _dropTempMix(audioMixPath);
       }
+    }
+  }
+
+  /// The sound just before [plan]'s first frame — [samples] of it, off the
+  /// mixer the film's own sound comes from ([_renderAudioMix], of the frames
+  /// the timeline holds before the plan's) — or null where nothing there is
+  /// audible.
+  ///
+  /// What a writer that puts a frame of sound before the mix asks for
+  /// (`SoundBefore`: 유저 2026-11-10, 「무음, 범위 앞에 소리가 있으면 그 소리」).
+  Future<Int16List?> _soundBefore(
+    List<ExportFrameTask> plan,
+    int samples,
+  ) async {
+    final frames = _session.projectSettings.projectFrameRate
+        .framesCoveringExactSeconds(
+          samples,
+          _session.audioConformStore.projectSampleRate,
+        );
+    final path = await _renderAudioMix(
+      exportFramesBefore(
+        plan,
+        frames,
+        project: _session.repository.requireProject(),
+      ),
+    );
+    if (path == null) {
+      return null;
+    }
+    try {
+      return exportAudioMixTail(path, samples);
+    } finally {
+      _dropTempMix(path);
+    }
+  }
+
+  /// Deletes a temp mix [_renderAudioMix] wrote, once what read it is done.
+  static void _dropTempMix(String path) {
+    try {
+      File(path).deleteSync();
+    } on Object {
+      // A leftover temp mix is untidy, not an export failure.
     }
   }
 

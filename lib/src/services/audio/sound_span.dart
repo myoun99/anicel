@@ -103,3 +103,40 @@ Int16List int16PcmOfFrames(
   }
   return pcm;
 }
+
+/// The [count] sound frames [source] plays just before its sample [sample],
+/// as interleaved 16-bit PCM — silence where its sound has not begun yet or
+/// is already over. Null when nothing lies before [sample], or the sound
+/// cannot be decoded.
+///
+/// What a movie piece's writer puts before the piece's own sound where it
+/// has a frame there (`QaVideoEncoder.audioLead`, movie_span.dart): the
+/// piece then comes out of the encoder behind its own past, as the span
+/// lay in the movie it was cut from.
+Int16List? int16PcmBefore(
+  MediaByteSource source,
+  int sample, {
+  required int count,
+}) {
+  // May lie before the sound's first sample: silence stands there.
+  final first = sample - count;
+  final start = first < 0 ? 0 : first;
+  if (sample <= start) {
+    return null;
+  }
+  final decoded = decodeAudioSource(
+    source,
+    window: (start: start, count: sample - start),
+  );
+  if (decoded == null || decoded.channels <= 0) {
+    return null;
+  }
+  final pcm = Int16List(count * decoded.channels);
+  final at = (start - first) * decoded.channels;
+  final held = decoded.samples.length.clamp(0, pcm.length - at);
+  int16PcmOf(
+    Float32List.sublistView(decoded.samples, 0, held),
+    into: Int16List.sublistView(pcm, at, at + held),
+  );
+  return pcm;
+}
