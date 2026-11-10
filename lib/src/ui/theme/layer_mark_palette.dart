@@ -33,7 +33,6 @@ import '../../models/layer_process.dart';
 const Map<LayerProcess, int> _processColors = {
   LayerProcess.paper: 0xFFFFA463,
   LayerProcess.conte: 0xFFD1BAF7,
-  LayerProcess.art: 0xFF6BB3F7,
   LayerProcess.layout: 0xFFFFFDF7,
   LayerProcess.roughKey: 0xFFAEFCF2,
   LayerProcess.key: 0xFFB5FDB0,

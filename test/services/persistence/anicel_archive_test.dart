@@ -344,12 +344,21 @@ void main() {
   // drops the word and its next save writes the rows back linked across
   // timelines with no sync, nothing said — so a file this build writes says
   // a number a v33 build refuses as a newer Anicel's. No older shape went
-  // for it: a v33 file is read here, the floor.
+  // for it, so a v33 file was read here, until format 35's floor.
   test('🚨a file that may hold a 동기컷 says a format a v33 build refuses '
       'as newer', () {
     expect(anicelFormatVersion, greaterThan(33));
-    final v33 = decodeAnicelProjectDocument(documentSaying(33)).project;
-    expect(v33.linkRegistry.syncs, isEmpty);
+  });
+
+  // F-578 (format 35): a colour label has no 美術. A v34 file's `"process":
+  // "art"` names no process here and would open unlabelled, its revise gone
+  // with it — so it is refused by its number, to be carried over by hand.
+  test('🚨a v34 file is refused by its number — its labels may say 美術', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(34)),
+      refusesNaming('format 34,'),
+    );
+    expect(anicelFormatVersion, greaterThan(34));
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {

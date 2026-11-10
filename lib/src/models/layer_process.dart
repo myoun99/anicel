@@ -12,16 +12,19 @@
 /// 뺄수있고**」.
 library;
 
-/// 공정 — 대분류(용지·콘티·미술)와 셀 안의 작업 단계를 한 벌로 둡니다.
+/// 공정 — 대분류(용지·콘티)와 셀 안의 작업 단계를 한 벌로 둡니다.
 ///
-/// ⚠️미술은 BG와 BOOK을 **나누지 않습니다**(유저: 「BG랑 BOOK이랑 나누지말라고.
-/// 美術라는. 미술이라는 항목으로 합치고」).
+/// 🗣️美術 은 없습니다(F-578, 유저 2026-11-10: 「색라벨의 미술이란 공정
+/// 없앨까 생각중. 어차피 이 미술(원도) 그림은, 레이아웃작업자가 그리고, 그걸
+/// 레이아웃연출/레이아웃작감등이 수정하는거라 공정을 나눌 필요가 없음」) —
+/// BG · BOOK 은 LO 로 태어나고 종류 아이콘으로 구분합니다(F-578-Q1).
+/// ↩️미술은 BG 와 BOOK 을 나누지 않는 한 항목이었습니다(유저 08-27: 「BG랑
+/// BOOK이랑 나누지말라고. 美術라는. 미술이라는 항목으로 합치고」).
 enum LayerProcess {
   /// 用紙 — 그림이 아니라 종이. ⚠️TVPaint 스샷에는 「TAP」으로 되어 있지만
   /// 유저 정정(2026-08-27): 「그게아니라 **용지**로 하자. 이름. 用紙」.
   paper('paper', 'Paper', 'PAP'),
   conte('conte', 'Storyboard', 'SB'),
-  art('art', 'Art', 'ART'),
   layout('layout', 'Layout', 'LO'),
   roughKey('rough-key', 'Rough Key', 'RK'),
   key('key', 'Key', 'KEY'),
@@ -113,6 +116,6 @@ List<LayerRevise> revisesFor(LayerProcess process) => switch (process) {
   // 동화와 시아게는 여섯에 더해 자기 검사를 하나씩 답니다.
   LayerProcess.inbetween => const [..._drawingRevises, LayerRevise.inbetweenCheck],
   LayerProcess.finish => const [..._drawingRevises, LayerRevise.cellCheck],
-  // 나머지는 여섯 전부 — 미술도 포함입니다(유저 2026-08-27).
+  // 나머지(LO · 러프원 · 원화)는 여섯 전부.
   _ => _drawingRevises,
 };

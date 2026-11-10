@@ -811,7 +811,6 @@ bool layerTakesTheCelBlock(Layer layer) => switch (celStageOf(layer)) {
 /// F-578).
 LayerProcess? celStageOf(Layer layer) => switch (layer.mark.process) {
   null ||
-  LayerProcess.art ||
   LayerProcess.layout ||
   LayerProcess.roughKey ||
   LayerProcess.key => LayerProcess.key,

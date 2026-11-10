@@ -62,9 +62,13 @@ class LayerMark {
   /// 2026-09-12): 「콘티레이어 생성하면 색라벨 콘티 소재가 되도록. 이미지
   /// 레이어는 미술 소재, 애니메이션 레이어는 LO 소재」 — the kind's stage, as its
   /// 소재. The kinds the user did not name are born unlabelled.
+  ///
+  /// 🗣️F-578 (유저 2026-11-10): an image row is born LO 소재 like an
+  /// animation row — 美術 is gone, its pictures being the layout artist's
+  /// ([LayerProcess]). ↩️It was born 美術 소재 (F-76).
   static LayerMark bornOfKind(LayerKind kind) => switch (kind) {
     LayerKind.storyboard => const LayerMark(process: LayerProcess.conte),
-    LayerKind.image => const LayerMark(process: LayerProcess.art),
+    LayerKind.image ||
     LayerKind.animation => const LayerMark(process: LayerProcess.layout),
     LayerKind.folder ||
     LayerKind.se ||
@@ -241,9 +245,10 @@ enum StaffHolder {
 }
 
 /// Who keeps [process]'s staff — null for 用紙, which is nobody's work
-/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」), and for 美術
-/// (유저 2026-10-28, F-291: 「컷 설정의 미술 항목 전부 삭제. 작업자나
-/// 연출이나 포함해서 미술이란 항목 통째로. 필요없음」). The labels keep both.
+/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」). The label keeps it.
+/// ↩️美術 had none either (유저 2026-10-28, F-291: 「컷 설정의 미술 항목 전부
+/// 삭제. 작업자나 연출이나 포함해서 미술이란 항목 통째로. 필요없음」) until
+/// F-578 took 美術 out of the labels too.
 ///
 /// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
 /// 공통적인 부분인 제목/화수/회사로고/표지그림등만 남겨두고, 스태프는 콘티만
@@ -251,7 +256,7 @@ enum StaffHolder {
 /// stage's name and a cut's own name stood over it (09-25: 작품 설정에는
 /// 기본값, 컷 설정에는 컷별 이름).
 StaffHolder? staffHolderOf(LayerProcess process) => switch (process) {
-  LayerProcess.paper || LayerProcess.art => null,
+  LayerProcess.paper => null,
   LayerProcess.conte => StaffHolder.work,
   _ => StaffHolder.cut,
 };

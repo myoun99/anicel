@@ -59,7 +59,7 @@ void main() {
           id: const LayerId('book'),
           name: 'BOOK',
           kind: LayerKind.image,
-          mark: const LayerMark(process: LayerProcess.art),
+          mark: const LayerMark(process: LayerProcess.layout),
           frames: [cel('book-1')],
           timeline: const {
             0: TimelineExposure.drawing(FrameId('book-1'), length: 24),

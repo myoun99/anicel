@@ -26,7 +26,7 @@ enum ExportCelKind {
   /// 출력하듯이 캔버스에 콘티그림있는채로 일반 셀이랑 똑같이」).
   conte(defaultPrefix: ''),
 
-  /// The rows labelled 미술.
+  /// The image rows, by their layer kind (F-578). ↩️The rows labelled 미술.
   art(defaultPrefix: '_'),
 
   /// The direction rows.
@@ -43,6 +43,13 @@ enum ExportCelKind {
   /// 컷마다 영상 출력하는것임」). Its prefix is the documents' — my call, not
   /// the user's.
   video(defaultPrefix: '_');
+
+  /// Whether this kind's rows pass the colour label filter by their own
+  /// mark — the cels and the images (🗣️F-578, 유저 2026-11-10: 「해당
+  /// 공정에서 발생한걸 내보낸다」); the others go out while their kind is on.
+  /// ↩️The cels alone (F-289).
+  bool get wearsTheLabel =>
+      this == ExportCelKind.cel || this == ExportCelKind.art;
 
   /// Whether this kind is a document of the cut rather than a kind of its
   /// rows.

@@ -48,6 +48,10 @@ bool markWearsLabel(LayerMark mark, LayerMark label) =>
 /// An attach row is of its BASE's kind: it goes out in its base's cels, and
 /// the window lists it under its base — so a kind that is off takes a base
 /// and what rides it out of the list together.
+///
+/// 🗣️F-578 (유저 2026-11-10): an image row is the image kind by its LAYER
+/// kind, whatever it wears — 美術 is gone from the labels. ↩️A drawing row
+/// labelled 美術 was art and an image row with another label a cel.
 ExportCelKind? exportCelKindOf(Layer layer, List<Layer> layers) {
   if (!layer.kind.exportsCels || isExportPaperRow(layer)) {
     return null;
@@ -56,10 +60,8 @@ ExportCelKind? exportCelKindOf(Layer layer, List<Layer> layers) {
   return switch (owner?.kind) {
     LayerKind.instruction => ExportCelKind.direction,
     LayerKind.storyboard => ExportCelKind.conte,
-    LayerKind.animation || LayerKind.image =>
-      owner!.mark.process == LayerProcess.art
-          ? ExportCelKind.art
-          : ExportCelKind.cel,
+    LayerKind.image => ExportCelKind.art,
+    LayerKind.animation => ExportCelKind.cel,
     _ => null,
   };
 }
@@ -118,13 +120,15 @@ bool exportCelsHeadsAStack(
 ///    row while [CelsExportSpec.attach]. Attach alone is the parts without
 ///    their base (the base still numbers the cels — the planner's axis). A
 ///    direction row is neither, and passes.
-/// 3. The label — a CEL row stays only when its OWN mark wears
-///    [CelsExportSpec.label]. Attach rows too: 「LO 작감만」 is a row filter,
-///    so a 作監 correction riding a 上がり base is in for 작감 and out for
-///    上がり, whatever its base wears. The other kinds do not answer to the
-///    label — an art row is art whatever it wears (drawn so in the F-289
-///    mock and confirmed, 유저 2026-10-06: 「확인 넷 다 그대로 ok」; the
-///    other kinds' rows are on while their kind is).
+/// 3. The label — a cel row and an image row stay only when their OWN mark
+///    wears [CelsExportSpec.label]. Attach rows too: 「LO 작감만」 is a row
+///    filter, so a 作監 correction riding a 上がり base is in for 작감 and out
+///    for 上がり, whatever its base wears. 🗣️F-578 (유저 2026-11-10: 「해당
+///    공정에서 발생한걸 내보낸다」): the LO filter takes LO's BG/BOOK, the LO
+///    작감 one the image rows of LO 작감. The other kinds do not answer to
+///    the label — their rows are on while their kind is. ↩️An art row was
+///    art whatever it wore (drawn so in the F-289 mock and confirmed, 유저
+///    2026-10-06: 「확인 넷 다 그대로 ok」).
 /// 4. The take — [CelsExportSpec.take], or 「최신」: the highest take among
 ///    rows sharing a name that passed the label.
 /// 5. [delta] wins last, per layer id — the user asked for that row.
@@ -195,7 +199,7 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
   if (!(isAttachedLayer(layer) ? spec.attach : spec.base)) {
     return false;
   }
-  if (kind == ExportCelKind.cel && !markWearsLabel(layer.mark, spec.label)) {
+  if (kind.wearsTheLabel && !markWearsLabel(layer.mark, spec.label)) {
     return false;
   }
   return spec.take == null || layer.mark.take == spec.take;

@@ -177,7 +177,6 @@ void main() {
       // 컷봉투의 원화 갯수 샌다던가 그런거도 다 법 통일」.
       const counted = <LayerProcess?, (int, int, int)?>{
         null: (1, 0, 0),
-        LayerProcess.art: (1, 0, 0),
         LayerProcess.layout: (1, 0, 0),
         LayerProcess.roughKey: (1, 0, 0),
         LayerProcess.key: (1, 0, 0),

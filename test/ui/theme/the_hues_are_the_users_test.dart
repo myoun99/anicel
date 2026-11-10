@@ -11,14 +11,15 @@ import 'package:anicel/src/ui/theme/layer_mark_palette.dart';
 /// here once already, while their reference sat unopened.
 ///
 /// A mark's colour is not a small swatch: it is the PAPER of that layer's
-/// frame blocks, so it lands across whole rows. This pins the three things
-/// the user said out loud, plus the rule that makes the revise column work.
+/// frame blocks, so it lands across whole rows. This pins the things the
+/// user said out loud, plus the rule that makes the revise column work.
+/// ↩️「BG는 파랑색」 was 美術's, and went with it (F-578, 유저 2026-11-10).
 void main() {
   const none = Color(0xFF123456);
 
   Color colorOf(LayerMark mark) => resolveLayerMarkColor(mark, noneColor: none);
 
-  /// A colour's dominant channel, which is how "흰색 / 초록색 / 파랑색"
+  /// A colour's dominant channel, which is how "흰색 / 초록색"
   /// reads back out of an ARGB value.
   String hueOf(Color color) {
     final r = (color.toARGB32() >> 16) & 0xFF;
@@ -29,9 +30,6 @@ void main() {
     }
     if (g > r && g > b) {
       return 'green';
-    }
-    if (b > r && b > g) {
-      return 'blue';
     }
     return 'other';
   }
@@ -45,10 +43,6 @@ void main() {
 
   test('🚨원화는 초록색', () {
     expect(hueOf(colorOf(const LayerMark(process: LayerProcess.key))), 'green');
-  });
-
-  test('🚨BG(art)는 파랑색', () {
-    expect(hueOf(colorOf(const LayerMark(process: LayerProcess.art))), 'blue');
   });
 
   test('an UNLABELLED row wears the paper the theme passed in — this file '

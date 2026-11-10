@@ -48,10 +48,11 @@ void main() {
   setUp(() => saved = AppColors.accentSettings.value);
   tearDown(() => AppColors.accentSettings.value = saved);
 
-  test('스샷에서 뽑은 색상이 그대로 나온다 — LO는 흰색, 원화는 초록, 미술은 파랑', () {
+  test('스샷에서 뽑은 색상이 그대로 나온다 — LO는 흰색, 원화는 초록', () {
     // ⚠️These are the user's own hues, measured out of `board-shots/`. A test
     // that only said 「어떤 색이 나온다」 would have passed on the palette I
-    // invented before opening those files.
+    // invented before opening those files. ↩️미술은 파랑(「BG는 파랑색이었고」)
+    // went with 美術 (F-578, 유저 2026-11-10).
     //
     // 🪦값 자체는 **크림 톤**의 것이다. 네 톤을 다 구현해 실기에서 고르게
     // 했었고(I-4), 크림으로 확정된 뒤 나머지 셋과 고르는 장치를 걷었다
@@ -66,11 +67,6 @@ void main() {
       layerMarkColor(const LayerMark(process: LayerProcess.key)),
       const Color(0xFFB5FDB0),
       reason: '유저: 「원화는 초록색이었고」',
-    );
-    expect(
-      layerMarkColor(const LayerMark(process: LayerProcess.art)),
-      const Color(0xFF6BB3F7),
-      reason: '유저: 「BG는 파랑색이었고」',
     );
   });
 

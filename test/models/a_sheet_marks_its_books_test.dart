@@ -128,7 +128,6 @@ void main() {
     // 액션란 취급인걸로 ok」.
     const books = {
       null,
-      LayerProcess.art,
       LayerProcess.layout,
       LayerProcess.roughKey,
       LayerProcess.key,
