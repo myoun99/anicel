@@ -10,6 +10,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/clipboard/layer_copy_payload.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -176,6 +177,25 @@ void main() {
     pill(s).pasteLinkedFrame();
 
     expectFoldedAsCopied(s);
+  });
+
+  // The payload re-spelled — how a paste into another project writes its
+  // terms (I-7), and how a conte rider lands with no base under it — is
+  // the payload still: it folds as the row did.
+  test('a payload re-spelled keeps the fold and the twirl', () {
+    final source = row('F', kind: LayerKind.folder).copyWith(
+      collapsed: true,
+      lanesExpanded: true,
+      expandedLaneGroups: {transform()},
+    );
+
+    final respelled = copyLayerToPayload(
+      source,
+    ).copyWith(kind: LayerKind.animation, timeline: const {});
+
+    expect(respelled.collapsed, isTrue);
+    expect(respelled.lanesExpanded, isTrue);
+    expect(respelled.expandedLaneGroups, {transform()});
   });
 
   test('a twirled row alone, pasted either way, twirls as it did', () {
