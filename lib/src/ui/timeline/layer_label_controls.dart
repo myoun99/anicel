@@ -1,6 +1,4 @@
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestEntry;
 
@@ -346,17 +344,16 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
   if (remembered != null && remembered.key == key) {
     return remembered.columns;
   }
-  final opacity =
-      layerOpacitySlotWidth + FieldSlider.widthGrowthIn(context, const ['100']);
   final columns = (
-    opacity: opacity,
-    // As much wider as its widest word, and never narrower than an S row's
-    // speaker and Total ([layerBlendSlotWidth]) — the bar grows with its
-    // digits, the speaker's box does not.
-    blend: math.max(
-      layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
-      opacity + layerGraphSlotWidth,
-    ),
+    opacity:
+        layerOpacitySlotWidth +
+        FieldSlider.widthGrowthIn(context, const ['100']),
+    // As much wider as its widest word — and so never narrower than an S
+    // row's speaker and Total ([layerBlendSlotWidth]): its widest word is
+    // wider than the bar's 「100」, so it grows more than the bar does.
+    // 🔬2026-11-11, en · ja · ko · fr · zh-Hans at 1–3×: never less, equal
+    // at 1×. ↩️A floor of the bar's growth stood here and never bound.
+    blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
     // Two boxes, each as much wider as its name and its widest number.
     laneValue:
         layerLaneValueSlotWidth +
