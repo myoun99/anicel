@@ -7,8 +7,9 @@
 import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:collection/collection.dart' show ListExtensions;
 
 import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
@@ -389,8 +390,8 @@ final class ClipImportDoor {
     try {
       final work = _workOf(read._plan, ClipContainer.indexOf(reader), warnings);
       final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
-      for (var at = 0; at < work.length; at += pool) {
-        final wave = work.sublist(at, math.min(at + pool, work.length));
+      var baked = 0;
+      for (final wave in work.slices(pool)) {
         Future<Uint8List> read(ClipPlace place) async {
           await reader.setPosition(place.offset);
           return reader.read(place.length);
@@ -415,7 +416,8 @@ final class ClipImportDoor {
         ]);
         for (var w = 0; w < wave.length; w += 1) {
           await _bakeDecoded(decoded[w], wave[w], warnings);
-          onProgress?.call((at + w + 1) / work.length);
+          baked += 1;
+          onProgress?.call(baked / work.length);
           MaterializeCancelled.throwIf(isCancelled);
         }
       }

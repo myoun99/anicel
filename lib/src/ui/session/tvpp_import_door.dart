@@ -11,8 +11,8 @@
 import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math' as math;
 
+import 'package:collection/collection.dart' show ListExtensions;
 import 'package:flutter/foundation.dart';
 
 import '../../core/worker_count.dart';
@@ -284,8 +284,7 @@ class TvppImportDoor {
     final source = read._source;
     final reader = await File(source.path).open();
     try {
-      for (var at = 0; at < work.length; at += pool) {
-        final wave = work.sublist(at, math.min(at + pool, work.length));
+      for (final wave in work.slices(pool)) {
         final decoded = await decodeWave(
           wave,
           await _readWaveWindows(reader, wave),
