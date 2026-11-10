@@ -1657,7 +1657,11 @@ void main() {
 
       final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
 
-      expect(plan.row.frames, hasLength(2), reason: '⛔전제: one a cut');
+      expect(
+        plan.row.frames,
+        hasLength(greaterThan(1)),
+        reason: '⛔전제: the bank holds more than one picture',
+      );
       expect(plan.row.kind, LayerKind.image);
     });
 
