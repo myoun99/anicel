@@ -1,7 +1,7 @@
-import 'dart:async';
-
 import 'package:anicel/src/services/persistence/autosave_clock.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/due_timers.dart';
 
 /// **F-1 — autosave is a clock, and that is the whole policy.**
 ///
@@ -14,35 +14,26 @@ import 'package:flutter_test/flutter_test.dart';
 /// snapshot beside it. What survives is the clock and the one thing it
 /// still has to get right: never landing a write mid-stroke.
 void main() {
-  /// A fake scheduler: timers fire when the test says so, so nothing here
+  /// The clock's timers, fired when the test says so, so nothing here
   /// waits on real minutes.
   ///
-  /// 🚨It has to honour CANCEL. The clock restarts by cancelling and
-  /// rescheduling, so a fake that only appends makes "one countdown is
-  /// pending" unaskable — and that is precisely what the ceiling tests are
-  /// about.
-  late List<_Pending> scheduled;
+  /// 🚨They honour CANCEL ([DueTimers.running]). The clock restarts by
+  /// cancelling and rescheduling, so timers that only pile up make "one
+  /// countdown is pending" unaskable — and that is precisely what the
+  /// ceiling tests are about.
+  late DueTimers timers;
   late int snapshots;
-
-  Timer schedule(Duration duration, void Function() callback) {
-    final pending = _Pending(duration, callback);
-    scheduled.add(pending);
-    return _FakeTimer(() => scheduled.remove(pending));
-  }
 
   AutosaveClock clockOf() => AutosaveClock(
     onSnapshot: () => snapshots += 1,
-    scheduler: schedule,
+    scheduler: timers.arm,
   );
 
-  /// Fires the countdown that is currently pending.
-  void fireLatest() {
-    final pending = scheduled.removeLast();
-    pending.callback();
-  }
+  /// The countdown pending now.
+  Due pending() => timers.running.single;
 
   setUp(() {
-    scheduled = [];
+    timers = DueTimers();
     snapshots = 0;
   });
 
@@ -50,7 +41,7 @@ void main() {
     test('a clock with no interval schedules nothing and never fires', () {
       final clock = clockOf()..configure();
       expect(clock.isRunning, isFalse);
-      expect(scheduled, isEmpty);
+      expect(timers.armed, isEmpty);
       addTearDown(clock.dispose);
     });
 
@@ -72,12 +63,12 @@ void main() {
         ..configure(interval: const Duration(minutes: 10));
       addTearDown(clock.dispose);
 
-      expect(scheduled.single.duration, const Duration(minutes: 10));
-      fireLatest();
+      expect(pending().after, const Duration(minutes: 10));
+      pending().fire();
 
       expect(snapshots, 1);
       expect(
-        scheduled.single.duration,
+        pending().after,
         const Duration(minutes: 10),
         reason: 'a fire restarts the count — this is a repeating clock',
       );
@@ -86,14 +77,14 @@ void main() {
     test('🔑 counts from the last SNAPSHOT: a manual save restarts it', () {
       final clock = clockOf()..configure(interval: const Duration(minutes: 10));
       addTearDown(clock.dispose);
-      final first = scheduled.single;
+      final first = pending();
 
       clock.standDown();
 
       expect(snapshots, 0, reason: 'standing down writes nothing itself');
-      expect(scheduled, hasLength(1));
+      expect(timers.running, hasLength(1));
       expect(
-        identical(scheduled.single, first),
+        identical(pending(), first),
         isFalse,
         reason:
             'a fresh countdown — ten minutes means "never more than ten '
@@ -104,22 +95,22 @@ void main() {
     test('turning it on starts counting from NOW, not from app launch', () {
       final clock = clockOf()..configure();
       addTearDown(clock.dispose);
-      expect(scheduled, isEmpty);
+      expect(timers.armed, isEmpty);
 
       clock.configure(interval: const Duration(minutes: 3));
 
-      expect(scheduled.single.duration, const Duration(minutes: 3));
+      expect(pending().after, const Duration(minutes: 3));
     });
 
     test('⛔reconfiguring to the SAME interval does not restart it', () {
       final clock = clockOf()..configure(interval: const Duration(minutes: 10));
       addTearDown(clock.dispose);
-      final first = scheduled.single;
+      final first = pending();
 
       clock.configure(interval: const Duration(minutes: 10));
 
       expect(
-        identical(scheduled.single, first),
+        identical(pending(), first),
         isTrue,
         reason:
             'the settings notifier fires on every unrelated change (a '
@@ -135,7 +126,7 @@ void main() {
       addTearDown(clock.dispose);
 
       clock.noteActivity(strokeInFlight: true);
-      fireLatest();
+      pending().fire();
 
       expect(snapshots, 0, reason: 'held, not written');
       expect(clock.isDeferred, isTrue);
@@ -151,12 +142,12 @@ void main() {
       addTearDown(clock.dispose);
 
       clock.noteActivity(strokeInFlight: true);
-      fireLatest();
-      expect(scheduled, isEmpty, reason: 'the fired timer is spent');
+      pending().fire();
+      expect(timers.running, isEmpty, reason: 'the fired timer is spent');
 
       clock.noteActivity();
 
-      expect(scheduled.single.duration, const Duration(minutes: 10));
+      expect(pending().after, const Duration(minutes: 10));
     });
 
     test('⛔a pen-up with nothing deferred writes nothing', () {
@@ -181,7 +172,7 @@ void main() {
 
       clock.noteActivity(strokeInFlight: true);
       clock.noteActivity(strokeInFlight: true);
-      fireLatest();
+      pending().fire();
       clock.noteActivity();
       clock.noteActivity();
 
@@ -191,47 +182,22 @@ void main() {
 
   test('a disposed clock neither schedules nor fires', () {
     final clock = clockOf()..configure(interval: const Duration(minutes: 10));
-    final pending = scheduled.single;
+    final countdown = pending();
     clock.dispose();
 
     expect(clock.isRunning, isFalse);
-    pending.callback();
     clock.configure(interval: const Duration(minutes: 3));
 
     expect(snapshots, 0);
     expect(
-      scheduled,
-      isEmpty,
-      reason: 'dispose cancelled the pending one and scheduled no more',
+      timers.armed,
+      [countdown],
+      reason: 'it scheduled no more',
+    );
+    expect(
+      countdown.isActive,
+      isFalse,
+      reason: 'dispose cancelled the pending one',
     );
   });
-}
-
-/// One scheduled countdown the test can fire by hand.
-class _Pending {
-  _Pending(this.duration, this.callback);
-
-  final Duration duration;
-  final void Function() callback;
-}
-
-/// A [Timer] that only knows how to be cancelled — which is the one thing
-/// the clock asks of it.
-class _FakeTimer implements Timer {
-  _FakeTimer(this._onCancel);
-
-  final void Function() _onCancel;
-  bool _active = true;
-
-  @override
-  void cancel() {
-    _active = false;
-    _onCancel();
-  }
-
-  @override
-  bool get isActive => _active;
-
-  @override
-  int get tick => 0;
 }
