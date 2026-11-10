@@ -85,6 +85,20 @@ impl Kernels {
     }
 }
 
+/// A turn at the device's shader compiler: what [`Engine::compiling`] runs
+/// is handed one, and a compile asks for it (`kernels::shared`, `compiled`)
+/// — so no two are in the compiler at once, whatever threads ask.
+///
+/// ⛔One at a time: what DXC makes is not thread-safe — 「objects created by
+/// DxcCreateInstance aren't thread-safe」 (DXC wiki, "Using dxc.exe and
+/// dxcompiler.dll") — and wgpu-hal 30 compiles on the device's one
+/// `IDxcCompiler3` from whatever thread asks, with no lock
+/// (dx12/shader_compilation.rs, `CompilerDynamicDxc`). ↩️A plugin's compile
+/// ran on its own thread beside the engine's till 2026-11-11, the one
+/// compiler under both whenever a plugin was compiled while a kernel of
+/// the engine's was; no fault has been traced to it.
+pub(crate) struct CompilerTurn(());
+
 /// The queue the kernels submit to, whose submits enter the driver on the
 /// engine's thread ([`EngineThread`]) — ⛔the `wgpu::Queue` stays private
 /// to this type so that no kernel can submit on its caller's.
@@ -218,12 +232,13 @@ impl Engine {
     }
 
     /// What `work` answers, run on the engine's thread for compiling
-    /// ([`EngineThread`]) while the caller waits.
+    /// ([`EngineThread`]) while the caller waits — the compiler its own for
+    /// that long ([`CompilerTurn`]).
     pub(crate) fn compiling<T: Send + 'static>(
         &self,
-        work: impl FnOnce() -> T + Send + 'static,
+        work: impl FnOnce(&CompilerTurn) -> T + Send + 'static,
     ) -> T {
-        self.compiling.run(work).expect("the engine's thread")
+        self.compiling.run(move || work(&CompilerTurn(()))).expect("the engine's thread")
     }
 
     /// The texture's bytes, rows top to bottom with no padding — for
@@ -594,7 +609,7 @@ mod tests {
         let (submitted, answered) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
             scope.spawn(|| {
-                engine.compiling(move || {
+                engine.compiling(move |_| {
                     let _ = released.recv();
                 })
             });

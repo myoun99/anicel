@@ -1200,7 +1200,7 @@ fn two_that_ask_for_a_kernel_at_once_have_the_one() {
     let (first, second) = std::thread::scope(|scope| {
         // The engine's thread for compiling is held till both have asked.
         let held = scope.spawn(|| {
-            engine.compiling(move || holding.send(()).is_ok() && begun.recv().is_ok())
+            engine.compiling(move |_| holding.send(()).is_ok() && begun.recv().is_ok())
         });
         held_now.recv().expect("the engine's thread is held");
         let ask = || scope.spawn(|| pipeline(engine, &[&source], "main"));

@@ -40,7 +40,7 @@ pub(crate) mod tests;
 
 use std::cell::Cell;
 
-use crate::device::{Engine, KernelSource};
+use crate::device::{CompilerTurn, Engine, KernelSource};
 
 pub(crate) use dispatch::{
     Encoded, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
@@ -100,26 +100,31 @@ const FOREIGN_COMPILE_STACK: usize = 64 << 20;
 /// the device would not take them: what its compiler and its pipeline
 /// refuse is caught here, where wgpu would raise it on the device, and the
 /// compile runs on a thread of its own, whose stack the compiler cannot
-/// outgrow ([`FOREIGN_COMPILE_STACK`]) whatever thread asked.
+/// outgrow ([`FOREIGN_COMPILE_STACK`]) whatever thread asked — in the
+/// engine's turn at the compiler, as its own kernels' are
+/// (`CompilerTurn`, in `device.rs`).
 pub(crate) fn pipeline_or_why(engine: &Engine, sources: &[&str], entry: &str) -> Result<wgpu::ComputePipeline, String> {
     waited_here();
-    std::thread::scope(|scope| {
-        let compile = std::thread::Builder::new()
-            .name("foreign compile".into())
-            .stack_size(FOREIGN_COMPILE_STACK)
-            .spawn_scoped(scope, || {
-                let refused = engine.device.push_error_scope(wgpu::ErrorFilter::Validation);
-                let failed = engine.device.push_error_scope(wgpu::ErrorFilter::Internal);
-                let pipeline = compiled(&engine.device, sources.join("\n"), entry, &[], true);
-                let failed = pollster::block_on(failed.pop());
-                let refused = pollster::block_on(refused.pop());
-                match failed.or(refused) {
-                    Some(error) => Err(error.to_string()),
-                    None => Ok(pipeline),
-                }
-            })
-            .map_err(|error| format!("no thread to compile on: {error}"))?;
-        compile.join().unwrap_or_else(|_| Err("the device's compile panicked".to_string()))
+    let (device, source, entry) = (engine.device.clone(), sources.join("\n"), entry.to_owned());
+    engine.compiling(move |turn| {
+        std::thread::scope(|scope| {
+            let compile = std::thread::Builder::new()
+                .name("foreign compile".into())
+                .stack_size(FOREIGN_COMPILE_STACK)
+                .spawn_scoped(scope, move || {
+                    let refused = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                    let failed = device.push_error_scope(wgpu::ErrorFilter::Internal);
+                    let pipeline = compiled(turn, &device, source, &entry, &[], true);
+                    let failed = pollster::block_on(failed.pop());
+                    let refused = pollster::block_on(refused.pop());
+                    match failed.or(refused) {
+                        Some(error) => Err(error.to_string()),
+                        None => Ok(pipeline),
+                    }
+                })
+                .map_err(|error| format!("no thread to compile on: {error}"))?;
+            compile.join().unwrap_or_else(|_| Err("the device's compile panicked".to_string()))
+        })
     })
 }
 
@@ -166,11 +171,11 @@ fn build(
     }
     let device = engine.device.clone();
     waited_here();
-    engine.compiling(move || {
+    engine.compiling(move |turn| {
         let made = kept.get_or_init(|| {
             let constants =
                 of.constants.iter().map(|(name, bits)| (name.as_str(), f64::from_bits(*bits)));
-            compiled(&device, of.source, &of.entry, &constants.collect::<Vec<_>>(), of.zeroed)
+            compiled(turn, &device, of.source, &of.entry, &constants.collect::<Vec<_>>(), of.zeroed)
         });
         made.clone()
     })
@@ -198,8 +203,10 @@ pub extern "C" fn gpu_engine_kernels_built_here() -> u64 {
     BUILT_HERE.with(Cell::get)
 }
 
-/// The module and the pipeline of `source`, on the thread that asks.
+/// The module and the pipeline of `source`, on the thread that asks — which
+/// has the compiler to itself, by the turn it shows.
 fn compiled(
+    _turn: &CompilerTurn,
     device: &wgpu::Device,
     source: String,
     entry: &str,
