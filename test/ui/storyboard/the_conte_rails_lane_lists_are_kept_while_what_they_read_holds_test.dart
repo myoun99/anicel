@@ -34,7 +34,11 @@ typedef _Ask = ({
 /// object handed: a [Track] wraps every list it is built with anew, so a
 /// copy of one changes all its lists at once — no fact a lane list reads
 /// off a track could be changed alone (card
-/// a-track-copy-wraps-its-unchanged-lists-anew).
+/// a-track-copy-wraps-its-unchanged-lists-anew — once a copy keeps the
+/// lists it is not handed, this stand-in goes).
+// A stand-in in a test, never compared: the value type it implements is
+// read for its lists alone.
+// ignore: avoid_implementing_value_types
 class _TrackOf implements Track {
   _TrackOf(
     this.of, {

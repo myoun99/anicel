@@ -959,16 +959,20 @@ class _StoryboardRailRows {
           ? null
           : (carrier, lane, row) => _followingCamera(
               head.cut,
+              // As committed, the lane itself, as the S, the conte and
+              // the V rows' follow answers outside a drag.
               (cameraTrack) => row(
                 carrier,
-                laneAsPreviewed(
-                  lane,
-                  cameraPropertyLanes(
-                    head.layer,
-                    cameraTrack,
-                    canvasSize: head.cut.canvasSize,
-                  ),
-                ),
+                identical(cameraTrack, head.cut.camera.track)
+                    ? lane
+                    : laneAsPreviewed(
+                        lane,
+                        cameraPropertyLanes(
+                          head.layer,
+                          cameraTrack,
+                          canvasSize: head.cut.canvasSize,
+                        ),
+                      ),
               ),
             ),
     );

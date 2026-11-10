@@ -423,11 +423,16 @@ class _StoryboardRowsAndLabels {
       }
       return ValueListenableBuilder<List<TimelineRowAddress>>(
         valueListenable: selection,
+        // Seated where the lane stands NOW: a kept label outlives the pass
+        // it was built in, and the rows above it come and go.
         builder: (context, selected, _) => label(
           shown,
           lane,
           seated,
-          _state._railRows._seatIn(seated, selected),
+          _state._railRows._seatIn(
+            _seatedOf(carrier.id, lane) ?? seated,
+            selected,
+          ),
         ),
       );
     }
@@ -438,14 +443,13 @@ class _StoryboardRowsAndLabels {
     // ([_KeptRailRows]) by the row's own facts as it stands committed
     // ([TimelineLaneControlsRow.facts]) — the lane by identity, and a list
     // read again is new lanes, so what [follow] reads a lane again from
-    // holds while the lane does — by what seats its graph as the
-    // selection moves, and by [closesOver].
+    // holds while the lane does — by the selection its graph is seated
+    // for, and by [closesOver].
     Object? factsOf(PropertyLaneRow lane) {
       final seated = _seatedOf(carrier.id, lane);
       return (
         label(carrier, lane, seated, seated?.row.graph).facts,
         ByIdentity(selection),
-        seated?.index,
         closesOver,
       );
     }
