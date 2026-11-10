@@ -512,6 +512,77 @@ void main() {
     expect(pickedOn('scale'), ['position']);
   });
 
+  // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail (11-11):
+  // the conte keeps a lane's label while what it shows holds, so rows that
+  // open above it leave it standing — further down. What its graph draws
+  // as picked is read where it stands when the selection moves.
+  testWidgets('🚨a graph\'s label kept through rows opened above it reads '
+      'the selection where it stands now', (tester) async {
+    const above = LayerId('above');
+    final key = laneGroupKey(s1, transform);
+    final selection = ValueNotifier<List<TimelineRowAddress>>(const []);
+    addTearDown(selection.dispose);
+    Cut cutOf(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 24,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: const [],
+    );
+    final session = await pump(
+      tester,
+      Project(
+        id: const ProjectId('project'),
+        name: 'Graphs',
+        createdAt: DateTime.utc(2026, 11, 11),
+        tracks: [
+          Track(
+            id: const TrackId('above'),
+            name: 'Above',
+            cuts: [cutOf('cut-above')],
+            seLayers: [seLayer(above).copyWith(lanesExpanded: false)],
+          ),
+          Track(
+            id: trackId,
+            name: 'Video',
+            cuts: [cutOf('cut')],
+            seLayers: [seLayer(s1)],
+          ),
+        ],
+      ),
+      graphs: LaneGraphsView(open: {key: const LaneGraph()}),
+      rowSelection: selection,
+    );
+    TimelineLaneControlsRow scale() =>
+        tester.widget<TimelineLaneControlsRow>(labelOf(s1, 'scale'));
+    final before = scale();
+
+    session.layerSwitches.toggleLayerLanes(above);
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TimelineLaneControlsRow && widget.layer.id == above,
+      ),
+      findsWidgets,
+      reason: '⛔premise: the row above twirled its lanes open',
+    );
+    expect(
+      identical(scale(), before),
+      isTrue,
+      reason: '⛔premise: nothing the label shows changed — it is kept',
+    );
+
+    selection.value = const [LaneRowAddress(s1, 'position')];
+    await tester.pump();
+    expect(
+      scale().seat?.picked,
+      ['position'],
+      reason: 'seated where it stood before the rows above opened, the '
+          'label reads another row\'s graph',
+    );
+  });
+
   testWidgets('a pinned lane of another row is a guest in every open graph '
       '— an S row\'s and the V row\'s, their groups shut', (tester) async {
     final key = laneGroupKey(s1, transform);
