@@ -863,15 +863,25 @@ final class GpuStampPicture implements Finalizable {
       bytes.asTypedList(rgba.length).setAll(0, rgba);
       return rust.stampPictureNew(engine._engine, bytes, width, height);
     });
+    return GpuStampPicture._kept(engine, made, width, height);
+  }
+
+  /// [made] on [engine], [width] × [height]: let go of with the object.
+  factory GpuStampPicture._kept(
+    GpuEngine engine,
+    Pointer<rust.StampPicture> made,
+    int width,
+    int height,
+  ) {
     if (made == nullptr) {
       throw StateError(_lastError());
     }
-    final picture = GpuStampPicture._(made);
-    _freed.attach(picture, made.cast(), externalSize: rgba.length);
+    final picture = GpuStampPicture._(engine, made, width, height);
+    _freed.attach(picture, made.cast(), externalSize: width * height * 4);
     return picture;
   }
 
-  GpuStampPicture._(this._picture);
+  GpuStampPicture._(this._engine, this._picture, this.width, this.height);
 
   static final NativeFinalizer _freed = NativeFinalizer(
     Native.addressOf<NativeFunction<Void Function(Pointer<rust.StampPicture>)>>(
@@ -882,7 +892,23 @@ final class GpuStampPicture implements Finalizable {
   /// The bytes of every picture alive, for the memory census.
   static int get liveBytes => rust.stampPictureBytes();
 
+  final GpuEngine _engine;
   final Pointer<rust.StampPicture> _picture;
+
+  final int width;
+  final int height;
+
+  /// Its pixels, row after row, once the GPU has made them: what is asked
+  /// of a picture whose bytes nothing here ever held
+  /// ([GpuStampLanding.carried]'s). Waits for the GPU.
+  Uint8List pixels() => using((arena) {
+    final count = width * height * 4;
+    final into = arena<Uint8>(_held(count));
+    if (!rust.stampPictureRead(_engine._engine, _picture, into)) {
+      throw GpuReadFailed(_lastError());
+    }
+    return Uint8List.fromList(into.asTypedList(count));
+  });
 }
 
 /// What lands a stamp on a cel (rust/src/kernels/dab/stamp.rs).
@@ -907,6 +933,39 @@ class GpuStampLanding {
 
   final GpuEngine _engine;
   final Pointer<rust.StampLanding> _landing;
+
+  /// [picture] carried through [inverse] — a point of the output to
+  /// [picture]'s, the nine of the app's `ResampleTransform` row after row,
+  /// the homogeneous row last — by R1 with [radiusFloor], sampled as
+  /// [sampling] says: a new picture, the output's [width] × [height] whole,
+  /// with nothing where the map lands nothing. The GPU makes it without
+  /// this waiting; what lands it, or reads it ([GpuStampPicture.pixels]),
+  /// waits.
+  GpuStampPicture carried(
+    GpuStampPicture picture, {
+    required List<double> inverse,
+    required double radiusFloor,
+    required GpuSampling sampling,
+    required int width,
+    required int height,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    final made = using(
+      (arena) => rust.stampPictureCarried(
+        _landing,
+        _engine._engine,
+        picture._picture,
+        _doubles(arena, inverse),
+        radiusFloor,
+        sampling.id,
+        width,
+        height,
+      ),
+    );
+    return GpuStampPicture._kept(_engine, made, width, height);
+  }
 
   /// Lays [picture], its top-left pixel at ([left], [top]), what of it lies
   /// [within] the canvas's (left, top, right, bottom), on the tiles [asks]

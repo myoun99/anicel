@@ -216,7 +216,8 @@ class SelectionFloatPaint implements LandingPreview {
   /// · anything else — the landing itself, made again at each place it is
   ///   carried to ([FloatLandsOn.landingShown]); the F-344-Q3 answer for a
   ///   text in hand (유저 2026-10-15: 「놓을 때와 같은 코드로 — 완전히
-  ///   같게」), and as slow for a large float as it was for a large text.
+  ///   같게」). What that costs a step is the landing's: where the row is
+  ///   posed, its crossing into the row is the engine's (`carryStampDab`).
   ///
   /// ⚠️A float drawn by no row — a host with no composite — is never asked:
   /// those hosts key nothing.

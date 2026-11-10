@@ -8,14 +8,18 @@ use super::{Gradient, Paint, Shape, Source, StampLanding, Stamped, Stamps};
 use crate::device::Engine;
 use crate::kernels::blend::mode::{ERASE, NORMAL};
 use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt};
+use crate::kernels::dab::abi::{
+    StampPicture, gpu_engine_stamp_picture_bytes, gpu_engine_stamp_picture_carried,
+    gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new, gpu_engine_stamp_picture_read,
+};
 use crate::kernels::dab::landing::{Asked, Laid};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::{Cel, Pool};
-use crate::kernels::shared::words_buffer;
+use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, le_words, words_buffer};
 use crate::kernels::warp::Boxed;
 use crate::kernels::write::Change;
-use crate::testing::{first_engine, read_buffer};
+use crate::testing::{first_engine, last_error, read_buffer};
 
 /// A `within` no picture reaches past.
 pub(crate) const EVERYWHERE: [i32; 4] = [i32::MIN / 2, i32::MIN / 2, i32::MAX / 2, i32::MAX / 2];
@@ -621,4 +625,112 @@ fn a_picture_the_wall_leaves_nothing_of_fails() {
     let boxed = Boxed { pixels: &pixels, size: (1, 1) };
     let source = Source::Picture { picture: &boxed, at: (0, 0), within: [5, 5, 9, 9] };
     assert!(f.landing.stamps.stamp(f.engine, &source, 0).is_none());
+}
+
+/// A picture `width` × `height`, each pixel saying where in it it lies.
+fn placed(width: u32, height: u32) -> Vec<u32> {
+    (0..height).flat_map(|y| (0..width).map(move |x| 0xFF00_0000 | x << 8 | y)).collect()
+}
+
+/// The map that moves a picture whole pixels (`dx`, `dy`), as the app
+/// hands one over.
+fn moved(dx: f64, dy: f64) -> [f64; 9] {
+    [1.0, 0.0, -dx, 0.0, 1.0, -dy, 0.0, 0.0, 1.0]
+}
+
+#[test]
+fn a_picture_carried_is_its_pixels_through_the_map_and_nothing_past_them() {
+    let f = landing();
+    let pixels = picture(&placed(4, 2));
+    let boxed = Boxed { pixels: &pixels, size: (4, 2) };
+    let map = ResampleMap::new(moved(2.0, 1.0), 1.0, ResampleMode::Blend, 7, 4).expect("a map");
+    let carried = f.landing.carried(f.engine, &boxed, Some(&map), (7, 4)).expect("a carry");
+    let words = le_words(&read_buffer(f.engine, &carried));
+    assert_eq!(words.len(), 7 * 4);
+    let at = |x: usize, y: usize| words[y * 7 + x];
+    assert_eq!(at(2, 1), 0xFF00_0000, "the picture's first pixel, moved");
+    assert_eq!(at(5, 2), 0xFF00_0301, "its last");
+    for (x, y) in [(1, 1), (2, 0), (6, 2), (5, 3)] {
+        assert_eq!(at(x, y), 0, "past the picture at {x}, {y}");
+    }
+    let none = f.landing.carried(f.engine, &boxed, None, (7, 4)).expect("a carry");
+    assert!(read_buffer(f.engine, &none).iter().all(|&byte| byte == 0), "no map lands nothing");
+}
+
+#[test]
+fn a_carried_picture_lands_as_one_handed_over_does() {
+    let mut f = landing();
+    let under = f.stored(CEL_PIXEL);
+    let pixels = picture(&placed(4, 2));
+    let boxed = Boxed { pixels: &pixels, size: (4, 2) };
+    let map = ResampleMap::new(moved(2.0, 1.0), 1.0, ResampleMode::Blend, 7, 4).expect("a map");
+    let carried = f.landing.carried(f.engine, &boxed, Some(&map), (7, 4)).expect("a carry");
+    let boxed = Boxed { pixels: &carried, size: (7, 4) };
+    let source = Source::Picture { picture: &boxed, at: (10, 20), within: EVERYWHERE };
+    let kit = (&f.composite, &mut f.pool, f.cel);
+    let landed = f
+        .landing
+        .land(f.engine, kit, &source, &[asked(0, 0, Some(under))], &NORMAL_WHOLE)
+        .expect("a landing");
+    let bytes = f.read(landed[0].1.expect("a slot"));
+    assert_eq!(pixel(&bytes, 12, 21), [0, 0, 0, 255], "the picture's first pixel");
+    assert_eq!(pixel(&bytes, 15, 22), [1, 3, 0, 255], "its last");
+    assert_eq!(pixel(&bytes, 11, 21), CEL_PIXEL, "the cel where the carry left nothing");
+}
+
+#[test]
+fn the_abi_carries_a_picture_and_reads_one_back() {
+    let f = landing();
+    let words = placed(4, 2);
+    let rgba = le_bytes(&words);
+    // SAFETY: the engine is live and `rgba` holds the picture.
+    let handed = unsafe { gpu_engine_stamp_picture_new(f.engine, rgba.as_ptr(), 4, 2) };
+    assert!(!handed.is_null(), "{}", last_error());
+    let read = |picture: *const StampPicture, pixels: usize| {
+        let mut into = vec![0xAAu8; pixels * 4];
+        // SAFETY: both are live and `into` holds the picture.
+        assert!(
+            unsafe { gpu_engine_stamp_picture_read(f.engine, picture, into.as_mut_ptr()) },
+            "{}",
+            last_error(),
+        );
+        le_words(&into)
+    };
+    assert_eq!(read(handed, 4 * 2), words, "a picture handed over reads back as it came");
+
+    let inverse = moved(2.0, 1.0);
+    let carry = |sampling: u32| {
+        // SAFETY: all three are live and `inverse` holds nine.
+        unsafe {
+            gpu_engine_stamp_picture_carried(
+                &f.landing,
+                f.engine,
+                handed,
+                inverse.as_ptr(),
+                1.0,
+                sampling,
+                7,
+                4,
+            )
+        }
+    };
+    let carried = carry(ResampleMode::Blend as u32);
+    assert!(!carried.is_null(), "{}", last_error());
+    let read = read(carried, 7 * 4);
+    assert_eq!(read[7 + 2], 0xFF00_0000, "the picture's first pixel, moved");
+    assert_eq!(read[2 * 7 + 5], 0xFF00_0301, "its last");
+    assert_eq!(read.iter().filter(|&&word| word != 0).count(), 4 * 2, "and no more");
+    // ⚠️At least: the census is the process's, and another test's pictures
+    // may be alive beside these.
+    assert!(
+        gpu_engine_stamp_picture_bytes() >= (4 * 2 + 7 * 4) * 4,
+        "the census counts a carried picture as it counts one handed over",
+    );
+
+    assert!(carry(9).is_null(), "no sampling has the id");
+    // SAFETY: each came from its new, let go of once.
+    unsafe {
+        gpu_engine_stamp_picture_free(carried);
+        gpu_engine_stamp_picture_free(handed);
+    }
 }

@@ -205,7 +205,7 @@ unsafe fn rect_or_none(rect: *const i32) -> Option<[i32; 4]> {
 }
 
 /// The sampling id the app names a row's by: R1's mode's own.
-fn sampling(id: u32) -> Option<ResampleMode> {
+pub(crate) fn sampling(id: u32) -> Option<ResampleMode> {
     match id {
         0 => Some(ResampleMode::Blend),
         1 => Some(ResampleMode::Pick),

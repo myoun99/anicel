@@ -18,6 +18,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/placed_tile.dart';
 import '../models/tile_coord.dart';
 import '../native/app_gpu_engine.dart';
+import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
@@ -183,12 +184,7 @@ BrushSurfaceMaterialization _materializedOnEngine(
       put(
         _pictureOnEngine(
           landed,
-          _stampPictures[stamp] ??= GpuStampPicture(
-            appGpuEngine,
-            stamp.rgba,
-            stamp.width,
-            stamp.height,
-          ),
+          EngineStampPictures.of(stamp),
           stamp.landingRect(first.center),
           (
             opacity: first.opacity,
@@ -238,10 +234,6 @@ List<PlacedTile> _strokeOnEngine(
     rasterizer.clear();
   }
 }
-
-/// The pictures of the stamps landed, each uploaded once: a selection moved
-/// lands the same one at each step of the drag.
-final Expando<GpuStampPicture> _stampPictures = Expando();
 
 /// [picture] over [landing], what the pasteboard's wall leaves of it — a
 /// selection dropped past the stage's edge keeps its pixels there —, laid

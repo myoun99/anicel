@@ -74,7 +74,9 @@ class LastStrokeSlot extends ChangeNotifier {
     };
     var bytes = stroke.strokePixels?.lengthInBytes ?? 0;
     for (final stamp in stamps) {
-      bytes += stamp.rgba.lengthInBytes;
+      // By its size, not its bytes: a picture the engine carried holds them
+      // there, and counting must not be what reads them back.
+      bytes += stamp.width * stamp.height * 4;
     }
     return bytes;
   }

@@ -20,6 +20,7 @@ import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
 import '../native/app_gpu_engine.dart';
 import '../native/engine_cel_pixels.dart';
+import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
@@ -237,8 +238,14 @@ BrushDab transformStampDab(
     outLeft: out.left,
     outTop: out.top,
   ),
-  mode: mode,
-  visible: visible,
+  resampled: (stamp, out, transform) => _resampleIntoWindow(
+    stampDab: stampDab,
+    stamp: stamp,
+    out: out,
+    window: selectionPreviewWindow(out: out, visible: visible),
+    transform: transform,
+    mode: mode,
+  ),
 );
 
 /// The lifted stamp through the plane affine [to] — a row's PLACEMENT, or
@@ -251,6 +258,18 @@ BrushDab transformStampDab(
 /// SHEARS it — and the box's affine is a scale about a pivot and then a
 /// turn, which can say neither a shear nor the way BACK through a row
 /// scaled an axis apiece (S⁻¹·R⁻¹ is not an R·S).
+///
+/// 🚨ITS RESAMPLE IS THE ENGINE'S ([_carriedOnEngine], gpu-canonical-store
+/// ⑪, 2026-11-11). A float carried over a posed row shows as its landing at
+/// every step of the hand (🗣️유저 2026-09-17: 「보이는 중이랑 결과랑 절대로
+/// 다르면 안 되」, `SelectionFloatPaint.shownOn`), so the crossing back into
+/// the row runs at every step: 🔬on the CPU, a 26.7 MB stamp was 55–68 ms
+/// of resample and 32–44 ms of handing the bytes up again, a step (main
+/// PC), and the Surface Pro 11 dragged it at 220–250 ms a frame where
+/// master — which showed the float itself there, sharper than it landed —
+/// took 142–146. ⏳The box's own warps (the affine above, the quad, the
+/// mesh) are still made here on the CPU until they go to the engine too
+/// (🗣️관제 2026-11-10: 「변형 · 메시 … 다음 라운드 몫」).
 BrushDab carryStampDab(
   BrushDab stampDab, {
   required GuideTransform to,
@@ -268,13 +287,20 @@ BrushDab carryStampDab(
     outLeft: out.left,
     outTop: out.top,
   ),
-  mode: mode,
+  resampled: (stamp, out, transform) => _carriedOnEngine(
+    stampDab: stampDab,
+    stamp: stamp,
+    out: out,
+    transform: transform,
+    mode: mode,
+  ),
 );
 
 /// One stamp through one map of the plane ([apply]): [identity] hands the
 /// dab back, a pure [move] only moves its centre, and anything else is ONE
 /// resample into the bounding box of the stamp's mapped corners, through
-/// the destination-to-source [fold] of that same map.
+/// the destination-to-source [fold] of that same map — made as [resampled]
+/// makes it.
 BrushDab _stampThrough(
   BrushDab stampDab, {
   required bool identity,
@@ -286,8 +312,12 @@ BrushDab _stampThrough(
     ({int left, int top, int width, int height}) out,
   )
   fold,
-  required ResampleMode mode,
-  SelectionVisibleRect? visible,
+  required BrushDab Function(
+    BrushStampImage stamp,
+    ({int left, int top, int width, int height}) out,
+    ResampleTransform transform,
+  )
+  resampled,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null || identity) {
@@ -314,20 +344,12 @@ BrushDab _stampThrough(
     apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
   ];
   final out = selectionWarpOutputRect(corners);
-  final window = selectionPreviewWindow(out: out, visible: visible);
 
-  return _resampleIntoWindow(
-    stampDab: stampDab,
-    stamp: stamp,
-    out: out,
-    window: window,
-    // The FULL rect's matrix, always. A window keeps the whole rect's
-    // pixel grid and says where it sits; folding the offset into the
-    // origin instead is the version that is equal in arithmetic and not
-    // in doubles — see ABI 26.
-    transform: fold(srcLeft, srcTop, out),
-    mode: mode,
-  );
+  // The FULL rect's matrix, always. A window keeps the whole rect's pixel
+  // grid and says where it sits; folding the offset into the origin instead
+  // is the version that is equal in arithmetic and not in doubles — see
+  // ABI 26.
+  return resampled(stamp, out, fold(srcLeft, srcTop, out));
 }
 
 /// Runs one resample into [window] of [out] (or all of [out] when window
@@ -363,20 +385,63 @@ BrushDab _resampleIntoWindow({
     clipX: clipX,
     clipY: clipY,
   );
-  return stampDab.copyWith(
-    center: CanvasPoint(
-      x: out.left + clipX + dstWidth / 2,
-      y: out.top + clipY + dstHeight / 2,
-    ),
-    size: math.max(dstWidth, dstHeight).toDouble(),
-    stamp: BrushStampImage(
-      id: '${stamp.id}-$idPrefix${DateTime.now().microsecondsSinceEpoch}',
+  return _resampledDab(
+    stampDab,
+    at: (left: out.left + clipX, top: out.top + clipY),
+    made: BrushStampImage(
+      id: _resampledId(stamp, idPrefix),
       width: dstWidth,
       height: dstHeight,
       rgba: bytes,
     ),
   );
 }
+
+/// [_resampleIntoWindow]'s twin for all of [out], made on the engine: the
+/// stamp it wraps is the engine's picture (`EngineStampPictures.carried`,
+/// R1 in [mode] with the same radius floor), so it lands without a byte of
+/// it coming here, and what does ask for its bytes reads them from there.
+BrushDab _carriedOnEngine({
+  required BrushDab stampDab,
+  required BrushStampImage stamp,
+  required ({int left, int top, int width, int height}) out,
+  required ResampleTransform transform,
+  required ResampleMode mode,
+}) => _resampledDab(
+  stampDab,
+  at: (left: out.left, top: out.top),
+  made: EngineStampPictures.carried(
+    stamp,
+    id: _resampledId(stamp, 't'),
+    inverse: resampleTransformElements(transform),
+    radiusFloor: kSelectionResampleRadiusFloor,
+    sampling: switch (mode) {
+      ResampleMode.blend => GpuSampling.blend,
+      ResampleMode.pick => GpuSampling.pick,
+    },
+    width: out.width,
+    height: out.height,
+  ),
+);
+
+/// [stampDab] as the dab of [made], a resample of its stamp whose first
+/// pixel lies [at] on the canvas: centred on what it covers.
+BrushDab _resampledDab(
+  BrushDab stampDab, {
+  required ({int left, int top}) at,
+  required BrushStampImage made,
+}) => stampDab.copyWith(
+  center: CanvasPoint(
+    x: at.left + made.width / 2,
+    y: at.top + made.height / 2,
+  ),
+  size: math.max(made.width, made.height).toDouble(),
+  stamp: made,
+);
+
+/// A name for a resample of [stamp], no two alike.
+String _resampledId(BrushStampImage stamp, String prefix) =>
+    '${stamp.id}-$prefix${DateTime.now().microsecondsSinceEpoch}';
 
 /// Solves the 3×3 homography H mapping each `from[i]` onto `to[i]`
 /// (4 point pairs, row-major 9 elements, h22 fixed at 1), via the
@@ -763,7 +828,7 @@ BrushDab transformStampDabMesh(
     center: CanvasPoint(x: bufLeft + bufWidth / 2, y: bufTop + bufHeight / 2),
     size: math.max(bufWidth, bufHeight).toDouble(),
     stamp: BrushStampImage(
-      id: '${stamp.id}-m${DateTime.now().microsecondsSinceEpoch}',
+      id: _resampledId(stamp, 'm'),
       width: bufWidth,
       height: bufHeight,
       rgba: bytes,

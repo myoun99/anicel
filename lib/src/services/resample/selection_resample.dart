@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/canvas_point.dart';
 import '../../native/qa_native_engine.dart';
 import '../guide_geometry.dart' show GuideTransform;
@@ -27,6 +29,12 @@ import 'resample_kernel.dart';
 /// and the picture Enter lands come out of different kernels.
 const double kSelectionResampleRadiusFloor = 1.0;
 
+/// Test seam: the resamples made through this door, here on the CPU — the
+/// pin that a stamp crossing a row's placement makes none (the engine's,
+/// `carryStampDab`).
+@visibleForTesting
+int debugSelectionResamples = 0;
+
 /// Resample [src] into [dst] through [transform], native when the engine is
 /// loaded and the Dart reference otherwise.
 ///
@@ -45,6 +53,7 @@ void resampleSelectionInto({
   int clipX = 0,
   int clipY = 0,
 }) {
+  debugSelectionResamples += 1;
   final engine = QaNativeEngine.instance;
   if (engine != null &&
       engine.resampleRgbaInto(

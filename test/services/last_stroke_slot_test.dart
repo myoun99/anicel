@@ -84,6 +84,26 @@ void main() {
     expect(slot.strokeBytes, 40 + 16, reason: '같은 그림을 찍은 둘은 한 번');
   });
 
+  test('a picture whose bytes are held elsewhere counts by its size, and '
+      'counting is not what reads them', () {
+    final slot = LastStrokeSlot();
+    addTearDown(slot.dispose);
+    var reads = 0;
+    final carried = BrushStampImage.read(
+      id: 'carried',
+      width: 3,
+      height: 2,
+      rgba: () {
+        reads += 1;
+        return Uint8List(24);
+      },
+    );
+    slot.hold(BrushStrokeCommitData(sourceDabs: [dab(stamp: carried)]));
+
+    expect(slot.strokeBytes, 24);
+    expect(reads, 0);
+  });
+
   test('a canvas coming or going is news — the ↵ has to hear it', () async {
     final slot = LastStrokeSlot();
     addTearDown(slot.dispose);

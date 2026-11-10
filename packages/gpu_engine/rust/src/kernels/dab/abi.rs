@@ -10,9 +10,10 @@ use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::abi::MaskPlane;
+use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, TileAt};
 use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::shared::ResampleMap;
 use crate::kernels::warp::Boxed;
 use crate::kernels::write::Change;
 
@@ -548,15 +549,79 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
         &wgpu::util::BufferInitDescriptor {
             label: Some("stamp picture"),
             contents: rgba,
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         },
     );
     STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
     Box::into_raw(Box::new(StampPicture { pixels, size: (width, height) }))
 }
 
+/// `picture` carried through `inverse` — an output's point to `picture`'s,
+/// row-major with the homogeneous row last, a pixel spanning x..x+1 (the
+/// app's `ResampleTransform`) — by R1 with `radius_floor`, sampled as
+/// `sampling_id` names ([`sampling`]): a new picture, the output's
+/// `columns` × `rows` whole, which lands as any other does
+/// (`StampLanding::carried`). Nothing of it where the map lands nothing
+/// ([`ResampleMap::new`]). Submits the warp; what lands the picture, or
+/// reads it, waits. Null where it holds no pixel, no mode has the id or
+/// the device binds no such picture; see the last error.
+///
 /// # Safety
-/// `picture` came from `gpu_engine_stamp_picture_new`.
+/// `landing`, `engine` and `picture` are live and `inverse` holds nine
+/// doubles.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stamp_picture_carried(
+    landing: *const StampLanding,
+    engine: *const Engine,
+    picture: *const StampPicture,
+    inverse: *const f64,
+    radius_floor: f64,
+    sampling_id: u32,
+    columns: u32,
+    rows: u32,
+) -> *mut StampPicture {
+    // SAFETY: see the function's contract.
+    let (landing, engine, picture, inverse) =
+        unsafe { (&*landing, &*engine, &*picture, *inverse.cast::<[f64; 9]>()) };
+    let Some(sampled) = sampling(sampling_id) else {
+        return std::ptr::null_mut();
+    };
+    let map = ResampleMap::new(inverse, radius_floor, sampled, columns, rows);
+    let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+    let Some(pixels) = landing.carried(engine, &boxed, map.as_ref(), (columns, rows)) else {
+        return std::ptr::null_mut();
+    };
+    STAMP_PICTURE_BYTES.fetch_add(pixels.size(), Ordering::Relaxed);
+    Box::into_raw(Box::new(StampPicture { pixels, size: (columns, rows) }))
+}
+
+/// `picture`'s pixels at `into`, row after row, once the GPU has made them:
+/// what the app asks of a picture whose bytes it never held (a carried
+/// one's). False on failure; see the last error.
+///
+/// # Safety
+/// `engine` and `picture` are live, and `into` holds the picture's
+/// `width × height × 4`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stamp_picture_read(
+    engine: *const Engine,
+    picture: *const StampPicture,
+    into: *mut u8,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (engine, picture) = unsafe { (&*engine, &*picture) };
+    let Some(read) = engine.read_buffer(&picture.pixels) else {
+        return false;
+    };
+    // SAFETY: see the function's contract; a picture's buffer is its box.
+    unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), into, read.len()) };
+    true
+}
+
+/// # Safety
+/// `picture` came from `gpu_engine_stamp_picture_new` or
+/// `gpu_engine_stamp_picture_carried`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stamp_picture_free(picture: *mut StampPicture) {
     if !picture.is_null() {

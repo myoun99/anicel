@@ -1572,6 +1572,38 @@ external Pointer<StampPicture> stampPictureNew(
   int height,
 );
 
+@Native<
+  Pointer<StampPicture> Function(
+    Pointer<StampLanding>,
+    Pointer<Engine>,
+    Pointer<StampPicture>,
+    Pointer<Double>,
+    Double,
+    Uint32,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_stamp_picture_carried')
+external Pointer<StampPicture> stampPictureCarried(
+  Pointer<StampLanding> landing,
+  Pointer<Engine> engine,
+  Pointer<StampPicture> picture,
+  Pointer<Double> inverse,
+  double radiusFloor,
+  int samplingId,
+  int columns,
+  int rows,
+);
+
+@Native<Bool Function(Pointer<Engine>, Pointer<StampPicture>, Pointer<Uint8>)>(
+  symbol: 'gpu_engine_stamp_picture_read',
+)
+external bool stampPictureRead(
+  Pointer<Engine> engine,
+  Pointer<StampPicture> picture,
+  Pointer<Uint8> into,
+);
+
 @Native<Void Function(Pointer<StampPicture>)>(
   symbol: 'gpu_engine_stamp_picture_free',
 )

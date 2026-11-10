@@ -37,10 +37,10 @@ use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane, tiles_a_page, whole,
-    words_buffer,
+    Encoded, PREMULTIPLY_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane,
+    tiles_a_page, whole, words_buffer,
 };
-use crate::kernels::warp::Boxed;
+use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::kernels::write::{Change, Write};
 
 /// The stops a gradient is looked up in, `FillGradient.stops`' count
@@ -260,17 +260,44 @@ impl Stamps {
     }
 }
 
-/// What lands a stamp on a cel: the stamp's passes and the write path's.
+/// What lands a stamp on a cel: the stamp's passes and the write path's, and
+/// the warp a picture is carried by on its way to one.
 pub(crate) struct StampLanding {
     stamps: Stamps,
     write: Write,
+    warp: Warp,
 }
 
 impl StampLanding {
     /// Its kernels compiled — or nothing, where the device binds too few
     /// storage buffers a stage for them.
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        Some(Self { stamps: Stamps::new(engine), write: Write::new(engine)? })
+        Some(Self {
+            stamps: Stamps::new(engine),
+            write: Write::new(engine)?,
+            warp: Warp::new(engine),
+        })
+    }
+
+    /// `picture` carried through `map`, the whole of an output `size` across
+    /// and down: the picture a posed row's landing lays (the app's
+    /// `carryStampDab`), nothing of it where there is no map. Submits the
+    /// warp; what lands the picture, or reads it, waits.
+    ///
+    /// 🗣️gpu-canonical-store ⑪ (관제 2026-11-10 18:14: 「자세 있음 … 선 =
+    /// master 이하」): a float carried over a posed row shows as its landing
+    /// at each step of the hand, and that landing crossed into the row on
+    /// the CPU and came up again whole — 🔬55–68 ms of resample and 32–44 ms
+    /// of upload a step for a 26.7 MB stamp, main PC, 2026-11-11. The
+    /// float's picture is here once; the crossing is one pass over it.
+    pub(crate) fn carried(
+        &self,
+        engine: &Engine,
+        picture: &Boxed,
+        map: Option<&ResampleMap>,
+        size: (u32, u32),
+    ) -> Option<wgpu::Buffer> {
+        self.warp.one(engine, picture, map, Window { at: (0, 0), size })
     }
 
     /// Lays `source` on the tiles `asked`, each result compared with the

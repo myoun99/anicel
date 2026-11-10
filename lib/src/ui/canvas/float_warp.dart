@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
+import '../../models/brush_stamp_image.dart';
 import '../../models/canvas_point.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
@@ -247,7 +247,7 @@ class FloatWarp {
         '|v${visible.left},${visible.top},${visible.right},${visible.bottom}',
       );
     }
-    return _ResampleKey(options.resampleMode, stamp.rgba, shape.toString());
+    return _ResampleKey(options.resampleMode, stamp, shape.toString());
   }
 
   /// What the open warp does, as a mapping any stamp on the canvas can be
@@ -369,18 +369,23 @@ bool _recordResampledFloat(BrushDab? dab) {
   return true;
 }
 
-/// What a cached resample belongs to: the mode, the source buffer, and the
+/// What a cached resample belongs to: the mode, the source stamp, and the
 /// warp's numbers.
 ///
 /// The source is compared by IDENTITY. A lift stamp's bytes never change
-/// in place — a new lift means a new buffer — so identity is the exact
+/// in place — a new lift means a new stamp — so identity is the exact
 /// question, and comparing multi-megabyte cels by value on every drag
 /// frame would cost more than the resample this is guarding.
+///
+/// ↩️The stamp's bytes stood here, for their identity alone — and a stamp
+/// the engine carried onto the canvas (a posed row's lift,
+/// `EngineStampPictures.carried`) was read back from it at the first move
+/// of the hand to be asked which one it was (2026-11-11).
 class _ResampleKey {
   const _ResampleKey(this.mode, this.source, this.shape);
 
   final ResampleMode mode;
-  final Uint8List source;
+  final BrushStampImage source;
   final String shape;
 
   @override

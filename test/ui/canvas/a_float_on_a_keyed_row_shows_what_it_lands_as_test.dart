@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -16,6 +18,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -26,6 +29,8 @@ import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
+import 'package:anicel/src/services/resample/selection_resample.dart'
+    show debugSelectionResamples;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -39,6 +44,7 @@ import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/placement_reading.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/wait_window.dart' show windowBehind;
@@ -392,16 +398,19 @@ void main() {
   /// move.
   ///
   /// Asked with the text tool in hand: its stage says where a canvas pixel
-  /// is on the screen.
+  /// is on the screen — where the row's own pixel of that number is, so on
+  /// a row its pose turns the hand is told where to take hold ([holdAt],
+  /// [sheetOnATurnedRow]).
   Future<({Uint8List carried, Uint8List landed})> carry(
     WidgetTester tester,
     _Rows rows, {
     required Rect region,
+    Offset? holdAt,
     List<TransformValues Function(TransformValues now)> warps = const [],
     bool twice = false,
     Future<void> Function()? whileOpen,
   }) async {
-    final hold = holdIn(tester, region);
+    final hold = holdAt ?? holdIn(tester, region);
     final step = handFor(tester, 40, 30);
     final drop = hold + step;
     final commands = await select(tester, rows, region);
@@ -900,50 +909,163 @@ void main() {
     );
   });
 
-  // ── What a landing holds is let go. ──
+  /// The landing the live row shows the float as, asked through the row's
+  /// own keys — the one its paint was handed.
+  CelTextLanding shownLanding(WidgetTester tester) {
+    final stack = canvasOf(tester);
+    CanvasActiveLayerRow? row;
+    void walk(List<CompositeNode<CanvasStackRow>> nodes) {
+      for (final node in nodes) {
+        switch (node) {
+          case CompositeLeaf(payload: final CanvasActiveLayerRow live):
+            row = live;
+          case CompositeGroup(:final children):
+            walk(children);
+          case CompositeAdjustment(:final children):
+            walk(children);
+          case CompositeBackdropBlend(:final children):
+            walk(children);
+          case CompositeClip(:final children):
+            walk(children);
+          case CompositeReadsRows(:final children):
+            walk(children);
+          case CompositeLeaf():
+          case CompositeOpaque():
+          case CompositeCelNumber():
+            break;
+        }
+      }
+    }
+
+    walk(stack.nodes);
+    final shown = stack.live!.floatOverlay!.value!
+        .shownOn(row!.sourceEffects)
+        .preview;
+    expect(shown, isA<CelTextLanding>(), reason: '⛔fixture: a landing');
+    return shown as CelTextLanding;
+  }
+
+  // ── A posed row's float is its landing, and the landing is the engine's. ──
+
+  /// A's sheet left of [c] on a row [pose] turns about the page's middle,
+  /// and the box a hand carries it in: THE CANVAS'S, round where the row
+  /// shows the sheet — and where on the screen a hand takes hold in it, on
+  /// the sheet, clear of the cross at the box's middle.
+  ///
+  /// ⚠️The stage reads the row's own pixels ([onScreen]), which such a row
+  /// shows somewhere other than their numbers say: a box of the sheet's own
+  /// numbers is not round it, and a hold a quarter across that box
+  /// ([holdIn]) was the box's turn, not its move (🔬2026-11-11).
+  Future<({Rect region, Offset hold})> sheetOnATurnedRow(
+    WidgetTester tester,
+    Offset c,
+    TransformPose pose,
+  ) async {
+    final a = Rect.fromLTWH(c.dx - 160, c.dy - 64, 120, 120);
+    await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
+    await settle(tester);
+    final placement = placedBy(pose, defaultCutCanvasSize);
+    final shown = [
+      for (final corner in [a.topLeft, a.topRight, a.bottomRight, a.bottomLeft])
+        placement.apply(CanvasPoint(x: corner.dx, y: corner.dy)),
+    ];
+    final xs = [for (final point in shown) point.x];
+    final ys = [for (final point in shown) point.y];
+    return (
+      region: Rect.fromLTRB(
+        xs.reduce(math.min).floorToDouble(),
+        ys.reduce(math.min).floorToDouble(),
+        xs.reduce(math.max).ceilToDouble(),
+        ys.reduce(math.max).ceilToDouble(),
+      ).inflate(60),
+      hold: onScreen(tester, a.center.dx + 30, a.center.dy + 30),
+    );
+  }
+
+  // 🗣️유저 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」 — a pose
+  // resamples what lands into the cel, so off the canvas's grid the float is
+  // its landing whatever its row keys (flip lane ⓐ-2).
+  testWidgets('a sheet on a row turned off the quarter shows what it lands '
+      'as', (tester) async {
+    const page = defaultCutCanvasSize;
+    final pose = TransformPose(
+      center: CanvasPoint(x: page.width / 2, y: page.height / 2),
+      scaleX: 1.1,
+      scaleY: 1.1,
+      rotationDegrees: 8,
+    );
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, pose: pose),
+    );
+    final (:region, :hold) = await sheetOnATurnedRow(tester, c, pose);
+    final drawn = await composite(tester);
+
+    expectLandsAsCarried(
+      await carry(tester, _Rows.live, region: region, holdAt: hold),
+      drawn,
+    );
+  });
 
   // 🔬A float on a posed row is its landing, made at each place a hand
   // carries it to, and that landing is the engine's: read back to be shown
   // it was a GPU wait a tile, about 187 a frame on S5_BA's paper (Surface
-  // Pro 11, 검증/서피스 11-10).
-  testWidgets('carried on a posed row, no tile comes off the engine', (
-    tester,
-  ) async {
+  // Pro 11, 검증/서피스 11-10) — and its crossing into the row made here, a
+  // 26.7 MB float was 55–68 ms of resample and 32–44 ms of handing the
+  // bytes up again, a step (main PC, 11-11, gpu-canonical-store ⑪).
+  testWidgets('carried on a posed row, a step is the engine\'s: no tile '
+      'comes off it, the float is neither resampled here nor handed up '
+      'again nor read back', (tester) async {
     const page = defaultCutCanvasSize;
+    final pose = TransformPose(
+      center: CanvasPoint(x: page.width / 2, y: page.height / 2),
+      rotationDegrees: 8,
+    );
     final c = await open(
       tester,
-      projectOf(
-        _Rows.live,
-        keyed: false,
-        pose: TransformPose(
-          center: CanvasPoint(x: page.width / 2, y: page.height / 2),
-          rotationDegrees: 8,
-        ),
-      ),
+      projectOf(_Rows.live, keyed: false, pose: pose),
     );
-    final a = Rect.fromLTWH(c.dx - 160, c.dy - 64, 120, 120);
-    await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
-    await settle(tester);
-    final region = a.inflate(120);
-    final step = holdIn(tester, region);
-    final first = step + handFor(tester, 40, 30);
-    final second = step + handFor(tester, 46, 34);
+    final (:region, :hold) = await sheetOnATurnedRow(tester, c, pose);
+    final first = hold + handFor(tester, 40, 30);
+    final second = hold + handFor(tester, 46, 34);
     final commands = await select(tester, _Rows.live, region);
 
-    final hand = await tester.startGesture(step, kind: PointerDeviceKind.mouse);
+    // From the press on: the lift crosses the sheet out onto the canvas on
+    // the engine too, and nothing asks for its bytes back.
+    final readBack = EngineStampPictures.debugReadBack;
+    final hand = await tester.startGesture(hold, kind: PointerDeviceKind.mouse);
     await tester.pump();
     await hand.moveTo(first);
     await settle(tester);
     expect(commands.movePending, isTrue, reason: '⛔fixture: in hand');
+    expect(
+      canvasOf(tester).live!.floatOverlay!.value!.image,
+      isNull,
+      reason: '⛔fixture: carried, the float its own pixels — no warp of the '
+          'box\'s, which is made here still',
+    );
+    final there = shownLanding(tester);
 
     final reads = EngineTileLedger.instance.debugTileReads;
+    final resamples = debugSelectionResamples;
+    final handedUp = EngineStampPictures.debugHandedUp;
     await hand.moveTo(second);
     await settle(tester);
 
+    expect(
+      identical(shownLanding(tester), there),
+      isFalse,
+      reason: '⛔CONTROL: the step made a landing of its own',
+    );
     expect(EngineTileLedger.instance.debugTileReads, reads);
+    expect(debugSelectionResamples, resamples);
+    expect(EngineStampPictures.debugHandedUp, handedUp);
     await hand.up();
     await settle(tester);
+    expect(EngineStampPictures.debugReadBack, readBack);
   });
+
+  // ── What a landing holds is let go. ──
 
   testWidgets('a landing made for one place is let go once the hand carries '
       'the float on, and the last once the box lands', (tester) async {
@@ -954,52 +1076,16 @@ void main() {
     final second = step + handFor(tester, 46, 34);
     final commands = await select(tester, _Rows.live, region);
 
-    /// The landing the live row shows the float as, asked through the
-    /// row's own keys — the one its paint was handed.
-    CelTextLanding shownLanding() {
-      final stack = canvasOf(tester);
-      CanvasActiveLayerRow? row;
-      void walk(List<CompositeNode<CanvasStackRow>> nodes) {
-        for (final node in nodes) {
-          switch (node) {
-            case CompositeLeaf(payload: final CanvasActiveLayerRow live):
-              row = live;
-            case CompositeGroup(:final children):
-              walk(children);
-            case CompositeAdjustment(:final children):
-              walk(children);
-            case CompositeBackdropBlend(:final children):
-              walk(children);
-            case CompositeClip(:final children):
-              walk(children);
-            case CompositeReadsRows(:final children):
-              walk(children);
-            case CompositeLeaf():
-            case CompositeOpaque():
-            case CompositeCelNumber():
-              break;
-          }
-        }
-      }
-
-      walk(stack.nodes);
-      final shown = stack.live!.floatOverlay!.value!
-          .shownOn(row!.sourceEffects)
-          .preview;
-      expect(shown, isA<CelTextLanding>(), reason: '⛔fixture: a landing');
-      return shown as CelTextLanding;
-    }
-
     final hand = await tester.startGesture(step, kind: PointerDeviceKind.mouse);
     await tester.pump();
     await hand.moveTo(first);
     await settle(tester);
-    final there = shownLanding();
+    final there = shownLanding(tester);
     // Made as a canvas that paints the landing makes it: what is let go.
     final pictureThere = there.picture;
     await hand.moveTo(second);
     await settle(tester);
-    final further = shownLanding();
+    final further = shownLanding(tester);
     final pictureFurther = further.picture;
     await hand.up();
     await settle(tester);
