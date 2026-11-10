@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -243,6 +244,30 @@ void main() {
       await tester.pumpAndSettle();
       expect(_seLayer(session.repository).seSound.totalVolume, 1.0);
       semantics.dispose();
+    });
+
+    // 「불투명도막대랑 완전 동일한 디자인/크기」 — the opacity bar, reaching
+    // the Total's 200 (`SeSound.maxVolume`): at its end the hand writes it.
+    // ↩️The lane's typed 150 stood on the bar as a value whatever the bar
+    // reached, and a bar that stopped at 100 lived through it.
+    testWidgets('dragged to its end, the bar writes the Total\'s 200', (
+      tester,
+    ) async {
+      final session = EditorSessionManager(initialProject: _project());
+      addTearDown(session.dispose);
+      await pumpTimelineHostOn(tester, session, surface: const Size(1400, 600));
+
+      final drag = await tester.startGesture(tester.getCenter(bar));
+      await drag.moveBy(const Offset(20, 0));
+      await drag.moveBy(const Offset(200, 0));
+      await drag.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        _seLayer(session.repository).seSound.totalVolume,
+        SeSound.maxVolume,
+      );
+      expect(SeSound.maxVolume, 2.0, reason: 'CONTROL: 200%');
     });
 
     testWidgets('a value typed into the lane stands on the bar', (
