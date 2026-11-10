@@ -2,7 +2,7 @@
 //! draws with so a shared texture lives on the GPU that reads it.
 
 use std::collections::HashMap;
-use std::sync::{mpsc, Arc, Mutex, OnceLock, PoisonError};
+use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
 use crate::{copy_out, fail, last_error, platform};
@@ -36,6 +36,8 @@ pub struct Engine {
     compiling: EngineThread,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
+    /// When what is compiled apart may take the compiler ([`Apart`]).
+    pub(crate) apart: Apart,
 }
 
 /// What one of the engine's kernels is compiled of: its sources joined, its
@@ -82,6 +84,80 @@ impl Kernels {
     /// kernel keeps it, and the next asked for is compiled.
     pub(crate) fn forget(&self) {
         self.0.lock().unwrap_or_else(PoisonError::into_inner).clear();
+    }
+}
+
+/// When what the engine compiles apart may take the compiler: a
+/// composite's own passes, which no one waits for — a plan runs on the pass
+/// that takes any till its own is there (`Composite::pass`). Not while a
+/// hold is on ([`gpu_engine_apart_hold`]): the app holds while it compiles
+/// ahead what a hand on the canvas waits for.
+///
+/// 🗣️관제 2026-11-11 06:00 (gpu-canonical-store ④): 「선은 첫 획 · 첫
+/// 들어올리기의 멈춤 자체다 … 컴파일 차례 안의 순서를 요청자 불문으로
+/// 매겨라 — 손이 쓰는 커널 → composite 전용 패스」. 🔬Surface Pro 11,
+/// 2026-11-11 05:59: each of a stroke's kernels compiled in 9–200 ms and
+/// waited 0.6–1.3 s for its turn, an own pass of 1.0–1.15 s between each
+/// two — a stroke ready 2.2–2.6 s after the canvas came and a lift 3.5 s,
+/// where the four sets a hand needs compile in 0.96–1.22 s together.
+///
+/// ⛔Not an order in the compiling thread's queue: who compiles ahead asks
+/// for one kernel at a time, and a pass asked for meanwhile would take the
+/// turn between two of them — a second that cannot be cut short.
+#[derive(Clone, Default)]
+pub(crate) struct Apart(Arc<(Mutex<ApartHolds>, Condvar)>);
+
+/// How many hold what is compiled apart, and — for the tests — how many
+/// wait for them.
+#[derive(Default)]
+struct ApartHolds {
+    holds: usize,
+    #[cfg(test)]
+    waiting: usize,
+}
+
+impl Apart {
+    fn holds(&self) -> std::sync::MutexGuard<'_, ApartHolds> {
+        self.0.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// One more hold: what is compiled apart waits till each is let go.
+    pub(crate) fn hold(&self) {
+        self.holds().holds += 1;
+    }
+
+    /// One hold let go; with the last, what waited goes on.
+    pub(crate) fn let_go(&self) {
+        let mut held = self.holds();
+        held.holds = held.holds.saturating_sub(1);
+        self.0.1.notify_all();
+    }
+
+    /// Returns once no hold is on.
+    pub(crate) fn wait(&self) {
+        let mut held = self.holds();
+        #[cfg(test)]
+        {
+            held.waiting += 1;
+        }
+        while held.holds > 0 {
+            held = self.0.1.wait(held).unwrap_or_else(PoisonError::into_inner);
+        }
+        #[cfg(test)]
+        {
+            held.waiting -= 1;
+        }
+    }
+
+    /// How many holds are on.
+    pub(crate) fn held(&self) -> usize {
+        self.holds().holds
+    }
+
+    /// How many wait for the holds to be let go.
+    #[cfg(test)]
+    pub(crate) fn waiting(&self) -> usize {
+        self.holds().waiting
     }
 }
 
@@ -198,6 +274,7 @@ impl Engine {
                     thread,
                     compiling,
                     kernels: Kernels::default(),
+                    apart: Apart::default(),
                     instance,
                     adapter,
                     device,
@@ -559,9 +636,44 @@ pub unsafe extern "C" fn gpu_engine_kernels_forget(engine: *const Engine) {
     engine.kernels.forget();
 }
 
+/// What `engine` compiles apart waits from here ([`Apart`]) till
+/// [`gpu_engine_apart_let`] has been called as many times.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_apart_hold(engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.apart.hold();
+}
+
+/// One [`gpu_engine_apart_hold`] let go.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_apart_let(engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.apart.let_go();
+}
+
+/// How many [`gpu_engine_apart_hold`]s are on: none once whoever held has
+/// let go, whatever came of what it compiled meanwhile.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_apart_held(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.apart.held() as u64
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Engine, gpu_engine_close, opened};
+    use super::{Apart, Engine, gpu_engine_close, opened};
     use crate::testing::first_engine;
     use crate::{fail, last_error};
 
@@ -621,6 +733,38 @@ mod tests {
             let _ = release.send(());
             assert!(got_through.is_ok(), "the submit waited behind the compile");
         });
+    }
+
+    // 🚨What is compiled apart waits while a hold is on, and goes on once
+    // each is let go (gpu-canonical-store ④, 2026-11-11; `Apart` has why).
+    #[test]
+    fn what_is_compiled_apart_waits_till_each_hold_is_let_go() {
+        let apart = Apart::default();
+        apart.hold();
+        apart.hold();
+        let (through, went) = std::sync::mpsc::channel();
+        let waiting = apart.clone();
+        std::thread::spawn(move || {
+            waiting.wait();
+            let _ = through.send(());
+        });
+        let soon = std::time::Duration::from_millis(50);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while apart.waiting() == 0 {
+            assert!(went.try_recv().is_err(), "it went through two holds");
+            assert!(std::time::Instant::now() < deadline, "it never came to its wait");
+            std::thread::yield_now();
+        }
+        apart.let_go();
+        assert_eq!(apart.held(), 1);
+        assert!(went.recv_timeout(soon).is_err(), "it went through the hold left");
+        apart.let_go();
+        assert!(went.recv_timeout(std::time::Duration::from_secs(20)).is_ok());
+        // One let go that was never held holds nothing back, and owes none.
+        apart.let_go();
+        assert_eq!(apart.held(), 0);
+        apart.hold();
+        assert_eq!(apart.held(), 1);
     }
 
     #[test]

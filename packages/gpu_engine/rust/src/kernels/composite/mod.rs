@@ -716,10 +716,14 @@ impl Composite {
     /// asks for at once — a tablet has few. The latest first, as the plan on
     /// screen now is the one likeliest to be asked again; which goes first
     /// changes only when each is made, and no test sees it.
+    ///
+    /// Each waits its turn behind what the app compiles ahead for a hand
+    /// (`Apart`, in `device.rs`): no one waits for a pass of a plan's own.
     fn compile_apart(&self, engine: &Engine) {
         let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
         let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
         std::thread::spawn(move || loop {
+            engine.apart.wait();
             let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
             let next = held.asked.iter().rev().find(|(_, made)| made.is_none());
             let Some(&(wanted, _)) = next else {

@@ -2090,6 +2090,30 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
     assert_eq!(passes.made(own), Some(taken));
 }
 
+// 🚨A pass of a plan's own is not compiled while what is compiled apart is
+// held — the app compiles ahead what a hand waits for meanwhile — and comes
+// once it is let go (`Apart`, in device.rs; gpu-canonical-store ④). On a
+// device of its own: a hold stops every composite's passes on its engine.
+#[test]
+fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go() {
+    let engine = Engine::open_first().expect("an adapter");
+    let composite = Composite::new(&engine).expect("compile the composite");
+    let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
+    let made = || composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner).made(own);
+    engine.apart.hold();
+    let any = composite.pass(&engine, own);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while engine.apart.waiting() == 0 {
+        assert!(std::time::Instant::now() < deadline, "the pass did not wait for the hold");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(made().is_none(), "⛔not compiled while it is held");
+    assert!(composite.pass(&engine, own) == any, "the pass that takes any serves meanwhile");
+    engine.apart.let_go();
+    composite.settle();
+    assert!(made().is_some_and(|its_own| its_own != any));
+}
+
 // A plan's pass compiled for its own R1 modes, stack levels and masked
 // steps, on a thread, composites what the full one does, which serves
 // until it is made: once made, every pinned scene and screen comes out the

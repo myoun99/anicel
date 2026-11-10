@@ -28,16 +28,31 @@ import 'engine_strokes.dart';
 /// scan was in no list, and compiled where a selection was first made
 /// (0.16–0.62 s of a stopped UI at any time of a launch); ↩️the blur
 /// brush's ten went with the stroke's three, ahead of all a lift needs —
-/// 🔬a third of the whole list's compile time (main PC, 11-11).
+/// 🔬7.1–7.4 s of them on the Surface, where all a hand needs is 0.96–1.22 s.
+///
+/// Till what a hand needs is compiled, the passes a composite compiles
+/// apart for the plans on screen wait ([GpuEngine.whileCompilesApartWait]):
+/// 🗣️관제 2026-11-11 06:00 「선은 첫 획 · 첫 들어올리기의 멈춤 자체다 … 손이
+/// 쓰는 커널 → composite 전용 패스」. 🔬Each of them a second of the one
+/// compiler, asked for as the canvas first shows, they stood between every
+/// two of a hand's kernels: a stroke was ready 2.2–2.6 s after the canvas
+/// came and a lift 3.5 s (Surface Pro 11, 11-11 05:59). A frame on screen
+/// runs on the pass that takes any plan meanwhile, as it does till its own
+/// is compiled. ⛔The effect chains' are not held: a frame that waits for
+/// one is not on screen yet.
 Future<void> compileAppKernelsAhead() async {
-  final tools = await appEngineFrameTools;
-  await EngineStrokes.warm();
-  // The ledger's scan is its own; the engine keeps the kernel it is made
-  // of (`Kernels`, rust/src/device.rs), so one compiled here is every
-  // ledger's.
-  (await GpuInk.opening(appGpuEngine)).free();
-  await EngineCelPixels.warm();
-  await appGpuStampLandingKernels.warm();
+  final engine = await openAppGpuEngine();
+  final tools = await engine.whileCompilesApartWait(() async {
+    final tools = await appEngineFrameTools;
+    await EngineStrokes.warm();
+    // The ledger's scan is its own; the engine keeps the kernel it is made
+    // of (`Kernels`, rust/src/device.rs), so one compiled here is every
+    // ledger's.
+    (await GpuInk.opening(engine)).free();
+    await EngineCelPixels.warm();
+    await appGpuStampLandingKernels.warm();
+    return tools;
+  });
   await appGpuGridKernels.warm();
   await tools.composite.compileChains();
   await EngineStrokes.warmBlurs();

@@ -1284,6 +1284,15 @@ external int kernelsBuiltHere();
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_kernels_forget')
 external void kernelsForget(Pointer<Engine> engine);
 
+@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_hold')
+external void apartHold(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_let')
+external void apartLet(Pointer<Engine> engine);
+
+@Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_held')
+external int apartHeld(Pointer<Engine> engine);
+
 @Native<Pointer<Grid> Function(Pointer<Engine>)>(symbol: 'gpu_engine_grid_new')
 external Pointer<Grid> gridNew(Pointer<Engine> engine);
 

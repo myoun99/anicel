@@ -3,6 +3,7 @@
 @Timeout(Duration(minutes: 5))
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
@@ -69,11 +70,30 @@ void main() {
   );
   final blur = fx(EffectKind.blur, {'blurriness': 24});
   late int builtByTheList;
+  // Whether what the engine compiles apart was held, looked at between this
+  // isolate's turns while the list ran: with what a paste needs — the last
+  // of a hand's — still to come, and once the grids' were in.
+  final heldBeforeAHandsWereIn = <bool>[];
+  final heldOnceTheGridsWereIn = <bool>[];
 
   setUpAll(() async {
     AppKernels.debugCompileHere = false;
     final before = debugKernelsCompiledHere;
+    final looking = Timer.periodic(const Duration(milliseconds: 1), (_) {
+      final engine = appGpuEngineOpen.value;
+      if (engine == null) {
+        return;
+      }
+      final held = engine.debugCompilesApartHeld > 0;
+      if (appGpuStampLandingKernels.compiled == null) {
+        heldBeforeAHandsWereIn.add(held);
+      }
+      if (appGpuGridKernels.compiled != null) {
+        heldOnceTheGridsWereIn.add(held);
+      }
+    });
     await compileAppKernelsAhead();
+    looking.cancel();
     builtByTheList = debugKernelsCompiledHere - before;
   });
 
@@ -139,6 +159,17 @@ void main() {
 
   test('the list builds none on this thread', () {
     expect(builtByTheList, 0);
+  });
+
+  // 🗣️관제 2026-11-11 06:00 · 06:07 (④): 「손이 쓰는 커널 → composite 전용
+  // 패스」, 「잡은 것은 모든 길에서 놓여야 한다」.
+  test('what the engine compiles apart is held till what a hand needs is '
+      'compiled, and no longer', () {
+    expect(heldBeforeAHandsWereIn, isNotEmpty, reason: '⛔premise: looked');
+    expect(heldBeforeAHandsWereIn, everyElement(isTrue));
+    expect(heldOnceTheGridsWereIn, isNotEmpty, reason: '⛔premise: looked');
+    expect(heldOnceTheGridsWereIn, everyElement(isFalse));
+    expect(appGpuEngine.debugCompilesApartHeld, 0);
   });
 
   test('a pen put down builds none, nor the blur brush', () {

@@ -195,6 +195,28 @@ class GpuEngine {
   /// next asked for is compiled.
   void debugForgetKernels() => rust.kernelsForget(_engine);
 
+  /// [ahead], what the engine compiles apart — a composite's own passes,
+  /// which no one waits for — waiting till it is through, however it ends:
+  /// the compiler is one, and a pass asked for meanwhile takes a second of
+  /// it between two of the kernels [ahead] compiles (rust/src/device.rs,
+  /// `Apart`).
+  ///
+  /// ⛔No hold without its letting go (🗣️관제 2026-11-11 06:07: 「잡은 것은
+  /// 모든 길에서 놓여야 한다」): a hold left on, no plan would ever run on a
+  /// pass of its own.
+  Future<T> whileCompilesApartWait<T>(Future<T> Function() ahead) async {
+    rust.apartHold(_engine);
+    try {
+      return await ahead();
+    } finally {
+      rust.apartLet(_engine);
+    }
+  }
+
+  /// Test seam: how many hold what the engine compiles apart
+  /// ([whileCompilesApartWait]).
+  int get debugCompilesApartHeld => rust.apartHeld(_engine);
+
   /// Frees the device; every surface must be freed first.
   void close() {
     final fill = _fill;

@@ -101,4 +101,33 @@ void main() {
       greaterThan(0),
     );
   });
+
+  // 🗣️관제 2026-11-11 06:07 (gpu-canonical-store ④): 「잡은 것은 모든 길에서
+  // 놓여야 한다 — 컴파일 실패 …」: a hold left on, no plan would ever run on
+  // a pass of its own.
+  test('what the engine compiles apart is let go however what was compiled '
+      'ahead of it ends', () async {
+    final engine = await openAppGpuEngine();
+    expect(engine.debugCompilesApartHeld, 0, reason: '⛔premise');
+    final failure = StateError('a compile that failed');
+
+    await expectLater(
+      engine.whileCompilesApartWait<void>(() async {
+        expect(engine.debugCompilesApartHeld, 1, reason: 'held meanwhile');
+        await Future<void>.delayed(Duration.zero);
+        throw failure;
+      }),
+      throwsA(same(failure)),
+    );
+    expect(engine.debugCompilesApartHeld, 0, reason: 'one that failed late');
+
+    await expectLater(
+      engine.whileCompilesApartWait<void>(() => throw failure),
+      throwsA(same(failure)),
+    );
+    expect(engine.debugCompilesApartHeld, 0, reason: 'one that never began');
+
+    expect(await engine.whileCompilesApartWait(() async => 7), 7);
+    expect(engine.debugCompilesApartHeld, 0, reason: 'one that ended well');
+  });
 }
