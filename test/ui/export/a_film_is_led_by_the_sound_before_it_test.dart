@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/export/png_sequence_export_service.dart'
     show ExportWriteSummary;
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/export_preview_probe.dart';
 import '../../helpers/temp_dir.dart';
 
 /// A film run that writes nothing: it asks for the sound before its mix, as
@@ -196,7 +197,8 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.settleExportPreview();
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.runAsync(state.export);
     await tester.pump();
