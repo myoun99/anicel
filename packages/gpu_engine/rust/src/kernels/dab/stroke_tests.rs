@@ -386,6 +386,13 @@ fn a_rub_meets_every_tile_its_window_reads() {
 }
 
 #[test]
+fn a_dab_of_no_area_meets_no_tile() {
+    let mut f = fixture();
+    assert!(f.rub(&[rubbing([60, 60, 68, 60])], |_| None).is_empty());
+    assert!(f.rub(&[rubbing([60, 60, 60, 68])], |_| None).is_empty());
+}
+
+#[test]
 fn a_tile_met_is_not_met_again() {
     let mut f = fixture();
     let dab = rubbing([60, 60, 68, 68]);

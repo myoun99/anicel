@@ -152,6 +152,20 @@ void main() {
     stroke.clear();
   });
 
+  test('on its way a stroke compares with nothing: a rub that moved nothing '
+      'still shows a tile, its frame not waiting to find that out', () {
+    final base = surfaceOf({origin: tileOf((x, y) => ink)});
+    final stroke = rubbedOver(base)..blendFrom([rubbing(64, 64)], from: 0);
+    final shown = stroke.preBlendedOverlayTiles(
+      coords: [origin],
+      base: base,
+      mode: BrushBlendMode.color,
+      erase: false,
+    );
+    expect(shown.single!.landed, isNotNull);
+    stroke.clear();
+  });
+
   test('what the pen shows reads nothing back', () {
     final base = surfaceOf({origin: edge()});
     final ledger = EngineTileLedger.instance;
