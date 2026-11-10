@@ -30,6 +30,7 @@ use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::{ResampleMap, ResampleMode, words_buffer};
+use crate::platform::surface_format;
 
 use super::halvings::Camera;
 use super::held::{HeldChains, held_bytes};
@@ -1027,6 +1028,48 @@ pub unsafe extern "C" fn gpu_engine_composite_new(engine: *const Engine) -> *mut
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     Composite::new(engine).map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+}
+
+/// Compiles the full pass that stores to a surface of BGRA or RGBA 8-bit
+/// unorm texels — as `gpu_engine_surface_new` makes for the same `bgra`,
+/// and a window is RGBA — on the calling thread ([`Composite::shows`]): an
+/// app asks where it makes the executor, off the thread its frames are
+/// built on, and its first show compiles nothing there.
+///
+/// # Safety
+/// `composite` and `engine` are live, and no other thread holds the
+/// executor yet: a pass asked for meanwhile waits for this one.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_composite_shows(composite: *const Composite, engine: *const Engine, bgra: bool) {
+    // SAFETY: see the function's contract.
+    let (composite, engine) = unsafe { (&*composite, &*engine) };
+    composite.shows(engine, surface_format(bgra));
+}
+
+/// Compiles the effect chains' blurs on the calling thread if they are not
+/// compiled, and waits where another thread is at it
+/// ([`Composite::chains`]): an app asks off the thread its frames are built
+/// on, and runs no plan that names a chain before
+/// `gpu_engine_composite_chains_stand`.
+///
+/// # Safety
+/// `composite` and `engine` are live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_composite_chains(composite: *const Composite, engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let (composite, engine) = unsafe { (&*composite, &*engine) };
+    composite.chains(engine);
+}
+
+/// Whether the effect chains' blurs are compiled: whether a plan that
+/// names a chain compiles nothing where it runs.
+///
+/// # Safety
+/// `composite` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_composite_chains_stand(composite: *const Composite) -> bool {
+    // SAFETY: see the function's contract.
+    unsafe { &*composite }.chains_stand()
 }
 
 /// # Safety

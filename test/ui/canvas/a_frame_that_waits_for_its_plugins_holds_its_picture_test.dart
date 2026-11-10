@@ -19,8 +19,11 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/app_kernels_ahead.dart';
 import 'package:anicel/src/native/engine_chain_holds.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
+import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
@@ -34,12 +37,18 @@ import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
     show FramePictureKey;
+import 'package:anicel/src/ui/widgets/still_raster.dart' show TickSceneLayer;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuComposite, debugKernelsCompiledHere;
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
+import '../../helpers/a_shown_surface.dart';
+import '../../helpers/an_effect_sampled.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「머문다 — … 결과가 올 때까지 그
@@ -49,6 +58,13 @@ import '../../helpers/settle_async.dart';
 /// frame's picture, made waiting for the plugin, and a stroke's steps go
 /// into it one patch at a time — a stroke shown late by the plugin's time.
 /// Beside each, the same frame with no plugin, as it always was.
+///
+/// A frame whose effect chain's kernels are still to be compiled waits as
+/// well (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦: 「선 = UI 스레드가
+/// 직접 하는 커널 컴파일 0개(시작 · S5 열기)」): the thread its frames are
+/// built on compiles none of them — the screen stays on the picture it
+/// showed while they are compiled off it, and shows the frame once they
+/// are.
 void main() {
   const tileSize = defaultCelTileSize;
   // ⚠️Wide enough that a folder drawn whole with a plugin's reach on it
@@ -208,9 +224,10 @@ void main() {
   }
 
   /// A canvas standing on [nodes]' frame — its one row inked from a quarter
-  /// of a tile to half of one, across and down — over [store]; what
-  /// [screen] shows, the overlay its pen's steps are shown by, and a hand of
-  /// the pen's row anew — on another frame's nodes where it is handed them.
+  /// of a tile to half of one, across and down, or its cel blank where
+  /// [penOnABlankCel] — over [store]; what [screen] shows, the overlay its
+  /// pen's steps are shown by, and a hand of the pen's row anew — on another
+  /// frame's nodes where it is handed them.
   Future<
     ({
       EngineFramePictureStore<FramePictureKey> store,
@@ -225,25 +242,27 @@ void main() {
     GlobalKey screen,
     List<CompositeNode<CanvasStackRow>> nodes, {
     EngineFramePictureStore<FramePictureKey>? laidBy,
+    bool penOnABlankCel = false,
   }) async {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
-      key: BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-        tiles: {
-          TileCoord(x: 0, y: 0): tileOf(
-            TileCoord(x: 0, y: 0),
-            ink,
-            (at) => const Rect.fromLTRB(
-              tileSize / 4,
-              tileSize / 4,
-              tileSize / 2,
-              tileSize / 2,
-            ).contains(at),
-          ),
-        },
-      ),
+      if (!penOnABlankCel)
+        key: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: tileSize,
+          tiles: {
+            TileCoord(x: 0, y: 0): tileOf(
+              TileCoord(x: 0, y: 0),
+              ink,
+              (at) => const Rect.fromLTRB(
+                tileSize / 4,
+                tileSize / 4,
+                tileSize / 2,
+                tileSize / 2,
+              ).contains(at),
+            ),
+          },
+        ),
       over: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: tileSize,
@@ -263,13 +282,17 @@ void main() {
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    BitmapSurface thePensCel() => BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    // Pre-blended on its cel, as every stroke of the app's is: a step's
+    // tile is the row's own where it lands, on the engine's screen too.
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
+      ..preBlendBase = thePensCel();
     addTearDown(overlay.dispose);
     BitmapSurfacePainter aPainter() => BitmapSurfacePainter(
-      surface: BrushFrameDisplayCacheService(
-        frameStore: cels,
-        canvasSize: canvasSize,
-      ).prepareFramePreview(key).previewSurface,
+      surface: thePensCel(),
       overlayModel: overlay,
       showTransparentBackground: false,
       lineage: 'a-frame-that-waits-${nodes.hashCode}',
@@ -532,6 +555,193 @@ void main() {
     await tester.pump();
 
     expect(differences(before, await shotOf(tester, screen)), isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  /// What a frame is laid with, on a composite of its own whose effect
+  /// chains' kernels are still to be compiled — every other kernel the app
+  /// compiles ahead compiled, and off this isolate, as the app compiles
+  /// them — and how many kernels this thread had built by then.
+  Future<({EngineFrameTools tools, int built})> toolsWhoseChainsAreToCome(
+    WidgetTester tester,
+  ) async {
+    AppKernels.debugCompileHere = false;
+    addTearDown(() => AppKernels.debugCompileHere = true);
+    final composite = (await tester.runAsync(() async {
+      await compileAppKernelsAhead();
+      // Showing on screens as a test's are laid ([shownSurfaceOf]), which
+      // is not on every platform as the app's own are.
+      final screen = shownSurfaceOf(1, 1);
+      final bgra = screen.bgra;
+      screen.free();
+      return GpuComposite.opening(appGpuEngine, bgra: bgra);
+    }))!;
+    // ⚠️Before the store that lays with it is made: freed after it.
+    addTearDown(() async {
+      // ⚠️Freed only once its chains are compiled: a compile on its way
+      // holds it. Asked of the engine, in real time — the compile's future
+      // is on the test's clock, which pumps no more.
+      unawaited(composite.compileChains());
+      if (await pollUntil(() => !composite.chainsAreToCome)) {
+        composite.free();
+      }
+    });
+    final letters = (await tester.runAsync(
+      () => EngineLetters.open(composite),
+    ))!;
+    expect(composite.chainsAreToCome, isTrue, reason: '⛔premise');
+    return (
+      tools: (composite: composite, letters: letters),
+      built: debugKernelsCompiledHere,
+    );
+  }
+
+  final blurs = fx(EffectKind.blur, {'blurriness': 3});
+
+  testWidgets('a frame whose chain\'s kernels are still to be compiled, '
+      'nothing shown yet: nothing drawn till they are, and none compiled '
+      'here', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final screen = GlobalKey();
+    // No picture comes: what is shown is the frame as it stands.
+    final store = StoreLayingNothing(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    await standOn(tester, screen, inAFolder([blurs]), laidBy: store);
+    await tester.pump();
+
+    expect(onlyTheScreen(await shotOf(tester, screen)), isTrue);
+    expect(
+      tester.layers.whereType<TickSceneLayer>(),
+      isEmpty,
+      reason: 'no layer of a texture nothing was presented on',
+    );
+    expect(debugKernelsCompiledHere, built);
+
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: shown once they are compiled',
+    );
+    expect(debugKernelsCompiledHere, built);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame handed another whose chain\'s kernels are still to be '
+      'compiled stays on the picture it showed till they are', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final screen = GlobalKey();
+    final store = StoreLayingNothing(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final (store: _, picture: _, overlay: _, :handAnew) = await standOn(
+      tester,
+      screen,
+      inAFolder(const []),
+      laidBy: store,
+    );
+    await tester.pump();
+    final before = await shotOf(tester, screen);
+    expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
+
+    await handAnew(inAFolder([blurs]));
+
+    expect(differences(before, await shotOf(tester, screen)), isEmpty);
+    expect(
+      await settleAsync(
+        tester,
+        () async =>
+            differences(before, await shotOf(tester, screen)).isNotEmpty,
+      ),
+      isTrue,
+      reason: 'LIVENESS: the frame handed is shown once they are compiled',
+    );
+    expect(debugKernelsCompiledHere, built);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame whose chain\'s kernels are still to be compiled has '
+      'its picture made once they are', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final store = StoreTellingItsWrites(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final (store: _, :picture, overlay: _, handAnew: _) = await standOn(
+      tester,
+      GlobalKey(),
+      inAFolder([blurs]),
+      laidBy: store,
+    );
+    expect(store.laid, contains(picture), reason: '⛔premise: on its way');
+    expect(store.bytesOf(picture), isNull, reason: '⛔premise: not made yet');
+
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: made once they are compiled',
+    );
+    expect(tester.takeException(), isNull);
+    expect(debugKernelsCompiledHere, built);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // A blank cel lays no picture, so none of its row's chain: the frame's
+  // picture is made with the kernels still to come, and it is the pen's
+  // first step that names the chain — where a step is written into the
+  // picture shown.
+  testWidgets('a pen\'s first step on a blank cel under a blur, the '
+      'chain\'s kernels still to be compiled: the screen stays as it was '
+      'till they are', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final screen = GlobalKey();
+    final store = StoreTellingItsWrites(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final (store: _, :picture, :overlay, handAnew: _) = await standOn(
+      tester,
+      screen,
+      [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, frameKey: key, effects: [blurs]),
+        ),
+        const CompositeLeaf(
+          CanvasLayerImageRequest(frameKey: over, opacity: 1),
+        ),
+      ],
+      laidBy: store,
+      penOnABlankCel: true,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    expect(
+      tools.composite.chainsAreToCome,
+      isTrue,
+      reason: '⛔premise: made with no chain laid',
+    );
+    final before = await shotOf(tester, screen);
+    expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+
+    expect(
+      store.patched,
+      isNotEmpty,
+      reason: '⛔premise: the step was to be written into the picture',
+    );
+    expect(differences(before, await shotOf(tester, screen)), isEmpty);
+    expect(
+      await settleAsync(
+        tester,
+        () async =>
+            differences(before, await shotOf(tester, screen)).isNotEmpty,
+      ),
+      isTrue,
+      reason: 'LIVENESS: the step is shown once they are compiled',
+    );
+    expect(debugKernelsCompiledHere, built);
     await tester.pumpWidget(const SizedBox());
   });
 }

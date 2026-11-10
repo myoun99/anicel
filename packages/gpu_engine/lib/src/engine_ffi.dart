@@ -720,6 +720,28 @@ external int planMapDrawn(
 )
 external Pointer<Composite> compositeNew(Pointer<Engine> engine);
 
+@Native<Void Function(Pointer<Composite>, Pointer<Engine>, Bool)>(
+  symbol: 'gpu_engine_composite_shows',
+)
+external void compositeShows(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  bool bgra,
+);
+
+@Native<Void Function(Pointer<Composite>, Pointer<Engine>)>(
+  symbol: 'gpu_engine_composite_chains',
+)
+external void compositeChains(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+);
+
+@Native<Bool Function(Pointer<Composite>)>(
+  symbol: 'gpu_engine_composite_chains_stand',
+)
+external bool compositeChainsStand(Pointer<Composite> composite);
+
 @Native<Void Function(Pointer<Composite>)>(symbol: 'gpu_engine_composite_free')
 external void compositeFree(Pointer<Composite> composite);
 
@@ -1261,6 +1283,9 @@ external void letteredFree(Pointer<Lettered> lettered);
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);
 
+@Native<Uint64 Function()>(symbol: 'gpu_engine_kernels_built_here')
+external int kernelsBuiltHere();
+
 @Native<Pointer<Grid> Function(Pointer<Engine>)>(symbol: 'gpu_engine_grid_new')
 external Pointer<Grid> gridNew(Pointer<Engine> engine);
 
@@ -1316,6 +1341,15 @@ external bool gridDraw(
 
 @Native<Pointer<GridLay> Function()>(symbol: 'gpu_engine_grid_lay_new')
 external Pointer<GridLay> gridLayNew();
+
+@Native<Void Function(Pointer<GridLay>, Pointer<Engine>, Bool)>(
+  symbol: 'gpu_engine_grid_lay_ready',
+)
+external void gridLayReady(
+  Pointer<GridLay> lay,
+  Pointer<Engine> engine,
+  bool bgra,
+);
 
 @Native<Void Function(Pointer<GridLay>)>(symbol: 'gpu_engine_grid_lay_free')
 external void gridLayFree(Pointer<GridLay> lay);

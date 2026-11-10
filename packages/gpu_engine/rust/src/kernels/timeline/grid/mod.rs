@@ -53,6 +53,10 @@ pub(crate) struct GridPicture {
 }
 
 impl GridPicture {
+    /// What every tile's picture is made in: what the app's tile pass is
+    /// compiled for before a tile is drawn ([`GridTile::for_pictures`]).
+    pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
     /// A clear picture `width` × `height` pixels — None, with the last
     /// error, for a side of none or past what the device makes.
     pub(crate) fn new(engine: &Engine, width: u32, height: u32) -> Option<Self> {
@@ -70,7 +74,7 @@ impl GridPicture {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: Self::FORMAT,
             // Drawn by the pass, laid by the screen, read for a fingerprint.
             usage: wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::TEXTURE_BINDING
@@ -129,8 +133,9 @@ pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -
     Some(Some(texture))
 }
 
-/// A frame grid's tile pass, one pipeline per texture format it has been
-/// run on.
+/// A frame grid's tile pass, one pipeline per texture format: compiled
+/// where the pass first runs on one, or ahead of it for a tile's picture
+/// ([`GridTile::for_pictures`]).
 pub(crate) struct GridTile {
     params: wgpu::Buffer,
     /// What the atlas binding holds for a stream with no letters.
@@ -223,6 +228,18 @@ impl GridTile {
             no_atlas,
             pipelines: Vec::new(),
         }
+    }
+
+    /// The pass with its pipeline for a tile's picture compiled where the
+    /// caller is, so that the first tile drawn compiles nothing: the app
+    /// makes it off the thread its frames are built on (🗣️관제 2026-11-10
+    /// 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접 하는 커널 컴파일
+    /// 0개」 — 🔬the row that first drew a tile waited 0.17 s for it at
+    /// launch on the Surface Pro 11, and 1.9–2.2 s where S5 opened).
+    pub(crate) fn for_pictures(engine: &Engine) -> Self {
+        let mut tile = Self::new(engine);
+        tile.pipeline(engine, GridPicture::FORMAT);
+        tile
     }
 
     fn pipeline(

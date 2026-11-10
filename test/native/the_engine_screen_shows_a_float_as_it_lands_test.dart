@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../helpers/an_effect_sampled.dart';
 import '../helpers/engine_screen_pins.dart';
 
 /// 🚨★★★THE ENGINE'S SCREEN SHOWS A FLOAT AS IT LANDS (flip lane ⓐ-2, 유저
@@ -207,16 +208,6 @@ void main() {
     CanvasViewport? viewport,
     (int, int) size = (256, 128),
   }) => engine.shown(frame, size: size, viewport: viewport);
-
-  /// A row of [kind] at its defaults but for [lanes].
-  ResolvedLayerEffect fx(EffectKind kind, Map<String, double> lanes) =>
-      ResolvedLayerEffect(
-        kind: kind,
-        values: [
-          for (final spec in kind.parameters)
-            lanes[spec.id] ?? spec.defaultValue,
-        ],
-      );
 
   for (final (dx, dy) in [(0, 0), (37, -11), (-70, 25)]) {
     test('🚨a float carried by ($dx, $dy) shows on the engine\'s screen as '

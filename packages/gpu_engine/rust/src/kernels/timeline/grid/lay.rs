@@ -16,6 +16,8 @@ use crate::kernels::shared::{
     fits, flat, land_storage_writes, pipeline, storage_format, whole, words_buffer,
 };
 
+use crate::platform::stores;
+
 use super::GridPicture;
 
 /// lay.wgsl's workgroup side.
@@ -30,8 +32,8 @@ pub(crate) struct Laid<'a> {
     pub(crate) onto: [f64; 4],
 }
 
-/// The screen pass, its two entries compiled once per format it has laid
-/// onto.
+/// The screen pass, its two entries compiled once per format: where it
+/// first lays onto one, or ahead of it ([`GridLay::ready`]).
 pub(crate) struct GridLay {
     pipelines: Vec<(wgpu::TextureFormat, [wgpu::ComputePipeline; 2])>,
 }
@@ -39,6 +41,19 @@ pub(crate) struct GridLay {
 impl GridLay {
     pub(crate) fn new() -> Self {
         Self { pipelines: Vec::new() }
+    }
+
+    /// Compiles the entries that lay onto a screen of `format` where the
+    /// caller is, so that the first screen laid compiles nothing: the app
+    /// asks off the thread its frames are built on (🗣️관제 2026-11-10
+    /// 18:14, gpu-canonical-store ⑦ — 🔬the two were the first 2.9–3.5 s
+    /// of a stopped UI at launch on the Surface Pro 11). Nothing where
+    /// this adapter stores to no such screen: none is made there
+    /// (`platform::Surface`).
+    pub(crate) fn ready(&mut self, engine: &Engine, format: wgpu::TextureFormat) {
+        if stores(engine, format) {
+            self.pipelines(engine, format);
+        }
     }
 
     /// The clear and the tile entries for `format`.

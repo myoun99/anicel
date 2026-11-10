@@ -97,6 +97,7 @@ use crate::kernels::shared::{
     ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, room, runs,
     storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
 };
+use crate::platform::stores;
 
 use held::Made;
 
@@ -482,10 +483,27 @@ pub(crate) struct Composite {
     passes: Arc<Mutex<Passes>>,
     /// The pages of the pool a pass binds, past the plan and the work.
     pages: Pages,
-    /// The effect chains' blurs, compiled where a plan first names a chain,
-    /// not where the engine starts: most plans name none.
+    /// The effect chains' blurs: seven kernels, compiled for a chain of any
+    /// ops, a row's colour keys alone too. Not where the engine starts —
+    /// the project an app starts on names no chain — and not under the plan
+    /// that first names one, on the thread the frames are built on: the app
+    /// compiles them off it and lays no plan that names a chain before they
+    /// stand ([`Composite::chains`]; 🗣️관제 2026-11-10 18:14,
+    /// gpu-canonical-store ⑦: 「UI 스레드가 직접 하는 커널 컴파일 0개」 —
+    /// 🔬the seven were 6.5 s of a stopped UI where S5 opened on the
+    /// Surface Pro 11). ↩️Until then it was compiled where a plan first
+    /// named a chain (11-07), and a plan run before they stand still
+    /// compiles them where it runs, as this crate's tests do.
     chain: OnceLock<Chain>,
 }
+
+/// The app compiles the chains on one thread while its frames run plans on
+/// another (`gpu_engine_composite_chains`): that an executor may be shared
+/// so is checked here, for the field that comes next.
+const _: fn() = || {
+    fn shared<T: Sync>() {}
+    shared::<Composite>();
+};
 
 impl Composite {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
@@ -501,6 +519,30 @@ impl Composite {
         // Only when the compile is paid changes; no test sees it.
         composite.pass(engine, Compiled::full(None));
         Some(composite)
+    }
+
+    /// Compiles the full pass that stores to a surface of `format` where
+    /// the caller is, so that the first [`Composite::show`] onto one
+    /// compiles nothing: the app asks where it makes the executor, off the
+    /// thread its frames are built on (gpu-canonical-store ⑦, as
+    /// [`Composite::chains`]). Nothing where this adapter stores to no such
+    /// surface: none is made there (`platform::Surface`).
+    pub(crate) fn shows(&self, engine: &Engine, format: wgpu::TextureFormat) {
+        if let (true, Some(token)) = (stores(engine, format), storage_format(format)) {
+            self.pass(engine, Compiled::full(Some(token)));
+        }
+    }
+
+    /// The effect chains' blurs, compiled where the caller is if they are
+    /// not — or waited for, where another thread is at it.
+    pub(crate) fn chains(&self, engine: &Engine) -> &Chain {
+        self.chain.get_or_init(|| Chain::new(engine))
+    }
+
+    /// Whether the effect chains' blurs are compiled: whether a plan that
+    /// names a chain compiles nothing where it runs.
+    pub(crate) fn chains_stand(&self) -> bool {
+        self.chain.get().is_some()
     }
 
     /// All this device lets a pass take.
@@ -648,8 +690,9 @@ impl Composite {
     /// which composites the same bytes, slower. A compile takes seconds
     /// where a frame takes milliseconds (1.7 s to 6 s cold on this PC,
     /// 11-06), so no plan waits on one but an output's first: the full one,
-    /// compiled where it is first asked for — the tiles' in `new` — as
-    /// before passes came apart.
+    /// compiled where it is first asked for — the tiles' in `new`, a
+    /// surface's in `shows` where the app has said what its screens are —
+    /// as before passes came apart.
     fn pass(&self, engine: &Engine, wanted: Compiled) -> wgpu::ComputePipeline {
         let full = Compiled::full(wanted.surface);
         let mut passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1024,9 +1067,8 @@ impl Composite {
             drawn.push(Some(self.run(engine, &plan, read, NO_EDGE, budget)?.out));
         }
         let ops = with_drawn(&chained.ops, &drawn);
-        let chain = self.chain.get_or_init(|| Chain::new(engine));
         // A chain reads its tiles and puts others: what it read stays.
-        chain.run(engine, self, under, chained.rect, &ops)
+        self.chains(engine).run(engine, self, under, chained.rect, &ops)
     }
 
     /// [`Composite::walk`] from the steps as `lay` laid them.

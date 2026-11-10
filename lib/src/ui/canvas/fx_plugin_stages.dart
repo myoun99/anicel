@@ -9,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/layer_effect.dart';
+import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/plan_plugins.dart';
 import '../../services/brush_stroke_blend.dart' show engineSurfaceRegionPixels;
 import '../../services/cel_plugin_pass.dart'
@@ -70,10 +71,27 @@ final class FxPluginStages implements PluginSteps {
   ///
   /// ⚠️At most [_rounds]: a step met anew each round — a sample unequal to
   /// itself — would ask for ever; past them it is drawn as if off.
+  ///
+  /// A recording that meets kernels still to be compiled
+  /// ([FrameKernelsToCome]) is made again, from its first round, once they
+  /// are: a route that can wait waits for those as it does for a plugin.
   static Future<T> recordedThrough<T>(
     T Function() record, {
     required void Function(T made) discard,
   }) async {
+    while (true) {
+      try {
+        return await _recordedOnce(record, discard);
+      } on FrameKernelsToCome catch (wait) {
+        await wait.compiled;
+      }
+    }
+  }
+
+  static Future<T> _recordedOnce<T>(
+    T Function() record,
+    void Function(T made) discard,
+  ) async {
     final stages = FxPluginStages._();
     try {
       var made = stages._recording(record);

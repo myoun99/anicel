@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../helpers/a_shown_surface.dart';
+import '../helpers/an_effect_sampled.dart';
 import '../helpers/engine_screen_pins.dart';
 
 /// 🚨★WHAT A CHAIN PUT IS HELD ON THE ENGINE (folder holding, 관제 11-08
@@ -54,17 +55,6 @@ void main() {
   );
   final inside = celOf('in');
   final outside = celOf('out');
-  ResolvedLayerEffect fx(
-    EffectKind kind,
-    Map<String, double> lanes, {
-    Map<String, LayerId?> layers = const {},
-  }) => ResolvedLayerEffect(
-    kind: kind,
-    values: [
-      for (final spec in kind.parameters) lanes[spec.id] ?? spec.defaultValue,
-    ],
-    layers: layers,
-  );
   final blur = fx(EffectKind.blur, {'blurriness': 24});
   final edged = fx(EffectKind.blur, {'blurriness': 24, 'repeatEdgePixels': 1});
 

@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/engine_strokes.dart';
 
 /// 🚨THE FIRST BLUR OF A LAUNCH WAITS FOR NOTHING (flip lane ⓒ): the blur
@@ -16,6 +17,7 @@ import 'package:anicel/src/native/engine_strokes.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUpAll(() => AppKernels.debugCompileHere = false);
   tearDown(EngineStrokes.debugForgetBlurs);
 
   // First in the file: no stroke has been compiled yet.

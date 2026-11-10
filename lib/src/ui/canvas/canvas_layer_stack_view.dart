@@ -49,6 +49,7 @@ import '../../services/playback/cut_frame_composite_signature.dart'
 import 'tile_origin.dart';
 import '../../core/display_filter.dart' show filterQualityForDisplayScale;
 import '../../models/dirty_region.dart';
+import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/composite_tree_plan.dart';
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_letters.dart';

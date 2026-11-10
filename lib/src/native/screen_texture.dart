@@ -40,10 +40,25 @@ sealed class ScreenTexture {
       ? _WindowTexture(await engine.window(width, height), width, height)
       : _AlternatedTextures(engine, width, height);
 
+  /// Whether this platform's screens are laid BGRA, RGBA else: Apple's
+  /// Flutter shows 32BGRA alone among RGB layouts
+  /// (rust/src/platform/apple.rs), Linux's GL texture is GL_RGBA8 alone
+  /// (rust/src/platform/linux.rs), Android's window is RGBA
+  /// (rust/src/platform/android.rs), and on Windows the screen's bytes
+  /// matched the GPU's in BGRA and not in RGBA (gpu-engine-feasibility ⑤,
+  /// three runs: BGRA MATCH 3ed77c11, RGBA MISMATCH e20eea22).
+  ///
+  /// One fact for the screens and for the kernels compiled ahead of them
+  /// (`appGpuCompositeKernels`, `appGpuGridKernels`): a pass that shows on
+  /// a screen is compiled per layout, so a second answer is a second
+  /// compile where the first screen is shown (🗣️관제 2026-11-10 18:14,
+  /// gpu-canonical-store ⑦).
+  static final bool bgra = !Platform.isLinux && !Platform.isAndroid;
+
   /// A surface of [width] × [height] on [engine], laid as this platform's
   /// screens are: what a picture for a file is shown on and read back from.
   static GpuSurface surfaceOf(GpuEngine engine, int width, int height) =>
-      engine.surface(width, height, bgra: _AlternatedTextures._showsBgra);
+      engine.surface(width, height, bgra: bgra);
 
   /// [surface] alone, presented onto and shown by no texture Flutter
   /// knows: what a test reads a screen back from ([GpuSurface.fingerprint])
@@ -81,6 +96,7 @@ sealed class ScreenTexture {
   void present(void Function(GpuTarget next) draw) {
     try {
       _present(draw);
+      _showsAFrame = true;
     } on StateError catch (error, stack) {
       FlutterError.reportError(
         FlutterErrorDetails(
@@ -94,6 +110,11 @@ sealed class ScreenTexture {
   }
 
   void _present(void Function(GpuTarget next) draw);
+
+  /// Whether a frame has been presented: till one is, [textureId] shows
+  /// nothing drawn.
+  bool get showsAFrame => _showsAFrame;
+  bool _showsAFrame = false;
 
   /// Frees the texture, once Flutter shows it no more.
   Future<void> free() {
@@ -116,7 +137,7 @@ final class _AlternatedTextures extends ScreenTexture {
   factory _AlternatedTextures(GpuEngine engine, int width, int height) {
     final surfaces = [
       for (var i = 0; i < 2; i++)
-        engine.surface(width, height, bgra: _showsBgra),
+        engine.surface(width, height, bgra: ScreenTexture.bgra),
     ];
     final textures = [
       for (final surface in surfaces) SharedTexture.register(surface),
@@ -131,14 +152,6 @@ final class _AlternatedTextures extends ScreenTexture {
     super.height,
   ) : _shown = ValueNotifier(_textures.first.id),
       super(surfaces: _surfaces.length);
-
-  /// Whether Flutter shows a BGRA surface here: Apple's Flutter shows
-  /// 32BGRA alone among RGB layouts (rust/src/platform/apple.rs), Linux's
-  /// GL texture is GL_RGBA8 alone (rust/src/platform/linux.rs), and on
-  /// Windows the screen's bytes matched the GPU's in BGRA and not in RGBA
-  /// (gpu-engine-feasibility ⑤, three runs: BGRA MATCH 3ed77c11, RGBA
-  /// MISMATCH e20eea22).
-  static final bool _showsBgra = !Platform.isLinux;
 
   final List<GpuSurface> _surfaces;
   final List<SharedTexture> _textures;

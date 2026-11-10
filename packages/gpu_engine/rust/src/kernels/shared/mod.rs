@@ -38,6 +38,8 @@ mod source_scan;
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::cell::Cell;
+
 use crate::device::Engine;
 
 pub(crate) use dispatch::{
@@ -100,6 +102,7 @@ const FOREIGN_COMPILE_STACK: usize = 64 << 20;
 /// compile runs on a thread of its own, whose stack the compiler cannot
 /// outgrow ([`FOREIGN_COMPILE_STACK`]) whatever thread asked.
 pub(crate) fn pipeline_or_why(engine: &Engine, sources: &[&str], entry: &str) -> Result<wgpu::ComputePipeline, String> {
+    waited_here();
     std::thread::scope(|scope| {
         let compile = std::thread::Builder::new()
             .name("foreign compile".into())
@@ -147,10 +150,33 @@ fn build(
 ) -> wgpu::ComputePipeline {
     let (device, source, entry) = (engine.device.clone(), sources.join("\n"), entry.to_owned());
     let constants: Vec<_> = constants.iter().map(|&(name, value)| (name.to_owned(), value)).collect();
+    waited_here();
     engine.compiling(move || {
         let constants: Vec<_> = constants.iter().map(|(name, value)| (name.as_str(), *value)).collect();
         compiled(&device, source, &entry, &constants, zeroed)
     })
+}
+
+thread_local! {
+    /// The kernels this thread has waited on a compile of
+    /// ([`gpu_engine_kernels_built_here`]).
+    static BUILT_HERE: Cell<u64> = const { Cell::new(0) };
+}
+
+/// One more kernel whose compile the calling thread waits on.
+fn waited_here() {
+    BUILT_HERE.with(|built| built.set(built.get() + 1));
+}
+
+/// How many kernels the calling thread has waited on a compile of since it
+/// began — what the thread an app's frames are built on is not to do: a
+/// compile is seconds on a slow device and the app stands still under it
+/// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접
+/// 하는 커널 컴파일 0개」; 🔬Surface Pro 11, S5 opening: eleven of them,
+/// 15.2–15.5 s in all). The app's pin reads it there.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_kernels_built_here() -> u64 {
+    BUILT_HERE.with(Cell::get)
 }
 
 /// The module and the pipeline of `source`, on the thread that asks.

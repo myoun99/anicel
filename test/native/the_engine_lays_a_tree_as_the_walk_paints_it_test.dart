@@ -39,6 +39,7 @@ import 'package:anicel/src/services/brush_stroke_blend.dart'
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 
+import '../helpers/an_effect_sampled.dart';
 import '../helpers/app_faces.dart';
 
 /// 🚨THE ENGINE LAYS A TREE AS THE WALK PAINTED IT (screen-on-the-engine
@@ -302,22 +303,6 @@ void main() {
       ),
     );
   }
-
-  /// [kind] at its defaults but for [lanes], standing on [points] and
-  /// reading the rows [layers] name.
-  ResolvedLayerEffect fx(
-    EffectKind kind,
-    Map<String, double> lanes, {
-    Map<String, CanvasPoint?> points = const {},
-    Map<String, LayerId?> layers = const {},
-  }) => ResolvedLayerEffect(
-    kind: kind,
-    values: [
-      for (final spec in kind.parameters) lanes[spec.id] ?? spec.defaultValue,
-    ],
-    points: points,
-    layers: layers,
-  );
 
   final colour = fx(EffectKind.hueSaturation, {
     'hue': 40,

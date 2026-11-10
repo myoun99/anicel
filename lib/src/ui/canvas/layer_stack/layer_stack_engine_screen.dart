@@ -81,6 +81,9 @@ final class EngineStackScreen {
   /// is not the one kept. Each node's chain is held in [holds], if any, as
   /// what the node shows ([_FrameReading._pictureOf]) on this paper
   /// ([_holding]).
+  ///
+  /// Throws [FrameKernelsToCome], nothing laid, where the frame has an
+  /// effect chain and the chains' kernels are not compiled yet.
   void _laid(
     StackedFrame frame,
     EngineChainHolds? holds,
@@ -117,6 +120,9 @@ final class EngineStackScreen {
               ? null
               : (steps: stages, engine: _composite.engine),
         );
+        // Not laid while its chains' kernels are still to be compiled: the
+        // run would compile them here, the app stopped meanwhile.
+        FrameKernelsToCome.throwIfNamedBy(plan, _composite);
         if (stages != null && stages.aRoundComesAfter) {
           // On no screen: a round with a plug-in's step still to run lays
           // what the next one reads, and the screen stays on what it holds

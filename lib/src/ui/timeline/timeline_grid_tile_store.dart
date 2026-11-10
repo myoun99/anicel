@@ -68,10 +68,6 @@ class TimelineGridTileStore {
 
   static final TimelineGridTileStore instance = TimelineGridTileStore._();
 
-  /// The tile pass the tiles are drawn with, made on the engine the first
-  /// one is drawn on — the app's, which is never closed.
-  GpuGrid? _grid;
-
   /// Bumped when a tile lands, whichever row it is — in the paint that
   /// bakes it or off-frame — a count for tests to wait on. ⛔No painter
   /// listens to it: a row repaints on ITS OWN landings ([noticesFor]).
@@ -1307,7 +1303,7 @@ class TimelineGridTileStore {
       emitted.tileHeight,
     );
     try {
-      (_grid ??= GpuGrid(engine)).draw(picture, writer.build(), atlas: atlas);
+      appGpuGridKernels.kept.tiles.draw(picture, writer.build(), atlas: atlas);
     } on StateError catch (error) {
       picture.free();
       assert(false, 'the grid pass refused a tile: $error');

@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/widgets/still_raster.dart';
 
 import '../helpers/a_shown_surface.dart';
 import '../helpers/census_where_textures_are_ram.dart';
+import '../helpers/settle_async.dart';
 
 /// 🚨THE GRID'S SCREEN SHOWS WHAT ITS ROWS LAY, IN THE FRAME THEY LAY IT
 /// (grid-on-the-engine ④ D1, 관제 2026-11-08 20:54): a row's tile is laid
@@ -26,7 +27,8 @@ import '../helpers/census_where_textures_are_ram.dart';
 /// the row and lays nothing till what the view shows has left the screen;
 /// what a row lays in a paint is on the screen that paint's frame shows; the
 /// screen is as big as what of its box the view shows, rounded up; and before
-/// the app's engine is open a row lays nothing and draws its cells itself.
+/// the app's engine is open, or the grids' passes are compiled on it, a row
+/// lays nothing and draws its cells itself.
 void main() {
   late TimelineGridTilePicture tile;
   // The same, for the one case that lets go of it as its store would.
@@ -566,6 +568,38 @@ void main() {
 
     expect(row.laidLast, isFalse);
     expect(tester.layers.whereType<TextureLayer>(), isEmpty);
+  });
+
+  // 🗣️관제 2026-11-10 18:14 (gpu-canonical-store ⑦: 「선 = UI 스레드가 직접
+  // 하는 커널 컴파일 0개」): the passes were compiled where the first row
+  // laid, the app stopped meanwhile.
+  testWidgets('till the grids\' passes are compiled a row lays nothing, and '
+      'none is compiled here', (tester) async {
+    aSmallView(tester);
+    // As at launch: compiled off this isolate, and not yet.
+    AppKernels.debugCompileHere = false;
+    appGpuGridKernels.debugForget();
+    addTearDown(() {
+      AppKernels.debugCompileHere = true;
+      // For the test after too: a compile still on its way would come on
+      // this test's clock, which pumps no more.
+      appGpuGridKernels.debugForget();
+    });
+    final built = debugKernelsCompiledHere;
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+
+    expect(asked, [(512, 512)], reason: '⛔premise: its screen is open');
+    expect(row.laidLast, isFalse);
+    expect(debugKernelsCompiledHere, built);
+
+    expect(
+      await settleAsync(tester, () => row.laidLast),
+      isTrue,
+      reason: 'LIVENESS: laid once they are compiled',
+    );
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 
   // 관제 2026-11-09 08:07 E③: it opened a texture as big as the view for

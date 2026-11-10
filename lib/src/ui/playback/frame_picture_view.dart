@@ -10,6 +10,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
+import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart'
     show
@@ -303,6 +304,29 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (mounted) {
       _repaint.value += 1;
     }
+  }
+
+  /// The compile this view paints again after ([_paintOnceCompiled]).
+  Future<void>? _compiling;
+
+  /// Paints again once [compiled] is done: a frame the paint could not lay
+  /// yet ([FrameKernelsToCome]) is laid by that one. Once a compile, however
+  /// many paints meet it.
+  void _paintOnceCompiled(Future<void> compiled) {
+    if (identical(_compiling, compiled)) {
+      return;
+    }
+    _compiling = compiled;
+    unawaited(
+      compiled.then(
+        (_) => _paintAgain(),
+        onError: (Object error, StackTrace stack) {
+          _report((error, stack), 'compiling the kernels a frame is laid on');
+          // Laid by the paint all the same: its run says why it cannot be.
+          _paintAgain();
+        },
+      ),
+    );
   }
 
   @override
@@ -832,6 +856,10 @@ class _FramePictureViewState extends State<FramePictureView> {
         _standing.whole = true;
         return;
       }
+    } on FrameKernelsToCome {
+      // Drawn as it stands, which waits for them in this paint's show.
+      _standing.whole = true;
+      return;
     } on StateError catch (error, stack) {
       _standing.whole = true;
       _report((error, stack), 'writing a step into the picture shown');
@@ -1123,6 +1151,33 @@ class _RenderFrameScreen extends RenderBox {
       _shownThrough.texture != null &&
       _view._store.toolsOpen != null;
 
+  /// The layer of this paint's frame, presented — or, where the frame waits
+  /// for kernels still to be compiled ([FrameKernelsToCome]), of the frame
+  /// the texture shows already, the box painted again once they are: the
+  /// screen stays on the picture it showed, as it does for a plugin
+  /// (🗣️I-132-Q34 a). Null where it has shown none.
+  Layer? _layerNow(Offset offset) {
+    try {
+      return _shownThrough.presented(
+        (next, size) => _view._show(
+          _asItStands,
+          next,
+          size,
+          viewport: _viewport,
+          devicePixelRatio: _devicePixelRatio,
+        ),
+        offset: offset,
+        devicePixelRatio: _devicePixelRatio,
+      );
+    } on FrameKernelsToCome catch (wait) {
+      _view._paintOnceCompiled(wait.compiled);
+      return _shownThrough.standing(
+        offset: offset,
+        devicePixelRatio: _devicePixelRatio,
+      );
+    }
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     // Written before it is shown: what this frame's paint moves is what
@@ -1131,20 +1186,13 @@ class _RenderFrameScreen extends RenderBox {
     if (!_drawsAnything) {
       return;
     }
+    final layer = _layerNow(offset);
+    if (layer == null) {
+      return;
+    }
     if (_ground case final ground?) {
       context.canvas.drawRect(offset & size, Paint()..color = ground);
     }
-    final layer = _shownThrough.presented(
-      (next, size) => _view._show(
-        _asItStands,
-        next,
-        size,
-        viewport: _viewport,
-        devicePixelRatio: _devicePixelRatio,
-      ),
-      offset: offset,
-      devicePixelRatio: _devicePixelRatio,
-    );
     // Live between what a still region holds: no image can vouch for a
     // texture, and the conte's picture stands in a dock.
     context.pushLayer(TickSceneLayer(alwaysLive: true)..size = size, (

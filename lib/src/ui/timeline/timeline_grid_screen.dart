@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../../native/app_gpu_engine.dart';
 import '../../native/screen_texture.dart';
 import '../engine_screen_texture.dart';
 import '../layout/device_grid.dart';
@@ -40,9 +41,10 @@ typedef TimelineGridScreenTile = ({
 ///
 /// Holds the screen for [child] — the grid's rows — and shows it under
 /// them, as big as they are: their slots ([TimelineGridScreenSlot]) lay on
-/// it once the app's engine is open ([appGpuEngineOpen]); till then, and
-/// wherever a row has no slot, a row draws its cells itself. What lies
-/// under the rows — the grid's sheet — lies under it.
+/// it once the app's engine is open ([appGpuEngineOpen]) and the grids'
+/// passes are compiled on it ([appGpuGridKernels]); till then, and wherever
+/// a row has no slot, a row draws its cells itself. What lies under the
+/// rows — the grid's sheet — lies under it.
 class TimelineGridScreenHost extends StatefulWidget {
   const TimelineGridScreenHost({super.key, required this.child});
 
@@ -105,12 +107,15 @@ final class _GridScreen {
   /// the frame last composited, and its room.
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
     asks: () => _box != null && _slots.isNotEmpty,
-    opened: (engine) {
-      _lay ??= GpuGridLay(engine);
+    opened: (_) {
+      // Asked for by the first screen there is to lay on, whatever else
+      // the launch is compiling: the rows lay once they have come.
+      if (appGpuGridKernels.compiled == null) {
+        unawaited(appGpuGridKernels.warm().then((_) => _laysChanged()));
+      }
       _laysChanged();
     },
   );
-  GpuGridLay? _lay;
 
   ScreenTexture? get _texture => _shownThrough.texture;
 
@@ -118,19 +123,23 @@ final class _GridScreen {
   /// id what was laid is shown by — null where they are to be laid again.
   ({Rect at, int id})? _laid;
 
-  /// Whether a row lays its tiles here: a box shows the screen, and its
-  /// texture is open and holds what it shows. ↩️Any texture open: while a
-  /// bigger one opened, the rows laid on the one held, and what of them lay
-  /// past its edge was shown nowhere (타임라인/콘티 리뷰 2026-11-09 B).
-  bool get lays => _box != null && _shownThrough.holdsWhatIsWanted;
+  /// Whether a row lays its tiles here: a box shows the screen, its texture
+  /// is open and holds what it shows, and the grids' passes are compiled
+  /// ([appGpuGridKernels]). ↩️Any texture open: while a bigger one opened,
+  /// the rows laid on the one held, and what of them lay past its edge was
+  /// shown nowhere (타임라인/콘티 리뷰 2026-11-09 B). ↩️The passes compiled
+  /// where the first row laid: a row draws its cells itself till they are,
+  /// as it does before the engine is open, and no frame waits for a compile
+  /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접
+  /// 하는 커널 컴파일 0개」).
+  bool get lays =>
+      _box != null &&
+      _shownThrough.holdsWhatIsWanted &&
+      appGpuGridKernels.compiled != null;
 
   void start() => _shownThrough.start();
 
-  void stop() {
-    _shownThrough.stop();
-    _lay?.free();
-    _lay = null;
-  }
+  void stop() => _shownThrough.stop();
 
   void showBy(_RenderGridScreen box) {
     assert(_box == null || identical(_box, box), 'one box shows a screen');
@@ -335,7 +344,12 @@ class _RenderGridScreen extends RenderBox {
     }
     final window = _windowOf(texture, shown);
     final id = texture.nextTextureId;
-    _layAt(window.topLeft, texture, screen._lay!, owner!.rootNode!);
+    _layAt(
+      window.topLeft,
+      texture,
+      appGpuGridKernels.kept.lay,
+      owner!.rootNode!,
+    );
     return screen._laid = (
       at: MatrixUtils.inverseTransformRect(toView, window),
       id: id,

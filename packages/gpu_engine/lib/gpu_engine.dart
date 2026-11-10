@@ -20,8 +20,8 @@ const _plugin = MethodChannel('gpu_engine');
 
 /// What [compile] makes on [engine], off this isolate, which goes on
 /// meanwhile: seconds of it on some devices (`Engine::compiling` has what
-/// was measured). A static for [compile], so only the engine's address
-/// crosses.
+/// was measured). A static for [compile], or what a static made of plain
+/// values, so only those and the engine's address cross.
 Future<Pointer<T>> _compiledOff<T extends NativeType>(
   GpuEngine engine,
   Pointer<T> Function(Pointer<rust.Engine> on) compile,
@@ -32,6 +32,12 @@ Future<Pointer<T>> _compiledOff<T extends NativeType>(
   );
   return Pointer.fromAddress(made);
 }
+
+/// How many kernels the thread that asks has waited for the compile of
+/// (rust/src/kernels/shared/mod.rs, `gpu_engine_kernels_built_here`): what
+/// a test holds at none on the thread an app's frames are built on
+/// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦).
+int get debugKernelsCompiledHere => rust.kernelsBuiltHere();
 
 String _lastError() => using((arena) {
   const capacity = 1024;
@@ -1114,8 +1120,15 @@ class GpuPlan {
   /// [rows] whose top-left is column [x0], row [y0] — a row's in its own
   /// space, a folder's on the canvas — and returns the index a row or a
   /// close runs it by.
-  int chain(int x0, int y0, int columns, int rows) =>
-      rust.planChain(_plan, x0, y0, columns, rows);
+  int chain(int x0, int y0, int columns, int rows) {
+    _namesAChain = true;
+    return rust.planChain(_plan, x0, y0, columns, rows);
+  }
+
+  /// Whether an effect chain was added ([chain]): what the executor runs
+  /// its chain kernels for ([GpuComposite.chainsAreToCome]).
+  bool get namesAChain => _namesAChain;
+  bool _namesAChain = false;
 
   /// Adds to effect chain [chain] the colour matrix of [matrix] —
   /// `ColorFilter.matrix`'s twenty.
@@ -1550,9 +1563,17 @@ class GpuComposite {
   factory GpuComposite(GpuEngine engine) =>
       GpuComposite._(engine, _compiled(engine._engine));
 
-  /// Compiled on [engine] off this isolate, which goes on meanwhile.
-  static Future<GpuComposite> opening(GpuEngine engine) async =>
-      GpuComposite._(engine, await _compiledOff(engine, _compiled));
+  /// Compiled on [engine] off this isolate, which goes on meanwhile — and
+  /// with it the pass that shows on a screen of BGRA texels where [bgra],
+  /// of RGBA else ([GpuEngine.surface]'s; a [GpuWindow] is RGBA), which the
+  /// first [show] compiles where it is called else: the thread an app's
+  /// frames are built on (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦ —
+  /// 🔬3.5 s of a stopped UI at the first canvas, Surface Pro 11).
+  static Future<GpuComposite> opening(
+    GpuEngine engine, {
+    required bool bgra,
+  }) async =>
+      GpuComposite._(engine, await _compiledOff(engine, _showing(bgra)));
 
   static Pointer<rust.Composite> _compiled(Pointer<rust.Engine> on) {
     final composite = rust.compositeNew(on);
@@ -1562,6 +1583,16 @@ class GpuComposite {
     return composite;
   }
 
+  /// [_compiled], and the pass that shows on a screen as [bgra] says —
+  /// made here, of a bool alone, for what crosses to the other isolate.
+  static Pointer<rust.Composite> Function(Pointer<rust.Engine>) _showing(
+    bool bgra,
+  ) => (on) {
+    final composite = _compiled(on);
+    rust.compositeShows(composite, on, bgra);
+    return composite;
+  };
+
   GpuComposite._(this._engine, this._composite);
 
   final GpuEngine _engine;
@@ -1569,6 +1600,35 @@ class GpuComposite {
 
   /// The engine it composes on.
   GpuEngine get engine => _engine;
+
+  /// Whether the kernels an effect chain runs on are still to be compiled
+  /// by [compileChains]. A plan that names a chain ([GpuPlan.namesAChain])
+  /// compiles them where it is run else — all seven, for any chain: 🔬6.5 s
+  /// of a stopped UI as S5 opened, Surface Pro 11 (gpu-canonical-store ⑦).
+  ///
+  /// False once that compile has been through and left them uncompiled:
+  /// the plan's run is then what compiles them, and what says why it
+  /// cannot — nothing waits for a compile that will not come.
+  bool get chainsAreToCome =>
+      !_chainsTried && !rust.compositeChainsStand(_composite);
+
+  /// The chains' kernels compiled off this isolate, which goes on
+  /// meanwhile: one compile, however many ask. ⚠️The executor is freed only
+  /// once it is done.
+  Future<void> compileChains() => _chains ??= _chainsOff(
+    _composite.address,
+    _engine._engine.address,
+  ).whenComplete(() => _chainsTried = true);
+
+  Future<void>? _chains;
+  bool _chainsTried = false;
+
+  static Future<void> _chainsOff(int composite, int engine) => Isolate.run(
+    () => rust.compositeChains(
+      Pointer.fromAddress(composite),
+      Pointer.fromAddress(engine),
+    ),
+  );
 
   /// Composites [plan] of [pool]'s tiles over the output [tiles] — canvas
   /// tile columns and rows — with nothing outside the pixels [extent],
@@ -2433,7 +2493,17 @@ typedef GpuGridAtlas = ({Uint8List alpha, int width, int height});
 /// stream — `TimelineGridTileOpWriter`'s words — drawn into a picture the
 /// engine keeps, for the view's screen to lay.
 class GpuGrid {
-  GpuGrid(this._engine) : _grid = rust.gridNew(_engine._engine);
+  /// The pass on [engine], compiled for the pictures it draws.
+  GpuGrid(GpuEngine engine) : this._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuGrid> opening(GpuEngine engine) async =>
+      GpuGrid._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Grid> _compiled(Pointer<rust.Engine> on) =>
+      rust.gridNew(on);
+
+  GpuGrid._(this._engine, this._grid);
 
   final GpuEngine _engine;
   final Pointer<rust.Grid> _grid;
@@ -2517,7 +2587,29 @@ typedef GpuGridLaid = ({
 /// THE VIEW'S SCREEN OF FRAME GRID TILES (rust/src/kernels/timeline/grid/
 /// lay.rs): the tiles a sheet's rows lay, onto what the view shows.
 class GpuGridLay {
-  GpuGridLay(this._engine) : _lay = rust.gridLayNew();
+  /// The pass on [engine], compiled for a screen where it first lays onto
+  /// one.
+  GpuGridLay(GpuEngine engine) : this._(engine, rust.gridLayNew());
+
+  /// The pass compiled on [engine], off this isolate, which goes on
+  /// meanwhile, for a screen of BGRA texels where [bgra], of RGBA else —
+  /// [GpuEngine.surface]'s; a [GpuWindow] is RGBA.
+  static Future<GpuGridLay> opening(
+    GpuEngine engine, {
+    required bool bgra,
+  }) async => GpuGridLay._(engine, await _compiledOff(engine, _ready(bgra)));
+
+  /// The pass, ready for a screen as [bgra] says — made here, of a bool
+  /// alone, for what crosses to the other isolate.
+  static Pointer<rust.GridLay> Function(Pointer<rust.Engine>) _ready(
+    bool bgra,
+  ) => (on) {
+    final lay = rust.gridLayNew();
+    rust.gridLayReady(lay, on, bgra);
+    return lay;
+  };
+
+  GpuGridLay._(this._engine, this._lay);
 
   final GpuEngine _engine;
   final Pointer<rust.GridLay> _lay;

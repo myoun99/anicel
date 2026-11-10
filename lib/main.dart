@@ -6,10 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
-import 'src/native/app_gpu_engine.dart'
-    show appGpuStampLandingKernels, openAppGpuEngine;
-import 'src/native/engine_cel_pixels.dart' show EngineCelPixels;
-import 'src/native/engine_strokes.dart' show EngineStrokes;
+import 'src/native/app_kernels_ahead.dart';
 import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
@@ -249,13 +246,11 @@ Future<void> main(List<String> handedAtLaunch) async {
   // profile, 11-09). The first frame was no later for it — run to first
   // raster 623 ms there, 652 with no open, 622 opened after the raster
   // (medians of five) — so it waits for the raster, which costs nothing.
+  // Its kernels are compiled behind it, off this isolate too
+  // ([compileAppKernelsAhead]).
   unawaited(
     WidgetsBinding.instance.waitUntilFirstFrameRasterized.then(
-      (_) => openAppGpuEngine().then((_) {
-        unawaited(EngineStrokes.warm());
-        unawaited(EngineCelPixels.warm());
-        unawaited(appGpuStampLandingKernels.warm());
-      }),
+      (_) => compileAppKernelsAhead(),
     ),
   );
 }

@@ -10,7 +10,7 @@ import 'package:anicel/src/native/engine_frame_tools.dart';
 /// open, as the blur brush's and the colour verbs' kernels are.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() => debugCompositeOfTheTools = null);
+  setUpAll(() => AppKernels.debugCompileHere = false);
 
   // First in the file: nothing has compiled the pass yet.
   test('the first picture does not compile the pass on this isolate', () async {

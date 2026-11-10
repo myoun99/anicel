@@ -189,9 +189,11 @@ List<String> differences(Shot a, Shot b, {int by = 0}) => [
 Future<void> inThePicture(WidgetTester tester) => tester.pump();
 
 /// A store that says which keys were laid, which a step was written into
-/// and which a landing moved a picture to.
+/// and which a landing moved a picture to — on the app's tools, or on
+/// [tools] where a test opens its own.
 class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
-  StoreTellingItsWrites() : super(tools: () => appEngineFrameTools);
+  StoreTellingItsWrites({Future<EngineFrameTools> Function()? tools})
+    : super(tools: tools ?? () => appEngineFrameTools);
 
   final List<FramePictureKey> laid = [];
   final List<FramePictureKey> patched = [];
@@ -253,9 +255,11 @@ class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
   static bool _stays() => false;
 }
 
-/// A store whose lays stay on their way: a frame's picture never comes.
+/// A store whose lays stay on their way: a frame's picture never comes —
+/// on the app's tools, or on [tools] where a test opens its own.
 class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
-  StoreLayingNothing() : super(tools: () => appEngineFrameTools);
+  StoreLayingNothing({Future<EngineFrameTools> Function()? tools})
+    : super(tools: tools ?? () => appEngineFrameTools);
 
   @override
   Future<EngineFramePicture?> lay(

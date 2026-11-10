@@ -6,9 +6,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuComposite;
-import 'package:anicel/src/native/engine_frame_tools.dart'
-    show debugCompositeOfTheTools;
+import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/screen_texture.dart';
@@ -220,10 +218,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // engine, each grid's screen opens on a surface of its own, freed as the
   // test ends.
   debugOpenEngineScreen = _screenOnASurface;
-  // A frame's tools open as they always did here: compiled on this isolate,
-  // so a widget test's pumped clock has nothing to wait for. The one pin
-  // of the app's own route asks for it back.
-  debugCompositeOfTheTools = () async => appGpuComposite;
+  // Kernels compile on this isolate here, as they always did: a widget
+  // test's pumped clock lends a compile on another isolate no real time to
+  // finish in. The pins of the app's own route ask for it back.
+  AppKernels.debugCompileHere = true;
   debugLayerOfScreen = screenDrawnAsAPicture;
   // A zoom's stop rasters what it stretched, on the engine a session's
   // pictures open: no test but the one that fires it by hand is about that,

@@ -8,11 +8,15 @@
 mod tests;
 
 use crate::device::Engine;
+use crate::platform::surface_format;
 
 use super::lay::{GridLay, Laid};
 use super::{GridPicture, GridTile, atlas_of};
 
-/// The tile pass, compiled for each format the first time it draws one.
+/// The tile pass, compiled here for the pictures it draws
+/// (`gpu_engine_grid_picture_new`) on the calling thread
+/// ([`GridTile::for_pictures`]): an app asks off the thread its frames are
+/// built on.
 ///
 /// # Safety
 /// `engine` is live; the pass is freed before it.
@@ -20,7 +24,7 @@ use super::{GridPicture, GridTile, atlas_of};
 pub unsafe extern "C" fn gpu_engine_grid_new(engine: *const Engine) -> *mut GridTile {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Box::into_raw(Box::new(GridTile::new(engine)))
+    Box::into_raw(Box::new(GridTile::for_pictures(engine)))
 }
 
 /// # Safety
@@ -120,10 +124,26 @@ pub unsafe extern "C" fn gpu_engine_grid_draw(
 }
 
 /// The screen pass that lays tiles on a view's screen ([`GridLay`]),
-/// compiled for each format the first time it lays onto one.
+/// compiled for a format the first time it lays onto one, or ahead of it
+/// (`gpu_engine_grid_lay_ready`).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_grid_lay_new() -> *mut GridLay {
     Box::into_raw(Box::new(GridLay::new()))
+}
+
+/// Compiles the pass for a screen of BGRA or RGBA 8-bit unorm texels — as
+/// `gpu_engine_surface_new` makes for the same `bgra`, and a window is
+/// RGBA — on the calling thread ([`GridLay::ready`]): an app asks off the
+/// thread its frames are built on, and its first screen compiles nothing
+/// there.
+///
+/// # Safety
+/// `lay` and `engine` are live, and no other thread holds the pass.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_lay_ready(lay: *mut GridLay, engine: *const Engine, bgra: bool) {
+    // SAFETY: see the function's contract.
+    let (lay, engine) = unsafe { (&mut *lay, &*engine) };
+    lay.ready(engine, surface_format(bgra));
 }
 
 /// # Safety

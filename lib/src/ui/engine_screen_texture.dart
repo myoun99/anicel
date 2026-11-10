@@ -76,18 +76,34 @@ final class EngineScreenTexture {
   }) {
     final texture = _texture!;
     texture.present((next) => draw(next, (texture.width, texture.height)));
-    return debugLayerOfScreen(
-      rect:
-          offset &
-          Size(
-            texture.width / devicePixelRatio,
-            texture.height / devicePixelRatio,
-          ),
-      // After it is presented: a frame that failed stands as it stood.
-      textureId: texture.textureId.value,
-      filterQuality: FilterQuality.none,
-    );
+    // After it is presented: a frame that failed stands as it stood.
+    return _layerOf(texture, offset, devicePixelRatio);
   }
+
+  /// The frame the texture open shows already, nothing drawn, by a layer
+  /// as [presented]'s: null where none has been presented on it.
+  Layer? standing({required Offset offset, required double devicePixelRatio}) {
+    final texture = _texture;
+    return texture == null || !texture.showsAFrame
+        ? null
+        : _layerOf(texture, offset, devicePixelRatio);
+  }
+
+  /// What [texture] shows now, from [offset], one texel a device pixel.
+  static Layer _layerOf(
+    ScreenTexture texture,
+    Offset offset,
+    double devicePixelRatio,
+  ) => debugLayerOfScreen(
+    rect:
+        offset &
+        Size(
+          texture.width / devicePixelRatio,
+          texture.height / devicePixelRatio,
+        ),
+    textureId: texture.textureId.value,
+    filterQuality: FilterQuality.none,
+  );
 
   void start() => appGpuEngineOpen.addListener(open);
 

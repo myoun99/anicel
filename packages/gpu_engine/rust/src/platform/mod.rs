@@ -75,13 +75,30 @@ pub struct Surface {
     shared: native::SharedHandle,
 }
 
-impl Surface {
-    fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat) -> Option<Self> {
-        let storable = engine
+/// The format of a surface of BGRA or RGBA 8-bit unorm texels.
+pub(crate) fn surface_format(bgra: bool) -> wgpu::TextureFormat {
+    if bgra {
+        wgpu::TextureFormat::Bgra8Unorm
+    } else {
+        wgpu::TextureFormat::Rgba8Unorm
+    }
+}
+
+/// Whether a compute pass on `engine` stores to a surface of `format`:
+/// BGRA only where the adapter has the feature (`Engine::on` asks for it
+/// wherever it is). Asked before a surface is made, and before a pass that
+/// stores to one is compiled ahead of it: the device would raise either.
+pub(crate) fn stores(engine: &Engine, format: wgpu::TextureFormat) -> bool {
+    format != wgpu::TextureFormat::Bgra8Unorm
+        || engine
             .device
             .features()
-            .contains(wgpu::Features::BGRA8UNORM_STORAGE);
-        if format == wgpu::TextureFormat::Bgra8Unorm && !storable {
+            .contains(wgpu::Features::BGRA8UNORM_STORAGE)
+}
+
+impl Surface {
+    fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat) -> Option<Self> {
+        if !stores(engine, format) {
             return fail("this adapter cannot store to bgra8unorm from a compute pass");
         }
         match native::create(&engine.device, width, height, format) {
@@ -106,12 +123,7 @@ pub unsafe extern "C" fn gpu_engine_surface_new(
 ) -> *mut Surface {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    let format = if bgra {
-        wgpu::TextureFormat::Bgra8Unorm
-    } else {
-        wgpu::TextureFormat::Rgba8Unorm
-    };
-    Surface::new(engine, width, height, format)
+    Surface::new(engine, width, height, surface_format(bgra))
         .map_or(std::ptr::null_mut(), |surface| Box::into_raw(Box::new(surface)))
 }
 

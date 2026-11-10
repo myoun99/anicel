@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/engine_cel_pixels.dart';
 
 /// THE FIRST PRESS OF A COLOUR VERB WAITS FOR NOTHING (flip lane ⓒ): the
@@ -13,6 +14,7 @@ import 'package:anicel/src/native/engine_cel_pixels.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUpAll(() => AppKernels.debugCompileHere = false);
   tearDown(EngineCelPixels.debugForget);
 
   test('this isolate goes on while it compiles', () async {
