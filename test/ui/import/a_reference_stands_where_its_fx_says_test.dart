@@ -1639,6 +1639,48 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    testWidgets('🗣️F-572-Q2 — a 겸용 copy whose move takes the still a '
+        'position apiece, its row showing it still: both come back animation '
+        'layers, as a merge makes them — the kind is the row\'s, read off '
+        'every use', (tester) async {
+      final (s, row) = await placed(tester);
+      named(s, row, '3');
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, s.layerById(copy)!, track: squashed, fx: quarterOverTwo);
+      final length = drawingBlocks(
+        rowOf(s, row).timeline,
+      ).fold(0, (sum, block) => sum + block.length);
+      expect(wayOf(s, row), framed);
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final uses = [rowOf(s, row), s.layerById(copy)!];
+      Set<FrameId?> celsShownBy(Layer use) => {
+        for (var frame = 0; frame < length; frame += 1)
+          exposedFrameIdAt(use.timeline, frame),
+      };
+      expect(
+        celsShownBy(uses.first),
+        hasLength(1),
+        reason: '⛔전제: the row shows one picture',
+      );
+      expect(
+        celsShownBy(uses.last),
+        hasLength(greaterThan(1)),
+        reason: '⛔전제: the copy shows more',
+      );
+      expect([for (final use in uses) use.kind], [
+        LayerKind.animation,
+        LayerKind.animation,
+      ]);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('a 겸용 copy that shows no file shows its cel as it is: the '
         'cel stays itself, and the picture a row no key carries the move '
         'of takes of it is a tail of it (🗣️I-120-Q22)', (tester) async {
