@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
@@ -40,6 +42,8 @@ void main() {
 
   test('what lands a stamp is not compiled on this isolate', () async {
     final warming = appGpuStampLandingKernels.warm();
+    // Turned once: a compile on this isolate has finished by now.
+    await Future<void>.delayed(Duration.zero);
 
     expect(
       appGpuStampLandingKernels.compiled,
@@ -48,5 +52,29 @@ void main() {
     );
     await warming;
     expect(appGpuStampLandingKernels.compiled, isNotNull);
+  });
+
+  test('the compile that lost the race is freed, and what is forgotten',
+      () async {
+    final freed = <Object>[];
+    final elsewhere = Completer<Object>();
+    final here = Object();
+    final made = Object();
+    final kernels = AppKernels<Object>(
+      (_) => here,
+      (_) => elsewhere.future,
+      freed.add,
+    );
+
+    final warming = kernels.warm();
+    expect(kernels.kept, same(here));
+    elsewhere.complete(made);
+
+    expect(await warming, same(here));
+    expect(freed, [made]);
+
+    kernels.debugForget();
+    expect(freed, [made, here]);
+    expect(kernels.compiled, isNull);
   });
 }

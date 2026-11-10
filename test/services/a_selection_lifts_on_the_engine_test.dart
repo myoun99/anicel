@@ -6,11 +6,14 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/engine_cel_pixels.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
@@ -105,6 +108,36 @@ void main() {
       });
     }
   }
+
+  test('a lift refuses a box its room is not the size of', () {
+    final plane = GpuMask(
+      appGpuComposite,
+      maskOf(4, 4),
+      x: 0,
+      y: 0,
+      width: 4,
+      height: 4,
+    );
+    addTearDown(plane.free);
+    final tile = tileOf(0);
+
+    expect(
+      () => ledger.held(
+        (hold) => EngineCelPixels.pass.lift(
+          ledger.pool,
+          0,
+          0,
+          1,
+          1,
+          hold.slotsOf(Object(), [tile]),
+          mask: plane,
+          whole: false,
+          into: Uint8List(4 * 4 * 4 - 1),
+        ),
+      ),
+      throwsStateError,
+    );
+  });
 
   test('a box over no tile lifts nothing, and asks the engine nothing', () {
     final lifted = gatherMaskedSurfacePixels(

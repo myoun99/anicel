@@ -6,10 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -99,6 +106,30 @@ void main() {
       ledger.slotOf(second),
     ]);
     expect(ledger.slotCount, 3, reason: 'asked again, stored once');
+  });
+
+  test('a stroke on a surface of another grid stays on the CPU', () {
+    final tiles = materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(
+        canvasSize: const CanvasSize(width: 64, height: 64),
+        tileSize: 64,
+      ),
+      sequence: BrushDabSequence([
+        BrushDab(
+          center: CanvasPoint(x: 32, y: 32),
+          color: 0xFF0000FF,
+          size: 12,
+          opacity: 1,
+          flow: 1,
+          hardness: 1,
+          tipShape: BrushTipShape.round,
+          pressure: 1,
+          sequence: 0,
+        ),
+      ]),
+    ).surface.tiles;
+
+    expect(tiles.values.single.isOnEngine, isFalse);
   });
 
   test('a tile of another side is refused, and nothing the call asks for '
