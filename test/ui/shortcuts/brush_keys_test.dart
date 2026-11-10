@@ -571,6 +571,25 @@ void main() {
       );
     });
 
+    // 🗣️I-168: a title found by its words shows every brush it holds — by
+    // a key, the ones that hold the key.
+    testWidgets('searched by a key, an open bundle shows only the brushes '
+        'that hold it', (tester) async {
+      final bindings = await pump(tester);
+      final maru = presetId('maru');
+      bindings.setActivators(maru, const [
+        SingleActivator(LogicalKeyboardKey.f9),
+      ]);
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('shortcut-search-by-key')),
+      );
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pump();
+      expect(brushRows(tester), [groupId(inks), maru]);
+    });
+
     testWidgets('holds a bundle per group, shut — once under each tool\'s '
         'heading: the titles, and no brush', (tester) async {
       await pump(tester);

@@ -181,11 +181,13 @@ const ledger = <String, Why>{
       Why.inAWindow,
   "dialogs/memory_settings_section.dart | 'memory-allowance-automatic'":
       Why.inAWindow,
-  'shortcuts/shortcut_settings_dialog.dart | '
-          "'shortcut-record-\${definition.id}'":
-      Why.inAWindow,
+  // The ⌨ of a row and of the search by key (I-168): one button, built by
+  // `_recordButton`.
+  'shortcuts/shortcut_settings_dialog.dart | keyValue': Why.inAWindow,
   'shortcuts/shortcut_settings_dialog.dart | '
           "'shortcut-reset-\${definition.id}'":
+      Why.inAWindow,
+  "shortcuts/shortcut_settings_dialog.dart | 'shortcut-search-by-key-clear'":
       Why.inAWindow,
   'shortcuts/shortcut_settings_dialog.dart | '
           "'shortcut-unassign-\${definition.id}'":
