@@ -343,6 +343,8 @@ Future<void> showAppNotice(
 }) {
   return showDialog<void>(
     context: context,
+    // 🗣️fx-button-first-click-after-install-is-swallowed-Q1 (유저 11-11):
+    // 「지금대로 — 닫기만 한다」 — a press outside only takes it down.
     builder: (context) => AppConfirmDialog(
       windowKey: windowKey,
       title: title,
