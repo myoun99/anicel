@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show debugKernelsCompiledHere;
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
@@ -76,5 +77,28 @@ void main() {
     kernels.debugForget();
     expect(freed, [made, here]);
     expect(kernels.compiled, isNull);
+  });
+
+  test('forgotten, a set is compiled again as at launch — not made of the '
+      'kernels the engine kept', () {
+    int builtHereBy(void Function() use) {
+      final before = debugKernelsCompiledHere;
+      use();
+      return debugKernelsCompiledHere - before;
+    }
+
+    builtHereBy(() => appGpuStampLandingKernels.kept);
+    expect(
+      builtHereBy(() => appGpuStampLandingKernels.kept),
+      0,
+      reason: '⛔premise: compiled',
+    );
+
+    appGpuStampLandingKernels.debugForget();
+
+    expect(
+      builtHereBy(() => appGpuStampLandingKernels.kept),
+      greaterThan(0),
+    );
   });
 }

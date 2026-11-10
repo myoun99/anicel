@@ -60,4 +60,29 @@ void main() {
       reason: 'which open the engine off this isolate first',
     );
   });
+
+  // 🗣️관제 2026-11-11 04:09 (gpu-canonical-store ④): 「첫 획 · 첫
+  // 들어올리기에서도 UI 스레드가 직접 하는 커널 컴파일 0」 — what a hand on
+  // the canvas would else compile at its first press comes before what
+  // draws itself or waits meanwhile, and the blur brush's ten last (🔬a
+  // third of the list's compile time, main PC, 2026-11-11).
+  test('the list compiles what a hand needs before the grids\', the chains\' '
+      'and the blur brush\'s', () {
+    final list = File(
+      'lib/src/native/app_kernels_ahead.dart',
+    ).readAsStringSync();
+    const inTurn = [
+      'await appEngineFrameTools;',
+      'await EngineStrokes.warm();',
+      'await GpuInk.opening(appGpuEngine)',
+      'await EngineCelPixels.warm();',
+      'await appGpuStampLandingKernels.warm();',
+      'await appGpuGridKernels.warm();',
+      'await tools.composite.compileChains();',
+      'await EngineStrokes.warmBlurs();',
+    ];
+    final at = [for (final asked in inTurn) list.indexOf(asked)];
+    expect(at, everyElement(isNonNegative), reason: '⛔premise: each asked');
+    expect(at, orderedEquals([...at]..sort()));
+  });
 }
