@@ -2895,6 +2895,7 @@ class _ImportDialogState extends State<ImportDialog> {
       final row? => folder.wordOf?.call(row, value),
       null => files.wordOf?.call(key, value),
     },
+    keepsRoomFor: files.keepsRoomFor,
     valueOf: (key) => switch (_folderRowAt(key)) {
       final row? => folder.valueOf(row),
       null => files.valueOf(key),
@@ -3160,6 +3161,13 @@ class _ImportDialogState extends State<ImportDialog> {
       _RunSpan() => _runSpanWord(path),
       _ => null,
     },
+    // The room a span is said in, whatever the files are named (🗣️F-582,
+    // [ImportColumn.keepsRoomFor]) — measured in the language, as the
+    // resolution's five digits a side are. ⚠️How long is THIS SESSION'S
+    // PICK, not the user's word: a letter and four digits a side and a
+    // four-digit count, which a scan's 「A0001」 fills and a folder's
+    // 「A1–A21 (22장)」 leaves room in. One line to change.
+    keepsRoomFor: AppText.strings.imRunSpan('A0001', 'A9999', 9999),
     valueOf: _optionAnswerOf,
     appliesTo: (path) => _optionAsked(path) != null,
     enabledFor: (path, value) => switch (value) {

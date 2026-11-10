@@ -12,6 +12,7 @@
 // picture the one before it showed folding into that one's exposure.
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -22,7 +23,9 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
@@ -42,6 +45,7 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(tempDir));
+  tearDown(SummonedTooltip.dismiss);
 
   /// `A1` and `A2` the same picture, `A3` another, and `B1` alone.
   Future<Map<String, String>> writeFolder(WidgetTester tester) async =>
@@ -69,13 +73,16 @@ void main() {
 
   /// The window on [paths], once the pictures each of [runs] runs with are
   /// measured — every picked path, unless the test names fewer: a run is
-  /// known when its sizes are (F-392).
+  /// known when its sizes are (F-392). The window is [width] wide: past
+  /// what its two zones ask together, the list is laid out as wide as it
+  /// asks to be rather than as wide as the window lets it.
   Future<EditorSessionManager> open(
     WidgetTester tester,
     List<String> paths, {
     List<String>? runs,
+    double width = 1400,
   }) async {
-    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.physicalSize = Size(width, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -207,26 +214,76 @@ void main() {
     );
   });
 
-  testWidgets('a run\'s word is never cut — its column is as wide as the '
-      'widest word a row says, not only its answers\'', (tester) async {
-    final paths = (await tester.runAsync(
-      () async => [
+  // ↩️「a run's word is never cut — its column is as wide as the widest word
+  // a row says」 (I-76). 🗣️F-582, 유저 2026-11-10: 「옵션행이 길이에 따라
+  // 커져서 임포트창이 커지는데, 해당 옵션행은 고정길이로 둬서 길어지면 …
+  // 생략. 풀네임은 호버해서 툴팁으로 알도록」 — the option column keeps one
+  // room whatever the files are named.
+  testWidgets('🚨a run of long names widens nothing: its span is cut where '
+      'the option column\'s room ends and says its whole on a hover, and a '
+      'span the room holds is whole (F-582)', (tester) async {
+    const long = 'background_street_night_take';
+    final (short, wide) = (await tester.runAsync(() async {
+      await writeSolidPng(tempDir, 'ABCD123.png');
+      await writeSolidPng(tempDir, '${long}0002.png');
+      return (
         await writeSolidPng(tempDir, 'ABCD1.png'),
-        await writeSolidPng(tempDir, 'ABCD123.png'),
-      ],
-    ))!;
-    await open(tester, [paths.first]);
-    final cell = find.byKey(ValueKey<String>('import-cell-option-${paths.first}'));
+        await writeSolidPng(tempDir, '${long}0001.png'),
+      );
+    }))!;
+    RenderParagraph spanOf(String path) => tester.renderObject(
+      find.descendant(
+        of: find.byKey(ValueKey<String>('import-cell-option-$path')),
+        matching: find.anyRichText(),
+      ),
+    );
+    final list = find.byType(ImportFileTable);
+    double listWidth() => tester.getSize(list).width;
+    // What the list asks to be, of the rows and columns it was given.
+    double asked() {
+      final table = tester.widget<ImportFileTable>(list);
+      return ImportFileTable.preferredWidth(
+        tester.element(list),
+        rows: table.rows,
+        columns: table.columns,
+        leadWidth: table.leadWidth,
+      );
+    }
+
+    // A window with room for what the list asks: in a narrower one the
+    // list is as wide as the window lets it, whatever its rows say.
+    const roomy = 3000.0;
+    await open(tester, [short], width: roomy);
     expect(
-      cellText(tester, 'option', paths.first),
+      cellText(tester, 'option', short),
       AppText.strings.imRunSpan('ABCD1', 'ABCD123', 2),
       reason: '⛔전제: a word longer than either answer\'s',
     );
+    expect(listWidth(), asked(), reason: '⛔전제: as wide as it asks to be');
+    expect(spanOf(short).didExceedMaxLines, isFalse, reason: 'it fits');
+    final width = listWidth();
 
-    final word = tester.renderObject<RenderParagraph>(
-      find.descendant(of: cell, matching: find.anyRichText()),
+    await tester.pumpWidget(const SizedBox());
+    await open(tester, [short, wide], width: roomy);
+    final whole = AppText.strings.imRunSpan('${long}0001', '${long}0002', 2);
+    expect(cellText(tester, 'option', wide), whole);
+    expect(listWidth(), asked(), reason: '⛔전제: as wide as it asks to be');
+    expect(listWidth(), width, reason: 'the list is no wider for the run');
+    expect(spanOf(short).didExceedMaxLines, isFalse);
+    expect(spanOf(wide).didExceedMaxLines, isTrue, reason: 'cut at the room');
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await tester.pump();
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(ValueKey<String>('import-cell-option-$wide')),
+      ),
     );
-    expect(word.didExceedMaxLines, isFalse, reason: 'the word fits its line');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(SummonedTooltip.debugShownMessage, whole);
   });
 
   testWidgets('🚨together, the run is ONE layer named by its symbol, its '

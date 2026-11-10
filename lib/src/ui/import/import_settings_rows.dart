@@ -141,6 +141,7 @@ final class _SettingsRowsOfTheWindow {
       valuesFor: (key) => holds(key) ? answers(key) : column.answersFor(key),
       wordOf: (key, value) =>
           holds(key) ? wordOf(key, value) : column.wordOf?.call(key, value),
+      keepsRoomFor: column.keepsRoomFor,
       valueOf: (key) => holds(key) ? answerOf(key) : column.valueOf(key),
       appliesTo: (key) =>
           holds(key) ? answers(key).isNotEmpty : column.appliesTo(key),
