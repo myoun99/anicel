@@ -268,7 +268,7 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
     EditorActionDefinition.composed(
       id: shapeTileActionId(verb, shape),
       name: (language) => shapeTileLabel(verb, shape, AppStrings.of(language)),
-      shelf: ShortcutShelf.toolTiles,
+      shelf: ShortcutShelf.tools,
       defaultActivators: [
         // 「선택도구의 올가미 선택에 w로 두고싶어」. ↩️F-261 (유저
         // 2026-10-02): W walks up now, and 「올가미를 z」. ↩️I-63 (유저
@@ -567,126 +567,6 @@ List<EditorActionDefinition> _railLegendActions() {
   ];
 }
 
-/// The brush library's options menu (⋯) and the two buttons beside it as
-/// actions — pressed in the library of the tool in hand, as its own row or
-/// button would be (`BrushLibraryKeys`).
-///
-/// 🗣️I-40 (유저 2026-09-18 · I-40-Q1 10-08): the editing screen's command
-/// buttons and menu rows. Named as the rail legend's rows are: by their own
-/// words where they say what they do (「새 그룹」 · 「선택한 브러시 삭제」),
-/// and with the menu's name first where they need it — a view switch's
-/// word alone says nothing of what it switches (「브러시 옵션: 이름」).
-abstract final class BrushLibraryActionIds {
-  static const tipIcon = 'brush-library-tip-icon';
-  static const strokePreview = 'brush-library-stroke-preview';
-  static const name = 'brush-library-name';
-  static const folderIcon = 'brush-library-folder-icon';
-  static const folderName = 'brush-library-folder-name';
-  static const newGroup = 'brush-library-new-group';
-  static const renameGroup = 'brush-library-rename-group';
-  static const deleteGroup = 'brush-library-delete-group';
-  static const renameBrush = 'brush-library-rename-brush';
-  static const deleteBrush = 'brush-library-delete-brush';
-  static const exportBrush = 'brush-library-export-brush';
-  static const exportGroup = 'brush-library-export-group';
-  static const reset = 'brush-library-reset';
-  static const importBrushes = 'brush-library-import';
-  static const saveHeldBrush = 'brush-library-save-held-brush';
-  static const resetHeldBrush = 'brush-library-reset-held-brush';
-}
-
-EditorActionDefinition _brushLibraryAction(
-  String id,
-  String Function(AppLanguage language) name, {
-  bool menuRow = true,
-  bool panelButton = false,
-}) => EditorActionDefinition.composed(
-  id: id,
-  name: name,
-  shelf: ShortcutShelf.brushLibrary,
-  defaultActivators: const [],
-  menuRow: menuRow,
-  panelButton: panelButton,
-);
-
-List<EditorActionDefinition> _brushLibraryActions() {
-  AppStrings s(AppLanguage language) => AppStrings.of(language);
-  String inMenu(AppLanguage language, String word) =>
-      '${s(language).brBrushOptions}: $word';
-  return [
-    // The two buttons left of the ⋯, in their order.
-    _brushLibraryAction(
-      BrushLibraryActionIds.importBrushes,
-      (l) => s(l).brImportBrushes,
-      menuRow: false,
-      panelButton: true,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.saveHeldBrush,
-      (l) => s(l).brSaveAsPreset,
-      menuRow: false,
-      panelButton: true,
-    ),
-    // The brush settings' button beside the wrench (I-148).
-    _brushLibraryAction(
-      BrushLibraryActionIds.resetHeldBrush,
-      (l) => s(l).brResetHeldBrush,
-      menuRow: false,
-      panelButton: true,
-    ),
-    // The menu's rows, in its order.
-    _brushLibraryAction(
-      BrushLibraryActionIds.tipIcon,
-      (l) => inMenu(l, s(l).brTipIcon),
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.strokePreview,
-      (l) => inMenu(l, s(l).brStrokePreview),
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.name,
-      (l) => inMenu(l, s(l).brName),
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.folderIcon,
-      (l) => inMenu(l, s(l).brFolderIcon),
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.folderName,
-      (l) => inMenu(l, s(l).brFolderName),
-    ),
-    _brushLibraryAction(BrushLibraryActionIds.newGroup, (l) => s(l).brNewGroup),
-    _brushLibraryAction(
-      BrushLibraryActionIds.renameGroup,
-      (l) => s(l).brRenameGroup,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.deleteGroup,
-      (l) => s(l).brDeleteGroup,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.renameBrush,
-      (l) => s(l).brRenameSelected,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.deleteBrush,
-      (l) => s(l).brDeleteSelected,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.exportBrush,
-      (l) => s(l).brExportSelected,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.exportGroup,
-      (l) => s(l).brExportGroup,
-    ),
-    _brushLibraryAction(
-      BrushLibraryActionIds.reset,
-      (l) => s(l).brResetLibrary,
-    ),
-  ];
-}
-
 /// The project settings' rows as actions, in the menu's order — each named
 /// by the window it opens, since the row itself wears its value as it
 /// stands (「FPS 24」), which no key could be called by.
@@ -836,12 +716,6 @@ abstract final class EditorActionIds {
   static const guideAddSymmetry = 'guide-add-symmetry';
   static const guideAddPerspective = 'guide-add-perspective';
   static const textDeleteText = 'text-delete-text';
-  static const mediaPoolImport = 'media-pool-import';
-  static const timesheetFormat = 'timesheet-format';
-  static const timesheetDataMode = 'timesheet-data-mode';
-  static const conteFormat = 'conte-format';
-  static const envelopeFormat = 'envelope-format';
-  static const paletteNew = 'palette-new';
 
   /// The tool settings' own buttons (I-40), pressed the same way, as the
   /// settings of the tool in hand.
@@ -1245,6 +1119,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: const [],
     panelButton: true,
   ),
+  // I-163: the whole-picture cut's 「실행」 — what the key of 전체 잘라내기 was
+  // until the tile came to arm. No key of its own, as the tile has none.
+  // Beside the stamp's buttons, as the cut tool's other settings buttons
+  // (F-580: ↩️it stood among the tiles under 「세부 도구」, which went).
+  const EditorActionDefinition(
+    id: EditorActionIds.toolCutWholeRun,
+    label: 'Run Whole Picture Cut',
+    shelf: ShortcutShelf.edit,
+    defaultActivators: [],
+    panelButton: true,
+  ),
   // 🗣️I-19 (유저 2026-09-12): keys for buttons that already exist — the
   // shared pill's clipboard, its delete and the colour edit's clear. Each
   // label is the BUTTON's own name, so its tooltip and this list cannot
@@ -1534,7 +1419,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolFillBucket,
     label: 'Bucket',
-    shelf: ShortcutShelf.toolTiles,
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyF)],
     toolPress: ToolTilePress(CanvasTool.fill),
   ),
@@ -1667,7 +1552,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransformNormal,
     label: 'Normal Transform',
-    shelf: ShortcutShelf.toolTiles,
+    shelf: ShortcutShelf.tools,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyT, control: true),
     ],
@@ -1676,7 +1561,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransformFree,
     label: 'Free Transform',
-    shelf: ShortcutShelf.toolTiles,
+    shelf: ShortcutShelf.tools,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyY, control: true),
     ],
@@ -1685,7 +1570,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransformMesh,
     label: 'Mesh Warp',
-    shelf: ShortcutShelf.toolTiles,
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: TransformModePress(TransformMode.mesh),
   ),
@@ -1707,18 +1592,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolCutWhole,
     label: 'Whole Picture Cut',
-    shelf: ShortcutShelf.toolTiles,
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: ToolTilePress(CanvasTool.cutWhole),
-  ),
-  // I-163: its settings' 「실행」 — what the key of 전체 잘라내기 was until the
-  // tile came to arm. No key of its own, as the tile has none.
-  const EditorActionDefinition(
-    id: EditorActionIds.toolCutWholeRun,
-    label: 'Run Whole Picture Cut',
-    shelf: ShortcutShelf.toolTiles,
-    defaultActivators: [],
-    panelButton: true,
   ),
   // 🗣️I-53 (유저 2026-09-28): 「스탬프를 v로」. ↩️V alone was retired from
   // the move tool on 09-13 (「v 삭제하고 v 관련 잔재있으면 삭제」) — the
@@ -1726,7 +1602,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolCutStamp,
     label: 'Stamp',
-    shelf: ShortcutShelf.toolTiles,
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
     toolPress: ToolTilePress(CanvasTool.cutStamp),
   ),
@@ -2177,59 +2053,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ..._addEffectActions(),
   // The rail legend's rows, under the bar: its columns from left to right.
   ..._railLegendActions(),
-  // The brush library's ⋯ and the two buttons beside it — before the
-  // settings menu's rows, which close the registry.
-  ..._brushLibraryActions(),
-  // I-40: the panels' own buttons, each under its panel's name — the media
-  // pool's ＋ (by the window it opens), the timesheet's format window and
-  // its notation ⇄ data switch.
-  EditorActionDefinition.composed(
-    id: EditorActionIds.mediaPoolImport,
-    name: (language) => AppStrings.of(language).imImport,
-    shelf: ShortcutShelf.media,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
-  EditorActionDefinition.composed(
-    id: EditorActionIds.timesheetFormat,
-    name: (language) => AppStrings.of(language).sheetFormatTitle,
-    shelf: ShortcutShelf.timesheet,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.timesheetDataMode,
-    label: 'Notation / data sheet',
-    shelf: ShortcutShelf.timesheet,
-    defaultActivators: [],
-    panelButton: true,
-  ),
-  // The other sheets' format windows, opened as the timesheet's is (I-93).
-  // ↩️The conte's cover and blank page were rows of its settings list, each
-  // an action (I-40), until they moved into its window — whose switches,
-  // as every window's, take no key (I-40-Q1).
-  EditorActionDefinition.composed(
-    id: EditorActionIds.conteFormat,
-    name: (language) => AppStrings.of(language).conteFormatTitle,
-    shelf: ShortcutShelf.conteSheet,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
-  EditorActionDefinition.composed(
-    id: EditorActionIds.envelopeFormat,
-    name: (language) => AppStrings.of(language).envelopeFormatTitle,
-    shelf: ShortcutShelf.envelope,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
-  // The palette panel's ＋ (I-131): a new palette, the default from then.
-  EditorActionDefinition.composed(
-    id: EditorActionIds.paletteNew,
-    name: (language) => AppStrings.of(language).paletteNew,
-    shelf: ShortcutShelf.palette,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
   // nothing and is no action; the rows under it are.

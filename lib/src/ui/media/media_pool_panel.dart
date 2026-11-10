@@ -35,8 +35,6 @@ import 'media_asset_kind_icon.dart';
 import 'media_asset_pool_state.dart';
 import 'media_drop_verdict.dart';
 import '../input/control_press_claim.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../shortcuts/panel_keys.dart';
 
 /// The dockable MEDIA POOL: every file the project knows, importable
 /// ahead of use, draggable onto SE blocks to link (footsteps reuse),
@@ -407,16 +405,13 @@ class MediaPoolPanel extends StatelessWidget {
   // (a narrowing past the floor keeps the list where it was), and a
   // viewport is a repaint boundary — so the dock's bake around this panel
   // yields to this one, the placement `EditorPanelBody` explains.
+  // ↩️A key pressed the ＋ (I-40) until F-580 (유저 2026-11-10: 「패널 안의
+  // 미디어-임포트 이런식으로 패널 안 항목도 깔끔하게 삭제」).
   @override
-  Widget build(BuildContext context) => PanelKeysBinding(
-    // A key presses the ＋ — the pool is one panel, whatever is in hand
-    // (I-40).
-    buttons: {EditorActionIds.mediaPoolImport: onImportRequested},
-    child: OverflowScrollers(
-      minWidth: _minBodyWidth + _extensionRoom(context),
-      minHeight: _minBodyHeight,
-      child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
-    ),
+  Widget build(BuildContext context) => OverflowScrollers(
+    minWidth: _minBodyWidth + _extensionRoom(context),
+    minHeight: _minBodyHeight,
+    child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
   );
 
   /// RELINK-2: the loss banner — one line, above the list, INSIDE this
@@ -496,7 +491,6 @@ class MediaPoolPanel extends StatelessWidget {
                 // once held sound only, and 「오디오 불러오기」 outlived it
                 // (유저 10-09).
                 tooltip: AppText.strings.imImport,
-                shortcuts: const [EditorActionIds.mediaPoolImport],
                 // 「＋가 있는 모든 곳, 공통적으로」.
                 icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
                 onPressed: onImportRequested,

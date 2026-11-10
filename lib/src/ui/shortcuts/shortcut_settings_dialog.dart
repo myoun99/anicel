@@ -9,6 +9,8 @@ import '../../services/input/modifier_keys.dart';
 import '../../services/persistence/file_type_groups.dart' show FileTypeGroups;
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
+import '../brush/tool_library_panel.dart' show subToolTilesOf;
+import '../brush/tool_press.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
@@ -300,8 +302,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         return;
       }
       final depth = shelf.path.length;
-      for (final definition
-          in byShelf[shelf] ?? const <EditorActionDefinition>[]) {
+      void put(EditorActionDefinition definition, int depth) {
         final bundle = _bundleOf(definition);
         final shown = shows(definition, bundle);
         final rootTitleDue =
@@ -342,11 +343,41 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           );
         }
       }
-      // 🗣️F-560: 세부 도구 holds rows of its own AND the tool library's
-      // shelves — its rows first, then the shelves on it: rows after an
-      // open shelf's rows would read as that shelf's.
+
+      // 🗣️F-580: a tool's row, and a step in under it what is the tool's —
+      // its tiles in the tool library's order, then the shelf that names
+      // it — before the next tool's. ↩️「세부 도구」 held every tool's
+      // tiles and the tool library's shelves together (F-560).
+      final shelfRows = byShelf[shelf] ?? const <EditorActionDefinition>[];
+      final tiles = {
+        for (final definition in shelfRows)
+          if (definition.toolPress case final SubToolPress press)
+            press: definition,
+      };
+      for (final definition in shelfRows) {
+        if (definition.toolPress is SubToolPress) {
+          continue;
+        }
+        put(definition, depth);
+        if (definition.toolPress case RailToolPress(:final group)) {
+          for (final tile in subToolTilesOf(group)) {
+            if (tiles[tile.press] case final tileRow?) {
+              put(tileRow, depth + 1);
+            }
+          }
+          for (final each in shelf.shelves) {
+            if (each.tool == group) {
+              shelve(each);
+            }
+          }
+        }
+      }
+      // The shelves that name no tool, after the rows: rows after an open
+      // shelf's rows would read as that shelf's.
       for (final each in shelf.shelves) {
-        shelve(each);
+        if (each.tool == null) {
+          shelve(each);
+        }
       }
     }
 
@@ -419,8 +450,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     ),
   );
 
+  /// Sized as the import and export windows are: its share of the app
+  /// screen by area ([AppWindow.screenShare], F-337), and never smaller than
+  /// the 520 × 520 it stood at. 🗣️F-580 (유저 2026-11-10): 「키보드 단축키 창
+  /// 좀 더 커도될듯. 너무작음」. ↩️520 × 520 whatever the screen. The
+  /// LayoutBuilder stands OUTSIDE the window, as the import window's does:
+  /// the screen it shares is the app's, not the dialog's.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, screen) => _window(
+      context,
+      AppWindow.screenShare(screen, least: const Size(520, 520)),
+    ),
+  );
+
+  Widget _window(BuildContext context, Size room) {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
@@ -431,15 +475,13 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       title: AppText.strings.shortcutTitle,
       titleIcon: Icons.keyboard_outlined,
       onClose: () => Navigator.of(context).pop(),
-      width: 520,
-      height: 520,
+      width: room.width,
+      height: room.height,
       scrollBody: false,
       body: Focus(
         focusNode: _recordFocus,
         onKeyEvent: _onRecordKey,
-        child: SizedBox(
-          width: 480,
-          height: 420,
+        child: SizedBox.expand(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

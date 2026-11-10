@@ -1175,10 +1175,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 타임라인 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」 —
     // a row of a menu is pressed AS the row: built the way its menu builds
     // it, and pressed only where the menu would let it be. The rows are the
-    // top strip's, the timeline bar's, the rail legend's and the panels' —
-    // the bar's and the legend's those of the panel being worked in, as
-    // every key on them speaks to it, and the panels' those a key reaches
-    // (PanelKeys: the tool in hand's, and the panels of no tool).
+    // top strip's, the timeline bar's and the rail legend's — the bar's and
+    // the legend's those of the panel being worked in, as every key on them
+    // speaks to it. ↩️And a panel's own menu, the brush library's ⋯, until
+    // F-580 took its rows off the shortcut list.
     if (definition?.menuRow ?? false) {
       pressFlyoutRow([
         ..._topStrip().menuRows(context),
@@ -1189,8 +1189,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         // The rail legend's, as that panel's header opens them — counted
         // on the rows it shows (RailLegends).
         ..._session.railLegends.rowsOf(_session.workingPanel),
-        // A panel's own menu — the brush library's ⋯ — as it opens it.
-        ..._panelKeys.menuRows(_brushTool.value.tool),
       ], actionId);
       return;
     }

@@ -87,6 +87,10 @@ const ledger = <String, Why>{
   // or 「그 파일」?): 「주지 않는다」. The row above it only opens that list.
   "menu/editor_top_strip.dart | 'menu-recent-\${entry.path}'": Why.declined,
   "menu/editor_top_strip.dart | 'menu-recent-projects'": Why.aSecondLevel,
+  // 🗣️F-580 (유저 2026-11-10): 「브러시 가져오기 버튼등이 있는 브러시
+  // 라이브러리, 단축키로 있을 필요없어보이니 해당 항목 깔끔하게 삭제」 — every
+  // row of the library's ⋯, built by its one `item` (`keyValue`).
+  "brush/brush_preset_panel.dart | keyValue": Why.declined,
   // 🗣️I-40-Q6 (유저 2026-10-09, a row per tab that did not fit the strip —
   // a panel's own action already shows it): 「주지 않는다」.
   "panels/editor_panel_tabs.dart | 'panel-tab-overflow-item-\${tab.id}'":

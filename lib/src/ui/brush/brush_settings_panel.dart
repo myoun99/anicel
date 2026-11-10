@@ -15,9 +15,6 @@ import '../../models/brush_tip_order.dart';
 import '../../models/brush_texture_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
-import '../shortcuts/editor_action_registry.dart'
-    show BrushLibraryActionIds;
-import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
 import '../timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
 import '../widgets/app_icon_button.dart';
@@ -304,14 +301,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       if (rows(row) && _stands(row)) (row, _rowOf(row)),
   ];
 
+  // ↩️A key pressed the reset beside the wrench (I-148) until F-580 took the
+  // brush library's buttons off the shortcut list.
   @override
-  Widget build(BuildContext context) => PanelKeysBinding(
-    tool: state.tool,
-    buttons: {BrushLibraryActionIds.resetHeldBrush: widget.onResetBrush},
-    child: _frame(context),
-  );
-
-  Widget _frame(BuildContext context) {
+  Widget build(BuildContext context) {
     return EditorPanelFrame(
       title: AppText.strings.brushSettingsTitle,
       // H35: the tool settings panel's content keeps its bar in view.
@@ -377,7 +370,6 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             AppIconButton(
               keyValue: 'brush-reset-button',
               tooltip: AppText.strings.brResetHeldBrush,
-              shortcuts: const [BrushLibraryActionIds.resetHeldBrush],
               icon: const Icon(Icons.restart_alt),
               outlined: true,
               onPressed: widget.onResetBrush,

@@ -9,6 +9,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
+import 'package:anicel/src/ui/brush/tool_library_panel.dart'
+    show subToolTilesOf;
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show actionLabelOf, labelWithKeys;
@@ -125,6 +130,42 @@ void main() {
     expect(places(tester), all);
   });
 
+  // 🗣️F-580 (유저 2026-11-10): 「키보드 단축키 창 좀 더 커도될듯. 너무작음」
+  // — the import and export windows' share of the screen (F-337), and never
+  // smaller than the 520 × 520 it stood at.
+  group('the window', () {
+    /// The window as it is laid out — the box inside the Material `Dialog`
+    /// its key is on, as the import window's pin reads it.
+    Future<Size> windowOn(WidgetTester tester, Size screen) async {
+      await pump(tester);
+      await tester.binding.setSurfaceSize(screen);
+      await tester.pump();
+      return tester.getSize(
+        find
+            .descendant(
+              of: find.byKey(
+                const ValueKey<String>('shortcut-settings-dialog'),
+              ),
+              matching: find.byType(ConstrainedBox),
+            )
+            .first,
+      );
+    }
+
+    testWidgets('takes the import window\'s share of the screen', (
+      tester,
+    ) async {
+      final size = await windowOn(tester, const Size(1600, 1000));
+      expect(size.width, closeTo(1306.4, 0.1));
+      expect(size.height, closeTo(816.5, 0.1));
+    });
+
+    testWidgets('never smaller than the 520 it stood at', (tester) async {
+      final size = await windowOn(tester, const Size(700, 600));
+      expect(size.height, 520);
+    });
+  });
+
   // 🗣️유저 2026-10-08 (menu-rows-and-panels-are-shortcut-rows): 「단축키
   // 많으니까 항목은 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법
   // 통일하면서」 — the brush bundles' law (I-56-Q1: 기본 접힘 · 검색하면 맞는
@@ -176,36 +217,119 @@ void main() {
       );
     });
 
-    // 🗣️F-560 (유저 2026-11-04): the tool library's shelves stand under 세부
-    // 도구, which keeps rows of its own. ↩️Every row stood on a shelf with
-    // no shelves of its own until then.
-    testWidgets('a shelf\'s own rows stand before the shelves on it', (
-      tester,
-    ) async {
-      final bindings = await pump(tester);
-      const tiles = ShortcutShelf.toolTiles;
-      final own = [
-        for (final row in bindings.definitions)
-          if (row.shelf == tiles) 'shortcut-row-${row.id}',
-      ];
-      // ⛔premise: 세부 도구 holds rows and shelves both.
-      expect(own, isNotEmpty);
-      expect(tiles.shelves, isNotEmpty);
-
-      for (final shelf in tiles.path) {
-        await tester.tap(twirlOf(shelf));
-        await tester.pump();
+    // 🗣️F-580 (유저 2026-11-10): 「캔버스-도구에 도구 있고, 그 밑에 해당 도구의
+    // 세부도구 … 도구-세부도구-도구-세부도구 순으로 있는게 알기쉬움」 — a tool's
+    // row, then a step in what is that tool's: its tiles in the tool
+    // library's order, then its own shelf. ↩️「세부 도구」 was one shelf of
+    // every tool's tiles, its rows before the tool library's shelves (F-560).
+    group('under 도구, a tool\'s own stand a step in under its row', () {
+      Future<(EditorShortcutBindings, List<String>)> openTools(
+        WidgetTester tester,
+      ) async {
+        final bindings = await pump(tester);
+        // Tall enough that every row of 도구 is laid out at once.
+        await tester.binding.setSurfaceSize(const Size(900, 3600));
+        for (final shelf in ShortcutShelf.tools.path) {
+          await tester.tap(twirlOf(shelf));
+          await tester.pump();
+        }
+        return (bindings, listed(tester));
       }
 
-      final keys = listed(tester);
-      final after = keys.indexOf(headingKeyOf(tiles)) + 1;
-      expect(keys.sublist(after, after + own.length), own);
-      // The brush tools' shelves hold the library's brushes, none here.
-      expect(
-        keys[after + own.length],
-        headingKeyOf(ShortcutShelf.brushLibrary),
-        reason: 'the shelves on it come after its rows',
-      );
+      String rowKeyOf(String id) => 'shortcut-row-$id';
+
+      testWidgets('a tool\'s tiles right under its row, in the tool '
+          'library\'s order', (tester) async {
+        final (bindings, keys) = await openTools(tester);
+        for (final (id, group) in [
+          (EditorActionIds.toolSelect, CanvasTool.select),
+          (EditorActionIds.toolCut, CanvasTool.cut),
+          (EditorActionIds.toolFill, CanvasTool.fill),
+          (EditorActionIds.toolTransform, CanvasTool.move),
+        ]) {
+          final tiles = [
+            for (final tile in subToolTilesOf(group))
+              rowKeyOf(
+                bindings.definitions
+                    .singleWhere((row) => row.toolPress == tile.press)
+                    .id,
+              ),
+          ];
+          expect(tiles, isNotEmpty, reason: '⛔premise: $id has tiles');
+          final at = keys.indexOf(rowKeyOf(id));
+          expect(at, isNot(-1), reason: id);
+          expect(keys.sublist(at + 1, at + 1 + tiles.length), tiles);
+        }
+      });
+
+      testWidgets('a tool\'s own shelf right under its row', (tester) async {
+        final (_, keys) = await openTools(tester);
+        for (final (id, shelf) in [
+          (EditorActionIds.toolText, ShortcutShelf.texts),
+          (EditorActionIds.toolGuide, ShortcutShelf.guides),
+        ]) {
+          expect(
+            keys[keys.indexOf(rowKeyOf(id)) + 1],
+            headingKeyOf(shelf),
+            reason: id,
+          );
+        }
+      });
+
+      testWidgets('every row of 도구 stands once — a tile no tool lists is '
+          'not lost', (tester) async {
+        final (bindings, _) = await openTools(tester);
+        for (final shelf in ShortcutShelf.tools.shelves) {
+          if (twirlOf(shelf).evaluate().isEmpty) {
+            continue; // a shelf with no rows has no heading
+          }
+          await tester.tap(twirlOf(shelf));
+          await tester.pump();
+        }
+        final opened = listed(tester);
+        for (final row in bindings.definitions) {
+          if (row.shelf.path.contains(ShortcutShelf.tools)) {
+            expect(
+              opened.where((key) => key == rowKeyOf(row.id)),
+              hasLength(1),
+              reason: row.id,
+            );
+          }
+        }
+      });
+
+      testWidgets('a tile\'s words start where its tool\'s shelf\'s do — one '
+          'step in from its tool\'s', (tester) async {
+        final (bindings, _) = await openTools(tester);
+        Rect wordsOfRow(String id) => tester.getRect(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(rowKeyOf(id))),
+            matching: find.text(
+              actionLabelOf(
+                bindings.definitions.singleWhere((row) => row.id == id),
+              ),
+            ),
+          ),
+        );
+        Rect wordsOfHeading(ShortcutShelf shelf) => tester.getRect(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(headingKeyOf(shelf))),
+            matching: find.anyText(),
+          ),
+        );
+        expect(
+          wordsOfRow(EditorActionIds.toolCut).left,
+          wordsOfHeading(ShortcutShelf.tools).left,
+        );
+        expect(
+          wordsOfRow(EditorActionIds.toolCutStamp).left,
+          wordsOfHeading(ShortcutShelf.texts).left,
+        );
+        expect(
+          wordsOfRow(EditorActionIds.toolCutStamp).left,
+          greaterThan(wordsOfRow(EditorActionIds.toolCut).left),
+        );
+      });
     });
 
     testWidgets('every shelf stands shut when the window opens: the places\' '
