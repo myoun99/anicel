@@ -10,6 +10,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'src/engine_ffi.dart' as rust;
@@ -1676,10 +1677,18 @@ class GpuComposite {
   /// The chains' kernels compiled off this isolate, which goes on
   /// meanwhile: one compile, however many ask. ⚠️The executor is freed only
   /// once it is done.
-  Future<void> compileChains() => _chains ??= _chainsOff(
-    _composite.address,
-    _engine._engine.address,
-  ).whenComplete(() => _chainsThrough = true);
+  Future<void> compileChains() => _chains ??=
+      (debugChainsCompile?.call() ??
+              _chainsOff(_composite.address, _engine._engine.address))
+          .whenComplete(() => _chainsThrough = true);
+
+  /// Test seam: the compile [compileChains] waits for, in place of the
+  /// one off this isolate. A compile that ends in an error is no state
+  /// a driver can be put in, and what a frame does once one has is
+  /// pinned all the same (🗣️관제 2026-11-11: 「컴파일이 실패한 뒤 … 끝나지
+  /// 않는 재시도로 가지 않는지」).
+  @visibleForTesting
+  static Future<void> Function()? debugChainsCompile;
 
   Future<void>? _chains;
   bool _chainsThrough = false;

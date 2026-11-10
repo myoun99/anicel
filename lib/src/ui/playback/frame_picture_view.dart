@@ -652,6 +652,15 @@ class _FramePictureViewState extends State<FramePictureView> {
           .then<void>(
             (_) {},
             onError: (Object error, StackTrace stack) {
+              // 🚨NOTED, as the warmer notes a making of its own that threw
+              // (`PlaybackPrerenderScheduler`): it is not asked for again at
+              // this content, and the frame is drawn as its cels stand
+              // ([_look]). ↩️Unnoted, a screen that draws nothing of its
+              // frame till its picture is there asked for it again the
+              // moment it had thrown, for as long as it threw, and came back
+              // to no frame of the app's (🔬2026-11-11: its pin never
+              // ended; 🗣️관제: 「끝나지 않는 재시도로 가지 않는지」).
+              _pictures.noteFailureAt(key);
               FlutterError.reportError(
                 FlutterErrorDetails(
                   exception: error,

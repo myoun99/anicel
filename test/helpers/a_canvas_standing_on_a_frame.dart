@@ -285,6 +285,30 @@ class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
   static bool _stays() => false;
 }
 
+/// A store no picture comes of: every lay asked of it throws [why], and
+/// [laid] says each that was asked.
+class StoreWhoseLaysThrow extends EngineFramePictureStore<FramePictureKey> {
+  StoreWhoseLaysThrow(this.why) : super(tools: () => appEngineFrameTools);
+
+  final Object why;
+  final List<FramePictureKey> laid = [];
+
+  @override
+  Future<EngineFramePicture?> lay(
+    FramePictureKey key,
+    StackedFrame frame, {
+    bool shownNow = false,
+    bool Function() gone = _stays,
+    ({FramePictureKey film, ui.Rect fresh})? over,
+    EngineChainHolds? holds,
+  }) {
+    laid.add(key);
+    return Future.error(why);
+  }
+
+  static bool _stays() => false;
+}
+
 /// What [box] — a repaint boundary — shows at the window's ratio, as
 /// [shotOf] reads a screen.
 Future<Shot> shotOfBox(WidgetTester tester, RenderBox box) async {

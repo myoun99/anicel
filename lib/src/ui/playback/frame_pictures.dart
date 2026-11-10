@@ -323,8 +323,11 @@ class FramePictures implements PlaybackPictures {
   /// ⚠️Not where the frame is there: a cel's throw is handed on once the
   /// frame is laid without it ([make]), and the picture laid is no failure.
   @override
-  void noteFailure(DemandedPicture picture) {
-    final key = keyOf(picture);
+  void noteFailure(DemandedPicture picture) => noteFailureAt(keyOf(picture));
+
+  /// [noteFailure] of the frame under [key]: as a screen stacks it
+  /// ([makeShown]), which is not always as the warmer does.
+  void noteFailureAt(FramePictureKey key) {
     if (!_isThere(key)) {
       _gaveNothing.keep(key, true);
     }

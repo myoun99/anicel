@@ -807,6 +807,134 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // 🗣️관제 2026-11-11 00:28: 「컴파일이 실패한 뒤 … 고리가 영원히 돌거나 직전
+  // 그림에 영원히 머문다. 실제 실패가 그 끝나지 않는 재시도로 가지 않는지」
+  // — a compile that ends in an error ends the wait as one that ends well
+  // does: it is said by name, once, and the frame is laid by its paint all
+  // the same, which compiles what it runs or says why it cannot (as a frame
+  // the driver refuses is said, `ScreenTexture.present`).
+
+  /// The chains' compile a test ends in an error ([GpuComposite
+  /// .debugChainsCompile]) — made in [zone], the zone of what waits for it:
+  /// an error goes to no listener of another zone's.
+  Completer<void> theChainsCompileToFail({Zone? zone}) {
+    final failed = (zone ?? Zone.current).run(Completer<void>.new);
+    GpuComposite.debugChainsCompile = () => failed.future;
+    addTearDown(() => GpuComposite.debugChainsCompile = null);
+    return failed;
+  }
+
+  testWidgets('a frame whose chain\'s kernels could not be compiled off '
+      'this isolate: said by name, laid by its paint all the same, its '
+      'place marked no more and nothing turning', (tester) async {
+    theMarkStands();
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final failed = theChainsCompileToFail();
+    final screen = GlobalKey();
+    // No picture comes: what waits for the compile is the paint alone.
+    final store = StoreLayingNothing(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    await standOn(tester, screen, inAFolder([blurs]), laidBy: store);
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked while it waits');
+    expect(
+      onlyTheScreen(await shotOf(tester, screen)),
+      isTrue,
+      reason: '⛔premise: nothing drawn yet',
+    );
+
+    final failure = StateError('the chains would not compile');
+    failed.completeError(failure);
+    // The word of it, then the paint it asks for.
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), same(failure));
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: laid by its paint',
+    );
+    expect(
+      debugKernelsCompiledHere,
+      greaterThan(built),
+      reason: 'compiled where the frame is run, as before any compiled ahead',
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull, reason: 'said once');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a cut parked on whose picture waits for kernels that could '
+      'not be compiled: its making fails once and is said by name, its '
+      'store waits no more, its place is marked no more — and the frame is '
+      'drawn as it stands', (tester) async {
+    theMarkStands();
+    final (:tools, built: _) = await toolsWhoseChainsAreToCome(tester);
+    // What waits is the store's line, in no one's zone.
+    final failed = theChainsCompileToFail(zone: Zone.root);
+    final store = StoreTellingItsWrites(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final saidToWait = <bool>[];
+    store.waits.addListener(() => saidToWait.add(store.waitsForKernels));
+    final screen = GlobalKey();
+    final (store: _, :picture, overlay: _, handAnew: _) = await standOn(
+      tester,
+      screen,
+      [
+        CompositeGroup<CanvasStackRow>(
+          children: const [
+            CompositeLeaf(CanvasLayerImageRequest(frameKey: over, opacity: 1)),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: [blurs],
+        ),
+      ],
+      laidBy: store,
+      parked: true,
+    );
+    expect(
+      await settleAsync(tester, () => store.waitsForKernels),
+      isTrue,
+      reason: 'LIVENESS: its line stands behind the compile',
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked while it waits');
+
+    final failure = StateError('the chains would not compile');
+    failed.completeError(failure);
+
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: drawn as it stands, its making given up',
+    );
+    expect(tester.takeException(), same(failure));
+    expect(saidToWait, [true, false]);
+    expect(store.bytesOf(picture), isNull, reason: 'no picture of it was made');
+    expect(
+      store.laid.where((key) => key == picture),
+      hasLength(1),
+      reason: 'asked for once: not made again and again',
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull, reason: 'said once');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// A canvas standing on a frame over a store whose tools are still to be
   /// opened, the app's engine open by then for the screen it shows through
   /// — and what opens them, or says they will not be: in no one's zone, as
@@ -950,6 +1078,38 @@ void main() {
     await theMarkFollows(tester);
 
     expect(theMark, findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨A MAKING THAT THREW IS NOT ASKED FOR AGAIN (🗣️관제 2026-11-11: 「실제
+  // 실패가 그 끝나지 않는 재시도로 가지 않는지」). A screen that draws nothing
+  // of its frame till its picture is there asked for the picture again the
+  // moment its making had thrown, for as long as it threw, and said so by
+  // name each time. It is drawn as its cels stand, as a frame the warmer's
+  // making threw at is (`FramePictures.noteFailure`, 2026-10-24: 「a frame
+  // whose making threw is drawn as its cels stand」).
+  testWidgets('a cut parked on whose picture\'s making throws: asked for '
+      'once, said by name once, and drawn as it stands', (tester) async {
+    final failure = StateError('the driver refused');
+    final store = StoreWhoseLaysThrow(failure);
+    await itsToolsOpen(tester, store);
+    final screen = GlobalKey();
+    await standOn(tester, screen, parkedOn, laidBy: store, parked: true);
+
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: drawn as it stands',
+    );
+    await lendBothClocks(tester, rounds: 4);
+
+    expect(store.laid, hasLength(1));
+    expect(tester.takeException(), same(failure));
+    expect(tester.takeException(), isNull, reason: 'said once');
+    expect(tester.binding.hasScheduledFrame, isFalse);
     await tester.pumpWidget(const SizedBox());
   });
 
