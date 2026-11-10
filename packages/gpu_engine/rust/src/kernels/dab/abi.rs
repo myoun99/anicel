@@ -277,6 +277,29 @@ pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blu
     Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| Box::into_raw(Box::new(blurs)))
 }
 
+/// Compiles the blur brush's strips' kernels, the engine's to keep
+/// (`Blurs::compile_strips`) — on any thread. False on failure; see the
+/// last error.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_blurs_compile_strips(engine: *const Engine) -> bool {
+    // SAFETY: see the function's contract.
+    Blurs::compile_strips(unsafe { &*engine }).is_some()
+}
+
+/// Whether a stroke of `blurs` goes by strips: the engine has their
+/// kernels (`Blurs::by_strips`).
+///
+/// # Safety
+/// `blurs` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_blurs_by_strips(blurs: *const Blurs) -> bool {
+    // SAFETY: see the function's contract.
+    unsafe { &*blurs }.by_strips()
+}
+
 /// # Safety
 /// `blurs` came from `gpu_engine_blurs_new`.
 #[unsafe(no_mangle)]

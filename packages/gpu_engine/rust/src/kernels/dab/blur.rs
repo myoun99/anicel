@@ -38,8 +38,8 @@ use crate::kernels::effects::blur::boxes::{
 };
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, encode_on, fits, flat,
-    given, page_table, pipeline, plane, range, runs, tiles_a_pass, whole,
+    Encoded, ISQRT_WGSL, Kernel, Own, Pages, TILE_WGSL, encode, encode_on, fits,
+    flat, given, page_table, pipeline, plane, range, runs, tiles_a_pass, whole,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -347,12 +347,21 @@ enum Planned<'a> {
     Apart(usize, &'a Step),
 }
 
-/// A dab's pipelines, compiled for the pages a pass of them binds.
+/// A dab's pipelines for the pages a pass of them binds: a pass a
+/// dispatch's compiled with them, the strips' three — rows, columns, in
+/// turn — where the engine has them or once it does
+/// ([`Blurs::compile_strips`]).
+///
+/// 🗣️관제 2026-11-11 06:42 (gpu-canonical-store ④): 「목록이 끝나기 전에
+/// 블러 브러시로 그으면 UI 가 블러 커널 열 개를 직접 컴파일해 7.0–10.1 s
+/// 멈춘다 — 같은 선이 걸린다」. 🔬The strips' six were nine tenths of the
+/// ten: 4.1 s, 3.9 s and 6.1 s a set against a pass a dispatch's 0.6 s, the
+/// cel's two 0.2 s (main PC beside a test line, 2026-11-11); the ten 7.2 s
+/// on the Surface Pro 11. A pass a dispatch moves the same pixels, slower
+/// ([`Route`]), so a first stroke waits for it alone.
 struct Dispatches {
     pages: Pages,
-    rows: wgpu::ComputePipeline,
-    columns: wgpu::ComputePipeline,
-    in_turn: wgpu::ComputePipeline,
+    strips: [Kernel; 3],
     pass: wgpu::ComputePipeline,
 }
 
@@ -363,28 +372,33 @@ impl Dispatches {
         let (dab, blur) = (include_str!("dab.wgsl"), include_str!("blur.wgsl"));
         let paged = pages.source();
         let way = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, paged.as_str()];
-        let strips = [&way[..], &[THREE_WGSL, blur, include_str!("blur_three.wgsl")]].concat();
+        let three = [&way[..], &[THREE_WGSL, blur, include_str!("blur_three.wgsl")]].concat();
         let passes = [&way[..], &[PASS_WGSL, blur, include_str!("blur_pass.wgsl")]].concat();
+        let entries = ["blur_rows_pass", "blur_columns_pass", "blur_dabs_in_turn"];
         Some(Self {
-            rows: pipeline(engine, &strips, "blur_rows_pass"),
-            columns: pipeline(engine, &strips, "blur_columns_pass"),
-            in_turn: pipeline(engine, &strips, "blur_dabs_in_turn"),
+            strips: entries.map(|entry| Kernel::of(engine, &three, entry)),
             pass: pipeline(engine, &passes, "blur_pass_one"),
             pages,
         })
     }
 
-    fn of(&self, entry: Entry) -> &wgpu::ComputePipeline {
+    /// `entry`'s pipeline: a strip's compiled here where the engine has
+    /// not got it — a test's dab sent by strips; the app sends one once
+    /// they are compiled ([`Blurs::blur`]).
+    fn of(&self, engine: &Engine, entry: Entry) -> &wgpu::ComputePipeline {
+        let [rows, columns, in_turn] = &self.strips;
         match entry {
-            Entry::Rows => &self.rows,
-            Entry::Columns => &self.columns,
-            Entry::InTurn => &self.in_turn,
+            Entry::Rows => rows.pipeline(engine),
+            Entry::Columns => columns.pipeline(engine),
+            Entry::InTurn => in_turn.pipeline(engine),
             Entry::Pass => &self.pass,
         }
     }
 }
 
 impl Blurs {
+    /// A pass a dispatch's kernels and the cel's two compiled: what a
+    /// stroke cannot go without. The strips' are [`Blurs::compile_strips`]'s.
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN.storage, usize::MAX)?;
         let cel_paged = cel_pages.source();
@@ -409,6 +423,9 @@ impl Blurs {
     /// caller waits. Every tile a dab's window meets — what its blur reads,
     /// three radii past it each side — is the caller's to have among
     /// `tiles`.
+    ///
+    /// By strips once the engine has their kernels, a pass a dispatch till
+    /// then: no stroke waits for the strips' compile ([`Dispatches`]).
     pub(crate) fn blur(
         &mut self,
         engine: &Engine,
@@ -418,7 +435,27 @@ impl Blurs {
         picture: &[wgpu::Buffer],
     ) -> Option<()> {
         let pages_per_pass = self.widest.pages.per_pass();
-        self.blur_by(engine, tiles, dabs, paper, picture, (Route::Strips, pages_per_pass))
+        let route = if self.by_strips() { Route::Strips } else { Route::Passes };
+        self.blur_by(engine, tiles, dabs, paper, picture, (route, pages_per_pass))
+    }
+
+    /// Whether the engine has the strips' kernels, each of them: a stroke
+    /// goes by them.
+    pub(crate) fn by_strips(&self) -> bool {
+        let mut strips = [&self.one, &self.widest].into_iter().flat_map(|way| &way.strips);
+        strips.all(|strip| strip.compiled().is_some())
+    }
+
+    /// The strips' kernels compiled, the engine's to keep: every set of
+    /// blurs on it goes by them from its next stroke. On any thread — the
+    /// app's, ahead and off the one its frames are built on.
+    pub(crate) fn compile_strips(engine: &Engine) -> Option<()> {
+        for most in [1, usize::MAX] {
+            for strip in &Dispatches::new(engine, most)?.strips {
+                strip.pipeline(engine);
+            }
+        }
+        Some(())
     }
 
     /// The bytes it keeps between its strokes (`between`, `second`).
@@ -590,7 +627,7 @@ impl Blurs {
                     bound.extend(whole(&[(3, second)]));
                 }
                 bound.extend(way.pages.entries(of_pages(picture, &window.pages)));
-                Encoded { pipeline: way.of(entry), bound, groups: flat(groups) }
+                Encoded { pipeline: way.of(engine, entry), bound, groups: flat(groups) }
             })
             .collect();
         encode(engine, &dispatches);

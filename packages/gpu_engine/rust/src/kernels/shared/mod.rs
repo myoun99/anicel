@@ -39,6 +39,7 @@ mod source_scan;
 pub(crate) mod tests;
 
 use std::cell::Cell;
+use std::sync::{Arc, OnceLock};
 
 use crate::device::{CompilerTurn, Engine, KernelSource};
 
@@ -144,11 +145,7 @@ pub(crate) fn pipeline_unzeroed(
     build(engine, sources, entry, &[], false)
 }
 
-/// The engine's own pipeline: the one it has of these sources, entry and
-/// constants (`Kernels`, in `device.rs`), compiled on its thread
-/// (`EngineThread`, there, says why) while the caller waits where it has
-/// none — and where another caller's compile of it is under way, waited
-/// for behind that one. A kernel the engine has is no thread's wait.
+/// The engine's own pipeline of these: [`Kernel::pipeline`]'s.
 fn build(
     engine: &Engine,
     sources: &[&str],
@@ -156,29 +153,74 @@ fn build(
     constants: &[(&str, f64)],
     zeroed: bool,
 ) -> wgpu::ComputePipeline {
-    let of = KernelSource {
-        source: sources.join("\n"),
-        entry: entry.to_owned(),
-        constants: constants
-            .iter()
-            .map(|&(name, value)| (name.to_owned(), value.to_bits()))
-            .collect(),
-        zeroed,
-    };
-    let kept = engine.kernels.slot(&of);
-    if let Some(made) = kept.get() {
-        return made.clone();
+    Kernel::kept(engine, sources, entry, constants, zeroed).pipeline(engine).clone()
+}
+
+/// One of the engine's own kernels, compiled or still to be: the one it
+/// has of these sources, entry and constants (`Kernels`, in `device.rs`).
+/// Held so by what runs without it meanwhile and takes it up once it is
+/// there ([`Kernel::compiled`]): the blur brush's strips, a dab going a
+/// pass a dispatch till they are (`dab/blur.rs`).
+pub(crate) struct Kernel {
+    of: KernelSource,
+    kept: Arc<OnceLock<wgpu::ComputePipeline>>,
+}
+
+impl Kernel {
+    /// [`pipeline`]'s kernel, compiled only where the engine has it.
+    pub(crate) fn of(engine: &Engine, sources: &[&str], entry: &str) -> Self {
+        Self::kept(engine, sources, entry, &[], true)
     }
-    let device = engine.device.clone();
-    waited_here();
-    engine.compiling(move |turn| {
-        let made = kept.get_or_init(|| {
-            let constants =
-                of.constants.iter().map(|(name, bits)| (name.as_str(), f64::from_bits(*bits)));
-            compiled(turn, &device, of.source, &of.entry, &constants.collect::<Vec<_>>(), of.zeroed)
+
+    fn kept(
+        engine: &Engine,
+        sources: &[&str],
+        entry: &str,
+        constants: &[(&str, f64)],
+        zeroed: bool,
+    ) -> Self {
+        let of = KernelSource {
+            source: sources.join("\n"),
+            entry: entry.to_owned(),
+            constants: constants
+                .iter()
+                .map(|&(name, value)| (name.to_owned(), value.to_bits()))
+                .collect(),
+            zeroed,
+        };
+        let kept = engine.kernels.slot(&of);
+        Self { of, kept }
+    }
+
+    /// Its pipeline where the engine has it: whoever compiled it, through
+    /// this one or another of the same sources.
+    pub(crate) fn compiled(&self) -> Option<&wgpu::ComputePipeline> {
+        self.kept.get()
+    }
+
+    /// Its pipeline, compiled on the engine's thread (`EngineThread`, in
+    /// `device.rs`, says why) while the caller waits where the engine has
+    /// none — and where another caller's compile of it is under way, waited
+    /// for behind that one. A kernel the engine has is no thread's wait.
+    pub(crate) fn pipeline(&self, engine: &Engine) -> &wgpu::ComputePipeline {
+        if let Some(made) = self.kept.get() {
+            return made;
+        }
+        let (device, of, kept) = (engine.device.clone(), self.of.clone(), Arc::clone(&self.kept));
+        waited_here();
+        let made = engine.compiling(move |turn| {
+            let made = kept.get_or_init(|| {
+                let constants: Vec<_> = of
+                    .constants
+                    .iter()
+                    .map(|(name, bits)| (name.as_str(), f64::from_bits(*bits)))
+                    .collect();
+                compiled(turn, &device, of.source, &of.entry, &constants, of.zeroed)
+            });
+            made.clone()
         });
-        made.clone()
-    })
+        self.kept.get_or_init(|| made)
+    }
 }
 
 thread_local! {

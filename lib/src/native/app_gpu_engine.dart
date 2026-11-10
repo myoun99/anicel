@@ -131,12 +131,22 @@ final class FrameKernelsToCome implements Exception {
 /// 2026-11-10 18:14, gpu-canonical-store ⑦ — 🔬the lay pass's two entries
 /// were the first 2.9–3.5 s of a stopped UI at launch on the Surface Pro
 /// 11).
+///
+/// Behind what the app compiles ahead for a hand
+/// ([GpuEngine.compilesApartLetGo]): no row waits for them, each drawing
+/// its cells itself till they are there. 🔬Asked for by the first screen
+/// as the engine opened, they stood ahead of a stroke's — 0.43–0.59 s of
+/// the lay pass before the first of them on the Surface Pro 11
+/// (2026-11-11 06:41), 3.2 s of it on the main PC.
 final appGpuGridKernels = AppKernels<({GpuGrid tiles, GpuGridLay lay})>(
   (engine) => (tiles: GpuGrid(engine), lay: GpuGridLay(engine)),
-  (engine) async => (
-    tiles: await GpuGrid.opening(engine),
-    lay: await GpuGridLay.opening(engine, bgra: ScreenTexture.bgra),
-  ),
+  (engine) async {
+    await engine.compilesApartLetGo();
+    return (
+      tiles: await GpuGrid.opening(engine),
+      lay: await GpuGridLay.opening(engine, bgra: ScreenTexture.bgra),
+    );
+  },
   (kernels) {
     kernels.tiles.free();
     kernels.lay.free();

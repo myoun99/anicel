@@ -108,8 +108,9 @@ final class _GridScreen {
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
     asks: () => _box != null && _slots.isNotEmpty,
     opened: (_) {
-      // Asked for by the first screen there is to lay on, whatever else
-      // the launch is compiling: the rows lay once they have come.
+      // Asked for by the first screen there is to lay on, whoever else
+      // asks; compiled behind what the launch compiles for a hand
+      // ([appGpuGridKernels]). The rows lay once they have come.
       if (appGpuGridKernels.compiled == null) {
         unawaited(appGpuGridKernels.warm().then((_) => _laysChanged()));
       }

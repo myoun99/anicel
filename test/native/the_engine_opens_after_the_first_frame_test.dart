@@ -50,31 +50,35 @@ void main() {
     );
   });
 
-  // 🗣️관제 2026-11-11 04:09 · 06:00 (gpu-canonical-store ④): 「선은 첫 획 ·
-  // 첫 들어올리기의 멈춤 자체다 … 손이 쓰는 커널 → composite 전용 패스」 —
-  // what a hand on the canvas would else compile at its first press comes
-  // before what draws itself or waits meanwhile, the blur brush's ten last
-  // (🔬7.1–7.4 s of the Surface's compiler), and what the engine compiles
-  // apart waits from before the canvas first shows till a hand's are in.
+  // 🗣️관제 2026-11-11 04:09 · 06:00 · 06:42 (gpu-canonical-store ④): 「선은
+  // 첫 획 · 첫 들어올리기의 멈춤 자체다 … 손이 쓰는 커널 → composite 전용
+  // 패스」, 「블러 브러시도 손이 쓰는 도구」 — what a hand on the canvas would
+  // else compile at its first press comes before what draws itself or
+  // waits meanwhile, the scan (12 ms) before the canvas itself, the blur
+  // brush's strips last (🔬six of its ten, nine tenths of their 7.1–7.4 s
+  // of the Surface's compiler: a stroke goes a pass a dispatch meanwhile),
+  // and what the engine compiles apart waits from before the canvas first
+  // shows till a hand's are in.
   test('the list compiles what a hand needs before the grids\', the chains\' '
-      'and the blur brush\'s — what the engine compiles apart held till '
-      'then, and no longer', () {
+      'and the blur brush\'s strips — what the engine compiles apart held '
+      'till then, and no longer', () {
     final list = File(
       'lib/src/native/app_kernels_ahead.dart',
     ).readAsStringSync();
     final inTurn = <Pattern>[
       'await openAppGpuEngine();',
       'await engine.whileCompilesApartWait(() async {',
+      'await GpuInk.opening(engine)',
       'await appEngineFrameTools;',
       'await EngineStrokes.warm();',
-      'await GpuInk.opening(engine)',
       'await EngineCelPixels.warm();',
       'await appGpuStampLandingKernels.warm();',
+      'await EngineStrokes.warmBlurs();',
       // Where the hold ends.
       RegExp(r'return tools;\s*\}\);'),
       'await appGpuGridKernels.warm();',
       'await tools.composite.compileChains();',
-      'await EngineStrokes.warmBlurs();',
+      'await EngineStrokes.warmBlurStrips();',
     ];
     final at = [for (final asked in inTurn) list.indexOf(asked)];
     expect(at, everyElement(isNonNegative), reason: '⛔premise: each asked');

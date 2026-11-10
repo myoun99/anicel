@@ -71,8 +71,8 @@ void main() {
   final blur = fx(EffectKind.blur, {'blurriness': 24});
   late int builtByTheList;
   // Whether what the engine compiles apart was held, looked at between this
-  // isolate's turns while the list ran: with what a paste needs — the last
-  // of a hand's — still to come, and once the grids' were in.
+  // isolate's turns while the list ran: with what a blur stroke needs — the
+  // last of a hand's — still to come, and once the grids' were in.
   final heldBeforeAHandsWereIn = <bool>[];
   final heldOnceTheGridsWereIn = <bool>[];
 
@@ -85,14 +85,18 @@ void main() {
         return;
       }
       final held = engine.debugCompilesApartHeld > 0;
-      if (appGpuStampLandingKernels.compiled == null) {
+      if (!EngineStrokes.debugBlursCompiled) {
         heldBeforeAHandsWereIn.add(held);
       }
       if (appGpuGridKernels.compiled != null) {
         heldOnceTheGridsWereIn.add(held);
       }
     });
+    // As the app's first grid screen asks, the engine just open: before the
+    // list has held (`TimelineGridScreenHost`).
+    final grids = appGpuGridKernels.warm();
     await compileAppKernelsAhead();
+    await grids;
     looking.cancel();
     builtByTheList = debugKernelsCompiledHere - before;
   });
@@ -163,8 +167,12 @@ void main() {
 
   // 🗣️관제 2026-11-11 06:00 · 06:07 (④): 「손이 쓰는 커널 → composite 전용
   // 패스」, 「잡은 것은 모든 길에서 놓여야 한다」.
+  // 🔬The grids' kernels, asked for by a screen as the engine opened, stood
+  // ahead of a stroke's: 0.43–0.59 s of the lay pass on the Surface Pro 11
+  // (2026-11-11 06:41) — they wait with what the engine compiles apart.
   test('what the engine compiles apart is held till what a hand needs is '
-      'compiled, and no longer', () {
+      'compiled, and no longer — the grids\' a screen asked for as the '
+      'engine opened come after it', () {
     expect(heldBeforeAHandsWereIn, isNotEmpty, reason: '⛔premise: looked');
     expect(heldBeforeAHandsWereIn, everyElement(isTrue));
     expect(heldOnceTheGridsWereIn, isNotEmpty, reason: '⛔premise: looked');
@@ -178,6 +186,10 @@ void main() {
       0,
     );
     expect(builtHereBy(() => EngineStrokes.blurs), 0);
+  });
+
+  test('the blur brush goes by strips once the list is through', () {
+    expect(EngineStrokes.blurs.debugGoesByStrips, isTrue);
   });
 
   // 🗣️관제 2026-11-11 04:09 (④): 「첫 획 · 첫 들어올리기에서도 UI 스레드가

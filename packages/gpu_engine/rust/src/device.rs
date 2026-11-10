@@ -659,6 +659,20 @@ pub unsafe extern "C" fn gpu_engine_apart_let(engine: *const Engine) {
     engine.apart.let_go();
 }
 
+/// Returns once no [`gpu_engine_apart_hold`] is on: where what the app
+/// compiles apart of its own — the frame grids' kernels, each row drawing
+/// itself till they are there — waits before it asks for the compiler.
+/// ⛔Not on the thread that lets go: it would wait for itself.
+///
+/// # Safety
+/// `engine` is live as this is called.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_apart_wait(engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let apart = unsafe { &*engine }.apart.clone();
+    apart.wait();
+}
+
 /// How many [`gpu_engine_apart_hold`]s are on: none once whoever held has
 /// let go, whatever came of what it compiled meanwhile.
 ///

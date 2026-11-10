@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show debugKernelsCompiledHere;
 
 import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/engine_strokes.dart';
@@ -14,6 +15,12 @@ import 'package:anicel/src/native/engine_strokes.dart';
 /// brush's kernels are ten pipelines, 🔬10.2 s on the main PC with eighteen
 /// test files running, and every stroke shares the one set. They are
 /// compiled off this isolate once the engine is open.
+///
+/// 🚨NOR FOR THE SIX A DAB GOES BY STRIPS WITH (🗣️관제 2026-11-11 06:42,
+/// gpu-canonical-store ④: 「목록이 끝나기 전에 블러 브러시로 그으면 UI 가
+/// 블러 커널 열 개를 직접 컴파일해 7.0–10.1 s 멈춘다」): nine tenths of the
+/// ten's compile, they are the engine's, compiled apart, and a stroke goes
+/// a pass a dispatch — the same pixels — till they are there.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -50,6 +57,30 @@ void main() {
     final asked = EngineStrokes.blurs;
     await warming;
     expect(identical(EngineStrokes.blurs, asked), isTrue);
+  });
+
+  test('warmed, a stroke goes a pass a dispatch: the strips\' kernels are '
+      'not compiled with them', () async {
+    await EngineStrokes.warmBlurs();
+    expect(EngineStrokes.blurs.debugGoesByStrips, isFalse);
+  });
+
+  test('the strips\' compiled off this isolate, the set there was goes by '
+      'them', () async {
+    await EngineStrokes.warmBlurs();
+    final blurs = EngineStrokes.blurs;
+    final built = debugKernelsCompiledHere;
+    var ticks = 0;
+    final timer = Timer.periodic(
+      const Duration(milliseconds: 1),
+      (_) => ticks += 1,
+    );
+    await EngineStrokes.warmBlurStrips();
+    timer.cancel();
+    expect(ticks, greaterThan(0), reason: 'this isolate went on meanwhile');
+    expect(debugKernelsCompiledHere, built, reason: 'none built here');
+    expect(identical(EngineStrokes.blurs, blurs), isTrue);
+    expect(blurs.debugGoesByStrips, isTrue);
   });
 
   test('warmed twice, they are compiled once', () async {

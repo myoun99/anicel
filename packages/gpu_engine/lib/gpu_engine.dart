@@ -213,6 +213,22 @@ class GpuEngine {
     }
   }
 
+  /// Completes once nothing holds what the engine compiles apart
+  /// ([whileCompilesApartWait]): where what this isolate has compiled off
+  /// it with no one waiting for it — the frame grids' kernels, each row
+  /// drawing itself till they are there — stands before it asks for the
+  /// compiler.
+  Future<void> compilesApartLetGo() async {
+    // A turn of this isolate first: who holds as the engine is told open
+    // holds within that turn, and is seen here.
+    await Future<void>.delayed(Duration.zero);
+    if (rust.apartHeld(_engine) == 0) {
+      return;
+    }
+    final on = _engine.address;
+    await Isolate.run(() => rust.apartWait(Pointer.fromAddress(on)));
+  }
+
   /// Test seam: how many hold what the engine compiles apart
   /// ([whileCompilesApartWait]).
   int get debugCompilesApartHeld => rust.apartHeld(_engine);
@@ -603,7 +619,8 @@ List<GpuLanded> _landed(
 });
 
 /// The blur brush's kernels (rust/src/kernels/dab/blur.rs): one set for
-/// every stroke.
+/// every stroke — what a stroke cannot go without; the kernels a dab goes
+/// by strips with are the engine's, compiled apart ([compilingStrips]).
 final class GpuBlurs {
   /// Compiled on [engine], the caller waiting.
   factory GpuBlurs(GpuEngine engine) =>
@@ -618,6 +635,21 @@ final class GpuBlurs {
   static Pointer<rust.Blurs> _compiled(Pointer<rust.Engine> on) =>
       _made(rust.blursNew(on));
 
+  /// The kernels a dab goes by strips with compiled on [engine] off this
+  /// isolate, the engine's to keep: a stroke goes a pass a dispatch — the
+  /// same pixels, slower — till they are, and by strips from its next dabs
+  /// (rust/src/kernels/dab/blur.rs, `Dispatches`).
+  static Future<void> compilingStrips(GpuEngine engine) {
+    final on = engine._engine.address;
+    return Isolate.run(() => _stripsCompiled(on));
+  }
+
+  static void _stripsCompiled(int on) {
+    if (!rust.blursCompileStrips(Pointer.fromAddress(on))) {
+      throw StateError(_lastError());
+    }
+  }
+
   static Pointer<rust.Blurs> _made(Pointer<rust.Blurs> blurs) {
     if (blurs == nullptr) {
       throw StateError(_lastError());
@@ -626,6 +658,10 @@ final class GpuBlurs {
   }
 
   final Pointer<rust.Blurs> _blurs;
+
+  /// Test seam: whether its next stroke goes by strips — the engine has
+  /// their kernels ([compilingStrips]).
+  bool get debugGoesByStrips => rust.blursByStrips(_blurs);
 
   /// The bytes it keeps between its strokes.
   int get bytes => rust.blursBytes(_blurs);

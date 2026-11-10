@@ -1290,6 +1290,9 @@ external void apartHold(Pointer<Engine> engine);
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_let')
 external void apartLet(Pointer<Engine> engine);
 
+@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_wait')
+external void apartWait(Pointer<Engine> engine);
+
 @Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_apart_held')
 external int apartHeld(Pointer<Engine> engine);
 
@@ -1474,6 +1477,14 @@ final class Blurs extends Opaque {}
   symbol: 'gpu_engine_blurs_new',
 )
 external Pointer<Blurs> blursNew(Pointer<Engine> engine);
+
+@Native<Bool Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_blurs_compile_strips',
+)
+external bool blursCompileStrips(Pointer<Engine> engine);
+
+@Native<Bool Function(Pointer<Blurs>)>(symbol: 'gpu_engine_blurs_by_strips')
+external bool blursByStrips(Pointer<Blurs> blurs);
 
 @Native<Void Function(Pointer<Blurs>)>(symbol: 'gpu_engine_blurs_free')
 external void blursFree(Pointer<Blurs> blurs);

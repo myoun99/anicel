@@ -14,7 +14,8 @@ use super::{Blurs, Cover, MOST_STRIPS_RADIUS, Route, Ways, Window};
 use crate::kernels::composite::{Composite, TileAt, TileSet};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::testing::{assert_pinned, first_engine};
+use crate::device::Engine;
+use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 const ONE: u32 = 65535;
 const WHITE: [u8; 4] = [255; 4];
@@ -293,19 +294,61 @@ fn a_blur_the_kernel_cannot_lay_is_refused() {
     assert!(blurred(&lone, step_at(64), &[(dab([60, 60, 68, 64]), 0)], None).is_none());
 }
 
-// A dab the strips take goes by them: what its dispatches put between them
-// is the rows' blur — the dab's columns on the window's lines, 8 by 10
-// here — not a pass a dispatch's two planes, 12 by 10 each; and it lays no
-// second.
+// A dab the strips take goes by them, once the engine has their kernels:
+// what its dispatches put between them is the rows' blur — the dab's
+// columns on the window's lines, 8 by 10 here — not a pass a dispatch's
+// two planes, 12 by 10 each; and it lays no second.
 #[test]
 fn a_dab_the_strips_take_goes_by_them() {
     let engine = first_engine();
     let (lone, picture) = paged(&[(0, 0)], &[0; TILE_WORDS], 1);
     let dab = square([60, 60, 68, 64], WHITE, 1.0);
     let mut blurs = Blurs::new(engine).expect("pages to bind");
+    Blurs::compile_strips(engine).expect("the strips' kernels");
     blurs.blur(engine, &lone, &[(dab, 1)], None, &picture).unwrap();
     assert_eq!(blurs.between.map(|between| between.size()), Some(10 * 8 * 8));
     assert!(blurs.second.is_none());
+}
+
+// 🚨A stroke waits for no strip's compile (gpu-canonical-store ④, 관제
+// 2026-11-11 06:42): till the engine has the strips' kernels a dab they
+// would take goes a pass a dispatch — its two planes, 12 by 10 — and by
+// strips from the stroke after they are compiled — the rows' blur, 8 by
+// 10, and no second —, on the blurs made before them; the same pixels
+// both ways. On an engine of its own: any test here may have compiled the
+// shared one's strips.
+#[test]
+fn a_dab_goes_a_pass_a_dispatch_till_the_strips_are_compiled() {
+    let engine = &Engine::open_first().expect("an adapter");
+    let step: Vec<u8> = (0..SIDE * SIDE)
+        .flat_map(|texel| if texel % SIDE >= 64 { [0xff; 8] } else { [0; 8] })
+        .collect();
+    let page = || {
+        let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+        let label = Some("test picture");
+        let descriptor = wgpu::util::BufferInitDescriptor { label, contents: &step, usage };
+        [wgpu::util::DeviceExt::create_buffer_init(&engine.device, &descriptor)]
+    };
+    let lone = [StrokeTile { column: 0, row: 0, at: TileAt { page: 0, slot: 0 } }];
+    let dab = (square([60, 60, 68, 64], WHITE, 1.0), 1);
+    let planes = |blurs: &Blurs| {
+        [&blurs.between, &blurs.second].map(|plane| plane.as_ref().map(wgpu::Buffer::size))
+    };
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
+    let by_passes = page();
+    blurs.blur(engine, &lone, &[dab], None, &by_passes).unwrap();
+    assert_eq!(planes(&blurs), [Some(960), Some(960)], "a pass a dispatch's two planes");
+    // One of the six compiled is not the strips compiled.
+    blurs.one.strips[0].pipeline(engine);
+    assert!(!blurs.by_strips());
+    Blurs::compile_strips(engine).expect("the strips' kernels");
+    blurs.let_go();
+    let by_strips = page();
+    blurs.blur(engine, &lone, &[dab], None, &by_strips).unwrap();
+    assert_eq!(planes(&blurs), [Some(640), None], "the rows' blur alone");
+    let moved = read_buffer(engine, &by_strips[0]);
+    assert!(moved != step, "⛔premise: the dab moved pixels");
+    assert!(read_buffer(engine, &by_passes[0]) == moved, "the two ways moved them apart");
 }
 
 // A dab a pass a dispatch takes alternates between two planes, 12 by 10
@@ -522,6 +565,8 @@ fn rubbed(
     let engine = first_engine();
     let stroke = stroke_of(tiles);
     let mut blurs = Blurs::new(engine).expect("pages to bind");
+    // By strips, as a stroke goes once the app has compiled them.
+    Blurs::compile_strips(engine).expect("the strips' kernels");
     let picture = [filled("test picture", &vec![JUNK; tiles.len() * TILE_WORDS])];
     blurs.fill(engine, executor(), (&cel.0, &cel.1), &stroke, &picture).unwrap();
     let made = words(&picture[0]);

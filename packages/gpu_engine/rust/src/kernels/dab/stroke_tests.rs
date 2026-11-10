@@ -336,7 +336,11 @@ impl Fixture {
         assert_eq!(met.len(), count);
         let cel: Vec<Option<TileAt>> = met.iter().map(|&coordinate| under(coordinate)).collect();
         let engine = self.engine;
-        let blurs = self.blurs.get_or_insert_with(|| Blurs::new(engine).expect("blurs"));
+        let blurs = self.blurs.get_or_insert_with(|| {
+            // By strips, as a stroke goes once the app has compiled them.
+            Blurs::compile_strips(engine).expect("the strips' kernels");
+            Blurs::new(engine).expect("blurs")
+        });
         let tools = (blurs, &self.composite, self.pool.pages());
         self.stroke.rub(self.engine, tools, &cel, dabs, None).expect("a rub");
         met
