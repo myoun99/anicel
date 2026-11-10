@@ -878,6 +878,10 @@ class StoryboardPanel extends StatefulWidget {
   // 콘티행 기본적으로 버튼 글로벌이니까 넣음」. The number stays again, and
   // the room comes out of the name, which is now the timeline's to the
   // pixel: the two rails carry the same columns.
+  //
+  // 2026-11-10 (F-577): the blend column took 4 for an S row's speaker and
+  // Total. The number stays here as it stays on the timeline's rail, and
+  // the name gives them.
   static const double _trackLabelWidth = 461;
 
   /// Which optional columns this rail's rows keep — the host's answer every

@@ -116,6 +116,11 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// A lane's name gives up as much, and its member rows stood their
 /// navigator right after the section band to take some back (「이거 다
 /// 왼쪽정렬로 왼쪽에 붙어있도록. 공간만들고싶은거임」).
+/// The number stays through F-577 (2026-11-10): the blend column took 4
+/// for an S row's speaker and Total ([layerBlendSlotWidth]) and every
+/// row's name gave them — a row's own buttons take their room out of its
+/// name (I-89 Q1, above). ⚠️The user asked for the cell; that its 4 come
+/// out of the name by that rule is this lane's reading, not their word.
 const double timelineLayerControlsWidth = 385 + layerLaneValueHandsWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
