@@ -26,9 +26,11 @@
 //!     rawRgba hands over); any BGRA/NV12 conversion happens HERE, beside
 //!     the encoder that wants it.
 //!   - `write_audio()` takes interleaved int16 PCM chunks, interleaved with
-//!     the frames by the caller so no side buffers the whole track.
+//!     the frames by the caller so no side buffers the whole track. Windows
+//!     puts a frame of its own before the first (`windows.rs`, `AUDIO_LEAD`).
 //!   - `finish()` finalizes the file (a cancelled run finalizes a playable
-//!     partial, matching the ffmpeg path's behavior); `abort()` discards.
+//!     partial, matching the ffmpeg path's behavior) — and on Windows writes
+//!     into it where its sound starts (`edit_list`); `abort()` discards.
 //!
 //! One export at a time, like the capture device: this is an offline render
 //! driven by one dialog.
@@ -48,6 +50,11 @@ mod os;
 #[cfg(windows)]
 #[path = "windows.rs"]
 mod os;
+
+// Windows' writer alone goes back into its movie; what it writes there is
+// read on every machine that runs the tests.
+#[cfg(any(windows, test))]
+mod edit_list;
 
 // The v10 lineup (ABI v21): MP4 = H.264/H.265, MOV = H.264 + ProRes. The
 // Dart enums map 1:1 onto these values. The containers are the law's; the

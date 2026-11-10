@@ -358,12 +358,17 @@ void main() {
 
   test('a movie this app exported comes back with its sound where it was '
       'written — whichever OS wrote it', () {
-    // Media Foundation's encoder writes no edit list, and its sound is
-    // already in place (measured 10-09) — its mark keeps the standard delay
-    // off (Q7). Wherever else this runs (the Mac's AVAssetWriter in CI), the
-    // export must say where its sound starts some way the decode reads, or
-    // the standard comes off a sound that had none: this is the pin that
-    // asks.
+    // Windows' export puts a frame of its own before the sound and writes
+    // the edit list that takes it off (유저 2026-11-10, board
+    // an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2), and the decode
+    // follows a movie's list before it asks for Media Foundation's mark.
+    // Wherever else this runs (the Mac's AVAssetWriter in CI), the export
+    // must say where its sound starts some way the decode reads, or the
+    // standard comes off a sound that had none: this is the pin that asks.
+    //
+    // ↩️Until then Media Foundation's movie held no edit list, and its mark
+    // alone kept the standard delay off (Q7, measured 10-09): its sound was
+    // in place, and faded in over its first 576 samples (the test below).
     final directory = Directory.systemTemp.createTempSync('qa_export_click');
     deleteAfterSessionEnds(directory);
     final path = '${directory.path}${Platform.pathSeparator}click.mp4';
@@ -400,6 +405,55 @@ void main() {
       inInclusiveRange(clickAt - 2, clickAt + 2),
       reason: 'the click came back at $peakAt, written at $clickAt',
     );
+  });
+
+  test('🚨a sound that starts on the movie\'s first sample comes back whole '
+      'from that sample — whichever OS wrote it (유저 11-10: 「ffmpeg처럼 '
+      '하는게 맘에들긴해. 더 좋기만 한거니까」)', () {
+    // An AAC encoder hands back its first block faded in — nothing came
+    // before it to overlap. Media Foundation writes no block before the
+    // sound, so a movie this app exported came back silent for its first
+    // 448 samples and rising until 576 (48 kHz, measured 2026-11-10, board
+    // an-mp4-reopened-loses-its-first-9-ms-of-sound). Windows' writer puts
+    // one there now and says so in the movie (-Q2; native/video
+    // `export/windows.rs`, `AUDIO_LEAD`).
+    final directory = Directory.systemTemp.createTempSync('qa_export_head');
+    deleteAfterSessionEnds(directory);
+    final path = '${directory.path}${Platform.pathSeparator}head.mp4';
+    const rate = 48000;
+    if (!writeEncodedMovie(
+      path,
+      frames: 24,
+      sampleRate: rate,
+      sound: (sample) =>
+          (12000 * math.sin(2 * math.pi * 1000 * sample / rate)).round(),
+    )) {
+      return;
+    }
+
+    final decoded = decodeAudioFile(path);
+    expect(decoded, isNotNull);
+    double loudness(int from, int to) {
+      var squares = 0.0;
+      for (var index = from; index < to; index += 1) {
+        final value = decoded!.samples[index * decoded.channels];
+        squares += value * value;
+      }
+      return math.sqrt(squares / (to - from));
+    }
+
+    final head = loudness(0, 448);
+    final body = loudness(2048, 4096);
+    expect(
+      head,
+      greaterThan(body / 2),
+      reason: 'its first 448 samples sound $head where the tone sounds $body',
+    );
+    if (Platform.isWindows) {
+      // What this app's writer says of its own movie: as much sound as was
+      // written, not a block more. The Mac's muxer says its own.
+      expect(decoded!.length, rate, reason: 'a second of sound was written');
+    }
   });
 
   test('a window of a sound is the whole decode\'s own frames, and only '

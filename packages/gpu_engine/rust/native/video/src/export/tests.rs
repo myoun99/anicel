@@ -14,6 +14,8 @@ use std::ffi::CString;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
+use media::iso_box::{self, Atom};
+
 use super::{
     qa_video_export_abort, qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_probe,
     qa_video_export_supported, qa_video_export_write_audio, qa_video_export_write_frame,
@@ -152,42 +154,26 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(" ")
 }
 
-/// One box of a movie: its type, where it starts, where what it holds
-/// starts past its header, and where it ends.
-#[derive(Clone, Copy)]
-struct Atom {
-    kind: [u8; 4],
-    at: usize,
-    body: usize,
-    until: usize,
-}
-
-/// The boxes directly in `movie[start..end]`. A box's size is its first 32
-/// bits — or, when those say 1, the 64 that follow its type, and when they
-/// say 0, all the rest of what holds it (ISO/IEC 14496-12, 4.2). A box that
-/// does not fit says where it is and what its head holds.
+/// The boxes directly in `movie[start..end]`, each head read where every
+/// walker of this engine reads one (`media::iso_box`). A box that does not
+/// fit says where it is and what its head holds.
 ///
 /// ↩️2026-11-07: it read the 32 bits alone, and a MOV the Mac wrote stopped
 /// the whole comparison at its first box past `ftyp` — 「a box at 28 runs
 /// past its parent」 (bundle GPU CI 42353590096), with no movie named and
 /// none of the rest asked.
+/// ↩️2026-11-10: it read the head for itself, as the sound decoder did; the
+/// export's edit list was the third to walk a movie (`edit_list`), and the
+/// three read one.
 fn children(movie: &[u8], start: usize, end: usize) -> Result<Vec<Atom>, String> {
     let mut atoms = Vec::new();
     let mut at = start;
     while at + 8 <= end {
-        let (size, body) = match be32(movie, at) {
-            0 => (end - at, at + 8),
-            1 if at + 16 <= end => {
-                let large = u64::from_be_bytes(movie[at + 8..at + 16].try_into().unwrap());
-                (usize::try_from(large).unwrap_or(usize::MAX), at + 16)
-            }
-            size => (size, at + 8),
-        };
-        if size < body - at || size > end - at {
+        let Some(atom) = iso_box::atom(movie, at, end) else {
             return Err(format!("the box at {at} does not fit what holds it (to {end}), its head {}", hex(&movie[at..end.min(at + 16)])));
-        }
-        atoms.push(Atom { kind: movie[at + 4..at + 8].try_into().unwrap(), at, body, until: at + size });
-        at += size;
+        };
+        at = atom.end;
+        atoms.push(atom);
     }
     Ok(atoms)
 }
@@ -200,11 +186,13 @@ fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Result<Opt
     let Some(atom) = children(movie, start, end)?.into_iter().find(|atom| atom.kind == **first) else {
         return Ok(None);
     };
-    if rest.is_empty() { Ok(Some(atom)) } else { find(movie, atom.body, atom.until, rest) }
+    if rest.is_empty() { Ok(Some(atom)) } else { find(movie, atom.body, atom.end, rest) }
 }
 
 /// A track as its writer laid it: the four letters its sample entry names
-/// (`avc1`, `mp4a`, `apcn` …) and how many samples it has.
+/// (`avc1`, `mp4a`, `apcn` …), how many samples it has, and what its edit
+/// list holds — its version and flags, its count and its edits — if it has
+/// one.
 ///
 /// ↩️A track carried its samples too, laid along its chunks with
 /// VideoToolbox's notes taken out, and a movie each of its boxes with the
@@ -214,41 +202,33 @@ fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Result<Opt
 struct Track {
     format: String,
     count: usize,
+    list: Option<Vec<u8>>,
 }
 
 fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
-    let table = find(movie, trak.body, trak.until, &[b"mdia", b"minf", b"stbl"])?.ok_or("a track with no sample table")?;
+    let table = find(movie, trak.body, trak.end, &[b"mdia", b"minf", b"stbl"])?.ok_or("a track with no sample table")?;
     // The first entry, past the version, the flags and the count of entries.
-    let stsd = find(movie, table.body, table.until, &[b"stsd"])?.ok_or("a sample table with no stsd")?;
-    let entry = *children(movie, stsd.body + 8, stsd.until)?.first().ok_or("a sample table with no entry")?;
+    let stsd = find(movie, table.body, table.end, &[b"stsd"])?.ok_or("a sample table with no stsd")?;
+    let entry = *children(movie, stsd.body + 8, stsd.end)?.first().ok_or("a sample table with no entry")?;
     // The count, past the version, the flags and the one size for all.
-    let stsz = find(movie, table.body, table.until, &[b"stsz"])?.ok_or("a sample table with no stsz")?;
-    Ok(Track { format: String::from_utf8_lossy(&entry.kind).into_owned(), count: be32(movie, stsz.body + 8) })
+    let stsz = find(movie, table.body, table.end, &[b"stsz"])?.ok_or("a sample table with no stsz")?;
+    let list = find(movie, trak.body, trak.end, &[b"edts", b"elst"])?.map(|list| movie[list.body..list.end].to_vec());
+    Ok(Track { format: String::from_utf8_lossy(&entry.kind).into_owned(), count: be32(movie, stsz.body + 8), list })
 }
 
 /// The tracks a movie's `moov` holds, in its order.
 fn tracks(movie: &[u8]) -> Result<Vec<Track>, String> {
     let moov = find(movie, 0, movie.len(), &[b"moov"])?.ok_or("a movie with no moov")?;
-    children(movie, moov.body, moov.until)?.into_iter().filter(|atom| &atom.kind == b"trak").map(|trak| track(movie, trak)).collect()
+    children(movie, moov.body, moov.end)?.into_iter().filter(|atom| &atom.kind == b"trak").map(|trak| track(movie, trak)).collect()
 }
 
-// The box walker by hand, since no movie this machine writes has a box sized
-// in 64 bits or one that runs to the end: a box of each after a plain one,
-// and boxes that do not fit — longer than what holds them, shorter than
-// their own header.
+// A box that does not fit — longer than what holds it, shorter than its own
+// header — says where it is and what its head holds.
+// ↩️It walked a box of each size by hand too, since no movie this machine
+// writes has one sized in 64 bits or one that runs to the end: that half
+// went with the head to native/media (`iso_box`, 2026-11-10).
 #[test]
-fn every_box_size_iso_bmff_writes_is_walked() {
-    let mut movie = vec![0, 0, 0, 12];
-    movie.extend_from_slice(b"ftyp");
-    movie.extend_from_slice(&[1, 2, 3, 4, 0, 0, 0, 1]);
-    movie.extend_from_slice(b"free");
-    movie.extend_from_slice(&20u64.to_be_bytes());
-    movie.extend_from_slice(&[7, 7, 7, 7, 0, 0, 0, 0]);
-    movie.extend_from_slice(b"mdat");
-    movie.extend_from_slice(&[9; 6]);
-    let atoms = children(&movie, 0, movie.len()).unwrap();
-    let spans: Vec<_> = atoms.iter().map(|atom| (atom.kind, atom.at, atom.body, atom.until)).collect();
-    assert_eq!(spans, [(*b"ftyp", 0, 8, 12), (*b"free", 12, 28, 32), (*b"mdat", 32, 40, 46)]);
+fn a_box_that_does_not_fit_says_where_it_is_and_what_its_head_holds() {
     for (size, why) in [
         (40, "the box at 0 does not fit what holds it (to 12), its head 00 00 00 28 6d 6f 6f 76 00 00 00 00"),
         (5, "the box at 0 does not fit what holds it (to 12), its head 00 00 00 05 6d 6f 6f 76 00 00 00 00"),
@@ -269,6 +249,13 @@ fn every_box_size_iso_bmff_writes_is_walked() {
 // count the machine keeps across processes (bundle GPU CI 42366555125,
 // 2026-11-07) — which parts any two of its movies byte for byte; inside a
 // sample, it leaves how many there are alone.
+//
+// And on Windows, where this code writes it into the movie the sink
+// finished (`edit_list`; 유저 2026-11-10, board
+// an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2): the sound's edit list —
+// 1,024 in, for as long as the sound that was written, the movie's scale
+// being the sound's rate — and none on the pictures. What another
+// platform's muxer lays there is its own.
 #[test]
 fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
     let _one = one_at_a_time();
@@ -289,6 +276,15 @@ fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
         let sounding = usize::from(shape.channels > 0);
         assert_eq!((pictures.len(), sounds, formats.len()), (1, sounding, 1 + sounding), "{name}: its tracks, {formats:?}");
         assert_eq!(pictures[0].count, frames as usize, "{name}: a sample for every frame");
+        if cfg!(windows) {
+            let written = (frames * shape.sample_rate * shape.fps.1 / shape.fps.0) as u32;
+            let mut list = vec![0, 0, 0, 0, 0, 0, 0, 1];
+            list.extend_from_slice(&written.to_be_bytes());
+            list.extend_from_slice(&[0, 0, 4, 0, 0, 1, 0, 0]);
+            let sound = laid.iter().find(|track| track.format == "mp4a").and_then(|track| track.list.clone());
+            assert_eq!(sound, (sounding == 1).then_some(list), "{name}: its sound starts 1,024 in and plays what was written");
+            assert_eq!(pictures[0].list, None, "{name}: the pictures have no list");
+        }
     }
 }
 

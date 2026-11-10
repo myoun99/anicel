@@ -23,6 +23,13 @@
 //! movie, measured 2026-10-09 — and it marks every movie it writes
 //! ([MEDIA_FOUNDATION_MARK]). The mark is the writer's own name for itself,
 //! not a guess from the sound.
+//! ↩️2026-11-10: this app's own exports are no longer among the movies that
+//! say nothing — the export puts a frame before its sound and writes the
+//! edit list that takes it off (유저, board
+//! an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2; native/video
+//! `export/edit_list.rs`), and a list is asked before the mark is. What Q7
+//! still covers is every other movie the sink writer wrote, and this app's
+//! exports from before.
 
 use crate::container::Container;
 
@@ -74,31 +81,22 @@ pub(crate) struct Atom {
     pub(crate) end: i64,
 }
 
-/// The box at `at`, when a whole one fits before `end`.
+/// The box at `at`, when a whole one fits before `end` — its head read as
+/// every walker of this engine reads one (`media::iso_box`).
 ///
 /// ⛔A size of 0 — 「to the end of the file」, which the format allows the
 /// last box — is no box here: Media Foundation refuses a movie whose movie
 /// box says it (measured 2026-10-09), so a reading of it would be a branch
 /// nothing here can ask, and such a movie keeps what the decoder gave.
 pub(crate) fn box_at(container: &Container, at: i64, end: i64) -> Option<Atom> {
-    let mut head = [0u8; 16];
-    if end - at < 8 || !container.read_all_at(at, &mut head[..8]) {
+    let mut bytes = [0u8; 16];
+    let have = usize::try_from(end - at).ok()?.min(bytes.len());
+    if have < 8 || !container.read_all_at(at, &mut bytes[..have]) {
         return None;
     }
-    let mut size = big_endian(&head[..4]);
-    let mut header = 8;
-    if size == 1 {
-        // A 64-bit size follows the type.
-        if end - at < 16 || !container.read_all_at(at + 8, &mut head[8..]) {
-            return None;
-        }
-        size = big_endian(&head[8..]);
-        header = 16;
-    }
-    if size < header as u64 || size > (end - at) as u64 {
-        return None;
-    }
-    Some(Atom { kind: head[4..8].try_into().expect("4 bytes"), body: at + header, end: at + size as i64 })
+    let head = media::iso_box::head(&bytes[..have]).filter(|head| !head.runs_to_the_end())?;
+    let size = head.size_in((end - at) as u64)?;
+    Some(Atom { kind: head.kind, body: at + head.bytes as i64, end: at + size as i64 })
 }
 
 /// The first box of `kind` directly inside `[start, end)`.
