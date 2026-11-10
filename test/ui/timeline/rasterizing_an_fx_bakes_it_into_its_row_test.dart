@@ -1667,6 +1667,37 @@ void main() {
       expect(plan.row.kind, LayerKind.image);
     });
 
+    test('🗣️F-572-Q2 — an image one of whose cuts shows more than one '
+        'picture after the bake is an animation row in every cut, as a merge '
+        'makes it: the kind is the row\'s, read off every lane', () {
+      final s = linkedOf(
+        [
+          rowA(kind: LayerKind.image, effects: [brightness(keyed: false)]),
+        ],
+        twin: (use) => use.copyWith(effects: [brightness()]),
+      );
+
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+
+      final rows = [
+        plan.row,
+        plan.others.single.layers.firstWhere((row) => row.name == 'A'),
+      ];
+      final pictures = [
+        for (final row in rows) celsOf(row).toSet().length,
+      ]..sort();
+      expect(pictures.first, 1, reason: '⛔전제: one cut shows one picture');
+      expect(
+        pictures.last,
+        greaterThan(1),
+        reason: '⛔전제: the other shows more',
+      );
+      expect([for (final row in rows) row.kind], [
+        LayerKind.animation,
+        LayerKind.animation,
+      ]);
+    });
+
     testWidgets('🎯a still fx pressed in the linked cut: every use bakes it — '
         'its cel baked once into the one bank, the fx at rest in both cuts, '
         'each showing what it showed — and one undo gives both back', (
