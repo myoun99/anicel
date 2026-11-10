@@ -2002,6 +2002,201 @@ class GpuInk {
   void free() => rust.inkFree(_ink);
 }
 
+/// The channel a colour verb writes (rust/src/kernels/cel_pixel/mod.rs
+/// `Channel`): its [bytes], byte i at [base] + i × [stride] of a pixel's
+/// four, and whether a pixel with no ink takes part.
+typedef GpuCelChannel = ({int bytes, int base, int stride, bool takesEmpty});
+
+/// A colour verb's selector: for each channel's byte, 256 words, whether
+/// the key's tolerance reaches it (bit 0), and whether the verb keeps what
+/// the key names rather than takes it.
+typedef GpuCelSelector = ({
+  Uint32List red,
+  Uint32List green,
+  Uint32List blue,
+  bool keepsMatches,
+});
+
+/// What the pixels taking part in a colour verb take.
+sealed class GpuCelIncoming {
+  const GpuCelIncoming();
+}
+
+/// Going forward: the channel's bytes, one value for every pixel.
+final class GpuCelValue extends GpuCelIncoming {
+  const GpuCelValue(this.bytes);
+
+  final Uint8List bytes;
+}
+
+/// An undo: [count] pixels' channel bytes, the i-th at i × [step] of
+/// [bytes].
+final class GpuCelRecipe extends GpuCelIncoming {
+  const GpuCelRecipe(this.bytes, {required this.step, required this.count});
+
+  final Uint8List bytes;
+  final int step;
+  final int count;
+}
+
+/// The colour verbs' pass (rust/src/kernels/cel_pixel/mod.rs).
+final class GpuCelPixels {
+  /// Compiled on [engine], the caller waiting.
+  factory GpuCelPixels(GpuEngine engine) =>
+      GpuCelPixels._(engine, _made(rust.celPixelsNew(engine._engine)));
+
+  GpuCelPixels._(this._engine, this._pixels);
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuCelPixels> opening(GpuEngine engine) async {
+    final on = engine._engine.address;
+    final made = await Isolate.run(
+      () => _made(rust.celPixelsNew(Pointer.fromAddress(on))).address,
+    );
+    return GpuCelPixels._(engine, Pointer.fromAddress(made));
+  }
+
+  static Pointer<rust.CelPixels> _made(Pointer<rust.CelPixels> pixels) {
+    if (pixels == nullptr) {
+      throw StateError(_lastError());
+    }
+    return pixels;
+  }
+
+  final GpuEngine _engine;
+  final Pointer<rust.CelPixels> _pixels;
+
+  /// A colour verb over the cel of [columns] × [rows] tiles whose top-left
+  /// is column [x0], row [y0] — [tiles] of [pool] row by row, null for one
+  /// not walked —, under [mask] if any. What it left is the caller's to
+  /// free. Waits for the GPU.
+  GpuCelPassed run(
+    GpuPool pool,
+    int x0,
+    int y0,
+    int columns,
+    int rows,
+    List<GpuTile?> tiles, {
+    required GpuCelChannel channel,
+    required GpuCelIncoming incoming,
+    GpuMask? mask,
+    GpuCelSelector? selector,
+    int threshold = 0,
+  }) => using((arena) {
+    Pointer<Uint32> table(Uint32List? words) {
+      if (words == null) {
+        return nullptr;
+      }
+      if (words.length != 256) {
+        throw ArgumentError('a selector\'s tables are 256 words');
+      }
+      return arena<Uint32>(256)..asTypedList(256).setAll(0, words);
+    }
+
+    final bytes = switch (incoming) {
+      GpuCelValue(:final bytes) => bytes,
+      GpuCelRecipe(:final bytes) => bytes,
+    };
+    final held = arena<Uint8>(_held(bytes.length))
+      ..asTypedList(bytes.length).setAll(0, bytes);
+    final spec = arena<rust.VerbSpec>();
+    spec.ref
+      ..bytes = channel.bytes
+      ..base = channel.base
+      ..stride = channel.stride
+      ..takesEmpty = channel.takesEmpty ? 1 : 0
+      ..threshold = threshold
+      ..keepsMatches = selector?.keepsMatches ?? false ? 1 : 0
+      ..red = table(selector?.red)
+      ..green = table(selector?.green)
+      ..blue = table(selector?.blue)
+      ..incoming = held
+      ..length = bytes.length;
+    if (incoming case GpuCelRecipe(:final step, :final count)) {
+      spec.ref
+        ..undo = 1
+        ..step = step
+        ..count = count;
+    } else {
+      spec.ref
+        ..undo = 0
+        ..step = 0
+        ..count = 0;
+    }
+    final passed = rust.celPixelsRun(
+      _pixels,
+      _engine._engine,
+      pool._pool,
+      x0,
+      y0,
+      columns,
+      rows,
+      _tileWords(arena, columns, rows, tiles),
+      mask?._mask ?? nullptr,
+      spec,
+    );
+    if (passed == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuCelPassed._(_engine, passed);
+  });
+
+  void free() => rust.celPixelsFree(_pixels);
+}
+
+/// What a colour verb left ([GpuCelPixels.run]): freed by its caller.
+final class GpuCelPassed {
+  GpuCelPassed._(this._engine, this._passed);
+
+  final GpuEngine _engine;
+  final Pointer<rust.CelPassed> _passed;
+
+  /// The tiles walked, in the walk's order.
+  List<({int column, int row})> get tiles => using((arena) {
+    final walked = rust.celPassedWalked(_passed);
+    final words = arena<Int32>(_held(2 * walked));
+    rust.celPassedTiles(_passed, words);
+    return [
+      for (var at = 0; at < walked; at++)
+        (column: words[2 * at], row: words[2 * at + 1]),
+    ];
+  });
+
+  /// What the pixels taking part held, going forward, as runs in the walk's
+  /// order: two words a run, its value (the channel's byte i in bits 8i)
+  /// and its length. None from an undo.
+  Uint32List get runs => using((arena) {
+    final count = rust.celPassedRunCount(_passed);
+    final words = arena<Uint32>(_held(2 * count));
+    rust.celPassedRuns(_passed, words);
+    return Uint32List.fromList(words.asTypedList(2 * count));
+  });
+
+  /// Puts as many of the walked tiles from [first] on as [asks] names, each
+  /// a pixel of took part in, in a fresh slot of [cel]; as many of them,
+  /// the first, as [pool] has room for.
+  List<GpuLanded> land(
+    GpuPool pool,
+    int cel,
+    int first,
+    List<GpuTileAsk> asks,
+  ) => _landed(
+    asks,
+    (arena, _, _, places, changes) => rust.celPassedLand(
+      _passed,
+      _engine._engine,
+      pool._pool,
+      cel,
+      first,
+      asks.length,
+      places,
+      changes,
+    ),
+  );
+
+  void free() => rust.celPassedFree(_passed);
+}
+
 /// The faces letters are set in (rust/src/kernels/letters/glyphs.rs): each
 /// family's files, the families in the order a letter goes down them.
 class GpuFaces {

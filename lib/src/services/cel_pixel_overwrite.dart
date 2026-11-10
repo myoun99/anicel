@@ -1,10 +1,18 @@
 import 'dart:typed_data';
 
+import 'package:collection/collection.dart' show IterableIntegerExtension;
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart';
+
 import '../core/argb_channels.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/bitmap_tile_rewrite.dart';
+import '../models/brush_frame_key.dart';
 import '../models/tile_coord.dart';
+import '../native/app_gpu_engine.dart';
+import '../native/engine_cel_pixels.dart';
+import '../native/engine_tile_ledger.dart';
 import '../native/qa_native_engine.dart';
 import 'cel_source_effect_pass.dart';
 
@@ -799,6 +807,9 @@ typedef CelPixelWalk =
     threshold: threshold,
     builder: builder,
   );
+  if (surface.tileSize == gpuTileSide && !debugCelPixelsInDart) {
+    return _overwriteOnEngine(surface, walk, pass);
+  }
   final engine = QaNativeEngine.instance;
   final rewrite = engine == null
       ? _dartTileRewrite(pass)
@@ -827,6 +838,208 @@ typedef CelPixelWalk =
     surface: surface.withRebuiltTiles(rebuilt),
     restore: rebuilt.isEmpty ? null : builder?.build(),
   );
+}
+
+/// Test seam: the pass in Dart on the app's grid too — the reference
+/// `a_colour_verb_runs_on_the_engine_test.dart` holds the engine's to.
+@visibleForTesting
+bool debugCelPixelsInDart = false;
+
+/// A tile the walk reached, and what covers it — its own copy, a walk
+/// handing the same buffer over from tile to tile.
+typedef _Walked = ({TileCoord coord, BitmapTile tile, Uint8List? mask});
+
+/// The pass on the engine (flip lane ⓒ): the law in the kernel
+/// (rust/src/kernels/cel_pixel), over the tiles where the pool has them,
+/// each tile a pixel of took part in landing as a new one and nothing read
+/// back. The RECIPE stays here, as it does beside C's pass: the kernel hands
+/// back what the pixels held as RUNS and [_RestoreBuilder] chooses its
+/// shape.
+({BitmapSurface surface, CelPixelRestore? restore}) _overwriteOnEngine(
+  BitmapSurface surface,
+  CelPixelWalk walk,
+  _Pass pass,
+) {
+  final walked = <_Walked>[];
+  walk((coord, mask) {
+    final tile = surface.tileAt(coord);
+    if (tile != null) {
+      walked.add((
+        coord: coord,
+        tile: tile,
+        mask: mask == null ? null : Uint8List.fromList(mask),
+      ));
+    }
+  });
+  if (walked.isEmpty) {
+    return (surface: surface, restore: null);
+  }
+  final ledger = EngineTileLedger.instance;
+  final mask = _maskOver(walked);
+  final GpuCelPassed passed;
+  try {
+    passed = ledger.held((hold) => _ran(hold, ledger.pool, walked, mask, pass));
+  } finally {
+    mask?.free();
+  }
+  try {
+    _keepWhatTheyHeld(passed.runs, pass);
+    // Nothing under a tile is asked: a pass's landing compares with nothing
+    // (`Passed::land` has why).
+    final asks = <TileAsk>[
+      for (final (:column, :row) in passed.tiles)
+        (column: column, row: row, under: null),
+    ];
+    final landed = ledger.land(
+      EngineTileLedger.landedCel,
+      asks,
+      by: (pool, cel, asked) =>
+          passed.land(pool, cel, asks.length - asked.length, asked),
+    );
+    final rebuilt = <TileCoord, BitmapTile>{
+      for (final (at, (change: _, :tile)) in landed.indexed)
+        TileCoord(x: asks[at].column, y: asks[at].row): ?tile,
+    };
+    return (
+      surface: surface.withRebuiltTiles(rebuilt),
+      restore: pass.builder?.build(),
+    );
+  } finally {
+    passed.free();
+  }
+}
+
+/// [pass] over [walked], the box of them a cel of the kernel's with a gap
+/// wherever the walk did not go.
+GpuCelPassed _ran(
+  TileHold hold,
+  GpuPool pool,
+  List<_Walked> walked,
+  GpuMask? mask,
+  _Pass pass,
+) {
+  final (:x0, :y0, :columns, :rows) = _boxOf(walked);
+  final slots = hold.slotsOf(BrushFrameKey.noCel, [
+    for (final one in walked) one.tile,
+  ]);
+  final tiles = List<GpuTile?>.filled(columns * rows, null);
+  for (final (at, one) in walked.indexed) {
+    tiles[(one.coord.y - y0) * columns + one.coord.x - x0] = slots[at];
+  }
+  final (:channel, :value, :restore, :selector, :threshold) = (
+    channel: pass.channel,
+    value: pass.value,
+    restore: pass.restore,
+    selector: pass.selector,
+    threshold: pass.threshold,
+  );
+  final (:base, :stride) = _addressOf(channel);
+  final stream = restore?.streamFor(channel.byteCount);
+  return EngineCelPixels.pass.run(
+    pool,
+    x0,
+    y0,
+    columns,
+    rows,
+    tiles,
+    channel: (
+      bytes: channel.byteCount,
+      base: base,
+      stride: stride,
+      takesEmpty: channel.takesEmptyPixels,
+    ),
+    incoming: stream == null
+        ? GpuCelValue(value!)
+        : GpuCelRecipe(
+            stream.bytes,
+            step: stream.step,
+            count: restore!.touchedPixelCount,
+          ),
+    mask: mask,
+    selector: selector == null ? null : _selectorOf(selector),
+    threshold: threshold,
+  );
+}
+
+({int x0, int y0, int columns, int rows}) _boxOf(List<_Walked> walked) {
+  final x0 = walked.map((one) => one.coord.x).min;
+  final y0 = walked.map((one) => one.coord.y).min;
+  return (
+    x0: x0,
+    y0: y0,
+    columns: walked.map((one) => one.coord.x).max - x0 + 1,
+    rows: walked.map((one) => one.coord.y).max - y0 + 1,
+  );
+}
+
+/// What covers [walked], glued into one plane over their box — a tile of no
+/// mask covered whole, one the walk did not go to not at all — or null where
+/// none of them has a mask.
+GpuMask? _maskOver(List<_Walked> walked) {
+  if (walked.every((one) => one.mask == null)) {
+    return null;
+  }
+  final (:x0, :y0, :columns, :rows) = _boxOf(walked);
+  final side = gpuTileSide;
+  final width = columns * side;
+  final height = rows * side;
+  final plane = Uint8List(width * height);
+  for (final (:coord, tile: _, :mask) in walked) {
+    final left = (coord.x - x0) * side;
+    final top = (coord.y - y0) * side;
+    for (var row = 0; row < side; row += 1) {
+      final at = (top + row) * width + left;
+      if (mask == null) {
+        plane.fillRange(at, at + side, 255);
+      } else {
+        plane.setRange(at, at + side, mask, row * side);
+      }
+    }
+  }
+  return GpuMask(
+    appGpuComposite,
+    plane,
+    x: x0 * side,
+    y: y0 * side,
+    width: width,
+    height: height,
+  );
+}
+
+/// [key] as the kernel takes it: the tables of what it NAMES, whether it
+/// erases that or the rest being the verb's to say.
+GpuCelSelector _selectorOf(CelColorKey key) {
+  final (:red, :green, :blue, restores: _, alphaMaps: _) = keyRgbaTablesOf([
+    CelColorKey(
+      red: key.red,
+      green: key.green,
+      blue: key.blue,
+      tolerance: key.tolerance,
+      amount: key.amount,
+      operation: CelKeyOperation.eraseMatches,
+    ),
+  ]).single;
+  return (
+    red: red,
+    green: green,
+    blue: blue,
+    keepsMatches: key.operation == CelKeyOperation.eraseOthers,
+  );
+}
+
+/// [runs], the kernel's ([GpuCelPassed.runs]), told to [pass]'s recipe.
+void _keepWhatTheyHeld(Uint32List runs, _Pass pass) {
+  final builder = pass.builder;
+  if (builder == null) {
+    return;
+  }
+  final value = Uint8List(builder.byteCount);
+  for (var at = 0; at < runs.length; at += 2) {
+    for (var byte = 0; byte < value.length; byte += 1) {
+      value[byte] = (runs[at] >> (8 * byte)) & 0xFF;
+    }
+    builder.addRun(value, 0, runs[at + 1]);
+  }
 }
 
 /// One tile of the pass: the rewritten tile, or null when nothing in it
@@ -985,16 +1198,7 @@ CelPixelStage _stageOf(_Pass pass) {
     builder: _,
   ) = pass;
   final byteCount = channel.byteCount;
-  final base = channel.byteOffset(0);
-  final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
-  assert(() {
-    for (var byte = 0; byte < byteCount; byte += 1) {
-      if (channel.byteOffset(byte) != base + byte * stride) {
-        return false;
-      }
-    }
-    return true;
-  }(), 'the C pass addresses channel byte i at base + i * stride');
+  final (:base, :stride) = _addressOf(channel);
   final stream = restore?.streamFor(byteCount);
   return CelPixelStage(
     byteCount: byteCount,
@@ -1017,6 +1221,22 @@ CelPixelStage _stageOf(_Pass pass) {
           ),
     threshold: threshold,
   );
+}
+
+/// [channel]'s bytes as a kernel addresses them: byte i at base + i × stride.
+({int base, int stride}) _addressOf(CelPixelChannel channel) {
+  final byteCount = channel.byteCount;
+  final base = channel.byteOffset(0);
+  final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
+  assert(() {
+    for (var byte = 0; byte < byteCount; byte += 1) {
+      if (channel.byteOffset(byte) != base + byte * stride) {
+        return false;
+      }
+    }
+    return true;
+  }(), 'a kernel addresses channel byte i at base + i * stride');
+  return (base: base, stride: stride);
 }
 
 /// `older + (incoming - older) * coverage / 255`, in the integer mul-div-255

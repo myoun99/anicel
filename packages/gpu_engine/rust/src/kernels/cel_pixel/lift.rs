@@ -10,6 +10,10 @@
 //! dab (`selectionEraseDab`, 「⛔ONE ERASE」) on the stamp path — `dab::stamp`
 //! of the mask, whole where the gather was, laid by the eraser.
 
+// ⏳Nothing outside the tests runs it until the flip lane does
+// (connection-round-checklist).
+#![cfg_attr(not(test), allow(dead_code))]
+
 #[cfg(test)]
 #[path = "lift_tests.rs"]
 mod tests;

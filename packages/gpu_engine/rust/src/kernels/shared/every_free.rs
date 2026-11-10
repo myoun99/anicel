@@ -8,7 +8,11 @@ use std::collections::BTreeSet;
 
 use super::source_scan::files_where;
 use crate::device::gpu_engine_close;
-use crate::kernels::cel_pixel::abi::{gpu_engine_ink_free, gpu_engine_ink_new};
+use crate::kernels::cel_pixel::abi::{
+    gpu_engine_cel_passed_free, gpu_engine_cel_pixels_free, gpu_engine_cel_pixels_new,
+    gpu_engine_ink_free, gpu_engine_ink_new,
+};
+use crate::kernels::cel_pixel::Passed;
 use crate::kernels::dab::abi::{
     gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_stamp_landing_free,
     gpu_engine_stamp_landing_new, gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new,
@@ -64,7 +68,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 25] {
+fn frees() -> [(&'static str, fn(&'static str)); 27] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -130,6 +134,16 @@ fn frees() -> [(&'static str, fn(&'static str)); 25] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_fill_new(first_engine()) };
             gives_back(name, made, gpu_engine_fill_free)
+        }),
+        ("gpu_engine_cel_pixels_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_cel_pixels_new(first_engine()) };
+            gives_back(name, made, gpu_engine_cel_pixels_free)
+        }),
+        ("gpu_engine_cel_passed_free", |name| {
+            let Composited { out, .. } = composited();
+            let passed = Passed { tiles: vec![], out, touched: vec![], runs: vec![] };
+            gives_back(name, Box::into_raw(Box::new(passed)), gpu_engine_cel_passed_free)
         }),
         ("gpu_engine_ink_free", |name| {
             // SAFETY: the engine is live.

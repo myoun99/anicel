@@ -1,4 +1,8 @@
-//! The ink scan's C ABI (connection round 2, 잉크 상자 ㉢): the app hands
+//! The cel pixel kernels' C ABI. The verbs' (flip lane ⓒ): the app states
+//! one over tiles named as a plan's tile set is, reads what it took the
+//! pixels from, and has its tiles put in fresh slots.
+//!
+//! The ink scan's (connection round 2, 잉크 상자 ㉢): the app hands
 //! the tiles of a cel that owe a box — on the pool, named as a plan's tile
 //! set is ([`TileSet::from_words`]) — and takes each walked tile's box,
 //! as it takes C's `qa_alpha_bounds_tiles` answer today.
@@ -12,10 +16,14 @@ mod tests;
 
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::TileSet;
-use crate::kernels::pool::Pool;
+use crate::kernels::dab::abi::reported;
+use crate::kernels::effects::KeyRun;
+use crate::kernels::pool::{Cel, Pool};
 
 use super::ink::Ink;
+use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 
 /// The words a walked tile's answer takes: its column and row, then its
 /// box's left, top, right and bottom — tile-local, the far two past the
@@ -23,6 +31,222 @@ use super::ink::Ink;
 /// no ink is a box of four 0s, which is empty as the app reads one
 /// (`rightExclusive <= left`); a box with ink always ends past its start.
 pub(crate) const TILE_INK_WORDS: usize = 6;
+
+/// A verb as the app states it (`GpuCelPixels.run`), field by field: its
+/// channel; 2치화's cut; whether it keeps what its selector names; the
+/// selector's tables, 256 words each, null for none; what the pixels taking
+/// part take, `length` bytes — the value, or, where `undo` is not 0, the
+/// recipe of `count` pixels `step` apart.
+#[repr(C)]
+pub struct VerbSpec {
+    bytes: u32,
+    base: u32,
+    stride: u32,
+    takes_empty: u32,
+    threshold: u32,
+    keeps_matches: u32,
+    red: *const u32,
+    green: *const u32,
+    blue: *const u32,
+    incoming: *const u8,
+    length: usize,
+    step: u32,
+    undo: u32,
+    count: u64,
+}
+
+/// The verb `spec` states.
+///
+/// # Safety
+/// `spec`'s tables are null or hold 256 words each, and its `incoming`
+/// holds `length` bytes — a null one none.
+unsafe fn verb_of(spec: &VerbSpec) -> Verb<'_> {
+    let table = |words: *const u32| {
+        // SAFETY: see the function's contract.
+        unsafe { &*words.cast::<[u32; 256]>() }
+    };
+    let selector = (!spec.red.is_null()).then(|| Selector {
+        // The verb reads what a key names: its restores and maps say what a
+        // key does to the alpha of a row it runs on.
+        key: KeyRun {
+            red: table(spec.red),
+            green: table(spec.green),
+            blue: table(spec.blue),
+            restores: 0,
+            maps: &[],
+        },
+        keeps_matches: spec.keeps_matches != 0,
+    });
+    let bytes = match spec.incoming.is_null() {
+        true => &[][..],
+        // SAFETY: see the function's contract.
+        false => unsafe { std::slice::from_raw_parts(spec.incoming, spec.length) },
+    };
+    Verb {
+        channel: Channel {
+            bytes: spec.bytes,
+            base: spec.base,
+            stride: spec.stride,
+            takes_empty: spec.takes_empty != 0,
+        },
+        selector,
+        threshold: spec.threshold,
+        incoming: match spec.undo != 0 {
+            true => Incoming::Recipe { bytes, step: spec.step, count: spec.count },
+            false => Incoming::Value(bytes),
+        },
+    }
+}
+
+/// The verbs' pass, compiled. Null on failure; see the last error.
+///
+/// # Safety
+/// `engine` is live; the pass is freed before it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mut CelPixels {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    CelPixels::new(engine).map_or(std::ptr::null_mut(), |pixels| Box::into_raw(Box::new(pixels)))
+}
+
+/// # Safety
+/// `pixels` came from `gpu_engine_cel_pixels_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_pixels_free(pixels: *mut CelPixels) {
+    if !pixels.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(pixels) });
+    }
+}
+
+/// Runs the verb `spec` states over the cel of `columns` × `rows` tiles
+/// whose top-left is column `x0`, row `y0` — `tiles` row by row, each
+/// `page << 16 | slot` of `pool`, or `u32::MAX` for a tile not walked —,
+/// under `mask` if not null: `CelPixels::run`. Waits for the GPU.
+///
+/// What it left, to be freed; null on failure — see the last error.
+///
+/// # Safety
+/// Every pointer but `mask` is live, the pool and the pass were made on
+/// `engine`; `tiles` holds `columns × rows` words, and `spec` is as
+/// [`verb_of`] says.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
+    pixels: *const CelPixels,
+    engine: *const Engine,
+    pool: *const Pool,
+    x0: i32,
+    y0: i32,
+    columns: u32,
+    rows: u32,
+    tiles: *const u32,
+    mask: *const MaskPlane,
+    spec: *const VerbSpec,
+) -> *mut Passed {
+    // SAFETY: see the function's contract.
+    let (pixels, engine, pool, spec) = unsafe { (&*pixels, &*engine, &*pool, &*spec) };
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+    let cel = TileSet::from_words(x0, y0, columns, rows, words);
+    // SAFETY: see the function's contract.
+    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+    // SAFETY: see the function's contract.
+    let verb = unsafe { verb_of(spec) };
+    pixels
+        .run(engine, pool.pages(), &cel, mask.as_ref(), &verb)
+        .map_or(std::ptr::null_mut(), |passed| Box::into_raw(Box::new(passed)))
+}
+
+/// # Safety
+/// `passed` came from `gpu_engine_cel_pixels_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_passed_free(passed: *mut Passed) {
+    if !passed.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(passed) });
+    }
+}
+
+/// How many tiles the pass walked.
+///
+/// # Safety
+/// `passed` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_passed_walked(passed: *const Passed) -> usize {
+    // SAFETY: see the function's contract.
+    unsafe { &*passed }.tiles.len()
+}
+
+/// Writes each walked tile's column and row, in the walk's order.
+///
+/// # Safety
+/// `passed` is live and `out` holds two words a walked tile.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_passed_tiles(passed: *const Passed, out: *mut i32) {
+    // SAFETY: see the function's contract.
+    let tiles = &unsafe { &*passed }.tiles;
+    for (at, &(column, row)) in tiles.iter().enumerate() {
+        // SAFETY: see the function's contract.
+        unsafe { out.add(2 * at).write(column) };
+        // SAFETY: see the function's contract.
+        unsafe { out.add(2 * at + 1).write(row) };
+    }
+}
+
+/// How many runs of what the pixels held the pass kept, every tile's.
+///
+/// # Safety
+/// `passed` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_passed_run_count(passed: *const Passed) -> usize {
+    // SAFETY: see the function's contract.
+    unsafe { &*passed }.runs.iter().map(Vec::len).sum()
+}
+
+/// Writes every run — its value (the channel's byte i in bits 8i) and its
+/// length —, in the walk's order.
+///
+/// # Safety
+/// `passed` is live and `out` holds two words a run.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_cel_passed_runs(passed: *const Passed, out: *mut u32) {
+    // SAFETY: see the function's contract.
+    let runs = unsafe { &*passed }.runs.iter().flatten();
+    for (at, &(value, length)) in runs.enumerate() {
+        // SAFETY: see the function's contract.
+        unsafe { out.add(2 * at).write(value) };
+        // SAFETY: see the function's contract.
+        unsafe { out.add(2 * at + 1).write(length) };
+    }
+}
+
+/// Puts the `count` walked tiles from `first` on, each a pixel of took part
+/// in, in a fresh slot of `cel`: `Passed::land`. Writes each one's `places`
+/// and `changes` as `gpu_engine_stroke_land` does and returns how many
+/// landed, the first of them; -1 on failure, see the last error.
+///
+/// # Safety
+/// Every pointer is live, on `engine`; each of `places` and `changes` holds
+/// `count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_cel_passed_land(
+    passed: *const Passed,
+    engine: *const Engine,
+    pool: *mut Pool,
+    cel: u32,
+    first: usize,
+    count: usize,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (passed, engine, pool) = unsafe { (&*passed, &*engine, &mut *pool) };
+    let landed = passed.land(engine, (pool, Cel(cel)), first..first + count);
+    // SAFETY: see the function's contract.
+    unsafe { reported(landed, places, changes) }
+}
 
 /// The scan, compiled. Null on failure; see the last error.
 ///

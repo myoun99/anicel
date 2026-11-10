@@ -131,3 +131,169 @@ fn a_tile_named_on_a_page_past_the_pool_is_refused_with_why() {
     assert_eq!(scanned(&pool, (0, 0), (2, 1), &past, 12).0, -1);
     assert!(last_error().contains("names page 1 of a pool of 1"), "{}", last_error());
 }
+
+/// The verbs' pass compiled through the ABI, once for the tests here.
+fn verbs() -> *mut CelPixels {
+    struct Compiled(*mut CelPixels);
+    // SAFETY: the pass is made once and only read after.
+    unsafe impl Send for Compiled {}
+    // SAFETY: as above.
+    unsafe impl Sync for Compiled {}
+    static PASS: OnceLock<Compiled> = OnceLock::new();
+    PASS.get_or_init(|| {
+        // SAFETY: the engine is live for the process.
+        let pass = unsafe { gpu_engine_cel_pixels_new(rig().engine) };
+        assert!(!pass.is_null(), "compile the verbs: {}", last_error());
+        Compiled(pass)
+    })
+    .0
+}
+
+/// 색 변환 to `value`: R, G and B of the pixels with ink.
+fn recolour(value: &[u8; 3]) -> VerbSpec {
+    VerbSpec {
+        bytes: 3,
+        base: 0,
+        stride: 1,
+        takes_empty: 0,
+        threshold: 0,
+        keeps_matches: 0,
+        red: std::ptr::null(),
+        green: std::ptr::null(),
+        blue: std::ptr::null(),
+        incoming: value.as_ptr(),
+        length: 3,
+        step: 0,
+        undo: 0,
+        count: 0,
+    }
+}
+
+/// What `spec` left of the cel `words` name, `columns` × 1 from (`x0`, 0).
+fn passed(pool: &Pool, x0: i32, columns: u32, words: &[u32], spec: &VerbSpec) -> *mut Passed {
+    let engine = rig().engine;
+    // SAFETY: every pointer is live and `words` holds the set's tiles.
+    let passed = unsafe {
+        gpu_engine_cel_pixels_run(verbs(), engine, pool, x0, 0, columns, 1, words.as_ptr(), std::ptr::null(), spec)
+    };
+    assert!(!passed.is_null(), "{}", last_error());
+    passed
+}
+
+/// What `passed` landed of its `count` walked tiles from `first` on: what
+/// the call returned, and each tile's place and change.
+fn landed(passed: *mut Passed, pool: &mut Pool, first: usize, count: usize) -> (isize, Vec<u32>, Vec<u8>) {
+    let (mut places, mut changes) = (vec![7; count], vec![7; count]);
+    let cel = pool.cel().0;
+    // SAFETY: every pointer is live; each of `places` and `changes` holds `count`.
+    let returned = unsafe {
+        gpu_engine_cel_passed_land(passed, rig().engine, pool, cel, first, count, places.as_mut_ptr(), changes.as_mut_ptr())
+    };
+    (returned, places, changes)
+}
+
+fn first_pixel(pool: &Pool, word: u32) -> [u8; 4] {
+    let mut bytes = vec![0; TILE_TEXELS as usize * 4];
+    let at = TileAt::of_word(word).expect("a tile's word");
+    pool.read(rig().engine, &[at], &mut bytes).expect("read");
+    [bytes[0], bytes[1], bytes[2], bytes[3]]
+}
+
+/// A tile whose every pixel is `rgba`.
+fn flat(rgba: u32) -> Vec<u8> {
+    le_bytes(&vec![rgba; TILE_TEXELS as usize])
+}
+
+#[test]
+fn a_verb_says_what_it_walked_what_its_pixels_held_and_lands_what_it_took() {
+    let (mut pool, at) = stored(&[flat(0xff30_2010), flat(0), flat(0x8040_5060)]);
+    let words = [at[0].word(), NO_TILE, at[1].word(), at[2].word()];
+    let spec = recolour(&[1, 2, 3]);
+    let ran = passed(&pool, -1, 4, &words, &spec);
+    // SAFETY: `ran` is live.
+    assert_eq!(unsafe { gpu_engine_cel_passed_walked(ran) }, 3);
+    let mut tiles = [9; 6];
+    // SAFETY: two words a walked tile.
+    unsafe { gpu_engine_cel_passed_tiles(ran, tiles.as_mut_ptr()) };
+    assert_eq!(tiles, [-1, 0, 1, 0, 2, 0]);
+    // SAFETY: `ran` is live.
+    assert_eq!(unsafe { gpu_engine_cel_passed_run_count(ran) }, 2);
+    let mut runs = [9; 4];
+    // SAFETY: two words a run.
+    unsafe { gpu_engine_cel_passed_runs(ran, runs.as_mut_ptr()) };
+    let texels = TILE_TEXELS as u32;
+    assert_eq!(runs, [0x30_2010, texels, 0x40_5060, texels]);
+    let (returned, places, changes) = landed(ran, &mut pool, 0, 3);
+    assert_eq!((returned, &changes[..]), (3, &[1, 0, 1][..]));
+    assert_eq!(places[1], NO_TILE);
+    assert_eq!(first_pixel(&pool, places[0]), [1, 2, 3, 0xff]);
+    assert_eq!(first_pixel(&pool, places[2]), [1, 2, 3, 0x80]);
+    assert_eq!(first_pixel(&pool, words[0]), [0x10, 0x20, 0x30, 0xff]);
+    // SAFETY: `ran` is not used after.
+    unsafe { gpu_engine_cel_passed_free(ran) };
+}
+
+/// A landing that went on after a full pool starts past what landed.
+#[test]
+fn a_landing_from_a_later_tile_puts_that_tile() {
+    let (mut pool, at) = stored(&[flat(0xff00_0001), flat(0x7700_0002)]);
+    let words = [at[0].word(), at[1].word()];
+    let spec = recolour(&[9, 8, 7]);
+    let ran = passed(&pool, 0, 2, &words, &spec);
+    let (returned, places, changes) = landed(ran, &mut pool, 1, 1);
+    assert_eq!((returned, &changes[..]), (1, &[1][..]));
+    assert_eq!(first_pixel(&pool, places[0]), [9, 8, 7, 0x77]);
+    // SAFETY: `ran` is not used after.
+    unsafe { gpu_engine_cel_passed_free(ran) };
+}
+
+#[test]
+fn a_landing_past_the_walk_is_refused_with_why() {
+    let (mut pool, at) = stored(&[flat(0xff00_0001)]);
+    let words = [at[0].word()];
+    let spec = recolour(&[9, 8, 7]);
+    let ran = passed(&pool, 0, 1, &words, &spec);
+    let (returned, ..) = landed(ran, &mut pool, 0, 2);
+    assert_eq!(returned, -1);
+    assert!(last_error().contains("of a walk of 1"), "{}", last_error());
+    // SAFETY: `ran` is not used after.
+    unsafe { gpu_engine_cel_passed_free(ran) };
+}
+
+/// An alpha verb's tile left with no alpha is not `Cleared` and takes a
+/// slot: the colour under it is what the undo's selector reads.
+#[test]
+fn a_tile_a_verb_emptied_lands_with_its_colour() {
+    let (mut pool, at) = stored(&[flat(0xff30_2010)]);
+    let words = [at[0].word()];
+    let nothing = [0u8];
+    let spec = VerbSpec {
+        bytes: 1,
+        base: 3,
+        stride: 0,
+        takes_empty: 1,
+        incoming: nothing.as_ptr(),
+        length: 1,
+        ..recolour(&[0, 0, 0])
+    };
+    let ran = passed(&pool, 0, 1, &words, &spec);
+    let (returned, places, changes) = landed(ran, &mut pool, 0, 1);
+    assert_eq!((returned, &changes[..]), (1, &[1][..]));
+    assert_eq!(first_pixel(&pool, places[0]), [0x10, 0x20, 0x30, 0]);
+    // SAFETY: `ran` is not used after.
+    unsafe { gpu_engine_cel_passed_free(ran) };
+}
+
+#[test]
+fn a_verb_the_kernel_refuses_runs_to_none_with_why() {
+    let (pool, at) = stored(&[flat(0xff30_2010)]);
+    let words = [at[0].word()];
+    let spec = VerbSpec { bytes: 4, ..recolour(&[0, 0, 0]) };
+    let engine = rig().engine;
+    // SAFETY: every pointer is live and `words` holds the set's tile.
+    let ran = unsafe {
+        gpu_engine_cel_pixels_run(verbs(), engine, &pool, 0, 0, 1, 1, words.as_ptr(), std::ptr::null(), &spec)
+    };
+    assert!(ran.is_null());
+    assert!(last_error().contains("no channel"), "{}", last_error());
+}

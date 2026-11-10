@@ -491,7 +491,7 @@ unsafe fn asked_of(asks: *const i32, under: *const u32, count: usize) -> Vec<Ask
 ///
 /// # Safety
 /// `places` and `changes` hold as many as were asked, and no more land.
-unsafe fn reported(
+pub(crate) unsafe fn reported(
     landed: Option<Vec<(Change, Option<TileAt>)>>,
     places: *mut u32,
     changes: *mut u8,

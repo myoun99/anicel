@@ -31,11 +31,6 @@
 //! walk.wgsl, as the verbs' does. So does the ink scan (`ink`, R4b), which
 //! walks a whole cel.
 
-// ⏳The verbs and the lift: nothing outside the tests runs them until the
-// flip lane (connection-round-checklist). The ink scan has its C entrance
-// ([`abi`]) since the connection round's 잉크 상자.
-#![cfg_attr(not(test), allow(dead_code))]
-
 pub(crate) mod abi;
 pub(crate) mod ink;
 pub(crate) mod lift;
@@ -47,12 +42,15 @@ use std::ops::Range;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
+use crate::kernels::dab::landing::placed;
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
+use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
     Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, Run, TILE_WGSL, cut_by, encode_on, encoded,
     fits, page_table, pipeline, plane, range, runs, tiles_a_pass,
 };
+use crate::kernels::write::Change;
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the new pixels, and the counts or the runs — and the pass's words, a
@@ -195,6 +193,37 @@ pub(crate) struct Passed {
     pub(crate) out: wgpu::Buffer,
     pub(crate) touched: Vec<u32>,
     pub(crate) runs: Vec<Vec<(u32, u32)>>,
+}
+
+impl Passed {
+    /// Puts the walked tiles of the range `walked`, each a pixel of took
+    /// part in, in a fresh slot of `cel` — as many of them, the first, as
+    /// the pool has room for — and the rest `Change::Same`, their cel's as
+    /// they stand.
+    ///
+    /// ⛔NOT COMPARED, as a finished stroke's landing is ([`put`]): a tile a
+    /// pass left no alpha on is `Change::Cleared` there and takes no slot,
+    /// and the colour under its alpha of 0 is what the undo's selector
+    /// reads (the app's `CelPixelChannel.alpha`).
+    ///
+    /// [`put`]: crate::kernels::dab::landing::put
+    pub(crate) fn land(
+        &self,
+        engine: &Engine,
+        at: (&mut Pool, Cel),
+        walked: Range<usize>,
+    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+        if walked.end > self.tiles.len() {
+            return fail(format!(
+                "tiles {walked:?} of a walk of {} landed",
+                self.tiles.len()
+            ));
+        }
+        let changes = walked.map(|tile| {
+            (tile, if self.touched[tile] > 0 { Change::Inked } else { Change::Same })
+        });
+        placed(engine, at, &self.out, changes)
+    }
 }
 
 /// A walked tile: where it is on the cel's grid, where it is stored, and

@@ -28,8 +28,10 @@ import '../helpers/native_engine_path.dart';
 /// identical routes agreeing is the shape of a green that measures nothing
 /// — the lesson the dab parity suite already paid for.
 void main() {
-  const tileSize = defaultCelTileSize;
-  const canvas = CanvasSize(width: 256, height: 256);
+  // Not the app's grid: there the pass is the engine's
+  // (`a_colour_verb_runs_on_the_engine_test.dart`).
+  const tileSize = 256;
+  const canvas = CanvasSize(width: 512, height: 256);
   final libraryPath = nativeEngineLibraryPathOrNull();
 
   tearDown(() {

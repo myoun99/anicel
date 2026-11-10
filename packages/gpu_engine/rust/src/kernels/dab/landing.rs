@@ -118,9 +118,23 @@ pub(crate) fn put(
     } else {
         vec![Change::Inked; asked.len()]
     };
-    let mut landed = Vec::with_capacity(asked.len());
-    let mut writes = Vec::with_capacity(asked.len());
-    for (index, change) in changes.into_iter().enumerate() {
+    placed(engine, (pool, cel), out, changes.into_iter().enumerate())
+}
+
+/// Puts each of `out`'s tiles that `changes` — every one by its index among
+/// `out`'s — says is inked in a fresh slot of `cel`, the rest taking none:
+/// where a landing that knows what it made ends.
+///
+/// As many of `changes`, the first, as the pool has room for.
+pub(crate) fn placed(
+    engine: &Engine,
+    (pool, cel): (&mut Pool, Cel),
+    out: &wgpu::Buffer,
+    changes: impl Iterator<Item = (usize, Change)>,
+) -> Option<Vec<(Change, Option<TileAt>)>> {
+    let mut landed = Vec::new();
+    let mut writes = Vec::new();
+    for (index, change) in changes {
         if change != Change::Inked {
             landed.push((change, None));
             continue;

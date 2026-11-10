@@ -7,6 +7,7 @@ import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
 import 'src/native/app_gpu_engine.dart' show openAppGpuEngine, warmAppStampLanding;
+import 'src/native/engine_cel_pixels.dart' show EngineCelPixels;
 import 'src/native/engine_strokes.dart' show EngineStrokes;
 import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
@@ -256,6 +257,7 @@ Future<void> main(List<String> handedAtLaunch) async {
     WidgetsBinding.instance.waitUntilFirstFrameRasterized.then(
       (_) => openAppGpuEngine().then((_) {
         unawaited(EngineStrokes.warm());
+  unawaited(EngineCelPixels.warm());
         warmAppStampLanding();
       }),
     ),

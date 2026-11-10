@@ -35,6 +35,10 @@ final class Readout extends Opaque {}
 
 final class Ink extends Opaque {}
 
+final class CelPixels extends Opaque {}
+
+final class CelPassed extends Opaque {}
+
 final class Faces extends Opaque {}
 
 final class Lettering extends Opaque {}
@@ -54,6 +58,34 @@ final class Stroke extends Opaque {}
 final class StampPicture extends Opaque {}
 
 final class StampLanding extends Opaque {}
+
+/// `VerbSpec` (rust/src/kernels/cel_pixel/abi.rs), field by field.
+final class VerbSpec extends Struct {
+  @Uint32()
+  external int bytes;
+  @Uint32()
+  external int base;
+  @Uint32()
+  external int stride;
+  @Uint32()
+  external int takesEmpty;
+  @Uint32()
+  external int threshold;
+  @Uint32()
+  external int keepsMatches;
+  external Pointer<Uint32> red;
+  external Pointer<Uint32> green;
+  external Pointer<Uint32> blue;
+  external Pointer<Uint8> incoming;
+  @Size()
+  external int length;
+  @Uint32()
+  external int step;
+  @Uint32()
+  external int undo;
+  @Uint64()
+  external int count;
+}
 
 /// `DabSpec` (rust/src/kernels/dab/abi.rs), field by field.
 final class DabSpec extends Struct {
@@ -1001,6 +1033,91 @@ external int inkRun(
   Pointer<Uint32> tiles,
   Pointer<Int32> out,
   int capacity,
+);
+
+@Native<Pointer<CelPixels> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_cel_pixels_new',
+)
+external Pointer<CelPixels> celPixelsNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<CelPixels>)>(
+  symbol: 'gpu_engine_cel_pixels_free',
+)
+external void celPixelsFree(Pointer<CelPixels> pixels);
+
+@Native<
+  Pointer<CelPassed> Function(
+    Pointer<CelPixels>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Pointer<Uint32>,
+    Pointer<MaskPlane>,
+    Pointer<VerbSpec>,
+  )
+>(symbol: 'gpu_engine_cel_pixels_run')
+external Pointer<CelPassed> celPixelsRun(
+  Pointer<CelPixels> pixels,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  Pointer<Uint32> tiles,
+  Pointer<MaskPlane> mask,
+  Pointer<VerbSpec> spec,
+);
+
+@Native<Void Function(Pointer<CelPassed>)>(
+  symbol: 'gpu_engine_cel_passed_free',
+)
+external void celPassedFree(Pointer<CelPassed> passed);
+
+@Native<Size Function(Pointer<CelPassed>)>(
+  symbol: 'gpu_engine_cel_passed_walked',
+)
+external int celPassedWalked(Pointer<CelPassed> passed);
+
+@Native<Void Function(Pointer<CelPassed>, Pointer<Int32>)>(
+  symbol: 'gpu_engine_cel_passed_tiles',
+)
+external void celPassedTiles(Pointer<CelPassed> passed, Pointer<Int32> out);
+
+@Native<Size Function(Pointer<CelPassed>)>(
+  symbol: 'gpu_engine_cel_passed_run_count',
+)
+external int celPassedRunCount(Pointer<CelPassed> passed);
+
+@Native<Void Function(Pointer<CelPassed>, Pointer<Uint32>)>(
+  symbol: 'gpu_engine_cel_passed_runs',
+)
+external void celPassedRuns(Pointer<CelPassed> passed, Pointer<Uint32> out);
+
+@Native<
+  IntPtr Function(
+    Pointer<CelPassed>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Uint32,
+    Size,
+    Size,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_cel_passed_land')
+external int celPassedLand(
+  Pointer<CelPassed> passed,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  int cel,
+  int first,
+  int count,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
 );
 
 @Native<
