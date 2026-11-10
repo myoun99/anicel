@@ -160,15 +160,29 @@ ExportCelsSelection resolveExportCelsSelection({
   );
 }
 
-/// The 용지 rows [spec] applies to [cut]'s cels: every paper row of the cut
-/// while 용지 적용 is on, none while it is off. Asked of the cut a cel is
+/// The 용지 rows [spec] applies to [cut]'s cels: while 용지 적용 is on, the
+/// paper rows that are the paper of what the filter is about
+/// ([paperOfLabel]); none while it is off. Asked of the cut a cel is
 /// COMPOSITED in — the one that shows it, which in a 겸용 group is not
 /// always the cut the selection was resolved for (F-300).
+///
+/// ↩️Every paper row of the cut, whatever the filter (until F-578).
 List<Layer> exportPaperRowsOf(Cut cut, CelsExportSpec spec) => [
   if (spec.applyPaper)
     for (final layer in cut.layers)
-      if (isExportPaperRow(layer)) layer,
+      if (isExportPaperRow(layer) && paperOfLabel(layer.mark, spec.label))
+        layer,
 ];
+
+/// Whether [paper] is the 용지 a filter of [label] lays: the paper of its
+/// correction where it names one, of its stage where it does not.
+///
+/// 🗣️F-578 ⑧ (유저 2026-11-10): 「내보내기의 용지적용은 필터대로. LO필터면
+/// 용지-LO가 걸리도록. 용지-작감은 안걸림. LO작감필터면 용지-작감이 걸리고,
+/// 원화작감필터도 용지-작감 걸리고」. ⛔A cut with no such paper lays none —
+/// no stand-in is taken (the user named none).
+bool paperOfLabel(LayerMark paper, LayerMark label) =>
+    paper.step != null && paper.step == (label.revise ?? label.process);
 
 /// A 용지 row: applied to every cel, never a cel and never the user's to
 /// tick in the list — the dialog and the resolver ask this one predicate.

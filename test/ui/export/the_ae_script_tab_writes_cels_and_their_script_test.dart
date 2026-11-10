@@ -92,7 +92,7 @@ void main() {
                   id: const LayerId('paper'),
                   name: 'Paper',
                   frames: [frame('p1', '1')],
-                  mark: const LayerMark.paper(LayerProcess.layout),
+                  mark: const LayerMark.paper(LayerProcess.key),
                 ),
                 Layer(
                   id: const LayerId('a'),

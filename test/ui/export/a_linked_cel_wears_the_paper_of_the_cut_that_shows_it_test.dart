@@ -61,7 +61,7 @@ void main() {
         id: LayerId('$id-paper'),
         name: 'Paper',
         frames: [frame('p1', '1'), frame('p2', '2')],
-        mark: const LayerMark.paper(LayerProcess.layout),
+        mark: const LayerMark.paper(LayerProcess.key),
         timeline: {
           0: TimelineExposure.drawing(
             FrameId(id == 'c1' ? 'p1' : 'p2'),

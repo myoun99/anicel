@@ -30,7 +30,7 @@ void main() {
     revise: LayerRevise.animationDirector,
   );
   const layout = LayerMark(process: LayerProcess.layout);
-  const paper = LayerMark.paper(LayerProcess.layout);
+  const paper = LayerMark.paper(LayerProcess.key);
 
   Layer layer(
     String id, {
@@ -207,6 +207,42 @@ void main() {
       ),
       ['a'],
     );
+  });
+
+  test('🗣️F-578 ⑧: the paper laid is the filter\'s — of its correction '
+      'where it names one, of its stage where it does not, and none where '
+      'the cut has no such paper', () {
+    // 유저 2026-11-10: 「내보내기의 용지적용은 필터대로. LO필터면 용지-LO가
+    // 걸리도록. 용지-작감은 안걸림. LO작감필터면 용지-작감이 걸리고,
+    // 원화작감필터도 용지-작감 걸리고」.
+    final layers = [
+      layer('lo', mark: const LayerMark.paper(LayerProcess.layout)),
+      layer('ad', mark: const LayerMark.paper(LayerRevise.animationDirector)),
+      layer('key', mark: const LayerMark.paper(LayerProcess.key)),
+      layer('a'),
+    ];
+    List<String> laid(LayerMark label) =>
+        ids(resolve(layers, spec: CelsExportSpec(label: label)).paperLayers);
+
+    expect(laid(layout), ['lo'], reason: 'LO필터면 용지-LO, 용지-작감은 안걸림');
+    expect(
+      laid(
+        const LayerMark(
+          process: LayerProcess.layout,
+          revise: LayerRevise.animationDirector,
+        ),
+      ),
+      ['ad'],
+      reason: 'LO작감필터면 용지-작감',
+    );
+    expect(laid(keyAd), ['ad'], reason: '원화작감필터도 용지-작감');
+    expect(laid(key), ['key']);
+    expect(
+      laid(const LayerMark(process: LayerProcess.inbetween)),
+      isEmpty,
+      reason: 'no 용지-동화 in the cut: none is laid in its stead',
+    );
+    expect(laid(LayerMark.none), isEmpty);
   });
 
   group('the kinds come first', () {

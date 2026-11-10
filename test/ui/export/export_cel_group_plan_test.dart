@@ -37,7 +37,7 @@ import '../../helpers/export_cels_alone.dart';
 void main() {
   const key = LayerMark(process: LayerProcess.key);
   const layout = LayerMark(process: LayerProcess.layout);
-  const paper = LayerMark.paper(LayerProcess.layout);
+  const paper = LayerMark.paper(LayerProcess.key);
   const withDirection = {
     ExportCelKind.cel,
     ExportCelKind.image,
