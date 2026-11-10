@@ -1170,9 +1170,9 @@ fn a_kernel_the_engine_has_is_the_same_one_and_no_ones_wait() {
     assert!(first == again, "and has the pipeline the first has");
 }
 
-// What a kernel is compiled of is all of it: other constants, other
-// sources, or its workgroup memory left as the device hands it, are other
-// kernels.
+// What a kernel is compiled of is all of it: other constants — one of
+// another value too —, other sources, or its workgroup memory left as the
+// device hands it, are other kernels.
 #[test]
 fn a_kernel_of_other_sources_constants_or_memory_is_another() {
     let engine = first_engine();
@@ -1180,11 +1180,16 @@ fn a_kernel_of_other_sources_constants_or_memory_is_another() {
     let plain = pipeline(engine, &[&source], "main");
     let before = waited_here();
     let unlit = super::pipeline_with(engine, &[&source], "main", &[("lit", 0.0)]);
+    let lit = super::pipeline_with(engine, &[&source], "main", &[("lit", 1.0)]);
     let unzeroed = super::pipeline_unzeroed(engine, &[&source], "main");
     let other = pipeline(engine, &[&source, "// and a line more"], "main");
-    assert_eq!(waited_here() - before, 3, "each is compiled");
-    assert!(plain != unlit && plain != unzeroed && plain != other);
-    assert!(unlit != unzeroed && unlit != other && unzeroed != other);
+    assert_eq!(waited_here() - before, 4, "each is compiled");
+    let all = [&plain, &unlit, &lit, &unzeroed, &other];
+    for (at, one) in all.iter().enumerate() {
+        for another in &all[at + 1..] {
+            assert!(one != another, "each is a kernel of its own");
+        }
+    }
     assert!(unlit == super::pipeline_with(engine, &[&source], "main", &[("lit", 0.0)]));
 }
 
