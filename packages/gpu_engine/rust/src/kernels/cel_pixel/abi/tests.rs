@@ -132,9 +132,9 @@ fn a_tile_named_on_a_page_past_the_pool_is_refused_with_why() {
     assert!(last_error().contains("names page 1 of a pool of 1"), "{}", last_error());
 }
 
-/// The verbs' pass compiled through the ABI, once for the tests here.
-fn verbs() -> *mut CelPixels {
-    struct Compiled(*mut CelPixels);
+/// The kernels compiled through the ABI, once for the tests here.
+fn verbs() -> *mut CelKernels {
+    struct Compiled(*mut CelKernels);
     // SAFETY: the pass is made once and only read after.
     unsafe impl Send for Compiled {}
     // SAFETY: as above.
@@ -282,6 +282,52 @@ fn a_tile_a_verb_emptied_lands_with_its_colour() {
     assert_eq!(first_pixel(&pool, places[0]), [0x10, 0x20, 0x30, 0]);
     // SAFETY: `ran` is not used after.
     unsafe { gpu_engine_cel_passed_free(ran) };
+}
+
+/// A mask of `size` pixels from (0, 0), every one covered.
+fn whole_mask(size: (u32, u32)) -> *mut MaskPlane {
+    let bytes = vec![255u8; (size.0 * size.1) as usize];
+    // SAFETY: the engine is live and the bytes hold the mask's.
+    let mask = unsafe {
+        crate::kernels::composite::abi::gpu_engine_mask_new(rig().engine, bytes.as_ptr(), 0, 0, size.0, size.1)
+    };
+    assert!(!mask.is_null(), "{}", last_error());
+    mask
+}
+
+/// What the lift of `mask` off the one tile `words` names returned, into
+/// `capacity` bytes.
+fn lifted(pool: &Pool, words: &[u32], mask: *mut MaskPlane, capacity: usize) -> (i32, Vec<u8>) {
+    let mut out = vec![7; capacity];
+    // SAFETY: every pointer is live, `words` holds the set's tile and `out`
+    // the capacity.
+    let returned = unsafe {
+        gpu_engine_cel_pixels_lift(verbs(), rig().engine, pool, 0, 0, 1, 1, words.as_ptr(), mask, true, out.as_mut_ptr(), capacity)
+    };
+    (returned, out)
+}
+
+#[test]
+fn a_lift_puts_its_box_where_it_took_anything_and_nothing_where_it_took_nothing() {
+    let (pool, at) = stored(&[flat(0xff30_2010), flat(0)]);
+    let mask = whole_mask((1, 2));
+    let (returned, out) = lifted(&pool, &[at[0].word()], mask, 8);
+    assert_eq!((returned, &out[..]), (1, &[0x10, 0x20, 0x30, 0xff, 0x10, 0x20, 0x30, 0xff][..]));
+    let (returned, out) = lifted(&pool, &[at[1].word()], mask, 8);
+    assert_eq!((returned, out), (0, vec![7; 8]));
+    // SAFETY: `mask` is not used after.
+    unsafe { crate::kernels::composite::abi::gpu_engine_mask_free(mask) };
+}
+
+#[test]
+fn a_lift_given_other_room_than_its_box_is_refused_with_why() {
+    let (pool, at) = stored(&[flat(0xff30_2010)]);
+    let mask = whole_mask((1, 2));
+    let (returned, out) = lifted(&pool, &[at[0].word()], mask, 12);
+    assert_eq!((returned, out), (-1, vec![7; 12]));
+    assert!(last_error().contains("room for 12 bytes; the box holds 8"), "{}", last_error());
+    // SAFETY: `mask` is not used after.
+    unsafe { crate::kernels::composite::abi::gpu_engine_mask_free(mask) };
 }
 
 #[test]

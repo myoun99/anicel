@@ -4,16 +4,24 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'package:collection/collection.dart' show IterableIntegerExtension;
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart';
+
 import '../core/point_bounds.dart';
 import '../core/rgba_premultiply.dart' show copyRgb;
 
 import '../models/bitmap_surface.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/brush_dab.dart';
+import '../models/brush_frame_key.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
+import '../native/app_gpu_engine.dart';
+import '../native/engine_cel_pixels.dart';
+import '../native/engine_tile_ledger.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
 import 'guide_geometry.dart' show GuideTransform;
@@ -920,6 +928,17 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
   /// wrong for half the callers and a default would pick one silently.
   required bool takeWholePixels,
 }) {
+  if (surface.tileSize == gpuTileSide && !debugSelectionLiftInDart) {
+    return _gatherOnEngine(
+      surface: surface,
+      mask: mask,
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+      takeWholePixels: takeWholePixels,
+    );
+  }
   final rgba = Uint8List(width * height * 4);
   final tileSize = surface.tileSize;
   final rightExclusive = left + width;
@@ -994,6 +1013,76 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
       });
   }
   return (rgba: rgba, liftedAnything: liftedAnything);
+}
+
+/// Test seam: the gather in Dart on the app's grid too — the reference
+/// `a_selection_lifts_on_the_engine_test.dart` holds the engine's to.
+@visibleForTesting
+bool debugSelectionLiftInDart = false;
+
+/// The gather on the engine (flip lane ⓒ): the law in the kernel
+/// (rust/src/kernels/cel_pixel/lift.wgsl), over the tiles where the pool has
+/// them, one read back of the box.
+({Uint8List rgba, bool liftedAnything}) _gatherOnEngine({
+  required BitmapSurface surface,
+  required Uint8List mask,
+  required int left,
+  required int top,
+  required int width,
+  required int height,
+  required bool takeWholePixels,
+}) {
+  final rgba = Uint8List(width * height * 4);
+  final covered = tilesCovering(
+    surface,
+    DirtyRegion(
+      left: left,
+      top: top,
+      rightExclusive: left + width,
+      bottomExclusive: top + height,
+    ),
+  ).toList();
+  if (covered.isEmpty) {
+    return (rgba: rgba, liftedAnything: false);
+  }
+  final x0 = covered.map((tile) => tile.coord.x).min;
+  final y0 = covered.map((tile) => tile.coord.y).min;
+  final columns = covered.map((tile) => tile.coord.x).max - x0 + 1;
+  final rows = covered.map((tile) => tile.coord.y).max - y0 + 1;
+  final plane = GpuMask(
+    appGpuComposite,
+    mask,
+    x: left,
+    y: top,
+    width: width,
+    height: height,
+  );
+  try {
+    final ledger = EngineTileLedger.instance;
+    return ledger.held((hold) {
+      final slots = hold.slotsOf(BrushFrameKey.noCel, [
+        for (final one in covered) one.tile,
+      ]);
+      final tiles = List<GpuTile?>.filled(columns * rows, null);
+      for (final (at, one) in covered.indexed) {
+        tiles[(one.coord.y - y0) * columns + one.coord.x - x0] = slots[at];
+      }
+      final liftedAnything = EngineCelPixels.pass.lift(
+        ledger.pool,
+        x0,
+        y0,
+        columns,
+        rows,
+        tiles,
+        mask: plane,
+        whole: takeWholePixels,
+        into: rgba,
+      );
+      return (rgba: rgba, liftedAnything: liftedAnything);
+    });
+  } finally {
+    plane.free();
+  }
 }
 
 /// Builds the lift pair for [region] over the active layer's committed

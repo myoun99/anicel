@@ -1,6 +1,7 @@
 //! The cel pixel kernels' C ABI. The verbs' (flip lane ⓒ): the app states
 //! one over tiles named as a plan's tile set is, reads what it took the
-//! pixels from, and has its tiles put in fresh slots.
+//! pixels from, and has its tiles put in fresh slots. The lift's: what a
+//! selection takes off the same tiles, read back into the app's bytes.
 //!
 //! The ink scan's (connection round 2, 잉크 상자 ㉢): the app hands
 //! the tiles of a cel that owe a box — on the pool, named as a plan's tile
@@ -23,6 +24,7 @@ use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
 use super::ink::Ink;
+use super::lift::Lift;
 use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 
 /// The words a walked tile's answer takes: its column and row, then its
@@ -98,25 +100,86 @@ unsafe fn verb_of(spec: &VerbSpec) -> Verb<'_> {
     }
 }
 
-/// The verbs' pass, compiled. Null on failure; see the last error.
+/// The verbs' pass and the lift, compiled together: what the app compiles
+/// once, off its isolate.
+pub struct CelKernels {
+    verbs: CelPixels,
+    lift: Lift,
+}
+
+/// The cel's kernels, compiled. Null on failure; see the last error.
 ///
 /// # Safety
-/// `engine` is live; the pass is freed before it.
+/// `engine` is live; the kernels are freed before it.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mut CelPixels {
+pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mut CelKernels {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    CelPixels::new(engine).map_or(std::ptr::null_mut(), |pixels| Box::into_raw(Box::new(pixels)))
+    CelPixels::new(engine)
+        .zip(Lift::new(engine))
+        .map_or(std::ptr::null_mut(), |(verbs, lift)| Box::into_raw(Box::new(CelKernels { verbs, lift })))
 }
 
 /// # Safety
-/// `pixels` came from `gpu_engine_cel_pixels_new`.
+/// `kernels` came from `gpu_engine_cel_pixels_new`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_cel_pixels_free(pixels: *mut CelPixels) {
-    if !pixels.is_null() {
+pub unsafe extern "C" fn gpu_engine_cel_pixels_free(kernels: *mut CelKernels) {
+    if !kernels.is_null() {
         // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(pixels) });
+        drop(unsafe { Box::from_raw(kernels) });
     }
+}
+
+/// Puts what `mask` takes off the cel of `columns` × `rows` tiles whose
+/// top-left is column `x0`, row `y0` — named as
+/// `gpu_engine_cel_pixels_run`'s are — into `out`: its box's pixels, straight
+/// RGBA8 row after row, a pixel it covers at all whole where `whole`.
+/// `Lift::run`. Waits for the GPU.
+///
+/// 1 where it took anything and `out` holds it, 0 where it took nothing and
+/// `out` is as it was; -1 where `out`'s `capacity` is not the box's bytes
+/// or the lift fails — see the last error.
+///
+/// # Safety
+/// Every pointer is live, the pool, the mask and the kernels made on
+/// `engine`; `tiles` holds `columns × rows` words and `out` `capacity`
+/// bytes.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
+    kernels: *const CelKernels,
+    engine: *const Engine,
+    pool: *const Pool,
+    x0: i32,
+    y0: i32,
+    columns: u32,
+    rows: u32,
+    tiles: *const u32,
+    mask: *const MaskPlane,
+    whole: bool,
+    out: *mut u8,
+    capacity: usize,
+) -> i32 {
+    // SAFETY: see the function's contract.
+    let (kernels, engine, pool, mask) = unsafe { (&*kernels, &*engine, &*pool, (*mask).mask()) };
+    let bytes = u64::from(mask.size.width) * u64::from(mask.size.height) * 4;
+    if bytes != capacity as u64 {
+        fail::<()>(format!("room for {capacity} bytes; the box holds {bytes}"));
+        return -1;
+    }
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+    let cel = TileSet::from_words(x0, y0, columns, rows, words);
+    let Some(lifted) = kernels.lift.run(engine, pool.pages(), &cel, &mask, whole) else {
+        return -1;
+    };
+    if !lifted.anything {
+        return 0;
+    }
+    let readback = engine.staged(&lifted.rgba, bytes);
+    // SAFETY: `out` holds the box's bytes.
+    let into = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
+    engine.mapped_into(&readback, into).map_or(-1, |()| 1)
 }
 
 /// Runs the verb `spec` states over the cel of `columns` × `rows` tiles
@@ -133,7 +196,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_free(pixels: *mut CelPixels) {
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
-    pixels: *const CelPixels,
+    kernels: *const CelKernels,
     engine: *const Engine,
     pool: *const Pool,
     x0: i32,
@@ -145,7 +208,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
     spec: *const VerbSpec,
 ) -> *mut Passed {
     // SAFETY: see the function's contract.
-    let (pixels, engine, pool, spec) = unsafe { (&*pixels, &*engine, &*pool, &*spec) };
+    let (kernels, engine, pool, spec) = unsafe { (&*kernels, &*engine, &*pool, &*spec) };
     // SAFETY: see the function's contract.
     let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
     let cel = TileSet::from_words(x0, y0, columns, rows, words);
@@ -153,7 +216,8 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
     let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
     // SAFETY: see the function's contract.
     let verb = unsafe { verb_of(spec) };
-    pixels
+    kernels
+        .verbs
         .run(engine, pool.pages(), &cel, mask.as_ref(), &verb)
         .map_or(std::ptr::null_mut(), |passed| Box::into_raw(Box::new(passed)))
 }

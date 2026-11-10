@@ -2039,7 +2039,8 @@ final class GpuCelRecipe extends GpuCelIncoming {
   final int count;
 }
 
-/// The colour verbs' pass (rust/src/kernels/cel_pixel/mod.rs).
+/// The kernels over a cel's pixels (rust/src/kernels/cel_pixel): the
+/// colour verbs' pass and a selection's lift.
 final class GpuCelPixels {
   /// Compiled on [engine], the caller waiting.
   factory GpuCelPixels(GpuEngine engine) =>
@@ -2140,6 +2141,47 @@ final class GpuCelPixels {
     }
     return GpuCelPassed._(_engine, passed);
   });
+
+  /// What [mask] takes off the cel [run] would walk, put in [into] — its
+  /// box's pixels, straight RGBA8 row after row, as long as the box's bytes
+  /// — a pixel it covers at all whole where [whole], else its alpha scaled
+  /// by the coverage: whether it took any, [into] as it was where not.
+  /// Waits for the GPU.
+  bool lift(
+    GpuPool pool,
+    int x0,
+    int y0,
+    int columns,
+    int rows,
+    List<GpuTile?> tiles, {
+    required GpuMask mask,
+    required bool whole,
+    required Uint8List into,
+  }) => using((arena) {
+    final out = arena<Uint8>(_held(into.length));
+    final lifted = rust.celPixelsLift(
+      _pixels,
+      _engine._engine,
+      pool._pool,
+      x0,
+      y0,
+      columns,
+      rows,
+      _tileWords(arena, columns, rows, tiles),
+      mask._mask,
+      whole,
+      out,
+      into.length,
+    );
+    if (lifted < 0) {
+      throw StateError(_lastError());
+    }
+    if (lifted == 0) {
+      return false;
+    }
+    into.setAll(0, out.asTypedList(into.length));
+    return true;
+  }, malloc);
 
   void free() => rust.celPixelsFree(_pixels);
 }

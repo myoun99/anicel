@@ -1072,6 +1072,37 @@ external Pointer<CelPassed> celPixelsRun(
   Pointer<VerbSpec> spec,
 );
 
+@Native<
+  Int32 Function(
+    Pointer<CelPixels>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Pointer<Uint32>,
+    Pointer<MaskPlane>,
+    Bool,
+    Pointer<Uint8>,
+    Size,
+  )
+>(symbol: 'gpu_engine_cel_pixels_lift')
+external int celPixelsLift(
+  Pointer<CelPixels> pixels,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  Pointer<Uint32> tiles,
+  Pointer<MaskPlane> mask,
+  bool whole,
+  Pointer<Uint8> out,
+  int capacity,
+);
+
 @Native<Void Function(Pointer<CelPassed>)>(
   symbol: 'gpu_engine_cel_passed_free',
 )
