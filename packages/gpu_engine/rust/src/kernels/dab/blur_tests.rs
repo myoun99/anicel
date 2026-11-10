@@ -362,6 +362,26 @@ fn a_tile_past_the_pictures_pages_is_refused() {
 // it — 171 too, which no strip of 1024 holds with its six radii. A box of
 // one grey leaves it as it is, whichever way the passes go.
 #[test]
+fn what_a_blur_keeps_is_its_planes_and_goes_when_let_go() {
+    let engine = first_engine();
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
+    assert_eq!(blurs.bytes(), 0);
+    let around: Vec<(i32, i32)> =
+        (-5..6).flat_map(|row| (-5..6).map(move |column| (column, row))).collect();
+    let (stroke, picture) = paged(&around, &vec![0; around.len() * TILE_WORDS], 1);
+    let dab = (square([60, 60, 61, 61], WHITE, 1.0), MOST_STRIPS_RADIUS + 1);
+    blurs.blur(engine, &stroke, &[dab], None, &picture).unwrap();
+    let kept: u64 = [&blurs.between, &blurs.second]
+        .map(|plane| plane.as_ref().expect("a pass a dispatch keeps both").size())
+        .iter()
+        .sum();
+    assert_eq!(blurs.bytes(), kept);
+    blurs.let_go();
+    assert!(blurs.between.is_none() && blurs.second.is_none());
+    assert_eq!(blurs.bytes(), 0);
+}
+
+#[test]
 fn a_box_past_the_strips_widest_goes_a_pass_a_dispatch() {
     let around: Vec<(i32, i32)> =
         (-5..6).flat_map(|row| (-5..6).map(move |column| (column, row))).collect();

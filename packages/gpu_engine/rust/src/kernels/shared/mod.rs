@@ -147,7 +147,7 @@ fn build(
 ) -> wgpu::ComputePipeline {
     let (device, source, entry) = (engine.device.clone(), sources.join("\n"), entry.to_owned());
     let constants: Vec<_> = constants.iter().map(|&(name, value)| (name.to_owned(), value)).collect();
-    engine.on_its_thread(move || {
+    engine.compiling(move || {
         let constants: Vec<_> = constants.iter().map(|(name, value)| (name.as_str(), *value)).collect();
         compiled(&device, source, &entry, &constants, zeroed)
     })

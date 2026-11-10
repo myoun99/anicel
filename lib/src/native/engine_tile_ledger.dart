@@ -201,17 +201,12 @@ final GpuEngine _engine;
     required LandedBy by,
     bool compared = false,
   }) => held((hold) {
-    final under = hold.slotsOf(cel, [
-      for (final ask in asks) ?ask.under,
+    final under = hold.slotsOfThose(cel, [
+      for (final ask in asks) ask.under,
     ]);
-    var next = 0;
     final asked = <GpuTileAsk>[
-      for (final ask in asks)
-        (
-          column: ask.column,
-          row: ask.row,
-          under: ask.under == null ? null : under[next++],
-        ),
+      for (final (at, ask) in asks.indexed)
+        (column: ask.column, row: ask.row, under: under[at]),
     ];
     List<GpuLanded> landOf(List<GpuTileAsk> asked) =>
         by(pool, _cels.putIfAbsent(cel, pool.cel), asked);
@@ -511,6 +506,16 @@ final class TileHold {
       throw StateError('a hold is asked inside the call it was handed to');
     }
     return _ledger._slotsOf(this, cel, tiles);
+  }
+
+  /// [slotsOf] for a list with gaps: null where [tiles] has none.
+  List<GpuTile?> slotsOfThose(Object cel, List<BitmapTile?> tiles) {
+    final slots = slotsOf(cel, tiles.nonNulls.toList());
+    var next = 0;
+    return [
+      for (final tile in tiles)
+        if (tile == null) null else slots[next++],
+    ];
   }
 }
 

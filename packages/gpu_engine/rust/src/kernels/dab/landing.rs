@@ -49,13 +49,10 @@ fn made(
     asked: &[Asked],
     laid: &Laid,
 ) -> Option<Composited> {
-    let (x0, y0, columns, rows) = box_of(asked)?;
+    let under = under_of(asked)?;
+    let (x0, y0, columns, rows) = (under.x0, under.y0, under.columns, under.rows);
     let pages: Vec<wgpu::Buffer> = pool.iter().chain(over.pages).cloned().collect();
-    let mut under = vec![None; columns as usize * rows as usize];
-    for ask in asked {
-        under[(ask.row - y0) as usize * columns as usize + (ask.column - x0) as usize] = ask.under;
-    }
-    let sets = [TileSet { x0, y0, columns, rows, tiles: under }, over.set];
+    let sets = [under, over.set];
     let row = |set, opacity, mode, masked| Step::Row {
         set,
         keys: None,
@@ -86,13 +83,7 @@ fn made(
 }
 
 /// Lays `over` on the tiles `asked` and puts each result in a fresh slot of
-/// `cel`. Where `compared`, a result compares with the tile under it first —
-/// waiting for the GPU — and takes no slot where it is that tile
-/// (`Change::Same`) or has no ink left (`Change::Cleared`): a finished
-/// landing's question. Unasked, every result is `Change::Inked` and a slot —
-/// a stroke on its way, whose frame does not wait.
-///
-/// As many of `asked`, the first, as the pool has room for.
+/// `cel`: [`put`].
 pub(crate) fn land(
     engine: &Engine,
     (composite, write, pool, cel): (&Composite, &Write, &mut Pool, Cel),
@@ -102,9 +93,28 @@ pub(crate) fn land(
     compared: bool,
 ) -> Option<Vec<(Change, Option<TileAt>)>> {
     let out = made(engine, composite, pool.pages(), over, asked, laid)?.out;
+    put(engine, (write, pool, cel), &out, asked, compared)
+}
+
+/// Puts `out`'s tiles — one for each of `asked`, tile after tile in their
+/// order, as the executor's output is — each in a fresh slot of `cel`. Where
+/// `compared`, a tile compares with the one under it first — waiting for the
+/// GPU — and takes no slot where it is that tile (`Change::Same`) or has no
+/// ink left (`Change::Cleared`): a finished landing's question. Unasked,
+/// every tile is `Change::Inked` and a slot — a stroke on its way, whose
+/// frame does not wait.
+///
+/// As many of `asked`, the first, as the pool has room for.
+pub(crate) fn put(
+    engine: &Engine,
+    (write, pool, cel): (&Write, &mut Pool, Cel),
+    out: &wgpu::Buffer,
+    asked: &[Asked],
+    compared: bool,
+) -> Option<Vec<(Change, Option<TileAt>)>> {
     let changes = if compared {
         let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
-        write.changed(engine, pool.pages(), &out, &under)?
+        write.changed(engine, pool.pages(), out, &under)?
     } else {
         vec![Change::Inked; asked.len()]
     };
@@ -121,8 +131,18 @@ pub(crate) fn land(
         writes.push((index, at));
         landed.push((change, Some(at)));
     }
-    Write::put(engine, pool.pages(), &out, &writes)?;
+    Write::put(engine, pool.pages(), out, &writes)?;
     Some(landed)
+}
+
+/// The cel's tiles at the coordinates `asked`, in their box.
+pub(super) fn under_of(asked: &[Asked]) -> Option<TileSet> {
+    let (x0, y0, columns, rows) = box_of(asked)?;
+    let mut tiles = vec![None; columns as usize * rows as usize];
+    for ask in asked {
+        tiles[(ask.row - y0) as usize * columns as usize + (ask.column - x0) as usize] = ask.under;
+    }
+    Some(TileSet { x0, y0, columns, rows, tiles })
 }
 
 /// The top-left column and row of the box of tiles `asked`, and how many of

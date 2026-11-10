@@ -255,7 +255,7 @@ Future<void> main(List<String> handedAtLaunch) async {
   unawaited(
     WidgetsBinding.instance.waitUntilFirstFrameRasterized.then(
       (_) => openAppGpuEngine().then((_) {
-        EngineStrokes.warm();
+        unawaited(EngineStrokes.warm());
         warmAppStampLanding();
       }),
     ),

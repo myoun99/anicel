@@ -548,6 +548,93 @@ List<GpuLanded> _landed(
   ];
 });
 
+/// The blur brush's kernels (rust/src/kernels/dab/blur.rs): one set for
+/// every stroke.
+final class GpuBlurs {
+  /// Compiled on [engine], the caller waiting.
+  factory GpuBlurs(GpuEngine engine) =>
+      GpuBlurs._(_made(rust.blursNew(engine._engine)));
+
+  GpuBlurs._(this._blurs);
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile: seconds
+  /// of it on some devices (`Engine::compiling` has what was measured).
+  static Future<GpuBlurs> opening(GpuEngine engine) async {
+    final on = engine._engine.address;
+    final made = await Isolate.run(
+      () => _made(rust.blursNew(Pointer.fromAddress(on))).address,
+    );
+    return GpuBlurs._(Pointer.fromAddress(made));
+  }
+
+  static Pointer<rust.Blurs> _made(Pointer<rust.Blurs> blurs) {
+    if (blurs == nullptr) {
+      throw StateError(_lastError());
+    }
+    return blurs;
+  }
+
+  final Pointer<rust.Blurs> _blurs;
+
+  /// The bytes it keeps between its strokes.
+  int get bytes => rust.blursBytes(_blurs);
+
+  /// Lets go of what it keeps between its strokes.
+  void letGo() => rust.blursLetGo(_blurs);
+
+  /// Frees the kernels; before their engine is closed.
+  void free() => rust.blursFree(_blurs);
+}
+
+/// A blur brush's dab and the box radius it blurs at
+/// (`BrushBlurPicture.blurRadiusOf`).
+typedef GpuRub = ({GpuDab dab, int radius});
+
+/// [dabs] as the kernel reads them, held by [arena] — a table two share at
+/// one address.
+Pointer<rust.DabSpec> _specsOf(Arena arena, List<GpuDab> dabs) {
+  final tables = Map<Float64List, Pointer<Double>>.identity();
+  Pointer<Double> table(Float64List values) =>
+      tables.putIfAbsent(values, () => _doubles(arena, values));
+  final specs = arena<rust.DabSpec>(_held(dabs.length));
+  for (var at = 0; at < dabs.length; at++) {
+    final dab = dabs[at];
+    final round = dab.round;
+    specs[at]
+      ..centreX = dab.centreX
+      ..centreY = dab.centreY
+      ..opacity = dab.opacity
+      ..flow = dab.flow
+      ..contrast = dab.contrast
+      ..radius = dab.radius
+      ..cos = dab.cos
+      ..sin = dab.sin
+      ..roundness = dab.roundness
+      ..scale = round?.scale ?? 0
+      ..reach = round?.reach ?? 0
+      ..inner = round?.inner ?? 0
+      ..density = dab.density ?? 0
+      ..texture = dab.tip?._texture ?? nullptr
+      ..coverage = round == null ? nullptr : table(round.coverage)
+      ..pile = round == null ? nullptr : table(round.pile)
+      ..evening = dab.evening == null ? nullptr : table(dab.evening!)
+      ..entries = round?.coverage.length ?? 0
+      ..rowLength = round?.rowLength ?? 0
+      ..flags =
+          (dab.threshold ? 1 : 0) |
+          (dab.edgeHeld ? 2 : 0) |
+          (dab.erase ? 4 : 0) |
+          (dab.second ? 8 : 0) |
+          (dab.density != null ? 16 : 0)
+      ..left = dab.left
+      ..top = dab.top
+      ..right = dab.right
+      ..bottom = dab.bottom
+      ..colour = dab.colour;
+  }
+  return specs;
+}
+
 /// A stroke's tiles on the GPU and what it makes of a cel
 /// (rust/src/kernels/dab/stroke.rs).
 class GpuStroke {
@@ -580,49 +667,10 @@ class GpuStroke {
     int? secondMode,
     double secondDensity = 1,
   }) => using((arena) {
-    final tables = Map<Float64List, Pointer<Double>>.identity();
-    Pointer<Double> table(Float64List values) =>
-        tables.putIfAbsent(values, () => _doubles(arena, values));
-    final specs = arena<rust.DabSpec>(_held(dabs.length));
-    for (var at = 0; at < dabs.length; at++) {
-      final dab = dabs[at];
-      final round = dab.round;
-      specs[at]
-        ..centreX = dab.centreX
-        ..centreY = dab.centreY
-        ..opacity = dab.opacity
-        ..flow = dab.flow
-        ..contrast = dab.contrast
-        ..radius = dab.radius
-        ..cos = dab.cos
-        ..sin = dab.sin
-        ..roundness = dab.roundness
-        ..scale = round?.scale ?? 0
-        ..reach = round?.reach ?? 0
-        ..inner = round?.inner ?? 0
-        ..density = dab.density ?? 0
-        ..texture = dab.tip?._texture ?? nullptr
-        ..coverage = round == null ? nullptr : table(round.coverage)
-        ..pile = round == null ? nullptr : table(round.pile)
-        ..evening = dab.evening == null ? nullptr : table(dab.evening!)
-        ..entries = round?.coverage.length ?? 0
-        ..rowLength = round?.rowLength ?? 0
-        ..flags =
-            (dab.threshold ? 1 : 0) |
-            (dab.edgeHeld ? 2 : 0) |
-            (dab.erase ? 4 : 0) |
-            (dab.second ? 8 : 0) |
-            (dab.density != null ? 16 : 0)
-        ..left = dab.left
-        ..top = dab.top
-        ..right = dab.right
-        ..bottom = dab.bottom
-        ..colour = dab.colour;
-    }
     if (!rust.strokePile(
       _stroke,
       _engine._engine,
-      specs,
+      _specsOf(arena, dabs),
       dabs.length,
       paper?._texture ?? nullptr,
       paperScale,
@@ -633,6 +681,99 @@ class GpuStroke {
       throw StateError(_lastError());
     }
   });
+
+  /// Rubs [rubs], in their order, into the blur brush's picture on this
+  /// stroke, over [paper] as [pile]'s: the tiles their blur reads and the
+  /// stroke has not read yet are made first of the cel's, which [under]
+  /// tells of — in the order it is asked, null where the cel has none.
+  /// Submits the work.
+  void rub(
+    GpuBlurs blurs,
+    GpuComposite composite,
+    GpuPool pool,
+    List<GpuRub> rubs, {
+    required List<GpuTile?> Function(List<({int column, int row})> met) under,
+    GpuDabTexture? paper,
+    double paperScale = 1,
+    bool paperHeight = false,
+  }) => using((arena) {
+    final specs = _specsOf(arena, [for (final rub in rubs) rub.dab]);
+    final radii = arena<Uint32>(_held(rubs.length));
+    radii.asTypedList(rubs.length).setAll(0, [
+      for (final rub in rubs) rub.radius,
+    ]);
+    final met = rust.strokeReachBlur(
+      _stroke,
+      _engine._engine,
+      specs,
+      radii,
+      rubs.length,
+    );
+    if (met < 0) {
+      throw StateError(_lastError());
+    }
+    final coordinates = arena<Int32>(_held(2 * met));
+    rust.strokeMet(_stroke, coordinates);
+    final found = under([
+      for (var at = 0; at < met; at++)
+        (column: coordinates[2 * at], row: coordinates[2 * at + 1]),
+    ]);
+    final words = arena<Uint32>(_held(met));
+    for (var at = 0; at < met; at++) {
+      final tile = found[at];
+      words[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+    }
+    if (!rust.strokeRub(
+      _stroke,
+      _engine._engine,
+      blurs._blurs,
+      composite._composite,
+      pool._pool,
+      words,
+      met,
+      specs,
+      radii,
+      rubs.length,
+      paper?._texture ?? nullptr,
+      paperScale,
+      paperHeight,
+    )) {
+      throw StateError(_lastError());
+    }
+  });
+
+  /// The picture [rub] left, finished on the tiles [asks]: each pixel of
+  /// the cel moved toward it by [opacity] (65535 whole), under [mask] if
+  /// any, each result in a fresh slot of [cel] of [pool] — and compared as
+  /// [land]'s.
+  List<GpuLanded> landBlur(
+    GpuBlurs blurs,
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    int opacity = 65535,
+    GpuMask? mask,
+    bool compared = false,
+  }) => _landed(
+    asks,
+    (_, coordinates, under, places, changes) => rust.strokeLandBlur(
+      _stroke,
+      _engine._engine,
+      blurs._blurs,
+      composite._composite,
+      pool._pool,
+      cel,
+      coordinates,
+      under,
+      asks.length,
+      opacity,
+      mask?._mask ?? nullptr,
+      compared,
+      places,
+      changes,
+    ),
+  );
 
   /// Lays the stroke on the tiles [asks] at [opacity] (65535 whole) in
   /// [mode], under [mask] if any, each result in a fresh slot of [cel] of

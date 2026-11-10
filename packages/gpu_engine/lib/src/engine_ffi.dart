@@ -1274,6 +1274,112 @@ external int strokeLand(
   Pointer<Uint8> changes,
 );
 
+final class Blurs extends Opaque {}
+
+@Native<Pointer<Blurs> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_blurs_new',
+)
+external Pointer<Blurs> blursNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Blurs>)>(symbol: 'gpu_engine_blurs_free')
+external void blursFree(Pointer<Blurs> blurs);
+
+@Native<Uint64 Function(Pointer<Blurs>)>(symbol: 'gpu_engine_blurs_bytes')
+external int blursBytes(Pointer<Blurs> blurs);
+
+@Native<Void Function(Pointer<Blurs>)>(symbol: 'gpu_engine_blurs_let_go')
+external void blursLetGo(Pointer<Blurs> blurs);
+
+@Native<
+  IntPtr Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<DabSpec>,
+    Pointer<Uint32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_stroke_reach_blur')
+external int strokeReachBlur(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<DabSpec> dabs,
+  Pointer<Uint32> radii,
+  int count,
+);
+
+@Native<Void Function(Pointer<Stroke>, Pointer<Int32>)>(
+  symbol: 'gpu_engine_stroke_met',
+)
+external void strokeMet(Pointer<Stroke> stroke, Pointer<Int32> coordinates);
+
+@Native<
+  Bool Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Blurs>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<DabSpec>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<DabTexture>,
+    Double,
+    Bool,
+  )
+>(symbol: 'gpu_engine_stroke_rub')
+external bool strokeRub(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Blurs> blurs,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  Pointer<Uint32> under,
+  int met,
+  Pointer<DabSpec> dabs,
+  Pointer<Uint32> radii,
+  int count,
+  Pointer<DabTexture> paper,
+  double paperScale,
+  bool paperHeight,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Blurs>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Uint32,
+    Pointer<MaskPlane>,
+    Bool,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_stroke_land_blur')
+external int strokeLandBlur(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Blurs> blurs,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  Pointer<MaskPlane> mask,
+  bool compared,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
+);
+
 @Native<
   Pointer<StampPicture> Function(Pointer<Engine>, Pointer<Uint8>, Uint32, Uint32)
 >(symbol: 'gpu_engine_stamp_picture_new')

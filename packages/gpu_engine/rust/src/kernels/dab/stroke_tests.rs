@@ -1,6 +1,7 @@
 //! A stroke's tiles on a real GPU: what it makes of a cel, by hand from
 //! what a whole dab of a colour lays.
 
+use super::super::blur::{Blurs, Cover, window_of};
 use super::super::{Dab, Edge, Shape, Turn};
 use super::{Asked, Laid, Stroke, TILES_A_PAGE};
 use crate::device::Engine;
@@ -46,6 +47,7 @@ struct Fixture {
     pool: Pool,
     cel: Cel,
     stroke: Stroke,
+    blurs: Option<Blurs>,
 }
 
 fn fixture() -> Fixture {
@@ -58,6 +60,7 @@ fn fixture() -> Fixture {
         pool,
         cel,
         stroke: Stroke::new(engine).expect("a stroke"),
+        blurs: None,
     }
 }
 
@@ -306,4 +309,237 @@ fn a_stroke_asked_nothing_lands_nothing() {
     let mut f = fixture();
     f.pile(&[square([10, 10, 20, 20], RED)]);
     assert!(f.land(&[], &NORMAL_WHOLE, true).is_empty());
+}
+
+// --- a blur stroke ----------------------------------------------------------
+
+/// A blur dab, whole, over `region`, at a box radius of 2: three boxes of
+/// five, which read six pixels each way, by 1, 3, 6, 10, 15, 18, 19, 18, 15,
+/// 10, 6, 3, 1 of 125.
+fn rubbing(region: [i32; 4]) -> (Dab<'static>, u32) {
+    (square(region, RED), 2)
+}
+
+const WHOLE_COVER: Cover<'static> = Cover { opacity: WHOLE, mask: None };
+
+impl Fixture {
+    /// Rubs `dabs` over the cel, `under` its tile at a coordinate: the
+    /// coordinates the rub met.
+    fn rub(
+        &mut self,
+        dabs: &[(Dab, u32)],
+        under: impl Fn((i32, i32)) -> Option<TileAt>,
+    ) -> Vec<(i32, i32)> {
+        let count = self.stroke.reach_blur(self.engine, dabs).expect("a reach");
+        let met: Vec<(i32, i32)> =
+            self.stroke.met().iter().map(|tile| (tile.column, tile.row)).collect();
+        assert_eq!(met.len(), count);
+        let cel: Vec<Option<TileAt>> = met.iter().map(|&coordinate| under(coordinate)).collect();
+        let engine = self.engine;
+        let blurs = self.blurs.get_or_insert_with(|| Blurs::new(engine).expect("blurs"));
+        let tools = (blurs, &self.composite, self.pool.pages());
+        self.stroke.rub(self.engine, tools, &cel, dabs, None).expect("a rub");
+        met
+    }
+
+    fn land_blur(
+        &mut self,
+        asked: &[Asked],
+        cover: Cover,
+        compared: bool,
+    ) -> Vec<(Change, Option<TileAt>)> {
+        let blurs = self.blurs.as_ref().expect("a rub first");
+        let kit = (blurs, &self.composite, &mut self.pool, self.cel);
+        self.stroke.land_blur(self.engine, kit, asked, cover, compared).expect("a landing")
+    }
+
+    /// The tile the blur makes at (`column`, `row`), `under` the cel's.
+    fn finished(&mut self, column: i32, row: i32, under: Option<TileAt>) -> Vec<u8> {
+        let landed = self.land_blur(&[asked(column, row, under)], WHOLE_COVER, false);
+        self.read(landed[0].1.expect("a slot"))
+    }
+}
+
+/// `tiles`, sorted: a rub meets them in the order its windows walk.
+fn sorted(mut tiles: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
+    tiles.sort_unstable();
+    tiles
+}
+
+const INK: [u8; 4] = [255, 255, 255, 255];
+
+#[test]
+fn a_blur_reads_three_radii_past_its_dab() {
+    assert_eq!(window_of([10, 20, 30, 40], 3), Some([1, 11, 39, 49]));
+    assert_eq!(window_of([10, 20, 30, 40], 0), None);
+}
+
+#[test]
+fn a_rub_meets_every_tile_its_window_reads() {
+    let mut f = fixture();
+    // Its window is on (0, 0) alone.
+    assert_eq!(f.rub(&[rubbing([60, 60, 68, 68])], |_| None), vec![(0, 0)]);
+    // Six pixels past its right edge is past the tile's, and six above
+    // its top edge past the row's.
+    let met = f.rub(&[rubbing([124, 2, 128, 8])], |_| None);
+    assert_eq!(sorted(met), vec![(0, -1), (1, -1), (1, 0)]);
+}
+
+#[test]
+fn a_tile_met_is_not_met_again() {
+    let mut f = fixture();
+    let dab = rubbing([60, 60, 68, 68]);
+    assert_eq!(f.rub(&[dab], |_| None), vec![(0, 0)]);
+    assert!(f.rub(&[dab], |_| None).is_empty());
+}
+
+#[test]
+fn a_dab_that_blurs_nothing_meets_nothing() {
+    let mut f = fixture();
+    let second = (Dab { second: true, ..square([60, 60, 68, 68], RED) }, 2);
+    let nowhere = rubbing([60, 60, 60, 68]);
+    assert!(f.rub(&[second, nowhere], |_| None).is_empty());
+}
+
+#[test]
+fn a_blur_of_no_radius_is_refused() {
+    let mut f = fixture();
+    let dab = (square([60, 60, 68, 68], RED), 0);
+    assert!(f.stroke.reach_blur(f.engine, &[dab]).is_none());
+}
+
+#[test]
+fn a_rub_reads_the_cel_it_met_across_a_tile_edge() {
+    let mut f = fixture();
+    let ink = f.stored(INK);
+    f.rub(&[rubbing([124, 10, 128, 20])], |tile| (tile == (1, 0)).then_some(ink));
+    let tile = f.finished(0, 0, None);
+    // (127, 15) reads the ink of its six to the right: 18 + 15 + 10 + 6 +
+    // 3 + 1 of 125 is 108.1 of 255; (124, 15) its last three: 10 of 125,
+    // 20.4; and (123, 15) was not rubbed.
+    assert!(pixel(&tile, 127, 15)[3].abs_diff(108) <= 1, "{:?}", pixel(&tile, 127, 15));
+    assert!(pixel(&tile, 124, 15)[3].abs_diff(20) <= 1, "{:?}", pixel(&tile, 124, 15));
+    assert_eq!(pixel(&tile, 123, 15), [0; 4]);
+}
+
+#[test]
+fn rubs_apart_are_the_rubs_together() {
+    let dabs = [rubbing([124, 10, 128, 20]), rubbing([120, 10, 128, 20])];
+    let tile_of = |calls: &[&[(Dab, u32)]]| {
+        let mut f = fixture();
+        let ink = f.stored(INK);
+        for dabs in calls {
+            f.rub(dabs, |tile| (tile == (1, 0)).then_some(ink));
+        }
+        f.finished(0, 0, None)
+    };
+    let together = tile_of(&[&dabs]);
+    assert_eq!(tile_of(&[&dabs[..1], &dabs[1..]]), together);
+    // The second reads what the first moved: alone it leaves another.
+    assert_ne!(tile_of(&[&dabs[1..]]), together);
+}
+
+#[test]
+fn a_tile_the_blur_moved_nothing_on_takes_no_slot() {
+    let mut f = fixture();
+    let plain = f.stored(CEL_PIXEL);
+    f.rub(&[rubbing([60, 60, 68, 68])], |_| Some(plain));
+    let landed = f.land_blur(&[asked(0, 0, Some(plain))], WHOLE_COVER, true);
+    assert_eq!(landed, vec![(Change::Same, None)]);
+}
+
+#[test]
+fn a_tile_the_blur_moved_takes_a_slot_of_its_own() {
+    let mut f = fixture();
+    let ink = f.stored(INK);
+    f.rub(&[rubbing([124, 10, 128, 20])], |tile| (tile == (1, 0)).then_some(ink));
+    let landed = f.land_blur(&[asked(0, 0, None)], WHOLE_COVER, true);
+    assert_eq!(landed[0].0, Change::Inked);
+    assert!(landed[0].1.is_some());
+}
+
+#[test]
+fn a_tile_uncompared_takes_a_slot_whatever_it_shows() {
+    let mut f = fixture();
+    let plain = f.stored(CEL_PIXEL);
+    f.rub(&[rubbing([60, 60, 68, 68])], |_| Some(plain));
+    let landed = f.land_blur(&[asked(0, 0, Some(plain))], WHOLE_COVER, false);
+    assert_eq!(landed[0].0, Change::Inked);
+    assert_eq!(pixel(&f.read(landed[0].1.expect("a slot")), 64, 64), CEL_PIXEL);
+}
+
+#[test]
+fn the_cover_is_how_far_a_pixel_moves() {
+    let mut f = fixture();
+    let ink = f.stored(INK);
+    f.rub(&[rubbing([124, 10, 128, 20])], |tile| (tile == (1, 0)).then_some(ink));
+    let half = Cover { opacity: WHOLE / 2, mask: None };
+    let landed = f.land_blur(&[asked(0, 0, None)], half, false);
+    let alpha = pixel(&f.read(landed[0].1.expect("a slot")), 127, 15)[3];
+    assert!(alpha.abs_diff(54) <= 1, "{alpha}");
+}
+
+#[test]
+fn a_landing_asked_nothing_lands_nothing() {
+    let mut f = fixture();
+    f.rub(&[rubbing([60, 60, 68, 68])], |_| None);
+    assert!(f.land_blur(&[], WHOLE_COVER, true).is_empty());
+}
+
+#[test]
+fn a_tile_the_blur_never_read_is_refused() {
+    let mut f = fixture();
+    f.rub(&[rubbing([60, 60, 68, 68])], |_| None);
+    let kit = (f.blurs.as_ref().unwrap(), &f.composite, &mut f.pool, f.cel);
+    assert!(f.stroke.land_blur(f.engine, kit, &[asked(9, 9, None)], WHOLE_COVER, true).is_none());
+}
+
+#[test]
+fn a_rub_told_of_too_few_tiles_is_refused() {
+    let mut f = fixture();
+    let dab = rubbing([60, 60, 68, 68]);
+    assert_eq!(f.stroke.reach_blur(f.engine, &[dab]), Some(1));
+    let mut blurs = Blurs::new(f.engine).expect("blurs");
+    let tools = (&mut blurs, &f.composite, f.pool.pages());
+    assert!(f.stroke.rub(f.engine, tools, &[], &[dab], None).is_none());
+}
+
+#[test]
+fn what_the_blurs_keep_between_strokes_can_be_let_go() {
+    let mut f = fixture();
+    let ink = f.stored(INK);
+    let dab = rubbing([124, 10, 128, 20]);
+    f.rub(&[dab], |tile| (tile == (1, 0)).then_some(ink));
+    let once = f.finished(0, 0, None);
+    assert!(f.blurs.as_ref().unwrap().bytes() > 0);
+    f.blurs.as_mut().unwrap().let_go();
+    assert_eq!(f.blurs.as_ref().unwrap().bytes(), 0);
+    f.rub(&[dab], |_| None);
+    assert_ne!(f.finished(0, 0, None), once, "it rubs on");
+}
+
+#[test]
+fn a_cleared_stroke_reads_the_cel_anew() {
+    let mut f = fixture();
+    let (one, other) = (f.stored(CEL_PIXEL), f.stored(RED));
+    let dab = rubbing([60, 60, 68, 68]);
+    f.rub(&[dab], |_| Some(one));
+    let before = f.stroke.bytes();
+    f.stroke.clear(f.engine);
+    assert_eq!(f.stroke.bytes(), before, "its pages stay");
+    assert_eq!(f.rub(&[dab], |_| Some(other)), vec![(0, 0)]);
+    assert_eq!(pixel(&f.finished(0, 0, Some(other)), 64, 64), RED);
+}
+
+#[test]
+fn a_stroke_that_rubbed_leaves_a_painting_one_clean_planes() {
+    let mut f = fixture();
+    let ink = f.stored(INK);
+    f.rub(&[rubbing([60, 60, 68, 68])], |_| Some(ink));
+    f.stroke.clear(f.engine);
+    f.pile(&[square([10, 10, 20, 20], RED)]);
+    let landed = f.land(&[asked(0, 0, None)], &NORMAL_WHOLE, false);
+    let tile = f.read(landed[0].1.expect("a slot"));
+    assert_eq!(pixel(&tile, 15, 15), RED);
+    assert_eq!(pixel(&tile, 64, 64), [0; 4]);
 }

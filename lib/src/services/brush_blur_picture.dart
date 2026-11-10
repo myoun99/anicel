@@ -51,6 +51,10 @@ import 'brush_dab_kernel.dart';
 /// finished picture may move from the cel ([resultTile]'s mask), exactly as
 /// they cap a paint stroke's accumulated buffer.
 ///
+/// ON THE ENGINE'S GRID THE STROKE IS THE ENGINE'S (flip lane ⓒ — dab/blur.rs,
+/// on the stroke's own pages) and only [base] and [coverageOf] are read
+/// here.
+///
 /// With the engine loaded a dab and a finished tile are the C's
 /// (`qa_blur_dab`, `qa_blur_result_tile`, ABI 58) — a blur dab costs far
 /// more than a paint dab, and the brush lays at the finest step. The passes
@@ -117,17 +121,25 @@ class BrushBlurPicture {
   /// under it rather than pulling colour in from beyond its edge.
   static int blurRadiusOf(BrushDab dab) => math.max(1, (dab.size / 6).round());
 
+  /// [dab] as the dab kernel lays it onto nothing — what its blur moves
+  /// the picture by — or null where it lays nothing.
+  static BrushDabPlan? coverageOf(
+    BrushDab dab, {
+    required PasteboardWall wall,
+    required int tileSize,
+  }) => BrushDabPlan.of(
+    // The colour is not this dab's to lay; opaque, so what it measures is
+    // its coverage alone.
+    dab.copyWith(color: 0xFFFFFFFF, erase: false),
+    wall: wall,
+    tileSize: tileSize,
+    erase: false,
+  );
+
   /// Blurs the picture under [dab] by what it would have laid as paint.
   /// Returns the rectangle it rewrote, or null where it lays nothing.
   DirtyRegion? blurDab(BrushDab dab) {
-    final plan = BrushDabPlan.of(
-      // The colour is not this dab's to lay; opaque, so what it measures is
-      // its coverage alone.
-      dab.copyWith(color: 0xFFFFFFFF, erase: false),
-      wall: wall,
-      tileSize: _scratchTileSize,
-      erase: false,
-    );
+    final plan = coverageOf(dab, wall: wall, tileSize: _scratchTileSize);
     if (plan == null) {
       return null;
     }

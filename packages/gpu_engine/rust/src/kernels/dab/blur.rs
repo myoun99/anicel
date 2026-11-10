@@ -158,6 +158,30 @@ pub(crate) struct Blurs {
     second: Option<wgpu::Buffer>,
 }
 
+/// The pixels the blur of `region` at box radius `radius` reads, [left, top,
+/// right, bottom) — three radii past it each side — or nothing, for no
+/// radius: every tile they are on is the caller's to have ([`Blurs::blur`]).
+pub(crate) fn window_of(region: [i32; 4], radius: u32) -> Option<[i32; 4]> {
+    within(region, radius).map(|within| read_by(&within.words, radius))
+}
+
+/// Whether `dab` blurs anything: a second tip's dab lays nothing on a stroke
+/// with no second plane (qa_dab_blend_tile), so it blurs nothing; nor does a
+/// dab of no region.
+pub(crate) fn blurs_anything(dab: &Dab) -> bool {
+    let [left, top, right, bottom] = dab.region;
+    !dab.second && left < right && top < bottom
+}
+
+/// What the passes `words` at box radius `radius` read: the rows' first pass
+/// reads one radius past what it puts — that is the window —, and its lines
+/// are the window's rows.
+fn read_by(words: &[u32], radius: u32) -> [i32; 4] {
+    let r = radius as i32;
+    let pass = |index, field| word(words, index, field);
+    [pass(0, 2) - r, pass(0, 4), pass(0, 3) + r, pass(0, 5)]
+}
+
 /// The `index`-th pass's word `word` among `passes` (box.wgsl's `BoxPass`:
 /// down, radius, first, end, line_first, line_end).
 fn word(passes: &[u32], index: usize, word: usize) -> i32 {
@@ -198,12 +222,8 @@ impl Window {
         let Some(within) = within(dab.region, radius) else {
             return fail("a blur of no radius changes no pixel");
         };
-        let r = radius as i32;
         let pass = |index, field| word(&within.words, index, field);
-        // The rows' first pass reads one radius past what it puts: that is
-        // the window; its lines are the window's rows.
-        let (left, right) = (pass(0, 2) - r, pass(0, 3) + r);
-        let (top, bottom) = (pass(0, 4), pass(0, 5));
+        let [left, top, right, bottom] = read_by(&within.words, radius);
         let lines = u64::from((bottom - top) as u32);
         let ways = match (route, within.rows, within.columns) {
             (Route::Strips, Some(rows), Some(columns)) if radius <= MOST_STRIPS_RADIUS => {
@@ -401,6 +421,22 @@ impl Blurs {
         self.blur_by(engine, tiles, dabs, paper, picture, (Route::Strips, pages_per_pass))
     }
 
+    /// The bytes it keeps between its strokes (`between`, `second`).
+    pub(crate) fn bytes(&self) -> u64 {
+        [&self.between, &self.second]
+            .into_iter()
+            .flatten()
+            .map(wgpu::Buffer::size)
+            .sum()
+    }
+
+    /// Lets go of what it keeps between its strokes: the OS says memory is
+    /// tight.
+    pub(crate) fn let_go(&mut self) {
+        self.between = None;
+        self.second = None;
+    }
+
     /// `blur`, the passes going by `route` and a dab binding no more than
     /// `pages_per_pass` pages — a test's fewer than the device's, to see
     /// where a smaller device refuses.
@@ -415,15 +451,9 @@ impl Blurs {
     ) -> Option<()> {
         // The colour is not the dab's to lay: white and opaque, it measures
         // its coverage alone; and it lays, never erases (BrushBlurPicture).
-        // A second tip's dab lays nothing on a stroke with no second plane
-        // (qa_dab_blend_tile), so it blurs nothing; nor does a dab of no
-        // region.
         let dabs: Vec<(Dab, u32)> = dabs
             .iter()
-            .filter(|(dab, _)| {
-                let [left, top, right, bottom] = dab.region;
-                !dab.second && left < right && top < bottom
-            })
+            .filter(|(dab, _)| blurs_anything(dab))
             .map(|&(dab, radius)| (Dab { colour: [255; 4], erase: false, ..dab }, radius))
             .collect();
         if dabs.is_empty() {

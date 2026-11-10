@@ -27,6 +27,12 @@ pub struct Engine {
     pub(crate) queue: Queue,
     /// What [`Engine::wait`] polls on.
     thread: EngineThread,
+    /// Where a kernel's compile enters the driver: a thread of its own, so
+    /// that seconds of one made ahead of its first use hold up no frame's
+    /// submit behind them on `thread` (🔬the blur brush's ten pipelines,
+    /// 10.2 s on the main PC's RTX 4080 with eighteen test files running,
+    /// 2026-11-10; 1.2 to 2.5 s each by strips).
+    compiling: EngineThread,
 }
 
 /// The queue the kernels submit to, whose submits enter the driver on the
@@ -119,12 +125,14 @@ impl Engine {
         match pollster::block_on(request) {
             Ok((device, queue)) => {
                 let thread = EngineThread::start()?;
+                let compiling = EngineThread::start()?;
                 Some(Self {
                     queue: Queue {
                         queue,
                         thread: thread.clone(),
                     },
                     thread,
+                    compiling,
                     instance,
                     adapter,
                     device,
@@ -158,13 +166,13 @@ impl Engine {
         polled.map_or_else(fail, Some)
     }
 
-    /// What `work` answers, run on the engine's thread ([`EngineThread`])
-    /// while the caller waits.
-    pub(crate) fn on_its_thread<T: Send + 'static>(
+    /// What `work` answers, run on the engine's thread for compiling
+    /// ([`EngineThread`]) while the caller waits.
+    pub(crate) fn compiling<T: Send + 'static>(
         &self,
         work: impl FnOnce() -> T + Send + 'static,
     ) -> T {
-        self.thread.run(work).expect("the engine's thread")
+        self.compiling.run(work).expect("the engine's thread")
     }
 
     /// The texture's bytes, rows top to bottom with no padding — for
@@ -513,6 +521,27 @@ mod tests {
         engine.queue.submit([commands]);
         let submitted_on = answered.try_recv().expect("the submit was refused inside it");
         assert_ne!(submitted_on, std::thread::current().id());
+    }
+
+    #[test]
+    fn a_compile_under_way_holds_up_no_submit() {
+        let engine = Engine::open_first().expect("an adapter");
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (submitted, answered) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                engine.compiling(move || {
+                    let _ = released.recv();
+                })
+            });
+            scope.spawn(|| {
+                engine.queue.submit([]);
+                let _ = submitted.send(());
+            });
+            let got_through = answered.recv_timeout(std::time::Duration::from_secs(20));
+            let _ = release.send(());
+            assert!(got_through.is_ok(), "the submit waited behind the compile");
+        });
     }
 
     #[test]

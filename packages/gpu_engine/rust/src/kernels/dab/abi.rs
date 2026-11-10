@@ -3,6 +3,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use super::blur::{Blurs, Cover};
 use super::landing::{Asked, Laid};
 use super::stamp::{Source, StampLanding};
 use super::stroke::Stroke;
@@ -117,6 +118,55 @@ unsafe fn dab_of<'a>(spec: &'a DabSpec, profile: Option<&'a RoundProfile<'a>>) -
     }
 }
 
+/// What `use_them` makes of `specs` as the kernel reads them.
+///
+/// # Safety
+/// A spec's tables, texture and evening are as `DabSpec` says.
+unsafe fn with_dabs<T>(specs: &[DabSpec], use_them: impl FnOnce(&[Dab]) -> T) -> T {
+    // SAFETY: see the function's contract.
+    let profiles: Vec<Option<RoundProfile>> =
+        specs.iter().map(|spec| unsafe { profile_of(spec) }).collect();
+    let dabs: Vec<Dab> = specs
+        .iter()
+        .zip(&profiles)
+        // SAFETY: see the function's contract.
+        .map(|(spec, profile)| unsafe { dab_of(spec, profile.as_ref()) })
+        .collect();
+    use_them(&dabs)
+}
+
+/// What `use_them` makes of `count` blur dabs, each with its box radius.
+///
+/// # Safety
+/// `dabs` holds `count`, each as `DabSpec` says, and `radii` `count`.
+unsafe fn with_rubs<T>(
+    dabs: *const DabSpec,
+    radii: *const u32,
+    count: usize,
+    use_them: impl FnOnce(&[(Dab, u32)]) -> T,
+) -> T {
+    // SAFETY: see the function's contract.
+    let (specs, radii) =
+        unsafe { (std::slice::from_raw_parts(dabs, count), std::slice::from_raw_parts(radii, count)) };
+    // SAFETY: see the function's contract.
+    unsafe {
+        with_dabs(specs, |dabs| {
+            let rubs: Vec<(Dab, u32)> = dabs.iter().copied().zip(radii.iter().copied()).collect();
+            use_them(&rubs)
+        })
+    }
+}
+
+/// The paper named: `paper`, null for none, at `scale` px a texel, 高さ
+/// where `height`.
+///
+/// # Safety
+/// `paper` is live or null, and outlives what is made of it.
+unsafe fn paper_of<'a>(paper: *const Texture, scale: f64, height: bool) -> Option<Paper<'a>> {
+    // SAFETY: see the function's contract.
+    (!paper.is_null()).then(|| Paper { texture: unsafe { &*paper }, scale, height })
+}
+
 /// A bitmap a dab reads — `side` texels a side, row after row, on 0..=1 —
 /// kept for the piles that read it. Null where the texels don't make one;
 /// see the last error.
@@ -207,23 +257,176 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
     // SAFETY: see the function's contract.
     let (stroke, engine, specs) =
         unsafe { (&mut *stroke, &*engine, std::slice::from_raw_parts(dabs, count)) };
-    // SAFETY: a spec's tables are as `DabSpec` says.
-    let profiles: Vec<Option<RoundProfile>> =
-        specs.iter().map(|spec| unsafe { profile_of(spec) }).collect();
-    let dabs: Vec<Dab> = specs
+    // SAFETY: see the function's contract.
+    let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
+    let second = (second_mode != -1).then_some((second_mode as u32, second_density));
+    // SAFETY: a spec is as `DabSpec` says.
+    unsafe { with_dabs(specs, |dabs| stroke.pile(engine, dabs, paper.as_ref(), second).is_some()) }
+}
+
+/// The blur brush's kernels, compiled — on any thread. Null on failure; see
+/// the last error.
+///
+/// # Safety
+/// `engine` is live; the kernels are freed before it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blurs {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| Box::into_raw(Box::new(blurs)))
+}
+
+/// # Safety
+/// `blurs` came from `gpu_engine_blurs_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_blurs_free(blurs: *mut Blurs) {
+    if !blurs.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(blurs) });
+    }
+}
+
+/// The bytes `blurs` keeps between its strokes.
+///
+/// # Safety
+/// `blurs` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_blurs_bytes(blurs: *const Blurs) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*blurs }.bytes()
+}
+
+/// Lets go of what `blurs` keeps between its strokes.
+///
+/// # Safety
+/// `blurs` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_blurs_let_go(blurs: *mut Blurs) {
+    // SAFETY: see the function's contract.
+    unsafe { &mut *blurs }.let_go();
+}
+
+/// Gives a slot of `stroke`'s picture to every tile the blur of `dabs`, each
+/// at its box radius of `radii`, `count` of them, reads and it has none of:
+/// `Stroke::reach_blur`. How many; -1 on failure, see the last error.
+///
+/// # Safety
+/// `stroke` and `engine` are live, the stroke made on it; `dabs` holds
+/// `count`, each as `DabSpec` says, and `radii` `count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stroke_reach_blur(
+    stroke: *mut Stroke,
+    engine: *const Engine,
+    dabs: *const DabSpec,
+    radii: *const u32,
+    count: usize,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (stroke, engine) = unsafe { (&mut *stroke, &*engine) };
+    // SAFETY: see the function's contract.
+    let met = unsafe { with_rubs(dabs, radii, count, |rubs| stroke.reach_blur(engine, rubs)) };
+    met.map_or(-1, |met| met as isize)
+}
+
+/// Writes the column and the row of each tile the last
+/// `gpu_engine_stroke_reach_blur` said it gave a slot.
+///
+/// # Safety
+/// `stroke` is live, and `coordinates` holds two for each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stroke_met(stroke: *const Stroke, coordinates: *mut i32) {
+    // SAFETY: see the function's contract.
+    let met = unsafe { &*stroke }.met();
+    // SAFETY: see the function's contract.
+    let out = unsafe { std::slice::from_raw_parts_mut(coordinates, 2 * met.len()) };
+    for (tile, at) in met.iter().zip(out.chunks_exact_mut(2)) {
+        at.copy_from_slice(&[tile.column, tile.row]);
+    }
+}
+
+/// Makes the picture of the `met` tiles the last reach gave a slot — `under`
+/// the cel's tile at each as a tile set names one — and blurs it under
+/// `dabs`, over the paper — `paper`, null for none, at `paper_scale` px a
+/// texel, 高さ where `paper_height`: `Stroke::rub`. False on failure; see
+/// the last error.
+///
+/// # Safety
+/// Every pointer but `paper` is live, on `engine`; `paper` is live or null;
+/// `under` holds `met`, `dabs` `count`, each as `DabSpec` says, and `radii`
+/// `count`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stroke_rub(
+    stroke: *mut Stroke,
+    engine: *const Engine,
+    blurs: *mut Blurs,
+    composite: *const Composite,
+    pool: *const Pool,
+    under: *const u32,
+    met: usize,
+    dabs: *const DabSpec,
+    radii: *const u32,
+    count: usize,
+    paper: *const Texture,
+    paper_scale: f64,
+    paper_height: bool,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (stroke, engine, blurs, composite, pool) =
+        unsafe { (&mut *stroke, &*engine, &mut *blurs, &*composite, &*pool) };
+    // SAFETY: see the function's contract.
+    let under: Vec<Option<TileAt>> = unsafe { std::slice::from_raw_parts(under, met) }
         .iter()
-        .zip(&profiles)
-        // SAFETY: a spec's texture and evening are as `DabSpec` says.
-        .map(|(spec, profile)| unsafe { dab_of(spec, profile.as_ref()) })
+        .map(|&word| TileAt::of_word(word))
         .collect();
     // SAFETY: see the function's contract.
-    let paper = (!paper.is_null()).then(|| Paper {
-        texture: unsafe { &*paper },
-        scale: paper_scale,
-        height: paper_height,
-    });
-    let second = (second_mode != -1).then_some((second_mode as u32, second_density));
-    stroke.pile(engine, &dabs, paper.as_ref(), second).is_some()
+    let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
+    let tools = (blurs, composite, pool.pages());
+    // SAFETY: see the function's contract.
+    unsafe {
+        with_rubs(dabs, radii, count, |rubs| {
+            stroke.rub(engine, tools, &under, rubs, paper.as_ref()).is_some()
+        })
+    }
+}
+
+/// Finishes `stroke`'s picture on the `count` tiles asked — `asks` their
+/// column and row, `under` the cel's tile at each as a tile set names one —
+/// by `opacity` under `mask` if not null, each result in a fresh slot of
+/// `cel`: `Stroke::land_blur`. Reports as `gpu_engine_stroke_land` does.
+///
+/// # Safety
+/// As `gpu_engine_stroke_land`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
+    stroke: *const Stroke,
+    engine: *const Engine,
+    blurs: *const Blurs,
+    composite: *const Composite,
+    pool: *mut Pool,
+    cel: u32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mask: *const MaskPlane,
+    compared: bool,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (stroke, engine, blurs, composite, pool) =
+        unsafe { (&*stroke, &*engine, &*blurs, &*composite, &mut *pool) };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count) };
+    // SAFETY: see the function's contract.
+    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+    let cover = Cover { opacity, mask: mask.as_ref() };
+    let kit = (blurs, composite, pool, Cel(cel));
+    let landed = stroke.land_blur(engine, kit, &asked, cover, compared);
+    // SAFETY: see the function's contract.
+    unsafe { reported(landed, places, changes) }
 }
 
 /// Lays `stroke` on the `count` tiles asked — `asks` their column and row,

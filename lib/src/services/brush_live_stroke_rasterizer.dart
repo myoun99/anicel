@@ -261,9 +261,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   final Map<int, QaNativeTileBuffer> _nativeSeconds =
       <int, QaNativeTileBuffer>{};
 
-  /// The stroke on the engine: any on its grid but a blur's, which has no
-  /// stroke tiles to pile. Null till its first dab, and where this grid is
-  /// not the engine's, which keeps to the routes below.
+  /// The stroke on the engine: any on its grid, a blur's rubbing its picture
+  /// where another piles its dabs. Null till its first dab, and where this
+  /// grid is not the engine's, which keeps to the routes below.
   ///
   /// ⏳Both routes stand till ⓔ deletes the C one with the grids only tests
   /// still ask for.
@@ -273,6 +273,10 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
   /// The dabs a [blendFrom] call lays, piled together when it ends.
   final List<GpuDab> _engineDabs = [];
+
+  /// Under a blur ([_blur]), the call's dabs in their stead, rubbed
+  /// together when it ends.
+  final List<GpuRub> _engineRubs = [];
 
   /// The call's paper and second tip, which every dab of a stroke shares.
   BrushDabPlan? _engineDabsOf;
@@ -452,6 +456,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       _engineStroke = null;
     }
     _engineDabs.clear();
+    _engineRubs.clear();
     _engineDabsOf = null;
     _viewsAt = null;
     final native = _native;
@@ -578,7 +583,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     required BrushBlendMode mode,
     required bool erase,
   }) {
-    if (_engineStroke != null && _blur == null) {
+    if (_engineStroke != null) {
       return _landedOnEngine(coords, base, mode, erase);
     }
     final results = List<PreBlendedOverlayTile?>.filled(coords.length, null);
@@ -802,17 +807,28 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           for (final coord in coords)
             (column: coord.x, row: coord.y, under: base.tileAt(coord)),
         ],
-        by: (pool, cel, asked) => stroke.land(
-          appGpuComposite,
-          pool,
-          cel,
-          asked,
-          // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
-          opacity: (strokeOpacity * 65535).round(),
-          mode: mode,
-          mask: mask,
-          compared: compared,
-        ),
+        by: (pool, cel, asked) => _blur == null
+            ? stroke.land(
+                appGpuComposite,
+                pool,
+                cel,
+                asked,
+                // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
+                opacity: (strokeOpacity * 65535).round(),
+                mode: mode,
+                mask: mask,
+                compared: compared,
+              )
+            : stroke.landBlur(
+                EngineStrokes.blurs,
+                appGpuComposite,
+                pool,
+                cel,
+                asked,
+                opacity: (strokeOpacity * 65535).round(),
+                mask: mask,
+                compared: compared,
+              ),
         compared: compared,
       );
     } finally {
@@ -898,24 +914,58 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// The call's dabs on the engine, together: before anything reads the
   /// tiles they touched.
   void _pileOnEngine() {
-    if (_engineDabs.isEmpty) {
+    if (_engineDabs.isEmpty && _engineRubs.isEmpty) {
       return;
     }
     final first = _engineDabsOf!;
-    final paper = first.textureMask;
-    final dual = first.dual;
-    (_engineStroke ??= EngineStrokes.take()).pile(
-      _engineDabs,
-      paper: paper == null ? null : _textureOf(paper),
-      paperScale: first.textureScale,
-      paperHeight: first.textureMode == BrushTextureMode.height,
-      secondMode: dual == null
-          ? null
-          : separableBlendModeNativeId(dual.compositeMode),
-      secondDensity: dual?.density ?? 1,
-    );
+    final mask = first.textureMask;
+    final paper = mask == null ? null : _textureOf(mask);
+    final stroke = _engineStroke ??= EngineStrokes.take();
+    final blur = _blur;
+    if (blur != null) {
+      _rubOnEngine(stroke, blur.base, first, paper);
+    } else {
+      final dual = first.dual;
+      stroke.pile(
+        _engineDabs,
+        paper: paper,
+        paperScale: first.textureScale,
+        paperHeight: first.textureMode == BrushTextureMode.height,
+        secondMode: dual == null
+            ? null
+            : separableBlendModeNativeId(dual.compositeMode),
+        secondDensity: dual?.density ?? 1,
+      );
+    }
     _engineDabs.clear();
+    _engineRubs.clear();
     _engineDabsOf = null;
+  }
+
+  /// The call's blur dabs — [first] the first of them — rubbed into
+  /// [stroke]'s picture, made of [base]'s tiles where they first read it.
+  void _rubOnEngine(
+    GpuStroke stroke,
+    BitmapSurface base,
+    BrushDabPlan first,
+    GpuDabTexture? paper,
+  ) {
+    final ledger = EngineTileLedger.instance;
+    ledger.held(
+      (hold) => stroke.rub(
+        EngineStrokes.blurs,
+        appGpuComposite,
+        ledger.pool,
+        _engineRubs,
+        under: (met) => hold.slotsOfThose(EngineTileLedger.landedCel, [
+          for (final (:column, :row) in met)
+            base.tileAt(TileCoord(x: column, y: row)),
+        ]),
+        paper: paper,
+        paperScale: first.textureScale,
+        paperHeight: first.textureMode == BrushTextureMode.height,
+      ),
+    );
   }
 
   /// Which composite the stroke lands with — the eraser and the plain
@@ -1222,7 +1272,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       base.tileSize == tileSize,
       'promotion requires the stroke grid to be the surface grid',
     );
-    if (_engineStroke != null && _blur == null) {
+    if (_engineStroke != null) {
       return _promotedFromEngine(base, mode, erase);
     }
     final promoted = <PromotedStrokeTile>[];
@@ -1447,6 +1497,25 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     return touched;
   }
 
+  /// [dab], a blur's, rubbed with the rest of its call ([_pileOnEngine]).
+  DirtyRegion? _rubbedOnEngine(BrushDab dab) {
+    final plan = BrushBlurPicture.coverageOf(
+      dab,
+      wall: pasteboard,
+      tileSize: tileSize,
+    );
+    if (plan == null) {
+      return null;
+    }
+    _engineRubs.add((
+      dab: _gpuDabOf(plan),
+      radius: BrushBlurPicture.blurRadiusOf(dab),
+    ));
+    _engineDabsOf ??= plan;
+    _touch(plan.clip);
+    return plan.clip;
+  }
+
   DirtyRegion? _blendDab(BrushDab dab) {
     // Stamp dabs never reach the LIVE rasterizer: they only enter through
     // programmatic commits (fill, lift, paste, the stroke-blend landing),
@@ -1476,6 +1545,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       if (blur == null) {
         assert(false, 'a blur dab needs the cel it blurs ([blurOver])');
         return null;
+      }
+      if (_onEngine) {
+        return _rubbedOnEngine(dab);
       }
       final rewritten = blur.blurDab(dab);
       if (rewritten != null) {

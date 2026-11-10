@@ -11,16 +11,24 @@
 //! The stroke's pages are kept for the next stroke, cleared where it wrote:
 //! a page takes a device tens of ms to make (11-08), a pause at each
 //! pen-down were they made anew.
+//!
+//! A blur stroke keeps its picture on the same pages (dab/blur.rs: 「the
+//! picture is the stroke's planes」): the cel where the stroke has been,
+//! each dab rewriting it. It has nothing to pile and no view, and what it
+//! makes of a cel is that picture finished under the stroke's cover.
 
 #[cfg(test)]
 #[path = "stroke_tests.rs"]
 mod tests;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
-use super::landing::{self, Asked, Laid, Over, box_of};
+use super::blur::{Blurs, Cover, blurs_anything, window_of};
+use super::landing::{self, Asked, Laid, Over, box_of, under_of};
 use super::{Dab, Dabs, Paper, Second, StrokeTile};
 use crate::device::Engine;
+use crate::fail;
 use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::write::{Change, Write};
@@ -43,6 +51,9 @@ pub(crate) struct Stroke {
     /// Each tile reached, in the slot the count made it: the slots are taken
     /// in order, so the count says where each page's written ones end.
     tiles: HashMap<(i32, i32), TileAt>,
+    /// The tiles the last `reach_blur` gave a slot: what its `rub` makes
+    /// the picture of.
+    met: Vec<StrokeTile>,
 }
 
 impl Stroke {
@@ -56,6 +67,7 @@ impl Stroke {
             view: Vec::new(),
             levels: Vec::new(),
             tiles: HashMap::new(),
+            met: Vec::new(),
         })
     }
 
@@ -79,7 +91,7 @@ impl Stroke {
         if second.is_some() {
             make_pages(engine, &mut self.levels, self.planes.len(), TILE_BYTES, "stroke levels");
         }
-        let tiles = reached_by(&self.tiles, dabs);
+        let tiles = reached_by(&self.tiles, dabs.iter().map(|dab| dab.region));
         let plane = self.levels.as_slice();
         let second = second.map(|(mode, density)| Second { plane, mode, density });
         let pages = (self.planes.as_slice(), self.view.as_slice());
@@ -91,16 +103,105 @@ impl Stroke {
     fn reach(&mut self, engine: &Engine, dabs: &[Dab]) {
         for dab in dabs {
             for coordinate in tiles_of(dab.region) {
-                let next = self.tiles.len();
-                self.tiles.entry(coordinate).or_insert(TileAt {
-                    page: (next / TILES_A_PAGE) as u16,
-                    slot: (next % TILES_A_PAGE) as u16,
-                });
+                self.given(coordinate);
             }
         }
         let pages = self.tiles.len().div_ceil(TILES_A_PAGE);
         make_pages(engine, &mut self.planes, pages, PLANE_TILE_BYTES, "stroke planes");
         make_pages(engine, &mut self.view, pages, TILE_BYTES, "stroke view");
+    }
+
+    /// The next slot given to `coordinate` — or nothing, where it has one:
+    /// the slots are taken in order (`tiles`).
+    fn given(&mut self, (column, row): (i32, i32)) -> Option<StrokeTile> {
+        let next = self.tiles.len();
+        let Entry::Vacant(vacant) = self.tiles.entry((column, row)) else {
+            return None;
+        };
+        let at = TileAt { page: (next / TILES_A_PAGE) as u16, slot: (next % TILES_A_PAGE) as u16 };
+        vacant.insert(at);
+        Some(StrokeTile { column, row, at })
+    }
+
+    /// Gives a slot of the picture to every tile the blur of `dabs` — each
+    /// at its box radius — reads and the stroke has none of, making the
+    /// pages they take: the tiles the caller is to find the cel's for
+    /// ([`Stroke::met`]) and hand [`Stroke::rub`]. How many there are; none
+    /// at all, where a radius is none.
+    pub(crate) fn reach_blur(&mut self, engine: &Engine, dabs: &[(Dab, u32)]) -> Option<usize> {
+        let mut met = Vec::new();
+        for window in windows_of(dabs)? {
+            met.extend(tiles_of(window).filter_map(|coordinate| self.given(coordinate)));
+        }
+        self.met = met;
+        let pages = self.tiles.len().div_ceil(TILES_A_PAGE);
+        make_pages(engine, &mut self.planes, pages, PLANE_TILE_BYTES, "stroke planes");
+        Some(self.met.len())
+    }
+
+    /// The tiles the last [`Stroke::reach_blur`] gave a slot.
+    pub(crate) fn met(&self) -> &[StrokeTile] {
+        &self.met
+    }
+
+    /// Makes the picture of the tiles [`Stroke::reach_blur`] gave a slot —
+    /// `under` the cel's tile at each, on the pool's `pages` — and blurs it
+    /// under each of `dabs`, the ones it was given, in their order, over
+    /// `paper`: `Blurs`. Submits the work, the caller waits.
+    pub(crate) fn rub(
+        &mut self,
+        engine: &Engine,
+        (blurs, composite, pages): (&mut Blurs, &Composite, &[wgpu::Buffer]),
+        under: &[Option<TileAt>],
+        dabs: &[(Dab, u32)],
+        paper: Option<&Paper>,
+    ) -> Option<()> {
+        if under.len() != self.met.len() {
+            return fail(format!(
+                "a rub told of {} tiles under the {} it met",
+                under.len(),
+                self.met.len()
+            ));
+        }
+        let asked: Vec<Asked> = self
+            .met
+            .iter()
+            .zip(under)
+            .map(|(tile, &under)| Asked { column: tile.column, row: tile.row, under })
+            .collect();
+        if !asked.is_empty() {
+            blurs.fill(engine, composite, (pages, &under_of(&asked)?), &self.met, &self.planes)?;
+        }
+        let windows = windows_of(dabs)?;
+        let tiles = reached_by(&self.tiles, windows.into_iter());
+        blurs.blur(engine, &tiles, dabs, paper, &self.planes)
+    }
+
+    /// The picture finished on the tiles `asked`, each result in a fresh
+    /// slot of `cel`: `Blurs::finish`, `landing::put`.
+    pub(crate) fn land_blur(
+        &self,
+        engine: &Engine,
+        (blurs, composite, pool, cel): (&Blurs, &Composite, &mut Pool, Cel),
+        asked: &[Asked],
+        cover: Cover,
+        compared: bool,
+    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+        if asked.is_empty() {
+            return Some(Vec::new());
+        }
+        let tiles: Vec<StrokeTile> = asked
+            .iter()
+            .map(|ask| {
+                let at = self.tiles.get(&(ask.column, ask.row)).copied();
+                at.map(|at| StrokeTile { column: ask.column, row: ask.row, at })
+            })
+            .collect::<Option<_>>()
+            .or_else(|| fail("a blur asked for a tile it never read"))?;
+        let cel_tiles = under_of(asked)?;
+        let cells = (pool.pages(), &cel_tiles);
+        let out = blurs.finish(engine, composite, cells, (&tiles, &self.planes), cover)?;
+        landing::put(engine, (&self.write, pool, cel), &out, asked, compared)
     }
 
     /// The stroke's tiles at the coordinates `asked`, in their box, on a
@@ -146,6 +247,15 @@ impl Stroke {
         engine.queue.submit([encoder.finish()]);
         self.tiles.clear();
     }
+}
+
+/// The windows of those of `dabs` that blur anything, in their order.
+fn windows_of(dabs: &[(Dab, u32)]) -> Option<Vec<[i32; 4]>> {
+    dabs.iter()
+        .filter(|(dab, _)| blurs_anything(dab))
+        .map(|(dab, radius)| window_of(dab.region, *radius))
+        .collect::<Option<_>>()
+        .or_else(|| fail("a blur of no radius changes no pixel"))
 }
 
 /// Makes `pages` of `tile_bytes` tiles, those not made yet.
@@ -194,11 +304,13 @@ fn tiles_of([left, top, right, bottom]: [i32; 4]) -> impl Iterator<Item = (i32, 
     rows.flat_map(move |row| columns.clone().map(move |column| (column, row)))
 }
 
-/// The stroke's tiles `dabs` reach, each once, in the order of their places:
-/// a run of them on a page is what a pass binds (`shared::runs`).
-fn reached_by(tiles: &HashMap<(i32, i32), TileAt>, dabs: &[Dab]) -> Vec<StrokeTile> {
-    let reached: std::collections::HashSet<(i32, i32)> =
-        dabs.iter().flat_map(|dab| tiles_of(dab.region)).collect();
+/// The stroke's tiles `regions` reach, each once, in the order of their
+/// places: a run of them on a page is what a pass binds (`shared::runs`).
+fn reached_by(
+    tiles: &HashMap<(i32, i32), TileAt>,
+    regions: impl Iterator<Item = [i32; 4]>,
+) -> Vec<StrokeTile> {
+    let reached: std::collections::HashSet<(i32, i32)> = regions.flat_map(tiles_of).collect();
     let mut made: Vec<StrokeTile> = reached
         .into_iter()
         .map(|(column, row)| StrokeTile { column, row, at: tiles[&(column, row)] })
