@@ -18,6 +18,8 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
+import '../helpers/tiles_on_the_engine.dart';
+
 /// 🚨★★★**A COOLED CEL IS UNSAVED WORK, AND IT NOW LIVES ON DISK.**
 ///
 /// The cold tier used to be RAM: an over-budget cel was compressed and the
@@ -203,6 +205,23 @@ void main() {
     expect(store.celHasRenderableContent(k1), isTrue);
   });
 
+  test('🚨 a cel whose bytes are here parks from them: none of it goes to '
+      'the engine and back, which is what a park was to save', () async {
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    final surface = inked(11);
+    store.storeBakedSurface(k1, surface);
+    store.storeBakedSurface(key('f2'), inked(13));
+
+    await store.drainCooling();
+
+    expect(store.isCelCold(k1), isTrue, reason: 'LIVENESS: it did park');
+    expect(
+      EngineTileLedger.instance.slotOf(surface.tiles.values.single),
+      isNull,
+    );
+  });
+
   test('🚨 a read the engine refuses is a park refused — no one waits on the '
       'pass to be told, the cel stays HOT, and no pass runs again', () async {
     addTearDown(() => EngineTileLedger.debugBeforeRead = null);
@@ -213,8 +232,8 @@ void main() {
     };
     final store = BrushFrameStore()..hotCelByteBudget = 0;
     final k1 = key('f1');
-    store.storeBakedSurface(k1, inked(11));
-    store.storeBakedSurface(key('f2'), inked(13));
+    store.storeBakedSurface(k1, surfaceOnEngine(inked(11)));
+    store.storeBakedSurface(key('f2'), surfaceOnEngine(inked(13)));
 
     await store.drainCooling();
 

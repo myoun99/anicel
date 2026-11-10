@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cel_text_fixture.dart';
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// R9-rest (the text tool): THE ONE PLACE A TEXT'S PIXELS COME FROM.
 /// `bakeCelTextPlate` turns a set text into the plate its cel keeps — and
@@ -344,7 +345,13 @@ void main() {
       await baked(said([run('abc')]));
       expect(reads, isEmpty, reason: 'no last plate to read');
 
-      await baked(said([run('a')]), previous: before);
+      await baked(
+        said([run('a')]),
+        previous: {
+          for (final MapEntry(:key, :value) in before.entries)
+            key: tileOnEngine(value),
+        },
+      );
       expect(reads, [1], reason: 'the tile the text left is not asked');
     });
 

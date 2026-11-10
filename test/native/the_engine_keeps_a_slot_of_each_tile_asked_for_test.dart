@@ -7,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -156,12 +157,10 @@ void main() {
     expect(ledger.slotCount, rest.length + 2);
   });
 
-  test('the tiles read back are their bytes, in order — one without a slot '
-      'stored for the read', () {
+  test('the tiles read back are their bytes, in order', () {
     final ledger = EngineTileLedger(appGpuEngine);
-    final first = tileOf(10);
-    final second = tileOf(11);
-    ledger.held((hold) => hold.slotsOf(a, [first]));
+    final first = ledger.debugOnEngine(tileOf(10));
+    final second = ledger.debugOnEngine(tileOf(11));
     final into = malloc<Uint8>(3 * gpuTileBytes);
     addTearDown(() => malloc.free(into));
 
@@ -172,15 +171,81 @@ void main() {
       ...first.pixels,
       ...second.pixels,
     ]);
-    expect(ledger.slotOf(second), isNotNull, reason: 'stored for the read');
     expect(ledger.slotCount, 2);
+  });
+
+  test('🚨a tile whose bytes are here gives them as they are — no slot, '
+      'nothing asked of the engine, whatever is read beside it', () {
+    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+    final ledger = EngineTileLedger(appGpuEngine);
+    final asked = <int>[];
+    EngineTileLedger.debugBeforeRead = (tiles) => asked.add(tiles.length);
+    final here = [tileOf(20), tileOf(21), tileOf(22)];
+    final theirs = [
+      for (var seed = 23; seed < 26; seed++) ledger.debugOnEngine(tileOf(seed)),
+    ];
+    final walk = [here[0], theirs[0], here[1], theirs[1], theirs[2], here[2]];
+    final into = malloc<Uint8>(walk.length * gpuTileBytes);
+    addTearDown(() => malloc.free(into));
+
+    ledger.read(a, walk, into);
+
+    expect(into.asTypedList(walk.length * gpuTileBytes), [
+      for (final tile in walk) ...tile.pixels,
+    ]);
+    expect(asked, [3], reason: "only the engine's are asked for");
+    expect([for (final tile in here) ledger.slotOf(tile)], [null, null, null]);
+    expect(ledger.slotCount, 3);
+
+    asked.clear();
+    ledger.read(a, here, into);
+
+    expect(into.asTypedList(3 * gpuTileBytes), [
+      for (final tile in here) ...tile.pixels,
+    ]);
+    expect(asked, isEmpty, reason: 'none to ask for: no wait on the GPU');
+  });
+
+  test('a grid of tiles is the box they span, a gap where there is none', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final first = tileOf(30);
+    final second = tileOf(31);
+
+    ledger.held((hold) {
+      final grid = hold.gridOf(a, {
+        TileCoord(x: 5, y: -2): first,
+        TileCoord(x: 7, y: -1): second,
+      });
+
+      expect((grid.x0, grid.y0, grid.columns, grid.rows), (5, -2, 3, 2));
+      expect(grid.tiles, [
+        ledger.slotOf(first),
+        null,
+        null,
+        null,
+        null,
+        ledger.slotOf(second),
+      ]);
+    });
+  });
+
+  test('a tile of another grid is refused, not read as far as a place goes',
+      () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final into = malloc<Uint8>(gpuTileBytes);
+    addTearDown(() => malloc.free(into));
+
+    expect(
+      () => ledger.read(a, [BitmapTile.blank(size: 2 * gpuTileSide)], into),
+      throwsStateError,
+    );
   });
 
   test('each tile read back a batch at a time is handed over in order', () {
     final ledger = EngineTileLedger(appGpuEngine);
     final tiles = [
       for (var seed = 0; seed < EngineTileLedger.readBatch + 2; seed++)
-        tileOf(seed),
+        ledger.debugOnEngine(tileOf(seed)),
     ];
     final handed = <Uint8List>[];
 
@@ -193,7 +258,7 @@ void main() {
   test("a read of many batches asks for one batch's block, once, and gives "
       'it back — a read of fewer tiles, theirs alone', () {
     final ledger = EngineTileLedger(appGpuEngine);
-    final tile = tileOf(12);
+    final tile = ledger.debugOnEngine(tileOf(12));
     final many = _Counted();
     final few = _Counted();
 

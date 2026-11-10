@@ -967,22 +967,8 @@ final class _TileLaying {
   /// The tile set of [tiles], held as [lineage]'s: the box their
   /// coordinates span, row by row, an empty place where none is.
   int setOf(Object lineage, Map<TileCoord, BitmapTile> tiles) {
-    final coords = tiles.keys;
-    final left = coords.map((coord) => coord.x).reduce(_least);
-    final top = coords.map((coord) => coord.y).reduce(_least);
-    final right = coords.map((coord) => coord.x).reduce(_most);
-    final bottom = coords.map((coord) => coord.y).reduce(_most);
-    final columns = right - left + 1;
-    final rows = bottom - top + 1;
-    final entries = tiles.entries.toList();
-    final slots = hold.slotsOf(lineage, [
-      for (final entry in entries) entry.value,
-    ]);
-    final grid = List<GpuTile?>.filled(columns * rows, null);
-    for (final (at, entry) in entries.indexed) {
-      grid[(entry.key.y - top) * columns + entry.key.x - left] = slots[at];
-    }
-    return plan.set(left, top, columns, rows, grid);
+    final grid = hold.gridOf(lineage, tiles);
+    return plan.set(grid.x0, grid.y0, grid.columns, grid.rows, grid.tiles);
   }
 }
 
@@ -1131,6 +1117,3 @@ int _blendOf(LayerBlendMode mode) => switch (mode) {
 
 /// [opacity] as the engine lays it, 65535 whole.
 int _strengthOf(double opacity) => (opacity * 65535).round();
-
-int _least(int a, int b) => a < b ? a : b;
-int _most(int a, int b) => a > b ? a : b;

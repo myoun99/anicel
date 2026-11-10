@@ -1,7 +1,6 @@
 import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show RootIsolateToken;
 
 import 'package:collection/collection.dart' show ListExtensions;
 import 'package:ffi/ffi.dart';
@@ -9,6 +8,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../models/bitmap_tile.dart';
+import '../models/tile_coord.dart';
 import 'app_gpu_engine.dart';
 
 /// The engine's copy of each tile asked for — a slot of a pool of its own
@@ -60,7 +60,7 @@ class EngineTileLedger implements TilePixelsOnEngine {
   ///
   /// Refused on a worker, by name ([TileLedgerAskedOnAWorker]).
   static EngineTileLedger get instance {
-    if (RootIsolateToken.instance == null) {
+    if (!appGpuEngineIsHere) {
       throw TileLedgerAskedOnAWorker();
     }
     return _instance ??= EngineTileLedger(
@@ -186,6 +186,16 @@ final GpuEngine _engine;
     return tile;
   }
 
+  /// Test seam: [tile]'s pixels as a tile the engine alone holds, as a
+  /// landing leaves one.
+  @visibleForTesting
+  BitmapTile debugOnEngine(BitmapTile tile) => _adopted(
+    tile.readPixels(
+      (pointer, _) =>
+          pool.store(_cels.putIfAbsent(landedCel, pool.cel), [pointer]).single,
+    ),
+  );
+
   /// The pages what lands takes: every stroke's and stamp's result, a few
   /// pages between them, whatever cels they land on.
   static final Object landedCel = Object();
@@ -267,18 +277,60 @@ final GpuEngine _engine;
     }
   }
 
-  /// [tiles]' bytes read back from the engine into [into] — [gpuTileBytes]
-  /// each, in order —, the ones without a slot stored first on pages of
-  /// [cel]'s ([TileHold.slotsOf]): what a save, a cel cooled and an undo
-  /// record parked read of the tiles (flip lane ⓓ). Waits for the GPU.
-  void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) =>
+  /// [tiles]' bytes in [into] — [gpuTileBytes] each, in order: what a save,
+  /// a cel cooled and an undo record parked read of the tiles (flip lane ⓓ).
+  /// The engine's are read back, which waits for the GPU, on pages of
+  /// [cel]'s; the rest give the bytes they hold.
+  ///
+  /// 🚨A TILE WHOSE BYTES ARE HERE GOES NOWHERE NEAR THE POOL. ↩️They were
+  /// stored and read straight back while the CPU's tiles were the canonical
+  /// ones (flip lane ⓓ, till ⓒ): a park, which runs when memory is tight,
+  /// took slots to read what it held, and a full pool threw on the way to
+  /// the user's file (저장's review of the lane, 11-10). A tile of the
+  /// engine's has its slot, so a read stores nothing and that throw has no
+  /// way here.
+  void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) {
+    _refuseOtherGrids(tiles);
+    final asked = [
+      for (final tile in tiles)
+        if (tile.isOnEngine) tile,
+    ];
+    if (asked.isNotEmpty) {
       held((hold) {
-        debugBeforeRead?.call(tiles);
-        pool.read(hold.slotsOf(cel, tiles), into);
+        debugBeforeRead?.call(asked);
+        pool.read(hold.slotsOf(cel, asked), into);
       });
+    }
+    if (asked.length < tiles.length) {
+      _laidInPlace(
+        tiles,
+        asked.length,
+        into.asTypedList(tiles.length * gpuTileBytes),
+      );
+    }
+  }
 
-  /// Test seam: told each [read]'s tiles before it asks the engine — how a
-  /// test counts them, or has one refused as a device refuses it.
+  /// [tiles] each at its place in [block], the first [readBack] places of
+  /// which hold the engine's tiles' bytes side by side: from the last tile
+  /// back, so where a tile goes is past every tile still to move.
+  void _laidInPlace(List<BitmapTile> tiles, int readBack, Uint8List block) {
+    var next = readBack;
+    for (var at = tiles.length - 1; at >= 0; at--) {
+      final tile = tiles[at];
+      final start = at * gpuTileBytes;
+      final end = start + gpuTileBytes;
+      if (tile.isOnEngine) {
+        next -= 1;
+        block.setRange(start, end, block, next * gpuTileBytes);
+      } else {
+        tile.readPixels((_, view) => block.setRange(start, end, view));
+      }
+    }
+  }
+
+  /// Test seam: told the tiles each [read] asks the engine for, before it
+  /// asks — how a test counts them, or has one refused as a device refuses
+  /// it.
   @visibleForTesting
   static void Function(List<BitmapTile> tiles)? debugBeforeRead;
 
@@ -291,9 +343,6 @@ final GpuEngine _engine;
   /// time through one block, never the cel whole. 🔢64 tiles, 4 MiB here
   /// and as much on the GPU's side, a cel of 2116 tiles (5800² inked
   /// whole) in 34 maps — 브러시/렌더링's pick (flip lane ⓓ), to measure.
-  // ⏳While the CPU's tiles are the canonical ones a tile read is stored
-  // first: a park asks the pool for its tiles' slots till the engine's are
-  // (flip lane ⓒ).
   void readEach(
     Object cel,
     List<BitmapTile> tiles,
@@ -361,7 +410,7 @@ final GpuEngine _engine;
   @visibleForTesting
   Object? recordOf(BitmapTile tile) => _slots[tile];
 
-  List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
+  static void _refuseOtherGrids(List<BitmapTile> tiles) {
     for (final tile in tiles) {
       if (tile.size != gpuTileSide) {
         throw StateError(
@@ -369,6 +418,10 @@ final GpuEngine _engine;
         );
       }
     }
+  }
+
+  List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
+    _refuseOtherGrids(tiles);
     hold._tiles.addAll(tiles);
     final asked = Set<BitmapTile>.identity();
     final missing = [
@@ -482,6 +535,15 @@ final class _Slot {
 
 /// What a call of [EngineTileLedger.held] is handed: the slots asked for
 /// through it stay till that call returns.
+/// What [TileHold.gridOf] answers.
+typedef TileGrid = ({
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  List<GpuTile?> tiles,
+});
+
 final class TileHold {
   TileHold._(this._ledger);
 
@@ -506,6 +568,23 @@ final class TileHold {
       throw StateError('a hold is asked inside the call it was handed to');
     }
     return _ledger._slotsOf(this, cel, tiles);
+  }
+
+  /// The box [tiles]' coordinates span and, row by row, the slot of each
+  /// — null at a place with none: a cel as a kernel reads one. [tiles] is
+  /// not empty.
+  TileGrid gridOf(Object cel, Map<TileCoord, BitmapTile> tiles) {
+    final coords = tiles.keys;
+    final x0 = coords.map((coord) => coord.x).reduce(math.min);
+    final y0 = coords.map((coord) => coord.y).reduce(math.min);
+    final columns = coords.map((coord) => coord.x).reduce(math.max) - x0 + 1;
+    final rows = coords.map((coord) => coord.y).reduce(math.max) - y0 + 1;
+    final slots = slotsOf(cel, tiles.values.toList());
+    final grid = List<GpuTile?>.filled(columns * rows, null);
+    for (final (at, coord) in coords.indexed) {
+      grid[(coord.y - y0) * columns + coord.x - x0] = slots[at];
+    }
+    return (x0: x0, y0: y0, columns: columns, rows: rows, tiles: grid);
   }
 
   /// [slotsOf] for a list with gaps: null where [tiles] has none.

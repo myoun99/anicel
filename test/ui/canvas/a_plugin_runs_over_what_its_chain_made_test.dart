@@ -18,6 +18,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/a_plugin_that_shifts.dart';
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고, 결과가 올 때까지
 /// 그 프레임의 직전 완성 그림에 머문다」 — a plugin past a cel's own pixels
@@ -168,10 +169,12 @@ void main() {
               canvasSize: const CanvasSize(width: 4, height: height),
               tileSize: defaultCelTileSize,
               tiles: {
-                TileCoord(x: 0, y: 0): BitmapTile(
-                  size: defaultCelTileSize,
-                  pixels: Uint8List(BitmapTile.bytesFor(defaultCelTileSize))
-                    ..setAll(4, green),
+                TileCoord(x: 0, y: 0): tileOnEngine(
+                  BitmapTile(
+                    size: defaultCelTileSize,
+                    pixels: Uint8List(BitmapTile.bytesFor(defaultCelTileSize))
+                      ..setAll(4, green),
+                  ),
                 ),
               },
             ),

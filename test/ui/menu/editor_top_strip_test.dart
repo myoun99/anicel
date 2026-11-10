@@ -120,7 +120,16 @@ void main() {
 
     // Export used to be its own icon in the strip; it is a once-a-session
     // verb, so it lives behind the same button as saving now.
-    await tapEntry(tester, 'menu-file-export');
+    // Not settled: the dialog's viewer spins till the engine has drawn its
+    // page, which takes real time, and a pumped clock has none to give.
+    // Pumped past the timers the dialog starts, in steps as they re-arm.
+    final export = find.byKey(const ValueKey<String>('menu-file-export'));
+    await tester.ensureVisible(export);
+    await tester.pumpAndSettle();
+    await tester.tap(export);
+    for (var step = 0; step < 12; step += 1) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
     expect(
       find.byKey(const ValueKey<String>('export-run-button')),
       findsOneWidget,

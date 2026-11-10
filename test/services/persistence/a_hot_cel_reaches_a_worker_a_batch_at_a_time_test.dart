@@ -20,6 +20,8 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
+import '../../helpers/tiles_on_the_engine.dart';
+
 /// A worker has no engine, so it asks the main isolate for a hot cel's
 /// tiles, a batch at a time through one block — never the cel whole (저장's
 /// review of the flip lane, 11-09: 132 MiB for a cel of 5800² inked whole).
@@ -33,9 +35,11 @@ void main() {
     frameId: FrameId('f'),
   );
 
-  BitmapTile tile(int seed) => BitmapTile(
-    size: defaultCelTileSize,
-    pixels: Uint8List(bytes)..fillRange(0, bytes, seed),
+  BitmapTile tile(int seed) => tileOnEngine(
+    BitmapTile(
+      size: defaultCelTileSize,
+      pixels: Uint8List(bytes)..fillRange(0, bytes, seed),
+    ),
   );
 
   BitmapSurface surfaceOf(

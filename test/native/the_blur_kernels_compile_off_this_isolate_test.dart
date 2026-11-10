@@ -18,6 +18,15 @@ void main() {
 
   tearDown(EngineStrokes.debugForgetBlurs);
 
+  // First in the file: no stroke has been compiled yet.
+  test('a stroke for the first pen-down is compiled off this isolate too',
+      () async {
+    final warming = EngineStrokes.warm();
+    expect(EngineStrokes.debugIdle, 0, reason: 'still compiling');
+    await warming;
+    expect(EngineStrokes.debugIdle, 1);
+  });
+
   test('this isolate goes on while they compile', () async {
     var ticks = 0;
     final timer = Timer.periodic(

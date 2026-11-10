@@ -24,6 +24,16 @@
 #
 # So: assert on the clock, or only print? Only print AND assert nothing
 # else -> tag it. Assert a contract -> leave it in the suite.
+#
+# A TEST'S LIMIT IS THREE TIMES package:test's 30 s, for one fixed cost: the
+# first drawing of a test process compiles the engine's kernels. 🔬8.3 s for
+# the composite pass, 11 s all told, with half the machine's line busy; 24 s
+# for the first test of a file beside a full line, and past 30 beside more,
+# always in the first `test()` of a file (`testWidgets` has ten minutes of
+# its own). Thirteen files of saves and undos read as broken for it in three
+# wide runs (브러시/렌더링 11-10, flip lane). A test that hangs still ends.
+timeout: 3x
+
 tags:
   benchmark:
     skip: "performance benchmark — run with: flutter test --run-skipped --tags benchmark"

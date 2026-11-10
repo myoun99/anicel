@@ -29,6 +29,7 @@ import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️I-132-Q32 b (유저 2026-10-30 「b 로 첫 판」): a plugin runs at the head
 /// of a cel row's chain — after nothing but colour keys — over the whole
@@ -189,9 +190,10 @@ void main() {
       final read = <int>[];
       EngineTileLedger.debugBeforeRead = (tiles) => read.add(tiles.length);
 
-      celSurfaceAsShown(celWith({(1, 1): red, (tileSize + 1, 1): green}), [
-        plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
-      ]);
+      celSurfaceAsShown(
+        surfaceOnEngine(celWith({(1, 1): red, (tileSize + 1, 1): green})),
+        [plugin(run: fxPluginRunOf(ShiftingFxPlugin()))],
+      );
 
       expect(read, [2]);
     });

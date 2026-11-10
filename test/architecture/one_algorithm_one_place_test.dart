@@ -787,6 +787,26 @@ import '../../tool/refactor/clone_scan.dart';
 /// 85 → 86 (2026-11-09, the narrowed word's average back from the GPU
 /// engine, connection-round-checklist-Q30): that pair again, the bake's
 /// Dart average being what 「화면 글자는 전부 Flutter」 reads back into.
+/// 86, under the ceiling (2026-11-10, the flip lane, master's count 84).
+/// Two pairs came with the strokes that land on the engine:
+///
+///     lib/src/services/brush_live_stroke_rasterizer.dart
+///       BrushLiveStrokeRasterizer._touch
+///       BrushLiveStrokeRasterizer._blendDab
+///
+/// Both mark the tiles a dab reaches as touched, a blur's from its region
+/// and a paint dab's from its plan.
+///
+///     lib/src/services/bitmap_surface_brush_commit.dart  _pictureOnEngine
+///     lib/src/services/brush_live_stroke_rasterizer.dart
+///       BrushLiveStrokeRasterizer._promotedFromEngine
+///
+/// Both keep the tiles a landing changed, a picture's and a stroke's, each
+/// as what its own caller takes. ⛔Neither merged, by the rule of three
+/// (CLAUDE.md): two each. 🔜A third of either merges it. Merged at their
+/// thirds in the same lane: the grid of slots (a composite's tile set, the
+/// lift, the colour verbs — `TileHold.gridOf`) and the kernels the app
+/// keeps one of (`AppKernels`).
 void main() {
   const ceiling = 86;
 

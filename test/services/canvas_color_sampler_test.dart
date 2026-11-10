@@ -20,6 +20,8 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_read_source.dart';
 
+import '../helpers/tiles_on_the_engine.dart';
+
 void main() {
   const side = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -125,13 +127,17 @@ void main() {
       addTearDown(() => EngineTileLedger.debugBeforeRead = null);
       final reads = <int>[];
       EngineTileLedger.debugBeforeRead = (tiles) => reads.add(tiles.length);
-      final surface = surfaceWithPixels({
-        (1, 1): [1, 2, 3, 255],
-        (2, 1): [4, 5, 6, 255],
-      });
-      final other = surfaceWithPixels({
-        (1, 1): [1, 2, 3, 255],
-      });
+      final surface = surfaceOnEngine(
+        surfaceWithPixels({
+          (1, 1): [1, 2, 3, 255],
+          (2, 1): [4, 5, 6, 255],
+        }),
+      );
+      final other = surfaceOnEngine(
+        surfaceWithPixels({
+          (1, 1): [1, 2, 3, 255],
+        }),
+      );
 
       expect(surfacePixelRgba(surface, 1, 1), 0x010203FF);
       expect(surfacePixelRgba(surface, 2, 1), 0x040506FF);
@@ -145,16 +151,20 @@ void main() {
       addTearDown(() => EngineTileLedger.debugBeforeRead = null);
       var reads = 0;
       EngineTileLedger.debugBeforeRead = (_) => reads += 1;
-      final first = surfaceWithPixels({
-        (1, 1): [1, 2, 3, 255],
-      });
+      final first = surfaceOnEngine(
+        surfaceWithPixels({
+          (1, 1): [1, 2, 3, 255],
+        }),
+      );
 
       surfacePixelRgba(first, 1, 1);
       for (var at = 0; at < 64; at += 1) {
         surfacePixelRgba(
-          surfaceWithPixels({
-            (1, 1): [1, 2, 3, 255],
-          }),
+          surfaceOnEngine(
+            surfaceWithPixels({
+              (1, 1): [1, 2, 3, 255],
+            }),
+          ),
           1,
           1,
         );

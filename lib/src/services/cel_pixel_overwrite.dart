@@ -918,14 +918,9 @@ GpuCelPassed _ran(
   GpuMask? mask,
   _Pass pass,
 ) {
-  final (:x0, :y0, :columns, :rows) = _boxOf(walked);
-  final slots = hold.slotsOf(BrushFrameKey.noCel, [
-    for (final one in walked) one.tile,
-  ]);
-  final tiles = List<GpuTile?>.filled(columns * rows, null);
-  for (final (at, one) in walked.indexed) {
-    tiles[(one.coord.y - y0) * columns + one.coord.x - x0] = slots[at];
-  }
+  final grid = hold.gridOf(BrushFrameKey.noCel, {
+    for (final one in walked) one.coord: one.tile,
+  });
   final (:channel, :value, :restore, :selector, :threshold) = (
     channel: pass.channel,
     value: pass.value,
@@ -937,11 +932,11 @@ GpuCelPassed _ran(
   final stream = restore?.streamFor(channel.byteCount);
   return EngineCelPixels.pass.run(
     pool,
-    x0,
-    y0,
-    columns,
-    rows,
-    tiles,
+    grid.x0,
+    grid.y0,
+    grid.columns,
+    grid.rows,
+    grid.tiles,
     channel: (
       bytes: channel.byteCount,
       base: base,

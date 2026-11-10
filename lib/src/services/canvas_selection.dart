@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
-import 'package:collection/collection.dart' show IterableIntegerExtension;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -1045,10 +1044,6 @@ bool debugSelectionLiftInDart = false;
   if (covered.isEmpty) {
     return (rgba: rgba, liftedAnything: false);
   }
-  final x0 = covered.map((tile) => tile.coord.x).min;
-  final y0 = covered.map((tile) => tile.coord.y).min;
-  final columns = covered.map((tile) => tile.coord.x).max - x0 + 1;
-  final rows = covered.map((tile) => tile.coord.y).max - y0 + 1;
   final plane = GpuMask(
     appGpuComposite,
     mask,
@@ -1060,20 +1055,16 @@ bool debugSelectionLiftInDart = false;
   try {
     final ledger = EngineTileLedger.instance;
     return ledger.held((hold) {
-      final slots = hold.slotsOf(BrushFrameKey.noCel, [
-        for (final one in covered) one.tile,
-      ]);
-      final tiles = List<GpuTile?>.filled(columns * rows, null);
-      for (final (at, one) in covered.indexed) {
-        tiles[(one.coord.y - y0) * columns + one.coord.x - x0] = slots[at];
-      }
+      final grid = hold.gridOf(BrushFrameKey.noCel, {
+        for (final one in covered) one.coord: one.tile,
+      });
       final liftedAnything = EngineCelPixels.pass.lift(
         ledger.pool,
-        x0,
-        y0,
-        columns,
-        rows,
-        tiles,
+        grid.x0,
+        grid.y0,
+        grid.columns,
+        grid.rows,
+        grid.tiles,
         mask: plane,
         whole: takeWholePixels,
         into: rgba,

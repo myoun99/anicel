@@ -40,6 +40,14 @@ class BrushSurfaceMaterialization {
   bool get hasChanges => dirtyTiles.isNotEmpty;
 }
 
+/// Whether a commit on [surface] is laid on the engine: its grid, on the
+/// isolate that has the engine. ⛔A vector layer an import draws on a worker
+/// (`clipVectorTiles`) has none to ask, and what would come back are tiles
+/// of a pool no other isolate reads. ⏳It is drawn as the small grids are,
+/// till that route goes.
+bool _landsOnEngine(BitmapSurface surface) =>
+    surface.tileSize == gpuTileSide && appGpuEngineIsHere;
+
 /// Rasterizes [sequence] onto [surface] and returns the updated surface plus
 /// the tiles it changed.
 ///
@@ -53,7 +61,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
 }) {
-  if (surface.tileSize == gpuTileSide) {
+  if (_landsOnEngine(surface)) {
     return _materializedOnEngine(surface, sequence);
   }
   // Strokes clip at the PASTEBOARD (as far past the canvas as the
@@ -479,7 +487,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
       dirtyTiles: DirtyTileSet.empty(),
     );
   }
-  if (surface.tileSize == gpuTileSide) {
+  if (_landsOnEngine(surface)) {
     // One landing whatever the blend: the engine lays the stroke's picture
     // in its mode.
     final tiles = _pictureOnEngine(

@@ -1,0 +1,52 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
+
+/// THE FIRST PICTURE OF A LAUNCH WAITS FOR NOTHING: the composite pass and
+/// what lands a stamp are compiled off this isolate once the engine is
+/// open, as the blur brush's and the colour verbs' kernels are.
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() => debugCompositeOfTheTools = appGpuCompositeKernels.warm);
+
+  // First in the file: nothing has compiled the pass yet.
+  test('the first picture does not compile the pass on this isolate', () async {
+    await openAppGpuEngine();
+    final tools = appEngineFrameTools;
+
+    await Future<void>.delayed(Duration.zero);
+
+    expect(appGpuCompositeKernels.compiled, isNull, reason: 'still compiling');
+    await tools;
+    expect(appGpuCompositeKernels.compiled, isNotNull);
+  });
+
+  test('asked for while the pass compiles, the app keeps one', () async {
+    appGpuCompositeKernels.debugForget();
+
+    final opening = appGpuCompositeKernels.warm();
+    final asked = appGpuComposite;
+
+    expect(identical(await opening, asked), isTrue);
+    expect(identical(appGpuComposite, asked), isTrue);
+  });
+
+  test('compiled already, the pass is the one it was', () async {
+    final first = await appGpuCompositeKernels.warm();
+
+    expect(identical(await appGpuCompositeKernels.warm(), first), isTrue);
+  });
+
+  test('what lands a stamp is not compiled on this isolate', () async {
+    final warming = appGpuStampLandingKernels.warm();
+
+    expect(
+      appGpuStampLandingKernels.compiled,
+      isNull,
+      reason: 'still compiling',
+    );
+    await warming;
+    expect(appGpuStampLandingKernels.compiled, isNotNull);
+  });
+}

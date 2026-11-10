@@ -18,6 +18,21 @@ import 'src/texture_shim.dart' as shim;
 /// The Android plugin (android/src/main/kotlin/.../GpuEnginePlugin.kt).
 const _plugin = MethodChannel('gpu_engine');
 
+/// What [compile] makes on [engine], off this isolate, which goes on
+/// meanwhile: seconds of it on some devices (`Engine::compiling` has what
+/// was measured). A static for [compile], so only the engine's address
+/// crosses.
+Future<Pointer<T>> _compiledOff<T extends NativeType>(
+  GpuEngine engine,
+  Pointer<T> Function(Pointer<rust.Engine> on) compile,
+) async {
+  final on = engine._engine.address;
+  final made = await Isolate.run(
+    () => compile(Pointer.fromAddress(on)).address,
+  );
+  return Pointer.fromAddress(made);
+}
+
 String _lastError() => using((arena) {
   const capacity = 1024;
   final buffer = arena<Uint8>(capacity);
@@ -557,15 +572,12 @@ final class GpuBlurs {
 
   GpuBlurs._(this._blurs);
 
-  /// Compiled on [engine] off this isolate, which goes on meanwhile: seconds
-  /// of it on some devices (`Engine::compiling` has what was measured).
-  static Future<GpuBlurs> opening(GpuEngine engine) async {
-    final on = engine._engine.address;
-    final made = await Isolate.run(
-      () => _made(rust.blursNew(Pointer.fromAddress(on))).address,
-    );
-    return GpuBlurs._(Pointer.fromAddress(made));
-  }
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuBlurs> opening(GpuEngine engine) async =>
+      GpuBlurs._(await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Blurs> _compiled(Pointer<rust.Engine> on) =>
+      _made(rust.blursNew(on));
 
   static Pointer<rust.Blurs> _made(Pointer<rust.Blurs> blurs) {
     if (blurs == nullptr) {
@@ -639,12 +651,19 @@ Pointer<rust.DabSpec> _specsOf(Arena arena, List<GpuDab> dabs) {
 /// (rust/src/kernels/dab/stroke.rs).
 class GpuStroke {
   /// A stroke of no tiles on [engine], its kernels compiled.
-  factory GpuStroke(GpuEngine engine) {
-    final stroke = rust.strokeNew(engine._engine);
+  factory GpuStroke(GpuEngine engine) =>
+      GpuStroke._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuStroke> opening(GpuEngine engine) async =>
+      GpuStroke._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Stroke> _compiled(Pointer<rust.Engine> on) {
+    final stroke = rust.strokeNew(on);
     if (stroke == nullptr) {
       throw StateError(_lastError());
     }
-    return GpuStroke._(engine, stroke);
+    return stroke;
   }
 
   GpuStroke._(this._engine, this._stroke);
@@ -858,12 +877,19 @@ final class GpuStampPicture implements Finalizable {
 /// What lands a stamp on a cel (rust/src/kernels/dab/stamp.rs).
 class GpuStampLanding {
   /// Its kernels compiled on [engine].
-  factory GpuStampLanding(GpuEngine engine) {
-    final landing = rust.stampLandingNew(engine._engine);
+  factory GpuStampLanding(GpuEngine engine) =>
+      GpuStampLanding._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuStampLanding> opening(GpuEngine engine) async =>
+      GpuStampLanding._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.StampLanding> _compiled(Pointer<rust.Engine> on) {
+    final landing = rust.stampLandingNew(on);
     if (landing == nullptr) {
       throw StateError(_lastError());
     }
-    return GpuStampLanding._(engine, landing);
+    return landing;
   }
 
   GpuStampLanding._(this._engine, this._landing);
@@ -1516,12 +1542,19 @@ class GpuMask {
 /// The executor: plans of the pool's tiles composited on the GPU.
 class GpuComposite {
   /// The executor on [engine], its full pass compiled.
-  factory GpuComposite(GpuEngine engine) {
-    final composite = rust.compositeNew(engine._engine);
+  factory GpuComposite(GpuEngine engine) =>
+      GpuComposite._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuComposite> opening(GpuEngine engine) async =>
+      GpuComposite._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Composite> _compiled(Pointer<rust.Engine> on) {
+    final composite = rust.compositeNew(on);
     if (composite == nullptr) {
       throw StateError(_lastError());
     }
-    return GpuComposite._(engine, composite);
+    return composite;
   }
 
   GpuComposite._(this._engine, this._composite);
@@ -2049,13 +2082,11 @@ final class GpuCelPixels {
   GpuCelPixels._(this._engine, this._pixels);
 
   /// Compiled on [engine] off this isolate, which goes on meanwhile.
-  static Future<GpuCelPixels> opening(GpuEngine engine) async {
-    final on = engine._engine.address;
-    final made = await Isolate.run(
-      () => _made(rust.celPixelsNew(Pointer.fromAddress(on))).address,
-    );
-    return GpuCelPixels._(engine, Pointer.fromAddress(made));
-  }
+  static Future<GpuCelPixels> opening(GpuEngine engine) async =>
+      GpuCelPixels._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.CelPixels> _compiled(Pointer<rust.Engine> on) =>
+      _made(rust.celPixelsNew(on));
 
   static Pointer<rust.CelPixels> _made(Pointer<rust.CelPixels> pixels) {
     if (pixels == nullptr) {
