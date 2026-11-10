@@ -1,8 +1,10 @@
 //! V1, the cel pixel pass on the GPU (gpu-census V1; gpu-canonical-store
 //! 11-06 04:39): 색 편집's verbs — 색 변환, 픽셀 비우기, 2치화, 색 삭제,
-//! 색 유지 — over a cel's stored tiles, as C's `qa_cel_pixel_pass_tile` and
-//! the app's `overwriteCelPixels` run them, with no CPU copy of the law
-//! (`kernels/mod.rs`); cel_pixel.wgsl has it.
+//! 색 유지 — over a cel's stored tiles, as the app's `overwriteCelPixels`
+//! runs them, with no CPU copy of the law (`kernels/mod.rs`); cel_pixel.wgsl
+//! has it. ↩️C's `qa_cel_pixel_pass_tile` ran them a tile a call, until they
+//! came here (flip lane ⓒ): its originals were one stream in walk order, a
+//! tile's slot in it the sum of the counts before it.
 //!
 //! The walk is the cel's tiles row by row, those it has none of left out
 //! and, under a selection, those past its mask's box: the app's
@@ -93,7 +95,7 @@ pub(crate) enum Incoming<'a> {
     Recipe { bytes: &'a [u8], step: u32, count: u64 },
 }
 
-/// One verb: C's `qa_cel_pixel_spec`.
+/// One verb.
 pub(crate) struct Verb<'a> {
     pub(crate) channel: Channel,
     pub(crate) selector: Option<Selector<'a>>,

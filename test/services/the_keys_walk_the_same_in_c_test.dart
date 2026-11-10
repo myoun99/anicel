@@ -30,7 +30,7 @@ import '../helpers/native_engine_path.dart';
 ///
 /// ⚠️The native route asserts the engine actually LOADED: a path that
 /// fails to load runs the Dart walk twice, and two identical routes
-/// agreeing measures nothing (`cel_pixel_pass_parity_test`'s lesson).
+/// agreeing measures nothing (the lesson the dab parity suite paid for).
 void main() {
   /// A whole plane of red against green a tile.
   const tileSize = 256;

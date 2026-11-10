@@ -370,7 +370,10 @@ import '../core/on_a_worker.dart';
 ///   C rasterizes no grid.
 /// - v74: `qa_alpha_bounds_tiles` leaves the C: a cel's ink is found by the
 ///   GPU engine (`EngineTileLedger.rememberInk`).
-const int kQaEngineAbiVersion = 74;
+/// - v75: `qa_cel_pixel_spec` · `qa_cel_pixel_pass_tile` leave the C: a
+///   cel's colour verbs run on the GPU engine's kernel, and a grid it does
+///   not hold on the Dart pass (`overwriteCelPixels`).
+const int kQaEngineAbiVersion = 75;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
