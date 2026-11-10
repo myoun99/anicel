@@ -1543,6 +1543,75 @@ void main() {
       ], ['c/k2', 'c/k2', 'e/m2', 'e/m2']);
     });
 
+    test("🗣️F-572 — images on a 겸용 pair's conte, each cut showing one "
+        'picture of them, stay an image on it', () {
+      /// The conte `s` holding the panels `1` and `2`, showing `1`.
+      final conte = row('s', {0: '1'}, kind: LayerKind.storyboard);
+      final s = conte.copyWith(
+        frames: [
+          ...conte.frames,
+          Frame(id: const FrameId('s-2'), duration: 1, name: '2', strokes: []),
+        ],
+      );
+
+      /// Image [id] on [s] as the track's row [key]: `R1` over the panel
+      /// `1`, `R2` over the panel `2`.
+      Layer image(String id, String key) {
+        final on = onIt(id, s, key);
+        return on.copyWith(
+          kind: LayerKind.image,
+          frames: [
+            ...on.frames,
+            Frame(id: FrameId('$id-2'), duration: 1, name: 'R2', strokes: []),
+          ],
+          baseFrameLinks: {
+            ...on.baseFrameLinks,
+            const FrameId('s-2'): FrameId('$id-2'),
+          },
+        );
+      }
+
+      /// [row]'s self `<id>d` in the cut `d`, on `s2`.
+      Layer selfInD(Layer row) => row.copyWith(
+        id: LayerId('${row.id.value}d'),
+        attachedToLayerId: const LayerId('s2'),
+      );
+
+      final (k1, k2) = (image('k1', 'K1'), image('k2', 'K2'));
+      final plan = merge(
+        cutOf([s, k1, k2]),
+        ['k1', 'k2'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            s.copyWith(
+              id: const LayerId('s2'),
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('s-2'), length: 2),
+              },
+            ),
+            selfInD(k1),
+            selfInD(k2),
+          ]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['c/k2', 'd/k2d'],
+        ],
+      )!;
+
+      expect(
+        {for (final cel in plan.result.frames) cel.id},
+        hasLength(2),
+        reason: '⛔전제: a picture of its own a cut',
+      );
+      expect(plan.result.attachedToLayerId, s.id, reason: '⛔전제: on it');
+      expect([
+        plan.result.kind,
+        rowOf(plan.others.single.layers, 'k2d').kind,
+      ], [LayerKind.image, LayerKind.image]);
+    });
+
     test('a panel shown as two pictures leaves the result a timing of its '
         'own — a cel of the conte has one mirror', () {
       final s = conte('s');
