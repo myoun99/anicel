@@ -482,22 +482,23 @@ class LayerVerbs {
     );
   }
 
-  /// The selected rows whose attach group is linked — the ROWS rung of the
-  /// shared pill's link-independent button (I-45).
+  /// The selected rows 독립시키기 releases ([_leavesItsLinks]) — the ROWS
+  /// rung of the shared pill's link-independent button (I-45).
   List<LayerId> linkedSelectedLayerIds() {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
     }
-    return selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
+    return selectedLayerIdsWhere(_leavesItsLinks(cut));
   }
 
   /// 독립시키기 for every selected linked row, as ONE undo step.
   void unlinkSelectedLayers() => unlinkLayers(linkedSelectedLayerIds());
 
-  /// 독립시키기 for each of [layerIds] whose group is linked, as ONE undo
-  /// step. Two rows of one attach group unlink once: the second finds its
-  /// group already forked, and the coordinator's own guard makes it a no-op.
+  /// 독립시키기 for each of [layerIds] it releases ([_leavesItsLinks]), as
+  /// ONE undo step. Two rows of one attach group unlink once: the second
+  /// finds its group already forked, and the coordinator's own guard makes
+  /// it a no-op.
   ///
   /// The link window's button (I-25) presses this with the rows a press acts
   /// on (`RowSelection.rowsActedOnBy`), the pill with the selection.
@@ -506,11 +507,12 @@ class LayerVerbs {
     if (cut == null) {
       return;
     }
+    final leaves = _leavesItsLinks(cut);
     _eachRowAsOneStep(
       [
         for (final id in layerIds)
           if (cut.layers.firstWhereOrNull((layer) => layer.id == id)
-              case final layer? when groupIsLinked(layer, cut))
+              case final layer? when leaves(layer))
             id,
       ],
       'Unlink rows',
@@ -534,12 +536,26 @@ class LayerVerbs {
   /// 때문에 불가능하다고 띄움. 링크컷아니면 해제해도 되니까 해제버튼 활성화」.
   bool get activeCutIsLinkedCut {
     final cut = _project.activeCutOrNull;
-    return cut != null &&
-        linkedCutsBeyondItsSync(
-          _project.repository.requireProject(),
-          cutId: cut.id,
-        ).isNotEmpty;
+    return cut != null && _isLinkedCut(cut);
   }
+
+  bool _isLinkedCut(Cut cut) => linkedCutsBeyondItsSync(
+    _project.repository.requireProject(),
+    cutId: cut.id,
+  ).isNotEmpty;
+
+  /// Whether 독립시키기 releases a row of [cut] from its links: its attach
+  /// group is linked ([groupIsLinked]) and [cut] is no linked cut — a linked
+  /// cut's rows share as the cut does, and one row cannot leave alone
+  /// ([activeCutIsLinkedCut]); the cut leaves its links whole
+  /// (`CutVerbs.unlinkCuts`).
+  ///
+  /// 🗣️F-573 (유저 2026-11-08): 「겸용컷은 레이어의 링크해제 불가능하게. 지금
+  /// 타임라인 공용알약의 링크독립 작동가능해서 링크해제 되버림」 — I-25's law
+  /// was the link window's alone, and the pill's rows rung never asked it.
+  bool Function(Layer layer) _leavesItsLinks(Cut cut) => _isLinkedCut(cut)
+      ? (_) => false
+      : (layer) => groupIsLinked(layer, cut);
 
   /// Where to stand once [ids] — top first, as they are deleted — are gone
   /// with what they hold: [stableLayerIdAfterDeleting]'s hand-off from the
