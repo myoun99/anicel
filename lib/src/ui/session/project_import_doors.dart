@@ -334,7 +334,6 @@ class ProjectImportDoors {
         displayName: arrival.displayName,
         cutId: cutId,
         duration: stillDuration,
-        fit: fit,
         reference: reference,
         mint: arrival.mint,
         identity: identity,
@@ -357,7 +356,6 @@ class ProjectImportDoors {
         frameFingerprints: fingerprints,
         displayName: arrival.displayName,
         cutId: cutId,
-        fit: fit,
         mint: arrival.mint,
         reference: reference,
         identity: identity,
@@ -734,7 +732,6 @@ class ProjectImportDoors {
           displayName: arrival.displayName,
           cutId: cutId,
           duration: arrival.stillDuration(),
-          fit: fit,
           reference: reference,
           mint: arrival.mint,
           identity: identity,
@@ -757,7 +754,6 @@ class ProjectImportDoors {
           ],
           displayName: arrival.displayName,
           cutId: cutId,
-          fit: fit,
           mint: arrival.mint,
           reference: reference,
           identity: identity,
@@ -1007,7 +1003,6 @@ class ProjectImportDoors {
   ) => importedMediaAsset(
     path: source,
     kind: MediaAssetKind.video,
-    fit: settings.fit,
     sourcePath: sourcePath,
     identity: readMediaIdentity(source),
     carried: settings.mode == ImportFileMode.keepInside,
@@ -2053,7 +2048,6 @@ class ProjectImportDoors {
         // pair, so a relink finds both (「리링크는 풀 항목이 하나라 둘 다
         // 한 번에 따라간다」).
         kind: mediaAssetKindForPath(source) ?? MediaAssetKind.audio,
-        fit: MediaFitMode.contain,
         sourcePath: sourcePath,
         identity: readMediaIdentity(source),
         carried: copyIntoProject,

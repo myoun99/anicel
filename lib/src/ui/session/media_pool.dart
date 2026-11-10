@@ -126,7 +126,6 @@ class MediaPool {
           importedMediaAsset(
             path: path,
             kind: MediaAssetKind.audio,
-            fit: MediaFitMode.contain,
             identity: readMediaIdentity(path),
             carried: carried,
           ),
@@ -775,7 +774,6 @@ class MediaPool {
         importedMediaAsset(
           path: source,
           kind: kind,
-          fit: MediaFitMode.contain,
           sourcePath: cutFrom[path],
           // Answers "which file is this?", so it is stamped for a carried
           // asset and a reference alike — a reference is exactly the one

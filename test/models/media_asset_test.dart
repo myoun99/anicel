@@ -68,6 +68,32 @@ void main() {
       expect(unknownKind.kind, MediaAssetKind.audio);
     });
 
+    // 🗣️유저 2026-11-10 (card `the-fit-stored-on-an-asset-is-read-by-nobody`
+    // -Q1): 「지금은 지운다 — 프리셋은 고치는 화면을 만들 때 같이 만든다」.
+    // ↩️An entry kept `offset` · `length` · `fit` (07-30), read by nobody.
+    test('🚨an entry keeps no placement default: a file that wrote one '
+        'opens, and the word is not written back — so the format\'s number '
+        'did not move for it', () {
+      final written = {
+        'path': '/a/bg.png',
+        'name': 'bg',
+        'kind': 'image',
+        'offset': 3,
+        'length': 24,
+        'fit': 'none',
+      };
+      final opened = MediaAsset.fromJson(written);
+
+      expect(
+        opened,
+        MediaAsset(path: '/a/bg.png', name: 'bg', kind: MediaAssetKind.image),
+        reason: 'the entry a file without the words reads as',
+      );
+      expect(opened.toJson().keys, isNot(contains('offset')));
+      expect(opened.toJson().keys, isNot(contains('length')));
+      expect(opened.toJson().keys, isNot(contains('fit')));
+    });
+
     test('🚨the default name is the file name WITHOUT its extension — the '
         'name a placement gives its rows (유저 2026-09-12)', () {
       expect(mediaAssetDefaultName(r'C:\proj\snd\foot.wav'), 'foot');

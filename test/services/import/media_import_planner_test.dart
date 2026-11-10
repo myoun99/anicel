@@ -99,7 +99,6 @@ void main() {
       displayName: 'b.png',
       cutId: const CutId('cut-1'),
       duration: 24,
-      fit: MediaFitMode.contain,
       reference: null,
       mint: mint(),
     );
@@ -127,7 +126,6 @@ void main() {
       cutId: const CutId('cut-1'),
       mint: mint(),
       reference: reference,
-      fit: MediaFitMode.none,
     );
     expect(
       plan.layer.mediaReference,
@@ -137,11 +135,9 @@ void main() {
     expect(plan.assets.single.path, 'C:/media/a.gif');
     expect(plan.assets.single.frameCount, 2);
     expect(plan.assets.single.kind, MediaAssetKind.image);
-    expect(
-      plan.assets.single.fitMode,
-      MediaFitMode.none,
-      reason: 'the fit it was placed with, the entry\'s placement default',
-    );
+    // ↩️And 「the fit it was placed with, the entry's placement default」 —
+    // an entry keeps none (유저 2026-11-10, `MediaAsset`): where the picture
+    // stands is the reference's own pose, asserted above.
   });
 
   // I-68 「가」 (유저 2026-10-10): a row that shows its file says by cel
@@ -170,7 +166,6 @@ void main() {
       displayName: 'conte.pdf',
       cutId: const CutId('cut-1'),
       duration: 24,
-      fit: MediaFitMode.contain,
       reference: shows ? referenceTo('C:/media/conte.pdf') : null,
       mint: mint(),
       assetKind: MediaAssetKind.pdf,
@@ -203,7 +198,6 @@ void main() {
       displayName: 'page.pdf',
       cutId: const CutId('cut-1'),
       duration: 24,
-      fit: MediaFitMode.contain,
       reference: referenceTo('C:/media/page.pdf'),
       mint: mint(),
       assetKind: MediaAssetKind.pdf,

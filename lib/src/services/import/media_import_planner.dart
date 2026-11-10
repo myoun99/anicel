@@ -130,7 +130,6 @@ ImageLayerImportPlan planStillImageLayer({
   required String displayName,
   required CutId cutId,
   required int duration,
-  required MediaFitMode fit,
   required MediaReference? reference,
   required ImportIdMint mint,
   String? sourcePath,
@@ -177,7 +176,6 @@ ImageLayerImportPlan planStillImageLayer({
         importedMediaAsset(
           path: sourceFile,
           kind: assetKind,
-          fit: fit,
           sourcePath: sourcePath,
           sourceStamp: sourceStamp,
           identity: identity,
@@ -197,10 +195,14 @@ ImageLayerImportPlan planStillImageLayer({
 ///
 /// A [carried] one is a NEW carry ([mintMediaCarry]): an import is the
 /// moment a carry is made, even of a path the project carried before.
+///
+/// ↩️It took the FIT the import placed its picture with and stamped it on
+/// the entry, and the planners took one only to hand it here. Nothing read
+/// it back (유저 2026-11-10, [MediaAsset]): where a picture stands is the
+/// placement's — the reference's pose, or the bake's fit.
 MediaAsset importedMediaAsset({
   required String path,
   required MediaAssetKind kind,
-  required MediaFitMode fit,
   String? sourcePath,
   String? sourceStamp,
   MediaIdentity? identity,
@@ -212,7 +214,6 @@ MediaAsset importedMediaAsset({
   path: path,
   name: mediaAssetDefaultName(path),
   kind: kind,
-  fitMode: fit,
   sourcePath: sourcePath,
   sourceStamp: sourceStamp,
   identity: identity,
@@ -246,11 +247,9 @@ SequenceLayerImportPlan planSequenceLayer({
   required ImportIdMint mint,
 
   /// The file the layer SHOWS, when it shows one: stamped as
-  /// [Layer.mediaReference], and its asset registers — with [fit] as the
-  /// pool entry's placement default. Null bakes the pictures, and nothing
-  /// is stamped or registered ([placementRegisters]).
+  /// [Layer.mediaReference], and its asset registers. Null bakes the
+  /// pictures, and nothing is stamped or registered ([placementRegisters]).
   MediaReference? reference,
-  MediaFitMode fit = MediaFitMode.contain,
   String? sourcePath,
   String? sourceStamp,
   MediaIdentity? identity,
@@ -357,7 +356,6 @@ SequenceLayerImportPlan planSequenceLayer({
             importedMediaAsset(
               path: reference.assetPath,
               kind: assetKind,
-              fit: fit,
               sourcePath: sourcePath,
               sourceStamp: sourceStamp,
               identity: identity,

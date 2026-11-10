@@ -26,8 +26,10 @@ import 'sheet_ink_layer.dart';
 /// never grown ([fitPose]'s contain, else its 1:1) — its centre where it
 /// was dropped. The cell clips it as it clips the ink.
 ///
-/// ⛔Not the pool's own fit ([MediaAsset.fitMode]) — that one places the
-/// picture on a canvas; a sheet's cell is answered by Q2 c.
+/// ⛔Not a fit the pool keeps for the picture — it keeps none (↩️an entry
+/// had a `fitMode` until 2026-11-10, [MediaAsset]), and the import
+/// window's 「맞춤」 places a picture on a canvas; a sheet's cell is
+/// answered by Q2 c.
 MediaReference droppedSheetPhoto({
   required String path,
   required CanvasSize picture,
