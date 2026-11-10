@@ -100,6 +100,7 @@ import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/stage_planes_painter.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../playback/frame_wait_mark.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
@@ -3706,6 +3707,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           bottom: cover.bottom + (onFloor ? 0 : lane + _transportCover),
           child: _FloatingCanvasControls(
             children: [
+              // 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에
+              // 준비 중 표시를 둔다」 — at the middle of THIS box, what the
+              // docks leave of the panel to be seen: at the panel's own
+              // middle the mark stood half behind the timeline docked under
+              // it (🔬shot, 2026-11-11). Nothing where the panel is no place
+              // that marks its frames' waits ([FrameWaitPlace]).
+              const Positioned.fill(child: FrameWaitMark()),
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
               //
               // ⛔It used to take the top corner away from the tool strip

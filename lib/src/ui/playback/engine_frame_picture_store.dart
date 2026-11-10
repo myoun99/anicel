@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'package:flutter/foundation.dart' show ChangeNotifier, Listenable;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/pin_counts.dart';
@@ -96,6 +96,11 @@ class EngineFramePicture extends ChangeNotifier {
   }
 }
 
+/// What tells a store's news ([EngineFramePictureStore.waits]).
+class _Waits extends ChangeNotifier {
+  void changed() => notifyListeners();
+}
+
 /// The frames' pictures on the engine, each under the identity of what it
 /// shows ([K]): laid whole once ([lay]), then composed again where it
 /// changed ([patch]), let go of by the playback budget's one order
@@ -125,8 +130,34 @@ class EngineFramePictureStore<K extends Object> {
   /// store waits for once is not the first asker's to hold, as a test's
   /// fake clock would, for ever.
   Future<EngineFrameTools> get tools => _opening ??= Zone.root.run<Future<EngineFrameTools>>(
-    () => _open().then((opened) => _opened = opened),
+    () => _open().then((opened) => _opened = opened).whenComplete(() {
+      _toolsAreThrough = true;
+      _waits.changed();
+    }),
   );
+
+  /// Whether [toolsOpen] is still to come: not open yet, nor found unable
+  /// to open — what was asked of the store then heard why ([_noEngine]),
+  /// and nothing waits for tools that will not come.
+  bool get toolsAreToCome => toolsOpen == null && !_toolsAreThrough;
+  bool _toolsAreThrough = false;
+
+  /// Whether the lay on its way waits for kernels still to be compiled
+  /// ([FrameKernelsToCome]) — and with it every lay behind it, one at a
+  /// time as they go: what a screen that draws nothing of its frame till
+  /// its picture is there marks its place by (`FrameWaitMark`).
+  bool get waitsForKernels => _waitsForKernels;
+  bool _waitsForKernels = false;
+
+  /// Tells when the engine keeps this store's frames from the screen, or no
+  /// more: [toolsAreToCome] or [waitsForKernels] has changed.
+  ///
+  /// ⛔Not for a screen to hear from [tools] itself: that future is in no
+  /// one's zone, and its error goes to no listener of another zone's
+  /// ([Zone.inSameErrorZone]) — a screen under a test's zone never heard
+  /// that the engine would not open (🔬2026-11-11, the pin hung).
+  Listenable get waits => _waits;
+  final _Waits _waits = _Waits();
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -472,6 +503,10 @@ class EngineFramePictureStore<K extends Object> {
       await FxPluginStages.recordedThrough<void>(
         () => _composedAs(lay, picture),
         discard: (_) {},
+        waitsForKernels: (waits) {
+          _waitsForKernels = waits;
+          _waits.changed();
+        },
       );
       if (lay.done.isCompleted) {
         picture._letGo();

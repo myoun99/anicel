@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/engine_screen_texture.dart';
+import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import 'helpers/a_shown_surface.dart';
@@ -222,6 +223,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // test's pumped clock lends a compile on another isolate no real time to
   // finish in. The pins of the app's own route ask for it back.
   AppKernels.debugCompileHere = true;
+  // The same clock once more: it opens no engine either, so a canvas a test
+  // stands would mark its place for as long as the test settles
+  // (`pumpAndSettle`) — the mark turns. The pins of the mark stand it.
+  FrameWaitMark.debugStands = false;
   debugLayerOfScreen = screenDrawnAsAPicture;
   // A zoom's stop rasters what it stretched, on the engine a session's
   // pictures open: no test but the one that fires it by hand is about that,

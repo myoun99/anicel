@@ -319,7 +319,7 @@ class _InteractiveCanvasBuild {
         null => null,
       },
     );
-    return MainCanvasBrushHost(
+    final host = MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
         session,
       ),
@@ -694,6 +694,16 @@ class _InteractiveCanvasBuild {
                 _state._buildTrackStackView(session, viewport)
           : null,
     );
+    // 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에 준비 중 표시를
+    // 둔다」 — the canvas's ONE place: the frame, its ghosts, the track
+    // stack parked or run and an O.L partner are all shown under this
+    // host, and mark it together — at the middle of what its docks leave
+    // to be seen, where the panel's shell seats the mark ([FrameWaitMark]).
+    //
+    // Under the keys the host is carried and made again by
+    // ([buildInteractiveCanvas]): a place goes with the frames that say
+    // their waits to it.
+    return FrameWaitPlace(child: host);
   }
 
   /// A part of the canvas that follows a drag on its own: [build] again,

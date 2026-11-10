@@ -83,6 +83,7 @@ import 'editor_session_manager.dart';
 import 'playback/camera_shot.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/frame_picture_view.dart';
+import 'playback/frame_wait_mark.dart';
 import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';

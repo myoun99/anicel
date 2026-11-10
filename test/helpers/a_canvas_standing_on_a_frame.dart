@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
@@ -132,25 +133,35 @@ FramePictureKey keptByTheCanvas(
 }) => frame.standingOn(tester.state(view ?? theFramesPicture()));
 
 /// [view] on a screen of its own, [size] logical pixels at the window's
-/// top left over [under] — what [screen] shows ([shotOf]).
+/// top left over [under] — what [screen] shows ([shotOf]) — in a place
+/// that marks its frames' waits as the canvas's panel does
+/// ([FrameWaitPlace], where a test stands the mark): the mark at the
+/// window's middle, past what [screen] shows.
 Widget onAScreen(
   GlobalKey screen, {
   required Size size,
   required Color under,
   required Widget view,
 }) => MaterialApp(
-  home: Align(
-    alignment: Alignment.topLeft,
-    child: RepaintBoundary(
-      key: screen,
-      child: ClipRect(
-        child: Container(
-          width: size.width,
-          height: size.height,
-          color: under,
-          child: view,
+  home: FrameWaitPlace(
+    child: Stack(
+      children: [
+        Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: screen,
+            child: ClipRect(
+              child: Container(
+                width: size.width,
+                height: size.height,
+                color: under,
+                child: view,
+              ),
+            ),
+          ),
         ),
-      ),
+        const Positioned.fill(child: FrameWaitMark()),
+      ],
     ),
   ),
 );

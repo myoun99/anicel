@@ -27,6 +27,7 @@ import '../engine_screen_texture.dart';
 import 'camera_shot.dart' show outlineOnScreen, shotClipOnScreen;
 import 'engine_frame_picture_store.dart';
 import 'frame_pictures.dart';
+import 'frame_wait_mark.dart';
 import '../widgets/still_raster.dart';
 import 'stacked_frame_picture.dart';
 
@@ -297,7 +298,27 @@ class _FramePictureViewState extends State<FramePictureView> {
     widget.run.landings.addListener(_landed);
     _standLive(onScreen: widget.alreadyShown ? (_) => true : null);
     _look();
-    unawaited(_store.tools.then((_) => _paintAgain()));
+    _hearItsStore();
+  }
+
+  /// Paints again at the store's news of what keeps a frame from the
+  /// screen ([EngineFramePictureStore.waits], [_waitsAtPaint]): its tools
+  /// opened — or found unable to open, nothing waits for them then — and
+  /// its line come behind kernels still to be compiled, or through them.
+  void _hearItsStore() {
+    _store.waits.addListener(_paintAgain);
+    // Opened by the first that asks. Why they would not open is said to
+    // what asked the engine to open (`compileAppKernelsAhead`) and to every
+    // lay asked of the store (`EngineFramePictureStore._noEngine`); a view
+    // hears of it by [EngineFramePictureStore.waits], as it does of the
+    // rest.
+    _store.tools.ignore();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _place = FrameWaitPlace.of(context);
   }
 
   void _paintAgain() {
@@ -305,6 +326,33 @@ class _FramePictureViewState extends State<FramePictureView> {
       _repaint.value += 1;
     }
   }
+
+  /// The place this view's frame is shown in, where one marks its frames'
+  /// waits ([FrameWaitPlace]).
+  FramesWaiting? _place;
+
+  /// 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에 준비 중 표시를
+  /// 둔다」 — tells this view's place whether the engine keeps its frame
+  /// from the screen at this paint, ONE answer for every way it does: its
+  /// tools still to be opened; [refused], the paint's own lay met kernels
+  /// still to be compiled ([FrameKernelsToCome]); or the frame's picture,
+  /// nothing of the frame drawn meanwhile, in a line that stands behind
+  /// such kernels ([EngineFramePictureStore.waitsForKernels]).
+  ///
+  /// ⛔Not a frame drawn as it stands while its picture is on its way: it
+  /// is on the screen. Nor one that waits for its plugins alone (🗣️관제
+  /// 2026-11-10 23:05: the answer is of the engine's getting ready).
+  void _waitsAtPaint({required bool refused}) => _place?.says(
+    this,
+    waits:
+        _store.toolsAreToCome ||
+        refused ||
+        (_making != null && !_standsMeanwhile && _store.waitsForKernels),
+  );
+
+  /// Whether a frame whose picture is not there yet is drawn as it stands
+  /// until it is ([FramePictureView.wholeFrames], [_waits]).
+  bool get _standsMeanwhile => !widget.wholeFrames && !_waits;
 
   /// The compile this view paints again after ([_paintOnceCompiled]).
   Future<void>? _compiling;
@@ -337,6 +385,10 @@ class _FramePictureViewState extends State<FramePictureView> {
       widget.run.landings.addListener(_landed);
     }
     if (!identical(oldWidget.run.pictures, widget.run.pictures)) {
+      oldWidget.run.pictures.store.waits.removeListener(_paintAgain);
+      _hearItsStore();
+      // What keeps its frame from the screen is this store's to say now.
+      _paintAgain();
       _letGo(oldWidget.run.pictures.store);
     }
     // 🚨A TREE HANDED AGAIN IS NOT A FRAME HANDED ANEW (F-244): every
@@ -378,6 +430,8 @@ class _FramePictureViewState extends State<FramePictureView> {
   @override
   void dispose() {
     widget.run.landings.removeListener(_landed);
+    _store.waits.removeListener(_paintAgain);
+    _place?.says(this, waits: false);
     _liveChanges?.removeListener(_liveMoved);
     _letGo(_store);
     _standingOn?.free();
@@ -504,7 +558,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (widget.laysWhatItMisses) {
       _make(key);
     }
-    if (!widget.wholeFrames && !_waits) {
+    if (_standsMeanwhile) {
       // Drawn as it stands until its picture is there.
       _letGo(_store);
       _showing = key;
@@ -1155,25 +1209,32 @@ class _RenderFrameScreen extends RenderBox {
   /// for kernels still to be compiled ([FrameKernelsToCome]), of the frame
   /// the texture shows already, the box painted again once they are: the
   /// screen stays on the picture it showed, as it does for a plugin
-  /// (🗣️I-132-Q34 a). Null where it has shown none.
-  Layer? _layerNow(Offset offset) {
+  /// (🗣️I-132-Q34 a). Null where it has shown none; [refused] where the
+  /// frame waits so.
+  ({Layer? layer, bool refused}) _layerNow(Offset offset) {
     try {
-      return _shownThrough.presented(
-        (next, size) => _view._show(
-          _asItStands,
-          next,
-          size,
-          viewport: _viewport,
+      return (
+        layer: _shownThrough.presented(
+          (next, size) => _view._show(
+            _asItStands,
+            next,
+            size,
+            viewport: _viewport,
+            devicePixelRatio: _devicePixelRatio,
+          ),
+          offset: offset,
           devicePixelRatio: _devicePixelRatio,
         ),
-        offset: offset,
-        devicePixelRatio: _devicePixelRatio,
+        refused: false,
       );
     } on FrameKernelsToCome catch (wait) {
       _view._paintOnceCompiled(wait.compiled);
-      return _shownThrough.standing(
-        offset: offset,
-        devicePixelRatio: _devicePixelRatio,
+      return (
+        layer: _shownThrough.standing(
+          offset: offset,
+          devicePixelRatio: _devicePixelRatio,
+        ),
+        refused: true,
       );
     }
   }
@@ -1183,10 +1244,10 @@ class _RenderFrameScreen extends RenderBox {
     // Written before it is shown: what this frame's paint moves is what
     // this frame shows.
     _view._catchUp();
-    if (!_drawsAnything) {
-      return;
-    }
-    final layer = _layerNow(offset);
+    final (:layer, :refused) = _drawsAnything
+        ? _layerNow(offset)
+        : (layer: null, refused: false);
+    _view._waitsAtPaint(refused: refused);
     if (layer == null) {
       return;
     }

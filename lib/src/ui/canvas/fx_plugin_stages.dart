@@ -74,16 +74,23 @@ final class FxPluginStages implements PluginSteps {
   ///
   /// A recording that meets kernels still to be compiled
   /// ([FrameKernelsToCome]) is made again, from its first round, once they
-  /// are: a route that can wait waits for those as it does for a plugin.
+  /// are: a route that can wait waits for those as it does for a plugin —
+  /// and tells [waitsForKernels] while it does, where one listens.
   static Future<T> recordedThrough<T>(
     T Function() record, {
     required void Function(T made) discard,
+    void Function(bool waits)? waitsForKernels,
   }) async {
     while (true) {
       try {
         return await _recordedOnce(record, discard);
       } on FrameKernelsToCome catch (wait) {
-        await wait.compiled;
+        waitsForKernels?.call(true);
+        try {
+          await wait.compiled;
+        } finally {
+          waitsForKernels?.call(false);
+        }
       }
     }
   }
