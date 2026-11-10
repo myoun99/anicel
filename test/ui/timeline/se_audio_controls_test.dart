@@ -210,7 +210,7 @@ void main() {
       // What the bar SHOWS — its own echo of the hand, which no host value
       // follows while it moves (↩️the mixer held the drag itself).
       double shown() => double.parse(
-        RegExp(r'[0-9.]+').firstMatch(tester.getSemantics(bar).value)![0]!,
+        RegExp('[0-9.]+').firstMatch(tester.getSemantics(bar).value)![0]!,
       );
       expect(shown(), 100, reason: 'CONTROL');
 
