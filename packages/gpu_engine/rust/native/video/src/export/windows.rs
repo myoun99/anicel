@@ -331,6 +331,24 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     false
 }
 
+/// The mix's next `frames`, from sample 0 on, as Media Foundation's AAC
+/// takes them.
+///
+/// 🚨★NO FRAME BEFORE THE SOUND, AND NO EDIT LIST — KEPT AS THE WRITER WRITES
+/// IT (유저 2026-11-10, board an-mp4-reopened-loses-its-first-9-ms-of-sound
+/// -Q1: 「그대로 둔다」 — 「윈도의 한계」). Media Foundation puts no AAC
+/// frame before the sound (48,000 samples → 47 frames), so the first
+/// block's front half has nothing to overlap: a sound that starts on the
+/// movie's first sample comes back silent for 448 samples and rising until
+/// 576 (48 kHz, measured 2026-11-10); one that starts later comes back in
+/// place, to the sample. ⛔A frame of silence stamped before zero is taken
+/// and dropped by the sink writer — the file comes out the same (measured).
+/// ⛔A frame before the sound with an edit list taking it off would mean
+/// rewriting the boxes after `Finalize`, and Media Foundation's own reader
+/// ignores an edit list's lead — it hands the first frame back at time 0
+/// (measured on `tone.m4a`) — so a player reading through it would sound
+/// the whole mix a frame late.
+///
 /// # Safety
 /// `interleaved` is null or holds `frames` × the channels `open` was given.
 pub unsafe fn write_audio(interleaved: *const i16, frames: i32) -> bool {
