@@ -373,9 +373,9 @@ Map<TileCoord, BitmapTile> tilesOfColorOver(
   };
 }
 
-/// The premultiplied RGBA [frame] lays over [world], a canvas pixel a pixel,
-/// on the engine ([opensTheEnginesScreens]).
-Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world) {
+/// The premultiplied RGBA [frame] lays over [world], a canvas pixel [zoom]
+/// to a side, on the engine ([opensTheEnginesScreens]).
+Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world, {double zoom = 1}) {
   final (:composite, :letters) = appEngineFrameToolsOpen!;
   final screen = EngineStackScreen(composite, letters);
   try {
@@ -388,6 +388,7 @@ Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world) {
         viewport: viewport,
         devicePixelRatio: 1,
       ),
+      zoom: zoom,
     );
   } finally {
     screen.free();
@@ -397,16 +398,21 @@ Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world) {
 Uint8List _shownOver(
   ui.Rect world,
   void Function(GpuTarget target, (int, int) size, CanvasViewport viewport)
-  show,
-) {
-  final width = world.width.round();
-  final height = world.height.round();
+  show, {
+  double zoom = 1,
+}) {
+  final width = (world.width * zoom).round();
+  final height = (world.height * zoom).round();
   final target = shownSurfaceOf(width, height);
   try {
     show(
       target,
       (width, height),
-      CanvasViewport(panX: -world.left, panY: -world.top),
+      CanvasViewport(
+        zoom: zoom,
+        panX: -world.left * zoom,
+        panY: -world.top * zoom,
+      ),
     );
     return target.read();
   } finally {

@@ -185,7 +185,6 @@ flutter:
   # `FragmentProgram.fromAsset` loads; the path here is the asset key.
   shaders:
     - shaders/colour_key.frag
-    - shaders/layer_blend.frag
     - shaders/directional_blur.frag
     - shaders/row_sum.frag
     - shaders/iris_table.frag

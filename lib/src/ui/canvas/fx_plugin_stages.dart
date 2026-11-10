@@ -62,16 +62,6 @@ final class FxPluginStages implements PluginSteps {
 
   static final Object _zoneKey = Object();
 
-  /// How many plugin steps were drawn as if off for want of their picture
-  /// — met where no route waits, or still to be run — since the app began.
-  ///
-  /// 🚨A PICTURE DRAWN WHILE THIS MOVED IS NO PICTURE TO KEEP: a node's
-  /// raster held for the next draw ([HeldSubtreeRasters]) with a step drawn
-  /// as if off in it would be cut from by the next round of the very
-  /// recording that missed it, which then never meets the step again.
-  static int get unrun => _unrun;
-  static int _unrun = 0;
-
   /// [record] recorded with every plugin's step met in it run — recorded
   /// again after each step is ([_resolve]) until none is missed, the
   /// drawing each round made and replaced let go of by [discard]. A
@@ -142,7 +132,6 @@ final class FxPluginStages implements PluginSteps {
   }) {
     final stages = Zone.current[_zoneKey];
     if (stages is! FxPluginStages) {
-      _unrun += 1;
       return null;
     }
     final met = stages._taken(
@@ -210,7 +199,6 @@ final class FxPluginStages implements PluginSteps {
       _stages[at] = asked;
     }
     _missed = true;
-    _unrun += 1;
     return null;
   }
 }

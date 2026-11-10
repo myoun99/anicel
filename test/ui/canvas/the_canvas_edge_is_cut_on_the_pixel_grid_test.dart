@@ -21,7 +21,6 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -57,8 +56,6 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// below would pass on nothing).
 void main() {
   opensTheEnginesScreens();
-  // A blend over its backdrop is composed by its shader.
-  setUpAll(LayerBlendShader.load);
   const canvasSize = CanvasSize(width: 4, height: 4);
   const paper = ProjectBackground.color(0xFF00FF00);
   const zoom = 1.1;

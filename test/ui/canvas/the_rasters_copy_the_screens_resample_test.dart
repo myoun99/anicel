@@ -6,12 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -21,16 +19,12 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
@@ -208,59 +202,4 @@ void main() {
     });
   });
 
-  group('the camera', () {
-    const canvasSize = CanvasSize(width: 8, height: 8);
-    final pixels = Uint8List(8 * 8 * 4);
-    const offset = (2 * 8 + 2) * 4;
-    pixels[offset] = 255;
-    pixels[offset + 3] = 255;
-    final surface = BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
-    );
-
-    /// The texel copies one render of the row through [pose] draws.
-    Future<int> copiesThrough(WidgetTester tester, CameraPose pose) async {
-      debugTexelCopies = 0;
-      await tester.runAsync(() async {
-        const service = CameraFrameRenderService();
-        final image = await service.renderThroughCamera(
-          canvasSize: canvasSize,
-          layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
-          pose: pose,
-          cameraFrameSize: canvasSize,
-        );
-        image.dispose();
-      });
-      return debugTexelCopies;
-    }
-
-    CameraPose at(double x, double y, {double zoom = 1, double turn = 0}) =>
-        CameraPose(
-          center: CanvasPoint(x: x, y: y),
-          zoom: zoom,
-          rotationDegrees: turn,
-        );
-
-    for (final (says, pose) in [
-      ('at the identity', at(4, 4)),
-      ('moved by whole pixels', at(6, 3)),
-    ]) {
-      testWidgets('🎯copies the row $says — its projection moves canvas '
-          'pixels onto output pixels whole', (tester) async {
-        expect(await copiesThrough(tester, pose), greaterThan(0));
-      });
-    }
-
-    for (final (says, pose) in [
-      ('turned', at(4, 4, turn: 30)),
-      ('zoomed', at(4, 4, zoom: 1.5)),
-      ('between pixels', at(4.5, 4)),
-    ]) {
-      testWidgets('resamples the row $says', (tester) async {
-        expect(await copiesThrough(tester, pose), 0);
-      });
-    }
-  });
 }

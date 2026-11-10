@@ -35,7 +35,6 @@ import 'package:anicel/src/services/import/media_import_planner.dart'
 import 'package:anicel/src/services/import/psd_layer_plan.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
@@ -64,9 +63,6 @@ void main() {
     width: defaultCelTileSize,
     height: defaultCelTileSize,
   );
-
-  // A row in multiply is composed over its backdrop in the shader.
-  setUpAll(LayerBlendShader.load);
 
   const cutId = CutId('cut');
   const black = [0, 0, 0, 255];

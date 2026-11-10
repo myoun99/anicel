@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
-import '../../helpers/library_source.dart';
 import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★ONE COMPOSITE PAINT — the half #1304 left hand-written.
@@ -124,21 +123,6 @@ void main() {
       reason:
           'an alpha-only paint is built by `alphaOnly` — a hand-spelled '
           'one is a copy, and the copies already disagreed about the clamp',
-    );
-  });
-
-  // ↩️Each route that composited a group was read here — the editing
-  // stack's and the camera's — until one walk composited them both (card
-  // one-walk-of-the-composite-tree).
-  test('the walk that composites a group builds its paint with the one '
-      'function', () {
-    const walk = 'lib/src/ui/canvas/composite_tree_paint.dart';
-    expect(
-      librarySource(walk).contains('layerCompositePaint('),
-      isTrue,
-      reason:
-          '$walk composites a group and must build its paint with the '
-          'shared function',
     );
   });
 }

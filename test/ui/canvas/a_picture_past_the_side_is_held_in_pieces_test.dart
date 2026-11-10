@@ -5,21 +5,15 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_pose.dart';
-import 'package:anicel/src/services/camera_frame_corners.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/cel_picture.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/image_pieces.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
@@ -44,8 +38,6 @@ const int _roundingMoves = 9;
 const int _blurRatioMoves = 60;
 
 void main() {
-  setUpAll(LayerBlendShader.load);
-
   // A cel of 16-pixel noise tiles whose content is 192×96 (the canvas is 88
   // high; the tiles reach 96) — past a side of 64 both ways: six pieces.
   const tileSize = 16;
@@ -496,237 +488,4 @@ void main() {
       });
     });
   });
-
-  /// The noise everywhere ([noise]), and two cels of part of it: `sparse`,
-  /// tiles (3..8, 1..5), ink 96×80 that reaches the pasteboard below and is
-  /// past the side across and down from its own corner; `inside`, tiles
-  /// (3..6, 1..4), ink inside the canvas and the side, whole the canvas.
-  Map<String, BitmapSurface> cels() {
-    final everywhere = noise();
-    BitmapSurface tiles(int right, int bottom) =>
-        BitmapSurface(canvasSize: canvasSize, tileSize: tileSize).putTiles([
-          for (final MapEntry(key: coord, value: tile)
-              in everywhere.tiles.entries)
-            if (coord.x >= 3 &&
-                coord.x <= right &&
-                coord.y >= 1 &&
-                coord.y <= bottom)
-              (coord: coord, tile: tile),
-        ]);
-    return {'noise': everywhere, 'sparse': tiles(8, 5), 'inside': tiles(6, 4)};
-  }
-
-  group('rendered through the camera, the same film frame as whole', () {
-    const service = CameraFrameRenderService();
-    final turned = TransformPose.uniform(
-      center: CanvasPoint(x: 66, y: 52),
-      zoom: 1.3,
-      rotationDegrees: 17,
-    );
-    final blurred = [
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 0]),
-    ];
-
-    CompositeNode<CutFrameCompositeLayer> row(
-      BitmapSurface surface, {
-      double opacity = 1,
-      LayerBlendMode blendMode = LayerBlendMode.normal,
-      TransformPose? pose,
-      List<ResolvedLayerEffect> effects = const [],
-    }) => CompositeLeaf(
-      CutFrameCompositeLayer(
-        surface: surface,
-        opacity: opacity,
-        blendMode: blendMode,
-        placement: pose == null ? null : placedBy(pose, canvasSize),
-        effects: effects,
-      ),
-    );
-
-    // One row a scene, as on the stack, and the three over each other.
-    final scenes =
-        <String, List<CompositeNode<CutFrameCompositeLayer>> Function()>{
-          'noise kept as ink': () => [row(cels()['noise']!, opacity: 0.8)],
-          'sparse through multiply': () => [
-            row(cels()['sparse']!, blendMode: LayerBlendMode.multiply),
-          ],
-          'inside blurred': () => [row(cels()['inside']!, effects: blurred)],
-          'noise posed': () => [row(cels()['noise']!, pose: turned)],
-          'the three over each other': () {
-            final all = cels();
-            return [
-              row(all['noise']!, opacity: 0.8),
-              row(all['sparse']!, blendMode: LayerBlendMode.multiply),
-              row(all['inside']!, effects: blurred),
-            ];
-          },
-          'a folder through multiply, blurred': () {
-            final all = cels();
-            return [
-              CompositeGroup(
-                children: [
-                  row(all['noise']!),
-                  row(all['sparse']!, opacity: 0.7),
-                ],
-                opacity: 0.9,
-                blendMode: LayerBlendMode.multiply,
-                effects: [
-                  ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 0]),
-                ],
-              ),
-            ];
-          },
-        };
-
-    // Each sees across a cut, and less of the cel than the side holds: at
-    // the camera's own size, at half (each piece read from its own chain),
-    // and turned. ↩️At half it saw 112 × 64 of the cel, which fit the side
-    // halved — its pieces halved one by one — until every row was drawn at
-    // canvas resolution (one-picture-per-frame ②-5b-3).
-    final cameras =
-        <String, ({CameraView view, CanvasSize? output, bool turns})>{
-          'square over a part': (
-            view: cameraViewOver(const ui.Rect.fromLTWH(44, 34, 40, 36)),
-            output: null,
-            turns: false,
-          ),
-          'square at half': (
-            view: cameraViewOver(const ui.Rect.fromLTWH(92, 48, 40, 24)),
-            output: const CanvasSize(width: 20, height: 12),
-            turns: false,
-          ),
-          // Between two levels of the chain: a sampler blends the first and
-          // the second.
-          'square at two fifths': (
-            view: cameraViewOver(const ui.Rect.fromLTWH(92, 48, 40, 25)),
-            output: const CanvasSize(width: 16, height: 10),
-            turns: false,
-          ),
-          'turned': (
-            view: (
-              pose: CameraPose(
-                center: CanvasPoint(x: 70, y: 56),
-                rotationDegrees: 9,
-              ),
-              frameSize: const CanvasSize(width: 48, height: 40),
-            ),
-            output: null,
-            turns: true,
-          ),
-        };
-
-    // ↩️The folder held its rows at the side of 64 too, until a raster a
-    // spreading chain reads lay on the canvas's 16-pixel cells
-    // (nested-folder-buffers-read-past-the-view). 🔬Through these cameras
-    // the blurred folder's raster is 64×48, 48×32 at half (96×64 of the
-    // cel), 32×16 at two fifths (80×40) and, turned, 80×80; the window its
-    // rows are drawn through, read 2 past each edge, went past 64, and its
-    // rows were drawn apart — at two fifths 70 bytes apart from the whole,
-    // by up to 20. At 112 the noise is held in the same six pieces of 64
-    // (the longest power of two inside) and every part, 100 at most, is
-    // laid; the sparse ink, 96×80, is held whole.
-    const sidePastTheCells = 112;
-
-    for (final MapEntry(key: scene, value: nodes) in scenes.entries) {
-      for (final MapEntry(key: camera, value: through) in cameras.entries) {
-        testWidgets('$scene, through a camera $camera', (tester) async {
-          await tester.runAsync(() async {
-            Future<Uint8List> render() async {
-              final rows = _Deferred(laidTexelForTexel: !through.turns);
-              final frame = await service.renderThroughCamera(
-                canvasSize: canvasSize,
-                // As the plan hands them over: a row in multiply composed
-                // over what lies below it.
-                nodes: composeOverTheirBackdrops(
-                  nodes(),
-                  blendOf: (layer) => layer.blendMode,
-                  paintedNormal: (layer) => layer.paintedNormal(),
-                ),
-                pose: through.view.pose,
-                cameraFrameSize: through.view.frameSize,
-                outputSize: through.output,
-                rows: rows,
-              );
-              rows.dispose();
-              return bytesOf(frame).whenComplete(frame.dispose);
-            }
-
-            final whole = await render();
-            final laid = debugSeenPartsLaid;
-            final apart = debugPiecesDrawnApart;
-            debugPictureSideLimit = scene.startsWith('a folder')
-                ? sidePastTheCells
-                : side;
-            final inPieces = await render();
-            debugPictureSideLimit = wholeSide;
-
-            expect(
-              (debugSeenPartsLaid > laid, debugPiecesDrawnApart),
-              (true, apart),
-              reason: '전제: every row in pieces, every part laid',
-            );
-            expectShownAsWhole(
-              inPieces,
-              whole,
-              posed: scene.contains('posed') || through.turns,
-              blursAtAnotherRatio:
-                  camera == 'square at two fifths' &&
-                  (scene == 'inside blurred' ||
-                      scene == 'the three over each other'),
-            );
-          });
-        });
-      }
-    }
-  });
-}
-
-/// The rows a render draws, each piece handed to it as a deferred image —
-/// the kind the part a draw lays of a picture in pieces is. ⚠️This runner
-/// blends a snapshot onto the film's snapshot target through a legacy
-/// blitter, ±1 from every other image through every other path
-/// (`a_cropped_cel_draws_the_same_bytes_test.dart` says why; on Impeller
-/// they are the same texture): handed snapshots, the whole and the laid
-/// part would be held apart by the blitter and not by the pieces.
-final class _Deferred implements RowPictures {
-  _Deferred({required this.laidTexelForTexel});
-
-  @override
-  final bool laidTexelForTexel;
-
-  final _made = <ImagePiece>[];
-
-  @override
-  Future<PositionedSurfaceImage> of(
-    BitmapSurface surface,
-    Future<PositionedSurfaceImage> Function() compose,
-  ) async {
-    final made = await compose();
-    final pieces = [
-      for (final piece in made.pieces)
-        (image: _deferred(piece.image), worldRect: piece.worldRect),
-    ];
-    made.pieces.disposeAll();
-    _made.addAll(pieces);
-    return PositionedSurfaceImage(pieces: pieces, worldRect: made.worldRect);
-  }
-
-  static ui.Image _deferred(ui.Image image) {
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawImage(
-      image,
-      ui.Offset.zero,
-      ui.Paint()
-        ..blendMode = ui.BlendMode.src
-        ..filterQuality = ui.FilterQuality.none,
-    );
-    final picture = recorder.endRecording();
-    try {
-      return picture.toImageSync(image.width, image.height);
-    } finally {
-      picture.dispose();
-    }
-  }
-
-  void dispose() => _made.disposeAll();
 }

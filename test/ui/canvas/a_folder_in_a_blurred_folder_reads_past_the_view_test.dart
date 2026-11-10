@@ -28,7 +28,6 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
@@ -47,7 +46,6 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// from, whole or held in pieces, until ②-5b-1).
 void main() {
   opensTheEnginesScreens();
-  setUpAll(LayerBlendShader.load);
 
   // The view sees (16, 16)–(48, 32) of the canvas. The ink lies left of it,
   // up to its edge. ⚠️The blur is wide on purpose: under `--enable-impeller`

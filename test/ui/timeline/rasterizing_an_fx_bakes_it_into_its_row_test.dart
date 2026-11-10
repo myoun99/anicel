@@ -48,7 +48,6 @@ import 'package:anicel/src/services/editing/fx_bake_plan.dart'
     show BakedFrames, FxBakePlan;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -67,8 +66,6 @@ import '../../helpers/wait_window.dart';
 /// row without a picture of its own.
 void main() {
   opensTheEnginesScreens();
-  // The difference blend below is an advanced one, drawn by the shader.
-  setUpAll(LayerBlendShader.load);
 
   const canvasSize = CanvasSize(width: 64, height: 48);
   const cutId = CutId('cut');

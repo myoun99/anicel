@@ -1,9 +1,5 @@
-// On Impeller, the app's: the walk lays a camera lens blur's row sums in
-// floats, which the Skia tester does not lay (11-08: a row through one came
-// out all but empty).
-@Tags(['impeller'])
-library;
-
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -14,7 +10,6 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
@@ -42,21 +37,22 @@ import 'package:anicel/src/services/brush_stroke_blend.dart'
     show strokeBlendModeNativeId;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
-import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
-import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
-import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 
 import '../helpers/app_faces.dart';
 
-/// 🚨THE ENGINE LAYS A TREE AS THE WALK PAINTS IT (screen-on-the-engine
-/// c5): one tree, painted by the walk every route composites by
-/// (`paintCompositeTree`, here through the camera at rest) and laid by the
-/// translator on the engine (`planCompositeTree` → `run`), comes out the
-/// same pixels — each node kind, each blend, a pose, a colour, a ghost and
-/// a chain past colour.
+/// 🚨THE ENGINE LAYS A TREE AS THE WALK PAINTED IT (screen-on-the-engine
+/// c5): one tree, laid by the translator on the engine
+/// (`planCompositeTree` → `run`), comes out the pixels the walk every route
+/// composited by painted — each node kind, each blend, a pose, a colour, a
+/// ghost and a chain past colour.
+///
+/// ↩️Compared with the walk itself (`paintCompositeTree`, through the camera
+/// at rest, flutter_tester on Impeller) until the routes all stood on the
+/// engine and it was deleted (flip lane ⓔ): what it painted of each case
+/// is kept beside this file, as prints of it ([printOf], taken 11-10).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const canvas = CanvasSize(width: 256, height: 128);
   const side = 128;
   late GpuComposite composite;
@@ -169,25 +165,65 @@ void main() {
     ),
   );
 
-  /// The straight pixels of [nodes] painted by the walk, through a camera
-  /// at rest — over [ground].
-  Future<Uint8List> walked(
-    List<CompositeNode<CutFrameCompositeLayer>> nodes,
-    ui.Color ground,
-  ) async {
-    final image = await CameraFrameRenderService(
-      background: ground,
-    ).renderThroughCamera(
-      canvasSize: canvas,
-      nodes: nodes,
-      pose: CameraPose(center: CanvasPoint(x: 128, y: 64)),
-      cameraFrameSize: canvas,
-    );
-    final bytes = await image.toByteData(
-      format: ui.ImageByteFormat.rawStraightRgba,
-    );
-    image.dispose();
-    return bytes!.buffer.asUint8List();
+  int shownOf(Uint8List bytes, int at, int channel) => channel == 3
+      ? bytes[at + 3]
+      : (bytes[at + channel] * bytes[at + 3] / 255).round();
+
+  /// [picture], straight pixels of the canvas, in a few bytes: of each cell
+  /// of 16 pixels the mean of what its pixels show, premultiplied — and what
+  /// one pixel off its middle shows, which a picture moved a pixel over
+  /// a noise changes where a mean would not.
+  List<int> printOf(Uint8List picture) {
+    const cell = 16;
+    final columns = canvas.width ~/ cell;
+    final rows = canvas.height ~/ cell;
+    final made = Uint8List(columns * rows * 8);
+    for (var row = 0; row < rows; row++) {
+      for (var column = 0; column < columns; column++) {
+        final o = (row * columns + column) * 8;
+        for (var channel = 0; channel < 4; channel++) {
+          var sum = 0;
+          for (var y = 0; y < cell; y++) {
+            for (var x = 0; x < cell; x++) {
+              sum += shownOf(
+                picture,
+                ((row * cell + y) * canvas.width + column * cell + x) * 4,
+                channel,
+              );
+            }
+          }
+          made[o + channel] = (sum / (cell * cell)).round();
+          made[o + 4 + channel] = shownOf(
+            picture,
+            ((row * cell + 11) * canvas.width + column * cell + 5) * 4,
+            channel,
+          );
+        }
+      }
+    }
+    return made;
+  }
+
+  final kept =
+      jsonDecode(
+            File(
+              'test/native/a_tree_as_the_walk_painted_it.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, dynamic>;
+
+  /// [picture] shows what the walk painted of the case [name], [most] apart
+  /// at the most in a channel — a mean, rounded, a level further.
+  void asTheWalkPainted(String name, Uint8List picture, int most) {
+    final walked = base64Decode((kept['prints'] as Map)[name] as String);
+    final laid = printOf(picture);
+    expect(laid.length, walked.length);
+    var worst = 0;
+    for (var at = 0; at < laid.length; at++) {
+      final mean = at % 8 < 4;
+      worst = math.max(worst, (laid[at] - walked[at]).abs() - (mean ? 1 : 0));
+    }
+    expect(worst, lessThanOrEqualTo(most));
   }
 
   /// The straight pixels, row by row as the walk's are, of the plan [lay]
@@ -264,33 +300,6 @@ void main() {
         letters: letters,
       ),
     );
-  }
-
-  /// The most a channel of [a] and [b] lie apart premultiplied — what a
-  /// pixel shows, the walk's own picture being premultiplied bytes — and
-  /// how many channels lie apart at all.
-  ({int most, int apart, int far}) apartness(Uint8List a, Uint8List b) {
-    var most = 0;
-    var apart = 0;
-    var far = 0;
-    int shown(Uint8List bytes, int at, int channel) => channel == 3
-        ? bytes[at + 3]
-        : (bytes[at + channel] * bytes[at + 3] / 255).round();
-    for (var at = 0; at < a.length; at += 4) {
-      for (var channel = 0; channel < 4; channel++) {
-        final gap = (shown(a, at, channel) - shown(b, at, channel)).abs();
-        if (gap > 0) {
-          apart += 1;
-          if (gap > 2) {
-            far += 1;
-          }
-          if (gap > most) {
-            most = gap;
-          }
-        }
-      }
-    }
-    return (most: most, apart: apart, far: far);
   }
 
   /// [kind] at its defaults but for [lanes], standing on [points] and
@@ -542,16 +551,12 @@ void main() {
       };
 
   for (final MapEntry(key: name, value: (nodes, ground)) in cases.entries) {
-    testWidgets('$name is laid as the walk paints it', (tester) async {
-      await tester.runAsync(() async {
-        await LayerBlendShader.load();
-        final walk = await walked(nodes, ground);
-        // The walk keeps its pictures as premultiplied bytes, a draw after
-        // a draw, where the engine keeps 16 bits a channel: what a pixel
-        // shows lies 2 apart at the most (measured 11-08 — 0 where a row is
-        // copied, posed or not).
-        expect(apartness(walk, laid(nodes, ground)).most, lessThanOrEqualTo(2));
-      });
+    test('$name is laid as the walk painted it', () {
+      // The walk kept its pictures as premultiplied bytes, a draw after a
+      // draw, where the engine keeps 16 bits a channel: what a pixel shows
+      // lies 2 apart at the most (measured 11-08 — 0 where a row is copied,
+      // posed or not).
+      asTheWalkPainted('cases/$name', laid(nodes, ground), 2);
     });
   }
 
@@ -892,19 +897,12 @@ void main() {
       };
 
   for (final MapEntry(key: name, value: (nodes, ground)) in chained.entries) {
-    testWidgets('$name is laid as the walk paints it', (tester) async {
-      await tester.runAsync(() async {
-        await LayerBlendShader.load();
-        await ColourKeyShader.load();
-        await DirectionalBlurShader.load();
-        await IrisBlurShader.load();
-        final walk = await walked(nodes, ground);
-        // A chain's picture is kept as straight bytes from one op to the
-        // next and to its draw's colour (rust/src/kernels/chain/mod.rs),
-        // where the walk keeps premultiplied ones: 3 apart at the most —
-        // one channel of an adjustment's at whole mix (measured 11-08).
-        expect(apartness(walk, laid(nodes, ground)).most, lessThanOrEqualTo(3));
-      });
+    test('$name is laid as the walk painted it', () {
+      // A chain's picture is kept as straight bytes from one op to the
+      // next and to its draw's colour (rust/src/kernels/chain/mod.rs),
+      // where the walk kept premultiplied ones: 3 apart at the most — one
+      // channel of an adjustment's at whole mix (measured 11-08).
+      asTheWalkPainted('chained/$name', laid(nodes, ground), 3);
     });
   }
 
@@ -1152,16 +1150,8 @@ void main() {
 
   for (final MapEntry(key: name, value: (nodes, ground, most))
       in gaussians.entries) {
-    testWidgets('$name is laid as the walk paints it', (tester) async {
-      await tester.runAsync(() async {
-        await LayerBlendShader.load();
-        await DirectionalBlurShader.load();
-        final walk = await walked(nodes, ground);
-        expect(
-          apartness(walk, laid(nodes, ground)).most,
-          lessThanOrEqualTo(most),
-        );
-      });
+    test('$name is laid as the walk painted it', () {
+      asTheWalkPainted('gaussians/$name', laid(nodes, ground), most);
     });
   }
 
@@ -1276,6 +1266,21 @@ void main() {
       reading: (surfaces: (_, _) => surface, plugins: null),
     );
 
+    /// Where the letters on the row [name] lay, as the walk painted them.
+    ({ui.Rect box, int ink}) lettersWalked(String name) {
+      final numbers = ((kept['letters'] as Map)[name] as List).cast<num>();
+      final [left, top, right, bottom, ink] = numbers;
+      return (
+        box: ui.Rect.fromLTRB(
+          left.toDouble(),
+          top.toDouble(),
+          right.toDouble(),
+          bottom.toDouble(),
+        ),
+        ink: ink.toInt(),
+      );
+    }
+
     /// Where [pixels] hold any alpha, and how much of it they hold.
     ({ui.Rect box, int ink}) inkOf(Uint8List pixels) {
       var (left, top) = (canvas.width, canvas.height);
@@ -1314,56 +1319,51 @@ void main() {
       ),
     };
     for (final MapEntry(key: name, value: transform) in placements.entries) {
-      testWidgets('on a row $name is laid where the walk lays it', (
-        tester,
-      ) async {
-        await tester.runAsync(() async {
-          final bare = numbered(
-            BitmapSurface(canvasSize: canvas, tileSize: side),
-            transform: transform,
-          );
-          final walk = inkOf(await walked(bare, clear));
-          final engine = inkOf(laid(bare, clear));
-          expect(walk.ink, isNot(0), reason: 'LIVENESS: the walk wrote');
-          // 📏flutter_tester on Impeller, Windows, 11-08: the boxes a pixel
-          // apart at the left and alike elsewhere, the engine's ink 0.993
-          // and 0.991 of the walk's, at rest and moved. A pixel more and a
-          // part in fifty more, for another device's raster of the walk's.
-          final edges = [
-            walk.box.left - engine.box.left,
-            walk.box.top - engine.box.top,
-            walk.box.right - engine.box.right,
-            walk.box.bottom - engine.box.bottom,
-          ];
-          expect(
-            [for (final edge in edges) edge.abs()],
-            everyElement(lessThanOrEqualTo(2)),
-            reason: 'the ink lies at ${walk.box} walked, ${engine.box} laid',
-          );
-          expect(
-            engine.ink / walk.ink,
-            closeTo(1, 0.03),
-            reason: 'ink ${walk.ink} walked, ${engine.ink} laid',
-          );
+      test('on a row $name is laid where the walk laid it', () {
+      final bare = numbered(
+        BitmapSurface(canvasSize: canvas, tileSize: side),
+        transform: transform,
+      );
+      final walk = lettersWalked(name);
+      final engine = inkOf(laid(bare, clear));
+      // 📏flutter_tester on Impeller, Windows, 11-08: the boxes a pixel
+      // apart at the left and alike elsewhere, the engine's ink 0.993
+      // and 0.991 of the walk's, at rest and moved. A pixel more and a
+      // part in fifty more, for another device's raster of the walk's.
+      final edges = [
+        walk.box.left - engine.box.left,
+        walk.box.top - engine.box.top,
+        walk.box.right - engine.box.right,
+        walk.box.bottom - engine.box.bottom,
+      ];
+      expect(
+        [for (final edge in edges) edge.abs()],
+        everyElement(lessThanOrEqualTo(2)),
+        reason: 'the ink lies at ${walk.box} walked, ${engine.box} laid',
+      );
+      expect(
+        engine.ink / walk.ink,
+        closeTo(1, 0.03),
+        reason: 'ink ${walk.ink} walked, ${engine.ink} laid',
+      );
 
-          final put = laid(numbered(cel(1), transform: transform), clear);
-          final row = laid(
-            numbered(cel(1), transform: transform, number: false),
-            clear,
-          );
-          expect(put, isNot(row), reason: 'LIVENESS: the number was laid');
-          final letters = walk.box.inflate(2);
-          for (final picture in [put, row]) {
-            for (var at = 0; at < picture.length; at += 4) {
-              final x = (at ~/ 4) % canvas.width;
-              final y = (at ~/ 4) ~/ canvas.width;
-              if (letters.contains(ui.Offset(x + 0.5, y + 0.5))) {
-                picture.fillRange(at, at + 4, 0);
-              }
-            }
+      final put = laid(numbered(cel(1), transform: transform), clear);
+      final row = laid(
+        numbered(cel(1), transform: transform, number: false),
+        clear,
+      );
+      expect(put, isNot(row), reason: 'LIVENESS: the number was laid');
+      final letters = walk.box.inflate(2);
+      for (final picture in [put, row]) {
+        for (var at = 0; at < picture.length; at += 4) {
+          final x = (at ~/ 4) % canvas.width;
+          final y = (at ~/ 4) ~/ canvas.width;
+          if (letters.contains(ui.Offset(x + 0.5, y + 0.5))) {
+            picture.fillRange(at, at + 4, 0);
           }
-          expect(put, row, reason: 'off the letters the row is as it lies');
-        });
+        }
+      }
+      expect(put, row, reason: 'off the letters the row is as it lies');
       });
     }
 

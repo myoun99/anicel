@@ -26,7 +26,6 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
@@ -80,8 +79,6 @@ void main() {
     TileCoord(x: 1, y: 1),
     TileCoord(x: 2, y: 1),
   ];
-
-  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey keyOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),

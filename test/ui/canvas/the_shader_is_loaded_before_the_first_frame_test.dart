@@ -9,10 +9,9 @@ import '../../helpers/dart_sources.dart';
 /// The colour key on a folder is a fragment shader, and a `Paint` is built
 /// INSIDE a paint — which cannot wait for an asset. So `ColourKeyShader`
 /// throws when its program is not there, and the only thing that makes that
-/// throw unreachable is loading it before the first frame. A layer whose
-/// blend the GPU lacks is composed by `LayerBlendShader` (brush-fidelity-Q4),
-/// and a chain's directional, radial and camera lens blurs by theirs, under
-/// the same law.
+/// throw unreachable is loading it before the first frame. A chain's
+/// directional, radial and camera lens blurs are drawn by theirs, under the
+/// same law.
 ///
 /// ⛔THIS IS NOT HYPOTHETICAL. The round that opened `effectKindsFor` to
 /// every kind shipped without the load: the moment a folder took a colour
@@ -60,7 +59,6 @@ void main() {
       loaders.values.expand((assets) => assets),
       containsAll([
         'shaders/colour_key.frag',
-        'shaders/layer_blend.frag',
         'shaders/directional_blur.frag',
         'shaders/row_sum.frag',
         'shaders/iris_table.frag',

@@ -26,7 +26,6 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
     show debugLastSubtreeRaster;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -70,20 +69,6 @@ void main() {
     recorder.endRecording().dispose();
 
     expect(debugLastSubtreeRaster?.rasterScale, 1.5 * 2 * 2);
-  });
-
-  test('a render through the camera hands its overlay the projection\'s '
-      'scale', () async {
-    double? handed;
-    final image = await const CameraFrameRenderService().renderThroughCamera(
-      canvasSize: canvas,
-      pose: CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: 3),
-      cameraFrameSize: frame,
-      overlayPass: (canvas, rasterScale) => handed = rasterScale,
-    );
-    image.dispose();
-
-    expect(handed, 3);
   });
 
   testWidgets('an export: the scale of the picture it makes', (tester) async {

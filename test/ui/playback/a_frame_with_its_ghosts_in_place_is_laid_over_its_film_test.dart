@@ -24,7 +24,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
@@ -44,7 +43,6 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 /// trees: one laid whole, one over the film laid first.
 void main() {
   opensTheEnginesScreens();
-  setUpAll(LayerBlendShader.load);
   setUpAll(DirectionalBlurShader.load);
 
   // Past a piece across ([FramePictureStore] lays a picture a piece at a

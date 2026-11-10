@@ -19,7 +19,6 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -116,10 +115,6 @@ void main() {
 
   group('L2 — the painter puts the property on the pixels', () {
     const canvasSize = CanvasSize(width: 4, height: 4);
-
-    // The row is handed over as the plan hands it: in an advanced blend,
-    // the source of one over its backdrop.
-    setUpAll(LayerBlendShader.load);
 
     BitmapSurfacePainter redSurfacePainter() {
       var tile = BitmapTile.blank(size: defaultCelTileSize);

@@ -14,17 +14,12 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/camera_frame_corners.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/cels_parked_cold.dart';
@@ -36,15 +31,11 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// under it, its alpha the base's to lay once ([CompositeClip],
 /// [CompositeOpaque]).
 ///
-/// Both walks, the frame as it stands ([StackedFrame] — a canvas draws it
-/// so, and its one picture is made of it) and the camera (the export's),
-/// over the same shapes.
+/// On the frame as it stands ([StackedFrame] — a canvas draws it so, and its
+/// one picture, an export's too, is made of it).
 void main() {
   opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  // A row in multiply is composed over its backdrop in the shader.
-  setUpAll(LayerBlendShader.load);
 
   const canvasSize = CanvasSize(
     width: defaultCelTileSize,
@@ -103,59 +94,6 @@ void main() {
     expect(at(1)[3], closeTo(128 * strength, 2), reason: 'the base\'s alpha');
     expect(at(2)[3], 0, reason: 'where the base has nothing, nothing');
   }
-
-  group('the camera', () {
-    Future<Uint8List> render(
-      List<CompositeNode<CutFrameCompositeLayer>> nodes,
-    ) async {
-      final view = cameraViewOver(canvasSize.canvasRect);
-      final image = await const CameraFrameRenderService(
-        background: ui.Color(0x00000000),
-      ).renderThroughCamera(
-        canvasSize: canvasSize,
-        nodes: nodes,
-        pose: view.pose,
-        cameraFrameSize: view.frameSize,
-      );
-      final data = await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-      image.dispose();
-      return data!.buffer.asUint8List();
-    }
-
-    CutFrameCompositeLayer row(BitmapSurface surface) =>
-        CutFrameCompositeLayer(surface: surface, opacity: 1);
-
-    test('a clipped row shows by the base\'s alpha', () async {
-      expectClipped(
-        await render(clipped(row(base()), row(over(red)))),
-        red.sublist(0, 3),
-      );
-    });
-
-    test('in multiply it reads the base\'s whole colour, and lays by its '
-        'alpha', () async {
-      expectClipped(
-        await render(
-          clipped(
-            row(base()),
-            row(over(blue)),
-            blendMode: LayerBlendMode.multiply,
-          ),
-        ),
-        blueOnGrey,
-      );
-    });
-
-    test('the group lays at the base\'s strength', () async {
-      expectClipped(
-        await render(clipped(row(base()), row(over(red)), opacity: 0.5)),
-        red.sublist(0, 3),
-        strength: 0.5,
-      );
-    });
-  });
 
   group('the editing stack', () {
     const key = BrushFrameKey(

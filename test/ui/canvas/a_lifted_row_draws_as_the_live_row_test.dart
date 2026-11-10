@@ -29,7 +29,6 @@ import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -62,8 +61,6 @@ typedef _RowPaint = ({
 void main() {
   opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
-
-  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey keyOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),

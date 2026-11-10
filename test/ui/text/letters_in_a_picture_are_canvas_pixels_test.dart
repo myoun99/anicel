@@ -2,19 +2,28 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart' show PasteboardBounds;
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
-import 'package:anicel/src/ui/canvas/composite_tree_paint.dart';
-import 'package:anicel/src/ui/text/cel_number_paint.dart' show celNumberBox;
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/app_faces.dart';
 
 /// 🗣️card cel-number-letters-drawn-as-vectors (유저 2026-11-07 「지금까지가
@@ -24,7 +33,7 @@ import '../../helpers/app_faces.dart';
 /// them twice over. ↩️Drawn as vectors, their edges were smooth at whatever
 /// resolution they landed on.
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  opensTheEnginesScreens();
 
   const canvas = CanvasSize(width: 120, height: 60);
   final letters = CelNumberLetters(
@@ -36,21 +45,52 @@ void main() {
 
   setUpAll(loadTheAppFaces);
 
-  void celNumber(ui.Canvas into, double scale, LayerPlacement? placement) =>
-      paintCompositeTree<int>(
-        into,
-        [CompositeCelNumber(on: const CompositeLeaf(0), letters: letters)],
-        rasterScale: scale,
-        within: canvas.canvasRect,
-        route: (
-          paintRow: (_, _, _, _, _) {},
-          extentOf: (_) => ui.Rect.zero,
-          placementOf: (_) => placement,
-          shownWithin: null,
-          held: null,
-          paper: canvas.canvasRect,
+  /// The frame holding the number on a bare row, [placement] where it lies
+  /// otherwise, on a world [over] the canvas's size, a canvas pixel [zoom] to
+  /// a side — the engine's.
+  ({Uint8List rgba, int width}) numberAt({
+    double zoom = 1,
+    int over = 1,
+    LayerPlacement? placement,
+  }) {
+    final world = ui.Rect.fromLTWH(
+      0,
+      0,
+      (canvas.width * over).toDouble(),
+      (canvas.height * over).toDouble(),
+    );
+    final frame = stackedFrameOf(
+      [
+        CompositeCelNumber<CanvasStackRow>(
+          on: CompositeLeaf(
+            CanvasLayerImageRequest(
+              frameKey: const BrushFrameKey(
+                projectId: ProjectId('project'),
+                trackId: TrackId('track'),
+                cutId: CutId('cut'),
+                layerId: LayerId('row'),
+                frameId: FrameId('cel'),
+              ),
+              opacity: 1,
+              placement: placement,
+            ),
+          ),
+          letters: letters,
         ),
-      );
+      ],
+      page: (
+        canvasSize: canvas,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: false,
+        paperBackground: ProjectBackground.defaultBackground,
+      ),
+      surfaceOf: (_) => BitmapSurface(canvasSize: canvas),
+    );
+    return (
+      rgba: pixelsOfFrame(frame, world, zoom: zoom),
+      width: (world.width * zoom).round(),
+    );
+  }
 
   void tag(ui.Canvas into, double scale) => paintSeNameTags(
     into,
@@ -72,67 +112,18 @@ void main() {
     rasterScale: scale,
   );
 
-  test('a cel number at 400% is its pixels at 100%, each four times over', () async {
-    final whole = await _pixels(canvas, 1, (into) => celNumber(into, 1, null));
-    final zoomed = await _pixels(
-      canvas,
-      4,
-      (into) => celNumber(into..scale(4), 4, null),
-    );
-
-    _expectBlocks(whole, zoomed, 4);
+  test('a cel number at 400% is its pixels at 100%, each four times over', () {
+    _expectBlocks(numberAt(), numberAt(zoom: 4), 4);
   });
 
-  test('a cel number\'s plate holds its letters where they stand, as large '
-      'as they stand', () async {
-    final whole = await _pixels(canvas, 1, (into) => celNumber(into, 1, null));
-    var left = canvas.width;
-    var top = canvas.height;
-    var right = 0;
-    var bottom = 0;
-    for (var at = 3; at < whole.rgba.length; at += 4) {
-      if (whole.rgba[at] == 0) {
-        continue;
-      }
-      final x = (at ~/ 4) % whole.width;
-      final y = (at ~/ 4) ~/ whole.width;
-      left = x < left ? x : left;
-      top = y < top ? y : top;
-      right = x + 1 > right ? x + 1 : right;
-      bottom = y + 1 > bottom ? y + 1 : bottom;
-    }
-    final ink = ui.Rect.fromLTRB(
-      left.toDouble(),
-      top.toDouble(),
-      right.toDouble(),
-      bottom.toDouble(),
-    );
-    final box = celNumberBox(letters);
-
-    expect(ink.isEmpty, isFalse, reason: 'LIVENESS: the letters drew');
-    expect(
-      box.inflate(1).expandToInclude(ink),
-      box.inflate(1),
-      reason: '🚨the letters were drawn elsewhere, or at another size, than '
-          'where they stand: ink $ink, box $box',
-    );
-  });
-
-  test('a cel number on a row scaled twice is its pixels, each twice over', () async {
-    final whole = await _pixels(canvas, 1, (into) => celNumber(into, 1, null));
-    final scaled = await _pixels(
-      canvas,
+  test('a cel number on a row scaled twice is its pixels, each twice over', () {
+    _expectBlocks(
+      numberAt(),
+      // The row's paper twice as large, its corner where the canvas's is
+      // twice as far: each canvas pixel lands on a block of 2×2.
+      numberAt(over: 2, placement: const LayerPlacement(2, 0, 0, 2, 0, 0)),
       2,
-      (into) => celNumber(
-        into,
-        1,
-        // The row's paper twice as large, its corner where the canvas's is
-        // twice as far: each canvas pixel lands on a block of 2×2.
-        const LayerPlacement(2, 0, 0, 2, 0, 0),
-      ),
     );
-
-    _expectBlocks(whole, scaled, 2);
   });
 
   test('a name tag at 400% is its pixels at 100%, each four times over', () async {

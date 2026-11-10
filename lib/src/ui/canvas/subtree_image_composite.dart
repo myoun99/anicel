@@ -3,18 +3,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
-import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/layer_id.dart';
-import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'directional_blur_shader.dart';
 import 'iris_blur_shader.dart';
 import 'display_resample.dart';
 import 'fx_plugin_stages.dart';
-import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/shaded_passes.dart';
 import '../../services/layer_pose_matrix.dart'
@@ -126,13 +122,10 @@ Rect _placed(Rect extent, LayerPlacement? placement) => placement == null
 
 /// The grid a sub-tree rasterises on, decided once and then obeyed.
 ///
-/// ⛔The arithmetic lives HERE and only here. One walk composites a group
-/// (`paintCompositeTree`) for the editing stack (playback's too, since
-/// 2026-10-10) and the camera (which the export renders through) — ↩️two,
-/// one each, until card one-walk-of-the-composite-tree. What it calls is
-/// how big a group's buffer is ([subtreeBufferBounds]) and
-/// `drawSubtreeAsImage`; the plan and the blit are the machinery underneath
-/// and belong to this file alone.
+/// ⛔The arithmetic lives HERE and only here. What a caller asks is how big
+/// a group's buffer is ([subtreeBufferBounds]) and `drawSubtreeAsImage`; the
+/// plan and the blit are the machinery underneath and belong to this file
+/// alone.
 @immutable
 class SubtreeRasterPlan {
   const SubtreeRasterPlan({
@@ -395,9 +388,8 @@ typedef BlitSubtree = void Function(Paint paint, {bool stepped});
 /// the structure in rather than a single paint is what lets an adjustment
 /// rasterise its scope ONCE where two `saveLayer`s painted the children twice.
 ///
-/// [held] is where the node's raster may already be, drawn whole, and where
-/// a whole one is kept ([HeldSubtreeRasters]). [cell] is the grid what
-/// [compose] blits with reads the raster by ([rasterCellFor]).
+/// [cell] is the grid what [compose] blits with reads the raster by
+/// ([rasterCellFor]).
 /// [paper] is where the paper lies in the space [bounds] is in — the edge a
 /// blur among [steps] that repeats it reads past ([PaperEdgeEffect]): the
 /// canvas, wherever a chain is laid, a row's own or a folder's
@@ -411,7 +403,6 @@ void drawSubtreeAsImage({
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
   required Rect paper,
-  SubtreeHold? held,
   int cell = 1,
   RowPainter? rows,
 }) {
@@ -425,29 +416,6 @@ void drawSubtreeAsImage({
   if (plan == null) {
     return;
   }
-  if (held?.covering(plan) case final whole?) {
-    // The grid the whole lies on, cut to what is asked: it lands where a
-    // raster of the part would, which samples on the whole's grid
-    // ([_planSubtreeRaster]).
-    final there = SubtreeRasterPlan(
-      bounds: plan.bounds,
-      destination: whole.plan.destination,
-      pixelWidth: whole.plan.pixelWidth,
-      pixelHeight: whole.plan.pixelHeight,
-      scale: whole.plan.scale,
-      rasterScale: whole.plan.rasterScale,
-    );
-    compose(
-      (paint, {bool stepped = true}) => _blitSubtreeRaster(
-        canvas: canvas,
-        image: stepped ? whole.image : whole.raster,
-        plan: there,
-        paint: paint,
-      ),
-    );
-    return;
-  }
-  final unrun = FxPluginStages.unrun;
   final recorder = ui.PictureRecorder();
   paintSubtree(plan.recordInto(recorder), plan.scale);
   _finishSubtreeRaster(
@@ -457,612 +425,8 @@ void drawSubtreeAsImage({
     compose: compose,
     steps: steps,
     paper: paper,
-    held: held,
     rows: rows,
-    unrunBefore: unrun,
   );
-}
-
-/// A node's sub-tree rastered WHOLE — its raster, the chain's steps on it,
-/// and the grid they lie on — held for the next draw of the same node
-/// ([HeldSubtreeRasters]).
-typedef HeldSubtreeRaster = ({
-  SubtreeRasterPlan plan,
-  ui.Image raster,
-  ui.Image image,
-});
-
-/// Where [drawSubtreeAsImage] finds a node's raster drawn whole, by [key] —
-/// what the node draws — and, where [keeps], keeps the one it draws whole.
-final class SubtreeHold {
-  const SubtreeHold(
-    this.rasters, {
-    required this.key,
-    required this.keeps,
-    this.below = false,
-  });
-
-  final HeldSubtreeRasters rasters;
-
-  /// What the node's picture holds, its pixels' every input
-  /// ([HeldSubtreeRasters]).
-  final Object key;
-
-  /// Whether the raster drawn here is the node's whole and may be kept.
-  final bool keeps;
-
-  /// Whether it is what lies below the row a pen draws into, held on a
-  /// shelf of its own ([HeldSubtreeRasters]).
-  final bool below;
-
-  _HeldShelf get _shelf => below ? rasters._below : rasters._nodes;
-
-  /// The raster held for [key] that [plan] can be cut from: drawn at the
-  /// scale the walk is at — one held is never magnified ([_finishSubtreeRaster])
-  /// — and covering it.
-  HeldSubtreeRaster? covering(SubtreeRasterPlan plan) {
-    final whole = _shelf._held.use(key);
-    if (whole == null || whole.plan.rasterScale != plan.rasterScale) {
-      return null;
-    }
-    final destination = whole.plan.destination;
-    if (destination.expandToInclude(plan.destination) != destination) {
-      return null;
-    }
-    rasters._drawn?.add(key);
-    return whole;
-  }
-
-  /// Keeps [drawn], the node's whole, where its shelf has room for it.
-  void _keep(HeldSubtreeRaster drawn) {
-    if (_shelf._keep(key, drawn)) {
-      rasters._drawn?.add(key);
-    }
-  }
-
-  /// Whether a picture of [bounds] at [rasterScale] is held to be cut from.
-  bool finds(Rect bounds, double rasterScale) {
-    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
-    return plan != null && covering(plan) != null;
-  }
-
-  /// Whether a picture of [bounds] at [rasterScale] is held to be cut from,
-  /// or one drawn of it now — with no steps on it — would be kept: where
-  /// neither, a picture of what could be drawn in place is drawn for
-  /// nothing.
-  bool findsOrKeeps(Rect bounds, double rasterScale) {
-    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
-    return plan != null && (covering(plan) != null || _wouldKeep(plan));
-  }
-
-  /// Whether no picture of [bounds] at [rasterScale] is held to be cut
-  /// from, and one drawn of it now — with no steps on it — would be kept.
-  bool keepsAnew(Rect bounds, double rasterScale) {
-    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
-    return plan != null && covering(plan) == null && _wouldKeep(plan);
-  }
-
-  bool _wouldKeep(SubtreeRasterPlan plan) =>
-      keeps &&
-      !plan.magnifies &&
-      _shelf._fits(estimatedImageBytes(plan.pixelWidth, plan.pixelHeight));
-}
-
-/// 🚨★A NODE THAT DREW THE SAME PICTURE DOES NOT DRAW IT AGAIN — a folder, a
-/// clip, an adjustment's scope: one picture of its sub-tree ([drawSubtreeAsImage]),
-/// kept by what it draws where it was drawn whole, and cut from when the
-/// same node is drawn again in part (card
-/// paint-walk-redoes-the-same-work-each-step, 🔬2026-10-27: beside ten
-/// folders at 50%, each a picture of its own, a stroke's every step drew
-/// all ten again — a step on the screen p50 166ms against 85 with the
-/// folders at 100%, Windows, profile).
-///
-/// Two shelves, each bounded on its own: what lies below the row a pen
-/// draws into ([SubtreeHold.below], [bytesBelow]) and the nodes held one by
-/// one ([bytes]) — 🗣️유저 2026-10-27 (Q2 = c) 「그리는 행 아래 · 위를 한 장씩
-/// 묶어 든다」. ⛔Not one: what lies below is drawn first
-/// as a frame is laid, and the nodes over it kept after would push it out
-/// first. One raster past its shelf is not kept at all: it is drawn as it
-/// was before.
-///
-/// 🚨WHAT IS HELD IS THE NODES OF THE FRAME LAST DRAWN WHOLE TO HOLD THEM
-/// ([holdOnly]) — 🗣️유저 2026-10-27 (Q3 = c): 「편집 중인 프레임의 위 폴더만
-/// 들고 다른 프레임으로 가면 놓는다」.
-final class HeldSubtreeRasters {
-  HeldSubtreeRasters({
-    required int Function() bytes,
-    int Function() bytesBelow = _none,
-  }) : _nodes = _HeldShelf(bytes),
-       _below = _HeldShelf(bytesBelow);
-
-  final _HeldShelf _nodes;
-  final _HeldShelf _below;
-
-  static int _none() => 0;
-
-  /// The nodes found or kept by the drawing [holdOnly] draws, while it does.
-  Set<Object>? _drawn;
-
-  /// How many rasters are held.
-  int get length => _nodes._held.length + _below._held.length;
-
-  /// What the rasters held weigh ([estimatedImageBytes]).
-  int get heldBytes => _nodes._held.held + _below._held.held;
-
-  /// What the rasters below a pen held weigh — the rest of [heldBytes] is
-  /// the nodes held one by one.
-  int get heldBelowBytes => _below._held.held;
-
-  /// How many rasters held have been let go of — a node's drawn anew in its
-  /// place aside: while it stands, every node a frame was drawn whole to
-  /// hold, and kept, is held still.
-  int get _lettings => _nodes.lettings + _below.lettings;
-
-  /// 🚨THE FRAME WHOSE NODES WERE LAST DRAWN WHOLE TO BE HELD ([heldAllOf]),
-  /// and how many held rasters had been let go of then: while both stand,
-  /// every node of it that could be held is ([holdsAllOf]).
-  ({Object of, int lettings})? _allOf;
-
-  /// Notes that [of]'s frame was just drawn whole to hold its nodes
-  /// ([holdOnly]).
-  void heldAllOf(Object of) => _allOf = (of: of, lettings: _lettings);
-
-  /// Whether [of]'s frame was drawn whole to hold its nodes, none held let
-  /// go of since — drawn so again, it would hold nothing more.
-  bool holdsAllOf(Object of) => _allOf == (of: of, lettings: _lettings);
-
-  /// Whether the picture of the node [key] says what it draws of is held.
-  bool holds(Object key) => _nodes._held.containsKey(key);
-
-  /// Draws [draw] — a frame drawn whole to hold its nodes — and lets go of
-  /// every raster held that it neither found nor kept: those of the frame
-  /// a canvas stood on before, and of what a frame held before it changed.
-  void holdOnly(void Function() draw) {
-    final drawn = _drawn = {};
-    try {
-      draw();
-      _nodes._keepOnly(drawn);
-      _below._keepOnly(drawn);
-    } finally {
-      _drawn = null;
-    }
-  }
-
-  /// Counts what is held below a pen whose key [test] answers as found by
-  /// the drawing [holdOnly] draws — what it leaves as it is held, undrawn
-  /// (`BelowThePen.asHeld`).
-  void keepHeldWhere(bool Function(Object key) test) =>
-      _drawn?.addAll(_below._held.keys.where(test));
-
-  /// Lets go of the least recently used rasters past each shelf's bound as
-  /// it stands now — the line under it moved.
-  void fit() {
-    _nodes._held.fit();
-    _below._held.fit();
-  }
-
-  /// Lets go of every raster held.
-  void clear() {
-    _nodes._clear();
-    _below._clear();
-  }
-}
-
-/// One shelf of [HeldSubtreeRasters]: the least recently used let go of
-/// first, past [_bytes].
-final class _HeldShelf {
-  _HeldShelf(this._bytes);
-
-  final int Function() _bytes;
-  late final Lru<Object, HeldSubtreeRaster> _held = Lru(
-    limit: _bytes,
-    costOf: _bytesOf,
-    letGo: (_, held) => _letGo(held),
-  );
-
-  /// How many rasters this shelf has let go of — a node's drawn anew in its
-  /// place aside ([HeldSubtreeRasters.lettings]).
-  int lettings = 0;
-
-  bool _fits(int bytes) => bytes <= _bytes();
-
-  /// Keeps [drawn] for [key] in handles of its own — the caller lets go of
-  /// its own — where it fits; answers whether it did.
-  bool _keep(Object key, HeldSubtreeRaster drawn) {
-    if (!_fits(_bytesOf(drawn))) {
-      return false;
-    }
-    final raster = drawn.raster.clone();
-    final whole = (
-      plan: drawn.plan,
-      raster: raster,
-      image: identical(drawn.image, drawn.raster)
-          ? raster
-          : drawn.image.clone(),
-    );
-    if (_held.keep(key, whole) case final replaced?) {
-      _dispose(replaced);
-    }
-    return true;
-  }
-
-  /// Lets go of every raster held but [drawn]'s.
-  void _keepOnly(Set<Object> drawn) {
-    for (final key in [..._held.keys]) {
-      if (!drawn.contains(key)) {
-        _letGo(_held.take(key)!);
-      }
-    }
-  }
-
-  void _clear() {
-    for (final held in _held.values) {
-      _letGo(held);
-    }
-    _held.clear();
-  }
-
-  static int _bytesOf(HeldSubtreeRaster held) =>
-      estimatedImageBytes(held.plan.pixelWidth, held.plan.pixelHeight) *
-      (identical(held.image, held.raster) ? 1 : 2);
-
-  void _letGo(HeldSubtreeRaster held) {
-    lettings += 1;
-    _dispose(held);
-  }
-
-  static void _dispose(HeldSubtreeRaster held) {
-    if (!identical(held.image, held.raster)) {
-      held.image.dispose();
-    }
-    held.raster.dispose();
-  }
-}
-
-/// 🚨★★★A CLIPPING GROUP IS ONE PICTURE ([CompositeClip], I-92) — an image,
-/// as a folder's is ([drawSubtreeAsImage]), so every walk that composites a
-/// group composites a clip the same way.
-///
-/// Into it, [paintBase], and over it [paintScope] laid by the base's alpha
-/// (`srcATop`); [paint] — the base's strength and blend — then lays the
-/// picture once. [bounds] is the base's: what lands past it is cut away.
-void drawClipAsImage({
-  required Canvas canvas,
-  required Rect bounds,
-  required double rasterScale,
-  required void Function(Canvas into, double rasterScale) paintBase,
-  required void Function(Canvas into, double rasterScale) paintScope,
-  required Paint paint,
-  required Rect paper,
-  SubtreeHold? held,
-}) => drawSubtreeAsImage(
-  canvas: canvas,
-  bounds: bounds,
-  rasterScale: rasterScale,
-  paper: paper,
-  paintSubtree: (into, scale) {
-    paintBase(into, scale);
-    into.saveLayer(bounds, Paint()..blendMode = BlendMode.srcATop);
-    paintScope(into, scale);
-    into.restore();
-  },
-  compose: (blit) => blit(paint),
-  held: held,
-);
-
-/// A clip's base painted with its alpha made 1 ([CompositeOpaque]) — the
-/// colour a row clipped to it blends with, where the base is half there
-/// too. [bounds] holds the base; inside it, where the base is not, comes
-/// out black, which the clip's `srcATop` then cuts away with the rest.
-void drawOpaque({
-  required Canvas canvas,
-  required Rect bounds,
-  required void Function(Canvas into) paintOf,
-}) {
-  canvas.saveLayer(
-    bounds,
-    Paint()..colorFilter = const ColorFilter.matrix(_opaqueMatrix),
-  );
-  paintOf(canvas);
-  canvas.restore();
-}
-
-/// The colour as it is, the alpha 1 — the translation column is 0…255
-/// (`color_matrix.dart`).
-const List<double> _opaqueMatrix = <double>[
-  // dart format off
-  1, 0, 0, 0, 0,
-  0, 1, 0, 0, 0,
-  0, 0, 1, 0, 0,
-  0, 0, 0, 0, 255,
-  // dart format on
-];
-
-/// 🚨★★★A ROW IN AN ADVANCED BLEND IS COMPOSED OVER A PICTURE OF ITS
-/// BACKDROP ([CompositeBackdropBlend], brush-fidelity-Q4).
-///
-/// A GPU blend reads what its target holds below it as it draws; for linear
-/// burn, divide, darker colour … there is no GPU blend to do that, and the
-/// GPU's own multiply, screen … each came with a defect of its own
-/// (↩️they kept it until a-blurred-folder-cut-by-the-view-moves-on-vulkan,
-/// [LayerBlendMode.needsItsBackdrop]). So both pictures are rasterised on
-/// ONE grid — [paintBackdrop] (everything below the row in its scope) and
-/// [paintSource] (the row itself, painting normal) — composed by
-/// [LayerBlendShader] drawn on that grid, where a group's raster would be
-/// blitted: it IS the backdrop and the row, composed, so it lands plain.
-///
-/// The arithmetic is [drawSubtreeAsImage]'s — the same plan — so a blend at
-/// any depth sits on the grid a folder's buffer would.
-///
-/// ★Where the engine can, the backdrop is not rasterised at all but read in
-/// the frame ([_composeInTheFrame]) — the same shader over the same two
-/// pictures, the backdrop handed to it by the engine instead of by a raster
-/// ([_readsInTheFrame] says where).
-///
-/// 🚨ONLY WHAT THE CANVAS STILL SHOWS IS RASTERISED: its clip, a stroke's
-/// patch while one is drawn. 🔬Measured on the Windows app (10-22, a 2560
-/// px window): with a shader-blended row over the layer being drawn on,
-/// every step rasterised the row's whole buffer three times over — a frame
-/// shown 49ms after its input against 12ms with the row normal, whatever
-/// the brush's size.
-///
-/// ↩️A row that was its own image in one piece, laid texel for texel on the
-/// grid, was handed to the shader as it was rather than rasterised
-/// (`sourceAsIs`, 10-23), until no row was drawn as its own image
-/// (one-picture-per-frame ②-5b-1).
-void drawBlendOverBackdrop({
-  required Canvas canvas,
-  required Rect bounds,
-  required double rasterScale,
-  int maxPixelSide = maxSubtreeRasterSide,
-  required void Function(Canvas into, double rasterScale) paintBackdrop,
-  required void Function(Canvas into, double rasterScale) paintSource,
-  required LayerBlendMode blendMode,
-  Rect? shownWithin,
-}) {
-  final plan = _planSubtreeRaster(
-    bounds: bounds,
-    rasterScale: rasterScale,
-    maxPixelSide: maxPixelSide,
-    within: canvas.getLocalClipBounds(),
-    onto: canvas,
-  );
-  if (plan == null) {
-    return;
-  }
-  ui.Image rasterOf(void Function(Canvas into, double rasterScale) paint) {
-    final recorder = ui.PictureRecorder();
-    paint(plan.recordInto(recorder), plan.scale);
-    assert(() {
-      debugSubtreeRasterCount += 1;
-      return true;
-    }());
-    return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
-  }
-
-  if (_readsInTheFrame(canvas, plan, shownWithin)) {
-    _composeInTheFrame(
-      canvas: canvas,
-      plan: plan,
-      rasterScale: rasterScale,
-      paintBackdrop: paintBackdrop,
-      source: rasterOf(paintSource),
-      blendMode: blendMode,
-    );
-    return;
-  }
-  _composeInARaster(
-    canvas: canvas,
-    plan: plan,
-    backdrop: rasterOf(paintBackdrop),
-    source: () => rasterOf(paintSource),
-    blendMode: blendMode,
-  );
-}
-
-/// [backdrop], rasterised on [plan]'s grid, and the row [source] makes,
-/// composed by [LayerBlendShader] drawn straight onto [canvas] on that grid
-/// — the route where the frame cannot be read ([_readsInTheFrame]). It
-/// disposes [backdrop].
-///
-/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan-Q6 (유저 2026-10-23
-/// 「이 카드에서 이어서 래스터 경로를 줄인다」): where the frame cannot be
-/// read — Skia, a canvas seen flipped — every step rasterised the composite,
-/// a third raster, only to blit it. ↩️🔬The shader reads `FlutterFragCoord()`
-/// in the LOCAL space it is drawn in, on both renderers (10-23: under a
-/// translate, a scale, a flip, a picture replayed elsewhere and a saveLayer,
-/// Skia and Impeller alike). So drawn under [plan]'s grid — a raster pixel a
-/// local unit — it reads the coordinates it read at the raster's identity,
-/// and with its samplers nearest, as the 1:1 blit was, every device pixel
-/// composes the two texels that blit would have shown it.
-///
-/// ⚠️A plan the cap clamped ([SubtreeRasterPlan.magnifies]) is still composed
-/// in a raster and blitted: that blit filters the composite, and filtering
-/// two pictures before they are composed is not the same bytes as filtering
-/// what they composed.
-void _composeInARaster({
-  required Canvas canvas,
-  required SubtreeRasterPlan plan,
-  required ui.Image backdrop,
-  required ui.Image Function() source,
-  required LayerBlendMode blendMode,
-}) {
-  ui.Image? row;
-  ui.FragmentShader? shader;
-  ui.Image? composed;
-  try {
-    row = source();
-    shader = LayerBlendShader.shaderFor(
-      backdrop: backdrop,
-      source: row,
-      mode: blendMode,
-      width: plan.pixelWidth.toDouble(),
-      height: plan.pixelHeight.toDouble(),
-    );
-    if (!plan.magnifies) {
-      assert(() {
-        debugLastSubtreeRaster = plan;
-        return true;
-      }());
-      canvas
-        ..save()
-        ..translate(plan.destination.left, plan.destination.top)
-        ..scale(1 / plan.scale);
-      _shadeTheGrid(canvas, plan, shader);
-      canvas.restore();
-      return;
-    }
-    assert(() {
-      debugBlendsComposedInARaster += 1;
-      return true;
-    }());
-    composed = shadedRaster(shader, plan.pixelWidth, plan.pixelHeight);
-    _blitSubtreeRaster(
-      canvas: canvas,
-      image: composed,
-      plan: plan,
-      paint: Paint(),
-    );
-  } finally {
-    // ⚠️Safe here, as in [_finishSubtreeRaster]: the draw put the shader and
-    // the images into this frame's display list, which holds its own claim
-    // from then on.
-    composed?.dispose();
-    shader?.dispose();
-    row?.dispose();
-    backdrop.dispose();
-  }
-}
-
-/// How many blends were composed in a raster of their own and blitted
-/// ([_composeInARaster]'s magnified plans) since a test zeroed it — the
-/// third raster, invisible in the bytes.
-///
-/// ⚠️Written under `assert`, so a release build pays nothing.
-@visibleForTesting
-int debugBlendsComposedInARaster = 0;
-
-/// [shader] over the whole of [plan]'s grid, in [into]'s space taken as that
-/// grid — a raster pixel a unit — where the shader's own coordinates are the
-/// images' ([LayerBlendShader]: `FlutterFragCoord()` over its size).
-void _shadeTheGrid(Canvas into, SubtreeRasterPlan plan, ui.Shader shader) =>
-    into.drawRect(
-      Rect.fromLTWH(
-        0,
-        0,
-        plan.pixelWidth.toDouble(),
-        plan.pixelHeight.toDouble(),
-      ),
-      Paint()..shader = shader,
-    );
-
-/// Whether a blend is read in the frame where it can be
-/// ([_composeInTheFrame]). Off, every blend rasterises its backdrop — the
-/// route a test holds the frame's bytes against.
-@visibleForTesting
-bool debugBlendInTheFrame = true;
-
-/// How many blends were read in the frame since a test zeroed it.
-///
-/// ⚠️Written under `assert`, so a release build pays nothing.
-@visibleForTesting
-int debugBlendsReadInTheFrame = 0;
-
-/// Whether [canvas] can read [plan]'s backdrop in the frame: the engine has
-/// a shader filter — Impeller; Skia has none, and throws — and the layer
-/// the backdrop is drawn into lands whole on [plan]'s own grid.
-///
-/// 🚨The filter reads the layer as the engine CUTS it, to the clip it is
-/// drawn under, and in the space it is drawn in. So the layer must lie
-/// inside [shownWithin] — where the caller knows the recording is shown,
-/// once, cut by nothing else (null: it may be replayed under another clip,
-/// as a bake's recording is) — and under the canvas's clip, upright, on
-/// whole device pixels. Anywhere else the source would be sampled off the
-/// backdrop it is composed with.
-bool _readsInTheFrame(
-  Canvas canvas,
-  SubtreeRasterPlan plan,
-  Rect? shownWithin,
-) {
-  if (shownWithin == null ||
-      !debugBlendInTheFrame ||
-      !ui.ImageFilter.isShaderFilterSupported) {
-    return false;
-  }
-  final m = canvas.getTransform();
-  final upright =
-      m[1] == 0 && m[3] == 0 && m[4] == 0 && m[7] == 0 && m[0] > 0 && m[5] > 0;
-  if (!upright) {
-    return false;
-  }
-  bool whole(double v) => (v - v.roundToDouble()).abs() < 1e-3;
-  final d = plan.destination;
-  final clip = canvas.getLocalClipBounds().intersect(shownWithin);
-  return whole(d.left * m[0] + m[12]) &&
-      whole(d.right * m[0] + m[12]) &&
-      whole(d.top * m[5] + m[13]) &&
-      whole(d.bottom * m[5] + m[13]) &&
-      clip.left <= d.left + 1e-3 &&
-      clip.top <= d.top + 1e-3 &&
-      clip.right >= d.right - 1e-3 &&
-      clip.bottom >= d.bottom - 1e-3;
-}
-
-/// [paintBackdrop] drawn into a layer whose filter IS the blend: the engine
-/// hands that layer to [LayerBlendShader] as the backdrop, in the frame, and
-/// [source] — rasterised on [plan]'s grid, which the layer lands on — is the
-/// other picture. One raster where the backdrop's route makes three, and
-/// none of them waits on the frame.
-///
-/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan (유저 2026-10-22
-/// 「골은 b」): the backdrop is read where the frame is drawn, the way the
-/// GPU's own blend reads its target. 🔬On the Windows app (10-22, r12) a
-/// stroke under a multiply row came to the screen 21.3ms after its input,
-/// against 30.0 with the backdrop rasterised and 22.5 with the GPU's own
-/// multiply; the whole canvas composed both ways was the same bytes. An
-/// off-screen raster cost about 6.5ms of the raster thread whatever its
-/// size (r10), which is what the backdrop's route paid three times a step.
-void _composeInTheFrame({
-  required Canvas canvas,
-  required SubtreeRasterPlan plan,
-  required double rasterScale,
-  required void Function(Canvas into, double rasterScale) paintBackdrop,
-  required ui.Image source,
-  required LayerBlendMode blendMode,
-}) {
-  assert(() {
-    debugBlendsReadInTheFrame += 1;
-    debugLastSubtreeRaster = plan;
-    return true;
-  }());
-  final shader = LayerBlendShader.filterFor(source: source, mode: blendMode);
-  try {
-    canvas
-      ..saveLayer(
-        plan.destination,
-        Paint()..imageFilter = ui.ImageFilter.shader(shader),
-      )
-      ..clipRect(plan.destination)
-      // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT, not as the bounds
-      // it is saved with: 🔬on Impeller Vulkan (the test runner, 10-22) a
-      // backdrop with nothing on its paper filled only part of the layer,
-      // the engine handed the shader that part, and the source was read
-      // shifted — a stroke in screen over one row laid a red ghost where
-      // nothing was. Nothing, `src`, over the whole destination first.
-      ..drawRect(
-        plan.destination,
-        Paint()
-          ..blendMode = BlendMode.src
-          ..color = const Color(0x00000000),
-      );
-    paintBackdrop(canvas, rasterScale);
-    canvas.restore();
-  } finally {
-    // ⚠️Safe once the layer is recorded: the display list holds its own
-    // claim on the filter and the image it samples.
-    shader.dispose();
-    source.dispose();
-  }
 }
 
 /// Runs [steps] over [source], returning a NEW image the caller owns, or
@@ -1366,9 +730,9 @@ class _Laying {
         ? image
         : _cutOut(image, cut);
     final next = _Laying._drawn(source, (into, _) {
-      // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT
-      // ([_composeInTheFrame]): nothing, `src`, over the whole raster first,
-      // so a layer over a cut paper is the raster's.
+      // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT: nothing, `src`,
+      // over the whole raster first, so a layer over a cut paper is the
+      // raster's.
       into.drawRect(
         rect,
         Paint()
@@ -1604,9 +968,7 @@ void _finishSubtreeRaster({
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
   required Rect paper,
-  SubtreeHold? held,
   RowPainter? rows,
-  required int unrunBefore,
 }) {
   assert(() {
     debugSubtreeRasterCount += 1;
@@ -1641,15 +1003,6 @@ void _finishSubtreeRaster({
       ),
     );
   } finally {
-    // ⛔Not with a plugin's step in it drawn as if off ([FxPluginStages.
-    // unrun]): the next round of the recording that missed it would cut
-    // from this and never meet the step again.
-    if (held != null &&
-        held.keeps &&
-        !plan.magnifies &&
-        FxPluginStages.unrun == unrunBefore) {
-      held._keep((plan: plan, raster: raster, image: image));
-    }
     // ⚠️Safe HERE and nowhere earlier: the draws put the image into this
     // frame's display list and the engine holds its own claim from that
     // moment. What `dispose` releases is this handle, not the pixels the

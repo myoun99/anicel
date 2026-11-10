@@ -2,7 +2,6 @@
 library;
 
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,8 +10,6 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
-import 'package:anicel/src/models/camera_pose.dart';
-import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -24,9 +21,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -148,11 +143,6 @@ void main() {
     expect(off, isEmpty);
   }
 
-  Future<Uint8List> bytesOf(WidgetTester tester, ui.Image image) async =>
-      (await tester.runAsync(
-        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
-      ))!.buffer.asUint8List();
-
   testWidgets('on the canvas\'s own road', (tester) async {
     Future<Uint8List> drawn(String scene) async {
       final row = CompositeLeaf<CanvasStackRow>(
@@ -191,43 +181,4 @@ void main() {
     await expectReadWhereItShows(drawn);
   });
 
-  testWidgets('on the camera\'s road, the export\'s', (tester) async {
-    const service = CameraFrameRenderService(background: Color(0x00000000));
-    Future<Uint8List> drawn(String scene) async {
-      final row = CompositeLeaf(
-        CutFrameCompositeLayer(
-          surface: checker,
-          opacity: 1,
-          placement: shifted,
-          effects: chainOf(scene),
-        ),
-      );
-      final image = (await tester.runAsync(
-        () => service.renderThroughCamera(
-          canvasSize: canvasSize,
-          nodes: [
-            if (scene == 'mapped')
-              CompositeReadsRows(
-                node: row,
-                rows: {
-                  map: [
-                    CompositeLeaf(
-                      CutFrameCompositeLayer(surface: depth, opacity: 1),
-                    ),
-                  ],
-                },
-              )
-            else
-              row,
-          ],
-          pose: CameraPose(center: CanvasPoint(x: width / 2, y: height / 2)),
-          cameraFrameSize: canvasSize,
-        ),
-      ))!;
-      addTearDown(image.dispose);
-      return bytesOf(tester, image);
-    }
-
-    await expectReadWhereItShows(drawn);
-  });
 }

@@ -288,17 +288,15 @@ void main() {
     expect(premultiplied.sublist(0, 4), red, reason: '⛔CONTROL: as it was');
   });
 
-  test('a route that cannot wait draws it as if off — and says so', () async {
+  test('a route that cannot wait draws it as if off', () async {
     final runner = ShiftingFxPlugin(by: 2);
     final picture = source();
-    final before = FxPluginStages.unrun;
 
     final row = await rowOf(recorded(picture, [plugin(runner)]));
 
     expect(row[0], red);
     expect(row[2], clear);
     expect(runner.renders, 0);
-    expect(FxPluginStages.unrun, before + 1);
     picture.dispose();
   });
 
