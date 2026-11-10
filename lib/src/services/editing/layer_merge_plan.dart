@@ -553,6 +553,7 @@ LayerMergePlan planLayerMerge(
           head: pressed._anchor,
           bank: held,
           cels: bank.byPart[at],
+          lanes: bank.byPart,
         ),
         mintFrameId,
         (wall: wall, inkOf: part.reads.inkOf),
@@ -778,12 +779,14 @@ typedef _BankCel = ({_Cel cel, int part});
 
 /// Of a share, the row the merge leaves there: [id], wearing [head] — the
 /// pressed cut's topmost row, whose name a 겸용 layer wears in every cut —
-/// over the [bank] every cut's results hold, showing its own [cels].
+/// over the [bank] every cut's results hold, showing its own [cels]; the
+/// [lanes] the cels each cut's result shows, its own among them.
 typedef _ResultOf = ({
   LayerId id,
   Layer head,
   List<_Cel> bank,
   List<_Cel> cels,
+  List<List<_Cel>> lanes,
 });
 
 /// What a share's cut is made of the merge: its result where its topmost
@@ -815,6 +818,7 @@ _Made _madeOf(
         taking._keeper,
         conte,
         following: part.follows == null ? null : of.cels,
+        lanes: of.lanes,
       ),
       null => row,
     },
@@ -1311,7 +1315,7 @@ List<LayerMergePicture> _picturesOf(
 Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
   id: of.id,
   name: of.head.name,
-  kind: kindHoldingPictures(of.head.kind, of.bank.length),
+  kind: kindHoldingPictures(of.head.kind, _celsShownOn(of.lanes)),
   mark: of.head.mark,
   onTimesheet: anchor.onTimesheet,
   folderId: folderId,
@@ -1324,15 +1328,17 @@ Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
 /// rode, as [keeper]'s row of the track's structure, of its kind — and,
 /// [following] the conte's timing as every row taken did
 /// ([_conteFollowed]), a cel for each cel of the conte it shows, as a
-/// synced row's are; a timing of its own where null.
+/// synced row's are; a timing of its own where null. Its kind is the one
+/// its [lanes] — every cut's of the layer — leave [keeper]'s.
 Layer _onTheConte(
   Layer row,
   Layer keeper,
   Layer conte, {
   required List<_Cel>? following,
+  required List<List<_Cel>> lanes,
 }) {
   final riding = row.copyWith(
-    kind: kindHoldingPictures(keeper.kind, row.frames.length),
+    kind: kindHoldingPictures(keeper.kind, _celsShownOn(lanes)),
     attachedToLayerId: conte.id,
     attachedPlacement: keeper.attachedPlacement,
     conteKey: keeper.conteKey,
@@ -1349,13 +1355,30 @@ Layer _onTheConte(
   );
 }
 
-/// The kind a row of [kind] is once it holds [pictures] cels: a picture
-/// row's own — a folder or an image that now holds more than one picture
-/// becoming a drawing row.
-LayerKind kindHoldingPictures(LayerKind kind, int pictures) =>
-    kind.isDrawingCel && !(kind.holdsSingleCel && pictures > 1)
+/// The kind a row of [kind] is once its [lanes] show the cels each shows —
+/// one lane for each cut the row is in: a picture row's own — a folder, or
+/// an image one of whose lanes shows more than one picture, becoming a
+/// drawing row.
+///
+/// 🗣️F-572 (유저 2026-11-08): 「이미지 레이어끼리 병합하면 애니메이션레이어되는데
+/// 특별한 일 없으면 이미지레이어 유지하도록」. ⛔Never the BANK: a 겸용
+/// layer's bank holds every cut's picture of it, and an image holds one a
+/// LANE ([LayerKind.holdsSingleCel]) — counted from the bank, two images
+/// each showing one picture in each of two 겸용 cuts merged into an
+/// animation row.
+LayerKind kindHoldingPictures(
+  LayerKind kind,
+  Iterable<Iterable<FrameId>> lanes,
+) =>
+    kind.isDrawingCel &&
+        !(kind.holdsSingleCel && lanes.any((lane) => lane.toSet().length > 1))
     ? kind
     : LayerKind.animation;
+
+/// The cels each of [lanes] shows, as [kindHoldingPictures] reads them.
+Iterable<Iterable<FrameId>> _celsShownOn(List<List<_Cel>> lanes) => [
+  for (final cels in lanes) [for (final cel in cels) cel.frameId],
+];
 
 List<Frame> _framesOf(List<_Cel> cels) => [
   for (final cel in cels)
@@ -1439,7 +1462,7 @@ typedef _Minting = ({
   return (
     row: rider.copyWith(
       attachedToLayerId: result.row.id,
-      kind: kindHoldingPictures(rider.kind, cels.length),
+      kind: kindHoldingPictures(rider.kind, _celsShownOn([cels])),
       frames: _framesOf(cels),
       timeline: _timelineOf(cels),
     ),

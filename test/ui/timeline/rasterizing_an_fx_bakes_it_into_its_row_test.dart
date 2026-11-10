@@ -1638,6 +1638,29 @@ void main() {
         exposedFrameIdAt(row.timeline, frame),
     ];
 
+    test('🗣️F-572 — an image each of whose cuts shows one picture of it '
+        'stays an image, though the bank holds a picture for each cut', () {
+      final s = linkedOf(
+        [
+          rowA(kind: LayerKind.image, effects: [brightness(keyed: false)]),
+        ],
+        twin: (use) => use.copyWith(
+          effects: [
+            LayerEffect(
+              id: bright,
+              kind: EffectKind.brightnessContrast,
+              parameters: {'brightness': EffectParameter(value: 20)},
+            ),
+          ],
+        ),
+      );
+
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+
+      expect(plan.row.frames, hasLength(2), reason: '⛔전제: one a cut');
+      expect(plan.row.kind, LayerKind.image);
+    });
+
     testWidgets('🎯a still fx pressed in the linked cut: every use bakes it — '
         'its cel baked once into the one bank, the fx at rest in both cuts, '
         'each showing what it showed — and one undo gives both back', (

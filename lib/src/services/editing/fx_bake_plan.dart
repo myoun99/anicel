@@ -605,16 +605,23 @@ typedef _Bank = ({
 
 /// One row's cels after a bake: the [cels] of its bank, the cel it shows
 /// at each frame ([celAt]) and the first picture each cel baked became
-/// ([firstOf]).
+/// ([firstOf]) — and the cel each use of the bank shows at each frame
+/// ([lanes], its own among them), which its kind is read from
+/// ([kindHoldingPictures]).
 typedef _Held = ({
   List<Frame> cels,
   Map<int, FrameId> celAt,
   Map<FrameId, FrameId> firstOf,
+  List<Map<int, FrameId>> lanes,
 });
 
 /// [bank] as the use at [place] holds it.
-_Held _heldBy(_Bank bank, int place) =>
-    (cels: bank.cels, celAt: bank.celAt[place], firstOf: bank.firstOf);
+_Held _heldBy(_Bank bank, int place) => (
+  cels: bank.cels,
+  celAt: bank.celAt[place],
+  firstOf: bank.firstOf,
+  lanes: bank.celAt,
+);
 
 /// The cels of the base [use]'s row is synced on, where it rides one, as
 /// its cut shows them where [held] shows a cel — the base not baked.
@@ -625,14 +632,13 @@ _Held? _baseHeld(_Use use, _Held held) =>
     };
 
 /// [row]'s cels as [cut] shows them at [frames], none of them baked.
-_Held _heldAsShown(Cut cut, Layer row, Iterable<int> frames) => (
-  cels: row.frames,
-  celAt: {
+_Held _heldAsShown(Cut cut, Layer row, Iterable<int> frames) {
+  final celAt = {
     for (final frame in frames)
       frame: ?exposedCelIdAt(cut: cut, layerId: row.id, frameIndex: frame),
-  },
-  firstOf: const {},
-);
+  };
+  return (cels: row.frames, celAt: celAt, firstOf: const {}, lanes: [celAt]);
+}
 
 /// Each of [uses]' cels after the bake ([held], by its place) and every
 /// new cel's picture still to be laid: the uses whose row is one key
@@ -1136,7 +1142,9 @@ Layer _holding(
   required int drawn,
 }) {
   final after = row.copyWith(
-    kind: kindHoldingPictures(row.kind, own.cels.length),
+    kind: kindHoldingPictures(row.kind, [
+      for (final lane in own.lanes) lane.values,
+    ]),
     frames: own.cels,
     audioClips: _clipsAfter(row, own.firstOf),
   );

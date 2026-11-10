@@ -875,6 +875,69 @@ void main() {
       expect(plan.pictures, hasLength(2), reason: 'each cel drawn once');
     });
 
+    test('🗣️F-572 — images showing one picture in each cut stay an image, '
+        'however many pictures the bank holds; one cut showing two makes '
+        'the layer a drawing row in every cut', () {
+      /// Image [id] holding the pictures `P1` and `P2`, showing `P1`.
+      Layer image(String id) {
+        final shows = row(id, {0: 'P1'}, kind: LayerKind.image);
+        return shows.copyWith(
+          frames: [
+            ...shows.frames,
+            Frame(
+              id: FrameId('$id-P2'),
+              duration: 1,
+              name: 'P2',
+              strokes: const [],
+            ),
+          ],
+        );
+      }
+
+      /// [row]'s self `<id>2` in the cut `d`, showing `P2` [length] long.
+      Layer showingP2(Layer row, {int length = 2}) => self(
+        row,
+        '${row.id.value}2',
+        timeline: {
+          0: TimelineExposure.drawing(
+            FrameId('${row.id.value}-P2'),
+            length: length,
+          ),
+        },
+      );
+
+      LayerMergePlan mergedWith({required int aLength}) {
+        final (a, b) = (image('a'), image('b'));
+        return merge(
+          cutOf([b, a]),
+          ['a', 'b'],
+          elsewhere: [
+            cutOf(id: 'd', [showingP2(b), showingP2(a, length: aLength)]),
+          ],
+          links: [
+            ['c/a', 'd/a2'],
+            ['c/b', 'd/b2'],
+          ],
+        )!;
+      }
+
+      List<LayerKind> kindsOf(LayerMergePlan plan) => [
+        plan.result.kind,
+        rowOf(plan.others.single.layers, 'a2').kind,
+      ];
+
+      final one = mergedWith(aLength: 2);
+      final two = mergedWith(aLength: 1);
+      expect(one.result.frames, hasLength(2), reason: '⛔전제: a picture a cut');
+      expect(
+        rowOf(two.others.single.layers, 'a2').timeline,
+        hasLength(2),
+        reason: '⛔전제: the cut d shows two pictures',
+      );
+      expect(kindsOf(one), [LayerKind.image, LayerKind.image]);
+      expect(kindsOf(two), [LayerKind.animation, LayerKind.animation]);
+    });
+
     test('a cut stands its result where its own topmost row stood, and the '
         'results keep their cels where the link table keeps them now', () {
       final a = row('a', {0: 'A1'});
