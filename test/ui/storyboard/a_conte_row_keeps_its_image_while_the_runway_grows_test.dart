@@ -19,7 +19,12 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_camera_row.dart'
+    show trackCameraRowId;
+import 'package:anicel/src/models/track_conte_row.dart' show trackConteRowId;
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/track_transform_lane_carrier.dart'
+    show trackTransformLaneCarrierId;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
@@ -91,6 +96,8 @@ void main() {
           duration: frames,
           canvasSize: const CanvasSize(width: 1280, height: 720),
           camera: CutCamera.empty(),
+          // The camera row and the conte row twirled open: every family
+          // of lane rows the conte keeps stands.
           layers: [
             Layer(
               id: LayerId('t$t-conte'),
@@ -98,6 +105,14 @@ void main() {
               kind: LayerKind.storyboard,
               frames: panels.frames,
               timeline: panels.timeline,
+              lanesExpanded: true,
+            ),
+            Layer(
+              id: LayerId('t$t-camera'),
+              name: 'Camera',
+              kind: LayerKind.camera,
+              frames: const [],
+              lanesExpanded: true,
             ),
           ],
         ),
@@ -110,6 +125,7 @@ void main() {
             kind: LayerKind.se,
             frames: s == 'S1' ? sound.frames : const [],
             timeline: s == 'S1' ? sound.timeline : const {},
+            lanesExpanded: true,
           ),
       ],
     );
@@ -170,6 +186,35 @@ void main() {
     fail('rows still drawn live after 600 frames');
   }
 
+  /// The rows each family of lane labels is carried by on the conte: the
+  /// V row's fx chain, an S row's, the camera row's and the conte row's.
+  List<String> laneCarriersOf(int t) => [
+    trackTransformLaneCarrierId(TrackId('t$t')).value,
+    't$t-S1',
+    't$t-S2',
+    trackCameraRowId(TrackId('t$t')).value,
+    trackConteRowId(TrackId('t$t')).value,
+  ];
+
+  /// Each family's lane labels stand among [rows] as images of their own.
+  void expectEveryLaneFamily(
+    List<({String name, RenderStillRaster region})> rows,
+  ) {
+    for (var t = 0; t < 2; t += 1) {
+      for (final carrier in laneCarriersOf(t)) {
+        expect(
+          rows.where(
+            (row) => row.name.startsWith(
+              'storyboard-lane-stand-cell-$carrier-',
+            ),
+          ),
+          isNotEmpty,
+          reason: '⛔premise: $carrier\'s lane labels stand as images',
+        );
+      }
+    }
+  }
+
   /// Both tracks on the conte, [cell] a frame.
   Future<void> pumpConte(WidgetTester tester) => pumpStoryboardHost(
     tester,
@@ -182,7 +227,8 @@ void main() {
       // wherever the drag takes it.
       trailingFrames: 60,
     ),
-    surface: const Size(1400, 900),
+    // Tall enough that both tracks stand whole, every lane open.
+    surface: const Size(1400, 2600),
     pixelsPerFrame: cell,
   );
 
@@ -258,6 +304,7 @@ void main() {
       findsAtLeastNWidgets(8),
       reason: '⛔premise: each track\'s sound and span wear their grips',
     );
+    expectEveryLaneFamily(before);
     final taken = [for (final row in before) row.region.debugCaptureCount];
     final built = position.maxScrollExtent;
     var stood = bucket();
@@ -298,14 +345,7 @@ void main() {
     await pumpConte(tester);
     final before = await untilEveryRowIsAnImage(tester);
     final taken = [for (final row in before) row.region.debugCaptureCount];
-    expect(
-      [
-        for (final row in before)
-          if (row.name.contains('-fx-group:')) row.name,
-      ],
-      hasLength(2),
-      reason: '⛔premise: each track\'s fx head stands as an image',
-    );
+    expectEveryLaneFamily(before);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('storyboard-se-label-t0-1')),
