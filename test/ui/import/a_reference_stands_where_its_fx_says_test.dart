@@ -1589,9 +1589,12 @@ void main() {
 
     testWidgets('🎯a 겸용 copy that shows the still apart from the row: each '
         'use takes the picture where IT shows it — the one bank a cel '
-        'apiece, the first with the cel\'s name and a tail after, an '
-        'animation layer — and ONE undo gives both back (🗣️I-120-Q22 '
-        '「링크를 둔 채 셀을 나눠 굽는다」 — ↩️F-374-Q10 waited)', (tester) async {
+        'apiece, the first with the cel\'s name and a tail after, still '
+        'an image layer, each use showing one — and ONE undo gives both '
+        'back (🗣️I-120-Q22 「링크를 둔 채 셀을 나눠 굽는다」 · F-572-Q2 「셋 다 '
+        '행마다 센다」 — ↩️I-120-Q22\'s option, more than one cel an '
+        'animation, changed by F-572-Q2 (유저 11-11) · ↩️F-374-Q10 '
+        'waited)', (tester) async {
       final (s, row) = await placed(tester);
       named(s, row, '3');
       final copy = s.cutCommandCoordinator.linkDuplicateLayer(
@@ -1609,8 +1612,8 @@ void main() {
       final bakedCopy = s.layerById(copy)!;
       expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
       expect([baked.kind, bakedCopy.kind], [
-        LayerKind.animation,
-        LayerKind.animation,
+        LayerKind.image,
+        LayerKind.image,
       ]);
       expect([for (final cel in baked.frames) cel.name], ['3', '3-2']);
       expect(bakedCopy.frames, baked.frames, reason: 'one bank');

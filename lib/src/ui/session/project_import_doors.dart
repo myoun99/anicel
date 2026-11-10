@@ -42,7 +42,7 @@ import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, picturePlacement;
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/editing/layer_merge_plan.dart'
-    show kindHoldingBank, tailedName;
+    show kindShowingCelsAt, tailedName;
 import '../../services/editing/timeline_showing.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/cel_picture.dart';
@@ -1070,8 +1070,8 @@ class ProjectImportDoors {
   /// reference is let go of, and the pool entry stays: it was made when the
   /// reference was placed, and a later bake does not empty the pool (「구워도
   /// 풀에 남음」 — what a PLACEMENT registers is [placementRegisters]'s,
-  /// F-282-Q6). A row holding more than one picture becomes a drawing row
-  /// ([kindHoldingBank]).
+  /// F-282-Q6). A row one of whose uses shows more than one picture becomes
+  /// a drawing row ([kindShowingCelsAt]).
   ///
   /// Where it shows each picture is [referenceLetGo]'s (F-374-Q7): its
   /// reference fx's move carried into the row's own transform and the
@@ -1789,7 +1789,7 @@ class ProjectImportDoors {
   /// that carries it, as a still's is (F-374-Q3 · Q7 · Q10), the bank
   /// [cels] holds, each use's blocks parted where its pictures are
   /// ([timelineShowing] — the head keeps the memo and the marks), its kind
-  /// the one a row of so many pictures is ([kindHoldingBank]), and
+  /// the one its uses' lanes leave it ([kindShowingCelsAt]), and
   /// every reference let go of — through the edit funnels every transform
   /// and timeline change uses. The pixels follow it, as a landed import's
   /// do. Answers [layerId]'s row as it lands.
@@ -1822,9 +1822,8 @@ class ProjectImportDoors {
         // ⛔`plan.assets` is dropped: the pool entry is already there, and
         // it stays there — baking does not unregister a file.
         final rasterized = carried.copyWith(
-          // 🗣️I-120 「참조fx의 래스터라이즈할때처럼 같은 법」 · I-120-Q22 셀 목록:
-          // a rasterize counts its bank ([kindHoldingBank]) — F-572-Q2 unanswered.
-          kind: kindHoldingBank(carried.kind, cels.frames),
+          // 🗣️F-572-Q2 (유저 11-11): each use's lane, as a merge counts.
+          kind: kindShowingCelsAt(carried.kind, cels.celAt),
           frames: cels.frames,
           timeline: timelines[index],
           mediaReference: null,

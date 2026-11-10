@@ -434,8 +434,10 @@ void main() {
 
   testWidgets('🎯a 겸용 copy no key carries the move of, showing the picture '
       'elsewhere, goes behind the window with its row — each use its own '
-      'cel, an animation layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
-      '셀을 나눠 굽는다」 — ↩️F-374-Q11 left it a reference and said why)', (
+      'cel, still an image layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
+      '셀을 나눠 굽는다」 · F-572-Q2 「셋 다 행마다 센다」 — ↩️I-120-Q22\'s '
+      'option, more than one cel an animation, changed by F-572-Q2 (유저 '
+      '11-11) · ↩️F-374-Q11 left it a reference and said why)', (
     tester,
   ) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
@@ -463,8 +465,8 @@ void main() {
     final bakedCopy = current(s, copy);
     expect(bakedCopy.mediaReference, isNull);
     expect([baked.kind, bakedCopy.kind], [
-      LayerKind.animation,
-      LayerKind.animation,
+      LayerKind.image,
+      LayerKind.image,
     ]);
     expect(baked.frames, hasLength(2));
     expect(

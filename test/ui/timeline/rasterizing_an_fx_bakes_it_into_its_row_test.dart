@@ -1638,9 +1638,10 @@ void main() {
         exposedFrameIdAt(row.timeline, frame),
     ];
 
-    test('🗣️I-120 「참조fx의 래스터라이즈할때처럼 같은 법」 · I-120-Q22 — an image '
-        'baked into a bank of more than one picture becomes an animation '
-        'row, though each cut shows one (F-572-Q2 unanswered)', () {
+    test('🗣️F-572 · F-572-Q2 「셋 다 행마다 센다」 — an image each of whose '
+        'cuts shows one picture of it stays an image, though the bank '
+        'holds a picture for each cut (↩️I-120-Q22\'s option, more than '
+        'one cel an animation, changed by F-572-Q2 (유저 11-11))', () {
       final s = linkedOf(
         [
           rowA(kind: LayerKind.image, effects: [brightness(keyed: false)]),
@@ -1663,7 +1664,7 @@ void main() {
         hasLength(greaterThan(1)),
         reason: '⛔전제: the bank holds more than one picture',
       );
-      expect(plan.row.kind, LayerKind.animation);
+      expect(plan.row.kind, LayerKind.image);
     });
 
     testWidgets('🎯a still fx pressed in the linked cut: every use bakes it — '
