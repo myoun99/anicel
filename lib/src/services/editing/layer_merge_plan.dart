@@ -813,13 +813,7 @@ _Made _madeOf(
   final row = _resultRow(of, taking._anchor, part.standing);
   final result = (
     row: switch (taking._conte) {
-      final conte? => _onTheConte(
-        row,
-        taking._keeper,
-        conte,
-        following: part.follows == null ? null : of.cels,
-        lanes: of.lanes,
-      ),
+      final conte? => _onTheConte(row, conte, part: part, of: of),
       null => row,
     },
     runs: part.runs,
@@ -1324,32 +1318,32 @@ Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
 );
 
 /// [row] made a row of [conte] (🗣️I-78-Q20: 「결과는 트랙 구조에서 맨 위 행
-/// 자리에 서고 모든 컷이 같은 구조를 유지」): riding it on the side [keeper]
-/// rode, as [keeper]'s row of the track's structure, of its kind — and,
-/// [following] the conte's timing as every row taken did
-/// ([_conteFollowed]), a cel for each cel of the conte it shows, as a
-/// synced row's are; a timing of its own where null. Its kind is the one
-/// its [lanes] — every cut's of the layer — leave [keeper]'s.
+/// 자리에 서고 모든 컷이 같은 구조를 유지」): riding it on the side [part]'s
+/// keeper rode, as the keeper's row of the track's structure, of its kind
+/// — and, where [part] follows the conte's timing as every row taken did
+/// ([_conteFollowed]), a cel for each cel of the conte [of] shows, as a
+/// synced row's are; a timing of its own where it does not. Its kind is
+/// the one [of]'s lanes — every cut's of the layer — leave the keeper's.
 Layer _onTheConte(
   Layer row,
-  Layer keeper,
   Layer conte, {
-  required List<_Cel>? following,
-  required List<List<_Cel>> lanes,
+  required _Part part,
+  required _ResultOf of,
 }) {
+  final keeper = part.taking._keeper;
   final riding = row.copyWith(
-    kind: kindHoldingPictures(keeper.kind, _celsShownOn(lanes)),
+    kind: kindHoldingPictures(keeper.kind, _celsShownOn(of.lanes)),
     attachedToLayerId: conte.id,
     attachedPlacement: keeper.attachedPlacement,
     conteKey: keeper.conteKey,
   );
-  if (following == null) {
+  if (part.follows == null) {
     return riding.copyWith(attachedMode: AttachedMode.free);
   }
   return riding.copyWith(
     timeline: const {},
     baseFrameLinks: {
-      for (final cel in following)
+      for (final cel in of.cels)
         exposedFrameIdAt(conte.timeline, cel.spans.first.start)!: cel.frameId,
     },
   );
@@ -1374,6 +1368,13 @@ LayerKind kindHoldingPictures(
         !(kind.holdsSingleCel && lanes.any((lane) => lane.toSet().length > 1))
     ? kind
     : LayerKind.animation;
+
+/// [kindHoldingPictures] of lanes each read as the cel it shows at each
+/// frame — a bake's `celAt`, one map for each use of the row.
+LayerKind kindShowingCelsAt(
+  LayerKind kind,
+  Iterable<Map<int, FrameId>> celAt,
+) => kindHoldingPictures(kind, [for (final lane in celAt) lane.values]);
 
 /// The cels each of [lanes] shows, as [kindHoldingPictures] reads them.
 Iterable<Iterable<FrameId>> _celsShownOn(List<List<_Cel>> lanes) => [

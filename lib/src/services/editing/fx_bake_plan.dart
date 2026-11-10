@@ -31,7 +31,7 @@ import 'layer_merge_plan.dart'
         CelReads,
         LayerMergePicture,
         drawnBare,
-        kindHoldingPictures,
+        kindShowingCelsAt,
         rowsKeyedAcrossCuts,
         runsByPicture,
         tailedName;
@@ -607,7 +607,7 @@ typedef _Bank = ({
 /// at each frame ([celAt]) and the first picture each cel baked became
 /// ([firstOf]) — and the cel each use of the bank shows at each frame
 /// ([lanes], its own among them), which its kind is read from
-/// ([kindHoldingPictures]).
+/// ([kindShowingCelsAt]).
 typedef _Held = ({
   List<Frame> cels,
   Map<int, FrameId> celAt,
@@ -1142,9 +1142,7 @@ Layer _holding(
   required int drawn,
 }) {
   final after = row.copyWith(
-    kind: kindHoldingPictures(row.kind, [
-      for (final lane in own.lanes) lane.values,
-    ]),
+    kind: kindShowingCelsAt(row.kind, own.lanes),
     frames: own.cels,
     audioClips: _clipsAfter(row, own.firstOf),
   );
