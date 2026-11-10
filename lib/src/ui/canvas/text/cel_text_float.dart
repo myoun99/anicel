@@ -105,14 +105,35 @@ class CelTextFloat implements LandingPreview {
 ///
 /// ⚠️[picture] is let go of by whoever shows this, once it shows it no
 /// more ([letGo]).
-@immutable
 class CelTextLanding implements LandingPreview {
-  const CelTextLanding({
-    required this.picture,
+  CelTextLanding({
+    required Image picture,
     required this.tiles,
     required this.left,
     required this.top,
-  });
+  }) : _picture = picture,
+       _width = picture.width,
+       _height = picture.height,
+       _straight = null;
+
+  /// [tiles] — where a landing left them, over [region] — shown as they
+  /// stand: nothing of them comes off the engine to be carried, and a
+  /// picture of [straight] is made only for a canvas that asks ([picture]).
+  ///
+  /// 🔬A float on a posed row is its landing, made again at each place a
+  /// hand carries it to, and read back here it was a GPU wait a tile: about
+  /// 187 a frame on S5_BA's paper, a whole-paper float dragged at 360–480 ms
+  /// a frame (Surface Pro 11, 검증/서피스 11-10, flip lane).
+  CelTextLanding.standing(
+    DirtyRegion region,
+    this.tiles,
+    Uint8List Function() straight,
+  ) : _picture = null,
+      _width = region.width,
+      _height = region.height,
+      _straight = straight,
+      left = region.left,
+      top = region.top;
 
   /// The picture of [straight] — rgba of [region], a row its width —
   /// through the door every tile takes ([pictureOf]), so its bytes are the
@@ -127,7 +148,14 @@ class CelTextLanding implements LandingPreview {
         top: region.top,
       );
 
-  final Image picture;
+  final int _width;
+  final int _height;
+  final Uint8List Function()? _straight;
+  Image? _picture;
+
+  Image get picture => _picture ??= pictureOf(
+    _StraightRows(_straight!(), _width, _height),
+  );
 
   /// [picture]'s bytes as tiles, where they stand: what the engine lays
   /// ([heldTiles]).
@@ -144,8 +172,8 @@ class CelTextLanding implements LandingPreview {
   Rect get drawnWorldRect => Rect.fromLTWH(
     left.toDouble(),
     top.toDouble(),
-    picture.width.toDouble(),
-    picture.height.toDouble(),
+    _width.toDouble(),
+    _height.toDouble(),
   );
 
   /// Its edge cut on the grid, as the coordinates it stands over are
@@ -176,7 +204,11 @@ class CelTextLanding implements LandingPreview {
 
   /// Lets [picture] go — past the frames that may still draw it
   /// ([DeferredImageDisposer]).
-  void letGo() => DeferredImageDisposer.instance.retire(picture);
+  void letGo() {
+    if (_picture case final made?) {
+      DeferredImageDisposer.instance.retire(made);
+    }
+  }
 }
 
 /// Straight rgba rows held in a list, as the picture door reads them.

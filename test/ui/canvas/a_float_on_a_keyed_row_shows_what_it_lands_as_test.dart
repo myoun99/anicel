@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -901,6 +902,49 @@ void main() {
 
   // ── What a landing holds is let go. ──
 
+  // 🔬A float on a posed row is its landing, made at each place a hand
+  // carries it to, and that landing is the engine's: read back to be shown
+  // it was a GPU wait a tile, about 187 a frame on S5_BA's paper (Surface
+  // Pro 11, 검증/서피스 11-10).
+  testWidgets('carried on a posed row, no tile comes off the engine', (
+    tester,
+  ) async {
+    const page = defaultCutCanvasSize;
+    final c = await open(
+      tester,
+      projectOf(
+        _Rows.live,
+        keyed: false,
+        pose: TransformPose(
+          center: CanvasPoint(x: page.width / 2, y: page.height / 2),
+          rotationDegrees: 8,
+        ),
+      ),
+    );
+    final a = Rect.fromLTWH(c.dx - 160, c.dy - 64, 120, 120);
+    await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
+    await settle(tester);
+    final region = a.inflate(120);
+    final step = holdIn(tester, region);
+    final first = step + handFor(tester, 40, 30);
+    final second = step + handFor(tester, 46, 34);
+    final commands = await select(tester, _Rows.live, region);
+
+    final hand = await tester.startGesture(step, kind: PointerDeviceKind.mouse);
+    await tester.pump();
+    await hand.moveTo(first);
+    await settle(tester);
+    expect(commands.movePending, isTrue, reason: '⛔fixture: in hand');
+
+    final reads = EngineTileLedger.instance.debugTileReads;
+    await hand.moveTo(second);
+    await settle(tester);
+
+    expect(EngineTileLedger.instance.debugTileReads, reads);
+    await hand.up();
+    await settle(tester);
+  });
+
   testWidgets('a landing made for one place is let go once the hand carries '
       'the float on, and the last once the box lands', (tester) async {
     final c = await open(tester, projectOf(_Rows.live, keyed: true));
@@ -951,21 +995,24 @@ void main() {
     await hand.moveTo(first);
     await settle(tester);
     final there = shownLanding();
+    // Made as a canvas that paints the landing makes it: what is let go.
+    final pictureThere = there.picture;
     await hand.moveTo(second);
     await settle(tester);
     final further = shownLanding();
+    final pictureFurther = further.picture;
     await hand.up();
     await settle(tester);
 
     expect(identical(there, further), isFalse, reason: '⛔fixture: carried on');
-    expect(there.picture.debugDisposed, isTrue);
-    expect(further.picture.debugDisposed, isFalse, reason: 'still shown');
+    expect(pictureThere.debugDisposed, isTrue);
+    expect(pictureFurther.debugDisposed, isFalse, reason: 'still shown');
 
     await windowBehind(tester, () async => commands.applyTransform());
     expect(
       await settleAsync(
         tester,
-        () => further.picture.debugDisposed,
+        () => pictureFurther.debugDisposed,
         step: const Duration(milliseconds: 16),
       ),
       isTrue,

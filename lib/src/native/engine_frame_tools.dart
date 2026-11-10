@@ -13,7 +13,8 @@ typedef EngineFrameTools = ({GpuComposite composite, EngineLetters letters});
 /// engine is open, and what it is asked for waits for this.
 Future<EngineFrameTools> get appEngineFrameTools => _tools ??= () async {
   await openAppGpuEngine();
-  final composite = await debugCompositeOfTheTools();
+  final composite =
+      await (debugCompositeOfTheTools ?? appGpuCompositeKernels.warm)();
   return _open = (
     composite: composite,
     letters: await EngineLetters.open(composite),
@@ -21,12 +22,12 @@ Future<EngineFrameTools> get appEngineFrameTools => _tools ??= () async {
 }();
 Future<EngineFrameTools>? _tools;
 
-/// How [appEngineFrameTools] has its executor: compiled off this isolate.
-/// A test seam: a widget test's clock is pumped, and lends a compile on
-/// another isolate no real time to finish in (`flutter_test_config.dart`).
+/// Test seam: how [appEngineFrameTools] has its executor, where not compiled
+/// off this isolate as the app's is: a widget test's clock is pumped, and
+/// lends a compile on another isolate no real time to finish in
+/// (`flutter_test_config.dart`).
 @visibleForTesting
-Future<GpuComposite> Function() debugCompositeOfTheTools =
-    appGpuCompositeKernels.warm;
+Future<GpuComposite> Function()? debugCompositeOfTheTools;
 
 /// [appEngineFrameTools] where they are open already: a store made after
 /// that has no turn to wait before its first paint.

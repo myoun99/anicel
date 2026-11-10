@@ -219,12 +219,14 @@ class _CanvasPanelLift {
   }) {
     final holed = holedSurfaceFor(key);
     if (plugin == null || holed == null) {
-      return CelTextLanding.of(
+      final shown = celSurfaceAsShown(landed.surface, keys);
+      return CelTextLanding.standing(
         landed.region,
-        bitmapSurfaceRegionPixels(
-          celSurfaceAsShown(landed.surface, keys),
-          landed.region,
-        ),
+        {
+          for (final one in tilesCovering(shown, landed.region))
+            one.coord: one.tile,
+        },
+        () => bitmapSurfaceRegionPixels(shown, landed.region),
       );
     }
     final whole = celLandingShownWhole(

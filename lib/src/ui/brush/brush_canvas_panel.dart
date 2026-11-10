@@ -32,6 +32,7 @@ import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/cel_text.dart';
+import '../../models/tiles_covering.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
