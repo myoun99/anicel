@@ -3667,7 +3667,6 @@ class _StoryboardRailHead extends KeptPiece {
   Widget buildKept(BuildContext context) {
     final doubleClick = labelDoubleClick;
     final endOpacity = onLayerOpacityChangeEnd;
-    final pickBlend = onLayerBlendModeSelected;
     final toggleFx = onToggleLayerFx;
     final toggleGroupFold = onToggleGroupFold;
     final toggleSheet = onToggleLayerTimesheet;
@@ -3706,9 +3705,13 @@ class _StoryboardRailHead extends KeptPiece {
       onLayerTotalVolumeChangeEnd: endTotal == null
           ? null
           : (_, share) => endTotal(rowId, share),
-      onLayerBlendModeSelected: pickBlend == null
-          ? null
-          : (_, mode) => pickBlend(rowId, mode),
+      // Handed whatever the host wired, as the onion is: the blend column is
+      // this rail's too ([StoryboardPanel.optionalRailColumns]), and an S
+      // row's speaker and Total stand in it (F-577). ↩️It was handed only
+      // when the host wired a pick, so a host without one got rows without
+      // the column under a legend that kept it — and no speaker.
+      onLayerBlendModeSelected: (_, mode) =>
+          onLayerBlendModeSelected?.call(rowId, mode),
       fxState: fxState,
       onToggleLayerFx: toggleFx == null ? null : (_) => toggleFx(rowId),
       onOpenCameraPath: onOpenCameraPath,

@@ -145,13 +145,16 @@ void main() {
     // graph's slot, kept for its lanes since (I-89-Q17 A). The hand stops
     // the dock at half the window (결정 8), so the window pays twice that:
     // 1000 → 1044.
-    await tester.binding.setSurfaceSize(const Size(1200, 1044));
+    // -322 → -460, 1044 → 1300 (F-577): the speaker went from the name's end
+    // to the blend column, the tail's very end, so the dock opens to its
+    // tallest (`EditorPanelLayoutModel.maxDockExtent`).
+    await tester.binding.setSurfaceSize(const Size(1200, 1300));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -322),
+      const Offset(0, -460),
     );
     await tester.pumpAndSettle();
 
@@ -198,18 +201,25 @@ void main() {
 
     testWidgets('🎯a drag moves the bar and writes at the release alone, '
         'as one undo, and the lane reads what it wrote', (tester) async {
+      final semantics = tester.ensureSemantics();
       final session = EditorSessionManager(initialProject: _project());
       addTearDown(session.dispose);
       await pumpTimelineHostOn(tester, session, surface: const Size(1400, 600));
       expect(tester.widget<FieldSlider>(bar).value, 1.0, reason: 'CONTROL');
+      // What the bar SHOWS — its own echo of the hand, which no host value
+      // follows while it moves (↩️the mixer held the drag itself).
+      double shown() => double.parse(
+        RegExp(r'[0-9.]+').firstMatch(tester.getSemantics(bar).value)![0]!,
+      );
+      expect(shown(), 100, reason: 'CONTROL');
 
       final drag = await tester.startGesture(tester.getCenter(bar));
       await drag.moveBy(const Offset(-10, 0));
       await drag.moveBy(const Offset(-10, 0));
       await tester.pump();
       expect(
-        tester.widget<FieldSlider>(bar).value,
-        lessThan(1.0),
+        shown(),
+        lessThan(100),
         reason: 'CONTROL: the bar follows the hand',
       );
       expect(
@@ -232,6 +242,7 @@ void main() {
       session.undo();
       await tester.pumpAndSettle();
       expect(_seLayer(session.repository).seSound.totalVolume, 1.0);
+      semantics.dispose();
     });
 
     testWidgets('a value typed into the lane stands on the bar', (
