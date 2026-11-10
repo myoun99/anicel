@@ -541,8 +541,8 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              // ⚠️I-168-Q1 (where the search by key stands) waits for its
-              // answer: beside the search by words is the card's recommend.
+              // 🗣️I-168-Q1 (유저 2026-11-11): 「검색 칸 오른쪽, 같은 줄」 —
+              // the search by key stands beside the search by words.
               Row(
                 children: [
                   Expanded(
