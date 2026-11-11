@@ -88,6 +88,7 @@ void main() {
       'await EngineStrokes.warm();',
       'await EngineCelPixels.warm();',
       'await appGpuStampLandingKernels.warm();',
+      'await EngineFloods.warm();',
       'await EngineStrokes.warmBlurs();',
       // Where the hold ends.
       RegExp(r'return opened;\s*\}\);'),

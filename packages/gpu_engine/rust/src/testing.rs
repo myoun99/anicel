@@ -3,6 +3,8 @@
 use std::sync::OnceLock;
 
 use crate::device::Engine;
+use crate::kernels::composite::TileAt;
+use crate::kernels::pool::Pool;
 
 pub use ledger::assert_pinned;
 
@@ -33,6 +35,19 @@ pub fn first_engine() -> &'static Engine {
 /// hands the app its runs by. The buffer is `COPY_SRC`.
 pub fn read_buffer(engine: &Engine, buffer: &wgpu::Buffer) -> Vec<u8> {
     engine.read_buffer(buffer).expect("read back")
+}
+
+/// A pool on [`first_engine`] holding `tiles` — a stored tile's bytes each
+/// — on a cel of its own, and their places: what a test of the C ABI
+/// names its tiles by. ⛔ONE: the executor's ABI tests and the cel pixel
+/// kernels' each wrote it, and the fill's came as a third (11-12).
+pub(crate) fn stored(tiles: &[Vec<u8>]) -> (Pool, Vec<TileAt>) {
+    let engine = first_engine();
+    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let bytes: Vec<&[u8]> = tiles.iter().map(Vec::as_slice).collect();
+    let places = pool.store(engine, cel, &bytes).expect("store");
+    (pool, places)
 }
 
 /// The last error a call of the C ABI left, as the app reads it.

@@ -2665,6 +2665,159 @@ final class GpuCelPassed {
   void free() => rust.celPassedFree(_passed);
 }
 
+/// The picture a fill reads (rust/src/kernels/flood/picture.rs): what a
+/// plan shows over a box — the screen's with the paper left out, which is
+/// its maker's to leave out — kept on the GPU for every press that floods
+/// it ([GpuFloods.fill]) and freed by its maker.
+final class GpuFloodPicture {
+  /// What [plan] of [pool]'s tiles shows over the pixels [extent] of the
+  /// canvas — [left, top, right, bottom), nothing past it. Submits the
+  /// work.
+  factory GpuFloodPicture(
+    GpuComposite composite,
+    GpuPool pool,
+    GpuPlan plan,
+    (int, int, int, int) extent,
+  ) => GpuFloodPicture._(
+    using(
+      (arena) => rust.floodPictureNew(
+        composite._composite,
+        composite._engine._engine,
+        pool._pool,
+        plan._plan,
+        _rect(arena, extent),
+      ),
+    ),
+  );
+
+  /// What [plan] of [pool]'s tiles shows as a space posed on the canvas
+  /// reads it, over the pixels [extent] of that space — [left, top, right,
+  /// bottom): each what the plan shows where [toCanvas] lands it, the
+  /// space's pixel to the canvas's — the nine a row is posed by
+  /// ([GpuPlan.row]), row-major with the homogeneous row last — and nothing
+  /// past the canvas pixels [within], the world the plan draws in. Submits
+  /// the work.
+  factory GpuFloodPicture.posed(
+    GpuComposite composite,
+    GpuPool pool,
+    GpuPlan plan,
+    (int, int, int, int) extent, {
+    required List<double> toCanvas,
+    required (int, int, int, int) within,
+  }) {
+    if (toCanvas.length != 9) {
+      throw ArgumentError('a pose of ${toCanvas.length}, not 9');
+    }
+    return GpuFloodPicture._(
+      using(
+        (arena) => rust.floodPicturePosed(
+          composite._composite,
+          composite._engine._engine,
+          pool._pool,
+          plan._plan,
+          _doubles(arena, toCanvas),
+          _rect(arena, extent),
+          _rect(arena, within),
+        ),
+      ),
+    );
+  }
+
+  GpuFloodPicture._(this._picture) {
+    if (_picture == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+  }
+
+  final Pointer<rust.FloodPicture> _picture;
+
+  void free() => rust.floodPictureFree(_picture);
+}
+
+/// A fill finished ([GpuFloods.fill]): its [mask] — a byte a pixel, row
+/// after row over [width] × [height] — whose top-left pixel is ([left],
+/// [top]) in the space of the picture it flooded.
+typedef GpuFilled = ({
+  int left,
+  int top,
+  int width,
+  int height,
+  Uint8List mask,
+});
+
+/// The fill's kernels (rust/src/kernels/flood): the flood's passes and the
+/// mask's it is finished by.
+final class GpuFloods {
+  /// Compiled on [engine], the caller waiting.
+  factory GpuFloods(GpuEngine engine) =>
+      GpuFloods._(engine, _compiled(engine._engine));
+
+  GpuFloods._(this._engine, this._floods);
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuFloods> opening(GpuEngine engine) async =>
+      GpuFloods._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Floods> _compiled(Pointer<rust.Engine> on) =>
+      rust.floodsNew(on);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Floods> _floods;
+
+  /// The fill a press at ([x], [y]) of [picture]'s space makes: what it
+  /// reaches through pixels within [tolerance] of the one pressed —
+  /// closing gaps of [gap] pixels where that is not 0 —, grown [expand]
+  /// pixels and softened past its outline where [antiAlias]. Refused where
+  /// the press is off the picture's box. Waits for the GPU.
+  GpuFilled fill(
+    GpuFloodPicture picture,
+    int x,
+    int y, {
+    required int tolerance,
+    required int gap,
+    required int expand,
+    required bool antiAlias,
+  }) => using((arena) {
+    final covers = arena<Int32>(4);
+    final filled = rust.floodRun(
+      _floods,
+      _engine._engine,
+      picture._picture,
+      x,
+      y,
+      tolerance,
+      gap,
+      expand,
+      antiAlias,
+      covers,
+    );
+    if (filled == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    try {
+      final [left, top, width, height] = covers.asTypedList(4);
+      final count = width * height;
+      final bytes = arena<Uint8>(_held(count));
+      // ⚠️No test reaches the throw: a read fails only where the device
+      // does.
+      if (!rust.floodFilledRead(_engine._engine, filled, bytes, count)) {
+        throw GpuRefused(_lastError());
+      }
+      return (
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+        mask: Uint8List.fromList(bytes.asTypedList(count)),
+      );
+    } finally {
+      rust.floodFilledFree(filled);
+    }
+  }, malloc);
+
+  void free() => rust.floodsFree(_floods);
+}
+
 /// The faces letters are set in (rust/src/kernels/letters/glyphs.rs): each
 /// family's files, the families in the order a letter goes down them.
 class GpuFaces {

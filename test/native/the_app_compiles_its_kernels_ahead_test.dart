@@ -29,6 +29,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/app_kernels_ahead.dart';
 import 'package:anicel/src/native/engine_cel_pixels.dart';
+import 'package:anicel/src/native/engine_floods.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/native/screen_texture.dart';
@@ -244,6 +245,10 @@ void main() {
 
   test('a paste builds none', () {
     expect(builtHereBy(() => appGpuStampLanding), 0);
+  });
+
+  test('the bucket\'s fill builds none', () {
+    expect(builtHereBy(() => EngineFloods.kernels), 0);
   });
 
   test('a grid tile drawn and laid on a screen builds none', () {

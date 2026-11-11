@@ -95,6 +95,15 @@ enum MapFrom {
 }
 
 impl Planned {
+    /// It as the plan a run walks — `pool`'s pages, its chains and its
+    /// mask named — handed to `run`: what `run` makes of it. ⛔ONE LAYING:
+    /// the run, the show and the screen's two composes each spelled it,
+    /// and the fill's picture came as a fifth (11-12).
+    pub(crate) fn laid<T>(&self, pool: &Pool, run: impl FnOnce(&Plan) -> T) -> T {
+        let (chains, mask) = (self.chained(), self.masked());
+        run(&self.plan(pool.pages(), &chains, mask.as_ref()))
+    }
+
     /// The plan of `pages`, `chains` — [`Self::chained`]'s — and `mask` —
     /// [`Self::masked`]'s.
     fn plan<'a>(
@@ -1093,9 +1102,8 @@ pub unsafe extern "C" fn gpu_engine_composite_run(
     // SAFETY: see the function's contract.
     let (words, extent) = unsafe { (std::slice::from_raw_parts(tiles, 2 * count), *extent.cast::<[i32; 4]>()) };
     let tiles: Vec<(i32, i32)> = words.chunks_exact(2).map(|tile| (tile[0], tile[1])).collect();
-    let (chains, mask) = (plan.chained(), plan.masked());
-    let laid = plan.plan(pool.pages(), &chains, mask.as_ref());
-    let ran = composite.run(engine, &laid, &tiles, extent, composite.widest());
+    let widest = composite.widest();
+    let ran = plan.laid(pool, |laid| composite.run(engine, laid, &tiles, extent, widest));
     ran.map_or(std::ptr::null_mut(), |composited| Box::into_raw(Box::new(composited)))
 }
 
@@ -1161,9 +1169,8 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
     let (composite, engine, pool, plan, target) = unsafe { (&*composite, &*engine, &*pool, &*plan, &*target) };
     // SAFETY: see the function's contract.
     let rect = unsafe { *rect.cast::<[u32; 4]>() };
-    let (chains, mask) = (plan.chained(), plan.masked());
-    let laid = plan.plan(pool.pages(), &chains, mask.as_ref());
-    let shown = composite.show(engine, &laid, target, rect, composite.widest());
+    let widest = composite.widest();
+    let shown = plan.laid(pool, |laid| composite.show(engine, laid, target, rect, widest));
     shown.map_or(-1, |passes| passes as isize)
 }
 
@@ -1229,9 +1236,9 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
     let (screen, composite, engine, pool, plan) = unsafe { (&mut *screen, &*composite, &*engine, &*pool, &*plan) };
     // SAFETY: see the function's contract.
     let changed = unsafe { *changed.cast::<[i32; 4]>() };
-    let (chains, mask) = (plan.chained(), plan.masked());
-    let plan = plan.plan(pool.pages(), &chains, mask.as_ref());
-    screen.compose(engine, composite, &plan, changed, composite.widest()).is_some()
+    plan.laid(pool, |plan| {
+        screen.compose(engine, composite, plan, changed, composite.widest()).is_some()
+    })
 }
 
 /// Composites `plan` onto `screen`'s canvas, nothing composed on it yet,
@@ -1257,9 +1264,9 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
         unsafe { (&mut *screen, &*film, &*composite, &*engine, &*pool, &*plan) };
     // SAFETY: see the function's contract.
     let fresh = unsafe { *fresh.cast::<[i32; 4]>() };
-    let (chains, mask) = (plan.chained(), plan.masked());
-    let plan = plan.plan(pool.pages(), &chains, mask.as_ref());
-    screen.compose_over(engine, composite, &plan, film, fresh, composite.widest()).is_some()
+    plan.laid(pool, |plan| {
+        screen.compose_over(engine, composite, plan, film, fresh, composite.widest()).is_some()
+    })
 }
 
 /// Shows `screen`'s canvas through the camera onto the pixels `rect` of

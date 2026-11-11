@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +18,12 @@ import '../helpers/dart_sources.dart';
 /// outline; a selection's is not, because a mask pixel travels whole. So the
 /// arithmetic is shared and the clamp is an argument — and these tests exist
 /// to prove the argument still changes something.
+///
+/// ⚠️Outside Dart the ramp is spelled once more: in the engine's mask
+/// kernel (WGSL), which finishes the bucket's flood since 2026-11-12.
+/// `test/native/an_area_is_finished_as_the_bucket_is_test.dart` holds it
+/// to this one byte for byte. ↩️The C kernel `qa_fill_finish_mask` was
+/// that copy till then, and went with the fill's C calls.
 void main() {
   /// A hard 4x4 block inside an 8x8 field: 255 in, 0 out, nothing between.
   Uint8List hardBlock() {
@@ -92,8 +97,9 @@ void main() {
   test('nothing in lib/ writes the five-tap average by hand', () {
     // ⛔A SOURCE SCAN, because behaviour cannot see this. Two copies that
     // agree today pass every pixel comparison; what breaks is the third
-    // written next year — which is exactly what happened here. The C kernel
-    // is not Dart and stays: `fill_gap_close_test` holds it byte for byte.
+    // written next year — which is exactly what happened here. The engine's
+    // kernel is not Dart: `an_area_is_finished_as_the_bucket_is_test` holds
+    // it byte for byte.
     final offenders = <String>[];
     for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
@@ -116,22 +122,6 @@ void main() {
       isEmpty,
       reason: 'the five-tap average lives in `softenMaskBoundary`; a '
           'hand-written one is the copy that diverged last time',
-    );
-  });
-
-  test('the C kernel is still the one copy a test holds shut', () {
-    // ⛔A REMINDER WITH TEETH. `fill_gap_close_test` SKIPS when the DLL is
-    // not built, so "green" there can mean "did not run". If the kernel ever
-    // stops mirroring the unclamped branch, this points at where to look.
-    final kernel = File(
-      'packages/qa_native/src/qa_engine.c',
-    ).readAsStringSync();
-    expect(
-      kernel.contains('center * 3 + (sum - center)'),
-      isTrue,
-      reason: 'qa_fill_finish_mask must still mirror the unclamped branch of '
-          'softenMaskBoundary — fill_gap_close_test compares them, and it '
-          'skips silently without build/native_standalone',
     );
   });
 }

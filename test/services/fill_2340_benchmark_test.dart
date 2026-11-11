@@ -1,26 +1,19 @@
 @Tags(['benchmark'])
 library;
 
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/a_canvas_standing_on_a_frame.dart';
+import '../helpers/a_fill_on_the_engine.dart';
 import '../helpers/native_engine_path.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
@@ -30,11 +23,13 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 
 /// R21 fill verdict bench (user report: fill still slow at 2340×1654):
-/// the whole tap — lazy raster → flood → finish → stamp build → commit —
-/// timed per stage at the user's canvas size, with the native engine
-/// loaded. Prints FILL2340 lines; run with
-/// `--dart-define=BRUSH_LAB_PROFILE=true` for the inner probes too.
+/// the whole tap — the frame's picture and its flood on the engine, the
+/// range cut into stamp pieces, their commit — timed per stage at the
+/// user's canvas size. Prints FILL2340 lines, each tap twice: its first
+/// compiles the flood's kernels, its second is the tap a user repeats. Run
+/// with `--dart-define=BRUSH_LAB_PROFILE=true` for the inner probes too.
 void main() {
+  opensTheEnginesScreens();
   // R26/2A: resolved per platform (and via QA_ENGINE_PATH on CI) so this
   // benchmark can run wherever an engine was built.
   final dllPath = nativeEngineLibraryPathOrNull();
@@ -68,81 +63,63 @@ void main() {
         frameId: FrameId('f'),
       );
 
-      // Ink surface: a big box outline 40px from the edges — the fill
-      // floods the interior (~3.6MP), the realistic "paint the cel" tap.
-      final rowBytes = <TileCoord, Uint8List>{};
-      void inkFast(int x, int y) {
-        final coord = TileCoord(x: x ~/ 256, y: y ~/ 256);
-        final buffer = rowBytes.putIfAbsent(
-          coord,
-          () => Uint8List(256 * 256 * 4),
-        );
-        buffer[((y % 256) * 256 + (x % 256)) * 4 + 3] = 255;
-      }
-
-      for (var x = 40; x < canvasSize.width - 40; x += 1) {
-        inkFast(x, 40);
-        inkFast(x, canvasSize.height - 41);
-      }
-      for (var y = 40; y < canvasSize.height - 40; y += 1) {
-        inkFast(40, y);
-        inkFast(canvasSize.width - 41, y);
-      }
-      final surface = BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 256,
-        tiles: {
-          for (final entry in rowBytes.entries)
-            entry.key: BitmapTile(
-              size: 256,
-              pixels: entry.value,
-            ),
-        },
-      );
-      final layer = Layer(
-        id: const LayerId('ink'),
-        name: 'Ink',
-        frames: [Frame(id: const FrameId('f'), duration: 1, strokes: const [])],
-        timeline: {0: const TimelineExposure.drawing(FrameId('f'), length: 1)},
-      );
-      final cut = Cut(
-        id: const CutId('c'),
-        name: 'Cut',
-        layers: [layer],
-        duration: 24,
-        canvasSize: canvasSize,
-      );
+      // Ink: a big box outline 40px from the edges — the fill floods the
+      // interior (~3.6MP), the realistic "paint the cel" tap.
+      const black = [0, 0, 0, 255];
+      final picture = fillPictureOfRows([
+        fillRow(
+          celOfPixels(canvasSize, {
+            for (var x = 40; x < canvasSize.width - 40; x += 1) ...{
+              (x, 40): black,
+              (x, canvasSize.height - 41): black,
+            },
+            for (var y = 40; y < canvasSize.height - 40; y += 1) ...{
+              (40, y): black,
+              (canvasSize.width - 41, y): black,
+            },
+          }),
+        ),
+      ], canvasSize: canvasSize);
 
       for (final gapClose in [0, 4]) {
-        final tapWatch = Stopwatch()..start();
-        final dabs = fillRangeAt(
-          cut: cut,
-          frameIndex: 0,
-          surfaceResolver: (_, _) => surface,
-          point: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
-          options: FloodFillOptions(gapClosePx: gapClose),
-        )?.dabsIn(0xFF3366CC) ?? const [];
-        tapWatch.stop();
-
-        final coordinator = BrushFrameEditingCoordinator(
-          initialFrameKey: key,
-          frameStore: BrushFrameStore(),
-          sessionStore: BrushFrameEditSessionStore(
+        for (final tap in ['first', 'again']) {
+          final floodWatch = Stopwatch()..start();
+          final range = fillRangeAt(
             canvasSize: canvasSize,
-            tileSize: 256,
-          ),
-          historyPolicy: const BrushHistoryPolicy(),
-        );
-        final commitWatch = Stopwatch()..start();
-        coordinator.commitSourceStroke(sourceDabs: dabs);
-        commitWatch.stop();
+            pictureOver: picture,
+            point: CanvasPoint(
+              x: canvasSize.width / 2,
+              y: canvasSize.height / 2,
+            ),
+            options: FloodFillOptions(gapClosePx: gapClose),
+          );
+          floodWatch.stop();
+          final piecesWatch = Stopwatch()..start();
+          final dabs = range?.dabsIn(0xFF3366CC) ?? const [];
+          piecesWatch.stop();
 
-        // ignore: avoid_print
-        print(
-          'FILL2340 gapClose=$gapClose tap=${tapWatch.elapsedMilliseconds}ms '
-          'commit=${commitWatch.elapsedMilliseconds}ms '
-          'pieces=${dabs.length}',
-        );
+          final coordinator = BrushFrameEditingCoordinator(
+            initialFrameKey: key,
+            frameStore: BrushFrameStore(),
+            sessionStore: BrushFrameEditSessionStore(
+              canvasSize: canvasSize,
+              tileSize: 256,
+            ),
+            historyPolicy: const BrushHistoryPolicy(),
+          );
+          final commitWatch = Stopwatch()..start();
+          coordinator.commitSourceStroke(sourceDabs: dabs);
+          commitWatch.stop();
+
+          // ignore: avoid_print
+          print(
+            'FILL2340 gapClose=$gapClose $tap '
+            'flood=${floodWatch.elapsedMilliseconds}ms '
+            'pieces=${piecesWatch.elapsedMilliseconds}ms '
+            'commit=${commitWatch.elapsedMilliseconds}ms '
+            'count=${dabs.length}',
+          );
+        }
       }
     },
     timeout: const Timeout(Duration(minutes: 3)),

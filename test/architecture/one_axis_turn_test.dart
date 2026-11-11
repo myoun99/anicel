@@ -490,8 +490,6 @@ void main() {
     // them back.
     'lib/src/ui/timeline/timeline_grid_tile_store.dart': 1,
     'test/ui/timeline/timeline_grid_tile_store_test.dart': 1,
-    // A line on a raster, by its pixel index — no widget's axis.
-    'test/services/fill_gap_close_test.dart': 1,
   };
 
   /// Lines where a pick's arms come back swapped in the next pick of the

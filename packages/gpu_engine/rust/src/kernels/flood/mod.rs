@@ -1,10 +1,15 @@
 //! A bucket fill's reach on the GPU (gpu-canonical-store stage 5): the
-//! pixels the app's `floodFillRegion` fills — 4-joined to the seed through
-//! pixels within the tolerance of the seed's colour — as a plane of bits,
-//! and their box; then that finished as the app finishes it, a mask of
-//! bytes over a box of its own (`kernels/mask`'s grow and soften). A fill
-//! that closes gaps (`_gapCloseFloodRegion`) floods the same way over what
-//! lies past its gap from every barrier, by `kernels/mask`'s distances.
+//! pixels a bucket fills — 4-joined to the seed through pixels within the
+//! tolerance of the seed's colour — as a plane of bits, and their box;
+//! then that finished as the app finishes an area, a mask of bytes over a
+//! box of its own (`kernels/mask`'s grow and soften — the app's
+//! `test/native/an_area_is_finished_as_the_bucket_is_test.dart` holds the
+//! two to one another). A fill that closes gaps floods the same way over
+//! what lies past its gap from every barrier, by `kernels/mask`'s
+//! distances. ↩️Till 2026-11-12 the app flooded on the CPU as well
+//! (`floodFillRegion` · `_gapCloseFloodRegion` · `_cropAndFinishFloodRegion`
+//! in lib/src/services/canvas_flood_fill.dart, and qa_engine.c's wave);
+//! where a comment here says 「the app's bytes」 it is those it means.
 //! flood.wgsl has the planes and why any order of spreading gives the
 //! app's bytes. What a fill finished is laid in its colour, or its
 //! gradient's, as a stroke row on the stamp path (`dab::stamp`).
@@ -15,10 +20,7 @@
 //! effects as they show, where the app summed the layers by a rule of its
 //! own. `picture` makes it, and picks the eyedropper's pixel of it.
 
-// ⏳Nothing outside the tests floods until the fill comes to the engine
-// (gpu-canonical-store, stage 5's connection).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
 pub(crate) mod picture;
 #[cfg(test)]
 mod tests;
@@ -147,7 +149,7 @@ impl Flood {
     }
 
     /// What a fill seeded at `(x, y)` that closes gaps of `gap` pixels
-    /// reaches in `picture` (`_gapCloseFloodRegion`): it floods, as
+    /// reaches in `picture`: it floods, as
     /// [`Flood::region`] does, only what lies farther than 3 × gap chamfer
     /// units from every pixel off the tolerance — the gap halved until the
     /// seed does —, so it leaks through no gap narrower than about twice
@@ -347,8 +349,7 @@ impl Flood {
         filled.into_iter().nth(at)
     }
 
-    /// `flooded` finished as the app finishes a fill
-    /// (`_cropAndFinishFloodRegion`): cropped to its box grown by what the
+    /// `flooded` finished as a fill is: cropped to its box grown by what the
     /// finish reaches (`fillFinishReach` — the expand, and a pixel more
     /// where it anti-aliases: its ramp spreads a pixel past its own edge),
     /// cut at the picture's box, then grown `expand` generations and

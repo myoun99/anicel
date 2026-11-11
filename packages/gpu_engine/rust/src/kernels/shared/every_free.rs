@@ -24,18 +24,24 @@ use crate::kernels::composite::abi::{
     gpu_engine_held_new, gpu_engine_mask_free, gpu_engine_mask_new, gpu_engine_plan_free, gpu_engine_plan_new,
     gpu_engine_screen_free, gpu_engine_screen_new,
 };
+use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{Composited, TILE_TEXELS};
 use crate::kernels::export::abi::{
     gpu_engine_export_free, gpu_engine_export_new, gpu_engine_export_opaque, gpu_engine_readout_free,
 };
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::fill::{gpu_engine_fill_free, gpu_engine_fill_new};
+use crate::kernels::flood::abi::{
+    Filled, gpu_engine_flood_filled_free, gpu_engine_flood_picture_free,
+    gpu_engine_flood_picture_new, gpu_engine_floods_free, gpu_engine_floods_new,
+};
 use crate::kernels::letters::Lettered;
 use crate::kernels::letters::abi::{
     gpu_engine_faces_free, gpu_engine_faces_new, gpu_engine_lettered_free, gpu_engine_letters_free,
     gpu_engine_letters_new,
 };
 use crate::kernels::letters::glyphs_tests::file;
+use crate::kernels::mask::MaskBox;
 use crate::kernels::plugin::abi::{gpu_engine_plugin_free, gpu_engine_plugin_open};
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::kernels::timeline::grid::abi::{
@@ -69,7 +75,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 28] {
+fn frees() -> [(&'static str, fn(&'static str)); 31] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -135,6 +141,37 @@ fn frees() -> [(&'static str, fn(&'static str)); 28] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_fill_new(first_engine()) };
             gives_back(name, made, gpu_engine_fill_free)
+        }),
+        ("gpu_engine_floods_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_floods_new(first_engine()) };
+            gives_back(name, made, gpu_engine_floods_free)
+        }),
+        ("gpu_engine_flood_picture_free", |name| {
+            let rig = composite_rig();
+            // SAFETY: the engine is live.
+            let (pool, plan) =
+                unsafe { (gpu_engine_pool_new(rig.engine, 1 << 20), gpu_engine_plan_new()) };
+            // SAFETY: all are live, made on the engine; the extent holds four words.
+            let made = unsafe {
+                gpu_engine_flood_picture_new(
+                    &rig.composite,
+                    rig.engine,
+                    pool,
+                    plan,
+                    [0, 0, 4, 4].as_ptr(),
+                )
+            };
+            gives_back(name, made, gpu_engine_flood_picture_free);
+            // SAFETY: each came from its new, let go of once.
+            unsafe {
+                gpu_engine_plan_free(plan);
+                gpu_engine_pool_free(pool);
+            }
+        }),
+        ("gpu_engine_flood_filled_free", |name| {
+            let filled = Filled { mask: composited().out, size: MaskBox { width: 1, height: 1 } };
+            gives_back(name, Box::into_raw(Box::new(filled)), gpu_engine_flood_filled_free)
         }),
         ("gpu_engine_cel_pixels_free", |name| {
             // SAFETY: the engine is live.

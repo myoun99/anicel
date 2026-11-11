@@ -1017,7 +1017,26 @@ void main() {
   /// render's making differs from playback's in, asked by the shot that
   /// holds them. 🔬`clean_code_diff` against the 7′ commit before it names
   /// that one added.
-  const wideSignatures = 469;
+  ///
+  /// ⚠️464 → 458 on 2026-11-12, three names in and nine out
+  /// (fill-runs-in-the-c-engine — the bucket's flood on the engine; master
+  /// stood at 464 under 469). `fillPictureOver` (eight) is the one door a
+  /// canvas's fill reads its frame's picture by, and its parameters are
+  /// what that read is of — the box, the frame's pictures and the canvas
+  /// whose rows a layer read names, the cut and the frame, the read source
+  /// and the row stood on, and the space the seed is in. `fillPictureOf`
+  /// (six) is the engine's picture of a stacked frame over a box, in a
+  /// space, with the tools it is laid by, and `_planned` (six) the one
+  /// laying of a frame's plan that the screen and that picture share — the
+  /// screen's `_laid` was it alone. Gone with the CPU flood and its C
+  /// calls: `floodFillRegion`, `_gapCloseFloodRegion`,
+  /// `_cropAndFinishFloodRegion`, `_floodFinishBox`, and
+  /// `QaNativeEngine.fillClearRect` · `fillComposeTile` · `floodFillRun` ·
+  /// `gapCloseFillRun` · `finishFillMask`. 🔬`clean_code_diff` against
+  /// master (`2a11cfca6`) names those. ⛔Not bundled to fit: each of the
+  /// door's parameters is asked of a different owner — the playback rig,
+  /// the editing canvas, the tool's options, the selection.
+  const wideSignatures = 458;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1408,7 +1427,16 @@ void main() {
   /// 🔬`clean_code_diff` against master (`0570a2a1b`) names those.
   /// ⛔Not split to fit: the build is one constructor call, each argument
   /// the row's own fact.
-  const longBodies = 410;
+  ///
+  /// ⚠️406 → 400 on 2026-11-12, six gone and nothing added
+  /// (fill-runs-in-the-c-engine; master stood at 406 under 410): the CPU
+  /// flood — `floodFillRegion`, `_gapCloseFloodRegion`,
+  /// `LazyCanvasRasterRgb`'s constructor, `composeTile` and
+  /// `ensureComposedBatch` — and the C wave's driver
+  /// (`QaNativeEngine.floodFillRun`) went when the bucket's fill moved to
+  /// the engine. 🔬`clean_code_diff` against master (`2a11cfca6`) names
+  /// those.
+  const longBodies = 400;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

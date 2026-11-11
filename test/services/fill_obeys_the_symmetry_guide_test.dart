@@ -1,20 +1,13 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+
+import '../helpers/a_canvas_standing_on_a_frame.dart';
+import '../helpers/a_fill_on_the_engine.dart';
 
 /// **A symmetry guide replicates FILLS, not just strokes.**
 ///
@@ -32,8 +25,8 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 /// below are mirror images in POSITION but the right one is not the left
 /// one translated — the union's rectangle is the assertion.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 16, height: 8);
-  const tile = 4;
 
   /// A closed box outline, interior = the 2×2 inside it.
   Set<(int, int)> boxAt(int left) => {
@@ -43,51 +36,9 @@ void main() {
 
   /// Two boxes mirrored about x = 8: interiors (3..4, 3..4) and
   /// (11..12, 3..4).
-  BitmapSurface twoBoxes() {
-    final buffers = <TileCoord, Uint8List>{};
-    for (final (x, y) in {...boxAt(2), ...boxAt(10)}) {
-      final coord = TileCoord(x: x ~/ tile, y: y ~/ tile);
-      final buffer = buffers.putIfAbsent(
-        coord,
-        () => Uint8List(tile * tile * 4),
-      );
-      buffer[((y % tile) * tile + (x % tile)) * 4 + 3] = 255;
-    }
-    return BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: tile,
-      tiles: {
-        for (final entry in buffers.entries)
-          entry.key: BitmapTile(
-            size: tile,
-            pixels: entry.value,
-          ),
-      },
-    );
-  }
-
-  Cut cutWithInk() => Cut(
-    id: const CutId('cut'),
-    name: 'Cut',
-    layers: [
-      Layer(
-        id: const LayerId('ink'),
-        name: 'Ink',
-        frames: [
-          Frame(
-            id: const FrameId('ink-frame'),
-            duration: 1,
-            strokes: const [],
-          ),
-        ],
-        timeline: {
-          0: const TimelineExposure.drawing(FrameId('ink-frame'), length: 1),
-        },
-      ),
-    ],
-    duration: 24,
-    canvasSize: canvasSize,
-  );
+  BitmapSurface twoBoxes() => celOfPixels(canvasSize, {
+    for (final at in {...boxAt(2), ...boxAt(10)}) at: const [0, 0, 0, 255],
+  });
 
   /// A plain left/right mirror down the middle of the canvas.
   SymmetryShape mirrorDownTheMiddle() => SymmetryShape(
@@ -101,15 +52,27 @@ void main() {
 
   const exact = FloodFillOptions(expandPx: 0, antiAlias: false);
 
+  /// The two boxes filled from [point] under [symmetry], laid.
+  List<BrushDab> fill({
+    CanvasPoint? point,
+    FloodFillOptions options = exact,
+    SymmetryShape? symmetry,
+    void Function()? onOpenRegion,
+  }) =>
+      fillRangeAt(
+        canvasSize: canvasSize,
+        pictureOver: fillPictureOfRows([
+          fillRow(twoBoxes()),
+        ], canvasSize: canvasSize),
+        point: point ?? seed,
+        options: options,
+        symmetry: symmetry,
+        onOpenRegion: onOpenRegion,
+      )?.dabsIn(0xFF3366CC) ??
+      const [];
+
   test('fixture premise: without a guide the tap fills only its own box', () {
-    final surface = twoBoxes();
-    final dab = fillRangeAt(
-      cut: cutWithInk(),
-      frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
-      point: seed,
-      options: exact,
-    )!.dabsIn(0xFF3366CC).single;
+    final dab = fill().single;
 
     expect((dab.stamp!.width, dab.stamp!.height), (2, 2));
     expect(dab.center, CanvasPoint(x: 4, y: 4));
@@ -117,15 +80,7 @@ void main() {
 
   test('under a mirror the tap fills the mirrored box too, as ONE region '
       '(one piece here: both boxes sit in one tile)', () {
-    final surface = twoBoxes();
-    final dab = fillRangeAt(
-      cut: cutWithInk(),
-      frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
-      point: seed,
-      options: exact,
-      symmetry: mirrorDownTheMiddle(),
-    )!.dabsIn(0xFF3366CC).single;
+    final dab = fill(symmetry: mirrorDownTheMiddle()).single;
 
     final stamp = dab.stamp!;
     expect(
@@ -152,15 +107,7 @@ void main() {
   });
 
   test('the mirrored copy carries the same colour, at full coverage', () {
-    final surface = twoBoxes();
-    final stamp = fillRangeAt(
-      cut: cutWithInk(),
-      frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
-      point: seed,
-      options: exact,
-      symmetry: mirrorDownTheMiddle(),
-    )!.dabsIn(0xFF3366CC).single.stamp!;
+    final stamp = fill(symmetry: mirrorDownTheMiddle()).single.stamp!;
 
     const at = ((3 - 3) * 10 + (11 - 3)) * 4;
     expect(stamp.rgba.sublist(at, at + 4), [0x33, 0x66, 0xCC, 255]);
@@ -172,13 +119,8 @@ void main() {
     // out in the open surround. That copy is dropped and the seed's own
     // box still fills — the alternative, one bad mirror killing the tap,
     // would make the guide's own copies veto the stroke the user aimed.
-    final surface = twoBoxes();
     var openReported = false;
-    final dab = fillRangeAt(
-      cut: cutWithInk(),
-      frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
-      point: seed,
+    final dab = fill(
       options: const FloodFillOptions(
         expandPx: 0,
         antiAlias: false,
@@ -189,7 +131,7 @@ void main() {
         lineCount: 2,
       ),
       onOpenRegion: () => openReported = true,
-    )?.dabsIn(0xFF3366CC) ?? const [];
+    );
 
     expect(
       (dab.single.stamp!.width, dab.single.stamp!.height),
@@ -204,12 +146,8 @@ void main() {
   });
 
   test('and when EVERY copy is open, the leak is reported once', () {
-    final surface = twoBoxes();
     var reports = 0;
-    final dab = fillRangeAt(
-      cut: cutWithInk(),
-      frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
+    final dab = fill(
       // Out in the surround, which the apron leaves unbounded.
       point: CanvasPoint(x: 0.5, y: 0.5),
       options: const FloodFillOptions(
@@ -219,7 +157,7 @@ void main() {
       ),
       symmetry: mirrorDownTheMiddle(),
       onOpenRegion: () => reports += 1,
-    )?.dabsIn(0xFF3366CC) ?? const [];
+    );
 
     expect(dab, isEmpty);
     expect(reports, 1, reason: 'one tap, one notice — not one per copy');

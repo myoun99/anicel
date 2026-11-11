@@ -11,6 +11,11 @@
 //
 // It includes the translation unit rather than linking it, because the pool
 // is static.
+//
+// ↩️The callers composed a fill's raster and flooded it too, and the
+// flood's one wave arena was held by one of them at a time, until the fill
+// went to the GPU engine (ABI 78). What they run through the pool now is a
+// stamp laid over many tiles — the batch a vector layer's strokes land by.
 
 #include "qa_engine.c"
 
@@ -51,19 +56,13 @@ enum {
   ROUNDS = 200,
   // Enough items that every worker takes some.
   ITEMS = 48,
-  // 8 x 4 compose tiles of 32, under one layer tile of 256.
-  RASTER_W = 256,
-  RASTER_H = 128,
-  COMPOSE_TILE = 32,
-  COMPOSE_ITEMS = (RASTER_W / COMPOSE_TILE) * (RASTER_H / COMPOSE_TILE),
-  LAYER_TILE = 256,
-  // 5 x 3 fill tiles of 128, so one wave spans the pool.
-  FILL_W = 600,
-  FILL_H = 300,
-  FILL_SHIFT = 7,
-  FILL_TILES_X = 5,
-  FILL_TILES_Y = 3,
-  FILL_CANDIDATES = 16,
+  // 8 x 4 tiles of 32 under one stamp, so one batch spans the pool.
+  TILE = 32,
+  TILES_X = 8,
+  TILES_Y = 4,
+  TILE_COUNT = TILES_X * TILES_Y,
+  STAMP_W = TILE * TILES_X,
+  STAMP_H = TILE * TILES_Y,
   // A hang fails the run instead of stalling it: 60 s, in naps of 10 ms.
   DEADLINE_NAPS = 6000,
 };
@@ -138,111 +137,57 @@ static int pool_test_own_items(void) {
 }
 
 typedef struct {
-  uint8_t layer[LAYER_TILE * LAYER_TILE * 4];
-  qa_compose_tile_item items[COMPOSE_ITEMS];
-  qa_compose_blend blends[COMPOSE_ITEMS * 2];
-  uint8_t alone[RASTER_W * RASTER_H * 4];
-  uint8_t raster[RASTER_W * RASTER_H * 4];
-} pool_test_compose;
+  uint8_t stamp[STAMP_W * STAMP_H * 4];
+  double opacity;
+  uint8_t alone[TILE_COUNT][TILE * TILE * 4];
+  uint8_t tiles[TILE_COUNT][TILE * TILE * 4];
+} pool_test_stamp;
 
-typedef struct {
-  uint8_t rgb[FILL_W * FILL_H * 4];
-  uint8_t composed[FILL_TILES_X * FILL_TILES_Y];
-  uint8_t alone[FILL_W * FILL_H];
-  int32_t alone_bounds[4];
-  uint8_t filled[FILL_W * FILL_H];
-  int32_t bounds[4];
-} pool_test_fill;
-
-static pool_test_compose g_composes[CALLERS];
-static pool_test_fill g_fills[CALLERS];
+static pool_test_stamp g_stamps[CALLERS];
 
 static uint32_t pool_test_next_byte(uint32_t* state) {
   *state = *state * 1664525u + 1013904223u;
   return *state >> 24;
 }
 
-// A layer tile of the caller's own noise, two blends of it on every
-// compose tile, the second as opaque as the caller's own: no two callers
-// compose the same raster.
-static void pool_test_set_compose(int caller) {
-  pool_test_compose* c = &g_composes[caller];
+// A stamp of the caller's own noise, as opaque as the caller's own: no two
+// callers lay the same tiles.
+static void pool_test_set_stamp(int caller) {
+  pool_test_stamp* s = &g_stamps[caller];
   uint32_t state = 7u + (uint32_t)caller;
-  for (int32_t i = 0; i < LAYER_TILE * LAYER_TILE * 4; i += 1) {
-    c->layer[i] = (uint8_t)pool_test_next_byte(&state);
+  for (int32_t i = 0; i < STAMP_W * STAMP_H * 4; i += 1) {
+    s->stamp[i] = (uint8_t)pool_test_next_byte(&state);
   }
-  int32_t item = 0;
-  for (int32_t top = 0; top < RASTER_H; top += COMPOSE_TILE) {
-    for (int32_t left = 0; left < RASTER_W; left += COMPOSE_TILE) {
-      const qa_compose_tile_item tile = {
-          left, top, left + COMPOSE_TILE, top + COMPOSE_TILE, item * 2, 2};
-      c->items[item] = tile;
-      for (int32_t b = 0; b < 2; b += 1) {
-        const qa_compose_blend blend = {
-            c->layer, LAYER_TILE, 0, 0, left, top,
-            left + COMPOSE_TILE, top + COMPOSE_TILE,
-            b == 0 ? 255 : 100 + 20 * caller, 0};
-        c->blends[item * 2 + b] = blend;
-      }
-      item += 1;
+  s->opacity = 0.4 + 0.1 * caller;
+}
+
+// The caller's stamp laid over every tile of `tiles`, each 0x5A in every
+// byte before it, in one batch.
+static void pool_test_stamp_into(pool_test_stamp* s,
+                                 uint8_t tiles[TILE_COUNT][TILE * TILE * 4]) {
+  qa_tile_span spans[TILE_COUNT];
+  uint8_t changed[TILE_COUNT];
+  memset(spans, 0, sizeof(spans));
+  memset(tiles, 0x5A, (size_t)TILE_COUNT * TILE * TILE * 4);
+  for (int32_t row = 0; row < TILES_Y; row += 1) {
+    for (int32_t column = 0; column < TILES_X; column += 1) {
+      qa_tile_span* span = &spans[row * TILES_X + column];
+      span->tile_pixels = tiles[row * TILES_X + column];
+      span->tile_left = column * TILE;
+      span->tile_top = row * TILE;
+      span->span_left = column * TILE;
+      span->span_right_exclusive = (column + 1) * TILE;
+      span->span_top = row * TILE;
+      span->span_bottom_exclusive = (row + 1) * TILE;
     }
   }
-}
-
-static void pool_test_compose_into(pool_test_compose* c, uint8_t* raster) {
-  memset(raster, 0x5A, RASTER_W * RASTER_H * 4);
-  qa_fill_compose_batch(raster, RASTER_W, c->items, COMPOSE_ITEMS, c->blends);
-}
-
-// Nothing drawn but a black wall of the caller's own — a vertical line
-// with one gap, at a place no other caller's is — so the fills differ,
-// and each crosses tiles through the gap.
-static void pool_test_set_fill(int caller) {
-  pool_test_fill* f = &g_fills[caller];
-  memset(f->rgb, 0, sizeof(f->rgb));
-  const int32_t wall_x = 90 + 60 * caller;
-  const int32_t gap_top = 20 + 40 * caller;
-  for (int32_t y = 0; y < FILL_H; y += 1) {
-    if (y >= gap_top && y < gap_top + 10) {
-      continue;
-    }
-    f->rgb[(y * FILL_W + wall_x) * 4 + 3] = 255;
-  }
-  for (int32_t x = wall_x; x < FILL_W; x += 1) {
-    f->rgb[((gap_top + 30) * FILL_W + x) * 4 + 3] = 255;
-  }
-  memset(f->composed, 1, sizeof(f->composed));
-}
-
-// One fill from (1, 1), as the Dart driver starts one: the seed marked, on
-// the stack, and the bounds at it. Every tile is composed, so one round
-// floods it all and returns no candidates — or -1, while another fill
-// holds the arena.
-static int32_t pool_test_fill_once(pool_test_fill* f, uint8_t* filled,
-                                   int32_t* bounds) {
-  int32_t stack[1];
-  int32_t stack_size = 1;
-  int32_t candidates[FILL_CANDIDATES];
-  const int32_t seed = 1 * FILL_W + 1;
-  memset(filled, 0, FILL_W * FILL_H);
-  filled[seed] = 255;
-  stack[0] = seed;
-  bounds[0] = bounds[1] = 1;
-  bounds[2] = bounds[3] = 1;
-  return qa_flood_fill_wave(f->rgb, filled, f->composed, FILL_W, FILL_H,
-                            FILL_SHIFT, FILL_TILES_X, 0u, 0, stack,
-                            &stack_size, candidates, FILL_CANDIDATES, bounds);
-}
-
-static int pool_test_fill_matches(pool_test_fill* f) {
-  return memcmp(f->filled, f->alone, sizeof(f->alone)) == 0 &&
-         memcmp(f->bounds, f->alone_bounds, sizeof(f->bounds)) == 0;
+  qa_stamp_blend_tiles(spans, TILE_COUNT, TILE, s->stamp, STAMP_W, 0, 0,
+                       s->opacity, 0, changed);
 }
 
 typedef struct {
   int index;
   int failures;
-  int held;
   pool_test_count* finished;
 } pool_test_caller;
 
@@ -255,21 +200,14 @@ static void pool_test_fail(pool_test_caller* caller, int32_t round,
 }
 
 static void pool_test_run_caller(pool_test_caller* caller) {
-  pool_test_compose* c = &g_composes[caller->index];
-  pool_test_fill* f = &g_fills[caller->index];
+  pool_test_stamp* s = &g_stamps[caller->index];
   for (int32_t round = 0; round < ROUNDS; round += 1) {
     if (!pool_test_own_items()) {
       pool_test_fail(caller, round, "its pool items did not each run once");
     }
-    pool_test_compose_into(c, c->raster);
-    if (memcmp(c->raster, c->alone, sizeof(c->alone)) != 0) {
-      pool_test_fail(caller, round, "its raster is not the one composed alone");
-    }
-    const int32_t candidates = pool_test_fill_once(f, f->filled, f->bounds);
-    if (candidates == -1) {
-      caller->held += 1;
-    } else if (candidates != 0 || !pool_test_fill_matches(f)) {
-      pool_test_fail(caller, round, "its fill is not the one filled alone");
+    pool_test_stamp_into(s, s->tiles);
+    if (memcmp(s->tiles, s->alone, sizeof(s->alone)) != 0) {
+      pool_test_fail(caller, round, "its tiles are not the ones laid alone");
     }
   }
   pool_test_add(caller->finished);
@@ -298,15 +236,13 @@ int main(void) {
     failures += 1;
   }
   for (int caller = 0; caller < CALLERS; caller += 1) {
-    pool_test_set_compose(caller);
-    pool_test_compose_into(&g_composes[caller], g_composes[caller].alone);
-    pool_test_set_fill(caller);
-    pool_test_fill* f = &g_fills[caller];
-    if (pool_test_fill_once(f, f->alone, f->alone_bounds) != 0) {
-      printf("FAIL caller %d: its fill alone did not finish in one round\n",
-             caller);
-      failures += 1;
-    }
+    pool_test_set_stamp(caller);
+    pool_test_stamp_into(&g_stamps[caller], g_stamps[caller].alone);
+  }
+  if (memcmp(g_stamps[0].alone, g_stamps[1].alone,
+             sizeof(g_stamps[0].alone)) == 0) {
+    printf("FAIL: two callers' tiles alone are the same tiles\n");
+    failures += 1;
   }
 
   pool_test_count finished = 0;
@@ -317,7 +253,7 @@ int main(void) {
   pthread_t threads[CALLERS];
 #endif
   for (int i = 0; i < CALLERS; i += 1) {
-    const pool_test_caller caller = {i, 0, 0, &finished};
+    const pool_test_caller caller = {i, 0, &finished};
     callers[i] = caller;
 #if defined(_WIN32)
     threads[i] = (HANDLE)_beginthreadex(NULL, 0, pool_test_thread,
@@ -335,7 +271,6 @@ int main(void) {
     }
     pool_test_nap();
   }
-  int held = 0;
   for (int i = 0; i < CALLERS; i += 1) {
 #if defined(_WIN32)
     WaitForSingleObject(threads[i], INFINITE);
@@ -344,25 +279,23 @@ int main(void) {
     pthread_join(threads[i], NULL);
 #endif
     failures += callers[i].failures;
-    held += callers[i].held;
   }
 
-  // Given back: the next caller has the pool and the arena to itself.
+  // Given back: the next caller has the pool to itself.
   if (should_spread && !pool_test_spreads()) {
     printf("FAIL: a call alone, after the callers, ran on one thread\n");
     failures += 1;
   }
-  pool_test_fill* f = &g_fills[0];
-  if (pool_test_fill_once(f, f->filled, f->bounds) != 0 ||
-      !pool_test_fill_matches(f)) {
-    printf("FAIL: a fill alone, after the callers, is not the one before\n");
+  pool_test_stamp* s = &g_stamps[0];
+  pool_test_stamp_into(s, s->tiles);
+  if (memcmp(s->tiles, s->alone, sizeof(s->alone)) != 0) {
+    printf("FAIL: tiles laid alone, after the callers, are not the ones "
+           "before\n");
     failures += 1;
   }
 
   if (failures == 0) {
-    printf("qa_engine_pool: all passed (%d workers; %d of %d fills found "
-           "the arena held)\n",
-           g_pool.worker_count, held, CALLERS * ROUNDS);
+    printf("qa_engine_pool: all passed (%d workers)\n", g_pool.worker_count);
   }
   return failures == 0 ? 0 : 1;
 }

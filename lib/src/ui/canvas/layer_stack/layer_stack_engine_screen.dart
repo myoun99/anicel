@@ -76,11 +76,9 @@ final class EngineStackScreen {
     );
   }
 
-  /// [frame]'s rows planned by the one translator and handed to [lay] with
-  /// the kept frame — made again over the world the frame holds where it
-  /// is not the one kept. Each node's chain is held in [holds], if any, as
-  /// what the node shows ([_FrameReading._pictureOf]) on this paper
-  /// ([_holding]).
+  /// [frame]'s rows planned ([_planned]) and handed to [lay] with the kept
+  /// frame — made again over the world the frame holds where it is not the
+  /// one kept. Its chains' puts are held in [holds], if any.
   ///
   /// Throws [FrameKernelsToCome], nothing laid, where the frame has an
   /// effect chain and the chains' kernels are not compiled yet.
@@ -90,57 +88,29 @@ final class EngineStackScreen {
     void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
     lay,
   ) {
-    final pass = _FrameReading(frame._painter);
-    // A frame of nothing keeps one pixel of nothing: shown through any
-    // camera, it shows nothing.
-    final world = switch (pass.frameExtent()) {
-      final extent when extent.isEmpty => const Rect.fromLTWH(0, 0, 1, 1),
-      final extent => extent,
-    };
     final stages = FxPluginStages.recording;
-    final ledger = EngineTileLedger.instance;
-    final paper = frame._painter.canvasSize.canvasRect;
-    final origins =
-        Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>>.identity();
-    ledger.held((hold) {
-      final plan = GpuPlan();
-      try {
-        planCompositeTree(
-          plan,
-          mapCompositeLeaves<_PaintRow, EngineRow>(
-            pass._rootNodes,
-            (row) => pass._engineRowOf(row, _range.of),
-            told: holds == null ? null : (node, to) => origins[to] = node,
-          ),
-          hold: hold,
-          paper: paper,
-          letters: _letters,
-          holding: _holding(holds, pass, origins, paper),
-          plugins: stages == null
-              ? null
-              : (steps: stages, engine: _composite.engine),
-        );
-        // Not laid while its chains' kernels are still to be compiled: the
-        // run would compile them here, the app stopped meanwhile.
-        FrameKernelsToCome.throwIfNamedBy(plan, _composite);
+    _planned(
+      frame,
+      _composite,
+      _letters,
+      maskOf: _range.of,
+      holds: holds,
+      run: (pool, plan, world) {
         if (stages != null && stages.aRoundComesAfter) {
           // On no screen: a round with a plug-in's step still to run lays
           // what the next one reads, and the screen stays on what it holds
           // (🗣️I-132-Q34 a).
           final nowhere = GpuScreen(_composite, _edgesOf(world));
           try {
-            lay(nowhere, ledger.pool, plan, world);
+            lay(nowhere, pool, plan, world);
           } finally {
             nowhere.free();
           }
         } else {
-          lay(_screenOver(world), ledger.pool, plan, world);
+          lay(_screenOver(world), pool, plan, world);
         }
-      } finally {
-        plan.free();
-        holds?.settle();
-      }
-    });
+      },
+    );
     _range.settle();
   }
 
@@ -153,28 +123,6 @@ final class EngineStackScreen {
     _kept = world;
     return _screen = GpuScreen(_composite, _edgesOf(world));
   }
-
-  /// The holding of the chains [pass] plans ([ChainHolding]): a node's, on
-  /// [paper], under what the node it came from shows ([origins]) — none
-  /// for one that shows a row drawn live ([_FrameReading._pictureOf]).
-  ChainHolding? _holding(
-    EngineChainHolds? holds,
-    _FrameReading pass,
-    Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>> origins,
-    Rect paper,
-  ) => switch (holds) {
-    null => null,
-    final holds => (
-      held: holds.held,
-      idOf: (node) => switch (origins[node]) {
-        final origin? => switch (pass._pictureOf(origin)) {
-          final picture? => holds.idOf((picture: picture, paper: paper)),
-          null => null,
-        },
-        null => null,
-      },
-    ),
-  };
 
   /// The kept frame through [viewport] at [devicePixelRatio] onto [target]
   /// of [size] texels, columns by rows, one a device pixel — the camera a
@@ -237,16 +185,163 @@ final class EngineStackScreen {
     _screen = null;
     _range.free();
   }
+}
 
-  /// [rect], of whole pixels, as the engine's edges: [left, top, right,
-  /// bottom).
-  static (int, int, int, int) _edgesOf(Rect rect) => (
-    rect.left.floor(),
-    rect.top.floor(),
-    rect.right.ceil(),
-    rect.bottom.ceil(),
+/// [rect], of whole pixels, as the engine's edges: [left, top, right,
+/// bottom).
+(int, int, int, int) _edgesOf(Rect rect) => (
+  rect.left.floor(),
+  rect.top.floor(),
+  rect.right.ceil(),
+  rect.bottom.ceil(),
+);
+
+/// The picture a fill pressed on [frame] reads, over the pixels [box] of
+/// the space its seed is in — the canvas, or [space], the artwork of a row
+/// posed on it: [frame]'s rows as a screen lays them ([_planned]) — blends,
+/// folders, effects and letters as they show (🗣️유저
+/// gpu-canonical-store-Q1, 2026-11-06: 「화면과 똑같은 그림을 읽는다」), on
+/// no paper where the frame's page paints none (🗣️I-163-Q6, 2026-11-05:
+/// 「지금 합성에서 종이만 뺀다」) — kept on the GPU for every press that
+/// floods it and freed by whoever asked. Its chains' puts are held in
+/// [holds], if any, as a screen's are.
+///
+/// 🚨★★★THE PICTURE LIES IN THE SEED'S SPACE (I-36, 🗣️유저 2026-09-24:
+/// 「이 과정에서 법 다른거 통일」 — one law for the fill on a posed row and
+/// off one): the seed and the dab of a posed row are in its artwork, so
+/// what shows is carried there whole — one read of the canvas's picture
+/// through the pose, as a row posed on the canvas is read — and the
+/// region a flood finds is the one its colour lands on. ↩️Each row was
+/// carried into the seed's space by itself and summed there
+/// (`LazyCanvasRasterRgb`, till 2026-11-12), which no folder's chain or
+/// blend could follow.
+///
+/// ⚠️A plug-in's steps are drawn as if off: a press waits for no round of
+/// them ([FxPluginStages.recordedThrough]).
+///
+/// Throws [FrameKernelsToCome], nothing read, where the frame has an effect
+/// chain and the chains' kernels are not compiled yet.
+GpuFloodPicture fillPictureOf(
+  StackedFrame frame,
+  GpuComposite composite,
+  EngineLetters letters,
+  DirtyRegion box, {
+  GuideTransform? space,
+  EngineChainHolds? holds,
+}) {
+  final extent = (
+    box.left,
+    box.top,
+    box.rightExclusive,
+    box.bottomExclusive,
+  );
+  return _planned(
+    frame,
+    composite,
+    letters,
+    // A frame read for a fill is its cels as they are stored: no hand is on
+    // it, so no row of it holds a range.
+    maskOf: (_) => throw StateError('a frame a fill reads holds no range'),
+    holds: holds,
+    run: (pool, plan, world) => switch (space) {
+      null => GpuFloodPicture(composite, pool, plan, extent),
+      // Nothing shows past the world the frame holds — its page and every
+      // row's content —, however far the pose lands the box.
+      final space => GpuFloodPicture.posed(
+        composite,
+        pool,
+        plan,
+        extent,
+        toCanvas: gpuRowInverse(space),
+        within: _edgesOf(world),
+      ),
+    },
   );
 }
+
+/// [frame]'s rows planned by the one translator ([planCompositeTree]) on
+/// the ledger's tiles and handed to [run] with the pool those are on and
+/// the world the frame holds — its page and every row's content: [run]'s
+/// answer. The range a fill holds on a row is marked under the mask
+/// [maskOf] gives its cover, and each node's chain is held in [holds], if
+/// any, as what the node shows ([_FrameReading._pictureOf]) on this paper
+/// ([_holding]).
+///
+/// 🚨ONE PLANNING: what a screen keeps ([EngineStackScreen._laid]) and what
+/// a fill reads ([fillPictureOf]) are the same rows by the same law.
+///
+/// Throws [FrameKernelsToCome], nothing run, where the frame has an effect
+/// chain and the chains' kernels are not compiled yet.
+T _planned<T>(
+  StackedFrame frame,
+  GpuComposite composite,
+  EngineLetters letters, {
+  required GpuMask Function(FloodFillRegion cover) maskOf,
+  required EngineChainHolds? holds,
+  required T Function(GpuPool pool, GpuPlan plan, Rect world) run,
+}) {
+  final pass = _FrameReading(frame._painter);
+  // A frame of nothing keeps one pixel of nothing: shown through any
+  // camera, it shows nothing.
+  final world = switch (pass.frameExtent()) {
+    final extent when extent.isEmpty => const Rect.fromLTWH(0, 0, 1, 1),
+    final extent => extent,
+  };
+  final stages = FxPluginStages.recording;
+  final ledger = EngineTileLedger.instance;
+  final paper = frame._painter.canvasSize.canvasRect;
+  final origins =
+      Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>>.identity();
+  return ledger.held((hold) {
+    final plan = GpuPlan();
+    try {
+      planCompositeTree(
+        plan,
+        mapCompositeLeaves<_PaintRow, EngineRow>(
+          pass._rootNodes,
+          (row) => pass._engineRowOf(row, maskOf),
+          told: holds == null ? null : (node, to) => origins[to] = node,
+        ),
+        hold: hold,
+        paper: paper,
+        letters: letters,
+        holding: _holding(holds, pass, origins, paper),
+        plugins: stages == null
+            ? null
+            : (steps: stages, engine: composite.engine),
+      );
+      // Not run while its chains' kernels are still to be compiled: the
+      // run would compile them here, the app stopped meanwhile.
+      FrameKernelsToCome.throwIfNamedBy(plan, composite);
+      return run(ledger.pool, plan, world);
+    } finally {
+      plan.free();
+      holds?.settle();
+    }
+  });
+}
+
+/// The holding of the chains [pass] plans ([ChainHolding]): a node's, on
+/// [paper], under what the node it came from shows ([origins]) — none for
+/// one that shows a row drawn live ([_FrameReading._pictureOf]).
+ChainHolding? _holding(
+  EngineChainHolds? holds,
+  _FrameReading pass,
+  Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>> origins,
+  Rect paper,
+) => switch (holds) {
+  null => null,
+  final holds => (
+    held: holds.held,
+    idOf: (node) => switch (origins[node]) {
+      final origin? => switch (pass._pictureOf(origin)) {
+        final picture? => holds.idOf((picture: picture, paper: paper)),
+        null => null,
+      },
+      null => null,
+    },
+  ),
+};
 
 extension on _FrameReading {
   /// [row] as the engine lays it: the paper a solid over the page, a

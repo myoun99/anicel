@@ -1,52 +1,34 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
-import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
-import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 
+import '../helpers/a_canvas_standing_on_a_frame.dart';
+import '../helpers/a_fill_on_the_engine.dart';
 import '../helpers/fill_pieces.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
-
-  /// A white 8×8 RGB raster with [black] pixels inked.
-  Uint8List rasterWithInk(Set<(int, int)> black) {
-    final rgb = Uint8List(8 * 8 * 4);
-    rgb.fillRange(0, rgb.length, 255);
-    for (final (x, y) in black) {
-      final base = (y * 8 + x) * 4;
-      rgb[base] = 0;
-      rgb[base + 1] = 0;
-      rgb[base + 2] = 0;
-    }
-    return rgb;
-  }
 
   /// A closed box outline (2,2)..(5,5) — interior = (3..4, 3..4).
   Set<(int, int)> boxOutline() => {
@@ -54,165 +36,27 @@ void main() {
     for (var y = 3; y <= 4; y += 1) ...{(2, y), (5, y)},
   };
 
-  int maskAt(FloodFillRegion region, int x, int y) =>
-      region.mask[(y - region.top) * region.width + (x - region.left)];
+  /// What a fill reads of a frame of one row whose [ink] pixels — off the
+  /// canvas too — are opaque black.
+  FillPictureOver pictureOf(Set<(int, int)> ink) => fillPictureOfRows([
+    fillRow(
+      celOfPixels(canvasSize, {
+        for (final at in ink) at: const [0, 0, 0, 255],
+      }),
+    ),
+  ], canvasSize: canvasSize);
 
-  group('floodFillRegion', () {
-    test('fills the enclosed interior and stops at the ink', () {
-      final region = floodFillRegion(
-        rgb: rasterWithInk(boxOutline()),
-        width: 8,
-        height: 8,
-        seedX: 3,
-        seedY: 3,
-        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
-
-      expect(
-        (region.left, region.top, region.width, region.height),
-        (3, 3, 2, 2),
-      );
-      expect(region.mask, everyElement(255));
-    });
-
-    test('tolerance gates which neighbors join the region', () {
-      // A near-white pixel 40/channel away from the white seed.
-      final rgb = rasterWithInk(const {});
-      const base = (3 * 8 + 4) * 4;
-      rgb[base] = 215;
-      rgb[base + 1] = 215;
-      rgb[base + 2] = 215;
-
-      FloodFillRegion fill(int tolerance) => floodFillRegion(
-        rgb: rgb,
-        width: 8,
-        height: 8,
-        seedX: 3,
-        seedY: 3,
-        options: FloodFillOptions(
-          tolerance: tolerance,
-          expandPx: 0,
-          antiAlias: false,
-        ),
-      )!;
-
-      expect(maskAt(fill(32), 4, 3), 0);
-      expect(maskAt(fill(64), 4, 3), 255);
-    });
-
-    test('expand grows one pixel under the ink line', () {
-      final region = floodFillRegion(
-        rgb: rasterWithInk(boxOutline()),
-        width: 8,
-        height: 8,
-        seedX: 3,
-        seedY: 3,
-        options: const FloodFillOptions(expandPx: 1, antiAlias: false),
-      )!;
-
-      expect(
-        (region.left, region.top, region.width, region.height),
-        (2, 2, 4, 4),
-      );
-      // 4-neighbor growth: the edge midpoints join, the corners do not.
-      expect(maskAt(region, 3, 2), 255);
-      expect(maskAt(region, 2, 3), 255);
-      expect(maskAt(region, 2, 2), 0);
-    });
-
-    test('anti-alias softens the mask edge only — and its ramp spreads one '
-        'pixel past it, on every side', () {
-      final region = floodFillRegion(
-        rgb: rasterWithInk(boxOutline()),
-        width: 8,
-        height: 8,
-        seedX: 3,
-        seedY: 3,
-        options: const FloodFillOptions(expandPx: 0, antiAlias: true),
-      )!;
-
-      // The box holds the ramp past the fill (유저 답
-      // the-fill-ramp-is-cut-at-its-box-Q1): the 2×2 grown by one pixel.
-      expect(
-        (region.left, region.top, region.width, region.height),
-        (2, 2, 4, 4),
-      );
-      // Every pixel of the 2×2 region borders the outside → all softened.
-      for (final (x, y) in [(3, 3), (4, 3), (3, 4), (4, 4)]) {
-        expect(maskAt(region, x, y), inExclusiveRange(0, 255));
-      }
-      // 4-neighbour spread: the edge midpoints catch the ramp, the corners
-      // do not.
-      expect(maskAt(region, 3, 2), greaterThan(0));
-      expect(maskAt(region, 5, 4), greaterThan(0));
-      expect(maskAt(region, 2, 2), 0);
-    });
-
-    test('an out-of-bounds seed fills nothing', () {
-      expect(
-        floodFillRegion(
-          rgb: rasterWithInk(const {}),
-          width: 8,
-          height: 8,
-          seedX: 8,
-          seedY: 0,
-        ),
-        isNull,
-      );
-    });
-  });
-
+  // What the flood itself encloses — its tolerance, its growth under the
+  // line, its ramp, its gaps — is the engine kernel's, pinned beside it
+  // (`kernels/flood/tests.rs`). Here: what a range of it is, and how it is
+  // laid.
   group('a fill range laid', () {
-    Frame frame(String id) =>
-        Frame(id: FrameId(id), duration: 1, strokes: const []);
-
-    Layer inkLayer() => Layer(
-      id: const LayerId('ink'),
-      name: 'Ink',
-      frames: [frame('ink-frame')],
-      timeline: {
-        0: const TimelineExposure.drawing(FrameId('ink-frame'), length: 1),
-      },
-    );
-
-    Cut cutWith(List<Layer> layers) => Cut(
-      id: const CutId('cut'),
-      name: 'Cut',
-      layers: layers,
-      duration: 24,
-      canvasSize: canvasSize,
-    );
-
-    /// The box outline as an actual surface (opaque black RGBA).
-    BitmapSurface outlineSurface() {
-      final tiles = <TileCoord, Uint8List>{};
-      for (final (x, y) in boxOutline()) {
-        final coord = TileCoord(x: x ~/ 4, y: y ~/ 4);
-        final buffer = tiles.putIfAbsent(coord, () => Uint8List(4 * 4 * 4));
-        final index = ((y % 4) * 4 + (x % 4)) * 4;
-        buffer[index + 3] = 255;
-      }
-      return BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 4,
-        tiles: {
-          for (final entry in tiles.entries)
-            entry.key: BitmapTile(
-              size: 4,
-              pixels: entry.value,
-            ),
-        },
-      );
-    }
-
     test('wraps the region as COLOR STAMP pieces — a region inside one tile '
         'is one, centred on it (R15-⑥: exact bytes, no tip-mask '
         'resampling)', () {
-      final surface = outlineSurface();
       final dab = fillRangeAt(
-        cut: cutWith([inkLayer()]),
-        frameIndex: 0,
-        surfaceResolver: (_, _) => surface,
+        canvasSize: canvasSize,
+        pictureOver: pictureOf(boxOutline()),
         point: CanvasPoint(x: 3, y: 3),
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       )!.dabsIn(0xFF3366CC).single;
@@ -232,132 +76,79 @@ void main() {
       }
     });
 
-    test('a seed off the canvas fills nothing', () {
+    test('a seed off the canvas fills nothing, and reads no picture', () {
       expect(
         fillRangeAt(
-          cut: cutWith([]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => null,
+          canvasSize: canvasSize,
+          pictureOver: (_) => fail('nothing is pressed: nothing to read'),
           point: CanvasPoint(x: -1, y: 0),
-        )?.dabsIn(0xFF000000) ?? const [],
-        isEmpty,
+        ),
+        isNull,
       );
     });
 
-    test('the fill reads what its READ SOURCE says (I-36 — its middle '
-        'mode, the flagged layers, went with I-92)', () {
-      // A paint layer whose opaque blob covers the whole canvas — without
-      // a read of the ink alone it becomes the seed color and the barrier
-      // box on the ink layer is invisible to the fill.
-      final blobTiles = <TileCoord, BitmapTile>{};
-      for (var ty = 0; ty < 2; ty += 1) {
-        for (var tx = 0; tx < 2; tx += 1) {
-          final pixels = Uint8List(4 * 4 * 4);
-          for (var i = 0; i < pixels.length; i += 4) {
-            pixels[i] = 200; // opaque red-ish everywhere
-            pixels[i + 3] = 255;
-          }
-          blobTiles[TileCoord(x: tx, y: ty)] = BitmapTile(
-            size: 4,
-            pixels: pixels,
+    // Board `an-area-dab-costs-its-box`: every fill lands as stamp pieces
+    // cut on the cel's tiles (the area's: `an_area_is_laid_where_it_reaches_
+    // test.dart`).
+    test('a ring\'s fill is four pieces — a whole tile empty in its middle '
+        'carries nothing — and lays exactly the ring', () {
+      // Two outlines: a frame round the page, and a box whose inside holds
+      // the whole of tile (1, 1) — so the fill between them is a ring with
+      // a hole a tile wide.
+      const canvas = CanvasSize(width: 320, height: 320);
+      bool isInk(int x, int y) {
+        bool outline(int from, int to) =>
+            (x >= from && x <= to && (y == from || y == to)) ||
+            (y >= from && y <= to && (x == from || x == to));
+        return outline(10, 300) || outline(120, 264);
+      }
+
+      final pieces =
+          fillRangeAt(
+            canvasSize: canvas,
+            pictureOver: fillPictureOfRows([
+              fillRow(
+                celOfPixels(canvas, {
+                  for (var y = 0; y < canvas.height; y += 1)
+                    for (var x = 0; x < canvas.width; x += 1)
+                      if (isInk(x, y)) (x, y): const [0, 0, 0, 255],
+                }),
+              ),
+            ], canvasSize: canvas),
+            point: CanvasPoint(x: 50.5, y: 50.5),
+            options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+          )?.dabsIn(0xFF336699) ??
+          const [];
+      expect(pieces, hasLength(4), reason: 'rows 0 and 2 whole, row 1 split');
+      for (var y = 0; y < canvas.height; y += 1) {
+        for (var x = 0; x < canvas.width; x += 1) {
+          final inRing =
+              x > 10 &&
+              x < 300 &&
+              y > 10 &&
+              y < 300 &&
+              !(x >= 120 && x <= 264 && y >= 120 && y <= 264);
+          expect(
+            piecesAlphaAt(pieces, x, y),
+            inRing ? 255 : 0,
+            reason: '($x, $y)',
           );
         }
       }
-      final blobSurface = BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 4,
-        tiles: blobTiles,
-      );
-      final inkSurface = outlineSurface();
-      final paintLayer = Layer(
-        id: const LayerId('paint'),
-        name: 'Paint',
-        frames: [frame('paint-frame')],
-        timeline: {
-          0: const TimelineExposure.drawing(FrameId('paint-frame'), length: 1),
-        },
-      );
-      BitmapSurface? resolve(Layer layer, Frame _) =>
-          layer.id == const LayerId('ink') ? inkSurface : blobSurface;
-
-      // What the fill encloses, read by the stamp's size: the blob is ONE
-      // flat region (8 wide), the ink's box holds the seed in 2×2.
-      (int, int) filled(
-        CanvasReadSource source, {
-        required LayerId active,
-        bool clipped = false,
-      }) {
-        final dabs = fillRangeAt(
-          cut: cutWith([
-            inkLayer(),
-            paintLayer.copyWith(clipsToBelow: clipped),
-          ]),
-          frameIndex: 0,
-          surfaceResolver: resolve,
-          point: CanvasPoint(x: 3, y: 3),
-          options: FloodFillOptions(
-            expandPx: 0,
-            antiAlias: false,
-            source: source,
-          ),
-          activeLayerId: active,
-        )?.dabsIn(0xFF3366CC) ?? const [];
-        final box = piecesBox(dabs);
-        return (box.width, box.height);
-      }
-
-      const ink = LayerId('ink');
-      const paint = LayerId('paint');
-      const blob = (8, 8);
-      const box = (2, 2);
-
-      // 「보이는거 전부」: the blob hides the box, whoever is active.
-      for (final active in [ink, paint]) {
+      for (final piece in pieces) {
+        final landing = piece.stamp!.landingRect(piece.center);
         expect(
-          filled(CanvasReadSource.display, active: active),
-          blob,
-          reason: 'what you see is the blob, active $active',
+          landing.left >= 256 ||
+              landing.rightExclusive <= 128 ||
+              landing.bottomExclusive <= 128 ||
+              landing.top >= 256,
+          isTrue,
+          reason: 'tile (1, 1) is all hole: no piece carries it',
         );
       }
-      // 「현재레이어」: the active layer alone.
-      expect(filled(CanvasReadSource.layer, active: paint), blob);
-      expect(filled(CanvasReadSource.layer, active: ink), box);
-      // I-92: clipped to the ink under it, the blob shows on the box's walls
-      // alone — what you see holds the seed in the box; read alone, it is
-      // the blob as drawn.
-      expect(
-        filled(CanvasReadSource.display, active: paint, clipped: true),
-        box,
-      );
-      expect(
-        filled(CanvasReadSource.layer, active: paint, clipped: true),
-        blob,
-      );
     });
 
     group('Fill Beyond Canvas (pasteboard)', () {
-      /// An outline surface whose ink may sit at NEGATIVE world coords.
-      BitmapSurface outlineSurfaceAt(Set<(int, int)> ink) {
-        final tiles = <TileCoord, Uint8List>{};
-        for (final (x, y) in ink) {
-          final coord = TileCoord.fromPixel(pixelX: x, pixelY: y, tileSize: 4);
-          final buffer = tiles.putIfAbsent(coord, () => Uint8List(4 * 4 * 4));
-          final index = ((y % 4) * 4 + (x % 4)) * 4;
-          buffer[index + 3] = 255;
-        }
-        return BitmapSurface(
-          canvasSize: canvasSize,
-          tileSize: 4,
-          tiles: {
-            for (final entry in tiles.entries)
-              entry.key: BitmapTile(
-                size: 4,
-                pixels: entry.value,
-              ),
-          },
-        );
-      }
-
       /// A closed box from (-3,2) to (4,5): walls cross the canvas's left
       /// edge; interior = x in [-2, 3], y in [3, 4].
       Set<(int, int)> boxAcrossLeftEdge() => {
@@ -365,19 +156,19 @@ void main() {
         for (var y = 3; y <= 4; y += 1) ...{(-3, y), (4, y)},
       };
 
+      const past = FloodFillOptions(
+        expandPx: 0,
+        antiAlias: false,
+        extendBeyondCanvas: true,
+      );
+
       test('a closed region crossing the canvas edge fills whole, off-canvas '
           'pixels included', () {
-        final surface = outlineSurfaceAt(boxAcrossLeftEdge());
         final dab = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => surface,
+          canvasSize: canvasSize,
+          pictureOver: pictureOf(boxAcrossLeftEdge()),
           point: CanvasPoint(x: 0, y: 3),
-          options: const FloodFillOptions(
-            expandPx: 0,
-            antiAlias: false,
-            extendBeyondCanvas: true,
-          ),
+          options: past,
         )!.dabsIn(0xFF3366CC).single;
 
         // Interior 6×2 at world (-2, 3) → center (1, 4). It crosses the
@@ -390,11 +181,9 @@ void main() {
 
       test('the same region WITHOUT the option clips at the canvas edge '
           '(default boundary unchanged)', () {
-        final surface = outlineSurfaceAt(boxAcrossLeftEdge());
         final dab = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => surface,
+          canvasSize: canvasSize,
+          pictureOver: pictureOf(boxAcrossLeftEdge()),
           point: CanvasPoint(x: 0, y: 3),
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
         )!.dabsIn(0xFF3366CC).single;
@@ -406,18 +195,15 @@ void main() {
 
       test('an OPEN region refuses to fill and reports the leak', () {
         var leaked = false;
-        final dab = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
-          point: CanvasPoint(x: 3, y: 3),
-          options: const FloodFillOptions(
-            expandPx: 0,
-            antiAlias: false,
-            extendBeyondCanvas: true,
-          ),
-          onOpenRegion: () => leaked = true,
-        )?.dabsIn(0xFF3366CC) ?? const [];
+        final dab =
+            fillRangeAt(
+              canvasSize: canvasSize,
+              pictureOver: pictureOf(const {}),
+              point: CanvasPoint(x: 3, y: 3),
+              options: past,
+              onOpenRegion: () => leaked = true,
+            )?.dabsIn(0xFF3366CC) ??
+            const [];
 
         expect(dab, isEmpty);
         expect(leaked, isTrue);
@@ -427,15 +213,10 @@ void main() {
           'flooded — a press resting on it has filled nothing yet', () {
         var leaked = 0;
         final range = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          canvasSize: canvasSize,
+          pictureOver: pictureOf(const {}),
           point: CanvasPoint(x: 3, y: 3),
-          options: const FloodFillOptions(
-            expandPx: 0,
-            antiAlias: false,
-            extendBeyondCanvas: true,
-          ),
+          options: past,
           onOpenRegion: () => leaked += 1,
         )!;
 
@@ -459,15 +240,10 @@ void main() {
           'adds nothing to lay, and is said only when every one was open', () {
         var leaked = 0;
         final open = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          canvasSize: canvasSize,
+          pictureOver: pictureOf(const {}),
           point: CanvasPoint(x: 3, y: 3),
-          options: const FloodFillOptions(
-            expandPx: 0,
-            antiAlias: false,
-            extendBeyondCanvas: true,
-          ),
+          options: past,
           onOpenRegion: () => leaked += 1,
         )!;
         FillRange square(int left) => FillRange.over(
@@ -514,9 +290,8 @@ void main() {
       test('the same open tap WITHOUT the option floods to the canvas wall '
           'as before', () {
         final dab = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          canvasSize: canvasSize,
+          pictureOver: pictureOf(const {}),
           point: CanvasPoint(x: 3, y: 3),
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
         )!.dabsIn(0xFF3366CC).single;
@@ -532,19 +307,16 @@ void main() {
           required CanvasPoint at,
           required PasteboardReach reach,
           void Function()? onOpenRegion,
-        }) => fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => outlineSurfaceAt(ink),
-          point: at,
-          options: const FloodFillOptions(
-            expandPx: 0,
-            antiAlias: false,
-            extendBeyondCanvas: true,
-          ),
-          onOpenRegion: onOpenRegion,
-          pasteboardReach: reach,
-        )?.dabsIn(0xFF3366CC) ?? const [];
+        }) =>
+            fillRangeAt(
+              canvasSize: canvasSize,
+              pictureOver: pictureOf(ink),
+              point: at,
+              options: past,
+              onOpenRegion: onOpenRegion,
+              pasteboardReach: reach,
+            )?.dabsIn(0xFF3366CC) ??
+            const [];
 
         test('a box whose wall stands past the pasteboard\'s is open', () {
           var leaked = false;
@@ -591,14 +363,14 @@ void main() {
         // The parity pin: hardness=1, opacity/flow=1 and dab size = mask
         // size must reproduce the region EXACTLY on the committed surface —
         // no falloff, no resampling drift.
-        final surface = outlineSurface();
-        final dabs = fillRangeAt(
-          cut: cutWith([inkLayer()]),
-          frameIndex: 0,
-          surfaceResolver: (_, _) => surface,
-          point: CanvasPoint(x: 3, y: 3),
-          options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        )?.dabsIn(0xFF3366CC) ?? const [];
+        final dabs =
+            fillRangeAt(
+              canvasSize: canvasSize,
+              pictureOver: pictureOf(boxOutline()),
+              point: CanvasPoint(x: 3, y: 3),
+              options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+            )?.dabsIn(0xFF3366CC) ??
+            const [];
 
         final coordinator = BrushFrameEditingCoordinator(
           initialFrameKey: const BrushFrameKey(

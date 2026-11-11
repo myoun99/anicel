@@ -18,7 +18,6 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
-import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
@@ -35,6 +34,8 @@ import '../helpers/surface_rgba_in_place.dart';
 /// Each reader is asked through its own door, with a cel whose DRAWING says
 /// one thing and whose text says another, so a reader that took the tiles
 /// of a surface still carrying texts answers with the drawing and fails.
+/// (The fill's door is a canvas's, on the engine:
+/// `test/ui/canvas/the_fill_reads_its_source_test.dart`.)
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const tileSize = defaultCelTileSize;
@@ -93,12 +94,6 @@ void main() {
     canvasSize: canvasSize,
   );
 
-  /// A closed box outline (2,2)..(5,5) — interior = (3..4, 3..4).
-  Map<(int, int), List<int>> boxOutline(List<int> rgba) => {
-    for (var x = 2; x <= 5; x += 1) ...{(x, 2): rgba, (x, 5): rgba},
-    for (var y = 3; y <= 4; y += 1) ...{(2, y): rgba, (5, y): rgba},
-  };
-
   const blue = [0, 0, 255, 255];
   const red = [255, 0, 0, 255];
 
@@ -140,34 +135,6 @@ void main() {
       );
 
       expect(picked, 0xFF0000FF);
-    });
-  });
-
-  group('the fill', () {
-    test('🚨stops at letters as it stops at a drawn line: a box written as '
-        'text encloses its inside', () {
-      final dab = fillRangeAt(
-        cut: cut,
-        frameIndex: 0,
-        surfaceResolver: (_, _) => cel(letters: boxOutline([0, 0, 0, 255])),
-        point: CanvasPoint(x: 3, y: 3),
-        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!.dabsIn(0xFF3366CC).single;
-
-      expect(dab.size, 2, reason: 'the inside of the box, and no more');
-      expect(dab.center, CanvasPoint(x: 4, y: 4));
-    });
-
-    test('fixture: with no letters the same tap floods the whole page', () {
-      final dab = fillRangeAt(
-        cut: cut,
-        frameIndex: 0,
-        surfaceResolver: (_, _) => cel(),
-        point: CanvasPoint(x: 3, y: 3),
-        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!.dabsIn(0xFF3366CC).single;
-
-      expect(dab.size, 8);
     });
   });
 

@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use super::*;
 use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
 use crate::kernels::shared::le_bytes;
-use crate::testing::{first_engine, last_error};
+use crate::testing::{first_engine, last_error, stored};
 
 struct Rig {
     engine: &'static Engine,
@@ -39,16 +39,6 @@ fn inked(pixels: &[(u32, u32)]) -> Vec<u8> {
         words[(y * TILE + x) as usize] = 0xff00_00ff;
     }
     le_bytes(&words)
-}
-
-/// A pool holding `tiles`, and their places.
-fn stored(tiles: &[Vec<u8>]) -> (Pool, Vec<TileAt>) {
-    let engine = rig().engine;
-    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
-    let cel = pool.cel();
-    let bytes: Vec<&[u8]> = tiles.iter().map(Vec::as_slice).collect();
-    let places = pool.store(engine, cel, &bytes).expect("store");
-    (pool, places)
 }
 
 /// The scan of the cel `words` name — `columns` × `rows` from (`x0`,

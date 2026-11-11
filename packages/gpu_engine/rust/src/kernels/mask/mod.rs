@@ -6,17 +6,18 @@
 //! outline (S2c, `softenMaskBoundary`), in `buildSelectionMask`'s order.
 //! The hard mask itself is `region`'s (S1, the app's `maskFor`). A bucket
 //! fill finishes what it flooded with the same grow and soften
-//! (`_cropAndFinishFloodRegion`, gpu-canonical-store stage 5), its soften
-//! past the outline as well, and its gap close measures by the feather's
-//! distances (`_gapCloseFloodRegion`).
+//! (gpu-canonical-store stage 5), its soften past the outline as well, and
+//! its gap close measures by the feather's distances.
 //!
 //! A mask is a plane of bytes over its box (`MaskBox`) — the app's
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
 //! layout.
 
-// ⏳Nothing outside the tests runs a mask's passes until the canvas's verbs
-// come to the engine (gpu-canonical-store, stage 4); the executor reads the
-// fill range's alone (flip lane ⓐ-3).
+// ⏳Nothing outside the tests runs the selection's passes or makes its hard
+// mask until the canvas's verbs come to the engine (gpu-canonical-store,
+// stage 4): the fill finishes and closes gaps by its own two
+// (`kernels/flood/abi.rs`), and the executor reads the fill range's (flip
+// lane ⓐ-3).
 #![cfg_attr(not(test), allow(dead_code))]
 
 pub(crate) mod region;
@@ -75,6 +76,14 @@ impl MaskBox {
             u32::from_le_bytes(word)
         };
         bytes.chunks_exact(self.width as usize).flat_map(|row| row.chunks(4).map(word)).collect()
+    }
+
+    /// `plane` — the plane's bytes as a pass put them — row after row
+    /// without the padding: the app's `Uint8List` again
+    /// ([`Self::words_of`], back).
+    pub(crate) fn rows_of<'a>(&self, plane: &'a [u8]) -> impl Iterator<Item = &'a [u8]> {
+        let (stride, width) = (self.stride() as usize * 4, self.width as usize);
+        plane.chunks_exact(stride).take(self.height as usize).map(move |row| &row[..width])
     }
 
     /// A distance plane's bytes: two distances to a word.
@@ -288,7 +297,7 @@ impl MaskPasses {
     }
 
     /// `mask` — bytes over `size`, 255 where a fill flooded — finished as
-    /// the fill finishes it (`_cropAndFinishFloodRegion`): grown `expand`
+    /// the fill finishes it: grown `expand`
     /// generations, then, where it anti-aliases, softened past its outline
     /// as well as in. A new plane — or none where neither runs, whose mask
     /// is finished as it is. Submits the work; the caller waits.
@@ -319,8 +328,8 @@ impl MaskPasses {
 
     /// The 3-4 chamfer distance (`chamferDistance34`, in mask.wgsl's layout)
     /// from every pixel of `mask` — bytes over `size` — to the nearest whose
-    /// byte is `zero_when`, as the fill's gap close measures it
-    /// (`_gapCloseFloodRegion`): the box's edge is no barrier. Relaxed
+    /// byte is `zero_when`, as the fill's gap close measures it: the box's
+    /// edge is no barrier. Relaxed
     /// `generations` times: a distance a path of no more steps reaches —
     /// every one up to 3 × `generations`, a step being 3 or 4 — is the
     /// app's, and the rest lie no nearer than theirs. Submits the work; the

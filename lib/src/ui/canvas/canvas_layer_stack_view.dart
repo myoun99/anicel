@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart'
     show
         GpuComposite,
+        GpuFloodPicture,
         GpuMask,
         GpuPlan,
         GpuPool,
@@ -54,7 +55,8 @@ import '../../native/composite_tree_plan.dart';
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_letters.dart';
 import '../../native/engine_range_mask.dart';
-import '../../native/engine_row_pose.dart' show gpuSamplingOf;
+import '../../native/engine_row_pose.dart'
+    show gpuRowInverse, gpuSamplingOf;
 import '../../native/engine_tile_ledger.dart';
 import '../../native/screen_texture.dart';
 import 'fx_plugin_stages.dart';

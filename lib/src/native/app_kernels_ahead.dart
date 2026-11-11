@@ -5,6 +5,7 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuInk;
 
 import 'app_gpu_engine.dart';
 import 'engine_cel_pixels.dart';
+import 'engine_floods.dart';
 import 'engine_frame_tools.dart';
 import 'engine_strokes.dart';
 
@@ -23,11 +24,11 @@ import 'engine_strokes.dart';
 /// selection may be made before the canvas comes —, the frame's own —
 /// nothing is shown on the canvas till they are there —, then what a hand
 /// on the canvas would else compile at its first press — a pen's stroke, a
-/// colour verb and a selection's lift, a paste, a blur brush's stroke —,
-/// then the grids' (their rows draw themselves meanwhile), the effect
-/// chains' (a frame that names one waits, [FrameKernelsToCome]) and the
-/// kernels a blur stroke goes by strips with (it goes a pass a dispatch
-/// meanwhile).
+/// colour verb and a selection's lift, a paste, the bucket's fill, a blur
+/// brush's stroke —, then the grids' (their rows draw themselves meanwhile),
+/// the effect chains' (a frame that names one waits, [FrameKernelsToCome])
+/// and the kernels a blur stroke goes by strips with (it goes a pass a
+/// dispatch meanwhile).
 ///
 /// 🗣️관제 2026-11-11 04:09 (④): 「첫 획 · 첫 들어올리기에서도 UI 스레드가
 /// 직접 하는 커널 컴파일 0, `ink_box` 포함」. 🔬Surface Pro 11, 11-11: the
@@ -66,6 +67,7 @@ Future<void> compileAppKernelsAhead() async {
       await EngineStrokes.warm();
       await EngineCelPixels.warm();
       await appGpuStampLandingKernels.warm();
+      await EngineFloods.warm();
       await EngineStrokes.warmBlurs();
       return opened;
     });

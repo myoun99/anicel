@@ -383,7 +383,14 @@ import '../core/on_a_worker.dart';
 ///   `qa_stroke_blend_tile` are exported no longer: each is called by a
 ///   batch of the C's own and by nothing outside (관제 2026-11-11,
 ///   fill-runs-in-the-c-engine's first commit).
-const int kQaEngineAbiVersion = 77;
+/// - v78: `qa_fill_clear_rect` · `qa_fill_compose_tile` ·
+///   `qa_fill_compose_batch` (with `qa_compose_blend_sizeof` ·
+///   `qa_compose_tile_item_sizeof`) · `qa_flood_fill_wave` ·
+///   `qa_fill_gap_close_run` · `qa_fill_finish_mask` leave the C: the
+///   bucket's fill reads the frame's picture, floods, closes gaps and is
+///   finished on the GPU engine (`EngineFloods`, board
+///   fill-runs-in-the-c-engine), and the C fills nothing.
+const int kQaEngineAbiVersion = 78;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

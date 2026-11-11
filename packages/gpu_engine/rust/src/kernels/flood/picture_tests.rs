@@ -6,13 +6,14 @@ use super::{Shown, pick};
 use super::super::tests::rig;
 use super::super::{Extent, Finished};
 use crate::kernels::blend::mode::NORMAL;
-use crate::kernels::composite::tests::{Pool, Rig as CompositeRig, rig as composite_rig};
+use crate::kernels::composite::tests::{Pool, Rig as CompositeRig, mix, rig as composite_rig};
+use crate::kernels::composite::tests::with_map;
 use crate::kernels::composite::{Plan, Step, TILE, TILE_TEXELS, TileSet, WHOLE};
 use crate::kernels::dab::stamp::tests::stamps;
 use crate::kernels::dab::stamp::{Paint, Source};
-use crate::kernels::shared::{ResampleMap, plane};
+use crate::kernels::shared::{ResampleMap, ResampleMode, plane};
 use crate::kernels::write::{Change, Write};
-use crate::testing::read_buffer;
+use crate::testing::{last_error, read_buffer};
 
 const BLUE: u32 = 30 | 90 << 8 | 220 << 16 | 255 << 24;
 const RED: u32 = 200 | 100 << 8 | 50 << 16 | 255 << 24;
@@ -141,6 +142,181 @@ fn a_box_of_no_pixel_is_refused() {
         let shown = Shown::of(engine, composite, &plan(&pages, &[], &[]), extent);
         assert!(shown.is_none(), "{extent:?}");
     }
+}
+
+// A box past what a binding holds is refused where it is asked for, with
+// why — before a tile of it is counted out: the canvas's every pixel is
+// 2^48 tiles.
+#[test]
+fn a_box_past_what_a_binding_holds_is_refused_before_it_is_composited() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let pages = Pool::default().upload(engine);
+    let extent = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
+    assert!(Shown::of(engine, composite, &plan(&pages, &[], &[]), extent).is_none());
+    assert!(last_error().contains("exceeds a binding"), "{}", last_error());
+}
+
+/// An opaque pixel of its own at every (x, y): one a composite lays over
+/// nothing as it is.
+fn opaque(x: i32, y: i32) -> u32 {
+    mix(x as u32 ^ mix(y as u32)) | 0xff00_0000
+}
+
+/// `shown`'s pixel at (`x`, `y`) of its space, of `read` — its tiles'
+/// words —, or none off its grid.
+fn shown_at(shown: &Shown, read: &[u32], (x, y): (i32, i32)) -> Option<u32> {
+    let (column, row) = shown.on_grid((x, y))?;
+    let tile = (row / TILE) * shown.across + column / TILE;
+    let texel = (row % TILE) * TILE + column % TILE;
+    Some(read[(u64::from(tile) * TILE_TEXELS) as usize + texel as usize])
+}
+
+// A picture read from a space moved whole pixels on the canvas is the
+// picture word for word, each pixel where the move lands it — over tiles
+// on both sides of the canvas's origin, slot after slot —, and nothing
+// where it lands off the picture's box or past the box asked.
+#[test]
+fn a_picture_read_from_a_moved_space_is_the_picture_moved() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let mut pool = Pool::default();
+    let sets = [pool.drawn(opaque, (-1, -1), (4, 3), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let steps = [laid(0, WHOLE)];
+    let on_canvas = [-100, -60, 200, 150];
+    let shown = Shown::of(engine, composite, &plan(&pages, &sets, &steps), on_canvas);
+    let shown = shown.expect("shown");
+    // A pixel of the space is the canvas's 37 to its right and 9 above.
+    let (dx, dy) = (37, -9);
+    let to_canvas = [1.0, 0.0, f64::from(dx), 0.0, 1.0, f64::from(dy), 0.0, 0.0, 1.0];
+    let asked = [-150, -70, 180, 170];
+    let posed = shown.posed(engine, composite, to_canvas, asked).expect("posed");
+    assert_eq!((posed.grid, posed.across, posed.down), ((-2, -1), 4, 3));
+    let read = words(&posed.out);
+    let side = TILE as i32;
+    let within = |[left, top, right, bottom]: [i32; 4], (x, y): (i32, i32)| {
+        (left..right).contains(&x) && (top..bottom).contains(&y)
+    };
+    for y in -side..2 * side {
+        for x in -2 * side..2 * side {
+            let lands = (x + dx, y + dy);
+            let shows = within(asked, (x, y)) && within(on_canvas, lands);
+            let want = if shows { opaque(lands.0, lands.1) } else { 0 };
+            assert_eq!(shown_at(&posed, &read, (x, y)), Some(want), "({x}, {y})");
+        }
+    }
+}
+
+// A picture read from a space turned and moved off whole pixels on the
+// canvas is what a row of the picture's pixels posed there shows, to the
+// byte: one resample, the row's own (R1's tent mean on a radius of a pixel
+// at least) — and it shows something.
+#[test]
+fn a_picture_read_from_a_posed_space_is_a_row_of_it_posed_there() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let mut pool = Pool::default();
+    let sets = [pool.drawn(opaque, (-1, -1), (2, 2), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let (whole, on_canvas) = ([laid(0, WHOLE)], [-128, -128, 128, 128]);
+    let shown = Shown::of(engine, composite, &plan(&pages, &sets, &whole), on_canvas);
+    let shown = shown.expect("shown");
+    // Turned by the 3-4-5 angle, moved by a quarter and a half pixel.
+    let to_canvas = [0.8, -0.6, 10.25, 0.6, 0.8, -30.5, 0.0, 0.0, 1.0];
+    let asked = [-200, -160, 184, 224];
+    let posed = shown.posed(engine, composite, to_canvas, asked).expect("posed");
+    let map = ResampleMap::new(to_canvas, 1.0, ResampleMode::Blend, 384, 384);
+    let row = [with_map(0, map.expect("a pose that lands"), WHOLE, NORMAL)];
+    let direct = Shown::of(engine, composite, &plan(&pages, &sets, &row), asked).expect("row");
+    let read = words(&posed.out);
+    assert!(read == words(&direct.out), "a picture posed is not the row posed");
+    let inked = read.iter().filter(|&&word| word != 0).count();
+    assert!(inked > 128 * 128, "{inked} pixels show");
+}
+
+// A pose that lands nothing on the canvas reads nothing of it, and is
+// refused with why.
+#[test]
+fn a_picture_read_through_a_pose_that_lands_nothing_is_refused() {
+    let shown = blue_shown();
+    let CompositeRig { engine, composite } = composite_rig();
+    assert!(shown.posed(engine, composite, [0.0; 9], [0, 0, 8, 8]).is_none());
+    assert!(last_error().contains("lands nothing"), "{}", last_error());
+}
+
+// A plan read through a pose is shown over no more of the canvas than the
+// pose can read: a world past what a binding holds refuses nothing, and the
+// picture is the row posed straight, to the byte — to the corners of the
+// box asked, whose tent reads the canvas farthest.
+#[test]
+fn a_plan_read_through_a_pose_is_shown_only_where_the_pose_reads() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let mut pool = Pool::default();
+    let sets = [pool.drawn(opaque, (-1, -1), (2, 2), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let whole = [laid(0, WHOLE)];
+    // Turned by the 3-4-5 angle, moved by a quarter and a half pixel: the
+    // box asked lands inside the four tiles drawn, a slack from their edges.
+    let to_canvas = [0.8, -0.6, 10.25, 0.6, 0.8, -30.5, 0.0, 0.0, 1.0];
+    let (asked, world) = ([-40, -30, 50, 60], [i32::MIN, i32::MIN, i32::MAX, i32::MAX]);
+    let drawn = plan(&pages, &sets, &whole);
+    let through = Shown::through(engine, composite, &drawn, to_canvas, asked, world);
+    let through = through.expect("through");
+    let map = ResampleMap::new(to_canvas, 1.0, ResampleMode::Blend, 90, 90);
+    let row = [with_map(0, map.expect("a pose that lands"), WHOLE, NORMAL)];
+    let direct = Shown::of(engine, composite, &plan(&pages, &sets, &row), asked).expect("row");
+    let read = words(&through.out);
+    assert!(read == words(&direct.out), "a plan read through a pose is not the row posed");
+    assert_eq!(read.iter().filter(|&&word| word != 0).count(), 90 * 90);
+}
+
+// A plan read through a pose shows nothing past the world its maker draws
+// in: read from a space moved whole pixels, each pixel is the plan's where
+// the move lands it inside the world, and nothing where it lands past it.
+#[test]
+fn a_plan_read_through_a_pose_shows_nothing_past_the_world() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let mut pool = Pool::default();
+    let sets = [pool.drawn(opaque, (-1, -1), (4, 3), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let steps = [laid(0, WHOLE)];
+    let (dx, dy) = (37, -9);
+    let to_canvas = [1.0, 0.0, f64::from(dx), 0.0, 1.0, f64::from(dy), 0.0, 0.0, 1.0];
+    let (asked, world) = ([-150, -70, 180, 170], [-100, -60, 40, 150]);
+    let drawn = plan(&pages, &sets, &steps);
+    let through = Shown::through(engine, composite, &drawn, to_canvas, asked, world);
+    let through = through.expect("through");
+    let read = words(&through.out);
+    let side = TILE as i32;
+    let within = |[left, top, right, bottom]: [i32; 4], (x, y): (i32, i32)| {
+        (left..right).contains(&x) && (top..bottom).contains(&y)
+    };
+    for y in -side..2 * side {
+        for x in -2 * side..2 * side {
+            let lands = (x + dx, y + dy);
+            let shows = within(asked, (x, y)) && within(world, lands);
+            let want = if shows { opaque(lands.0, lands.1) } else { 0 };
+            assert_eq!(shown_at(&through, &read, (x, y)), Some(want), "({x}, {y})");
+        }
+    }
+}
+
+// A pose that reads nothing of the world reads a picture of nothing over
+// the box asked — pressed and flooded as any other.
+#[test]
+fn a_plan_read_through_a_pose_off_the_world_is_a_picture_of_nothing() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let mut pool = Pool::default();
+    let sets = [pool.drawn(opaque, (-1, -1), (2, 2), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let steps = [laid(0, WHOLE)];
+    // A pixel of the space is the canvas's 5000 to its right.
+    let to_canvas = [1.0, 0.0, 5000.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    let (asked, world) = ([-100, -60, 100, 60], [-128, -128, 128, 128]);
+    let drawn = plan(&pages, &sets, &steps);
+    let through = Shown::through(engine, composite, &drawn, to_canvas, asked, world);
+    let through = through.expect("through");
+    assert_eq!((through.grid, through.across, through.down), ((-1, -1), 2, 2));
+    assert!(words(&through.out).iter().all(|&word| word == 0));
+    assert_eq!(through.on_grid((-100, -60)), Some((28, 68)));
 }
 
 // The eyedropper picks what shows: red at 128 over opaque blue is the

@@ -7,12 +7,12 @@
 use super::*;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
 use crate::kernels::composite::tests::{mix, pixel_at, rig, surface};
-use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
+use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
-use crate::testing::{last_error, read_buffer};
+use crate::testing::{last_error, read_buffer, stored};
 
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 /// Moved left by 37.25 px and down by 9.5: a pose R1 samples, not copies.
@@ -36,16 +36,6 @@ fn tile(n: u32, opaque: bool) -> Vec<u8> {
         word => word,
     };
     le_bytes(&(0..TILE_TEXELS as u32).map(word).collect::<Vec<_>>())
-}
-
-/// A pool holding `tiles`, and their places.
-fn stored(tiles: &[Vec<u8>]) -> (Pool, Vec<TileAt>) {
-    let engine = rig().engine;
-    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
-    let cel = pool.cel();
-    let bytes: Vec<&[u8]> = tiles.iter().map(Vec::as_slice).collect();
-    let places = pool.store(engine, cel, &bytes).expect("store");
-    (pool, places)
 }
 
 fn map(inverse: [f64; 9], mode: ResampleMode) -> ResampleMap {

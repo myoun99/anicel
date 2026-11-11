@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
@@ -13,15 +12,8 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_piece.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -37,6 +29,8 @@ import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
+import '../helpers/a_canvas_standing_on_a_frame.dart';
+import '../helpers/a_fill_on_the_engine.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/surface_rgba_in_place.dart';
@@ -564,83 +558,66 @@ void main() {
         );
       });
 
-      testWidgets('an open range is laid as ever — it says so at the lift '
-          'and holds nothing for a gradient', (tester) async {
-        var said = 0;
-        var floods = 0;
-        const size = CanvasSize(width: 16, height: 16);
-        final frameKeys = BrushCanvasFixture.createFrameKeys();
-        await tester.pumpWidget(
-          app(
-            BrushCanvasPanel(
-              coordinator: BrushCanvasFixture.createCoordinator(
-                frameKeys: frameKeys,
-              ),
-              availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              brushToolState: ValueNotifier(
-                BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
-              ),
-              viewport: seedFromRender(tester, CanvasViewport()),
-              // Nothing drawn and the fill let out past the canvas: the
-              // flood reaches the apron's wall wherever it starts.
-              fillRangeAt: (_, _) {
-                floods += 1;
-                return fillRangeAt(
-                  cut: Cut(
-                    id: const CutId('open'),
-                    name: 'Open',
-                    duration: 24,
+      group('an open range', () {
+        // The one range in this file a flood makes: the engine reads a
+        // picture of nothing.
+        opensTheEnginesScreens();
+
+        testWidgets('is laid as ever — it says so at the lift and holds '
+            'nothing for a gradient', (tester) async {
+          var said = 0;
+          var floods = 0;
+          const size = CanvasSize(width: 16, height: 16);
+          final frameKeys = BrushCanvasFixture.createFrameKeys();
+          await tester.pumpWidget(
+            app(
+              BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                brushToolState: ValueNotifier(
+                  BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
+                ),
+                viewport: seedFromRender(tester, CanvasViewport()),
+                // Nothing drawn and the fill let out past the canvas: the
+                // flood reaches the apron's wall wherever it starts.
+                fillRangeAt: (_, _) {
+                  floods += 1;
+                  return fillRangeAt(
                     canvasSize: size,
-                    layers: [
-                      Layer(
-                        id: const LayerId('ink'),
-                        name: 'Ink',
-                        frames: [
-                          Frame(
-                            id: const FrameId('ink-frame'),
-                            duration: 1,
-                            strokes: const [],
-                          ),
-                        ],
-                        timeline: {
-                          0: const TimelineExposure.drawing(
-                            FrameId('ink-frame'),
-                            length: 1,
-                          ),
-                        },
-                      ),
-                    ],
-                  ),
-                  frameIndex: 0,
-                  surfaceResolver: (_, _) =>
-                      BitmapSurface(canvasSize: size, tileSize: 4),
-                  point: CanvasPoint(x: 3, y: 3),
-                  options: const FloodFillOptions(
-                    expandPx: 0,
-                    antiAlias: false,
-                    extendBeyondCanvas: true,
-                  ),
-                  onOpenRegion: () => said += 1,
-                );
-              },
-              fillGradient: () => (options: gradient, sub: _sub),
+                    pictureOver: fillPictureOfRows(
+                      const [],
+                      canvasSize: size,
+                    ),
+                    point: CanvasPoint(x: 3, y: 3),
+                    options: const FloodFillOptions(
+                      expandPx: 0,
+                      antiAlias: false,
+                      extendBeyondCanvas: true,
+                    ),
+                    onOpenRegion: () => said += 1,
+                  );
+                },
+                fillGradient: () => (options: gradient, sub: _sub),
+              ),
             ),
-          ),
-        );
-        await tester.pump();
-        final view = find.byKey(const ValueKey<String>('brush-canvas-view'));
-        for (var press = 1; press <= 2; press += 1) {
-          final pen = await tester.startGesture(
-            tester.getCenter(view),
-            kind: PointerDeviceKind.stylus,
           );
           await tester.pump();
-          await pen.up();
-          await tester.pumpAndSettle();
-          expect(said, press, reason: 'said at each lift');
-          expect(floods, press, reason: 'each press picks');
-        }
+          final view = find.byKey(const ValueKey<String>('brush-canvas-view'));
+          for (var press = 1; press <= 2; press += 1) {
+            final pen = await tester.startGesture(
+              tester.getCenter(view),
+              kind: PointerDeviceKind.stylus,
+            );
+            await tester.pump();
+            await pen.up();
+            await tester.pumpAndSettle();
+            expect(said, press, reason: 'said at each lift');
+            expect(floods, press, reason: 'each press picks');
+          }
+        });
       });
 
       testWidgets('switched off while a range is held: the next press picks '

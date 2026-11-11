@@ -59,6 +59,12 @@ final class StampPicture extends Opaque {}
 
 final class StampLanding extends Opaque {}
 
+final class Floods extends Opaque {}
+
+final class FloodPicture extends Opaque {}
+
+final class FloodFilled extends Opaque {}
+
 /// `VerbSpec` (rust/src/kernels/cel_pixel/abi.rs), field by field.
 final class VerbSpec extends Struct {
   @Uint32()
@@ -1223,6 +1229,99 @@ external int celPassedLand(
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
 );
+
+@Native<Pointer<Floods> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_floods_new',
+)
+external Pointer<Floods> floodsNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Floods>)>(symbol: 'gpu_engine_floods_free')
+external void floodsFree(Pointer<Floods> floods);
+
+@Native<
+  Pointer<FloodPicture> Function(
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Planned>,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_flood_picture_new')
+external Pointer<FloodPicture> floodPictureNew(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Planned> plan,
+  Pointer<Int32> extent,
+);
+
+@Native<
+  Pointer<FloodPicture> Function(
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Planned>,
+    Pointer<Double>,
+    Pointer<Int32>,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_flood_picture_posed')
+external Pointer<FloodPicture> floodPicturePosed(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Planned> plan,
+  Pointer<Double> toCanvas,
+  Pointer<Int32> extent,
+  Pointer<Int32> within,
+);
+
+@Native<Void Function(Pointer<FloodPicture>)>(
+  symbol: 'gpu_engine_flood_picture_free',
+)
+external void floodPictureFree(Pointer<FloodPicture> picture);
+
+@Native<
+  Pointer<FloodFilled> Function(
+    Pointer<Floods>,
+    Pointer<Engine>,
+    Pointer<FloodPicture>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Uint32,
+    Bool,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_flood_run')
+external Pointer<FloodFilled> floodRun(
+  Pointer<Floods> floods,
+  Pointer<Engine> engine,
+  Pointer<FloodPicture> picture,
+  int x,
+  int y,
+  int tolerance,
+  int gap,
+  int expand,
+  bool antiAlias,
+  Pointer<Int32> covers,
+);
+
+@Native<
+  Bool Function(Pointer<Engine>, Pointer<FloodFilled>, Pointer<Uint8>, Size)
+>(symbol: 'gpu_engine_flood_filled_read')
+external bool floodFilledRead(
+  Pointer<Engine> engine,
+  Pointer<FloodFilled> filled,
+  Pointer<Uint8> bytes,
+  int capacity,
+);
+
+@Native<Void Function(Pointer<FloodFilled>)>(
+  symbol: 'gpu_engine_flood_filled_free',
+)
+external void floodFilledFree(Pointer<FloodFilled> filled);
 
 @Native<
   Pointer<Faces> Function(

@@ -46,12 +46,13 @@ set_target_properties(qa_engine PROPERTIES
 # finalize) went with the encoder in the connection round; the law and its
 # cases are Rust's now (native/video `hardware_law.rs`).
 
-# Several callers at once on the engine's one pool and one wave arena (card
+# Several callers at once on the engine's one pool (card
 # clip-import-hangs-on-three-samples): every isolate calls the engine from a
 # thread of its own, and nothing else that runs here calls it from more than
-# one. It includes the engine's translation unit. ↩️As the law tests and
-# the transport test included theirs, until the connection round moved the
-# movie laws and the sound device to the Rust engine.
+# one. It includes the engine's translation unit. ↩️It held the fill's one
+# wave arena as well, until the fill went to the GPU engine (ABI 78). ↩️As
+# the law tests and the transport test included theirs, until the connection
+# round moved the movie laws and the sound device to the Rust engine.
 if(NOT ANDROID AND NOT IOS)
   add_executable(qa_engine_pool_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_engine_pool_test.c")

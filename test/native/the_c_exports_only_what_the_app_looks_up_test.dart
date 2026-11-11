@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
+
 /// 관제 2026-11-11 (fill-runs-in-the-c-engine's first commit): two of the
 /// C's exports had no caller in the app — `qa_tile_alpha_bounds` bound by
 /// nothing, `qa_premultiply_rgba` bound and never called — and four were
@@ -21,9 +23,7 @@ void main() {
     expect(exported, isNotEmpty, reason: '⛔premise: the scan finds them');
 
     final app = [
-      for (final file in Directory('lib').listSync(recursive: true))
-        if (file is File && file.path.endsWith('.dart'))
-          file.readAsStringSync(),
+      for (final file in dartFilesUnder('lib')) file.readAsStringSync(),
     ].join('\n');
     expect([
       for (final name in exported)
