@@ -12,9 +12,20 @@ pub use ledger::assert_pinned;
 /// on a cold compile (exit 2173, RTX 4080, 2026-11-05). Every kernel
 /// folder's tests come here, so none has to make the same fix of its own
 /// (관제, gpu-engine-skeleton 2026-11-05 14:49).
+///
+/// 🚨ITS ERRORS PANIC, AS wgpu's DID (관제 2026-11-11, on the lost-device
+/// lane): the app's engine notes an error no scope catches and fails its
+/// next wait by it (`Refusals`, in `device.rs`), so a test that never
+/// waits would pass over one — here it ends the test that raised it, where
+/// it is raised, the alarm these tests had while it ended the process.
 pub fn first_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| Engine::open_first().expect("these tests need a GPU adapter"))
+    ENGINE.get_or_init(|| {
+        let engine = Engine::open_first().expect("these tests need a GPU adapter");
+        let alarm = |error: wgpu::Error| panic!("wgpu error: {error}");
+        engine.device.on_uncaptured_error(std::sync::Arc::new(alarm));
+        engine
+    })
 }
 
 /// `buffer`'s bytes once the GPU is done with all that was submitted — the

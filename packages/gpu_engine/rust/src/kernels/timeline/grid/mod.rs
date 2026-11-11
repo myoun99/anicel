@@ -15,7 +15,6 @@ pub(crate) mod lay;
 #[cfg(test)]
 mod tests;
 
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
@@ -308,13 +307,7 @@ impl GridTile {
             .iter()
             .flat_map(|word| word.to_le_bytes())
             .collect();
-        let stream = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("grid ops"),
-                contents: &words,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let stream = engine.filled("grid ops", &words, wgpu::BufferUsages::STORAGE);
         let atlas_view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
         let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
         let mut bound = whole(&[(0, &self.params), (1, &stream)]);

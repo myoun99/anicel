@@ -166,6 +166,21 @@ external int engineAdapterName(
 @Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_video_memory')
 external int engineVideoMemory(Pointer<Engine> engine);
 
+@Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_gone')
+external bool engineGone(Pointer<Engine> engine);
+
+@Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_noted',
+)
+external int engineNoted(
+  Pointer<Engine> engine,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
+
+@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_lose')
+external void engineLose(Pointer<Engine> engine);
+
 @Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool)>(
   symbol: 'gpu_engine_surface_new',
 )

@@ -27,7 +27,6 @@ mod families_tests;
 #[cfg(test)]
 mod tests;
 
-use wgpu::util::DeviceExt;
 
 use glyphs::{Affine, Faces, Paint, Placed, covered};
 
@@ -239,11 +238,7 @@ fn paged(
         .iter()
         .map(|words| {
             let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-            engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("letters page"),
-                contents: &bytes,
-                usage: wgpu::BufferUsages::STORAGE,
-            })
+            engine.filled("letters page", &bytes, wgpu::BufferUsages::STORAGE)
         })
         .collect();
     Some((buffers, sets))

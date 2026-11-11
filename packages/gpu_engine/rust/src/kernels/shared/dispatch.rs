@@ -7,7 +7,6 @@
 
 use std::ops::Range;
 
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
@@ -31,13 +30,7 @@ pub(crate) fn words_buffer(
     words: &[u32],
     usage: wgpu::BufferUsages,
 ) -> wgpu::Buffer {
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(label),
-            contents: &le_bytes(words),
-            usage,
-        })
+    engine.filled(label, &le_bytes(words), usage)
 }
 
 /// `words` as a buffer holds them: little-endian, one after another.

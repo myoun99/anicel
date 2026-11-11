@@ -284,18 +284,11 @@ fn put_over(engine: &Engine, rect: TileRect, picture: [i32; 4], pixels: &[u8]) -
     each_pixel(picture, rect, |at, tile| {
         tiles[tile..tile + 4].copy_from_slice(&pixels[at..at + 4]);
     });
-    Some(
-        wgpu::util::DeviceExt::create_buffer_init(
-            &engine.device,
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("chain put"),
-                contents: &tiles,
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
-            },
-        ),
-    )
+    Some(engine.filled(
+        "chain put",
+        &tiles,
+        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+    ))
 }
 
 /// `rect`'s tiles, row by row: the order a chain's tiles lie in.

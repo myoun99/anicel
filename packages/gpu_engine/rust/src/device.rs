@@ -41,6 +41,89 @@ pub struct Engine {
     /// How fast the device spends a plugin's share, once a plugin first
     /// ran (kernels/plugin's `Pace`).
     pub(crate) plugin_pace: OnceLock<crate::kernels::plugin::Pace>,
+    /// What the device refused that no wait has told yet, and whether it
+    /// is gone ([`Refusals`]).
+    refusals: Refusals,
+}
+
+/// What the engine's device refused that no wait has told yet, and whether
+/// the device is gone.
+///
+/// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+/// 유지한다」 — a device the driver took away (a reset, an update, a wake
+/// from sleep) is not the app's end. 🔬wgpu 30.0.1, DX12, RTX 4080,
+/// 2026-11-11, a device destroyed in a test of this crate: the word that it
+/// was lost came at the next poll; a wait answered that the GPU was done;
+/// a buffer made, a write, a submit and a compile each returned as if they
+/// had worked; and two things panicked — wgpu's `create_buffer_init`
+/// ([`Engine::filled`] is why nothing calls it) and wgpu's own handler of
+/// an error no scope catches, at the first copy that named a buffer of the
+/// lost device. A panic on the caller's thread crosses `extern "C"`, and
+/// that ends the process (↩️as every such error did till 2026-11-11, with
+/// the last save all that was left).
+///
+/// So an error no scope catches is NOTED here, and the next wait fails by
+/// it ([`Engine::wait`]) — the law a submit on a thread that is gone
+/// already keeps ([`Queue::submit`]). A device that is gone fails every
+/// wait from then on. ⚠️What ends without a wait is told nothing: the
+/// tests' engine panics as wgpu did (`testing::first_engine`), and the
+/// app's tests ask at each test's end ([`gpu_engine_noted`]).
+#[derive(Clone, Default)]
+pub(crate) struct Refusals(Arc<Mutex<Refused>>);
+
+#[derive(Default)]
+struct Refused {
+    /// Why the device is gone, once it is.
+    gone: Option<String>,
+    /// The first error no scope caught since a wait last told one.
+    noted: Option<String>,
+}
+
+impl Refusals {
+    fn kept(&self) -> std::sync::MutexGuard<'_, Refused> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The device is gone, by `why` — the first word of it stays.
+    fn lose(&self, why: String) {
+        self.kept().gone.get_or_insert(why);
+    }
+
+    /// An error no scope caught: kept where it is the first since one was
+    /// told.
+    fn note(&self, error: String) {
+        self.kept().noted.get_or_insert(error);
+    }
+
+    /// Whether the device is gone.
+    fn gone(&self) -> bool {
+        self.kept().gone.is_some()
+    }
+
+    /// The error noted and not yet told, if any.
+    #[cfg(test)]
+    fn noted(&self) -> Option<String> {
+        self.kept().noted.clone()
+    }
+
+    /// The error noted, taken by what asks in a wait's place: no wait fails
+    /// by it after.
+    fn taken(&self) -> Option<String> {
+        self.kept().noted.take()
+    }
+
+    /// Fails by what the device refused: that it is gone, or else the error
+    /// noted — told here, and noted no more.
+    fn told(&self) -> Option<()> {
+        let mut kept = self.kept();
+        if let Some(why) = &kept.gone {
+            return fail(format!("the graphics device is gone: {why}"));
+        }
+        match kept.noted.take() {
+            Some(error) => fail(format!("the device refused: {error}")),
+            None => Some(()),
+        }
+    }
 }
 
 /// What one of the engine's kernels is compiled of: its sources joined, its
@@ -269,6 +352,14 @@ impl Engine {
             Ok((device, queue)) => {
                 let thread = EngineThread::start()?;
                 let compiling = EngineThread::start()?;
+                let refusals = Refusals::default();
+                let (lost, noting) = (refusals.clone(), refusals.clone());
+                device.set_device_lost_callback(move |reason, message| {
+                    lost.lose(format!("{reason:?} {message}").trim_end().to_owned());
+                });
+                device.on_uncaptured_error(Arc::new(move |error: wgpu::Error| {
+                    noting.note(error.to_string());
+                }));
                 Some(Self {
                     queue: Queue {
                         queue,
@@ -279,6 +370,7 @@ impl Engine {
                     kernels: Kernels::default(),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
+                    refusals,
                     instance,
                     adapter,
                     device,
@@ -290,7 +382,9 @@ impl Engine {
 
     /// Blocks until the GPU has finished everything submitted, or fails by
     /// name at [`WAIT_LIMIT`] — polled on the engine's thread
-    /// ([`EngineThread`]), the caller waiting outside the driver.
+    /// ([`EngineThread`]), the caller waiting outside the driver — and
+    /// fails by what the device refused meanwhile ([`Refusals`]): the word
+    /// that a device is lost comes inside a poll, so it is asked after one.
     pub(crate) fn wait(&self) -> Option<()> {
         self.wait_within(WAIT_LIMIT)
     }
@@ -308,8 +402,54 @@ impl Engine {
                 }
                 error => format!("poll: {error}"),
             })
-        })?;
-        polled.map_or_else(fail, Some)
+        });
+        let Some(polled) = polled else {
+            // The thread ended under a panic of wgpu's own: a poll's error
+            // that is neither of the two above is fatal to it
+            // (wgpu's `Device::poll`), a device lost under the poll among
+            // them. No wait comes back from this engine again.
+            self.refusals.lose(last_error());
+            return None;
+        };
+        polled.map_or_else(fail, Some)?;
+        self.refusals.told()
+    }
+
+    /// Whether the device is gone ([`Refusals`]): nothing made on this
+    /// engine is of use again.
+    pub(crate) fn gone(&self) -> bool {
+        self.refusals.gone()
+    }
+
+    /// A buffer holding `contents`, as long as they are padded to the
+    /// copy alignment, for `usage`.
+    ///
+    /// ⛔NOT wgpu's `create_buffer_init`, whose bytes and sizes these are:
+    /// it `expect`s the new buffer's mapping, and a buffer of a device
+    /// that is gone has none ([`Refusals`]) — a panic on the caller's
+    /// thread. Here such a buffer is left unwritten: nothing reads it, the
+    /// wait that follows failing by name.
+    pub(crate) fn filled(
+        &self,
+        label: &str,
+        contents: &[u8],
+        usage: wgpu::BufferUsages,
+    ) -> wgpu::Buffer {
+        let align = wgpu::COPY_BUFFER_ALIGNMENT;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: (contents.len() as u64).div_ceil(align) * align,
+            usage,
+            mapped_at_creation: !contents.is_empty(),
+        });
+        if contents.is_empty() {
+            return buffer;
+        }
+        if let Ok(mut mapped) = buffer.get_mapped_range_mut(..) {
+            mapped.slice(..contents.len()).copy_from_slice(contents);
+        }
+        buffer.unmap();
+        buffer
     }
 
     /// What `work` answers, run on the engine's thread for compiling
@@ -627,6 +767,51 @@ pub unsafe extern "C" fn gpu_engine_video_memory(engine: *const Engine) -> u64 {
     platform::video_memory(&engine.adapter).map_or(0, |memory| memory.used)
 }
 
+/// Whether `engine`'s device is gone ([`Refusals`]) — lost to the driver,
+/// or its thread ended under it: every wait on it fails from then on, and
+/// what the app holds of it is of no use again.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_gone(engine: *const Engine) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.gone()
+}
+
+/// Takes the error `engine` noted that no wait has told yet ([`Refusals`]):
+/// copies it (UTF-8) into `buffer` and returns its full length, 0 where
+/// there is none — and no wait fails by it after. For the app's tests,
+/// which ask as each one ends: an error on a way that never waits would
+/// pass them by, and one left noted would fail the next test's wait.
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_noted(
+    engine: *const Engine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.refusals.taken().map_or(0, |error| copy_out(&error, buffer, capacity))
+}
+
+/// Test seam: `engine`'s device destroyed — the nearest a test comes to a
+/// driver taking it away, which no test does. The word that it is lost
+/// comes at the next wait ([`Refusals`]).
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.device.destroy();
+}
+
 /// Test seam: `engine` keeps none of its kernels ([`Kernels`]), as a launch
 /// finds it. For the app's pins of what is compiled where and when, which
 /// a kernel an earlier test compiled would answer for.
@@ -843,6 +1028,136 @@ mod tests {
         assert!(late, "every wait of no time found the GPU done");
         assert_eq!(last_error(), "the GPU did not finish within 0ns");
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
+    }
+
+    fn encoder(engine: &Engine) -> wgpu::CommandEncoder {
+        engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default())
+    }
+
+    // 🚨A device that is gone ends no process: every wait on it fails by
+    // name, and what panicked on one — a buffer filled, a copy naming a
+    // buffer of it (`Refusals` has the measurement) — returns.
+    #[test]
+    fn a_device_that_is_gone_fails_every_wait_by_name_and_panics_nowhere() {
+        let engine = Engine::open_first().expect("an adapter");
+        let before = engine.filled("before", &[1, 2, 3, 4], wgpu::BufferUsages::COPY_SRC);
+        assert_eq!(engine.read_buffer(&before), Some(vec![1, 2, 3, 4]), "{}", last_error());
+        assert!(!engine.gone());
+        engine.device.destroy();
+        assert_eq!(engine.wait(), None, "a wait on a device destroyed came back done");
+        assert_eq!(last_error(), "the graphics device is gone: Destroyed");
+        assert!(engine.gone());
+        // The two that panicked.
+        let after = engine.filled("after", &[5, 6, 7, 8], wgpu::BufferUsages::COPY_SRC);
+        assert_eq!(engine.read_buffer(&before), None);
+        assert_eq!(engine.read_buffer(&after), None);
+        assert_eq!(last_error(), "the graphics device is gone: Destroyed");
+        // What returned as if it had worked still does, and the wait tells.
+        engine.queue.write_buffer(&before, 0, &[0; 4]);
+        engine.queue.submit([encoder(&engine).finish()]);
+        assert_eq!(engine.wait(), None);
+        assert_eq!(last_error(), "the graphics device is gone: Destroyed");
+    }
+
+    // 🚨An error no scope catches is the next wait's failure, by name, told
+    // once — the engine stands, and its thread with it.
+    #[test]
+    fn an_error_no_scope_catches_fails_the_next_wait_and_is_told_once() {
+        let engine = Engine::open_first().expect("an adapter");
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+        let small = engine.readback(4);
+        let source = engine.filled("source", &[1, 2, 3, 4], wgpu::BufferUsages::COPY_SRC);
+        let mut encoder = encoder(&engine);
+        // Eight bytes of a buffer of four: refused where the copy is named.
+        encoder.copy_buffer_to_buffer(&source, 0, &small, 0, 8);
+        engine.queue.submit([encoder.finish()]);
+        assert!(engine.refusals.noted().is_some(), "the device took the copy");
+        assert_eq!(engine.wait(), None, "the wait passed the refusal by");
+        assert!(last_error().starts_with("the device refused: "), "{}", last_error());
+        assert_eq!(engine.refusals.noted(), None);
+        assert!(!engine.gone());
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+        assert_eq!(engine.read_buffer(&source), Some(vec![1, 2, 3, 4]), "{}", last_error());
+    }
+
+    // 🚨An engine whose thread ended — as it does under a poll wgpu cannot
+    // go on from — is gone: no wait comes back from it, and the app is told
+    // so as of a device lost.
+    #[test]
+    fn an_engine_whose_thread_ended_is_gone() {
+        let engine = Engine::open_first().expect("an adapter");
+        let ended = engine.thread.run(|| -> () { panic!("as wgpu's poll does") });
+        assert_eq!(ended, None);
+        assert!(!engine.gone(), "gone before a wait found the thread ended");
+        assert_eq!(engine.wait(), None);
+        assert_eq!(last_error(), "the engine's thread is gone");
+        assert!(engine.gone());
+    }
+
+    // The tests' own engine keeps the alarm the process had: an error no
+    // scope catches ends the test that raised it, where it is raised
+    // (`testing::first_engine`).
+    #[test]
+    #[should_panic(expected = "wgpu error")]
+    fn on_the_tests_engine_an_error_no_scope_catches_still_panics() {
+        let engine = first_engine();
+        let small = engine.readback(4);
+        let source = engine.filled("source", &[1, 2, 3, 4], wgpu::BufferUsages::COPY_SRC);
+        let mut encoder = encoder(engine);
+        encoder.copy_buffer_to_buffer(&source, 0, &small, 0, 8);
+        // On this thread: the encoder's errors are raised as it is finished.
+        let _ = encoder.finish();
+    }
+
+    // What is filled holds its bytes and is as long as wgpu's own made it:
+    // padded to the copy alignment, and of no length for none.
+    #[test]
+    fn a_buffer_filled_holds_its_bytes_padded_to_the_copy_alignment() {
+        let engine = first_engine();
+        let usage = wgpu::BufferUsages::COPY_SRC;
+        let five = engine.filled("five", &[1, 2, 3, 4, 5], usage);
+        assert_eq!(five.size(), 8);
+        let held = engine.read_buffer(&five);
+        assert_eq!(held, Some(vec![1, 2, 3, 4, 5, 0, 0, 0]), "{}", last_error());
+        let like = wgpu::util::DeviceExt::create_buffer_init(
+            &engine.device,
+            &wgpu::util::BufferInitDescriptor { label: None, contents: &[1, 2, 3, 4, 5], usage },
+        );
+        assert_eq!(five.size(), like.size());
+        assert_eq!(held, engine.read_buffer(&like));
+        assert_eq!(engine.filled("none", &[], usage).size(), 0);
+    }
+
+    // The app asks through the ABI: gone or not, what was noted and is not
+    // yet told — taken as it is asked, so no wait fails by it after — and,
+    // a test's, a device destroyed.
+    #[test]
+    fn the_abi_says_whether_a_device_is_gone_and_what_it_noted() {
+        use super::{gpu_engine_gone, gpu_engine_lose, gpu_engine_noted};
+        let made = opened(Engine::open_first);
+        assert!(!made.is_null(), "{}", last_error());
+        // SAFETY: `made` is live till the close below, and `noted` holds its
+        // length.
+        unsafe {
+            let engine = &*made;
+            let mut noted = [0u8; 2048];
+            assert_eq!(gpu_engine_noted(made, noted.as_mut_ptr(), noted.len()), 0);
+            let small = engine.readback(4);
+            let mut encoder = encoder(engine);
+            encoder.copy_buffer_to_buffer(&small, 0, &small, 0, 4);
+            let _ = encoder.finish();
+            let raised = engine.refusals.noted().expect("a buffer copied onto itself");
+            let length = gpu_engine_noted(made, noted.as_mut_ptr(), noted.len());
+            assert_eq!(std::str::from_utf8(&noted[..length]).expect("UTF-8"), raised);
+            assert_eq!(gpu_engine_noted(made, noted.as_mut_ptr(), noted.len()), 0);
+            assert_eq!(engine.wait(), Some(()), "a wait failed by what was taken");
+            assert!(!gpu_engine_gone(made));
+            gpu_engine_lose(made);
+            assert!(!gpu_engine_gone(made), "the word came before a wait");
+            assert_eq!(engine.wait(), None);
+            assert!(gpu_engine_gone(made));
+            gpu_engine_close(made);
+        }
     }
 
     #[test]

@@ -325,9 +325,7 @@ fn a_dab_goes_a_pass_a_dispatch_till_the_strips_are_compiled() {
         .collect();
     let page = || {
         let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-        let label = Some("test picture");
-        let descriptor = wgpu::util::BufferInitDescriptor { label, contents: &step, usage };
-        [wgpu::util::DeviceExt::create_buffer_init(&engine.device, &descriptor)]
+        [engine.filled("test picture", &step, usage)]
     };
     let lone = [StrokeTile { column: 0, row: 0, at: TileAt { page: 0, slot: 0 } }];
     let dab = (square([60, 60, 68, 64], WHITE, 1.0), 1);

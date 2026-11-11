@@ -23,6 +23,25 @@ GpuEngine? _engine;
 /// engine, and the tiles its pool holds, are the main isolate's.
 bool get appGpuEngineIsHere => RootIsolateToken.instance != null;
 
+/// Whether the app has opened its engine and that device is gone
+/// ([GpuEngine.isGone]) — asked without opening one. Every job is refused
+/// from then on, whatever the job: one cause, for what tells a refusal
+/// (`EngineRefusals`).
+bool get appGpuEngineIsGone => _engine?.isGone ?? false;
+
+/// Test seam: the error the app's engine raised that no job has been
+/// refused by, taken ([GpuEngine.debugTakeNoted]) — null where there is
+/// none, where no engine is open, and where its device is gone, which
+/// raises one at every use of what was made on it. What every test is
+/// asked as it ends (`flutter_test_config.dart`): till 2026-11-11 such an
+/// error ended the process where it was raised, and now it waits for a job
+/// that waits.
+@visibleForTesting
+String? debugTakeAppGpuEngineNoted() {
+  final engine = _engine;
+  return engine == null || engine.isGone ? null : engine.debugTakeNoted();
+}
+
 /// A set of kernels on [appGpuEngine], one for the app: compiled here the
 /// first time anything asks, if [warm] has not got there first.
 final class AppKernels<T extends Object> {

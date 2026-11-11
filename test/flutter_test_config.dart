@@ -6,7 +6,8 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
+import 'package:anicel/src/native/app_gpu_engine.dart'
+    show AppKernels, debugTakeAppGpuEngineNoted;
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/screen_texture.dart';
@@ -208,6 +209,28 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // in the same callback: `deleteAfterSessionEnds` in
   // `test/helpers/project_scratch_folder.dart`.
   setUp(() => addTearDown(OpenProjectFile.instance.releaseAll));
+  // 🚨**AN ERROR THE DEVICE RAISED THAT NO JOB WAS REFUSED BY IS THE
+  // TEST'S** (🗣️관제 2026-11-11: 「기록된 오류가 남아 있으면 시험이 끝날 때
+  // 빨개지는 장치를 같이 둬라」). ↩️Till the device-loss lane such an error
+  // ended the process where it was raised — wgpu's own handler panics —
+  // and that was the alarm. The engine notes it now and fails the next job
+  // that waits (rust/src/device.rs, `Refusals`), so a test on a way that
+  // never waits would end green with it noted. Asked as each test ends,
+  // and TAKEN: the test that raised it is the red one, and the next test's
+  // first wait is not failed by it.
+  //
+  // ⚠️The first `tearDown` here, so the last one run — package:test runs
+  // them in reverse — and what the two below let go of is asked for too.
+  tearDown(() {
+    expect(
+      debugTakeAppGpuEngineNoted(),
+      isNull,
+      reason:
+          'the GPU device raised an error that no job of this test was '
+          'refused by: the way that raised it never waits for the device, '
+          'and the app would go on as if it had worked',
+    );
+  });
   // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test
   // queued drained inside the NEXT test — against the earlier test's
   // painter and resolvers, in the next test's zone (2026-09-26: a rows test

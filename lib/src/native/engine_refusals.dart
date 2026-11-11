@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
+import 'app_gpu_engine.dart' show appGpuEngineIsGone;
+
 /// 🚨A JOB THE GRAPHICS DEVICE REFUSED IS TOLD — ONCE A CAUSE, A RUN.
 ///
 /// 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
@@ -23,6 +25,11 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 /// answer, room for tiles (`TileRoomRefused`), a read back
 /// (`GpuReadFailed`). A refusal comes again at every stroke and frame once
 /// it starts, and its cause is told once.
+///
+/// 🚨A DEVICE THAT IS GONE IS ONE CAUSE, whatever is refused for it
+/// ([appGpuEngineIsGone]): the driver took it away, and every job of every
+/// type is refused from then on — a read back, a landing, a frame. ↩️By
+/// type alone that one cause was told once a type.
 abstract final class EngineRefusals {
   /// Tells a cause the first time it is heard this run: the shell shows
   /// its window at each telling (`HomePage`).
@@ -31,7 +38,10 @@ abstract final class EngineRefusals {
   /// thrown, in a paint too, and no window can be asked for there.
   static Listenable get told => _told;
   static final _Told _told = _Told();
-  static final Set<Type> _causes = {};
+  static final Set<Object> _causes = {};
+
+  /// The cause of every refusal once the app's device is gone.
+  static const Object _deviceGone = #deviceGone;
 
   /// Watches both doors, for the app's lifetime: `main`, once — each still
   /// hears what it heard.
@@ -49,10 +59,13 @@ abstract final class EngineRefusals {
   }
 
   static void _hear(Object error) {
-    if (error is! GpuRefused || !_causes.add(error.runtimeType)) {
+    if (error is! GpuRefused) {
       return;
     }
-    scheduleMicrotask(_told.tell);
+    final cause = appGpuEngineIsGone ? _deviceGone : error.runtimeType;
+    if (_causes.add(cause)) {
+      scheduleMicrotask(_told.tell);
+    }
   }
 
   /// Test seam: no cause told, as a launch finds it.

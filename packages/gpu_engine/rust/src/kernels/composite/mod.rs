@@ -82,7 +82,6 @@ pub(crate) mod tests;
 use std::ops::Range;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
@@ -1090,13 +1089,7 @@ impl Composite {
         let masked = laid.iter().any(|each| masked_map(&each.step).is_some());
         let wanted = Compiled { surface, modes: written.modes, levels, masked };
         let pipeline = &self.pass(engine, wanted);
-        let steps = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("composite plan"),
-                contents: &written.words,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let steps = engine.filled("composite plan", &written.words, wgpu::BufferUsages::STORAGE);
         // The stack is kept between passes only; one pass keeps none.
         let kept = batches[..batches.len() - 1]
             .iter()

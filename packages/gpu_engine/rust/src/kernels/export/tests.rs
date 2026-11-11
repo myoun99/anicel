@@ -5,7 +5,6 @@
 use std::sync::OnceLock;
 
 use video::colour;
-use wgpu::util::DeviceExt;
 
 use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
 use crate::device::Engine;
@@ -79,14 +78,11 @@ fn frame_past(
             words[at as usize] = pixel(x, y);
         }
     }
-    rig()
-        .engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("test frame"),
-            contents: &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-            usage: wgpu::BufferUsages::STORAGE,
-        })
+    rig().engine.filled(
+        "test frame",
+        &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
+        wgpu::BufferUsages::STORAGE,
+    )
 }
 
 /// The picture in its smallest encoder frame: even sides, rows of whole

@@ -173,6 +173,37 @@ class GpuEngine {
   /// where the platform cannot say (Android, Linux).
   int get videoMemoryBytes => rust.engineVideoMemory(_engine);
 
+  /// Whether the device is gone — the driver took it away (a reset, an
+  /// update, a wake from sleep), or the engine's thread ended under it
+  /// (rust/src/device.rs, `Refusals`): every job that waits for it is
+  /// refused from then on ([GpuRefused]), and nothing made on this engine
+  /// is of use again. Known once a job has waited — the word that a
+  /// device is lost comes inside a wait.
+  ///
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+  /// 유지한다」 — a lost device is not the app's end.
+  bool get isGone => rust.engineGone(_engine);
+
+  /// Test seam: the error the device raised that no job has been refused
+  /// by yet, or null — taken, so no job is refused by it after. An error
+  /// on a way that never waits is told to no one, and a test asks as it
+  /// ends.
+  String? debugTakeNoted() => using((arena) {
+    const capacity = 1024;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.engineNoted(_engine, buffer, capacity);
+    if (length == 0) {
+      return null;
+    }
+    final count = length < capacity ? length : capacity;
+    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  });
+
+  /// Test seam: the device destroyed — the nearest a test comes to a
+  /// driver taking it away, which no test does. [isGone] says so once a
+  /// job has waited.
+  void debugLose() => rust.engineLose(_engine);
+
   /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra].
   GpuSurface surface(int width, int height, {required bool bgra}) {
     final surface = rust.surfaceNew(_engine, width, height, bgra);

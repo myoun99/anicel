@@ -7,7 +7,6 @@
 
 use std::sync::OnceLock;
 
-use wgpu::util::DeviceExt;
 
 use super::pages::NO_PAGE;
 use super::{
@@ -72,13 +71,7 @@ fn rig() -> &'static Rig {
 
 fn storage(engine: &Engine, words: &[u32]) -> wgpu::Buffer {
     let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("shared cases"),
-            contents: &bytes,
-            usage: wgpu::BufferUsages::STORAGE,
-        })
+    engine.filled("shared cases", &bytes, wgpu::BufferUsages::STORAGE)
 }
 
 /// Runs `pipeline` over `groups` with `buffers` at their bindings and
@@ -1078,13 +1071,7 @@ fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
     let asks = storage(engine, &[table[0], 1, 7, table[2], 0, 9, table[1], 2, 8]);
     let page = |words: &[u32]| {
         let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-        engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("page"),
-                contents: &bytes,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            })
+        engine.filled("page", &bytes, wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC)
     };
     let (zeroth, second) = (page(&[1, 2, 3]), page(&[4, 5, 6]));
     let mut bound = whole(&[(0, &asks)]);

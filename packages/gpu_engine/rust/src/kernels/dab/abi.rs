@@ -568,13 +568,10 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
     let bytes = u64::from(width) * u64::from(height) * 4;
     // SAFETY: see the function's contract.
     let (engine, rgba) = unsafe { (&*engine, std::slice::from_raw_parts(rgba, bytes as usize)) };
-    let pixels = wgpu::util::DeviceExt::create_buffer_init(
-        &engine.device,
-        &wgpu::util::BufferInitDescriptor {
-            label: Some("stamp picture"),
-            contents: rgba,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        },
+    let pixels = engine.filled(
+        "stamp picture",
+        rgba,
+        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
     );
     STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
     Box::into_raw(Box::new(StampPicture { pixels, size: (width, height) }))

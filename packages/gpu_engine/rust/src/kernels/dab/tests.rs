@@ -45,9 +45,7 @@ struct Dual {
 pub(super) fn filled(label: &str, words: &[u32]) -> wgpu::Buffer {
     let contents: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let descriptor =
-        wgpu::util::BufferInitDescriptor { label: Some(label), contents: &contents, usage };
-    wgpu::util::DeviceExt::create_buffer_init(&first_engine().device, &descriptor)
+    first_engine().filled(label, &contents, usage)
 }
 
 pub(super) fn words(buffer: &wgpu::Buffer) -> Vec<u32> {

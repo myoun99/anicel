@@ -152,20 +152,17 @@ impl Pool {
     /// The pages, as the store keeps them: read in a pass, written by the
     /// write path's copies (kernels/write) and read back.
     pub(crate) fn upload(&self, engine: &Engine) -> Vec<wgpu::Buffer> {
-        use wgpu::util::DeviceExt;
         self.pages
             .iter()
             .map(|words| {
                 let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-                engine
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("test page"),
-                        contents: if bytes.is_empty() { &[0; 4] } else { &bytes },
-                        usage: wgpu::BufferUsages::STORAGE
-                            | wgpu::BufferUsages::COPY_DST
-                            | wgpu::BufferUsages::COPY_SRC,
-                    })
+                engine.filled(
+                    "test page",
+                    if bytes.is_empty() { &[0; 4] } else { &bytes },
+                    wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_DST
+                        | wgpu::BufferUsages::COPY_SRC,
+                )
             })
             .collect()
     }
