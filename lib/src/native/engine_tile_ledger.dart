@@ -659,12 +659,11 @@ final GpuEngine _engine;
   /// a copy waits for the GPU.
   static const Duration rest = Duration(milliseconds: 500);
 
-  /// Test seam: whether a landing asks for copies once the hand rests. A
-  /// widget test's clock ends no timer of its own accord, and a test ends
-  /// red with one pending (`flutter_test_config.dart`); the pins of the
-  /// copies ask for them.
-  @visibleForTesting
-  static bool debugCopiesAtRest = true;
+  /// Whether a landing asks for copies once the hand rests: a launch's
+  /// word, before its first frame (`main`). False where no launch said so
+  /// — a test's ledger arms no timer, which a widget test's clock would
+  /// not end of its own accord; the pins of the copies say so themselves.
+  static bool copiesAtRest = false;
 
   Timer? _atRest;
 
@@ -672,7 +671,7 @@ final GpuEngine _engine;
   /// ([rest]) — a batch a turn of this isolate, so a press between two is
   /// heard — from the last landing: one more puts the copies off.
   void _copyHereOnceTheHandRests() {
-    if (!debugCopiesAtRest) {
+    if (!copiesAtRest) {
       return;
     }
     _atRest?.cancel();

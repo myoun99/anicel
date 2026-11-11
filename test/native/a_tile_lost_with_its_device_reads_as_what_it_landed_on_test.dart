@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -151,8 +152,8 @@ void main() {
 
   testWidgets('a landing asks for the copies once the hand has rested, and '
       'a landing meanwhile puts them off', (tester) async {
-    EngineTileLedger.debugCopiesAtRest = true;
-    addTearDown(() => EngineTileLedger.debugCopiesAtRest = false);
+    EngineTileLedger.copiesAtRest = true;
+    addTearDown(() => EngineTileLedger.copiesAtRest = false);
     const rest = EngineTileLedger.rest;
     const tick = Duration(milliseconds: 1);
     const batch = EngineTileLedger.copyBatch;
@@ -173,10 +174,18 @@ void main() {
     );
   });
 
-  testWidgets('no landing asks for copies where a test has not asked for '
-      'them', (tester) async {
+  testWidgets('no landing asks for copies where no launch said so', (
+    tester,
+  ) async {
     final tile = landed([null], 9).single;
     await tester.pump(EngineTileLedger.rest);
     expect(tile.isOnlyOnEngine, isTrue);
+  });
+
+  test('a launch says so before its first frame', () {
+    final launch = File('lib/main.dart').readAsStringSync();
+    final said = launch.indexOf('EngineTileLedger.copiesAtRest = true;');
+    expect(said, isNonNegative);
+    expect(said, lessThan(launch.indexOf('runApp(')));
   });
 }

@@ -10,6 +10,7 @@ import 'src/models/app_language.dart';
 import 'src/native/app_kernels_ahead.dart';
 import 'src/native/device_battery.dart';
 import 'src/native/engine_refusals.dart';
+import 'src/native/engine_tile_ledger.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/crate_licences.dart';
@@ -243,6 +244,10 @@ Future<void> main(List<String> handedAtLaunch) async {
   // 막음」 — said before the first frame, so that frame is held already;
   // the list asked for below lets the app go ([appEngineGetsReady]).
   holdTheAppForItsEngine();
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+  // 유지한다」 — what the engine alone holds is copied here whenever the
+  // hand rests, from this launch's first landing on.
+  EngineTileLedger.copiesAtRest = true;
   runApp(
     AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),
   );
