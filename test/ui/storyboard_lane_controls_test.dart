@@ -18,7 +18,7 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
-    show PropertyLaneEditCallbacks;
+    show LaneGroupPress, PropertyLaneEditCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'package:anicel/src/models/project.dart';
@@ -114,6 +114,8 @@ Future<void> _pumpPanel(
   ValueChanged<Track>? onToggleTrackFx,
   TimelineCurrentRowHooks? currentRowHooks,
   TimelineRowDragHooks? rowDragHooks,
+  LaneGroupPress? onResetLaneGroup,
+  LaneGroupPress? onRasterizeLaneGroup,
 }) async {
   final session = EditorSessionManager(initialProject: project);
   addTearDown(session.dispose);
@@ -148,6 +150,8 @@ Future<void> _pumpPanel(
             seCommaDrag: seCommaDrag,
             trackFxStateOf: trackFxStateOf,
             onToggleTrackFx: onToggleTrackFx,
+            onResetLaneGroup: onResetLaneGroup,
+            onRasterizeLaneGroup: onRasterizeLaneGroup,
           ),
         ),
       ),
@@ -242,6 +246,31 @@ void main() {
       tester.appIconButton(twirl).tooltip,
       isNotEmpty,
       reason: 'the one twirl says what it does, here as on the timeline',
+    );
+  });
+
+  // F-583 · I-120 round ②: a group header wears the press its host answers
+  // — an S row's sound group, which no Rasterize bakes, none at all (its
+  // slot empty), and its Reset beside it as asked.
+  testWidgets('an S row\'s sound group wears its Reset and no Rasterize, '
+      'where the host answers none', (tester) async {
+    await _pumpPanel(
+      tester,
+      project: _project(),
+      onResetLaneGroup: (_, _) => (press: () {}),
+      onRasterizeLaneGroup: (_, _) => null,
+    );
+    await tester.tap(find.named('storyboard-lane-toggle-lane-se'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.named('storyboard-lane-group-reset-lane-se-sound-group'),
+      findsOneWidget,
+      reason: '⛔premise: the header stands, and asks its presses',
+    );
+    expect(
+      find.named('storyboard-lane-group-rasterize-lane-se-sound-group'),
+      findsNothing,
     );
   });
 
