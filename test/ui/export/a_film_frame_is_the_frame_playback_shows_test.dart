@@ -295,9 +295,15 @@ void main() {
     });
   });
 
-  testWidgets('🎯the film shows no pasteboard: what is parked past the canvas '
-      'stays out of a film\'s frame and a picture of the sequence, where the '
-      'camera sees past the canvas', (tester) async {
+  /// What is parked past the canvas, filmed through a camera at [pose] that
+  /// sees past its left edge, read at the film's pixel [probe]: canvas
+  /// (−40, 128), in the red.
+  Future<void> parkedStaysOut(
+    WidgetTester tester,
+    CameraPose pose,
+    (int, int) probe,
+  ) async {
+    final (px, py) = probe;
     await tester.runAsync(() async {
       // Two tiles a side.
       const canvas = CanvasSize(
@@ -327,13 +333,7 @@ void main() {
                   name: 'Cut',
                   duration: 1,
                   canvasSize: canvas,
-                  // Its frame from canvas x −64 to 192: a quarter past the
-                  // canvas's left edge.
-                  camera: CutCamera(
-                    keyframes: {
-                      0: CameraPose(center: CanvasPoint(x: 64, y: 128)),
-                    },
-                  ),
+                  camera: CutCamera(keyframes: {0: pose}),
                   layers: [row('parked'), createCameraLayer(cutId: cutId)],
                 ),
               ],
@@ -374,12 +374,12 @@ void main() {
       );
       // Canvas (−40, 128), in the red.
       expect(
-        pixelOf(video, canvas.width, 24, 128),
+        pixelOf(video, canvas.width, px, py),
         (0, 0, 255, 255),
         reason: 'the stage\'s apron, past the paper',
       );
       expect(
-        pixelOf(still, canvas.width, 24, 128),
+        pixelOf(still, canvas.width, px, py),
         (255, 255, 255, 255),
         reason: 'the picture\'s ground, past the canvas',
       );
@@ -391,11 +391,36 @@ void main() {
           .singleWhere((row) => row.name == 'parked');
       final layered = await bytesOf(await parkedRow.draw());
       expect(
-        pixelOf(layered, canvas.width, 24, 128),
+        pixelOf(layered, canvas.width, px, py),
         (0, 0, 0, 0),
         reason: 'a layered file\'s row, past the canvas',
       );
     });
+  }
+
+  // Its frame from canvas x −64 to 192: a quarter past the canvas's left
+  // edge. Canvas (−40, 128) stands where the canvas does at (24, 128).
+  testWidgets('🎯the film shows no pasteboard: what is parked past the canvas '
+      'stays out of a film\'s frame and a picture of the sequence, where the '
+      'camera sees past the canvas', (tester) async {
+    await parkedStaysOut(
+      tester,
+      CameraPose(center: CanvasPoint(x: 64, y: 128)),
+      (24, 128),
+    );
+  });
+
+  // A camera turned cuts the canvas's edge through the cover the app
+  // rasters of it, where a level one cuts on whole pixels
+  // (`frameOnTheEngine`). Canvas (−40, 128) is (−104, 0) from the centre:
+  // turned 45°, (−73.5, 73.5) from the film's — its pixel (54, 201).
+  testWidgets('🎯the film shows no pasteboard through a camera turned 45° '
+      'either', (tester) async {
+    await parkedStaysOut(
+      tester,
+      CameraPose(center: CanvasPoint(x: 64, y: 128), rotationDegrees: 45),
+      (54, 201),
+    );
   });
 
   // 🗣️playback-picture-is-not-the-canvas-picture (유저 10-13: 「배율따라서
