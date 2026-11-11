@@ -339,9 +339,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// tools still to be opened; [refused], the paint's own lay met kernels
   /// still to be compiled ([FrameKernelsToCome]); the frame's picture,
   /// nothing of the frame drawn meanwhile, in a line that stands behind
-  /// such kernels ([EngineFramePictureStore.waitsForKernels]); or the app
-  /// still getting ready what a hand needs of the engine
-  /// ([_heldForTheEngine]).
+  /// such kernels ([EngineFramePictureStore.waitsForKernels]).
   ///
   /// ⛔Not a frame drawn as it stands while its picture is on its way: it
   /// is on the screen. Nor one that waits for its plugins alone (🗣️관제
@@ -349,7 +347,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _waitsAtPaint({required bool refused}) => _place?.says(
     this,
     waits:
-        _heldForTheEngine ||
         _store.toolsAreToCome ||
         refused ||
         (_making != null && !_standsMeanwhile && _store.waitsForKernels),
@@ -361,6 +358,10 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// ([appEngineGetsReady]): the frame coming to the screen is the word
   /// that it can be worked on. Its picture is made meanwhile all the same,
   /// and shown by the paint that follows the app's being let go.
+  ///
+  /// ⛔Not a wait its place marks ([_waitsAtPaint]): the editor stands one
+  /// ring for it, at the window's middle (`EngineReadyGate`,
+  /// 🗣️gpu-canonical-store-Q16).
   bool get _heldForTheEngine => appEngineGetsReady.value;
 
   /// Whether a frame whose picture is not there yet is drawn as it stands

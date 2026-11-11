@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../brush/canvas_floor_insets.dart';
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
@@ -14,7 +13,6 @@ import '../widgets/overflow_scrollers.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/tick_layer.dart';
-import 'engine_ready_mark.dart';
 import 'panel_collapsed_scope.dart';
 import 'open_tab_content.dart';
 import 'panel_flash.dart';
@@ -363,13 +361,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     super.dispose();
   }
 
-  /// Whether this group is the floor's — under what the shell publishes
-  /// round the floor dock and nowhere else ([CanvasFloorInsets]). Asked
-  /// without depending on it: where a group stands does not change, and
-  /// the floor's cover does at every step of a rail's drag.
-  static bool _isTheFloor(BuildContext context) =>
-      context.getInheritedWidgetOfExactType<CanvasFloorInsets>() != null;
-
   bool get _dragEnabled => widget.groupId != null && widget.onTabMoved != null;
 
   bool _willAccept(EditorPanelTabDragData data) =>
@@ -436,14 +427,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                         ),
                       ),
                     if (widget.flash != null) _flashOverlay(tabs),
-                    // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11):
-                    // 「타임라인같은거도 포함해서 고리띄우고」 — every dock is
-                    // this shell, so every docked panel's place stands the
-                    // ring while the app gets its engine ready. The floor's
-                    // panel stands its own, at the middle of what the docks
-                    // lying on it leave to be seen (`FrameWaitMark`): this
-                    // box's middle is under them.
-                    if (!_isTheFloor(context)) const EngineReadyMark(),
                   ],
                 ),
               ),

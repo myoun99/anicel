@@ -699,11 +699,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ↩️08:1x put the question after the notice (「따로 묻는 작은 창」, which
   /// stays its own window).
   ///
+  /// 🗣️gpu-canonical-store-Q17 (유저 2026-11-11): 「시작할 때 뜨는 창도 준비가
+  /// 끝난 뒤에 띄운다」 — and once the app is let go ([onceTheAppIsLetGo]):
+  /// none of them stands over the editor's ring.
+  ///
   /// ⚠️Each is opened from its store, as `_unlessTesting` hands them out: a
   /// test that hands neither in sees neither, and one that measures the
   /// launch hands its own in.
   void _showLaunchWindows(LaunchNotice? notice) => unawaited(
-    _appSettings.languageRestored.then((_) async {
+    Future.wait([
+      _appSettings.languageRestored,
+      onceTheAppIsLetGo(),
+    ]).then((_) async {
       if (widget.firstLaunch && mounted) {
         await showFirstRunSettings(context, _session);
       }
@@ -1616,7 +1623,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               bottom: false,
               // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작
               // 막음」 — the whole editor behind the app's getting its
-              // engine ready: its keys, which this lays, and its pointers.
+              // engine ready: its keys, which this lays, and its pointers —
+              // under the one ring that says so (gpu-canonical-store-Q16).
               child: EngineReadyGate(
                 road: _keyRoad,
                 child: PlaybackActuationGate(

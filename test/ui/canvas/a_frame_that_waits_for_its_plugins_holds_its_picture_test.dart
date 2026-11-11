@@ -696,29 +696,26 @@ void main() {
   // from the screen all the same, while a press on it would still stop the
   // app for a kernel's compile.
   testWidgets('a frame the app holds for its engine, its tools open and '
-      'nothing to wait for: nothing of it on the screen and its place '
-      'marked, till the app is let go', (tester) async {
-    theMarkStands();
+      'nothing to wait for: nothing of it on the screen till the app is let '
+      'go', (tester) async {
     holdTheAppForItsEngine();
     addTearDown(debugLetTheAppGo);
     final screen = GlobalKey();
     final store = StoreLayingNothing();
     await itsToolsOpen(tester, store);
     await standOn(tester, screen, inAFolder(const []), laidBy: store);
-    await theMarkFollows(tester);
+    await tester.pump();
 
     expect(onlyTheScreen(await shotOf(tester, screen)), isTrue);
-    expect(theMark, findsOneWidget);
 
     debugLetTheAppGo();
-    await theMarkFollows(tester);
+    await tester.pump();
 
     expect(
       onlyTheScreen(await shotOf(tester, screen)),
       isFalse,
       reason: 'drawn as it stands, by the word alone — nothing handed anew',
     );
-    expect(theMark, findsNothing);
     expect(tester.binding.hasScheduledFrame, isFalse);
     expect(tester.binding.transientCallbackCount, 0);
     await tester.pumpWidget(const SizedBox());
@@ -1009,6 +1006,33 @@ void main() {
     expect(theMark, findsNothing);
     expect(tester.binding.hasScheduledFrame, isFalse);
     expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🗣️gpu-canonical-store-Q16 (유저 2026-11-11): 「창 한가운데 하나」 — the
+  // editor stands the one ring while the app is held, and a place whose
+  // frames wait meanwhile, as they do for their tools, stands none beside
+  // it.
+  testWidgets('a place whose frames wait stands no mark while the app is '
+      'held for its engine, and its own once the app is let go', (
+    tester,
+  ) async {
+    theMarkStands();
+    holdTheAppForItsEngine();
+    addTearDown(debugLetTheAppGo);
+    final (:store, :opened, :tools) = await standingBeforeItsTools(tester);
+    expect(theMark, findsNothing);
+
+    debugLetTheAppGo();
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: 'its tools are still to come');
+
+    await tester.runAsync(() {
+      opened.complete(tools);
+      return store.tools;
+    });
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

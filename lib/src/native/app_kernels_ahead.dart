@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuInk;
 
@@ -85,10 +87,11 @@ Future<void> compileAppKernelsAhead() async {
 /// 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
 /// 띄운다 — 그때까지 고리」 · 「애초에 타임라인같은거도 포함해서 고리띄우고
 /// 모든 조작 막음. 서피스에서 느린건 해당문제 차차 속도 빠르게해서 개선」 —
-/// ONE fact for the three that hold the app meanwhile: a frame keeps its
-/// picture from the screen (`FramePictureView`), every panel's place stands
-/// the ring (`EngineReadyMark`) and the editor takes no input
-/// (`EngineReadyGate`).
+/// ONE fact for all that hold the app meanwhile: a frame keeps its picture
+/// from the screen (`FramePictureView`), the editor stands its one ring and
+/// takes no input (`EngineReadyGate`, 🗣️gpu-canonical-store-Q16: 「창
+/// 한가운데 하나」), and the windows a launch opens of itself wait
+/// ([onceTheAppIsLetGo], 🗣️gpu-canonical-store-Q17).
 ///
 /// 🗣️관제 2026-11-11 08:25: 「「준비가 끝난」 = 손이 쓰는 커널 전부, 블러
 /// 묶음 넷까지(그래야 고리가 걷힌 뒤 어느 도구도 안 멈춘다) … 띠 여섯은
@@ -106,6 +109,28 @@ final ValueNotifier<bool> _getsReady = ValueNotifier(false);
 /// ahead ([compileAppKernelsAhead]): the app is held from that frame on
 /// ([appEngineGetsReady]), till that list lets it go.
 void holdTheAppForItsEngine() => _getsReady.value = true;
+
+/// Once the app is let go ([appEngineGetsReady]) — at once where it is
+/// held for nothing.
+///
+/// 🗣️gpu-canonical-store-Q17 (유저 2026-11-11): 「시작할 때 뜨는 창도 준비가
+/// 끝난 뒤에 띄운다」 — what a launch opens of itself over the editor waits
+/// for this (`HomePage._showLaunchWindows`).
+Future<void> onceTheAppIsLetGo() {
+  if (!_getsReady.value) {
+    return Future.value();
+  }
+  final letGo = Completer<void>();
+  void heard() {
+    if (!_getsReady.value) {
+      _getsReady.removeListener(heard);
+      letGo.complete();
+    }
+  }
+
+  _getsReady.addListener(heard);
+  return letGo.future;
+}
 
 /// Test seam: the app let go, as [compileAppKernelsAhead] lets it.
 @visibleForTesting

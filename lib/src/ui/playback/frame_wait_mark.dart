@@ -66,17 +66,13 @@ class _Place extends InheritedWidget {
 /// it turns once the frames are shown (🗣️관제 2026-11-10 23:05: 「준비가
 /// 끝나면 표시가 프레임을 돌리지 않는다」).
 ///
-/// ONE ring for the floor's panel, whatever it waits for: lying on the
-/// floor ([ofTheFloor]) it stands the same one while the app gets its
-/// engine ready ([appEngineGetsReady]) — the mark every docked panel's
-/// place stands by its dock (`EngineReadyMark`, gpu-canonical-store-Q15),
-/// seated here because the middle of the floor's own box is under the
-/// panels lying on it.
+/// ⛔Not while the app gets its engine ready ([appEngineGetsReady]): the
+/// editor stands ONE ring for that, at the window's middle
+/// (`EngineReadyGate`, 🗣️gpu-canonical-store-Q16, 유저 2026-11-11: 「창
+/// 한가운데 하나」), and a place whose frames wait meanwhile — they do, their
+/// tools still to be opened — would stand a second beside it.
 class FrameWaitMark extends StatelessWidget {
-  const FrameWaitMark({super.key, this.ofTheFloor = false});
-
-  /// Whether the panel it stands in lies on the floor.
-  final bool ofTheFloor;
+  const FrameWaitMark({super.key});
 
   /// Test seam: whether a place stands its mark. A widget test's clock is
   /// pumped and opens no engine, so a canvas it stands would wait — and its
@@ -87,19 +83,16 @@ class FrameWaitMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final frames = FrameWaitPlace.of(context)?._any;
-    final app = ofTheFloor ? appEngineGetsReady : null;
-    if (frames == null && app == null) {
+    final place = FrameWaitPlace.of(context);
+    if (place == null) {
       return const SizedBox.shrink();
     }
     return ListenableBuilder(
-      listenable: Listenable.merge([frames, app]),
-      builder: (context, _) {
-        final framesWait = (frames?.value ?? false) && debugStands;
-        return framesWait || (app?.value ?? false)
-            ? const ViewerPageLoading()
-            : const SizedBox.shrink();
-      },
+      listenable: Listenable.merge([place._any, appEngineGetsReady]),
+      builder: (context, _) =>
+          place._any.value && debugStands && !appEngineGetsReady.value
+          ? const ViewerPageLoading()
+          : const SizedBox.shrink(),
     );
   }
 }

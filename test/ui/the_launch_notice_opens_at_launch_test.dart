@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/native/app_kernels_ahead.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
@@ -220,6 +221,31 @@ void main() {
     );
     expect(settings, findsNothing);
     expect(_question, findsOneWidget);
+  });
+
+  // 🗣️gpu-canonical-store-Q17 (유저 2026-11-11): 「시작할 때 뜨는 창도 준비가
+  // 끝난 뒤에 띄운다」 — none of the three stands over the editor's ring.
+  testWidgets('a launch held for its engine opens none of its windows till '
+      'the app is let go, then the first of them', (tester) async {
+    final settings = find.byKey(const ValueKey<String>('first-run-settings'));
+    holdTheAppForItsEngine();
+    addTearDown(debugLetTheAppGo);
+    await launch(
+      tester,
+      LaunchNotice(store: _MemoryStore(), content: () async => _content),
+      usageStats: _UnansweredStore(),
+      firstLaunch: true,
+    );
+    expect(settings, findsNothing);
+    expect(_question, findsNothing);
+    expect(_window, findsNothing);
+
+    debugLetTheAppGo();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(settings, findsOneWidget);
+    expect(_question, findsNothing);
+    expect(_window, findsNothing);
   });
 
   testWidgets('a test that hands none in sees no notice, and is asked '
