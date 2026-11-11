@@ -8,6 +8,7 @@ import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart'
     show AppKernels, debugTakeAppGpuEngineNoted;
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/screen_texture.dart';
@@ -250,6 +251,12 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // stands would mark its place for as long as the test settles
   // (`pumpAndSettle`) — the mark turns. The pins of the mark stand it.
   FrameWaitMark.debugStands = false;
+  // And once more: a landing asks for the copies of what the engine alone
+  // holds once the hand has rested (`EngineTileLedger.copyHereABatch`,
+  // gpu-canonical-store-Q11) — a timer, which no widget test's clock ends,
+  // and a test ends red with one pending. The pins of the copies ask for
+  // them.
+  EngineTileLedger.debugCopiesAtRest = false;
   debugLayerOfScreen = screenDrawnAsAPicture;
   // A zoom's stop rasters what it stretched, on the engine a session's
   // pictures open: no test but the one that fires it by hand is about that,

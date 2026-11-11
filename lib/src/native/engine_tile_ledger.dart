@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -49,6 +50,18 @@ import 'app_gpu_engine.dart';
 /// stood in the pool's notes and nowhere in the code. 🔢"Oldest" is stored
 /// longest ago, not shown longest ago — 브러시/렌더링's pick, to measure.
 /// Only a driver refusing a page fails now.
+///
+/// 🚨A TILE THE ENGINE ALONE HOLDS IS COPIED HERE ONCE THE HAND RESTS
+/// ([copyHereABatch]), AND TILL THEN KEEPS THE TILE IT LANDED ON
+/// ([_Slot.under]) — 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에
+/// 사본을 두고 앱을 유지한다」. A device the driver takes away (a reset, an
+/// update, a wake from sleep) takes every tile on it. A tile whose copy is
+/// here loses nothing; one whose copy had not come reads as the picture it
+/// landed on ([readInto]) — the last strokes on that tile are gone, the
+/// picture they were laid on is not, and a save after it has every tile to
+/// read. ↩️Till then such a tile had no bytes anywhere once its device
+/// went: every read of it was refused, a save among them, and what could
+/// be kept of the session was the last save.
 ///
 /// The pages nobody holds are given back ([respondToMemoryPressure],
 /// [byteBudget] falling under them) — the slots of tiles collected let go
@@ -193,19 +206,64 @@ final GpuEngine _engine;
     if (slot == null) {
       throw StateError('a tile the engine made was read after it was let go');
     }
-    pool.read([slot.at], into);
+    if (!_reads(() => pool.read([slot.at], into))) {
+      _layThePictureUnder(tile, slot, into);
+    }
+    // Its bytes are here: the tile it landed on is its to keep no longer.
+    slot.under = null;
+  }
+
+  /// Whether [read] reads what it asks of the device: not where the device
+  /// is gone ([GpuEngine.isGone]), the only copy of what was asked with it
+  /// — a tile asked then reads as the picture it landed on
+  /// ([_layThePictureUnder]). What else the engine refuses is thrown on.
+  bool _reads(void Function() read) {
+    if (_engine.isGone) {
+      return false;
+    }
+    try {
+      read();
+      return true;
+    } on GpuRefused {
+      if (!_engine.isGone) {
+        rethrow;
+      }
+      return false;
+    }
+  }
+
+  /// Lays in [into], [tile]'s bytes, the picture it landed on
+  /// ([_Slot.under]) — nothing, where it landed on no tile — in place of
+  /// its own, which went with the device.
+  ///
+  /// 🚨THE ONE WAY A TILE'S PIXELS ARE NOT THE ONES ITS MAKER MADE, so what
+  /// the tile remembers of them is forgotten ([BitmapTile.forgetInk]).
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+  /// 유지한다」 — what is lost with a device is what landed since the last
+  /// copy came here ([copyHereABatch]), tile by tile; never the picture it
+  /// landed on.
+  void _layThePictureUnder(BitmapTile tile, _Slot slot, Pointer<Uint8> into) {
+    final bytes = into.asTypedList(gpuTileBytes);
+    final under = slot.under;
+    if (under == null) {
+      bytes.fillRange(0, gpuTileBytes, 0);
+    } else {
+      under.readPixels((_, view) => bytes.setAll(0, view));
+    }
+    tile.forgetInk();
   }
 
   /// A tile of the slot [at], which it now holds: the only copy of its
   /// pixels till they are read here ([BitmapTile.isOnlyOnEngine]), so till
-  /// then nothing but its collection or [retire] lets it go.
-  BitmapTile _adopted(GpuTile at, {bool? hasInk}) {
+  /// then nothing but its collection or [retire] lets it go — and till then
+  /// it keeps [under], the tile it landed on ([_Slot.under]).
+  BitmapTile _adopted(GpuTile at, {bool? hasInk, BitmapTile? under}) {
     final tile = BitmapTile.onEngine(
       size: gpuTileSide,
       on: this,
       hasInk: hasInk,
     );
-    final slot = _Slot(tile, at);
+    final slot = _Slot(tile, at)..under = under;
     _slots[tile] = slot;
     _letGoWithTile.attach(tile, slot, detach: slot);
     _stored.add(slot);
@@ -260,13 +318,18 @@ final GpuEngine _engine;
         );
       }
     }
+    _copyHereOnceTheHandRests();
     return [
-      for (final (:change, :tile) in landed)
+      for (final (at, (:change, :tile)) in landed.indexed)
         (
           change: change,
           tile: tile == null
               ? null
-              : _adopted(tile, hasInk: compared ? true : null),
+              : _adopted(
+                  tile,
+                  hasInk: compared ? true : null,
+                  under: asks[at].under,
+                ),
         ),
     ];
   });
@@ -278,6 +341,7 @@ final GpuEngine _engine;
       return;
     }
     slot.out = true;
+    slot.under = null;
     pool.release(slot.at);
     _slotCount -= 1;
   }
@@ -321,10 +385,15 @@ final GpuEngine _engine;
         if (tile.isOnlyOnEngine) tile,
     ];
     if (asked.isNotEmpty) {
-      held((hold) {
+      final read = held((hold) {
         debugBeforeRead?.call(asked);
-        pool.read(hold.slotsOf(cel, asked), into);
+        return _reads(() => pool.read(hold.slotsOf(cel, asked), into));
       });
+      if (!read) {
+        // The device is gone: each gives the bytes it comes to hold, as a
+        // tile whose bytes are here — the picture it landed on ([readInto]).
+        asked.clear();
+      }
     }
     if (asked.length < tiles.length) {
       _laidInPlace(
@@ -516,24 +585,100 @@ final GpuEngine _engine;
   /// the GPU's frees as many slots as it reads — and lets their slots go;
   /// whether there was one.
   bool _moveBytesHere(int short) {
-    final most = math.max(short, readBatch);
-    final going = <BitmapTile>[];
-    for (final slot in _stored) {
-      if (going.length == most) {
-        break;
-      }
-      final tile = slot.out ? null : slot.tile.target;
-      if (tile != null && tile.isOnlyOnEngine && _noHoldHas(tile)) {
-        going.add(tile);
-      }
-    }
+    final going = _onlyOnEngine(math.max(short, readBatch), _noHoldHas);
     if (going.isEmpty) {
       return false;
     }
-    var next = 0;
-    readEach(landedCel, going, (bytes) => going[next++].keepBytesHere(bytes));
+    _copyHere(going);
     _letGoWhere(_noHoldHas);
     return true;
+  }
+
+  /// The oldest tiles the engine alone holds that [of] names, [most] of
+  /// them at the most.
+  List<BitmapTile> _onlyOnEngine(int most, bool Function(BitmapTile) of) {
+    final tiles = <BitmapTile>[];
+    for (final slot in _stored) {
+      if (tiles.length == most) {
+        break;
+      }
+      final tile = slot.out ? null : slot.tile.target;
+      if (tile != null && tile.isOnlyOnEngine && of(tile)) {
+        tiles.add(tile);
+      }
+    }
+    return tiles;
+  }
+
+  /// Reads back the bytes of [tiles], each the engine's alone, and has each
+  /// keep its own ([BitmapTile.keepBytesHere]) — its slot staying, and the
+  /// tile it landed on its to keep no longer ([_Slot.under]).
+  void _copyHere(List<BitmapTile> tiles) {
+    var next = 0;
+    readEach(landedCel, tiles, (bytes) {
+      final tile = tiles[next++];
+      // Not one that came to hold bytes inside the read: the picture it
+      // landed on, its device gone ([readInto]).
+      if (tile.isOnlyOnEngine) {
+        tile.keepBytesHere(bytes);
+        _slots[tile]?.under = null;
+      }
+    });
+  }
+
+  /// Copies here the bytes of the oldest tiles the engine alone holds —
+  /// [copyBatch] of them, one wait of the GPU's —, their slots kept;
+  /// whether there may be more.
+  ///
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+  /// 유지한다」 — a device the driver takes away takes every tile on it. One
+  /// whose copy is here is stored again from it on the next device; one
+  /// whose copy had not come reads as the picture it landed on
+  /// ([_layThePictureUnder]).
+  bool copyHereABatch() {
+    final tiles = _onlyOnEngine(copyBatch, (_) => true);
+    _copyHere(tiles);
+    return tiles.length == copyBatch;
+  }
+
+  /// The tiles a turn of the copies at rest copies ([copyHereABatch]): a
+  /// press that comes as they go waits for the turn under way, and no
+  /// more. 🔢브러시/렌더링's pick. 🔬Main PC (RTX 4080) beside a busy test
+  /// line, 2026-11-11: a read of 64 tiles is 5.6–9.6 ms (0.4–1.4 ms of one,
+  /// 0.9–3.1 ms of 8), and their bytes kept as 64 tiles as much again
+  /// (5.7–8.1 ms) — 15–29 ms a batch of 64, two frames of a hand that had
+  /// just come back. ⏳To measure on the Surface Pro 11 (관제 2026-11-11:
+  /// past a frame there, the read is taken on the engine's thread).
+  static const int copyBatch = 8;
+
+  /// How long after the last landing the hand is taken to rest, and the
+  /// copies begin ([copyHereABatch]). 🔢브러시/렌더링's pick, to measure: a
+  /// landing comes at every frame of a stroke and at each pen's lift, and
+  /// a copy waits for the GPU.
+  static const Duration rest = Duration(milliseconds: 500);
+
+  /// Test seam: whether a landing asks for copies once the hand rests. A
+  /// widget test's clock ends no timer of its own accord, and a test ends
+  /// red with one pending (`flutter_test_config.dart`); the pins of the
+  /// copies ask for them.
+  @visibleForTesting
+  static bool debugCopiesAtRest = true;
+
+  Timer? _atRest;
+
+  /// Copies what the engine alone holds here once the hand has rested
+  /// ([rest]) — a batch a turn of this isolate, so a press between two is
+  /// heard — from the last landing: one more puts the copies off.
+  void _copyHereOnceTheHandRests() {
+    if (!debugCopiesAtRest) {
+      return;
+    }
+    _atRest?.cancel();
+    _atRest = Timer(rest, _copyHereAtRest);
+  }
+
+  void _copyHereAtRest() {
+    _atRest = copyHereABatch() ? Timer(Duration.zero, _copyHereAtRest) : null;
   }
 
   bool _noHoldHas(BitmapTile? tile) =>
@@ -605,6 +750,13 @@ final class _Slot {
 
   final WeakReference<BitmapTile> tile;
   final GpuTile at;
+
+  /// The tile [tile] landed on — null where it landed on none, or was not
+  /// landed — kept while the engine holds the only copy of [tile]'s pixels:
+  /// what [tile] reads as where a device goes with them
+  /// (`EngineTileLedger._layThePictureUnder`). Let go once [tile]'s bytes
+  /// are here, and with the slot.
+  BitmapTile? under;
 
   /// Let go already — by its tile's finalizer, a full pool or a give-back.
   bool out = false;

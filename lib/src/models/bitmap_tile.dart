@@ -382,6 +382,20 @@ class BitmapTile implements Finalizable {
     _inkBounds ??= bounds;
   }
 
+  /// Forgets what was known of its ink ([hasInk], [inkBounds]).
+  ///
+  /// 🚨A TILE IS IMMUTABLE BUT FOR ONE EVENT, AND THIS IS THAT EVENT'S: the
+  /// engine held the only copy of its pixels ([isOnlyOnEngine]) and its
+  /// device went with them, so the tile reads as the picture it landed on
+  /// (`EngineTileLedger`, 🗣️gpu-canonical-store-Q11, 유저 2026-11-10:
+  /// 「RAM 에 사본을 두고 앱을 유지한다」) — and what its maker said of its
+  /// ink was said of the pixels that are gone.
+  void forgetInk() {
+    assert(isOnEngine, 'only a tile the engine made loses its pixels');
+    _hasInk = null;
+    _inkBounds = null;
+  }
+
   /// The reference scan: this tile's words, in Dart.
   ///
   /// ⛔**IT IS WRITTEN OUT, AND THE WORD LOOP STAYS.** It runs per PIXEL,
