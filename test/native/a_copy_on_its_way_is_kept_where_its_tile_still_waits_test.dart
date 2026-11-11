@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -28,19 +29,25 @@ import '../helpers/tiles_on_the_engine.dart';
 void main() {
   late GpuEngine engine;
   late EngineTileLedger ledger;
+  late int readouts;
 
   setUp(() {
     engine = GpuEngine.onFirstAdapter();
     ledger = EngineTileLedger(engine);
+    readouts = GpuReadout.liveBytes;
     // No batch is read on this isolate: one that was would ask here.
     EngineTileLedger.debugBeforeRead = (tiles) =>
         fail('${tiles.length} tile(s) read on the isolate that asked');
   });
   // ⚠️The ledger's pool is not freed with its test: a tile collected after
   // it lets its slot go there (the ledger's finalizer), in a later test.
+  // 🚨And every batch's readout is freed, however it ended — come, refused,
+  // its device gone: a free gone shows in nothing else a test here asks
+  // (mutant PB16 lived, 2026-11-12).
   tearDown(() {
     EngineTileLedger.debugBeforeRead = null;
     GpuReadout.debugBeforeMapping = null;
+    expect(GpuReadout.liveBytes, readouts, reason: 'a readout left alive');
     engine.close();
   });
 
@@ -69,6 +76,11 @@ void main() {
       tiles.every((tile) => tile.isOnlyOnEngine),
       isTrue,
       reason: 'nothing was waited for',
+    );
+    expect(
+      GpuReadout.liveBytes - readouts,
+      tiles.length * gpuTileBytes,
+      reason: '⛔premise: a readout on its way is counted',
     );
     expect(await onItsWay, isFalse, reason: 'none is left');
     expect(debugWaitsHere, waits, reason: 'no wait for the GPU here');
@@ -172,4 +184,44 @@ void main() {
       reason: 'not left on its way',
     );
   });
+
+  // The engine's thread tells an isolate each wait's end through a
+  // listener that is there for as long as the isolate is
+  // (`GpuReadout.mapping`): it keeps the isolate while a wait is on its
+  // way — each one, the second as the first — and is no reason for it to
+  // stay once they have ended.
+  test('an isolate with nothing else to do stays for each copy it asked '
+      'for, and ends once the last has come', () async {
+    final told = ReceivePort();
+    addTearDown(told.close);
+    await Isolate.spawn(
+      _twoCopiesComeAndNoMore,
+      told.sendPort,
+      onExit: told.sendPort,
+      onError: told.sendPort,
+    );
+
+    expect(
+      await told.take(2).toList().timeout(const Duration(minutes: 1)),
+      ['both came', null],
+      reason: 'what it said, then its end',
+    );
+  });
+}
+
+/// Two tiles landed one after the other on an engine of this isolate's
+/// own, each one's copy waited for with nothing else to do: says so to
+/// [told], and with that nothing is left for the isolate.
+Future<void> _twoCopiesComeAndNoMore(SendPort told) async {
+  final engine = GpuEngine.onFirstAdapter();
+  final ledger = EngineTileLedger(engine);
+  for (final value in [7, 9]) {
+    final tile = landedOn(ledger, (1, 1), [null], value).single;
+    await ledger.copyHereABatch();
+    if (tile.isOnlyOnEngine) {
+      throw StateError('no copy came of $value');
+    }
+  }
+  told.send('both came');
+  engine.close();
 }

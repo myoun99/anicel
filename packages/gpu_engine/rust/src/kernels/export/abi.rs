@@ -10,11 +10,13 @@
 mod tests;
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::Composited;
+use crate::kernels::shared::Counted;
 
 /// The export's passes, each compiled where it is first asked: a still
 /// asks no NV12, a movie no PNG.
@@ -35,7 +37,14 @@ pub struct Readout {
     /// there is none, kept of a wait its caller did not stay for
     /// ([`gpu_engine_readout_map_then`]), which has no one to fail to.
     mapped: Option<Result<wgpu::Buffer, String>>,
+    _counted: Counted,
 }
+
+/// The bytes of the buffer every readout alive was made of — what a pass
+/// put, or a pool gathered its tiles into —, counted where one is made and
+/// freed ([`gpu_engine_readout_live_bytes`]). A readout is one read's:
+/// what is still counted once the read is over was never freed.
+static READOUT_BYTES: AtomicU64 = AtomicU64::new(0);
 
 /// A readout handed to the engine's thread for the length of a wait its
 /// caller did not stay for ([`Readout::map_then`]).
@@ -59,7 +68,8 @@ impl Waited {
 /// their way back are one too (`gpu_engine_pool_readout`).
 pub(crate) fn readout(out: Option<wgpu::Buffer>, bytes: u64) -> *mut Readout {
     out.map_or(std::ptr::null_mut(), |out| {
-        Box::into_raw(Box::new(Readout { out, bytes, mapped: None }))
+        let _counted = Counted::among(&READOUT_BYTES, out.size());
+        Box::into_raw(Box::new(Readout { out, bytes, mapped: None, _counted }))
     })
 }
 
@@ -264,8 +274,10 @@ pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: 
 /// [`gpu_engine_readout_map`] with no wait for its caller, who goes on:
 /// the engine's thread waits for the work behind `readout`, and calls
 /// `then` once its bytes are mapped for [`gpu_engine_readout_rows`] — or
-/// are not, which the rows then fail by. From that thread; from this one
-/// where that thread is gone, or the bytes were mapped already.
+/// are not, which the rows then fail by — with `wait`, the number its
+/// caller knows this wait by: one `then` serves every wait of a caller.
+/// From that thread; from this one where that thread is gone, or the bytes
+/// were mapped already.
 ///
 /// # Safety
 /// Both are live, `readout` made on `engine` — and `readout` is asked
@@ -275,12 +287,13 @@ pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: 
 pub unsafe extern "C" fn gpu_engine_readout_map_then(
     engine: *const Engine,
     readout: *mut Readout,
-    then: extern "C" fn(),
+    then: extern "C" fn(u64),
+    wait: u64,
 ) {
     // SAFETY: see the function's contract.
     let (engine, readout) = unsafe { (&*engine, &mut *readout) };
     // SAFETY: the readout is the caller's to leave alone (the contract).
-    unsafe { readout.map_then(engine, move || then()) };
+    unsafe { readout.map_then(engine, move || then(wait)) };
 }
 
 /// Copies `rows` rows of `row_bytes` from the mapped bytes of `readout` —
@@ -412,4 +425,11 @@ pub unsafe extern "C" fn gpu_engine_readout_free(readout: *mut Readout) {
         // SAFETY: see the function's contract.
         drop(unsafe { Box::from_raw(readout) });
     }
+}
+
+/// The bytes of the buffer every readout was made of, made and not yet
+/// freed.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_readout_live_bytes() -> u64 {
+    READOUT_BYTES.load(Ordering::Relaxed)
 }

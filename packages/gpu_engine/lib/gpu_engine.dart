@@ -2253,6 +2253,11 @@ class GpuReadout {
   final GpuEngine _engine;
   final Pointer<rust.Readout> _readout;
 
+  /// The bytes of the buffer every readout was made of, made and not yet
+  /// freed: counted by the engine where it makes and frees them. A readout
+  /// is one read's — none stays counted past it.
+  static int get liveBytes => rust.readoutLiveBytes();
+
   /// The bytes of it its writer takes.
   int get bytes => rust.readoutBytes(_readout);
 
@@ -2270,18 +2275,43 @@ class GpuReadout {
   /// ⚠️It ends the same where the wait was refused — [rows] then throws
   /// by why. Nothing else is asked of it, nor is it freed, till this has
   /// ended.
-  Future<void> mapping() async {
+  Future<void> mapping() {
     debugBeforeMapping?.call();
     final ended = Completer<void>();
-    // Not the tear-off: a listener takes a function of the C's own shape.
-    void end() => ended.complete();
-    final then = NativeCallable<Void Function()>.listener(end);
-    try {
-      rust.readoutMapThen(_engine._engine, _readout, then.nativeFunction);
-      await ended.future;
-    } finally {
-      then.close();
-    }
+    final wait = _asked++;
+    _ending[wait] = ended;
+    _ended.keepIsolateAlive = true;
+    rust.readoutMapThen(
+      _engine._engine,
+      _readout,
+      _ended.nativeFunction,
+      wait,
+    );
+    return ended.future;
+  }
+
+  /// The waits on their way ([mapping]), each under the number it was
+  /// asked by.
+  static final Map<int, Completer<void>> _ending = {};
+  static int _asked = 0;
+
+  /// How the engine's thread tells this isolate that a wait has ended, by
+  /// its number: one for every readout of the isolate, for as long as it
+  /// lives. ⛔Not one a wait: nothing is made for a wait, so no wait leaves
+  /// anything to close (↩️one each, closed as its wait ended — a close
+  /// gone showed in no test, 2026-11-12).
+  ///
+  /// 🚨It keeps its isolate for as long as a wait is on its way, and no
+  /// longer: an isolate with nothing else to do stays for the bytes it
+  /// asked for — let go, it ended under the wait with its readout never
+  /// freed — and ends once they have come.
+  static final NativeCallable<Void Function(Uint64)> _ended =
+      NativeCallable<Void Function(Uint64)>.listener(_end);
+
+  static void _end(int wait) {
+    final ended = _ending.remove(wait)!;
+    _ended.keepIsolateAlive = _ending.isNotEmpty;
+    ended.complete();
   }
 
   /// Test seam: called before the engine's thread is handed the wait

@@ -13,6 +13,7 @@
 // after (gpu-canonical-store 14:51).
 #![cfg_attr(not(test), allow(dead_code, unused_imports))]
 
+mod counted;
 mod dispatch;
 #[cfg(test)]
 mod every_free;
@@ -47,6 +48,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::device::{CompilerTurn, Engine, KernelSource};
 
+pub(crate) use counted::Counted;
 pub(crate) use dispatch::{
     Encoded, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
     whole, words_buffer,

@@ -1037,13 +1037,15 @@ external bool readoutMap(Pointer<Engine> engine, Pointer<Readout> readout);
   Void Function(
     Pointer<Engine>,
     Pointer<Readout>,
-    Pointer<NativeFunction<Void Function()>>,
+    Pointer<NativeFunction<Void Function(Uint64)>>,
+    Uint64,
   )
 >(symbol: 'gpu_engine_readout_map_then')
 external void readoutMapThen(
   Pointer<Engine> engine,
   Pointer<Readout> readout,
-  Pointer<NativeFunction<Void Function()>> then,
+  Pointer<NativeFunction<Void Function(Uint64)>> then,
+  int wait,
 );
 
 @Native<
@@ -1069,6 +1071,9 @@ external bool readoutRows(
 
 @Native<Void Function(Pointer<Readout>)>(symbol: 'gpu_engine_readout_free')
 external void readoutFree(Pointer<Readout> readout);
+
+@Native<Uint64 Function()>(symbol: 'gpu_engine_readout_live_bytes')
+external int readoutLiveBytes();
 
 @Native<Pointer<Ink> Function(Pointer<Engine>)>(symbol: 'gpu_engine_ink_new')
 external Pointer<Ink> inkNew(Pointer<Engine> engine);

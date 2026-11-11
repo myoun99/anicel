@@ -727,22 +727,22 @@ fn a_readout_of_a_tile_none_holds_or_of_none_is_refused() {
 }
 
 /// Where a wait its caller did not stay for says that it has ended — a
-/// test's, one a wait: the thread that said so.
-struct ToldOn(Mutex<Option<ThreadId>>, Condvar);
+/// test's, one a wait: the thread that said so, and the number it said.
+struct ToldOn(Mutex<Option<(ThreadId, u64)>>, Condvar);
 
 impl ToldOn {
     const fn new() -> Self {
         Self(Mutex::new(None), Condvar::new())
     }
 
-    fn tell(&self) {
-        *self.0.lock().expect("told") = Some(std::thread::current().id());
+    fn tell(&self, wait: u64) {
+        *self.0.lock().expect("told") = Some((std::thread::current().id(), wait));
         self.1.notify_all();
     }
 
-    /// The thread that told, once one has.
-    fn told(&self) -> ThreadId {
-        let none_yet = |told: &mut Option<ThreadId>| told.is_none();
+    /// The thread that told and the number it told, once one has.
+    fn told(&self) -> (ThreadId, u64) {
+        let none_yet = |told: &mut Option<(ThreadId, u64)>| told.is_none();
         let (waiting, minute) = (self.0.lock().expect("told"), Duration::from_secs(60));
         let (told, _) = self.1.wait_timeout_while(waiting, minute, none_yet).expect("told");
         told.expect("a wait that ended is told within the minute")
@@ -751,9 +751,10 @@ impl ToldOn {
 
 // The C ABI reads out the tiles its words name with no wait on the thread
 // that asks — the engine's thread waits for the GPU and tells once they
-// are mapped, as the app is told with its frames going on — and hands them
-// over as rows of a tile's bytes, in the words' order; a word that names
-// none, a tile none holds and no tile at all are refused.
+// are mapped, by the number the wait was asked under, as the app is told
+// with its frames going on — and hands them over as rows of a tile's
+// bytes, in the words' order; a word that names none, a tile none holds
+// and no tile at all are refused.
 #[test]
 fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() {
     use super::{
@@ -768,8 +769,8 @@ fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() 
     };
     use crate::testing::last_error;
     static TOLD: ToldOn = ToldOn::new();
-    extern "C" fn told() {
-        TOLD.tell();
+    extern "C" fn told(wait: u64) {
+        TOLD.tell(wait);
     }
     let engine = rig().engine;
     let bytes: Vec<Vec<u8>> = (0..2).map(|n| le_bytes(&tile(n))).collect();
@@ -793,8 +794,10 @@ fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() 
         let (each, to) = (TILE_BYTES, into.as_mut_ptr());
         assert!(!gpu_engine_readout_rows(readout, 0, each, each, 2, to, each), "not mapped yet");
         let waits = gpu_engine_waits_here();
-        gpu_engine_readout_map_then(engine, readout, told);
-        assert_ne!(TOLD.told(), std::thread::current().id(), "told on the engine's thread");
+        gpu_engine_readout_map_then(engine, readout, told, 7);
+        let (on, wait) = TOLD.told();
+        assert_ne!(on, std::thread::current().id(), "told on the engine's thread");
+        assert_eq!(wait, 7, "by the number it was asked under");
         assert_eq!(gpu_engine_waits_here(), waits, "the thread that asked waited for no GPU");
         assert!(gpu_engine_readout_rows(readout, 0, each, each, 2, to, each), "{}", last_error());
         assert!(into == [bytes[1].as_slice(), &bytes[0]].concat());
@@ -827,8 +830,8 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
     };
     use crate::testing::last_error;
     static TOLD: ToldOn = ToldOn::new();
-    extern "C" fn told() {
-        TOLD.tell();
+    extern "C" fn told(wait: u64) {
+        TOLD.tell(wait);
     }
     let bytes = le_bytes(&tile(0));
     let (mut page, mut slot) = (u16::MAX, u16::MAX);
@@ -848,7 +851,7 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
         let readout = gpu_engine_pool_readout(pool, engine, &word, 1);
         assert!(!readout.is_null(), "{}", last_error());
         gpu_engine_lose(engine);
-        gpu_engine_readout_map_then(engine, readout, told);
+        gpu_engine_readout_map_then(engine, readout, told, 0);
         TOLD.told();
         let (each, to) = (TILE_BYTES, into.as_mut_ptr());
         assert!(!gpu_engine_readout_rows(readout, 0, each, each, 1, to, each));
