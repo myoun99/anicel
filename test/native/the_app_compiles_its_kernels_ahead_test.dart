@@ -285,6 +285,25 @@ void main() {
     expect(builtHereShowing(const [row]), 0);
   });
 
+  // As a file's frame is made (`frameOnTheEngine`): its ground laid, and a
+  // frame shown on a screen of this platform's laid over it.
+  test('a frame laid for a file builds none', () {
+    final export = appGpuExportKernels.compiled!;
+    final surface = ScreenTexture.surfaceOf(appGpuEngine, 2, 1);
+    addTearDown(surface.free);
+
+    expect(
+      builtHereBy(() {
+        final frame = export.blank(2, 1, ground: 0xFFFFFFFF);
+        final shown = export.shown(surface, 2, 1);
+        export.lay(frame, shown);
+        shown.free();
+        frame.free();
+      }),
+      0,
+    );
+  });
+
   test('a frame whose folder is blurred waits for no kernel, and builds '
       'none', () {
     expect(
