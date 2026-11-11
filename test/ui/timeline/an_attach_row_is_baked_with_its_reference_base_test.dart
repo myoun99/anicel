@@ -181,7 +181,10 @@ void main() {
     return hosted;
   }
 
-  /// RASTERIZE pressed on [paper]'s reference header, waited out.
+  /// RASTERIZE pressed on [paper]'s reference header, waited out — a wait
+  /// that runs out fails here, by its name. ↩️It went on unasked, and a
+  /// bake not yet done read as a cel's box missing (브러시/렌더링
+  /// 2026-11-11 19:12: 「세 번째 프레임의 상자가 null」 at 65 s).
   Future<void> rasterized(
     WidgetTester tester,
     EditorSessionManager s,
@@ -190,15 +193,19 @@ void main() {
     final context = await hostedContext(tester);
     unawaited(rasterizeReferenceRows(context, s, [current(s, paper)]));
     await tester.pump();
-    await settleAsync(
-      tester,
-      () =>
-          find
-              .byKey(const ValueKey<String>('reference-rasterize-progress'))
-              .evaluate()
-              .isEmpty &&
-          current(s, paper).mediaReference == null,
-      step: const Duration(milliseconds: 20),
+    expect(
+      await settleAsync(
+        tester,
+        () =>
+            find
+                .byKey(const ValueKey<String>('reference-rasterize-progress'))
+                .evaluate()
+                .isEmpty &&
+            current(s, paper).mediaReference == null,
+        step: const Duration(milliseconds: 20),
+      ),
+      isTrue,
+      reason: 'the rasterize is done before the wait runs out',
     );
   }
 
