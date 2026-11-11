@@ -238,7 +238,7 @@ BrushDab transformStampDab(
     outLeft: out.left,
     outTop: out.top,
   ),
-  resampled: (stamp, out, transform) => _resampleIntoWindow(
+  resampled: (stamp, out, transform) => _carriedOnEngine(
     stampDab: stampDab,
     stamp: stamp,
     out: out,
@@ -267,9 +267,9 @@ BrushDab transformStampDab(
 /// of resample and 32–44 ms of handing the bytes up again, a step (main
 /// PC), and the Surface Pro 11 dragged it at 220–250 ms a frame where
 /// master — which showed the float itself there, sharper than it landed —
-/// took 142–146. ⏳The box's own warps (the affine above, the quad, the
-/// mesh) are still made here on the CPU until they go to the engine too
-/// (🗣️관제 2026-11-10: 「변형 · 메시 … 다음 라운드 몫」).
+/// took 142–146. The box's own warps (the affine above, the quad, the
+/// mesh) are the engine's as well (float-warp-resamples-in-the-c-engine,
+/// 2026-11-11): one R1 for every warp a float takes, its window or whole.
 BrushDab carryStampDab(
   BrushDab stampDab, {
   required GuideTransform to,
@@ -352,77 +352,47 @@ BrushDab _stampThrough(
   return resampled(stamp, out, fold(srcLeft, srcTop, out));
 }
 
-/// Runs one resample into [window] of [out] (or all of [out] when window
-/// is null) and wraps the result as a dab positioned at what it covers.
+/// One resample of [stamp] into [window] of [out] (or all of [out] when
+/// window is null), made on the engine, wrapped as a dab positioned at what
+/// it covers: the stamp it wraps is the engine's picture
+/// (`EngineStampPictures.carried`, R1 in [mode] with the same radius
+/// floor), so it lands without a byte of it coming here, and what does ask
+/// for its bytes reads them from there.
 ///
 /// ⚠️ A WINDOWED result is a PREVIEW. It holds only the pixels asked for,
 /// so committing it would land a rectangle of the picture and drop the
 /// rest. The one caller that clips keys its cache on the window, so the
 /// commit — which asks for no window — cannot be handed one by mistake.
-BrushDab _resampleIntoWindow({
-  required BrushDab stampDab,
-  required BrushStampImage stamp,
-  required ({int left, int top, int width, int height}) out,
-  required ({int x, int y, int width, int height})? window,
-  required ResampleTransform transform,
-  required ResampleMode mode,
-  String idPrefix = 't',
-}) {
-  final clipX = window?.x ?? 0;
-  final clipY = window?.y ?? 0;
-  final dstWidth = window?.width ?? out.width;
-  final dstHeight = window?.height ?? out.height;
-  final bytes = Uint8List(dstWidth * dstHeight * 4);
-  resampleSelectionInto(
-    src: stamp.rgba,
-    srcWidth: stamp.width,
-    srcHeight: stamp.height,
-    dst: bytes,
-    dstWidth: dstWidth,
-    dstHeight: dstHeight,
-    transform: transform,
-    mode: mode,
-    clipX: clipX,
-    clipY: clipY,
-  );
-  return _resampledDab(
-    stampDab,
-    at: (left: out.left + clipX, top: out.top + clipY),
-    made: BrushStampImage(
-      id: _resampledId(stamp, idPrefix),
-      width: dstWidth,
-      height: dstHeight,
-      rgba: bytes,
-    ),
-  );
-}
-
-/// [_resampleIntoWindow]'s twin for all of [out], made on the engine: the
-/// stamp it wraps is the engine's picture (`EngineStampPictures.carried`,
-/// R1 in [mode] with the same radius floor), so it lands without a byte of
-/// it coming here, and what does ask for its bytes reads them from there.
 BrushDab _carriedOnEngine({
   required BrushDab stampDab,
   required BrushStampImage stamp,
   required ({int left, int top, int width, int height}) out,
+  ({int x, int y, int width, int height})? window,
   required ResampleTransform transform,
   required ResampleMode mode,
+  String idPrefix = 't',
 }) => _resampledDab(
   stampDab,
-  at: (left: out.left, top: out.top),
+  at: (left: out.left + (window?.x ?? 0), top: out.top + (window?.y ?? 0)),
   made: EngineStampPictures.carried(
     stamp,
-    id: _resampledId(stamp, 't'),
+    id: _resampledId(stamp, idPrefix),
     inverse: resampleTransformElements(transform),
     radiusFloor: kSelectionResampleRadiusFloor,
-    sampling: switch (mode) {
-      ResampleMode.blend => GpuSampling.blend,
-      ResampleMode.pick => GpuSampling.pick,
-    },
+    sampling: _samplingOf(mode),
     width: out.width,
     height: out.height,
+    window: window == null
+        ? null
+        : (window.x, window.y, window.width, window.height),
   ),
 );
+
+/// R1's sampling of [mode], as the engine names it.
+GpuSampling _samplingOf(ResampleMode mode) => switch (mode) {
+  ResampleMode.blend => GpuSampling.blend,
+  ResampleMode.pick => GpuSampling.pick,
+};
 
 /// [stampDab] as the dab of [made], a resample of its stamp whose first
 /// pixel lies [at] on the canvas: centred on what it covers.
@@ -580,7 +550,7 @@ BrushDab transformStampDabQuad(
   // now, along with a non-finite check the old one did not have. Both write
   // the outside token where this used to leave the pixel untouched, which
   // is the same thing on a freshly allocated buffer.
-  return _resampleIntoWindow(
+  return _carriedOnEngine(
     stampDab: stampDab,
     stamp: stamp,
     out: out,
@@ -606,13 +576,9 @@ BrushDab transformStampDabQuad(
 /// hit wins — deterministic).
 ///
 /// Barycentric interpolation of the three source corners is an AFFINE
-/// function of the destination point, so each triangle is one ordinary
-/// call into the shared kernel over its clipped bounding box, in [mode].
-/// What stays in Dart is the triangle's insideness test and the `covered`
-/// map: the kernel has no notion of a clip or of coverage and writes EVERY
-/// pixel of the rectangle it is given, so a single whole-output call would
-/// erase each triangle with the next one and lose fold-over resolution
-/// entirely.
+/// function of the destination point, so each triangle is one map of R1,
+/// in [mode]; which triangle paints a pixel is the engine's too (R3,
+/// `EngineStampPictures.meshed`), so the mesh is one picture made there.
 ///
 /// [base] is the rect the grid stands on — the stamp's own unless another
 /// is given: a stamp carried through a box that stands on a different one
@@ -639,202 +605,50 @@ BrushDab transformStampDabMesh(
     columns: columns,
     rows: rows,
   );
-  CanvasPoint baseAt(int column, int row) =>
-      baseGrid[row * (columns + 1) + column];
   final moved = stampDabMovedWholesale(stampDab, baseGrid, points);
   if (moved != null) {
     return moved;
   }
 
+  // 🚨THE PICTURE IS THE WINDOW'S, not the whole output rect's — the law
+  // the affine and the quad keep too ([_carriedOnEngine]): nothing is made
+  // past what was asked for (C-ipad-crash, 2026-09-11). A grid carried on
+  // past its box (`MeshCarry`, a range's other cels) can reach a long way
+  // past the wall.
   final out = selectionWarpOutputRect(points);
-  final outLeft = out.left;
-  final outTop = out.top;
-  final outWidth = out.width;
-  final outHeight = out.height;
-  // 🚨THE BUFFER IS THE WINDOW'S, not the whole output rect's — the law the
-  // affine and the quad already keep ([_resampleIntoWindow]): nothing is
-  // BUILT past what was asked for (C-ipad-crash, 2026-09-11).
-  //
-  // ↩️The mesh kept the whole rect and filled only the visible part
-  // (2026-10-06). That cost little while a grid stood on its own float; a
-  // grid carried on past its box (`MeshCarry`, a range's other cels) can
-  // reach a long way past the wall, and a rect is allocated whether or not
-  // a pixel of it is written. ⛔The per-triangle ORIGINS below are still
-  // measured from the whole rect — moving those is the regrouping ABI 26
-  // exists to avoid.
   final window = selectionPreviewWindow(out: out, visible: visible);
-  final bufLeft = outLeft + (window?.x ?? 0);
-  final bufTop = outTop + (window?.y ?? 0);
-  final bufWidth = window?.width ?? outWidth;
-  final bufHeight = window?.height ?? outHeight;
-  final bytes = Uint8List(bufWidth * bufHeight * 4);
-  final covered = Uint8List(bufWidth * bufHeight);
-  // One scratch grown across the triangles of THIS call — not a
-  // module-level buffer. The Catmull-Rom this replaced kept its weights in
-  // top-level mutable state shared by all three warp paths, which is
-  // exactly the thing that stops being safe the moment anything runs off
-  // the main isolate.
-  var scratch = Uint8List(0);
-
-  void rasterizeTriangle(
-    CanvasPoint d0,
-    CanvasPoint d1,
-    CanvasPoint d2,
-    CanvasPoint s0,
-    CanvasPoint s1,
-    CanvasPoint s2,
-  ) {
-    final denominator =
-        (d1.x - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (d1.y - d0.y);
-    if (denominator.abs() < 1e-12) {
-      return; // Degenerate destination triangle.
-    }
-    // The triangle's own bounding box, clamped to the output rect. This
-    // is the ORIGIN the resample transform is built from, and it must not
-    // move when the preview clips — moving an origin is exactly the
-    // regrouping ABI 26 exists to avoid, and it would make a clipped mesh
-    // preview differ from what Enter lands.
-    final rawLeft = math.max(
-      outLeft,
-      math.min(d0.x, math.min(d1.x, d2.x)).floor(),
-    );
-    final rawTop = math.max(
-      outTop,
-      math.min(d0.y, math.min(d1.y, d2.y)).floor(),
-    );
-    final rawRight = math.min(
-      outLeft + outWidth,
-      math.max(d0.x, math.max(d1.x, d2.x)).ceil(),
-    );
-    final rawBottom = math.min(
-      outTop + outHeight,
-      math.max(d0.y, math.max(d1.y, d2.y)).ceil(),
-    );
-    // What is on screen of it. The mesh clips per TRIANGLE: each triangle
-    // already resamples only its own box, so narrowing that box skips the
-    // off-screen work — and the buffer it writes into is the window's, so
-    // the box is held inside that too.
-    final left = math.max(
-      bufLeft,
-      visible == null ? rawLeft : math.max(rawLeft, visible.left.floor()),
-    );
-    final top = math.max(
-      bufTop,
-      visible == null ? rawTop : math.max(rawTop, visible.top.floor()),
-    );
-    final right = math.min(
-      bufLeft + bufWidth,
-      visible == null ? rawRight : math.min(rawRight, visible.right.ceil()),
-    );
-    final bottom = math.min(
-      bufTop + bufHeight,
-      visible == null ? rawBottom : math.min(rawBottom, visible.bottom.ceil()),
-    );
-    final tileWidth = right - left;
-    final tileHeight = bottom - top;
-    if (tileWidth <= 0 || tileHeight <= 0) {
-      return;
-    }
-    // Resample the triangle's whole bounding box, then keep only the
-    // pixels inside it. The kernel reads the WHOLE source stamp, never a
-    // per-triangle crop, so a footprint straddling a source-triangle edge
-    // picks up its neighbour's texels exactly as the bicubic taps did —
-    // seam continuity for free.
-    final needed = tileWidth * tileHeight * 4;
-    if (scratch.length < needed) {
-      scratch = Uint8List(needed);
-    }
-    resampleSelectionInto(
-      src: stamp.rgba,
-      srcWidth: stamp.width,
-      srcHeight: stamp.height,
-      dst: scratch,
-      dstWidth: tileWidth,
-      dstHeight: tileHeight,
-      transform: selectionTriangleResampleTransform(
-        d0: d0,
-        d1: d1,
-        d2: d2,
-        s0: s0,
-        s1: s1,
-        s2: s2,
-        denominator: denominator,
-        left: rawLeft,
-        top: rawTop,
-        srcLeft: srcLeft,
-        srcTop: srcTop,
-      ),
-      mode: mode,
-      clipX: left - rawLeft,
-      clipY: top - rawTop,
-    );
-    for (var y = top; y < bottom; y += 1) {
-      final qy = y + 0.5;
-      for (var x = left; x < right; x += 1) {
-        final index = (y - bufTop) * bufWidth + (x - bufLeft);
-        if (covered[index] != 0) {
-          continue;
-        }
-        final qx = x + 0.5;
-        // Barycentric coordinates in the destination triangle.
-        final w1 =
-            ((qx - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (qy - d0.y)) /
-            denominator;
-        final w2 =
-            ((d1.x - d0.x) * (qy - d0.y) - (qx - d0.x) * (d1.y - d0.y)) /
-            denominator;
-        final w0 = 1.0 - w1 - w2;
-        const slack = -1e-9;
-        if (w0 < slack || w1 < slack || w2 < slack) {
-          continue;
-        }
-        // The pixel is inside this triangle regardless of what it samples,
-        // so it is covered even when the sampled color is fully transparent.
-        covered[index] = 1;
-        final from = ((y - top) * tileWidth + (x - left)) * 4;
-        final to = index * 4;
-        copyRgb(bytes, to, scratch, from);
-        bytes[to + 3] = scratch[from + 3];
-      }
-    }
-  }
-
-  CanvasPoint destAt(int column, int row) =>
-      points[row * (columns + 1) + column];
-  for (var row = 0; row < rows; row += 1) {
-    for (var column = 0; column < columns; column += 1) {
-      // Fixed diagonal TL–BR mirror of the preview triangulation:
-      // (TL, TR, BL) and (TR, BR, BL).
-      rasterizeTriangle(
-        destAt(column, row),
-        destAt(column + 1, row),
-        destAt(column, row + 1),
-        baseAt(column, row),
-        baseAt(column + 1, row),
-        baseAt(column, row + 1),
-      );
-      rasterizeTriangle(
-        destAt(column + 1, row),
-        destAt(column + 1, row + 1),
-        destAt(column, row + 1),
-        baseAt(column + 1, row),
-        baseAt(column + 1, row + 1),
-        baseAt(column, row + 1),
-      );
-    }
-  }
-
-  return stampDab.copyWith(
-    center: CanvasPoint(x: bufLeft + bufWidth / 2, y: bufTop + bufHeight / 2),
-    size: math.max(bufWidth, bufHeight).toDouble(),
-    stamp: BrushStampImage(
+  final left = out.left + (window?.x ?? 0);
+  final top = out.top + (window?.y ?? 0);
+  // Each pixel by the map of the triangle that paints it, the first in the
+  // grid's order where they fold over — row, column, then (TL, TR, BL)
+  // before (TR, BR, BL) — and nothing where none does: R3 on the engine.
+  return _resampledDab(
+    stampDab,
+    at: (left: left, top: top),
+    made: EngineStampPictures.meshed(
+      stamp,
       id: _resampledId(stamp, 'm'),
-      width: bufWidth,
-      height: bufHeight,
-      rgba: bytes,
+      at: (srcLeft, srcTop),
+      columns: columns,
+      rows: rows,
+      source: _coordinatesOf(baseGrid),
+      destination: _coordinatesOf(points),
+      radiusFloor: kSelectionResampleRadiusFloor,
+      sampling: _samplingOf(mode),
+      window: (
+        left,
+        top,
+        window?.width ?? out.width,
+        window?.height ?? out.height,
+      ),
     ),
   );
 }
+
+/// [points]' x and y, one after the other.
+List<double> _coordinatesOf(List<CanvasPoint> points) => [
+  for (final point in points) ...[point.x, point.y],
+];
 
 /// The bitmap-lift pair (R14-④): an erase mask dab that cuts the
 /// selection's pixels out of the layer at their origin, and a stamp dab

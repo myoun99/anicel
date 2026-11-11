@@ -242,20 +242,6 @@ void main() {
       outLeft: -3,
       outTop: 2,
     ),
-    'selection: one mesh triangle': selectionTriangleResampleTransform(
-      d0: CanvasPoint(x: 2, y: 3),
-      d1: CanvasPoint(x: 40, y: -4),
-      d2: CanvasPoint(x: 9, y: 44),
-      s0: CanvasPoint(x: 0, y: 0),
-      s1: CanvasPoint(x: 36, y: 0),
-      s2: CanvasPoint(x: 0, y: 30),
-      // The cross product the rasteriser hands in, computed the same way.
-      denominator: (40 - 2) * (44 - 3) - (9 - 2) * (-4 - 3),
-      left: -1,
-      top: -4,
-      srcLeft: 0,
-      srcTop: 0,
-    ),
     // A quad steep enough that w falls to 0.06 across the frame. The gentle
     // case above never leaves the radius floor, so it could not have caught
     // either the cost blow-up or the int32 divergence at the ceiling.

@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../../models/canvas_point.dart';
 import '../../native/qa_native_engine.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../selection_affine.dart';
@@ -182,49 +181,5 @@ ResampleTransform selectionQuadResampleTransform({
     g: h[6],
     h: h[7],
     i: w,
-  );
-}
-
-/// One mesh triangle's destination-to-source map.
-///
-/// Barycentric interpolation of three source corners over a destination
-/// triangle is an AFFINE function of the destination point — which is why
-/// the mesh can share the kernel at all, rather than needing a warp path of
-/// its own. [d0]/[d1]/[d2] are the destination corners, [s0]/[s1]/[s2] the
-/// source ones, [denominator] the edge cross product the rasteriser has
-/// already computed, and [left]/[top] the CLIPPED destination bbox origin
-/// the resampled rectangle starts at.
-ResampleTransform selectionTriangleResampleTransform({
-  required CanvasPoint d0,
-  required CanvasPoint d1,
-  required CanvasPoint d2,
-  required CanvasPoint s0,
-  required CanvasPoint s1,
-  required CanvasPoint s2,
-  required double denominator,
-  required int left,
-  required int top,
-  required double srcLeft,
-  required double srcTop,
-}) {
-  final e1x = d1.x - d0.x;
-  final e1y = d1.y - d0.y;
-  final e2x = d2.x - d0.x;
-  final e2y = d2.y - d0.y;
-  final f1x = s1.x - s0.x;
-  final f1y = s1.y - s0.y;
-  final f2x = s2.x - s0.x;
-  final f2y = s2.y - s0.y;
-  final a = (e2y * f1x - e1y * f2x) / denominator;
-  final b = (e1x * f2x - e2x * f1x) / denominator;
-  final d = (e2y * f1y - e1y * f2y) / denominator;
-  final e = (e1x * f2y - e2x * f1y) / denominator;
-  return ResampleTransform(
-    a: a,
-    b: b,
-    c: a * (left - d0.x) + b * (top - d0.y) + s0.x - srcLeft,
-    d: d,
-    e: e,
-    f: d * (left - d0.x) + e * (top - d0.y) + s0.y - srcTop,
   );
 }

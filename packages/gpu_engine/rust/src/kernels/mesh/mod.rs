@@ -6,10 +6,6 @@
 //! spec puts it). The warp (kernels/warp) reads the picture through them,
 //! each pixel by its triangle's map through R1.
 
-// ⏳Nothing outside the tests reads a mesh until the canvas's verbs come to
-// the engine (gpu-canonical-store, stage 4).
-#![cfg_attr(not(test), allow(dead_code))]
-
 #[cfg(test)]
 mod tests;
 

@@ -10,14 +10,15 @@ use crate::kernels::blend::mode::{ERASE, NORMAL};
 use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt};
 use crate::kernels::dab::abi::{
     StampPicture, gpu_engine_stamp_picture_bytes, gpu_engine_stamp_picture_carried,
-    gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new, gpu_engine_stamp_picture_read,
+    gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_meshed, gpu_engine_stamp_picture_new,
+    gpu_engine_stamp_picture_read,
 };
 use crate::kernels::dab::landing::{Asked, Laid};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, le_words, words_buffer};
-use crate::kernels::warp::Boxed;
+use crate::kernels::warp::{Boxed, Window};
 use crate::kernels::write::Change;
 use crate::testing::{first_engine, last_error, read_buffer};
 
@@ -627,6 +628,123 @@ fn a_picture_the_wall_leaves_nothing_of_fails() {
     assert!(f.landing.stamps.stamp(f.engine, &source, 0).is_none());
 }
 
+/// `picture`'s pixels, `words` of them, once the GPU has made them.
+fn read_picture(engine: &Engine, picture: *const StampPicture, words: usize) -> Vec<u32> {
+    let mut into = vec![0u8; words * 4];
+    // SAFETY: the picture is live and `into` holds its box.
+    assert!(
+        unsafe { gpu_engine_stamp_picture_read(engine, picture, into.as_mut_ptr()) },
+        "{}",
+        last_error(),
+    );
+    le_words(&into)
+}
+
+/// What a box's float shows of its affine or its quad is the whole's pixels
+/// where it shows (the app's `selectionPreviewWindow`): what the hand sees
+/// is what Enter lands there.
+#[test]
+fn a_window_of_a_carry_is_the_whole_carry_there_and_none_lies_past_it() {
+    let f = landing();
+    let rgba = le_bytes(&placed(4, 2));
+    // SAFETY: the engine is live and `rgba` holds the picture.
+    let handed = unsafe { gpu_engine_stamp_picture_new(f.engine, rgba.as_ptr(), 4, 2) };
+    assert!(!handed.is_null(), "{}", last_error());
+    // Half a pixel and a turn: no whole-pixel copy, every pixel a mean.
+    let (cos, sin) = (0.8_f64, 0.6_f64);
+    let inverse = [cos, sin, -1.25, -sin, cos, 1.5, 0.0, 0.0, 1.0];
+    let carry = |(left, top, width, height): (u32, u32, u32, u32)| {
+        // SAFETY: all three are live and `inverse` holds nine.
+        unsafe {
+            gpu_engine_stamp_picture_carried(
+                &f.landing,
+                f.engine,
+                handed,
+                inverse.as_ptr(),
+                1.0,
+                ResampleMode::Blend as u32,
+                7,
+                5,
+                left,
+                top,
+                width,
+                height,
+            )
+        }
+    };
+    let whole = carry((0, 0, 7, 5));
+    assert!(!whole.is_null(), "{}", last_error());
+    let whole_words = read_picture(f.engine, whole, 7 * 5);
+    assert!(whole_words.iter().any(|&word| word != 0), "⛔CONTROL: the carry lands something");
+    let window = carry((2, 1, 4, 3));
+    assert!(!window.is_null(), "{}", last_error());
+    let shown = read_picture(f.engine, window, 4 * 3);
+    for y in 0..3 {
+        for x in 0..4 {
+            assert_eq!(shown[y * 4 + x], whole_words[(y + 1) * 7 + x + 2], "at {x}, {y} of the window");
+        }
+    }
+    assert!(carry((4, 0, 4, 1)).is_null(), "a window past the output's right");
+    assert!(last_error().contains("past an output of 7x5"), "{}", last_error());
+    for picture in [handed, whole, window] {
+        // SAFETY: each came from this file's calls and is let go once.
+        unsafe { gpu_engine_stamp_picture_free(picture) };
+    }
+}
+
+/// A float's mesh (the app's `transformStampDabMesh`) lands the window of
+/// the canvas asked for, its picture read where it lies: every point moved
+/// two pixels right and one down puts the picture there, whole.
+#[test]
+fn the_abi_meshes_a_picture_into_the_window_of_the_canvas_asked() {
+    let f = landing();
+    let rgba = le_bytes(&placed(4, 2));
+    // SAFETY: the engine is live and `rgba` holds the picture.
+    let handed = unsafe { gpu_engine_stamp_picture_new(f.engine, rgba.as_ptr(), 4, 2) };
+    assert!(!handed.is_null(), "{}", last_error());
+    let rest = [10.0, 20.0, 14.0, 20.0, 10.0, 22.0, 14.0, 22.0];
+    let mesh = |moved: &[f64; 8], (left, top, width, height): (i32, i32, u32, u32)| {
+        // SAFETY: all three are live and each grid holds a 1x1 mesh's four.
+        unsafe {
+            gpu_engine_stamp_picture_meshed(
+                &f.landing,
+                f.engine,
+                handed,
+                10.0,
+                20.0,
+                1,
+                1,
+                rest.as_ptr(),
+                moved.as_ptr(),
+                1.0,
+                ResampleMode::Blend as u32,
+                left,
+                top,
+                width,
+                height,
+            )
+        }
+    };
+    let moved: [f64; 8] = std::array::from_fn(|i| rest[i] + if i % 2 == 0 { 2.0 } else { 1.0 });
+    let put = mesh(&moved, (12, 21, 4, 2));
+    assert!(!put.is_null(), "{}", last_error());
+    assert_eq!(read_picture(f.engine, put, 4 * 2), placed(4, 2), "the picture, moved whole");
+    let wider = mesh(&moved, (11, 21, 6, 2));
+    assert!(!wider.is_null(), "{}", last_error());
+    let wider_words = read_picture(f.engine, wider, 6 * 2);
+    for y in 0..2 {
+        assert_eq!(wider_words[y * 6], 0, "no triangle paints left of it, row {y}");
+        assert_eq!(wider_words[y * 6 + 5], 0, "nor right of it, row {y}");
+        assert_eq!(&wider_words[y * 6 + 1..y * 6 + 5], &placed(4, 2)[y * 4..y * 4 + 4], "row {y}");
+    }
+    let far = rest.map(|x| x + 40_000.0);
+    assert!(mesh(&far, (12, 21, 4, 2)).is_null(), "a point past R3's reach");
+    for picture in [handed, put, wider] {
+        // SAFETY: each came from this file's calls and is let go once.
+        unsafe { gpu_engine_stamp_picture_free(picture) };
+    }
+}
+
 /// A picture `width` × `height`, each pixel saying where in it it lies.
 fn placed(width: u32, height: u32) -> Vec<u32> {
     (0..height).flat_map(|y| (0..width).map(move |x| 0xFF00_0000 | x << 8 | y)).collect()
@@ -644,7 +762,8 @@ fn a_picture_carried_is_its_pixels_through_the_map_and_nothing_past_them() {
     let pixels = picture(&placed(4, 2));
     let boxed = Boxed { pixels: &pixels, size: (4, 2) };
     let map = ResampleMap::new(moved(2.0, 1.0), 1.0, ResampleMode::Blend, 7, 4).expect("a map");
-    let carried = f.landing.carried(f.engine, &boxed, Some(&map), (7, 4)).expect("a carry");
+    let whole = Window { at: (0, 0), size: (7, 4) };
+    let carried = f.landing.carried(f.engine, &boxed, Some(&map), whole).expect("a carry");
     let words = le_words(&read_buffer(f.engine, &carried));
     assert_eq!(words.len(), 7 * 4);
     let at = |x: usize, y: usize| words[y * 7 + x];
@@ -653,7 +772,7 @@ fn a_picture_carried_is_its_pixels_through_the_map_and_nothing_past_them() {
     for (x, y) in [(1, 1), (2, 0), (6, 2), (5, 3)] {
         assert_eq!(at(x, y), 0, "past the picture at {x}, {y}");
     }
-    let none = f.landing.carried(f.engine, &boxed, None, (7, 4)).expect("a carry");
+    let none = f.landing.carried(f.engine, &boxed, None, whole).expect("a carry");
     assert!(read_buffer(f.engine, &none).iter().all(|&byte| byte == 0), "no map lands nothing");
 }
 
@@ -664,7 +783,8 @@ fn a_carried_picture_lands_as_one_handed_over_does() {
     let pixels = picture(&placed(4, 2));
     let boxed = Boxed { pixels: &pixels, size: (4, 2) };
     let map = ResampleMap::new(moved(2.0, 1.0), 1.0, ResampleMode::Blend, 7, 4).expect("a map");
-    let carried = f.landing.carried(f.engine, &boxed, Some(&map), (7, 4)).expect("a carry");
+    let whole = Window { at: (0, 0), size: (7, 4) };
+    let carried = f.landing.carried(f.engine, &boxed, Some(&map), whole).expect("a carry");
     let boxed = Boxed { pixels: &carried, size: (7, 4) };
     let source = Source::Picture { picture: &boxed, at: (10, 20), within: EVERYWHERE };
     let kit = (&f.composite, &mut f.pool, f.cel);
@@ -709,6 +829,10 @@ fn the_abi_carries_a_picture_and_reads_one_back() {
                 inverse.as_ptr(),
                 1.0,
                 sampling,
+                7,
+                4,
+                0,
+                0,
                 7,
                 4,
             )
@@ -756,6 +880,10 @@ fn the_abi_carries_by_the_floor_handed_it_into_a_picture_of_the_sides_asked() {
                 inverse.as_ptr(),
                 floor,
                 blend,
+                7,
+                4,
+                0,
+                0,
                 7,
                 4,
             )

@@ -9,11 +9,10 @@
 //! The window is a new stamp: laying it on a cel is the stamp's path
 //! (`dab::stamp`'s picture), not here.
 
-// One map's warp ([`Warp::one`]) is what a stamp's landing carries a picture
-// by (`dab::stamp`'s `carried`, gpu-canonical-store ⑪ 2026-11-11). ⏳Nothing
-// outside the tests runs a mesh's until the box's warps come to the engine
-// (the app's bridge round, gpu-canonical-store ⑧).
-#![cfg_attr(not(test), allow(dead_code))]
+// A stamp's landing carries a picture by them (`dab::stamp`'s `carried` and
+// `meshed`): one map's for a posed row (gpu-canonical-store ⑪ 2026-11-11)
+// and a box's affine or quad, a mesh's for its mesh (float-warp-resamples-
+// in-the-c-engine, 2026-11-11).
 
 #[cfg(test)]
 mod tests;

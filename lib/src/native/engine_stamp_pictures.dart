@@ -34,9 +34,10 @@ abstract final class EngineStampPictures {
   static int debugReadBack = 0;
 
   /// [stamp] carried through [inverse] — a point of the output to [stamp]'s,
-  /// the nine of a `ResampleTransform` — as [GpuStampLanding.carried] says:
-  /// a stamp [width] × [height] named [id] that is the engine's picture.
-  /// It lands without its bytes ever coming here; what asks for them
+  /// the nine of a `ResampleTransform` — over an output [width] × [height],
+  /// as [GpuStampLanding.carried] says: a stamp named [id] that is the
+  /// engine's picture of the whole output, or of its [window]. It lands
+  /// without its bytes ever coming here; what asks for them
   /// ([BrushStampImage.rgba]) reads them from the engine, once.
   ///
   /// 🗣️gpu-canonical-store ⑪ (관제 2026-11-10 18:14: 「자세 있음 … 선 =
@@ -51,19 +52,56 @@ abstract final class EngineStampPictures {
     required GpuSampling sampling,
     required int width,
     required int height,
-  }) {
-    final picture = appGpuStampLanding.carried(
+    (int, int, int, int)? window,
+  }) => _kept(
+    appGpuStampLanding.carried(
       of(stamp),
       inverse: inverse,
       radiusFloor: radiusFloor,
       sampling: sampling,
       width: width,
       height: height,
-    );
+      window: window,
+    ),
+    id: id,
+  );
+
+  /// [stamp], its top-left pixel at [at] on the canvas, through a mesh as
+  /// [GpuStampLanding.meshed] says: a stamp named [id] that is the engine's
+  /// picture of [window] of the canvas, landed and read as [carried]'s.
+  static BrushStampImage meshed(
+    BrushStampImage stamp, {
+    required String id,
+    required (double, double) at,
+    required int columns,
+    required int rows,
+    required List<double> source,
+    required List<double> destination,
+    required double radiusFloor,
+    required GpuSampling sampling,
+    required (int, int, int, int) window,
+  }) => _kept(
+    appGpuStampLanding.meshed(
+      of(stamp),
+      at: at,
+      columns: columns,
+      rows: rows,
+      source: source,
+      destination: destination,
+      radiusFloor: radiusFloor,
+      sampling: sampling,
+      window: window,
+    ),
+    id: id,
+  );
+
+  /// [picture], the engine made, as a stamp named [id] whose bytes are read
+  /// from there the first time they are asked for.
+  static BrushStampImage _kept(GpuStampPicture picture, {required String id}) {
     final made = BrushStampImage.read(
       id: id,
-      width: width,
-      height: height,
+      width: picture.width,
+      height: picture.height,
       rgba: () {
         debugReadBack += 1;
         return picture.pixels();

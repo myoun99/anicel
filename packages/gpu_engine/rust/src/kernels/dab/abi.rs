@@ -12,9 +12,10 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, TileAt};
+use crate::kernels::mesh::MeshGrid;
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::ResampleMap;
-use crate::kernels::warp::Boxed;
+use crate::kernels::warp::{Boxed, Window};
 use crate::kernels::write::Change;
 
 /// The entries of a table of evening (`Dab::evening`).
@@ -581,13 +582,16 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
 
 /// `picture` carried through `inverse` — an output's point to `picture`'s,
 /// row-major with the homogeneous row last, a pixel spanning x..x+1 (the
-/// app's `ResampleTransform`) — by R1 with `radius_floor`, sampled as
-/// `sampling_id` names ([`sampling`]): a new picture, the output's
-/// `columns` × `rows` whole, which lands as any other does
-/// (`StampLanding::carried`). Nothing of it where the map lands nothing
-/// ([`ResampleMap::new`]). Submits the warp; what lands the picture, or
-/// reads it, waits. Null where it holds no pixel, no mode has the id or
-/// the device binds no such picture; see the last error.
+/// app's `ResampleTransform`) — over an output `columns` × `rows`, by R1
+/// with `radius_floor`, sampled as `sampling_id` names ([`sampling`]): a
+/// new picture of the output's `width` × `height` from (`left`, `top`) —
+/// the whole of it, or what of it shows — which lands as any other does
+/// (`StampLanding::carried`). A window keeps the whole's map, so what it
+/// holds is the whole's pixels there. Nothing of it where the map lands
+/// nothing ([`ResampleMap::new`]). Submits the warp; what lands the
+/// picture, or reads it, waits. Null where it holds no pixel, the window
+/// lies past the output, no mode has the id or the device binds no such
+/// picture; see the last error.
 ///
 /// # Safety
 /// `landing`, `engine` and `picture` are live and `inverse` holds nine
@@ -603,6 +607,10 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_carried(
     sampling_id: u32,
     columns: u32,
     rows: u32,
+    left: u32,
+    top: u32,
+    width: u32,
+    height: u32,
 ) -> *mut StampPicture {
     // SAFETY: see the function's contract.
     let (landing, engine, picture, inverse) =
@@ -610,13 +618,83 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_carried(
     let Some(sampled) = sampling(sampling_id) else {
         return std::ptr::null_mut();
     };
+    if u64::from(left) + u64::from(width) > u64::from(columns)
+        || u64::from(top) + u64::from(height) > u64::from(rows)
+    {
+        let past = format!("a window of {width}x{height} at ({left}, {top}) past an output of {columns}x{rows}");
+        fail::<()>(past);
+        return std::ptr::null_mut();
+    }
     let map = ResampleMap::new(inverse, radius_floor, sampled, columns, rows);
     let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
-    let Some(pixels) = landing.carried(engine, &boxed, map.as_ref(), (columns, rows)) else {
+    let window = Window { at: (left as i32, top as i32), size: (width, height) };
+    kept(landing.carried(engine, &boxed, map.as_ref(), window), (width, height))
+}
+
+/// `picture`, its top-left pixel at (`source_left`, `source_top`) on the
+/// canvas, through a mesh of `columns` × `rows` cells whose corners rest at
+/// `source` and were dragged to `destination` — `(columns + 1) · (rows +
+/// 1)` points each, row after row, an x and a y apiece in canvas pixels —
+/// by R1 with `radius_floor`, sampled as `sampling_id` names: a new picture
+/// of the canvas's `width` × `height` from (`left`, `top`), each pixel by
+/// the map of the triangle that paints it and nothing where none does
+/// (`StampLanding::meshed`, R3). Submits the warp; what lands the picture,
+/// or reads it, waits. Null where it holds no pixel, a point or the window
+/// is past R3's reach, no mode has the id or the device binds no such
+/// picture; see the last error.
+///
+/// # Safety
+/// `landing`, `engine` and `picture` are live, and `source` and
+/// `destination` hold `2 · (columns + 1) · (rows + 1)` doubles each.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stamp_picture_meshed(
+    landing: *const StampLanding,
+    engine: *const Engine,
+    picture: *const StampPicture,
+    source_left: f64,
+    source_top: f64,
+    columns: u32,
+    rows: u32,
+    source: *const f64,
+    destination: *const f64,
+    radius_floor: f64,
+    sampling_id: u32,
+    left: i32,
+    top: i32,
+    width: u32,
+    height: u32,
+) -> *mut StampPicture {
+    let points = (columns as usize + 1) * (rows as usize + 1);
+    // SAFETY: see the function's contract.
+    let (landing, engine, picture, source, destination) = unsafe {
+        (
+            &*landing,
+            &*engine,
+            &*picture,
+            std::slice::from_raw_parts(source.cast::<[f64; 2]>(), points),
+            std::slice::from_raw_parts(destination.cast::<[f64; 2]>(), points),
+        )
+    };
+    let Some(sampled) = sampling(sampling_id) else {
+        return std::ptr::null_mut();
+    };
+    let mesh = MeshGrid { columns, rows, source: source.to_vec(), destination: destination.to_vec() };
+    let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+    let window = Window { at: (left, top), size: (width, height) };
+    let at = (source_left, source_top);
+    let made = landing.meshed(engine, &mesh, (&boxed, at), window, (radius_floor, sampled));
+    kept(made, (width, height))
+}
+
+/// A picture of `pixels`, `size` across and down, counted — or null where
+/// none was made.
+fn kept(pixels: Option<wgpu::Buffer>, size: (u32, u32)) -> *mut StampPicture {
+    let Some(pixels) = pixels else {
         return std::ptr::null_mut();
     };
     STAMP_PICTURE_BYTES.fetch_add(pixels.size(), Ordering::Relaxed);
-    Box::into_raw(Box::new(StampPicture { pixels, size: (columns, rows) }))
+    Box::into_raw(Box::new(StampPicture { pixels, size }))
 }
 
 /// `picture`'s pixels at `into`, row after row, once the GPU has made them:
@@ -643,8 +721,8 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_read(
 }
 
 /// # Safety
-/// `picture` came from `gpu_engine_stamp_picture_new` or
-/// `gpu_engine_stamp_picture_carried`.
+/// `picture` came from `gpu_engine_stamp_picture_new`,
+/// `gpu_engine_stamp_picture_carried` or `gpu_engine_stamp_picture_meshed`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stamp_picture_free(picture: *mut StampPicture) {
     if !picture.is_null() {

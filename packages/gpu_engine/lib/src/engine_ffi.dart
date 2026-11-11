@@ -1669,6 +1669,10 @@ external Pointer<StampPicture> stampPictureNew(
     Uint32,
     Uint32,
     Uint32,
+    Uint32,
+    Uint32,
+    Uint32,
+    Uint32,
   )
 >(symbol: 'gpu_engine_stamp_picture_carried')
 external Pointer<StampPicture> stampPictureCarried(
@@ -1680,6 +1684,47 @@ external Pointer<StampPicture> stampPictureCarried(
   int samplingId,
   int columns,
   int rows,
+  int left,
+  int top,
+  int width,
+  int height,
+);
+
+@Native<
+  Pointer<StampPicture> Function(
+    Pointer<StampLanding>,
+    Pointer<Engine>,
+    Pointer<StampPicture>,
+    Double,
+    Double,
+    Uint32,
+    Uint32,
+    Pointer<Double>,
+    Pointer<Double>,
+    Double,
+    Uint32,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_stamp_picture_meshed')
+external Pointer<StampPicture> stampPictureMeshed(
+  Pointer<StampLanding> landing,
+  Pointer<Engine> engine,
+  Pointer<StampPicture> picture,
+  double sourceLeft,
+  double sourceTop,
+  int columns,
+  int rows,
+  Pointer<Double> source,
+  Pointer<Double> destination,
+  double radiusFloor,
+  int samplingId,
+  int left,
+  int top,
+  int width,
+  int height,
 );
 
 @Native<Bool Function(Pointer<Engine>, Pointer<StampPicture>, Pointer<Uint8>)>(

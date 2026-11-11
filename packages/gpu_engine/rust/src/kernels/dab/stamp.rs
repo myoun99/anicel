@@ -30,15 +30,18 @@
 #[path = "stamp_tests.rs"]
 pub(crate) mod tests;
 
+use std::sync::OnceLock;
+
 use super::landing::{self, Asked, Laid, Over};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
+use crate::kernels::mesh::{MeshGrid, MeshOwners};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane,
-    tiles_a_page, whole, words_buffer,
+    Encoded, PREMULTIPLY_WGSL, ResampleMap, ResampleMode, TILE_WGSL, WIDE_WGSL, encode, pipeline,
+    plane, tiles_a_page, whole, words_buffer,
 };
 use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::kernels::write::{Change, Write};
@@ -266,6 +269,9 @@ pub(crate) struct StampLanding {
     stamps: Stamps,
     write: Write,
     warp: Warp,
+    /// Compiled where a mesh is first carried: the landing is compiled as
+    /// the app launches, and a mesh's warp is the one most never make.
+    owners: OnceLock<MeshOwners>,
 }
 
 impl StampLanding {
@@ -276,12 +282,15 @@ impl StampLanding {
             stamps: Stamps::new(engine),
             write: Write::new(engine)?,
             warp: Warp::new(engine),
+            owners: OnceLock::new(),
         })
     }
 
-    /// `picture` carried through `map`, the whole of an output `size` across
-    /// and down: the picture a posed row's landing lays (the app's
-    /// `carryStampDab`), nothing of it where there is no map. Submits the
+    /// `picture` carried through `map`, the `window` of the output it maps
+    /// to: what a box's affine or quad makes of a float (the app's
+    /// `transformStampDab` · `transformStampDabQuad`, a window of it where
+    /// only that much shows) and the picture a posed row's landing lays
+    /// (`carryStampDab`), nothing of it where there is no map. Submits the
     /// warp; what lands the picture, or reads it, waits.
     ///
     /// 🗣️gpu-canonical-store ⑪ (관제 2026-11-10 18:14: 「자세 있음 … 선 =
@@ -295,9 +304,26 @@ impl StampLanding {
         engine: &Engine,
         picture: &Boxed,
         map: Option<&ResampleMap>,
-        size: (u32, u32),
+        window: Window,
     ) -> Option<wgpu::Buffer> {
-        self.warp.one(engine, picture, map, Window { at: (0, 0), size })
+        self.warp.one(engine, picture, map, window)
+    }
+
+    /// `picture`, its top-left pixel at `source_at` on the canvas, through
+    /// `mesh`: the `window` of the canvas its triangles paint, each pixel by
+    /// its triangle's map with `radius_floor` and `mode` (the app's
+    /// `transformStampDabMesh`). Submits the warp; what lands the picture,
+    /// or reads it, waits.
+    pub(crate) fn meshed(
+        &self,
+        engine: &Engine,
+        mesh: &MeshGrid,
+        (picture, source_at): (&Boxed, (f64, f64)),
+        window: Window,
+        (radius_floor, mode): (f64, ResampleMode),
+    ) -> Option<wgpu::Buffer> {
+        let owners = self.owners.get_or_init(|| MeshOwners::new(engine));
+        self.warp.mesh(engine, (owners, mesh), picture, source_at, window, radius_floor, mode)
     }
 
     /// Lays `source` on the tiles `asked`, each result compared with the

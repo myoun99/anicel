@@ -352,67 +352,6 @@ void main() {
     });
   });
 
-  group('triangle fold', () {
-    test('reproduces barycentric interpolation exactly', () {
-      final random = math.Random(31337);
-      var worst = 0.0;
-      for (var trial = 0; trial < 300; trial += 1) {
-        CanvasPoint point() => CanvasPoint(
-          x: random.nextDouble() * 60 - 30,
-          y: random.nextDouble() * 60 - 30,
-        );
-        final d0 = point();
-        final d1 = point();
-        final d2 = point();
-        final s0 = point();
-        final s1 = point();
-        final s2 = point();
-        final denominator =
-            (d1.x - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (d1.y - d0.y);
-        if (denominator.abs() < 1) {
-          continue; // Near-degenerate: the tool refuses these too.
-        }
-        final left = random.nextInt(40) - 20;
-        final top = random.nextInt(40) - 20;
-        const srcLeft = 3.5;
-        const srcTop = -2.25;
-        final folded = selectionTriangleResampleTransform(
-          d0: d0,
-          d1: d1,
-          d2: d2,
-          s0: s0,
-          s1: s1,
-          s2: s2,
-          denominator: denominator,
-          left: left,
-          top: top,
-          srcLeft: srcLeft,
-          srcTop: srcTop,
-        );
-        for (var i = 0; i < 5; i += 1) {
-          final ox = random.nextInt(20);
-          final oy = random.nextInt(20);
-          final qx = left + ox + 0.5;
-          final qy = top + oy + 0.5;
-          // The rasteriser's own barycentric interpolation, verbatim.
-          final w1 =
-              ((qx - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (qy - d0.y)) /
-              denominator;
-          final w2 =
-              ((d1.x - d0.x) * (qy - d0.y) - (qx - d0.x) * (d1.y - d0.y)) /
-              denominator;
-          final w0 = 1.0 - w1 - w2;
-          final px = s0.x * w0 + s1.x * w1 + s2.x * w2;
-          final py = s0.y * w0 + s1.y * w1 + s2.y * w2;
-          final got = kernelSample(folded, ox, oy);
-          worst = math.max(worst, (got.u - (px - srcLeft - 0.5)).abs());
-          worst = math.max(worst, (got.v - (py - srcTop - 0.5)).abs());
-        }
-      }
-      expect(worst, lessThan(1e-6));
-    });
-  });
-
   group('the output rect and its clip', () {
     test('the rect snaps outward, so no covered pixel is dropped', () {
       final rect = selectionWarpOutputRect(<CanvasPoint>[

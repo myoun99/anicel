@@ -1000,11 +1000,12 @@ class GpuStampLanding {
 
   /// [picture] carried through [inverse] — a point of the output to
   /// [picture]'s, the nine of the app's `ResampleTransform` row after row,
-  /// the homogeneous row last — by R1 with [radiusFloor], sampled as
-  /// [sampling] says: a new picture, the output's [width] × [height] whole,
-  /// with nothing where the map lands nothing. The GPU makes it without
-  /// this waiting; what lands it, or reads it ([GpuStampPicture.pixels]),
-  /// waits.
+  /// the homogeneous row last — over an output [width] × [height], by R1
+  /// with [radiusFloor], sampled as [sampling] says: a new picture of the
+  /// whole output, or of its [window] — (left, top, width, height), what of
+  /// it shows — whose pixels are the whole's there; nothing where the map
+  /// lands nothing. The GPU makes it without this waiting; what lands it,
+  /// or reads it ([GpuStampPicture.pixels]), waits.
   GpuStampPicture carried(
     GpuStampPicture picture, {
     required List<double> inverse,
@@ -1012,10 +1013,12 @@ class GpuStampLanding {
     required GpuSampling sampling,
     required int width,
     required int height,
+    (int, int, int, int)? window,
   }) {
     if (inverse.length != 9) {
       throw ArgumentError('an inverse of ${inverse.length}, not 9');
     }
+    final (left, top, columns, rows) = window ?? (0, 0, width, height);
     final made = using(
       (arena) => rust.stampPictureCarried(
         _landing,
@@ -1024,6 +1027,59 @@ class GpuStampLanding {
         _doubles(arena, inverse),
         radiusFloor,
         sampling.id,
+        width,
+        height,
+        left,
+        top,
+        columns,
+        rows,
+      ),
+    );
+    return GpuStampPicture._kept(_engine, made, columns, rows);
+  }
+
+  /// [picture], its top-left pixel at [at] on the canvas, through a mesh of
+  /// [columns] × [rows] cells whose corners rest at [source] and were
+  /// dragged to [destination] — (columns + 1) · (rows + 1) points each, row
+  /// after row, an x and a y apiece in canvas pixels — by R1 with
+  /// [radiusFloor], sampled as [sampling] says: a new picture of [window]
+  /// of the canvas — (left, top, width, height) — each pixel by the map of
+  /// the triangle that paints it, nothing where none does (R3). The GPU
+  /// makes it without this waiting; what lands it, or reads it, waits.
+  GpuStampPicture meshed(
+    GpuStampPicture picture, {
+    required (double, double) at,
+    required int columns,
+    required int rows,
+    required List<double> source,
+    required List<double> destination,
+    required double radiusFloor,
+    required GpuSampling sampling,
+    required (int, int, int, int) window,
+  }) {
+    final coordinates = 2 * (columns + 1) * (rows + 1);
+    if (source.length != coordinates || destination.length != coordinates) {
+      throw ArgumentError(
+        'a ${columns}x$rows mesh is $coordinates coordinates a grid, not '
+        '${source.length} and ${destination.length}',
+      );
+    }
+    final (left, top, width, height) = window;
+    final made = using(
+      (arena) => rust.stampPictureMeshed(
+        _landing,
+        _engine._engine,
+        picture._picture,
+        at.$1,
+        at.$2,
+        columns,
+        rows,
+        _doubles(arena, source),
+        _doubles(arena, destination),
+        radiusFloor,
+        sampling.id,
+        left,
+        top,
         width,
         height,
       ),
