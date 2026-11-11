@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
@@ -17,6 +18,9 @@ import 'package:anicel/src/models/layer_section_defaults.dart'
     show createTrackTransitionLayer;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/stroke.dart';
+import 'package:anicel/src/models/stroke_id.dart';
+import 'package:anicel/src/models/stroke_point.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_camera_row.dart'
@@ -25,6 +29,7 @@ import 'package:anicel/src/models/track_conte_row.dart' show trackConteRowId;
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
@@ -216,7 +221,8 @@ void main() {
   }
 
   /// Both tracks on the conte, [cell] a frame.
-  Future<void> pumpConte(WidgetTester tester) => pumpStoryboardHost(
+  Future<EditorSessionManager> pumpConte(WidgetTester tester) =>
+      pumpStoryboardHost(
     tester,
     Project(
       id: const ProjectId('conte-runway'),
@@ -369,6 +375,56 @@ void main() {
       ]),
       reason: 'the current row moved from the V row of t0 to its S1, and '
           'no other row shows it',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  // 🔬Card a-track-copy-wraps-its-unchanged-lists-anew (11-11): a stroke in
+  // one cut copies its track, and the copy handed every collection it did
+  // not change back anew — the S rows', the fx chain's, the twirls' — so
+  // the conte read their lane lists again and drew their labels again
+  // (seven of them, measured). A copy keeps what it did not change.
+  testWidgets('🚨one stroke in a cut leaves the lane labels of its track\'s '
+      'S rows and fx chain standing as they were', (tester) async {
+    final session = await pumpConte(tester);
+    final before = await untilEveryRowIsAnImage(tester);
+    final taken = [for (final row in before) row.region.debugCaptureCount];
+    expectEveryLaneFamily(before);
+
+    session.repository.addStroke(
+      frameId: const FrameId('t0-p-1'),
+      stroke: Stroke(
+        id: const StrokeId('one'),
+        points: const [StrokePoint(x: 10, y: 10), StrokePoint(x: 40, y: 30)],
+        brushSettings: BrushSettings(),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+    await frame(tester);
+
+    final drawnAgain = [
+      for (final (index, (:name, :region)) in before.indexed)
+        if (region.attached &&
+            (!region.debugDrawnFromImage ||
+                region.debugCaptureCount != taken[index]))
+          name,
+    ];
+    expect(
+      drawnAgain,
+      contains('storyboard-conte-cells-t0'),
+      reason: '⛔premise: the stroke landed, and the panels show it',
+    );
+    final carriers = laneCarriersOf(0).take(3);
+    expect(
+      [
+        for (final name in drawnAgain)
+          for (final carrier in carriers)
+            if (name.startsWith('storyboard-lane-stand-cell-$carrier-')) name,
+      ],
+      isEmpty,
+      reason: 'nothing those labels show changed — the track was copied '
+          'with its S rows, fx chain and twirls as they were',
     );
     await tester.pumpAndSettle();
   });
