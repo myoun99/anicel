@@ -7,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 
+import '../helpers/poll_until.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// The copies the app keeps of what the engine alone holds
@@ -202,7 +203,7 @@ void main() {
     );
 
     expect(
-      await told.take(2).toList().timeout(const Duration(minutes: 1)),
+      await patiently(told.take(2).toList()),
       ['both came', null],
       reason: 'what it said, then its end',
     );
