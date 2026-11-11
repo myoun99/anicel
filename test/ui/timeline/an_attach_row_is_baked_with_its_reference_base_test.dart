@@ -22,10 +22,12 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/fx_basis.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/project_lookup.dart' show requireLayer;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
@@ -81,10 +83,11 @@ void main() {
   /// default canvas — its middle at (1170, 827) — and a blue 20×20 sheet
   /// placed in the middle above it and attached to it: a reference row of
   /// its own [file], or one rasterized by keys — a drawing row whose cel
-  /// holds the picture.
+  /// holds the picture. The paper is the cut's conte where [conte] says.
   Future<({EditorSessionManager s, LayerId paper, LayerId sheet})> placed(
     WidgetTester tester, {
     bool file = false,
+    bool conte = false,
   }) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
@@ -113,6 +116,11 @@ void main() {
     if (!file) {
       s.editingCanvas.rasterizeLayerReferences([sheet]);
       expect(current(s, sheet).mediaReference, isNull, reason: 'premise');
+    }
+    if (conte) {
+      s.selectLayer(paper);
+      s.layerSwitches.toggleTargetLayerKind();
+      expect(current(s, paper).kind, LayerKind.storyboard, reason: 'premise');
     }
     s.cutCommandCoordinator.setLayerAttachment(
       cutId: s.requireActiveCut.id,
@@ -419,6 +427,58 @@ void main() {
     final baked = current(s, sheet);
     expect(baked.attachedMode, AttachedMode.synced);
     expect(baked.mediaReference, isNull);
+    await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️F-374-Q10 · I-120-Q5: where the head's switch would come on over keys
+  // another cut's conte keeps, the conte bakes its file instead of keying
+  // its move (`othersKeepKeys`) — and a sheet riding a conte wears its own
+  // fx (I-99), so it stays where it showed.
+  testWidgets('🎯a conte whose head another cut\'s conte wears with keys of '
+      'its own bakes its file in place — those keys kept and shown by none, '
+      'the sheet riding it where it showed', (tester) async {
+    final (:s, :paper, :sheet) = await placed(tester, conte: true);
+    final a = s.requireActiveCut.id;
+    s.effectsAndFx.toggleLayerTransformFx(paper);
+    posed(s, paper, turn: PropertyTrack<double>().withKey(0, 30));
+    s.cutVerbs.createCut();
+    s.layerStack.addLayerOfKind(LayerKind.storyboard);
+    final b = s.requireActiveCut.id;
+    expect(b, isNot(a), reason: 'premise');
+    final other = s.requireActiveCut.layers
+        .firstWhere((layer) => layer.kind == LayerKind.storyboard)
+        .id;
+    final kept = TransformTrack.empty().copyWith(
+      rotation: PropertyTrack<double>().withKey(0, 45),
+    );
+    s.cutCommandCoordinator.updateLayerTransformTrack(
+      cutId: b,
+      layerId: other,
+      transformTrack: kept,
+    );
+    s.selectCut(a);
+    Layer theOther() =>
+        requireLayer(s.repository.requireProject(), cutId: b, layerId: other);
+    expect(
+      [current(s, paper).transformEnabled, theOther().transformEnabled],
+      [false, false],
+      reason: 'premise: one head, its switch off',
+    );
+    expect(wayOf(s, paper), (bakes: true, framed: false), reason: 'premise');
+    final before = await shown(tester, s, [0]);
+    expect(before.single, isNotNull, reason: 'premise: the sheet shows');
+
+    await rasterized(tester, s, paper);
+
+    expect(await shown(tester, s, [0]), standsAsIt(before));
+    expect(current(s, sheet).attachedToLayerId, paper);
+    expect(theOther().transformTrack, kept);
+    expect(
+      [current(s, paper).transformEnabled, theOther().transformEnabled],
+      [false, false],
+      reason: 'the keys the other conte keeps stay unshown',
+    );
     await tester.pumpAndSettle();
     s.playbackRig.prerenderScheduler.cancel();
   });
