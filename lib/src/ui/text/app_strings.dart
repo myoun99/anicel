@@ -32,6 +32,20 @@ abstract final class AppText {
   /// through their own `labelFor` (blend modes, effect kinds) instead of
   /// through a string key.
   static AppLanguage get language => settings.value.programLanguage;
+
+  /// The device's preferred languages, in its own order: what the running
+  /// app speaks by where its user has saved no language
+  /// ([AppLanguageSettings.ofDevice]) — asked by the launch before its
+  /// first frame, and by the session's restore.
+  ///
+  /// ⛔MUTANT SURVIVES: every test injects the device — one that read the
+  /// operating system would pass or fail by the machine it ran on — so
+  /// emptying this list stays green. It is the one line only the real app
+  /// exercises.
+  static Iterable<String> deviceLanguageCodes() => [
+    for (final locale in PlatformDispatcher.instance.locales)
+      locale.languageCode,
+  ];
 }
 
 /// PROGRAM-language strings (UI-R10 #7): what the app chrome reads in.

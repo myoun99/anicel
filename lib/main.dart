@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
+import 'src/models/app_language.dart';
 import 'src/native/app_kernels_ahead.dart';
 import 'src/native/device_battery.dart';
 import 'src/native/engine_refusals.dart';
@@ -69,10 +70,18 @@ Future<void> main(List<String> handedAtLaunch) async {
   // launch splash says what the launch is doing in the app's own language
   // (I-106, 2026-10-21), and it says it before the session exists. One
   // small file read; the session's restore then lands on the same value.
-  final language = await AppLanguageSettingsStore().load();
-  if (language != null) {
-    AppText.settings.value = language;
-  }
+  //
+  // 🚨THE DEVICE'S WHERE NONE IS SAVED, HERE TOO (F-157, 유저 2026-09-17:
+  // 「앱 기본 언어 설정값, 디바이스? 의 언어 설정 기준으로」). ↩️Till
+  // 2026-11-11 only a saved choice was spoken here, and the device's came
+  // with the session's restore: on a device that reads Japanese the splash
+  // stood in English, and so did the window the app waits for its engine
+  // behind, which reads its words at the first frame
+  // (gpu-canonical-store-Q15) — 9 s of it on a Surface Pro 11 (검증/서피스
+  // 2026-11-11 20:12).
+  AppText.settings.value =
+      await AppLanguageSettingsStore().load() ??
+      AppLanguageSettings.ofDevice(AppText.deviceLanguageCodes());
   await LaunchSplash.preparing(AppText.strings);
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
