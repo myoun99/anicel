@@ -5,7 +5,7 @@
 use super::Plugin;
 use super::abi::{
     Asked, CHANNELS, FIXED, WHOLE, gpu_engine_plugin_free, gpu_engine_plugin_open, gpu_engine_plugin_reach,
-    gpu_engine_plugin_render, share,
+    gpu_engine_plugin_render,
 };
 use super::tests::hashed;
 use crate::testing::{first_engine, last_error};
@@ -72,7 +72,7 @@ fn anicel_reach() -> u32 {
 const MOMENT: [f64; 4] = [7.0, 1.25, 24.0, 0.5];
 
 /// More than any of these plugins spends.
-const PLENTY: u64 = 1 << 40;
+const PLENTY: u32 = 1 << 30;
 
 /// A plugin opened through the ABI, freed when dropped.
 struct Opened(*mut Plugin);
@@ -88,10 +88,10 @@ impl Opened {
         Opened::new(source.as_bytes()).expect("the fixture opens")
     }
 
-    fn reach(&self, values: &[f64], kinds: &[u32], limit: u64, pixels: u64) -> Result<i64, String> {
+    fn reach(&self, values: &[f64], kinds: &[u32], share: u32) -> Result<i64, String> {
         // SAFETY: each holds what its count says.
         let reach = unsafe {
-            gpu_engine_plugin_reach(self.0, values.as_ptr(), kinds.as_ptr(), kinds.len(), MOMENT.as_ptr(), limit, pixels)
+            gpu_engine_plugin_reach(self.0, values.as_ptr(), kinds.as_ptr(), kinds.len(), MOMENT.as_ptr(), share)
         };
         if reach < 0 { Err(last_error()) } else { Ok(reach) }
     }
@@ -99,7 +99,7 @@ impl Opened {
     /// The plugin's picture of `pictures`' first over the rest as its
     /// layers, each its rect — its output started at a word no plugin
     /// writes here, so a pixel left keeps none of it.
-    fn render(&self, pictures: &[([i32; 4], Vec<u32>)], values: &[f64], kinds: &[u32], limit: u64) -> Result<Vec<u32>, String> {
+    fn render(&self, pictures: &[([i32; 4], Vec<u32>)], values: &[f64], kinds: &[u32], share: u32) -> Result<Vec<u32>, String> {
         let rects: Vec<i32> = pictures.iter().flat_map(|(rect, _)| *rect).collect();
         let pixels: Vec<u32> = pictures.iter().flat_map(|(_, pixels)| pixels.iter().copied()).collect();
         let [_, _, width, height] = pictures[0].0;
@@ -117,7 +117,7 @@ impl Opened {
                 kinds.as_ptr(),
                 kinds.len(),
                 MOMENT.as_ptr(),
-                limit,
+                share,
                 output.as_mut_ptr(),
             )
         };
@@ -183,45 +183,46 @@ fn a_word_past_an_i32_is_refused_by_name() {
 #[test]
 fn the_reach_reads_its_value_as_its_kind_says() {
     let blur = Opened::of(BLUR);
-    assert_eq!(blur.reach(&[3.4, 0.0, 0.0, 0.0], &[FIXED], PLENTY, 1), Ok(3));
-    assert_eq!(blur.reach(&[3.4, 0.0, 0.0, 0.0], &[WHOLE], PLENTY, 1), Ok(0), "3 is 3 / 65536 pixels in Q.16");
-    let cut = Opened::of(ENDLESS).reach(&[], &[], 100_000, 1);
+    assert_eq!(blur.reach(&[3.4, 0.0, 0.0, 0.0], &[FIXED], PLENTY), Ok(3));
+    assert_eq!(blur.reach(&[3.4, 0.0, 0.0, 0.0], &[WHOLE], PLENTY), Ok(0), "3 is 3 / 65536 pixels in Q.16");
+    let cut = Opened::of(ENDLESS).reach(&[], &[], 100_000);
     assert_eq!(cut, Err("the plugin's reach spent its share of 100000 and was cut".into()));
 }
 
-#[test]
-fn each_pixel_spends_the_limit_over_the_pixels() {
-    assert_eq!([share(10, 3), share(10, 0), share(u64::MAX, 1), share(7, 8)], [3, 10, u32::MAX, 0]);
-    let blur = Opened::of(BLUR);
-    let radius = [2.0, 0.0, 0.0, 0.0];
-    let draws = |width: i32, limit: u64| {
-        let picture = ([0, 0, width, 1], vec![0xFF80_4020; width as usize]);
-        blur.render(&[picture], &radius, &[FIXED], limit).is_ok()
-    };
-    // The fewest a pixel of this blur spends: a 1-pixel picture draws on
-    // it and not on one fewer.
+/// The fewest share `yes` answers yes on — no on none, yes on 2^20.
+fn fewest_that(yes: impl Fn(u32) -> bool) -> u32 {
     let (mut low, mut high) = (0, 1 << 20);
-    assert!(draws(1, high) && !draws(1, low));
+    assert!(yes(high) && !yes(low));
     while high - low > 1 {
         let mid = (low + high) / 2;
-        if draws(1, mid) { high = mid } else { low = mid }
+        if yes(mid) { high = mid } else { low = mid }
     }
-    assert!(draws(3, 3 * high), "three pixels, each the share one spent");
-    assert!(!draws(3, 3 * high - 1), "three pixels, one of them a share short");
+    high
 }
 
 #[test]
-fn the_reach_spends_the_share_of_one_of_the_pixels_it_is_named() {
+fn each_pixel_spends_the_share_it_is_given_however_many_there_are() {
+    // 🗣️an-endless-plugin-stalls-the-app-Q19: the same blur draws on the
+    // same share at any size — none of it is the limit over the pixels.
+    let blur = Opened::of(BLUR);
+    let radius = [2.0, 0.0, 0.0, 0.0];
+    let draws = |width: i32, share: u32| {
+        let picture = ([0, 0, width, 1], vec![0xFF80_4020; width as usize]);
+        blur.render(&[picture], &radius, &[FIXED], share).is_ok()
+    };
+    // The fewest a pixel of this blur spends: one pixel draws on it.
+    let fewest = fewest_that(|share| draws(1, share));
+    assert!(draws(300, fewest), "three hundred pixels, each the share one spent");
+    assert!(!draws(300, fewest - 1), "three hundred pixels, a charge short");
+}
+
+#[test]
+fn the_reach_spends_the_share_it_is_given() {
     let counted = Opened::of(COUNTED_REACH);
-    let answers = |limit: u64, pixels: u64| counted.reach(&[40.0, 0.0, 0.0, 0.0], &[WHOLE], limit, pixels);
-    let (mut low, mut high) = (0, 1 << 20);
-    assert_eq!((answers(high, 1), answers(low, 1).is_err()), (Ok(40), true));
-    while high - low > 1 {
-        let mid = (low + high) / 2;
-        if answers(mid, 1).is_ok() { high = mid } else { low = mid }
-    }
-    assert_eq!(answers(5 * high, 5), Ok(40), "five pixels, the share one spent");
-    assert!(answers(5 * high - 1, 5).is_err(), "five pixels, a share short");
+    let answers = |share: u32| counted.reach(&[40.0, 0.0, 0.0, 0.0], &[WHOLE], share);
+    let fewest = fewest_that(|share| answers(share).is_ok());
+    assert_eq!(answers(fewest), Ok(40));
+    assert!(answers(fewest - 1).is_err(), "a charge short");
 }
 
 #[test]

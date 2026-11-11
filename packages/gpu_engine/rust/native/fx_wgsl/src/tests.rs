@@ -160,9 +160,10 @@ fn the_endless_plugin_is_cut_in_its_reach_and_its_render() {
 
 /// The cost one turn of the counted text's first charge names.
 fn first_turn(kernel: &Kernel) -> u32 {
+    let turn = *kernel.turns().first().expect("a loop");
     let source = kernel.source();
-    let at = source.find("anicel_host_spend(").expect("a charge") + "anicel_host_spend(".len();
-    source[at..].split('u').next().expect("a number").parse().expect("the turn's cost")
+    assert!(source.contains(&format!("anicel_host_spend({turn}u)")), "the charge it writes:\n{source}");
+    turn as u32
 }
 
 #[test]
@@ -178,12 +179,95 @@ fn a_plugin_is_cut_at_the_one_turn_its_share_runs_out_at() {
 }
 
 #[test]
+fn a_kernel_says_each_loops_turn_in_the_order_they_are_written() {
+    // A helper's loop, the render's and the reach's — each a size of its
+    // own, so the order shows.
+    let kernel = opened(&plugin(
+        "fn helper(x: u32) -> u32 { var n = x; loop { n += 1u; if n > 9u { break; } } return n; }",
+        "var k = 0u;\nfor (var i = 0u; i < 3u; i++) { k += i * 3u + 1u; k ^= i; k = k * 5u + i; }\nanicel_out(k);",
+        "var n = 0u;\nwhile n < 2u { n += 1u; }\nreturn helper(n);",
+    ));
+    let turns = kernel.turns();
+    assert_eq!(turns.len(), 3, "{turns:?}");
+    let source = kernel.source();
+    let mut after = 0;
+    for turn in turns {
+        let at = source[after..].find(&format!("anicel_host_spend({turn}u)")).unwrap_or_else(|| {
+            panic!("{turn} after byte {after}:\n{source}");
+        });
+        after += at + 1;
+    }
+}
+
+#[test]
 fn every_loop_of_the_plugins_pays_and_the_render_enters_first() {
     let kernel = opened(BLUR);
     let source = kernel.source();
     let plugin_part = &source[..source.len() - PRELUDE.len()];
     assert_eq!(plugin_part.matches("anicel_host_spend(").count(), 2, "the blur's two loops:\n{plugin_part}");
-    assert!(plugin_part.contains("fn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) { anicel_host_enter(at);"));
+    assert!(
+        plugin_part.contains(
+            "fn anicel_render(@builtin(global_invocation_id) anicel_host_raw_at: vec3<u32>) { let at = \
+             anicel_host_raw_at + vec3<u32>(anicel_host_frame.chunk * vec2<u32>(16u, 16u), 0u); \
+             anicel_host_enter(at);"
+        ),
+        "{plugin_part}"
+    );
+}
+
+#[test]
+fn a_render_reads_its_ids_as_the_whole_run_has_them_in_any_chunk() {
+    // The device dispatches a run in chunks, each its first group in the
+    // frame: the ids the plugin reads are the undivided run's.
+    let ids = "@compute @workgroup_size(4, 2)\nfn anicel_render(@builtin(global_invocation_id) at: vec3<u32>, \
+               @builtin(workgroup_id) group: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {\n\
+               anicel_out(at.x | (at.y << 8u) | (group.x << 16u) | (group.y << 20u) | (groups.x << 24u) | (groups.y << 28u));\n}\n\
+               fn anicel_reach() -> u32 { return 0u; }";
+    let kernel = opened(ids);
+    let source = kernel.source();
+    for (name, taken) in [
+        ("at", "anicel_host_raw_at + vec3<u32>(anicel_host_frame.chunk * vec2<u32>(4u, 2u), 0u)"),
+        ("group", "anicel_host_raw_group + vec3<u32>(anicel_host_frame.chunk, 0u)"),
+        ("groups", "vec3<u32>((vec2<u32>(anicel_host_frame.out_size) + vec2<u32>(3u, 1u)) / vec2<u32>(4u, 2u), 1u)"),
+    ] {
+        assert!(source.contains(&format!("anicel_host_raw_{name}: vec3<u32>")), "{name} renamed:\n{source}");
+        assert!(source.contains(&format!("let {name} = {taken};")), "{name} taken again:\n{source}");
+    }
+    // Undivided, on the CPU: each pixel its own place, its group and the
+    // run's groups — 10 × 5 is 3 groups across and 3 down.
+    let input = vec![0u32; 50];
+    let frame = Frame { fuel: 10_000, ..picture([10, 5], 0, &input, &[], &[]) };
+    let mut output = vec![0u32; 50];
+    assert_eq!(kernel.render(&frame, &mut output), Ok(()));
+    for (at, &word) in output.iter().enumerate() {
+        let (x, y) = (at as u32 % 10, at as u32 / 10);
+        assert_eq!(word, x | y << 8 | (x / 4) << 16 | (y / 2) << 20 | 3 << 24 | 3 << 28, "at ({x}, {y})");
+    }
+}
+
+#[test]
+fn a_shift_takes_its_amount_mod_32_as_wgsl_has_it() {
+    // naga's SPIR-V and MSL writers hand an amount of 32 or more on as it
+    // is; WGSL takes it mod 32, and so does every device then. An amount
+    // written by name — a `let`, a `var`, an argument — is taken where it
+    // is used: the `let` keeps its value for its other uses.
+    let shifts = "fn by_argument(n: u32) -> u32 { return 1u << (n); }\n\
+                  @compute @workgroup_size(16, 16)\nfn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) {\n\
+                  let by = vec2<u32>(33u, 40u) + at.xy;\n\
+                  anicel_out((1u << by.x) | (0x80000000u >> (by.y >> (at.x + 1u))) | (vec2<u32>(2u) << by).y);\n}\n\
+                  fn anicel_reach() -> u32 {\n\
+                  var by = 35u; let far = 34u + by; var v = 1u << by; v <<= far; v |= by_argument(far);\n\
+                  return v + far * 1000u;\n}";
+    let kernel = opened(shifts);
+    let source = kernel.source();
+    let plugin_part = &source[..source.len() - PRELUDE.len()];
+    assert_eq!(plugin_part.matches(") % 32u)").count(), 7, "every amount it shifts by, nested ones too:\n{plugin_part}");
+    assert!(plugin_part.contains("1u << ((by.x) % 32u)"), "{plugin_part}");
+    assert!(plugin_part.contains("vec2<u32>(2u) << ((by) % 32u)"), "a vector's amount, by name:\n{plugin_part}");
+    assert!(plugin_part.contains("let by = vec2<u32>(33u, 40u) + at.xy;"), "a let as it is written:\n{plugin_part}");
+    assert!(plugin_part.contains("1u << (((n) % 32u))"), "an argument, where it is used:\n{plugin_part}");
+    // 1 << 35 is 8; 8 << 69 is 256; 1 << 69 is 32; far is 69 still.
+    assert_eq!(kernel.reach(&picture([1, 1], 0, &[0], &[], &[])), Ok(256 + 32 + 69_000));
 }
 
 #[test]
@@ -258,11 +342,11 @@ fn the_frame_crosses_member_by_member() {
     let names: Vec<_> = members.iter().map(|m| m.name.as_deref().unwrap_or("")).collect();
     assert_eq!(
         names,
-        ["out_origin", "out_size", "in_origin", "in_size", "rows", "values", "frame", "time_q16", "rate_q16", "scale_q16", "fuel", "spare"]
+        ["out_origin", "out_size", "in_origin", "in_size", "rows", "values", "frame", "time_q16", "rate_q16", "scale_q16", "fuel", "spare", "chunk"]
     );
     let offsets: Vec<_> = members.iter().map(|m| m.offset).collect();
-    assert_eq!(offsets, [0, 8, 16, 24, 32, 36, 40, 44, 48, 52, 56, 60]);
-    assert_eq!(span, 64);
+    assert_eq!(offsets, [0, 8, 16, 24, 32, 36, 40, 44, 48, 52, 56, 60, 64]);
+    assert_eq!(span, 72);
 }
 
 #[test]
@@ -287,7 +371,7 @@ fn a_frame_binds_its_words_as_the_prelude_reads_them() {
     let output = [42u32; 3];
     let word = |name: &str| frame.bound(name, &output).expect(name).into_owned();
     let signed = |words: &[i32]| words.iter().map(|&w| w as u32).collect::<Vec<_>>();
-    assert_eq!(word("anicel_host_frame"), signed(&[-3, 4, 5, 6, -7, 8, 3, 2, 2, 2, 9, -10, 11, 12, 13, 0]));
+    assert_eq!(word("anicel_host_frame"), signed(&[-3, 4, 5, 6, -7, 8, 3, 2, 2, 2, 9, -10, 11, 12, 13, 0, 0, 0]));
     assert_eq!(word("anicel_host_input"), input);
     assert_eq!(word("anicel_host_rows"), rows);
     assert_eq!(word("anicel_host_values"), signed(&[1, -2, 3, i32::MIN, 5, 6, 7, 8]));
@@ -308,9 +392,10 @@ fn a_kernel_names_the_bindings_its_render_reaches() {
     let values = (3, "anicel_host_values".to_string(), false, false);
     let rows = (4, "anicel_host_rows".to_string(), false, false);
     let cut = (5, "anicel_host_cut".to_string(), false, true);
-    assert_eq!(bindings(INVERT), [frame.clone(), input.clone(), output.clone()]);
-    assert_eq!(bindings(BLUR), [frame.clone(), input.clone(), output.clone(), values.clone(), cut]);
-    assert_eq!(bindings(LAYER), [frame, input, output, values, rows]);
+    // Every render reads the cut as it enters (prelude `anicel_host_enter`).
+    assert_eq!(bindings(INVERT), [frame.clone(), input.clone(), output.clone(), cut.clone()]);
+    assert_eq!(bindings(BLUR), [frame.clone(), input.clone(), output.clone(), values.clone(), cut.clone()]);
+    assert_eq!(bindings(LAYER), [frame, input, output, values, rows, cut]);
 }
 
 #[test]

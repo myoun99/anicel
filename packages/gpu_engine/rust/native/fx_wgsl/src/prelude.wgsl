@@ -23,6 +23,10 @@ struct AnicelFrame {
   scale_q16: i32,
   fuel: u32,
   spare: u32,
+  // The first group of the chunk this dispatch runs, across and down: a
+  // run is dispatched in chunks (gpu_engine's kernels/plugin), and the
+  // render's ids are the whole run's (count.rs adds this to them).
+  chunk: vec2<u32>,
 }
 
 @group(0) @binding(0) var<uniform> anicel_host_frame: AnicelFrame;
@@ -48,10 +52,15 @@ fn anicel_host_place(origin: vec2<i32>, size: vec2<i32>, x: i32, y: i32) -> i32 
   return py * size.x + px;
 }
 
-// Called first in `anicel_render` (count.rs puts the call there).
+// Called first in `anicel_render` (count.rs puts the call there). An
+// invocation that enters a run already cut has nothing to spend, so its
+// first charge cuts it (an-endless-plugin-stalls-the-app 11-10 16:44 ③):
+// the chunks after a cut cost a turn a pixel, not their share. ⛔No
+// `return` here — a branch before the plugin's barriers, which the
+// uniformity check refuses.
 fn anicel_host_enter(at: vec3<u32>) {
   anicel_host_here = anicel_host_frame.out_origin + vec2<i32>(at.xy);
-  anicel_host_fuel = anicel_host_frame.fuel;
+  anicel_host_fuel = select(anicel_host_frame.fuel, 0u, atomicLoad(&anicel_host_cut) != 0u);
 }
 
 // Called at the top of every loop of the plugin's with what one turn costs

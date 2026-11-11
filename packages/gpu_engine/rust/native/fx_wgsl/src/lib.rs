@@ -10,11 +10,12 @@
 //! pixels past each edge it reads; it reaches its pictures and values
 //! through the host's prelude (prelude.wgsl) alone.
 //!
-//! 🗣️Q1 · Q5: a plugin that does not end is cut, at the same place on every
-//! device. count.rs puts a charge at the top of every loop — the turn's
-//! size in IR, fixed by the source — against each invocation's share of
-//! the limit (limit ÷ pixels, Q5). Straight code is bounded by the
-//! program's size and WGSL has no recursion, so every invocation ends.
+//! 🗣️Q1 · Q19: a plugin that does not end is cut, at the same place on
+//! every device. count.rs puts a charge at the top of every loop — the
+//! turn's size in IR, fixed by the source — against each invocation's
+//! share: one pixel's, the setting itself (🗣️Q19, 유저 2026-11-10 16:36 —
+//! ↩️the limit over the pixels till then, Q5). Straight code is bounded by
+//! the program's size and WGSL has no recursion, so every invocation ends.
 //!
 //! The integer law (gpu-int-spec-canvas): no float anywhere — the values
 //! cross as integers once, on the CPU, and from there every device draws
@@ -50,7 +51,7 @@ mod tests;
 
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 
-pub use frame::{Bound, CUT, Cut, Frame, OUTPUT};
+pub use frame::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, OUTPUT};
 
 /// The host's prelude, appended after every plugin's source.
 pub const PRELUDE: &str = include_str!("prelude.wgsl");
@@ -106,12 +107,19 @@ pub struct Kernel {
     source: String,
     module: naga::Module,
     info: ModuleInfo,
+    turns: Vec<u64>,
 }
 
 impl Kernel {
     /// The counted WGSL — the plugin with its charges, then the prelude.
     pub fn source(&self) -> &str {
         &self.source
+    }
+
+    /// What one turn of each of the plugin's loops spends of an
+    /// invocation's share, in the order the loops are written.
+    pub fn turns(&self) -> &[u64] {
+        &self.turns
     }
 
     /// The counted module, validated.
@@ -144,10 +152,11 @@ pub fn open(plugin: &str) -> Result<Kernel, Refusal> {
     let whole = format!("{plugin}\n{PRELUDE}");
     let (module, info) = read(&whole, plugin)?;
     check::check(&module, &info, plugin)?;
-    let counted = format!("{}\n{PRELUDE}", count::count(&module, plugin));
+    let (counted, turns) = count::count(&module, plugin);
+    let counted = format!("{counted}\n{PRELUDE}");
     let (module, info) = read(&counted, &counted)
         .map_err(|refusal| Refusal::nowhere(format!("the host's counting broke the plugin: {refusal}")))?;
-    Ok(Kernel { source: counted, module, info })
+    Ok(Kernel { source: counted, module, info, turns })
 }
 
 /// Parses and validates `whole`, placing an error in `plugin` (its first

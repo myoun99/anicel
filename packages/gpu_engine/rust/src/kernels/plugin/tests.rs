@@ -6,7 +6,7 @@
 
 use fx_wgsl::{Cut, Frame, open};
 
-use super::Plugin;
+use super::{Pace, Plugin};
 use crate::kernels::shared::{Encoded, encode, pipeline_or_why, whole};
 use crate::testing::first_engine;
 
@@ -83,7 +83,13 @@ fn first_apart(size: [i32; 2], gpu: &[u32], cpu: &[u32]) -> Option<(i32, i32, u3
 fn assert_alike(name: &str, given: &Given, source: &str) -> Result<(), Cut> {
     let [(gpu, gpu_cut), (cpu, cpu_cut)] = both(source, given);
     assert_eq!(gpu_cut, cpu_cut, "{name}: cut on one run alone");
-    assert_eq!(first_apart(given.size, &gpu, &cpu), None, "{name}: (x, y, device, CPU)");
+    // A cut run's words are no picture — the host keeps none of them — and
+    // an invocation that enters once the run is cut is handed no share
+    // (prelude `anicel_host_enter`, Q19 ③), so what each drew before the
+    // cut reached it is the order the two ran their invocations in.
+    if gpu_cut.is_ok() {
+        assert_eq!(first_apart(given.size, &gpu, &cpu), None, "{name}: (x, y, device, CPU)");
+    }
     gpu_cut
 }
 
@@ -91,16 +97,7 @@ fn assert_alike(name: &str, given: &Given, source: &str) -> Result<(), Cut> {
 fn every_fixture_draws_on_the_device_what_the_cpu_draws() {
     // 37 × 23 leaves every workgroup shape a part group at the right and
     // the bottom; the blur's reach is its value's radius.
-    let size = [37, 23];
-    let fixtures: [(&str, &str, Given); 6] = [
-        ("invert", INVERT, Given::new(size, 0, &[])),
-        ("blur", BLUR, Given::new(size, 3, &[[3 << 16, 0, 0, 0]])),
-        ("layer", LAYER, Given::new(size, 0, &[[1, 0, 0, 0]])),
-        ("row blur", ROW_BLUR, Given::new(size, 0, &[])),
-        ("histogram", HISTOGRAM, Given::new(size, 0, &[])),
-        ("group sum", GROUP_SUM, Given::new(size, 0, &[])),
-    ];
-    for (name, source, given) in &fixtures {
+    for (name, source, given) in &fixtures([37, 23]) {
         assert_eq!(assert_alike(name, given, source), Ok(()), "{name}: not cut");
     }
 }
@@ -264,4 +261,114 @@ fn a_big_plugin_compiles_whatever_thread_asks() {
     let small = std::thread::Builder::new().stack_size(1 << 20);
     let opened = small.spawn(move || Plugin::open(first_engine(), kernel).map(|_| ())).expect("a thread").join();
     assert_eq!(opened.expect("the asking thread lived"), Ok(()));
+}
+
+/// The fixtures, each with what it is handed over `size`.
+fn fixtures(size: [i32; 2]) -> [(&'static str, &'static str, Given); 6] {
+    [
+        ("invert", INVERT, Given::new(size, 0, &[])),
+        ("blur", BLUR, Given::new(size, 3, &[[3 << 16, 0, 0, 0]])),
+        ("layer", LAYER, Given::new(size, 0, &[[1, 0, 0, 0]])),
+        ("row blur", ROW_BLUR, Given::new(size, 0, &[])),
+        ("histogram", HISTOGRAM, Given::new(size, 0, &[])),
+        ("group sum", GROUP_SUM, Given::new(size, 0, &[])),
+    ]
+}
+
+/// Every pixel's ids, as one dispatch of the whole would hand them.
+const IDS: &str = "@compute @workgroup_size(4, 2)\n\
+fn anicel_render(@builtin(global_invocation_id) at: vec3<u32>, @builtin(workgroup_id) group: vec3<u32>,\n\
+                 @builtin(num_workgroups) groups: vec3<u32>, @builtin(local_invocation_id) inside: vec3<u32>) {\n\
+  anicel_out(at.x | at.y << 6u | group.x << 12u | group.y << 16u | groups.x << 20u | groups.y << 24u\n\
+             | inside.x << 28u | inside.y << 30u);\n\
+}\n\
+fn anicel_reach() -> u32 { return 0u; }";
+
+/// `source`'s picture and cut from the device in chunks of `most`
+/// workgroups and from the CPU.
+fn both_in_chunks(source: &str, given: &Given, most: u64) -> [(Vec<u32>, Result<(), Cut>); 2] {
+    let engine = first_engine();
+    let kernel = open(source).unwrap_or_else(|refusal| panic!("refused: {refusal}"));
+    let frame = given.frame();
+    let start = hashed((given.size[0] * given.size[1]) as usize, 3);
+    let mut cpu = start.clone();
+    let cpu_cut = kernel.render(&frame, &mut cpu);
+    let plugin = Plugin::open(engine, kernel).unwrap_or_else(|why| panic!("the device refused: {why}"));
+    let mut gpu = start;
+    let gpu_cut = plugin.run(engine, &frame, &mut gpu, most).expect("the device ran it");
+    [(gpu, gpu_cut), (cpu, cpu_cut)]
+}
+
+#[test]
+fn a_run_in_chunks_draws_what_the_cpu_draws_in_one() {
+    // 37 × 23 is 3 × 2 groups of 16 × 16 (and 5 × 6 of 8 × 4): one group a
+    // chunk, a part of a row, a row and a part, and rows.
+    for most in [1, 2, 4, 7] {
+        for (name, source, given) in &fixtures([37, 23]) {
+            let [(gpu, gpu_cut), (cpu, cpu_cut)] = both_in_chunks(source, given, most);
+            assert_eq!((gpu_cut, cpu_cut), (Ok(()), Ok(())), "{name} in chunks of {most}");
+            assert_eq!(first_apart(given.size, &gpu, &cpu), None, "{name} in chunks of {most}: (x, y, device, CPU)");
+        }
+    }
+}
+
+#[test]
+fn a_run_in_chunks_hands_the_render_the_ids_of_one_dispatch() {
+    // 13 × 7 is 4 × 4 groups of 4 × 2, the last of each a part one.
+    let given = Given::new([13, 7], 0, &[]);
+    for most in [1, 3, 5, 16] {
+        let [(gpu, _), (cpu, _)] = both_in_chunks(IDS, &given, most);
+        assert_eq!(first_apart(given.size, &gpu, &cpu), None, "in chunks of {most}: (x, y, device, CPU)");
+        assert_eq!(gpu[13 * 6 + 12] >> 20 & 0xff, 4 | 4 << 4, "the run's groups, in chunks of {most}");
+    }
+}
+
+#[test]
+fn an_endless_plugin_in_chunks_is_cut() {
+    let mut given = Given::new([19, 7], 0, &[]);
+    given.fuel = 5_000;
+    for most in [1, 2] {
+        let [(_, gpu_cut), (_, cpu_cut)] = both_in_chunks(ENDLESS, &given, most);
+        assert_eq!((gpu_cut, cpu_cut), (Err(Cut), Err(Cut)), "in chunks of {most}");
+    }
+}
+
+#[test]
+fn every_group_lies_in_one_chunk_of_no_more_than_the_most() {
+    for groups in [[1, 1], [3, 2], [5, 6], [240, 135]] {
+        for most in [1, 2, 3, 5, 7, 240, 241, 500, u64::MAX] {
+            let mut covered = vec![0; (groups[0] * groups[1]) as usize];
+            for ([left, top], [wide, high]) in super::chunks(groups, most) {
+                assert!(u64::from(wide * high) <= most.max(1), "{groups:?} by {most}: {wide} × {high}");
+                for y in top..top + high {
+                    for x in left..left + wide {
+                        covered[(y * groups[0] + x) as usize] += 1;
+                    }
+                }
+            }
+            assert!(covered.iter().all(|&times| times == 1), "{groups:?} by {most}: {covered:?}");
+        }
+    }
+    assert!(super::chunks([0, 4], 3).is_empty());
+}
+
+#[test]
+fn a_chunk_holds_what_finishes_within_the_budget_at_the_whole_share() {
+    // 🔬The Surface Pro 11's pace (11-11 11:22): 6.4 ns a charge on a lane
+    // alone, 2.5 ps over a pixel of a full device; groups of 16 × 16.
+    let pace = Pace::new(6.4e-9, 2.5e-12);
+    assert_eq!(pace.chunk(10_000, 256), 15_625, "0.1 s over 10⁴ × 2.5 ps × 256");
+    assert_eq!(pace.chunk(1_000_000, 256), 156, "the default share");
+    assert_eq!(pace.chunk(100_000_000, 256), 10, "a lane alone takes 0.64 s: as many as finish with it");
+    assert_eq!(pace.chunk(0, 256), pace.chunk(1, 256), "a share of none is spent as one");
+    assert_eq!(Pace::new(1.0, 1.0).chunk(u32::MAX, 256), 1, "one group at the least");
+}
+
+#[test]
+fn the_engines_pace_is_measured_once() {
+    let engine = first_engine();
+    let pace = Pace::of(engine).expect("measured");
+    assert!(pace.chunk(1_000_000, 256) >= 1);
+    assert_eq!(engine.plugin_pace.get(), Some(&pace), "kept on the engine");
+    assert_eq!(Pace::of(engine), Some(pace));
 }

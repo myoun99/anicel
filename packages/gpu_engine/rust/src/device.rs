@@ -38,6 +38,9 @@ pub struct Engine {
     pub(crate) kernels: Kernels,
     /// When what is compiled apart may take the compiler ([`Apart`]).
     pub(crate) apart: Apart,
+    /// How fast the device spends a plugin's share, once a plugin first
+    /// ran (kernels/plugin's `Pace`).
+    pub(crate) plugin_pace: OnceLock<crate::kernels::plugin::Pace>,
 }
 
 /// What one of the engine's kernels is compiled of: its sources joined, its
@@ -275,6 +278,7 @@ impl Engine {
                     compiling,
                     kernels: Kernels::default(),
                     apart: Apart::default(),
+                    plugin_pace: OnceLock::new(),
                     instance,
                     adapter,
                     device,

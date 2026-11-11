@@ -15,6 +15,14 @@ pub const OUTPUT: &str = "anicel_host_output";
 /// The prelude's binding a cut run is marked in.
 pub const CUT: &str = "anicel_host_cut";
 
+/// The prelude's binding [`Frame`] is laid in.
+pub const FRAME: &str = "anicel_host_frame";
+
+/// Where in [`FRAME`]'s words the first group of the chunk a dispatch
+/// runs lies, across then down — the prelude's `AnicelFrame.chunk`, 0 0
+/// where a run is one dispatch.
+pub const CHUNK_WORD: usize = 16;
+
 /// The pictures, values and moment one run is handed — what the GPU's
 /// bindings hold (prelude.wgsl's `AnicelFrame` and buffers). Places are
 /// canvas pixels; a picture is one straight RGBA8 word a pixel, row by row.
@@ -63,7 +71,7 @@ impl<'a> Frame<'a> {
         'a: 'b,
     {
         match name {
-            "anicel_host_frame" => Some(Cow::Owned(self.words())),
+            FRAME => Some(Cow::Owned(self.words())),
             "anicel_host_input" => Some(Cow::Borrowed(self.input)),
             "anicel_host_rows" => Some(Cow::Borrowed(self.rows)),
             "anicel_host_values" => Some(Cow::Owned(self.values.iter().flatten().map(|&w| w as u32).collect())),
@@ -99,7 +107,7 @@ impl<'a> Frame<'a> {
             self.rate_q16,
             self.scale_q16,
         ];
-        signed.iter().map(|&w| w as u32).chain([self.fuel, 0]).collect()
+        signed.iter().map(|&w| w as u32).chain([self.fuel, 0, 0, 0]).collect()
     }
 }
 

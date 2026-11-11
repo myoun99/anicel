@@ -97,12 +97,6 @@ fn fixed(x: f64, k: u32, what: impl FnOnce() -> String) -> Option<i32> {
     }
 }
 
-/// What each of `pixels` invocations may spend of `limit` (Q5: the same
-/// share a pixel), at most a word's.
-pub(crate) fn share(limit: u64, pixels: u64) -> u32 {
-    (limit / pixels.max(1)).min(u64::from(u32::MAX)) as u32
-}
-
 /// The pictures — each `rects`' (left, top, width, height), their pixels
 /// one after another in `pixels` — laid on `on`'s grid, a plane each, as
 /// `anicel_row` reads them: transparent where a picture has no pixel.
@@ -173,8 +167,8 @@ pub unsafe extern "C" fn gpu_engine_plugin_free(plugin: *mut Plugin) {
 /// `count` values — four doubles each in `values`, its kind in `kinds`
 /// ([`WHOLE`], [`FIXED`] or [`CHANNELS`]) — at `moment`'s four (the
 /// frame's number, its time in seconds, the frames a second, the output
-/// pixels a canvas pixel), the reach's share that of one of `pixels`
-/// invocations of `limit` (Q5); -1 where a value does not fit or the reach
+/// pixels a canvas pixel), on `share` — an invocation's, as a pixel's is
+/// (the reach is a call too); -1 where a value does not fit or the reach
 /// spent its share (the last error says).
 ///
 /// # Safety
@@ -187,8 +181,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_reach(
     kinds: *const u32,
     count: usize,
     moment: *const f64,
-    limit: u64,
-    pixels: u64,
+    share: u32,
 ) -> i64 {
     // SAFETY: see the function's contract.
     let (plugin, values, kinds, moment) = unsafe {
@@ -202,10 +195,10 @@ pub unsafe extern "C" fn gpu_engine_plugin_reach(
     let Some(asked) = Asked::new(values, kinds, moment) else {
         return -1;
     };
-    match plugin.reach(&asked.frame([0; 4], share(limit, pixels), &[], &[])) {
+    match plugin.reach(&asked.frame([0; 4], share, &[], &[])) {
         Ok(reach) => i64::from(reach),
         Err(Cut) => {
-            fail::<()>(format!("the plugin's reach spent its share of {limit} and was cut"));
+            fail::<()>(format!("the plugin's reach spent its share of {share} and was cut"));
             -1
         }
     }
@@ -217,9 +210,14 @@ pub unsafe extern "C" fn gpu_engine_plugin_reach(
 /// first's size and place, transparent where the render writes none. The
 /// pictures after the first are the layers its layer values name, by
 /// slot. The values and moment are as `gpu_engine_plugin_reach` takes
-/// them; each pixel's share is one of `limit` (Q5). 0 where it drew, -1
-/// where a value does not fit, the run was cut or the device failed (the
-/// last error says).
+/// them; each pixel's share is `share`, however many there are. 0 where it
+/// drew, -1 where a value does not fit, the run was cut or the device
+/// failed (the last error says).
+///
+/// 🗣️an-endless-plugin-stalls-the-app-Q19 (유저 2026-11-10 16:36): 「화소
+/// 하나의 몫으로 고정하고, 그리기를 덩어리로 나눠 넘긴다」 — ↩️the share was
+/// the limit over the pixels (Q5) till then, so the same plugin was cut
+/// first on the biggest picture: a 3×3 blur was all a 4K frame allowed.
 ///
 /// # Safety
 /// `plugin` and `engine` are live, `plugin` opened on `engine`; `rects`
@@ -237,7 +235,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_render(
     kinds: *const u32,
     count: usize,
     moment: *const f64,
-    limit: u64,
+    share: u32,
     output: *mut u32,
 ) -> i32 {
     // SAFETY: see the function's contract.
@@ -264,12 +262,12 @@ pub unsafe extern "C" fn gpu_engine_plugin_render(
     };
     let (input, layered) = pixels.split_at(areas[0]);
     let rows = planes(layered, &rects[1..], rects[0]);
-    let frame = asked.frame(rects[0], share(limit, areas[0] as u64), input, &rows);
+    let frame = asked.frame(rects[0], share, input, &rows);
     output.fill(0);
     match plugin.render(engine, &frame, output) {
         Some(Ok(())) => 0,
         Some(Err(Cut)) => {
-            fail::<()>(format!("the plugin spent each pixel's share of {limit} and was cut"));
+            fail::<()>(format!("the plugin spent each pixel's share of {share} and was cut"));
             -1
         }
         None => -1,
