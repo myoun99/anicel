@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'canvas_point.dart';
 import 'canvas_size.dart';
 import 'effect_parameter_spec.dart';
@@ -647,7 +648,7 @@ enum EffectKind {
 
 /// The kinds added as themselves ([EffectKind.addedByItsKind]), in their
 /// order — the Fx list's own rows and the actions that press them.
-final List<EffectKind> effectKindsAddedAlone = List.unmodifiable([
+final List<EffectKind> effectKindsAddedAlone = frozenList([
   for (final kind in EffectKind.values)
     if (kind.addedByItsKind) kind,
 ]);
@@ -834,7 +835,7 @@ class LayerEffect {
   }) : plugin = kind == EffectKind.plugin
            ? ArgumentError.checkNotNull(plugin, 'plugin')
            : null,
-       parameters = Map.unmodifiable({
+       parameters = frozenMapOrSame(parameters, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit != EffectParameterUnit.color &&
                spec.unit != EffectParameterUnit.point &&
@@ -843,17 +844,17 @@ class LayerEffect {
                  parameters?[spec.id] ??
                  EffectParameter(value: spec.defaultValue),
        }),
-       colors = Map.unmodifiable({
+       colors = frozenMapOrSame(colors, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.color)
              spec.id: colors?[spec.id] ?? PropertyTrack<int>.empty(),
        }),
-       points = Map.unmodifiable({
+       points = frozenMapOrSame(points, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.point)
              spec.id: points?[spec.id] ?? TransformTrack.empty(),
        }),
-       layers = Map.unmodifiable({
+       layers = frozenMapOrSame(layers, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.layer)
              spec.id: layers?[spec.id],
@@ -1199,9 +1200,9 @@ class ResolvedLayerEffect {
     this.frame,
     this.worn,
     this.run,
-  }) : values = List.unmodifiable(values),
-       points = Map.unmodifiable(points),
-       layers = Map.unmodifiable(layers);
+  }) : values = frozenList(values),
+       points = frozenMap(points),
+       layers = frozenMap(layers);
 
   final EffectKind kind;
 
@@ -1481,7 +1482,7 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     }
     resolved.add(sample);
   }
-  return resolved.isEmpty ? const [] : List.unmodifiable(resolved);
+  return resolved.isEmpty ? const [] : frozenList(resolved);
 }
 
 /// [effect] sampled at [frameIndex] — every lane, whether or not the

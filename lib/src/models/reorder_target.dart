@@ -27,6 +27,8 @@
 /// what that order should be.
 library;
 
+import '../core/frozen_collections.dart';
+
 /// A [slot] read as a target.
 ///
 /// Use this at the boundary where a caret between rows becomes a position,
@@ -82,7 +84,7 @@ List<T> movedBefore<T>(
   ];
   final at = anchor == null ? -1 : remaining.indexOf(anchor);
   final insertIndex = at < 0 ? remaining.length : at;
-  return List<T>.unmodifiable([
+  return frozenList<T>([
     ...remaining.take(insertIndex),
     moved,
     ...remaining.skip(insertIndex),

@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
 import 'export_overrides.dart';
@@ -83,12 +84,12 @@ class Project {
     ExportProjectOverrides? exportOverrides,
     MediaViewerBookmarks mediaViewerBookmarks = const {},
     List<ProjectFontFile> fonts = const [],
-  }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
-       fonts = List.unmodifiable(fonts),
+  }) : mediaViewerBookmarks = frozenMap(mediaViewerBookmarks),
+       fonts = frozenList(fonts),
        // A project is given its timelines, or the tracks of its one.
        assert(timelines == null || (tracks == null && trailingFrames == 0)),
        assert(timelines?.isNotEmpty ?? tracks != null),
-       timelines = List.unmodifiable(
+       timelines = frozenList(
          timelines ??
              [
                ProjectTimeline(

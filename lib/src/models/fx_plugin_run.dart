@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../core/frozen_collections.dart';
 import 'bitmap_surface.dart';
 import 'layer_id.dart';
 
@@ -65,7 +66,7 @@ final class FxPluginRun {
     required this.moment,
     required Map<LayerId, BitmapSurface?> rows,
     this.told,
-  }) : rows = Map.unmodifiable(rows);
+  }) : rows = frozenMap(rows);
 
   final FxPluginRunner runner;
   final FxPluginMoment moment;

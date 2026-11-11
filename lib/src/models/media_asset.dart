@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/frozen_collections.dart';
 import '../core/path_names.dart' show fileNameOfPath, pathHash;
 import 'media_identity.dart';
 
@@ -610,5 +611,5 @@ void validateMediaAssetPaths(List<MediaAsset> assets) {
 /// Immutable validated copy of [assets].
 List<MediaAsset> immutableMediaAssetList(List<MediaAsset> assets) {
   validateMediaAssetPaths(assets);
-  return List.unmodifiable(assets);
+  return frozenList(assets);
 }

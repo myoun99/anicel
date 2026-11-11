@@ -1,6 +1,7 @@
 import 'dart:math' show max;
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'timeline_id.dart';
 import 'track.dart';
 
@@ -32,7 +33,7 @@ class ProjectTimeline {
     this.name,
     required List<Track> tracks,
     int trailingFrames = 0,
-  }) : tracks = List.unmodifiable(tracks),
+  }) : tracks = frozenList(tracks),
        trailingFrames = trailingFrames < 0 ? 0 : trailingFrames;
 
   final TimelineId id;

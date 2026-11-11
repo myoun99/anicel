@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'bitmap_tile.dart';
 import 'canvas_point.dart';
 import 'text_cel_style.dart';
@@ -112,8 +113,8 @@ class CelTextContent {
     this.letterWidth = 1,
     this.backgroundColor,
     this.vertical = false,
-  }) : spans = List.unmodifiable(_settled(spans)),
-       paragraphs = List.unmodifiable(
+  }) : spans = frozenList(_settled(spans)),
+       paragraphs = frozenList(
          paragraphs ??
              List.filled(
                _paragraphCountOf(spans),
@@ -330,7 +331,9 @@ class CelTextContent {
       }
       settled.add(span);
     }
-    return settled;
+    // Nothing dropped and nothing joined: the runs as they came, so
+    // a content handed its own runs back keeps them.
+    return settled.length == spans.length ? spans : settled;
   }
 
   CelTextContent copyWith({
@@ -479,7 +482,7 @@ class CelText {
     required this.id,
     required this.content,
     Map<TileCoord, BitmapTile> plate = const {},
-  }) : plate = Map<TileCoord, BitmapTile>.unmodifiable(plate);
+  }) : plate = frozenMap<TileCoord, BitmapTile>(plate);
 
   /// Which text of its cel this is. A text keeps it through every edit, so
   /// the tool's selection and the settings' list name the same one before

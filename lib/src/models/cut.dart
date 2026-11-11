@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'canvas_size.dart';
 import 'cut_camera.dart';
 import 'cut_id.dart';
@@ -19,7 +20,7 @@ class Cut {
     CutCamera? camera,
     CutGuides? guides,
   }) : assert(leadingGapFrames >= 0),
-       layers = List.unmodifiable(layers),
+       layers = frozenList(layers),
        camera = camera ?? CutCamera.empty(),
        guides = guides ?? CutGuides.empty;
 

@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'brush_frame_key.dart';
 import 'cut_id.dart';
 import 'cut_sync.dart';
@@ -57,7 +58,7 @@ class LayerLinkMember {
 /// and writes resolve to it.
 class LayerLinkGroup {
   LayerLinkGroup({required this.id, required List<LayerLinkMember> members})
-    : members = List.unmodifiable(members) {
+    : members = frozenList(members) {
     if (members.isEmpty) {
       throw ArgumentError.value(
         members,
@@ -125,8 +126,8 @@ class LayerLinkRegistry {
   LayerLinkRegistry({
     List<LayerLinkGroup> groups = const [],
     List<CutSync> syncs = const [],
-  }) : groups = List.unmodifiable(groups),
-       syncs = List.unmodifiable(syncs);
+  }) : groups = frozenList(groups),
+       syncs = frozenList(syncs);
 
   static final LayerLinkRegistry empty = LayerLinkRegistry();
 

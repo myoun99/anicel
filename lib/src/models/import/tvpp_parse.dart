@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../../core/byte_needle.dart';
+import '../../core/frozen_collections.dart';
 import 'tvp_import_model.dart';
 import 'tvpp_key_value_lines.dart';
 import 'import_warning.dart';
@@ -585,9 +586,9 @@ TvppClip _parseClip(
         visible: header == null || field(7) & 1 == 0,
         collapsed: header != null && field(11) & 0xFFFF == 1,
         locked: field(7) & 0x10 != 0,
-        slots: List.unmodifiable(slots),
-        ctgSecondStream: List.unmodifiable(secondStream),
-        instanceNames: Map.unmodifiable(instanceNames),
+        slots: frozenList(slots),
+        ctgSecondStream: frozenList(secondStream),
+        instanceNames: frozenMap(instanceNames),
       ),
     );
     name = null;
@@ -758,8 +759,8 @@ TvppClip _parseClip(
     height: height,
     frameRate: frameRate,
     pixelAspectRatio: pixelAspectRatio,
-    layers: List.unmodifiable(layers),
-    imageMarks: List.unmodifiable(marks),
+    layers: frozenList(layers),
+    imageMarks: frozenList(marks),
     cameraPoints: _cameraPoints(cameraDataText),
     cameraDataText: cameraDataText,
     audioTracks: audioTracks,
@@ -793,7 +794,7 @@ List<TvppAudioTrack> _audioTracks(String fcfgText) {
       ),
     );
   }
-  return List.unmodifiable(tracks);
+  return frozenList(tracks);
 }
 
 String _printable(Uint8List bytes, int at, int length) {

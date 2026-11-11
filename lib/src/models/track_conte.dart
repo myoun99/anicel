@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
+import '../core/frozen_collections.dart';
 import 'attached_mode.dart';
 import 'conte_key.dart';
 import 'fx_basis.dart';
@@ -46,8 +47,8 @@ final class TrackConte {
     this.base,
     List<ConteEntry> below = const [],
     List<ConteEntry> above = const [],
-  }) : below = List.unmodifiable(below),
-       above = List.unmodifiable(above);
+  }) : below = frozenList(below),
+       above = frozenList(above);
 
   /// A track no conte has stood on.
   static final TrackConte none = TrackConte();

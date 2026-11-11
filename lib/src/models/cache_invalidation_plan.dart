@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import '../core/comparing_by_keys.dart';
+import '../core/frozen_collections.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
 import 'layer_tile_cache_key.dart';
@@ -15,7 +16,7 @@ import 'dirty_tile_set.dart';
 /// canvas's own pictures).
 class CacheInvalidationPlan {
   CacheInvalidationPlan({Iterable<LayerTileCacheKey> layerTiles = const []})
-    : _layerTiles = Set<LayerTileCacheKey>.unmodifiable(layerTiles);
+    : _layerTiles = frozenSet<LayerTileCacheKey>(layerTiles);
 
   factory CacheInvalidationPlan.empty() => CacheInvalidationPlan();
 
@@ -37,7 +38,9 @@ class CacheInvalidationPlan {
 
   final Set<LayerTileCacheKey> _layerTiles;
 
-  Set<LayerTileCacheKey> get layerTiles => Set.unmodifiable(_layerTiles);
+  /// The keys, read-only: the field itself, which the constructor froze
+  /// — a copy here per read was [DirtyTileSet.coords]'s defect.
+  Set<LayerTileCacheKey> get layerTiles => _layerTiles;
 
   bool get isEmpty => _layerTiles.isEmpty;
 

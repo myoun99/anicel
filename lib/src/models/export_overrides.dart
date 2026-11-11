@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'cut_id.dart';
 import 'export_cel_kind.dart';
 import 'frame_id.dart';
@@ -34,12 +35,12 @@ class ExportCelsCutDelta {
     Set<ExportCelRef> cameraOver = const {},
     Set<ExportCelRef> guidesOver = const {},
     Set<ExportDocumentPage> skippedPages = const {},
-  }) : layerOverrides = Map.unmodifiable(layerOverrides),
-       skippedCels = Set.unmodifiable(skippedCels),
-       directionOver = Set.unmodifiable(directionOver),
-       cameraOver = Set.unmodifiable(cameraOver),
-       guidesOver = Set.unmodifiable(guidesOver),
-       skippedPages = Set.unmodifiable(skippedPages);
+  }) : layerOverrides = frozenMap(layerOverrides),
+       skippedCels = frozenSet(skippedCels),
+       directionOver = frozenSet(directionOver),
+       cameraOver = frozenSet(cameraOver),
+       guidesOver = frozenSet(guidesOver),
+       skippedPages = frozenSet(skippedPages);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
   /// NAMES are not unique, ids are. A non-empty map is what makes the
@@ -321,8 +322,8 @@ class ExportProjectOverrides {
   ExportProjectOverrides({
     Set<CutId> excludedCutIds = const {},
     Map<CutId, ExportCelsCutDelta> celsCutDeltas = const {},
-  }) : excludedCutIds = Set.unmodifiable(excludedCutIds),
-       celsCutDeltas = Map.unmodifiable({
+  }) : excludedCutIds = frozenSet(excludedCutIds),
+       celsCutDeltas = frozenMapOrSame(celsCutDeltas, {
          for (final entry in celsCutDeltas.entries)
            if (!entry.value.isEmpty) entry.key: entry.value,
        });

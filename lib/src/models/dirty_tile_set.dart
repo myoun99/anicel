@@ -1,10 +1,11 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'dirty_region.dart';
 import 'tile_coord.dart';
 
 class DirtyTileSet {
   DirtyTileSet([Iterable<TileCoord> coords = const []])
-    : _coords = Set<TileCoord>.unmodifiable(coords);
+    : _coords = frozenSet<TileCoord>(coords);
 
   factory DirtyTileSet.empty() => DirtyTileSet();
 

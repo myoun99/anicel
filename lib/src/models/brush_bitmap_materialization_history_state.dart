@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'brush_bitmap_materialization_history_entry.dart';
 
 /// Internal session-local bitmap materialization undo/redo state.
@@ -11,10 +12,10 @@ class BrushBitmapMaterializationHistoryState {
   BrushBitmapMaterializationHistoryState({
     Iterable<BrushBitmapMaterializationHistoryEntry> undoEntries = const [],
     Iterable<BrushBitmapMaterializationHistoryEntry> redoEntries = const [],
-  }) : _undoEntries = List<BrushBitmapMaterializationHistoryEntry>.unmodifiable(
+  }) : _undoEntries = frozenList<BrushBitmapMaterializationHistoryEntry>(
          undoEntries,
        ),
-       _redoEntries = List<BrushBitmapMaterializationHistoryEntry>.unmodifiable(
+       _redoEntries = frozenList<BrushBitmapMaterializationHistoryEntry>(
          redoEntries,
        );
 

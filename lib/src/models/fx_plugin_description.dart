@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../core/frozen_collections.dart';
 import 'effect_parameter_spec.dart';
 
 /// What an fx plugin says of itself — its description (sdk/fx/anicel-fx),
@@ -78,8 +79,8 @@ final class FxPluginDescription {
         name: name,
         vendor: vendor,
         version: version,
-        can: List.unmodifiable(canDo),
-        parameters: List.unmodifiable(parameters),
+        can: frozenList(canDo),
+        parameters: frozenList(parameters),
       );
     }
     return null;
@@ -214,7 +215,7 @@ final class FxPluginDescription {
       id: id,
       label: label,
       ownWords: true,
-      choices: List.unmodifiable(choices),
+      choices: frozenList(choices),
       defaultValue: initial,
     );
   }

@@ -1,3 +1,4 @@
+import '../core/frozen_collections.dart';
 import 'layer.dart';
 
 /// The rows [band] is made of — what a drag in flight re-reads it from
@@ -17,7 +18,7 @@ List<Layer>? folderBandRowsOf(Layer band) => _bandRows[band];
 /// Notes that [band] stands for [rows] — as it is made, and again whenever
 /// it is kept for rows that hold as its did (`FolderBands`).
 void folderBandStandsFor(Layer band, Iterable<Layer> rows) =>
-    _bandRows[band] = List.unmodifiable(rows);
+    _bandRows[band] = frozenList(rows);
 
 /// The rows each band stands for, held weakly like the bands themselves.
 final Expando<List<Layer>> _bandRows = Expando('folder band rows');

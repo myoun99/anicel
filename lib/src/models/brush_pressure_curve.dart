@@ -15,6 +15,8 @@ library;
 
 import 'dart:math' as math;
 
+import '../core/frozen_collections.dart';
+
 /// Which brush setting a curve drives.
 ///
 /// [roundness] and [spacing] joined size, opacity, flow and hardness with
@@ -91,7 +93,7 @@ class BrushPressureCurve {
     List<BrushCurvePoint> points, {
     this.minimum = 0.0,
     this.maximum = 1.0,
-  }) : points = List.unmodifiable(points) {
+  }) : points = frozenList(points) {
     if (!maximum.isFinite || maximum < 1.0) {
       throw ArgumentError.value(
         maximum,

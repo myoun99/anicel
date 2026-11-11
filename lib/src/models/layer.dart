@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
+import '../core/frozen_collections.dart';
 import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
@@ -67,7 +68,7 @@ class Layer {
     Map<FrameId, FrameId> baseFrameLinks = const {},
     this.folderId,
     this.conteKey,
-  }) : frames = List.unmodifiable(
+  }) : frames = frozenList(
          _spansLaidAsBlocks(kind, id, frames, timeline, instructions).frames,
        ),
        timeline = _immutableTimeline(
@@ -76,16 +77,16 @@ class Layer {
        _storedInstructions = immutableInstructionMap(
          kind.spansRideBlocks ? const {} : instructions ?? const {},
        ),
-       audioClips = List.unmodifiable(audioClips),
+       audioClips = frozenList(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
        // ⛔NOT NORMALIZED. 유저 2026-08-27: 「ae는 순서 자유잖아. 자유롭게
        // 해야지. 순서가 결과에 영향주는거고」 — a chain means what it says,
        // top to bottom, and a colour key UNDER a blur keys the blurred
        // result. The composite honours that by taking a raster per key
        // (`resolveCompositeEffectPlan`) instead of reordering the list.
-       effects = List.unmodifiable(effects),
-       expandedLaneGroups = Set.unmodifiable(expandedLaneGroups),
-       baseFrameLinks = Map.unmodifiable(baseFrameLinks);
+       effects = frozenList(effects),
+       expandedLaneGroups = frozenSet(expandedLaneGroups),
+       baseFrameLinks = frozenMap(baseFrameLinks);
 
   final LayerId id;
   final String name;
