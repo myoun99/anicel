@@ -1,12 +1,16 @@
 /// The CPU half of the effect chain: the kinds that are computed over a
-/// cel's OWN tile bytes before anything is drawn ([EffectKind.runsOnSourcePixels]).
+/// cel's OWN tile bytes before anything is drawn ([EffectKind.runsOnSourcePixels])
+/// — where a plugin follows them alone: keys alone are the engine's, by
+/// the tables made here ([splitSourceEffects], [keyRgbaTablesOf]).
 ///
 /// 🚨WHY THERE IS A CPU HALF AT ALL. Every other kind folds into a
 /// `ui.ColorFilter.matrix` or a `ui.ImageFilter`, which is linear-plus-clamp
 /// and therefore cannot express "is this pixel within N of that color". The
 /// two ways to express it were a fragment shader or this; 유저 2026-08-27
 /// chose this, and named the follow-up rule with it: *「거기가 아프면
-/// 셰이더가 답이 아니고 cpu에서 더 개선하는 방향을 찾아야지」*.
+/// 셰이더가 답이 아니고 cpu에서 더 개선하는 방향을 찾아야지」*. The
+/// engine's key run is neither: it walks these very tables over a row's
+/// stored bytes, the same answer to the byte.
 ///
 /// ★IT RUNS IN THE SHARED VISIT, which is the whole reason it is in
 /// `services/`. `resolveCutFrameCompositeTree` and what maps it resolve
@@ -243,6 +247,18 @@ class CelColorKey {
 /// 색상 키의 CPU 길과 같은 자리」. A plugin anywhere else — under another
 /// effect, a second one — runs as a step over what the chain made before
 /// it (`PluginEffect`, 🗣️I-132-Q34 a 「어디에 걸어도 돌고」).
+///
+/// 🚨AND KEYS ALONE ARE BOTH HALVES' (float-warp-resamples-in-the-c-engine
+/// (1), 관제 2026-11-11: 「엔진 행이 원천 키를 싣는다」). [source] is the
+/// whole leading run still — what a float or a text over the row asks
+/// after, whether the landing it shows is keyed — but only a run that ends
+/// at a plugin that runs here ([celSourcePlugin]) is run on the CPU
+/// ([celSurfaceWithSourceEffects]), the plugin reading the keyed cel. Keys
+/// alone — or before a plugin that does not run — stay in [paint], where
+/// the engine runs them on the row's stored bytes with what a hand holds
+/// over them (`KeyRun`, a row's `keys`). ↩️They were the CPU's alone: a
+/// stroke on a keyed row read its tiles back, keyed them and sent them up
+/// again, and the pool held a keyed copy beside each tile.
 ({List<ResolvedLayerEffect> source, List<ResolvedLayerEffect> paint})
 splitSourceEffects(List<ResolvedLayerEffect> effects) {
   if (effects.isEmpty) {
@@ -260,12 +276,15 @@ splitSourceEffects(List<ResolvedLayerEffect> effects) {
   if (leading == 0) {
     return (source: const [], paint: effects);
   }
-  if (leading == effects.length) {
-    return (source: effects, paint: const []);
+  final source = leading == effects.length
+      ? effects
+      : effects.sublist(0, leading);
+  if (celSourcePlugin(source) == null) {
+    return (source: source, paint: effects);
   }
   return (
-    source: effects.sublist(0, leading),
-    paint: effects.sublist(leading),
+    source: source,
+    paint: leading == effects.length ? const [] : effects.sublist(leading),
   );
 }
 
@@ -309,8 +328,10 @@ ResolvedLayerEffect? celSourcePlugin(List<ResolvedLayerEffect> effects) =>
       _ => null,
     };
 
-/// [surface] with every color key in [effects] applied, or [surface] itself
-/// when there is nothing to do.
+/// [surface] through a source run that ends at a plugin
+/// ([celSourcePlugin]) — every colour key in [effects] applied, then the
+/// plugin over the keyed cel — or [surface] itself where none does: keys
+/// alone are the engine's ([splitSourceEffects]).
 ///
 /// Repeated calls with the same surface and the same values answer from the
 /// cache, so a playhead crossing twenty exposures of one cel pays once and
@@ -318,16 +339,10 @@ ResolvedLayerEffect? celSourcePlugin(List<ResolvedLayerEffect> effects) =>
 BitmapSurface celSurfaceWithSourceEffects(
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
-) {
-  if (effects.isEmpty) {
-    return surface;
-  }
-  final keyed = _keyed(surface, effects);
-  return switch (celSourcePlugin(effects)) {
-    final plugin? => celSurfaceThroughPlugin(keyed, plugin),
-    null => keyed,
-  };
-}
+) => switch (celSourcePlugin(effects)) {
+  final plugin? => celSurfaceThroughPlugin(_keyed(surface, effects), plugin),
+  null => surface,
+};
 
 /// [surface] with every colour key in [effects] applied.
 BitmapSurface _keyed(BitmapSurface surface, List<ResolvedLayerEffect> effects) {
@@ -349,53 +364,6 @@ BitmapSurface _keyed(BitmapSurface surface, List<ResolvedLayerEffect> effects) {
     () => _applyKeys(surface, keys, signature),
   );
 }
-
-/// [straight] — straight rgba, a cel's bytes as its texts make them — with
-/// every colour key in [effects] applied IN PLACE: the walk the tile pass
-/// takes over each tile ([_keyedPixels]), over bytes that are no tile.
-///
-/// What a text a hand carries will land as is asked over a REGION of its
-/// cel (`celTextLandingAsShown`, F-344-Q3), and the alpha a pixel keeps is
-/// that pixel's own answer, so this makes the tile pass's bytes there.
-/// ⛔Called by the seam alone, for [celSurfaceWithSourceEffects]'s reason
-/// (`a_cel_is_shown_through_one_seam_test`).
-void celSourceEffectsOverStraight(
-  Uint8List straight,
-  List<ResolvedLayerEffect> effects,
-) {
-  if (effects.isEmpty) {
-    return;
-  }
-  assert(celSourcePlugin(effects) == null, _wholeCelOnly);
-  final keys = _keysOf(effects);
-  if (keys.isNotEmpty) {
-    _keyedPixels(straight, keys, () => straight);
-  }
-}
-
-/// [tile] — one of a cel's tiles as its texts make it — with every colour
-/// key in [effects] applied: the very tile [celSurfaceWithSourceEffects]
-/// makes of it in a surface (one memo, [_keyedTile]), or [tile] itself
-/// when there is nothing to do.
-///
-/// ⛔Called by the seam alone, for [celSurfaceWithSourceEffects]'s reason
-/// (`a_cel_is_shown_through_one_seam_test`).
-BitmapTile celTileWithSourceEffects(
-  BitmapTile tile,
-  List<ResolvedLayerEffect> effects,
-  int tileSize,
-) {
-  assert(celSourcePlugin(effects) == null, _wholeCelOnly);
-  final keys = _keysOf(effects);
-  return keys.isEmpty
-      ? tile
-      : _keyedTile(tile, keys, [
-          for (final key in keys) ...key.signature,
-        ], tileSize);
-}
-
-const String _wholeCelOnly =
-    'A plugin runs over the whole cel (celSurfaceAsShown), never a tile.';
 
 /// The colour keys [effects] applies, in its order — a kind that keys
 /// nothing, and a key that does nothing, left out.
@@ -451,9 +419,8 @@ BitmapTile _keyedTile(
 
 /// [keys] over the straight rgba [view]: every pixel's alpha what they
 /// leave it, written to the bytes [into] answers — asked once, at the
-/// first pixel that changes — and null when none does. THE walk, a tile's
-/// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike,
-/// a set of tables at a time ([keyRgbaTablesOf]).
+/// first pixel that changes — and null when none does. THE walk, over a
+/// tile ([_keyedTile]), a set of tables at a time ([keyRgbaTablesOf]).
 Uint8List? _keyedPixels(
   Uint8List view,
   List<CelColorKey> keys,
@@ -489,7 +456,9 @@ List<KeyRgbaTables> keyRgbaTablesOf(List<CelColorKey> keys) => [
 /// each pixel took 1.1–3.4 ms over one 256 px tile of a keyed sheet here
 /// (AOT, 10-16), and these tables walked in C take 0.13 ms, the copy into
 /// the engine's buffer and all — the C pool pre-blends a whole 1800 px
-/// brush's tiles in ~21 ms (`ActiveStrokeOverlayModel`).
+/// brush's tiles in ~21 ms (`ActiveStrokeOverlayModel`). ↩️A stroke pays
+/// it no more: keys alone are the engine's ([splitSourceEffects]), and
+/// what walks here is a plugin's input, the whole cel at a time.
 ///
 /// [originals] is the run's input, whose alphas a restore gives back to
 /// ([CelColorKey.alphaFor]) — [view] itself in the first call.
@@ -590,14 +559,6 @@ final SignedMemo<List<double>, BitmapTile> _keyedTiles = SignedMemo(
   'celSourceEffectTiles',
   same: sameCelSourceEffectSignature,
 );
-
-/// The keyed copy this pass made of [tile] and still holds, through whatever
-/// keys it was last made with — [tile] itself where the keys changed
-/// nothing, null where it was never keyed. A LOOKUP: it keys nothing.
-///
-/// A copy lives exactly as long as its source, so a picture made for the
-/// copy is let go with the source's (undo-held-tile-pictures, stage 2).
-BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles.keptOf(tile);
 
 /// Derived render data keyed on the SOURCE surface's identity. Surfaces are
 /// immutable, so identity is a stable key and an edited cel is a different

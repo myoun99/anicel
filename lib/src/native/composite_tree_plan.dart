@@ -22,6 +22,7 @@ import '../services/cel_source_effect_pass.dart'
     show CelColorKey, keyRgbaTablesOf;
 import '../services/composite_effect_paint.dart'
     show
+        CompositeEffectStep,
         EffectStepLead,
         GaussianBlur,
         KeyRun,
@@ -331,7 +332,7 @@ class _TreePlan {
   ) {
     plan.open();
     _lay(group.children);
-    final (:chain, :colour) = _chainOf(
+    final (:chain, keys: _, :colour) = _chainOf(
       group.effects,
       over: (outset) => _bufferOf(group, outset),
       space: _space,
@@ -366,7 +367,7 @@ class _TreePlan {
       );
       return;
     }
-    final (:chain, :colour) = _chainOf(
+    final (:chain, keys: _, :colour) = _chainOf(
       effects,
       over: (outset) => _bufferOf(adjustment, outset),
       space: _space,
@@ -457,11 +458,12 @@ class _TreePlan {
     // and is cut there — as the walk steps the image it lays, before its
     // pose (steppedForChain); the rows it reads drawn there too, under
     // its pose undone (rowsUnderPlacement).
-    final (:chain, :colour) = _chainOf(
+    final (:chain, :keys, :colour) = _chainOf(
       row.effects,
       over: (_) => picture,
       space: pose.space,
       reads: reads,
+      keysOnTheRow: row.held.isEmpty,
     );
     final tint = row.tint;
     // The tint LAST, over the finished pixel: the ghost is the row as the
@@ -478,6 +480,7 @@ class _TreePlan {
     if (row.held.isEmpty) {
       plan.row(
         set: _tiles.setOf(row.lineage, tiles),
+        keys: keys,
         chain: chain,
         inverse: pose.posed,
         sampling: _tiles.sampling,
@@ -528,11 +531,17 @@ class _TreePlan {
   /// each of its Gaussians reads what the one before put and puts as far
   /// past it as it reaches — a row's picture, its own, is no larger for
   /// them (its [over]).
-  ({int? chain, List<double>? colour}) _chainOf(
+  ///
+  /// A chain that is one run of keys, [keysOnTheRow], is the row's own
+  /// keys instead — keyed on its stored bytes as the chain's op keys them,
+  /// with no chain's picture between (kernels/chain): a row's leading keys,
+  /// its whole chain or before its colour (`splitSourceEffects`).
+  ({int? chain, int? keys, List<double>? colour}) _chainOf(
     List<ResolvedLayerEffect> effects, {
     required ui.Rect Function(double outset) over,
     required LayerPlacement? space,
     required _Reads reads,
+    bool keysOnTheRow = false,
   }) {
     _chainHasAStepOff = false;
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
@@ -543,7 +552,12 @@ class _TreePlan {
       _ => null,
     };
     if (steps.preSteps.isEmpty && last < 0) {
-      return (chain: null, colour: colour);
+      return (chain: null, keys: null, colour: colour);
+    }
+    if (steps.preSteps case [
+      CompositeEffectStep(lead: KeyRun(:final keys), then: []),
+    ] when keysOnTheRow && last < 0) {
+      return (chain: null, keys: _keysOf(keys), colour: colour);
     }
     final picture = _pixelsOf(over(steps.outsetPixels));
     final ops = [
@@ -560,14 +574,14 @@ class _TreePlan {
       ops.add(_paintedOp(painted, reads: read, puts: extent));
     }
     if (ops.isEmpty) {
-      return (chain: null, colour: colour);
+      return (chain: null, keys: null, colour: colour);
     }
     final (x0, y0, columns, rows) = _tilesOf(extent);
     final chain = plan.chain(x0, y0, columns, rows);
     for (final op in ops) {
       op(chain);
     }
-    return (chain: chain, colour: colour);
+    return (chain: chain, keys: null, colour: colour);
   }
 
   /// [chain], if any, held as what [shows] is, where [holding] gives it a

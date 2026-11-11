@@ -23,6 +23,7 @@ import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/a_plugin_that_shifts.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
 /// R9-rest (the text tool, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a
@@ -202,14 +203,31 @@ void main() {
       ],
     );
 
-    test('lays the texts and then keys: a colour key names a letter\'s '
-        'colour as it names a drawn line\'s', () {
+    // Keys alone are the engine's, over what the seam lays
+    // (`splitSourceEffects`): the texts laid, the keys left to the row.
+    test('keys alone: it lays the texts and leaves the keys to the row', () {
+      final source = cel(drawn: {(3, 3): blue}, letters: {(3, 3): red});
+
+      expect(
+        identical(
+          celSurfaceAsShown(source, [eraseColor(red)]),
+          celSurfaceWithTextsLaid(source),
+        ),
+        isTrue,
+      );
+    });
+
+    test('before a plugin, it lays the texts and then keys: a colour key '
+        'names a letter\'s colour as it names a drawn line\'s', () {
       final source = cel(
         drawn: {(1, 1): red, (3, 3): blue},
         letters: {(3, 3): red, (6, 6): red},
       );
 
-      final shown = celSurfaceAsShown(source, [eraseColor(red)]);
+      final shown = celSurfaceAsShown(source, [
+        eraseColor(red),
+        aPluginThatFails,
+      ]);
 
       // Every red is gone — the drawn one, the letter over the drawing and
       // the letter over bare paper.
@@ -225,7 +243,10 @@ void main() {
         letters: {(3, 3): red},
       );
 
-      final shown = celSurfaceAsShown(source, [eraseColor(blue)]);
+      final shown = celSurfaceAsShown(source, [
+        eraseColor(blue),
+        aPluginThatFails,
+      ]);
 
       expect(surfaceRgbaInPlace(shown, 3, 3), 0xFF0000FF, reason: 'the letter');
       expect(surfaceRgbaInPlace(shown, 5, 5)! & 0xFF, 0, reason: 'the drawing');

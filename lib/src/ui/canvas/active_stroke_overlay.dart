@@ -132,12 +132,14 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// own painter shows its tiles through (`celSurfaceAsShown`).
   ///
   /// 🚨A COORDINATE THE OVERLAY REPLACES SHOWS THE OVERLAY'S PICTURE AND
-  /// NOTHING ELSE, so that picture goes through the row's keys as it has the
-  /// cel's texts laid ([_platesOver]): the bytes the committed tile will
-  /// show. 🔬Without them a keyed sheet's ground showed bare under a stroke
-  /// until the pen came up — 2,868 pixels apart on a keyed row, 0 on a bare
-  /// one (공통 2026-10-16, card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed;
-  /// 유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
+  /// NOTHING ELSE, and the engine runs the row's keys over it there as over
+  /// the cel's tiles (`splitSourceEffects`): the bytes the committed tile
+  /// will show. What is the overlay's is a plugin's run ([_pluginOver]).
+  /// ↩️The keys were run here, on each result tile (공통 2026-10-16, card
+  /// a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed — 2,868 pixels apart
+  /// without them; 유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로
+  /// 다르면 안 되」), until the engine keyed a row's stored bytes
+  /// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
   ///
   /// ★Told by the host that builds the cel's painter, in the statement
   /// beside it: the keys are the ROW's, not the cel's, and that is where
@@ -297,20 +299,11 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }
 
   /// The tile [coord] SHOWS when the cel holds [tile] there: [tile] itself,
-  /// or it with the cel's texts laid over it and the row's keys through it
-  /// ([sourceEffects]) — the tile the painter draws once the stroke has
-  /// landed, and so the one a picture made for this coordinate belongs to
-  /// ([takeTileImageAt]'s caller hands it over).
+  /// or it with the cel's texts laid over it — the tile the painter draws
+  /// once the stroke has landed, and so the one a picture made for this
+  /// coordinate belongs to ([takeTileImageAt]'s caller hands it over).
   BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) =>
-      celTileAsShown(tile, _platesOver(coord), _effectsOver, tileSize);
-
-  /// The keys a result here is shown through: the row's ([sourceEffects])
-  /// where it REPLACES the cel's tile ([preBlended]), and none where it is
-  /// the stroke alone drawn over the cel's own tile — which its painter
-  /// shows through them already. Read off [preBlendBase] as [_platesOver]
-  /// is, for its reason.
-  List<ResolvedLayerEffect> get _effectsOver =>
-      preBlended ? sourceEffects : const [];
+      celTileAsShown(tile, _platesOver(coord), tileSize);
 
   /// The overlay tiles that [region] touches moved in the live stroke
   /// [source]: pictured when they are next read ([pictureOwed]).
@@ -590,9 +583,9 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// What [coord] is shown by for [result] — a live stroke's bytes there,
   /// at [revision]. Pre-blended against the cel ([preBlended]): the tile the
   /// coordinate shows — the result, or, where the cel's texts stand over
-  /// the coordinate ([_platesOver]) or the row keys its colours
-  /// ([sourceEffects]), the result as the cel shows it ([tileShownFor]) —
-  /// and its picture. Else the stroke alone, which no tile shows.
+  /// the coordinate ([_platesOver]), the result as the cel shows it
+  /// ([tileShownFor]) — and its picture. Else the stroke alone, which no
+  /// tile shows.
   ///
   /// Those are the bytes the committed tile will show there, made by the
   /// seam that will show them — so pen-up hands this very picture to that

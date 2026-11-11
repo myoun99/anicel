@@ -49,6 +49,18 @@ ResolvedLayerEffect shiftingFxPluginEffect({int by = 1}) => ResolvedLayerEffect(
   run: fxPluginRunOf(ShiftingFxPlugin(by: by)),
 );
 
+/// The stand-in, at a cel row's head after its colour keys, failing as it
+/// runs: the source pass then shows the cel as the plugin was handed it —
+/// the keys before it walked on the CPU, the walk's own objects
+/// (`celSurfaceThroughPlugin`). Keys alone are the engine's
+/// (`splitSourceEffects`), so this is how a test reads that walk.
+final ResolvedLayerEffect aPluginThatFails = ResolvedLayerEffect(
+  kind: EffectKind.plugin,
+  plugin: shiftingFxPluginDescription,
+  values: const [],
+  run: fxPluginRunOf(ShiftingFxPlugin(by: 0, fails: true)),
+);
+
 /// The stand-in as a project keeps it on a row.
 LayerEffect shiftingFxPluginLayerEffect() => LayerEffect.defaults(
   id: const EffectId('shift'),

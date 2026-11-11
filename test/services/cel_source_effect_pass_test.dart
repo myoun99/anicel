@@ -12,29 +12,31 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cel_source_effect_pass.dart';
 
+import '../helpers/a_plugin_that_shifts.dart';
+
 void main() {
-  const canvas = CanvasSize(width: 512, height: 512);
+  const canvas = CanvasSize(width: 256, height: 128);
   final origin = TileCoord(x: 0, y: 0);
   final neighbour = TileCoord(x: 1, y: 0);
 
   PlacedTile tileWith(TileCoord coord, Map<(int, int), List<int>> pixels) {
-    final bytes = Uint8List(256 * 256 * 4);
+    final bytes = Uint8List(128 * 128 * 4);
     for (final entry in pixels.entries) {
-      final offset = ((entry.key.$2 * 256) + entry.key.$1) * 4;
+      final offset = ((entry.key.$2 * 128) + entry.key.$1) * 4;
       bytes.setRange(offset, offset + 4, entry.value);
     }
-    return (coord: coord, tile: BitmapTile(size: 256, pixels: bytes));
+    return (coord: coord, tile: BitmapTile(size: 128, pixels: bytes));
   }
 
   BitmapSurface surfaceOf(Iterable<PlacedTile> tiles) => BitmapSurface(
     canvasSize: canvas,
-    tileSize: 256,
+    tileSize: 128,
     tiles: {for (final t in tiles) t.coord: t.tile},
   );
 
   List<int> pixelAt(BitmapSurface surface, TileCoord coord, int x, int y) {
     final tile = surface.tileAt(coord)!;
-    final offset = ((y * 256) + x) * 4;
+    final offset = ((y * 128) + x) * 4;
     return tile.readPixels(
       (_, view) => List<int>.from(view.sublist(offset, offset + 4)),
     );
@@ -125,7 +127,26 @@ void main() {
     });
   });
 
-  group('celSurfaceWithSourceEffects', () {
+  /// [surface] through [keys] as a plugin after them reads it.
+  BitmapSurface keyedFor(
+    BitmapSurface surface,
+    List<ResolvedLayerEffect> keys,
+  ) => celSurfaceWithSourceEffects(surface, [...keys, aPluginThatFails]);
+
+  test('keys alone hand back the very surface: the engine keys it', () {
+    final surface = surfaceOf([
+      tileWith(origin, {
+        (0, 0): [255, 255, 255, 255],
+      }),
+    ]);
+    final white = key(red: 255, green: 255, blue: 255);
+    expect(identical(celSurfaceWithSourceEffects(surface, [white]), surface),
+        isTrue);
+    expect(identical(keyedFor(surface, [white]), surface), isFalse,
+        reason: '⛔fixture: a plugin after the key reads it keyed');
+  });
+
+  group('the keys a plugin after them reads', () {
     test('erases the key color and leaves every other pixel alone', () {
       final surface = surfaceOf([
         tileWith(origin, {
@@ -133,7 +154,7 @@ void main() {
           (1, 0): [10, 20, 30, 255], // line art — stays
         }),
       ]);
-      final keyed = celSurfaceWithSourceEffects(surface, [
+      final keyed = keyedFor(surface, [
         key(red: 255, green: 255, blue: 255),
       ]);
       expect(pixelAt(keyed, origin, 0, 0)[3], 0);
@@ -146,7 +167,7 @@ void main() {
           (0, 0): [255, 255, 255, 255],
         }),
       ]);
-      final keyed = celSurfaceWithSourceEffects(surface, [
+      final keyed = keyedFor(surface, [
         key(red: 255, green: 255, blue: 255),
       ]);
       // ★The destructive verb's undo recipe depends on this: an RGB
@@ -165,7 +186,7 @@ void main() {
         }),
         untouched,
       ]);
-      final keyed = celSurfaceWithSourceEffects(surface, [
+      final keyed = keyedFor(surface, [
         key(red: 255, green: 255, blue: 255),
       ]);
       expect(identical(keyed.tileAt(neighbour), untouched.tile), isTrue);
@@ -178,11 +199,10 @@ void main() {
           (0, 0): [10, 20, 30, 255],
         }),
       ]);
-      expect(identical(celSurfaceWithSourceEffects(surface, const []), surface),
-          isTrue);
+      expect(identical(keyedFor(surface, const []), surface), isTrue);
       expect(
         identical(
-          celSurfaceWithSourceEffects(surface, [
+          keyedFor(surface, [
             key(amount: 0),
           ]),
           surface,
@@ -201,41 +221,33 @@ void main() {
       final effects = [
         key(red: 255, green: 255, blue: 255),
       ];
-      final first = celSurfaceWithSourceEffects(surface, effects);
-      final second = celSurfaceWithSourceEffects(surface, effects);
+      final first = keyedFor(surface, effects);
+      final second = keyedFor(surface, effects);
       expect(identical(first, second), isTrue);
     });
 
     test('a tile under the same values twice answers from its memo — by the '
         'values, not the list they come in', () {
-      final tile = tileWith(origin, {
+      final keyedTile = tileWith(origin, {
         (0, 0): [255, 255, 255, 255],
-      }).tile;
+      });
       ResolvedLayerEffect white() =>
           key(red: 255, green: 255, blue: 255);
+      // Two cels holding the one tile, as a stroke's commits do.
+      final first = keyedFor(surfaceOf([keyedTile]), [white()]);
+      final second = keyedFor(
+        surfaceOf([
+          keyedTile,
+          tileWith(neighbour, {
+            (0, 0): [10, 20, 30, 255],
+          }),
+        ]),
+        [white()],
+      );
 
-      final first = celTileWithSourceEffects(tile, [white()], 256);
-      final second = celTileWithSourceEffects(tile, [white()], 256);
-
-      expect(identical(first, tile), isFalse, reason: '⛔fixture: keyed');
-      expect(identical(first, second), isTrue);
-    });
-
-    test('the keyed copy the pass holds of a tile is found by the tile — '
-        'and a tile it made none of has none', () {
-      final tile = tileWith(origin, {
-        (0, 0): [255, 255, 255, 255],
-      }).tile;
-      final never = tileWith(origin, {
-        (0, 0): [10, 20, 30, 255],
-      }).tile;
-
-      final keyed = celTileWithSourceEffects(tile, [
-        key(red: 255, green: 255, blue: 255),
-      ], 256);
-
-      expect(identical(keyedCopyOf(tile), keyed), isTrue);
-      expect(keyedCopyOf(never), isNull);
+      expect(identical(first.tileAt(origin), keyedTile.tile), isFalse,
+          reason: '⛔fixture: keyed');
+      expect(identical(first.tileAt(origin), second.tileAt(origin)), isTrue);
     });
 
     test('a CHANGED value misses the cache, at the surface grain and at the '
@@ -249,10 +261,10 @@ void main() {
           (1, 0): [250, 250, 250, 255],
         }),
       ]);
-      final tight = celSurfaceWithSourceEffects(surface, [
+      final tight = keyedFor(surface, [
         key(red: 255, green: 255, blue: 255),
       ]);
-      final loose = celSurfaceWithSourceEffects(surface, [
+      final loose = keyedFor(surface, [
         key(
           red: 255,
           green: 255,
@@ -270,7 +282,7 @@ void main() {
       );
 
       // And back again: the first values are recomputed, not stale.
-      final again = celSurfaceWithSourceEffects(surface, [
+      final again = keyedFor(surface, [
         key(red: 255, green: 255, blue: 255),
       ]);
       expect(pixelAt(again, origin, 1, 0)[3], 255);
@@ -284,7 +296,7 @@ void main() {
           (2, 0): [10, 20, 30, 255],
         }),
       ]);
-      final keyed = celSurfaceWithSourceEffects(surface, [
+      final keyed = keyedFor(surface, [
         key(red: 255, green: 255, blue: 255),
         key(red: 255),
       ]);
@@ -301,7 +313,7 @@ void main() {
           (1, 0): [255, 255, 255, 255],
         }),
       ]);
-      final keyed = celSurfaceWithSourceEffects(surface, [
+      final keyed = keyedFor(surface, [
         // Everything away: tolerance 255 names every colour.
         key(tolerance: 255),
         key(keep: true, red: 255, amount: 50),
@@ -311,7 +323,7 @@ void main() {
       // ⛔And a keep with nothing taken before it changes nothing.
       expect(
         pixelAt(
-          celSurfaceWithSourceEffects(surface, [key(keep: true, red: 255)]),
+          keyedFor(surface, [key(keep: true, red: 255)]),
           origin,
           0,
           0,
@@ -329,7 +341,37 @@ void main() {
       ];
       final split = splitSourceEffects(effects);
       expect(split.source.single.kind, EffectKind.colorKey);
-      expect(split.paint.single.kind, EffectKind.blur);
+      expect(split.paint.map((e) => e.kind), [
+        EffectKind.colorKey,
+        EffectKind.blur,
+      ]);
+    });
+
+    test('keys alone are both halves, and a plugin after them takes them '
+        'out of the paint', () {
+      final blur = ResolvedLayerEffect(
+        kind: EffectKind.blur,
+        values: const [4, 0],
+      );
+      final plugin = shiftingFxPluginEffect();
+      final keys = [key(), key(keep: true)];
+      final alone = splitSourceEffects([...keys, blur]);
+      expect(alone.source, keys);
+      expect(alone.paint, [...keys, blur]);
+      final ran = splitSourceEffects([...keys, plugin, blur]);
+      expect(ran.source, [...keys, plugin]);
+      expect(ran.paint, [blur]);
+      // A plugin with no run here keys nothing on the CPU: drawn as if off,
+      // after the engine's keys.
+      final off = ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+      );
+      expect(splitSourceEffects([...keys, off]).paint, [...keys, off]);
+      final whole = [...keys, plugin];
+      expect(identical(splitSourceEffects(whole).source, whole), isTrue);
+      expect(splitSourceEffects(whole).paint, isEmpty);
     });
 
     test('a chain with no keys is handed straight through', () {
@@ -355,6 +397,7 @@ void main() {
       final split = splitSourceEffects([key, blur, key]);
       expect(split.source.map((e) => e.kind), [EffectKind.colorKey]);
       expect(split.paint.map((e) => e.kind), [
+        EffectKind.colorKey,
         EffectKind.blur,
         EffectKind.colorKey,
       ]);

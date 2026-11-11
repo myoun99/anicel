@@ -238,6 +238,8 @@ void main() {
     // A colour key LEADING the chain runs on the cel's own pixels, which
     // the surface's painter carries — the paint takes the rest alone. Here
     // the key takes every pixel, so a paint that ran it too keys it all.
+    // Every colour named, at half Amount: what floats is half there — not
+    // gone, which a route that drew no float would show as well.
     'a keyed row': (
       opacity: 1.0,
       blendMode: LayerBlendMode.normal,
@@ -245,7 +247,7 @@ void main() {
       effects: [
         ResolvedLayerEffect(
           kind: EffectKind.colorKey,
-          values: [0, 0xFF000000, 255, 100],
+          values: [0, 0xFF000000, 255, 50],
         ),
         ResolvedLayerEffect(
           kind: EffectKind.brightnessContrast,

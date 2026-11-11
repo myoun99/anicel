@@ -126,8 +126,9 @@ void main() {
   group('the source run', () {
     test('ends at a plugin right after its keys — one, and only there', () {
       final a = key();
-      final p = plugin();
-      final q = plugin(by: 2);
+      final p = plugin(run: fxPluginRunOf(ShiftingFxPlugin()));
+      final q = plugin(by: 2, run: fxPluginRunOf(ShiftingFxPlugin()));
+      final off = plugin();
       final b = blur();
 
       List<List<ResolvedLayerEffect>> split(List<ResolvedLayerEffect> of) {
@@ -139,6 +140,9 @@ void main() {
       expect(split([p, a]), [[p], [a]]);
       expect(split([p, q]), [[p], [q]]);
       expect(split([b, p]), [<ResolvedLayerEffect>[], [b, p]]);
+      // Where it runs: one that does not here leaves the keys before it
+      // the engine's, as keys alone are.
+      expect(split([a, off, b]), [[a, off], [a, off, b]]);
     });
 
     group('🚨is all a row lays on its cel', () {
@@ -431,15 +435,6 @@ void main() {
           cel,
         ),
         isTrue,
-      );
-    });
-
-    test('is never asked of a tile', () {
-      final tile = BitmapTile.blank(size: tileSize);
-      final effects = [plugin(run: fxPluginRunOf(ShiftingFxPlugin()))];
-      expect(
-        () => celTileAsShown(tile, null, effects, tileSize),
-        throwsA(isA<AssertionError>()),
       );
     });
   });

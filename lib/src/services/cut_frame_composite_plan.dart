@@ -31,17 +31,21 @@ class CutFrameCompositeLayer {
   /// 🚨THE CPU HALF OF THE CHAIN IS APPLIED HERE, IN THE CONSTRUCTOR, and
   /// that placement is the point.
   ///
-  /// The color keys ([EffectKind.runsOnSourcePixels]) are a pass over the
-  /// cel's own bytes, so they have to happen before the surface is handed to
-  /// anything that draws. Every route builds its layers through this one
-  /// constructor — the shared plan, the tree plan, the cel-group export —
-  /// so doing it here means no route can be the one that forgot, and
-  /// [surface] and [effects] cannot disagree about whether the keys already
-  /// ran ([[make-the-invariant-unrepresentable]]).
+  /// A plugin at the head of the chain, after the colour keys before it,
+  /// is a pass over the cel's own bytes ([splitSourceEffects]), so it has
+  /// to happen before the surface is handed to anything that draws. Every
+  /// route builds its layers through this one constructor — the shared
+  /// plan, the tree plan, the cel-group export — so doing it here means no
+  /// route can be the one that forgot, and [surface] and [effects] cannot
+  /// disagree about whether the keys already ran
+  /// ([[make-the-invariant-unrepresentable]]). Keys alone stay in
+  /// [effects], the engine's to run on the row's stored bytes. ↩️Every
+  /// leading key was run here, until the engine keyed a row
+  /// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
   ///
   /// The pass is cached on the source surface's identity and returns it
-  /// unchanged when the chain has no keys, so the overwhelmingly common
-  /// layer pays a list walk and nothing else.
+  /// unchanged when the chain runs no plugin at its head, so the
+  /// overwhelmingly common layer pays a list walk and nothing else.
   ///
   /// ★The cel's TEXTS are laid over its drawing in the same step, before
   /// the keys ([celSurfaceAsShown]) — they are part of the picture a key

@@ -9,7 +9,9 @@ import '../helpers/project_scratch_folder.dart';
 ///
 /// 유저 2026-10-06: a text on a cel is 「셀의 그림이랑 정확히 동일」. What a cel
 /// shows is therefore two passes over its own bytes — its texts laid over
-/// the drawing, then the row's colour keys — and they run in ONE function,
+/// the drawing, then a plugin at the head of the row's chain, after the
+/// colour keys before it (keys alone are the engine's, over what the texts
+/// made: `splitSourceEffects`) — and they run in ONE function,
 /// `celSurfaceAsShown`, that every route which draws a cel calls: the
 /// shared plan, the editing stack's row images, the row being drawn on, the
 /// conte's live picture.
@@ -22,19 +24,13 @@ import '../helpers/project_scratch_folder.dart';
 /// the rule is read off the source: nothing under `lib/` calls the keys'
 /// pass but the seam.
 ///
-/// The pass has a second door now: a text a hand carries on a row that
-/// keys is shown as the bytes it will land as, keyed over a region of its
-/// cel rather than over its tiles (`celSourceEffectsOverStraight`,
-/// F-344-Q3). It is the same pass and the same hazard, so it is held to the
-/// same seam.
-///
-/// And a third: a live stroke shows its result in place of the cel's tile
-/// at every coordinate it changes, so the result is shown as the tile the
-/// cel will show there — one tile (`celTileWithSourceEffects`; card
-/// a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed: a keyed sheet's ground
-/// showed bare under the pen). ↩️Its bytes were keyed before they were one,
-/// a road of their own, until the overlay held each result as a tile
-/// (flip lane ⓐ, 2026-11-08).
+/// ↩️The pass had two more doors: a text a hand carries on a row that keys,
+/// keyed over a region of its cel (`celSourceEffectsOverStraight`,
+/// F-344-Q3), and a live stroke's result, keyed as the tile the cel will
+/// show there (`celTileWithSourceEffects`; card
+/// a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed) — until keys alone were
+/// the engine's, which keys both with their row
+/// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
 void main() {
   const seam = 'lib/src/services/cel_surface_as_shown.dart';
   const keysPass = 'lib/src/services/cel_source_effect_pass.dart';
@@ -43,17 +39,10 @@ void main() {
   const doors = {
     'celSurfaceWithSourceEffects(':
         'BitmapSurface celSurfaceWithSourceEffects(',
-    'celTileWithSourceEffects(': 'BitmapTile celTileWithSourceEffects(',
-    'celSourceEffectsOverStraight(': 'void celSourceEffectsOverStraight(',
   };
 
-  /// How many roads in the seam open each door: a cel, one of its tiles,
-  /// and bytes that are no tile yet — a landing text's region.
-  const roads = {
-    'celSurfaceWithSourceEffects(': 1,
-    'celTileWithSourceEffects(': 1,
-    'celSourceEffectsOverStraight(': 1,
-  };
+  /// How many roads in the seam open each door: a cel.
+  const roads = {'celSurfaceWithSourceEffects(': 1};
 
   /// The lines of [source] that CALL [door] — a mention in a comment is not
   /// a call, and the door's own declaration is not one.
@@ -102,11 +91,13 @@ void main() {
       isTrue,
       reason: order,
     );
+    // A tile shows its texts and no pass: what keys it is its row's.
     expect(
       flat,
       contains(
-        'celTileWithSourceEffects(plates==null?tile:'
-        'celTileWithPlatesLaid(tile,plates,tileSize)!,effects,tileSize,)',
+        'BitmapTilecelTileAsShown(BitmapTiletile,List<BitmapTile>?plates,'
+        'inttileSize,)=>plates==null?tile:'
+        'celTileWithPlatesLaid(tile,plates,tileSize)!;',
       ),
       reason: 'a tile: $order',
     );
@@ -150,8 +141,6 @@ void main() {
       'void draw() {\n'
       '  // celSurfaceWithSourceEffects(surface, effects) is the old seam\n'
       '  final shown = celSurfaceWithSourceEffects(surface, effects);\n'
-      '  final keyed = celTileWithSourceEffects(tile, effects, 8);\n'
-      '  celSourceEffectsOverStraight(bytes, effects);\n'
       '}\n',
     );
     File('${planted.path}/a_good_route.dart').writeAsStringSync(
@@ -162,10 +151,8 @@ void main() {
 
     final found = straysUnder(planted.path, allowed: const {});
 
-    expect(found, hasLength(3), reason: 'a call of each door, and a comment');
-    expect(found, everyElement(contains('a_route.dart')));
-    expect(found.first, contains('final shown = '));
-    expect(found[1], contains('celTileWithSourceEffects(tile'));
-    expect(found.last, contains('celSourceEffectsOverStraight(bytes'));
+    expect(found, hasLength(1), reason: 'the call, and not the comment');
+    expect(found.single, contains('a_route.dart'));
+    expect(found.single, contains('final shown = '));
   });
 }

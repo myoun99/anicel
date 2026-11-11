@@ -17,9 +17,11 @@ import 'cel_text_laying.dart';
 ///
 /// Two things are computed over a cel's own bytes before anything is drawn,
 /// and their order is the order they exist in: the texts are part of the
-/// picture ([celSurfaceWithTextsLaid]), and the colour keys are a filter
-/// over that picture ([celSurfaceWithSourceEffects]) — so a key names a
-/// letter's colour exactly as it names a drawn line's.
+/// picture ([celSurfaceWithTextsLaid]), and a plugin at the head of the
+/// chain, after the colour keys before it, runs over that picture
+/// ([celSurfaceWithSourceEffects]) — so a key names a letter's colour
+/// exactly as it names a drawn line's. Keys alone are the engine's, over
+/// the picture this lays (`splitSourceEffects`).
 ///
 /// 🚨★★★EVERY ROUTE THAT DRAWS A CEL COMES THROUGH HERE — the shared plan
 /// (`CutFrameCompositeLayer`: playback, export, the camera), the editing
@@ -34,12 +36,14 @@ BitmapSurface celSurfaceAsShown(
   List<ResolvedLayerEffect> effects,
 ) => celSurfaceWithSourceEffects(celSurfaceWithTextsLaid(surface), effects);
 
-/// THE SEAM, AT ONE COORDINATE: what a cel whose drawing holds [tile] there
-/// SHOWS there — [plates], the texts standing over the coordinate bottom →
-/// top (`celTextPlatesOver`; null where none does), laid over it, then the
-/// colour keys of [effects]. The very object [celSurfaceAsShown] holds at
-/// that coordinate once the cel holds [tile] — each pass answers a tile it
-/// has seen from its memo — so a picture made for one is the other's.
+/// THE SEAM, AT ONE COORDINATE, on a row whose chain runs no plugin at its
+/// head: what a cel whose drawing holds [tile] there SHOWS there —
+/// [plates], the texts standing over the coordinate bottom → top
+/// (`celTextPlatesOver`; null where none does), laid over it. The very
+/// object [celSurfaceAsShown] holds at that coordinate once the cel holds
+/// [tile] — the pass answers a tile it has seen from its memo — so a
+/// picture made for one is the other's. A plugin runs over the whole cel,
+/// never a tile.
 ///
 /// A live stroke's overlay shows its pictures in place of the cel's tiles,
 /// and pen-up hands each to the tile this answers
@@ -47,13 +51,8 @@ BitmapSurface celSurfaceAsShown(
 BitmapTile celTileAsShown(
   BitmapTile tile,
   List<BitmapTile>? plates,
-  List<ResolvedLayerEffect> effects,
   int tileSize,
-) => celTileWithSourceEffects(
-  plates == null ? tile : celTileWithPlatesLaid(tile, plates, tileSize)!,
-  effects,
-  tileSize,
-);
+) => plates == null ? tile : celTileWithPlatesLaid(tile, plates, tileSize)!;
 
 /// THE SEAM, WHERE A TEXT A HAND CARRIES WILL LAND (F-344-Q3): the region
 /// of its cel the carried text's ink covers, and the straight rgba the cel
@@ -68,11 +67,10 @@ BitmapTile celTileAsShown(
 /// key, where its landing keys it with the ink under it. This is the
 /// landing, asked where the text lies: [under] laid as [celSurfaceAsShown]
 /// lays it, the carried plate and then the texts above it stamped over that
-/// with the stamp a cel's texts are laid with ([layPixelsOverRegion]), and
-/// the keys over all of it by the walk they take over a tile
-/// ([celSourceEffectsOverStraight]) — each a pixel's own answer, so the
-/// bytes are the landed cel's there. Outside the region the text holds no
-/// ink, and the cel without it is the cel with it.
+/// with the stamp a cel's texts are laid with ([layPixelsOverRegion]) — the
+/// landed cel's bytes there, which the row's keys then run over with the
+/// cel's, as they run over the landed cel. Outside the region the text
+/// holds no ink, and the cel without it is the cel with it.
 ({DirtyRegion region, Uint8List straight})? celTextLandingAsShown({
   required BitmapSurface under,
   required CelTextPixels carried,
@@ -105,7 +103,6 @@ BitmapTile celTileAsShown(
       on: under,
     );
   }
-  celSourceEffectsOverStraight(straight, effects);
   return (region: region, straight: straight);
 }
 

@@ -717,9 +717,10 @@ class BrushCanvasPanel extends StatefulWidget {
     return (
       surface: coordinator.activeSessionState.canvasState.currentSurface,
       key: coordinator.activeFrameKey,
-      // The colour keys' VALUES join the token: they change no surface and
-      // no cel, so without them dragging Tolerance would keep serving the
-      // painter built at the old value.
+      // The leading run's VALUES join the token: where it ends at a plugin
+      // they change the surface this paints and no cel, so without them
+      // dragging Tolerance would keep serving the painter built at the old
+      // value.
       fx: (
         keys: celSourceEffectSignature(activeSourceEffects).join(','),
         plugin: celSourcePlugin(activeSourceEffects),
@@ -1426,9 +1427,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ),
     );
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
-      // ★DRAWN THROUGH THE SEAM — the texts laid, then the keys. Both are
-      // cached per TILE, so a dab re-lays and re-keys the one tile it
-      // changed and the rest of the cel answers from memory.
+      // ★DRAWN THROUGH THE SEAM — the texts laid, then a plugin at the
+      // chain's head. The texts are laid per TILE, so a dab re-lays the one
+      // tile it changed and the rest of the cel answers from memory.
       surface: celSurfaceAsShown(token.surface, widget.activeSourceEffects),
       overlayModel: overlay,
       // The stack painter applies the viewport itself, so the surface

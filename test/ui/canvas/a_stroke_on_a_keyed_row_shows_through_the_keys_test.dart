@@ -25,18 +25,23 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_fixture.dart';
 
-/// 🚨★★★A STROKE ON A ROW THAT KEYS ITS COLOURS SHOWS THROUGH THE KEYS
+/// 🚨★★★A STROKE ON A ROW THAT KEYS ITS COLOURS SHOWS WHAT IT LANDS AS
 /// WHILE THE PEN IS DOWN (card a-stroke-on-a-keyed-row-shows-its-tiles-
 /// unkeyed — 유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안
 /// 되」).
 ///
 /// A coordinate the live overlay replaces shows the overlay's picture and
-/// nothing else, and a row's colour keys filter a cel's tiles as it is
-/// shown. 🔬Shown unkeyed, a keyed sheet's ground came up bare under the pen
-/// until it lifted: 2,868 pixels apart on a keyed row, 0 on a bare one
-/// (공통 2026-10-16, the whole app).
+/// nothing else, so the picture is the tile the cel will hold there as the
+/// row lays it. 🔬Shown otherwise, a keyed sheet's ground came up bare under
+/// the pen until it lifted: 2,868 pixels apart on a keyed row, 0 on a bare
+/// one (공통 2026-10-16, the whole app).
 ///
-/// The oracle is the cel as the row will show it once the stroke lands —
+/// The keys alone are the row's, which the engine runs over the overlay's
+/// tiles as over the cel's (`splitSourceEffects`): the overlay makes no
+/// keyed copy. ↩️It keyed each result tile, until the engine keyed a row's
+/// stored bytes (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
+///
+/// The oracle is the cel as the row will lay it once the stroke lands —
 /// the committed surface through the seam (`celSurfaceAsShown`), pictured
 /// by the door's own premultiply — never a key spelled out again here.
 void main() {
@@ -161,23 +166,20 @@ void main() {
     effects,
   );
 
-  test('🚨a tile the stroke is changing on a keyed row shows it through the '
-      'keys — the bytes the committed tile will show', () async {
+  test('🚨a tile the stroke is changing on a keyed row is the bytes the '
+      'committed tile will hold there', () async {
     final base = cel();
     final model = overlayOn(base, keyed);
     final promoted = promotedBy(stroke(model), base);
     expect(promoted.keys, containsAll([sheet, alsoSheet, underText, bare]));
     final landed = landedAsShown(base, promoted, keyed);
-    final unkeyed = landedAsShown(base, promoted, const []);
     final before = celSurfaceAsShown(base, keyed);
 
     for (final coord in promoted.keys) {
       final shown = await bytesOfPicture(model.tileImages[coord]!);
 
       expect(shown, pictured(landed.tileAt(coord)!), reason: '$coord');
-      // Liveness, both ways: the keys took something there, and the stroke
-      // is in it.
-      expect(shown, isNot(pictured(unkeyed.tileAt(coord)!)), reason: '$coord');
+      // Liveness: the stroke is in it.
       if (before.tileAt(coord) case final was?) {
         expect(shown, isNot(pictured(was)), reason: '$coord');
       }
@@ -199,11 +201,11 @@ void main() {
             'paint makes again — or, handed to the unkeyed tile, a ground '
             'that shows wherever that tile is drawn bare',
       );
-      expect(model.tileShownFor(coord, tile), isNot(same(tile)));
     }
   });
 
-  test('a FILL\'s result tiles are shown through the keys too', () async {
+  test('a FILL\'s result tiles are the bytes the committed tiles will hold '
+      'too', () async {
     final base = cel();
     final model = overlayOn(base, keyed);
     final filled = tileFilledWith(ground);
@@ -224,13 +226,13 @@ void main() {
     }
     expect(
       await bytesOfPicture(model.tileImages[sheet]!),
-      isNot(pictured(filled)),
-      reason: 'a fill in the key colour is keyed away',
+      pictured(filled),
+      reason: 'a fill in the key colour is the row\'s to key',
     );
   });
 
   test('the classic snapshot road — a source that is not the rasterizer — '
-      'shows through them too', () async {
+      'shows them too', () async {
     final base = cel();
     final model = overlayOn(base, keyed);
 
@@ -245,7 +247,7 @@ void main() {
     );
 
     // No stroke at all, so the result is the cel's own tile — and the
-    // picture is that tile as the row shows it.
+    // picture is that tile as the row lays it.
     final shown = celSurfaceAsShown(base, keyed);
     for (final coord in [sheet, underText]) {
       expect(
@@ -257,7 +259,7 @@ void main() {
   });
 
   test('a dragged shape\'s stroke, made off screen and shown whole, shows '
-      'through them too', () async {
+      'them too', () async {
     final base = cel();
     final model = overlayOn(base, keyed);
     final rasterizer = BrushLiveStrokeRasterizer(
@@ -316,11 +318,13 @@ void main() {
     }
   });
 
-  test('a row whose keys key nothing asks nothing of them: every picture is '
-      'the stroke\'s own, and every tile shows as itself', () async {
+  test('keys alone ask nothing of the overlay — the row keys what it shows: '
+      'every picture is the stroke\'s own, and every tile shows as itself',
+      () async {
     final base = drawingOf({sheet: sheetTile, alsoSheet: sheetTile});
     for (final effects in [
       const <ResolvedLayerEffect>[],
+      keyed,
       [
         ResolvedLayerEffect(
           kind: EffectKind.colorKey,

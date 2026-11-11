@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
-import '../../core/signed_memo.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
@@ -15,10 +14,7 @@ import '../../models/tile_coord.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
-    show
-        celSourceEffectSignature,
-        celSourcePlugin,
-        sameCelSourceEffectSignature;
+    show celSourceEffectSignature, celSourcePlugin;
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
@@ -212,7 +208,7 @@ class SelectionFloatPaint implements LandingPreview {
   ///   cel again, so a posed row's float drawn as itself showed sharper than
   ///   it landed (유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
   /// · keys, and the landing there is the float's pixels landed on nothing
-  ///   ([_KeyedFloat]) — made ONCE, and moved as the float moves.
+  ///   ([_FloatOnNothing]) — the float itself, in place of what it covers.
   /// · anything else — the landing itself, made again at each place it is
   ///   carried to ([FloatLandsOn.landingShown]); the F-344-Q3 answer for a
   ///   text in hand (유저 2026-10-15: 「놓을 때와 같은 코드로 — 완전히
@@ -250,7 +246,7 @@ class SelectionFloatPaint implements LandingPreview {
         !(_holdsPartlyClearPixels(lands.stamp) && _inkTouches(holed, rect));
     if (landsOnNothing) {
       return (
-        preview: _KeyedFloat(this, _keyedFloatPainter(floatSurface, keys)),
+        preview: _FloatOnNothing(this),
         canvasToRow: canvasToRow,
       );
     }
@@ -331,26 +327,10 @@ bool _landsAlike(FloatLanding? a, FloatLanding? b) {
       a.stamp.center == b.stamp.center;
 }
 
-/// The float's own surface through its row's keys, by the surface: one per
-/// lift (`_buildFloatSurface` keeps it for the session), so a carry moves
-/// the keyed pixels and makes none — by the keys' values, as the keyed
-/// surface and tile are kept.
-final SignedMemo<List<double>, BitmapSurfacePainter> _keyedFloats =
-    SignedMemo('selectionFloatKeyed', same: sameCelSourceEffectSignature);
-
-BitmapSurfacePainter _keyedFloatPainter(
-  BitmapSurface floatSurface,
-  List<ResolvedLayerEffect> keys,
-) => _keyedFloats.resolve(
-  floatSurface,
-  celSourceEffectSignature(keys),
-  () => floatPainter(floatSurface, keys),
-);
-
 /// A painter of what floats — pixels a hand carries, as the row they float
-/// in shows them ([celSurfaceAsShown], through its leading [keys]): drawn in
-/// that row's own space by the painter it floats over, so it brings no
-/// paper and is nobody's cel.
+/// in shows them ([celSurfaceAsShown], through the leading run of its chain
+/// [keys]): drawn in that row's own space by the painter it floats over, so
+/// it brings no paper and is nobody's cel.
 ///
 /// Nobody's cel: what it shows is counted under the one name for that
 /// ([BrushFrameKey.noCel]). ↩️The level pyramid
@@ -419,8 +399,11 @@ bool _textsTouch(BitmapSurface holed, Rect rect) {
 }
 
 /// A float that lands as its own pixels landed on nothing, on a row that
-/// keys its colours: those pixels through the row's keys, in place of what
-/// the row shows wherever the float covers.
+/// keys its colours: those pixels in place of what the row shows wherever
+/// the float covers, the row's keys run over them with the rest of the row
+/// (`splitSourceEffects`). ↩️It held them keyed, a painter of its own a
+/// lift, until the engine keyed what a hand holds with its row
+/// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
 ///
 /// Exact, because a stamp is a byte copy where it is opaque, and lands as
 /// the float surface itself holds it where nothing is under it
@@ -429,13 +412,10 @@ bool _textsTouch(BitmapSurface holed, Rect rect) {
 /// pixel, and the keys are each pixel's own answer. The row is cleared
 /// first where the float covers, because the landing replaces what was
 /// there and a keyed pixel may be clear.
-class _KeyedFloat implements LandingPreview {
-  _KeyedFloat(this._float, this._keyed);
+class _FloatOnNothing implements LandingPreview {
+  _FloatOnNothing(this._float);
 
   final SelectionFloatPaint _float;
-
-  /// [_float]'s own surface through the row's keys.
-  final BitmapSurfacePainter _keyed;
 
   static final Paint _clearing = Paint()..blendMode = BlendMode.dstOut;
 
@@ -450,26 +430,23 @@ class _KeyedFloat implements LandingPreview {
       canvas.clipRect(bounds);
     }
     canvas.translate(_float.surfaceOffset.x, _float.surfaceOffset.y);
-    _float.surface!.paintContentInto(
+    final surface = _float.surface!;
+    surface.paintContentInto(
       canvas,
       layerPaint: _clearing,
       pixelRatio: pixelRatio,
     );
-    _keyed.paintContentInto(canvas, pixelRatio: pixelRatio);
+    surface.paintContentInto(canvas, pixelRatio: pixelRatio);
     canvas.restore();
   }
 
   @override
   List<HeldTiles> get heldTiles {
     final CanvasPoint(x: dx, y: dy) = _float.surfaceOffset;
+    final tiles = _float.surface!.surface.tiles;
     return [
-      (
-        tiles: _float.surface!.surface.tiles,
-        dx: dx,
-        dy: dy,
-        laying: const LaidErasing(),
-      ),
-      (tiles: _keyed.surface.tiles, dx: dx, dy: dy, laying: const LaidOver()),
+      (tiles: tiles, dx: dx, dy: dy, laying: const LaidErasing()),
+      (tiles: tiles, dx: dx, dy: dy, laying: const LaidOver()),
     ];
   }
 }

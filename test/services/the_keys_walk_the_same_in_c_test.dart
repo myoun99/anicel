@@ -9,12 +9,11 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart'
-    show celSourceEffectsOverStraight;
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart'
     show pixelThroughChain;
 
+import '../helpers/a_plugin_that_shifts.dart';
 import '../helpers/native_engine_path.dart';
 
 /// 🚨★★★A ROW'S COLOUR KEYS WALK ONE WAY, IN C AND IN DART (ABI 49).
@@ -28,12 +27,17 @@ import '../helpers/native_engine_path.dart';
 /// key has: its colour, its tolerance, its Amount, keeping instead of
 /// erasing, several in their order — and more than one table holds.
 ///
+/// The walk keys what a plugin at a chain's head reads, and keys alone are
+/// the engine's (`splitSourceEffects`): it is reached here through a plugin
+/// after the keys that fails, which shows the cel as it was handed it.
+///
 /// ⚠️The native route asserts the engine actually LOADED: a path that
 /// fails to load runs the Dart walk twice, and two identical routes
 /// agreeing measures nothing (the lesson the dab parity suite paid for).
 void main() {
-  /// A whole plane of red against green a tile.
-  const tileSize = 256;
+  /// A quarter of the plane of red against green a tile — the engine's
+  /// grid, which a plugin reads its cel by.
+  const tileSize = 128;
   final libraryPath = nativeEngineLibraryPathOrNull();
 
   tearDown(() {
@@ -59,22 +63,27 @@ void main() {
     [128, 128, 128],
   ];
 
-  Uint8List plane(int index, int alpha) {
+  Uint8List plane(int index, int quarter, int alpha) {
     final pixels = Uint8List(tileSize * tileSize * 4);
     for (var i = 0; i < tileSize * tileSize; i += 1) {
       final colour = i % sampled == 0 && i ~/ sampled < named.length
           ? named[i ~/ sampled]
-          : [i % 256, i ~/ 256 % 256, (i * 7 + index * 29) % 256];
+          : [
+              i % tileSize + quarter % 2 * tileSize,
+              i ~/ tileSize + quarter ~/ 2 * tileSize,
+              (i * 7 + index * 29) % 256,
+            ];
       pixels.setAll(i * 4, [...colour, alpha]);
     }
     return pixels;
   }
 
   /// Every red against every green, a spread of blue, and the [named]
-  /// colours — one tile at each of [alphas], and one with no ink at all.
+  /// colours — four tiles at each of [alphas], and four with no ink at all.
   Map<TileCoord, Uint8List> planes() => {
     for (final (index, alpha) in [...alphas, 0].indexed)
-      TileCoord(x: index, y: 0): plane(index, alpha),
+      for (var quarter = 0; quarter < 4; quarter += 1)
+        TileCoord(x: index * 4 + quarter, y: 0): plane(index, quarter, alpha),
   };
 
   BitmapSurface surfaceOf(Map<TileCoord, Uint8List> bytes) => BitmapSurface(
@@ -177,9 +186,10 @@ void main() {
       }
       final bytes = planes();
       walkIn(native: false);
-      final inDart = celSurfaceAsShown(surfaceOf(bytes), chain);
+      final walked = [...chain, aPluginThatFails];
+      final inDart = celSurfaceAsShown(surfaceOf(bytes), walked);
       walkIn(native: true);
-      final inC = celSurfaceAsShown(surfaceOf(bytes), chain);
+      final inC = celSurfaceAsShown(surfaceOf(bytes), walked);
 
       var keyed = 0;
       var kept = 0;
@@ -204,27 +214,6 @@ void main() {
       }
       expect(keyed, greaterThan(0), reason: '⛔liveness: the keys take ink');
       expect(kept, greaterThan(0), reason: '⛔liveness: and leave some');
-    });
-
-    test('$name: bytes keyed in place — a region\'s — the same in C and '
-        'in Dart', () {
-      if (libraryPath == null) {
-        if (nativeEngineRequired) {
-          fail(nativeEngineMissingSkipReason);
-        }
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      for (final pixels in planes().values) {
-        walkIn(native: false);
-        final inDart = Uint8List.fromList(pixels);
-        celSourceEffectsOverStraight(inDart, chain);
-        walkIn(native: true);
-        final inC = Uint8List.fromList(pixels);
-        celSourceEffectsOverStraight(inC, chain);
-
-        expect(inC, inDart);
-      }
     });
   }
 }

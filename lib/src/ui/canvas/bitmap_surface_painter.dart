@@ -81,9 +81,10 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// none (every sheet's ink, a selection's float, a cel already shown
   /// through `celSurfaceAsShown`) comes back as the object it was.
   ///
-  /// ⚠️It does not replace `celSurfaceAsShown` at the routes that key: the
-  /// keys filter the picture the texts are part of, so they have to be laid
-  /// BEFORE the keys run, and only that seam knows the row's chain.
+  /// ⚠️It does not replace `celSurfaceAsShown` at the routes that run a
+  /// plugin at a chain's head: it reads the picture the texts are part of,
+  /// so they have to be laid BEFORE it runs, and only that seam knows the
+  /// row's chain.
   final BitmapSurface surface;
 
   /// Zoom/pan applied inside the picture; `null` paints at identity.

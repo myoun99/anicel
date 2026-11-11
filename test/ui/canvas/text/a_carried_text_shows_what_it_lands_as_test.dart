@@ -358,8 +358,11 @@ void main() {
     // The app loads it before its first frame (`main`).
     setUpAll(ColourKeyShader.load);
 
-    testWidgets('🚨the text carried is keyed as the cel it lands on is — it '
-        'floats through the row\'s keys', (tester) async {
+    // What the canvas lays for the row, before the row's chain — whose
+    // keys the engine runs over it as over the cel it lands on
+    // (`splitSourceEffects`): the same bytes in, the same keyed out.
+    testWidgets('🚨the text carried lays what it lands as — the row keys both '
+        'alike', (tester) async {
       await pumpTextToolApp(
         tester,
         project: textToolProject(
@@ -402,8 +405,13 @@ void main() {
           across(10),
           down(10),
         ),
-        [0, 0, 0, 0],
-        reason: '⛔fixture: the key takes them off the canvas',
+        [255, 0, 0, 255],
+        reason: '⛔fixture: the canvas lays them, for the row\'s key to take',
+      );
+      expect(
+        [for (final key in canvasRowKeys(tester)) key.kind],
+        [EffectKind.colorKey],
+        reason: '⛔fixture: the row keys',
       );
 
       final mouse = await pressAt(tester, c.dx + 10, c.dy + 30);
@@ -419,14 +427,15 @@ void main() {
 
       expect(
         pixelOf(carried, width, across(57), down(21)),
-        [0, 0, 0, 0],
-        reason: 'keyed while it floats, as it is where it lands',
+        [255, 0, 0, 255],
+        reason: 'it floats where it lands',
       );
       expect(differing(carried, landed), 0);
     });
 
-    testWidgets('🚨keyed AGAIN while a text is in hand, it floats through '
-        'the row\'s new keys — and so do the texts above it', (tester) async {
+    testWidgets('🚨keyed AGAIN while a text is in hand, it lays what it '
+        'lands as — and so do the texts above it: the row\'s new keys run '
+        'over both', (tester) async {
       LayerEffect keyOf({int red = 0, int green = 0}) => LayerEffect(
         id: const EffectId('text-tool-key'),
         kind: EffectKind.colorKey,
@@ -485,10 +494,10 @@ void main() {
       expect(
         [at(keyed, 10, 10), at(keyed, 10, 130)],
         [
-          [0, 0, 0, 0],
-          [0, 0, 0, 0],
+          [255, 0, 0, 255],
+          [255, 0, 0, 255],
         ],
-        reason: '⛔fixture: the red key takes both off the canvas',
+        reason: '⛔fixture: the canvas lays both, for the red key to take',
       );
 
       sessionOf(
@@ -512,9 +521,10 @@ void main() {
           [255, 0, 0, 255],
           [255, 0, 0, 255],
         ],
-        reason: '⛔fixture: the green key leaves both',
+        reason: '⛔fixture: landed, both laid',
       );
       expect(differing(rekeyed, landed), 0);
+      expect(differing(keyed, rekeyed), 0, reason: 'a key is the row\'s');
     });
 
     testWidgets('🚨the picture changed under a carried text is what shows '

@@ -351,12 +351,11 @@ _PaintPart _paintPartOf(
       paper,
       rasterWidth,
     ),
-    // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
-    // color keys out in the shared visit and `celSurfaceWithSourceEffects`
-    // has already applied them to the surface this paint will draw. A
-    // color key changes ALPHA by a threshold test — there is no color
-    // matrix for it, the same way there is none for a blur; the eyedropper
-    // applies the keys itself (`CelColorKey.alphaFor`).
+    // ⛔A KEY IS A LEAD OF THE PLAN, NEVER A PAINT: `resolveCompositeEffectPlan`
+    // takes each into a `KeyRun` before a paint is resolved. A color key
+    // changes ALPHA by a threshold test — there is no color matrix for it,
+    // the same way there is none for a blur; the eyedropper applies the
+    // keys itself (`CelColorKey.alphaFor`).
     EffectKind.colorKey => const _SplitPart(
       'Source-pixel effects must be split off before a paint is '
       'resolved — see splitSourceEffects.',

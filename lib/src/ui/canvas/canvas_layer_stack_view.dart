@@ -136,20 +136,23 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   /// at USE, below.
   final List<ResolvedLayerEffect> effects;
 
-  /// The PAINT half — everything the composite applies. The CPU half (the
-  /// LEADING colour keys) is already on the surface: the session runs the
-  /// same split and feeds `activeSourceEffects` with the other half.
+  /// The PAINT half — everything the composite applies. A plugin at the
+  /// chain's head, after the keys before it, is already on the surface: the
+  /// session runs the same split and feeds `activeSourceEffects` with the
+  /// other half. Keys alone are the paint's ([splitSourceEffects]).
   ///
-  /// ⛔THE WHOLE CHAIN CANNOT GO TO THE PAINT, and this row was the last one
-  /// handing it over. A leading key then ran TWICE — once on the cel bytes
-  /// and again as a shader over the assembled picture. 🧪Delete and Keep are
-  /// idempotent at Amount 100, which is exactly why it hid; at any lower
-  /// Amount the two applications compound.
+  /// ⛔THE WHOLE CHAIN CANNOT GO TO THE PAINT where a plugin is at its head,
+  /// and this row was the last one handing it over. A leading key then ran
+  /// TWICE — once on the cel bytes and again over the assembled picture.
+  /// 🧪Delete and Keep are idempotent at Amount 100, which is exactly why it
+  /// hid; at any lower Amount the two applications compound.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 
-  /// The CPU half — the leading colour keys, which the session puts on the
-  /// surface this row draws ([CanvasLayerImageRequest.sourceEffects]'s
-  /// split, for the row a pen is on).
+  /// The leading run — the colour keys still on the cel's own bytes and a
+  /// plugin after them — which a float over the row asks after, and which
+  /// the session runs on the surface this row draws where it ends at a
+  /// plugin ([CanvasLayerImageRequest.sourceEffects]'s split, for the row a
+  /// pen is on).
   List<ResolvedLayerEffect> get sourceEffects =>
       splitSourceEffects(effects).source;
 }
@@ -202,8 +205,8 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// past them. The halves are taken at USE instead, below.
   final List<ResolvedLayerEffect> effects;
 
-  /// The CPU half — the color keys, which the image cache bakes into the
-  /// image it hands back rather than the paint applying them.
+  /// The leading run ([CanvasActiveLayerRow.sourceEffects]'s): what the
+  /// surface this row draws is run through where it ends at a plugin.
   ///
   /// ★This request names a cel by [frameKey] and has no surface of its own,
   /// which is why the split lives here as a getter while
@@ -460,8 +463,9 @@ final class LiftedRowPainters {
       return (surface: held.painter, float: lifted.float);
     }
     final painter = BitmapSurfacePainter(
-      // Shown as the row's image is: its texts laid, then its row's keys —
-      // the CPU half of the chain; the paint half rides the row's paint.
+      // Shown as the row's image is: its texts laid, then a plugin at the
+      // head of its row's chain — the CPU half; the paint half, keys alone
+      // included, rides the row's paint.
       surface: celSurfaceAsShown(lifted.surface, request.sourceEffects),
       // The stack draws in canvas space, as for the live row.
       showTransparentBackground: false,
@@ -507,7 +511,7 @@ _PaintRow? _liveRowOf(
       blendMode: request.blendMode,
       placement: request.placement,
       // The PAINT half only, as the live row's: the lifted surface's
-      // painter carries the row's leading keys.
+      // painter carries the CPU half.
       effects: request.paintEffects,
       keys: request.sourceEffects,
     ),
@@ -516,7 +520,7 @@ _PaintRow? _liveRowOf(
       opacity: active.opacity,
       blendMode: active.blendMode,
       placement: active.placement,
-      // The PAINT half only — like a cached row. A leading key is already
+      // The PAINT half only — like a cached row. The CPU half is already
       // on the surface this node draws.
       effects: active.paintEffects,
       keys: active.sourceEffects,
@@ -547,9 +551,9 @@ sealed class _SurfaceRow extends _PaintRow {
   LayerPlacement? get placement;
   List<ResolvedLayerEffect> get effects;
 
-  /// The CPU half of the row's chain — the leading colour keys its cel is
-  /// shown through — which a float over it asks after
-  /// ([SelectionFloatPaint.shownOn]).
+  /// The leading run of the row's chain — the colour keys still on its
+  /// cel's own bytes and a plugin after them — which a float over it asks
+  /// after ([SelectionFloatPaint.shownOn]).
   List<ResolvedLayerEffect> get keys;
 
   /// The tint an onion ghost wears over its cel ([CanvasLayerImageRequest.
@@ -613,9 +617,10 @@ final class _PaintLiftedSurface extends _SurfaceRow {
 }
 
 /// A cel drawn from its OWN TILES, as the plan hands it
-/// ([CutFrameCompositeLayer]: its texts laid and its leading keys run on
-/// the surface, the rest of its chain left to the paint) — every row of a
-/// frame's one picture ([StackedFrame]).
+/// ([CutFrameCompositeLayer]: its texts laid and a plugin at its chain's
+/// head run on the surface, the rest of its chain — keys alone included —
+/// left to the paint) — every row of a frame's one picture
+/// ([StackedFrame]).
 final class _PaintCelSurface extends _SurfaceRow {
   _PaintCelSurface(StoredRow row, {required this.lineage})
     : painter = BitmapSurfacePainter(
@@ -654,8 +659,7 @@ final class _PaintCelSurface extends _SurfaceRow {
   @override
   final int? tint;
 
-  /// None left to show a float through: the plan ran them on the surface,
-  /// and nothing floats over a frame's picture.
+  /// None asked after: nothing floats over a frame's picture.
   @override
   List<ResolvedLayerEffect> get keys => const [];
 }

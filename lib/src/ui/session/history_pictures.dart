@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart' show VoidCallback;
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_frame_store.dart';
-import '../../services/cel_source_effect_pass.dart';
 import '../../services/history_manager.dart';
 import '../canvas/after_frame_once.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
@@ -116,21 +115,15 @@ class HistoryPictures {
     });
   }
 
-  /// The pictures of what a canvas paints for [tile] go — the tile's own,
-  /// and on a row drawn through colour keys its keyed copy's, which lives
-  /// exactly as long as the tile does — unless a cel still holds [tile].
+  /// The picture of what a canvas paints for [tile] goes unless a cel still
+  /// holds [tile]. ↩️And its keyed copy's, on a row drawn through colour
+  /// keys, until the engine keyed a row's stored bytes and no copy was
+  /// pictured (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
   void _letGo(BrushFrameStore store, TileCoord coord, BitmapTile tile) {
-    final keyed = keyedCopyOf(tile);
-    final pictured =
-        _cache.heldFor(tile) != null ||
-        (keyed != null && _cache.heldFor(keyed) != null);
-    if (!pictured || store.holdsTile(coord, tile)) {
+    if (_cache.heldFor(tile) == null || store.holdsTile(coord, tile)) {
       return;
     }
     _cache.releasePicture(tile);
-    if (keyed != null && !identical(keyed, tile)) {
-      _cache.releasePicture(keyed);
-    }
   }
 
   bool _disposed = false;

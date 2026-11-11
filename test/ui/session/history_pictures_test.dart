@@ -208,6 +208,32 @@ void main() {
     expect(pictured(held[1]), isFalse, reason: 'deep');
     expect(pictured(held[2]), isTrue, reason: 'the next undo');
   });
+
+  testWidgets('a deep entry\'s pictures stay where a cel still holds its '
+      'tiles', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final canvas = Object();
+    ShownCels.instance.show(canvas, _key.cel);
+    addTearDown(() => ShownCels.instance.hide(canvas));
+    final held = [
+      for (final fill in [21, 22, 23]) _surfaceOf([fill]),
+    ];
+    for (final surface in held) {
+      _givePictures(BitmapTileImageCache.instance, surface);
+      session.historyManager.execute(_Holds(surface));
+    }
+    session.renderCaches.brushFrameStore.storeBakedSurface(_key, held[0]);
+    await tester.pump();
+
+    bool pictured(BitmapSurface surface) => surface.tiles.values.every(
+      (tile) => BitmapTileImageCache.instance.heldFor(tile) != null,
+    );
+    expect(pictured(held[1]), isFalse, reason: '⛔premise: deep, let go');
+    expect(pictured(held[0]), isTrue, reason: 'the cel holds it');
+  });
 }
 
 const _key = BrushFrameKey(

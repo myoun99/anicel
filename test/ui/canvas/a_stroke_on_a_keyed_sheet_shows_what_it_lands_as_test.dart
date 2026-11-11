@@ -21,7 +21,9 @@ import '../../helpers/cel_text_tool_harness.dart';
 /// drew the paper bare in every tile the stroke had touched until the pen
 /// came up — 2,868 pixels apart from the landing, 0 on a bare row. This
 /// draws with the pen and reads what the canvas draws for the cel under it
-/// while the stroke is live and once it has landed, over the same sheet.
+/// while the stroke is live and once it has landed, over the same sheet —
+/// what the row lays, which the engine runs the row's keys over, the same
+/// bytes in the same keyed out (`splitSourceEffects`).
 void main() {
   const paper = [64, 192, 96, 255];
   const rule = [30, 30, 30, 255];
@@ -122,8 +124,13 @@ void main() {
       expect(before.sublist(0, 4), rule, reason: '⛔fixture: the page shows');
       expect(
         before.sublist(4 * 192, 4 * 192 + 4),
-        keyed ? isNot(paper) : paper,
-        reason: '⛔fixture: the row keys its paper away, or does not',
+        paper,
+        reason: '⛔fixture: the row lays its paper',
+      );
+      expect(
+        [for (final key in canvasRowKeys(tester)) key.kind],
+        [if (keyed) EffectKind.colorKey],
+        reason: '⛔fixture: the row keys it away, or does not',
       );
       expect(drawing, landed, reason: 'what is drawn is what lands');
     });

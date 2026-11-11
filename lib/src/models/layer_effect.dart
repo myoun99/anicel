@@ -576,10 +576,11 @@ enum EffectKind {
   /// composite has already painted.
   ///
   /// 🚨THIS IS A SPLIT POINT, NOT A GATE. A threshold comparison has no
-  /// colour-matrix form, so a colour key at the HEAD of a chain runs as a
-  /// CPU pass over the cel surface (`celSurfaceWithSourceEffects`) — that is
-  /// what keeps the fx and the destructive button in exact agreement, since
-  /// only the CPU sees the cel's own straight bytes.
+  /// colour-matrix form, so a colour key at the HEAD of a chain runs over
+  /// the cel's own straight bytes — the engine's row keys, or the CPU's
+  /// pass where a plugin follows it (`splitSourceEffects`), by one set of
+  /// tables — which is what keeps the fx and the destructive button in
+  /// exact agreement.
   ///
   /// ⛔IT NO LONGER DECIDES WHERE A KIND MAY BE OFFERED. A gate called
   /// `effectKindsFor` used to hide these kinds wherever the input was not

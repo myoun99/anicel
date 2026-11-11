@@ -64,10 +64,11 @@ void main() {
     );
   }
 
-  ResolvedLayerEffect deleteWhite() => ResolvedLayerEffect(
-    kind: EffectKind.colorKey,
-    values: const [0, 0xFFFFFFFF, 0, 100],
-  );
+  ResolvedLayerEffect deleteWhite({double amount = 100}) =>
+      ResolvedLayerEffect(
+        kind: EffectKind.colorKey,
+        values: [0, 0xFFFFFFFF, 0, amount],
+      );
 
   Future<Uint8List> paintWith(
     WidgetTester tester,
@@ -122,6 +123,11 @@ void main() {
     return bytes!.buffer.asUint8List();
   }
 
+  Set<int> inkAlphas(Uint8List bytes) => {
+    for (var i = 3; i < bytes.length; i += 4)
+      if (bytes[i] != 0) bytes[i],
+  };
+
   int inkPixels(Uint8List bytes) {
     var n = 0;
     for (var i = 3; i < bytes.length; i += 4) {
@@ -145,23 +151,20 @@ void main() {
     values: const [-0.5, 0],
   );
 
-  testWidgets('a key at the HEAD of the chain belongs to the SURFACE', (
-    tester,
-  ) async {
+  testWidgets('a key at the HEAD of the chain keys the row\'s own bytes '
+      'once — the engine\'s, with the row', (tester) async {
     final plain = await paintWith(tester, const []);
-    expect(inkPixels(plain), greaterThan(0), reason: 'fixture: the layer drew');
-    final keyed = await paintWith(tester, [deleteWhite()]);
-    // ⛔IDENTICAL, and that is the fix. A leading key runs on the cel's own
-    // bytes — the session applies it through `celSurfaceWithSourceEffects`
-    // before it hands this painter over — so the node takes only the PAINT
-    // half and this paint has nothing left to do. Handing it the whole chain
-    // ran the key a SECOND time: 🧪on this fixture, whose surface the session
-    // never touched, that erased every pixel.
-    expect(
-      inkPixels(keyed),
-      inkPixels(plain),
-      reason: 'the leading key belongs to the surface, not to this paint',
-    );
+    expect(inkAlphas(plain), {255}, reason: 'fixture: the layer drew');
+    final keyed = await paintWith(tester, [deleteWhite(amount: 50)]);
+    // ONCE: at half Amount, a key run once leaves half the alpha and twice
+    // a quarter. ↩️It belonged to the surface — the session keyed the cel
+    // before it handed this painter over and the node took the paint half
+    // alone; handing it the whole chain ran the key a SECOND time (🧪on
+    // this fixture, whose surface the session never touched, that erased
+    // every pixel). Keys alone are the paint's now, and the session keys no
+    // surface (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
+    expect(inkPixels(keyed), inkPixels(plain));
+    expect(inkAlphas(keyed), {128}, reason: 'keyed once, by the row');
   });
 
   testWidgets('a key BELOW a painted effect keys what that effect MADE', (
@@ -198,8 +201,8 @@ void main() {
     expect(
       inkPixels(keptFirst),
       inkPixels(darkenedOnly),
-      reason: 'a leading key is the surface\'s job, and on the white cel it '
-          'names nothing',
+      reason: 'a leading key keys the cel\'s own bytes, and on the white cel '
+          'it names nothing',
     );
   });
 }

@@ -104,9 +104,14 @@ void main() {
     tileSize: side,
   );
 
-  /// A lift's picture centred [at]: clear at its rim, a pattern of opaque
-  /// colours inside — some of them grey, which a key takes away.
-  BrushDab liftAt(CanvasPoint at, {int width = 60, int height = 40}) {
+  /// A lift's picture centred [at]: clear at its rim, a pattern of colours
+  /// inside at [alpha] — some of them grey, which a key takes away.
+  BrushDab liftAt(
+    CanvasPoint at, {
+    int width = 60,
+    int height = 40,
+    int alpha = 255,
+  }) {
     final rgba = Uint8List(width * height * 4);
     for (var y = 3; y < height - 3; y++) {
       for (var x = 3; x < width - 3; x++) {
@@ -118,7 +123,7 @@ void main() {
             (n * 23 + 91) & 255,
             (n * 11) & 255,
           ],
-          255,
+          alpha,
         ]);
       }
     }
@@ -343,46 +348,50 @@ void main() {
     );
   });
 
-  test('🚨on a row that keys its colours, a float shows keyed with the cel, '
-      'as it lands', () {
-    final keys = [
-      fx(EffectKind.colorKey, {
-        'keyOperation': 0,
-        'keyColor': 0xFF808080,
-        'tolerance': 40,
-        'amount': 100,
-      }),
-    ];
-    final row = CanvasActiveLayerRow(opacity: 1, effects: keys);
-    final base = cel();
-    final lift = liftAt(CanvasPoint(x: 120, y: 60));
-    final landing = movedBy(lift, 21, 13);
-    final drawing = shown(
-      frameOf(
-        BitmapSurfacePainter(surface: celSurfaceAsShown(base, keys)),
-        float: carried(
-          lift,
-          base,
-          dx: 21,
-          dy: 13,
-          lands: (stamp: landing, on: _Cel(base, onCanvasGrid: true)),
-        ),
-        row: row,
-      ),
-    );
-
-    expect(
-      drawing,
-      shown(
+  // Half there as well: what a float lays over the cel it is held on is
+  // what it leaves there landed, under the row's keys.
+  for (final alpha in [255, 128]) {
+    test('🚨on a row that keys its colours, a float at alpha $alpha shows '
+        'keyed with the cel, as it lands', () {
+      final keys = [
+        fx(EffectKind.colorKey, {
+          'keyOperation': 0,
+          'keyColor': 0xFF808080,
+          'tolerance': 40,
+          'amount': 100,
+        }),
+      ];
+      final row = CanvasActiveLayerRow(opacity: 1, effects: keys);
+      final base = cel();
+      final lift = liftAt(CanvasPoint(x: 120, y: 60), alpha: alpha);
+      final landing = movedBy(lift, 21, 13);
+      final drawing = shown(
         frameOf(
-          BitmapSurfacePainter(
-            surface: celSurfaceAsShown(stamped(base, landing), keys),
+          BitmapSurfacePainter(surface: celSurfaceAsShown(base, keys)),
+          float: carried(
+            lift,
+            base,
+            dx: 21,
+            dy: 13,
+            lands: (stamp: landing, on: _Cel(base, onCanvasGrid: true)),
           ),
           row: row,
         ),
-      ),
-    );
-  });
+      );
+
+      expect(
+        drawing,
+        shown(
+          frameOf(
+            BitmapSurfacePainter(
+              surface: celSurfaceAsShown(stamped(base, landing), keys),
+            ),
+            row: row,
+          ),
+        ),
+      );
+    });
+  }
 
   test('🚨on a posed row, a float shows as its landing, in place of what '
       'the cel shows there', () {

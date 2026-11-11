@@ -147,8 +147,11 @@ void main() {
     expect(cel.asked, 0);
   });
 
-  test('a float keyed once is keyed again when its row keys another colour '
-      '— and by the first keys when they come back', () async {
+  // ↩️It held the float keyed by its row's keys, keyed again when they
+  // changed, until the engine keyed what a hand holds with its row
+  // (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
+  test('a float its row keys lays its own pixels in place of what it covers, '
+      'whatever the keys — the row keys them with the cel', () async {
     final (:float, cel: _) = floatOver(empty);
     final another = [
       ResolvedLayerEffect(
@@ -156,14 +159,17 @@ void main() {
         values: [0, 0xFFC81414, 10, 100],
       ),
     ];
+    final own = float.surface!.surface.tiles;
 
-    final away = await alphaAt(float.shownOn(keys).preview, 24, 24);
-    final kept = await alphaAt(float.shownOn(another).preview, 24, 24);
-    final awayAgain = await alphaAt(float.shownOn(keys).preview, 24, 24);
-
-    expect(away, 0, reason: 'its own colour is keyed away');
-    expect(kept, 255, reason: 'another colour keyed leaves it be');
-    expect(awayAgain, 0);
+    for (final rowKeys in [keys, another]) {
+      final shown = float.shownOn(rowKeys).preview;
+      expect(shown.heldTiles.map((held) => held.tiles), [same(own), same(own)]);
+      expect(shown.heldTiles.map((held) => held.laying), [
+        isA<LaidErasing>(),
+        isA<LaidOver>(),
+      ]);
+      expect(await alphaAt(shown, 24, 24), 255, reason: 'no key runs here');
+    }
   });
 
   test('a partly clear float landing on ink is the landing — it blends with '
