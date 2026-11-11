@@ -89,4 +89,27 @@ void main() {
 
     expect(apart, 0);
   });
+
+  test('each byte starts exactly where its table says, and the double just '
+      'below is still the byte before', () {
+    double justBelow(double c) {
+      final bits = ByteData(8)..setFloat64(0, c);
+      return (bits..setInt64(0, bits.getInt64(0) - 1)).getFloat64(0);
+    }
+
+    final apart = <String>[];
+    for (var at = 0; at < powerByteStarts.length; at += 1) {
+      final start = powerByteStarts[at];
+      final byte = 11 + at;
+      if (srgbByteOf(start) != byte) {
+        apart.add('$start is ${srgbByteOf(start)}, not $byte');
+      }
+      if (srgbByteOf(justBelow(start)) != byte - 1) {
+        apart.add('below $start is ${srgbByteOf(justBelow(start))}');
+      }
+    }
+
+    expect(apart, isEmpty);
+    expect(srgbByteOf(powerByteStarts.last), 255);
+  });
 }

@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'photoshop_byte_reader.dart';
 import '../../models/import/import_warning.dart';
 
@@ -364,9 +366,9 @@ int _clampByte(int value) => value < 0 ? 0 : (value > 255 ? 255 : value);
   final y = 1.00000 * inverse(fy);
   final z = 1.08883 * inverse(fz);
   return (
-    _srgbByteOf(3.2406 * x - 1.5372 * y - 0.4986 * z),
-    _srgbByteOf(-0.9689 * x + 1.8758 * y + 0.0415 * z),
-    _srgbByteOf(0.0557 * x - 0.2040 * y + 1.0570 * z),
+    srgbByteOf(3.2406 * x - 1.5372 * y - 0.4986 * z),
+    srgbByteOf(-0.9689 * x + 1.8758 * y + 0.0415 * z),
+    srgbByteOf(0.0557 * x - 0.2040 * y + 1.0570 * z),
   );
 }
 
@@ -378,22 +380,23 @@ int _clampByte(int value) => value < 0 ? 0 : (value > 255 ? 255 : value);
 /// the power part read `math.pow`, which IEEE does not require to round
 /// correctly, so another device's libm could move a byte (gpu-export-path
 /// ③-3). It is found among where each byte of the power part begins
-/// ([_powerByteStarts]) now: comparisons alone, the same on every device.
+/// ([powerByteStarts]) now: comparisons alone, the same on every device.
 /// 🔬Measured against `math.pow` on this build's machine (2026-11-11): the
 /// same byte for every 8-bit Lab colour (2²⁴ of them) and for every linear
 /// value from −0.2 to 1.2 a ten-millionth apart. ⚠️A value within a few
 /// ulps of a byte's start could still land a byte from where another
 /// device's `pow` puts it — the new build is the one that counts (that
 /// card's ③, 「다르면 새 빌드가 정본」).
-int _srgbByteOf(double c) {
+@visibleForTesting
+int srgbByteOf(double c) {
   if (c <= 0.0031308) {
     return _clampByte((12.92 * c * 255).round());
   }
   var low = 0;
-  var high = _powerByteStarts.length;
+  var high = powerByteStarts.length;
   while (low < high) {
     final middle = (low + high) >> 1;
-    if (_powerByteStarts[middle] <= c) {
+    if (powerByteStarts[middle] <= c) {
       low = middle + 1;
     } else {
       high = middle;
@@ -402,7 +405,7 @@ int _srgbByteOf(double c) {
   return _firstPowerByte + low;
 }
 
-/// The byte the power part of [_srgbByteOf] starts at: the linear part ends
+/// The byte the power part of [srgbByteOf] starts at: the linear part ends
 /// at 255 · 12.92 · 0.0031308 = 10.31, which rounds to it.
 const _firstPowerByte = 10;
 
@@ -411,8 +414,10 @@ const _firstPowerByte = 10;
 /// up from there — ((v + 0.5) / 255 + 0.055) / 1.055 to the power 2.4, v
 /// from 10 to 254. Computed once with `math.pow` and written here, so no
 /// device computes them (`psd_lab_is_the_same_on_every_device_test.dart`
-/// holds them to the formula).
-const List<double> _powerByteStarts = [
+/// holds them to the formula, and [srgbByteOf] to them: each start is its
+/// own byte, and the double just below it the byte before).
+@visibleForTesting
+const List<double> powerByteStarts = [
   3.1883009044305320e-3,
   3.5092593495812301e-3,
   3.8483149330964263e-3,
