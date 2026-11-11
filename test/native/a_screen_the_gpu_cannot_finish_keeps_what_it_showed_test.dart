@@ -36,8 +36,11 @@ void main() {
         nextId: failed,
       );
     };
-    screen = EngineScreenTexture(asks: () => true, opened: (_) {})
-      ..wanted = (4, 4);
+    screen = EngineScreenTexture(
+      asks: () => true,
+      opened: (_) {},
+      letGo: () {},
+    )..wanted = (4, 4);
     await screen.open();
   });
   tearDown(() {

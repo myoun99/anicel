@@ -1,7 +1,7 @@
 import 'dart:ui' show RootIsolateToken;
 
 import 'package:flutter/foundation.dart'
-    show ValueListenable, ValueNotifier, visibleForTesting;
+    show ChangeNotifier, ValueListenable, visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'gpu_adapter_choice.dart';
@@ -63,6 +63,10 @@ bool isTheAppsEngine(GpuEngine engine) => identical(engine, _its.engine);
 /// given back (`gpu_engine_close` frees the engine whole). What stays is
 /// one engine whose device the driver took, once a loss.
 ///
+/// ⚠️BETWEEN FRAMES: what stands on a screen is told as this returns
+/// ([StandsOnTheAppsEngine]) and marks its box to paint, which no phase of
+/// a frame may.
+///
 /// ⏳Nothing in the app asks yet: what shows on a screen still holds what
 /// the gone engine made, and lets it go first (관제 2026-11-11 22:35: 「(C3)
 /// 는 다섯이 다 선 뒤」).
@@ -71,7 +75,41 @@ void letTheGoneAppGpuEngineGo() {
     return;
   }
   _its = _AppsEngine();
-  _opened.value = null;
+  _opened.letGo();
+}
+
+/// What stands on a screen of what [appGpuEngine] made — the texture a box
+/// is shown through, a stroke on its way, the grids' tiles, the frames'
+/// pictures — and is let go of with that engine
+/// ([letTheGoneAppGpuEngineGo]). Unlike a cache ([KeptOnTheAppsEngine]) it
+/// is told: it has something to lay again, and a box to paint.
+///
+/// 🚨ONE SEAM, FOR EVERY ONE OF THEM (관제 2026-11-11 22:35: 「`appGpuEngineOpen`
+/// 을 듣는 이음매 하나를 두고 다섯이 그것을 쓰게 하라」): [letGo] where the app
+/// lets its engine go, [opened] at each engine it opens — the first too.
+final class StandsOnTheAppsEngine {
+  StandsOnTheAppsEngine({
+    required void Function() letGo,
+    void Function(GpuEngine engine)? opened,
+  }) : _letGo = letGo,
+       _opened = opened;
+
+  final void Function() _letGo;
+  final void Function(GpuEngine engine)? _opened;
+
+  /// Hears from here on, till [stop].
+  void start() => appGpuEngineOpen.addListener(_heard);
+
+  void stop() => appGpuEngineOpen.removeListener(_heard);
+
+  void _heard() {
+    final engine = appGpuEngineOpen.value;
+    if (engine == null) {
+      _letGo();
+    } else {
+      _opened?.call(engine);
+    }
+  }
 }
 
 /// What was made on [appGpuEngine] and is kept: the app's while that
@@ -87,7 +125,8 @@ void letTheGoneAppGpuEngineGo() {
 /// ⛔Not by listening ([appGpuEngineOpen]): a cache that forgot to listen
 /// would hand out what the last engine made, and nothing would say so
 /// till a job was refused. Asked here, it cannot. What stands on a screen
-/// is not a cache and does listen: it has a picture to lay again.
+/// is not a cache and does listen ([StandsOnTheAppsEngine]): it has a
+/// picture to lay again.
 ///
 /// ⛔WHAT AN ENGINE LET GO MADE IS LEFT WITH IT, NOT FREED: what else was
 /// made there may hold it still and free itself after — a screen its
@@ -305,7 +344,29 @@ GpuEngine Function() _opener() => switch (debugGpuAdapterChoice) {
 /// ④, 관제 2026-11-08 20:54: 「열리기 전엔 모든 스팬이 지금의 차가운 스팬처럼
 /// 클래식 — 없다가 생기는 것 없음 · 장치는 첫 프레임 뒤에」).
 ValueListenable<GpuEngine?> get appGpuEngineOpen => _opened;
-final ValueNotifier<GpuEngine?> _opened = ValueNotifier(null);
+final _Open _opened = _Open();
+
+/// [appGpuEngineOpen]'s word: told of each engine opened, and of each let
+/// go — one never said to be open too. [appGpuEngine] opens one without a
+/// word, and what stands on it is let go of all the same
+/// ([StandsOnTheAppsEngine]); a value that goes from null to null tells no
+/// one.
+final class _Open extends ChangeNotifier
+    implements ValueListenable<GpuEngine?> {
+  @override
+  GpuEngine? get value => _value;
+  GpuEngine? _value;
+
+  void opened(GpuEngine engine) {
+    _value = engine;
+    notifyListeners();
+  }
+
+  void letGo() {
+    _value = null;
+    notifyListeners();
+  }
+}
 
 /// Opens [appGpuEngine] off this isolate ([GpuEngine.opening]) — at once
 /// where it is open already — and tells [appGpuEngineOpen]. The app asks
@@ -322,7 +383,7 @@ Future<GpuEngine> openAppGpuEngine() {
     }
     // Let go while it opened, its device gone: not the app's to tell of.
     if (identical(its, _its)) {
-      _opened.value = engine;
+      _opened.opened(engine);
     }
     return engine;
   }();

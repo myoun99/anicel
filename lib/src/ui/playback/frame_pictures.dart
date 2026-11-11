@@ -163,6 +163,23 @@ class FramePictures implements PlaybackPictures {
     aheadNodes.clear();
   }
 
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — what the frames stand on went
+  /// with the engine that made it: the chains held, every frame's picture
+  /// ([EngineFramePictureStore.letGoWithItsTools]), and the word that a
+  /// frame's making threw ([gaveUpAt]) — a device going refuses what the
+  /// next one makes, and a frame is asked of the next as if for the first
+  /// time.
+  ///
+  /// ⚠️The pictures last: who shows one asks for its frame again as it
+  /// hears ([EngineFramePictureStore.wentWithItsTools]), and finds none of
+  /// the rest.
+  void letGoWithTheirEngine() {
+    letGoOfNodes();
+    _gaveNothing.clear();
+    store.letGoWithItsTools();
+  }
+
   /// Lets go of every frame's picture made of a revision the cels' store
   /// last left for good ([BrushFrameStore.revisionsLastLeft]) — asked for
   /// by no key again — but the ones a screen holds ([FramePictureStore

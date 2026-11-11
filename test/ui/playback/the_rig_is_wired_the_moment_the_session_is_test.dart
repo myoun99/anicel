@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/the_apps_engine_let_go.dart';
 
 /// What the playback rig owes the session — that it is wired the moment
 /// the session exists, that it goes down with it, and that its warmer
@@ -239,6 +240,31 @@ void main() {
 
     expect(wantedAsItEnded, [null]);
   });
+
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  // 않고 새 장치를 열어 사본으로 되살린다」. ⚠️It loses the app's engine: the
+  // tests after it find the next.
+  testWidgets('🚨the frames\' pictures go with the app\'s engine — and the '
+      'warmer, at rest with every one made, makes them again on the '
+      'next', (tester) async {
+    await tester.runAsync(() async {
+      final s = twoPictures();
+      addTearDown(s.dispose);
+      s.warmActiveCut();
+      expect(
+        await pollUntil(() => held(s, 0) && held(s, 2)),
+        isTrue,
+        reason: '⛔premise: made ahead',
+      );
+      await patiently(playbackRigOf(s).prerenderScheduler.idle);
+
+      theAppsEngineLostAndLetGo();
+
+      expect([held(s, 0), held(s, 2)], [false, false]);
+      expect(await pollUntil(() => held(s, 0) && held(s, 2)), isTrue);
+    });
+  });
+
   // The same laws on both screens a run is shown on: the canvas, from its
   // own pictures, for a cut played alone — through the camera or not
   // (playback-plays-the-screen-material) — and the track stack the whole

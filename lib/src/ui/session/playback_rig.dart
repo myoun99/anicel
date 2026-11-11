@@ -18,6 +18,7 @@ import '../../services/flutter_test_run.dart';
 import '../../models/cut_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_audio_device.dart'
     show QaAudioDevice, audioDeviceUnlessTesting;
 import '../audio/audio_conform_store.dart';
@@ -381,7 +382,20 @@ class PlaybackRig implements PlaybackRun {
     _renderCaches.brushFrameStore.celPixelRevision.addListener(
       framePictures.letGoOfLeftRevisions,
     );
+    _onTheEngine.start();
   }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — the frames' pictures are laid
+  /// with the app's engine's tools (`RenderCaches.framePictureStore`), and
+  /// go with that engine ([FramePictures.letGoWithTheirEngine]); the warmer
+  /// looks again from the start, nothing it walked over being there.
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: () {
+      framePictures.letGoWithTheirEngine();
+      prerenderScheduler.wake(fromTheStart: true);
+    },
+  );
 
   /// A run that ends is followed no further. What is wanted next is the
   /// session's to say — its warm of the cut the playhead lands on — and
@@ -399,6 +413,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    _onTheEngine.stop();
     _renderCaches.brushFrameStore.celPixelRevision.removeListener(
       framePictures.letGoOfLeftRevisions,
     );

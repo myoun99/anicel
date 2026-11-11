@@ -14,6 +14,7 @@ import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 
+import '../helpers/the_apps_engine_let_go.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
@@ -31,18 +32,7 @@ void main() {
 
   // A cel, by the name a painter gives one.
   const cel = (1, 1);
-
-  /// The engine that was the app's: its device gone, and let go.
-  GpuEngine lostAndLetGo() {
-    final gone = appGpuEngine..debugLose();
-    // The word that a device is lost comes inside a wait: a read is one.
-    expect(
-      () => GpuStampPicture(gone, Uint8List(4), 1, 1).pixels(),
-      throwsA(isA<GpuReadFailed>()),
-    );
-    letTheGoneAppGpuEngineGo();
-    return gone;
-  }
+  const lostAndLetGo = theAppsEngineLostAndLetGo;
 
   /// A tile of [value] at every byte, its bytes here.
   BitmapTile tileOf(int value) => BitmapTile(

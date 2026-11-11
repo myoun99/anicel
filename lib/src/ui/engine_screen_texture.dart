@@ -34,17 +34,31 @@ const int _screenSideStep = 512;
 /// the app's engine is open ([appGpuEngineOpen]) and the box [asks] for one,
 /// its sides rounded up from what is [want]ed, and opened again where that
 /// outgrows it — the one it replaces freed once it is shown no more.
+///
+/// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+/// 않고 새 장치를 열어 사본으로 되살린다」 — let go of with the engine it was
+/// opened on, and opened again on the next ([StandsOnTheAppsEngine]): a
+/// device shows nothing of another's.
 final class EngineScreenTexture {
   /// A texture for a box that [asks] for one, [opened] telling that one has
-  /// just been opened on an engine.
+  /// just been opened on an engine and [letGo] that the one open went with
+  /// its engine.
   EngineScreenTexture({
     required bool Function() asks,
     required void Function(GpuEngine engine) opened,
+    required void Function() letGo,
   }) : _asks = asks,
-       _opened = opened;
+       _opened = opened,
+       _letGo = letGo;
 
   final bool Function() _asks;
   final void Function(GpuEngine engine) _opened;
+  final void Function() _letGo;
+
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: _wentWithItsEngine,
+    opened: (_) => unawaited(open()),
+  );
 
   /// The texture open, if any.
   ScreenTexture? get texture => _texture;
@@ -105,11 +119,24 @@ final class EngineScreenTexture {
     filterQuality: FilterQuality.none,
   );
 
-  void start() => appGpuEngineOpen.addListener(open);
+  void start() => _onTheEngine.start();
 
   void stop() {
     _stopped = true;
-    appGpuEngineOpen.removeListener(open);
+    _onTheEngine.stop();
+    _freed();
+  }
+
+  /// The engine the texture was opened on is the app's no more: neither is
+  /// the texture the box's, nor one being opened there, and the box is told.
+  void _wentWithItsEngine() {
+    _opening = null;
+    _freed();
+    _letGo();
+  }
+
+  /// The texture open is the box's no more, freed once it is shown no more.
+  void _freed() {
     final texture = _texture;
     _texture = null;
     unawaited(texture?.free());
@@ -146,7 +173,11 @@ final class EngineScreenTexture {
     _opening = asked;
     final (width, height) = asked;
     final opened = await debugOpenEngineScreen(engine, width, height);
-    if (_stopped || _opening != asked) {
+    // ⚠️Asked of the engine too: one opened on an engine let go meanwhile
+    // comes at the size the next is being opened at.
+    if (_stopped ||
+        _opening != asked ||
+        !identical(engine, appGpuEngineOpen.value)) {
       await opened.free();
       return;
     }

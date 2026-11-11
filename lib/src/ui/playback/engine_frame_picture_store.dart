@@ -96,9 +96,26 @@ class EngineFramePicture extends ChangeNotifier {
   }
 }
 
-/// What tells a store's news ([EngineFramePictureStore.waits]).
-class _Waits extends ChangeNotifier {
+/// What tells a store's news ([EngineFramePictureStore.waits],
+/// [EngineFramePictureStore.wentWithItsTools]).
+class _News extends ChangeNotifier {
   void changed() => notifyListeners();
+}
+
+/// What a store has of the tools it lays with, from before they are asked
+/// for till it lets go of them ([EngineFramePictureStore.letGoWithItsTools]):
+/// ONE object, so what is still on its way with the last ones — their
+/// opening and its word that it is through, a lay and its word that it
+/// waits — comes to nothing of the next.
+final class _Tools {
+  EngineFrameTools? open;
+  Future<EngineFrameTools>? opening;
+
+  /// Whether [opening] is done, whatever it came to.
+  bool through = false;
+
+  /// Whether the lay on its way with them waits for kernels.
+  bool waitsForKernels = false;
 }
 
 /// The frames' pictures on the engine, each under the identity of what it
@@ -119,35 +136,35 @@ class EngineFramePictureStore<K extends Object> {
 
   final Future<EngineFrameTools> Function() _open;
   final EngineFrameTools? Function()? _openAlready;
-  Future<EngineFrameTools>? _opening;
+  _Tools _its = _Tools();
 
   /// What a picture is laid with — null until the engine is open.
-  EngineFrameTools? get toolsOpen => _opened ??= _openAlready?.call();
-  EngineFrameTools? _opened;
+  EngineFrameTools? get toolsOpen => _its.open ??= _openAlready?.call();
 
   /// What [toolsOpen] waits for, opened the first time it is asked: a
   /// session laying nothing opens no engine. In no one's zone — what the
   /// store waits for once is not the first asker's to hold, as a test's
   /// fake clock would, for ever.
-  Future<EngineFrameTools> get tools => _opening ??= Zone.root.run<Future<EngineFrameTools>>(
-    () => _open().then((opened) => _opened = opened).whenComplete(() {
-      _toolsAreThrough = true;
-      _waits.changed();
-    }),
-  );
+  Future<EngineFrameTools> get tools {
+    final its = _its;
+    return its.opening ??= Zone.root.run<Future<EngineFrameTools>>(
+      () => _open().then((opened) => its.open = opened).whenComplete(() {
+        its.through = true;
+        _waits.changed();
+      }),
+    );
+  }
 
   /// Whether [toolsOpen] is still to come: not open yet, nor found unable
   /// to open — what was asked of the store then heard why ([_noEngine]),
   /// and nothing waits for tools that will not come.
-  bool get toolsAreToCome => toolsOpen == null && !_toolsAreThrough;
-  bool _toolsAreThrough = false;
+  bool get toolsAreToCome => toolsOpen == null && !_its.through;
 
   /// Whether the lay on its way waits for kernels still to be compiled
   /// ([FrameKernelsToCome]) — and with it every lay behind it, one at a
   /// time as they go: what a screen that draws nothing of its frame till
   /// its picture is there marks its place by (`FrameWaitMark`).
-  bool get waitsForKernels => _waitsForKernels;
-  bool _waitsForKernels = false;
+  bool get waitsForKernels => _its.waitsForKernels;
 
   /// Tells when the engine keeps this store's frames from the screen, or no
   /// more: [toolsAreToCome] or [waitsForKernels] has changed.
@@ -157,7 +174,13 @@ class EngineFramePictureStore<K extends Object> {
   /// ([Zone.inSameErrorZone]) — a screen under a test's zone never heard
   /// that the engine would not open (🔬2026-11-11, the pin hung).
   Listenable get waits => _waits;
-  final _Waits _waits = _Waits();
+  final _News _waits = _News();
+
+  /// Tells that every picture went with the tools it was laid with
+  /// ([letGoWithItsTools]): a screen that shows one, or stands on a screen
+  /// of those tools, lets go of it and asks for its frame again.
+  Listenable get wentWithItsTools => _went;
+  final _News _went = _News();
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -442,7 +465,10 @@ class EngineFramePictureStore<K extends Object> {
     return total;
   }
 
-  void dispose() {
+  void dispose() => _letGoOfAll();
+
+  /// Lets go of every picture, and answers the lays waiting with none.
+  void _letGoOfAll() {
     for (final lay in _lays) {
       lay.done.complete(null);
     }
@@ -451,6 +477,23 @@ class EngineFramePictureStore<K extends Object> {
       entry.picture._letGo();
     }
     _entries.clear();
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — the tools the pictures were
+  /// laid with went with their engine, and the pictures with them: every
+  /// one is let go of, the lays waiting answered with none, and what is
+  /// asked from here on waits for the tools asked for anew ([tools]) — as
+  /// a store does before its engine is open. Told to who shows a picture
+  /// ([wentWithItsTools]), and to who waits ([waits]).
+  ///
+  /// ⚠️A lay on its way on those tools is answered here, and lets go of
+  /// what it laid when it comes ([_lay]).
+  void letGoWithItsTools() {
+    _letGoOfAll();
+    _its = _Tools();
+    _went.changed();
+    _waits.changed();
   }
 
   /// The engine would not open: every lay asked for hears why.
@@ -468,12 +511,32 @@ class EngineFramePictureStore<K extends Object> {
   /// A turn of the lays once the tools are open, in no one's zone as
   /// [tools] is: a lay asked from under a test's fake clock would stand at
   /// the front, its awaits never run, and every lay behind it wait for ever.
-  void _aTurn() => Zone.root.run(
-    () => unawaited(tools.then((_) => _layFirst(), onError: _noEngine)),
-  );
+  void _aTurn() {
+    final its = _its;
+    Zone.root.run(
+      () => unawaited(
+        tools.then(
+          (_) => _layFirst(),
+          onError: (Object error, StackTrace stack) {
+            // Why tools let go of since would not open is no word on the
+            // next ones ([letGoWithItsTools]).
+            if (identical(its, _its)) {
+              _noEngine(error, stack);
+            }
+          },
+        ),
+      ),
+    );
+  }
 
   void _layFirst() {
     if (_lays.isEmpty) {
+      return;
+    }
+    if (toolsOpen == null) {
+      // A turn of the tools let go of since ([letGoWithItsTools]): the
+      // next ones' comes.
+      _aTurn();
       return;
     }
     final lay = _lays.first;
@@ -498,13 +561,14 @@ class EngineFramePictureStore<K extends Object> {
   /// back for the lays behind it.
   Future<void> _lay(_Lay<K> lay) async {
     lay.running = true;
+    final its = _its;
     final picture = _aPicture();
     try {
       await FxPluginStages.recordedThrough<void>(
         () => _composedAs(lay, picture),
         discard: (_) {},
         waitsForKernels: (waits) {
-          _waitsForKernels = waits;
+          its.waitsForKernels = waits;
           _waits.changed();
         },
       );
@@ -530,7 +594,7 @@ class EngineFramePictureStore<K extends Object> {
   }
 
   EngineFramePicture _aPicture() {
-    final (:composite, :letters) = _opened!;
+    final (:composite, :letters) = toolsOpen!;
     return EngineFramePicture._(EngineStackScreen(composite, letters));
   }
 

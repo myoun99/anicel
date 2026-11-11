@@ -63,8 +63,14 @@ import '../../services/playback/let_go_wanted_latest.dart';
 /// - NO open engine ([appGpuEngineOpen] — not yet, or never: a test that
 ///   opens none) = the store stands down entirely ([tileFor] returns null
 ///   and requests nothing): rows keep the classic Dart paint.
+/// - The engine LET GO, its device gone ([letTheGoneAppGpuEngineGo],
+///   🗣️gpu-canonical-store-Q11) = every tile goes with it ([clear]) and is
+///   drawn again on the next: a device lays nothing of another's.
 class TimelineGridTileStore {
-  TimelineGridTileStore._();
+  // For as long as the store is: the app's lifetime.
+  TimelineGridTileStore._() {
+    StandsOnTheAppsEngine(letGo: clear).start();
+  }
 
   static final TimelineGridTileStore instance = TimelineGridTileStore._();
 
@@ -306,7 +312,8 @@ class TimelineGridTileStore {
   String _liveGeneration = '';
 
   /// Lets go of every tile — a project closing (F-505: its tiles keep its
-  /// session through the resolvers they were baked against), and tests.
+  /// session through the resolvers they were baked against), the engine
+  /// they were drawn on let go, and tests.
   void clear() {
     for (final kept in _entries.values) {
       kept.entry.picture.letGo();
@@ -1193,6 +1200,12 @@ class TimelineGridTileStore {
     final words = await _bakedWords(emitted.ink.glyphs);
     if (debugBeforeDrawing case final wait?) {
       await wait();
+    }
+    // Let go while its words were baked: the pass kept by now is the next
+    // engine's, and draws nothing on this one — nor is it compiled here,
+    // on the thread the app's frames are built on.
+    if (!identical(engine, appGpuEngineOpen.value)) {
+      return null;
     }
     final picture = _drawn(engine, request, emitted, words);
     return picture == null ? null : (picture: picture, emitted: emitted);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
@@ -18,12 +19,14 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/a_shown_surface.dart';
 import '../../helpers/engine_screen_pins.dart';
+import '../../helpers/poll_until.dart';
 
 /// 🚨★★★A FRAME'S ONE PICTURE ON THE ENGINE (flip lane ⓑ-1): the store lays
 /// a frame as the engine's screen lays it, one picture a key however often
@@ -572,5 +575,104 @@ void main() {
     expect(await waiting, isNull);
     expect(keptSince(before), 0);
     expect(store.holds('a'), isFalse);
+  });
+
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  // 않고 새 장치를 열어 사본으로 되살린다」.
+  group('a store whose tools went with their engine', () {
+    late int opened;
+
+    /// A store that counts each time its tools are asked for.
+    EngineFramePictureStore<String> storeCountingItsTools() {
+      opened = 0;
+      final store = EngineFramePictureStore<String>(
+        tools: () async {
+          opened += 1;
+          return (composite: engine.composite, letters: engine.letters);
+        },
+      );
+      addTearDown(store.dispose);
+      return store;
+    }
+
+    test('keeps no picture, answers the lays waiting with none and tells '
+        'who shows one — and lays with the tools it asks for '
+        'anew', () async {
+      final before = GpuScreen.liveBytes;
+      final store = storeCountingItsTools();
+      await store.lay('a', frameOf(cel(5)));
+      await store.lay('b', frameOf(cel(6)));
+      final shown = store.peek('a')!.hold();
+      final waiting = store.lay('c', frameOf(cel(7)));
+      var went = 0;
+      var waits = 0;
+      store.wentWithItsTools.addListener(() => went += 1);
+      store.waits.addListener(() => waits += 1);
+      expect(opened, 1, reason: '⛔premise');
+      expect(store.toolsAreToCome, isFalse, reason: '⛔premise');
+
+      store.letGoWithItsTools();
+
+      expect(await waiting, isNull);
+      expect(store.holds('a'), isFalse);
+      expect(store.holds('b'), isFalse);
+      expect(went, 1);
+      expect(waits, 1);
+      expect(store.toolsOpen, isNull);
+      expect(store.toolsAreToCome, isTrue);
+      expect(keptSince(before), picture, reason: 'the one a screen holds');
+      shown.release();
+      expect(keptSince(before), 0);
+
+      final again = await patiently(store.lay('a', frameOf(cel(5))));
+
+      expect(opened, 2);
+      expect(store.toolsAreToCome, isFalse);
+      expect(shownBy(again!), laidBy(cel(5)));
+    });
+
+    test('lets go of what a lay on its way laid, answered with '
+        'none', () async {
+      final before = GpuScreen.liveBytes;
+      final store = storeCountingItsTools();
+      final laying = store.lay('a', frameOf(cel(5)));
+      // Its turn comes with the tools, ahead of this.
+      await store.tools;
+      expect(keptSince(before), picture, reason: '⛔premise: it is laid');
+      expect(store.holds('a'), isFalse, reason: '⛔premise: and on its way');
+
+      store.letGoWithItsTools();
+
+      expect(await laying, isNull);
+      await pumpEventQueue();
+      expect(store.holds('a'), isFalse);
+      expect(keptSince(before), 0);
+    });
+
+    test('lays what is asked right after with the next tools, whatever '
+        'turn of the last ones comes meanwhile', () async {
+      final opening = <Completer<EngineFrameTools>>[];
+      final store = EngineFramePictureStore<String>(
+        tools: () {
+          opening.add(Completer<EngineFrameTools>());
+          return opening.last.future;
+        },
+      );
+      addTearDown(store.dispose);
+      final tools = (composite: engine.composite, letters: engine.letters);
+      // A turn asked of tools still to come ...
+      final first = store.lay('a', frameOf(cel(5)));
+      store.letGoWithItsTools();
+      final second = store.lay('b', frameOf(cel(6)));
+      expect(opening, hasLength(2), reason: '⛔premise: asked for anew');
+
+      // ... comes with this one in the line, the next tools not there yet.
+      opening.first.complete(tools);
+      await pumpEventQueue();
+      opening.last.complete(tools);
+
+      expect(await first, isNull);
+      expect(shownBy((await patiently(second))!), laidBy(cel(6)));
+    });
   });
 }

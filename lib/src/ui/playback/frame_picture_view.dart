@@ -309,12 +309,42 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// its line come behind kernels still to be compiled, or through them.
   void _hearItsStore() {
     _store.waits.addListener(_paintAgain);
-    // Opened by the first that asks. Why they would not open is said to
-    // what asked the engine to open (`compileAppKernelsAhead`) and to every
-    // lay asked of the store (`EngineFramePictureStore._noEngine`); a view
-    // hears of it by [EngineFramePictureStore.waits], as it does of the
-    // rest.
-    _store.tools.ignore();
+    _store.wentWithItsTools.addListener(_itsPicturesWent);
+    _askForItsTools();
+  }
+
+  /// Opened by the first that asks. Why they would not open is said to
+  /// what asked the engine to open (`compileAppKernelsAhead`) and to every
+  /// lay asked of the store (`EngineFramePictureStore._noEngine`); a view
+  /// hears of it by [EngineFramePictureStore.waits], as it does of the
+  /// rest.
+  void _askForItsTools() => _store.tools.ignore();
+
+  /// Hears [store] no more ([_hearItsStore]).
+  void _hearNoMore(EngineFramePictureStore<FramePictureKey> store) {
+    store.waits.removeListener(_paintAgain);
+    store.wentWithItsTools.removeListener(_itsPicturesWent);
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — the store's pictures went with
+  /// the tools they were laid with
+  /// ([EngineFramePictureStore.wentWithItsTools]): so do the one this view
+  /// shows and the screen it stands a frame on, a screen of those tools,
+  /// and its frame is asked for again — laid with the next, or made by
+  /// this view as it was the first time ([_look]).
+  ///
+  /// ⚠️The next tools are asked for here as they were the first time: a
+  /// frame that is drawn as it stands lays nothing, and no one else would.
+  void _itsPicturesWent() {
+    _letGo(_store);
+    _standingOn?.free();
+    _standingOn = null;
+    _composedOn = null;
+    _askForItsTools();
+    if (mounted) {
+      setState(_look);
+    }
   }
 
   @override
@@ -399,7 +429,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       widget.run.landings.addListener(_landed);
     }
     if (!identical(oldWidget.run.pictures, widget.run.pictures)) {
-      oldWidget.run.pictures.store.waits.removeListener(_paintAgain);
+      _hearNoMore(oldWidget.run.pictures.store);
       _hearItsStore();
       // What keeps its frame from the screen is this store's to say now.
       _paintAgain();
@@ -444,7 +474,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   @override
   void dispose() {
     widget.run.landings.removeListener(_landed);
-    _store.waits.removeListener(_paintAgain);
+    _hearNoMore(_store);
     appEngineGetsReady.removeListener(_paintAgain);
     _place?.says(this, waits: false);
     _liveChanges?.removeListener(_liveMoved);
@@ -1150,6 +1180,7 @@ class _RenderFrameScreen extends RenderBox {
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
     asks: () => attached,
     opened: (_) => markNeedsPaint(),
+    letGo: markNeedsPaint,
   );
 
   EngineFramePicture? _shown;

@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../core/neighbour_pairs.dart';
 import '../../models/bitmap_surface.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_pose.dart';
@@ -629,6 +630,7 @@ class _InteractiveBrushEditCanvasViewState
     _shapeKeeper?.up(_shapeShow);
     _holdKeeper?.up(_fill);
     _toolHolds.handOver = _door;
+    _onTheEngine.start();
   }
 
   /// This view's door for a press it could not hear
@@ -666,17 +668,38 @@ class _InteractiveBrushEditCanvasViewState
     }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
-      _endStrokeAfterTheFrame();
-      _fill.letGo();
-      // A shape laid on the cel that went is no shape of this one's.
-      _shapeShow.drop();
-      _overlay.resetOverlay();
-      // clear() before dropping: the live tiles are native-backed (R21)
-      // and return to the engine's free list through it.
-      _liveRasterizer?.clear();
-      _liveRasterizer = null;
+      _letGoOfWhatIsInFlight();
     }
   }
+
+  /// Lets go of what is in flight on the cel, landing none of it — the
+  /// stroke, what the fill holds, a shape laid, and the overlay they show
+  /// on: the cel went from under them ([didUpdateWidget]), or the engine
+  /// they are drawn on did ([_onTheEngine]).
+  void _letGoOfWhatIsInFlight() {
+    _endStrokeAfterTheFrame();
+    _fill.letGo();
+    // A shape laid on the cel that went is no shape of this one's.
+    _shapeShow.drop();
+    _overlay.resetOverlay();
+    // clear() before dropping: the live tiles are native-backed (R21)
+    // and return to the engine's free list through it.
+    _liveRasterizer?.clear();
+    _liveRasterizer = null;
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다. 잃는 것은 그리던 획 정도다」 —
+  /// what is in flight is drawn on the engine's stroke, which goes with its
+  /// device: let go of as it is where its cel goes, and the next press
+  /// draws on the next engine's.
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: () {
+      _letGoOfWhatIsInFlight();
+      // A stroke ended from outside is told of after a frame: one comes.
+      SchedulerBinding.instance.ensureVisualUpdate();
+    },
+  );
 
   /// Ends a stroke in flight from OUTSIDE a pointer event — its cel changed
   /// under the pen, or the view is going — and says so after the frame.
@@ -716,6 +739,7 @@ class _InteractiveBrushEditCanvasViewState
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
+    _onTheEngine.stop();
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.

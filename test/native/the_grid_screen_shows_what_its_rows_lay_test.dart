@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/widgets/still_raster.dart';
 import '../helpers/a_shown_surface.dart';
 import '../helpers/census_where_textures_are_ram.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/the_apps_engine_let_go.dart';
 
 /// 🚨THE GRID'S SCREEN SHOWS WHAT ITS ROWS LAY, IN THE FRAME THEY LAY IT
 /// (grid-on-the-engine ④ D1, 관제 2026-11-08 20:54): a row's tile is laid
@@ -41,22 +42,23 @@ void main() {
   const green = [0, 255, 0, 255];
   final opener = debugOpenEngineScreen;
 
-  setUpAll(() async {
-    final engine = await openAppGpuEngine();
-    // 120 × 20: red over its left half, green over its right.
+  /// A tile on [engine], 120 × 20: red over its left half, green over its
+  /// right.
+  TimelineGridTilePicture tileOn(GpuEngine engine) {
     final grid = GpuGrid(engine);
     final ops = TimelineGridTileOpWriter()
       ..fillRect(0, 0, 60, 20, timelineGridPackRgba(const Color(0xFFFF0000)))
       ..fillRect(60, 0, 60, 20, timelineGridPackRgba(const Color(0xFF00FF00)));
-    TimelineGridTilePicture drawn() {
-      final picture = GpuGridPicture(engine, 120, 20);
-      grid.draw(picture, ops.build());
-      return TimelineGridTilePicture(picture);
-    }
-
-    tile = drawn();
-    letGoOf = drawn();
+    final picture = GpuGridPicture(engine, 120, 20);
+    grid.draw(picture, ops.build());
     grid.free();
+    return TimelineGridTilePicture(picture);
+  }
+
+  setUpAll(() async {
+    final engine = await openAppGpuEngine();
+    tile = tileOn(engine);
+    letGoOf = tileOn(engine);
   });
   tearDownAll(() {
     debugOpenEngineScreen = opener;
@@ -947,6 +949,39 @@ void main() {
     await tester.pumpWidget(const SizedBox());
 
     expect(ScreenTexture.liveBytes, holding);
+  });
+
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  // 않고 새 장치를 열어 사본으로 되살린다」. ⚠️THE FILE'S LAST: it loses the
+  // app's engine, and the tile every test above lays is that engine's.
+  testWidgets('a screen goes with the engine it was opened on — its rows '
+      'lay nothing, let go of what they laid and draw their cells '
+      'themselves — and they lay again on the next engine\'s', (tester) async {
+    aSmallView(tester);
+    var drawn = tile;
+    final row = _Row(() => drawn);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    expect(row.laidLast, isTrue, reason: '⛔premise: laid');
+    final held = tile.debugHolds;
+
+    theAppsEngineLostAndLetGo();
+    await tester.pump();
+
+    expect(row.laidLast, isFalse);
+    expect(tile.debugHolds, held - 1, reason: 'let go of by the row');
+    expect(tester.layers.whereType<TextureLayer>(), isEmpty);
+
+    // The next engine's, with a tile its store would draw on it.
+    final next = (await tester.runAsync(openAppGpuEngine))!;
+    drawn = tileOn(next);
+    addTearDown(drawn.letGo);
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(512, 512), (512, 512)], reason: 'opened again');
+    expect(row.laidLast, isTrue);
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 }
 

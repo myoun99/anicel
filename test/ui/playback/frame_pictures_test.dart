@@ -601,6 +601,40 @@ void main() {
     });
   });
 
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  // 않고 새 장치를 열어 사본으로 되살린다」.
+  testWidgets('what the frames stand on goes with its engine: every '
+      'picture, the chains held, and the word that a frame\'s making threw '
+      '— each frame is to come, as if for the first time', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      addTearDown(pictures.dispose);
+      expect(await pictures.make(at(2), shouldAbort: () => false), isTrue);
+      pictures.noteFailure(at(0));
+      // A chain held: asked for again, it answers to the number it has.
+      final held = pictures.heldNodes.idOf('a chain');
+      pictures.heldNodes.settle();
+      expect(pictures.heldNodes.idOf('a chain'), held, reason: '⛔premise');
+      pictures.heldNodes.settle();
+      var went = 0;
+      pictures.store.wentWithItsTools.addListener(() => went += 1);
+
+      pictures.letGoWithTheirEngine();
+
+      expect(went, 1);
+      expect(pictures.has(at(2)), isFalse);
+      expect(pictures.standingOf(at(2)).state, PictureState.toCome);
+      expect(pictures.standingOf(at(0)).state, PictureState.toCome);
+      expect(pictures.heldNodes.idOf('a chain'), isNot(held));
+      pictures.heldNodes.settle();
+
+      expect(await pictures.make(at(0), shouldAbort: () => false), isTrue);
+      expect(pictures.has(at(0)), isTrue, reason: 'laid with the next tools');
+    });
+  });
+
   test('the budget\'s order: each picture is wanted at the soonest step that '
       'shows it, and a picture no step shows is not wanted at all', () {
     final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));

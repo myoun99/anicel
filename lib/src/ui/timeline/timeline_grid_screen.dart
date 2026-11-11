@@ -116,6 +116,9 @@ final class _GridScreen {
       }
       _laysChanged();
     },
+    // No row lays here till the next engine's is open: each paints again,
+    // lets go of the tiles it laid, and draws its cells itself.
+    letGo: _laysChanged,
   );
 
   ScreenTexture? get _texture => _shownThrough.texture;
