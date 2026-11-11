@@ -26,7 +26,11 @@ void main() {
   tearDown(AppGpu.debugReset);
 
   GpuFxPlugin opened(String source, FxPluginDescription description) {
-    final (:plugin, :refusal) = GpuFxPlugin.open(source, description);
+    final (:plugin, :refusal) = GpuFxPlugin.open(
+      source,
+      description,
+      cut: true,
+    );
     expect(refusal, isNull);
     addTearDown(plugin!.close);
     return plugin;
@@ -43,10 +47,12 @@ void main() {
 
   test('a plugin opens from its WGSL, or the engine says why not', () {
     final invert = fxPluginDescriptionOf('a.invert');
-    expect(GpuFxPlugin.open(fxPluginFixture('invert'), invert).refusal, isNull);
-    final float = GpuFxPlugin.open(fxPluginFixture('float'), invert).refusal;
+    String? refusalOf(String source) =>
+        GpuFxPlugin.open(source, invert, cut: true).refusal;
+    expect(refusalOf(fxPluginFixture('invert')), isNull);
+    final float = refusalOf(fxPluginFixture('float'));
     expect(float, matches(RegExp(r'^\d+:\d+: ')), reason: 'its line named');
-    expect(GpuFxPlugin.open('not WGSL', invert).refusal, isNotEmpty);
+    expect(refusalOf('not WGSL'), isNotEmpty);
   });
 
   test('it draws the straight picture handed it, in its place', () {
@@ -150,7 +156,9 @@ void main() {
     final values = Float64List.fromList([3.4, 0, 0, 0]);
     expect(blur.reach(values, moment), 3);
     final endless = opened(fxPluginFixture('endless'), _blurOf());
-    AppGpu.settings.value = const AppGpuSettings(pluginLimit: 1000000);
+    AppGpu.settings.value = const AppGpuSettings(
+      pluginShare: FxPluginShare.tenThousand,
+    );
     expect(endless.reach(values, moment), isNull, reason: 'cut');
   });
 
@@ -184,49 +192,39 @@ void main() {
     }
   });
 
-  test('a run cut at this machine\'s limit is no picture', () {
+  test('each pixel of a run has this machine\'s share, however many pixels '
+      'there are', () {
+    // 🗣️an-endless-plugin-stalls-the-app-Q19: 「화소 하나의 몫으로 고정」 —
+    // ↩️the share was the limit over the pixels, so a picture of more of
+    // them was cut first.
     final blur = opened(fxPluginFixture('blur'), _blurOf());
-    Uint8List? drawn(int side, int limit) {
-      AppGpu.settings.value = AppGpuSettings(pluginLimit: limit);
-      return blur.render(
-        input: (
-          pixels: Uint8List(side * side * 4),
-          width: side,
-          height: side,
-          left: 0,
-          top: 0,
-        ),
-        values: Float64List.fromList([2, 0, 0, 0]),
-        layers: const [],
-        moment: moment,
-      );
-    }
-
-    expect(
-      drawn(64, AppGpuSettings.defaultPluginLimit),
-      isNotNull,
-      reason: '⛔CONTROL: the default draws it',
+    final endless = opened(fxPluginFixture('endless'), _blurOf());
+    Uint8List? drawn(GpuFxPlugin plugin, int side) => plugin.render(
+      input: (
+        pixels: Uint8List(side * side * 4),
+        width: side,
+        height: side,
+        left: 0,
+        top: 0,
+      ),
+      values: Float64List.fromList([2, 0, 0, 0]),
+      layers: const [],
+      moment: moment,
     );
-    // The fewest a pixel of this blur spends: one pixel draws on it, and
-    // not on one fewer.
-    var (low, high) = (0, 1 << 24);
-    expect((drawn(1, high), drawn(1, low)), (isNotNull, isNull));
-    while (high - low > 1) {
-      final mid = (low + high) ~/ 2;
-      if (drawn(1, mid) == null) {
-        low = mid;
-      } else {
-        high = mid;
-      }
-    }
-    expect(drawn(2, 4 * high), isNotNull, reason: 'four pixels, each its');
-    expect(drawn(2, 4 * high - 1), isNull, reason: 'one a share short');
+
+    AppGpu.settings.value = const AppGpuSettings(
+      pluginShare: FxPluginShare.tenThousand,
+    );
+    expect(drawn(blur, 1), isNotNull, reason: '⛔CONTROL: the least share');
+    expect(drawn(blur, 64), isNotNull, reason: '4,096 pixels, each its own');
+    expect(drawn(endless, 64), isNull, reason: 'cut');
   });
 
   test('once closed it answers nothing', () {
     final (:plugin, refusal: _) = GpuFxPlugin.open(
       fxPluginFixture('invert'),
       fxPluginDescriptionOf('a.invert'),
+      cut: true,
     );
     plugin!.close();
     expect(plugin.reach(Float64List(0), moment), isNull);
@@ -280,8 +278,61 @@ void main() {
         input[3],
       ]);
     });
+
+    test('never cutting opens it on the device again, without its '
+        'count', () async {
+      // 🗣️an-endless-plugin-stalls-the-app-Q18 「끊지 않음」: what the share
+      // would cut is drawn to its end, and its reach answered.
+      final plugins = InstalledFxPlugins(
+        service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
+      );
+      addTearDown(plugins.dispose);
+      final description = fxPluginDescriptionOf('a.spin');
+      await plugins.install(
+        fxPluginFileOf(description, source: _spin),
+        confirm: (_, {required replacing}) async => true,
+      );
+      Uint8List? drawn() => plugins.runnerFor(description)!.render(
+        input: (pixels: Uint8List(4), width: 1, height: 1, left: 0, top: 0),
+        values: Float64List(0),
+        layers: const [],
+        moment: moment,
+      );
+
+      int? reach() =>
+          plugins.runnerFor(description)!.reach(Float64List(0), moment);
+
+      expect(drawn(), isNull, reason: '⛔CONTROL: the standard share cuts it');
+      expect(reach(), isNull, reason: '⛔CONTROL: and its reach');
+      AppGpu.settings.value = const AppGpuSettings(
+        pluginShare: FxPluginShare.uncut,
+      );
+      expect(drawn(), isNotNull);
+      expect(reach(), 0);
+    });
   });
 }
+
+/// Spends more of a pixel's share than the standard gives — a million
+/// turns, in its drawing and its reach alike — and ends.
+const _spin = '''
+fn spun() -> u32 {
+  var n = 0u;
+  for (var i = 0u; i < 1000000u; i++) {
+    n += i;
+  }
+  return n;
+}
+
+@compute @workgroup_size(1, 1)
+fn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) {
+  anicel_out(spun());
+}
+
+fn anicel_reach() -> u32 {
+  return spun() & 0u;
+}
+''';
 
 /// The blur fixture's description: its radius a number.
 FxPluginDescription _blurOf() => fxPluginDescriptionOf(
@@ -302,7 +353,7 @@ Map<String, Object?> _ranged(String id, String kind, num min, num max) => {
 
 /// Writes what it is handed, a word a pixel along its row from its left:
 /// the moment's four, then each value's four words.
-const _probe = r'''
+const _probe = '''
 @compute @workgroup_size(16, 1)
 fn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) {
   let i = i32(at.x);

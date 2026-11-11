@@ -20,6 +20,48 @@ enum AppGpuPreference {
   highPerformance,
 }
 
+/// What each pixel of a GPU fx plugin's run may spend on this machine — a
+/// count of the plugin's instructions, the same on every device; a run one
+/// of whose pixels spends it is cut and shown as failed.
+///
+/// 🗣️an-endless-plugin-stalls-the-app-Q3 (유저 2026-11-08): 「설정에 두고
+/// 유저가 바꾼다」 · -Q13: 열 배씩 고르는 칸 · -Q19 (11-10 16:36): 「화소
+/// 하나의 몫으로 고정」 — 1만 · 10만 · 100만(기본) · 1,000만 · 1억 · -Q18
+/// (11-10): 「기본은 끊고, 설정에 『끊지 않음』을 더한다」.
+enum FxPluginShare {
+  tenThousand(10000),
+  hundredThousand(100000),
+  million(1000000),
+  tenMillion(10000000),
+  hundredMillion(100000000),
+
+  /// No run is cut on the device — the plugin is compiled with no count,
+  /// so moving to or from this one opens the plugins again. Its reach, on
+  /// the CPU, is handed all a share holds.
+  uncut(null);
+
+  const FxPluginShare(this._spends);
+
+  final int? _spends;
+
+  /// -Q19's 100만.
+  static const FxPluginShare standard = million;
+
+  /// Whether the device cuts a run whose pixel spends [share].
+  bool get cuts => _spends != null;
+
+  /// What a pixel may spend. ⛔[uncut] has no such thing: its run goes in
+  /// the chunks [standard]'s makes — a plugin within the standard keeps
+  /// the device no longer than there, and one past it may keep it longer
+  /// (an-endless-plugin-stalls-the-app 11-10 16:44: chunks cannot cut an
+  /// endless chunk; the driver's reset stays this choice's).
+  int get share => _spends ?? standard._spends!;
+
+  /// What the reach may spend: [share], or all a share's 32 bits hold
+  /// where the device cuts nothing.
+  int get reachShare => _spends ?? 0xFFFFFFFF;
+}
+
 /// The GPU choice as its settings file holds it.
 ///
 /// 🚨READ BEFORE DART RUNS. The engine is made by the runner, so the runner
@@ -36,53 +78,46 @@ enum AppGpuPreference {
 class AppGpuSettings {
   const AppGpuSettings({
     this.preference = AppGpuPreference.auto,
-    this.pluginLimit = defaultPluginLimit,
+    this.pluginShare = FxPluginShare.standard,
   });
 
   final AppGpuPreference preference;
 
-  /// What one run of a GPU fx plugin may spend on this machine — a count
-  /// of its instructions, the same on every device, each pixel its share
-  /// (an-endless-plugin-stalls-the-app-Q1 · Q5); a run that spends it is
-  /// cut and shown as failed. 🗣️-Q3 (유저 2026-11-08): 「설정에 두고 유저가
-  /// 바꾼다(기본값 100억)」. Dart's alone: the runner reads [preference].
-  final int pluginLimit;
+  /// Dart's alone: the runner reads [preference].
+  final FxPluginShare pluginShare;
 
-  /// -Q3's 100억.
-  static const int defaultPluginLimit = 10000000000;
-
-  AppGpuSettings copyWith({AppGpuPreference? preference, int? pluginLimit}) =>
-      AppGpuSettings(
-        preference: preference ?? this.preference,
-        pluginLimit: pluginLimit ?? this.pluginLimit,
-      );
+  AppGpuSettings copyWith({
+    AppGpuPreference? preference,
+    FxPluginShare? pluginShare,
+  }) => AppGpuSettings(
+    preference: preference ?? this.preference,
+    pluginShare: pluginShare ?? this.pluginShare,
+  );
 
   Map<String, dynamic> toJson() => {
     'preference': preference.name,
-    'pluginLimit': pluginLimit,
+    'pluginShare': pluginShare.name,
   };
 
   /// A name this build does not know reads as [AppGpuPreference.auto] — as
-  /// the runner reads it — and a limit that is no count above 0 as
-  /// [defaultPluginLimit].
+  /// the runner reads it — and as [FxPluginShare.standard].
   static AppGpuSettings fromJson(Map<String, dynamic> json) => AppGpuSettings(
     preference:
         AppGpuPreference.values.asNameMap()[json['preference']] ??
         AppGpuPreference.auto,
-    pluginLimit: switch (json['pluginLimit']) {
-      final int limit when limit > 0 => limit,
-      _ => defaultPluginLimit,
-    },
+    pluginShare:
+        FxPluginShare.values.asNameMap()[json['pluginShare']] ??
+        FxPluginShare.standard,
   );
 
   @override
   bool operator ==(Object other) =>
       other is AppGpuSettings &&
       other.preference == preference &&
-      other.pluginLimit == pluginLimit;
+      other.pluginShare == pluginShare;
 
   @override
-  int get hashCode => Object.hash(preference, pluginLimit);
+  int get hashCode => Object.hash(preference, pluginShare);
 }
 
 /// The app-wide GPU choice, on the same idiom as `AppMemory.settings`.

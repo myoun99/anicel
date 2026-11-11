@@ -29,7 +29,9 @@ import 'usage_stats_switch_row.dart';
 /// app」, rather than a tab of its own for one row. And the GPU choice
 /// ([GpuPreferenceRow] — 유저 「설정의 시스템같은데서」, board
 /// `gpu-choice-in-preferences`): which GPU the app runs on is this tab's
-/// question too.
+/// question too — and under it what a GPU fx plugin may spend on it
+/// ([FxPluginShareRow], an-endless-plugin-stalls-the-app-Q13 「GPU 고르기
+/// 줄 바로 아래」).
 class SystemStatusSection extends StatelessWidget {
   const SystemStatusSection({
     super.key,
@@ -54,6 +56,7 @@ class SystemStatusSection extends StatelessWidget {
       children: [
         UsageStatsSwitchRow(usageStats: appSettings.usageStats),
         GpuPreferenceRow(appSettings: appSettings),
+        FxPluginShareRow(appSettings: appSettings),
         const SizedBox(height: 10),
         Text(
           AppText.strings.systemStatusHelp,
@@ -158,6 +161,47 @@ class GpuPreferenceRow extends StatelessWidget {
     AppGpuPreference.lowPower => AppText.strings.gpuPreferenceLowPower,
     AppGpuPreference.highPerformance =>
       AppText.strings.gpuPreferenceHighPerformance,
+  };
+}
+
+/// What each pixel of a GPU fx plugin's run may spend on this machine
+/// ([AppGpuSettings.pluginShare]) — a list to pick from, as the GPU's is
+/// (🗣️an-endless-plugin-stalls-the-app-Q13: 「열 배씩 … 고른다」).
+class FxPluginShareRow extends StatelessWidget {
+  const FxPluginShareRow({super.key, required this.appSettings});
+
+  final EditorAppSettings appSettings;
+
+  static const pickerKey = 'settings-fx-plugin-share';
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<AppGpuSettings>(
+        valueListenable: AppGpu.settings,
+        builder: (context, settings, _) => settingsEnumPickerRow(
+          keyValue: pickerKey,
+          label: AppText.strings.fxPluginShareLabel,
+          help: AppText.strings.fxPluginShareHelp,
+          value: settings.pluginShare,
+          values: FxPluginShare.values,
+          labelOf: _labelOf,
+          onPicked: _pick,
+        ),
+      );
+
+  void _pick(FxPluginShare share) => appSettings.setGpuSettings(
+    AppGpu.settings.value.copyWith(pluginShare: share),
+  );
+
+  static String _labelOf(FxPluginShare share) => switch (share) {
+    FxPluginShare.tenThousand => AppText.strings.fxPluginShareTenThousand,
+    FxPluginShare.hundredThousand =>
+      AppText.strings.fxPluginShareHundredThousand,
+    FxPluginShare.million => AppText.strings.fxPluginShareMillion,
+    FxPluginShare.tenMillion => AppText.strings.fxPluginShareTenMillion,
+    FxPluginShare.hundredMillion =>
+      AppText.strings.fxPluginShareHundredMillion,
+    FxPluginShare.uncut => AppText.strings.fxPluginShareUncut,
   };
 }
 

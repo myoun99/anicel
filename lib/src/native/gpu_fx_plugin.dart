@@ -13,21 +13,24 @@ import 'app_gpu_engine.dart';
 typedef GpuFxPluginOpened = ({GpuFxPlugin? plugin, String? refusal});
 
 /// A GPU fx plugin (fx spec 2) opened on the app's engine: its reach run
-/// on the CPU, its picture on the GPU, each cut once it spends its share
-/// of this machine's limit ([AppGpuSettings.pluginLimit]).
+/// on the CPU, its picture on the GPU, each pixel of a run cut once it
+/// spends this machine's share ([AppGpuSettings.pluginShare]) — or, opened
+/// not to be cut, no run cut on the device.
 ///
 /// ⚠️Asked by one thread at a time; [close] lets it go.
 final class GpuFxPlugin implements FxPluginRunner {
   GpuFxPlugin._(this._plugin, this._kinds);
 
-  /// [source] checked, counted and compiled on the app's engine, its
-  /// values read as [description]'s parameters say — or why not.
+  /// [source] checked, counted and compiled on the app's engine — with no
+  /// count for the device where [cut] is false — its values read as
+  /// [description]'s parameters say; or why not.
   static GpuFxPluginOpened open(
     String source,
-    FxPluginDescription description,
-  ) {
+    FxPluginDescription description, {
+    required bool cut,
+  }) {
     try {
-      final plugin = GpuPlugin.open(appGpuEngine, source);
+      final plugin = GpuPlugin.open(appGpuEngine, source, cut: cut);
       final kinds = [
         for (final spec in description.parameters) _kindOf(spec.unit),
       ];
@@ -40,7 +43,7 @@ final class GpuFxPlugin implements FxPluginRunner {
   GpuPlugin? _plugin;
   final List<GpuPluginValue> _kinds;
 
-  static int get _limit => AppGpu.settings.value.pluginLimit;
+  static FxPluginShare get _share => AppGpu.settings.value.pluginShare;
 
   GpuPluginAsked _asked(Float64List values, FxPluginMoment moment) => (
     values: values,
@@ -58,10 +61,10 @@ final class GpuFxPlugin implements FxPluginRunner {
       return null;
     }
     try {
-      // ⏳Of how many pixels the reach spends one's share is
-      // an-endless-plugin-stalls-the-app-Q12's to say; one, the whole
-      // limit, until it does.
-      return plugin.reach(_asked(values, moment), limit: _limit, pixels: 1);
+      return plugin.reach(
+        _asked(values, moment),
+        share: _share.reachShare,
+      );
     } on StateError {
       return null;
     }
@@ -83,7 +86,7 @@ final class GpuFxPlugin implements FxPluginRunner {
         _pictureOf(input),
         [for (final layer in layers) _pictureOf(layer)],
         _asked(values, moment),
-        limit: _limit,
+        share: _share.share,
       );
       return drawn.buffer.asUint8List(
         drawn.offsetInBytes,

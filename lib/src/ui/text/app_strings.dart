@@ -928,6 +928,14 @@ enum AppStrings {
   String get gpuPreferenceNotOnMacOS => _s('gpuPreferenceNotOnMacOS');
   String get gpuPreferenceDriverPicks => _s('gpuPreferenceDriverPicks');
   String get gpuPreferenceOneGpu => _s('gpuPreferenceOneGpu');
+  String get fxPluginShareLabel => _s('fxPluginShareLabel');
+  String get fxPluginShareHelp => _s('fxPluginShareHelp');
+  String get fxPluginShareTenThousand => _s('fxPluginShareTenThousand');
+  String get fxPluginShareHundredThousand => _s('fxPluginShareHundredThousand');
+  String get fxPluginShareMillion => _s('fxPluginShareMillion');
+  String get fxPluginShareTenMillion => _s('fxPluginShareTenMillion');
+  String get fxPluginShareHundredMillion => _s('fxPluginShareHundredMillion');
+  String get fxPluginShareUncut => _s('fxPluginShareUncut');
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlNoLayers => _s('tlNoLayers');
@@ -2854,6 +2862,15 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': 'On macOS, Anicel cannot pick its GPU.',
     'gpuPreferenceDriverPicks': 'On Linux, the graphics driver picks the GPU.',
     'gpuPreferenceOneGpu': 'This device has one GPU.',
+    'fxPluginShareLabel': 'Plugin limit per run',
+    'fxPluginShareHelp':
+        'How many instructions a GPU effect plugin may spend on one pixel. A drawing that spends them all is cut and shown as failed.',
+    'fxPluginShareTenThousand': '10,000',
+    'fxPluginShareHundredThousand': '100,000',
+    'fxPluginShareMillion': '1 million',
+    'fxPluginShareTenMillion': '10 million',
+    'fxPluginShareHundredMillion': '100 million',
+    'fxPluginShareUncut': 'Never cut',
     'systemStatusHelp':
         'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
@@ -4292,6 +4309,15 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': 'macOS では Anicel は GPU を選べません。',
     'gpuPreferenceDriverPicks': 'Linux ではグラフィックドライバーが GPU を選びます。',
     'gpuPreferenceOneGpu': 'このデバイスの GPU は 1 つです。',
+    'fxPluginShareLabel': 'プラグイン 1 回の上限',
+    'fxPluginShareHelp':
+        'GPU エフェクトプラグインが 1 ピクセルを描くのに使える命令の数。使い切った描画は打ち切り、失敗として表示します。',
+    'fxPluginShareTenThousand': '1万',
+    'fxPluginShareHundredThousand': '10万',
+    'fxPluginShareMillion': '100万',
+    'fxPluginShareTenMillion': '1,000万',
+    'fxPluginShareHundredMillion': '1億',
+    'fxPluginShareUncut': '打ち切らない',
     'systemStatusHelp':
         '各サブシステムが今どの実装で動いているかです。フォールバック経路でもアプリは動きますが、たいていは遅くなります — 詳しく知りたいときは名前で検索できます。',
     'shortcutShelf.canvas': 'カンバス',
@@ -6154,6 +6180,15 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': 'macOS 에서는 애니셀이 GPU 를 고를 수 없습니다.',
     'gpuPreferenceDriverPicks': '리눅스에서는 그래픽 드라이버가 GPU 를 고릅니다.',
     'gpuPreferenceOneGpu': '이 기기는 GPU 가 하나입니다.',
+    'fxPluginShareLabel': '플러그인 한 번의 한계',
+    'fxPluginShareHelp':
+        'GPU 효과 플러그인이 화소 하나를 그리며 쓸 수 있는 명령 수. 다 쓴 그리기는 끊고 실패로 보여 줍니다.',
+    'fxPluginShareTenThousand': '1만',
+    'fxPluginShareHundredThousand': '10만',
+    'fxPluginShareMillion': '100만',
+    'fxPluginShareTenMillion': '1,000만',
+    'fxPluginShareHundredMillion': '1억',
+    'fxPluginShareUncut': '끊지 않음',
     'systemStatusHelp':
         '각 서브시스템이 지금 어떤 구현으로 돌고 있는지입니다. 폴백 경로에서도 앱은 동작하지만 대개 더 느립니다 — 자세히 알고 싶으면 이름으로 검색할 수 있습니다.',
     'shortcutShelf.canvas': '캔버스',
@@ -8060,6 +8095,15 @@ enum AppStrings {
     'gpuPreferenceDriverPicks':
         'Sous Linux, c’est le pilote graphique qui choisit le GPU.',
     'gpuPreferenceOneGpu': 'Cet appareil n’a qu’un GPU.',
+    'fxPluginShareLabel': 'Limite d’un passage de plugin',
+    'fxPluginShareHelp':
+        'Le nombre d’instructions qu’un plugin d’effet GPU peut dépenser pour un pixel. Un rendu qui les dépense toutes est interrompu et signalé comme échoué.',
+    'fxPluginShareTenThousand': '10 000',
+    'fxPluginShareHundredThousand': '100 000',
+    'fxPluginShareMillion': '1 million',
+    'fxPluginShareTenMillion': '10 millions',
+    'fxPluginShareHundredMillion': '100 millions',
+    'fxPluginShareUncut': 'Ne jamais interrompre',
     'systemStatusHelp':
         'Quelle implémentation chaque sous-système exécute en ce moment. Les chemins de repli gardent l\'application fonctionnelle mais tournent en général plus lentement — les noms sont cherchables si vous voulez les détails.',
     'shortcutShelf.canvas': 'Canevas',
@@ -10010,6 +10054,14 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': '在 macOS 上，Anicel 无法选择 GPU。',
     'gpuPreferenceDriverPicks': '在 Linux 上，由显卡驱动选择 GPU。',
     'gpuPreferenceOneGpu': '此设备只有一个 GPU。',
+    'fxPluginShareLabel': '插件单次上限',
+    'fxPluginShareHelp': 'GPU 效果插件绘制一个像素时可用的指令数。用完的绘制会被中断并显示为失败。',
+    'fxPluginShareTenThousand': '1万',
+    'fxPluginShareHundredThousand': '10万',
+    'fxPluginShareMillion': '100万',
+    'fxPluginShareTenMillion': '1000万',
+    'fxPluginShareHundredMillion': '1亿',
+    'fxPluginShareUncut': '不中断',
     'systemStatusHelp': '每个子系统当前运行的是哪一种实现。回退路径仍能让应用正常工作，但通常更慢 — 想了解细节可以按名称搜索。',
     'shortcutShelf.canvas': '画布',
     'shortcutShelf.tools': '工具',

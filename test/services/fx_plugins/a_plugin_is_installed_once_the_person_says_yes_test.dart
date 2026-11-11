@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/app_gpu_settings.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_bundle.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
@@ -168,4 +170,63 @@ void main() {
     await installed.uninstall('a.b');
     expect(heard, 1, reason: 'one it has not is no change');
   });
+
+  test('moving to or from never cutting opens its plugins again, the new '
+      'way, and no other share does', () async {
+    // 🗣️an-endless-plugin-stalls-the-app-Q18: 「끊지 않음」 is compiled
+    // with no count; a share is handed each run.
+    addTearDown(AppGpu.debugReset);
+    final opened = <bool>[];
+    final closed = <int>[];
+    final installed = InstalledFxPlugins(
+      service: library,
+      check: (_) => null,
+      open: (_, _) {
+        opened.add(AppGpu.settings.value.pluginShare.cuts);
+        return _Kept(opened.length, closed);
+      },
+    );
+    addTearDown(installed.dispose);
+    await installed.install(fileOf('a.b', '1'), confirm: answering(true));
+    final plugin = installed.plugins.single.description;
+    final first = installed.runnerFor(plugin);
+    AppGpu.settings.value = const AppGpuSettings(
+      pluginShare: FxPluginShare.tenThousand,
+    );
+    expect(installed.runnerFor(plugin), same(first), reason: 'the same build');
+    var heard = 0;
+    installed.addListener(() => heard += 1);
+    AppGpu.settings.value = const AppGpuSettings(
+      pluginShare: FxPluginShare.uncut,
+    );
+    expect(closed, [1], reason: 'let go at once');
+    expect(heard, 1, reason: 'and said so');
+    final uncut = installed.runnerFor(plugin);
+    AppGpu.settings.value = const AppGpuSettings();
+    expect(installed.runnerFor(plugin), isNot(same(uncut)));
+    expect(opened, [true, false, true]);
+    expect(closed, [1, 2]);
+  });
+}
+
+/// A build that says when it is let go.
+final class _Kept implements FxPluginRunner {
+  _Kept(this.number, this.closed);
+
+  final int number;
+  final List<int> closed;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) => null;
+
+  @override
+  void close() => closed.add(number);
 }

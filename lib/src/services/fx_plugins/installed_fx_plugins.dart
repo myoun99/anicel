@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/app_gpu_settings.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/project.dart';
@@ -73,7 +74,9 @@ class InstalledFxPlugins extends ChangeNotifier {
     FxPluginOpener? open,
   }) : _service = service ?? FxPluginLibraryService(),
        _check = check ?? checkFxPluginOnTheDevice,
-       _open = open ?? openInstalledFxPlugin;
+       _open = open ?? openInstalledFxPlugin {
+    AppGpu.settings.addListener(_onGpuSettings);
+  }
 
   final FxPluginLibraryService _service;
   final FxPluginChecker _check;
@@ -84,6 +87,25 @@ class InstalledFxPlugins extends ChangeNotifier {
   final Map<String, FxPluginRunner> _runners = {};
   List<InstalledFxPlugin> _plugins = const [];
   bool _disposed = false;
+
+  /// Whether the plugins [_runners] holds were opened to be cut.
+  bool _openedCutting = AppGpu.settings.value.pluginShare.cuts;
+
+  /// 🗣️an-endless-plugin-stalls-the-app-Q18 「끊지 않음」: a plugin is
+  /// compiled with its count or without it, so moving to or from that
+  /// choice lets every opened one go — each opens again, the new way, the
+  /// next time a frame asks it.
+  void _onGpuSettings() {
+    final cuts = AppGpu.settings.value.pluginShare.cuts;
+    if (cuts == _openedCutting) {
+      return;
+    }
+    _openedCutting = cuts;
+    for (final id in [..._runners.keys]) {
+      _letGo(id);
+    }
+    notifyListeners();
+  }
 
   Future<void>? _loading;
 
@@ -223,6 +245,7 @@ class InstalledFxPlugins extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    AppGpu.settings.removeListener(_onGpuSettings);
     for (final id in [..._runners.keys]) {
       _letGo(id);
     }
@@ -266,7 +289,11 @@ FxPluginRunner? openInstalledFxPlugin(
   }
   try {
     final source = File(path).readAsStringSync();
-    return GpuFxPlugin.open(source, plugin.description).plugin;
+    return GpuFxPlugin.open(
+      source,
+      plugin.description,
+      cut: AppGpu.settings.value.pluginShare.cuts,
+    ).plugin;
   } on FileSystemException {
     return null;
   } on FormatException {
@@ -280,6 +307,7 @@ String? checkFxPluginOnTheDevice(FxPluginBundle bundle) {
   final (:plugin, :refusal) = GpuFxPlugin.open(
     bundle.source,
     bundle.description,
+    cut: AppGpu.settings.value.pluginShare.cuts,
   );
   plugin?.close();
   return refusal;
