@@ -1012,7 +1012,7 @@ void main() {
         isNotNull,
         reason: '⛔CONTROL: its own fx would move it',
       );
-      expect(s.layerMerging.bakesFx(const LayerId('a'), null), isTrue);
+      expect(s.layerMerging.fxFramesBaked(const LayerId('a'), null), isNotNull);
 
       await rasterize(tester, s, null);
 
