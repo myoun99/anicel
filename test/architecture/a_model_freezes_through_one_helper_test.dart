@@ -2,12 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
-import '../helpers/source_ledger.dart';
+import '../helpers/source_ledger.dart' show codeOfLines;
 
 /// 🚨A MODEL FREEZES A COLLECTION THROUGH ONE HELPER — `frozenList`,
 /// `frozenSet` and `frozenMap` (`lib/src/core/frozen_collections.dart`).
 ///
-/// 🔬Card a-track-copy-wraps-its-unchanged-lists-anew (11-11): 33 model
+/// 🔬Card a-track-copy-wraps-its-unchanged-lists-anew (11-11): 34 model
 /// files froze with `List.unmodifiable` and its kin, which copy a list a
 /// model froze itself as readily as one from outside — so every copy gave
 /// each collection it did not change a new identity, and whatever kept
@@ -16,34 +16,21 @@ import '../helpers/source_ledger.dart';
 /// ⛔THIS SCANS SOURCE: a model that freezes by hand passes every
 /// behaviour test there is, until something keeps work by its identity.
 void main() {
-  test('🚨no model freezes a collection by hand, outside the ledger', () {
-    final found = <String, int>{};
-    final hits = <String, List<int>>{};
-    for (final file in dartFilesUnder('lib/src/models')) {
-      final path = libPath(file);
-      final lines = _freezesIn(file.readAsStringSync());
-      if (lines.isNotEmpty) {
-        found[path] = lines.length;
-        hits[path] = lines;
-      }
-    }
-    expectCountsMatchLedger(
-      found,
-      {for (final MapEntry(:key, :value) in _ledger.entries) key: value.count},
-      grew:
+  test('🚨no model freezes a collection by hand', () {
+    expect(
+      {
+        for (final file in dartFilesUnder('lib/src/models'))
+          if (_freezesIn(file.readAsStringSync()) case final lines
+              when lines.isNotEmpty)
+            libPath(file): lines,
+      },
+      isEmpty,
+      reason:
           'freeze through `frozenList` · `frozenSet` · `frozenMap` '
           '(`frozenMapOrSame` where the constructor builds the map from the '
           'one it was given) — `List.unmodifiable` copies a list a model '
           'froze itself, and a copy of the model then hands back a new one',
-      paidOff: 'these freeze through the helper now — take the line out',
-      hits: hits,
     );
-  });
-
-  test('every ledger entry says why', () {
-    expectEveryEntrySaysWhy({
-      for (final MapEntry(:key, :value) in _ledger.entries) key: value.why,
-    });
   });
 
   test('the scan sees a planted freeze, typed or not, and not one in a '
@@ -225,13 +212,3 @@ final _frozenAt = RegExp(
 final _selfAt = RegExp(r'\bthis\.([a-z]\w*)');
 final _fallback = RegExp(r'\b([a-z]\w*) \?\? this\.([a-z]\w*)\b');
 final _said = RegExp(r'\bownFrozen\(this\.([a-z]\w*)\)');
-
-const _ledger = <String, ({int count, String why})>{
-  'lib/src/models/composite_tree.dart': (
-    count: 19,
-    why:
-        'on the transition list (관제 11-11: bitmap_tile · brush_stamp_image '
-        '· composite_tree · layer_blend_mode) — another lane is moving it, '
-        'and nothing here touches it until that lane lands.',
-  ),
-};

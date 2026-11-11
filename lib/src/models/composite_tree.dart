@@ -1,3 +1,4 @@
+import '../core/frozen_collections.dart';
 import '../core/tree_nodes.dart';
 import 'cel_number_letters.dart';
 import 'layer_blend_mode.dart';
@@ -291,7 +292,7 @@ CompositeNode<L> clippedOnto<L>(
   )) {
     return CompositeClip<L>(
       base: base,
-      scope: List.unmodifiable([
+      scope: frozenList([
         if (readsTheBase && scope.first is! CompositeOpaque<L>)
           CompositeOpaque<L>(base),
         ...scope,
@@ -336,7 +337,7 @@ CompositeNode<L> clippedOnto<L>(
   };
   return CompositeClip<L>(
     base: base,
-    scope: List.unmodifiable([
+    scope: frozenList([
       if (readsTheBase) CompositeOpaque<L>(base),
       clipped,
     ]),
@@ -396,7 +397,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
       ) =>
         (
           CompositeGroup<L>(
-            children: List.unmodifiable(scopeOf(children)),
+            children: frozenList(scopeOf(children)),
             opacity: opacity,
             blendMode: blendMode,
             effects: effects,
@@ -405,7 +406,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
         ),
       CompositeAdjustment<L>(:final children, :final effects, :final mix) => (
         CompositeAdjustment<L>(
-          children: List.unmodifiable(scopeOf(children)),
+          children: frozenList(scopeOf(children)),
           effects: effects,
           mix: mix,
         ),
@@ -423,7 +424,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
         (
           CompositeClip<L>(
             base: bases[base] = scopeOf([base]).single,
-            scope: List.unmodifiable(scopeOf(scope)),
+            scope: frozenList(scopeOf(scope)),
             opacity: opacity,
             blendMode: blendMode,
           ),
@@ -467,7 +468,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
         ),
       _ => composed,
     };
-    final below = List<CompositeNode<L>>.unmodifiable(out);
+    final below = frozenList<CompositeNode<L>>(out);
     out
       ..clear()
       ..add(
@@ -507,7 +508,7 @@ List<CompositeNode<L>> onUnderlay<L>(
   ) =>
     [
       CompositeBackdropBlend<L>(
-        backdrop: List.unmodifiable(onUnderlay(backdrop, underlay)),
+        backdrop: frozenList(onUnderlay(backdrop, underlay)),
         source: source,
         blendMode: blendMode,
       ),
@@ -542,11 +543,11 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
     };
     final rows = <LayerId, List<CompositeNode<L>>>{
       for (final row in named)
-        if (drawnOf(row, by) case final drawn?) row: List.unmodifiable(drawn),
+        if (drawnOf(row, by) case final drawn?) row: frozenList(drawn),
     };
     return rows.isEmpty
         ? node
-        : CompositeReadsRows<L>(node: node, rows: Map.unmodifiable(rows));
+        : CompositeReadsRows<L>(node: node, rows: frozenMap(rows));
   }
 
   CompositeNode<L> lay(CompositeNode<L> node) => laid[node] ??= switch (node) {
@@ -563,7 +564,7 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
     ) =>
       reading(
         CompositeGroup<L>(
-          children: List.unmodifiable(children.map(lay)),
+          children: frozenList(children.map(lay)),
           opacity: opacity,
           blendMode: blendMode,
           effects: effects,
@@ -574,7 +575,7 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
     CompositeAdjustment<L>(:final children, :final effects, :final mix) =>
       reading(
         CompositeAdjustment<L>(
-          children: List.unmodifiable(children.map(lay)),
+          children: frozenList(children.map(lay)),
           effects: effects,
           mix: mix,
         ),
@@ -583,14 +584,14 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
       ),
     CompositeBackdropBlend<L>(:final backdrop, :final source, :final blendMode) =>
       CompositeBackdropBlend<L>(
-        backdrop: List.unmodifiable(backdrop.map(lay)),
+        backdrop: frozenList(backdrop.map(lay)),
         source: lay(source),
         blendMode: blendMode,
       ),
     CompositeClip<L>(:final base, :final scope, :final opacity, :final blendMode) =>
       CompositeClip<L>(
         base: lay(base),
-        scope: List.unmodifiable(scope.map(lay)),
+        scope: frozenList(scope.map(lay)),
         opacity: opacity,
         blendMode: blendMode,
       ),
@@ -598,7 +599,7 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
     // Already laid: what it reads is beside it.
     CompositeCelNumber<L>() || CompositeReadsRows<L>() => node,
   };
-  return List.unmodifiable(nodes.map(lay));
+  return frozenList(nodes.map(lay));
 }
 
 /// THE FOLD: [nodes] with every leaf run through [map], keeping the
@@ -710,7 +711,7 @@ class _Fold<L, M> {
           stands(
             node,
             CompositeGroup<M>(
-              children: List.unmodifiable(mapped),
+              children: frozenList(mapped),
               opacity: opacity,
               blendMode: blendMode,
               effects: chains(effects),
@@ -728,7 +729,7 @@ class _Fold<L, M> {
           stands(
             node,
             CompositeAdjustment<M>(
-              children: List.unmodifiable(mapped),
+              children: frozenList(mapped),
               effects: chains(effects),
               mix: mix,
             ),
@@ -748,7 +749,7 @@ class _Fold<L, M> {
           stands(
             node,
             CompositeBackdropBlend<M>(
-              backdrop: List.unmodifiable(below),
+              backdrop: frozenList(below),
               source: row.single,
               blendMode: blendMode,
             ),
@@ -769,7 +770,7 @@ class _Fold<L, M> {
             node,
             CompositeClip<M>(
               base: mappedBase,
-              scope: List.unmodifiable(fold(scope)),
+              scope: frozenList(fold(scope)),
               opacity: opacity,
               blendMode: blendMode,
             ),
@@ -792,7 +793,7 @@ class _Fold<L, M> {
                 node: mapped,
                 rows: {
                   for (final MapEntry(key: row, value: drawn) in rows.entries)
-                    row: List.unmodifiable(fold(drawn)),
+                    row: frozenList(fold(drawn)),
                 },
               ),
             );
