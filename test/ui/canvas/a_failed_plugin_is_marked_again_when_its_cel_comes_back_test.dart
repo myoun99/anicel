@@ -23,6 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
+import '../../helpers/fx_plugin_file.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/settle_async.dart';
 
@@ -61,14 +62,10 @@ void main() {
       .single;
 
   /// The stand-in with one number, [_DrawsOnlyOverInk.draws] by default.
-  final withAnAmount = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'test.shift',
-    'name': 'Shift',
-    'vendor': 'Test',
-    'version': '1',
-    'can': ['cpu'],
-    'params': [
+  final withAnAmount = fxPluginDescriptionOf(
+    'test.shift',
+    name: 'Shift',
+    params: [
       {
         'id': 'amount',
         'kind': 'number',
@@ -78,7 +75,7 @@ void main() {
         'max': 10,
       },
     ],
-  });
+  );
 
   /// The app with [plugin] installed as the stand-in — described [as] —
   /// on the cut's row, over a cel of [paper] alone at the first frame, the

@@ -36,17 +36,19 @@ Uint8List fxPluginFileOf(
   return ZipEncoder().encodeBytes(archive);
 }
 
-/// A description of fx spec 2 for [id], its [params] as the file says
-/// them.
+/// A description of the spec this app speaks for [id] — named [name], or
+/// its id, made by [vendor] — its [params] as the file says them.
 FxPluginDescription fxPluginDescriptionOf(
   String id, {
+  String? name,
+  String vendor = 'Test',
   String version = '1',
   List<Object?> params = const [],
 }) => FxPluginDescription.fromJson({
   'spec': FxPluginDescription.specVersion,
   'id': id,
-  'name': id,
-  'vendor': 'Test',
+  'name': name ?? id,
+  'vendor': vendor,
   'version': version,
   'can': ['gpu'],
   'params': params,

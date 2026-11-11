@@ -1,9 +1,10 @@
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/fx_plugin_file.dart';
 
 /// I-132-Q29 (「플러그인 파라미터는 앱의 것을 읽는 코드가 읽는다」): a plugin's
 /// effect stands in the lanes under its plugin's name, each row named as
@@ -11,14 +12,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// are — a number held to the plugin's range, a colour, a reset to the
 /// plugin's defaults. An id the app's kinds go by too is the plugin's own.
 void main() {
-  final glow = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': '1',
-    'can': ['cpu'],
-    'params': [
+  final glow = fxPluginDescriptionOf(
+    'com.example.glow',
+    name: 'Glow',
+    params: [
       // The app's blur goes by this id, with another range.
       {
         'id': 'blurriness',
@@ -45,7 +42,7 @@ void main() {
         'default': 0,
       },
     ],
-  })!;
+  );
   const id = EffectId('fx-glow');
   final effect = LayerEffect.defaults(
     id: id,

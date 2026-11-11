@@ -1,5 +1,4 @@
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -17,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart'
     show textToolCutId, textToolProject;
+import '../../helpers/fx_plugin_file.dart';
 import '../../helpers/storyboard_host.dart';
 
 /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08): 「원래 셀
@@ -26,15 +26,7 @@ import '../../helpers/storyboard_host.dart';
 /// mark fills and the name greys, as one of a plugin this device has not
 /// greys (I-132-Q28).
 void main() {
-  final glow = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': '1',
-    'can': ['cpu'],
-    'params': <Object?>[],
-  })!;
+  final glow = fxPluginDescriptionOf('com.example.glow', name: 'Glow');
   final effect = LayerEffect.defaults(
     id: const EffectId('fx-glow'),
     kind: EffectKind.plugin,

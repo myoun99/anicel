@@ -11,7 +11,6 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -29,6 +28,7 @@ import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/fx_plugin_file.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️I-132-Q32 b (유저 2026-10-30 「b 로 첫 판」): a plugin runs at the head
@@ -42,14 +42,10 @@ void main() {
   // The bytes of (-2, 1) in the tile left of the paper.
   const pastTheWall = (2 * tileSize - 2) * 4;
 
-  final description = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'test.shift',
-    'name': 'Shift',
-    'vendor': 'Test',
-    'version': '1',
-    'can': ['cpu'],
-    'params': [
+  final description = fxPluginDescriptionOf(
+    'test.shift',
+    name: 'Shift',
+    params: [
       {
         'id': 'by',
         'kind': 'number',
@@ -60,7 +56,7 @@ void main() {
       },
       {'id': 'map', 'kind': 'layer', 'label': 'Map'},
     ],
-  })!;
+  );
 
   /// A cel of [paper] with [pixels] (x, y → straight rgba) on it.
   BitmapSurface celWith(Map<(int, int), List<int>> pixels) {
@@ -325,8 +321,10 @@ void main() {
       expect(pixelOf(shown, 3, 1), [0, 0, 0, 0], reason: 'keyed away first');
     });
 
-    test('hands the plugin premultiplied pixels and reads its back '
-        'straight', () {
+    test('hands the plugin straight pixels and reads its back straight', () {
+      // Fx spec 2 ① (an-endless-plugin-stalls-the-app, 11-08): a picture
+      // is straight RGBA8, as the engine's pool holds it — ↩️spec 1 handed
+      // it premultiplied, and a half-clear pixel came back a step darker.
       final runner = ShiftingFxPlugin(by: 0);
       final cel = celWith({(5, 2): [200, 100, 50, 128]});
 
@@ -336,8 +334,8 @@ void main() {
 
       // No reach: the paper itself.
       final at = (2 * paper.width + 5) * 4;
-      expect(runner.lastInput.sublist(at, at + 4), [100, 50, 25, 128]);
-      expect(pixelOf(shown, 5, 2), [199, 100, 50, 128]);
+      expect(runner.lastInput.sublist(at, at + 4), [200, 100, 50, 128]);
+      expect(pixelOf(shown, 5, 2), [200, 100, 50, 128]);
     });
 
     test('a layer parameter reads its row\'s own picture where the canvas '
@@ -450,14 +448,10 @@ void main() {
     final values = fxPluginValuesOf(
       ResolvedLayerEffect(
         kind: EffectKind.plugin,
-        plugin: FxPluginDescription.fromJson({
-          'spec': 1,
-          'id': 'test.all',
-          'name': 'All',
-          'vendor': 'Test',
-          'version': '1',
-          'can': ['cpu'],
-          'params': [
+        plugin: fxPluginDescriptionOf(
+          'test.all',
+          name: 'All',
+          params: [
             {
               'id': 'n',
               'kind': 'angle',
@@ -473,7 +467,7 @@ void main() {
             {'id': 'l', 'kind': 'layer', 'label': 'L'},
             {'id': 'k', 'kind': 'layer', 'label': 'K'},
           ],
-        }),
+        ),
         values: [-30, 0x80336699, 0, 0, 0.7, 0, 0],
         points: {'p': CanvasPoint(x: 3, y: 1)},
         layers: {'l': const LayerId('b'), 'k': null},

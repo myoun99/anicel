@@ -20,6 +20,7 @@ import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/fx_plugin_file.dart';
 
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「머문다 — 어디에 걸어도 돌고 …」 — a
 /// plugin's effect runs wherever it stands: every one switched on, in every
@@ -27,15 +28,7 @@ import '../helpers/a_plugin_that_shifts.dart';
 /// over the cut.
 void main() {
   const paper = CanvasSize(width: 8, height: 8);
-  final other = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'test.other',
-    'name': 'Other',
-    'vendor': 'Test',
-    'version': '1',
-    'can': ['cpu'],
-    'params': <Object?>[],
-  })!;
+  final other = fxPluginDescriptionOf('test.other', name: 'Other');
   final reading = FxPluginDescription.fromJson({
     ...shiftingFxPluginDescription.toJson(),
     'params': [

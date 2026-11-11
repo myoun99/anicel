@@ -8,20 +8,19 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/fx_plugin_file.dart';
+
 /// I-132: a plugin's effect is ONE kind ([EffectKind.plugin]) that keeps
 /// its plugin's description — its parameters are the plugin's, read by the
 /// code that reads the app's own (Q29), and the project keeps the
 /// description so a machine without the plugin still shows its lanes
 /// (Q28).
 void main() {
-  Map<String, Object?> describing({String version = '1.0'}) => {
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': version,
-    'can': ['cpu'],
-    'params': [
+  FxPluginDescription glow({String version = '1.0'}) => fxPluginDescriptionOf(
+    'com.example.glow',
+    name: 'Glow',
+    version: version,
+    params: [
       // An id the app's brightness & contrast goes by too.
       {
         'id': 'brightness',
@@ -50,9 +49,8 @@ void main() {
         'default': 1,
       },
     ],
-  };
-  FxPluginDescription glow({String version = '1.0'}) =>
-      FxPluginDescription.fromJson(describing(version: version))!;
+  );
+  Map<String, Object?> describing() => glow().toJson();
   LayerEffect effectOf(FxPluginDescription plugin) => LayerEffect.defaults(
     id: const EffectId('fx-glow'),
     kind: EffectKind.plugin,

@@ -3,7 +3,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -18,6 +17,8 @@ import 'package:anicel/src/ui/storyboard/storyboard_lane_lists.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/fx_plugin_file.dart';
 
 /// What a lane list is read from: the track and the cut it stands in, the
 /// row's layer, whether the session stands in that cut, and what the rail
@@ -79,14 +80,10 @@ class _TrackOf implements Track {
 /// changes one at a time, as the timeline's own lanes are pinned
 /// (`a_kept_lane_row_sees_every_fact_it_shows`).
 void main() {
-  final glow = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': '1',
-    'can': ['cpu'],
-    'params': [
+  final glow = fxPluginDescriptionOf(
+    'com.example.glow',
+    name: 'Glow',
+    params: [
       {
         'id': 'amount',
         'kind': 'number',
@@ -96,7 +93,7 @@ void main() {
         'max': 10,
       },
     ],
-  })!;
+  );
   LayerEffect glowAs(String id) => LayerEffect.defaults(
     id: EffectId(id),
     kind: EffectKind.plugin,

@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -18,6 +17,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformPropertyLanes;
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
+
+import '../../helpers/fx_plugin_file.dart';
 
 /// 🗣️I-132-Q12 b (유저 2026-10-28): 「효과 매개변수에 「점」 종류를 새로」 —
 /// a radial blur's centre is a point of the effect's own, and a point is a
@@ -387,14 +388,10 @@ void main() {
   // another unit, so a lane is what its effect says, never its id.
   test('a plugin\'s number named as the app\'s point is a number, and its '
       'point named as the app\'s number walks a path', () {
-    final plugin = FxPluginDescription.fromJson({
-      'spec': 1,
-      'id': 'com.example.swap',
-      'name': 'Swap',
-      'vendor': 'Example',
-      'version': '1',
-      'can': ['cpu'],
-      'params': [
+    final plugin = fxPluginDescriptionOf(
+      'com.example.swap',
+      name: 'Swap',
+      params: [
         {
           'id': 'center',
           'kind': 'number',
@@ -405,7 +402,7 @@ void main() {
         },
         {'id': 'amount', 'kind': 'point', 'label': 'Amount'},
       ],
-    })!;
+    );
     final effects = [
       LayerEffect.defaults(id: id, kind: EffectKind.plugin, plugin: plugin),
     ];

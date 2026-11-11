@@ -1,44 +1,30 @@
-import 'dart:convert';
-import 'dart:ffi' show Abi;
 import 'dart:typed_data';
 
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_bundle.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/dialogs/fx_plugin_install_flow.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fx_plugin_file.dart';
 import '../../helpers/settle_async.dart';
 
 /// I-132: an fx plugin's file opened like any other is shown to the person
 /// as what it says of itself — who made it, which version, the version it
-/// replaces — and, a WARNING, that a native build of it runs outside the
-/// sandbox; only their yes installs it.
+/// replaces; only their yes installs it.
 void main() {
-  final description = jsonEncode({
-    'spec': 1,
-    'id': 'com.example.invert',
-    'name': 'Invert',
-    'vendor': 'Example Studio',
-    'version': '1.2.0',
-    'can': ['cpu'],
-    'params': <Object?>[],
-  });
-
-  Uint8List fileOf({required bool native}) {
-    final archive = Archive()
-      ..add(ArchiveFile.bytes('plugin.wasm', utf8.encode(description)));
-    final entry = fxPluginNativeEntryFor(Abi.current());
-    if (native && entry != null) {
-      archive.add(ArchiveFile.bytes(entry, [1, 2, 3]));
-    }
-    return ZipEncoder().encodeBytes(archive);
-  }
+  Uint8List fileOf({String version = '1.2.0'}) => fxPluginFileOf(
+    fxPluginDescriptionOf(
+      'com.example.invert',
+      name: 'Invert',
+      vendor: 'Example Studio',
+      version: version,
+    ),
+    source: '// invert $version\n',
+  );
 
   late _LibraryInMemory library;
   late InstalledFxPlugins plugins;
@@ -47,7 +33,9 @@ void main() {
     library = _LibraryInMemory();
     plugins = InstalledFxPlugins(
       service: library,
-      describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+      // The device is not asked here: opening WGSL on the GPU is
+      // a_gpu_plugin_opens_and_runs_on_the_engine_test's.
+      check: (_) => null,
     );
   });
   tearDown(() => plugins.dispose());
@@ -111,7 +99,7 @@ void main() {
     final questions = <String>[];
     final said = await open(
       tester,
-      fileOf(native: false),
+      fileOf(),
       answer: 'install-fx-plugin-confirm-button',
       asked: questions.add,
     );
@@ -124,34 +112,29 @@ void main() {
     ]);
   });
 
-  testWidgets('a native build is warned of, and a plugin installed again '
-      'names the version it replaces', (tester) async {
+  testWidgets('a plugin installed again names the version it replaces', (
+    tester,
+  ) async {
     final strings = AppText.strings;
     await open(
       tester,
-      fileOf(native: false),
+      fileOf(),
       answer: 'install-fx-plugin-confirm-button',
     );
     final questions = <String>[];
     await open(
       tester,
-      fileOf(native: true),
+      fileOf(version: '1.3.0'),
       answer: 'install-fx-plugin-confirm-button',
       asked: questions.add,
     );
-    final native = fxPluginNativeEntryFor(Abi.current()) != null;
     expect(questions.single, contains(strings.fxPluginReplaces('1.2.0')));
-    expect(
-      questions.single.contains(strings.fxPluginRunsNatively),
-      native,
-      reason: 'a device with native builds is warned of one',
-    );
   });
 
   testWidgets('a no installs nothing and says nothing', (tester) async {
     final said = await open(
       tester,
-      fileOf(native: false),
+      fileOf(),
       answer: 'install-fx-plugin-cancel-button',
     );
     expect(said, isNull);
@@ -183,15 +166,10 @@ class _LibraryInMemory extends FxPluginLibraryService {
   List<InstalledFxPlugin> index = const [];
 
   @override
-  Future<InstalledFxPlugin> keep(
-    FxPluginBundle bundle,
-    FxPluginDescription description, {
-    Abi? abi,
-  }) async {
+  Future<InstalledFxPlugin> keep(FxPluginBundle bundle) async {
     final plugin = (
-      wasm: 'k${kept.length}-${description.id}.wasm',
-      native: bundle.native == null ? null : 'k${kept.length}-n.dll',
-      description: description,
+      source: 'k${kept.length}-${bundle.description.id}.wgsl',
+      description: bundle.description,
     );
     kept.add(plugin);
     return plugin;

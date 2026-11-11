@@ -3,7 +3,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_spec.dart' show ExportLayerFx;
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -12,18 +11,16 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
 import 'package:anicel/src/services/layer_as_output.dart' show chainAsOutput;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/fx_plugin_file.dart';
+
 /// I-132: a plugin's effect goes where a chain's links go, by the answers
 /// its kind gives ([EffectKind.plugin]) — the code that reads an app
 /// kind's reads it, nothing asked of it alone.
 void main() {
-  final glow = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': '1',
-    'can': ['cpu'],
-    'params': [
+  final glow = fxPluginDescriptionOf(
+    'com.example.glow',
+    name: 'Glow',
+    params: [
       {
         'id': 'amount',
         'kind': 'number',
@@ -33,7 +30,7 @@ void main() {
         'max': 10,
       },
     ],
-  })!;
+  );
   final effect = LayerEffect.defaults(
     id: const EffectId('fx-glow'),
     kind: EffectKind.plugin,

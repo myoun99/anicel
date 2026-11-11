@@ -153,7 +153,7 @@ class CelTextLanding implements LandingPreview {
   Image? _picture;
 
   Image get picture => _picture ??= pictureOf(
-    _StraightRows(_straight!(), _width, _height),
+    StraightRgbaRows(_straight!(), _width, _height),
   );
 
   /// [picture]'s bytes as tiles, where they stand: what the engine lays

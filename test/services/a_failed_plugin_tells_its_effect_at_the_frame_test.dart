@@ -1,13 +1,14 @@
 @TestOn('vm')
 library;
 
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -15,7 +16,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/string_id.dart';
-import 'package:anicel/src/native/qa_fx_plugin_host.dart';
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_outcomes.dart';
@@ -28,27 +28,22 @@ import '../helpers/a_plugin_that_shifts.dart';
 /// draw a cel leaves the cel as it is, and its effect is told it failed at
 /// that frame, which its fx row's header reads.
 ///
-/// The plugin is the sample's WebAssembly twin through the engine's host,
-/// failing for real: its memory is two pages (128 KB), and a paper of
-/// 256 × 256 does not fit in it — the room the host asks for the frame is
-/// refused (native/fx_plugin `wasm.rs`, NO_ROOM).
+/// The plugin is a stand-in that fails once a picture is past 100 pixels
+/// across, as one a picture outgrows does: what a run the GPU cuts comes
+/// to is `a_gpu_plugin_opens_and_runs_on_the_engine_test`'s.
 void main() {
   test('a plugin that cannot draw tells its effect so at that frame, each '
       'time the cel is shown — and one that draws clears it', () {
-    final host = QaFxPluginHost.instance!;
-    final twin = host
-        .openWasm(File('test/fixtures/fx/sample_twin.wasm').readAsBytesSync())
-        .plugin!;
-    addTearDown(twin.close);
+    final outgrown = _FailsPast(100);
     final effect = LayerEffect.defaults(
       id: const EffectId('fx'),
       kind: EffectKind.plugin,
-      plugin: FxPluginDescription.read(twin.describe()!),
+      plugin: shiftingFxPluginDescription,
     );
     final outcomes = FxPluginOutcomes();
     addTearDown(outcomes.dispose);
     final binding = deviceFxPluginBinding(
-      runnerFor: (_) => twin,
+      runnerFor: (_) => outgrown,
       frameRate: ProjectFrameRate.fps24,
       surfaceOf: (_, _) => null,
       outcomes: outcomes,
@@ -343,4 +338,35 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(heard, 1, reason: 'no mark gone, nothing to hear');
   });
+}
+
+/// Fails on a picture past [most] pixels across; draws as a
+/// [ShiftingFxPlugin] by one otherwise.
+final class _FailsPast implements FxPluginRunner {
+  _FailsPast(this.most);
+
+  final int most;
+  final ShiftingFxPlugin _drawing = ShiftingFxPlugin(by: 1);
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      _drawing.reach(values, moment);
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) => input.width > most
+      ? null
+      : _drawing.render(
+          input: input,
+          values: values,
+          layers: layers,
+          moment: moment,
+        );
+
+  @override
+  void close() {}
 }
