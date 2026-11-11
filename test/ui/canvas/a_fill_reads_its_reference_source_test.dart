@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/rail_group_button.dart';
@@ -52,6 +53,11 @@ void main() {
   const red = 0xFFFF0000;
   const blue = 0xFF0000FF;
   const opaqueBlue = 0x0000FFFF;
+
+  // The fill reads the frame's picture on the engine, and nothing holds a
+  // test's app while that opens (`appEngineGetsReady`): a launch's hold is
+  // what keeps a tap from coming before it.
+  opensTheEnginesScreens();
 
   setUp(() => AppInput.settings.value = const AppInputSettings());
   tearDown(() => AppInput.settings.value = const AppInputSettings());
