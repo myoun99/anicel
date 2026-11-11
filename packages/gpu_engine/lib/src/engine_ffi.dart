@@ -33,6 +33,8 @@ final class Export extends Opaque {}
 
 final class Readout extends Opaque {}
 
+final class Shown extends Opaque {}
+
 final class Ink extends Opaque {}
 
 final class CelPixels extends Opaque {}
@@ -943,18 +945,32 @@ external Pointer<Export> exportNew();
 @Native<Void Function(Pointer<Export>)>(symbol: 'gpu_engine_export_free')
 external void exportFree(Pointer<Export> passes);
 
+/// A frame shown, copied on the GPU for the export's conversions.
+@Native<
+  Pointer<Shown> Function(Pointer<Engine>, Pointer<Surface>, Uint32, Uint32)
+>(symbol: 'gpu_engine_export_shown')
+external Pointer<Shown> exportShown(
+  Pointer<Engine> engine,
+  Pointer<Surface> surface,
+  int width,
+  int height,
+);
+
+@Native<Void Function(Pointer<Shown>)>(symbol: 'gpu_engine_export_shown_free')
+external void exportShownFree(Pointer<Shown> shown);
+
 @Native<
   Pointer<Readout> Function(
     Pointer<Export>,
     Pointer<Engine>,
-    Pointer<Composited>,
+    Pointer<Shown>,
     Pointer<Uint32>,
   )
->(symbol: 'gpu_engine_export_nv12')
+>(symbol: 'gpu_engine_export_shown_nv12')
 external Pointer<Readout> exportNv12(
   Pointer<Export> passes,
   Pointer<Engine> engine,
-  Pointer<Composited> frame,
+  Pointer<Shown> frame,
   Pointer<Uint32> shape,
 );
 
@@ -962,17 +978,17 @@ external Pointer<Readout> exportNv12(
   Pointer<Readout> Function(
     Pointer<Export>,
     Pointer<Engine>,
-    Pointer<Composited>,
+    Pointer<Shown>,
     Uint32,
     Uint32,
     Uint32,
     Int32,
   )
->(symbol: 'gpu_engine_export_over_ground')
+>(symbol: 'gpu_engine_export_shown_over_ground')
 external Pointer<Readout> exportOverGround(
   Pointer<Export> passes,
   Pointer<Engine> engine,
-  Pointer<Composited> frame,
+  Pointer<Shown> frame,
   int width,
   int height,
   int ground,
@@ -983,16 +999,16 @@ external Pointer<Readout> exportOverGround(
   Pointer<Readout> Function(
     Pointer<Export>,
     Pointer<Engine>,
-    Pointer<Composited>,
+    Pointer<Shown>,
     Uint32,
     Uint32,
     Uint8,
   )
->(symbol: 'gpu_engine_export_clear')
+>(symbol: 'gpu_engine_export_shown_clear')
 external Pointer<Readout> exportClear(
   Pointer<Export> passes,
   Pointer<Engine> engine,
-  Pointer<Composited> frame,
+  Pointer<Shown> frame,
   int width,
   int height,
   int cut,
@@ -1002,15 +1018,15 @@ external Pointer<Readout> exportClear(
   Pointer<Readout> Function(
     Pointer<Export>,
     Pointer<Engine>,
-    Pointer<Composited>,
+    Pointer<Shown>,
     Uint32,
     Uint32,
   )
->(symbol: 'gpu_engine_export_opaque')
+>(symbol: 'gpu_engine_export_shown_opaque')
 external Pointer<Readout> exportOpaque(
   Pointer<Export> passes,
   Pointer<Engine> engine,
-  Pointer<Composited> frame,
+  Pointer<Shown> frame,
   int width,
   int height,
 );
@@ -1019,15 +1035,15 @@ external Pointer<Readout> exportOpaque(
   Pointer<Readout> Function(
     Pointer<Export>,
     Pointer<Engine>,
-    Pointer<Composited>,
+    Pointer<Shown>,
     Uint32,
     Uint32,
   )
->(symbol: 'gpu_engine_export_png_rgba')
+>(symbol: 'gpu_engine_export_shown_png_rgba')
 external Pointer<Readout> exportPngRgba(
   Pointer<Export> passes,
   Pointer<Engine> engine,
-  Pointer<Composited> frame,
+  Pointer<Shown> frame,
   int width,
   int height,
 );

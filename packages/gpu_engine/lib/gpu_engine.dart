@@ -2191,11 +2191,10 @@ class GpuComposited {
   void free() => rust.compositedFree(_composited);
 }
 
-/// The export's conversions of a frame a run put, on the GPU before its
-/// readback (gpu-export-path ①), each pass compiled where it is first
-/// asked. A frame is a [GpuComposited] over its picture's tiles, row by
-/// row from its top-left tile; the picture is its width × height from the
-/// frame's top-left pixel.
+/// The export's conversions of a frame as the screen shows it, on the GPU
+/// before its readback (gpu-export-path ①), each pass compiled where it
+/// is first asked. A frame is a [GpuShown] ([shown]); the picture is its
+/// width × height from the frame's top-left pixel.
 class GpuExport {
   /// The export's passes on [engine], none compiled yet.
   GpuExport(GpuEngine engine)
@@ -2205,12 +2204,29 @@ class GpuExport {
   final GpuEngine _engine;
   final Pointer<rust.Export> _export;
 
+  /// The picture of [width] × [height] from the top-left pixel of
+  /// [surface] — a frame as the screen shows it, premultiplied — copied on
+  /// the GPU for the conversions: what the canvas shows is what a file is
+  /// made of, and nothing crosses to the CPU before a writer's bytes.
+  GpuShown shown(GpuSurface surface, int width, int height) {
+    final shown = rust.exportShown(
+      _engine._engine,
+      surface._surface,
+      width,
+      height,
+    );
+    if (shown == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return GpuShown._(shown);
+  }
+
   /// The picture of [width] × [height] in [frame] as an encoder's NV12
   /// frame of [frameWidth] × [frameHeight], rows [stride] bytes apart —
   /// the writer's frame as it opened its encoder: `frameHeight` Y rows,
   /// then `frameHeight / 2` CbCr rows.
   GpuReadout nv12(
-    GpuComposited frame,
+    GpuShown frame,
     int width,
     int height, {
     required int frameWidth,
@@ -2223,7 +2239,7 @@ class GpuExport {
       return rust.exportNv12(
         _export,
         _engine._engine,
-        frame._composited,
+        frame._shown,
         shape,
       );
     }),
@@ -2234,7 +2250,7 @@ class GpuExport {
   /// between; its alpha cut at [cut] where a GIF cuts it (null: its
   /// shades; 0: a GIF with no clear colour).
   GpuReadout overGround(
-    GpuComposited frame,
+    GpuShown frame,
     int width,
     int height,
     int ground, {
@@ -2243,7 +2259,7 @@ class GpuExport {
     rust.exportOverGround(
       _export,
       _engine._engine,
-      frame._composited,
+      frame._shown,
       width,
       height,
       ground,
@@ -2254,26 +2270,25 @@ class GpuExport {
   /// The pixels of the picture of [width] × [height] in [frame] whose
   /// alpha is under [cut]: pixel i is bit i % 8 of byte i ~/ 8, low bit
   /// first, row after row with nothing between.
-  GpuReadout clear(GpuComposited frame, int width, int height, int cut) =>
-      _readout(
-        rust.exportClear(
-          _export,
-          _engine._engine,
-          frame._composited,
-          width,
-          height,
-          cut,
-        ),
-      );
+  GpuReadout clear(GpuShown frame, int width, int height, int cut) => _readout(
+    rust.exportClear(
+      _export,
+      _engine._engine,
+      frame._shown,
+      width,
+      height,
+      cut,
+    ),
+  );
 
   /// Whether every pixel of the picture of [width] × [height] in [frame]
   /// is opaque, once the GPU is done.
-  bool opaque(GpuComposited frame, int width, int height) {
+  bool opaque(GpuShown frame, int width, int height) {
     final readout = _readout(
       rust.exportOpaque(
         _export,
         _engine._engine,
-        frame._composited,
+        frame._shown,
         width,
         height,
       ),
@@ -2302,11 +2317,11 @@ class GpuExport {
   /// The rows of a PNG of the picture of [width] × [height] in [frame],
   /// four bytes a pixel, under their filters: each its filter's byte and
   /// its own, [pngRowBytes] from the last.
-  GpuReadout pngRgba(GpuComposited frame, int width, int height) => _readout(
+  GpuReadout pngRgba(GpuShown frame, int width, int height) => _readout(
     rust.exportPngRgba(
       _export,
       _engine._engine,
-      frame._composited,
+      frame._shown,
       width,
       height,
     ),
@@ -2332,6 +2347,17 @@ class GpuExport {
 
   /// Frees the passes; before their engine is closed.
   void free() => rust.exportFree(_export);
+}
+
+/// A frame as the screen shows it, copied on the GPU for the export's
+/// conversions ([GpuExport.shown]).
+class GpuShown {
+  GpuShown._(this._shown);
+
+  final Pointer<rust.Shown> _shown;
+
+  /// Frees the copy; before its engine is closed.
+  void free() => rust.exportShownFree(_shown);
 }
 
 /// What a conversion put: on the GPU until it is mapped, then copied row

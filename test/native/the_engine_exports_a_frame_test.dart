@@ -6,9 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/screen_texture.dart';
 
-/// The app converts a frame a run put through the package's Dart
-/// (screen-on-the-engine 2c): each conversion takes the numbers Dart hands
+/// The app converts a frame as the screen shows it through the package's
+/// Dart (gpu-export-path ①): each conversion takes the numbers Dart hands
 /// it where it names them, and a readout's rows land where they are asked.
 /// That each call is its pass is the crate's to pin
 /// (rust/src/kernels/export/abi/tests.rs) — here, what Dart hands it.
@@ -16,7 +17,6 @@ void main() {
   late GpuPool pool;
   late GpuComposite composite;
   late GpuExport export;
-  const all = (-1 << 31, -1 << 31, (1 << 31) - 1, (1 << 31) - 1);
   const red = 0xFF0000FF;
   // A pixel at (1, 4) half there, and (2, 0) and (0, 3) not at all: bits
   // 13, 2 and 9 of the picture's 15, across its first two bytes.
@@ -34,10 +34,10 @@ void main() {
   setUp(() => pool = GpuPool(appGpuEngine, 1 << 30));
   tearDown(() => pool.free());
 
-  /// A run over the one tile a picture of [width] × [height] is in, its
-  /// pixel (x, y) [colour] — straight RGBA8, A<<24|B<<16|G<<8|R — or
-  /// nothing where that is null.
-  GpuComposited frameOf(
+  /// A surface showing a picture of [width] × [height] 1:1, as the canvas
+  /// shows a frame — its pixel (x, y) [colour], straight RGBA8,
+  /// A<<24|B<<16|G<<8|R, or nothing where that is null.
+  GpuSurface surfaceOf(
     int width,
     int height,
     int? Function(int, int) colour,
@@ -52,14 +52,36 @@ void main() {
         }
       }
     }
-    final frame = composite.run(pool, plan, [(0, 0)], all);
+    final whole = (0, 0, width, height);
+    final screen = GpuScreen(composite, whole);
+    addTearDown(screen.free);
+    screen.compose(pool, plan, whole);
+    final surface = ScreenTexture.surfaceOf(appGpuEngine, width, height);
+    addTearDown(surface.free);
+    screen.show(
+      surface,
+      inverse: const [1, 0, 0, 0, 1, 0],
+      scale: 1,
+      sampling: GpuSampling.nearest,
+      rect: whole,
+    );
+    return surface;
+  }
+
+  /// [surfaceOf]'s picture, as the export's conversions read it.
+  GpuShown frameOf(int width, int height, int? Function(int, int) colour) {
+    final frame = export.shown(
+      surfaceOf(width, height, colour),
+      width,
+      height,
+    );
     addTearDown(frame.free);
     return frame;
   }
 
   /// 3 × 5 of colours no two pixels share — red 10 + 40x, green 10 + 40y,
   /// blue 200 — but for [half] and [unpainted].
-  GpuComposited mixed() => frameOf(3, 5, (x, y) {
+  GpuShown mixed() => frameOf(3, 5, (x, y) {
     if ((x, y) == (1, 4)) {
       return half;
     }
@@ -254,6 +276,21 @@ void main() {
         ),
       );
     });
+  });
+
+  test('a picture its surface does not hold is no frame', () {
+    final surface = surfaceOf(3, 5, (_, _) => red);
+
+    expect(
+      () => export.shown(surface, 3, 6),
+      throwsA(
+        isA<GpuRefused>().having(
+          (error) => error.message,
+          'message',
+          'a 3x6 picture is not in a 3x5 surface',
+        ),
+      ),
+    );
   });
 
   test('a frame a conversion refuses throws why', () {
