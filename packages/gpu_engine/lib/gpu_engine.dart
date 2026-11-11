@@ -2975,36 +2975,36 @@ typedef GpuPluginPicture = ({
 });
 
 /// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs):
-/// asked its reach on the CPU, run over a picture on the device. Each run
-/// is cut once it spends its share of a limit — a count of the plugin's
-/// instructions, the same on every device.
+/// asked its reach on the CPU, run over a picture on the device. Each
+/// invocation of a run is cut once it spends its share — a count of the
+/// plugin's instructions, the same on every device, each pixel's its own
+/// (🗣️an-endless-plugin-stalls-the-app-Q19).
 class GpuPlugin {
   GpuPlugin._(this._engine, this._plugin);
 
   /// [source], the plugin's WGSL, checked, counted and compiled on
-  /// [engine] — or the refusal's words thrown.
-  factory GpuPlugin.open(GpuEngine engine, String source) => using((arena) {
-    final bytes = utf8.encode(source);
-    final at = arena<Uint8>(_held(bytes.length))
-      ..asTypedList(bytes.length).setAll(0, bytes);
-    final plugin = rust.pluginOpen(engine._engine, at, bytes.length);
-    if (plugin == nullptr) {
-      throw StateError(_lastError());
-    }
-    return GpuPlugin._(engine, plugin);
-  });
+  /// [engine] — or the refusal's words thrown. Where [cut] is false the
+  /// device compiles it with no count, so no run of it is cut on the
+  /// device (🗣️-Q18 「설정에 『끊지 않음』」).
+  factory GpuPlugin.open(GpuEngine engine, String source, {bool cut = true}) =>
+      using((arena) {
+        final bytes = utf8.encode(source);
+        final at = arena<Uint8>(_held(bytes.length))
+          ..asTypedList(bytes.length).setAll(0, bytes);
+        final plugin = rust.pluginOpen(engine._engine, at, bytes.length, cut);
+        if (plugin == nullptr) {
+          throw StateError(_lastError());
+        }
+        return GpuPlugin._(engine, plugin);
+      });
 
   final GpuEngine _engine;
   final Pointer<rust.Plugin> _plugin;
 
   /// How far past its input the plugin reaches, in output pixels, for
-  /// [asked] — spending the share of one of [pixels] of [limit] — or why
-  /// not thrown: a value past what the plugin reads, or the reach cut.
-  int reach(
-    GpuPluginAsked asked, {
-    required int limit,
-    required int pixels,
-  }) => using((arena) {
+  /// [asked] — spending no more than [share] — or why not thrown: a value
+  /// past what the plugin reads, or the reach cut.
+  int reach(GpuPluginAsked asked, {required int share}) => using((arena) {
     _whole(asked);
     return _checked(
       rust.pluginReach(
@@ -3013,22 +3013,22 @@ class GpuPlugin {
         _kinds(arena, asked.kinds),
         asked.kinds.length,
         _moment(arena, asked),
-        limit,
-        pixels,
+        share,
       ),
     );
   });
 
   /// The plugin's picture of [input] over [layers] — the pictures its
-  /// layer values name, by slot — with [asked], each pixel spending one of
-  /// [input]'s pixels' share of [limit]: a word a pixel of [input]'s size
-  /// and place, transparent where it writes none — or why not thrown: a
-  /// value past what the plugin reads, the run cut, or the device failed.
+  /// layer values name, by slot — with [asked], each pixel spending no
+  /// more than [share]: a word a pixel of [input]'s size and place,
+  /// transparent where it writes none — or why not thrown: a value past
+  /// what the plugin reads, the run cut, or the device failed. A plugin
+  /// opened not to be cut runs whole, in chunks sized as [share]'s are.
   Uint32List render(
     GpuPluginPicture input,
     List<GpuPluginPicture> layers,
     GpuPluginAsked asked, {
-    required int limit,
+    required int share,
   }) => using((arena) {
     _whole(asked);
     final pictures = [input, ...layers];
@@ -3072,7 +3072,7 @@ class GpuPlugin {
         _kinds(arena, asked.kinds),
         asked.kinds.length,
         _moment(arena, asked),
-        limit,
+        share,
         output,
       ),
     );

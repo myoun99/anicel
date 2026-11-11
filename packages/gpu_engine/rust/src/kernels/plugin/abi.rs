@@ -131,23 +131,30 @@ fn area(rect: [i32; 4]) -> Option<usize> {
 
 /// Opens the plugin whose WGSL is `source`'s `length` bytes of UTF-8 on
 /// `engine`: checked and counted (fx_wgsl), then compiled by the device —
-/// null where any refuses it, the last error saying why.
+/// null where any refuses it, the last error saying why. Where `cut` is
+/// false the device compiles it with no charge, so no run of it is cut
+/// there (fx_wgsl's `open_uncut`, 🗣️-Q18).
 ///
 /// # Safety
 /// `engine` is live; `source` holds `length` bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_plugin_open(engine: *const Engine, source: *const u8, length: usize) -> *mut Plugin {
+pub unsafe extern "C" fn gpu_engine_plugin_open(
+    engine: *const Engine,
+    source: *const u8,
+    length: usize,
+    cut: bool,
+) -> *mut Plugin {
     // SAFETY: see the function's contract.
     let (engine, source) = unsafe { (&*engine, std::slice::from_raw_parts(source, length)) };
-    opened(engine, source).map_or(std::ptr::null_mut(), |plugin| Box::into_raw(Box::new(plugin)))
+    opened(engine, source, cut).map_or(std::ptr::null_mut(), |plugin| Box::into_raw(Box::new(plugin)))
 }
 
-fn opened(engine: &Engine, source: &[u8]) -> Option<Plugin> {
+fn opened(engine: &Engine, source: &[u8], cut: bool) -> Option<Plugin> {
     let Ok(source) = std::str::from_utf8(source) else {
         return fail("the plugin's source is no UTF-8");
     };
-    let opened = fx_wgsl::open(source).map_err(|refusal| refusal.to_string());
-    match opened.and_then(|kernel| Plugin::open(engine, kernel)) {
+    let read = if cut { fx_wgsl::open(source) } else { fx_wgsl::open_uncut(source) };
+    match read.map_err(|refusal| refusal.to_string()).and_then(|kernel| Plugin::open(engine, kernel)) {
         Ok(plugin) => Some(plugin),
         Err(why) => fail(why),
     }
@@ -210,9 +217,10 @@ pub unsafe extern "C" fn gpu_engine_plugin_reach(
 /// first's size and place, transparent where the render writes none. The
 /// pictures after the first are the layers its layer values name, by
 /// slot. The values and moment are as `gpu_engine_plugin_reach` takes
-/// them; each pixel's share is `share`, however many there are. 0 where it
-/// drew, -1 where a value does not fit, the run was cut or the device
-/// failed (the last error says).
+/// them; each pixel's share is `share`, however many there are — for a
+/// plugin opened not to be cut, what its chunks are sized for alone. 0
+/// where it drew, -1 where a value does not fit, the run was cut or the
+/// device failed (the last error says).
 ///
 /// 🗣️an-endless-plugin-stalls-the-app-Q19 (유저 2026-11-10 16:36): 「화소
 /// 하나의 몫으로 고정하고, 그리기를 덩어리로 나눠 넘긴다」 — ↩️the share was

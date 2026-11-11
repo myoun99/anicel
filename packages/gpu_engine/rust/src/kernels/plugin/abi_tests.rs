@@ -78,14 +78,14 @@ const PLENTY: u32 = 1 << 30;
 struct Opened(*mut Plugin);
 
 impl Opened {
-    fn new(source: &[u8]) -> Result<Self, String> {
+    fn new(source: &[u8], cut: bool) -> Result<Self, String> {
         // SAFETY: the engine is live; `source` holds its length.
-        let plugin = unsafe { gpu_engine_plugin_open(first_engine(), source.as_ptr(), source.len()) };
+        let plugin = unsafe { gpu_engine_plugin_open(first_engine(), source.as_ptr(), source.len(), cut) };
         if plugin.is_null() { Err(last_error()) } else { Ok(Opened(plugin)) }
     }
 
     fn of(source: &str) -> Self {
-        Opened::new(source.as_bytes()).expect("the fixture opens")
+        Opened::new(source.as_bytes(), true).expect("the fixture opens")
     }
 
     fn reach(&self, values: &[f64], kinds: &[u32], share: u32) -> Result<i64, String> {
@@ -139,11 +139,26 @@ fn inverted(pixel: u32) -> u32 {
 
 #[test]
 fn a_plugin_opens_from_its_wgsl_or_says_why() {
-    assert!(Opened::new(INVERT.as_bytes()).is_ok(), "{}", last_error());
-    assert_eq!(Opened::new(&[0x66, 0xFF, 0x6E]).err().as_deref(), Some("the plugin's source is no UTF-8"));
+    assert!(Opened::new(INVERT.as_bytes(), true).is_ok(), "{}", last_error());
+    assert_eq!(Opened::new(&[0x66, 0xFF, 0x6E], true).err().as_deref(), Some("the plugin's source is no UTF-8"));
     let refusal = fx_wgsl::open(FLOAT).err().expect("the check refuses a float").to_string();
     assert!(refusal.starts_with(|c: char| c.is_ascii_digit()), "the refusal names its line: {refusal}");
-    assert_eq!(Opened::new(FLOAT.as_bytes()).err(), Some(refusal));
+    assert_eq!(Opened::new(FLOAT.as_bytes(), true).err(), Some(refusal));
+}
+
+#[test]
+fn the_open_says_whether_the_device_cuts_the_plugin() {
+    // 🗣️-Q18 「끊지 않음」: compiled with no charge, its reach still cut on
+    // the CPU by the share it is handed.
+    for cut in [true, false] {
+        let opened = Opened::new(ENDLESS.as_bytes(), cut).expect("opens");
+        // SAFETY: opened just now, freed as `opened` drops.
+        let kernel = unsafe { &(*opened.0).kernel };
+        assert_eq!(kernel.cut(), cut);
+        let plugin_part = kernel.source().split(fx_wgsl::PRELUDE).next().expect("the plugin comes first");
+        assert_eq!(plugin_part.contains("anicel_host_spend("), cut, "{plugin_part}");
+        assert!(opened.reach(&[], &[], 1_000).is_err(), "cut: {cut}");
+    }
 }
 
 #[test]

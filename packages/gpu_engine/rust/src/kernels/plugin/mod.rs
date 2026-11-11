@@ -60,8 +60,9 @@ impl Plugin {
     /// Runs the render over `frame`'s output into `output` — its pixels as
     /// the host started them, so a pixel nothing wrote keeps its word —, as
     /// the CPU's `Kernel::render` does, in chunks the device's pace sizes
-    /// for `frame`'s share; none where the device could not (the last
-    /// error says why). A run cut leaves `output` as it was.
+    /// for `frame`'s share — for a kernel opened uncut, what the chunks are
+    /// sized for alone; none where the device could not (the last error
+    /// says why). A run cut leaves `output` as it was.
     pub(crate) fn render(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32]) -> Option<Result<(), Cut>> {
         let [across, down, _] = self.kernel.workgroup_size();
         let most = Pace::of(engine)?.chunk(frame.fuel, across * down);

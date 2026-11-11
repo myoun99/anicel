@@ -1278,13 +1278,14 @@ external bool letteredRead(
 @Native<Void Function(Pointer<Lettered>)>(symbol: 'gpu_engine_lettered_free')
 external void letteredFree(Pointer<Lettered> lettered);
 
-@Native<Pointer<Plugin> Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+@Native<Pointer<Plugin> Function(Pointer<Engine>, Pointer<Uint8>, Size, Bool)>(
   symbol: 'gpu_engine_plugin_open',
 )
 external Pointer<Plugin> pluginOpen(
   Pointer<Engine> engine,
   Pointer<Uint8> source,
   int length,
+  bool cut,
 );
 
 @Native<Void Function(Pointer<Plugin>)>(symbol: 'gpu_engine_plugin_free')
@@ -1297,8 +1298,7 @@ external void pluginFree(Pointer<Plugin> plugin);
     Pointer<Uint32>,
     Size,
     Pointer<Double>,
-    Uint64,
-    Uint64,
+    Uint32,
   )
 >(symbol: 'gpu_engine_plugin_reach')
 external int pluginReach(
@@ -1307,8 +1307,7 @@ external int pluginReach(
   Pointer<Uint32> kinds,
   int count,
   Pointer<Double> moment,
-  int limit,
-  int pixels,
+  int share,
 );
 
 @Native<
@@ -1322,7 +1321,7 @@ external int pluginReach(
     Pointer<Uint32>,
     Size,
     Pointer<Double>,
-    Uint64,
+    Uint32,
     Pointer<Uint32>,
   )
 >(symbol: 'gpu_engine_plugin_render')
@@ -1336,7 +1335,7 @@ external int pluginRender(
   Pointer<Uint32> kinds,
   int count,
   Pointer<Double> moment,
-  int limit,
+  int share,
   Pointer<Uint32> output,
 );
 

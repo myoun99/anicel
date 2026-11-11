@@ -37,31 +37,36 @@ use naga::{
 
 use crate::{RENDER, scan};
 
-/// The plugin's source with its charges, its unsigned packs called through
-/// the prelude, its shifts' amounts held under 32, and `anicel_host_enter`
-/// first in its render — and what a turn of each of its loops costs, in
-/// the order they are written.
-pub(crate) fn count(module: &Module, plugin: &str) -> (String, Vec<u64>) {
+/// The plugin's source with its charges — where `charged`; none in a
+/// plugin opened not to be cut (🗣️-Q18) —, its unsigned packs called
+/// through the prelude, its shifts' amounts held under 32, and
+/// `anicel_host_enter` first in its render; and what a turn of each of its
+/// loops costs, in the order they are written.
+pub(crate) fn count(module: &Module, plugin: &str, charged: bool) -> (String, Vec<u64>) {
     let mut sizes = Sizes { module, straight: HashMap::new(), turns: Vec::new() };
     let words = scan::words(plugin);
-    let mut charges = Vec::new();
+    let mut spends = Vec::new();
+    let mut inserts = Vec::new();
     let mut edits = Vec::new();
     for (handle, function) in module.functions.iter() {
         if crate::check::is_plugins(module.functions.get_span(handle), plugin) {
-            sizes.charge(&function.body, plugin, false, &mut charges);
-            unsigned_packs(function, &mut charges);
+            sizes.charge(&function.body, plugin, false, &mut spends);
+            unsigned_packs(function, &mut inserts);
             masked_shifts(function, &words, &mut edits);
         }
     }
     let render = module.entry_points.iter().find(|entry| entry.name == RENDER).expect("the check found it");
-    sizes.charge(&render.function.body, plugin, true, &mut charges);
-    unsigned_packs(&render.function, &mut charges);
+    sizes.charge(&render.function.body, plugin, true, &mut spends);
+    unsigned_packs(&render.function, &mut inserts);
     masked_shifts(&render.function, &words, &mut edits);
     let (renamed, taken) = chunked_ids(render, plugin);
     edits.extend(renamed);
     let enter = format!(" anicel_host_enter({});", invocation_name(&render.function));
-    charges.push((render_open(plugin), format!("{taken}{enter}")));
-    edits.extend(charges.into_iter().map(|(at, text)| (at, (2, 0), text)));
+    inserts.push((render_open(plugin), format!("{taken}{enter}")));
+    if charged {
+        edits.extend(spends.into_iter().map(|(at, text)| (at, (2, 0), text)));
+    }
+    edits.extend(inserts.into_iter().map(|(at, text)| (at, (2, 0), text)));
     edits.sort_by_key(|&(at, order, _)| (at, order));
     let mut counted = String::with_capacity(plugin.len() + edits.len() * 48);
     let mut written = 0;

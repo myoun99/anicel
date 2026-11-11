@@ -166,7 +166,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 28] {
         ("gpu_engine_plugin_free", |name| {
             let source = include_str!("../../../native/fx_wgsl/fixtures/invert.wgsl");
             // SAFETY: the engine is live; `source` holds its length.
-            let made = unsafe { gpu_engine_plugin_open(first_engine(), source.as_ptr(), source.len()) };
+            let made = unsafe { gpu_engine_plugin_open(first_engine(), source.as_ptr(), source.len(), true) };
             gives_back(name, made, gpu_engine_plugin_free)
         }),
         ("gpu_engine_pool_free", |name| {

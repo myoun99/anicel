@@ -4,7 +4,7 @@
 //! same counted module — the CPU's is the run the chain's plan asks the
 //! reach of anyway (fx_wgsl's run.rs), and what it computes is WGSL's.
 
-use fx_wgsl::{Cut, Frame, open};
+use fx_wgsl::{Cut, Frame, Kernel, open, open_uncut};
 
 use super::{Pace, Plugin};
 use crate::kernels::shared::{Encoded, encode, pipeline_or_why, whole};
@@ -287,8 +287,12 @@ fn anicel_reach() -> u32 { return 0u; }";
 /// `source`'s picture and cut from the device in chunks of `most`
 /// workgroups and from the CPU.
 fn both_in_chunks(source: &str, given: &Given, most: u64) -> [(Vec<u32>, Result<(), Cut>); 2] {
+    both_of(open(source).unwrap_or_else(|refusal| panic!("refused: {refusal}")), given, most)
+}
+
+/// [`both_in_chunks`] of a kernel opened already.
+fn both_of(kernel: Kernel, given: &Given, most: u64) -> [(Vec<u32>, Result<(), Cut>); 2] {
     let engine = first_engine();
-    let kernel = open(source).unwrap_or_else(|refusal| panic!("refused: {refusal}"));
     let frame = given.frame();
     let start = hashed((given.size[0] * given.size[1]) as usize, 3);
     let mut cpu = start.clone();
@@ -297,6 +301,18 @@ fn both_in_chunks(source: &str, given: &Given, most: u64) -> [(Vec<u32>, Result<
     let mut gpu = start;
     let gpu_cut = plugin.run(engine, &frame, &mut gpu, most).expect("the device ran it");
     [(gpu, gpu_cut), (cpu, cpu_cut)]
+}
+
+#[test]
+fn a_plugin_opened_uncut_draws_on_the_device_what_the_cpu_draws() {
+    // 🗣️-Q18 「끊지 않음」: the device's text has no charge, the CPU's
+    // module its count — a plugin that ends draws the same on both.
+    for (name, source, given) in &fixtures([37, 23]) {
+        let kernel = open_uncut(source).unwrap_or_else(|refusal| panic!("{name}: refused: {refusal}"));
+        let [(gpu, gpu_cut), (cpu, cpu_cut)] = both_of(kernel, given, 2);
+        assert_eq!((gpu_cut, cpu_cut), (Ok(()), Ok(())), "{name}");
+        assert_eq!(first_apart(given.size, &gpu, &cpu), None, "{name}: (x, y, device, CPU)");
+    }
 }
 
 #[test]

@@ -101,19 +101,28 @@ impl std::fmt::Display for Refusal {
     }
 }
 
-/// An opened plugin: its counted source, as the device compiles it, and
-/// the module the CPU runs.
+/// An opened plugin: its source as the device compiles it, and the
+/// counted module the CPU runs.
 pub struct Kernel {
     source: String,
     module: naga::Module,
     info: ModuleInfo,
     turns: Vec<u64>,
+    cut: bool,
 }
 
 impl Kernel {
-    /// The counted WGSL — the plugin with its charges, then the prelude.
+    /// The WGSL the device compiles — the plugin with its charges, or with
+    /// none where it was opened not to be cut ([`open_uncut`]), then the
+    /// prelude.
     pub fn source(&self) -> &str {
         &self.source
+    }
+
+    /// Whether the device's run is cut once an invocation spends its
+    /// share: false for a plugin opened by [`open_uncut`].
+    pub fn cut(&self) -> bool {
+        self.cut
     }
 
     /// What one turn of each of the plugin's loops spends of an
@@ -149,14 +158,32 @@ impl Kernel {
 /// Reads `plugin`, checks it, counts its loops and reads the counted
 /// source again — the kernel, or why not.
 pub fn open(plugin: &str) -> Result<Kernel, Refusal> {
+    opened(plugin, true)
+}
+
+/// [`open`], the device's source left without its charges: no run of it
+/// is cut on the device. 🗣️an-endless-plugin-stalls-the-app-Q18 (유저
+/// 2026-11-10): 「기본은 끊고, 설정에 『끊지 않음』을 더한다」 — the CPU's
+/// module is counted all the same, so the reach still ends at the share
+/// it is given.
+pub fn open_uncut(plugin: &str) -> Result<Kernel, Refusal> {
+    opened(plugin, false)
+}
+
+fn opened(plugin: &str, cut: bool) -> Result<Kernel, Refusal> {
     let whole = format!("{plugin}\n{PRELUDE}");
     let (module, info) = read(&whole, plugin)?;
     check::check(&module, &info, plugin)?;
-    let (counted, turns) = count::count(&module, plugin);
-    let counted = format!("{counted}\n{PRELUDE}");
-    let (module, info) = read(&counted, &counted)
-        .map_err(|refusal| Refusal::nowhere(format!("the host's counting broke the plugin: {refusal}")))?;
-    Ok(Kernel { source: counted, module, info, turns })
+    let reread = |text: String| {
+        let text = format!("{text}\n{PRELUDE}");
+        let (module, info) = read(&text, &text)
+            .map_err(|refusal| Refusal::nowhere(format!("the host's counting broke the plugin: {refusal}")))?;
+        Ok((text, module, info))
+    };
+    let (counted, turns) = count::count(&module, plugin, true);
+    let (counted, counted_module, counted_info) = reread(counted)?;
+    let source = if cut { counted } else { reread(count::count(&module, plugin, false).0)?.0 };
+    Ok(Kernel { source, module: counted_module, info: counted_info, turns, cut })
 }
 
 /// Parses and validates `whole`, placing an error in `plugin` (its first

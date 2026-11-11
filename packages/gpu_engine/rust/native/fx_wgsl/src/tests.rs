@@ -1,4 +1,4 @@
-use crate::{Cut, Frame, Kernel, PRELUDE, Refusal, open};
+use crate::{Cut, Frame, Kernel, PRELUDE, Refusal, open, open_uncut};
 
 const INVERT: &str = include_str!("../fixtures/invert.wgsl");
 const ENDLESS: &str = include_str!("../fixtures/endless.wgsl");
@@ -771,4 +771,18 @@ fn what_the_group_check_refuses_and_why() {
         let refused = refusal(&source);
         assert!(refused.why.contains(why), "{what}: refused for another reason — {refused}\n{source}");
     }
+}
+
+#[test]
+fn a_plugin_opened_uncut_gives_the_device_no_charge_and_the_cpu_its_count() {
+    // 🗣️-Q18: 「끊지 않음」 — the device runs it as written; the reach, on
+    // the CPU, still ends at the share it is given.
+    let kernel = open_uncut(ENDLESS).unwrap_or_else(|refusal| panic!("refused: {refusal}"));
+    let plugin_part = kernel.source().split(PRELUDE).next().expect("the plugin comes first");
+    assert!(!plugin_part.contains("anicel_host_spend"), "no charge for the device:\n{plugin_part}");
+    assert!(plugin_part.contains("anicel_host_enter("), "it enters all the same:\n{plugin_part}");
+    assert!(!kernel.cut());
+    assert!(opened(ENDLESS).cut());
+    assert_eq!(kernel.turns(), opened(ENDLESS).turns());
+    assert_eq!(kernel.reach(&ask(&[], 1_000)), Err(Cut), "the CPU's module is counted");
 }
