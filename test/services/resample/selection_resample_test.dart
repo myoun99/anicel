@@ -2,15 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/services/resample/selection_resample.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../helpers/native_engine_path.dart';
 
 /// The folds that carry the transform tool's geometry into the shared
 /// resampler.
@@ -376,80 +372,7 @@ void main() {
     });
   });
 
-  group('the router', () {
-    test('native and the Dart reference produce the same bytes', () {
-      // The whole point of routing through one function: which kernel ran
-      // must be invisible in the result. Without the engine LOADED this
-      // would compare the reference with itself and pass while proving
-      // nothing, so the engine is wired here explicitly and the test skips
-      // loudly when there is none to wire.
-      final path = nativeEngineLibraryPathOrNull();
-      if (path == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      debugQaEngineLibraryPathOverride = path;
-      QaNativeEngine.debugResetForTests();
-      addTearDown(() {
-        debugQaEngineLibraryPathOverride = null;
-        QaNativeEngine.debugResetForTests();
-      });
-      expect(
-        QaNativeEngine.instance,
-        isNotNull,
-        reason: 'the engine at $path refused to load (ABI mismatch?)',
-      );
-
-      final source = Uint8List(32 * 32 * 4);
-      final words = Uint32List.view(source.buffer);
-      for (var i = 0; i < words.length; i += 1) {
-        words[i] = 0xffffffff;
-      }
-      for (var i = 0; i < 32; i += 1) {
-        words[i * 32 + i] = 0xff101010;
-        words[i * 32 + 16] = 0xff3050a0;
-      }
-      final affine = SelectionAffine(
-        pivot: CanvasPoint(x: 16, y: 16),
-        sx: 1.3,
-        sy: 0.8,
-        rotationDegrees: 21,
-        tx: 2.5,
-        ty: -1.25,
-      );
-      final transform = selectionAffineResampleTransform(
-        affine: affine,
-        srcLeft: 0,
-        srcTop: 0,
-        outLeft: -4,
-        outTop: -4,
-      );
-      for (final mode in ResampleMode.values) {
-        final routed = Uint8List(40 * 40 * 4);
-        resampleSelectionInto(
-          src: source,
-          srcWidth: 32,
-          srcHeight: 32,
-          dst: routed,
-          dstWidth: 40,
-          dstHeight: 40,
-          transform: transform,
-          mode: mode,
-        );
-        final reference = resampleRgbaReference(
-          src: source,
-          srcWidth: 32,
-          srcHeight: 32,
-          dstWidth: 40,
-          dstHeight: 40,
-          transform: transform,
-          mode: mode,
-          radiusFloor: kSelectionResampleRadiusFloor,
-        );
-        expect(routed, reference, reason: mode.name);
-      }
-    });
-
+  group('the radius floor', () {
     test('the floor it passes matches the kernel default, and Pick no '
         'longer has a radius for it to reach', () {
       // The floor is 1.0 and belongs to Blend. It was 1.5 for Pick once,

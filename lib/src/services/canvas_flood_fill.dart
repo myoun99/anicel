@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
+
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../core/point_bounds.dart';
@@ -19,6 +21,7 @@ import '../models/drawing_guide.dart';
 import '../models/layer_id.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tiles_covering.dart';
+import '../native/engine_stamp_pictures.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import '../core/seed_tolerance.dart';
@@ -644,9 +647,10 @@ class LazyCanvasRasterRgb {
   }
 
   /// [layer]'s pixels on the compose tile at [world]'s origin, in raster
-  /// WORLD space — straight off its tiles where it is read 1:1, resampled
-  /// by the resampler that carries a transformed picture everywhere else
-  /// where it is posed.
+  /// WORLD space — straight off its tiles where it is read 1:1, carried on
+  /// the engine where it is posed, by the R1 that carries a transformed
+  /// picture everywhere else (float-warp-resamples-in-the-c-engine,
+  /// 2026-11-11).
   ///
   /// Blend, not pick: the screen draws a posed layer filtered, and the fill
   /// reads what the screen shows.
@@ -664,18 +668,22 @@ class LazyCanvasRasterRgb {
       );
     }
     final source = _preimageOf(toArtwork, world);
-    final pixels = Uint8List(BitmapTile.bytesFor(_tileSize));
-    resampleSelectionInto(
-      src: bitmapSurfaceRegionPixels(layer.surface, source),
-      srcWidth: source.width,
-      srcHeight: source.height,
-      dst: pixels,
-      dstWidth: _tileSize,
-      dstHeight: _tileSize,
-      transform: _resampleFold(toArtwork, world, source),
-      mode: ResampleMode.blend,
-    );
-    return pixels;
+    return EngineStampPictures.carried(
+      BrushStampImage(
+        id: 'fill-read',
+        width: source.width,
+        height: source.height,
+        rgba: bitmapSurfaceRegionPixels(layer.surface, source),
+      ),
+      id: 'fill-read-posed',
+      inverse: resampleTransformElements(
+        _resampleFold(toArtwork, world, source),
+      ),
+      radiusFloor: kSelectionResampleRadiusFloor,
+      sampling: GpuSampling.blend,
+      width: _tileSize,
+      height: _tileSize,
+    ).rgba;
   }
 
   /// What a compose tile at [world]'s origin can read of a layer carried by

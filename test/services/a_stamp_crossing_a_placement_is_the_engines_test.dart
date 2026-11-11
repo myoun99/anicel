@@ -22,8 +22,6 @@ import 'package:anicel/src/services/canvas_selection.dart' show carryStampDab;
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart'
     show ResampleMode;
-import 'package:anicel/src/services/resample/selection_resample.dart'
-    show debugSelectionResamples;
 import 'package:anicel/src/services/selection_placement.dart';
 
 import '../helpers/placement_reading.dart';
@@ -113,7 +111,6 @@ void main() {
       'once, and no crossing is resampled here or read back', () {
     final stamp = quarters(24);
     final handedUp = EngineStampPictures.debugHandedUp;
-    final resamples = debugSelectionResamples;
     final readBack = EngineStampPictures.debugReadBack;
 
     final crossed = [
@@ -127,7 +124,6 @@ void main() {
       reason: '⛔CONTROL: four places, each crossed to a place of its own',
     );
     expect(EngineStampPictures.debugHandedUp - handedUp, 1);
-    expect(debugSelectionResamples - resamples, 0);
     expect(EngineStampPictures.debugReadBack - readBack, 0);
   });
 

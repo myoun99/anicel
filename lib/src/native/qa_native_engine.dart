@@ -83,7 +83,6 @@ class QaNativeEngine {
     this._fillGapCloseRun,
     this._floodFillWave,
     this._fillComposeBatch,
-    this._resampleRgba,
   );
 
   /// R25-③ batched fill compose: packs compose-tile items + their
@@ -573,130 +572,6 @@ class QaNativeEngine {
   )
   _preBlendTiles;
 
-  final int Function(
-    Pointer<Uint8> src,
-    int srcWidth,
-    int srcHeight,
-    Pointer<Uint8> dst,
-    int dstWidth,
-    int dstHeight,
-    Pointer<Double> inverse,
-    double radiusFloor,
-    int mode,
-    int clipX,
-    int clipY,
-  )
-  _resampleRgba;
-
-  /// The shared image resampler (ABI 26). Semantics =
-  /// `resampleRgbaReference` in
-  /// `lib/src/services/resample/resample_kernel.dart`, byte parity pinned
-  /// by `resample_parity_test.dart`.
-  ///
-  /// [inverse] is nine doubles, row-major, destination-to-source, with the
-  /// homogeneous row last. [mode] is 0 for the tent mean and 1 for the
-  /// coverage argmax. Returns 0, or negative on bad arguments.
-  ///
-  /// [clipX]/[clipY] say where this destination buffer sits inside the
-  /// FULL output rect [inverse] was built for; 0/0 means it IS the rect.
-  /// A window keeps the whole rect's pixel grid, which is what makes it
-  /// bit-identical to that window of the whole.
-  int resampleRgba({
-    required Pointer<Uint8> src,
-    required int srcWidth,
-    required int srcHeight,
-    required Pointer<Uint8> dst,
-    required int dstWidth,
-    required int dstHeight,
-    required Pointer<Double> inverse,
-    required double radiusFloor,
-    required int mode,
-    int clipX = 0,
-    int clipY = 0,
-  }) {
-    return _resampleRgba(
-      src,
-      srcWidth,
-      srcHeight,
-      dst,
-      dstWidth,
-      dstHeight,
-      inverse,
-      radiusFloor,
-      mode,
-      clipX,
-      clipY,
-    );
-  }
-
-  /// [resampleRgba] for a caller that owns Dart buffers and runs on a hot
-  /// path — the transform tool resamples on every drag frame, and its mesh
-  /// mode calls this once per triangle.
-  ///
-  /// Nothing is allocated per call. The SOURCE goes through the
-  /// identity-keyed [stampUploads] cache, which is exactly what it was
-  /// built for: a transform session hands the same lift stamp in on every
-  /// frame, so only the first one copies. The DESTINATION is a grow-only
-  /// engine scratch — never the upload cache, because each resample mints a
-  /// fresh result buffer and uploading those would evict the source it just
-  /// read.
-  ///
-  /// Returns false when the kernel refuses the arguments, and the caller
-  /// must then run the Dart reference: the scratch is not cleared on that
-  /// path, so returning true after a non-zero status would ship whatever
-  /// the previous resample left behind as pixels.
-  bool resampleRgbaInto({
-    required Uint8List src,
-    required int srcWidth,
-    required int srcHeight,
-    required Uint8List dst,
-    required int dstWidth,
-    required int dstHeight,
-    required Float64List inverse,
-    required double radiusFloor,
-    required int mode,
-    int clipX = 0,
-    int clipY = 0,
-  }) {
-    // Nine doubles or nothing. `setAll` under-fills in silence — it only
-    // throws when the source is LONGER — so a short list would hand the
-    // kernel whatever malloc last held as the homogeneous row.
-    if (inverse.length != 9) {
-      return false;
-    }
-    final byteLength = dstWidth * dstHeight * 4;
-    if (byteLength <= 0 || dst.length < byteLength) {
-      return false;
-    }
-    final source = stampUploads.upload(src);
-    _resampleDst.ensure(byteLength);
-    if (_resampleInverse == nullptr) {
-      _resampleInverse = malloc<Double>(9);
-    }
-    _resampleInverse.asTypedList(9).setAll(0, inverse);
-    final status = resampleRgba(
-      src: source,
-      srcWidth: srcWidth,
-      srcHeight: srcHeight,
-      dst: _resampleDst.pointer,
-      dstWidth: dstWidth,
-      dstHeight: dstHeight,
-      inverse: _resampleInverse,
-      radiusFloor: radiusFloor,
-      mode: mode,
-      clipX: clipX,
-      clipY: clipY,
-    );
-    if (status != 0) {
-      return false;
-    }
-    dst.setRange(0, byteLength, _resampleDst.pointer.asTypedList(byteLength));
-    return true;
-  }
-
-  final _resampleDst = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-  Pointer<Double> _resampleInverse = nullptr;
-
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
 
@@ -1096,35 +971,6 @@ class QaNativeEngine {
               Pointer<QaComposeBlendStruct>,
             )
           >('qa_fill_compose_batch');
-      final resampleRgba = library
-          .lookupFunction<
-            Int32 Function(
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-              Pointer<Double>,
-              Double,
-              Int32,
-              Int32,
-              Int32,
-            ),
-            int Function(
-              Pointer<Uint8>,
-              int,
-              int,
-              Pointer<Uint8>,
-              int,
-              int,
-              Pointer<Double>,
-              double,
-              int,
-              int,
-              int,
-            )
-          >('qa_resample_rgba');
       return QaNativeEngine._(
         premultiplyRgba,
         fillClearRect,
@@ -1150,7 +996,6 @@ class QaNativeEngine {
         fillGapCloseRun,
         floodFillWave,
         fillComposeBatch,
-        resampleRgba,
       );
     } on Object {
       return null;

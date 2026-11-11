@@ -322,43 +322,6 @@ void main() {
     }
   });
 
-  test('the instrument first: is the "native" number actually native?', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    // `resampleSelectionInto` falls back to the Dart reference silently
-    // when the engine is missing OR when the binding returns false, and
-    // the two produce identical bytes by contract — so nothing about the
-    // RESULT says which one ran. Only the clock does, which is exactly
-    // what a benchmark must not take on trust.
-    final dab = stampDab(1024, 1024);
-    final affine = SelectionAffine(
-      pivot: CanvasPoint(x: 512, y: 512),
-      sx: 1.25,
-      sy: 1.25,
-      rotationDegrees: 12,
-    );
-
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    final native = millisPer(3, () => transformStampDab(dab, affine));
-
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = true;
-    final dart = millisPer(3, () => transformStampDab(dab, affine));
-
-    debugPrint(
-      '[instrument] 1024² ×1.25 blend  native ${native.toStringAsFixed(1)} ms  '
-      'dart ${dart.toStringAsFixed(1)} ms  '
-      '→ ${(dart / native).toStringAsFixed(1)}× '
-      '${(dart / native) < 2 ? "(SUSPECT: the fast path may not be running)" : "(native is running)"}',
-    );
-    expect(native, greaterThan(0));
-  });
-
   test('what the aspect LOCK adds: the uniform solve takes the larger axis, '
       'so the output grows with the drag angle', () {
     // No timing here — this is the multiplier the timings above get

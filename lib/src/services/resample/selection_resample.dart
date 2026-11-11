@@ -1,91 +1,25 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
-import '../../native/qa_native_engine.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../selection_affine.dart';
 import 'resample_kernel.dart';
 
-/// The selection transform's door onto the shared resampler: the three
-/// destination-to-source folds it needs, and the one function that decides
-/// native-or-Dart.
-///
-/// It exists so preview and commit cannot diverge. The Dart reference
-/// derives its radius floor from the mode while the native binding demands
-/// one explicitly, so two call sites is all it takes for the picture on
-/// screen and the picture Enter lands to come out of different kernels with
-/// nothing in the type system to notice.
+/// The selection transform's door onto R1: the three destination-to-source
+/// folds it needs, the nine the engine reads of each, and the one radius
+/// floor every warp is handed.
 
 /// The footprint floor, named once so both sides of the native/Dart split
 /// are handed the same number.
 ///
 /// It is no longer an override — the kernel's floor is 1.0 for both modes
 /// now, since a floor above the true extent has no meaning under a
-/// coverage weight. The constant survives because the native binding
-/// REQUIRES an explicit floor while the Dart reference defaults it, and
-/// two call sites free to disagree is exactly how the picture on screen
-/// and the picture Enter lands come out of different kernels.
+/// coverage weight. The constant survives because the engine REQUIRES an
+/// explicit floor, and two call sites free to disagree is exactly how the
+/// picture on screen and the picture Enter lands come out of different
+/// kernels.
 const double kSelectionResampleRadiusFloor = 1.0;
 
-/// Test seam: the resamples made through this door, here on the CPU — the
-/// pin that a stamp crossing a row's placement makes none (the engine's,
-/// `carryStampDab`).
-@visibleForTesting
-int debugSelectionResamples = 0;
-
-/// Resample [src] into [dst] through [transform], native when the engine is
-/// loaded and the Dart reference otherwise.
-///
-/// The two produce identical bytes — that is what
-/// `test/native/resample_parity_test.dart` exists to hold — so which one
-/// ran is invisible in the result and only shows in the clock.
-void resampleSelectionInto({
-  required Uint8List src,
-  required int srcWidth,
-  required int srcHeight,
-  required Uint8List dst,
-  required int dstWidth,
-  required int dstHeight,
-  required ResampleTransform transform,
-  required ResampleMode mode,
-  int clipX = 0,
-  int clipY = 0,
-}) {
-  debugSelectionResamples += 1;
-  final engine = QaNativeEngine.instance;
-  if (engine != null &&
-      engine.resampleRgbaInto(
-        src: src,
-        srcWidth: srcWidth,
-        srcHeight: srcHeight,
-        dst: dst,
-        dstWidth: dstWidth,
-        dstHeight: dstHeight,
-        inverse: resampleTransformElements(transform),
-        radiusFloor: kSelectionResampleRadiusFloor,
-        mode: resampleModeCode(mode),
-        clipX: clipX,
-        clipY: clipY,
-      )) {
-    return;
-  }
-  resampleRgbaReferenceInto(
-    src: src,
-    srcWidth: srcWidth,
-    srcHeight: srcHeight,
-    dst: dst,
-    dstWidth: dstWidth,
-    dstHeight: dstHeight,
-    transform: transform,
-    mode: mode,
-    radiusFloor: kSelectionResampleRadiusFloor,
-    clipX: clipX,
-    clipY: clipY,
-  );
-}
-
-/// The nine elements in the order the C kernel reads them.
+/// The nine elements in the order the engine reads them.
 Float64List resampleTransformElements(ResampleTransform t) =>
     Float64List.fromList(<double>[t.a, t.b, t.c, t.d, t.e, t.f, t.g, t.h, t.i]);
 

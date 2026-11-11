@@ -373,7 +373,10 @@ import '../core/on_a_worker.dart';
 /// - v75: `qa_cel_pixel_spec` · `qa_cel_pixel_pass_tile` leave the C: a
 ///   cel's colour verbs run on the GPU engine's kernel, and a grid it does
 ///   not hold on the Dart pass (`overwriteCelPixels`).
-const int kQaEngineAbiVersion = 75;
+/// - v76: `qa_resample_rgba` leaves the C: a float's warps and the posed
+///   rows a fill reads are the GPU engine's R1 (`EngineStampPictures`,
+///   float-warp-resamples-in-the-c-engine), and the C resamples nothing.
+const int kQaEngineAbiVersion = 76;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

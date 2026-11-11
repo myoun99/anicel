@@ -4,16 +4,13 @@ import 'dart:typed_data';
 /// The one image resampler: **one inverse map, and two ways of reading the
 /// preimage it produces — averaged, or elected.**
 ///
-/// The transform tool goes through here — affine, perspective quad and
-/// mesh, preview and commit alike, which is what makes those two the same
-/// bytes. The rest do not yet: the composite path still hands its scaling
-/// to Skia, import fit lays a picture by the display's `FilterQuality`
-/// (`core/display_filter.dart`, I-120-Q26), and on-screen minification is
-/// still a `FilterQuality` too. Those move over one at a time.
-///
-/// Once they have, every surface that turns pixels into other pixels
-/// arrives here. They differ in what matrix they hand in, never in how a
-/// destination pixel is built.
+/// ↩️The transform tool went through here — affine, perspective quad and
+/// mesh, preview and commit alike — and a C mirror was pinned to it byte
+/// for byte (`qa_resample_rgba`). A float's warps are the GPU engine's R1
+/// now, and the mirror is gone (float-warp-resamples-in-the-c-engine,
+/// 2026-11-11); what still comes here is a tip's coverage
+/// (`resampleCoverage`). [ResampleMode] and [ResampleTransform] are what
+/// the app hands R1 too.
 ///
 /// ## Why two modes and not two resamplers
 ///
@@ -106,9 +103,8 @@ import 'dart:typed_data';
 /// Pixels are straight-alpha RGBA8, `[R, G, B, A]` ascending in memory, and
 /// this file reads them four bytes at a time as one machine word. On the
 /// little-endian targets the app ships to that word is `A<<24 | B<<16 |
-/// G<<8 | R`, which is what the shifts below assume — the same assumption
-/// the C kernel makes, so the two stay byte-identical. A big-endian port
-/// would have to revisit both together.
+/// G<<8 | R`, which is what the shifts below assume. A big-endian port
+/// would have to revisit them.
 enum ResampleMode {
   /// Weighted mean through a tent kernel. Produces new colours; that is the
   /// point.
@@ -143,11 +139,11 @@ enum ResampleMode {
 /// ink and deleted the drawing.
 ///
 /// Pick has since stopped having a radius at all: it supersamples the
-/// preimage instead of gathering taps around it. The parameter survives on
-/// both call paths because the native binding demands an explicit floor
-/// while the Dart reference defaults one, and Pick ignores whatever it is
-/// handed. The mode argument stays for the same reason it always did — so
-/// callers ask a question rather than hard-code an answer.
+/// preimage instead of gathering taps around it. The parameter survives
+/// because the engine demands an explicit floor while this reference
+/// defaults one, and Pick ignores whatever it is handed. The mode argument
+/// stays for the same reason it always did — so callers ask a question
+/// rather than hard-code an answer.
 double resampleRadiusFloor(ResampleMode mode) => 1.0;
 
 /// Subsamples per axis at the two ends of [resampleSamplesPerAxis].
@@ -203,9 +199,8 @@ const int kResampleRefineLimit = 16;
 /// bounds test can be made before the rounding rather than after it.
 ///
 /// 2⁵³ is where doubles stop representing consecutive integers, and well
-/// past it `round()` saturates in Dart while `llround()` is undefined in
-/// C — the two would disagree on a value neither can name. Both kernels
-/// answer "outside" first, which is the same answer rounding would have
+/// past it `round()` saturates — a value no image can name. The kernel
+/// answers "outside" first, which is the same answer rounding would have
 /// produced for every image size that fits in an int32.
 const double kResampleIndexLimit = 9007199254740992.0;
 
@@ -226,15 +221,14 @@ const double kResampleIndexLimit = 9007199254740992.0;
 /// clamped to [kResampleMinSamplesPerAxis]..[kResampleMaxSamplesPerAxis].
 /// It is written as a comparison chain against the SQUARED thresholds so
 /// that no square root and no `ceil` appear: the answer is then a pure
-/// ordering of doubles, which the C mirror cannot round differently and
-/// which cannot overflow on the way to an integer. `n = ⌈2L⌉` means
+/// ordering of doubles, which cannot round differently anywhere and cannot
+/// overflow on the way to an integer. `n = ⌈2L⌉` means
 /// `L² ∈ ((n−1)²/4, n²/4]`, and those quarters are the constants below.
 ///
 /// A non-finite step — reachable from a matrix whose entries overflow —
 /// fails every comparison and falls through to the ceiling, which
 /// terminates on samples that all land outside. That is deliberate, and it
-/// is why every test here is `<=`: NaN fails all of them in both
-/// languages.
+/// is why every test here is `<=`: NaN fails all of them.
 int resampleSamplesPerAxis(double squaredStep) {
   if (squaredStep <= 16) return 8;
   if (squaredStep <= 20.25) return 9;
@@ -247,11 +241,6 @@ int resampleSamplesPerAxis(double squaredStep) {
   return 16;
 }
 
-/// The mode as the C kernel's integer selector. One definition, because
-/// the alternative is every call site open-coding the same ternary and one
-/// of them eventually getting it backwards.
-int resampleModeCode(ResampleMode mode) => mode == ResampleMode.pick ? 1 : 0;
-
 /// Upper bound for Blend's tent radius.
 ///
 /// Unlike the floor this is not a quality knob. A homography re-derives the
@@ -263,9 +252,6 @@ int resampleModeCode(ResampleMode mode) => mode == ResampleMode.pick ? 1 : 0;
 /// Clamping is contract-safe because a narrower tent is still convex, so
 /// Blend still cannot ring. Past the bound minification aliases exactly as
 /// a mip-less sampler does, which is the honest trade.
-///
-/// It also keeps the radius inside int32, where the C mirror's
-/// `(int32_t)ceil(radius)` is defined at all.
 ///
 /// Pick needs none of this. The same corner-pin costs it 256 samples like
 /// every other pixel, because [kResampleMaxSamplesPerAxis] bounds the work
@@ -356,9 +342,7 @@ class ResampleTransform {
   /// defect no filter quality could excuse.
   /// The finite checks are not decoration: `double.infinity.roundToDouble()`
   /// is infinity, so an infinite offset would pass "is a whole number",
-  /// take this path, and then throw in `round()`. The C mirror rejects it
-  /// through `isfinite`, so letting it through here would break parity as
-  /// well as crash.
+  /// take this path, and then throw in `round()`.
   bool get isIntegerTranslation =>
       isAffine &&
       a == 1 &&
@@ -371,8 +355,7 @@ class ResampleTransform {
       f == f.roundToDouble();
 }
 
-/// The Dart reference implementation. `qa_resample_rgba` in the native
-/// engine must agree with this byte for byte.
+/// The reference implementation, on the CPU.
 ///
 /// [src] and the returned buffer are straight-alpha RGBA8, tightly packed,
 /// `width * 4` bytes per row — the same convention as every tile in the
@@ -406,10 +389,8 @@ Uint8List resampleRgbaReference({
 /// [resampleRgbaReference] into a caller-owned buffer, optionally for one
 /// band of destination rows.
 ///
-/// The band parameters exist so the native kernel's pooled row split and
-/// this reference can be compared item for item: a band must produce the
-/// same bytes it would have produced as part of the whole, which is what
-/// makes worker count invisible in the output.
+/// A band must produce the same bytes it would have produced as part of
+/// the whole, which is what makes a row split invisible in the output.
 void resampleRgbaReferenceInto({
   required Uint8List src,
   required int srcWidth,
@@ -575,8 +556,8 @@ void resampleRgbaReferenceInto({
   for (var y = rowStart; y < endRow; y += 1) {
     // The ABSOLUTE destination row, formed once as an int so every reader
     // below keeps the two-term sum it had. Adding the clip in doubles
-    // instead would make these three-term sums, and the C kernel's parity
-    // with this reference is expression identity, not value identity.
+    // instead would make these three-term sums, which round apart from the
+    // whole's — and a window is the whole's pixels there.
     final absoluteY = y + clipY;
     final centreOfY = absoluteY + 0.5;
     final rowBase = y * dstWidth;
@@ -625,9 +606,8 @@ void resampleRgbaReferenceInto({
       // A degenerate map — scale zero, a non-finite matrix entry, or a
       // homography whose w is subnormal enough that 1/w overflows — puts
       // u, v or a radius outside the finite doubles. `round()` throws
-      // there and the C mirror's `llround()` is undefined, so both
-      // kernels declare the pixel outside instead: the same answer the
-      // `w == 0` early-out already gives.
+      // there, so the kernel declares the pixel outside instead: the same
+      // answer the `w == 0` early-out already gives.
       if (!u.isFinite ||
           !v.isFinite ||
           !radiusX.isFinite ||
@@ -683,8 +663,7 @@ void resampleRgbaReferenceInto({
         final spanY = (extentY * 0.5 + 1).floorToDouble();
         // Only while the probe is cheaper than the sampling it would save.
         // Compared as doubles because a big reduction makes these numbers
-        // large enough to overflow an int32 before the comparison happens
-        // — the C mirror has to survive the same expression.
+        // large enough to overflow an int32 before the comparison happens.
         runFlat =
             t.isAffine &&
             (2 * spanX + 1) * (2 * spanY + 1) <= samplesX * samplesY;

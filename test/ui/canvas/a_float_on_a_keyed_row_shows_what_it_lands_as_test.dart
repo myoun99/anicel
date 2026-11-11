@@ -29,8 +29,6 @@ import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
-import 'package:anicel/src/services/resample/selection_resample.dart'
-    show debugSelectionResamples;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -1064,12 +1062,11 @@ void main() {
       canvasOf(tester).live!.floatOverlay!.value!.image,
       isNull,
       reason: '⛔fixture: carried, the float its own pixels — no warp of the '
-          'box\'s, which is made here still',
+          'box\'s',
     );
     final there = shownLanding(tester);
 
     final reads = EngineTileLedger.instance.debugTileReads;
-    final resamples = debugSelectionResamples;
     final handedUp = EngineStampPictures.debugHandedUp;
     await hand.moveTo(second);
     await settle(tester);
@@ -1080,7 +1077,6 @@ void main() {
       reason: '⛔CONTROL: the step made a landing of its own',
     );
     expect(EngineTileLedger.instance.debugTileReads, reads);
-    expect(debugSelectionResamples, resamples);
     expect(EngineStampPictures.debugHandedUp, handedUp);
     await hand.up();
     await settle(tester);

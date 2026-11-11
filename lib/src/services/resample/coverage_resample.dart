@@ -44,6 +44,8 @@ import 'resample_kernel.dart';
 /// "register this tip" action, on an image the library caps at 256px
 /// on the way out — not in any hot loop. The kernel
 /// is untouched, so the native/Dart byte parity still holds unchanged.
+/// ↩️The C mirror is gone (`qa_resample_rgba`, ABI 76, 2026-11-11), so the
+/// first count no longer holds; the second still does.
 ///
 /// ★COVERAGE RIDES IN ALPHA, OVER BLACK. That is already the app's RGBA
 /// spelling of a tip mask — `encodeBrushTipImage` writes a tip that way
