@@ -338,7 +338,8 @@ void main() {
       ]);
     });
 
-    // Red over white at half: green and blue 127 (lay_tests.rs).
+    // Red over white at half — 32768 of 65535: green and blue 127
+    // (lay_tests.rs).
     test('a strength and a cover are handed where Dart names them', () {
       final covered = blank(3, 1);
       final cover = export.cover(Uint8List.fromList([0, 128, 255]), 3, 1);
@@ -347,7 +348,7 @@ void main() {
 
       export
         ..layColour(covered, red, cover: cover)
-        ..layColour(halved, red, opacity: 128);
+        ..layColour(halved, red, opacity: 32768);
 
       expect(pixelsOf(covered, 3, 1), [
         [255, 255, 255],

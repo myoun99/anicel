@@ -168,7 +168,7 @@ pub unsafe extern "C" fn gpu_engine_export_blank(
     let (export, engine) = unsafe { (&*export, &*engine) };
     Shown::blank(engine, Picture { width, height })
         .and_then(|frame| {
-            export.lay.run(engine, &frame, Source::Solid(ground), 255, None, None)?;
+            export.lay.run(engine, &frame, Source::Solid(ground), u16::MAX, None, None)?;
             Some(frame)
         })
         .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
@@ -262,11 +262,10 @@ unsafe fn edges(within: *const i32) -> Option<[i32; 4]> {
     unsafe { within.cast::<[i32; 4]>().as_ref() }.copied()
 }
 
-/// Lays `source`, its top-left at (`x`, `y`) of `onto`, over `onto` at
-/// `opacity` — a byte, 255 as it is — each pixel taking of it what `cover`
-/// says, or all of it where `cover` is null — only within the pixels
-/// `within` names, [left, top, right, bottom), where it is not null — and
-/// submits the work. `onto` is a frame the export made
+/// Lays `source`, its top-left at (`x`, `y`) of `onto`, over `onto` at `opacity` — 65535
+/// whole, as the composite lays a row — each pixel taking of it what `cover` says, or all of it
+/// where `cover` is null — only within the pixels `within` names, [left, top, right, bottom), where
+/// it is not null — and submits the work. `onto` is a frame the export made
 /// (`gpu_engine_export_blank`). False on failure; see the last error.
 ///
 /// # Safety
@@ -280,7 +279,7 @@ pub unsafe extern "C" fn gpu_engine_export_lay(
     source: *const Shown,
     x: i32,
     y: i32,
-    opacity: u8,
+    opacity: u16,
     cover: *const Cover,
     within: *const i32,
 ) -> bool {
@@ -303,7 +302,7 @@ pub unsafe extern "C" fn gpu_engine_export_lay_colour(
     engine: *const Engine,
     onto: *const Shown,
     colour: u32,
-    opacity: u8,
+    opacity: u16,
     cover: *const Cover,
     within: *const i32,
 ) -> bool {

@@ -556,3 +556,20 @@ fn blend_pack8_premultiplied(pixel: vec4<u32>) -> u32 {
     | (blend_over_alpha(pixel.z * 255u, pixel.w) << 16u)
     | (alpha << 24u);
 }
+
+// A row or a buffer laid on the one under it at `opacity` under the
+// coverage byte `cover` (blend_cover), in `mode` — an eraser's taking its
+// alpha off what is under it, as a stroke of the eraser lands on its cel,
+// and a plus adding itself to it, as a crossfade's second pass does. The
+// composite lays its rows by it, and an export a frame's pictures
+// (export/lay.wgsl): one law for a picture laid at a strength.
+fn blend_laid(mode: u32, opacity: u32, cover: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
+  let alpha = blend_mul(src.w, blend_cover(opacity, cover));
+  if (mode == BLEND_ERASE) {
+    return blend_erase(alpha, dst);
+  }
+  if (mode == BLEND_PLUS) {
+    return blend_plus(vec4<u32>(src.xyz, alpha), dst);
+  }
+  return blend_composite(mode, vec4<u32>(src.xyz, alpha), dst);
+}

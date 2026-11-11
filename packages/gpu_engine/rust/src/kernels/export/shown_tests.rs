@@ -196,7 +196,8 @@ fn a_pass_that_takes_a_pixel_straight_takes_the_shown_one_straight() {
 fn over_the_ground_a_shown_pixel_is_laid_as_it_is_premultiplied() {
     let rig = rig();
     let shown = shown(1, 1, false, |_, _| 0xc864_0032);
-    let out = rig.over_ground.run(rig.engine, Frame::Shown(&shown), Picture { width: 1, height: 1 }, [255, 255, 255], None);
+    let picture = Picture { width: 1, height: 1 };
+    let out = rig.over_ground.run(rig.engine, Frame::Shown(&shown), picture, [255, 255, 255], None);
     assert_eq!(read_buffer(rig.engine, &out.expect("over ground"))[..3], [105, 55, 155]);
 }
 

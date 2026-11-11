@@ -253,21 +253,6 @@ fn save(level: u32, tile: u32, texel: u32, pixel: vec4<u32>) {
   work[at + 1u] = pair.y;
 }
 
-// A row or a buffer laid on the one under it at `opacity` under the
-// coverage byte `cover` (blend_cover), in `mode` — an eraser's taking its
-// alpha off what is under it, as a stroke of the eraser lands on its cel,
-// and a plus adding itself to it, as a crossfade's second pass does.
-fn laid(mode: u32, opacity: u32, cover: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
-  let alpha = blend_mul(src.w, blend_cover(opacity, cover));
-  if (mode == BLEND_ERASE) {
-    return blend_erase(alpha, dst);
-  }
-  if (mode == BLEND_PLUS) {
-    return blend_plus(vec4<u32>(src.xyz, alpha), dst);
-  }
-  return blend_composite(mode, vec4<u32>(src.xyz, alpha), dst);
-}
-
 @compute @workgroup_size(16, 16, 1)
 fn composite(
   @builtin(workgroup_id) group: vec3<u32>,
@@ -304,7 +289,7 @@ fn composite(
           let shown = row_sample(at, x, y);
           if (shown.w != 0u) {
             let cover = step_cover(at, x, y);
-            stack[top] = laid(plan[at + 1u], plan[at + 2u], cover, shown, stack[top]);
+            stack[top] = blend_laid(plan[at + 1u], plan[at + 2u], cover, shown, stack[top]);
           }
         }
       }
@@ -327,7 +312,7 @@ fn composite(
           closed = blend_unpack8(matrix_rgba8(matrix, blend_pack8(closed)));
         }
         top -= 1u;
-        stack[top] = laid(plan[at + 1u], plan[at + 2u], 255u, closed, stack[top]);
+        stack[top] = blend_laid(plan[at + 1u], plan[at + 2u], 255u, closed, stack[top]);
       }
       case STEP_CLOSE_ATOP: {
         let closed = stack[top];
@@ -343,14 +328,14 @@ fn composite(
         let y1 = bitcast<i32>(plan[at + 5u]);
         if (x >= x0 && x < x1 && y >= y0 && y < y1) {
           let colour = blend_unpack8(plan[at + 1u]);
-          stack[top] = laid(BLEND_NORMAL, W_ONE, 255u, colour, stack[top]);
+          stack[top] = blend_laid(BLEND_NORMAL, W_ONE, 255u, colour, stack[top]);
         }
       }
       // A range mark's checker under the range (mod.rs's Step::Mark).
       case STEP_MARK: {
         let cover = step_cover(at, x, y);
         if (composite_with_mask && cover != 0u) {
-          stack[top] = laid(BLEND_NORMAL, W_ONE, cover, mark_colour(at, x, y), stack[top]);
+          stack[top] = blend_laid(BLEND_NORMAL, W_ONE, cover, mark_colour(at, x, y), stack[top]);
         }
       }
       default: {}

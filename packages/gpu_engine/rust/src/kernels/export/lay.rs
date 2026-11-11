@@ -137,7 +137,7 @@ impl Lay {
         engine: &Engine,
         onto: &Shown,
         source: Source,
-        opacity: u8,
+        opacity: u16,
         cover: Option<&Cover>,
         within: Option<[i32; 4]>,
     ) -> Option<()> {

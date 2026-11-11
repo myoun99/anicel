@@ -2285,16 +2285,16 @@ class GpuExport {
   }
 
   /// Lays [source], its top-left at ([x], [y]) of [onto], over [onto] at
-  /// [opacity] — a byte, 255 as it is — each pixel taking of it what
-  /// [cover] says, all of it where there is none, and only within the
-  /// pixels [within] names — [left, top, right, bottom) — where it does;
-  /// and submits the work. [onto] is a frame [blank] made.
+  /// [opacity] — 65535 whole, as a plan lays a row — each pixel taking of
+  /// it what [cover] says, all of it where there is none, and only within
+  /// the pixels [within] names — [left, top, right, bottom) — where it
+  /// does; and submits the work. [onto] is a frame [blank] made.
   void lay(
     GpuShown onto,
     GpuShown source, {
     int x = 0,
     int y = 0,
-    int opacity = 255,
+    int opacity = 65535,
     GpuCover? cover,
     (int, int, int, int)? within,
   }) => _laid(
@@ -2318,7 +2318,7 @@ class GpuExport {
   void layColour(
     GpuShown onto,
     int colour, {
-    int opacity = 255,
+    int opacity = 65535,
     GpuCover? cover,
     (int, int, int, int)? within,
   }) => _laid(

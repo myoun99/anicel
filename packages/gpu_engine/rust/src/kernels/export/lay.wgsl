@@ -8,8 +8,8 @@
 // The source is a frame's rows (frame_shown.wgsl: premultiplied, RGBA or
 // BGRA, `params.stride` words a row) or one colour. The frame laid onto is
 // premultiplied RGBA, `params.onto_stride` words a row. Laid by the blend
-// family's normal mode (blend.wgsl) — the composite's own source-over, one
-// formula on the engine — on its 16-bit straight scale, and kept as bytes
+// family's normal mode (blend.wgsl) by the law the composite lays a row by
+// (blend_laid) — on its 16-bit straight scale, and kept as bytes
 // premultiplied between passes (premultiply.wgsl), which the conversions
 // read.
 //
@@ -28,7 +28,8 @@ struct Params {
   height: u32,
   sx: u32,
   sy: u32,
-  // The source's strength, a byte: 255 lays it as it is.
+  // The source's strength, 65535 whole (blend.wgsl's scale): W_ONE lays
+  // it as it is.
   opacity: u32,
   // 1: `colour` everywhere — straight, red the low byte — in place of the
   // source's rows.
@@ -87,17 +88,10 @@ fn lay_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   if (params.solid == 0u) {
     word = frame_premultiplied(params.sx + id.x, params.sy + id.y);
   }
-  let source = widened(word);
-  var strength = blend_cover(source.w, params.opacity);
+  var cover = 255u;
   if (params.covered == 1u) {
-    strength = blend_cover(strength, covering(at));
+    cover = covering(at);
   }
-  // What takes none of the source is not written: the blend would give it
-  // back as it lies (a premultiplied word made straight and premultiplied
-  // again is itself — the mutant without this return lives, 🔬2026-11-11).
-  if (strength == 0u) {
-    return;
-  }
-  let laid = blend_composite(BLEND_NORMAL, vec4<u32>(source.xyz, strength), widened(onto[at]));
+  let laid = blend_laid(BLEND_NORMAL, params.opacity, cover, widened(word), widened(onto[at]));
   onto[at] = narrowed(laid);
 }

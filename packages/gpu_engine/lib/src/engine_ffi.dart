@@ -1032,7 +1032,7 @@ external void exportCoverFree(Pointer<Cover> cover);
     Pointer<Shown>,
     Int32,
     Int32,
-    Uint8,
+    Uint16,
     Pointer<Cover>,
     Pointer<Int32>,
   )
@@ -1055,7 +1055,7 @@ external bool exportLay(
     Pointer<Engine>,
     Pointer<Shown>,
     Uint32,
-    Uint8,
+    Uint16,
     Pointer<Cover>,
     Pointer<Int32>,
   )
