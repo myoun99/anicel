@@ -136,6 +136,34 @@ void main() {
     expect(painted(cut, 'sheet', at, 10), both);
   });
 
+  test('the sheet\'s own move is made in the paper\'s moved space — a paper '
+      'the fx doubles doubles it too', () {
+    final doubled = paper().copyWith(
+      mediaReference: MediaReference(
+        assetPath: '/paper.png',
+        pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
+        pictureSize: picture,
+        fx: TransformTrack.empty().copyWith(
+          scale: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 1, y: 1))
+              .withKey(10, CanvasPoint(x: 2, y: 2)),
+        ),
+      ),
+    );
+    final cut = cutOf([doubled, sheet(file: sheetFile)]);
+    final at = CanvasPoint(x: 150, y: 80);
+
+    expect(
+      landed(cut, 'paper', CanvasPoint(x: 150, y: 80), 10),
+      CanvasPoint(x: 200, y: 110),
+      reason: '⛔CONTROL: the paper doubles about its middle (100, 50)',
+    );
+    // 100 down by its own fx, then doubled about the paper's middle — not
+    // doubled first and then moved 100 (200, 210).
+    expect(landed(cut, 'sheet', at, 10), CanvasPoint(x: 200, y: 310));
+    expect(painted(cut, 'sheet', at, 10), CanvasPoint(x: 200, y: 310));
+  });
+
   test('its own fx stands its file over the paper\'s move — the space its '
       'reference box frames the values in', () {
     final cut = cutOf([paper(), sheet(file: sheetFile)]);
