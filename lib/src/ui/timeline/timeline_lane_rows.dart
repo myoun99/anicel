@@ -1116,25 +1116,38 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// [TimelineLaneControlsRow.laneSpan], and the playhead where it acts
   /// [atThePlayhead]): a press that would change nothing is out at once
   /// (F-583). Its slot is laid either way.
+  ///
+  /// Drawn again only where the answer turns — shown or not, lit or out
+  /// ([SlicedListenableBuilder]) — and a lit press does what the answer
+  /// says when it is pressed. ↩️It was drawn again at each step of the
+  /// playhead it is asked at, which took a rail's rows off their images
+  /// while the playhead ran: 🔬2026-11-11, fourteen of the conte's headers
+  /// redrawn through a growth of the runway
+  /// (`a_conte_row_keeps_its_image_while_the_runway_grows_test`).
   Widget? _groupPress(
     LaneGroupPress? verb,
     Widget Function(VoidCallback? press) button, {
     required bool atThePlayhead,
   }) {
     if (verb == null) return null;
-    Widget asked() => switch (verb(layer, lane)) {
-      null => const SizedBox.shrink(),
-      (:final press) => button(press),
+    ({bool shown, bool lit}) answer() => switch (verb(layer, lane)) {
+      null => (shown: false, lit: false),
+      (:final press) => (shown: true, lit: press != null),
     };
+    void press() => verb(layer, lane)?.press?.call();
+    Widget asked(({bool shown, bool lit}) answer) => answer.shown
+        ? button(answer.lit ? press : null)
+        : const SizedBox.shrink();
     final scope = [
       if (atThePlayhead) ?widget.frameCursor,
       ?widget.laneSpan,
     ];
     return scope.isEmpty
-        ? asked()
-        : ListenableBuilder(
+        ? asked(answer())
+        : SlicedListenableBuilder(
             listenable: Listenable.merge(scope),
-            builder: (_, _) => asked(),
+            slice: answer,
+            builder: (_, answer) => asked(answer),
           );
   }
 
