@@ -810,8 +810,36 @@ import '../../tool/refactor/clone_scan.dart';
 /// thirds in the same lane: the grid of slots (a composite's tile set, the
 /// lift, the colour verbs — `TileHold.gridOf`) and the kernels the app
 /// keeps one of (`AppKernels`).
+/// ⚠️Two more came unnamed in the slack on 2026-11-10 (84 at the flip's
+/// base `290038c00` → 86 at `666f7941c`, the ceiling 86). Named
+/// (clone-pairs-unnamed-in-masters-slack-1111), 🔬`clones.dart` at both:
+///
+///     56 tokens
+///       lib/src/ui/text/model_vocabulary.dart  LabelStepWords.labelFor
+///       lib/src/ui/text/model_vocabulary.dart
+///         LabelStepWords.abbreviationFor
+///
+/// F-578 (`333da50ca` — a 用紙 label says what it is the paper of): both
+/// send a label's step to its table by its kind — a stage's or a
+/// correction's — one dispatch asked for two words, the name and the
+/// chip's abbreviation. The sealed switch has the compiler ask each of them
+/// for a new kind of step, so the two cannot part on which table a kind
+/// reads. ⛔Not merged, by the rule of three (CLAUDE.md): two words of a
+/// step. 🔜A third word of a step merges the dispatch.
+///
+///     40 tokens
+///       lib/src/ui/export/export_plan.dart  exportFramesBefore
+///       lib/src/ui/export/export_plan.dart  _trackOwnedSpans
+///
+/// `b00c57986` (a movie's sound led by what sounded before it): each asked
+/// where a frame of the plan stands on its track's axis — the track that
+/// holds the cut and the frame there — and `_blocksContiguous` asked it of
+/// both sides of a boundary: three readers of one answer. Merged below.
+/// 88 → 87 (2026-11-11, clone-pairs-1111): the three ask `_onTheTrack`.
+/// 🔬`clones.dart` on the lane over master (`afe46b0f1`, at 88): that pair
+/// gone, none added.
 void main() {
-  const ceiling = 88;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
