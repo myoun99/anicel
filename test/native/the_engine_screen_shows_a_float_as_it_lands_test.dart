@@ -283,12 +283,13 @@ void main() {
   );
 
   for (final (name, at, dx, dy, seen) in [
-    // ⚠️Over the canvas alone: past it, the screen's world reaches as far
-    // as the float's tiles, at its offset, where the landed cel's reaches
-    // its own tiles, and a row's blur spreads only inside the world — one
-    // tile apart on the pasteboard (board
-    // pasteboard-blur-cut-at-row-extent, 2026-11-08).
-    ('on the canvas', CanvasPoint(x: 120, y: 60), 30, 9, shown),
+    // The pasteboard as well: the screen's world holds the row as far as
+    // its blur spreads, held or landed (`rowExtentWithItsReach`). ↩️It was
+    // over the canvas alone while the world reached as far as the float's
+    // tiles, at its offset, where the landed cel's reached its own tiles —
+    // one tile apart on the pasteboard (pasteboard-blur-cut-at-row-extent,
+    // 2026-11-08).
+    ('on the canvas', CanvasPoint(x: 120, y: 60), 30, 9, shownPast),
     // Past every tile the cel holds and past the float's own tiles where
     // it was taken up: the chain's picture holds it where it is carried —
     // a whole tile on, so its tiles there are the landed cel's.
@@ -496,6 +497,51 @@ void main() {
       shown(frameOf(BitmapSurfacePainter(surface: base), float: overlay)),
       shown(frameOf(BitmapSurfacePainter(surface: stamped(base, warped)))),
     );
+  });
+
+  // 🗣️pasteboard-blur-cut-at-row-extent-Q1 (유저 2026-11-08 「행 범위에 그
+  // 행의 번짐을 넣는다」): the screen's world holds each row as far as its
+  // chain spreads (`rowExtentWithItsReach`), a row beside the pen's too —
+  // clear tiles stored round it are nothing to it.
+  test('🚨a cel row\'s blur spreads on the pasteboard as far as it reaches',
+      () {
+    const key = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('blurred'),
+      frameId: FrameId('f'),
+    );
+    final blur = [
+      fx(EffectKind.blur, {'blurriness': 6, 'blurDimensions': 0}),
+    ];
+    final own = cel();
+    final clearTile = BitmapTile(size: side, pixels: Uint8List(side * side * 4));
+    final rounded = BitmapSurface(
+      canvasSize: own.canvasSize,
+      pasteboardReach: own.pasteboardReach,
+      tileSize: side,
+      tiles: {
+        for (var y = -1; y <= 1; y += 1)
+          for (var x = -1; x <= 2; x += 1)
+            if (own.containsTileCoord(TileCoord(x: x, y: y)))
+              TileCoord(x: x, y: y):
+                  own.tiles[TileCoord(x: x, y: y)] ?? clearTile,
+      },
+    );
+    int seen(BitmapSurface surface) => shownPast(
+      stackedFrameOf(
+        [
+          CompositeLeaf<CanvasStackRow>(
+            CanvasLayerImageRequest(frameKey: key, opacity: 1, effects: blur),
+          ),
+        ],
+        page: pageOf(PasteboardReach.whole),
+        surfaceOf: (_) => surface,
+      ),
+    );
+
+    expect(seen(own), seen(rounded));
   });
 
   test('🚨a row a lift holds beside the pen\'s shows its float as it lands',

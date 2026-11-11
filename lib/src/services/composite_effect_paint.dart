@@ -1045,6 +1045,28 @@ ui.Rect effectBufferBounds(ui.Rect bounds, double outsetPixels) {
   return bounds.inflate(outsetPixels);
 }
 
+/// The rect a row STANDS FOR — [content], all it holds and draws, in its
+/// own space — grown by how far its own chain [effects] paints past it, as
+/// a folder's buffer is ([effectBufferBounds]): what a frame's world, a
+/// folder's buffer and the row's own chain take it to be.
+///
+/// 🗣️pasteboard-blur-cut-at-row-extent-Q1 (유저 2026-11-08 19:56): 「행
+/// 범위에 그 행의 번짐을 넣는다」. ↩️A row stood for its content alone: a
+/// blur on it was cut on the pasteboard at the edge of its last tile, and
+/// differed there between a float held and the float landed — and a
+/// plug-in at the head of a cel's chain, a step of it now, had its reach
+/// cut so (float-warp-resamples-in-the-c-engine (2) ⓑ, 2026-11-11).
+ui.Rect rowExtentWithItsReach(
+  ui.Rect content,
+  List<ResolvedLayerEffect> effects, {
+  required ui.Rect paper,
+}) => effects.isEmpty
+    ? content
+    : effectBufferBounds(
+        content,
+        resolveCompositeEffectPlan(effects, paper: paper).outsetPixels,
+      );
+
 /// How a route paints an ADJUSTMENT scope (R6b) — the semantics in ONE
 /// place, so the four composite routes only have to run the steps.
 ///

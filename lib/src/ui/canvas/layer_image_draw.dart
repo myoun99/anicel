@@ -162,6 +162,10 @@ void drawPosedLayerImage(
     placement,
     rasterScale: rasterScale,
   );
+  // What the row stands for, as far as its own chain paints past it: its
+  // steps spread there, on the pasteboard too, as the engine's chain of
+  // the row does (rowExtentWithItsReach).
+  final standsFor = rowExtentWithItsReach(extent, effects, paper: paper);
   withLayerPlacement(
     canvas,
     placement: placement,
@@ -277,7 +281,11 @@ void drawPosedLayerImage(
       }
 
       if (pieces case [final whole]) {
-        draw((image: whole.image, worldRect: whole.worldRect, extent: extent));
+        draw((
+          image: whole.image,
+          worldRect: whole.worldRect,
+          extent: standsFor,
+        ));
         return;
       }
       _drawInPieces(
@@ -291,7 +299,7 @@ void drawPosedLayerImage(
         ).inflate(
           resolveCompositeEffectPlan(effects, paper: paper).outsetPixels,
         ),
-        extent: extent,
+        extent: standsFor,
         levels: _levelsReadBy(canvas, rasterScale, _texelsOf(pieces)),
         draw: draw,
       );

@@ -290,6 +290,55 @@ void main() {
     expect(ink.map((at) => at.$2).toSet(), hasLength(15));
   });
 
+  // 🗣️pasteboard-blur-cut-at-row-extent-Q1 (유저 2026-11-08 「행 범위에 그
+  // 행의 번짐을 넣는다」): a layer's image stands for as far as its chain
+  // spreads (`rowExtentWithItsReach`) — past the rect it was handed.
+  testWidgets('drawn as a layer, it spreads past the rect its image stands '
+      'for', (tester) async {
+    const rect = Rect.fromLTWH(0, 0, side * 1.0, side * 1.0);
+    final dotRecorder = ui.PictureRecorder();
+    Canvas(dotRecorder).drawRect(
+      Rect.fromLTWH(side - 1.0, centre.toDouble(), 1, 1),
+      Paint()
+        ..color = const Color(0xFFFFFFFF)
+        ..isAntiAlias = false,
+    );
+    final dotPicture = dotRecorder.endRecording();
+    final edge = dotPicture.toImageSync(side, side);
+    dotPicture.dispose();
+    addTearDown(edge.dispose);
+    final recorder = ui.PictureRecorder();
+    drawPosedLayerImage(
+      Canvas(recorder),
+      pieces: [(image: edge, worldRect: rect)],
+      extent: rect,
+      paper: rect,
+      placement: null,
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+      effects: [directional(degrees: 90, length: 20)],
+      texelScale: 1,
+      filterQuality: ui.FilterQuality.none,
+    );
+    const wide = side + 32;
+    final picture = recorder.endRecording();
+    final shown = picture.toImageSync(wide, side);
+    picture.dispose();
+    addTearDown(shown.dispose);
+    final data = await tester.runAsync(
+      () => shown.toByteData(format: ui.ImageByteFormat.rawRgba),
+    );
+    final bytes = data!.buffer.asUint8List();
+
+    expect(
+      {
+        for (var x = 0; x < wide; x += 1)
+          if (bytes[(centre * wide + x) * 4 + 3] != 0) x,
+      },
+      {for (var x = side - 11; x <= side + 9; x += 1) x},
+    );
+  });
+
   group('the plan', () {
     test('a blur of no length is no step, whichever way it points', () {
       final plan = resolveCompositeEffectPlan([

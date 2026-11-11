@@ -263,11 +263,19 @@ class _FrameReading {
 
   /// The rect [row] stands for.
   Rect _extentOf(_PaintRow row) => switch (row) {
-    _PaintActiveSurface() => _activeSurfaceExtent(),
+    final _PaintActiveSurface live => rowExtentWithItsReach(
+      _activeSurfaceExtent(),
+      live.effects,
+      paper: _canvasRect,
+    ),
     // What a row beside the live one draws — its surface, and a lift's
     // float — as the live row's extent is measured
     // ([_activeSurfaceExtent]).
-    final _SurfaceRow surface => _slotOf(surface).extent,
+    final _SurfaceRow surface => rowExtentWithItsReach(
+      _slotOf(surface).extent,
+      surface.effects,
+      paper: _canvasRect,
+    ),
     _PaintPaper() => _canvasRect,
   };
 

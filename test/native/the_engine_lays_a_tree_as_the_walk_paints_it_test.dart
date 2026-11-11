@@ -623,25 +623,6 @@ void main() {
           ],
           clear,
         ),
-        // Cut to what the row stands for — its canvas, where that reaches
-        // past its tiles — not to the tiles its chain runs over.
-        'a row blurred across past the canvas it stands on': (
-          [
-            row(
-              1,
-              columns: [0],
-              margin: 8,
-              width: 200,
-              effects: [
-                fx(EffectKind.directionalBlur, {
-                  'direction': 90,
-                  'blurLength': 200,
-                }),
-              ],
-            ),
-          ],
-          clear,
-        ),
         'a row through a lens': (
           [
             row(1, columns: [-1, 0, 1], effects: [lens()]),
@@ -891,6 +872,48 @@ void main() {
       asTheWalkPainted('chained/$name', laid(nodes, ground), 3);
     });
   }
+
+  // 🗣️pasteboard-blur-cut-at-row-extent-Q1 (유저 2026-11-08): 「행 범위에 그
+  // 행의 번짐을 넣는다」 — a row stands for as far as its chain spreads
+  // (`rowExtentWithItsReach`), so clear tiles stored round it to the end of
+  // its blur are nothing to it. ↩️It was laid as the walk painted it, kept
+  // as a print of 11-10: cut to what it stood for — its canvas, where that
+  // reached past its tiles — and so the blur there, read past that edge,
+  // was another.
+  test('a row blurred across past the canvas it stands on spreads as far '
+      'as its blur reaches: clear tiles round it are nothing to it', () {
+    final blur = [
+      fx(EffectKind.directionalBlur, {'direction': 90, 'blurLength': 200}),
+    ];
+    final own = cel(1, columns: [0], margin: 8, width: 200);
+    final clearTile = BitmapTile(size: side, pixels: Uint8List(side * side * 4));
+    final rounded = BitmapSurface(
+      canvasSize: own.canvasSize,
+      tileSize: side,
+      tiles: {
+        for (var y = -2; y <= 2; y += 1)
+          for (var x = -2; x <= 3; x += 1)
+            if (own.containsTileCoord(TileCoord(x: x, y: y)))
+              TileCoord(x: x, y: y):
+                  own.tiles[TileCoord(x: x, y: y)] ?? clearTile,
+      },
+    );
+    CompositeLeaf<CutFrameCompositeLayer> on(BitmapSurface surface) =>
+        CompositeLeaf(
+          CutFrameCompositeLayer(surface: surface, opacity: 1, effects: blur),
+        );
+
+    final shown = laid([on(own)], clear);
+    expect(shown, laid([on(rounded)], clear));
+    // ⛔liveness: the blur moves what the row shows.
+    expect(
+      shown,
+      isNot(
+        laid([CompositeLeaf(CutFrameCompositeLayer(surface: own, opacity: 1))],
+            clear),
+      ),
+    );
+  });
 
   // 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a row takes
   // every mode the brush does — by the brush's own ids, the engine's table.

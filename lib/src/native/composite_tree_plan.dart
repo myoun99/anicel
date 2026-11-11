@@ -38,6 +38,7 @@ import '../services/composite_effect_paint.dart'
         paperOnWholePixels,
         resolveColorOnlyMatrix,
         resolveCompositeEffectPlan,
+        rowExtentWithItsReach,
         shadedPassesOf;
 import '../services/guide_geometry.dart' show GuideTransform;
 import '../services/layer_pose_matrix.dart'
@@ -446,11 +447,11 @@ class _TreePlan {
   /// [mode]: that chain, if any.
   int? _picture(EngineTiles row, int mode, _Reads reads, _RowPose pose) {
     final tiles = row.surface.tiles;
-    final picture = _rowExtentOf(row);
-    // Its chain runs on its own picture, the whole of what it stands for,
-    // and is cut there — as the walk steps the image it lays, before its
-    // pose (steppedForChain); the rows it reads drawn there too, under
-    // its pose undone (rowsUnderPlacement).
+    final picture = _rowExtentOf(row, paper);
+    // Its chain runs on its own picture, the whole of what it stands for —
+    // as far as the chain paints past what it holds — and is cut there,
+    // before its pose (steppedForChain); the rows it reads drawn there
+    // too, under its pose undone (rowsUnderPlacement).
     final (:chain, :keys, :colour) = _chainOf(
       row.effects,
       over: (_) => picture,
@@ -855,7 +856,7 @@ class _TreePlan {
       subtreeBufferBounds(
         node,
         within: ui.Rect.largest,
-        extentOf: _extentOf,
+        extentOf: (row) => _extentOf(row, paper),
         placementOf: _placementOf,
       ),
       outset,
@@ -985,17 +986,22 @@ GpuMapChannel _channelOf(IrisMapChannel channel) => switch (channel) {
   IrisMapChannel.alpha => GpuMapChannel.alpha,
 };
 
-/// The rect [row] stands for, as a buffer holding it covers it: a row's
-/// ([_rowExtentOf]) and a solid's own.
-ui.Rect _extentOf(EngineRow row) => switch (row) {
-  final EngineTiles row => _rowExtentOf(row),
+/// The rect [row] stands for over [paper], as a buffer holding it covers
+/// it: a row's ([_rowExtentOf]) and a solid's own.
+ui.Rect _extentOf(EngineRow row, ui.Rect paper) => switch (row) {
+  final EngineTiles row => _rowExtentOf(row, paper),
   EngineSolid(:final rect) => rect.rect,
 };
 
-/// What [row] stands for, in its own space: its content — the canvas with
-/// every tile it holds —, what is held over it and the range marked over
-/// it, as the walk's slot draws them (`_SurfaceSlot.extent`).
-ui.Rect _rowExtentOf(EngineTiles row) {
+/// What [row] stands for over [paper], in its own space: its content, as
+/// far as its own chain paints past it ([rowExtentWithItsReach]).
+ui.Rect _rowExtentOf(EngineTiles row, ui.Rect paper) =>
+    rowExtentWithItsReach(_rowContentOf(row), row.effects, paper: paper);
+
+/// What [row] holds and draws, in its own space: the canvas with every
+/// tile it holds, what is held over it and the range marked over it, as
+/// the walk's slot draws them (`_SurfaceSlot.extent`).
+ui.Rect _rowContentOf(EngineTiles row) {
   final extent = row.held.fold(
     surfaceContentWorldRect(row.surface),
     (extent, held) => switch (_reachOf(held)) {
