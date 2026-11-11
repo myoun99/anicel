@@ -100,7 +100,7 @@ Future<PsdExpansion?> readPsdExpansion({
       continue;
     }
     final crop = placement.crop;
-    final picture = await pictureOfPixels(
+    final picture = PixelsPicture(
       _croppedTo(crop, pixels, source.width),
       width: crop.width,
       height: crop.height,

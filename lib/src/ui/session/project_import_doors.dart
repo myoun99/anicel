@@ -33,7 +33,6 @@ import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/brush_frame_store.dart' show CelRead;
-import '../../services/brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import '../../services/commands/rasterize_layer_reference_command.dart';
 import '../../services/commands/swap_layer_reference_command.dart';
 import '../../services/cut_frame_composite_plan.dart'
@@ -70,8 +69,7 @@ import 'import_landing.dart';
 import 'independent_clip_mint.dart' show givePanelsTheirPictures;
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
-import '../canvas/tiled_surface_compose.dart'
-    show composePositionedSurfaceImage, surfaceContentWorldRect;
+import '../canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';
@@ -1284,10 +1282,10 @@ class ProjectImportDoors {
   }
 
   /// [cel]'s picture where [move] carries it, on a cel of the same canvas —
-  /// laid as every picture a door bakes is ([layCelPicture]),
-  /// whole (F-374-Q8).
+  /// laid from the cel's own tiles as every picture a door bakes is laid
+  /// ([layCelRegion]), whole (F-374-Q8).
   ///
-  /// 🚨Composed over where its FILE lies, not over the cel: the clear canvas
+  /// 🚨Laid from where its FILE lies, not from the cel: the clear canvas
   /// round a small picture is no part of it, and a move that grows the
   /// picture grows that too — an 8×8 still fitted ×206 to its canvas asked
   /// ONE raster 590080×538240 for its 8×8 of ink, and the raster failed. No
@@ -1297,43 +1295,15 @@ class ProjectImportDoors {
   static Future<BitmapSurface> _celMoved(
     BitmapSurface cel,
     LayerPlacement move,
-  ) async {
-    final held = await _celPicture(cel);
-    try {
-      return await layCelPicture(
-        picture: held.picture,
-        canvas: cel.canvasSize,
-        placement: move.compose(held.at),
-        tileSize: cel.tileSize,
-        whole: cel.laidBounds != null,
-      );
-    } finally {
-      held.picture.dispose();
-    }
-  }
-
-  /// [cel]'s picture over where its file lies ([_celMoved]), and where that
-  /// stands on the canvas: composed — or, past the side this device's
-  /// engine hands a picture back at, the bytes the cel holds, kept off the
-  /// engine as its file was when it was laid ([pictureSideLimit]). A
-  /// compose past the side comes back in pieces (`piecesOver`), and a
-  /// picture is one image. 🔬Before it did, it came back smaller (20480×1024
-  /// asked, 16384×819 made), and the move would have laid it so. A cel that
-  /// does not know where its file lies is asked the same over all it holds.
-  static Future<({CelPicture picture, LayerPlacement at})> _celPicture(
-    BitmapSurface cel,
-  ) async {
+  ) {
     final laid = cel.laidBounds;
     final region =
         laid ?? DirtyRegion.wholePixelsOf(surfaceContentWorldRect(cel));
-    if (isPastTheSide(region.width, region.height, await pictureSideLimit())) {
-      return (
-        picture: PixelsPicture(
-          bitmapSurfaceRegionPixels(cel, region),
-          width: region.width,
-          height: region.height,
-        ),
-        at: GuideTransform(
+    return layCelRegion(
+      cel: cel,
+      region: region,
+      placement: move.compose(
+        GuideTransform(
           1,
           0,
           0,
@@ -1341,19 +1311,8 @@ class ProjectImportDoors {
           region.left.toDouble(),
           region.top.toDouble(),
         ),
-      );
-    }
-    final composed = await composePositionedSurfaceImage(
-      cel,
-      over: laid?.rect,
-    );
-    if (composed == null) {
-      throw StateError('The cel did not compose.');
-    }
-    final at = composed.worldRect.topLeft;
-    return (
-      picture: EnginePicture(composed.pieces.single.image),
-      at: GuideTransform(1, 0, 0, 1, at.dx, at.dy),
+      ),
+      whole: laid != null,
     );
   }
 

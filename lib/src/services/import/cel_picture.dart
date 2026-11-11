@@ -91,24 +91,8 @@ Future<int> _measureSide() async {
 bool isPastTheSide(int width, int height, int side) =>
     width > side || height > side;
 
-/// Straight-RGBA [rgba] — a Photoshop document's composite or a layer of
-/// it — as a picture an import lays: uploaded, or, longer on a side than
-/// the engine hands back, its pixels as they are ([PixelsPicture]).
-Future<CelPicture> pictureOfPixels(
-  Uint8List rgba, {
-  required int width,
-  required int height,
-}) async {
-  if (isPastTheSide(width, height, await pictureSideLimit())) {
-    return PixelsPicture(rgba, width: width, height: height);
-  }
-  return EnginePicture(
-    await decodeStraightRgbaImage(rgba: rgba, width: width, height: height),
-  );
-}
-
 /// Frame [index] of the movie [token] names on [backend] — [info] its
-/// facts — as [pictureOfPixels] makes it of the frame, or null when the
+/// facts — as a picture an import lays, or null when the
 /// frame does not decode. Within the engine's side the frame is asked for
 /// premultiplied, so its premultiply is the decoder's side's and this
 /// isolate only uploads it ([VideoDecodeBackend.premultipliedFrame]).
@@ -199,9 +183,9 @@ final class FilePicture extends CelPicture {
   void dispose() {}
 }
 
-/// A picture past the engine's side whose pixels are in hand — a Photoshop
-/// document's, an animation's frame, a file read whole to be resampled:
-/// straight RGBA, row after row.
+/// A picture whose pixels are in hand — a Photoshop document's or a layer
+/// of it, an animation's frame past the engine's side, a file read whole
+/// to be resampled: straight RGBA, row after row.
 final class PixelsPicture extends CelPicture {
   const PixelsPicture(this.rgba, {required this.width, required this.height});
 

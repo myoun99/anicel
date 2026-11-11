@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/color_matrix.dart';
-import '../core/display_filter.dart';
 import '../core/draw_space.dart';
 import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
@@ -50,6 +49,7 @@ import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
 import '../ui/canvas/tile_origin.dart' show tileCoordsWorldRect;
 import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
 import 'engine_letters.dart';
+import 'engine_row_pose.dart';
 import 'engine_tile_ledger.dart';
 import 'plan_plugins.dart';
 
@@ -148,12 +148,6 @@ final class EngineSolid extends EngineRow {
   final int argb;
   final DirtyRegion rect;
 }
-
-/// The engine's sampling for [quality], the display's law's answer
-/// ([filterQualityForDisplayScale]): `none` is its Nearest, the rest its
-/// Blend (브러시/렌더링, I-120 11-08 00:00).
-GpuSampling gpuSamplingOf(ui.FilterQuality quality) =>
-    quality == ui.FilterQuality.none ? GpuSampling.nearest : GpuSampling.blend;
 
 /// Lays [nodes] on [plan] bottom to top, over the canvas [paper] lies on —
 /// their rows' tiles held by [hold] ([EngineTileLedger.held]), inside which
@@ -432,9 +426,8 @@ class _TreePlan {
     if (inverse == null) {
       return null;
     }
-    final GuideTransform(:a, :b, :c, :d, :tx, :ty) = inverse;
     return (
-      posed: [a, c, tx, b, d, ty, 0.0, 0.0, 1.0],
+      posed: gpuRowInverse(inverse),
       space: placement == null ? null : inverse,
     );
   }
@@ -881,11 +874,8 @@ final class _TileLaying {
   final TileHold hold;
   final ui.Rect paper;
 
-  /// A row is laid at the canvas's own resolution, one of its pixels a
-  /// canvas pixel, whatever its pose (🗣️I-120-Q26 · Q28 — a picture baked
-  /// as the canvas shows it).
-  GpuSampling get sampling =>
-      gpuSamplingOf(filterQualityForDisplayScale(1));
+  /// The canvas's own: [canvasResolutionSampling].
+  GpuSampling get sampling => canvasResolutionSampling;
 
   // A placement is affine: no corner of what the plan lays says how far a
   // pixel lies, as a homography's would.
@@ -949,11 +939,9 @@ final class _TileLaying {
   /// space the steps are laid in to the set's own, none where they are
   /// one — reads it.
   void lay(int set, GuideTransform? toOwn, int mode) {
-    final GuideTransform(:a, :b, :c, :d, :tx, :ty) =
-        toOwn ?? const GuideTransform.identity();
     plan.row(
       set: set,
-      inverse: [a, c, tx, b, d, ty, 0, 0, 1],
+      inverse: gpuRowInverse(toOwn ?? const GuideTransform.identity()),
       sampling: sampling,
       columns: columns,
       rows: rows,

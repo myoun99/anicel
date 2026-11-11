@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -343,7 +344,6 @@ void main() {
               picture: picture,
               canvas: canvas,
               placement: placement,
-              tileSize: 64,
               whole: whole,
             );
             final engine = await engineOf(rgba, 150, 90);
@@ -373,7 +373,6 @@ void main() {
           picture: engine,
           canvas: canvas,
           placement: placement,
-          tileSize: 64,
           whole: true,
         );
         engine.dispose();
@@ -388,7 +387,6 @@ void main() {
             ),
             canvas: canvas,
             placement: placement,
-            tileSize: 64,
             whole: true,
           ),
           theirs,
@@ -405,29 +403,55 @@ void main() {
           picture: picture,
           canvas: canvas,
           placement: placement,
-          tileSize: 64,
           whole: true,
         );
 
+    /// [rgba] laid by [placement] in one run, then a part at a time at
+    /// [side] — held in hand, read from a file, and held by the engine —
+    /// each the cel the one run laid.
+    Future<void> expectLaidInParts(
+      Uint8List rgba,
+      (int, int) size,
+      int side,
+      GuideTransform placement,
+    ) async {
+      final (width, height) = size;
+      final pixels = PixelsPicture(rgba, width: width, height: height);
+      debugLayRuns = 0;
+      final once = await laid(pixels, placement);
+      final runs = debugLayRuns;
+      expect(once.tiles, isNotEmpty, reason: 'premise: laid');
+
+      debugLayRasterSide = side;
+      final engine = await engineOf(rgba, width, height);
+      try {
+        for (final held in [
+          pixels,
+          FilePicture(pngOf(rgba, width, height), width: width, height: height),
+          engine,
+        ]) {
+          debugLayRuns = 0;
+          expectSameCel(await laid(held, placement), once);
+          expect(debugLayRuns, greaterThan(runs), reason: 'in parts');
+        }
+      } finally {
+        engine.dispose();
+      }
+    }
+
     // A part's reach is what one raster takes: at the side named, a block of
-    // tiles is laid from parts of the picture, never the picture whole. A
-    // part is drawn where it lies in the picture, and a pixel resampled from
-    // it can round a step apart — as one laid in a block of tiles of its own
-    // does (`raster_identity_test`).
-    //
-    // ⚠️Each is placed so that no pixel's centre falls on the edge between
-    // two texels: a lay takes the texel a centre lands on (I-120-Q28), and
-    // on an edge either is that, as float rounding goes — and a part, drawn
-    // from where it lies in the picture, can go the other way from the
-    // whole at its seam. 🔬2026-11-08: 0.3 at (3, 7) put x = 64, a part's
-    // first column, on texel 205's left edge, and the part read 204. Neither
-    // is the reference; what is pinned is every pixel off an edge — the
-    // known problem a cel drawn in pieces has (card
-    // `a-cel-past-the-side-resamples-a-hair-apart`), which the lay took on
-    // when it went nearest. The engine's Nearest maps in integers
-    // (`kernels/shared/resample.rs`, Q.20), a part and the whole alike: a
-    // lay by it may stand these back on the edges.
-    for (final (how, (width, height), side, placement) in [
+    // tiles is laid from parts of the picture, never the picture whole — and
+    // a part is laid by the one law the whole is, each pixel the texel its
+    // centre lands on by the engine's Nearest, which maps in integers
+    // (`kernels/shared/resample.rs`, Q.20): the same pixels, a centre on a
+    // texel's edge as well. ↩️Each stood off an edge, and a turn was left
+    // out, while a part was drawn into a raster of its own by Flutter's
+    // sampler: 🔬2026-11-08, 0.3 at (3, 7) put x = 64, a part's first
+    // column, on texel 205's left edge and the part read 204; turned, the
+    // edge was softened otherwise where it crossed a part's — up to 19/255
+    // apart at 45° and 0.6, 50/255 at 0.04 halved (card
+    // `a-cel-past-the-side-resamples-a-hair-apart`).
+    for (final (how, size, side, placement) in [
       (
         'shrunk by 0.6',
         (300, 200),
@@ -439,6 +463,12 @@ void main() {
         (300, 200),
         256,
         const GuideTransform(0.3, 0, 0, 0.3, 3.25, 7.25),
+      ),
+      (
+        '🎯shrunk past half, a centre on a texel\'s edge where a half begins',
+        (300, 200),
+        256,
+        const GuideTransform(0.3, 0, 0, 0.3, 3, 7),
       ),
       (
         'shrunk past half across alone',
@@ -471,39 +501,32 @@ void main() {
         256,
         const GuideTransform(0.04, 0, 0, 0.04, -2996.73, 7.27),
       ),
+      (
+        '🎯turned 45° and shrunk by 0.6, its edge across the parts\'',
+        (300, 200),
+        256,
+        GuideTransform(
+          0.6 * math.cos(math.pi / 4),
+          0.6 * math.sin(math.pi / 4),
+          -0.6 * math.sin(math.pi / 4),
+          0.6 * math.cos(math.pi / 4),
+          130,
+          5,
+        ),
+      ),
     ]) {
       testWidgets('$how, a part at a time', (tester) async {
         await tester.runAsync(() async {
-          final rgba = patterned(width, height);
-          debugLayRasterSide = side;
-          final engine = await engineOf(rgba, width, height);
-          debugLayRasters = 0;
-          final theirs = await laid(engine, placement);
-          final blocks = debugLayRasters;
-          engine.dispose();
-
-          for (final held in [
-            PixelsPicture(rgba, width: width, height: height),
-            FilePicture(
-              pngOf(rgba, width, height),
-              width: width,
-              height: height,
-            ),
-          ]) {
-            debugLayRasters = 0;
-            expectSameCel(await laid(held, placement), theirs, colourSlack: 1);
-            expect(debugLayRasters, greaterThan(blocks), reason: 'in parts');
-          }
+          final (width, height) = size;
+          await expectLaidInParts(
+            patterned(width, height),
+            size,
+            side,
+            placement,
+          );
         });
       });
     }
-
-    // ⚠️None of these is turned: turned, the picture's edge is softened
-    // otherwise where it crosses the edge of a part's raster — 🔬2026-11-08
-    // up to 19/255 apart at 45° and 0.6 in parts of whole tiles, 50/255 at
-    // 0.04 halved, none laid in one raster. The known problem of a cel drawn
-    // in pieces (card `a-cel-past-the-side-resamples-a-hair-apart`, its
-    // owner 02:28: 「알려진 문제로 둔다」).
 
     testWidgets('🎯shrunk past one raster over the clear of a picture — a '
         'tile halved to no ink is no tile', (tester) async {
@@ -517,48 +540,30 @@ void main() {
         }
         const placement = GuideTransform(0.15, 0, 0, 0.15, 3.26, 3.26);
         debugLayRasterSide = 256;
-        final engine = await engineOf(rgba, side, side);
-        final theirs = await laid(engine, placement);
-        engine.dispose();
 
-        expect(theirs.tiles.keys, [TileCoord(x: 2, y: 2)]);
-        expectSameCel(
-          await laid(PixelsPicture(rgba, width: side, height: side), placement),
-          theirs,
-          colourSlack: 1,
+        expect(
+          (await laid(
+            PixelsPicture(rgba, width: side, height: side),
+            placement,
+          )).tiles.keys,
+          [TileCoord(x: 1, y: 1)],
         );
+        debugLayRasterSide = null;
+        await expectLaidInParts(rgba, (side, side), 256, placement);
       });
     });
 
-    testWidgets('🎯shrunk so far a pixel reaches past one raster — laid, '
-        'that pixel decoded smaller', (tester) async {
+    // ↩️Laid from what it reached decoded smaller, its colour the
+    // decoder's, while a part was a raster of its own (🔬2026-11-08).
+    testWidgets('🎯shrunk so far a pixel reaches past one raster — laid '
+        'from all it reaches, the texel its centre lands on', (tester) async {
       await tester.runAsync(() async {
-        const placement = GuideTransform(0.0035, 0, 0, 0.0035, 3.27, 7.27);
-        final rgba = patterned(2000, 2000);
-        debugLayRasterSide = 256;
-        final engine = await engineOf(rgba, 2000, 2000);
-        final theirs = await laid(engine, placement);
-        engine.dispose();
-        final ours = await laid(
-          PixelsPicture(rgba, width: 2000, height: 2000),
-          placement,
+        await expectLaidInParts(
+          patterned(2000, 2000),
+          (2000, 2000),
+          256,
+          const GuideTransform(0.0035, 0, 0, 0.0035, 3.27, 7.27),
         );
-
-        expect(ours.tiles.keys, unorderedEquals(theirs.tiles.keys));
-        // Its colour is the decoder's, not the texel's: what is pinned is
-        // that every pixel the picture covers whole is laid.
-        var covered = 0;
-        for (final MapEntry(key: coord, value: tile) in theirs.tiles.entries) {
-          final engine = tile.pixels;
-          final held = ours.tiles[coord]!.pixels;
-          for (var alpha = 3; alpha < engine.length; alpha += 4) {
-            if (engine[alpha] == 255) {
-              covered += 1;
-              expect(held[alpha], 255, reason: 'pixel ${alpha ~/ 4}');
-            }
-          }
-        }
-        expect(covered, greaterThan(0));
       });
     });
   });

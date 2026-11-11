@@ -27,12 +27,11 @@ Future<ui.Image> decodePsdCompositeImage(Uint8List bytes) async {
   );
 }
 
-/// The composite as a picture an import lays on cels ([pictureOfPixels]):
-/// longer on a side than this device's engine hands back, never made one
-/// GPU image.
+/// The composite as a picture an import lays on cels: the pixels the reader
+/// made, as they are ([PixelsPicture]) — never made one GPU image.
 Future<CelPicture> decodePsdCompositePicture(Uint8List bytes) async {
   final composite = await readPsdComposite(bytes);
-  return pictureOfPixels(
+  return PixelsPicture(
     composite.rgba,
     width: composite.width,
     height: composite.height,

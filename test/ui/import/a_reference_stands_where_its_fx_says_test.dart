@@ -15,6 +15,7 @@
 // ②③만 굽는다」). ↩️The file was laid at the fit, and again where the fx
 // stood still — a GIF's frames and a PDF's pages too (10-10 「가」).
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -1109,13 +1110,13 @@ void main() {
     // 그림은 계단 그대로 굽는다」 · 「축소도 같은 법 — 화면처럼 최근접으로
     // 굽는다」. The canvas lays a row's picture where its fx stands it into
     // a picture at the canvas's resolution, so baking it where it shows is
-    // that picture: the frame after the bake is the frame before it, a
-    // pixel at a time, however the fx grows, shrinks or turns it. Read well
-    // inside the paper — its edge is coverage, reckoned a block at a time
-    // by the bake ([layRasterSide]).
+    // that picture: the frame after the bake is the frame before it, every
+    // byte of it — the picture's edge too —, however the fx grows, shrinks
+    // or turns it. The bake lays it on the engine as the canvas lays the row
+    // (`raster_cel_import.dart`).
     group('🎯baked as it shows, a paper is the frame it was', () {
-      /// The reds of the frame the canvas shows, round the paper's middle.
-      Future<List<int>> frameReds(EditorSessionManager s) async {
+      /// The frame the canvas shows, every byte of it.
+      Future<Uint8List> frame(EditorSessionManager s) async {
         final renderer = ExportFrameRenderer(session: s);
         try {
           final image = await renderer.renderComposite(
@@ -1123,13 +1124,48 @@ void main() {
             ExportSizeMode.canvas,
           );
           try {
-            return await redsAround(image, 1170, 827, radius: 6);
+            final data = await image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            );
+            return data!.buffer.asUint8List();
           } finally {
             image.dispose();
           }
         } finally {
           renderer.dispose();
         }
+      }
+
+      /// [row] made the cut's conte, its transform off, whose head another
+      /// cut's conte wears with keys of its own: a row the frame shows whose
+      /// move no key of its own can carry (`othersKeepKeys`), so its cels
+      /// take it where it shows.
+      /// ↩️It rode a row the cut no longer held ([rideAGoneRow]) from 11-11
+      /// — a row the frame draws none of, so both frames were the paper
+      /// alone and every pose passed (🔬2026-11-11).
+      void keptByAnotherConte(EditorSessionManager s, Layer row) {
+        final mine = s.requireActiveCut.id;
+        s.selectLayer(row.id);
+        s.layerSwitches.toggleTargetLayerKind();
+        s.effectsAndFx.toggleLayerTransformFx(row.id);
+        s.cutVerbs.createCut();
+        s.layerStack.addLayerOfKind(LayerKind.storyboard);
+        final other = s.requireActiveCut;
+        s.cutCommandCoordinator.updateLayerTransformTrack(
+          cutId: other.id,
+          layerId: other.layers
+              .firstWhere((layer) => layer.kind == LayerKind.storyboard)
+              .id,
+          transformTrack: TransformTrack.empty().copyWith(
+            rotation: PropertyTrack<double>().withKey(0, 45),
+          ),
+        );
+        s.selectCut(mine);
+        expect(
+          [rowOf(s, row).kind, rowOf(s, row).transformEnabled],
+          [LayerKind.storyboard, false],
+          reason: 'premise: the cut\'s conte, its switch off',
+        );
       }
 
       final poses = {
@@ -1140,15 +1176,14 @@ void main() {
           ),
         ),
         'halved': halved,
-        // ↩️Turned 45° until the frame was the engine's picture (7′): the
-        // checker's squares are a pixel and the paper stands on whole
-        // coordinates, so at 45° the probe's diagonal falls exactly on a
-        // texel's edge, where the bake and the engine each take either
-        // texel of it (`raster_cel_import.dart`) — 13 of its 169 apart, every
-        // one on that diagonal and no other (🔬2026-11-10). At 30° no pixel's
-        // centre is within 0.013 of an edge. Back to 45° when the bake lays
-        // its picture with the engine's kernel (brush/rendering's lane).
         'turned 30°': turnedOnce,
+        // ↩️Turned 30° alone from 11-10 till the bake laid its picture on
+        // the engine's kernel: at 45° the checker's diagonal falls on a
+        // texel's edge, where Flutter's sampler and the engine's each took
+        // the other texel (13 of 169 apart, 🔬2026-11-10).
+        'turned 45°': TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>().withKey(0, 45),
+        ),
       };
       for (final MapEntry(key: how, value: fx) in poses.entries) {
         testWidgets(how, (tester) async {
@@ -1163,9 +1198,9 @@ void main() {
               }
             },
           );
-          rideAGoneRow(s, row);
+          keptByAnotherConte(s, row);
           posed(s, row, fx: fx);
-          final before = (await tester.runAsync(() => frameReds(s)))!;
+          final before = (await tester.runAsync(() => frame(s)))!;
 
           final baked = await tester.runAsync(
             () => s.importDoors.bakeReferenceAsSeen(
@@ -1174,13 +1209,13 @@ void main() {
             ),
           );
 
-          expect(baked, isTrue, reason: 'LIVENESS: an attach row bakes');
+          expect(baked, isTrue, reason: 'LIVENESS: the conte bakes in place');
           expect(
-            before.every(isPure),
-            isTrue,
-            reason: 'the canvas lays it hard-edged at any pose: $before',
+            {for (var at = 0; at < before.length; at += 4) before[at]},
+            {0, 255},
+            reason: 'premise: the frame shows the checker, hard-edged',
           );
-          expect(await tester.runAsync(() => frameReds(s)), before);
+          expect(await tester.runAsync(() => frame(s)), before);
           await tester.pump(const Duration(minutes: 1));
           await stopTheWarmer(tester, s);
         });
@@ -1191,13 +1226,13 @@ void main() {
       // (`_celLaid`): grown 25.8 times by its fit, in blocks as the canvas
       // shows the same file placed.
       testWidgets('baked as it lands, fitted to the canvas', (tester) async {
-        Future<List<int>> landed({required bool rasterize}) async {
+        Future<Uint8List> landed({required bool rasterize}) async {
           final s = EditorSessionManager(
             initialProject: createDefaultProject(),
           );
           addTearDown(s.dispose);
           s.playbackRig.prerenderScheduler.beginInputHold();
-          final reds = await tester.runAsync(() async {
+          final shows = await tester.runAsync(() async {
             final checker = await checkerImage(64);
             final String path;
             try {
@@ -1219,15 +1254,19 @@ void main() {
               ),
               isTrue,
             );
-            return frameReds(s);
+            return frame(s);
           });
           await tester.pump(const Duration(minutes: 1));
           await stopTheWarmer(tester, s);
-          return reds!;
+          return shows!;
         }
 
         final asPlaced = await landed(rasterize: false);
-        expect(asPlaced.every(isPure), isTrue, reason: '$asPlaced');
+        expect(
+          {for (var at = 0; at < asPlaced.length; at += 4) asPlaced[at]},
+          {0, 255},
+          reason: 'premise: the frame shows the checker, hard-edged',
+        );
         expect(await landed(rasterize: true), asPlaced);
       });
     });
