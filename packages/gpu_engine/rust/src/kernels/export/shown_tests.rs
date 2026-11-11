@@ -115,12 +115,55 @@ fn straight(pixel: u32) -> Vec<u8> {
 // ---- By hand, from the law (frame_shown.wgsl: c·255 / a, half up) ----
 
 // 50·255 + 100 = 12,850, over 200 is 64; 100·255 + 100 = 25,600, over 200
-// is 128. Opaque, a pixel is its own; clear, nothing.
+// is 128. Opaque, a pixel is its own; clear, nothing — a colour left at
+// alpha 0 too, which no premultiply leaves.
 #[test]
 fn a_shown_pixel_is_made_straight_by_its_alpha() {
     assert_eq!(straight(0xc864_0032), [0, 64, 0, 128, 200]);
     assert_eq!(straight(0xff1e_140a), [0, 10, 20, 30, 255]);
     assert_eq!(straight(0), [0, 0, 0, 0, 0]);
+    assert_eq!(straight(0x0000_0010), [0, 0, 0, 0, 0]);
+}
+
+// Every alpha, each colour of it — none, half, all of it and one between
+// — made straight as the law says, read through a GIF's cut at 1, which
+// lays each pixel that is not clear whole, in its straight colour.
+#[test]
+fn every_alpha_makes_its_colours_straight_by_the_law() {
+    let rig = rig();
+    let picture = Picture { width: 255, height: 4 };
+    let colours = |x: u32, y: u32| {
+        let alpha = x + 1;
+        [0, alpha / 2, alpha, (alpha * 7 + y) % (alpha + 1)][y as usize]
+    };
+    let shown = shown(255, 4, false, |x, y| {
+        let c = colours(x, y);
+        u32::from_le_bytes([c as u8, (x + 1 - c) as u8, (c / 3) as u8, (x + 1) as u8])
+    });
+    let out = rig.over_ground.run(rig.engine, Frame::Shown(&shown), picture, [7, 7, 7], Some(1));
+    let rgb = read_buffer(rig.engine, &out.expect("over ground"));
+    let law = |c: u32, a: u32| ((c * 255 + a / 2) / a).min(255) as u8;
+    for y in 0..4 {
+        for x in 0..255 {
+            let (a, c) = (x + 1, colours(x, y));
+            let at = ((y * 255 + x) * 3) as usize;
+            assert_eq!(rgb[at..at + 3], [law(c, a), law(a - c, a), law(c / 3, a)], "({x}, {y})");
+        }
+    }
+}
+
+// A shown frame's alpha is the top byte of its words wherever it lies: a
+// pixel of 100 is under a cut at 128, and a picture all opaque is opaque.
+#[test]
+fn a_shown_frame_reads_each_alpha_where_it_lies() {
+    let rig = rig();
+    let one = shown(1, 1, false, |_, _| 0x6432_0a05);
+    let bits = rig.clear.run(rig.engine, Frame::Shown(&one), Picture { width: 1, height: 1 }, 128);
+    assert_eq!(read_buffer(rig.engine, &bits.expect("clear"))[0] & 1, 1);
+    let opaque = shown(WIDTH, HEIGHT, true, |x, y| mixed(3)(x, y) | 0xff00_0000);
+    let picture = Picture { width: WIDTH, height: HEIGHT };
+    let answer = read_buffer(rig.engine, &rig.opaque.run(rig.engine, Frame::Shown(&opaque), picture).expect("opaque"));
+    assert_eq!(answer[..4], [255, 0, 0, 0]);
 }
 
 // 1·255 + 1 = 256, over 2 is 128: 127.5 goes up. A colour past its alpha
