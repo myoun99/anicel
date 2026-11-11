@@ -674,5 +674,30 @@ void main() {
       expect(await first, isNull);
       expect(shownBy((await patiently(second))!), laidBy(cel(6)));
     });
+
+    test('why the last ones would not open is no word on what is asked '
+        'right after: that is laid with the next', () async {
+      final opening = <Completer<EngineFrameTools>>[];
+      final store = EngineFramePictureStore<String>(
+        tools: () {
+          opening.add(Completer<EngineFrameTools>());
+          return opening.last.future;
+        },
+      );
+      addTearDown(store.dispose);
+      final first = store.lay('a', frameOf(cel(5)));
+      store.letGoWithItsTools();
+      final second = store.lay('b', frameOf(cel(6)));
+      expect(opening, hasLength(2), reason: '⛔premise: asked for anew');
+
+      opening.first.completeError(StateError('the engine let go'));
+      await pumpEventQueue();
+      opening.last.complete(
+        (composite: engine.composite, letters: engine.letters),
+      );
+
+      expect(await first, isNull);
+      expect(shownBy((await patiently(second))!), laidBy(cel(6)));
+    });
   });
 }

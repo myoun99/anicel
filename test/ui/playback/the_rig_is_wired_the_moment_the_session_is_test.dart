@@ -157,6 +157,24 @@ void main() {
     );
   });
 
+  // ⚠️It loses the app's engine, twice: the tests after it find the next.
+  test('…and the app\'s engine stops being heard: the frames\' pictures, '
+      'told of the engine let go while the session is, are told of none '
+      'once it is down', () {
+    final own = EditorSessionManager(initialProject: createDefaultProject());
+    var told = 0;
+    own.playbackRig.framePictures.store.wentWithItsTools.addListener(
+      () => told += 1,
+    );
+    theAppsEngineLostAndLetGo();
+    expect(told, 1, reason: '⛔premise: it hears while it is');
+
+    own.dispose();
+    theAppsEngineLostAndLetGo();
+
+    expect(told, 1);
+  });
+
   test('the playback mode is a setting: it starts as every picture, a new '
       'one lands and announces, the same one changes nothing', () {
     var notices = 0;
