@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
@@ -259,6 +260,39 @@ void main() {
       expect(recordings, 3);
     });
   }
+
+  // A plugin reads and draws straight (`FxPluginPicture`); a picture holds
+  // its pixels premultiplied (float-warp-resamples-in-the-c-engine (2) ⓐ).
+  test('a step is handed its picture straight, and what its plugin made is '
+      'drawn as the straight picture it is', () async {
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawRect(
+      const Rect.fromLTWH(0, 0, 1, 1),
+      Paint()..color = const Color.fromARGB(128, 200, 10, 20),
+    );
+    final picture = recorder.endRecording().toImageSync(width, height);
+    Future<Uint8List> premultipliedOf(ui.Image image) async {
+      final data = await image.toByteData();
+      return Uint8List.view(data!.buffer).sublist(0, 4);
+    }
+
+    final runner = ShiftingFxPlugin(by: 0);
+    final made = await FxPluginStages.recordedThrough(
+      () => recorded(picture, [plugin(runner)]),
+      discard: (made) => made.dispose(),
+    );
+    final image = await made.toImage(width, height);
+    final own = await premultipliedOf(picture);
+    final drawn = await premultipliedOf(image);
+    image.dispose();
+    made.dispose();
+    picture.dispose();
+
+    expect(runner.renders, 1, reason: '⛔premise');
+    expect(straightRgbaFor(own), isNot(own), reason: '⛔fixture: half there');
+    expect(runner.lastInput.sublist(0, 4), straightRgbaFor(own));
+    expect(drawn, own);
+  });
 
   // ⚠️Told only where the picture's bytes are uploaded as they are
   // (Impeller, `--enable-impeller`): the runner's Skia draws a clear pixel

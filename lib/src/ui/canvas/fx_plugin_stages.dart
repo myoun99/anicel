@@ -173,7 +173,7 @@ final class FxPluginStages implements PluginSteps {
   }
 
   @override
-  ({bool ran, Uint8List? premultiplied}) stepOf(
+  ({bool ran, Uint8List? straight}) stepOf(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
     required int width,
@@ -188,7 +188,7 @@ final class FxPluginStages implements PluginSteps {
       scale: 1,
       paper: paper,
     );
-    return (ran: met != null, premultiplied: met?.output);
+    return (ran: met != null, straight: met?.output);
   }
 
   /// The stage that met this step and has run; null, [input] held for the
@@ -228,16 +228,21 @@ final class FxPluginStages implements PluginSteps {
   }
 }
 
-/// A picture of the walk's as a plugin's step reads it.
+/// A picture of the walk's as a plugin's step reads it — premultiplied as
+/// the picture holds it, straightened for the plugin.
 final class _ImageInput implements PluginStepInput {
   _ImageInput(ui.Image image) : _image = image.clone();
 
   final ui.Image _image;
 
   @override
-  Future<Uint8List?> premultiplied() async {
+  Future<Uint8List?> straight() async {
     final data = await _image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    return data?.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    return data == null
+        ? null
+        : straightRgbaFor(
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          );
   }
 
   @override
@@ -263,7 +268,7 @@ final class _Stage {
 
   PluginStepInput? _input;
 
-  /// What the plugin made, premultiplied.
+  /// What the plugin made, straight.
   Uint8List? output;
 
   ui.Image? _image;
@@ -271,7 +276,9 @@ final class _Stage {
   /// [output] as a picture, the step's own until it is let go of.
   ui.Image? get image => _image ??= switch (output) {
     null => null,
-    final made => pictureOf(PremultipliedRows(made, width, height)),
+    final made => pictureOf(
+      PremultipliedRows(premultipliedRgbaCopy(made), width, height),
+    ),
   };
 
   /// Whether it has been run — [output] null after it is a plugin that
@@ -294,17 +301,16 @@ final class _Stage {
     if (input == null || run == null) {
       return;
     }
-    final pixels = await input.premultiplied();
+    final pixels = await input.straight();
     if (pixels == null || _input == null) {
       return;
     }
-    final made = output = _ranThrough(run, straightRgbaFor(pixels));
+    final made = output = _ranThrough(run, pixels);
     run.told?.call(failed: made == null);
   }
 
   /// [straight] — this step's input — through [run]'s plugin, which reads
-  /// and draws straight ([FxPluginPicture]), premultiplied again as the
-  /// plan takes it; null where the plugin fails.
+  /// and draws straight ([FxPluginPicture]); null where the plugin fails.
   Uint8List? _ranThrough(FxPluginRun run, Uint8List straight) {
     final canvas = CanvasSize(
       width: (paper.width / scale).round(),
@@ -332,10 +338,11 @@ final class _Stage {
       ],
       moment: moment,
     );
-    if (output == null) {
-      return null;
+    // A pixel it leaves clear is clear, whatever colour it gave it — as
+    // premultiplying it made it.
+    if (output != null) {
+      zeroFullyClearPixels(output);
     }
-    premultiplyRgbaInPlace(output);
     return output;
   }
 

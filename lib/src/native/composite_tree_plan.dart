@@ -6,7 +6,6 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/color_matrix.dart';
 import '../core/draw_space.dart';
-import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/composite_tree.dart';
@@ -214,13 +213,7 @@ final class _ChainPicture implements PluginStepInput {
   final (int, int, int, int) _picture;
 
   @override
-  Future<Uint8List?> premultiplied() async {
-    final pixels = _read.pixels(_picture);
-    if (pixels != null) {
-      premultiplyRgbaInPlace(pixels);
-    }
-    return pixels;
-  }
+  Future<Uint8List?> straight() async => _read.pixels(_picture);
 
   @override
   void free() => _read.free();
@@ -707,11 +700,9 @@ class _TreePlan {
       _chainHasAStepOff = true;
       return [(chain) => plan.chainRead(chain, read)];
     }
-    return switch (step.premultiplied) {
+    return switch (step.straight) {
       null => const [],
-      final made => [
-        (chain) => plan.chainPut(chain, picture, straightRgbaFor(made)),
-      ],
+      final made => [(chain) => plan.chainPut(chain, picture, made)],
     };
   }
 
