@@ -7,6 +7,8 @@ import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_bundle.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
+import 'package:flutter/foundation.dart'
+    show FlutterError, FlutterErrorDetails;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fx_plugin_file.dart';
@@ -206,6 +208,20 @@ void main() {
     expect(installed.runnerFor(plugin), isNot(same(uncut)));
     expect(opened, [true, false, true]);
     expect(closed, [1, 2]);
+  });
+
+  test('let go, it hears the GPU setting no more', () {
+    addTearDown(AppGpu.debugReset);
+    final reported = <FlutterErrorDetails>[];
+    final reporting = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = reporting);
+    plugins().dispose();
+
+    AppGpu.settings.value = const AppGpuSettings(
+      pluginShare: FxPluginShare.uncut,
+    );
+    expect(reported, isEmpty, reason: 'one let go was told of a change');
   });
 }
 
