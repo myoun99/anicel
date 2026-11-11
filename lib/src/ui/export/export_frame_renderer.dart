@@ -2151,7 +2151,8 @@ typedef _SharedTransitionSpace = ({
 // down here, out of the renderer, so that they have nothing else to read.
 // Each lays on the engine (gpu-export-path ①⑵): a frame the export makes,
 // and over it pictures held on the engine, at the strength a plan lays a
-// row at ([strengthOf]).
+// row at ([strengthOf]) — each weight already held to the unit range
+// where it is weighed ([sourceOverWeights]).
 
 /// A frame nothing plays in: the ground alone.
 typedef _GapFrame = ({CanvasSize size, ui.Color? ground});
@@ -2234,10 +2235,6 @@ final class _StackUnits {
   int get hashCode => Object.hashAll(_props);
 }
 
-/// [opacity] as the engine lays it — held to the unit range, as a paint's
-/// alpha is (`alphaOnly`).
-int _strength(double opacity) => strengthOf(opacity.clamp(0.0, 1.0));
-
 void _layGround(GpuExport export, GpuShown onto, ui.Color? ground) {
   if (ground != null) {
     export.layColour(onto, gpuColourOf(ground.toARGB32()));
@@ -2260,7 +2257,7 @@ Future<void> _thinnedAsOne(
   final layer = export.blank(onto.width, onto.height);
   try {
     await lay(layer);
-    export.lay(onto, layer, opacity: _strength(weight));
+    export.lay(onto, layer, opacity: strengthOf(weight));
   } finally {
     layer.free();
   }
@@ -2311,7 +2308,7 @@ Future<void> _layStackFrame(
       export.lay(
         into,
         unit.picture,
-        opacity: _strength(unit.pictureOpacity),
+        opacity: strengthOf(unit.pictureOpacity),
       );
       if (unit.over case final over?) {
         export.lay(into, over);

@@ -7,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/screen_texture.dart';
+import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
 
 /// The app converts a frame as the screen shows it through the package's
 /// Dart (gpu-export-path ①): each conversion takes the numbers Dart hands
@@ -368,6 +369,21 @@ void main() {
         for (var at = 0; at < 6; at++)
           if (at >= 4) ...[255, 0, 0, 255] else ...[255, 255, 255, 255],
       ]);
+    });
+
+    // What a panel and a preview are handed of a frame made on the engine
+    // (`pictureOfLaid`): its width across, as it was laid.
+    test('a frame laid is a picture of its own width and height', () async {
+      final frame = blank(3, 2);
+      export.layColour(frame, red, within: (2, 1, 3, 2));
+
+      final picture = pictureOfLaid(export, frame);
+      addTearDown(picture.dispose);
+      final data = await picture.toByteData();
+
+      expect((picture.width, picture.height), (3, 2));
+      expect(data!.getUint32((1 * 3 + 2) * 4), red);
+      expect(data.getUint32(2 * 4), white);
     });
 
     test('a cover of another size is refused, and says why', () {
