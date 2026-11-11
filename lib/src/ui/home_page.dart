@@ -20,6 +20,7 @@ import '../models/working_panel.dart';
 import '../native/app_kernels_ahead.dart';
 import '../native/device_battery.dart';
 import '../native/drawing_engines.dart';
+import '../native/engine_refusals.dart';
 import '../native/handed_files.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
@@ -619,6 +620,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // instead ([SessionScratch.ensureThisRunsFolder]).
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
+    EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
     _cursorOwner.listen();
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
@@ -1061,6 +1063,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  /// A job the graphics device refused, said in the common window — once a
+  /// cause ([EngineRefusals]), over whichever project is on screen: the
+  /// device is every project's.
+  ///
+  /// 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
+  /// 알린다」 · 「획이 사라진 경우와 캔버스가 멈춘 경우 둘 다 같은 창이다」.
+  void _sayWhatTheEngineRefused() => unawaited(
+    showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('gpu-refused-notice'),
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.gpuRefusedNotice,
+    ),
+  );
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1070,6 +1087,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
+    EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
     _cursorOwner.dispose();
     _autosaveClock.dispose();
     _lifecycle?.dispose();

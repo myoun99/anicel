@@ -762,6 +762,10 @@ enum AppStrings {
   String get saveCelsLostGone => _s('saveCelsLostGone');
   String get projectFileVanished => _s('projectFileVanished');
 
+  /// What the common window says of a job the graphics device refused
+  /// (`EngineRefusals`, gpu-canonical-store-Q14).
+  String get gpuRefusedNotice => _s('gpuRefusedNotice');
+
   // --- A save its file refused: why, and the failed copy (실패본) the work
   // went to instead (whole-write-temp-beside-the-file, 2026-09-23) ---
   String get saveFailedTitle => _s('saveFailedTitle');
@@ -2770,6 +2774,9 @@ enum AppStrings {
         "This project's file is no longer there — deleted or moved. Restore "
         'it now if it is still in a trash: the drawings already saved live '
         'only inside that file.',
+    'gpuRefusedNotice':
+        'The graphics card could not complete an operation. What you just '
+        'did may not have been applied. Save, then restart the program.',
     'uiScaleLabel': 'Interface scale',
     'colorModeLabel': 'Appearance',
     'colorModeDark': 'Dark',
@@ -4222,6 +4229,8 @@ enum AppStrings {
         'このプロジェクトが保存できなかった作業はアプリ内の失敗版にしかなく、失敗版はプログラムを閉じると消えます。残すには「名前を付けて保存」するか、ファイルメニューの「失敗版をバックアップ…」を使ってください。',
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
+    'gpuRefusedNotice':
+        'グラフィックカードが処理を完了できませんでした。直前の操作が反映されていない可能性があります。保存してからプログラムを再起動してください。',
     'uiScaleLabel': 'UIの大きさ',
     'colorModeLabel': 'カラーモード',
     'colorModeDark': 'ダーク',
@@ -6093,6 +6102,10 @@ enum AppStrings {
         '이 프로젝트가 저장하지 못한 작업은 앱 안의 실패본에만 있고, 실패본은 프로그램을 닫으면 사라집니다. 남기려면 「다른 이름으로 저장」하거나 파일 메뉴의 「실패본 백업…」을 쓰세요.',
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
+    // 🗣️유저 2026-11-11 (gpu-canonical-store-Q14) chose this sentence as
+    // it stands: the other languages say it after this one.
+    'gpuRefusedNotice':
+        '그래픽 장치가 작업을 처리하지 못했습니다. 방금 한 작업이 반영되지 않았을 수 있습니다. 저장한 뒤 앱을 다시 시작해 주세요.',
     'uiScaleLabel': 'UI 크기',
     'colorModeLabel': '화면 모드',
     'colorModeDark': '다크',
@@ -8011,6 +8024,10 @@ enum AppStrings {
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
         'dessins déjà enregistrés ne vivent que dans ce fichier.',
+    'gpuRefusedNotice':
+        "La carte graphique n'a pas pu terminer une opération. Ce que vous "
+        "venez de faire n'a peut-être pas été appliqué. Enregistrez, puis "
+        'redémarrez le programme.',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -9977,6 +9994,7 @@ enum AppStrings {
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
+    'gpuRefusedNotice': '显卡未能完成操作。刚才的操作可能没有生效。请保存后重新启动程序。',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',

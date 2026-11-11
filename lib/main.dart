@@ -8,6 +8,7 @@ import 'package:flutter/services.dart'
 
 import 'src/native/app_kernels_ahead.dart';
 import 'src/native/device_battery.dart';
+import 'src/native/engine_refusals.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/crate_licences.dart';
@@ -188,6 +189,12 @@ Future<void> main(List<String> handedAtLaunch) async {
   // persistent frame callback cannot be removed, so registering it
   // anywhere that re-runs would stack duplicates.
   DeviceGridAudit.install();
+  // 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
+  // 알린다」 — the two doors an error ends at, watched for a job the
+  // graphics device refused from before anything is asked of it. HERE for
+  // the reason of the three above: wrapped anywhere that re-runs, a door
+  // would tell once a wrap.
+  EngineRefusals.install();
   // AWAITED, unlike every other settings restore. The rest land late and
   // the app repaints; this one decides how large the window's contents are
   // laid out, so restoring it after the first frame would show 100% and

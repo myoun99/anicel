@@ -478,6 +478,7 @@ void main() {
     'tlLayerReference': (s) => s.tlLayerReference,
     'tlSelectedLayers': (s) => s.tlSelectedLayers,
     'projectFileVanished': (s) => s.projectFileVanished,
+    'gpuRefusedNotice': (s) => s.gpuRefusedNotice,
     'mediaExportWav': (s) => s.mediaExportWav,
     'mediaExportWavNoAudio': (s) => s.mediaExportWavNoAudio,
     'projectLegacyAssetsFolder': (s) => s.projectLegacyAssetsFolder,
