@@ -372,7 +372,11 @@ void main() {
 /// **26** on 2026-11-11 (gpu-export-path 1b ①): −1 in frame_shots — a
 /// shot's picture is laid over its ground on the engine (`GpuExport.lay`),
 /// not drawn over it on a Flutter canvas.
-const int _knownRawDraws = 26;
+/// **24** on 2026-11-12 (gpu-export-path 1b ①⑵): −2 in
+/// export/export_frame_renderer — a video frame's stack unit and a cut in a
+/// canvas-size frame are laid on the engine (`GpuExport.lay`), over a frame
+/// the export makes, not drawn into a layer on a Flutter canvas.
+const int _knownRawDraws = 24;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'
