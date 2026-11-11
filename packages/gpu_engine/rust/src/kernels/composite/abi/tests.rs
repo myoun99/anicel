@@ -230,10 +230,10 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
 // plan, not refused.
 #[test]
 fn a_row_whose_pose_lands_nothing_is_left_out() {
-    let behind = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
+    let nowhere = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
     let plan = gpu_engine_plan_new();
-    // SAFETY: `plan` is live and `behind` holds nine.
-    let added = unsafe { gpu_engine_plan_row(plan, 0, -1, -1, -1, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL) };
+    // SAFETY: `plan` is live and `nowhere` holds nine.
+    let added = unsafe { gpu_engine_plan_row(plan, 0, -1, -1, -1, nowhere.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL) };
     assert_eq!(added, 0);
     // SAFETY: `plan` is live.
     assert!(unsafe { &*plan }.steps.is_empty());
@@ -716,7 +716,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
 // among them — and what came before it stays.
 #[test]
 fn a_buffer_closed_as_a_row_whose_pose_lands_nothing_is_taken_out() {
-    let behind = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
+    let nowhere = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
     let own = [0, 0, 1, 1];
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live; each array holds what its call reads.
@@ -727,7 +727,7 @@ fn a_buffer_closed_as_a_row_whose_pose_lands_nothing_is_taken_out() {
         gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
         gpu_engine_plan_close(plan, 65535, NORMAL, -1, -1, 65535);
         gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
-        let closed = gpu_engine_plan_close_row(plan, -1, own.as_ptr(), -1, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
+        let closed = gpu_engine_plan_close_row(plan, -1, own.as_ptr(), -1, nowhere.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
         assert_eq!(closed, 0);
         assert!(matches!((&(*plan).steps)[..], [Step::Solid { .. }]), "{:?}", &(*plan).steps);
         gpu_engine_plan_free(plan);
@@ -819,11 +819,11 @@ fn a_mark_built_call_by_call_composites_as_one_built_in_rust() {
 // out.
 #[test]
 fn a_mark_whose_pose_lands_nothing_is_left_out() {
-    let behind = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
+    let nowhere = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
     let plan = gpu_engine_plan_new();
-    // SAFETY: `plan` is live and `behind` holds nine; then it is freed.
+    // SAFETY: `plan` is live and `nowhere` holds nine; then it is freed.
     unsafe {
-        assert_eq!(gpu_engine_plan_mark(plan, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 0, 0), 0);
+        assert_eq!(gpu_engine_plan_mark(plan, nowhere.as_ptr(), 1.0, BLEND, TILE, TILE, 0, 0), 0);
         assert!((*plan).steps.is_empty());
         gpu_engine_plan_free(plan);
     }

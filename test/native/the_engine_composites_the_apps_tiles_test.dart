@@ -230,7 +230,7 @@ void main() {
     expect(
       plan.row(
         set: plan.set(0, 0, 1, 1, [null]),
-        inverse: const [1, 0, 0, 0, 1, 0, 0, 0, -1],
+        inverse: const [1, 0, 0, 0, 1, 0, 0, 0, 0],
         sampling: GpuSampling.blend,
         columns: gpuTileSide,
         rows: gpuTileSide,

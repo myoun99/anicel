@@ -1,9 +1,9 @@
 //! R1's map as resample.wgsl reads it. The CPU quantises the double matrix
 //! once by the spec's q() — x · 2^k rounded half away from zero, as Dart's
 //! round() and C's llround() do — and divides a homography through by its
-//! largest w at the output's corners first, so w <= 1 everywhere inside
-//! (gpu-int-spec-canvas 1b (1/4) R1). Only + − × ÷ on doubles, which IEEE
-//! fixes on every device.
+//! corner w farthest from 0 first, so 0 < w <= 1 on the side of the
+//! output's centre (gpu-int-spec-canvas 1b (1/4) R1). Only + − × ÷ on
+//! doubles, which IEEE fixes on every device.
 
 /// R1's three modes, resample.wgsl's ids (2 is the copy any of them takes).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,9 +32,13 @@ pub(crate) struct ResampleMap {
     c: i64,
     f: i64,
     i: i64,
+    /// How much coarser than Q.36 g and h are held: 0 but for a steep
+    /// homography (see [`ResampleMap::new`]).
+    shift: u32,
 }
 
-/// |q| below 2^31: a, b, d, e (2^11 px, Q.20) and g, h (Q.36).
+/// |q| below 2^31: a, b, d, e (2^11 px, Q.20) and g, h (Q.36, or coarser
+/// by a shift).
 const NARROW: f64 = 2_147_483_648.0;
 /// |q| below 2^61: c, f, i. A c past it lands 2^41 px away, where nothing
 /// is inside, and keeps every sum the kernel forms within an i64.
@@ -56,7 +60,7 @@ const SLACK: f64 = 16.0;
 
 impl ResampleMap {
     /// Words one map takes, resample.wgsl's `ResampleMap` field by field.
-    pub(crate) const WORDS: usize = 15;
+    pub(crate) const WORDS: usize = 16;
 
     /// The map of `inverse` — destination point to source point, row-major
     /// with the homogeneous row last, pixel (x, y) spanning x..x+1 — over a
@@ -64,15 +68,33 @@ impl ResampleMap {
     /// whole's map. `radius_floor` is Blend's, at least 1.
     ///
     /// `None` when nothing lands anywhere: a matrix past the spec's ranges
-    /// (a reduction past 2048 times), or a homography with no positive w
-    /// at the output's corners, where w <= 0 is outside.
+    /// (a reduction past 2048 times), or a homography whose w is 0 at every
+    /// corner of the output.
     ///
-    /// A g or h past an i32 (|g| >= 2^-5 a pixel) lands nothing too —
-    /// canvas base agreed (gpu-int-spec-canvas 16:48). Divided through, w is
-    /// at most 1 inside, so it changes by more than 1/32 a pixel and what
-    /// shows (w > 2^-12) is a band under 32 px a row: what is lost is a
-    /// perspective piece whose vanishing line comes within 32 px of the
-    /// output's edge, as rare as a reduction past 2048 times.
+    /// A homography is divided through by its corner w farthest from 0,
+    /// sign and all — the positive one on a tie —, so a matrix and its
+    /// negative are one map, as a homogeneous matrix is at any scale. A
+    /// linear w is largest and least at opposite corners, so the farther
+    /// one is on the side of the output's centre, where a caller sized the
+    /// output to what lands: w is positive there and at most 1, and w <= 0
+    /// is outside. ↩️It took the largest w, so a matrix whose w was
+    /// negative over the whole output landed nothing — the quad tool's,
+    /// made 1 at the canvas origin, wherever the vanishing line runs
+    /// between the origin and the float (a-small-float-in-steep-
+    /// perspective-vanishes, 2026-11-11).
+    ///
+    /// Divided through, |w| <= 1 at every corner, so |g| <= 2 / columns and
+    /// |h| <= 2 / rows. A g or h past an i32 at Q.36 — |g| >= 2^-5 a pixel,
+    /// over an output 64 px or fewer a side — is held at Q.(36 − shift),
+    /// by the least shift that holds both (7 holds any), and
+    /// resample.wgsl shifts their part of w back: w is the same Q.37 either
+    /// way — it and each of its terms within 2^40 —, and a map that needs
+    /// no shift is the words, so the bytes, it always was. ↩️It landed
+    /// nothing (canvas base agreed, gpu-int-spec-canvas 2026-11-05 16:48),
+    /// counted as "a vanishing line within 32 px of the output's edge, as
+    /// rare as a reduction past 2048 times" — but that is every small float
+    /// pinched hard in perspective (a-small-float-in-steep-perspective-
+    /// vanishes, 관제 2026-11-11).
     pub(crate) fn new(
         inverse: [f64; 9],
         radius_floor: f64,
@@ -81,11 +103,16 @@ impl ResampleMap {
         rows: u32,
     ) -> Option<Self> {
         let mut m = inverse;
-        if !(m[6] == 0.0 && m[7] == 0.0 && m[8] == 1.0) {
+        let projective = !(m[6] == 0.0 && m[7] == 0.0 && m[8] == 1.0);
+        if projective {
             let (right, bottom) = (f64::from(columns), f64::from(rows));
             let w = |x: f64, y: f64| m[6] * x + m[7] * y + m[8];
-            let most = w(0.0, 0.0).max(w(right, 0.0)).max(w(0.0, bottom)).max(w(right, bottom));
-            if !(most > 0.0) {
+            let farther = |most: f64, corner: f64| {
+                let past = corner.abs() > most.abs() || (corner.abs() == most.abs() && corner > most);
+                if past { corner } else { most }
+            };
+            let most = [w(right, 0.0), w(0.0, bottom), w(right, bottom)].into_iter().fold(w(0.0, 0.0), farther);
+            if !(most.abs() > 0.0) {
                 return None;
             }
             for entry in &mut m {
@@ -93,18 +120,20 @@ impl ResampleMap {
             }
         }
         let [a, b, c, d, e, f, g, h, i] = m;
+        let shift = if projective { shift_of(g, h)? } else { 0 };
         Some(Self {
             a: q(a, 20, NARROW)? as i32,
             b: q(b, 20, NARROW)? as i32,
             d: q(d, 20, NARROW)? as i32,
             e: q(e, 20, NARROW)? as i32,
-            g: q(g, 36, NARROW)? as i32,
-            h: q(h, 36, NARROW)? as i32,
+            g: q(g, 36 - shift, NARROW)? as i32,
+            h: q(h, 36 - shift, NARROW)? as i32,
             floor: floor(radius_floor)?,
             mode,
             c: q(c, 20, WIDE)?,
             f: q(f, 20, WIDE)?,
             i: q(i, 36, WIDE)?,
+            shift,
         })
     }
 
@@ -130,6 +159,7 @@ impl ResampleMap {
             c: held(c, WIDE)?,
             f: held(f, WIDE)?,
             i: ONE_36,
+            shift: 0,
         })
     }
 
@@ -148,7 +178,22 @@ impl ResampleMap {
             c: -i64::from(dx) << 20,
             f: -i64::from(dy) << 20,
             i: ONE_36,
+            shift: 0,
         }
+    }
+
+    /// The same map with g and h held `by` bits coarser and the shift
+    /// taking them back, when both are whole there: the same w and the same
+    /// Jacobian.
+    #[cfg(test)]
+    pub(crate) fn coarser(self, by: u32) -> Option<Self> {
+        let whole = |x: i32| x % (1 << by) == 0;
+        (whole(self.g) && whole(self.h)).then_some(Self {
+            g: self.g >> by,
+            h: self.h >> by,
+            shift: self.shift + by,
+            ..self
+        })
     }
 
     /// The source pixels that destination pixels `x0..x1` × `y0..y1` can
@@ -225,6 +270,7 @@ impl ResampleMap {
             i as u32,
             (i >> 32) as u32,
             u32::from(!self.is_affine()),
+            self.shift,
         ]
     }
 }
@@ -272,6 +318,12 @@ impl ResampleModes {
 pub(crate) fn q(x: f64, k: u32, limit: f64) -> Option<i64> {
     let scaled = (x * (1u64 << k) as f64).round();
     (scaled.abs() < limit).then_some(scaled as i64)
+}
+
+/// The least shift that holds a homography's `g` and `h`, divided through,
+/// in an i32 at Q.(36 − shift): 7 holds any, |g| and |h| at most 2.
+fn shift_of(g: f64, h: f64) -> Option<u32> {
+    (0..=7).find(|&shift| q(g, 36 - shift, NARROW).is_some() && q(h, 36 - shift, NARROW).is_some())
 }
 
 /// `value`, already fixed point, when its magnitude is below `limit` — q's
@@ -353,20 +405,59 @@ mod tests {
         let m = ResampleMap::new(inverse, 1.0, ResampleMode::Blend, 100, 100).unwrap();
         assert_eq!((m.a, m.c, m.e), (1 << 20, 2 << 20, 1 << 20));
         // 0.005 · 2^36 = 343597383.68.
-        assert_eq!((m.g, m.h, m.i), (343_597_384, 0, 1 << 35));
+        assert_eq!((m.g, m.h, m.i, m.shift), (343_597_384, 0, 1 << 35, 0));
     }
 
     #[test]
-    fn a_homography_behind_every_corner_lands_nowhere() {
-        assert!(map([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0]).is_none());
+    fn a_steep_homography_holds_g_and_h_by_the_least_shift() {
+        // g = −1/16 is −2^32 at Q.36, past an i32, and −2^31 at Q.35 still
+        // — q() counts the i32's least past it too: at Q.34, −2^30.
+        let inverse = [1.0, 0.0, 0.0, -1.0 / 32.0, 0.0, 0.5, -1.0 / 16.0, 0.0, 1.0];
+        let m = ResampleMap::new(inverse, 1.0, ResampleMode::Blend, 8, 1).unwrap();
+        assert_eq!((m.g, m.h, m.i, m.shift), (-(1 << 30), 0, 1 << 36, 2));
+        assert_eq!(m.words()[15], 2);
+        // The same down the rows: h takes the shift where g takes none.
+        let down = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0 / 16.0, 1.0];
+        let m = ResampleMap::new(down, 1.0, ResampleMode::Blend, 1, 8).unwrap();
+        assert_eq!((m.g, m.h, m.shift), (0, -(1 << 30), 2));
+        // The steepest a map divided through can be: w = 1 − 2x falls to −1
+        // across one column, and g = −2 is −2^30 at Q.29.
+        let steepest = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, -2.0, 0.0, 1.0];
+        let m = ResampleMap::new(steepest, 1.0, ResampleMode::Blend, 1, 1).unwrap();
+        assert_eq!((m.g, m.shift), (-(1 << 30), 7));
+    }
+
+    #[test]
+    fn a_homography_and_its_negative_are_one_map() {
+        // w = −1 − x/100 is −2 at the right-hand corners of 100 × 100 —
+        // the quad tool's when the canvas origin is past the vanishing line.
+        let inverse = [-2.0, 0.0, -4.0, 0.0, -2.0, 0.0, -0.01, 0.0, -1.0];
+        let m = ResampleMap::new(inverse, 1.0, ResampleMode::Blend, 100, 100).unwrap();
+        assert_eq!((m.a, m.c, m.g, m.i), (1 << 20, 2 << 20, 343_597_384, 1 << 35));
+        let negated = inverse.map(|entry| -entry);
+        assert_eq!(ResampleMap::new(negated, 1.0, ResampleMode::Blend, 100, 100), Some(m));
+        // w = 0 at every corner lands nowhere.
         assert!(map([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn a_homography_is_positive_on_the_side_of_the_output_s_centre() {
+        let over = |inverse| ResampleMap::new(inverse, 1.0, ResampleMode::Blend, 128, 1).unwrap();
+        // w = 1 − x/32 is 1 at the left corners and −3 at the right:
+        // divided by −3, w > 0 right of x = 32, the centre's side. 2^36/96
+        // is 715827882.67, and −2^36/3 is −22906492245.33.
+        let m = over([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0 / 32.0, 0.0, 1.0]);
+        assert_eq!((m.a, m.g, m.i), (-349_525, 715_827_883, -22_906_492_245));
+        // w = x/64 − 1 is −1 and 1, the centre on its horizon: the positive.
+        let m = over([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0 / 64.0, 0.0, -1.0]);
+        assert_eq!((m.a, m.g, m.i), (1 << 20, 1 << 30, -(1 << 36)));
     }
 
     #[test]
     fn an_affine_map_is_not_rescaled() {
         // Mode 2: the identity copies. The last word 0: affine.
         let m = map(IDENTITY).unwrap();
-        assert_eq!(m.words(), [1 << 20, 0, 0, 1 << 20, 0, 0, 65_536, 2, 0, 0, 0, 0, 0, 16, 0]);
+        assert_eq!(m.words(), [1 << 20, 0, 0, 1 << 20, 0, 0, 65_536, 2, 0, 0, 0, 0, 0, 16, 0, 0]);
     }
 
     #[test]

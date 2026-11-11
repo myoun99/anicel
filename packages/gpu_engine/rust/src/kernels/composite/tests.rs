@@ -507,6 +507,9 @@ pub(crate) fn pose(name: &str) -> ResampleMap {
     // Twice smaller, the other turn.
     let shrink = affine(1.6, -1.2, 30.0, 1.2, 1.6, -90.0);
     let tilt = [1.1, -0.3, 14.0, 0.05, 1.2, 1.0, 0.002, -0.001, 1.0];
+    // w from 1 to 2 and to a half: divided through by 2, g and h are whole
+    // at Q.33.
+    let held = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0 / 256.0, -1.0 / 512.0, 1.0];
     let (inverse, floor, mode) = match name {
         "turn" => (turn, 1.0, Blend),
         "turn-pick" => (turn, 1.0, Pick),
@@ -518,13 +521,18 @@ pub(crate) fn pose(name: &str) -> ResampleMap {
         "tilt-pick" => (tilt, 1.0, Pick),
         // A 16 px tent half a pixel up and left.
         "blur" => (affine(1.0, 0.0, -0.5, 0.0, 1.0, -0.5), 16.0, Blend),
+        "held" => (held, 1.0, Blend),
         _ => unreachable!("{name}"),
     };
-    ResampleMap::new(inverse, floor, mode, 2 * TILE, 2 * TILE).expect("a map that lands")
+    let map = ResampleMap::new(inverse, floor, mode, 2 * TILE, 2 * TILE).expect("a map that lands");
+    // Held three bits coarser with a shift of 3 taking them back, as a
+    // steep homography's g and h are (resample.rs): the executor reads the
+    // shift word as R1 does.
+    if name == "held" { map.coarser(3).expect("g and h whole at Q.33") } else { map }
 }
 
 /// Every pose [`pose`] names.
-const POSES: [&str; 8] = [
+const POSES: [&str; 9] = [
     "turn",
     "turn-pick",
     "shrink",
@@ -533,6 +541,7 @@ const POSES: [&str; 8] = [
     "tilt",
     "tilt-pick",
     "blur",
+    "held",
 ];
 
 /// Rows posed every way R1 takes among moved ones: in a folder, a turn in

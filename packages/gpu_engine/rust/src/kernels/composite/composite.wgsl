@@ -157,10 +157,10 @@ fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
 // The map of step `at` — a row's, or a range mark's.
 fn step_map(at: u32) -> ResampleMap {
   let m = plan[at + 10u];
-  return resample_map(array<u32, 15>(
+  return resample_map(array<u32, RESAMPLE_MAP_WORDS>(
     plan[m], plan[m + 1u], plan[m + 2u], plan[m + 3u], plan[m + 4u], plan[m + 5u], plan[m + 6u],
     plan[m + 7u], plan[m + 8u], plan[m + 9u], plan[m + 10u], plan[m + 11u], plan[m + 12u],
-    plan[m + 13u], plan[m + 14u],
+    plan[m + 13u], plan[m + 14u], plan[m + 15u],
   ));
 }
 

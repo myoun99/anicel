@@ -20,7 +20,7 @@ struct Laid {
   height: u32,
   // R1's words (resample.rs's ResampleMap::words): the screen's pixel to
   // the tile's.
-  map: array<u32, 15>,
+  map: array<u32, RESAMPLE_MAP_WORDS>,
 }
 
 @group(0) @binding(0) var<storage, read> laid: Laid;

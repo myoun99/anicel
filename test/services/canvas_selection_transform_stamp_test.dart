@@ -235,30 +235,27 @@ void main() {
 
     test('a pinched top edge renders a trapezoid: the top of the output '
         'is narrower than the bottom (the perspective signature)', () {
-      // 48 px, so its horizon lies far past the box: R1 lands nothing of a
-      // perspective whose vanishing line comes within 32 px of the output's
-      // edge (gpu-int-spec-canvas 1b R1, |g| past an i32).
       final rgba = Uint8List.fromList([
-        for (var i = 0; i < 48 * 48; i += 1) ...[255, 0, 0, 255],
+        for (var i = 0; i < 36; i += 1) ...[255, 0, 0, 255],
       ]);
       final dab = BrushDab(
-        center: CanvasPoint(x: 30, y: 30),
+        center: CanvasPoint(x: 10, y: 10),
         color: 0xFFFFFFFF,
-        size: 48,
+        size: 6,
         opacity: 1,
         flow: 1,
         hardness: 1,
         tipShape: BrushTipShape.square,
         pressure: 1,
         sequence: 0,
-        stamp: BrushStampImage(id: 'quad', width: 48, height: 48, rgba: rgba),
+        stamp: BrushStampImage(id: 'quad', width: 6, height: 6, rgba: rgba),
       );
-      // Source rect (6,6)-(54,54); pinch the TOP corners inward by 2px.
+      // Source rect (7,7)-(13,13); pinch the TOP corners inward by 2px.
       final out = transformStampDabQuad(dab, [
-        CanvasPoint(x: 8, y: 6),
-        CanvasPoint(x: 52, y: 6),
-        CanvasPoint(x: 54, y: 54),
-        CanvasPoint(x: 6, y: 54),
+        CanvasPoint(x: 9, y: 7),
+        CanvasPoint(x: 11, y: 7),
+        CanvasPoint(x: 13, y: 13),
+        CanvasPoint(x: 7, y: 13),
       ]);
       final stamp = out.stamp!;
       int opaqueWidthOfRow(int y) {

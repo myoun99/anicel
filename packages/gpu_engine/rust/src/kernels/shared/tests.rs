@@ -528,6 +528,16 @@ fn scenes() -> Vec<Scene> {
             inverse: [0.9, 0.1, 1.0, -0.05, 0.8, 3.0, -0.012, 0.001, 1.0],
             size: (48, 40),
         },
+        // A small piece in steep perspective over the noise: w falls from
+        // 1 to a quarter across 8 px, so g = −1/16 is past an i32 at Q.36
+        // and g and h take a shift of 2 — a small float pinched hard. It
+        // lands at 30 + 0.625 · (x, y) / w: 1.5 times larger at the near
+        // corner, five times smaller at the far one.
+        Scene {
+            name: "steep",
+            inverse: [-1.25, -0.9375, 30.0, -1.875, -0.3125, 30.0, -1.0 / 16.0, -1.0 / 32.0, 1.0],
+            size: (8, 8),
+        },
     ]
 }
 
@@ -685,6 +695,40 @@ fn nearest_reads_the_word_where_the_centre_lands() {
     let halved = [word(1, 1), word(3, 1), word(1, 3), word(3, 3)];
     assert_eq!(nearest(affine(2.0, 0.0, 0.0, 0.0, 2.0, 0.0), (2, 2)), halved);
     assert_eq!(nearest(affine(1.0, 0.0, 3.5, 0.0, 1.0, 0.0), (1, 1)), [0]);
+}
+
+// A steep homography's centres land where its doubles put them, though
+// g = −1/16 is past an i32 at Q.36 and takes a shift: w = 1 − X/16 at
+// centre X = x + 0.5, so u = X / w lands at 0.52, 1.66, 2.96, 4.48, 6.26,
+// 8.38, 10.95 and 14.12 — each a 30th of a pixel or more off a border —
+// and v, with f/i and d/g both a half, at 0.5.
+#[test]
+fn nearest_reads_where_a_steep_homography_s_centres_land() {
+    let word = |x: u32| 0xff00_0000 | x * 0x0001_0101;
+    let mut picture = Picture::filled(16, 1, 0);
+    for x in 0..16 {
+        picture.put(x, 0, word(x));
+    }
+    let inverse = [1.0, 0.0, 0.0, -1.0 / 32.0, 0.0, 0.5, -1.0 / 16.0, 0.0, 1.0];
+    let map = one_map(inverse, ResampleMode::Nearest, (8, 1));
+    let landed: Vec<u32> = [0, 1, 2, 4, 6, 8, 10, 14].into_iter().map(word).collect();
+    assert_eq!(window(&map, &picture, (8, 1), (0, 0)), landed);
+}
+
+// g and h held coarser with the shift taking them back are the same w and
+// the same Jacobian — rnd(P · 2^k g, 32) is rnd(P · g, 32 − k) — so the
+// same bytes in every mode.
+#[test]
+fn a_shift_is_the_same_map_held_coarser() {
+    let picture = fixture();
+    let scene = scenes().into_iter().find(|scene| scene.name == "steep").expect("steep");
+    for (mode, mode_name) in MODES {
+        let map = map_of(&scene, mode);
+        let coarser = map.coarser(3).expect("g and h whole at Q.31");
+        assert_ne!(coarser.words(), map.words(), "{mode_name}");
+        let by = |map| window(&map, &picture, scene.size, (0, 0));
+        assert_eq!(by(coarser), by(map), "{mode_name}");
+    }
 }
 
 // Enlarged on the axes, Nearest is what Pick picks — what the screen

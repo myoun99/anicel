@@ -48,15 +48,19 @@ fn resample_with_locate() -> bool {
   return resample_with_blend || resample_with_pick || resample_with_nearest;
 }
 
+// Words one map takes, resample.rs's ResampleMap::WORDS.
+const RESAMPLE_MAP_WORDS: u32 = 16u;
+
 // The map as the CPU quantised it once: x' = a·x + b·y + c and the rest,
-// a homography divided through by its largest w at the output's corners.
+// a homography divided through by its corner w farthest from 0, so w is
+// positive on the side of the output's centre.
 struct ResampleMap {
   // Q.20
   a: i32,
   b: i32,
   d: i32,
   e: i32,
-  // Q.36
+  // Q.(36 − shift)
   g: i32,
   h: i32,
   // Blend's radius floor, Q.16.
@@ -71,11 +75,14 @@ struct ResampleMap {
   // 0 when g = h = 0 and i = 1, so the map is affine — decided once on the
   // CPU (resample.rs), where the plan reading the map needs it too.
   projective: u32,
+  // How much coarser than Q.36 g and h are held: 0 but for a steep
+  // homography, whose g or h is past an i32 at Q.36 (resample.rs).
+  shift: u32,
 }
 
-// The map from the 15 words resample.rs's ResampleMap::words lays down, in
+// The map from the words resample.rs's ResampleMap::words lays down, in
 // the order a host keeps them — the one place that order is read.
-fn resample_map(w: array<u32, 15>) -> ResampleMap {
+fn resample_map(w: array<u32, RESAMPLE_MAP_WORDS>) -> ResampleMap {
   return ResampleMap(
     bitcast<i32>(w[0]),
     bitcast<i32>(w[1]),
@@ -89,6 +96,7 @@ fn resample_map(w: array<u32, 15>) -> ResampleMap {
     Wide(w[10], w[11]),
     Wide(w[12], w[13]),
     w[14],
+    w[15],
   );
 }
 
@@ -126,9 +134,10 @@ fn resample_numerator(a: i32, b: i32, c: Wide, xx: i32, yy: i32) -> Wide {
   return wide_add(wide_add(wide_mul_i32(a, xx), wide_mul_i32(b, yy)), wide_shl(c, 1u));
 }
 
-// One Jacobian entry: rnd((m − rnd(projected · n, 32)) · r, 41), Q.16.
-fn resample_derivative(m: i32, projected: Wide, n: i32, r: Wide) -> Wide {
-  let slope = wide_sub(wide(m), wide_round(wide_mul(projected, wide(n)), 32u));
+// One Jacobian entry: rnd((m − rnd(projected · n, 32 − shift)) · r, 41),
+// Q.16.
+fn resample_derivative(m: i32, projected: Wide, n: i32, shift: u32, r: Wide) -> Wide {
+  let slope = wide_sub(wide(m), wide_round(wide_mul(projected, wide(n)), 32u - shift));
   return wide128_round(wide_mul128(slope, r), 41u).xy;
 }
 
@@ -157,7 +166,8 @@ fn resample_locate(map: ResampleMap, x: i32, y: i32, point: ptr<function, Resamp
     (*point).extent = vec2<u32>(extent_u.x, extent_v.x);
     return true;
   }
-  let w = wide_add(wide_add(wide_mul_i32(map.g, xx), wide_mul_i32(map.h, yy)), wide_shl(map.i, 1u));
+  let gh = wide_add(wide_mul_i32(map.g, xx), wide_mul_i32(map.h, yy));
+  let w = wide_add(wide_shl(gh, map.shift), wide_shl(map.i, 1u));
   if (!wide_less(Wide(RESAMPLE_W_FLOOR, 0u), w)) {
     return false;
   }
@@ -176,10 +186,10 @@ fn resample_locate(map: ResampleMap, x: i32, y: i32, point: ptr<function, Resamp
   }
   (*point).u = bitcast<i32>(u.x);
   (*point).v = bitcast<i32>(v.x);
-  (*point).du_dx = resample_derivative(map.a, pu.xy, map.g, r);
-  (*point).du_dy = resample_derivative(map.b, pu.xy, map.h, r);
-  (*point).dv_dx = resample_derivative(map.d, pv.xy, map.g, r);
-  (*point).dv_dy = resample_derivative(map.e, pv.xy, map.h, r);
+  (*point).du_dx = resample_derivative(map.a, pu.xy, map.g, map.shift, r);
+  (*point).du_dy = resample_derivative(map.b, pu.xy, map.h, map.shift, r);
+  (*point).dv_dx = resample_derivative(map.d, pv.xy, map.g, map.shift, r);
+  (*point).dv_dy = resample_derivative(map.e, pv.xy, map.h, map.shift, r);
   (*point).extent = vec2<u32>(
     resample_capped(wide_add(wide_abs((*point).du_dx), wide_abs((*point).du_dy))),
     resample_capped(wide_add(wide_abs((*point).dv_dx), wide_abs((*point).dv_dy))),
