@@ -1047,6 +1047,8 @@ mod tests {
         assert_eq!(engine.wait(), None, "a wait on a device destroyed came back done");
         assert_eq!(last_error(), "the graphics device is gone: Destroyed");
         assert!(engine.gone());
+        // The first word of it stays, whatever is said after.
+        engine.refusals.lose("a word said after".to_owned());
         // The two that panicked.
         let after = engine.filled("after", &[5, 6, 7, 8], wgpu::BufferUsages::COPY_SRC);
         assert_eq!(engine.read_buffer(&before), None);
@@ -1071,9 +1073,13 @@ mod tests {
         // Eight bytes of a buffer of four: refused where the copy is named.
         encoder.copy_buffer_to_buffer(&source, 0, &small, 0, 8);
         engine.queue.submit([encoder.finish()]);
-        assert!(engine.refusals.noted().is_some(), "the device took the copy");
+        let first = engine.refusals.noted().expect("the device took the copy");
+        // One more, of another copy: the first is the one told.
+        let mut onto_itself = self::encoder(&engine);
+        onto_itself.copy_buffer_to_buffer(&small, 0, &small, 0, 4);
+        let _ = onto_itself.finish();
         assert_eq!(engine.wait(), None, "the wait passed the refusal by");
-        assert!(last_error().starts_with("the device refused: "), "{}", last_error());
+        assert_eq!(last_error(), format!("the device refused: {first}"));
         assert_eq!(engine.refusals.noted(), None);
         assert!(!engine.gone());
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
