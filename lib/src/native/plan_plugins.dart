@@ -22,6 +22,21 @@ abstract interface class PluginStepInput {
   void free();
 }
 
+/// What a step's input is made of, where a plan can say: [source] — the
+/// row's own surface, or what the plug-in before it made — and the
+/// effects run over it since, [before].
+///
+/// 🚨★WHAT LETS A STEP BE KEPT PAST ITS RECORDING (float-warp-resamples-in-
+/// the-c-engine (2) ⓒ, 관제 2026-11-11): a frame is recorded again at every
+/// write a pen's step makes, and a plug-in met in it was run again each
+/// time — on a row the pen was not on as well (🔬4 steps elsewhere, 4 runs
+/// more, 11-11). The same source under the same effects is the same
+/// input: the step it made is kept on the source (`FxPluginStages`).
+typedef PluginStepSource = ({
+  Object source,
+  List<ResolvedLayerEffect> before,
+});
+
 /// The plug-ins' steps a plan meets, in the order it meets them: run over
 /// the picture the chain had come to, a round of the plan each
 /// (`FxPluginStages`, 🗣️I-132-Q34 a).
@@ -29,13 +44,15 @@ abstract interface class PluginSteps {
   /// What [effect]'s plugin made of [input], [width] × [height] with
   /// [paper] where the paper lies in its pixels, straight RGBA row after
   /// row: `ran` false where it is still to be run, [input] kept until it
-  /// is; `straight` null where it ran and failed — drawn as if off.
+  /// is; `straight` null where it ran and failed — drawn as if off. [from]
+  /// says what [input] is made of, where the plan can say.
   ({bool ran, Uint8List? straight}) stepOf(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
     required int width,
     required int height,
     required ui.Rect paper,
+    PluginStepSource? from,
   });
 }
 

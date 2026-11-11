@@ -764,6 +764,7 @@ enum AppStrings {
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
   String get memoryItemLensBlurTables => _s('memoryItemLensBlurTables');
+  String get memoryItemPluginSteps => _s('memoryItemPluginSteps');
 
   /// What sits outside the allowance — the rows named in [items] — as one
   /// sentence (유저 2026-09-16, memory-allowance-Q2).
@@ -2727,6 +2728,7 @@ enum AppStrings {
     'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
     'memoryItemLensBlurTables': 'Camera Lens Blur tables',
+    'memoryItemPluginSteps': 'FX plugin pictures',
     'memoryOutsideAllowanceTemplate':
         'Outside the allowance, because no ceiling can be set on it: '
         '{items}.',
@@ -4216,6 +4218,7 @@ enum AppStrings {
     'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
     'memoryItemLensBlurTables': 'ブラー（カメラレンズ）の表',
+    'memoryItemPluginSteps': 'FXプラグインの画像',
     'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
@@ -6090,6 +6093,7 @@ enum AppStrings {
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
     'memoryItemLensBlurTables': '카메라 렌즈 흐림 표',
+    'memoryItemPluginSteps': 'FX 플러그인 이미지',
     'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
@@ -7987,6 +7991,7 @@ enum AppStrings {
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
     'memoryItemLensBlurTables': "Tables du flou d'objectif",
+    'memoryItemPluginSteps': 'Images des plug-ins FX',
     'memoryOutsideAllowanceTemplate':
         "Hors de l'allocation, faute de plafond possible : {items}.",
     'containerAreaSettings': 'Réglages',
@@ -9988,6 +9993,7 @@ enum AppStrings {
     'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
     'memoryItemLensBlurTables': '相机镜头模糊表',
+    'memoryItemPluginSteps': 'FX 插件图像',
     'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',

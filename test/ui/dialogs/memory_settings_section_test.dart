@@ -85,6 +85,7 @@ void main() {
       'moviePictures',
       'enginePool',
       'engineScratch',
+      'pluginSteps',
     });
   });
 
@@ -117,6 +118,7 @@ void main() {
       'enginePool',
       'engineScratch',
       'lensBlurTables',
+      'pluginSteps',
     });
   });
 

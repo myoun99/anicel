@@ -7,18 +7,14 @@ import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/composite_tree_plan.dart';
 import 'package:anicel/src/native/engine_letters.dart';
-import 'package:anicel/src/native/engine_tile_ledger.dart';
-import 'package:anicel/src/ui/canvas/fx_plugin_stages.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/a_row_laid_through_its_plugins.dart';
 
 /// 🚨★★A PLUG-IN IS HANDED ITS CHAIN STRAIGHT, AS THE CHAIN HOLDS IT,
 /// WHEREVER IT STANDS (float-warp-resamples-in-the-c-engine (2) ⓐ, 관제
@@ -77,55 +73,10 @@ void main() {
     run: fxPluginRunOf(runner),
   );
 
-  /// The straight pixels a row of [surface] lays through [effects], laid
-  /// as a route that waits for its plug-ins lays it: a round of the plan
-  /// each, till every step has run.
   Future<Uint8List> laid(
     BitmapSurface surface,
     List<ResolvedLayerEffect> effects,
-  ) async {
-    final ledger = EngineTileLedger(appGpuEngine);
-    addTearDown(ledger.pool.free);
-    late Uint8List pixels;
-    await FxPluginStages.recordedThrough<void>(() {
-      final stages = FxPluginStages.recording!;
-      pixels = ledger.held((hold) {
-        final plan = GpuPlan();
-        try {
-          planCompositeTree(
-            plan,
-            [
-              CompositeLeaf<EngineRow>(
-                EngineTiles(
-                  lineage: surface,
-                  surface: surface,
-                  effects: effects,
-                ),
-              ),
-            ],
-            hold: hold,
-            paper: canvas.canvasRect,
-            letters: letters,
-            plugins: (steps: stages, engine: appGpuEngine),
-          );
-          final out = composite.run(
-            ledger.pool,
-            plan,
-            const [(0, 0)],
-            (0, 0, side, side),
-          );
-          try {
-            return out.read();
-          } finally {
-            out.free();
-          }
-        } finally {
-          plan.free();
-        }
-      });
-    }, discard: (_) {});
-    return pixels;
-  }
+  ) => aRowLaidThroughItsPlugins(composite, letters, surface, effects);
 
   test("the first plug-in of a cel's chain is handed the cel's own bytes, "
       'the next what the first made, and the row lays what the last '

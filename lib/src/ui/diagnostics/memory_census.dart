@@ -15,6 +15,7 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/fx_plugin_stages.dart';
 import '../canvas/iris_blur_shader.dart';
 import '../editor_session_manager.dart';
 import '../text/canvas_letter_plate.dart' as letter_plates;
@@ -377,6 +378,10 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
         id: 'lensBlurTables',
         bytes: IrisBlurShader.tableBytes,
       ),
+    // What a plug-in in a chain made, kept on the cel it was run over —
+    // a picture a canvas's size a step (관제 2026-11-11, (2) ⓒ). Bytes in
+    // the app's own memory, as the drawings are, on every platform.
+    MemoryCensusItem(id: 'pluginSteps', bytes: FxPluginStages.keptBytes),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
     // but they are not the user's artwork, so not that row: a take warmed

@@ -16,15 +16,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'fx_plugin_file.dart';
 import 'project_scratch_folder.dart';
 
-/// A run of [runner] at [frame], reading [rows].
+/// A run of [runner] at [frame], reading [rows], telling [told] how it
+/// went.
 FxPluginRun fxPluginRunOf(
   FxPluginRunner runner, {
   Map<LayerId, BitmapSurface?> rows = const {},
   int frame = 0,
+  void Function({required bool failed})? told,
 }) => FxPluginRun(
   runner: runner,
   moment: (frameIndex: frame, time: frame / 24, frameRate: 24, scale: 1),
   rows: rows,
+  told: told,
 );
 
 /// The stand-in plugin as its file describes it: one with no parameters.

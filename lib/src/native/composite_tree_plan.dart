@@ -458,6 +458,9 @@ class _TreePlan {
       space: pose.space,
       reads: reads,
       keysOnTheRow: row.held.isEmpty,
+      // The range a fill holds is laid after the row, never into its
+      // picture ([_row]): only what a hand holds goes in with the cel.
+      source: row.held.isEmpty ? row.surface : null,
     );
     final tint = row.tint;
     // The tint LAST, over the finished pixel: the ghost is the row as the
@@ -530,12 +533,17 @@ class _TreePlan {
   /// keys instead — keyed on its stored bytes as the chain's op keys them,
   /// with no chain's picture between (kernels/chain): a row's leading keys,
   /// its whole chain or before its colour (`splitSourceEffects`).
+  ///
+  /// [source] is what the picture is made of where nothing else goes into
+  /// it — a row's surface, nothing held over it — and so what its first
+  /// plug-in's step reads is made of ([PluginStepSource]).
   ({int? chain, int? keys, List<double>? colour}) _chainOf(
     List<ResolvedLayerEffect> effects, {
     required ui.Rect Function(double outset) over,
     required LayerPlacement? space,
     required _Reads reads,
     bool keysOnTheRow = false,
+    Object? source,
   }) {
     _chainHasAStepOff = false;
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
@@ -554,13 +562,41 @@ class _TreePlan {
       return (chain: null, keys: _keysOf(keys), colour: colour);
     }
     final picture = _pixelsOf(over(steps.outsetPixels));
-    final ops = [
-      for (final step in steps.preSteps) ...[
-        ..._opsOf(step.lead, picture, space: space, reads: reads),
-        for (final painted in paintedEffectsOf(step.then))
-          _paintedOp(painted, reads: picture, puts: picture),
-      ],
-    ];
+    // What the next plug-in's step reads is made of, while the plan can
+    // say: the source, then what the plug-in before it made, and the
+    // effects of the chain since — none once a step reads another row.
+    var from = source;
+    var since = 0;
+    final ops = <void Function(int chain)>[];
+    for (final step in steps.preSteps) {
+      switch (step.lead) {
+        case PluginEffect(:final effect):
+          // The step's effect is the chain's own, met in its order.
+          final at = effects.indexWhere(
+            (each) => identical(each, effect),
+            since,
+          );
+          final made = _pluginStep(
+            effect,
+            picture,
+            from: from == null
+                ? null
+                : (source: from, before: effects.sublist(since, at)),
+          );
+          ops.addAll(made.ops);
+          from = made.straight;
+          since = at + 1;
+        case final lead:
+          if (lead case ShadedEffect(:final effect)
+              when effectReadsRow(effect) != null) {
+            from = null;
+          }
+          ops.addAll(_opsOf(lead, picture, space: space, reads: reads));
+      }
+      for (final painted in paintedEffectsOf(step.then)) {
+        ops.add(_paintedOp(painted, reads: picture, puts: picture));
+      }
+    }
     var extent = picture;
     for (final painted in carried.take(last + 1)) {
       final read = extent;
@@ -672,21 +708,24 @@ class _TreePlan {
       null => const [],
       final blur => [(chain) => _onThePaper(chain, blur, picture)],
     },
-    PluginEffect(:final effect) => _pluginStep(effect, picture),
+    PluginEffect(:final effect) => _pluginStep(effect, picture).ops,
   };
 
   /// [effect]'s step: the host's, run over [picture] as the chain has come
   /// to it, a round of the plan each ([plugins], 🗣️I-132-Q34 a) — what it
   /// made laid in place of what came before it once it has, and the chain
-  /// read there until. As if off where no route waits for it.
-  List<void Function(int chain)> _pluginStep(
+  /// read there until. As if off where no route waits for it. [from] says
+  /// what the picture is made of, where the plan can say; `straight` is
+  /// what it made, once it has.
+  ({List<void Function(int chain)> ops, Uint8List? straight}) _pluginStep(
     ResolvedLayerEffect effect,
-    (int, int, int, int) picture,
-  ) {
+    (int, int, int, int) picture, {
+    PluginStepSource? from,
+  }) {
     final plugins = this.plugins;
     if (plugins == null) {
       _chainHasAStepOff = true;
-      return const [];
+      return (ops: const [], straight: null);
     }
     final (left, top, right, bottom) = picture;
     final read = GpuChainRead(plugins.engine);
@@ -696,14 +735,18 @@ class _TreePlan {
       width: right - left,
       height: bottom - top,
       paper: paper.shift(ui.Offset(-left.toDouble(), -top.toDouble())),
+      from: from,
     );
     if (!step.ran) {
       _chainHasAStepOff = true;
-      return [(chain) => plan.chainRead(chain, read)];
+      return (ops: [(chain) => plan.chainRead(chain, read)], straight: null);
     }
     return switch (step.straight) {
-      null => const [],
-      final made => [(chain) => plan.chainPut(chain, picture, made)],
+      null => (ops: const [], straight: null),
+      final made => (
+        ops: [(chain) => plan.chainPut(chain, picture, made)],
+        straight: made,
+      ),
     };
   }
 

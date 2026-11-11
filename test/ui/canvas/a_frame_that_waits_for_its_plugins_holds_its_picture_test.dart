@@ -519,6 +519,200 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // 🚨A ROW THE PEN IS NOT ON IS THE SAME PICTURE AT EVERY STEP (float-warp-
+  // resamples-in-the-c-engine (2) ⓒ, 관제 2026-11-11): the frame is recorded
+  // again at each write the pen's steps make, and a plug-in's step met in it
+  // was run again each time — past a blur, 4 steps, 4 runs more (🔬11-11).
+  final aBlur = ResolvedLayerEffect(
+    kind: EffectKind.blur,
+    values: const [2, 0],
+  );
+
+  /// The pen's row, and over it the other's, whose chain is [effects].
+  List<CompositeNode<CanvasStackRow>> beside(
+    List<ResolvedLayerEffect> effects,
+  ) => [
+    live,
+    CompositeLeaf(
+      CanvasLayerImageRequest(frameKey: over, opacity: 1, effects: effects),
+    ),
+  ];
+
+  /// A canvas standing on [beside]'s frame for [effects], its picture
+  /// made, over a store that lets every write go.
+  Future<
+    ({
+      _WritesWhenLet store,
+      ActiveStrokeOverlayModel overlay,
+      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      handAnew,
+    })
+  >
+  standingBeside(
+    WidgetTester tester,
+    List<ResolvedLayerEffect> effects,
+  ) async {
+    final store = _WritesWhenLet()..letAllGo();
+    addTearDown(store.dispose);
+    final (:picture, :overlay, :handAnew, store: _) = await standOn(
+      tester,
+      GlobalKey(),
+      beside(effects),
+      laidBy: store,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    return (store: store, overlay: overlay, handAnew: handAnew);
+  }
+
+  /// The pen's steps over a few tiles, each let land.
+  Future<void> stepsOf(
+    WidgetTester tester,
+    ActiveStrokeOverlayModel overlay,
+  ) async {
+    for (final coord in [
+      TileCoord(x: 0, y: 0),
+      TileCoord(x: 1, y: 1),
+      TileCoord(x: 2, y: 2),
+      TileCoord(x: 1, y: 0),
+    ]) {
+      await aStep(tester, overlay, coord);
+      await lendBothClocks(tester, rounds: 4);
+    }
+  }
+
+  for (final (where, count) in [
+    ('a plugin past a blur', 1),
+    ('a plugin over what another made, past a blur,', 2),
+  ]) {
+    testWidgets('$where on a row the pen is not on runs once, however many '
+        'steps the pen makes elsewhere', (tester) async {
+      final runners = [
+        for (var at = 0; at < count; at += 1) ShiftingFxPlugin(by: 1),
+      ];
+      List<int> runs() => [for (final runner in runners) runner.renders];
+      final (:store, :overlay, handAnew: _) = await standingBeside(tester, [
+        aBlur,
+        for (final runner in runners) aPlugin(runner),
+      ]);
+      expect(runs(), everyElement(1), reason: '⛔premise: run for the picture');
+
+      await stepsOf(tester, overlay);
+
+      expect(
+        store.went.where((went) => went),
+        isNotEmpty,
+        reason: 'LIVENESS: the steps went in — the frame recorded again',
+      );
+      expect(runs(), everyElement(1));
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  // 🚨WHAT A KEPT STEP WAS RUN OVER IS ITS CEL, THE EFFECTS BEFORE IT AND
+  // ITS OWN SAMPLE (`FxPluginStages`): any of them another, it runs again.
+  ResolvedLayerEffect brightened(double by) =>
+      fx(EffectKind.brightnessContrast, {'brightness': by});
+  ResolvedLayerEffect aPluginAt(ShiftingFxPlugin runner, int frame) =>
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(runner, frame: frame),
+      );
+  for (final (what, changed) in [
+    (
+      'a value before it',
+      (ShiftingFxPlugin runner) => [
+        aBlur,
+        brightened(30),
+        aPluginAt(runner, 0),
+      ],
+    ),
+    (
+      'its own sample',
+      (ShiftingFxPlugin runner) => [
+        aBlur,
+        brightened(10),
+        aPluginAt(runner, 1),
+      ],
+    ),
+  ]) {
+    testWidgets('a plugin on a row the pen is not on runs again where $what '
+        'is another', (tester) async {
+      final runner = ShiftingFxPlugin(by: 1);
+      final (:handAnew, store: _, overlay: _) = await standingBeside(tester, [
+        aBlur,
+        brightened(10),
+        aPluginAt(runner, 0),
+      ]);
+      expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+
+      await handAnew(beside(changed(runner)));
+
+      expect(
+        await settleAsync(tester, () => runner.renders > 1),
+        isTrue,
+        reason: 'run again',
+      );
+      expect(runner.renders, 2);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  // 🚨A STEP BEFORE IT THAT READS ANOTHER ROW reads what the plan does not
+  // name — a lens's blur map, the pen's row here — so nothing past it is
+  // kept: each picture of that row is another input.
+  testWidgets('a plugin past a lens blur that reads the pen\'s row runs '
+      'again as the pen steps', (tester) async {
+    final runner = ShiftingFxPlugin(by: 1);
+    final (:overlay, store: _, handAnew: _) = await standingBeside(tester, [
+      fx(
+        EffectKind.cameraLensBlur,
+        {'blurRadius': 5, 'blurFocalDistance': 128},
+        layers: {'blurMapLayer': key.layerId},
+      ),
+      aPlugin(runner),
+    ]);
+    expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+
+    await stepsOf(tester, overlay);
+
+    expect(runner.renders, greaterThan(1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨A KEPT STEP IS SHOWN AS ONE RUN IS: told how it went each time it is
+  // shown (`FxPluginRun.told`) — a plugin that failed, failed again.
+  testWidgets('a plugin that failed on a row the pen is not on is told so '
+      'at every picture it is kept for', (tester) async {
+    final tells = <bool>[];
+    final (:overlay, store: _, handAnew: _) = await standingBeside(tester, [
+      aBlur,
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(
+          ShiftingFxPlugin(by: 0, fails: true),
+          told: ({required failed}) => tells.add(failed),
+        ),
+      ),
+    ]);
+    final first = tells.length;
+    expect(first, greaterThan(0), reason: '⛔premise: run, and told');
+
+    await stepsOf(tester, overlay);
+
+    expect(tells.length, greaterThan(first), reason: 'told again, kept');
+    expect(tells, everyElement(isTrue));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// The columns [colour] shows in on [shot].
   Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
     for (var at = 0; at < shot.rgba.length; at += 4)

@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../../core/rgba_premultiply.dart';
+import '../../core/signed_memo.dart';
 import '../../core/sync_image_upload.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
@@ -42,7 +45,9 @@ import '../../services/cel_text_laying.dart';
 ///
 /// 🚨STAGES LIVE FOR ONE RECORDING: [recordedThrough] makes them and lets
 /// them go — what they hold is the working set of one picture, and no
-/// route holds them to let go of.
+/// route holds them to let go of. What a step made is KEPT past it where
+/// the plan says what its input is made of ([PluginStepSource]) — on that
+/// source, the newest only ([_keptSteps]).
 final class FxPluginStages implements PluginSteps {
   FxPluginStages._();
 
@@ -62,6 +67,33 @@ final class FxPluginStages implements PluginSteps {
   bool get aRoundComesAfter => _missed && _round < _rounds;
 
   static final Object _zoneKey = Object();
+
+  /// What the steps kept past their recordings weigh, made and not yet
+  /// collected — the memory census's `pluginSteps`.
+  static int get keptBytes => _keptBytes;
+  static int _keptBytes = 0;
+
+  /// 🚨★ONE STEP KEPT A SOURCE, the newest (float-warp-resamples-in-the-c-
+  /// engine (2) ⓒ, 관제 2026-11-11 「비키는 장치는 필요 없다(수명이 셀 표면에
+  /// 묶인다)」): what a plug-in made of a cel's surface — or of what the
+  /// plug-in before it made — under the effects run since, as the head of
+  /// a chain keeps its plug-in's picture on the surface
+  /// (`celPluginSurfaces`). It goes when the source does, or when the same
+  /// source is asked under another sample — a value dragged makes a new
+  /// one each step. A picture a canvas's size, each ([keptBytes]).
+  static final SignedMemo<
+    ({_StepAsked step, List<ResolvedLayerEffect> before}),
+    _KeptStep
+  >
+  _keptSteps = SignedMemo(
+    'pluginSteps',
+    same: (kept, asked) =>
+        kept.step == asked.step && listEquals(kept.before, asked.before),
+  );
+
+  static final Finalizer<int> _keptGone = Finalizer<int>(
+    (bytes) => _keptBytes -= bytes,
+  );
 
   /// [record] recorded with every plugin's step met in it run — recorded
   /// again after each step is ([_resolve]) until none is missed, the
@@ -179,6 +211,7 @@ final class FxPluginStages implements PluginSteps {
     required int width,
     required int height,
     required ui.Rect paper,
+    PluginStepSource? from,
   }) {
     final met = _taken(
       effect,
@@ -187,12 +220,14 @@ final class FxPluginStages implements PluginSteps {
       height: height,
       scale: 1,
       paper: paper,
+      from: from,
     );
     return (ran: met != null, straight: met?.output);
   }
 
-  /// The stage that met this step and has run; null, [input] held for the
-  /// run, where it is still to be.
+  /// The stage that met this step and has run — run in a recording before
+  /// where [from] is what it was run over then ([_keptSteps]); null,
+  /// [input] held for the run, where it is still to be.
   _Stage? _taken(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
@@ -200,20 +235,32 @@ final class FxPluginStages implements PluginSteps {
     required int height,
     required double scale,
     required ui.Rect paper,
+    PluginStepSource? from,
   }) {
     final at = _met++;
-    final asked = _Stage(
-      effect,
-      input,
+    final step = (
+      effect: effect,
       width: width,
       height: height,
       scale: scale,
       paper: paper,
     );
+    final kept = switch (from) {
+      null => null,
+      (:final source, :final before) => _keptSteps.resolve(source, (
+        step: step,
+        before: before,
+      ), _KeptStep.new),
+    };
+    final asked = _Stage(step, input, kept: kept);
     final there = at < _stages.length ? _stages[at] : null;
-    if (there != null && there.ran && there.isAskedAs(asked)) {
+    if (there != null && there.ran && there.step == step) {
       asked.dispose();
       return there;
+    }
+    final ranBefore = kept != null && kept.ran;
+    if (ranBefore) {
+      asked.takeKept();
     }
     // Not run yet, it takes its input as this round met it: the round
     // before may have drawn a step under it as if off.
@@ -223,9 +270,36 @@ final class FxPluginStages implements PluginSteps {
       there.dispose();
       _stages[at] = asked;
     }
+    if (ranBefore) {
+      return asked;
+    }
     _missed = true;
     return null;
   }
+
+  /// [bytes] more kept on [step], until it is collected.
+  static void _count(_KeptStep step, int bytes) {
+    _keptBytes += bytes;
+    _keptGone.attach(step, bytes);
+  }
+}
+
+/// A plugin's step as it is asked for: the same sample of the same effect,
+/// over a picture of the same size at the same place, is the same step.
+typedef _StepAsked = ({
+  ResolvedLayerEffect effect,
+  int width,
+  int height,
+  double scale,
+  ui.Rect paper,
+});
+
+/// A step kept past its recording ([FxPluginStages._keptSteps]): whether
+/// its plugin has run over the source it is kept on, and what it made,
+/// straight — null where it failed.
+final class _KeptStep {
+  bool ran = false;
+  Uint8List? output;
 }
 
 /// A picture of the walk's as a plugin's step reads it — premultiplied as
@@ -251,22 +325,23 @@ final class _ImageInput implements PluginStepInput {
 
 /// A plugin's step as a recording met it: its input, held until it is run.
 final class _Stage {
-  _Stage(
-    this.effect,
-    PluginStepInput input, {
-    required this.width,
-    required this.height,
-    required this.scale,
-    required this.paper,
-  }) : _input = input;
+  _Stage(this.step, PluginStepInput input, {_KeptStep? kept})
+    : _input = input,
+      _kept = kept;
 
-  final ResolvedLayerEffect effect;
-  final double scale;
-  final ui.Rect paper;
-  final int width;
-  final int height;
+  /// The step it is: a recording that meets an equal one meets it again.
+  final _StepAsked step;
+
+  ResolvedLayerEffect get effect => step.effect;
+  double get scale => step.scale;
+  ui.Rect get paper => step.paper;
+  int get width => step.width;
+  int get height => step.height;
 
   PluginStepInput? _input;
+
+  /// Where what it makes is kept past its recording, if anywhere.
+  final _KeptStep? _kept;
 
   /// What the plugin made, straight.
   Uint8List? output;
@@ -285,15 +360,6 @@ final class _Stage {
   /// failed.
   bool ran = false;
 
-  /// Whether [other] is this step met again: the same sample of the same
-  /// effect, over a picture of the same size at the same place.
-  bool isAskedAs(_Stage other) =>
-      other.effect == effect &&
-      other.width == width &&
-      other.height == height &&
-      other.scale == scale &&
-      other.paper == paper;
-
   Future<void> run() async {
     ran = true;
     final input = _input;
@@ -306,7 +372,23 @@ final class _Stage {
       return;
     }
     final made = output = _ranThrough(run, pixels);
+    if (_kept case final kept? when !kept.ran) {
+      kept
+        ..ran = true
+        ..output = made;
+      FxPluginStages._count(kept, made?.length ?? 0);
+    }
     run.told?.call(failed: made == null);
+  }
+
+  /// This step as it ran in a recording before ([_kept]) — its input let
+  /// go of, unread — told again as a step run here is.
+  void takeKept() {
+    _input?.free();
+    _input = null;
+    ran = true;
+    output = _kept?.output;
+    effect.run?.told?.call(failed: output == null);
   }
 
   /// [straight] — this step's input — through [run]'s plugin, which reads
