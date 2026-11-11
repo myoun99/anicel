@@ -583,8 +583,9 @@ void main() {
     expect(strayed(off, after.track, frames(12)), lessThan(1e-9));
   });
 
-  test('an attach row stands where its base\'s transform puts it — its own '
-      'transform cannot carry the move (F-374-Q7 ②)', () {
+  test('an attach row whose base is gone has no transform of its own to '
+      'carry the move into — its lanes are its base\'s (F-374-Q7 ②; one '
+      'whose base is there wears none of its own reference fx: -Q4)', () {
     expect(
       uncarried(
         paper(

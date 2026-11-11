@@ -13,7 +13,8 @@ import 'cut_frame_composite_plan.dart'
     show
         referenceMoveAt,
         resolveLayerAnchorPointAt,
-        resolveLayerPoseAt;
+        resolveLayerPoseAt,
+        rowAsItWearsItsFile;
 import 'import/camera_track.dart' show transformTrackOfFramePoses;
 import 'layer_pose_matrix.dart'
     show LayerPlacement, LayerPoseSample, placementOf;
@@ -81,6 +82,12 @@ ReferenceMoveCarried referenceLetGo({
     for (final carry in carries)
       !showsOthers && carry is ReferenceCarried && (movie || !uncarried),
   ];
+  // How each use shows its file: a row wearing another's fx wears none of
+  // its own reference fx's move ([rowAsItWearsItsFile]).
+  final shown = [
+    for (final use in uses)
+      (cut: use.cut, layer: rowAsItWearsItsFile(use.cut, use.layer)),
+  ];
   final on = [
     for (final (use, key) in keyed.indexed) key && turnsOn[use],
   ].contains(true);
@@ -90,8 +97,8 @@ ReferenceMoveCarried referenceLetGo({
     framed:
         movie ||
         !keyed.contains(true) &&
-            (uses.any((use) => referenceMoves(use.layer)) ||
-                _usesApart(uses)),
+            (shown.any((use) => referenceMoves(use.layer)) ||
+                _usesApart(shown)),
   );
 }
 
@@ -214,8 +221,8 @@ final class ReferenceCarried extends ReferenceCarry {
   final bool enabled;
 }
 
-/// The row's transform cannot carry the move — an attach row, a file not
-/// laid 1:1, a shear, a transform read by blocks.
+/// The row's transform cannot carry the move — an attach row whose base
+/// is gone, a file not laid 1:1, a shear, a transform read by blocks.
 final class ReferenceUncarried extends ReferenceCarry {
   const ReferenceUncarried();
 }
@@ -258,31 +265,35 @@ final class ReferenceUncarried extends ReferenceCarry {
 /// The switch comes ON with the move (F-374-Q7 ①, 유저 2026-10-17: 「①은
 /// 스위치를 켜고 키로」): a row whose transform is switched off shows none of
 /// its own — the fx has no switch (I-68-Q1) — so the move is carried over
-/// none, and the keys the row kept while it showed nothing give way. A row
-/// with no move to carry keeps its transform and its switch as they are.
+/// none, and the keys the row kept while it showed nothing give way.
+/// A row with no move to carry keeps its transform and its switch as they
+/// are — one that wears another's fx among them: it wears none of its own
+/// reference fx ([rowAsItWearsItsFile]). ↩️It was [ReferenceUncarried] —
+/// its file moved by its own fx then, and its transform was its base's.
 ///
 /// [ReferenceUncarried] when the row's transform cannot carry the move
-/// (F-374-Q7 ②③ — the cels take it): an attach row stands where its
-/// base's transform puts it, and a row scaled unevenly under a picture
-/// turned other than by a quarter would have to SHEAR it, which no pose
-/// does.
+/// (F-374-Q7 ②③ — the cels take it): an attach row whose base is gone has
+/// none of its own to key — its lanes are its base's — and a row scaled
+/// unevenly under a picture turned other than by a quarter would have to
+/// SHEAR it, which no pose does.
 ReferenceCarry transformCarryingReferenceMove({
   required Cut cut,
   required Layer layer,
   required bool Function(TransformPropertyId property, String name)
   nameIsFree,
 }) {
-  final reference = layer.mediaReference;
-  if (reference == null ||
-      (reference.fx.isEmpty && reference.pose == reference.laid)) {
+  final reference = rowAsItWearsItsFile(cut, layer).mediaReference;
+  if (reference == null || reference.standsWhereLaid) {
     return ReferenceCarried(
       layer.transformTrack,
       enabled: layer.transformEnabled,
     );
   }
   final laid = reference.laid;
-  // An attach row stands where its base's transform puts it: it has no
-  // transform of its own to key.
+  // A row whose lanes are its base's has no transform of its own to key
+  // ([attachRowWearsBaseComposite]) — one whose base is gone, which moves
+  // by its own fx still: one whose base is there wears none of its own,
+  // and stands where its file is laid (above).
   if (attachRowWearsBaseComposite(layer, cut.layers)) {
     return const ReferenceUncarried();
   }

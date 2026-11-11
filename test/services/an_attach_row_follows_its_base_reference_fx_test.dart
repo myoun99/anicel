@@ -1,8 +1,9 @@
 // 🗣️F-578 ⑨ (유저 2026-11-10): 「용지lo레이어에 작감이 다음에 수정넣으면
 // 용지-작감 이런식으로 어태치레이어만들어서 작감용지 얹는다거나. 물론
 // 참조fx같은거 생각해서 어태치에도 참조fx에서 옮긴거 적용되게」 — an attach
-// row follows its base's reference fx as it follows the base's transform,
-// and a file of its own moves by its own fx on top of that.
+// row follows its base's reference fx as it follows the base's transform —
+// and 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 (유저 2026-11-11
+// 「어태치줄의 참조fx는없앰」): a file of its own moves by none of its own.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_point.dart';
@@ -125,64 +126,48 @@ void main() {
     );
   });
 
-  test('a sheet with a file of its own moves by its own fx on top of the '
-      'paper\'s', () {
+  test('a sheet with a file of its own wears the paper\'s move alone — its '
+      'own fx moves nothing (-Q4)', () {
     final cut = cutOf([paper(), sheet(file: sheetFile)]);
     final at = CanvasPoint(x: 150, y: 80);
-    // Its own fx carries it 100 down, the paper's 200 to the right.
-    final both = CanvasPoint(x: 350, y: 180);
+    // The paper's fx carries it 200 to the right; its own would carry it
+    // 100 down as well.
+    final worn = CanvasPoint(x: 350, y: 80);
 
-    expect(landed(cut, 'sheet', at, 10), both);
-    expect(painted(cut, 'sheet', at, 10), both);
+    expect(landed(cut, 'sheet', at, 10), worn);
+    expect(painted(cut, 'sheet', at, 10), worn);
+    expect(
+      referenceMoveAt(cut.layers.last, 10),
+      isNotNull,
+      reason: '⛔CONTROL: its own fx moves its file',
+    );
   });
 
-  test('the sheet\'s own move is made in the paper\'s moved space — a paper '
-      'the fx doubles doubles it too', () {
-    final doubled = paper().copyWith(
-      mediaReference: MediaReference(
-        assetPath: '/paper.png',
-        pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
-        pictureSize: picture,
-        fx: TransformTrack.empty().copyWith(
-          scale: PropertyTrack<CanvasPoint>()
-              .withKey(0, CanvasPoint(x: 1, y: 1))
-              .withKey(10, CanvasPoint(x: 2, y: 2)),
-        ),
+  test('a door that lays its file as it shows reads it standing where it '
+      'is laid, and has no move of its own to carry (-Q4)', () {
+    final cut = cutOf([paper(), sheet(file: sheetFile)]);
+    final row = cut.layers.last;
+
+    expect(
+      rowAsItWearsItsFile(cut, row).mediaReference,
+      sheetFile.standingWhereLaid,
+    );
+    expect(
+      transformCarryingReferenceMove(
+        cut: cut,
+        layer: row,
+        nameIsFree: (_, _) => true,
+      ),
+      isA<ReferenceCarried>().having(
+        (carry) => carry.track,
+        'track',
+        row.transformTrack,
       ),
     );
-    final cut = cutOf([doubled, sheet(file: sheetFile)]);
-    final at = CanvasPoint(x: 150, y: 80);
-
     expect(
-      landed(cut, 'paper', CanvasPoint(x: 150, y: 80), 10),
-      CanvasPoint(x: 200, y: 110),
-      reason: '⛔CONTROL: the paper doubles about its middle (100, 50)',
-    );
-    // 100 down by its own fx, then doubled about the paper's middle — not
-    // doubled first and then moved 100 (200, 210).
-    expect(landed(cut, 'sheet', at, 10), CanvasPoint(x: 200, y: 310));
-    expect(painted(cut, 'sheet', at, 10), CanvasPoint(x: 200, y: 310));
-  });
-
-  test('its own fx stands its file over the paper\'s move — the space its '
-      'reference box frames the values in', () {
-    final cut = cutOf([paper(), sheet(file: sheetFile)]);
-    final sheetRow = cut.layers.last;
-    final at = CanvasPoint(x: 150, y: 80);
-
-    expect(
-      layerReferenceSpaceAt(
-        cut: cut,
-        layer: sheetRow,
-        frameIndex: 10,
-      )!.apply(at),
-      CanvasPoint(x: 350, y: 80),
-      reason: 'the paper\'s move, short of the sheet\'s own',
-    );
-    expect(
-      layerReferenceSpaceAt(cut: cut, layer: cut.layers.first, frameIndex: 10),
-      isNull,
-      reason: '⛔CONTROL: the paper frames its own fx in the canvas itself',
+      rowAsItWearsItsFile(cut, cut.layers.first),
+      same(cut.layers.first),
+      reason: '⛔CONTROL: the paper wears its own',
     );
   });
 

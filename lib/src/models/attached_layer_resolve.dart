@@ -687,10 +687,11 @@ List<Layer> _seatsOf(
 /// attach group. That is why it lives here rather than beside the
 /// `layerKind*` predicates: the kind cannot answer it.
 ///
-/// What it gates: the fx switch, the Transform group and the Effects
-/// groups. What it does NOT gate: the eye, the static opacity, the blend
-/// and the fold, which stay the organizer's whole reason to exist (user,
-/// 2026-07-31: "그냥 블렌드 두는게 나을수도있단생각 들기시작했어").
+/// What it gates: the fx switch, the Transform group, the Effects groups
+/// and the reference fx ([layerHasFxToLose]). What it does NOT gate: the
+/// eye, the static opacity, the blend and the fold, which stay the
+/// organizer's whole reason to exist (user, 2026-07-31: "그냥 블렌드
+/// 두는게 나을수도있단생각 들기시작했어").
 ///
 /// An attach ROW is asked through [fxCarrierOf], so the rows the panels
 /// draw without fx are exactly the rows the composite lays without their
@@ -723,13 +724,18 @@ Layer? fxCarrierOf(Layer layer, List<Layer> layers) =>
 ///
 /// 🚨★★★「fx」 IS EVERYTHING THE FX PANEL SHOWS. 유저 2026-08-29: 「fx펼쳐서
 /// 있는건 모두 fx취급하고싶어. **통일**이야. 즉 se행의 네임태그든 트랜스폼이든
-/// 추가fx든 싹다」 — so this asks all three in ONE place. Asking them at three
+/// 추가fx든 싹다」 — so this asks all four in ONE place. Asking them at four
 /// call sites is how they drift, and the notice would then be right about
 /// one of them and silent about the others.
 ///
-/// The three match exactly what [attachRowWearsBaseComposite] gates: the fx
-/// switch, the Transform group and the Effects groups. A row that wears its
-/// base's composite authors none of them.
+/// The four match exactly what [attachRowWearsBaseComposite] gates: the fx
+/// switch, the Transform group, the Effects groups and the reference fx. A
+/// row that wears its base's composite authors none of them.
+///
+/// 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 (유저 2026-11-11
+/// 「참조라고 법 다른거 두지않고 법 통일. 어태치줄의 참조fx는없앰.」): the
+/// reference fx is the fourth — a file that moved by it stands where it is
+/// laid once the row wears its base's. ↩️It was not lost, and not asked.
 ///
 /// ⚠️Untouched fx is not a loss — a default transform and an empty chain
 /// have nothing to warn about, and a dialog nobody needed is a dialog people
@@ -737,7 +743,8 @@ Layer? fxCarrierOf(Layer layer, List<Layer> layers) =>
 bool layerHasFxToLose(Layer layer) =>
     layer.effects.isNotEmpty ||
     layer.transformTrack.isNotEmpty ||
-    layer.seNameTag != null;
+    layer.seNameTag != null ||
+    !(layer.mediaReference?.standsWhereLaid ?? true);
 
 /// The direction the row's ATTACH ARROW points, or null when the row is
 /// not part of an attach group (R10 R3, the arrow's move into the sheet

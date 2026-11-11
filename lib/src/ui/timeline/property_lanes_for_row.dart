@@ -13,7 +13,7 @@ import '../../services/fx_plugins/fx_plugin_outcomes.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
-    show referenceGroupLaneId, referencePropertyLanes;
+    show referenceGroupHeader, referenceGroupLaneId, referencePropertyLanes;
 import 'scale_lane_form.dart';
 import 'se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagPropertyLanes;
@@ -88,26 +88,26 @@ List<PropertyLaneRow> propertyLanesForRow({
   /// I-68: a row that SHOWS a file has its reference fx — where the file
   /// stands, laid when its pixels are made, before any effect or transform
   /// reads them.
-  List<PropertyLaneRow> referenceLanes() {
-    final reference = layer.mediaReference;
-    if (reference == null || referenceRedrawFor(layer) == null) {
-      return const [];
-    }
-    return referencePropertyLanes(
-      reference,
-      expanded: expandedGroupKeys.contains(
-        laneGroupKey(layer.id, referenceGroupLaneId),
-      ),
-      poseAt: source == null
-          ? null
-          : (time) {
-              final at = _sourceAtTime(source, time);
-              return (at.layer.mediaReference ?? reference).poseAtTime(
-                at.time,
-              );
-            },
-    );
-  }
+  final reference = referenceRedrawFor(layer) == null
+      ? null
+      : layer.mediaReference;
+  final referenceExpanded = expandedGroupKeys.contains(
+    laneGroupKey(layer.id, referenceGroupLaneId),
+  );
+  List<PropertyLaneRow> referenceLanes() => reference == null
+      ? const []
+      : referencePropertyLanes(
+          reference,
+          expanded: referenceExpanded,
+          poseAt: source == null
+              ? null
+              : (time) {
+                  final at = _sourceAtTime(source, time);
+                  return (at.layer.mediaReference ?? reference).poseAtTime(
+                    at.time,
+                  );
+                },
+        );
 
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
   // — no lanes of their own; a row riding the conte authors its own fx and
@@ -118,12 +118,24 @@ List<PropertyLaneRow> propertyLanesForRow({
   // chain be added that nothing could bypass.
   //
   // 🗣️I-120-Q25 (유저 2026-11-07 「어태치된 참조 행도 「参照」 묶음 하나만
-  // 보인다」): where its file stands is the row's own, not its base's — a
-  // group with no switch to bypass (I-68-Q1) — so that group alone stands,
-  // and its header's RASTERIZE is the row's door. ↩️It stood nowhere: keys
-  // inside it had no place to be seen or set.
+  // 보인다」): that group alone stands, and its header's RASTERIZE is the
+  // row's door. ↩️It stood nowhere: keys inside it had no place to be seen
+  // or set.
+  //
+  // 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 (유저 2026-11-11
+  // 「기준만 따른다 — 어태치 줄의 참조 fx 이동은 없앤다」 · 「참조라고 법
+  // 다른거 두지않고 법 통일.」): where its file stands is its base's, as its
+  // transform is — the header alone, keyless, its RASTERIZE still the
+  // row's door. ↩️Q25 read it as the row's own, and the group's lanes keyed
+  // the row's file over its base's move.
   if (attachRowWearsBaseComposite(layer, rows)) {
-    return referenceLanes();
+    return [
+      if (reference != null)
+        referenceGroupHeader(
+          TransformTrack.empty(),
+          expanded: referenceExpanded,
+        ),
+    ];
   }
 
   /// AE group collapse: the Transform group header always shows; its member

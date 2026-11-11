@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_frame_grid_settings.dart';
+import '../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite;
 import '../models/brush_frame_key.dart';
 import '../models/cel_number_letters.dart' show celNumberText;
 import '../models/layer_effect.dart';

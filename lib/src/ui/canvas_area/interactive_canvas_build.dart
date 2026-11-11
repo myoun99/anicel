@@ -309,7 +309,12 @@ class _InteractiveCanvasBuild {
       effectBox: effectBox,
       referenceBox:
           effectBox == null &&
-          _referenceBoxShown(activeLayer, standing, tool),
+          _referenceBoxShown(
+            activeLayer,
+            standing,
+            tool,
+            rows: session.activeCutOrNull?.layers ?? const [],
+          ),
       isCameraLayerActive: isCameraLayerActive,
       pathLane: switch (standingLane) {
         final lane? => switch (transformPropertyOfLaneId(lane)) {
@@ -1143,14 +1148,21 @@ class _InteractiveCanvasBuild {
   ///
   /// ⛔Not the transform switch's: the reference fx has none, and stands
   /// with it off (I-68-Q1 「레이어의 fx버튼 꺼도 그 자리 유지」).
+  ///
+  /// ⛔Not on a row that wears its base's fx: where its file stands is its
+  /// base's, as its transform is (🗣️attach-rows-lose-the-base-move-when-it-
+  /// bakes-Q4, 유저 2026-11-11 「어태치줄의 참조fx는없앰」). ↩️Its box keyed
+  /// the row's file over its base's move (I-120-Q25).
   bool _referenceBoxShown(
     Layer? layer,
     TimelineRowAddress? standing,
-    CanvasTool tool,
-  ) {
+    CanvasTool tool, {
+    required List<Layer> rows,
+  }) {
     if (_isPlaybackActive ||
         layer == null ||
-        referenceRedrawFor(layer) == null) {
+        referenceRedrawFor(layer) == null ||
+        attachRowWearsBaseComposite(layer, rows)) {
       return false;
     }
     final lane = standing is LaneRowAddress && standing.layerId == layer.id

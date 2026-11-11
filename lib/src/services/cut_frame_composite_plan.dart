@@ -857,32 +857,31 @@ LayerPlacement? layerPlacementAt({
       frameIndex: frameIndex,
     ),
     canvasSize: cut.canvasSize,
-    within: _movedWithin(layer, carrier, frameIndex),
+    within: _movedWithin(carrier, frameIndex),
   );
 }
 
 /// Where [layer]'s REFERENCE FX stands its file's picture from — the row's
 /// own pose under every folder above it, short of the move the fx makes at
 /// [frameIndex] ([referenceMoveAt]): what the reference's box frames the
-/// fx's values in. An attach row's own fx stands its file over the move it
-/// wears of its base's ([_movedWithin]). Null = the canvas itself.
+/// fx's values in. Null = the canvas itself.
+///
+/// ↩️An attach row's own fx stood its file over the move it wore of its
+/// base's — until it had no fx of its own to stand it with
+/// (the -Q4 of [_movedWithin]).
 LayerPlacement? layerReferenceSpaceAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
-}) {
-  final carrier = _fxCarrierOf(cut, layer);
-  return placementUnderFolders(
-    folderPoses: _folderPosesAbove(cut, layer, frameIndex),
-    layerSample: layerOwnPlacementAt(
-      carrier: carrier,
-      space: cut.canvasSize,
-      frameIndex: frameIndex,
-    ),
-    canvasSize: cut.canvasSize,
-    within: _baseMoveWornAt(layer, carrier, frameIndex),
-  );
-}
+}) => placementUnderFolders(
+  folderPoses: _folderPosesAbove(cut, layer, frameIndex),
+  layerSample: layerOwnPlacementAt(
+    carrier: _fxCarrierOf(cut, layer),
+    space: cut.canvasSize,
+    frameIndex: frameIndex,
+  ),
+  canvasSize: cut.canvasSize,
+);
 
 /// The row whose transform places [layer] ([fxCarrierOf]) — the row itself
 /// where its base is gone.
@@ -897,32 +896,38 @@ LayerPlacement? layerMoveWithinAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
-}) => _movedWithin(layer, _fxCarrierOf(cut, layer), frameIndex);
+}) => _movedWithin(_fxCarrierOf(cut, layer), frameIndex);
 
-/// The move inside [layer]'s own space at [frameIndex], before its pose:
-/// where reference fx stand its pixels ([referenceMoveAt]). A row that
-/// wears its base's fx ([carrier], [fxCarrierOf]) wears its base's move as
-/// it wears the base's transform, and a file of its own moves by its own
-/// fx on top of it.
+/// The move inside a row's own space at [frameIndex], before its pose:
+/// where the reference fx of the row whose fx it wears ([carrier],
+/// [fxCarrierOf]) stands its pixels ([referenceMoveAt]) — a reference fx
+/// is worn as the transform is.
 ///
 /// 🗣️F-578 ⑨ (유저 2026-11-10): 「용지lo레이어에 작감이 다음에 수정넣으면
 /// 용지-작감 이런식으로 어태치레이어만들어서 작감용지 얹는다거나. 물론
 /// 참조fx같은거 생각해서 어태치에도 참조fx에서 옮긴거 적용되게」. ↩️An attach
 /// row moved by its own fx alone, so a sheet laid on a 용지 the fx had moved
 /// stood where the paper was laid.
-LayerPlacement? _movedWithin(Layer layer, Layer carrier, int frameIndex) {
-  final own = referenceMoveAt(layer, frameIndex);
-  final worn = _baseMoveWornAt(layer, carrier, frameIndex);
-  return worn == null || own == null ? worn ?? own : worn.compose(own);
-}
+///
+/// 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 (유저 2026-11-11
+/// 「기준만 따른다 — 어태치 줄의 참조 fx 이동은 없앤다」 · 「참조라고 법
+/// 다른거 두지않고 법 통일. 어태치줄의 참조fx는없앰.」): a row that wears
+/// its base's fx wears none of its own reference fx, as it wears none of
+/// its own transform — a row riding the conte wears its own of both (I-99).
+/// ↩️A file of the row's own moved by its own fx on top of its base's move.
+LayerPlacement? _movedWithin(Layer carrier, int frameIndex) =>
+    referenceMoveAt(carrier, frameIndex);
 
-/// The move [layer] wears of its base's reference fx ([_movedWithin]) —
-/// none for a row that wears its own fx.
-LayerPlacement? _baseMoveWornAt(
-  Layer layer,
-  Layer carrier,
-  int frameIndex,
-) => carrier.id == layer.id ? null : referenceMoveAt(carrier, frameIndex);
+/// [layer] as [cut] shows its file: a row that wears another's fx wears
+/// none of its own reference fx ([_movedWithin]), so its file stands where
+/// its pixels are laid ([MediaReference.standingWhereLaid]) — what a door
+/// that lays the file as it shows reads.
+Layer rowAsItWearsItsFile(Cut cut, Layer layer) {
+  final reference = layer.mediaReference;
+  return reference == null || _fxCarrierOf(cut, layer).id == layer.id
+      ? layer
+      : layer.copyWith(mediaReference: reference.standingWhereLaid);
+}
 
 /// The move [layer]'s REFERENCE FX makes at [frameIndex]: the file's
 /// picture from where its pixels are laid ([MediaReference.laid]) to where
@@ -1317,7 +1322,7 @@ CutFrameCompositeRow? _resolveLayerNode(
       frameIndex: frameIndex,
     ),
     canvasSize: cut.canvasSize,
-    within: _movedWithin(layer, fxCarrier, frameIndex),
+    within: _movedWithin(fxCarrier, frameIndex),
   );
   // The blend is the ROW's own (attach rows keep theirs — their pixels
   // are independent even when timing rides the base); a member that sets

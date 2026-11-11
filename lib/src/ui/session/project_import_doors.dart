@@ -36,7 +36,8 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import '../../services/commands/rasterize_layer_reference_command.dart';
 import '../../services/commands/swap_layer_reference_command.dart';
-import '../../services/cut_frame_composite_plan.dart' show referenceMoveAt;
+import '../../services/cut_frame_composite_plan.dart'
+    show referenceMoveAt, rowAsItWearsItsFile;
 import '../../services/guide_geometry.dart' show GuideTransform;
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, picturePlacement;
@@ -1264,7 +1265,7 @@ class ProjectImportDoors {
     Cut cut,
     Layer layer,
   ) async {
-    final move = referenceMoveAt(layer, 0);
+    final move = referenceMoveAt(rowAsItWearsItsFile(cut, layer), 0);
     final moved = <BrushFrameKey, BitmapSurface>{};
     if (move == null) {
       return moved;
@@ -1738,18 +1739,19 @@ class ProjectImportDoors {
 
   /// What [use] shows at each position of its [block] — the picture of its
   /// file there, the movie frame the sound's clock of [info] reads or a
-  /// still cel's own, standing where its reference fx stands it at that
-  /// position where its cels take the picture as it shows it ([asShown]),
-  /// else where its file is laid, the move its own transform's now — and
-  /// the cels that makes: one wherever the picture or the move changes
-  /// (「중복 접기」, the fold the placement window's bake uses).
+  /// still cel's own, standing where the reference fx it wears stands it
+  /// ([rowAsItWearsItsFile]) at that position where its cels take the
+  /// picture as it shows it ([asShown]), else where its file is laid, the
+  /// move its own transform's now — and the cels that makes: one wherever
+  /// the picture or the move changes (「중복 접기」, the fold the placement
+  /// window's bake uses).
   _PlannedBlock _plannedBlock(
     ReferenceUse use,
     TimelineDrawingBlock block, {
     required QaVideoInfo? info,
     required bool asShown,
   }) {
-    final reference = use.layer.mediaReference!;
+    final reference = rowAsItWearsItsFile(use.cut, use.layer).mediaReference!;
     final clock = info == null ? null : _movieClock(info);
     final still = use.layer.frameById(block.frameId)?.filePicture;
     final shown = [

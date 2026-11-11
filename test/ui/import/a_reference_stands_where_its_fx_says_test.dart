@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_mount.dart';
+import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -65,7 +66,7 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart' show ExportFrameTask;
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
-    show laneGroupKey;
+    show PropertyLaneRow, laneGroupKey;
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
 
@@ -458,6 +459,22 @@ void main() {
       );
     }
 
+    /// [row] riding a row the cut no longer holds, on a timing of its own:
+    /// an attach row whose base is gone, which stands where its own
+    /// transform and its own reference fx put it while its lanes are its
+    /// base's — a move no key of its own can carry, so its cels take it.
+    /// ↩️It rode the cut's drawing, until a row riding a base it has wore
+    /// none of its own reference fx (🗣️attach-rows-lose-the-base-move-when-
+    /// it-bakes-Q4).
+    void rideAGoneRow(EditorSessionManager s, Layer row) =>
+        s.cutCommandCoordinator.repository.updateLayer(
+          layerId: row.id,
+          update: (layer) => layer.copyWith(
+            attachedToLayerId: const LayerId('gone'),
+            attachedMode: AttachedMode.free,
+          ),
+        );
+
     testWidgets('a key the fx named keeps its name on the row — the row\'s '
         'own key of that name is one the move replaces', (tester) async {
       final (s, row) = await placed(tester);
@@ -597,52 +614,66 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('② an attach row stands where its base puts it: its cel '
-        'takes the picture where it shows, half its size', (tester) async {
+    testWidgets('② an attach row wears none of its own reference fx: it '
+        'stands where its file is laid, and lets go of it so — its cel as '
+        'it was (🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 「어태치줄의 '
+        '참조fx는없앰」 · ↩️its cel took the picture where its fx stood it)', (
+      tester,
+    ) async {
       final (s, row) = await placed(tester);
       attachToTheDrawing(s, row);
       posed(s, row, fx: halved);
-      expect(wayOf(s, row), bakes);
-
-      await tester.runAsync(
-        () => s.importDoors.bakeReferenceAsSeen(
-          cutId: s.requireActiveCut.id,
-          layerId: row.id,
-        ),
+      expect(isAttachedLayer(rowOf(s, row)), isTrue, reason: '⛔premise');
+      expect(
+        shown(s, rowOf(s, row)),
+        const ui.Rect.fromLTRB(1120, 797, 1220, 857),
+        reason: 'where the file is laid, whole',
       );
+      final way = wayOf(s, row);
+      expect([way.bakes, way.framed], [false, false]);
+
+      s.editingCanvas.rasterizeLayerReferences([row.id]);
 
       final baked = rowOf(s, row);
       expect(baked.mediaReference, isNull);
       expect(isAttachedLayer(baked), isTrue);
-      expect(
-        inkOf(celOf(s, baked, 0)),
-        const ui.Rect.fromLTRB(1145, 812, 1195, 842),
-      );
+      expect(shown(s, baked), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('🎯an attach row twirls down its reference fx — that group '
-        'alone, its transform and fx its base\'s (🗣️I-120-Q25 「어태치된 참조 '
-        '행도 「参照」 묶음 하나만 보인다」)', (tester) async {
+    testWidgets('🎯an attach row twirls down its reference fx\'s header '
+        'alone, keyless — its transform, its fx and where its file stands '
+        'its base\'s (🗣️I-120-Q25 「어태치된 참조 행도 「参照」 묶음 하나만 '
+        '보인다」 · 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 '
+        '「어태치줄의 참조fx는없앰」)', (tester) async {
       final (s, row) = await placed(tester);
       attachToTheDrawing(s, row);
       posed(s, row, fx: turnedOnce);
       final attached = rowOf(s, row);
       expect(isAttachedLayer(attached), isTrue, reason: '⛔premise');
+      expect(
+        attached.mediaReference!.fx.isNotEmpty,
+        isTrue,
+        reason: '⛔CONTROL: the row holds keys of its own',
+      );
 
-      List<String> lanesOf({required bool open}) => [
-        for (final lane in timelineLanesForLayer(
+      List<PropertyLaneRow> lanesOf({required bool open}) => [
+        ...timelineLanesForLayer(
           layer: attached,
           session: s,
           expandedGroupKeys: {
             if (open) laneGroupKey(attached.id, referenceGroupLaneId),
           },
-        ))
-          lane.laneId,
+        ),
       ];
-      expect(lanesOf(open: false), [referenceGroupLaneId]);
-      expect(lanesOf(open: true), referenceLaneSelectionOrder);
+      for (final open in [false, true]) {
+        final lanes = lanesOf(open: open);
+        expect([for (final lane in lanes) lane.laneId], [
+          referenceGroupLaneId,
+        ], reason: open ? 'open' : 'shut');
+        expect(lanes.single.keyMarks, isEmpty);
+      }
       await stopTheWarmer(tester, s);
     });
 
@@ -947,7 +978,7 @@ void main() {
         const ui.Offset(-30, -23),
         reason: 'the premise: laid 1:1, its overflow on the pasteboard',
       );
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
 
       await tester.runAsync(
@@ -981,7 +1012,7 @@ void main() {
       tester,
     ) async {
       final (s, row) = await placed(tester, width: 7200, height: 60);
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
 
       await tester.runAsync(
@@ -1012,7 +1043,7 @@ void main() {
       debugPictureSideLimit = 64;
       addTearDown(() => debugPictureSideLimit = side);
       final (s, row) = await placed(tester, width: 7200, height: 60);
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
       debugComposesFromBytes = 0;
 
@@ -1045,7 +1076,7 @@ void main() {
       tester,
     ) async {
       final (s, row) = await placed(tester, width: 8, height: 8);
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(
         s,
         row,
@@ -1132,7 +1163,7 @@ void main() {
               }
             },
           );
-          attachToTheDrawing(s, row);
+          rideAGoneRow(s, row);
           posed(s, row, fx: fx);
           final before = (await tester.runAsync(() => frameReds(s)))!;
 
@@ -1224,7 +1255,7 @@ void main() {
           },
         ),
       );
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
 
       await tester.runAsync(

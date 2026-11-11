@@ -42,7 +42,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
-    show exposedCelIdAt;
+    show exposedCelIdAt, referenceMoveAt;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/fx_bake_plan.dart'
     show BakedFrames, FxBakePlan;
@@ -948,6 +948,80 @@ void main() {
 
       expect(a(s).transformTrack.isEmpty, isTrue);
       expect(await seenNow(), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    /// `r` as a reference row: its cel holds its file laid where the
+    /// canvas's middle is, its reference fx keyed to stand it 4 further
+    /// right — which a rider wears none of (-Q4).
+    Layer fileRider() => riderOf('a').copyWith(
+      mediaReference: MediaReference(
+        assetPath: 'sheet.png',
+        laid: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+        pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+        pictureSize: canvasSize,
+        fx: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 36, y: 24),
+          ),
+        ),
+      ),
+    );
+
+    /// `a` moved 16 to the right by its transform, its fx off.
+    EditorSessionManager underTheMove(Layer rider) => ridden(
+      rider,
+      effects: [brightness(keyed: false, enabled: false)],
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 48, y: 24),
+        ),
+      ),
+    );
+
+    /// Where `r`'s ink shows its edges on frames 0..2, a pixel inside and
+    /// a pixel outside each: x 16 + [move].
+    Future<List<List<int>>> edgesOfR(
+      WidgetTester tester,
+      EditorSessionManager s,
+      int move,
+    ) async => [
+      for (var frame = 0; frame < 3; frame += 1) ...[
+        await shownAt(tester, s, frame, 17 + move, 20),
+        await shownAt(tester, s, frame, 15 + move, 20),
+      ],
+    ];
+
+    testWidgets('🎯a rider showing a file of its own is baked with the row — '
+        'the file in its pictures where the row\'s move stood it, its own '
+        'reference fx moving it nowhere — and lets go of its reference; one '
+        'undo gives both back (🗣️attach-rows-lose-the-base-move-when-it-'
+        'bakes-Q3 「같이 래스터화해 굽는다 — 참조 굽기 · Fx 굽기 둘 다」 · Q4 '
+        '「어태치줄의 참조fx는없앰」 · ↩️Q23 lit the press off over it)', (
+      tester,
+    ) async {
+      final s = underTheMove(fileRider());
+      final before = s.requireActiveCut.layers;
+      final seen = await edgesOfR(tester, s, 0);
+      expect(seen.first, blue, reason: '⛔전제: it rides a 16 to the right');
+      expect(seen[1], isNot(blue));
+      expect(
+        referenceMoveAt(rOf(s), 0),
+        isNotNull,
+        reason: '⛔CONTROL: its own fx would move it',
+      );
+      expect(s.layerMerging.bakesFx(const LayerId('a'), null), isTrue);
+
+      await rasterize(tester, s, null);
+
+      final rider = rOf(s);
+      expect(rider.mediaReference, isNull);
+      expect(rider.attachedMode, AttachedMode.synced);
+      expect(await edgesOfR(tester, s, 0), seen);
+      s.undo();
+      expect(s.requireActiveCut.layers, before);
       s.playbackRig.prerenderScheduler.cancel();
     });
 
@@ -2971,21 +3045,6 @@ void main() {
       final s = sessionOf([rowA(), withBright(riderOf('a'))]);
       addTearDown(s.dispose);
       expect([bakes(s, 'a'), bakes(s, 'r')], [true, false]);
-    });
-
-    test('a reference row riding the row (⑤)', () {
-      final s = sessionOf([
-        rowA(),
-        riderOf('a').copyWith(
-          mediaReference: MediaReference(
-            assetPath: 'ref.png',
-            pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
-            pictureSize: const CanvasSize(width: 16, height: 16),
-          ),
-        ),
-      ]);
-      addTearDown(s.dispose);
-      expect(bakes(s, 'a'), isFalse);
     });
 
     test('a reference row (⑤)', () {
