@@ -927,17 +927,6 @@ cmd_native() {
     grep -aE 'Failed|\*\*\*' "$log" | head -15 >&2
     die "the C tests are red — this is refusal 5; the whole log: $log"
   }
-  # The fx SDK example's native build, which the fx pin opens where this
-  # puts it (an_fx_plugin_answers_through_the_engine_test.dart, `_sdkExample`)
-  # — the spec crate alone, seconds, as CI's rust-engine action builds it.
-  # ⛔Its red is no refusal of its own, as cmd_crate's WebAssembly build is
-  # none: the pin refuses, saying how it is built. ↩️The C engine's build
-  # made a C one beside the engine until 2026-11-08
-  # (connection-round-checklist H).
-  (cd "$p/packages/gpu_engine/rust" \
-    && bash "$ROOT/tool/cargo_turn.sh" build --locked --offline --release \
-      -p fx_sdk_example --target-dir "$p/build/fx_native") >>"$log" 2>&1 \
-    || echo "lane: native — the fx SDK example's build is red; the fx pin says so" >&2
   (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
     || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
   # By the run plan, as every list run goes: the collector pins alone and
