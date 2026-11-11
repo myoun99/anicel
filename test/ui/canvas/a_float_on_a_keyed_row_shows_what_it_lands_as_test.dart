@@ -256,7 +256,21 @@ void main() {
   /// ⛔Of a frame that is on its screen: one the engine has not come to yet
   /// paints nothing at all, its paper neither, and two shots of nothing
   /// are the same bytes.
+  ///
+  /// 🗣️I-132-Q34 a: a frame whose chain runs a plugin shows the picture
+  /// last made of it until the next is there — waited for, until nothing
+  /// more of it is on its way (`FramePictureView.nothingOnItsWay`).
   Future<Uint8List> composite(WidgetTester tester) async {
+    bool caughtUp() =>
+        (tester.state(theFramesPicture(within: mainCanvasPanel())) as dynamic)
+                .nothingOnItsWay
+            as bool;
+    expect(
+      await settleAsync(tester, caughtUp),
+      isTrue,
+      reason: 'LIVENESS: what the frame waits for comes',
+    );
+    await pumpFrames(tester, 2);
     final shot = await shotOfBox(
       tester,
       tester.renderObject<RenderBox>(
@@ -826,20 +840,24 @@ void main() {
     });
   }
 
-  // ── 🗣️I-132-Q32 b: rows whose chain runs a plugin, dragged and warped. ──
+  // ── Rows whose chain runs a plugin, dragged and warped: the engine runs
+  // it over what floats as over the cel. ↩️What floated was the landing
+  // made on the whole cel (🗣️I-132-Q32 b), while a plugin at the chain's
+  // head ran on the CPU over the cel alone — until it was a step of the
+  // chain (float-warp-resamples-in-the-c-engine (2), 2026-11-11). ──
 
   for (final rows in _Rows.values) {
     for (final warped in [false, true]) {
       final how = warped ? 'warped' : 'dragged';
       testWidgets('${rows.name}: a sheet $how by the box on rows whose chain '
-          'runs a PLUGIN shows what it lands as — the whole cel the plugin '
-          'makes', (tester) async {
+          'runs a PLUGIN shows what it lands as — the plugin over the cel and '
+          'what floats on it', (tester) async {
         final c = await open(
           tester,
           projectOf(rows, keyed: false, plugin: true),
           // Past the stamp a float lands as — the box it was carried in,
-          // 60 round the sheets, scaled up too — so that only a landing
-          // made on the whole cel shows where the sheet goes.
+          // 60 round the sheets, scaled up too — so that what the plugin
+          // makes of the float shows where nothing of the float lies.
           fxPlugins: await installedShiftingFxPlugin(tester, by: 100),
         );
         expect(
@@ -862,6 +880,89 @@ void main() {
       });
     }
   }
+
+  /// The app on row A wearing the stand-in plugin, A's sheet laid: the
+  /// region it is carried in, and the frame as it stands before any box.
+  Future<({Rect region, Uint8List drawn})> aPluginRowToCarry(
+    WidgetTester tester,
+  ) async {
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, plugin: true),
+      fxPlugins: await installedShiftingFxPlugin(tester, by: 100),
+    );
+    final region = await sheets(tester, c, _Rows.live);
+    return (region: region, drawn: await composite(tester));
+  }
+
+  testWidgets('live: a sheet dragged by the box on a row whose chain runs a '
+      'PLUGIN and put back by a cancel shows the frame as it stood — what '
+      'went through the plugin was the view\'s own, not the frame\'s', (
+    tester,
+  ) async {
+    final (:region, :drawn) = await aPluginRowToCarry(tester);
+    // Read with the text tool in hand, as [carry] reads them.
+    final hold = holdIn(tester, region);
+    final step = handFor(tester, 40, 30);
+    final commands = await select(tester, _Rows.live, region);
+    final hand = await tester.startGesture(
+      hold,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await hand.moveTo(hold + step);
+    await tester.pump();
+    await hand.up();
+    await settle(tester);
+    expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
+    expect(
+      _apart(drawn, await composite(tester)),
+      greaterThan(0),
+      reason: '⛔CONTROL: what is carried shows',
+    );
+    final picture = theFramesPicture(within: mainCanvasPanel());
+    final view = tester.widget<FramePictureView>(picture);
+    final frame = view.run.pictures.keyOfStack(view.nodes, view.picture);
+    expect(
+      view.run.pictures.store.peek(
+        keptByTheCanvas(tester, frame, view: picture),
+      ),
+      isNotNull,
+      reason:
+          'what went through the plugin with the float is kept under the '
+          'canvas\'s own key — a picture under the frame\'s is the frame, '
+          'for every screen that asks for it',
+    );
+
+    commands.cancelTransform();
+    await settle(tester);
+
+    expect(_apart(drawn, await composite(tester)), 0);
+  });
+
+  testWidgets('live: a sheet dragged by the box on a row whose chain runs a '
+      'PLUGIN shows what it lands as once the row\'s opacity changes with '
+      'the box open — the picture the frame is given goes through too', (
+    tester,
+  ) async {
+    final (:region, :drawn) = await aPluginRowToCarry(tester);
+
+    expectLandsAsCarried(
+      await carry(
+        tester,
+        _Rows.live,
+        region: region,
+        whileOpen: () async {
+          sessionOf(tester).opacityVerbs.setLayerOpacity(
+            layerId: textToolLayerId,
+            opacity: 0.5,
+          );
+          await settle(tester);
+        },
+      ),
+      drawn,
+    );
+  });
 
   for (final rows in [_Rows.live, _Rows.range]) {
     for (final warped in [false, true]) {

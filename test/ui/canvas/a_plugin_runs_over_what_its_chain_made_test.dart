@@ -103,6 +103,23 @@ void main() {
     );
   });
 
+  // ↩️The head of a cel's chain bounded it so alone, by what the cel could
+  // store, while it ran on the CPU (float-warp-resamples-in-the-c-engine
+  // (2), 2026-11-11): one plugin, one bound.
+  test('reaches no farther than the paper is long, whatever it names', () {
+    final plan = resolveCompositeEffectPlan([
+      plugin(ShiftingFxPlugin(by: 1000)),
+    ], paper: paper);
+    expect(plan.outsetPixels, width);
+    // ⛔liveness: a reach inside the bound is the plugin's own.
+    expect(
+      resolveCompositeEffectPlan([
+        plugin(ShiftingFxPlugin(by: width - 1)),
+      ], paper: paper).outsetPixels,
+      width - 1,
+    );
+  });
+
   test('a route that waits records again once the plugin has run, and the '
       'step draws what it made', () async {
     final runner = ShiftingFxPlugin(by: 2);
@@ -217,6 +234,45 @@ void main() {
       expect(reads, 1, reason: 'the row is read back from the engine');
     });
   }
+
+  test('a row it names with no cel there is handed clear, at its place; one '
+      'not in its cut is none', () async {
+    final reading = FxPluginDescription.fromJson({
+      ...shiftingFxPluginDescription.toJson(),
+      'params': [
+        {'id': 'map', 'kind': 'layer', 'label': 'Map'},
+      ],
+    })!;
+    const map = LayerId('map');
+    Future<ShiftingFxPlugin> ranWith(Map<LayerId, BitmapSurface?> rows) async {
+      final runner = ShiftingFxPlugin(by: 0);
+      final picture = source();
+      final made = await FxPluginStages.recordedThrough(
+        () => recorded(picture, [
+          ResolvedLayerEffect(
+            kind: EffectKind.plugin,
+            plugin: reading,
+            values: const [0],
+            layers: const {'map': map},
+            run: fxPluginRunOf(runner, rows: rows),
+          ),
+        ]),
+        discard: (made) => made.dispose(),
+      );
+      made.dispose();
+      picture.dispose();
+      expect(runner.renders, 1, reason: '⛔fixture: the step ran');
+      return runner;
+    }
+
+    final noCel = await ranWith({map: null});
+    expect(noCel.lastValues[0], 0, reason: 'its place among the rows');
+    expect(noCel.lastLayers.single.pixels, Uint8List(width * height * 4));
+
+    final notInCut = await ranWith(const {});
+    expect(notInCut.lastValues[0], -1);
+    expect(notInCut.lastLayers, isEmpty);
+  });
 
   for (final (what, rows, metAs)
       in [

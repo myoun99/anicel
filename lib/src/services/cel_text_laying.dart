@@ -19,9 +19,17 @@
 /// text」 and 「those pixels drawn」 are the same bytes, and turning a text
 /// into drawing is keeping this result.
 ///
-/// ⛔NEVER STORED. Like the colour keys beside it (`cel_source_effect_pass`)
-/// this is a view made when a cel is shown; the truth is the surface with
-/// its texts. Both run at one seam — `celSurfaceAsShown`.
+/// ⛔NEVER STORED. Like a row's colour keys this is a view made when a cel
+/// is shown; the truth is the surface with its texts.
+///
+/// 🚨★★★EVERY ROUTE THAT DRAWS A CEL LAYS ITS TEXTS HERE
+/// ([celSurfaceWithTextsLaid]) — the shared plan (`CutFrameCompositeLayer`:
+/// playback, export, the camera), the editing stack's row images, the row
+/// being drawn on and the conte's live picture — and the row's chain runs
+/// over what it lays, keys and plugins alike. ↩️The keys and a plugin at a
+/// chain's head ran with it at one seam, `celSurfaceAsShown`, guarded so no
+/// route took them without the texts, until the engine ran the chain
+/// (float-warp-resamples-in-the-c-engine (1)(2), 2026-11-11).
 library;
 
 import 'dart:typed_data';

@@ -15,7 +15,7 @@ import '../../models/layer_effect.dart';
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/plan_plugins.dart';
 import '../../services/brush_stroke_blend.dart' show engineSurfaceRegionPixels;
-import '../../services/cel_plugin_pass.dart'
+import '../../services/fx_plugin_values.dart'
     show fxPluginRowsOf, fxPluginValuesOf;
 import '../../services/cel_text_laying.dart';
 
@@ -108,14 +108,18 @@ final class FxPluginStages implements PluginSteps {
   /// ([FrameKernelsToCome]) is made again, from its first round, once they
   /// are: a route that can wait waits for those as it does for a plugin —
   /// and tells [waitsForKernels] while it does, where one listens.
+  ///
+  /// [told] hears, once it is recorded, what each of its steps told
+  /// ([_told]) — for what keeps the picture to tell again.
   static Future<T> recordedThrough<T>(
     T Function() record, {
     required void Function(T made) discard,
     void Function(bool waits)? waitsForKernels,
+    void Function(Map<FxPluginTold, bool> told)? told,
   }) async {
     while (true) {
       try {
-        return await _recordedOnce(record, discard);
+        return await _recordedOnce(record, discard, told);
       } on FrameKernelsToCome catch (wait) {
         waitsForKernels?.call(true);
         try {
@@ -130,6 +134,7 @@ final class FxPluginStages implements PluginSteps {
   static Future<T> _recordedOnce<T>(
     T Function() record,
     void Function(T made) discard,
+    void Function(Map<FxPluginTold, bool> told)? told,
   ) async {
     final stages = FxPluginStages._();
     try {
@@ -140,6 +145,7 @@ final class FxPluginStages implements PluginSteps {
         discard(made);
         made = stages._recording(record);
       }
+      told?.call(stages._told);
       return made;
     } finally {
       stages._dispose();
@@ -147,6 +153,14 @@ final class FxPluginStages implements PluginSteps {
   }
 
   static const int _rounds = 16;
+
+  /// What each step the last round met told — its plugin failed or drew,
+  /// run or kept ([_Stage.takeKept]): what a picture recorded here tells
+  /// again wherever it is shown (`EngineFramePicture.hold`).
+  Map<FxPluginTold, bool> get _told => {
+    for (final stage in _stages.take(_met))
+      if (stage.ran) ?stage.effect.run?.told: stage.output == null,
+  };
 
   /// [record], each plugin's step met in it drawing what its plugin made
   /// where these stages hold it ([ranOver]).

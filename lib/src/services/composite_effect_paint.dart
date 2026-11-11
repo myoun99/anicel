@@ -11,9 +11,9 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import 'camera_lens_blur_passes.dart';
-import 'cel_plugin_pass.dart' show fxPluginRowsOf, fxPluginValuesOf;
 import 'cel_source_effect_pass.dart';
 import 'directional_blur_passes.dart';
+import 'fx_plugin_values.dart' show fxPluginRowsOf, fxPluginValuesOf;
 import 'shaded_passes.dart';
 
 /// How much a blur RADIUS parameter spreads, as a Gaussian sigma. A radius
@@ -357,8 +357,8 @@ _PaintPart _paintPartOf(
     // the same way there is none for a blur; the eyedropper applies the
     // keys itself (`CelColorKey.alphaFor`).
     EffectKind.colorKey => const _SplitPart(
-      'Source-pixel effects must be split off before a paint is '
-      'resolved — see splitSourceEffects.',
+      'Colour keys are a plan\'s leads, taken before a paint is '
+      'resolved — see resolveCompositeEffectPlan.',
     ),
     // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
     // its own: the row's tree splits the chain where it stands
@@ -369,9 +369,9 @@ _PaintPart _paintPartOf(
       'A cel number splits the chain before a paint is resolved — see '
       'celNumberedRow.',
     ),
-    // 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — a plugin
-    // past a cel's own pixels (`splitSourceEffects` runs one at the head)
-    // runs over the picture the chain made before it, read back.
+    // 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — a plugin,
+    // at the head of a cel's chain or past anything, runs over the picture
+    // the chain made before it, read back.
     EffectKind.plugin => _pluginPart(effect, space, paper),
   };
 }
@@ -411,7 +411,22 @@ _PaintPart _pluginPart(
     run.told?.call(failed: true);
     return const _NoPart();
   }
-  return _PluginPart(reach: math.max(0, reach).toDouble());
+  // No farther than the paper is long: a plugin that names a wild reach is
+  // not handed a picture past what the device can hold — the device's guard
+  // of the first cut (`_bounded`, 2c09ca4c5, 2026-10-30, 🗣️I-132-Q32 「b 로
+  // 첫 판」). ↩️That guard bounded the head of a cel's chain alone, by what
+  // the cel could store (its storable rect's long side, the pasteboard
+  // with it), while that plugin ran on the CPU over the cel. A step of a
+  // chain is planned where its space's paper is known and no cel is — a
+  // folder's, an adjustment's and the V row's chains have none — so the
+  // bound every chain has is the paper's long side, and one plugin has one
+  // bound wherever it stands (관제 2026-11-11, ⓓ; 절대명령 1): only a reach
+  // past the paper's long side reads less than it did
+  // (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+  final across = paper == null
+      ? double.infinity
+      : math.max(paper.width, paper.height);
+  return _PluginPart(reach: math.min(math.max(0, reach).toDouble(), across));
 }
 
 /// A Gaussian: a filter the composite draw carries, or a step where it

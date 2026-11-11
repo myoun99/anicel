@@ -6,6 +6,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/fx_plugin_run.dart' show FxPluginTold;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
 import '../canvas/fx_plugin_stages.dart';
@@ -51,9 +52,22 @@ class EngineFramePicture extends ChangeNotifier {
     devicePixelRatio: devicePixelRatio,
   );
 
+  /// 🚨WHAT ITS PLUG-INS' STEPS TOLD as it was made and as each was composed
+  /// in since — told again each time it is held to be shown ([hold]): a
+  /// picture handed back with no run tells how its steps went, as a step
+  /// kept past its recording does (`_Stage.takeKept`), card
+  /// a-cached-failed-picture-loses-its-mark's law (`FxPluginOutcomes`).
+  /// ↩️Only its making told until 2026-11-12: a frame given back by an
+  /// undo — a cel joined onto another and split again, an earlier
+  /// effect's value — showed what was told of the picture it had been
+  /// (float-warp-resamples-in-the-c-engine (2) C, 관제 「계열 전부를 한
+  /// 법으로」).
+  Map<FxPluginTold, bool> _told = const {};
+
   /// A hold on the picture by one that shows it; balanced by [release].
   EngineFramePicture hold() {
     _holds += 1;
+    _told.forEach((told, failed) => told(failed: failed));
     return this;
   }
 
@@ -317,7 +331,7 @@ class EngineFramePictureStore<K extends Object> {
       picture._composed(frame, changed: rect, holds: holds);
       return picture;
     }
-    final copy = _aPicture();
+    final copy = _aPicture().._told = picture._told;
     try {
       copy._composedOver(picture, frame, fresh: rect, holds: holds);
     } on Object {
@@ -360,6 +374,7 @@ class EngineFramePictureStore<K extends Object> {
     }
     // Its plug-ins' steps run first: nothing goes in until they have
     // (🗣️I-132-Q34 a).
+    var told = const <FxPluginTold, bool>{};
     final made = await FxPluginStages.recordedThrough<EngineFramePicture?>(
       () => stands() && identical(_entries[from], entry)
           ? _stepped(entry.picture, from, to, frame, rect, holds)
@@ -369,10 +384,12 @@ class EngineFramePictureStore<K extends Object> {
           made?._letGo();
         }
       },
+      told: (heard) => told = heard,
     );
     if (made == null) {
       return false;
     }
+    made._told = {...made._told, ...told};
     _stepTaken(entry, made, from: from, to: to);
     return true;
   }
@@ -567,6 +584,7 @@ class EngineFramePictureStore<K extends Object> {
       await FxPluginStages.recordedThrough<void>(
         () => _composedAs(lay, picture),
         discard: (_) {},
+        told: (told) => picture._told = told,
         waitsForKernels: (waits) {
           its.waitsForKernels = waits;
           _waits.changed();

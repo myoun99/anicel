@@ -17,9 +17,11 @@ import 'fx_plugin_outcomes.dart';
 ///
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — every plugin of
 /// the chain, not the head's alone, and every chain: a row's, a folder's,
-/// an adjustment's and the V row's. The head's of a cel runs over the
-/// cel's own pixels (`splitSourceEffects`), every other over what its
-/// chain made before it (`PluginEffect`).
+/// an adjustment's and the V row's. Each runs over what its chain made
+/// before it (`PluginEffect`) — the head's of a cel over the cel, its keys
+/// run. ↩️The head's of a cel ran over the cel's own pixels on the CPU
+/// until it was a step of the chain
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 ///
 /// A plugin is told the frame its sample is of ([ResolvedLayerEffect.frame])
 /// — the V row's chain is sampled on the track's axis — and reads the rows

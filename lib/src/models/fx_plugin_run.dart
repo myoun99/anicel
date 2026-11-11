@@ -66,6 +66,9 @@ abstract interface class FxPluginRunner {
 /// shows a cel hands the seam its chain and nothing else — the stack, the
 /// live stroke, a float, playback, export — so the plugin's run rides the
 /// chain to all of them, and none is told a frame rate or a store.
+/// Who hears how a plugin's run went — failed or drew ([FxPluginRun.told]).
+typedef FxPluginTold = void Function({required bool failed});
+
 final class FxPluginRun {
   FxPluginRun({
     required this.runner,
@@ -83,7 +86,16 @@ final class FxPluginRun {
   /// Where every route that runs this tells how it went — failed or drew —
   /// each time it shows the picture, kept or made: the device's record
   /// its fx row's header reads (`FxPluginOutcomes`). Null tells nobody.
-  final void Function({required bool failed})? told;
+  ///
+  /// 🚨A picture nobody is shown tells nothing — card
+  /// a-cached-failed-picture-loses-its-mark (2026-11-08): the redo's cel,
+  /// made ahead after an undo, had told last that it drew. ↩️The history's
+  /// read-ahead (`ShownCels.warm`) and the cel as it stood beside a live
+  /// stroke ran a cel's head plugin telling nobody (`effectsTellingNobody`)
+  /// while that plugin ran on the cel; they run none since it is a step of
+  /// the chain the engine runs over what is shown
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+  final FxPluginTold? told;
 
   /// ⛔A row's picture is the SAME OBJECT, not an equal one: a picture is
   /// immutable, so an edited row is another object — and a deep compare of

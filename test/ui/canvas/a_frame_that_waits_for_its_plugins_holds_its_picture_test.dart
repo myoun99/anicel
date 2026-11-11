@@ -161,8 +161,11 @@ void main() {
       plugin: shiftingFxPluginDescription,
       values: const [],
     );
-    test('where a folder\'s or an adjustment\'s chain, or a row\'s past its '
-        'head, runs one — not where nothing runs it, nor at a cel\'s head', () {
+    // ↩️Not at a cel's head, while a plugin there ran on the CPU over the
+    // cel's own pixels as the cel was read — until it was a step of the
+    // chain (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+    test('where a folder\'s or an adjustment\'s chain, or a row\'s anywhere '
+        'in it, runs one — not where nothing runs it', () {
       expect(waitsForItsPlugins(inAFolder([runs])), isTrue);
       expect(
         waitsForItsPlugins([
@@ -176,12 +179,13 @@ void main() {
       );
       final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3]);
       for (final row in <CanvasStackRow>[
-        CanvasActiveLayerRow(opacity: 1, frameKey: key, effects: [blur, runs]),
-        CanvasLayerImageRequest(
-          frameKey: key,
-          opacity: 1,
-          effects: [blur, runs],
-        ),
+        for (final effects in [
+          [blur, runs],
+          [runs],
+        ]) ...[
+          CanvasActiveLayerRow(opacity: 1, frameKey: key, effects: effects),
+          CanvasLayerImageRequest(frameKey: key, opacity: 1, effects: effects),
+        ],
       ]) {
         expect(
           waitsForItsPlugins([CompositeLeaf(row)]),
@@ -195,12 +199,14 @@ void main() {
       expect(
         waitsForItsPlugins([
           CompositeLeaf(
-            CanvasLayerImageRequest(frameKey: key, opacity: 1, effects: [runs]),
+            CanvasLayerImageRequest(
+              frameKey: key,
+              opacity: 1,
+              effects: [runsNot],
+            ),
           ),
         ]),
         isFalse,
-        reason: 'at a cel\'s head it runs over the cel\'s own pixels, as the '
-            'cel is read',
       );
     });
   });
@@ -585,9 +591,13 @@ void main() {
     }
   }
 
-  for (final (where, count) in [
-    ('a plugin past a blur', 1),
-    ('a plugin over what another made, past a blur,', 2),
+  // ↩️A plugin at the head of a cel's chain was the CPU's, run where the
+  // cel was shown and kept nowhere, until it was a step of the chain
+  // (float-warp-resamples-in-the-c-engine (2) C, 2026-11-11).
+  for (final (where, count, blurred) in [
+    ('a plugin at the head of its chain', 1, false),
+    ('a plugin past a blur', 1, true),
+    ('a plugin over what another made, past a blur,', 2, true),
   ]) {
     testWidgets('$where on a row the pen is not on runs once, however many '
         'steps the pen makes elsewhere', (tester) async {
@@ -596,7 +606,7 @@ void main() {
       ];
       List<int> runs() => [for (final runner in runners) runner.renders];
       final (:store, :overlay, handAnew: _) = await standingBeside(tester, [
-        aBlur,
+        if (blurred) aBlur,
         for (final runner in runners) aPlugin(runner),
       ]);
       expect(runs(), everyElement(1), reason: '⛔premise: run for the picture');

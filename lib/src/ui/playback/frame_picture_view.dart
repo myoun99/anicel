@@ -251,6 +251,20 @@ class _FramePictureViewState extends State<FramePictureView> {
   @visibleForTesting
   bool get drawnAsItStands => _standing.whole;
 
+  /// Whether nothing more of the frame is on its way to its screen: the
+  /// picture of the frame as it is stacked now taken, and no change of its
+  /// live rows still going through its plugins ([_writeThrough]) — what a
+  /// frame that waits for them ([_waits]) shows late. One that does not
+  /// wait shows all of it at the paint.
+  @visibleForTesting
+  bool get nothingOnItsWay =>
+      !_waits ||
+      (_shown != null &&
+          _showing == _pictures.keyOfStack(widget.nodes, widget.picture) &&
+          !(_standing.whole && _movedSinceThrough) &&
+          !_writingThrough &&
+          _owed == null);
+
   /// 🗣️I-132-Q34 a (유저 2026-10-30): 「결과가 올 때까지 그 프레임의 직전
   /// 완성 그림에 머문다」 — whether the frame holds a plugin's step that only
   /// a picture made waiting for it draws ([waitsForItsPlugins]). Such a
@@ -288,6 +302,10 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// ... and whether its live rows moved since.
   bool _standingMoved = false;
+
+  /// Whether the live rows moved since all of the frame last went through
+  /// its plugins ([_throughWhole]).
+  bool _movedSinceThrough = true;
 
   /// Whether this view is writing into the picture it shows: the paint that
   /// writes shows the write.
@@ -503,6 +521,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     _liveChanges?.removeListener(_liveMoved);
     _liveChanges = null;
     _live = null;
+    _movedSinceThrough = true;
     _onScreen = const {};
     final live = widget.live;
     if (live == null && widget.wholeFrames) {
@@ -538,7 +557,10 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
   }
 
-  void _liveMoved() => _standingMoved = true;
+  void _liveMoved() {
+    _standingMoved = true;
+    _movedSinceThrough = true;
+  }
 
   /// Reads the cels [frame] stood without, and stands again where the read
   /// brought one into hand and [frame] is still the one standing.
@@ -646,6 +668,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     _showing = key;
     _drawnOn = _celNow();
     _standing.whole = false;
+    _movedSinceThrough = true;
     _tell();
   }
 
@@ -914,9 +937,20 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _catchUp() {
     final live = _live;
     final key = _showing;
-    if (live == null || _shown == null || key == null || _standing.whole) {
+    if (live == null || _shown == null || key == null) {
       return;
     }
+    if (!_standing.whole) {
+      _patchIn(key, live);
+    }
+    if (_standing.whole && _waits) {
+      _throughWhole(key, live);
+    }
+  }
+
+  /// [_catchUp] where the frame is not drawn as it stands: what moved goes
+  /// into the picture shown, or the frame is drawn as it stands from here.
+  void _patchIn(FramePictureKey key, StackedFrame live) {
     final held = _held;
     if (held == null) {
       // A live row whose change cannot be told by where it lands — none
@@ -1042,6 +1076,27 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// Whether a write is on its way through them.
   bool _writingThrough = false;
 
+  /// 🗣️I-132-Q34 a with F-240 (유저 2026-09-29: 「변형중에도 필터 통일적용하도록」):
+  /// a frame that waits for its plugins is never drawn as it stands
+  /// ([_drawnPicture]) — where its live rows moved where no patch can
+  /// follow (a float, a lift: [StackedFrame.steady]), all of it goes
+  /// through them at each change, on the picture shown meanwhile.
+  ///
+  /// ↩️It stayed on the picture shown until its key moved (ef44c1e56,
+  /// 2026-10-30 — the choice of who built Q34 a, not the user's answer), and
+  /// a float carried on such a row was drawn nowhere until it landed: met
+  /// only past a chain's head until a plugin there was a step of the chain
+  /// too (float-warp-resamples-in-the-c-engine (2), 2026-11-11), when
+  /// F-240's six tests on a plugin's row read 16,048 pixels apart — the
+  /// sheet where it was lifted from, all the drag.
+  void _throughWhole(FramePictureKey key, StackedFrame live) {
+    if (!_movedSinceThrough) {
+      return;
+    }
+    _movedSinceThrough = false;
+    _writeThrough(key, live, live.extent);
+  }
+
   /// [_writeIn] of a frame that waits for its plugins: the screen stays on
   /// the picture as it is until they have run (🗣️I-132-Q34 a), one write at
   /// a time — the steps meanwhile go in together, in the next. A step whose
@@ -1054,7 +1109,9 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _owed = null;
     _writingThrough = true;
-    final to = _keptUnder(key, _held);
+    // Whole, it holds what no patch could tell — this view's own
+    // ([FramePictureKey.standingOn]), as what no cel stores.
+    final to = _standing.whole ? key.standingOn(this) : _keptUnder(key, _held);
     unawaited(
       _store
           .patchThrough(

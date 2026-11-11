@@ -1,9 +1,7 @@
-import '../helpers/a_cut_as_surfaces.dart';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -20,27 +18,32 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/cel_plugin_pass.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
+import 'package:anicel/src/services/fx_plugin_values.dart';
 import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/a_cut_as_surfaces.dart';
 import '../helpers/a_plugin_that_shifts.dart';
 import '../helpers/fx_plugin_file.dart';
-import '../helpers/tiles_on_the_engine.dart';
 
-/// 🗣️I-132-Q32 b (유저 2026-10-30 「b 로 첫 판」): a plugin runs at the head
-/// of a cel row's chain — after nothing but colour keys — over the whole
-/// cel, at the seam every route shows a cel through, its run bound where
-/// the cut is known: its build, the frame, and the rows it reads as their
-/// own cels hold them.
+/// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — a plugin runs
+/// wherever it stands in a chain, after a cel's colour keys as after
+/// anything else, its run bound where the cut is known: its build, the
+/// frame, and the rows it reads as their own cels hold them. And a frame
+/// hands its values as the spec says.
+///
+/// ↩️🗣️I-132-Q32 b (「b 로 첫 판」): a plugin at the head of a cel row's
+/// chain — after nothing but colour keys — ran over the whole cel at the
+/// seam every route showed a cel through, its keys walked before it on the
+/// CPU, until it was a step of the chain like any other
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11). The engine's
+/// steps are pinned where they run (`a_plugin_reads_its_chain_straight_test`,
+/// `a_plugin_runs_over_what_its_chain_made_test`,
+/// `the_engine_keys_a_row_as_each_pixel_is_keyed_test`).
 void main() {
   const tileSize = defaultCelTileSize;
   const paper = CanvasSize(width: 2 * tileSize, height: tileSize);
-  // The bytes of (-2, 1) in the tile left of the paper.
-  const pastTheWall = (2 * tileSize - 2) * 4;
 
   final description = fxPluginDescriptionOf(
     'test.shift',
@@ -77,14 +80,6 @@ void main() {
     );
   }
 
-  List<int> pixelOf(BitmapSurface surface, int x, int y) {
-    final tile = surface.tileAt(TileCoord(x: x ~/ tileSize, y: y ~/ tileSize));
-    if (tile == null) {
-      return const [0, 0, 0, 0];
-    }
-    final at = ((y % tileSize) * tileSize + x % tileSize) * 4;
-    return tile.pixels.sublist(at, at + 4);
-  }
 
   ResolvedLayerEffect plugin({
     double by = 1,
@@ -112,331 +107,25 @@ void main() {
     ],
   );
 
-  ResolvedLayerEffect blur() => ResolvedLayerEffect(
-    kind: EffectKind.blur,
-    values: [
-      for (final spec in EffectKind.blur.parameters)
-        if (spec.id == 'blurriness') 3 else spec.defaultValue,
-    ],
-  );
 
   const red = [200, 10, 20, 255];
   const green = [0, 255, 0, 255];
 
-  group('the source run', () {
-    test('ends at a plugin right after its keys — one, and only there', () {
-      final a = key();
-      final p = plugin(run: fxPluginRunOf(ShiftingFxPlugin()));
-      final q = plugin(by: 2, run: fxPluginRunOf(ShiftingFxPlugin()));
-      final off = plugin();
-      final b = blur();
+  test('a plugin at the head of a cel row\'s chain is a step of the chain, '
+      'as one anywhere else is — the row lays its cel', () {
+    final cel = celWith({(3, 0): green});
+    final runner = ShiftingFxPlugin(by: 1);
+    final chain = [key(), plugin(run: fxPluginRunOf(runner)), key()];
 
-      List<List<ResolvedLayerEffect>> split(List<ResolvedLayerEffect> of) {
-        final (:source, :paint) = splitSourceEffects(of);
-        return [source, paint];
-      }
+    final row = CutFrameCompositeLayer(
+      surface: cel,
+      opacity: 1,
+      effects: chain,
+    );
 
-      expect(split([a, p, b]), [[a, p], [b]]);
-      expect(split([p, a]), [[p], [a]]);
-      expect(split([p, q]), [[p], [q]]);
-      expect(split([b, p]), [<ResolvedLayerEffect>[], [b, p]]);
-      // Where it runs: one that does not here leaves the keys before it
-      // the engine's, as keys alone are.
-      expect(split([a, off, b]), [[a, off], [a, off, b]]);
-    });
-
-    group('🚨is all a row lays on its cel', () {
-      CutFrameCompositeLayer rowOf(
-        BitmapSurface cel,
-        List<ResolvedLayerEffect> effects,
-      ) => CutFrameCompositeLayer(surface: cel, opacity: 1, effects: effects);
-
-      test('a plugin past an app effect is the chain\'s alone', () {
-        final cel = celWith({(3, 0): red});
-        final runner = ShiftingFxPlugin(by: 1);
-        final past = plugin(run: fxPluginRunOf(runner));
-
-        final row = rowOf(cel, [blur(), past]);
-
-        expect(identical(row.surface, cel), isTrue);
-        expect(runner.renders, 0);
-        expect(row.effects, hasLength(2));
-      });
-
-      test('so is a key past one', () {
-        final cel = celWith({(3, 0): green});
-
-        expect(identical(rowOf(cel, [blur(), key()]).surface, cel), isTrue);
-      });
-
-      test('a plugin at its head is run, the key after it left to the '
-          'chain', () {
-        final cel = celWith({(3, 0): green});
-        final runner = ShiftingFxPlugin(by: 1);
-        final a = key();
-
-        final row = rowOf(cel, [plugin(run: fxPluginRunOf(runner)), a]);
-
-        expect(runner.renders, 1);
-        expect(pixelOf(row.surface, 4, 0), green);
-        expect(row.effects, [a]);
-      });
-    });
-  });
-
-  group('the pass', () {
-    test('🚨reads the cel back from the engine, every tile in one ask', () {
-      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
-      final read = <int>[];
-      EngineTileLedger.debugBeforeRead = (tiles) => read.add(tiles.length);
-
-      celSurfaceAsShown(
-        surfaceOnEngine(celWith({(1, 1): red, (tileSize + 1, 1): green})),
-        [plugin(run: fxPluginRunOf(ShiftingFxPlugin()))],
-      );
-
-      expect(read, [2]);
-    });
-
-    test('moves a pixel across a tile\'s edge — the cel is one picture', () {
-      final runner = ShiftingFxPlugin();
-      final cel = celWith({(tileSize - 1, 1): red});
-
-      final shown = celSurfaceAsShown(cel, [
-        plugin(run: fxPluginRunOf(runner)),
-      ]);
-
-      expect(pixelOf(shown, tileSize, 1), red);
-      expect(pixelOf(shown, tileSize - 1, 1), [0, 0, 0, 0]);
-      expect(shown.tileAt(TileCoord(x: 0, y: 0)), isNull,
-          reason: 'a tile left clear is dropped, as a commit drops one');
-      // The paper, wider by the reach the plugin named, at its place.
-      expect(runner.inputs.single, (
-        left: -1,
-        top: -1,
-        width: paper.width + 2,
-        height: paper.height + 2,
-      ));
-    });
-
-    test('takes in the ink past the paper too, and reaches no further than '
-        'the cel can hold — keeping no tile past its wall', () {
-      final runner = ShiftingFxPlugin(by: 0);
-      final past = BitmapSurface(
-        canvasSize: paper,
-        pasteboardReach: PasteboardReach.whole,
-        tileSize: tileSize,
-        tiles: {
-          // (-2, 1): on the pasteboard, left of the paper.
-          TileCoord(x: -1, y: 0): BitmapTile(
-            size: tileSize,
-            pixels: Uint8List(tileSize * tileSize * 4)
-              ..setAll(pastTheWall, red),
-          ),
-        },
-      );
-
-      final shown = celSurfaceAsShown(past, [
-        plugin(run: fxPluginRunOf(runner)),
-      ]);
-
-      expect(runner.inputs.single, (
-        left: -tileSize,
-        top: 0,
-        width: paper.width + tileSize,
-        height: paper.height,
-      ));
-      expect(
-        shown
-            .tileAt(TileCoord(x: -1, y: 0))!
-            .pixels
-            .sublist(pastTheWall, pastTheWall + 4),
-        red,
-      );
-
-      final far = ShiftingFxPlugin(by: 1000);
-      celSurfaceAsShown(celWith({(1, 1): red}), [
-        plugin(run: fxPluginRunOf(far)),
-      ]);
-      expect(
-        far.inputs.single,
-        (
-          left: -paper.width,
-          top: -paper.width,
-          width: 3 * paper.width,
-          height: paper.height + 2 * paper.width,
-        ),
-        reason: 'as far as the cel is long, and no further',
-      );
-
-      final edge = celSurfaceAsShown(celWith({(paper.width - 1, 1): red}), [
-        plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
-      ]);
-      expect(
-        edge.tiles.keys,
-        isEmpty,
-        reason: 'moved past the wall it is gone, as a stroke past it is',
-      );
-    });
-
-    test('a pixel the plugin leaves without cover is clear, whatever colour '
-        'it gives it', () {
-      final shown = celSurfaceAsShown(celWith({(1, 1): red}), [
-        plugin(run: fxPluginRunOf(_ColourWithoutCover())),
-      ]);
-
-      expect(pixelOf(shown, 1, 1), red);
-      expect(pixelOf(shown, 0, 0), [0, 0, 0, 0]);
-    });
-
-    test('lays what the plugin draws round the cel where it drew it — in '
-        'its reach past the paper too', () {
-      final cel = BitmapSurface(
-        canvasSize: paper,
-        pasteboardReach: PasteboardReach.whole,
-        tileSize: tileSize,
-      );
-
-      final shown = celSurfaceAsShown(cel, [
-        plugin(run: fxPluginRunOf(_Fill(by: 1))),
-      ]);
-
-      // Row 1 of the tile left of the paper: its last pixel is x -1, in the
-      // plugin's reach; its first is a tile left of the paper, past it.
-      final row = shown
-          .tileAt(TileCoord(x: -1, y: 0))!
-          .pixels
-          .sublist(tileSize * 4, tileSize * 8);
-      expect(
-        [row.sublist((tileSize - 1) * 4, tileSize * 4), row.sublist(0, 4)],
-        [green, [0, 0, 0, 0]],
-      );
-    });
-
-    test('runs after the keys, over what they left', () {
-      final cel = celWith({(1, 1): red, (2, 1): green});
-
-      final shown = celSurfaceAsShown(cel, [
-        key(),
-        plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
-      ]);
-
-      expect(pixelOf(shown, 2, 1), red);
-      expect(pixelOf(shown, 3, 1), [0, 0, 0, 0], reason: 'keyed away first');
-    });
-
-    test('hands the plugin straight pixels and reads its back straight', () {
-      // Fx spec 2 ① (an-endless-plugin-stalls-the-app, 11-08): a picture
-      // is straight RGBA8, as the engine's pool holds it — ↩️spec 1 handed
-      // it premultiplied, and a half-clear pixel came back a step darker.
-      final runner = ShiftingFxPlugin(by: 0);
-      final cel = celWith({(5, 2): [200, 100, 50, 128]});
-
-      final shown = celSurfaceAsShown(cel, [
-        plugin(run: fxPluginRunOf(runner)),
-      ]);
-
-      // No reach: the paper itself.
-      final at = (2 * paper.width + 5) * 4;
-      expect(runner.lastInput.sublist(at, at + 4), [200, 100, 50, 128]);
-      expect(pixelOf(shown, 5, 2), [200, 100, 50, 128]);
-    });
-
-    test('a layer parameter reads its row\'s own picture where the canvas '
-        'puts it, its place in the frame\'s values', () {
-      final runner = ShiftingFxPlugin(by: 0);
-      final map = celWith({(6, 0): green});
-      final run = fxPluginRunOf(runner, rows: {const LayerId('m'): map});
-
-      celSurfaceAsShown(celWith({(0, 0): red}), [
-        plugin(by: 0, map: const LayerId('m'), run: run),
-      ]);
-
-      expect(runner.lastValues, [0, 0, 0, 0, 0, 0, 0, 0]);
-      final layer = runner.lastLayers.single;
-      expect((layer.left, layer.top, layer.width), (0, 0, paper.width));
-      const at = 6 * 4;
-      expect(layer.pixels.sublist(at, at + 4), green);
-    });
-
-    test('a row it names with no cel there is a clear picture; one not in '
-        'its cut is none', () {
-      final runner = ShiftingFxPlugin(by: 0);
-
-      celSurfaceAsShown(celWith({(0, 0): red}), [
-        plugin(
-          by: 0,
-          map: const LayerId('m'),
-          run: fxPluginRunOf(runner, rows: {const LayerId('m'): null}),
-        ),
-      ]);
-      expect(runner.lastValues[4], 0);
-      expect(
-        runner.lastLayers.single.pixels.every((byte) => byte == 0),
-        isTrue,
-      );
-
-      celSurfaceAsShown(celWith({(1, 0): red}), [
-        plugin(by: 0, map: const LayerId('gone'), run: fxPluginRunOf(runner)),
-      ]);
-      expect(runner.lastValues[4], -1);
-      expect(runner.lastLayers, isEmpty);
-    });
-
-    test('runs once a picture and sample — again for another frame, value '
-        'or row', () {
-      final runner = ShiftingFxPlugin();
-      final cel = celWith({(1, 1): red});
-      final map = celWith({(2, 2): red});
-      final run = fxPluginRunOf(runner, rows: {const LayerId('m'): map});
-
-      celSurfaceAsShown(cel, [plugin(map: const LayerId('m'), run: run)]);
-      celSurfaceAsShown(cel, [
-        plugin(
-          map: const LayerId('m'),
-          run: fxPluginRunOf(runner, rows: {const LayerId('m'): map}),
-        ),
-      ]);
-      expect(runner.renders, 1, reason: 'an equal run is the same sample');
-
-      celSurfaceAsShown(cel, [
-        plugin(map: const LayerId('m'), run: fxPluginRunOf(runner, frame: 1)),
-      ]);
-      celSurfaceAsShown(cel, [
-        plugin(by: 2, map: const LayerId('m'), run: run),
-      ]);
-      celSurfaceAsShown(cel, [
-        plugin(
-          map: const LayerId('m'),
-          run: fxPluginRunOf(runner, rows: {const LayerId('m'): celWith({})}),
-        ),
-      ]);
-      expect(runner.renders, 4);
-    });
-
-    test('a plugin with no run, or one that fails, leaves the cel as it is',
-        () {
-      final cel = celWith({(1, 1): red});
-      expect(identical(celSurfaceAsShown(cel, [plugin()]), cel), isTrue);
-      expect(
-        identical(
-          celSurfaceAsShown(cel, [
-            plugin(run: fxPluginRunOf(ShiftingFxPlugin(fails: true))),
-          ]),
-          cel,
-        ),
-        isTrue,
-      );
-      expect(
-        identical(
-          celSurfaceAsShown(cel, [
-            plugin(run: fxPluginRunOf(ShiftingFxPlugin(reachFails: true))),
-          ]),
-          cel,
-        ),
-        isTrue,
-      );
-    });
+    expect(identical(row.surface, cel), isTrue);
+    expect(row.effects, chain);
+    expect(runner.renders, 0, reason: 'the engine runs it, as a step');
   });
 
   test('a frame hands every kind of value as the spec says', () {
@@ -598,8 +287,8 @@ void main() {
       expect(binding(keys, cut: cutOf([a]), frameIndex: 0), keys);
     });
 
-    test('the plan runs it on every row it lays — and a plugin\'s sample '
-        'knows its frame where nothing binds it', () {
+    test('the plan binds it on every row it lays, in the chain it hands on '
+        '— and a plugin\'s sample knows its frame where nothing binds it', () {
       final a = row('a', effects: [pluginOn()]);
       final cel = celWith({(3, 0): red});
       final nodes = planCutFrameCompositeTree(
@@ -609,8 +298,8 @@ void main() {
       );
       final layer = (nodes.single as CompositeLeaf<CutFrameCompositeLayer>)
           .payload;
-      expect(pixelOf(layer.surface, 4, 0), red);
-      expect(layer.effects, isEmpty);
+      expect(identical(layer.surface, cel), isTrue);
+      expect(identical(layer.effects.single.run?.runner, shift), isTrue);
 
       expect(
         resolveLayerEffectsAt(
@@ -637,57 +326,4 @@ void main() {
       );
     });
   });
-}
-
-/// Reaches [by] past what it is handed and covers all of it in green.
-final class _Fill implements FxPluginRunner {
-  _Fill({required this.by});
-
-  final int by;
-
-  @override
-  int? reach(Float64List values, FxPluginMoment moment) => by;
-
-  @override
-  Uint8List? render({
-    required FxPluginPicture input,
-    required Float64List values,
-    required List<FxPluginPicture> layers,
-    required FxPluginMoment moment,
-  }) {
-    final out = Uint8List(input.pixels.length);
-    for (var at = 0; at < out.length; at += 4) {
-      out.setAll(at, const [0, 255, 0, 255]);
-    }
-    return out;
-  }
-
-  @override
-  void close() {}
-}
-
-/// Hands every pixel back as it came, but gives the ones without cover a
-/// colour — as a plugin told nothing of how a clear pixel is kept may.
-final class _ColourWithoutCover implements FxPluginRunner {
-  @override
-  int? reach(Float64List values, FxPluginMoment moment) => 0;
-
-  @override
-  Uint8List? render({
-    required FxPluginPicture input,
-    required Float64List values,
-    required List<FxPluginPicture> layers,
-    required FxPluginMoment moment,
-  }) {
-    final out = Uint8List.fromList(input.pixels);
-    for (var at = 0; at < out.length; at += 4) {
-      if (out[at + 3] == 0) {
-        out.fillRange(at, at + 3, 9);
-      }
-    }
-    return out;
-  }
-
-  @override
-  void close() {}
 }

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -11,10 +12,12 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/cel_text_laying.dart'
+    show celSurfaceWithTextsLaid;
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -30,6 +33,7 @@ import 'package:anicel/src/ui/canvas/shown_cels.dart';
 import 'package:anicel/src/ui/session/history_pictures.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
+import '../../helpers/cel_text_fixture.dart' show textOf;
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/settle_async.dart';
 
@@ -47,9 +51,12 @@ import '../../helpers/settle_async.dart';
 ///
 /// ⚠️TWO CANVASES, because they register differently. The ink view paints
 /// the cel's own tiles; the DRAWING canvas hands its painter to the layer
-/// stack and paints the active row THROUGH its colour keys, so the tiles on
-/// screen are other objects than the cel's. A walk on the first alone left
-/// the second's registration untested — a mutant deleting it survived.
+/// stack and paints the active row with its texts laid, so where a text
+/// lies the tiles on screen are other objects than the cel's. A walk on the
+/// first alone left the second's registration untested — a mutant deleting
+/// it survived. ↩️It painted the row through its colour keys too, and the
+/// walk keyed it, until the engine keyed a row
+/// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
 ///
 /// The cel is 64 tiles: a parked entry brings back sixty-four new tile
 /// objects at once, which is what a blank first frame was made of.
@@ -65,9 +72,44 @@ void main() {
     await _outrun(tester, await _Walk.draw(tester));
   });
 
-  testWidgets('🚨the same on the DRAWING canvas, painting the row through a '
-      'colour key', (tester) async {
+  testWidgets('🚨the same on the DRAWING canvas, which hands its painter to '
+      'the layer stack', (tester) async {
     await _outrun(tester, await _Walk.draw(tester, drawingCanvas: true));
+  });
+
+  testWidgets('🚨the DRAWING canvas warms a cel as it paints it — its texts '
+      'laid, every tile it draws another object than the cel\'s own', (
+    tester,
+  ) async {
+    final walk = await _Walk.draw(tester, drawingCanvas: true);
+    final drawn = walk.surfaces.last;
+    final speck = Uint8List(BitmapTile.bytesFor(drawn.tileSize))
+      ..setAll(0, const [255, 0, 255, 255]);
+    final lettered = drawn.withTexts([
+      textOf(
+        1,
+        plate: {
+          for (final coord in drawn.tiles.keys)
+            coord: BitmapTile(size: drawn.tileSize, pixels: speck),
+        },
+      ),
+    ]);
+    final shown = celSurfaceWithTextsLaid(lettered);
+    expect(
+      shown.tiles.values.where(drawn.tiles.values.contains),
+      isEmpty,
+      reason: '⛔premise: a text over every tile',
+    );
+    expect(_pictured(shown), 0, reason: '⛔premise: none made yet');
+
+    ShownCels.instance.warm([(walk.coordinator.activeFrameKey, lettered)]);
+    for (var i = 0; i < 4; i += 1) {
+      await tester.pump();
+    }
+
+    // ⛔Mutation: the canvas says it paints the cel as it is → the pictures
+    // made ahead are of tiles it never draws.
+    expect(_pictured(shown), shown.tiles.length);
   });
 
   testWidgets('at a human pace the next undo is pictured BEFORE the press, '
@@ -248,13 +290,6 @@ class _Walk {
     0xFFFF8000,
   ];
 
-  /// What the drawing canvas's row is painted through: the white specks
-  /// every stroke leaves go, so every tile it paints is a keyed copy.
-  static final _deleteWhite = ResolvedLayerEffect(
-    kind: EffectKind.colorKey,
-    values: const [0, 0xFFFFFFFF, 0, 100],
-  );
-
   final WidgetTester tester;
   final BrushFrameEditingCoordinator coordinator;
   final HistoryManager history;
@@ -272,8 +307,7 @@ class _Walk {
 
   /// [drawingCanvas]: the panel in the drawing editor's shape — it hands
   /// the active row's painter to the layer stack (here, the underlay paints
-  /// it) and draws the row through a colour key. Otherwise the ink view
-  /// paints the cel's own tiles.
+  /// it). Otherwise the ink view paints the cel's own tiles.
   ///
   /// [cels]: the undo budget, in cels — at two the deep four park.
   /// [releases]: whether pictures of the deeper entries are let go.
@@ -306,9 +340,6 @@ class _Walk {
     final selectionCommands = CanvasSelectionCommands();
     final view = CanvasViewport();
     final overlay = drawingCanvas ? ActiveStrokeOverlayModel() : null;
-    final effects = drawingCanvas
-        ? [_deleteWhite]
-        : const <ResolvedLayerEffect>[];
     Widget tree() => MaterialApp(
       home: Scaffold(
         body: RepaintBoundary(
@@ -331,7 +362,6 @@ class _Walk {
             ),
             transformOptions: transformOptions,
             activeStrokeOverlayModel: overlay,
-            activeSourceEffects: effects,
             viewportUnderlayBuilder: drawingCanvas
                 ? (context, viewport, painter, float) => painter == null
                       ? const SizedBox.shrink()

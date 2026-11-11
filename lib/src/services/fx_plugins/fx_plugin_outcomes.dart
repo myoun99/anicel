@@ -39,6 +39,14 @@ typedef FxPluginWearer = ({CutId cut, StringId row});
 final class FxPluginOutcomes extends ChangeNotifier {
   final Map<FxPluginPlace, Map<int, Map<FxPluginWearer, _Worn>>> _places =
       {};
+
+  /// ⚖️The tellers [toldFor] handed out, the newest [_tellersKept]: the same
+  /// one for the same sample of the same effect, worn alike at the same
+  /// frame — so a picture that tells again what its steps told
+  /// (`EngineFramePicture.hold`) keeps one of each, however often its
+  /// chain is bound anew.
+  final LinkedHashMap<_Teller, FxPluginTold> _tellers = LinkedHashMap();
+  static const int _tellersKept = 256;
   bool _announcing = false;
   bool _disposed = false;
 
@@ -57,12 +65,20 @@ final class FxPluginOutcomes extends ChangeNotifier {
     if (before?.went[sample] case final failed?) {
       _set(before!, failed: failed);
     }
-    return ({required failed}) {
+    void told({required bool failed}) {
       final kept = ((_places[place] ??= {})[frame] ??= {})[wearer] ??=
           _Worn();
       kept.remember(sample, failed: failed);
       _set(kept, failed: failed);
-    };
+    }
+
+    final teller = (place: place, wearer: wearer, frame: frame, sample: sample);
+    final handed = _tellers.remove(teller) ?? told;
+    _tellers[teller] = handed;
+    if (_tellers.length > _tellersKept) {
+      _tellers.remove(_tellers.keys.first);
+    }
+    return handed;
   }
 
   /// Whether a run of [place] at [frame] last failed, worn by any row.
@@ -72,6 +88,7 @@ final class FxPluginOutcomes extends ChangeNotifier {
   /// Lets go of what plugin [pluginId]'s runs told: a build of it let go
   /// of — replaced or taken off — tells nothing of the next.
   void forget(String pluginId) {
+    _tellers.removeWhere((teller, _) => teller.sample.plugin?.id == pluginId);
     var failedGone = false;
     for (final frames in _places.values) {
       for (final wearers in frames.values) {
@@ -119,6 +136,14 @@ final class FxPluginOutcomes extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// A teller [FxPluginOutcomes.toldFor] hands out, as it is asked for.
+typedef _Teller = ({
+  FxPluginPlace place,
+  FxPluginWearer wearer,
+  int frame,
+  ResolvedLayerEffect sample,
+});
 
 /// One row's runs of an effect at a frame: whether the last failed, and
 /// how the last samples run went.

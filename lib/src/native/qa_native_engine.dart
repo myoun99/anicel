@@ -64,7 +64,6 @@ class QaNativeEngine {
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._premultiplyRgbaRows,
-    this._keyRgba,
     this._copyBytes,
     this._zeroBytes,
     this._widenBytes,
@@ -108,76 +107,6 @@ class QaNativeEngine {
     width,
     rows,
   );
-
-  final int Function(
-    Pointer<Uint8> pixels,
-    Pointer<Uint8> originals,
-    int pixelCount,
-    Pointer<Uint32> red,
-    Pointer<Uint32> green,
-    Pointer<Uint32> blue,
-    int restores,
-    Pointer<Uint8> alphaMaps,
-  )
-  _keyRgba;
-
-  final _keyPixels = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-  final _keyOriginals = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-  final _keyRed = NativeScratch<Uint32>(
-    (n) => calloc<Uint32>(n),
-    bytesPerElement: sizeOf<Uint32>(),
-  );
-  final _keyGreen = NativeScratch<Uint32>(
-    (n) => calloc<Uint32>(n),
-    bytesPerElement: sizeOf<Uint32>(),
-  );
-  final _keyBlue = NativeScratch<Uint32>(
-    (n) => calloc<Uint32>(n),
-    bytesPerElement: sizeOf<Uint32>(),
-  );
-  final _keyAlphaMaps = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-
-  /// [straight] rgba through a row's colour keys, given as the [tables]
-  /// their one definition makes (`CelColorKey`, the keys' pass) — the
-  /// keyed bytes, or null when the keys leave every alpha as it was
-  /// (`qa_key_rgba`, ABI 59). [originals] is the run's input, whose alphas
-  /// a restore gives back to — [straight] itself in a run's first call.
-  ///
-  /// The bytes go through the engine's own buffer, so [straight] may live
-  /// anywhere, and the answer is a view of that buffer: good until the
-  /// next call.
-  Uint8List? keyRgba(
-    Uint8List straight,
-    Uint8List originals,
-    KeyRgbaTables tables,
-  ) {
-    final (:red, :green, :blue, :restores, :alphaMaps) = tables;
-    final length = straight.length;
-    final pixels = _keyPixels.ensure(length);
-    final keyed = pixels.asTypedList(length)..setAll(0, straight);
-    final changed = _keyRgba(
-      pixels,
-      identical(originals, straight)
-          ? pixels
-          : (_keyOriginals.ensure(length)
-              ..asTypedList(length).setAll(0, originals)),
-      length ~/ 4,
-      _staged(_keyRed, red),
-      _staged(_keyGreen, green),
-      _staged(_keyBlue, blue),
-      restores,
-      _keyAlphaMaps.ensure(alphaMaps.length)
-        ..asTypedList(alphaMaps.length).setAll(0, alphaMaps),
-    );
-    return changed == 0 ? null : keyed;
-  }
-
-  static Pointer<Uint32> _staged(
-    NativeScratch<Uint32> scratch,
-    Uint32List table,
-  ) =>
-      scratch.ensure(table.length)
-        ..asTypedList(table.length).setAll(0, table);
 
   final _tilesPictureScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
@@ -489,29 +418,6 @@ class QaNativeEngine {
             ),
             void Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int, int)
           >('qa_premultiply_rgba_rows');
-      final keyRgba = library
-          .lookupFunction<
-            Int32 Function(
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Int32,
-              Pointer<Uint32>,
-              Pointer<Uint32>,
-              Pointer<Uint32>,
-              Uint32,
-              Pointer<Uint8>,
-            ),
-            int Function(
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              int,
-              Pointer<Uint32>,
-              Pointer<Uint32>,
-              Pointer<Uint32>,
-              int,
-              Pointer<Uint8>,
-            )
-          >('qa_key_rgba');
       final copyBytes = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
@@ -562,7 +468,6 @@ class QaNativeEngine {
         preBlendTiles,
         premultiplyRgbaCopy,
         premultiplyRgbaRows,
-        keyRgba,
         copyBytes,
         zeroBytes,
         widenBytes,
@@ -1138,25 +1043,6 @@ class QaNativeEngine {
 /// bytes on the next one does. A stride belongs to its rows — handed apart,
 /// one plane's stride could walk the other's rows.
 typedef NativeRows = ({Pointer<Uint8> start, int stride});
-
-/// Up to [keyRgbaKeysAtOnce] colour keys as `qa_key_rgba` reads them — a
-/// table lookup a channel where the keys asked a question a key: bit k of
-/// `red[r]`, `green[g]` and `blue[b]` says key k is within its tolerance of
-/// a pixel in that channel, bit k of `restores` that key k gives back what
-/// its run erased of what it names instead of erasing it, and
-/// `alphaMaps[k * 256 + a]` is what key k leaves of an alpha `a` it erases
-/// ([QaNativeEngine.keyRgba]; the keys' pass makes them).
-typedef KeyRgbaTables = ({
-  Uint32List red,
-  Uint32List green,
-  Uint32List blue,
-  int restores,
-  Uint8List alphaMaps,
-});
-
-/// The keys one set of [KeyRgbaTables] holds: a bit each in a 32-bit word,
-/// the C's.
-const int keyRgbaKeysAtOnce = 32;
 
 /// A pooled native tile buffer: the raw pointer for the kernel and a
 /// typed-data view over the SAME memory for Dart-side reads/writes.

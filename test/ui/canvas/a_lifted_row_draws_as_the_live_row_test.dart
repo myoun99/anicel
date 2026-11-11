@@ -23,8 +23,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -116,14 +114,14 @@ void main() {
     return float;
   }
 
-  /// [cel] as the canvas draws the LIVE row: through the seam every cel is
-  /// shown through, with its row's keys — as the view draws a lifted one.
-  BitmapSurfacePainter liveAs(BitmapSurfacePainter cel, _RowPaint paint) =>
+  /// [cel] as the canvas draws the LIVE row: its texts laid, its row's
+  /// chain run over it on the engine — as the view draws a lifted one.
+  /// ↩️Through the seam every cel was shown through, with its row's keys,
+  /// while a plugin at a chain's head ran there
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+  BitmapSurfacePainter liveAs(BitmapSurfacePainter cel) =>
       BitmapSurfacePainter(
-        surface: celSurfaceAsShown(
-          cel.surface,
-          splitSourceEffects(paint.effects).source,
-        ),
+        surface: cel.surface,
         showTransparentBackground: false,
       );
 
@@ -265,7 +263,7 @@ void main() {
       final live = await pumpStack(
         tester,
         nodes: [liveRow(paint)],
-        live: liveAs(cel, paint),
+        live: liveAs(cel),
         liveFloat: float,
       );
       final asLive = await shot(tester, live);
@@ -341,7 +339,7 @@ void main() {
     final withLiveTop = await pumpStack(
       tester,
       nodes: [folder(liveRow(overPaint))],
-      live: liveAs(over, overPaint),
+      live: liveAs(over),
       liveFloat: overFloat,
       lifted: {keyOf('under'): (surface: under.surface, float: underFloat)},
     );

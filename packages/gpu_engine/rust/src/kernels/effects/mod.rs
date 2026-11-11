@@ -5,9 +5,9 @@
 //! its neighbours.
 //!
 //! So far:
-//! - the colour key (`key.wgsl`): the walk C's `qa_key_rgba` makes over a
-//!   row's pixels, from the tables the app makes from its one definition
-//!   (`CelColorKey`);
+//! - the colour key (`key.wgsl`): the walk C's `qa_key_rgba` made, until
+//!   ABI 77, over a row's pixels, from the tables the app makes from its one
+//!   definition (`CelColorKey`);
 //! - the colour matrix (`matrix.wgsl`): fx Brightness & Contrast and
 //!   Hue/Saturation and an onion skin's tint, the one 4×5 matrix the app
 //!   folds them into, which Flutter's `ColorFilter.matrix` runs now;

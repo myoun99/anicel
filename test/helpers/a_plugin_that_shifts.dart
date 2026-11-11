@@ -2,18 +2,20 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart'
-    show celSourcePlugin;
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
-import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'a_canvas_standing_on_a_frame.dart' show theFramesPicture;
 import 'fx_plugin_file.dart';
+import 'panel_finders.dart' show mainCanvasPanel;
 import 'project_scratch_folder.dart';
 
 /// A run of [runner] at [frame], reading [rows], telling [told] how it
@@ -50,18 +52,6 @@ ResolvedLayerEffect shiftingFxPluginEffect({int by = 1}) => ResolvedLayerEffect(
   plugin: shiftingFxPluginDescription,
   values: const [],
   run: fxPluginRunOf(ShiftingFxPlugin(by: by)),
-);
-
-/// The stand-in, at a cel row's head after its colour keys, failing as it
-/// runs: the source pass then shows the cel as the plugin was handed it —
-/// the keys before it walked on the CPU, the walk's own objects
-/// (`celSurfaceThroughPlugin`). Keys alone are the engine's
-/// (`splitSourceEffects`), so this is how a test reads that walk.
-final ResolvedLayerEffect aPluginThatFails = ResolvedLayerEffect(
-  kind: EffectKind.plugin,
-  plugin: shiftingFxPluginDescription,
-  values: const [],
-  run: fxPluginRunOf(ShiftingFxPlugin(by: 0, fails: true)),
 );
 
 /// The stand-in as a project keeps it on a row.
@@ -103,14 +93,25 @@ Future<InstalledFxPlugins> installedShiftingFxPlugin(
 }
 
 /// Whether the row the canvas draws on runs a plugin: the device's build
-/// bound to its chain ([celSourcePlugin]).
-bool theCanvasRowRunsAPlugin(WidgetTester tester) =>
-    celSourcePlugin(
-      tester
-          .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
-          .activeSourceEffects,
-    ) !=
-    null;
+/// bound to its chain ([ResolvedLayerEffect.run]), as the canvas's stack
+/// hands the row on.
+bool theCanvasRowRunsAPlugin(WidgetTester tester) {
+  var runs = false;
+  mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(
+    tester
+        .widget<FramePictureView>(theFramesPicture(within: mainCanvasPanel()))
+        .nodes,
+    (row) {
+      if (row case CanvasActiveLayerRow(:final effects)) {
+        runs = effects.any(
+          (effect) => effect.kind == EffectKind.plugin && effect.run != null,
+        );
+      }
+      return row;
+    },
+  );
+  return runs;
+}
 
 /// Moves every pixel right by its first value — reaching that far — or by
 /// [by] where it is told one.

@@ -29,7 +29,7 @@ void main() {
   test("every float's painter names nobody's cel by its one name", () {
     for (final seed in [1, 2]) {
       expect(
-        floatPainter(surfaceOf(seed), const []).lineage,
+        floatPainter(surfaceOf(seed)).lineage,
         same(BrushFrameKey.noCel),
       );
     }

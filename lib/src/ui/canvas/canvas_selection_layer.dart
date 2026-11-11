@@ -2352,7 +2352,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // Its own pixels, through no keys: the row it floats in shows it
         // through that row's own ([SelectionFloatPaint.shownOn]), and its
         // own clear pixels are what a landing leaves alone.
-        surface: floatPainter(floatSurface, const []),
+        surface: floatPainter(floatSurface),
         surfaceOffset: offset,
         // The surface's own picture where it is drawn: materialized from
         // that stamp at that centre, and carried by the offset.

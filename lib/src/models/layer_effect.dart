@@ -577,16 +577,17 @@ enum EffectKind {
   ///
   /// 🚨THIS IS A SPLIT POINT, NOT A GATE. A threshold comparison has no
   /// colour-matrix form, so a colour key at the HEAD of a chain runs over
-  /// the cel's own straight bytes — the engine's row keys, or the CPU's
-  /// pass where a plugin follows it (`splitSourceEffects`), by one set of
-  /// tables — which is what keeps the fx and the destructive button in
-  /// exact agreement.
+  /// the cel's own straight bytes — the engine's row keys, by one set of
+  /// tables with the destructive button's — which is what keeps the two in
+  /// exact agreement. ↩️Or the CPU's pass where a plugin followed it, until
+  /// the plugin was a step of the chain
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
   ///
   /// ⛔IT NO LONGER DECIDES WHERE A KIND MAY BE OFFERED. A gate called
   /// `effectKindsFor` used to hide these kinds wherever the input was not
   /// cel bytes; a folder keys the picture it composed now, through a
-  /// fragment shader proven identical to this pass. `splitSourceEffects`
-  /// reads this to find the leading run and nothing else does.
+  /// fragment shader proven identical to this pass. `celSourceKeys` reads
+  /// this to find the leading run and nothing else does.
   final bool runsOnSourcePixels;
 
   /// Whether this kind DRAWS a picture of its own over the row's — the cel
@@ -1518,29 +1519,6 @@ ResolvedLayerEffect sampleLayerEffectAt(
     _ => null,
   },
 );
-
-/// [effects] as a picture NOBODY IS SHOWN runs them: each plugin's run the
-/// same, telling nobody how it went ([FxPluginRun.told]).
-///
-/// 🚨A header reads its frame's record as what is on screen — card
-/// a-cached-failed-picture-loses-its-mark (2026-11-08): the history's next
-/// step each way is made while this one is looked at (`ShownCels.warm`),
-/// and the cel as it stood is made beside a live stroke to know where it
-/// showed; told, either marked the frame by a cel it does not show (🔬an
-/// undo onto a cel the plugin fails on: the redo's cel, made ahead after
-/// the frame, told last that it drew). Equal to [effects], so what it makes
-/// is what the route that shows it finds kept — and tells.
-List<ResolvedLayerEffect> effectsTellingNobody(
-  List<ResolvedLayerEffect> effects,
-) => [
-  for (final effect in effects)
-    switch (effect.run) {
-      final run? when run.told != null => effect.withRun(
-        FxPluginRun(runner: run.runner, moment: run.moment, rows: run.rows),
-      ),
-      _ => effect,
-    },
-];
 
 /// Whether any of [effects] spreads pixels beyond their own coverage — the
 /// blur question the folder-buffer decision and the dirty-bounds math ask.

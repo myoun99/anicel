@@ -4,6 +4,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -16,25 +17,64 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/string_id.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_outcomes.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/a_row_laid_through_its_plugins.dart';
 
 /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08): 「원래 셀
 /// + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」 — a plugin that cannot
 /// draw a cel leaves the cel as it is, and its effect is told it failed at
 /// that frame, which its fx row's header reads.
 ///
-/// The plugin is a stand-in that fails once a picture is past 100 pixels
+/// The plugin is a stand-in that fails once a picture is past 200 pixels
 /// across, as one a picture outgrows does: what a run the GPU cuts comes
 /// to is `a_gpu_plugin_opens_and_runs_on_the_engine_test`'s.
+///
+/// A cel is shown here as a route that waits for its plug-ins lays it on
+/// the engine, its chain's steps run (`aRowLaidThroughItsPlugins`) — where a
+/// plug-in is run, at the head of a cel's chain as anywhere in it.
+/// ↩️It was the CPU's seam (`celSurfaceAsShown`) while a plugin at the head
+/// ran there (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late GpuComposite composite;
+  late EngineLetters letters;
+
+  setUpAll(() async {
+    composite = GpuComposite(appGpuEngine);
+    letters = await EngineLetters.open(composite);
+  });
+  tearDownAll(() {
+    composite.free();
+  });
+
+  /// A cel [side] across, a pixel of ink a tile of the engine's along its
+  /// top — so what a plug-in is handed of it spans it.
+  BitmapSurface inked(int side) => BitmapSurface(
+    canvasSize: CanvasSize(width: side, height: side),
+    pasteboardReach: PasteboardReach.none,
+    tileSize: 128,
+    tiles: {
+      for (var x = 0; x * 128 < side; x += 1)
+        TileCoord(x: x, y: 0): BitmapTile(
+          size: 128,
+          pixels: Uint8List(128 * 128 * 4)
+            ..setAll(0, const [200, 10, 20, 255]),
+        ),
+    },
+  );
+
   test('a plugin that cannot draw tells its effect so at that frame, each '
-      'time the cel is shown — and one that draws clears it', () {
-    final outgrown = _FailsPast(100);
+      'time the cel is shown — and one that draws clears it', () async {
+    final outgrown = _FailsPast(200);
     final effect = LayerEffect.defaults(
       id: const EffectId('fx'),
       kind: EffectKind.plugin,
@@ -56,45 +96,41 @@ void main() {
       effects: [effect],
     );
     final place = (owner: row.id, effect: effect.id);
-    BitmapSurface blank(int side) => BitmapSurface(
-      canvasSize: CanvasSize(width: side, height: side),
-      pasteboardReach: PasteboardReach.none,
-      tileSize: 64,
-      tiles: const {},
-    );
-    BitmapSurface shown(BitmapSurface cel, int frame) => celSurfaceAsShown(
-      cel,
-      binding(
-        resolveLayerEffectsAt(
-          effects: [effect],
-          frameIndex: frame,
-          blocks: null,
-          worn: (owner: row.id, wearer: row.id),
-        ),
-        cut: Cut(
-          id: const CutId('c'),
-          name: 'c',
-          duration: 8,
-          canvasSize: cel.canvasSize,
-          layers: [row],
-        ),
-        frameIndex: frame,
-      ),
-    );
-    final big = blank(256);
-    final small = blank(8);
+    Future<void> shown(BitmapSurface cel, int frame) =>
+        aRowLaidThroughItsPlugins(
+          composite,
+          letters,
+          cel,
+          binding(
+            resolveLayerEffectsAt(
+              effects: [effect],
+              frameIndex: frame,
+              blocks: null,
+              worn: (owner: row.id, wearer: row.id),
+            ),
+            cut: Cut(
+              id: const CutId('c'),
+              name: 'c',
+              duration: 8,
+              canvasSize: cel.canvasSize,
+              layers: [row],
+            ),
+            frameIndex: frame,
+          ),
+        );
+    final big = inked(512);
+    final small = inked(8);
 
-    expect(identical(shown(big, 3), big), isTrue,
-        reason: 'the cel as it is, as if the effect were off');
+    await shown(big, 3);
     expect(outcomes.failedAt(place, 3), isTrue);
     expect(outcomes.failedAt(place, 4), isFalse,
         reason: 'the frame it failed at, and no other');
 
-    expect(identical(shown(small, 3), small), isFalse, reason: 'it drew');
+    await shown(small, 3);
     expect(outcomes.failedAt(place, 3), isFalse,
         reason: 'drawn at that frame, the mark goes');
 
-    shown(big, 3);
+    await shown(big, 3);
     expect(outcomes.failedAt(place, 3), isTrue,
         reason: 'a picture kept from before is told as a made one is');
   });
@@ -118,12 +154,7 @@ void main() {
       outcomes: plugins.outcomes,
     );
     const paper = CanvasSize(width: 8, height: 8);
-    final cel = BitmapSurface(
-      canvasSize: paper,
-      pasteboardReach: PasteboardReach.none,
-      tileSize: 8,
-      tiles: const {},
-    );
+    final cel = inked(8);
     final row = Layer(
       id: const LayerId('a'),
       name: 'a',
@@ -131,28 +162,31 @@ void main() {
       frames: const [],
       effects: [effect],
     );
-    final shown = celSurfaceAsShown(
-      cel,
-      binding(
-        resolveLayerEffectsAt(
-          effects: [effect],
+    await tester.runAsync(
+      () => aRowLaidThroughItsPlugins(
+        composite,
+        letters,
+        cel,
+        binding(
+          resolveLayerEffectsAt(
+            effects: [effect],
+            frameIndex: 2,
+            blocks: null,
+            worn: (owner: row.id, wearer: row.id),
+          ),
+          cut: Cut(
+            id: const CutId('c'),
+            name: 'c',
+            duration: 4,
+            canvasSize: paper,
+            layers: [row],
+          ),
           frameIndex: 2,
-          blocks: null,
-          worn: (owner: row.id, wearer: row.id),
         ),
-        cut: Cut(
-          id: const CutId('c'),
-          name: 'c',
-          duration: 4,
-          canvasSize: paper,
-          layers: [row],
-        ),
-        frameIndex: 2,
       ),
     );
     final place = (owner: row.id, effect: effect.id);
 
-    expect(identical(shown, cel), isTrue);
     expect(plugins.outcomes.failedAt(place, 2), isTrue);
 
     var heard = 0;
@@ -262,6 +296,34 @@ void main() {
 
     expect(recalledAfter(15), isTrue, reason: 'sixteen back, it is kept');
     expect(recalledAfter(16), isFalse, reason: 'seventeen back, it is not');
+  });
+
+  test('a sample bound again, worn alike at the same frame, is told by the '
+      'teller it was before — a picture that tells again what its steps '
+      'told keeps one of each, however often its chain is bound', () {
+    final outcomes = FxPluginOutcomes();
+    addTearDown(outcomes.dispose);
+    const worn = (owner: a, effect: fx, wearer: a);
+    final once = outcomes.toldFor(worn, sample(1), cut: cut, frame: 1);
+
+    expect(
+      identical(outcomes.toldFor(worn, sample(1), cut: cut, frame: 1), once),
+      isTrue,
+    );
+    expect(
+      [
+        outcomes.toldFor(worn, sample(2), cut: cut, frame: 1),
+        outcomes.toldFor(worn, sample(1), cut: cut, frame: 2),
+        outcomes.toldFor(
+          (owner: a, effect: fx, wearer: const LayerId('b')),
+          sample(1),
+          cut: cut,
+          frame: 1,
+        ),
+      ].any((other) => identical(other, once)),
+      isFalse,
+      reason: 'another sample, frame or wearer is told by another',
+    );
   });
 
   test('an effect fails where any row that wears it fails — an attach row '

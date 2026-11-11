@@ -33,9 +33,11 @@ typedef _Shown = ({
 ///
 /// ⚠️**THE CANVASES REGISTER THEMSELVES** ([show], [hide]) under the scope
 /// their painter already names the cel by, and each says how it paints a
-/// surface of it: the drawing canvas draws the active row THROUGH its
-/// colour keys, so the tiles it paints are other objects than the cel's
-/// own — warming the cel's own there would warm pictures nobody draws.
+/// surface of it: the drawing canvas draws the active row with its texts
+/// laid, so where a text lies the tiles it paints are other objects than
+/// the cel's own — warming the cel's own there would warm pictures nobody
+/// draws. ↩️Through its colour keys too, until the engine keyed a row
+/// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
 class ShownCels {
   ShownCels({BitmapTileImageCache? cache})
     : _cache = cache ?? BitmapTileImageCache.instance;

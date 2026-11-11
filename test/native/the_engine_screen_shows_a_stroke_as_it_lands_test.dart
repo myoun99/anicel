@@ -10,19 +10,15 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart'
-    show celSurfaceAsShown;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
-import '../helpers/a_plugin_that_shifts.dart' show shiftingFxPluginEffect;
 import '../helpers/cel_text_fixture.dart' show textOf;
 import '../helpers/engine_screen_pins.dart';
 
@@ -101,13 +97,11 @@ void main() {
   strokeOn(
     BitmapSurface base, {
     required bool erase,
-    List<ResolvedLayerEffect> sourceEffects = const [],
   }) {
     final overlay = ActiveStrokeOverlayModel(tileSize: side)
       ..erase = erase
       ..blendMode = BrushBlendMode.color
-      ..preBlendBase = base
-      ..sourceEffects = sourceEffects;
+      ..preBlendBase = base;
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
@@ -249,49 +243,12 @@ void main() {
     );
   });
 
-  test('🚨on a row whose chain runs a plugin, the stroke shows as the '
-      'whole cel the plugin makes of it, as it lands', () {
-    final plugin = [shiftingFxPluginEffect(by: 3)];
-    final base = cel();
-    final (:overlay, :rasterizer) = strokeOn(
-      base,
-      erase: false,
-      sourceEffects: plugin,
-    );
-    final drawing = shown(
-      frameOf(
-        BitmapSurfacePainter(
-          surface: celSurfaceAsShown(base, plugin),
-          overlayModel: overlay,
-        ),
-      ),
-    );
-
-    expect(
-      drawing,
-      shown(
-        frameOf(
-          BitmapSurfacePainter(
-            surface: celSurfaceAsShown(
-              landed(base, rasterizer, erase: false),
-              plugin,
-            ),
-          ),
-        ),
-      ),
-    );
-    expect(
-      drawing,
-      isNot(
-        shown(
-          frameOf(
-            BitmapSurfacePainter(surface: celSurfaceAsShown(base, plugin)),
-          ),
-        ),
-      ),
-      reason: 'the stroke shows while the pen is down',
-    );
-  });
+  // ↩️On a row whose chain ran a plugin at its head, the overlay showed
+  // the whole cel the plugin made of the stroke, made on the CPU — until
+  // that plugin was a step of the chain, which the engine runs over what
+  // the pen holds laid on the row as it lands
+  // (`a_plugin_step_is_kept_on_the_cel_it_read_test`,
+  // float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 
   test('a picture a reduced paint remakes with its chain still shows the '
       'tile it is of', () {

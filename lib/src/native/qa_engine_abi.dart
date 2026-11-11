@@ -390,7 +390,10 @@ import '../core/on_a_worker.dart';
 ///   bucket's fill reads the frame's picture, floods, closes gaps and is
 ///   finished on the GPU engine (`EngineFloods`, board
 ///   fill-runs-in-the-c-engine), and the C fills nothing.
-const int kQaEngineAbiVersion = 78;
+/// - v79: `qa_key_rgba` leaves the C: a row's colour keys are the GPU
+///   engine's key run (`KeyRun`), wherever a plugin stands in the chain
+///   (float-warp-resamples-in-the-c-engine (2)), and the C keys nothing.
+const int kQaEngineAbiVersion = 79;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

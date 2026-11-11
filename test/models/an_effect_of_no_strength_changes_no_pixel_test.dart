@@ -54,7 +54,7 @@ void main() {
   // — asks the same question once, where its paint is resolved.
   for (final MapEntry(key: name, value: effect) in noStrength.entries) {
     if (effect.kind == EffectKind.colorKey) {
-      // Split off before a paint is resolved (splitSourceEffects).
+      // Split off before a paint is resolved (celSourceKeys).
       continue;
     }
     test('$name takes no step and grows no buffer', () {

@@ -78,13 +78,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// the constructor, so no host that mounts this painter can be the one
   /// that forgot — the same placement, for the same reason, as the colour
   /// keys in `CutFrameCompositeLayer`'s constructor. A surface that carries
-  /// none (every sheet's ink, a selection's float, a cel already shown
-  /// through `celSurfaceAsShown`) comes back as the object it was.
+  /// none (every sheet's ink, a selection's float, a cel whose texts are
+  /// laid already) comes back as the object it was.
   ///
-  /// ⚠️It does not replace `celSurfaceAsShown` at the routes that run a
-  /// plugin at a chain's head: it reads the picture the texts are part of,
-  /// so they have to be laid BEFORE it runs, and only that seam knows the
-  /// row's chain.
+  /// ↩️The routes that ran a plugin at a chain's head laid them before it,
+  /// at a seam of their own (`celSurfaceAsShown`) — it read the picture the
+  /// texts are part of — until that plugin was a step of the chain the
+  /// engine runs over the row (float-warp-resamples-in-the-c-engine (2),
+  /// 2026-11-11).
   final BitmapSurface surface;
 
   /// Zoom/pan applied inside the picture; `null` paints at identity.

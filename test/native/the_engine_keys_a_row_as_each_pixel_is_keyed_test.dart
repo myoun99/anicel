@@ -18,18 +18,23 @@ import 'package:anicel/src/services/composite_effect_paint.dart'
     show pixelThroughChain;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 
+import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/a_row_laid_through_its_plugins.dart';
 import '../helpers/an_effect_sampled.dart';
 
 /// 🚨★★★A ROW'S LEADING COLOUR KEYS ARE THE ENGINE'S, AND IT KEYS EACH
 /// PIXEL AS THE KEYS' OWN DEFINITION DOES (float-warp-resamples-in-the-c-
 /// engine (1), 관제 2026-11-11).
 ///
-/// Keys alone at a chain's head are no CPU pass (`splitSourceEffects`): a
-/// row hands its cel's bytes to the engine with the keys in its chain, and
-/// the engine keys its stored bytes — as the row's own keys where the chain
-/// is that run and colour after it, as its chain's first op where more
-/// follows or a hand holds pixels over the row. Each lays what the row of
-/// the cel keyed by the definition a pixel at a time lays
+/// Keys at a chain's head are no CPU pass (`celSourceKeys`): a row hands
+/// its cel's bytes to the engine with the keys in its chain, and the engine
+/// keys its stored bytes — as the row's own keys where the chain is that
+/// run and colour after it, as its chain's first op where more follows — a
+/// plug-in among it, which reads what they keyed — or a hand holds pixels
+/// over the row. ↩️A plug-in after them read them keyed on the CPU, by a
+/// walk of its own, until it was a step of the chain
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11). Each lays what
+/// the row of the cel keyed by the definition a pixel at a time lays
 /// (`pixelThroughChain`, the eyedropper's door) — to the byte, the keys'
 /// axes each: a colour, a tolerance, an Amount, keeping instead of
 /// erasing, a run longer than one set of tables.
@@ -263,6 +268,39 @@ void main() {
         expect(laid(rowOf(cel, rest)), isNot(reference));
       });
     }
+
+    // A plug-in after the keys reads the row as they keyed it: what it
+    // hands back unchanged is what the row keyed by the definition lays.
+    test('$name, and a plug-in after: the plug-in reads the row as each '
+        'pixel is keyed', () async {
+      final cel = celOf(const [0]);
+      final plugin = ShiftingFxPlugin(by: 0);
+      final through = ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(plugin),
+      );
+      final engine = await aRowLaidThroughItsPlugins(
+        composite,
+        letters,
+        cel,
+        [...keys, through],
+      );
+      expect(plugin.renders, 1, reason: '⛔fixture: the plug-in ran');
+      final reference = await aRowLaidThroughItsPlugins(
+        composite,
+        letters,
+        keyedByDefinition(cel, keys),
+        const [],
+      );
+      expect(engine, reference);
+      expect(
+        await aRowLaidThroughItsPlugins(composite, letters, cel, const []),
+        isNot(reference),
+        reason: '⛔liveness: the keys took some of what the row lays',
+      );
+    });
 
     // What a hand holds over the row is keyed with it, as it is once it
     // lands: laid over the row's own tiles before its chain.

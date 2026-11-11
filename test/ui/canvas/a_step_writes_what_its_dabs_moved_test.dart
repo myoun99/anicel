@@ -40,7 +40,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -177,7 +176,6 @@ void main() {
       final images = LayerFrameImageCache(frameStore: cels);
       addTearDown(images.dispose);
       final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
-        ..sourceEffects = effects
         ..preBlendBase = inPlace ? theCel() : null;
       addTearDown(overlay.dispose);
       final rasterizer = BrushLiveStrokeRasterizer(
@@ -185,7 +183,7 @@ void main() {
         tileSize: tileSize,
       );
       final live = BitmapSurfacePainter(
-        surface: celSurfaceAsShown(theCel(), effects),
+        surface: theCel(),
         overlayModel: overlay,
         showTransparentBackground: false,
       );

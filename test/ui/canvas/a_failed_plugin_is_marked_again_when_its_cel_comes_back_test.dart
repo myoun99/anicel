@@ -9,6 +9,9 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/string_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -56,10 +59,54 @@ void main() {
     pluginOutcomes: (outcomes: plugins.outcomes, owner: owner),
   ).first.pluginFailures!.failedAt(0);
 
-  LayerEffect effectNow(WidgetTester tester) => sessionOf(
-    tester,
-  ).repository.requireProject().tracks.single.cuts.single.layers.first.effects
-      .single;
+  /// The plugin's effect as the project holds it, on the row [on].
+  LayerEffect effectNow(
+    WidgetTester tester, {
+    LayerId on = textToolLayerId,
+  }) => sessionOf(tester).repository
+      .requireProject()
+      .tracks
+      .single
+      .cuts
+      .single
+      .layers
+      .firstWhere((layer) => layer.id == on)
+      .effects
+      .singleWhere((effect) => effect.id == effectId);
+
+  /// The folder [inAFolder] puts the rows in.
+  const folder = LayerId('fx-folder');
+
+  /// [project] with its rows in [folder], which wears [effect].
+  Project inAFolder(Project project, LayerEffect effect) {
+    final track = project.tracks.single;
+    final cut = track.cuts.single;
+    return project.copyWith(
+      tracks: [
+        track.copyWith(
+          cuts: [
+            cut.copyWith(
+              layers: [
+                for (final layer in cut.layers)
+                  layer.copyWith(folderId: folder),
+                createFolderLayer(
+                  id: folder,
+                  name: 'F',
+                ).copyWith(effects: [effect]),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A contrast raised: black stays black, the paper does not stay paper.
+  LayerEffect raisedContrast() => LayerEffect(
+    id: const EffectId('contrast'),
+    kind: EffectKind.brightnessContrast,
+    parameters: {'contrast': EffectParameter(value: 50)},
+  );
 
   /// The stand-in with one number, [_DrawsOnlyOverInk.draws] by default.
   final withAnAmount = fxPluginDescriptionOf(
@@ -78,36 +125,40 @@ void main() {
   );
 
   /// The app with [plugin] installed as the stand-in — described [as] —
-  /// on the cut's row, over a cel of [paper] alone at the first frame, the
-  /// brush in hand — and with [drawings] two, a cel of paper and ink at the
-  /// second — and [onAnotherRow], another row in hand, the plugin's drawn
-  /// from what the canvas keeps of it: where on the screen the paper is,
-  /// and whether the effect the project holds failed at the first frame.
+  /// on the cut's row, past [before] — or on the chain of a [folder] the
+  /// row is in, [wornByAFolder] — over a cel of [paper] alone at the first
+  /// frame, the brush in hand — and with [drawings] two, a cel of paper and
+  /// ink at the second — and [onAnotherRow], another row in hand, the
+  /// plugin's drawn from what the canvas keeps of it: where on the screen
+  /// the paper is, and whether the effect the project holds failed at the
+  /// first frame.
   Future<({Offset paper, bool Function() failed})> onPaper(
     WidgetTester tester,
     _DrawsOnlyOverInk plugin, {
     FxPluginDescription? as,
     int drawings = 1,
     bool onAnotherRow = false,
+    List<LayerEffect> before = const [],
+    bool wornByAFolder = false,
   }) async {
     final plugins = await installedShiftingFxPlugin(
       tester,
       as: as,
       runner: plugin,
     );
+    final effect = LayerEffect.defaults(
+      id: effectId,
+      kind: EffectKind.plugin,
+      plugin: as ?? shiftingFxPluginDescription,
+    );
+    final project = textToolProject(
+      drawings: drawings,
+      emptyLayer: onAnotherRow,
+      effects: [...before, if (!wornByAFolder) effect],
+    );
     await pumpTextToolApp(
       tester,
-      project: textToolProject(
-        drawings: drawings,
-        emptyLayer: onAnotherRow,
-        effects: [
-          LayerEffect.defaults(
-            id: effectId,
-            kind: EffectKind.plugin,
-            plugin: as ?? shiftingFxPluginDescription,
-          ),
-        ],
-      ),
+      project: wornByAFolder ? inAFolder(project, effect) : project,
       fxPlugins: plugins,
     );
     await takeTextTool(tester);
@@ -144,10 +195,19 @@ void main() {
     }
     await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
     await pumpFrames(tester, 12);
-    bool failed() => headerFailed(plugins, effectNow(tester), textToolLayerId);
+    final wearer = wornByAFolder ? folder : textToolLayerId;
+    bool failed() =>
+        headerFailed(plugins, effectNow(tester, on: wearer), wearer);
 
+    // A step of the cel's chain, waited for as the V row's is. ↩️At a cel's
+    // head it ran on the CPU as the cel was shown, until it was a step of
+    // the chain (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+    expect(
+      await settleAsync(tester, failed),
+      isTrue,
+      reason: '⛔fixture: no ink, it fails',
+    );
     expect(plugin.renders, greaterThan(0), reason: '⛔fixture: it runs');
-    expect(failed(), isTrue, reason: '⛔fixture: no ink, it fails');
     return (paper: onTheScreen, failed: failed);
   }
 
@@ -157,14 +217,15 @@ void main() {
   /// at the first frame, once the picture is made.
   Future<bool Function()> onTheVRow(
     WidgetTester tester,
-    _DrawsOnlyOverInk plugin,
-  ) async {
+    _DrawsOnlyOverInk plugin, {
+    int drawings = 1,
+  }) async {
     final plugins = await installedShiftingFxPlugin(
       tester,
       as: withAnAmount,
       runner: plugin,
     );
-    final project = textToolProject();
+    final project = textToolProject(drawings: drawings);
     await pumpTextToolApp(
       tester,
       project: project.copyWith(
@@ -198,6 +259,26 @@ void main() {
         ),
       ]),
     );
+    if (drawings == 2) {
+      coordinatorOf(tester).restoreSurfaceSnapshot(
+        textToolSecondKey,
+        celOf(tester, textToolSecondKey).putTiles([
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(
+              size: size,
+              pixels: Uint8List.fromList([
+                0,
+                0,
+                0,
+                255,
+                for (var i = 1; i < size * size; i += 1) ...paper,
+              ]),
+            ),
+          ),
+        ]),
+      );
+    }
     bool failed() => headerFailed(
       plugins,
       sessionOf(tester).repository.requireProject().tracks.single.effects
@@ -231,12 +312,13 @@ void main() {
       await pen.moveTo(from + Offset(6.0 * i, 4.0 * i));
       await tester.pump();
     }
-    expect(failed(), isFalse,
+    expect(await settleAsync(tester, () => !failed()), isTrue,
         reason: 'mid-stroke, the ink is shown through it — not the cel as '
             'it stood, made beside it to know where it showed');
     await pen.up();
     await pumpFrames(tester, 12);
-    expect(failed(), isFalse, reason: '⛔fixture: over the ink it draws');
+    expect(await settleAsync(tester, () => !failed()), isTrue,
+        reason: '⛔fixture: over the ink it draws');
 
     final drawnRuns = plugin.renders;
     final inked = celOf(tester);
@@ -248,7 +330,7 @@ void main() {
       reason: '⛔premise: the undo took the stroke back',
     );
     expect(
-      failed(),
+      await settleAsync(tester, failed),
       isTrue,
       reason:
           'the cel it failed on is shown again — '
@@ -267,7 +349,11 @@ void main() {
       isFalse,
       reason: '⛔premise: the redo put the stroke back',
     );
-    expect(failed(), isFalse, reason: 'the inked cel is shown again');
+    expect(
+      await settleAsync(tester, () => !failed()),
+      isTrue,
+      reason: 'the inked cel is shown again',
+    );
   });
 
   for (final onAnotherRow in [false, true]) {
@@ -292,7 +378,8 @@ void main() {
         frameIsGlobal: false,
         description: 'Add key',
       );
-      await pumpFrames(tester, 12);
+      // A window: what is asked is that nothing changes.
+      await lendBothClocks(tester, rounds: 20);
       expect(
         identical(effectNow(tester), unkeyed),
         isFalse,
@@ -307,11 +394,13 @@ void main() {
     });
   }
 
-  testWidgets('🚨a plugin that failed on a frame\'s cel, drew once the frame '
-      'was joined onto an inked one, and is shown the cel again by an undo '
-      'is marked failed again', (tester) async {
-    final plugin = _DrawsOnlyOverInk(paper);
-    final (paper: _, :failed) = await onPaper(tester, plugin, drawings: 2);
+  /// Joins the first frame of the row onto its second cel, the inked one,
+  /// waits for the plugin to draw over it, and splits it again by an undo:
+  /// the frame stacked as it was — the same picture, there already.
+  Future<void> joinedOntoTheInkAndSplit(
+    WidgetTester tester,
+    bool Function() failed,
+  ) async {
     final session = sessionOf(tester);
     FrameId shown() => session.repository
         .requireProject()
@@ -329,12 +418,76 @@ void main() {
     session.frameVerbs.linkSelectedFrame(joined!);
     await pumpFrames(tester, 12);
     expect(shown(), textToolSecondFrameId, reason: '⛔premise: joined');
-    expect(failed(), isFalse, reason: '⛔fixture: over the ink it draws');
+    expect(
+      await settleAsync(tester, () => !failed()),
+      isTrue,
+      reason: '⛔fixture: over the ink it draws',
+    );
 
     await pressCtrl(tester, LogicalKeyboardKey.keyZ);
     await pumpFrames(tester, 12);
     expect(shown(), textToolFrameId, reason: '⛔premise: the undo split it');
-    expect(failed(), isTrue, reason: 'the cel it failed on is shown again');
+  }
+
+  testWidgets('🚨a plugin that failed on a frame\'s cel, drew once the frame '
+      'was joined onto an inked one, and is shown the cel again by an undo '
+      'is marked failed again', (tester) async {
+    final plugin = _DrawsOnlyOverInk(paper);
+    final (paper: _, :failed) = await onPaper(tester, plugin, drawings: 2);
+
+    await joinedOntoTheInkAndSplit(tester, failed);
+    expect(
+      await settleAsync(tester, failed),
+      isTrue,
+      reason: 'the cel it failed on is shown again',
+    );
+  });
+
+  // Wherever the plugin is worn — past another effect of the cel's chain,
+  // on a folder's, on the V row's — the frame the undo gives back is the
+  // picture it had been, its key the same and what the plugin read in
+  // between another: shown with no run, it tells again how its steps
+  // went (`EngineFramePicture.hold`). ↩️Only its making told, and the
+  // header kept what was told over the ink (2026-11-12).
+  for (final (where, before, byAFolder) in [
+    ('past another effect of its chain', [raisedContrast()], false),
+    ('on the chain of a folder the row is in', <LayerEffect>[], true),
+  ]) {
+    testWidgets('🚨a plugin $where that failed on a frame\'s cel, drew once '
+        'the frame was joined onto an inked one, and is shown the cel again '
+        'by an undo is marked failed again', (tester) async {
+      final (paper: _, :failed) = await onPaper(
+        tester,
+        _DrawsOnlyOverInk.black(),
+        drawings: 2,
+        before: before,
+        wornByAFolder: byAFolder,
+      );
+
+      await joinedOntoTheInkAndSplit(tester, failed);
+      expect(
+        await settleAsync(tester, failed),
+        isTrue,
+        reason: 'the cel it failed on is shown again',
+      );
+    });
+  }
+
+  testWidgets('🚨a plugin on the V row that failed on a frame\'s cels, drew '
+      'once a row\'s was joined onto an inked one, and is shown the cel '
+      'again by an undo is marked failed again', (tester) async {
+    final failed = await onTheVRow(
+      tester,
+      _DrawsOnlyOverInk.black(),
+      drawings: 2,
+    );
+
+    await joinedOntoTheInkAndSplit(tester, failed);
+    expect(
+      await settleAsync(tester, failed),
+      isTrue,
+      reason: 'the cel it failed on is shown again',
+    );
   });
 
   for (final onAnotherRow in [false, true]) {
@@ -359,7 +512,11 @@ void main() {
         scaleLinked: false,
       );
       await pumpFrames(tester, 12);
-      expect(failed(), isFalse, reason: '⛔fixture: at that value it draws');
+      expect(
+        await settleAsync(tester, () => !failed()),
+        isTrue,
+        reason: '⛔fixture: at that value it draws',
+      );
 
       await pressCtrl(tester, LogicalKeyboardKey.keyZ);
       await pumpFrames(tester, 12);
@@ -368,7 +525,11 @@ void main() {
         5,
         reason: '⛔premise: the undo gave the value back',
       );
-      expect(failed(), isTrue, reason: 'the value it failed at is back');
+      expect(
+        await settleAsync(tester, failed),
+        isTrue,
+        reason: 'the value it failed at is back',
+      );
     });
   }
 
@@ -425,7 +586,14 @@ void main() {
 /// any picture, where it is told no paper; draws it as it is over anything
 /// else, or at [draws] and over.
 final class _DrawsOnlyOverInk implements FxPluginRunner {
-  _DrawsOnlyOverInk(this.paper);
+  _DrawsOnlyOverInk(this.paper) : black = false;
+
+  /// Draws only over a pixel of black ink — whatever else the picture
+  /// holds: what a chain before it made of the paper, or a page.
+  _DrawsOnlyOverInk.black() : paper = null, black = true;
+
+  /// Whether it is ink only where it is black.
+  final bool black;
 
   /// The first value it draws at whatever it is given.
   static const draws = 8;
@@ -449,14 +617,16 @@ final class _DrawsOnlyOverInk implements FxPluginRunner {
     final paper = this.paper;
     for (
       var i = 0;
-      paper != null && i < pixels.length && !drawsIt;
+      (paper != null || black) && i < pixels.length && !drawsIt;
       i += 4
     ) {
       drawsIt =
           pixels[i + 3] != 0 &&
-          (pixels[i] != paper[0] ||
-              pixels[i + 1] != paper[1] ||
-              pixels[i + 2] != paper[2]);
+          (paper == null
+              ? pixels[i] == 0 && pixels[i + 1] == 0 && pixels[i + 2] == 0
+              : pixels[i] != paper[0] ||
+                    pixels[i + 1] != paper[1] ||
+                    pixels[i + 2] != paper[2]);
     }
     return drawsIt ? Uint8List.fromList(pixels) : null;
   }

@@ -23,45 +23,32 @@ import '../models/transform_track.dart';
 import 'layer_pose_matrix.dart' show pictureMoved;
 import 'layer_pose_paint.dart';
 import 'cel_numbered_row.dart';
-import 'cel_source_effect_pass.dart';
-import 'cel_surface_as_shown.dart';
+import 'cel_text_laying.dart';
 
 /// One paintable layer of a composited cut frame, bottom → top order.
 class CutFrameCompositeLayer {
-  /// 🚨THE CPU HALF OF THE CHAIN IS APPLIED HERE, IN THE CONSTRUCTOR, and
-  /// that placement is the point.
+  /// 🚨THE CEL'S TEXTS ARE LAID HERE, IN THE CONSTRUCTOR, and that
+  /// placement is the point: they are part of the picture the row's chain
+  /// runs over ([celSurfaceWithTextsLaid]). Every route builds its layers
+  /// through this one constructor — the shared plan, the tree plan, the
+  /// cel-group export — so doing it here means no route can be the one that
+  /// forgot. The laying returns the surface itself for a cel with no texts,
+  /// so the overwhelmingly common layer pays one field read.
   ///
-  /// A plugin at the head of the chain, after the colour keys before it,
-  /// is a pass over the cel's own bytes ([splitSourceEffects]), so it has
-  /// to happen before the surface is handed to anything that draws. Every
-  /// route builds its layers through this one constructor — the shared
-  /// plan, the tree plan, the cel-group export — so doing it here means no
-  /// route can be the one that forgot, and [surface] and [effects] cannot
-  /// disagree about whether the keys already ran
-  /// ([[make-the-invariant-unrepresentable]]). Keys alone stay in
-  /// [effects], the engine's to run on the row's stored bytes. ↩️Every
-  /// leading key was run here, until the engine keyed a row
-  /// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
-  ///
-  /// The pass is cached on the source surface's identity and returns it
-  /// unchanged when the chain runs no plugin at its head, so the
-  /// overwhelmingly common layer pays a list walk and nothing else.
-  ///
-  /// ★The cel's TEXTS are laid over its drawing in the same step, before
-  /// the keys ([celSurfaceAsShown]) — they are part of the picture a key
-  /// filters, and this constructor is where no route forgets them either.
+  /// ↩️The CPU half of the chain ran here too — every leading colour key
+  /// until the engine keyed a row, and a plugin at the head after them
+  /// until it was a step of the row's chain (float-warp-resamples-in-the-c-
+  /// engine (1)(2), 2026-11-11) — so [surface] and [effects] could not
+  /// disagree about whether it had run ([[make-the-invariant-
+  /// unrepresentable]]). [effects] is the whole chain now.
   CutFrameCompositeLayer({
     required BitmapSurface surface,
     required this.opacity,
     this.blendMode = LayerBlendMode.normal,
     this.placement,
-    List<ResolvedLayerEffect> effects = const [],
+    this.effects = const [],
     this.tint,
-  }) : surface = celSurfaceAsShown(
-         surface,
-         splitSourceEffects(effects).source,
-       ),
-       effects = splitSourceEffects(effects).paint;
+  }) : surface = celSurfaceWithTextsLaid(surface);
 
   CutFrameCompositeLayer._paintedNormal(CutFrameCompositeLayer row)
     : surface = row.surface,
@@ -74,13 +61,12 @@ class CutFrameCompositeLayer {
   /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
   ///
-  /// ⛔Not through the constructor: [surface] and [effects] are the ones its
-  /// CPU half already ran on, and running it again would key the keyed.
+  /// Not through the constructor: [surface] already has its texts laid.
   CutFrameCompositeLayer paintedNormal() =>
       CutFrameCompositeLayer._paintedNormal(this);
 
-  /// The pixels this layer draws — the cel's own surface, or the derived
-  /// one its texts and the color keys produced from it.
+  /// The pixels this layer draws — the cel's own surface, or the one its
+  /// texts make of it.
   final BitmapSurface surface;
 
   /// The layer's composite blend against everything below (R26 #30).

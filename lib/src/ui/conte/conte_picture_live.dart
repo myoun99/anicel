@@ -5,7 +5,6 @@ import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
-import '../../services/cel_surface_as_shown.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/canvas_zoom_scale.dart';
 import '../playback/frame_picture_view.dart';
@@ -162,9 +161,6 @@ class ContePictureLive extends StatelessWidget {
       frameIndex: picture.frame,
       drawingLayerId: picture.layer.id,
     );
-    // The overlay shows its pictures in place of the painter's tiles below,
-    // so through the chain they are shown through.
-    window.overlay.sourceEffects = drawn.activeSourceEffects;
     return FramePictureView(
       key: ValueKey<String>('conte-picture-live-${window.id}'),
       run: (
@@ -178,10 +174,7 @@ class ContePictureLive extends StatelessWidget {
       viewport: onTheRaster,
       live: (
         activeSurfacePainter: BitmapSurfacePainter(
-          surface: celSurfaceAsShown(
-            surfaceOf(picture),
-            drawn.activeSourceEffects,
-          ),
+          surface: surfaceOf(picture),
           overlayModel: window.overlay,
           showTransparentBackground: false,
           lineage: window.key.cel,

@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -28,8 +29,8 @@ import 'package:anicel/src/services/bitmap_surface_brush_commit.dart'
     show materializeBrushDabSequenceOnBitmapSurface;
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show tilesOfRegion;
-import 'package:anicel/src/services/cel_surface_as_shown.dart'
-    show celLandingShownWhole, celSurfaceAsShown;
+import 'package:anicel/src/services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -164,7 +165,7 @@ void main() {
   }) {
     final overlay = SelectionFloatOverlay(
       SelectionFloatPaint(
-        surface: floatPainter(stamped(nothingLike(over), lift), const []),
+        surface: floatPainter(stamped(nothingLike(over), lift)),
         surfaceOffset: CanvasPoint(x: dx.toDouble(), y: dy.toDouble()),
         clip: over.pasteboard.rect,
         lands: lands,
@@ -368,7 +369,7 @@ void main() {
       final landing = movedBy(lift, 21, 13);
       final drawing = shown(
         frameOf(
-          BitmapSurfacePainter(surface: celSurfaceAsShown(base, keys)),
+          BitmapSurfacePainter(surface: base),
           float: carried(
             lift,
             base,
@@ -384,9 +385,7 @@ void main() {
         drawing,
         shown(
           frameOf(
-            BitmapSurfacePainter(
-              surface: celSurfaceAsShown(stamped(base, landing), keys),
-            ),
+            BitmapSurfacePainter(surface: stamped(base, landing)),
             row: row,
           ),
         ),
@@ -403,12 +402,11 @@ void main() {
     final base = cel();
     final lift = liftAt(CanvasPoint(x: 120, y: 60));
     final landed = stamped(base, movedBy(lift, 17, 5));
-    final shownWhole = celLandingShownWhole(
-      under: base,
-      landed: landed,
-      effects: const [],
-    )!;
-    final landing = CelTextLanding.of(shownWhole.region, shownWhole.straight);
+    final whole = DirtyRegion.wholePixelsOf(base.storableRect);
+    final landing = CelTextLanding.of(
+      whole,
+      bitmapSurfaceRegionPixels(landed, whole),
+    );
     addTearDown(landing.letGo);
     final drawing = shown(
       frameOf(
@@ -619,8 +617,5 @@ class _Cel implements FloatLandsOn {
   final LandingPreview? landing;
 
   @override
-  LandingPreview? landingShown(
-    BrushDab stamp,
-    List<ResolvedLayerEffect> keys,
-  ) => landing;
+  LandingPreview? landingShown(BrushDab stamp) => landing;
 }

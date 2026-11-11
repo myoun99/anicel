@@ -532,7 +532,7 @@ class _TreePlan {
   /// A chain that is one run of keys, [keysOnTheRow], is the row's own
   /// keys instead — keyed on its stored bytes as the chain's op keys them,
   /// with no chain's picture between (kernels/chain): a row's leading keys,
-  /// its whole chain or before its colour (`splitSourceEffects`).
+  /// its whole chain or before its colour (`celSourceKeys`).
   ///
   /// [source] is what the picture is made of where nothing else goes into
   /// it — a row's surface, nothing held over it — and so what its first

@@ -13,6 +13,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -24,6 +26,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/a_shown_surface.dart';
 import '../../helpers/engine_screen_pins.dart';
 import '../../helpers/poll_until.dart';
@@ -374,6 +377,151 @@ void main() {
       expect(store.peek('a'), same(laid));
       expect(shownBy(laid), laidBy(changed));
       expect(told, 1);
+      laid
+        ..release()
+        ..release();
+    });
+  });
+
+  group('🚨what its plug-ins\' steps told, a picture tells again each time '
+      'it is held to be shown (EngineFramePicture.hold)', () {
+    const rect = Rect.fromLTRB(-20, 10, 40, 50);
+    const far = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('far'),
+      frameId: FrameId('far'),
+    );
+
+    /// A row of [cel] at [at], run through [runner] — telling [told] how
+    /// it went.
+    CompositeLeaf<CanvasStackRow> runOf(
+      BrushFrameKey at,
+      FxPluginRunner runner,
+      FxPluginTold told,
+    ) => CompositeLeaf(
+      CanvasLayerImageRequest(
+        frameKey: at,
+        opacity: 1,
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.plugin,
+            plugin: shiftingFxPluginDescription,
+            values: const [],
+            run: fxPluginRunOf(runner, told: told),
+          ),
+        ],
+      ),
+    );
+
+    StackedFrame frameOfRows(
+      List<CompositeNode<CanvasStackRow>> rows,
+      BitmapSurface Function(BrushFrameKey key) surfaceOf,
+    ) => stackedFrameOf(
+      rows,
+      page: (
+        canvasSize: canvas,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: true,
+        paperBackground: paper,
+      ),
+      surfaceOf: surfaceOf,
+    );
+
+    test('a patch through steps that drew, into a picture they failed on, '
+        'leaves it telling that they drew', () async {
+      final heard = <bool>[];
+      void told({required bool failed}) => heard.add(failed);
+      final store = storeOf();
+      final laid = (await store.lay(
+        'a',
+        frameOfRows([
+          runOf(key, ShiftingFxPlugin(by: 1, fails: true), told),
+        ], (_) => cel(5)),
+      ))!..hold();
+      expect(heard.last, isTrue, reason: '⛔fixture: it failed');
+
+      expect(
+        await store.patchThrough(
+          from: 'a',
+          to: 'b',
+          rect: rect,
+          frame: frameOfRows([
+            runOf(key, ShiftingFxPlugin(by: 1), told),
+          ], (_) => cel(5, marked: (-20, 10, 40, 50))),
+          stands: () => true,
+        ),
+        isTrue,
+      );
+      expect(store.peek('b'), same(laid), reason: '⛔premise: written in');
+      expect(heard.last, isFalse, reason: '⛔premise: the step drew');
+
+      heard.clear();
+      laid.hold();
+      expect(heard, [false], reason: 'held again, it tells what it holds');
+      laid
+        ..release()
+        ..release();
+    });
+
+    test('a step another screen\'s picture is copied for tells, held, what '
+        'that picture told — of a row the step did not meet as well',
+        () async {
+      final heard = <String, bool>{};
+      void near({required bool failed}) => heard['near'] = failed;
+      void farOff({required bool failed}) => heard['far'] = failed;
+      // The far row's cel lies on the page's last tile alone, away from
+      // where the step changes it.
+      BitmapSurface surfaceOf(BrushFrameKey at, BitmapSurface nearOne) =>
+          at == far ? cel(7, over: const [1]) : nearOne;
+      final store = storeOf();
+      final laid = (await store.lay(
+        'a',
+        frameOfRows(
+          [
+            runOf(key, ShiftingFxPlugin(by: 1), near),
+            runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
+          ],
+          (at) => surfaceOf(at, cel(5, over: const [-1, 0])),
+        ),
+      ))!
+        ..hold()
+        ..hold();
+      expect(heard, {'near': false, 'far': true}, reason: '⛔fixture');
+
+      heard.clear();
+      expect(
+        await store.patchThrough(
+          from: 'a',
+          to: 'b',
+          rect: rect,
+          frame: frameOfRows(
+            [
+              runOf(key, ShiftingFxPlugin(by: 1), near),
+              runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
+            ],
+            (at) => surfaceOf(
+              at,
+              cel(5, marked: (-20, 10, 40, 50), over: const [-1, 0]),
+            ),
+          ),
+          stands: () => true,
+        ),
+        isTrue,
+      );
+      final copy = store.peek('b')!;
+      expect(copy, isNot(same(laid)), reason: '⛔premise: a copy');
+      final metFar = heard.containsKey('far');
+
+      heard.clear();
+      copy.hold();
+      expect(
+        heard,
+        {'near': false, 'far': true},
+        reason: 'the far row ${metFar ? 'was' : 'was not'} met by the step',
+      );
+      copy.release();
       laid
         ..release()
         ..release();

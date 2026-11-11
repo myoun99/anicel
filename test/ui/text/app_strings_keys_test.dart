@@ -343,6 +343,7 @@ void main() {
     'memoryItemEnginePool': (s) => s.memoryItemEnginePool,
     'memoryItemEngineScratch': (s) => s.memoryItemEngineScratch,
     'memoryItemLensBlurTables': (s) => s.memoryItemLensBlurTables,
+    'memoryItemPluginSteps': (s) => s.memoryItemPluginSteps,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,

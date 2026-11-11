@@ -11,6 +11,8 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
+    show CanvasActiveLayerRow;
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -96,7 +98,7 @@ void main() {
             lands: (stamp: stamp, on: cel),
           )
         : SelectionFloatPaint(
-            surface: floatPainter(tileOf(alpha), const []),
+            surface: floatPainter(tileOf(alpha)),
             surfaceOffset: CanvasPoint(x: 8, y: 8),
             lands: (stamp: stamp, on: cel),
           );
@@ -207,17 +209,30 @@ void main() {
     expect(cel.asked, 1);
   });
 
-  test('🗣️I-132-Q32 b: on a row whose chain runs a plugin a float is the '
-      'landing, even an opaque one over nothing — the plugin may change '
-      'the cel anywhere', () {
+  // ↩️🗣️I-132-Q32 b: on a row whose chain ran a plugin at its head a float
+  // was the landing, even an opaque one over nothing (the plugin may change
+  // the cel anywhere), while that plugin ran on the CPU over the cel alone
+  // — until it was a step of the chain, which the engine runs over what
+  // floats as over the cel (float-warp-resamples-in-the-c-engine (2),
+  // 2026-11-11).
+  test('on a row whose chain runs a plugin, a float is what its keys alone '
+      'make it — the row asks it through its leading keys', () {
     final (:float, :cel) = floatOver(empty);
+    CanvasActiveLayerRow rowOf(List<ResolvedLayerEffect> effects) =>
+        CanvasActiveLayerRow(opacity: 1, effects: effects);
 
-    expect(float.shownOn([shiftingFxPluginEffect()]).preview, same(_landing));
     expect(
-      float.shownOn([...keys, shiftingFxPluginEffect()]).preview,
-      same(_landing),
+      float.shownOn(rowOf([shiftingFxPluginEffect()]).sourceEffects).preview,
+      same(float),
     );
-    expect(cel.asked, 2);
+    expect(
+      float
+          .shownOn(rowOf([...keys, shiftingFxPluginEffect()]).sourceEffects)
+          .preview,
+      isNot(same(_landing)),
+      reason: 'opaque over nothing, its own pixels in place of what it covers',
+    );
+    expect(cel.asked, 0);
   });
 
   test('⛔CONTROL: on a row that keys nothing, a float is itself', () {
@@ -278,7 +293,7 @@ void main() {
       ),
       (
         'over a surface',
-        (canvas) => floatPainter(empty, const []).paintContentInto(
+        (canvas) => floatPainter(empty).paintContentInto(
           canvas,
           pixelRatio: 2,
           float: (preview: float, canvasToRow: null),
@@ -355,10 +370,7 @@ class _Cel implements FloatLandsOn {
   int asked = 0;
 
   @override
-  LandingPreview? landingShown(
-    BrushDab stamp,
-    List<ResolvedLayerEffect> keys,
-  ) {
+  LandingPreview? landingShown(BrushDab stamp) {
     asked += 1;
     return _landing;
   }

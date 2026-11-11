@@ -18,6 +18,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
@@ -46,7 +47,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
-    show waitsForItsPlugins;
+    show CanvasActiveLayerRow, CanvasStackRow, waitsForItsPlugins;
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -686,8 +687,12 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('🚨a picture of a row that keys its colours tells the pen\'s '
-      'overlay the keys: the live stroke shows through them, as on the canvas '
+  // ↩️It told the pen's overlay the keys, while a plugin at the head of a
+  // chain ran over what the overlay showed (float-warp-resamples-in-the-c-
+  // engine (2), 2026-11-11): the engine keys what the pen holds with the
+  // row.
+  testWidgets('🚨a picture of a row that keys its colours lays its live row '
+      'through them: the live stroke shows through them, as on the canvas '
       '(a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed)', (tester) async {
     final session = EditorSessionManager(
       initialProject: project(
@@ -709,7 +714,16 @@ void main() {
     addTearDown(session.dispose);
     await pumpTheTab(tester, session);
 
-    final keys = penOverThePicture(tester).overlay.sourceEffects;
+    final view = tester.widget<FramePictureView>(
+      find.byKey(const ValueKey<String>('conte-picture-live-picture-39-0')),
+    );
+    var keys = const <ResolvedLayerEffect>[];
+    mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(view.nodes, (row) {
+      if (row case CanvasActiveLayerRow(:final effects)) {
+        keys = effects;
+      }
+      return row;
+    });
 
     expect(keys.map((key) => key.kind), [EffectKind.colorKey]);
     expect(keys.single.values, [0, 0xFF40C060, 10, 100]);

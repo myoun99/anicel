@@ -4,46 +4,17 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
-import '../models/layer_effect.dart';
-import '../models/tile_coord.dart';
 import 'bitmap_surface_geometry.dart'
-    show bitmapSurfaceContentBounds, celTextPlateMoved, celTextPlateSurface;
+    show bitmapSurfaceContentBounds, celTextPlateSurface;
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
-import 'cel_source_effect_pass.dart';
 import 'cel_text_laying.dart';
 
-/// THE SEAM A CEL'S PICTURE CROSSES ON ITS WAY TO BEING SHOWN: the tiles a
-/// row draws for [surface] under its effect chain [effects].
-///
-/// Two things are computed over a cel's own bytes before anything is drawn,
-/// and their order is the order they exist in: the texts are part of the
-/// picture ([celSurfaceWithTextsLaid]), and a plugin at the head of the
-/// chain, after the colour keys before it, runs over that picture
-/// ([celSurfaceWithSourceEffects]) — so a key names a letter's colour
-/// exactly as it names a drawn line's. Keys alone are the engine's, over
-/// the picture this lays (`splitSourceEffects`).
-///
-/// 🚨★★★EVERY ROUTE THAT DRAWS A CEL COMES THROUGH HERE — the shared plan
-/// (`CutFrameCompositeLayer`: playback, export, the camera), the editing
-/// stack's row images (`LayerFrameImageCache`), the row being drawn on and
-/// the conte's live picture. A route that took the keys' pass alone would
-/// show a cel without its texts, which is why the keys' pass is not called
-/// from anywhere else (`a_cel_is_shown_through_one_seam_test`).
-///
-/// Pass `const []` where the row has no chain.
-BitmapSurface celSurfaceAsShown(
-  BitmapSurface surface,
-  List<ResolvedLayerEffect> effects,
-) => celSurfaceWithSourceEffects(celSurfaceWithTextsLaid(surface), effects);
-
-/// THE SEAM, AT ONE COORDINATE, on a row whose chain runs no plugin at its
-/// head: what a cel whose drawing holds [tile] there SHOWS there —
-/// [plates], the texts standing over the coordinate bottom → top
-/// (`celTextPlatesOver`; null where none does), laid over it. The very
-/// object [celSurfaceAsShown] holds at that coordinate once the cel holds
-/// [tile] — the pass answers a tile it has seen from its memo — so a
-/// picture made for one is the other's. A plugin runs over the whole cel,
-/// never a tile.
+/// THE SEAM, AT ONE COORDINATE: what a cel whose drawing holds [tile] there
+/// SHOWS there — [plates], the texts standing over the coordinate bottom →
+/// top (`celTextPlatesOver`; null where none does), laid over it. The very
+/// object [celSurfaceWithTextsLaid] holds at that coordinate once the cel
+/// holds [tile] — the laying answers a tile it has seen from its memo — so
+/// a picture made for one is the other's.
 ///
 /// A live stroke's overlay shows its pictures in place of the cel's tiles,
 /// and pen-up hands each to the tile this answers
@@ -65,27 +36,23 @@ BitmapTile celTileAsShown(
 /// 🗣️유저 2026-10-15 (F-344-Q3): 「놓을 때와 같은 코드로 — 완전히 같게」. A
 /// text floated over its cel is keyed by itself on a row with a colour
 /// key, where its landing keys it with the ink under it. This is the
-/// landing, asked where the text lies: [under] laid as [celSurfaceAsShown]
-/// lays it, the carried plate and then the texts above it stamped over that
-/// with the stamp a cel's texts are laid with ([layPixelsOverRegion]) — the
-/// landed cel's bytes there, which the row's keys then run over with the
-/// cel's, as they run over the landed cel. Outside the region the text
-/// holds no ink, and the cel without it is the cel with it.
+/// landing, asked where the text lies: [under] laid as
+/// [celSurfaceWithTextsLaid] lays it, the carried plate and then the texts
+/// above it stamped over that with the stamp a cel's texts are laid with
+/// ([layPixelsOverRegion]) — the landed cel's bytes there, which the row's
+/// chain then runs over with the cel's, as it runs over the landed cel.
+/// Outside the region the text holds no ink, and the cel without it is the
+/// cel with it.
+///
+/// ↩️On a row whose chain ran a plugin at its head, the landing was the
+/// whole cel through it, made here on the CPU (🗣️I-132-Q32 b) — until the
+/// plugin was a step of the row's chain (float-warp-resamples-in-the-c-
+/// engine (2), 2026-11-11), which runs over the landing with the cel.
 ({DirtyRegion region, Uint8List straight})? celTextLandingAsShown({
   required BitmapSurface under,
   required CelTextPixels carried,
   required List<CelText> above,
-  required List<ResolvedLayerEffect> effects,
 }) {
-  if (celSourcePlugin(effects) != null) {
-    // The cel under the hand is drawn with the texts above the carried one
-    // still on it.
-    return celLandingShownWhole(
-      under: under.withTexts([...under.texts, ...above]),
-      landed: _textLanded(under, carried, above),
-      effects: effects,
-    );
-  }
   final region = _landingRegion(under, carried);
   if (region == null) {
     return null;
@@ -104,71 +71,6 @@ BitmapTile celTileAsShown(
     );
   }
   return (region: region, straight: straight);
-}
-
-/// THE SEAM, WHERE WHAT A HAND CARRIES WILL LAND ON A ROW WHOSE CHAIN RUNS
-/// A PLUGIN (🗣️I-132-Q32 b): the plugin may change the cel anywhere, so the
-/// landing's picture is the whole cel as it will show once [landed] stands
-/// in place of [under] — over every pixel either shows, so it covers the
-/// cel under the hand wherever that is drawn. Null where neither shows any.
-({DirtyRegion region, Uint8List straight})? celLandingShownWhole({
-  required BitmapSurface under,
-  required BitmapSurface landed,
-  required List<ResolvedLayerEffect> effects,
-}) {
-  final shown = celSurfaceAsShown(landed, effects);
-  DirtyRegion? box;
-  for (final picture in [celSurfaceAsShown(under, effects), shown]) {
-    final size = picture.tileSize;
-    for (final coord in picture.tiles.keys) {
-      final tile = DirtyRegion(
-        left: coord.x * size,
-        top: coord.y * size,
-        rightExclusive: (coord.x + 1) * size,
-        bottomExclusive: (coord.y + 1) * size,
-      );
-      box = box?.union(tile) ?? tile;
-    }
-  }
-  final region = box?.intersection(
-    DirtyRegion.wholePixelsOf(under.storableRect),
-  );
-  return region == null
-      ? null
-      : (region: region, straight: bitmapSurfaceRegionPixels(shown, region));
-}
-
-/// [under] with [carried] landed on it and [above] over that, laid as a
-/// cel's texts are ([celTileWithPlatesLaid]) — what [celTextLandingAsShown]
-/// stamps over a region, over the whole cel.
-BitmapSurface _textLanded(
-  BitmapSurface under,
-  CelTextPixels carried,
-  List<CelText> above,
-) {
-  final laid = celSurfaceWithTextsLaid(under);
-  final plates = <TileCoord, List<BitmapTile>>{};
-  void add(Map<TileCoord, BitmapTile> plate) {
-    for (final MapEntry(key: coord, value: tile) in plate.entries) {
-      (plates[coord] ??= []).add(tile);
-    }
-  }
-
-  add(
-    celTextPlateMoved(
-      carried,
-      canvasSize: under.canvasSize,
-      pasteboardReach: under.pasteboardReach,
-      tileSize: under.tileSize,
-    ),
-  );
-  for (final text in above) {
-    add(text.plate);
-  }
-  return laid.withRebuiltTiles({
-    for (final MapEntry(key: coord, value: over) in plates.entries)
-      coord: ?celTileWithPlatesLaid(laid.tileAt(coord), over, under.tileSize),
-  });
 }
 
 /// The box round every pixel of [carried]'s plate that holds ink, where a

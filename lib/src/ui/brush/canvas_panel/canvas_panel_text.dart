@@ -137,12 +137,13 @@ class _CanvasPanelText implements CelTextToolHost {
   /// shown, but for partly clear pixels over ink, one apart at most, and
   /// it costs nothing per move of the hand.
   ///
-  /// 🗣️I-132-Q32 b: and on a row whose chain runs a plugin, which may
-  /// change the cel anywhere — its landing is the whole cel's
-  /// ([celTextLandingAsShown]).
+  /// ↩️And on a row whose chain ran a plugin at its head (🗣️I-132-Q32 b: it
+  /// may change the cel anywhere), its landing the whole cel's, while that
+  /// plugin ran on the CPU over the cel alone — until it was a step of the
+  /// chain, which the engine runs over the cel and what floats over it
+  /// alike (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
   bool get _floatsTheLanding =>
-      celSourceEffectSignature(_state.widget.activeSourceEffects).isNotEmpty ||
-      celSourcePlugin(_state.widget.activeSourceEffects) != null;
+      celSourceEffectSignature(_state.widget.activeSourceEffects).isNotEmpty;
 
   // ── the float ───────────────────────────────────────────────────────
 
@@ -197,18 +198,14 @@ class _CanvasPanelText implements CelTextToolHost {
   ///
   /// Made again when the text's pixels or their place are others (a plate
   /// is the object it is: its map compares by identity), when the picture
-  /// it was lifted off is another — the texts above it are of that picture
-  /// — or when the row's keys are.
+  /// it was lifted off is another — the texts above it are of that picture.
   CelTextLanding? _landingOf(
     CelTextFloating floating,
     ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final (:pixels, :under, :above) = floating;
     final kept = _landing;
-    if (kept != null &&
-        kept.of == pixels &&
-        identical(kept.under, under) &&
-        kept.fx == on.fx) {
+    if (kept != null && kept.of == pixels && identical(kept.under, under)) {
       return kept.shown;
     }
     _letTheLandingGo();
@@ -216,22 +213,15 @@ class _CanvasPanelText implements CelTextToolHost {
       under: under,
       carried: pixels,
       above: above,
-      effects: _state.widget.activeSourceEffects,
     );
     final shown = made == null
         ? null
         : CelTextLanding.of(made.region, made.straight);
-    _landing = (of: pixels, under: under, fx: on.fx, shown: shown);
+    _landing = (of: pixels, under: under, shown: shown);
     return shown;
   }
 
-  ({
-    CelTextPixels of,
-    BitmapSurface under,
-    _ShownThrough fx,
-    CelTextLanding? shown,
-  })?
-  _landing;
+  ({CelTextPixels of, BitmapSurface under, CelTextLanding? shown})? _landing;
 
   /// The landing last made is shown no more.
   void _letTheLandingGo() {
@@ -261,14 +251,13 @@ class _CanvasPanelText implements CelTextToolHost {
     );
   }
 
-  /// The painter of a plate, made once for it, as its cel shows it
-  /// ([celSurfaceAsShown]).
+  /// The painter of a plate, made once for it ([floatPainter]).
   BitmapSurfacePainter _heldPainter(
     Map<TileCoord, BitmapTile> plate,
     ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final kept = _held;
-    if (kept != null && identical(kept.of, plate) && kept.fx == on.fx) {
+    if (kept != null && identical(kept.of, plate)) {
       return kept.painter;
     }
     final painter = floatPainter(
@@ -278,13 +267,12 @@ class _CanvasPanelText implements CelTextToolHost {
         pasteboardReach: on.surface.pasteboardReach,
         tileSize: on.surface.tileSize,
       ),
-      _state.widget.activeSourceEffects,
     );
-    _held = (of: plate, fx: on.fx, painter: painter);
+    _held = (of: plate, painter: painter);
     return painter;
   }
 
-  ({Object of, _ShownThrough fx, BitmapSurfacePainter painter})? _held;
+  ({Object of, BitmapSurfacePainter painter})? _held;
 
   /// The painter of the texts above the one in hand, made once for them.
   BitmapSurfacePainter _abovePainter(
@@ -292,7 +280,7 @@ class _CanvasPanelText implements CelTextToolHost {
     ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final kept = _above;
-    if (kept != null && identical(kept.of, above) && kept.fx == on.fx) {
+    if (kept != null && identical(kept.of, above)) {
       return kept.painter;
     }
     final painter = floatPainter(
@@ -302,13 +290,12 @@ class _CanvasPanelText implements CelTextToolHost {
         tileSize: on.surface.tileSize,
         texts: above,
       ),
-      _state.widget.activeSourceEffects,
     );
-    _above = (of: above, fx: on.fx, painter: painter);
+    _above = (of: above, painter: painter);
     return painter;
   }
 
-  ({Object of, _ShownThrough fx, BitmapSurfacePainter painter})? _above;
+  ({Object of, BitmapSurfacePainter painter})? _above;
 
   Widget layer() => Positioned.fill(
     child: CelTextToolLayer(

@@ -20,6 +20,7 @@ import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
+import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds, celTextPlateSurface;
 import '../../services/bitmap_surface_brush_commit.dart'
@@ -169,10 +170,11 @@ part 'canvas_panel/canvas_panel_build.dart';
 part 'canvas_panel/canvas_panel_control_holds.dart';
 
 /// What the row being drawn on shows its cel through, as a painter made
-/// for the cel holds it: its colour keys' values, and the plugin its chain
-/// runs ([celSourcePlugin]) — a plugin's picture moves with its frame and
-/// the rows it reads, none of which changes the cel.
-typedef _ShownThrough = ({String keys, ResolvedLayerEffect? plugin});
+/// for the cel holds it: its leading colour keys' values — whether a text
+/// in hand floats as itself or as its landing turns on them. ↩️And the
+/// plugin at its chain's head, while that ran on the cel here
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+typedef _ShownThrough = String;
 
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
@@ -717,14 +719,9 @@ class BrushCanvasPanel extends StatefulWidget {
     return (
       surface: coordinator.activeSessionState.canvasState.currentSurface,
       key: coordinator.activeFrameKey,
-      // The leading run's VALUES join the token: where it ends at a plugin
-      // they change the surface this paints and no cel, so without them
-      // dragging Tolerance would keep serving the painter built at the old
-      // value.
-      fx: (
-        keys: celSourceEffectSignature(activeSourceEffects).join(','),
-        plugin: celSourcePlugin(activeSourceEffects),
-      ),
+      // The leading keys join the token: a text in hand floats as its
+      // landing on a keyed row (`_CanvasPanelText._floatsTheLanding`).
+      fx: celSourceEffectSignature(activeSourceEffects).join(','),
     );
   }
 
@@ -1366,9 +1363,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShownCels.instance.hide(this);
       return null;
     }
-    // The overlay shows its pictures in place of this painter's tiles, so
-    // through the chain they are shown through below.
-    overlay.sourceEffects = widget.activeSourceEffects;
     final identity = widget._activeSurfaceIdentityFor(coordinator);
     // 🚨★★★**AN OPEN MOVE SESSION IS PART OF WHAT THIS PAINTER DRAWS**, so
     // it is part of the token: the hole is a derived surface the session
@@ -1414,23 +1408,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _activeSurfacePainterToken = token;
     // The canvas says which cel it is drawing, and THROUGH what: the texts
-    // laid over it and the colour keys make the tiles it paints other
-    // objects than the cel's own, so a picture made ahead for the cel's own
-    // would go unused. What it makes ahead nobody is shown yet, so its
-    // plugin's run tells nothing (`effectsTellingNobody`).
+    // laid over it make the tiles it paints other objects than the cel's
+    // own, so a picture made ahead for the cel's own would go unused.
     ShownCels.instance.show(
       this,
       token.key.cel,
-      painted: (surface) => celSurfaceAsShown(
-        surface,
-        effectsTellingNobody(widget.activeSourceEffects),
-      ),
+      painted: celSurfaceWithTextsLaid,
     );
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
-      // ★DRAWN THROUGH THE SEAM — the texts laid, then a plugin at the
-      // chain's head. The texts are laid per TILE, so a dab re-lays the one
-      // tile it changed and the rest of the cel answers from memory.
-      surface: celSurfaceAsShown(token.surface, widget.activeSourceEffects),
+      // ★DRAWN WITH ITS TEXTS LAID. They are laid per TILE, so a dab
+      // re-lays the one tile it changed and the rest of the cel answers
+      // from memory.
+      surface: token.surface,
       overlayModel: overlay,
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.

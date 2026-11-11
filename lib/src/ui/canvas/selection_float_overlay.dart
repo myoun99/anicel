@@ -14,8 +14,7 @@ import '../../models/tile_coord.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
-    show celSourceEffectSignature, celSourcePlugin;
-import '../../services/cel_surface_as_shown.dart';
+    show celSourceEffectSignature;
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
 import 'display_resample.dart' show drawImageRectOnThePixelGrid;
@@ -224,10 +223,12 @@ class SelectionFloatPaint implements LandingPreview {
     if (lands == null || holed == null) {
       return itself;
     }
-    // A plugin may change the cel anywhere (🗣️I-132-Q32 b): a float on a
-    // row that runs one is always its landing.
-    final plugin = celSourcePlugin(keys) != null;
-    final keyed = celSourceEffectSignature(keys).isNotEmpty || plugin;
+    // ↩️A float on a row whose chain ran a plugin at its head was always its
+    // landing (🗣️I-132-Q32 b: it may change the cel anywhere), while that
+    // plugin ran on the CPU over the cel alone — until it was a step of the
+    // chain, which the engine runs over what a hand holds with the cel
+    // (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+    final keyed = celSourceEffectSignature(keys).isNotEmpty;
     final onGrid = lands.on.onCanvasGrid;
     final rect = drawnWorldRect;
     // A rect of the float is a rect of the cel on the grid alone, which is
@@ -240,7 +241,6 @@ class SelectionFloatPaint implements LandingPreview {
     final floatSurface = surface?.surface;
     final landsOnNothing =
         floatSurface != null &&
-        !plugin &&
         onGrid &&
         !textUnder &&
         !(_holdsPartlyClearPixels(lands.stamp) && _inkTouches(holed, rect));
@@ -250,7 +250,7 @@ class SelectionFloatPaint implements LandingPreview {
         canvasToRow: canvasToRow,
       );
     }
-    final landed = lands.on.landingShown(lands.stamp, keys);
+    final landed = lands.on.landingShown(lands.stamp);
     // The landing is on the cel's own grid, which is the row's.
     return landed == null ? itself : (preview: landed, canvasToRow: null);
   }
@@ -298,19 +298,16 @@ abstract interface class FloatLandsOn {
   /// them, so a rect of the float is a rect of the cel.
   bool get onCanvasGrid;
 
-  /// What the cel will SHOW where [stamp] — on the canvas — lands, through
-  /// its row's leading [keys]: the landing its confirm makes, as its row
-  /// shows it, drawn over the region it lands in in place of what the row
-  /// shows there (`CelTextLanding`, the text in hand's own). In the cel's
-  /// own space. Null when it lands nowhere, or the session holds the cel no
-  /// more.
+  /// What the cel will SHOW where [stamp] — on the canvas — lands: the
+  /// landing its confirm makes, its texts laid, drawn over the region it
+  /// lands in in place of what the row shows there (`CelTextLanding`, the
+  /// text in hand's own) — the row's chain runs over it as over the cel. In
+  /// the cel's own space. Null when it lands nowhere, or the session holds
+  /// the cel no more.
   ///
   /// ⚠️Made once for each place a hand carries the float to, and let go of
   /// by the lift that made it, once it is shown no more.
-  LandingPreview? landingShown(
-    BrushDab stamp,
-    List<ResolvedLayerEffect> keys,
-  );
+  LandingPreview? landingShown(BrushDab stamp);
 }
 
 /// What a float lands as: the stamp it shows, as a dab on the canvas, and
@@ -327,10 +324,11 @@ bool _landsAlike(FloatLanding? a, FloatLanding? b) {
       a.stamp.center == b.stamp.center;
 }
 
-/// A painter of what floats — pixels a hand carries, as the row they float
-/// in shows them ([celSurfaceAsShown], through the leading run of its chain
-/// [keys]): drawn in that row's own space by the painter it floats over, so
-/// it brings no paper and is nobody's cel.
+/// A painter of what floats — pixels a hand carries, their texts laid as a
+/// painter lays a surface's ([BitmapSurfacePainter.surface]), which the row
+/// they float in runs its chain over with its cel: drawn in that row's own
+/// space by the painter it floats over, so it brings no paper and is
+/// nobody's cel.
 ///
 /// Nobody's cel: what it shows is counted under the one name for that
 /// ([BrushFrameKey.noCel]). ↩️The level pyramid
@@ -338,14 +336,12 @@ bool _landsAlike(FloatLanding? a, FloatLanding? b) {
 /// for the pyramid kept eight and a session of transforms would have
 /// pushed out the brush's — until nothing drew a level tile
 /// (one-picture-per-frame ②-5b-2).
-BitmapSurfacePainter floatPainter(
-  BitmapSurface surface,
-  List<ResolvedLayerEffect> keys,
-) => BitmapSurfacePainter(
-  surface: celSurfaceAsShown(surface, keys),
-  showTransparentBackground: false,
-  lineage: BrushFrameKey.noCel,
-);
+BitmapSurfacePainter floatPainter(BitmapSurface surface) =>
+    BitmapSurfacePainter(
+      surface: surface,
+      showTransparentBackground: false,
+      lineage: BrushFrameKey.noCel,
+    );
 
 /// Whether [stamp] holds a pixel neither clear nor opaque — asked once of
 /// each picture ([_partlyClear]).
@@ -401,7 +397,7 @@ bool _textsTouch(BitmapSurface holed, Rect rect) {
 /// A float that lands as its own pixels landed on nothing, on a row that
 /// keys its colours: those pixels in place of what the row shows wherever
 /// the float covers, the row's keys run over them with the rest of the row
-/// (`splitSourceEffects`). ↩️It held them keyed, a painter of its own a
+/// (`celSourceKeys`). ↩️It held them keyed, a painter of its own a
 /// lift, until the engine keyed what a hand holds with its row
 /// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
 ///
@@ -470,8 +466,8 @@ typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 /// exactly as while the active row's float is up ([SelectionFloatPaint]).
 ///
 /// ⚠️A SURFACE, not a painter: the composite draws it as its row's cel is
-/// shown — through the seam, with that row's keys (`celSurfaceAsShown`) —
-/// which the composite knows from the row and the lift does not.
+/// shown — its texts laid, its row's chain run over it — which the
+/// composite knows from the row and the lift does not.
 ///
 /// [float] is null where nothing floats over the surface: the colour edit
 /// list's preview holds the cel as its row would leave it, and that is all

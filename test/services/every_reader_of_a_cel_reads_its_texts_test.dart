@@ -12,17 +12,13 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
-import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../helpers/a_plugin_that_shifts.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
 /// R9-rest (the text tool, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a
@@ -30,6 +26,13 @@ import '../helpers/surface_rgba_in_place.dart';
 /// what draws it — the eyedropper picks a letter's colour, a fill stops at a
 /// letter, a colour key names a letter's colour, and the shared plan hands
 /// every paint route tiles that already hold the letters.
+///
+/// The key's is the plan's: the engine keys the tiles the row hands it
+/// (`the_engine_keys_a_row_as_each_pixel_is_keyed_test`), and those hold
+/// the letters. ↩️It was asked of a seam of its own, `celSurfaceAsShown`,
+/// which laid the texts and then keyed them on the CPU before a plugin at
+/// a chain's head, until that plugin was a step of the chain
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 ///
 /// Each reader is asked through its own door, with a cel whose DRAWING says
 /// one thing and whose text says another, so a reader that took the tiles
@@ -155,90 +158,6 @@ void main() {
 
       expect(surfaceRgbaInPlace(leaf.payload.surface, 3, 3), 0xFF0000FF);
       expect(leaf.payload.surface.texts, isEmpty);
-    });
-  });
-
-  group('the seam', () {
-    ResolvedLayerEffect eraseColor(List<int> rgb) => ResolvedLayerEffect(
-      kind: EffectKind.colorKey,
-      // Key Colors, the colour's own three bytes — not its alpha.
-      values: [
-        0,
-        (0xFF000000 | rgb[0] << 16 | rgb[1] << 8 | rgb[2]).toDouble(),
-        0,
-        100,
-      ],
-    );
-
-    // Keys alone are the engine's, over what the seam lays
-    // (`splitSourceEffects`): the texts laid, the keys left to the row.
-    test('keys alone: it lays the texts and leaves the keys to the row', () {
-      final source = cel(drawn: {(3, 3): blue}, letters: {(3, 3): red});
-
-      expect(
-        identical(
-          celSurfaceAsShown(source, [eraseColor(red)]),
-          celSurfaceWithTextsLaid(source),
-        ),
-        isTrue,
-      );
-    });
-
-    test('before a plugin, it lays the texts and then keys: a colour key '
-        'names a letter\'s colour as it names a drawn line\'s', () {
-      final source = cel(
-        drawn: {(1, 1): red, (3, 3): blue},
-        letters: {(3, 3): red, (6, 6): red},
-      );
-
-      final shown = celSurfaceAsShown(source, [
-        eraseColor(red),
-        aPluginThatFails,
-      ]);
-
-      // Every red is gone — the drawn one, the letter over the drawing and
-      // the letter over bare paper.
-      expect(surfaceRgbaInPlace(shown, 1, 1)! & 0xFF, 0);
-      expect(surfaceRgbaInPlace(shown, 3, 3)! & 0xFF, 0);
-      expect(surfaceRgbaInPlace(shown, 6, 6)! & 0xFF, 0);
-    });
-
-    test('a key for the DRAWING\'s colour does not take a letter that '
-        'covers it — the letter is what shows there', () {
-      final source = cel(
-        drawn: {(3, 3): blue, (5, 5): blue},
-        letters: {(3, 3): red},
-      );
-
-      final shown = celSurfaceAsShown(source, [
-        eraseColor(blue),
-        aPluginThatFails,
-      ]);
-
-      expect(surfaceRgbaInPlace(shown, 3, 3), 0xFF0000FF, reason: 'the letter');
-      expect(surfaceRgbaInPlace(shown, 5, 5)! & 0xFF, 0, reason: 'the drawing');
-    });
-
-    test('with no chain it is the laying alone', () {
-      final source = cel(drawn: {(3, 3): blue}, letters: {(3, 3): red});
-
-      expect(
-        identical(
-          celSurfaceAsShown(source, const []),
-          celSurfaceWithTextsLaid(source),
-        ),
-        isTrue,
-      );
-    });
-
-    test('a cel with no text and no chain is not touched', () {
-      final bare = BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-        tiles: tilesOf({(3, 3): blue}),
-      );
-
-      expect(identical(celSurfaceAsShown(bare, const []), bare), isTrue);
     });
   });
 }
