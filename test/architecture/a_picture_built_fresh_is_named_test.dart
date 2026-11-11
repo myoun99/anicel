@@ -95,12 +95,14 @@ void main() {
           'on and read from — its pixels go on as a decoded picture\'s do',
     ),
     'lib/src/services/import/raster_cel_import.dart': (
-      count: 3,
+      count: 4,
       why:
           'a picture imported from an image — it begins here, laid whole '
-          'where a door asks (`laidBounds: laid`, F-374-Q8); and the cel '
-          'a decoding door\'s tiles begin as (`bakeCelTiles` — a .tvpp\'s, '
-          'a .clip\'s)',
+          'where a door asks (`laidBounds: laid`, F-374-Q8); a reference\'s '
+          'cel a door moves where none of it lands (`layCelRegion`) — no '
+          'brush reaches a reference row, so it holds no texts or photos; '
+          'and the cel a decoding door\'s tiles begin as (`bakeCelTiles` — '
+          'a .tvpp\'s, a .clip\'s)',
     ),
     'lib/src/ui/canvas/canvas_selection_layer.dart': (
       count: 1,
