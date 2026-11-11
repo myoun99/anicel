@@ -1736,7 +1736,11 @@ class ExportFrameRenderer {
           blocks: chainBlocksOf(cut, layer),
           worn: chainWornAs(cut, layer),
         ),
-        placement: referenceMoveAt(_asOutput(layer), firstExposure),
+        placement: layerMoveWithinAt(
+          cut: _onPaper(cut),
+          layer: _asOutput(layer),
+          frameIndex: firstExposure,
+        ),
       ));
     }
 
@@ -1857,8 +1861,8 @@ class ExportFrameRenderer {
       };
 
   /// [cut] as a cel lays its rows: as the window's 레이어 FX keeps each
-  /// ([_asOutput]), on its paper — no row's transform moving it, only a
-  /// reference's fx ([referenceMoveAt]) — at its static strength, as
+  /// ([_asOutput]), on its paper — no row's transform moving it, only
+  /// reference fx ([layerMoveWithinAt]) — at its static strength, as
   /// [_celGroupOf] lays a member.
   Cut _onPaper(Cut cut) => _onPaperByCut[cut] ??= cut.copyWith(
     layers: [
