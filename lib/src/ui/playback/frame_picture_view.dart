@@ -11,6 +11,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
+import '../../native/app_kernels_ahead.dart' show appEngineGetsReady;
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart'
     show
@@ -299,6 +300,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     _standLive(onScreen: widget.alreadyShown ? (_) => true : null);
     _look();
     _hearItsStore();
+    appEngineGetsReady.addListener(_paintAgain);
   }
 
   /// Paints again at the store's news of what keeps a frame from the
@@ -335,9 +337,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 둔다」 — tells this view's place whether the engine keeps its frame
   /// from the screen at this paint, ONE answer for every way it does: its
   /// tools still to be opened; [refused], the paint's own lay met kernels
-  /// still to be compiled ([FrameKernelsToCome]); or the frame's picture,
+  /// still to be compiled ([FrameKernelsToCome]); the frame's picture,
   /// nothing of the frame drawn meanwhile, in a line that stands behind
-  /// such kernels ([EngineFramePictureStore.waitsForKernels]).
+  /// such kernels ([EngineFramePictureStore.waitsForKernels]); or the app
+  /// still getting ready what a hand needs of the engine
+  /// ([_heldForTheEngine]).
   ///
   /// ⛔Not a frame drawn as it stands while its picture is on its way: it
   /// is on the screen. Nor one that waits for its plugins alone (🗣️관제
@@ -345,10 +349,19 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _waitsAtPaint({required bool refused}) => _place?.says(
     this,
     waits:
+        _heldForTheEngine ||
         _store.toolsAreToCome ||
         refused ||
         (_making != null && !_standsMeanwhile && _store.waitsForKernels),
   );
+
+  /// 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  /// 띄운다 — 그때까지 고리」 — whether this view's frame is kept from the
+  /// screen till the app has what a hand needs of its engine
+  /// ([appEngineGetsReady]): the frame coming to the screen is the word
+  /// that it can be worked on. Its picture is made meanwhile all the same,
+  /// and shown by the paint that follows the app's being let go.
+  bool get _heldForTheEngine => appEngineGetsReady.value;
 
   /// Whether a frame whose picture is not there yet is drawn as it stands
   /// until it is ([FramePictureView.wholeFrames], [_waits]).
@@ -431,6 +444,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void dispose() {
     widget.run.landings.removeListener(_landed);
     _store.waits.removeListener(_paintAgain);
+    appEngineGetsReady.removeListener(_paintAgain);
     _place?.says(this, waits: false);
     _liveChanges?.removeListener(_liveMoved);
     _letGo(_store);
@@ -1210,6 +1224,7 @@ class _RenderFrameScreen extends RenderBox {
   }
 
   bool get _drawsAnything =>
+      !_view._heldForTheEngine &&
       (_view._drawnPicture ?? _asItStands) != null &&
       _shownThrough.texture != null &&
       _view._store.toolsOpen != null;

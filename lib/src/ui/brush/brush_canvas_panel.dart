@@ -3712,8 +3712,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
               // docks leave of the panel to be seen: at the panel's own
               // middle the mark stood half behind the timeline docked under
               // it (🔬shot, 2026-11-11). Nothing where the panel is no place
-              // that marks its frames' waits ([FrameWaitPlace]).
-              const Positioned.fill(child: FrameWaitMark()),
+              // that marks its frames' waits ([FrameWaitPlace]) — but on
+              // the floor, where it stands the app's getting ready too
+              // (gpu-canonical-store-Q15): a docked panel's dock does that.
+              Positioned.fill(child: FrameWaitMark(ofTheFloor: onFloor)),
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
               //
               // ⛔It used to take the top corner away from the tool strip

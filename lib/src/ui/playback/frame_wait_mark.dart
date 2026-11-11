@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../../native/app_kernels_ahead.dart';
 import '../media/viewer_page_loading.dart';
 
 /// A place frames are shown in ([FramePictureView]) that marks their waits
@@ -64,8 +65,18 @@ class _Place extends InheritedWidget {
 /// F-315), with no words, and mounted only while a frame waits: nothing of
 /// it turns once the frames are shown (🗣️관제 2026-11-10 23:05: 「준비가
 /// 끝나면 표시가 프레임을 돌리지 않는다」).
+///
+/// ONE ring for the floor's panel, whatever it waits for: lying on the
+/// floor ([ofTheFloor]) it stands the same one while the app gets its
+/// engine ready ([appEngineGetsReady]) — the mark every docked panel's
+/// place stands by its dock (`EngineReadyMark`, gpu-canonical-store-Q15),
+/// seated here because the middle of the floor's own box is under the
+/// panels lying on it.
 class FrameWaitMark extends StatelessWidget {
-  const FrameWaitMark({super.key});
+  const FrameWaitMark({super.key, this.ofTheFloor = false});
+
+  /// Whether the panel it stands in lies on the floor.
+  final bool ofTheFloor;
 
   /// Test seam: whether a place stands its mark. A widget test's clock is
   /// pumped and opens no engine, so a canvas it stands would wait — and its
@@ -76,15 +87,19 @@ class FrameWaitMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final place = FrameWaitPlace.of(context);
-    if (place == null) {
+    final frames = FrameWaitPlace.of(context)?._any;
+    final app = ofTheFloor ? appEngineGetsReady : null;
+    if (frames == null && app == null) {
       return const SizedBox.shrink();
     }
-    return ValueListenableBuilder<bool>(
-      valueListenable: place._any,
-      builder: (context, any, _) => any && debugStands
-          ? const ViewerPageLoading()
-          : const SizedBox.shrink(),
+    return ListenableBuilder(
+      listenable: Listenable.merge([frames, app]),
+      builder: (context, _) {
+        final framesWait = (frames?.value ?? false) && debugStands;
+        return framesWait || (app?.value ?? false)
+            ? const ViewerPageLoading()
+            : const SizedBox.shrink();
+      },
     );
   }
 }

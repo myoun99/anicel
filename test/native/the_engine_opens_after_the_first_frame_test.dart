@@ -36,6 +36,20 @@ void main() {
     );
   });
 
+  // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  // 띄운다 — 그때까지 고리」 — a first frame built before the word would show
+  // the app as one a hand may work on.
+  test('main says the app is held for its engine before its first frame is '
+      'built', () {
+    final source = File('lib/main.dart').readAsStringSync();
+    final (said, run) = (
+      source.indexOf('holdTheAppForItsEngine();'),
+      source.indexOf('runApp('),
+    );
+    expect(said, isNonNegative, reason: 'main says so');
+    expect(said, lessThan(run), reason: 'before the app is run');
+  });
+
   test('the list main asks for opens the engine before it compiles on it', () {
     final list = File(
       'lib/src/native/app_kernels_ahead.dart',
@@ -43,6 +57,7 @@ void main() {
     expect(
       RegExp(
         r'Future<void> compileAppKernelsAhead\(\) async \{\s*'
+        r'final EngineFrameTools tools;\s*try \{\s*'
         r'final engine = await openAppGpuEngine\(\);',
       ).hasMatch(list),
       isTrue,
@@ -75,7 +90,11 @@ void main() {
       'await appGpuStampLandingKernels.warm();',
       'await EngineStrokes.warmBlurs();',
       // Where the hold ends.
-      RegExp(r'return tools;\s*\}\);'),
+      RegExp(r'return opened;\s*\}\);'),
+      // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+      // 띄운다 — 그때까지 고리」 — where the app is let go: past what a hand
+      // needs, before what draws itself, and on a throw as well.
+      RegExp(r'\} finally \{[^}]*_getsReady\.value = false;\s*\}'),
       'await appGpuGridKernels.warm();',
       'await tools.composite.compileChains();',
       'await EngineStrokes.warmBlurStrips();',

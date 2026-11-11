@@ -17,6 +17,7 @@ import '../controllers/default_project_helpers.dart';
 import '../models/frame.dart' show InbetweenMark;
 import '../models/project.dart';
 import '../models/working_panel.dart';
+import '../native/app_kernels_ahead.dart';
 import '../native/device_battery.dart';
 import '../native/drawing_engines.dart';
 import '../native/handed_files.dart';
@@ -66,6 +67,7 @@ import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
+import 'input/engine_ready_gate.dart';
 import 'input/one_pointer_shows_the_cursor.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
@@ -1124,6 +1126,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _invokeAction(String actionId) {
+    // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작 막음」 — the
+    // funnel's half of [EngineReadyGate]: what runs into it past the gate's
+    // keys and pointers — the pencil's double tap — is turned back while
+    // the app gets its engine ready, by the fact the gate asks.
+    if (appEngineGetsReady.value) {
+      return;
+    }
     // 🚨T28-c — 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」.
     //
     // This funnel is where every BOUND actuation arrives: key bindings and
@@ -1587,7 +1596,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             keys: _panelKeys,
             child: DeviceGridSafeArea(
               bottom: false,
-              child: EditorKeyFunnel(
+              // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작
+              // 막음」 — the whole editor behind the app's getting its
+              // engine ready: its keys, which this lays, and its pointers.
+              child: EngineReadyGate(
                 road: _keyRoad,
                 child: PlaybackActuationGate(
                   // 🚨T28-c — the whole editor behind ONE gate: while

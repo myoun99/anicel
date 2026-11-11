@@ -222,6 +222,11 @@ Future<void> main(List<String> handedAtLaunch) async {
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
   LaunchSplash.drawing(AppText.strings);
+  // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  // 띄운다 — 그때까지 고리」 · 「타임라인같은거도 포함해서 고리띄우고 모든 조작
+  // 막음」 — said before the first frame, so that frame is held already;
+  // the list asked for below lets the app go ([appEngineGetsReady]).
+  holdTheAppForItsEngine();
   runApp(
     AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),
   );

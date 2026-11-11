@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuInk;
 
 import 'app_gpu_engine.dart';
@@ -51,20 +52,61 @@ import 'engine_strokes.dart';
 /// scan behind them; a blur stroke before the list was through stopped the
 /// app 7.0–10.1 s (`EngineStrokes.warmBlurStrips`).
 Future<void> compileAppKernelsAhead() async {
-  final engine = await openAppGpuEngine();
-  final tools = await engine.whileCompilesApartWait(() async {
-    // The ledger's scan is its own; the engine keeps the kernel it is made
-    // of (`Kernels`, rust/src/device.rs), so one compiled here is every
-    // ledger's.
-    (await GpuInk.opening(engine)).free();
-    final tools = await appEngineFrameTools;
-    await EngineStrokes.warm();
-    await EngineCelPixels.warm();
-    await appGpuStampLandingKernels.warm();
-    await EngineStrokes.warmBlurs();
-    return tools;
-  });
+  final EngineFrameTools tools;
+  try {
+    final engine = await openAppGpuEngine();
+    tools = await engine.whileCompilesApartWait(() async {
+      // The ledger's scan is its own; the engine keeps the kernel it is
+      // made of (`Kernels`, rust/src/device.rs), so one compiled here is
+      // every ledger's.
+      (await GpuInk.opening(engine)).free();
+      final opened = await appEngineFrameTools;
+      await EngineStrokes.warm();
+      await EngineCelPixels.warm();
+      await appGpuStampLandingKernels.warm();
+      await EngineStrokes.warmBlurs();
+      return opened;
+    });
+  } finally {
+    // What a hand needs is compiled — or will not be, which whoever asked
+    // for this list hears: the app is let go either way. Held on, it could
+    // not be saved from.
+    _getsReady.value = false;
+  }
   await appGpuGridKernels.warm();
   await tools.composite.compileChains();
   await EngineStrokes.warmBlurStrips();
 }
+
+/// Whether the app still gets ready what a hand needs of its engine: from
+/// a launch's word that it does ([holdTheAppForItsEngine]) till the kernels
+/// a hand needs are compiled, or will not be.
+///
+/// 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+/// 띄운다 — 그때까지 고리」 · 「애초에 타임라인같은거도 포함해서 고리띄우고
+/// 모든 조작 막음. 서피스에서 느린건 해당문제 차차 속도 빠르게해서 개선」 —
+/// ONE fact for the three that hold the app meanwhile: a frame keeps its
+/// picture from the screen (`FramePictureView`), every panel's place stands
+/// the ring (`EngineReadyMark`) and the editor takes no input
+/// (`EngineReadyGate`).
+///
+/// 🗣️관제 2026-11-11 08:25: 「「준비가 끝난」 = 손이 쓰는 커널 전부, 블러
+/// 묶음 넷까지(그래야 고리가 걷힌 뒤 어느 도구도 안 멈춘다) … 띠 여섯은
+/// 가벼운 길이 같은 그림을 그리니 기다리지 않는다」 — what
+/// [compileAppKernelsAhead] compiles under its hold, and no more.
+/// 🔬Surface Pro 11, 11-11 07:17: ready 1.20–1.79 s after the canvas could
+/// first show (7.1–7.6 s into a launch).
+///
+/// False where no launch said so: a test's app compiles nothing ahead and
+/// is held for nothing.
+ValueListenable<bool> get appEngineGetsReady => _getsReady;
+final ValueNotifier<bool> _getsReady = ValueNotifier(false);
+
+/// A launch's word, before its first frame, that it compiles its kernels
+/// ahead ([compileAppKernelsAhead]): the app is held from that frame on
+/// ([appEngineGetsReady]), till that list lets it go.
+void holdTheAppForItsEngine() => _getsReady.value = true;
+
+/// Test seam: the app let go, as [compileAppKernelsAhead] lets it.
+@visibleForTesting
+void debugLetTheAppGo() => _getsReady.value = false;

@@ -691,6 +691,39 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  // 띄운다 — 그때까지 고리」 — a frame the engine could show already is kept
+  // from the screen all the same, while a press on it would still stop the
+  // app for a kernel's compile.
+  testWidgets('a frame the app holds for its engine, its tools open and '
+      'nothing to wait for: nothing of it on the screen and its place '
+      'marked, till the app is let go', (tester) async {
+    theMarkStands();
+    holdTheAppForItsEngine();
+    addTearDown(debugLetTheAppGo);
+    final screen = GlobalKey();
+    final store = StoreLayingNothing();
+    await itsToolsOpen(tester, store);
+    await standOn(tester, screen, inAFolder(const []), laidBy: store);
+    await theMarkFollows(tester);
+
+    expect(onlyTheScreen(await shotOf(tester, screen)), isTrue);
+    expect(theMark, findsOneWidget);
+
+    debugLetTheAppGo();
+    await theMarkFollows(tester);
+
+    expect(
+      onlyTheScreen(await shotOf(tester, screen)),
+      isFalse,
+      reason: 'drawn as it stands, by the word alone — nothing handed anew',
+    );
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a frame handed another whose chain\'s kernels are still to be '
       'compiled stays on the picture it showed till they are', (tester) async {
     final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);

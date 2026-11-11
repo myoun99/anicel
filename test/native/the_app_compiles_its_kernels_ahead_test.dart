@@ -75,6 +75,11 @@ void main() {
   // last of a hand's — still to come, and once the grids' were in.
   final heldBeforeAHandsWereIn = <bool>[];
   final heldOnceTheGridsWereIn = <bool>[];
+  // Whether the app was held for its engine ([appEngineGetsReady]), looked
+  // at so too while a hand's were still to come — and what was compiled the
+  // moment it was let go.
+  final appHeldBeforeAHandsWereIn = <bool>[];
+  ({bool aHandsAreIn, bool theGridsAreIn})? whenTheAppWasLetGo;
 
   setUpAll(() async {
     AppKernels.debugCompileHere = false;
@@ -87,6 +92,7 @@ void main() {
       final held = engine.debugCompilesApartHeld > 0;
       if (!EngineStrokes.debugBlursCompiled) {
         heldBeforeAHandsWereIn.add(held);
+        appHeldBeforeAHandsWereIn.add(appEngineGetsReady.value);
       }
       if (appGpuGridKernels.compiled != null) {
         heldOnceTheGridsWereIn.add(held);
@@ -95,7 +101,15 @@ void main() {
     // As the app's first grid screen asks, the engine just open: before the
     // list has held (`TimelineGridScreenHost`).
     final grids = appGpuGridKernels.warm();
+    // As a launch says it, before its first frame (`main`).
+    holdTheAppForItsEngine();
+    void letGo() => whenTheAppWasLetGo ??= (
+      aHandsAreIn: EngineStrokes.debugBlursCompiled,
+      theGridsAreIn: appGpuGridKernels.compiled != null,
+    );
+    appEngineGetsReady.addListener(letGo);
     await compileAppKernelsAhead();
+    appEngineGetsReady.removeListener(letGo);
     await grids;
     looking.cancel();
     builtByTheList = debugKernelsCompiledHere - before;
@@ -178,6 +192,23 @@ void main() {
     expect(heldOnceTheGridsWereIn, isNotEmpty, reason: '⛔premise: looked');
     expect(heldOnceTheGridsWereIn, everyElement(isFalse));
     expect(appGpuEngine.debugCompilesApartHeld, 0);
+  });
+
+  // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  // 띄운다 — 그때까지 고리」 · 🗣️관제 08:25: 「「준비가 끝난」 = 손이 쓰는 커널
+  // 전부, 블러 묶음 넷까지 … 띠 여섯은 … 기다리지 않는다」.
+  test('the app is held from a launch\'s word till what a hand needs is '
+      'compiled, and let go there — the grids\', the chains\' and the blur '
+      'brush\'s strips still to come', () {
+    expect(appHeldBeforeAHandsWereIn, isNotEmpty, reason: '⛔premise: looked');
+    expect(appHeldBeforeAHandsWereIn, everyElement(isTrue));
+    expect(
+      whenTheAppWasLetGo,
+      (aHandsAreIn: true, theGridsAreIn: false),
+      reason: 'let go as the last a hand needs was in, behind which the '
+          'grids\' compile waits',
+    );
+    expect(appEngineGetsReady.value, isFalse);
   });
 
   test('a pen put down builds none, nor the blur brush', () {
