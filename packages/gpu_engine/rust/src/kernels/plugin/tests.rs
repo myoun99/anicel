@@ -314,12 +314,16 @@ fn a_run_in_chunks_draws_what_the_cpu_draws_in_one() {
 
 #[test]
 fn a_run_in_chunks_hands_the_render_the_ids_of_one_dispatch() {
-    // 13 × 7 is 4 × 4 groups of 4 × 2, the last of each a part one.
-    let given = Given::new([13, 7], 0, &[]);
-    for most in [1, 3, 5, 16] {
-        let [(gpu, _), (cpu, _)] = both_in_chunks(IDS, &given, most);
-        assert_eq!(first_apart(given.size, &gpu, &cpu), None, "in chunks of {most}: (x, y, device, CPU)");
-        assert_eq!(gpu[13 * 6 + 12] >> 20 & 0xff, 4 | 4 << 4, "the run's groups, in chunks of {most}");
+    // 13 × 7 is 4 × 4 groups of 4 × 2, the last of each a part one; 12 × 6
+    // is 3 × 3 whole ones.
+    for (size, groups) in [([13, 7], 4 | 4 << 4), ([12, 6], 3 | 3 << 4)] {
+        let given = Given::new(size, 0, &[]);
+        let last = (size[0] * size[1] - 1) as usize;
+        for most in [1, 3, 5, 16] {
+            let [(gpu, _), (cpu, _)] = both_in_chunks(IDS, &given, most);
+            assert_eq!(first_apart(given.size, &gpu, &cpu), None, "{size:?} in chunks of {most}: (x, y, device, CPU)");
+            assert_eq!(gpu[last] >> 20 & 0xff, groups, "the run's groups, {size:?} in chunks of {most}");
+        }
     }
 }
 
