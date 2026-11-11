@@ -787,8 +787,11 @@ import '../../tool/refactor/clone_scan.dart';
 /// 85 → 86 (2026-11-09, the narrowed word's average back from the GPU
 /// engine, connection-round-checklist-Q30): that pair again, the bake's
 /// Dart average being what 「화면 글자는 전부 Flutter」 reads back into.
-/// 86, under the ceiling (2026-11-10, the flip lane, master's count 84).
-/// Two pairs came with the strokes that land on the engine:
+/// 86 → 88 (2026-11-11, the flip lane). 🔬`clones.dart` on the lane over
+/// master (`666f7941c`, at 86): two added, none gone. ↩️The two stood
+/// under the ceiling while master counted 84 (2026-11-10); master came to
+/// its 86 before the lane landed. Two pairs came with the strokes that
+/// land on the engine:
 ///
 ///     lib/src/services/brush_live_stroke_rasterizer.dart
 ///       BrushLiveStrokeRasterizer._touch
@@ -808,7 +811,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// lift, the colour verbs — `TileHold.gridOf`) and the kernels the app
 /// keeps one of (`AppKernels`).
 void main() {
-  const ceiling = 86;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
