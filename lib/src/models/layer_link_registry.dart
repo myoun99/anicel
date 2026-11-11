@@ -85,7 +85,10 @@ class LayerLinkGroup {
   }
 
   LayerLinkGroup copyWith({String? id, List<LayerLinkMember>? members}) {
-    return LayerLinkGroup(id: id ?? this.id, members: members ?? this.members);
+    return LayerLinkGroup(
+      id: id ?? this.id,
+      members: members ?? ownFrozen(this.members),
+    );
   }
 
   Map<String, dynamic> toJson() => {
@@ -309,8 +312,8 @@ class LayerLinkRegistry {
     List<CutSync>? syncs,
   }) {
     return LayerLinkRegistry(
-      groups: groups ?? this.groups,
-      syncs: syncs ?? this.syncs,
+      groups: groups ?? ownFrozen(this.groups),
+      syncs: syncs ?? ownFrozen(this.syncs),
     );
   }
 

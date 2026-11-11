@@ -34,7 +34,7 @@ class CutSync {
   CutId get canonical => cuts.first;
 
   CutSync copyWith({List<CutId>? cuts}) =>
-      CutSync(id: id, cuts: cuts ?? this.cuts);
+      CutSync(id: id, cuts: cuts ?? ownFrozen(this.cuts));
 
   Map<String, dynamic> toJson() => {
     'id': id,

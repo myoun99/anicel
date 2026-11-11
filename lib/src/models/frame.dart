@@ -182,7 +182,7 @@ class Frame {
     return Frame(
       id: id ?? this.id,
       duration: duration ?? this.duration,
-      strokes: strokes ?? this.strokes,
+      strokes: strokes ?? ownFrozen(this.strokes),
       name: identical(name, copyWithSentinel) ? this.name : name as String?,
       seName: identical(seName, copyWithSentinel)
           ? this.seName

@@ -95,8 +95,7 @@ void main() {
   };
 
   /// Whether [after] holds [before] as it was: the very track, or — built
-  /// again round a change of its own rows, which wraps its lists anew — the
-  /// very cuts.
+  /// again round a change of its own rows — the very cuts.
   void expectAsItWas(Track after, Track before, {required String reason}) {
     if (identical(after, before)) {
       return;

@@ -345,18 +345,19 @@ class Layer {
     Object? seNameTag = copyWithSentinel,
     Object? conteKey = copyWithSentinel,
   }) {
-    final nextFrames = frames ?? this.frames;
+    final nextFrames = frames ?? ownFrozen(this.frames);
     return Layer(
       id: id ?? this.id,
       name: name ?? this.name,
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
       instructions: _instructionsForCopy(instructions),
-      audioClips: audioClips ?? this.audioClips,
+      audioClips: audioClips ?? ownFrozen(this.audioClips),
       isVisible: isVisible ?? this.isVisible,
       collapsed: collapsed ?? this.collapsed,
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
-      expandedLaneGroups: expandedLaneGroups ?? this.expandedLaneGroups,
+      expandedLaneGroups:
+          expandedLaneGroups ?? ownFrozen(this.expandedLaneGroups),
       muted: muted ?? this.muted,
       seSound: seSound ?? this.seSound,
       opacity: opacity ?? this.opacity,
@@ -368,7 +369,7 @@ class Layer {
       transformTrack: transformTrack ?? this.transformTrack,
       transformEnabled: transformEnabled ?? this.transformEnabled,
       transformBasis: transformBasis ?? this.transformBasis,
-      effects: effects ?? this.effects,
+      effects: effects ?? ownFrozen(this.effects),
       // Sentinel: DETACHING (P3) clears the linkage — an attach row can
       // become an ordinary drawing row again, so null must be expressible.
       // It used to be a plain `??`, which silently meant "keep".
@@ -377,7 +378,7 @@ class Layer {
           : attachedToLayerId as LayerId?,
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
       attachedMode: attachedMode ?? this.attachedMode,
-      baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
+      baseFrameLinks: baseFrameLinks ?? ownFrozen(this.baseFrameLinks),
       // Sentinel: moving a layer OUT of its folder (null) must be
       // expressible.
       folderId: identical(folderId, copyWithSentinel)

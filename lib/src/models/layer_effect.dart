@@ -981,10 +981,10 @@ class LayerEffect {
       plugin: plugin,
       enabled: enabled ?? this.enabled,
       basis: basis ?? this.basis,
-      parameters: parameters ?? this.parameters,
-      colors: colors ?? this.colors,
-      points: points ?? this.points,
-      layers: layers ?? this.layers,
+      parameters: parameters ?? ownFrozen(this.parameters),
+      colors: colors ?? ownFrozen(this.colors),
+      points: points ?? ownFrozen(this.points),
+      layers: layers ?? ownFrozen(this.layers),
       stand: stand ?? this.stand,
     );
   }

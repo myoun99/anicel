@@ -349,7 +349,7 @@ class CelTextContent {
     Object? backgroundColor = _sentinel,
     bool? vertical,
   }) => CelTextContent(
-    spans: spans ?? this.spans,
+    spans: spans ?? ownFrozen(this.spans),
     anchor: anchor ?? this.anchor,
     // ⚠️Through `num`: the parameter is untyped so that null can mean
     // 「take it off」, and a whole number written `200` arrives as an int.
@@ -362,7 +362,7 @@ class CelTextContent {
     rotationDegrees: rotationDegrees ?? this.rotationDegrees,
     skewDegrees: skewDegrees ?? this.skewDegrees,
     flipped: flipped ?? this.flipped,
-    paragraphs: paragraphs ?? this.paragraphs,
+    paragraphs: paragraphs ?? ownFrozen(this.paragraphs),
     letterWidth: letterWidth ?? this.letterWidth,
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
@@ -503,7 +503,7 @@ class CelText {
   }) => CelText(
     id: id,
     content: content ?? this.content,
-    plate: plate ?? this.plate,
+    plate: plate ?? ownFrozen(this.plate),
   );
 
   Map<String, dynamic> toJson() => {

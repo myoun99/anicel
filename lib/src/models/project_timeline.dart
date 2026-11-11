@@ -58,7 +58,7 @@ class ProjectTimeline {
         id: id,
         number: number,
         name: name,
-        tracks: tracks ?? this.tracks,
+        tracks: tracks ?? ownFrozen(this.tracks),
         trailingFrames: trailingFrames ?? this.trailingFrames,
       );
 

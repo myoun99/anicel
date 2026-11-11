@@ -17,8 +17,25 @@
 /// one is handed back as itself.
 ///
 /// ⚠️The mark is an [Expando]: weak, so it goes when the collection goes,
-/// at one entry for each frozen collection alive.
+/// at one entry for each frozen collection alive — measured (plain Dart,
+/// 1M lists held) at ~0.8 µs and ~60–140 bytes a mark.
+///
+/// 🚨A MARK DOES NOT CROSS ISOLATES: it is this isolate's [Expando], and a
+/// file opens on a worker (`AnicelFileService.open`), so every collection
+/// an opened project holds arrives here unmarked — and the first copy of
+/// each model after opening wrapped them all anew. A copy says what it
+/// hands on is its own ([ownFrozen]).
 final Expando<bool> _frozen = Expando('frozen by a model');
+
+/// 🔬One empty collection for each type (card above, 11-11): most a model
+/// holds are empty — no fx, no audio, no twirls — and each was an object of
+/// its own. Measured (plain Dart, 1M lists held, 80% of them empty):
+/// 216 MB frozen apiece as before, 67–75 MB with one empty for each type.
+/// An empty collection changes as little as the next, so a copy keeps it
+/// whichever one it is.
+final Map<Type, Object> _noLists = {};
+final Map<Type, Object> _noSets = {};
+final Map<Type, Map<Type, Object>> _noMaps = {};
 
 bool _isFrozen(Object items) => _frozen[items] ?? false;
 
@@ -28,20 +45,51 @@ T _marked<T extends Object>(T frozen) {
 }
 
 /// [items] frozen — [items] itself when it is a list frozen here.
-List<E> frozenList<E>(Iterable<E> items) =>
-    items is List<E> && _isFrozen(items)
-    ? items
-    : _marked(List<E>.unmodifiable(items));
+List<E> frozenList<E>(Iterable<E> items) {
+  if (items is List<E> && _isFrozen(items)) {
+    return items;
+  }
+  final frozen = List<E>.unmodifiable(items);
+  if (frozen.isEmpty) {
+    return (_noLists[E] ??= _marked(frozen)) as List<E>;
+  }
+  return _marked(frozen);
+}
 
 /// [items] frozen — [items] itself when it is a set frozen here.
-Set<E> frozenSet<E>(Iterable<E> items) =>
-    items is Set<E> && _isFrozen(items)
-    ? items
-    : _marked(Set<E>.unmodifiable(items));
+Set<E> frozenSet<E>(Iterable<E> items) {
+  if (items is Set<E> && _isFrozen(items)) {
+    return items;
+  }
+  final frozen = Set<E>.unmodifiable(items);
+  if (frozen.isEmpty) {
+    return (_noSets[E] ??= _marked(frozen)) as Set<E>;
+  }
+  return _marked(frozen);
+}
 
 /// [entries] frozen — [entries] itself when it is a map frozen here.
-Map<K, V> frozenMap<K, V>(Map<K, V> entries) =>
-    _isFrozen(entries) ? entries : _marked(Map<K, V>.unmodifiable(entries));
+Map<K, V> frozenMap<K, V>(Map<K, V> entries) {
+  if (_isFrozen(entries)) {
+    return entries;
+  }
+  final frozen = Map<K, V>.unmodifiable(entries);
+  if (frozen.isEmpty) {
+    return ((_noMaps[K] ??= {})[V] ??= _marked(frozen)) as Map<K, V>;
+  }
+  return _marked(frozen);
+}
+
+/// [frozen] — a collection the model handing it on froze itself, marked
+/// here so the model it is handed to keeps it as itself.
+///
+/// For a copy's fallback to its own field (`seLayers ?? ownFrozen(this
+/// .seLayers)`), and only where EVERY constructor of the class freezes that
+/// field: ⛔it marks without asking, and a list taken as it was handed
+/// would be marked frozen while its giver can still change it. The scan
+/// `a_model_freezes_through_one_helper_test.dart` holds both.
+T ownFrozen<T extends Object>(T frozen) =>
+    _isFrozen(frozen) ? frozen : _marked(frozen);
 
 /// [built] frozen — or [given] itself when [given] was frozen here and
 /// holds what [built] holds: the same keys with the very same values, in

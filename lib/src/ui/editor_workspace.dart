@@ -1511,11 +1511,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _followProjectFonts() {
     final session = widget.session;
     final fonts = session.repository.requireProject().fonts;
-    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. A project is made
-    // anew at every edit and builds its lists anew with it (`Project`'s
-    // constructor), so 「is it the same list」 is no at every stroke — and
-    // saying the fonts again reads the project file's directory. The
-    // session tells of every edit; this hears all of them.
+    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. Saying the fonts
+    // again reads the project file's directory, and the session tells of
+    // every edit; this hears all of them. A copy of the project hands its
+    // list on as it was (card a-track-copy-wraps-its-unchanged-lists-anew,
+    // 11-11), but a list that says the same need not be that one.
+    // ↩️Until 11-11 every edit built the list anew (`Project`'s
+    // constructor), and 「is it the same list」 was no at every stroke.
     if (listEquals(fonts, _projectFontsShown)) {
       return;
     }

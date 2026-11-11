@@ -333,7 +333,7 @@ class Project {
     List<ProjectFontFile>? fonts,
   }) {
     final current = currentTimelineId ?? this.currentTimelineId;
-    final standing = timelines ?? this.timelines;
+    final standing = timelines ?? ownFrozen(this.timelines);
     return Project(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -371,8 +371,8 @@ class Project {
           audioSpeedDenominator ?? this.audioSpeedDenominator,
       exportOverrides: exportOverrides ?? this.exportOverrides,
       mediaViewerBookmarks:
-          mediaViewerBookmarks ?? this.mediaViewerBookmarks,
-      fonts: fonts ?? this.fonts,
+          mediaViewerBookmarks ?? ownFrozen(this.mediaViewerBookmarks),
+      fonts: fonts ?? ownFrozen(this.fonts),
     );
   }
 

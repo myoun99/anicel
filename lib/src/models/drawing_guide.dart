@@ -580,7 +580,7 @@ final class PerspectiveShape extends GuideShape {
     bool? constrainToEyeLevel,
     int? eyeLevelColor,
   }) => PerspectiveShape(
-    vanishingPoints: vanishingPoints ?? this.vanishingPoints,
+    vanishingPoints: vanishingPoints ?? ownFrozen(this.vanishingPoints),
     eyeLevel: eyeLevel ?? this.eyeLevel,
     snapEnabled: snapEnabled ?? this.snapEnabled,
     eyeLevelVisible: eyeLevelVisible ?? this.eyeLevelVisible,
@@ -859,7 +859,7 @@ class CutGuides {
     GuideId? activeSymmetryId,
     bool clearActiveSymmetry = false,
   }) {
-    final nextGuides = guides ?? this.guides;
+    final nextGuides = guides ?? ownFrozen(this.guides);
     final nextActive = clearActiveSymmetry
         ? null
         : (activeSymmetryId ?? this.activeSymmetryId);

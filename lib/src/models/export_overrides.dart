@@ -122,12 +122,12 @@ class ExportCelsCutDelta {
     Set<ExportCelRef>? guidesOver,
     Set<ExportDocumentPage>? skippedPages,
   }) => ExportCelsCutDelta(
-    layerOverrides: layerOverrides ?? this.layerOverrides,
-    skippedCels: skippedCels ?? this.skippedCels,
-    directionOver: directionOver ?? this.directionOver,
-    cameraOver: cameraOver ?? this.cameraOver,
-    guidesOver: guidesOver ?? this.guidesOver,
-    skippedPages: skippedPages ?? this.skippedPages,
+    layerOverrides: layerOverrides ?? ownFrozen(this.layerOverrides),
+    skippedCels: skippedCels ?? ownFrozen(this.skippedCels),
+    directionOver: directionOver ?? ownFrozen(this.directionOver),
+    cameraOver: cameraOver ?? ownFrozen(this.cameraOver),
+    guidesOver: guidesOver ?? ownFrozen(this.guidesOver),
+    skippedPages: skippedPages ?? ownFrozen(this.skippedPages),
   );
 
   ExportCelsCutDelta withLayerOverride(LayerId id, bool? include) {

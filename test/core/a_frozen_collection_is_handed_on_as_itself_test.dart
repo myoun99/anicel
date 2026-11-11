@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import 'package:anicel/src/core/frozen_collections.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,6 +58,55 @@ void main() {
       outside['b'] = 2;
       expect(frozen, {'a': 1});
       expect(() => frozen['c'] = 3, throwsUnsupportedError);
+    });
+  });
+
+  group('an empty one', () {
+    test('is one collection for each type, and frozen', () {
+      expect(identical(frozenList(<int>[]), frozenList(<int>[])), isTrue);
+      expect(identical(frozenSet(<int>{}), frozenSet(<int>{})), isTrue);
+      expect(
+        identical(frozenMap(<int, String>{}), frozenMap(<int, String>{})),
+        isTrue,
+      );
+      expect(() => frozenList(<int>[]).add(1), throwsUnsupportedError);
+      expect(() => frozenSet(<int>{}).add(1), throwsUnsupportedError);
+      expect(() => frozenMap(<int, int>{})[1] = 2, throwsUnsupportedError);
+    });
+
+    test('of another type is another', () {
+      expect(frozenList(<String>[]), isA<List<String>>());
+      expect(frozenSet(<String>{}), isA<Set<String>>());
+      expect(frozenMap(<int, String>{}), isA<Map<int, String>>());
+      expect(frozenMap(<int, int>{}), isA<Map<int, int>>());
+      expect(frozenMap(<String, int>{}), isA<Map<String, int>>());
+    });
+  });
+
+  // 🚨A mark is this isolate's own, and a file opens on a worker.
+  group('🚨frozen in another isolate, as a file opens', () {
+    test('is handed on as itself once the model holding it says it is its '
+        'own', () async {
+      final there = await Isolate.run(() => frozenList([1, 2]));
+      expect(
+        identical(frozenList(there), there),
+        isFalse,
+        reason: '⛔premise: the worker\'s mark stayed in the worker',
+      );
+      expect(identical(frozenList(ownFrozen(there)), there), isTrue);
+    });
+
+    test('still refuses a change', () async {
+      final (:items, :members, :entries) = await Isolate.run(
+        () => (
+          items: frozenList([1]),
+          members: frozenSet({1}),
+          entries: frozenMap({1: 2}),
+        ),
+      );
+      expect(() => ownFrozen(items).add(2), throwsUnsupportedError);
+      expect(() => ownFrozen(members).add(2), throwsUnsupportedError);
+      expect(() => ownFrozen(entries)[3] = 4, throwsUnsupportedError);
     });
   });
 

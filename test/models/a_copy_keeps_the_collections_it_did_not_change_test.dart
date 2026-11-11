@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -5,12 +7,15 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_sync.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/project_timeline.dart';
@@ -106,6 +111,219 @@ void main() {
       groups.add('twirled');
       expect(made.cuts, hasLength(1));
       expect(made.expandedLaneGroups, {'fx'});
+    });
+  });
+
+  // 🚨A mark is this isolate's own, and a file opens on a worker
+  // (`AnicelFileService.open`): what the worker froze comes here unmarked,
+  // and the first copy of each model after opening wrapped it all anew. A
+  // copy says what it hands on is its own (`ownFrozen`).
+  group('🚨made in a worker, as a file opens, and copied here', () {
+    test('a track hands back every collection it did not change', () async {
+      final before = await Isolate.run(track);
+      final after = before.copyWith(cuts: [cut('another')]);
+      expect(after.seLayers, same(before.seLayers));
+      expect(after.effects, same(before.effects));
+      expect(after.expandedLaneGroups, same(before.expandedLaneGroups));
+      expect(before.copyWith(name: 'again').cuts, same(before.cuts));
+    });
+
+    test('every collection a copy hands on as its own is that one, and '
+        'still refuses a change', () async {
+      final made = await Isolate.run(
+        () => (
+          project: Project(
+            id: const ProjectId('project'),
+            name: 'Project',
+            createdAt: DateTime.utc(2026, 11, 11),
+            tracks: [track()],
+          ),
+          text: CelText(
+            id: 1,
+            content: CelTextContent(
+              spans: const [CelTextSpan(text: 'a', style: TextLetterStyle())],
+              anchor: CanvasPoint(x: 0, y: 0),
+            ),
+          ),
+          sync: CutSync(
+            id: 'sync',
+            cuts: const [CutId('cut'), CutId('another')],
+          ),
+          guides: CutGuides(
+            guides: [
+              DrawingGuide(
+                id: const GuideId('guide'),
+                name: 'guide',
+                shape: PerspectiveShape(
+                  vanishingPoints: [
+                    VanishingPointAt(CanvasPoint(x: 1, y: 2)),
+                  ],
+                  eyeLevel: GuideAxis(
+                    origin: CanvasPoint(x: 0, y: 0),
+                    angleDegrees: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          delta: ExportCelsCutDelta(
+            layerOverrides: {const LayerId('layer'): true},
+          ),
+          links: LayerLinkRegistry(
+            groups: [
+              LayerLinkGroup(
+                id: 'group',
+                members: const [
+                  LayerLinkMember(
+                    trackId: TrackId('track'),
+                    cutId: CutId('cut'),
+                    layerId: LayerId('layer'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+      final project = made.project;
+      final theTrack = project.timelines.first.tracks.first;
+      final theCut = theTrack.cuts.first;
+      final theLayer = theCut.layers.first;
+      final theFrame = theLayer.frames.first;
+      final theStroke = theFrame.strokes.first;
+      final theEffect = theTrack.effects.first;
+      final content = made.text.content;
+      final shape = made.guides.guides.first.shape as PerspectiveShape;
+      const cel = (row: LayerId('layer'), cel: FrameId('frame'));
+      final delta = made.delta.withLayerOverride(const LayerId('more'), true);
+      final renamed = project.copyWith(name: 'again');
+      final twin = theTrack.copyWith(name: 'again');
+      final layer1 = theLayer.copyWith(name: 'again');
+      final effect1 = theEffect.copyWith(enabled: false);
+      final content1 = content.copyWith(rotationDegrees: 5);
+      final links1 = made.links.copyWith();
+      final handedOn = <(String, Object, Object)>[
+        ('Project.timelines', project.timelines, renamed.timelines),
+        ('Project.fonts', project.fonts, renamed.fonts),
+        (
+          'Project.mediaViewerBookmarks',
+          project.mediaViewerBookmarks,
+          renamed.mediaViewerBookmarks,
+        ),
+        (
+          'ProjectTimeline.tracks',
+          project.timelines.first.tracks,
+          project.timelines.first.copyWith(trailingFrames: 4).tracks,
+        ),
+        ('Track.cuts', theTrack.cuts, twin.cuts),
+        ('Track.seLayers', theTrack.seLayers, twin.seLayers),
+        ('Track.effects', theTrack.effects, twin.effects),
+        (
+          'Track.expandedLaneGroups',
+          theTrack.expandedLaneGroups,
+          twin.expandedLaneGroups,
+        ),
+        (
+          'Cut.layers',
+          theCut.layers,
+          theCut.copyWith(name: 'again').layers,
+        ),
+        ('Layer.frames', theLayer.frames, layer1.frames),
+        ('Layer.audioClips', theLayer.audioClips, layer1.audioClips),
+        ('Layer.effects', theLayer.effects, layer1.effects),
+        (
+          'Layer.expandedLaneGroups',
+          theLayer.expandedLaneGroups,
+          layer1.expandedLaneGroups,
+        ),
+        (
+          'Layer.baseFrameLinks',
+          theLayer.baseFrameLinks,
+          layer1.baseFrameLinks,
+        ),
+        (
+          'Frame.strokes',
+          theFrame.strokes,
+          theFrame.copyWith(duration: 2).strokes,
+        ),
+        (
+          'Stroke.points',
+          theStroke.points,
+          theStroke.copyWith(id: const StrokeId('again')).points,
+        ),
+        (
+          'LayerEffect.parameters',
+          theEffect.parameters,
+          effect1.parameters,
+        ),
+        ('LayerEffect.colors', theEffect.colors, effect1.colors),
+        ('LayerEffect.points', theEffect.points, effect1.points),
+        ('LayerEffect.layers', theEffect.layers, effect1.layers),
+        ('CelTextContent.spans', content.spans, content1.spans),
+        ('CelTextContent.paragraphs', content.paragraphs, content1.paragraphs),
+        ('CelText.plate', made.text.plate, made.text.copyWith().plate),
+        ('CutSync.cuts', made.sync.cuts, made.sync.copyWith().cuts),
+        (
+          'CutGuides.guides',
+          made.guides.guides,
+          made.guides.copyWith(clearActiveSymmetry: true).guides,
+        ),
+        (
+          'PerspectiveShape.vanishingPoints',
+          shape.vanishingPoints,
+          shape.copyWith(snapEnabled: false).vanishingPoints,
+        ),
+        (
+          'ExportCelsCutDelta.layerOverrides',
+          made.delta.layerOverrides,
+          made.delta.withCelSkipped(cel, true).layerOverrides,
+        ),
+        (
+          'ExportCelsCutDelta.skippedCels',
+          made.delta.skippedCels,
+          delta.skippedCels,
+        ),
+        (
+          'ExportCelsCutDelta.directionOver',
+          made.delta.directionOver,
+          delta.directionOver,
+        ),
+        (
+          'ExportCelsCutDelta.cameraOver',
+          made.delta.cameraOver,
+          delta.cameraOver,
+        ),
+        (
+          'ExportCelsCutDelta.guidesOver',
+          made.delta.guidesOver,
+          delta.guidesOver,
+        ),
+        (
+          'ExportCelsCutDelta.skippedPages',
+          made.delta.skippedPages,
+          delta.skippedPages,
+        ),
+        ('LayerLinkRegistry.groups', made.links.groups, links1.groups),
+        ('LayerLinkRegistry.syncs', made.links.syncs, links1.syncs),
+        (
+          'LayerLinkGroup.members',
+          made.links.groups.first.members,
+          made.links.groups.first.copyWith(id: 'again').members,
+        ),
+      ];
+      for (final (name, before, after) in handedOn) {
+        expect(identical(after, before), isTrue, reason: '$name came anew');
+        expect(
+          _clearing(after),
+          throwsUnsupportedError,
+          reason: '$name can be cleared',
+        );
+        expect(
+          _removing(after),
+          throwsUnsupportedError,
+          reason: '$name can lose an entry',
+        );
+      }
     });
   });
 
@@ -237,3 +455,18 @@ void main() {
     });
   });
 }
+/// [collection]'s clear — a list's, a set's or a map's.
+void Function() _clearing(Object collection) => switch (collection) {
+  final List<Object?> list => list.clear,
+  final Set<Object?> set => set.clear,
+  final Map<Object?, Object?> map => map.clear,
+  _ => throw ArgumentError.value(collection, 'collection'),
+};
+
+/// [collection] losing an entry — any, so a frozen one throws first.
+void Function() _removing(Object collection) => switch (collection) {
+  final List<Object?> list => () => list.remove(null),
+  final Set<Object?> set => () => set.remove(null),
+  final Map<Object?, Object?> map => () => map.remove(null),
+  _ => throw ArgumentError.value(collection, 'collection'),
+};
