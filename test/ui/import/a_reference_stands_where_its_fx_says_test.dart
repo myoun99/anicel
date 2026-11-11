@@ -1676,6 +1676,49 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    testWidgets('🎯a 겸용 copy riding a drawing wears none of its own '
+        'reference fx: beside a use its transform cannot carry, each use '
+        'takes the picture where IT shows it — the rider where its file is '
+        'laid, though its own fx turns the file as the other use\'s does '
+        '(🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4)', (
+      tester,
+    ) async {
+      final (s, row) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, s.layerById(copy)!, track: squashed, fx: turnedOnce);
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: turnedOnce);
+      expect(isAttachedLayer(rowOf(s, row)), isTrue, reason: '⛔premise');
+      expect(
+        isAttachedLayer(s.layerById(copy)!),
+        isFalse,
+        reason: '⛔premise',
+      );
+      expect(
+        shown(s, rowOf(s, row)),
+        const ui.Rect.fromLTRB(1120, 797, 1220, 857),
+        reason: '⛔premise: the rider stands where its file is laid',
+      );
+      expect(wayOf(s, row), framed, reason: 'the two show it apart');
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      final bakedCopy = s.layerById(copy)!;
+      expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
+      expect(shown(s, baked), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+      // 100×60 turned 30° about (1170, 827): 116.6 × 102 across.
+      final turned = shown(s, bakedCopy)!;
+      expect(turned.left, closeTo(1111.7, 1.5));
+      expect(turned.bottom, closeTo(878, 1.5));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('🗣️F-572-Q2 — a 겸용 copy whose move takes the still a '
         'position apiece, its row showing it still: both come back animation '
         'layers, as a merge makes them — the kind is the row\'s, read off '
