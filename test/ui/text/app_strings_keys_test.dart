@@ -24,6 +24,7 @@ void main() {
     'launchStagePlugins': (s) => s.launchStagePlugins,
     'launchStageApp': (s) => s.launchStageApp,
     'launchStageFirstFrame': (s) => s.launchStageFirstFrame,
+    'launchProgressRunning': (s) => s.launchProgressRunning,
     'launchNoticeTitle': (s) => s.launchNoticeTitle,
     'launchNoticeDontShowAgain': (s) => s.launchNoticeDontShowAgain,
     'usageStatsSend': (s) => s.usageStatsSend,

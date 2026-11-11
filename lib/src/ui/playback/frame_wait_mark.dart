@@ -67,10 +67,12 @@ class _Place extends InheritedWidget {
 /// 끝나면 표시가 프레임을 돌리지 않는다」).
 ///
 /// ⛔Not while the app gets its engine ready ([appEngineGetsReady]): the
-/// editor stands ONE ring for that, at the window's middle
-/// (`EngineReadyGate`, 🗣️gpu-canonical-store-Q16, 유저 2026-11-11: 「창
-/// 한가운데 하나」), and a place whose frames wait meanwhile — they do, their
-/// tools still to be opened — would stand a second beside it.
+/// app stands behind its ONE wait window for that
+/// (`HomePage._waitForTheEngineBehindTheWindow`, 🗣️유저 2026-11-11:
+/// 「캔버스든 타임라인이든 구분안두고 … 공용창 띄워서」 ·
+/// gpu-canonical-store-Q16 「창 한가운데 하나」), and a place whose frames
+/// wait meanwhile — they do, their tools still to be opened — would turn
+/// a mark of its own under it.
 class FrameWaitMark extends StatelessWidget {
   const FrameWaitMark({super.key});
 

@@ -169,8 +169,8 @@ void main() {
   });
 
   // 🗣️gpu-canonical-store-Q18 (유저 2026-11-11): 「열기도 준비가 끝난 뒤에
-  // 시작한다」 — the door's windows stand over the editor's ring no more
-  // than a launch's own.
+  // 시작한다」 — the door's windows stand over the window the app waits
+  // behind no more than a launch's own.
   testWidgets('a file handed to a launch held for its engine goes to the '
       'door once the app is let go, and not before', (tester) async {
     final path = nothingOpens();
@@ -181,7 +181,7 @@ void main() {
       tester,
       HomePage(initialProject: createDefaultProject(), handedAtLaunch: [path]),
     );
-    // A held app never settles: its ring turns.
+    // A held app never settles: its wait window's spinner turns.
     for (var frame = 0; frame < 8; frame += 1) {
       await tester.pump(const Duration(milliseconds: 50));
     }

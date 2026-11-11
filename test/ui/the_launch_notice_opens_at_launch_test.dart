@@ -224,7 +224,8 @@ void main() {
   });
 
   // 🗣️gpu-canonical-store-Q17 (유저 2026-11-11): 「시작할 때 뜨는 창도 준비가
-  // 끝난 뒤에 띄운다」 — none of the three stands over the editor's ring.
+  // 끝난 뒤에 띄운다」 — none of the three stands over the window the app
+  // waits behind.
   testWidgets('a launch held for its engine opens none of its windows till '
       'the app is let go, then the first of them', (tester) async {
     final settings = find.byKey(const ValueKey<String>('first-run-settings'));

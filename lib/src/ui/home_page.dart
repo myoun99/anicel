@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
+import 'dialogs/app_progress_dialog.dart' show runWithAppProgress;
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import 'dialogs/first_run_settings_window.dart' show showFirstRunSettings;
 import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
@@ -68,7 +69,6 @@ import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
-import 'input/engine_ready_gate.dart';
 import 'input/one_pointer_shows_the_cursor.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
@@ -621,6 +621,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
+    appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
+    // A launch is held from before its first frame. `runApp` builds the
+    // tree, then draws it: asked between the two — a microtask of that
+    // build — the window is in the first frame. ⛔A post-frame callback
+    // opens it a frame late, over an editor shown one frame without it.
+    scheduleMicrotask(_waitForTheEngineBehindTheWindow);
     _cursorOwner.listen();
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
@@ -683,8 +689,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ///   has been read (F-170). ↩️A handed file knocked at once: a file
   ///   nothing opens was refused in English under a Japanese list of it
   ///   (서피스 AI 실기 2026-10-23, card open-door-windows-open-with);
-  /// - the app is let go ([onceTheAppIsLetGo]): none stands over the
-  ///   editor's ring. 🗣️유저 2026-11-11, gpu-canonical-store-Q17 「시작할 때
+  /// - the app is let go ([onceTheAppIsLetGo]): none stands over the window
+  ///   it waits for its engine behind
+  ///   ([_waitForTheEngineBehindTheWindow]), each after it, in its order.
+  ///   🗣️유저 2026-11-11, gpu-canonical-store-Q17 「시작할 때
   ///   뜨는 창도 준비가 끝난 뒤에 띄운다」 · Q18 「열기도 준비가 끝난 뒤에
   ///   시작한다」.
   Future<void> _windowsMayOpen() =>
@@ -1087,6 +1095,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ),
   );
 
+  /// The app behind its one wait window while it gets its engine ready
+  /// ([appEngineGetsReady]), as it is behind it for an open or a save: the
+  /// window takes every pointer and key of the editor under it, and goes
+  /// the moment the app is let go.
+  ///
+  /// 🗣️유저 2026-11-11 (채팅, 관제 13:49 전달): 「준비안된화면, 캔버스든
+  /// 타임라인이든 구분안두고 그냥 여는중? 뭐 그런 로딩 안내창있잖아. 그거
+  /// 공용창 띄워서 입력 막게하는게 베스트라고생각해」 — the window says what
+  /// gpu-canonical-store-Q15 asked a ring to (「그때까지 고리」 · 「모든 조작
+  /// 막음」). ↩️For the hours between, a ring of the editor's own stood at
+  /// the window's middle (gpu-canonical-store-Q16: 「창 한가운데 하나」) over
+  /// an editor that turned its keys and pointers back itself.
+  ///
+  /// ⛔What no window takes — the pencil's double tap, which comes by no
+  /// route — is turned back at the funnel ([_invokeAction]).
+  void _waitForTheEngineBehindTheWindow() {
+    if (!appEngineGetsReady.value) {
+      return;
+    }
+    unawaited(
+      runWithAppProgress<void>(
+        context: context,
+        title: AppText.strings.launchStageApp,
+        runningLabel: AppText.strings.launchProgressRunning,
+        windowKey: const ValueKey<String>('launch-progress-dialog'),
+        task: (_) => onceTheAppIsLetGo(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1097,6 +1135,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
+    appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();
     _lifecycle?.dispose();
@@ -1153,10 +1192,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _invokeAction(String actionId) {
-    // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작 막음」 — the
-    // funnel's half of [EngineReadyGate]: what runs into it past the gate's
-    // keys and pointers — the pencil's double tap — is turned back while
-    // the app gets its engine ready, by the fact the gate asks.
+    // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작 막음」 — what
+    // runs into the funnel past the window the app waits behind
+    // ([_waitForTheEngineBehindTheWindow]), which takes the editor's keys
+    // and pointers — the pencil's double tap comes by no route — is turned
+    // back while the app gets its engine ready, by the fact the window is
+    // up for.
     if (appEngineGetsReady.value) {
       return;
     }
@@ -1623,11 +1664,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             keys: _panelKeys,
             child: DeviceGridSafeArea(
               bottom: false,
-              // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작
-              // 막음」 — the whole editor behind the app's getting its
-              // engine ready: its keys, which this lays, and its pointers —
-              // under the one ring that says so (gpu-canonical-store-Q16).
-              child: EngineReadyGate(
+              child: EditorKeyFunnel(
                 road: _keyRoad,
                 child: PlaybackActuationGate(
                   // 🚨T28-c — the whole editor behind ONE gate: while

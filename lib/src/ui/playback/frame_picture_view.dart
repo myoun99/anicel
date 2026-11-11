@@ -359,9 +359,9 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// that it can be worked on. Its picture is made meanwhile all the same,
   /// and shown by the paint that follows the app's being let go.
   ///
-  /// ⛔Not a wait its place marks ([_waitsAtPaint]): the editor stands one
-  /// ring for it, at the window's middle (`EngineReadyGate`,
-  /// 🗣️gpu-canonical-store-Q16).
+  /// ⛔Not a wait its place marks ([_waitsAtPaint]): the app stands behind
+  /// its one wait window for it
+  /// (`HomePage._waitForTheEngineBehindTheWindow`).
   bool get _heldForTheEngine => appEngineGetsReady.value;
 
   /// Whether a frame whose picture is not there yet is drawn as it stands

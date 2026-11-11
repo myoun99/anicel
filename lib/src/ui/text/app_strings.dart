@@ -182,6 +182,13 @@ enum AppStrings {
   String get launchStageApp => _s('launchStageApp');
   String get launchStageFirstFrame => _s('launchStageFirstFrame');
 
+  /// The line of the wait window a launch stands behind once its first
+  /// screen is drawn, till what a hand needs of the engine is compiled —
+  /// under [launchStageApp], the stage it is still in, as its title
+  /// (🗣️유저 2026-11-11: 「그냥 여는중? 뭐 그런 로딩 안내창있잖아. 그거
+  /// 공용창 띄워서 입력 막게하는게 베스트」).
+  String get launchProgressRunning => _s('launchProgressRunning');
+
   /// The window the app opens at launch (유저 2026-10-28: 「앱 실행시 앱
   /// 설명 넣고싶어. 다음부터 표시안함버튼있고」) — its words are the bundled
   /// files' (`LaunchNoticeSection`); these are its frame.
@@ -2321,6 +2328,7 @@ enum AppStrings {
     'launchStagePlugins': 'Registering plugins',
     'launchStageApp': 'Preparing app',
     'launchStageFirstFrame': 'Drawing first screen',
+    'launchProgressRunning': 'Preparing…',
     'launchNoticeTitle': 'About this build',
     'launchNoticeDontShowAgain': "Don't show again",
     'usageStatsSend': 'Send usage statistics',
@@ -3788,6 +3796,7 @@ enum AppStrings {
     'launchStagePlugins': 'プラグイン登録',
     'launchStageApp': 'アプリ準備',
     'launchStageFirstFrame': '最初の画面を描画',
+    'launchProgressRunning': '準備中…',
     'launchNoticeTitle': 'ご案内',
     'launchNoticeDontShowAgain': '次回から表示しない',
     'usageStatsSend': '利用統計を送信',
@@ -5662,6 +5671,7 @@ enum AppStrings {
     'launchStagePlugins': '플러그인 등록',
     'launchStageApp': '앱 준비',
     'launchStageFirstFrame': '첫 화면 그리기',
+    'launchProgressRunning': '준비 중…',
     'launchNoticeTitle': '안내',
     'launchNoticeDontShowAgain': '다음부터 표시 안 함',
     'usageStatsSend': '사용 통계 보내기',
@@ -7531,6 +7541,7 @@ enum AppStrings {
     'launchStagePlugins': 'Enregistrement des plugins',
     'launchStageApp': "Préparation de l'application",
     'launchStageFirstFrame': 'Affichage du premier écran',
+    'launchProgressRunning': 'Préparation…',
     'launchNoticeTitle': 'À propos de cette version',
     'launchNoticeDontShowAgain': 'Ne plus afficher',
     'usageStatsSend': "Envoyer des statistiques d'utilisation",
@@ -9589,6 +9600,7 @@ enum AppStrings {
     'launchStagePlugins': '注册插件',
     'launchStageApp': '准备应用',
     'launchStageFirstFrame': '绘制首个画面',
+    'launchProgressRunning': '正在准备…',
     'launchNoticeTitle': '本版本说明',
     'launchNoticeDontShowAgain': '不再显示',
     'usageStatsSend': '发送使用统计',

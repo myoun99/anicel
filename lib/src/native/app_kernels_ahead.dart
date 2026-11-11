@@ -88,9 +88,11 @@ Future<void> compileAppKernelsAhead() async {
 /// 띄운다 — 그때까지 고리」 · 「애초에 타임라인같은거도 포함해서 고리띄우고
 /// 모든 조작 막음. 서피스에서 느린건 해당문제 차차 속도 빠르게해서 개선」 —
 /// ONE fact for all that hold the app meanwhile: a frame keeps its picture
-/// from the screen (`FramePictureView`), the editor stands its one ring and
-/// takes no input (`EngineReadyGate`, 🗣️gpu-canonical-store-Q16: 「창
-/// 한가운데 하나」), and the windows a launch opens of itself wait, a
+/// from the screen (`FramePictureView`), the app stands behind its one wait
+/// window, which takes the editor's input
+/// (`HomePage._waitForTheEngineBehindTheWindow` — what the 「고리」 of
+/// these words came to, 🗣️유저 2026-11-11 채팅: 「그거 공용창 띄워서 입력
+/// 막게하는게 베스트」), and the windows a launch opens of itself wait, a
 /// handed file's door among them ([onceTheAppIsLetGo],
 /// 🗣️gpu-canonical-store-Q17 · Q18).
 ///

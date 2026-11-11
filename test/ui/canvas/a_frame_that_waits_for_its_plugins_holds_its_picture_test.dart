@@ -1009,9 +1009,10 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // 🗣️gpu-canonical-store-Q16 (유저 2026-11-11): 「창 한가운데 하나」 — the
-  // editor stands the one ring while the app is held, and a place whose
-  // frames wait meanwhile, as they do for their tools, stands none beside
+  // 🗣️유저 2026-11-11: 「캔버스든 타임라인이든 구분안두고 … 공용창 띄워서」 ·
+  // gpu-canonical-store-Q16 「창 한가운데 하나」 — the app stands behind its
+  // one wait window while it is held, and a place whose
+  // frames wait meanwhile, as they do for their tools, turns no mark under
   // it.
   testWidgets('a place whose frames wait stands no mark while the app is '
       'held for its engine, and its own once the app is let go', (
