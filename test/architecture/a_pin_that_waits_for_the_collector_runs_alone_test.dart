@@ -357,6 +357,10 @@ void main() {
         // pool-pages-given-back (11-08): a page goes back once its tiles
         // are collected, and only the collector can say they were.
         'test/native/the_engine_gives_back_the_pages_nobody_holds_test.dart',
+        // a-lost-gpu-device-keeps-the-unsaved-tiles (B, 11-11): a landed
+        // tile lets go of the tile it landed on once its copy is here, and
+        // only the collector can say it did.
+        'test/native/a_landed_tile_lets_go_of_the_tile_under_it_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '
