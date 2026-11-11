@@ -92,7 +92,9 @@ fn lay_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   if (params.covered == 1u) {
     strength = blend_cover(strength, covering(at));
   }
-  // What takes none of the source is left as it lies.
+  // What takes none of the source is not written: the blend would give it
+  // back as it lies (a premultiplied word made straight and premultiplied
+  // again is itself — the mutant without this return lives, 🔬2026-11-11).
   if (strength == 0u) {
     return;
   }

@@ -14,7 +14,7 @@ const RED: u32 = 0xff00_00ff;
 fn blank(width: u32, height: u32, ground: u32) -> Shown {
     let rig = rig();
     let frame = Shown::blank(rig.engine, Picture { width, height }).expect("blank");
-    rig.lay.run(rig.engine, &frame, Source::Solid(ground), 255, None).expect("ground");
+    rig.lay.run(rig.engine, &frame, Source::Solid(ground), 255, None, None).expect("ground");
     frame
 }
 
@@ -38,7 +38,7 @@ fn words(frame: &Shown) -> Vec<u32> {
 fn lay(onto: &Shown, source: &Shown, (x, y): (i32, i32), opacity: u8, cover: Option<&Cover>) {
     let rig = rig();
     rig.lay
-        .run(rig.engine, onto, Source::Frame { frame: source, x, y }, opacity, cover)
+        .run(rig.engine, onto, Source::Frame { frame: source, x, y }, opacity, cover, None)
         .expect("laid");
 }
 
@@ -148,7 +148,7 @@ fn a_cover_not_the_frame_s_size_is_refused() {
     let rig = rig();
     let frame = blank(3, 2, WHITE);
     let cover = Cover::of(rig.engine, &[255; 3], Picture { width: 3, height: 1 }).expect("cover");
-    let laid = rig.lay.run(rig.engine, &frame, Source::Solid(RED), 255, Some(&cover));
+    let laid = rig.lay.run(rig.engine, &frame, Source::Solid(RED), 255, Some(&cover), None);
 
     assert!(laid.is_none());
     assert_eq!(last_error(), "a 3x1 cover is not a 3x2 frame's");
@@ -157,7 +157,7 @@ fn a_cover_not_the_frame_s_size_is_refused() {
 #[test]
 fn a_frame_shown_from_a_bgra_surface_is_not_laid_onto() {
     let rig = rig();
-    let laid = rig.lay.run(rig.engine, &shown(3, 2, true, |_, _| RED), Source::Solid(RED), 255, None);
+    let laid = rig.lay.run(rig.engine, &shown(3, 2, true, |_, _| RED), Source::Solid(RED), 255, None, None);
 
     assert!(laid.is_none());
     assert_eq!(last_error(), "a frame is laid onto as the export lays one: RGBA, not BGRA");
@@ -172,4 +172,42 @@ fn a_picture_or_a_cover_of_too_few_bytes_is_refused() {
     assert_eq!(last_error(), "a 2x2 picture is 16 bytes, not 15");
     assert!(Cover::of(engine, &[0; 3], picture).is_none());
     assert_eq!(last_error(), "a 2x2 cover is 4 bytes, not 3");
+}
+
+// Within [1, 1, 4, 2) of a 5 x 3 frame: three pixels of its middle row
+// take the picture, every other is as it was — a cut's whole pixels.
+#[test]
+fn a_picture_is_laid_only_within_the_pixels_named() {
+    let rig = rig();
+    let frame = blank(5, 3, WHITE);
+    let picture = uploaded(5, 3, |_, _| RED);
+    let source = Source::Frame { frame: &picture, x: 0, y: 0 };
+    rig.lay.run(rig.engine, &frame, source, 255, None, Some([1, 1, 4, 2])).expect("laid");
+    rig.lay.run(rig.engine, &frame, source, 255, None, Some([4, 0, 2, 3])).expect("laid");
+
+    let inside = |at: usize| (1..4).contains(&(at % 5)) && at / 5 == 1;
+    let expected: Vec<u32> = (0..15).map(|at| if inside(at) { RED } else { WHITE }).collect();
+    assert_eq!(words(&frame), expected);
+}
+
+#[test]
+fn a_colour_is_laid_only_within_the_pixels_named() {
+    let rig = rig();
+    let frame = blank(3, 2, WHITE);
+    rig.lay.run(rig.engine, &frame, Source::Solid(RED), 255, None, Some([-4, 1, 2, 9])).expect("laid");
+
+    assert_eq!(words(&frame), vec![WHITE, WHITE, WHITE, RED, RED, WHITE]);
+}
+
+#[test]
+fn a_frame_the_export_made_reads_back_as_it_lies() {
+    let frame = blank(3, 2, WHITE);
+    lay(&frame, &uploaded(1, 1, |_, _| RED), (2, 1), 255, None);
+    let (rows, bytes) = frame.laid_rows().expect("rows");
+
+    assert_eq!(bytes, 3 * 2 * 4);
+    let laid: Vec<u8> = [WHITE, WHITE, WHITE, WHITE, WHITE, RED].iter().flat_map(|w| w.to_le_bytes()).collect();
+    assert_eq!(read_buffer(rig().engine, &rows), laid);
+    assert!(uploaded(1, 1, |_, _| RED).laid_rows().is_none());
+    assert_eq!(last_error(), "a frame is read back where the export made it");
 }

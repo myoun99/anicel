@@ -369,6 +369,18 @@ void main() {
       expect(pixelsOf(halved, 3, 1), List.filled(3, [255, 127, 127]));
     });
 
+    test('a frame is laid within the pixels Dart names, and read back as '
+        'it lies', () {
+      final frame = blank(3, 2);
+
+      export.layColour(frame, red, within: (1, 1, 3, 2));
+
+      expect(readAll(export.read(frame)), [
+        for (var at = 0; at < 6; at++)
+          if (at >= 4) ...[255, 0, 0, 255] else ...[255, 255, 255, 255],
+      ]);
+    });
+
     test('a cover of another size is refused, and says why', () {
       final cover = export.cover(Uint8List.fromList([255, 255, 255]), 3, 1);
       addTearDown(cover.free);

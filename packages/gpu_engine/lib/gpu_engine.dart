@@ -2266,8 +2266,9 @@ class GpuExport {
 
   /// Lays [source], its top-left at ([x], [y]) of [onto], over [onto] at
   /// [opacity] — a byte, 255 as it is — each pixel taking of it what
-  /// [cover] says, all of it where there is none, and submits the work.
-  /// [onto] is a frame [blank] made.
+  /// [cover] says, all of it where there is none, and only within the
+  /// pixels [within] names — [left, top, right, bottom) — where it does;
+  /// and submits the work. [onto] is a frame [blank] made.
   void lay(
     GpuShown onto,
     GpuShown source, {
@@ -2275,16 +2276,20 @@ class GpuExport {
     int y = 0,
     int opacity = 255,
     GpuCover? cover,
+    (int, int, int, int)? within,
   }) => _laid(
-    rust.exportLay(
-      _export,
-      _engine._engine,
-      onto._shown,
-      source._shown,
-      x,
-      y,
-      opacity,
-      cover?._cover ?? nullptr,
+    using(
+      (arena) => rust.exportLay(
+        _export,
+        _engine._engine,
+        onto._shown,
+        source._shown,
+        x,
+        y,
+        opacity,
+        cover?._cover ?? nullptr,
+        _rectOrNull(arena, within),
+      ),
     ),
   );
 
@@ -2295,16 +2300,24 @@ class GpuExport {
     int colour, {
     int opacity = 255,
     GpuCover? cover,
+    (int, int, int, int)? within,
   }) => _laid(
-    rust.exportLayColour(
-      _export,
-      _engine._engine,
-      onto._shown,
-      colour,
-      opacity,
-      cover?._cover ?? nullptr,
+    using(
+      (arena) => rust.exportLayColour(
+        _export,
+        _engine._engine,
+        onto._shown,
+        colour,
+        opacity,
+        cover?._cover ?? nullptr,
+        _rectOrNull(arena, within),
+      ),
     ),
   );
+
+  /// What [frame] — one [blank] made — holds, to read back: its
+  /// premultiplied RGBA, red first, row after row with nothing between.
+  GpuReadout read(GpuShown frame) => _readout(rust.exportRead(frame._shown));
 
   GpuShown _shownOrWhy(Pointer<rust.Shown> shown) {
     if (shown == nullptr) {

@@ -154,7 +154,7 @@ pub unsafe extern "C" fn gpu_engine_export_blank(
     let (export, engine) = unsafe { (&*export, &*engine) };
     Shown::blank(engine, Picture { width, height })
         .and_then(|frame| {
-            export.lay.run(engine, &frame, Source::Solid(ground), 255, None)?;
+            export.lay.run(engine, &frame, Source::Solid(ground), 255, None, None)?;
             Some(frame)
         })
         .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
@@ -225,14 +225,39 @@ pub unsafe extern "C" fn gpu_engine_export_cover_free(cover: *mut Cover) {
     }
 }
 
-/// Lays `source`, its top-left at (`x`, `y`) of `onto`, over `onto` at
-/// `opacity` — a byte, 255 as it is — each pixel taking of it what `cover`
-/// says, or all of it where `cover` is null, and submits the work. `onto`
-/// is a frame the export made (`gpu_engine_export_blank`). False on
-/// failure; see the last error.
+/// What a frame the export made holds (`gpu_engine_export_blank`), to read
+/// back: its premultiplied RGBA, red first, row after row with nothing
+/// between. Null on failure; see the last error.
 ///
 /// # Safety
-/// Every pointer is live, made on `engine`, but `cover`, which may be null.
+/// `frame` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_read(frame: *const Shown) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let frame = unsafe { &*frame };
+    frame.laid_rows().map_or(std::ptr::null_mut(), |(rows, bytes)| readout(Some(rows), bytes))
+}
+
+/// The pixels `within` names — [left, top, right, bottom), four of them —
+/// or none where it is null.
+///
+/// # Safety
+/// `within` holds four where it is not null.
+unsafe fn edges(within: *const i32) -> Option<[i32; 4]> {
+    // SAFETY: see the function's contract.
+    unsafe { within.cast::<[i32; 4]>().as_ref() }.copied()
+}
+
+/// Lays `source`, its top-left at (`x`, `y`) of `onto`, over `onto` at
+/// `opacity` — a byte, 255 as it is — each pixel taking of it what `cover`
+/// says, or all of it where `cover` is null — only within the pixels
+/// `within` names, [left, top, right, bottom), where it is not null — and
+/// submits the work. `onto` is a frame the export made
+/// (`gpu_engine_export_blank`). False on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`, but `cover` and `within`, which
+/// may be null; `within` holds four where it is not.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_export_lay(
     export: *const Export,
@@ -243,19 +268,21 @@ pub unsafe extern "C" fn gpu_engine_export_lay(
     y: i32,
     opacity: u8,
     cover: *const Cover,
+    within: *const i32,
 ) -> bool {
     // SAFETY: see the function's contract.
     let (export, engine, onto, frame) = unsafe { (&*export, &*engine, &*onto, &*source) };
     // SAFETY: see the function's contract.
-    let cover = unsafe { cover.as_ref() };
-    export.lay.run(engine, onto, Source::Frame { frame, x, y }, opacity, cover).is_some()
+    let (cover, within) = unsafe { (cover.as_ref(), edges(within)) };
+    export.lay.run(engine, onto, Source::Frame { frame, x, y }, opacity, cover, within).is_some()
 }
 
 /// [`gpu_engine_export_lay`] of one colour over the whole of `onto` —
 /// straight RGBA8, red the low byte.
 ///
 /// # Safety
-/// Every pointer is live, made on `engine`, but `cover`, which may be null.
+/// Every pointer is live, made on `engine`, but `cover` and `within`, which
+/// may be null; `within` holds four where it is not.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_export_lay_colour(
     export: *const Export,
@@ -264,12 +291,13 @@ pub unsafe extern "C" fn gpu_engine_export_lay_colour(
     colour: u32,
     opacity: u8,
     cover: *const Cover,
+    within: *const i32,
 ) -> bool {
     // SAFETY: see the function's contract.
     let (export, engine, onto) = unsafe { (&*export, &*engine, &*onto) };
     // SAFETY: see the function's contract.
-    let cover = unsafe { cover.as_ref() };
-    export.lay.run(engine, onto, Source::Solid(colour), opacity, cover).is_some()
+    let (cover, within) = unsafe { (cover.as_ref(), edges(within)) };
+    export.lay.run(engine, onto, Source::Solid(colour), opacity, cover, within).is_some()
 }
 
 /// A run's output tiles, as the conversions read them.

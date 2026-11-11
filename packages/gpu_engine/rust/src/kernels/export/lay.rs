@@ -79,6 +79,17 @@ impl Shown {
         Some(Self::rgba(rows, picture))
     }
 
+    /// A frame the export made as it lies — its premultiplied RGBA, row
+    /// after row with nothing between — and its bytes, to read back: what a
+    /// picture of a panel is made of. None, with why, for a frame the
+    /// export did not make.
+    pub(crate) fn laid_rows(&self) -> Option<(wgpu::Buffer, u64)> {
+        if !self.rows.usage().contains(wgpu::BufferUsages::COPY_SRC) || self.stride != self.width {
+            return fail("a frame is read back where the export made it".to_owned());
+        }
+        Some((self.rows.clone(), u64::from(self.width) * u64::from(self.height) * 4))
+    }
+
     fn rgba(rows: wgpu::Buffer, Picture { width, height }: Picture) -> Self {
         Self { rows, stride: width, width, height, bgra: false }
     }
@@ -107,9 +118,10 @@ impl Lay {
     }
 
     /// Lays `source` over `onto` at `opacity`, each pixel taking of it what
-    /// `cover` says where one is given, and submits the work — none, with
-    /// why, where `onto` is not laid as the export lays a frame or `cover`
-    /// is not its size.
+    /// `cover` says where one is given — and only within the pixels
+    /// `within`, [left, top, right, bottom), where those are — and submits
+    /// the work — none, with why, where `onto` is not laid as the export
+    /// lays a frame or `cover` is not its size.
     pub(crate) fn run(
         &self,
         engine: &Engine,
@@ -117,6 +129,7 @@ impl Lay {
         source: Source,
         opacity: u8,
         cover: Option<&Cover>,
+        within: Option<[i32; 4]>,
     ) -> Option<()> {
         if onto.bgra {
             return fail("a frame is laid onto as the export lays one: RGBA, not BGRA".to_owned());
@@ -134,7 +147,7 @@ impl Lay {
                 Some(&frame.rows),
                 Read::Shown { bgra: frame.bgra },
                 frame.stride,
-                overlap(onto, frame, x, y),
+                overlap(region(onto, within), (frame.width, frame.height), (x, y)),
                 0,
                 0,
             ),
@@ -142,7 +155,7 @@ impl Lay {
                 None,
                 Read::Shown { bgra: false },
                 0,
-                [0, 0, onto.width, onto.height, 0, 0],
+                overlap(region(onto, within), (onto.width, onto.height), (0, 0)),
                 1,
                 colour,
             ),
@@ -191,19 +204,30 @@ impl Lay {
     }
 }
 
-/// Where `frame`, its top-left at (`x`, `y`) of `onto`, meets it: the
-/// box's top-left on `onto`, its size, and `frame`'s pixel at its
-/// top-left — an empty box where they do not meet.
-fn overlap(onto: &Shown, frame: &Shown, x: i32, y: i32) -> [u32; 6] {
-    let span = |at: i32, own: u32, under: u32| {
-        let start = i64::from(at).max(0);
-        let end = (i64::from(at) + i64::from(own)).min(i64::from(under));
-        let size = (end - start).max(0);
-        // Inside u32: `start` is under `under` wherever `size` is not 0,
-        // and what is skipped of the frame is under its own size.
-        (start.min(i64::from(under)) as u32, size as u32, (start - i64::from(at)) as u32)
+/// The pixels of `onto` a pass may lay — [left, top, right, bottom) — all
+/// of it, cut to `within` where that is given.
+fn region(onto: &Shown, within: Option<[i32; 4]>) -> [i64; 4] {
+    let [left, top, right, bottom] =
+        within.map_or([i64::MIN, i64::MIN, i64::MAX, i64::MAX], |edges| edges.map(i64::from));
+    [left.max(0), top.max(0), right.min(i64::from(onto.width)), bottom.min(i64::from(onto.height))]
+}
+
+/// Where a picture of `width` x `height`, its top-left at (`x`, `y`),
+/// meets `region`: the box's top-left, its size, and the picture's pixel
+/// at its top-left — an empty box where they do not meet.
+fn overlap([left, top, right, bottom]: [i64; 4], (width, height): (u32, u32), (x, y): (i32, i32)) -> [u32; 6] {
+    let span = |at: i32, own: u32, low: i64, high: i64| {
+        let at = i64::from(at);
+        let start = at.max(low);
+        let end = (at + i64::from(own)).min(high);
+        if end <= start {
+            return (0, 0, 0);
+        }
+        // Inside u32: the box lies in the frame laid onto, and what is
+        // skipped of the picture is under its own size.
+        (start as u32, (end - start) as u32, (start - at) as u32)
     };
-    let (x0, width, sx) = span(x, frame.width, onto.width);
-    let (y0, height, sy) = span(y, frame.height, onto.height);
+    let (x0, width, sx) = span(x, width, left, right);
+    let (y0, height, sy) = span(y, height, top, bottom);
     [x0, y0, width, height, sx, sy]
 }

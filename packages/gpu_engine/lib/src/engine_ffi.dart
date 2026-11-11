@@ -1025,6 +1025,7 @@ external void exportCoverFree(Pointer<Cover> cover);
     Int32,
     Uint8,
     Pointer<Cover>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_export_lay')
 external bool exportLay(
@@ -1036,6 +1037,7 @@ external bool exportLay(
   int y,
   int opacity,
   Pointer<Cover> cover,
+  Pointer<Int32> within,
 );
 
 @Native<
@@ -1046,6 +1048,7 @@ external bool exportLay(
     Uint32,
     Uint8,
     Pointer<Cover>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_export_lay_colour')
 external bool exportLayColour(
@@ -1055,7 +1058,13 @@ external bool exportLayColour(
   int colour,
   int opacity,
   Pointer<Cover> cover,
+  Pointer<Int32> within,
 );
+
+@Native<Pointer<Readout> Function(Pointer<Shown>)>(
+  symbol: 'gpu_engine_export_read',
+)
+external Pointer<Readout> exportRead(Pointer<Shown> frame);
 
 @Native<
   Pointer<Readout> Function(
