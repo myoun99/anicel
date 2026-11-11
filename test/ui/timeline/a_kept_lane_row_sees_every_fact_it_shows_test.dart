@@ -13,6 +13,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -296,6 +298,8 @@ void main() {
     final previewB = ValueNotifier<TimelineDragPreview?>(null);
     final standingA = ValueNotifier<TimelineRowAddress?>(null);
     final standingB = ValueNotifier<TimelineRowAddress?>(null);
+    final spanA = ValueNotifier<TimelineLaneSelection?>(null);
+    final spanB = ValueNotifier<TimelineLaneSelection?>(null);
     const seat = TimelineGraphSeat(
       groupKey: 'row|transform-group',
       graph: LaneGraph(),
@@ -325,6 +329,7 @@ void main() {
       ValueListenable<int>? cursor,
       ValueListenable<TimelineDragPreview?>? dragPreview,
       ValueListenable<TimelineRowAddress?>? standing,
+      ValueListenable<TimelineLaneSelection?>? span,
       bool linked = false,
       Set<String> without = const {},
     }) {
@@ -358,7 +363,8 @@ void main() {
           onRasterizeLaneGroup: has('onRasterizeLaneGroup')
               ? (_, _) => null
               : null,
-          onResetLaneGroup: has('onResetLaneGroup') ? (_, _) {} : null,
+          onResetLaneGroup: has('onResetLaneGroup') ? (_, _) => null : null,
+          laneSpan: span ?? spanA,
           axis: axis,
           keyPrefix: keyPrefix,
           width: width,
@@ -458,6 +464,7 @@ void main() {
       'frameCursor': () => facts(cursor: cursorB),
       'dragPreview': () => facts(dragPreview: previewB),
       'currentRow': () => facts(standing: standingB),
+      'laneSpan': () => facts(span: spanB),
       'laneEdit.valueLink': () => facts(linked: true),
       for (final verb in verbs) 'whether there is $verb': () =>
           facts(without: {verb}),

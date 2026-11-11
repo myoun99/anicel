@@ -114,11 +114,15 @@ class LayerMerging {
     );
   }
 
-  /// Whether RASTERIZE in [rowId]'s group header for [effectId] — the
-  /// transform's, where null — bakes anything: its light, from the taking
-  /// [planOfFx] plans from (I-120 round ②).
-  bool bakesFx(LayerId rowId, EffectId? effectId) =>
-      _takingOfFx(rowId, effectId) != null;
+  /// The frames RASTERIZE in [rowId]'s group header for [effectId] — the
+  /// transform's, where null — bakes over [band] (every frame its row
+  /// draws, where none scopes it), or null where it bakes nothing: its
+  /// light, from the taking [planOfFx] plans from (I-120 round ②).
+  BakedFrames? fxFramesBaked(
+    LayerId rowId,
+    EffectId? effectId, {
+    BakedFrames? band,
+  }) => _takingOfFx(rowId, effectId, band)?.framesBaked;
 
   FxBakeTaking? _takingOfFx(
     LayerId rowId,

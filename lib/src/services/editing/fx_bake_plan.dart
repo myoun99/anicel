@@ -120,6 +120,10 @@ final class FxBakeTaking {
   /// The use the press was pressed in.
   _Use get _pressed => _uses.first;
 
+  /// The frames of the pressed cut it bakes ([over]) — the frames a press
+  /// that would change nothing is asked over (F-583).
+  BakedFrames get framesBaked => _pressed.frames!;
+
   /// What it bakes: the fx pressed, and every fx on that runs before it —
   /// the transform pressed, which runs after every fx, each fx on and
   /// itself — so nothing it leaves runs before what it bakes, at its line

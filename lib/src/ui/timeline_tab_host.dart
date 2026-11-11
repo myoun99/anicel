@@ -13,6 +13,7 @@ import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'timeline/cut_list.dart' show cutListButton;
+import 'timeline/lane_group_reset.dart' show resetLaneGroupOf;
 import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
@@ -961,7 +962,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
-                _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
+                resetLaneGroupOf(_session, layer, lane),
             transport: timelineTransport,
             // The legend's heading is the cut list (I-154).
             legendHeading: cutListButton(context, _session),

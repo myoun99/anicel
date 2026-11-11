@@ -93,6 +93,7 @@ class _XSheetGridHeaders {
     onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
     onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
     onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+    laneSpan: _state.widget.hooks.laneRange?.selection,
     currentRowHooks: _state.widget.hooks.currentRowHooks,
     // The SAME answer the layer's own column header reads, so a
     // group header's fx lands in the sheet's fx row (R5 #7).

@@ -202,6 +202,7 @@ class _LayerGridRailRows {
     onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
     onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
     onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+    laneSpan: _state.widget.hooks.laneRange?.selection,
     currentRowHooks: _state.widget.hooks.currentRowHooks,
     leadingInset: layerSectionLabelSlotWidth,
     // The SAME answer the layer row reads, so a group

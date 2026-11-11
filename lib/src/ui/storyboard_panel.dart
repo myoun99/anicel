@@ -102,7 +102,7 @@ import 'widgets/ellipsis_text.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
-        LaneGroupRasterize,
+        LaneGroupPress,
         LaneStretchWord,
         PropertyLaneEditCallbacks,
         PropertyLaneRow,
@@ -1561,9 +1561,10 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(Track track, EffectId effectId)?
   onToggleTrackEffectEnabled;
 
-  /// One V-track group header's RESET (R5, AE's group Reset) — the lane id
-  /// names the group, exactly as the layer surfaces' does.
-  final void Function(Track track, String headerLaneId)?
+  /// One V-track group header's RESET (R5, AE's group Reset) as the host
+  /// answers it, as [LaneGroupPress] answers a layer's — the lane id names
+  /// the group, exactly as the layer surfaces' does.
+  final ({VoidCallback? press}) Function(TrackId trackId, String headerLaneId)?
   onResetTrackEffectGroup;
 
   /// Range selection on the S rows — the cut row's hooks one row up, in
@@ -1579,7 +1580,7 @@ class StoryboardPanel extends StatefulWidget {
   /// (F-101). Null leaves the switch inert and hides the reset.
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  final LaneGroupPress? onResetLaneGroup;
 
   /// An S row's, and a conte row's, group header basis chip — the
   /// timeline's own verb (I-120-Q10). Null leaves the chip out.
@@ -1588,7 +1589,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// An S row's group header RASTERIZE — the timeline's own (I-120). Null
   /// leaves it out.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
   /// A LIVE read of a lane group's switch, by its header lane — for the
   /// column sweep, as [layerOnTimesheetOf] is.

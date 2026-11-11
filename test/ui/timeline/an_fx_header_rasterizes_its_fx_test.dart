@@ -50,8 +50,9 @@ void main() {
   RailGlyphButton button(WidgetTester tester, String name) =>
       tester.widget<RailGlyphButton>(find.named(name));
 
-  testWidgets('🎯an fx header\'s button, and the Transform\'s, stand lit on '
-      'a drawing row — pressed, the fx is baked in one undo step', (
+  testWidgets('🎯an fx header\'s button stands lit on a drawing row — the '
+      'Transform\'s out while the transform stands at rest (🗣️F-583 「값이 '
+      '안바뀌었으면 비활성화로」) — pressed, the fx is baked in one undo step', (
     tester,
   ) async {
     final session = await theApp(tester);
@@ -69,8 +70,11 @@ void main() {
     ]);
     await tester.pumpAndSettle();
 
-    expect(button(tester, buttonOf(row, 'transform-group')).onPressed,
-        isNotNull);
+    expect(
+      button(tester, buttonOf(row, 'transform-group')).onPressed,
+      isNull,
+      reason: 'its values stand where a reset puts them',
+    );
     expect(button(tester, fx).onPressed, isNotNull);
     expect(button(tester, fx).tooltip, contains('Blur'));
 

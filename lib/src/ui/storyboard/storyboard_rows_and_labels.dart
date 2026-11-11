@@ -335,13 +335,14 @@ class _StoryboardRowsAndLabels {
     /// The header's basis chip (I-120-Q10). Null leaves it out.
     void Function(PropertyLaneRow lane, FxBasis basis)? onSetGroupBasis,
 
-    /// The header's RASTERIZE (I-120), as [LaneGroupRasterize] answers it.
+    /// The header's RASTERIZE (I-120), as [LaneGroupPress] answers it.
     /// Null leaves it out.
     ({VoidCallback? press})? Function(PropertyLaneRow lane)? rasterizeGroup,
 
-    /// The header's RESET (R5, AE's group Reset). Null hides the button —
-    /// a header whose group has no reset route must not show one.
-    void Function(PropertyLaneRow lane)? onResetGroup,
+    /// The header's RESET (R5, AE's group Reset), as [LaneGroupPress] answers
+    /// it. Null hides the button — a header whose group has no reset route
+    /// must not show one.
+    ({VoidCallback? press})? Function(PropertyLaneRow lane)? onResetGroup,
 
     /// How a row FOLLOWS a lane edit in flight (F-195): [row] rebuilt with
     /// the carrier and the lane as the edit shows them, whenever the edit
@@ -387,6 +388,7 @@ class _StoryboardRowsAndLabels {
       width: _state._naturalRailWidth,
       height: seated?.extent ?? laneHeight,
       frameCursor: hand.cursor,
+      laneSpan: _state.widget.laneRange?.selection,
       onSelectFrame: active ? onSelectFrame : null,
       laneEdit: lane.isGroupHeader || !active ? null : hand.edit,
       onToggleLaneGroup: toggleGroup == null

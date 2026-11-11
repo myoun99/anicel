@@ -610,10 +610,10 @@ class TimelinePanel extends StatefulWidget {
   onSetLaneGroupBasis;
 
   /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  final LaneGroupPress? onResetLaneGroup;
 
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.

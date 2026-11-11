@@ -1241,15 +1241,10 @@ class _StoryboardRailRows {
                       );
                     }
                   },
-            onResetGroup: _state.widget.onResetTrackEffectGroup == null
-                ? null
-                : (lane) => _actOnTrack(
-                    track.id,
-                    (now) => _state.widget.onResetTrackEffectGroup?.call(
-                      now,
-                      lane.laneId,
-                    ),
-                  ),
+            onResetGroup: switch (_state.widget.onResetTrackEffectGroup) {
+              null => null,
+              final reset => (lane) => reset(track.id, lane.laneId),
+            },
             active: true,
             onSelectFrame: _state.widget.onSeekGlobalFrame,
             graphVerbs: _laneGraphVerbs,

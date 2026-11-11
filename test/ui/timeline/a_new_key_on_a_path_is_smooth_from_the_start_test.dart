@@ -62,11 +62,13 @@ void main() {
       scaleForm: const TwoScales(),
       scaleLinked: false,
     );
+    // A rest each lane stands off at frame 5: a lane already showing its
+    // rest there takes no key (F-583, `laneResetAt`).
     final reset = transformTrackWithGroupReset(
       track,
       frameIndexes: const [5],
-      identity: pose,
-      defaultAnchorPoint: p(0, 0),
+      identity: TransformPose(center: p(50, 50), scaleX: 2, scaleY: 2),
+      defaultAnchorPoint: p(50, 50),
     )!;
     final made = <String, PropertyKey<CanvasPoint>?>{
       'a position dragged on the canvas': transformTrackWithPositionDragged(

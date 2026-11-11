@@ -166,6 +166,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.onSetLaneGroupBasis,
     this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
+    this.laneSpan,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     this.width,
@@ -213,12 +214,19 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// The group header's RASTERIZE (I-120 round ②) as the host answers it:
   /// none for a header that has none, its press null where it bakes
   /// nothing now (the slot stays, Q8). Null leaves it out everywhere.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
-  /// The group header's RESET (R5, AE's group Reset). Never deletes a key:
-  /// it puts the group's members back to their defaults at the playhead —
-  /// or at the keys a live lane-range selection covers.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  /// The group header's RESET (R5, AE's group Reset) as the host answers it,
+  /// as [onRasterizeLaneGroup] is. Never deletes a key: it puts the group's
+  /// members back to their defaults at the playhead — or at the keys a live
+  /// lane-range selection covers.
+  final LaneGroupPress? onResetLaneGroup;
+
+  /// The lane-range selection — what a group header's RESET and RASTERIZE
+  /// act over ([frameCursor] where none covers the group): the two are
+  /// asked again as either moves, so a press that would change nothing is
+  /// out at once (F-583). Null asks them as the row is built.
+  final ValueListenable<TimelineLaneSelection?>? laneSpan;
 
   /// Which optional columns the OWNING surface carries, so a group header
   /// lays its trailing controls on the same grid its layer rows do (R5 #7,
@@ -312,6 +320,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     // What the row listens to itself: the frame it reads its value at and
     // the row stood on.
     frameCursor: ByIdentity(frameCursor),
+    laneSpan: ByIdentity(laneSpan),
     currentRow: ByIdentity(currentRowHooks?.currentRow),
     verbs: (
       onSelectFrame != null,
@@ -1087,19 +1096,46 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
   /// clip toggle owns on layer rows, and the two never appear on
   /// the same row.
-  Widget? _groupReset(ColorScheme colorScheme) {
-    final onReset = widget.onResetLaneGroup;
-    if (onReset == null) return null;
-    return RailGlyphButton(
+  Widget? _groupReset(ColorScheme colorScheme) => _groupPress(
+    widget.onResetLaneGroup,
+    atThePlayhead: true,
+    (press) => RailGlyphButton(
       name: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlResetGroup,
       size: AppIconButtonSize.micro,
-      onPressed: () => onReset(layer, lane),
+      onPressed: press,
       glyph: RailIconGlyph(
         Icons.settings_backup_restore,
         color: colorScheme.onSurfaceVariant,
       ),
-    );
+    ),
+  );
+
+  /// A group header's [verb] — its RASTERIZE or its RESET — as [button]
+  /// draws its answer, asked again as what it acts over moves (the
+  /// [TimelineLaneControlsRow.laneSpan], and the playhead where it acts
+  /// [atThePlayhead]): a press that would change nothing is out at once
+  /// (F-583). Its slot is laid either way.
+  Widget? _groupPress(
+    LaneGroupPress? verb,
+    Widget Function(VoidCallback? press) button, {
+    required bool atThePlayhead,
+  }) {
+    if (verb == null) return null;
+    Widget asked() => switch (verb(layer, lane)) {
+      null => const SizedBox.shrink(),
+      (:final press) => button(press),
+    };
+    final scope = [
+      if (atThePlayhead) ?widget.frameCursor,
+      ?widget.laneSpan,
+    ];
+    return scope.isEmpty
+        ? asked()
+        : ListenableBuilder(
+            listenable: Listenable.merge(scope),
+            builder: (_, _) => asked(),
+          );
   }
 
   Widget? _groupFx(BuildContext context) {
@@ -1128,23 +1164,23 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// 🗣️I-120-Q10 「A」: the group's RASTERIZE in the EYE column — a header
   /// has no eye, so the column is free — wearing the hatch the reference
   /// rasterize's window wears, its tooltip naming what it bakes.
-  Widget? _groupRasterize(ColorScheme colorScheme) {
-    final answer = widget.onRasterizeLaneGroup?.call(layer, lane);
-    if (answer == null) return null;
-    return RailGlyphButton(
+  Widget? _groupRasterize(ColorScheme colorScheme) => _groupPress(
+    widget.onRasterizeLaneGroup,
+    atThePlayhead: false,
+    (press) => RailGlyphButton(
       name: '$_keyPrefix-lane-group-rasterize-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlRasterizeFxTemplate.replaceAll(
         '{name}',
         lane.label,
       ),
       size: AppIconButtonSize.micro,
-      onPressed: answer.press,
+      onPressed: press,
       glyph: RailIconGlyph(
         Icons.texture_outlined,
         color: colorScheme.onSurfaceVariant,
       ),
-    );
-  }
+    ),
+  );
 
   /// I-120-Q10: what the group reads its keys by — each frame, or the head
   /// of the block a frame is in — as a list in the BLEND column (the

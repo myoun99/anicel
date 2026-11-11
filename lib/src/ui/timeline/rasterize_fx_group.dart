@@ -35,23 +35,55 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
     return null;
   }
   return (
-    press: session.layerMerging.bakesFx(layer.id, baked.effectId)
+    press: _changes(session, layer, lane, baked.effectId)
         ? () => rasterizeFxGroup(
             context,
             session,
             layer.id,
             baked.effectId,
             lane.label,
-            band: switch (session.laneVerbs.groupSpan(layer.id, lane.laneId)) {
-              null => null,
-              final span => (
-                start: span.startIndex,
-                end: span.endIndexExclusive,
-              ),
-            },
+            band: _bandOf(session, layer, lane),
           )
         : null,
   );
+}
+
+/// The band scoping a press of [layer]'s group header [lane] (I-120-Q3).
+BakedFrames? _bandOf(
+  EditorSessionManager session,
+  Layer layer,
+  PropertyLaneRow lane,
+) => switch (session.laneVerbs.groupSpan(layer.id, lane.laneId)) {
+  null => null,
+  final span => (start: span.startIndex, end: span.endIndexExclusive),
+};
+
+/// Whether RASTERIZE of [layer]'s fx [effectId] — the transform, where
+/// null — would change anything over the frames it bakes: none where it
+/// bakes nothing, nor where the transform stands at every one of them
+/// where its RESET puts it (`LaneVerbs.groupRestsOver`, the one question
+/// both buttons ask) — 🗣️F-583 (유저 2026-11-11) 「변형fx 지금 아무런 변경
+/// 없는데 래스터라이즈가 활성화되있어서 누르면 작동함. 값이 안바뀌었으면
+/// 비활성화로」: by the header's own values, though a press of it bakes
+/// the fx on above it too (Q21). ⏳An fx's own values are asked once
+/// F-583-Q1 says whether one at its defaults, which can still draw, bakes.
+bool _changes(
+  EditorSessionManager session,
+  Layer layer,
+  PropertyLaneRow lane,
+  EffectId? effectId,
+) {
+  final frames = session.layerMerging.fxFramesBaked(
+    layer.id,
+    effectId,
+    band: _bandOf(session, layer, lane),
+  );
+  return frames != null &&
+      (effectId != null ||
+          !session.laneVerbs.groupRestsOver(layer.id, lane.laneId, [
+            for (var frame = frames.start; frame < frames.end; frame += 1)
+              frame,
+          ]));
 }
 
 /// 🗣️I-120-Q11 (유저 2026-11-04 「래스터라이즈 버튼만 둔다(지금 참조

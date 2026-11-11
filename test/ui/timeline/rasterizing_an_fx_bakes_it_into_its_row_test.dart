@@ -388,7 +388,7 @@ void main() {
         await shownAt(tester, s, frame, 36, 5),
     ];
     expect(coloursOf(seen), hasLength(3), reason: '⛔전제: every frame its own');
-    expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
+    expect(s.layerMerging.fxFramesBaked(const LayerId('a'), bright), isNotNull);
 
     await rasterize(tester, s);
 
@@ -2320,7 +2320,10 @@ void main() {
           ['1', '1-2', '1-3'],
         );
         expect(plan.others.single.layers.byId(const LayerId('r')), isNull);
-        expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
+        expect(
+          s.layerMerging.fxFramesBaked(const LayerId('a'), bright),
+          isNotNull,
+        );
       });
 
       test("🚨a synced rider showing another cel over the row's one cel in "
@@ -3000,7 +3003,7 @@ void main() {
   group('🚨what it bakes nothing of yet — its button lit off, the slot kept '
       '(Q8, and the card\'s rounds ahead)', () {
     bool bakes(EditorSessionManager s, String row, [EffectId? fx = bright]) =>
-        s.layerMerging.bakesFx(LayerId(row), fx);
+        s.layerMerging.fxFramesBaked(LayerId(row), fx) != null;
 
     Layer withBright(Layer layer) => layer.copyWith(effects: [brightness()]);
 

@@ -495,12 +495,26 @@ class EffectsAndFx {
       _editTrackEffects(
         trackId,
         description: 'Reset group',
-        edit: (fx) => effectsWithGroupReset(
-          fx,
-          laneId: headerLaneId,
-          frameIndexes: [_selection.currentFrameIndex],
-        ),
+        edit: (fx) => _trackGroupReset(fx, headerLaneId),
       );
+
+  /// Whether [resetTrackEffectGroup] would change anything now — what
+  /// lights its button, as `LaneVerbs.resetsLaneGroup` lights a layer's
+  /// (F-583).
+  bool resetsTrackEffectGroup(TrackId trackId, String headerLaneId) {
+    final track = _project.trackById(trackId);
+    return track != null &&
+        _trackGroupReset(track.effects, headerLaneId) != null;
+  }
+
+  List<LayerEffect>? _trackGroupReset(
+    List<LayerEffect> effects,
+    String headerLaneId,
+  ) => effectsWithGroupReset(
+    effects,
+    laneId: headerLaneId,
+    frameIndexes: [_selection.currentFrameIndex],
+  );
 
   /// One effect's own bypass on the V row — the switch on its group header,
   /// the twin of a layer effect's.

@@ -17,6 +17,8 @@ import 'conte/conte_sheet_builder.dart' show contePageHeadsOf;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
+import 'timeline/lane_group_reset.dart'
+    show resetLaneGroupOf, resetTrackEffectGroupOf;
 import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
@@ -1078,10 +1080,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onRasterizeLaneGroup: (layer, lane) =>
                         rasterizeLaneGroupOf(context, _session, layer, lane),
                     onResetLaneGroup: (layer, lane) =>
-                        _session.laneVerbs.resetLaneGroup(
-                          layer.id,
-                          lane.laneId,
-                        ),
+                        resetLaneGroupOf(_session, layer, lane),
                     laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
                     poseDisplaySize: rail.poseDisplaySize,
                     hasFxPlugin: _session.fxPlugins.has,
@@ -1161,8 +1160,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleTrackEffectEnabled: (track, effectId) =>
                         _session.effectsAndFx.toggleTrackEffectEnabled(track.id, effectId),
                     // R5: AE's group Reset on the V row's chain.
-                    onResetTrackEffectGroup: (track, headerLaneId) =>
-                        _session.effectsAndFx.resetTrackEffectGroup(track.id, headerLaneId),
+                    onResetTrackEffectGroup: (trackId, laneId) =>
+                        resetTrackEffectGroupOf(_session, trackId, laneId),
                     // S-row range selection: the SAME track-axis selection the
                     // cut row paints, one row up. The timeline mounts its range
                     // gesture on every layer row (UI-R20 #2) and these rows had

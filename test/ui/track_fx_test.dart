@@ -20,6 +20,8 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        CompositeEffectStep,        KeyRun,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectGroupLaneId;
+import 'package:anicel/src/ui/timeline/lane_group_reset.dart'
+    show resetTrackEffectGroupOf;
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// The V row's EFFECT CHAIN: a layer's fx one level up, filtering the whole
@@ -323,6 +325,8 @@ void main() {
       final s = session(effects: [_brightness(value: 0.5)]);
       final laneId = effectGroupLaneId(const EffectId('fx-1'));
 
+      expect(s.effectsAndFx.resetsTrackEffectGroup(_track, laneId), isTrue);
+      expect(resetTrackEffectGroupOf(s, _track, laneId).press, isNotNull);
       expect(s.effectsAndFx.resetTrackEffectGroup(_track, laneId), isTrue);
       expect(chain(s).single.parameterOf('brightness').value, 0);
       expect(
@@ -330,6 +334,11 @@ void main() {
         isFalse,
         reason: 'a chain already at its defaults changes nothing, so there '
             'is nothing to bank',
+      );
+      expect(
+        resetTrackEffectGroupOf(s, _track, laneId).press,
+        isNull,
+        reason: 'and its button is out (F-583)',
       );
 
       s.undo();

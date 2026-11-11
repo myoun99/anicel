@@ -92,10 +92,12 @@ double scrubbedAngle(double degrees, Offset dragDelta) {
 String formatLaneColorValue(int? argb) =>
     argb == null ? 'none' : colorHexOf(argb);
 
-/// A group header's RASTERIZE as a host answers it for [layer]'s [lane]
-/// (I-120 round ②): null where the header has none; its press null where
-/// it bakes nothing now.
-typedef LaneGroupRasterize =
+/// A group header's RASTERIZE (I-120 round ②), or its RESET, as a host
+/// answers it for [layer]'s [lane]: null where the header has none; its
+/// press null where it would change nothing now — 🗣️F-583 (유저
+/// 2026-11-11) 「값이 안바뀌었으면 비활성화로. 동일하게 리셋버튼도 …
+/// 통일해서 비활성화」, the two answered the one way.
+typedef LaneGroupPress =
     ({VoidCallback? press})? Function(Layer layer, PropertyLaneRow lane);
 
 class PropertyLaneRow {
