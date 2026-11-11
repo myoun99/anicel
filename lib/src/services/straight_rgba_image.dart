@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../core/on_a_worker.dart';
 import '../core/rgba_premultiply.dart';
 import '../native/qa_native_engine.dart';
 
@@ -105,6 +106,32 @@ Future<ui.Image> decodeStraightRgbaImage({
     premultipliedCopy.scratch?.free();
   }
 }
+
+/// The picture [decodeStraightRgbaImage] makes of straight-alpha [rgba],
+/// premultiplied by the app's one premultiply in Dart
+/// ([premultipliedRgbaCopy] — the engine's `premultiply8`, one ledger row
+/// pinning both) on a worker isolate ([onAWorker]): a page or a piece the
+/// size of a document is never multiplied on this isolate, and no C is
+/// asked.
+///
+/// 🧭관제 2026-11-11 18:47 (gpu-export-path 1b ②): 「뷰어 · 컷 조각 미리보기 ·
+/// 브러시 팁은 … 작업자 아이솔레이트의 Dart 로 간다」 · 「플로트는 캔버스
+/// 베이스 패널 몫이다」. ⚠️So the float still lands through
+/// [decodeStraightRgbaImage] and its native pass — two roads to one picture
+/// until its owner moves it here, and then they are one.
+Future<ui.Image> decodeStraightRgbaImageOnAWorker({
+  required Uint8List rgba,
+  required int width,
+  required int height,
+  int? targetWidth,
+  int? targetHeight,
+}) async => uploadRawRgba(
+  await onAWorker(() => premultipliedRgbaCopy(rgba)),
+  width: width,
+  height: height,
+  targetWidth: targetWidth,
+  targetHeight: targetHeight,
+);
 
 /// The image [decode] produced, or null when it must not be used.
 ///

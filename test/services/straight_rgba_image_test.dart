@@ -1,11 +1,14 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
+import '../helpers/pinned_fingerprints.dart';
 
 /// ⛔THE NATIVE PASS AND THE DART FALLBACK ARE ONE DECISION, which is what
 /// `premultipliedStraightRgba` says at the top of itself — so the rounding
@@ -180,6 +183,66 @@ void main() {
       await binding.runAsync(() async {
         await expectLater(
           uploadRawRgba(Uint8List(4), width: 64, height: 64),
+          throwsA(anything),
+        );
+      });
+    });
+  });
+
+  // 🧭관제 2026-11-11 18:47 (gpu-export-path 1b ②): a viewer's page and a
+  // cut piece go up premultiplied on a worker by the app's one premultiply —
+  // the engine's, one ledger row pinning both (`surface/premultiply`) — and
+  // no C is asked.
+  group('on a worker', () {
+    final binding = TestWidgetsFlutterBinding.ensureInitialized();
+    tearDown(() => debugWorkersRunHere = true);
+
+    test('🎯a straight picture goes up premultiplied as the engine '
+        'premultiplies it — every byte under every alpha', () async {
+      // Every alpha (down) by every byte c (across) as R c, G 255 − c,
+      // B 7c mod 256, as the engine's every_byte_by_every_alpha lays them.
+      final bytes = Uint8List(256 * 256 * 4);
+      var at = 0;
+      for (var alpha = 0; alpha <= 255; alpha += 1) {
+        for (var c = 0; c <= 255; c += 1) {
+          bytes[at++] = c;
+          bytes[at++] = 255 - c;
+          bytes[at++] = (7 * c) % 256;
+          bytes[at++] = alpha;
+        }
+      }
+      final before = Uint8List.fromList(bytes);
+      debugWorkersRunHere = false;
+
+      final shown = await binding.runAsync(() async {
+        final image = await decodeStraightRgbaImageOnAWorker(
+          rgba: bytes,
+          width: 256,
+          height: 256,
+        );
+        try {
+          final data = await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+          return data!.buffer.asUint8List();
+        } finally {
+          image.dispose();
+        }
+      });
+
+      expect(fingerprintHex(shown!), pinnedFingerprint('surface/premultiply'));
+      expect(bytes, before, reason: 'the caller\'s buffer is never touched');
+    });
+
+    test('a refused upload rejects instead of hanging', () async {
+      debugWorkersRunHere = false;
+      await binding.runAsync(() async {
+        await expectLater(
+          decodeStraightRgbaImageOnAWorker(
+            rgba: Uint8List(4),
+            width: 64,
+            height: 64,
+          ),
           throwsA(anything),
         );
       });

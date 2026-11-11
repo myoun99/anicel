@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
-import '../photoshop/psd_image.dart' show decodePsdCompositeImage;
+import '../photoshop/psd_image.dart' show readPsdComposite;
 import '../photoshop/psd_reader.dart'
     show looksLikePsdBytes, psdHeaderLength, readPsdCanvasSize;
 import 'media_byte_source.dart';
@@ -41,7 +41,7 @@ final class ImageViewerDocument implements ViewerDocument {
   ///
   /// 🚨A PHOTOSHOP DOCUMENT IS ASKED FOR FIRST, and opens as its composite
   /// ([PsdCompositeDocument]): no platform codec reads one, and every image
-  /// entry point asks ([decodePsdCompositeImage]'s note). 🪦The viewer read
+  /// entry point asks ([readPsdComposite]'s note). 🪦The viewer read
   /// its images through `decodeImageFrames`, which asks, until this
   /// document replaced it (#1364, 2026-08-29) without asking — from then on
   /// the viewer's own picker offered a `.psd` the viewer could not open, and
