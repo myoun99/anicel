@@ -274,6 +274,43 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('the X-sheet\'s Reset is asked again as a lane span is laid '
+      'over its keys, as the timeline\'s is', (tester) async {
+    final session = await theApp(tester);
+    final row = session.activeLayerId!;
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    final toggle = find.named('xsheet-lane-toggle-$row');
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    final reset = 'xsheet-lane-group-reset-$row-transform-group';
+    session.selectFrameIndex(0);
+    rotated(
+      session,
+      PropertyTrack<double>().withKey(0, 0).withKey(10, 45),
+    );
+    await tester.pumpAndSettle();
+    expect(pressOf(tester, reset), isNull, reason: 'at rest at frame 0');
+
+    session.laneRangeSelection.value = TimelineLaneSelection(
+      layerId: row,
+      laneId: 'transform-group',
+      startIndex: 8,
+      endIndexExclusive: 12,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      pressOf(tester, reset),
+      isNotNull,
+      reason: 'the key it covers stands the row at 45°',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('an fx header\'s Reset is out at its defaults and lit off '
       'them', (tester) async {
     final session = await theApp(tester);
