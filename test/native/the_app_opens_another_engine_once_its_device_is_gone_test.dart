@@ -173,10 +173,10 @@ void main() {
   });
 
   test('the next engine has a ledger of its own, which stores a tile of '
-      'the last one as what that tile reads as', () {
+      'the last one as what that tile reads as', () async {
     final ledger = EngineTileLedger.instance;
     final copied = landedOn(ledger, cel, [tileOf(7)], 9).single;
-    ledger.copyHereABatch();
+    await ledger.copyHereABatch();
     final lost = landedOn(ledger, cel, [tileOf(3)], 4).single;
     expect(copied.isOnlyOnEngine, isFalse, reason: '⛔premise: copied');
     expect(lost.isOnlyOnEngine, isTrue, reason: '⛔premise: no copy yet');
@@ -198,6 +198,32 @@ void main() {
       reason: 'its copy, and the picture the other landed on',
     );
     expect(bytes.toSet(), {9, 3});
+  });
+
+  // A batch of the copies at rest is waited for on the engine's thread
+  // (`EngineTileLedger.copyHereABatch`): its device may go, and the app let
+  // that engine go, with the batch still on its way. Its wait ends on the
+  // ledger that asked — the engine let go is not closed —, which lays what
+  // the device took.
+  test('a copy on its way as the app lets its engine go ends on the ledger '
+      'that asked for it: its tile reads as the picture it landed on, and '
+      'the next ledger stores that', () async {
+    final ledger = EngineTileLedger.instance;
+    final tile = landedOn(ledger, cel, [tileOf(7)], 9).single;
+    // Gone and let go between the copy's submit and the wait for it.
+    GpuReadout.debugBeforeMapping = lostAndLetGo;
+    addTearDown(() => GpuReadout.debugBeforeMapping = null);
+
+    expect(await ledger.copyHereABatch(), isFalse);
+
+    expect(tile.isOnlyOnEngine, isFalse);
+    expect(tile.pixels, everyElement(7));
+    final next = EngineTileLedger.instance;
+    expect(identical(next, ledger), isFalse);
+    final into = calloc<Uint8>(gpuTileBytes);
+    addTearDown(() => calloc.free(into));
+    next.held((hold) => next.pool.read(hold.slotsOf(cel, [tile]), into));
+    expect(into.asTypedList(gpuTileBytes), everyElement(7));
   });
 
   test('a stamp is handed up again to the next engine', () {
