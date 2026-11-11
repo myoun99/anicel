@@ -6,17 +6,32 @@ import 'app_gpu_engine.dart';
 
 /// The pictures of the stamps the engine lands, each on it once: a selection
 /// moved lands the same one at each step of the drag. On the engine the
-/// app has: a stamp is handed up again to the next one, once the app lets
-/// this one go ([KeptOnTheAppsEngine]).
+/// app has ([KeptOnTheAppsEngine]): once the app lets this one go, a stamp
+/// is handed up again to the next — and one the engine made is made again
+/// there, as it was made ([_makes]).
 abstract final class EngineStampPictures {
   static final _pictures = KeptOnTheAppsEngine<Expando<GpuStampPicture>>();
 
   static Expando<GpuStampPicture> get _of => _pictures.of(Expando.new);
 
-  /// [stamp]'s picture: its bytes handed over the first time it is asked
-  /// for, or what the engine made it as ([carried]).
+  /// What makes the picture of each stamp the engine made ([carried],
+  /// [meshed]), on the engine the app has by then: of the stamp it was made
+  /// of — whose bytes are here, or which the engine made in its turn — and
+  /// the numbers it was made by.
+  ///
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+  /// 유지한다」 — 「잃는 것은 그리던 획 정도다」. The bytes of a stamp the
+  /// engine made never came here, so a float carried over a posed row, or
+  /// warped, was lost with its device. Every such stamp is made of bytes
+  /// that ARE here, so what is kept is the making, not a copy read back:
+  /// nothing waits for a clock to be safe, and nothing is read from the GPU
+  /// that nothing asked the bytes of.
+  static final Expando<GpuStampPicture Function()> _makes = Expando();
+
+  /// [stamp]'s picture: what the engine made it as ([carried], [meshed]),
+  /// or its bytes handed over the first time it is asked for.
   static GpuStampPicture of(BrushStampImage stamp) =>
-      _of[stamp] ??= _handedUp(stamp);
+      _of[stamp] ??= _makes[stamp]?.call() ?? _handedUp(stamp);
 
   static GpuStampPicture _handedUp(BrushStampImage stamp) {
     debugHandedUp += 1;
@@ -57,18 +72,21 @@ abstract final class EngineStampPictures {
     required int width,
     required int height,
     (int, int, int, int)? window,
-  }) => _kept(
-    appGpuStampLanding.carried(
-      of(stamp),
-      inverse: inverse,
-      radiusFloor: radiusFloor,
-      sampling: sampling,
-      width: width,
-      height: height,
-      window: window,
-    ),
-    id: id,
-  );
+  }) {
+    final through = List<double>.unmodifiable(inverse);
+    return _made(
+      () => appGpuStampLanding.carried(
+        of(stamp),
+        inverse: through,
+        radiusFloor: radiusFloor,
+        sampling: sampling,
+        width: width,
+        height: height,
+        window: window,
+      ),
+      id: id,
+    );
+  }
 
   /// [stamp], its top-left pixel at [at] on the canvas, through a mesh as
   /// [GpuStampLanding.meshed] says: a stamp named [id] that is the engine's
@@ -84,34 +102,46 @@ abstract final class EngineStampPictures {
     required double radiusFloor,
     required GpuSampling sampling,
     required (int, int, int, int) window,
-  }) => _kept(
-    appGpuStampLanding.meshed(
-      of(stamp),
-      at: at,
-      columns: columns,
-      rows: rows,
-      source: source,
-      destination: destination,
-      radiusFloor: radiusFloor,
-      sampling: sampling,
-      window: window,
-    ),
-    id: id,
-  );
+  }) {
+    final rest = List<double>.unmodifiable(source);
+    final dragged = List<double>.unmodifiable(destination);
+    return _made(
+      () => appGpuStampLanding.meshed(
+        of(stamp),
+        at: at,
+        columns: columns,
+        rows: rows,
+        source: rest,
+        destination: dragged,
+        radiusFloor: radiusFloor,
+        sampling: sampling,
+        window: window,
+      ),
+      id: id,
+    );
+  }
 
-  /// [picture], the engine made, as a stamp named [id] whose bytes are read
-  /// from there the first time they are asked for.
-  static BrushStampImage _kept(GpuStampPicture picture, {required String id}) {
-    final made = BrushStampImage.read(
+  /// What [make] makes on the engine, as a stamp named [id] whose bytes are
+  /// read from there the first time they are asked for — and which [make]
+  /// makes again on the next engine ([_makes]): its numbers are its own
+  /// from here, nothing writes them after.
+  static BrushStampImage _made(
+    GpuStampPicture Function() make, {
+    required String id,
+  }) {
+    final picture = make();
+    late final BrushStampImage made;
+    made = BrushStampImage.read(
       id: id,
       width: picture.width,
       height: picture.height,
       rgba: () {
         debugReadBack += 1;
-        return picture.pixels();
+        return of(made).pixels();
       },
     );
     _of[made] = picture;
+    _makes[made] = make;
     return made;
   }
 }
