@@ -93,22 +93,10 @@ void main() {
 
   /// All of [readout]'s bytes, mapped and copied out as one row; it is
   /// freed.
-  Uint8List readAll(GpuReadout readout) => using((arena) {
+  Uint8List readAll(GpuReadout readout) {
     addTearDown(readout.free);
-    final bytes = readout.bytes;
-    final dst = arena<Uint8>(bytes);
-    readout
-      ..map()
-      ..rows(
-        dst,
-        offset: 0,
-        stride: bytes,
-        rowBytes: bytes,
-        rows: 1,
-        dstStride: bytes,
-      );
-    return Uint8List.fromList(dst.asTypedList(bytes));
-  });
+    return readout.copy();
+  }
 
   // Red's numbers by the law (nv12.wgsl): Y 82, Cb 90, Cr 240; past the
   // picture, white's: Y 235, no colour. Each number its own, so two put in

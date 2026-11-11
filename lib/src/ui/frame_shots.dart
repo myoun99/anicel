@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart';
@@ -19,7 +20,8 @@ import 'canvas/canvas_layer_stack_view.dart'
 import 'canvas/fx_plugin_stages.dart';
 import 'canvas/viewport_canvas_transform.dart' show applyViewportTransform;
 import 'editor_session_manager.dart';
-import 'playback/camera_shot.dart' show clipToTheCanvas;
+import 'playback/camera_shot.dart'
+    show canvasCutOnScreen, clipToTheCut, shotClipOnScreen;
 import 'playback/frame_pictures.dart';
 
 /// What a shot lays over its picture, in CANVAS space under the view the
@@ -30,10 +32,11 @@ import 'playback/frame_pictures.dart';
 typedef CameraOverlayPass = void Function(ui.Canvas canvas, double rasterScale);
 
 /// [frame]'s one picture of [nodes] ([FramePictures.pictureOf]) shown
-/// through [view] onto a raster of [output] pixels and read back — on
-/// [ground], cut at the canvas's edge where [cutsToTheCanvas] says
-/// ([clipToTheCanvas]; a film shows no pasteboard, 「페이스트보드는 포함 안
-/// 시킴」), and [over] laid over it through the same view.
+/// through [view] onto a raster of [output] pixels — on [ground], cut at
+/// the canvas's edge where [cutsToTheCanvas] says ([canvasCutOnScreen]; a
+/// film shows no pasteboard, 「페이스트보드는 포함 안 시킴」), and [over]
+/// laid over it through the same view — made on the engine
+/// ([frameOnTheEngine]) and read back as a picture.
 ///
 /// 🚨★★★ONE DOOR FOR EVERY PICTURE OF A FRAME THAT GOES TO A FILE OR A
 /// PANEL (7′, exports on the engine — 유저 11-08 「지금화면이랑
@@ -74,6 +77,55 @@ Future<ui.Image> frameShot(
   CameraOverlayPass? over,
   CelLooks? looks,
 }) async {
+  final laid = await frameOnTheEngine(
+    session,
+    pictures: pictures,
+    nodes: nodes,
+    frame: frame,
+    page: page,
+    view: view,
+    output: output,
+    ground: ground,
+    cutsToTheCanvas: cutsToTheCanvas,
+    over: over,
+    looks: looks,
+  );
+  try {
+    final readout = appGpuExport.read(laid);
+    try {
+      return pictureOf(
+        PremultipliedRows(readout.copy(), output.width, output.height),
+      );
+    } finally {
+      readout.free();
+    }
+  } finally {
+    laid.free();
+  }
+}
+
+/// [frameShot]'s frame as the engine keeps it, for the caller to free: a
+/// frame the export made ([GpuExport.blank]) on [ground], the frame's
+/// picture laid over it cut at the canvas's edge, and [over] rastered and
+/// laid over that — its last picture made on the engine, so what a writer
+/// takes of it is read back once (gpu-export-path ①⑵).
+///
+/// ⚠️A cut on whole pixels is laid within them, and only an anti-aliased
+/// one — a camera turned — through the cover the app rasters of it: the
+/// one cut either way ([canvasCutOnScreen]).
+Future<GpuShown> frameOnTheEngine(
+  EditorSessionManager session, {
+  required FramePictures pictures,
+  required List<CompositeNode<CanvasStackRow>> nodes,
+  required DemandedPicture frame,
+  FramePage? page,
+  required CameraView view,
+  required CanvasSize output,
+  required ui.Color ground,
+  bool cutsToTheCanvas = true,
+  CameraOverlayPass? over,
+  CelLooks? looks,
+}) async {
   final looking = looks ?? CelLooks(session.renderCaches.brushFrameStore);
   final picture = await pictures.pictureOf(
     nodes,
@@ -83,8 +135,8 @@ Future<ui.Image> frameShot(
     looks: looking,
   );
   GpuSurface? target;
-  ui.Image? shot;
-  ui.Picture? recorded;
+  GpuShown? shown;
+  GpuShown? laid;
   try {
     final asItStands = picture == null
         ? await pictures
@@ -126,36 +178,37 @@ Future<ui.Image> frameShot(
     }
 
     await showOn(raster);
-    shot = pictureOf(
-      PremultipliedRows(raster.read(), output.width, output.height),
+    final export = await appGpuExportKernels.warm();
+    final made = laid = export.blank(
+      output.width,
+      output.height,
+      ground: gpuColourOf(ground.toARGB32()),
     );
-    final bounds = ui.Offset.zero &
-        ui.Size(output.width.toDouble(), output.height.toDouble());
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder, bounds)
-      ..drawRect(bounds, ui.Paint()..color = ground)
-      ..save();
-    if (cutsToTheCanvas) {
-      clipToTheCanvas(canvas, frame.cut.canvasSize, onTheRaster, 1);
-    }
-    canvas
-      ..drawImage(shot, ui.Offset.zero, ui.Paint())
-      ..restore();
+    shown = export.shown(raster, output.width, output.height);
+    await _layCut(
+      export,
+      made,
+      shown,
+      cut: cutsToTheCanvas
+          ? canvasCutOnScreen(frame.cut.canvasSize, onTheRaster, 1)
+          : null,
+      output: output,
+    );
     if (over != null) {
-      applyViewportTransform(canvas, onTheRaster);
-      over(canvas, onTheRaster.zoom.abs());
+      await _layOver(export, made, output, (canvas) {
+        applyViewportTransform(canvas, onTheRaster);
+        over(canvas, onTheRaster.zoom.abs());
+      });
     }
-    recorded = recorder.endRecording();
-    final made = await recorded.toImage(output.width, output.height);
     if (asItStands?.thrown case (final error, final stack)) {
-      made.dispose();
       Error.throwWithStackTrace(error, stack);
     }
+    laid = null;
     return made;
   } finally {
-    recorded?.dispose();
+    laid?.free();
+    shown?.free();
     target?.free();
-    shot?.dispose();
     // 🚨Shot, the picture is left as the shot found it: one a step of the
     // run wants or a screen holds stays, and one made for the shot alone
     // goes ([PlaybackCacheBudget.letGoUnwanted]) — the shot's hold on it
@@ -166,6 +219,100 @@ Future<ui.Image> frameShot(
       );
       picture.release();
     }
+  }
+}
+
+/// [shown] laid over [laid], cut where [cut] says — whole where there is
+/// none: within the whole pixels a hard cut falls on, else through the
+/// cover the app rasters of it.
+Future<void> _layCut(
+  GpuExport export,
+  GpuShown laid,
+  GpuShown shown, {
+  required ({List<ui.Offset> corners, ui.Clip behavior})? cut,
+  required CanvasSize output,
+}) async {
+  if (cut == null) {
+    export.lay(laid, shown);
+    return;
+  }
+  if (cut.behavior != ui.Clip.antiAlias) {
+    export.lay(laid, shown, within: _wholePixelsOf(cut.corners));
+    return;
+  }
+  final covered = await _rasterOf(output, (canvas) {
+    clipToTheCut(canvas, cut);
+    canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFFFFFFFF));
+  });
+  final cover = export.cover(
+    Uint8List.fromList([
+      for (var at = 3; at < covered.length; at += 4) covered[at],
+    ]),
+    output.width,
+    output.height,
+  );
+  try {
+    export.lay(laid, shown, cover: cover);
+  } finally {
+    cover.free();
+  }
+}
+
+/// The pixels a hard cut's [corners] bound — [left, top, right, bottom),
+/// whole pixels already ([shotClipOnScreen]).
+(int, int, int, int) _wholePixelsOf(List<ui.Offset> corners) {
+  var bounds = ui.Rect.fromPoints(corners.first, corners.first);
+  for (final corner in corners.skip(1)) {
+    bounds = bounds.expandToInclude(ui.Rect.fromPoints(corner, corner));
+  }
+  return (
+    bounds.left.round(),
+    bounds.top.round(),
+    bounds.right.round(),
+    bounds.bottom.round(),
+  );
+}
+
+/// What [draw] draws on a raster of [output], laid over [laid].
+Future<void> _layOver(
+  GpuExport export,
+  GpuShown laid,
+  CanvasSize output,
+  void Function(ui.Canvas canvas) draw,
+) async {
+  final over = export.upload(
+    await _rasterOf(output, draw),
+    output.width,
+    output.height,
+  );
+  try {
+    export.lay(laid, over);
+  } finally {
+    over.free();
+  }
+}
+
+/// What [draw] draws on a raster of [output], premultiplied RGBA.
+Future<Uint8List> _rasterOf(
+  CanvasSize output,
+  void Function(ui.Canvas canvas) draw,
+) async {
+  final recorder = ui.PictureRecorder();
+  final bounds =
+      ui.Offset.zero &
+      ui.Size(output.width.toDouble(), output.height.toDouble());
+  draw(ui.Canvas(recorder, bounds));
+  final recorded = recorder.endRecording();
+  try {
+    final image = await recorded.toImage(output.width, output.height);
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      return data!.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
+  } finally {
+    recorded.dispose();
   }
 }
 

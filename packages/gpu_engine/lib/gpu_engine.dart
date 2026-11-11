@@ -2202,6 +2202,26 @@ class GpuExport {
     : _engine = engine,
       _export = rust.exportNew();
 
+  /// The export's passes on [engine], its lay pass compiled off this
+  /// isolate for the frames it makes and for frames shown on surfaces laid
+  /// [bgra] or not: no frame's first lay compiles where it is laid
+  /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦).
+  static Future<GpuExport> opening(
+    GpuEngine engine, {
+    required bool bgra,
+  }) async {
+    final export = GpuExport(engine);
+    final (passes, on) = (export._export.address, engine._engine.address);
+    await Isolate.run(
+      () => rust.exportWarm(
+        Pointer<rust.Export>.fromAddress(passes),
+        Pointer<rust.Engine>.fromAddress(on),
+        bgra,
+      ),
+    );
+    return export;
+  }
+
   final GpuEngine _engine;
   final Pointer<rust.Export> _export;
 
@@ -2497,6 +2517,25 @@ class GpuReadout {
 
   /// The bytes of it its writer takes.
   int get bytes => rust.readoutBytes(_readout);
+
+  /// All the bytes of it its writer takes, mapped and copied out as they
+  /// lie.
+  Uint8List copy() {
+    map();
+    return using((arena) {
+      final count = bytes;
+      final into = arena<Uint8>(_held(count));
+      rows(
+        into,
+        offset: 0,
+        stride: count,
+        rowBytes: count,
+        rows: 1,
+        dstStride: count,
+      );
+      return Uint8List.fromList(into.asTypedList(count));
+    });
+  }
 
   /// Waits for the GPU and maps its bytes — once: a second call finds
   /// them mapped.

@@ -117,6 +117,16 @@ impl Lay {
         }
     }
 
+    /// Compiles the pass for the frames the export makes and for frames
+    /// shown on surfaces laid `bgra` or not, where it is first asked of a
+    /// frame: a lay waits for no compile after.
+    pub(crate) fn warm(&self, engine: &Engine, bgra: bool) {
+        self.pipelines.reading(engine, Read::Shown { bgra: false });
+        if bgra {
+            self.pipelines.reading(engine, Read::Shown { bgra: true });
+        }
+    }
+
     /// Lays `source` over `onto` at `opacity`, each pixel taking of it what
     /// `cover` says where one is given — and only within the pixels
     /// `within`, [left, top, right, bottom), where those are — and submits

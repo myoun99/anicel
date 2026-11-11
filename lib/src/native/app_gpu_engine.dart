@@ -259,6 +259,18 @@ final appGpuCompositeKernels = AppKernels<GpuComposite>(
   (composite) => composite.free(),
 );
 
+/// The export's passes on [appGpuEngine]: what a frame's last picture is
+/// laid with, and what turns it into a writer's bytes (gpu-export-path ①),
+/// warmed for the first frame a panel or a file is made of: its lay pass
+/// compiled off this isolate ([GpuExport.opening]), the conversions where
+/// a writer first asks.
+GpuExport get appGpuExport => appGpuExportKernels.kept;
+final appGpuExportKernels = AppKernels<GpuExport>(
+  GpuExport.new,
+  (engine) => GpuExport.opening(engine, bgra: ScreenTexture.bgra),
+  (export) => export.free(),
+);
+
 /// A frame not laid: its plan names an effect chain whose kernels are still
 /// to be compiled, and a plan run compiles them where it is run — the thread
 /// the app's frames are built on (🗣️관제 2026-11-10 18:14,

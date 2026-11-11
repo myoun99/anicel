@@ -4,7 +4,8 @@
 
 use super::shown_tests::shown;
 use super::tests::rig;
-use super::{Cover, Frame, Picture, Shown, Source};
+use super::{Cover, Frame, Lay, Picture, Shown, Source};
+use crate::kernels::shared::gpu_engine_kernels_built_here;
 use crate::testing::{last_error, read_buffer};
 
 const WHITE: u32 = 0xffff_ffff;
@@ -210,4 +211,25 @@ fn a_frame_the_export_made_reads_back_as_it_lies() {
     assert_eq!(read_buffer(rig().engine, &rows), laid);
     assert!(uploaded(1, 1, |_, _| RED).laid_rows().is_none());
     assert_eq!(last_error(), "a frame is read back where the export made it");
+}
+
+// Warmed on another thread, a lay compiles nothing on the one it lays on:
+// the app warms it off the thread its frames are built on (🗣️관제
+// 2026-11-10 18:14 — no kernel compiled there).
+#[test]
+fn a_lay_warmed_on_another_thread_compiles_nothing_where_it_lays() {
+    let engine = rig().engine;
+    let lay = Lay::new();
+    std::thread::scope(|scope| {
+        scope.spawn(|| lay.warm(engine, true));
+    });
+    let surface_laid = shown(2, 1, true, |_, _| RED);
+    let before = gpu_engine_kernels_built_here();
+
+    let frame = Shown::blank(engine, Picture { width: 2, height: 1 }).expect("blank");
+    lay.run(engine, &frame, Source::Solid(WHITE), 255, None, None).expect("ground");
+    lay.run(engine, &frame, Source::Frame { frame: &surface_laid, x: 0, y: 0 }, 255, None, None).expect("laid");
+
+    assert_eq!(gpu_engine_kernels_built_here(), before);
+    assert_eq!(words(&frame), vec![RED; 2]);
 }

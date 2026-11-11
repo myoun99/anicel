@@ -80,6 +80,7 @@ Future<void> compileAppKernelsAhead() async {
   await appGpuGridKernels.warm();
   await tools.composite.compileChains();
   await EngineStrokes.warmBlurStrips();
+  await appGpuExportKernels.warm();
 }
 
 /// Whether the app still gets ready what a hand needs of its engine: from

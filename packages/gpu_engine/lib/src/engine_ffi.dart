@@ -947,6 +947,15 @@ external Pointer<Export> exportNew();
 @Native<Void Function(Pointer<Export>)>(symbol: 'gpu_engine_export_free')
 external void exportFree(Pointer<Export> passes);
 
+@Native<Void Function(Pointer<Export>, Pointer<Engine>, Bool)>(
+  symbol: 'gpu_engine_export_warm',
+)
+external void exportWarm(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  bool bgra,
+);
+
 /// A frame shown, copied on the GPU for the export's conversions.
 @Native<
   Pointer<Shown> Function(Pointer<Engine>, Pointer<Surface>, Uint32, Uint32)

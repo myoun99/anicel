@@ -25,7 +25,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         waitsForItsPlugins;
 import '../effective_device_pixel_ratio.dart';
 import '../engine_screen_texture.dart';
-import 'camera_shot.dart' show outlineOnScreen, shotClipOnScreen;
+import 'camera_shot.dart' show canvasCutOnScreen;
 import 'engine_frame_picture_store.dart';
 import 'frame_pictures.dart';
 import 'frame_wait_mark.dart';
@@ -172,7 +172,7 @@ class FramePictureView extends StatefulWidget {
   /// (「on하든off하든 바뀌는게 없어야」 · 「직전 완성 그림에 머문다」).
   final Color? ground;
 
-  /// The canvas what the view draws is cut to ([clipToTheCanvas]) — a
+  /// The canvas what the view draws is cut to ([canvasCutOnScreen]) — a
   /// conte picture's, in its camera frame — and not its [ground], which
   /// lies across the whole view as the print's does: cut to it too, the
   /// print a live picture takes over from showed past the canvas (🔬F-215's
@@ -1412,8 +1412,9 @@ class _RenderFrameScreen extends RenderBox {
           context.addLayer(layer);
           return;
         }
-        final cut = shotClipOnScreen(
-          outlineOnScreen(canvasSize, _viewport, _devicePixelRatio),
+        final cut = canvasCutOnScreen(
+          canvasSize,
+          _viewport,
           _devicePixelRatio,
         );
         context.pushClipPath(

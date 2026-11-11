@@ -198,7 +198,7 @@ class ShotClip extends StatelessWidget {
   );
 }
 
-/// [canvas] cut to [size]'s canvas where [view] lays it on a screen of
+/// Where [size]'s canvas is cut where [view] lays it on a screen of
 /// [devicePixelRatio]: its outline where the view's painters draw it
 /// ([outlineOnScreen]), out to the whole device pixels around it
 /// ([shotClipOnScreen]).
@@ -210,16 +210,20 @@ class ShotClip extends StatelessWidget {
 /// outline anti-aliased, and neither on the snapped outline its picture
 /// was drawn on: where the camera saw past the canvas, the edge's pixel
 /// came out apart.
-void clipToTheCanvas(
-  Canvas canvas,
+({List<Offset> corners, Clip behavior}) canvasCutOnScreen(
   CanvasSize size,
   CanvasViewport view,
   double devicePixelRatio,
+) => shotClipOnScreen(
+  outlineOnScreen(size, view, devicePixelRatio),
+  devicePixelRatio,
+);
+
+/// [canvas] cut where [cut] says ([shotClipOnScreen]).
+void clipToTheCut(
+  Canvas canvas,
+  ({List<Offset> corners, Clip behavior}) cut,
 ) {
-  final cut = shotClipOnScreen(
-    outlineOnScreen(size, view, devicePixelRatio),
-    devicePixelRatio,
-  );
   canvas.clipPath(
     Path()..addPolygon(cut.corners, true),
     doAntiAlias: cut.behavior == Clip.antiAlias,

@@ -103,6 +103,20 @@ pub unsafe extern "C" fn gpu_engine_export_free(export: *mut Export) {
     }
 }
 
+/// Compiles the lay pass for the frames the export makes and for frames
+/// shown on surfaces laid `bgra` or not — on the thread that asks, which an
+/// app keeps off the one its frames are built on — so no lay compiles where
+/// it is first asked.
+///
+/// # Safety
+/// Both are live, `export` on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_warm(export: *const Export, engine: *const Engine, bgra: bool) {
+    // SAFETY: see the function's contract.
+    let (export, engine) = unsafe { (&*export, &*engine) };
+    export.lay.warm(engine, bgra);
+}
+
 /// The picture of `width` × `height` from the top-left texel of
 /// `surface` — a frame as the screen shows it, premultiplied — copied on
 /// the GPU for the conversions of a frame shown (`gpu_engine_export_shown_*`):
