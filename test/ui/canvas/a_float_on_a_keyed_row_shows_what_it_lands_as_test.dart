@@ -68,6 +68,19 @@ enum _Rows { live, range, folder }
 /// float shows in, dragged and warped, by each of the three ways a float
 /// is shown (`SelectionFloatPaint.shownOn`), at 1:1 and zoomed out.
 void main() {
+  // The engine and what a frame is laid with, open before the first test:
+  // a frame is on its screen from the frame it is stood in.
+  //
+  // ↩️They opened of themselves, in the first test, in whatever real time
+  // its waits lent, until 2026-11-11 (card
+  // float-landing-test-red-once-under-load). 🔬The shot that test takes
+  // before its box opens was of a screen with nothing on it in every run
+  // — 11,532,672 pixels, all clear: its control compared a landing with
+  // nothing — and on a loaded machine the shot with the box open was too:
+  // 「what floats is what lands」 read 3,870,360 pixels apart, the whole
+  // frame, once in a run of 118 files. The 33 tests after it met an engine
+  // already open. ⇒ [composite] refuses a screen with nothing on it.
+  opensTheEnginesScreens();
   const ground = 0xFF40C060;
   const rowB = LayerId('keyed-row-b');
   const celB = FrameId('keyed-row-b-cel');
@@ -241,12 +254,21 @@ void main() {
   /// device pixels, fell on thirds of the raster's. 🔬Under Impeller
   /// (Vulkan, 10-24) the multisampled raster blended them — at 1:1 a
   /// landing read grey 64 on nine pixels the box had carried black.
+  ///
+  /// ⛔Of a frame that is on its screen: one the engine has not come to yet
+  /// paints nothing at all, its paper neither, and two shots of nothing
+  /// are the same bytes.
   Future<Uint8List> composite(WidgetTester tester) async {
     final shot = await shotOfBox(
       tester,
       tester.renderObject<RenderBox>(
         theFrameScreenIn(theFramesPicture(within: mainCanvasPanel())),
       ),
+    );
+    expect(
+      shot.rgba.any((channel) => channel != 0),
+      isTrue,
+      reason: '⛔fixture: the frame is on its screen',
     );
     return shot.rgba;
   }
