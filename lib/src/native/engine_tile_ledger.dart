@@ -217,10 +217,12 @@ final GpuEngine _engine;
   /// is gone ([GpuEngine.isGone]), the only copy of what was asked with it
   /// — a tile asked then reads as the picture it landed on
   /// ([_layThePictureUnder]). What else the engine refuses is thrown on.
+  ///
+  /// ⚠️ASKED OF THE DEVICE EVEN ONCE IT IS GONE, and told by its refusal:
+  /// a device goes when its driver says, between any two lines here, so
+  /// the refusal is the one place that hears it (the engine refuses every
+  /// wait of a device that is gone — rust/src/device.rs `wait_within`).
   bool _reads(void Function() read) {
-    if (_engine.isGone) {
-      return false;
-    }
     try {
       read();
       return true;
