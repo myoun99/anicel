@@ -76,8 +76,8 @@ Future<ui.Image> frameShot(
   bool cutsToTheCanvas = true,
   CameraOverlayPass? over,
   CelLooks? looks,
-}) async {
-  final laid = await frameOnTheEngine(
+}) => pictureOfShot(
+  frameOnTheEngine(
     session,
     pictures: pictures,
     nodes: nodes,
@@ -89,18 +89,32 @@ Future<ui.Image> frameShot(
     cutsToTheCanvas: cutsToTheCanvas,
     over: over,
     looks: looks,
-  );
+  ),
+);
+
+/// The frame [shot] makes on the engine ([frameOnTheEngine]) read back
+/// once as a picture of the caller's own to dispose ([pictureOfLaid]), and
+/// the frame let go.
+Future<ui.Image> pictureOfShot(Future<GpuShown> shot) async {
+  final laid = await shot;
   try {
-    final readout = appGpuExport.read(laid);
-    try {
-      return pictureOf(
-        PremultipliedRows(readout.copy(), output.width, output.height),
-      );
-    } finally {
-      readout.free();
-    }
+    return pictureOfLaid(appGpuExport, laid);
   } finally {
     laid.free();
+  }
+}
+
+/// [laid] — a frame [export] made ([GpuExport.blank]) — read back once as
+/// a picture: what a panel or a preview is handed of a frame made on the
+/// engine.
+ui.Image pictureOfLaid(GpuExport export, GpuShown laid) {
+  final readout = export.read(laid);
+  try {
+    return pictureOf(
+      PremultipliedRows(readout.copy(), laid.width, laid.height),
+    );
+  } finally {
+    readout.free();
   }
 }
 
@@ -178,7 +192,7 @@ Future<GpuShown> frameOnTheEngine(
     }
 
     await showOn(raster);
-    final export = await appGpuExportKernels.warm();
+    final export = await appGpuExportKernels.ready;
     final made = laid = export.blank(
       output.width,
       output.height,
@@ -192,10 +206,9 @@ Future<GpuShown> frameOnTheEngine(
       cut: cutsToTheCanvas
           ? canvasCutOnScreen(frame.cut.canvasSize, onTheRaster, 1)
           : null,
-      output: output,
     );
     if (over != null) {
-      await _layOver(export, made, output, (canvas) {
+      await layDrawnOver(export, made, (canvas) {
         applyViewportTransform(canvas, onTheRaster);
         over(canvas, onTheRaster.zoom.abs());
       });
@@ -230,7 +243,6 @@ Future<void> _layCut(
   GpuShown laid,
   GpuShown shown, {
   required ({List<ui.Offset> corners, ui.Clip behavior})? cut,
-  required CanvasSize output,
 }) async {
   if (cut == null) {
     export.lay(laid, shown);
@@ -240,7 +252,7 @@ Future<void> _layCut(
     export.lay(laid, shown, within: _wholePixelsOf(cut.corners));
     return;
   }
-  final covered = await _rasterOf(output, (canvas) {
+  final covered = await _rasterOf(laid.width, laid.height, (canvas) {
     clipToTheCut(canvas, cut);
     canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFFFFFFFF));
   });
@@ -248,8 +260,8 @@ Future<void> _layCut(
     Uint8List.fromList([
       for (var at = 3; at < covered.length; at += 4) covered[at],
     ]),
-    output.width,
-    output.height,
+    laid.width,
+    laid.height,
   );
   try {
     export.lay(laid, shown, cover: cover);
@@ -273,38 +285,48 @@ Future<void> _layCut(
   );
 }
 
-/// What [draw] draws on a raster of [output], laid over [laid].
-Future<void> _layOver(
+/// What [draw] draws on a raster of [onto]'s size, laid over [onto]
+/// ([drawnOnTheEngine]).
+Future<void> layDrawnOver(
   GpuExport export,
-  GpuShown laid,
-  CanvasSize output,
+  GpuShown onto,
   void Function(ui.Canvas canvas) draw,
 ) async {
-  final over = export.upload(
-    await _rasterOf(output, draw),
-    output.width,
-    output.height,
-  );
+  final over = await drawnOnTheEngine(export, onto.width, onto.height, draw);
   try {
-    export.lay(laid, over);
+    export.lay(onto, over);
   } finally {
     over.free();
   }
 }
 
-/// What [draw] draws on a raster of [output], premultiplied RGBA.
+/// What [draw] draws on a raster of [width] × [height], on the engine to
+/// be laid over a frame there, for the caller to free: what the app draws
+/// over a frame made on the engine — a shot's overlay, a stage's apron, a
+/// cut's names and its veils — drawn by Flutter and laid by the engine
+/// (gpu-export-path ①⑵: the letters are Flutter's, Q30).
+Future<GpuShown> drawnOnTheEngine(
+  GpuExport export,
+  int width,
+  int height,
+  void Function(ui.Canvas canvas) draw,
+) async =>
+    export.upload(await _rasterOf(width, height, draw), width, height);
+
+/// What [draw] draws on a raster of [width] × [height], premultiplied
+/// RGBA.
 Future<Uint8List> _rasterOf(
-  CanvasSize output,
+  int width,
+  int height,
   void Function(ui.Canvas canvas) draw,
 ) async {
   final recorder = ui.PictureRecorder();
   final bounds =
-      ui.Offset.zero &
-      ui.Size(output.width.toDouble(), output.height.toDouble());
+      ui.Offset.zero & ui.Size(width.toDouble(), height.toDouble());
   draw(ui.Canvas(recorder, bounds));
   final recorded = recorder.endRecording();
   try {
-    final image = await recorded.toImage(output.width, output.height);
+    final image = await recorded.toImage(width, height);
     try {
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       return data!.buffer.asUint8List();

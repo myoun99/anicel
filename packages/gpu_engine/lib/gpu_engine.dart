@@ -2239,7 +2239,7 @@ class GpuExport {
     if (shown == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuShown._(shown);
+    return GpuShown._(shown, width, height);
   }
 
   /// A [width] × [height] frame this export makes, laid with [ground] —
@@ -2248,6 +2248,8 @@ class GpuExport {
   /// the engine, which the conversions read as they read a frame shown.
   GpuShown blank(int width, int height, {int ground = 0}) => _shownOrWhy(
     rust.exportBlank(_export, _engine._engine, width, height, ground),
+    width,
+    height,
   );
 
   /// [rgba] — [width] × [height] premultiplied pixels, four bytes each,
@@ -2263,6 +2265,8 @@ class GpuExport {
         height,
       ),
     ),
+    width,
+    height,
   );
 
   /// [alpha] — a byte for each of [width] × [height] pixels, row after
@@ -2339,11 +2343,11 @@ class GpuExport {
   /// premultiplied RGBA, red first, row after row with nothing between.
   GpuReadout read(GpuShown frame) => _readout(rust.exportRead(frame._shown));
 
-  GpuShown _shownOrWhy(Pointer<rust.Shown> shown) {
+  GpuShown _shownOrWhy(Pointer<rust.Shown> shown, int width, int height) {
     if (shown == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuShown._(shown);
+    return GpuShown._(shown, width, height);
   }
 
   void _laid(bool laid) {
@@ -2483,9 +2487,13 @@ class GpuExport {
 /// A frame as the screen shows it, copied on the GPU for the export's
 /// conversions ([GpuExport.shown]).
 class GpuShown {
-  GpuShown._(this._shown);
+  GpuShown._(this._shown, this.width, this.height);
 
   final Pointer<rust.Shown> _shown;
+
+  /// Its size in pixels: what it was made as.
+  final int width;
+  final int height;
 
   /// Frees the copy; before its engine is closed.
   void free() => rust.exportShownFree(_shown);

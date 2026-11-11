@@ -439,6 +439,16 @@ void main() {
       // The preview's own pictures land in real time: landed before the run
       // is counted, they are no part of what the run held.
       await tester.settleExportPreview();
+      // So does a render the preview asked for under the faked clock before
+      // the format was picked, laid on the engine a step at a time: let land
+      // too, or it lands while the run is counted.
+      for (var turn = 0; HeldPictures.debugOut > 0 && turn < 200; turn++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump();
+      }
+      expect(HeldPictures.debugOut, 0, reason: 'the preview has nothing out');
       final before = PngSequenceExportService.debugEncodes;
       final heldBefore = HeldPictures.debugHeld;
       await tester.runAsync(state.export);

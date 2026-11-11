@@ -1,4 +1,3 @@
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
@@ -11,10 +10,16 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// ([nextFrame]). Two frames are all this is for — a picture held across a
 /// run of frames is made once for the run, and nothing older stays.
 ///
-/// GPU pictures, so let go by hand: [dispose] when the run is over.
-class HeldPictures {
-  var _thisFrame = <Object, ui.Image>{};
-  var _frameBefore = <Object, ui.Image>{};
+/// GPU pictures — a picture, or a frame the engine keeps ([GpuShown]) —
+/// so let go by hand, each as the holder was told to ([HeldPictures.new]):
+/// [dispose] when the run is over.
+class HeldPictures<T extends Object> {
+  HeldPictures(this._letGoOf);
+
+  final void Function(T picture) _letGoOf;
+
+  var _thisFrame = <Object, T>{};
+  var _frameBefore = <Object, T>{};
 
   /// Whether the run is over ([dispose]).
   bool _over = false;
@@ -28,6 +33,13 @@ class HeldPictures {
   /// run that is over holds none.
   @visibleForTesting
   static int debugHeld = 0;
+
+  /// How many renders every holder has out right now (test hook): asked
+  /// for, not landed. A render asked under a test's faked clock lands in
+  /// real time all the same — late, where a frame is laid on the engine a
+  /// step at a time — so a count of what is held waits for this to be 0.
+  @visibleForTesting
+  static int debugOut = 0;
 
   /// The picture held under [key] — asked for by this frame already, or by
   /// the frame before it — or [render]'s, held from now on.
@@ -45,20 +57,26 @@ class HeldPictures {
   /// a window closed over its preview stayed held for good. (A render out
   /// is not handed to a second asker: a test's seam asks again in real time
   /// for what it asked under a faked clock, which never lands there.)
-  Future<ui.Image> of(Object key, Future<ui.Image> Function() render) async {
+  Future<T> of(Object key, Future<T> Function() render) async {
     final held = _heldUnder(key);
     if (held != null) {
       return held;
     }
     _made += 1;
-    final picture = await render();
+    debugOut += 1;
+    final T picture;
+    try {
+      picture = await render();
+    } finally {
+      debugOut -= 1;
+    }
     if (_over) {
-      picture.dispose();
+      _letGoOf(picture);
       throw StateError('the run this picture was made for is over');
     }
     final landedFirst = _heldUnder(key);
     if (landedFirst != null) {
-      picture.dispose();
+      _letGoOf(picture);
       return landedFirst;
     }
     debugHeld += 1;
@@ -66,7 +84,7 @@ class HeldPictures {
   }
 
   /// The picture held under [key], now this frame's, or null.
-  ui.Image? _heldUnder(Object key) {
+  T? _heldUnder(Object key) {
     final held = _thisFrame[key] ?? _frameBefore.remove(key);
     return held == null ? null : _thisFrame[key] = held;
   }
@@ -90,8 +108,8 @@ class HeldPictures {
     }
   }
 
-  void _letGo(Object key, ui.Image picture) {
-    picture.dispose();
+  void _letGo(Object key, T picture) {
+    _letGoOf(picture);
     debugHeld -= 1;
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async' show FutureOr;
 import 'dart:ui' show RootIsolateToken;
 
 import 'package:flutter/foundation.dart'
@@ -209,6 +210,16 @@ final class AppKernels<T extends Object> {
 
   /// [kept] where it has been compiled, null till then.
   T? get compiled => _kept.orNull;
+
+  /// [kept] where it has been compiled, at once — else once [warm] has
+  /// compiled it: what a use that must not compile on this isolate waits
+  /// on.
+  ///
+  /// ⚠️Not [warm]'s future where there is no need: that one is made once
+  /// and kept, and a future made under a widget test's faked clock tells
+  /// one awaited in real time (`runAsync`) that it is done only when the
+  /// faked clock is pumped — an export's frame waited for it for good.
+  FutureOr<T> get ready => _kept ?? warm();
 
   /// [kept] compiled off this isolate, at once where it is compiled already:
   /// ahead of a first use that would otherwise wait with the app frozen.

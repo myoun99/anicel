@@ -9,14 +9,14 @@ import 'package:anicel/src/ui/export/held_pictures.dart';
 /// frame before it cost nothing, and what lets go of a picture nobody asks
 /// for any more.
 void main() {
-  late HeldPictures pictures;
+  late HeldPictures<ui.Image> pictures;
   late int heldBefore;
 
   /// Every picture made here, in the order it was made.
   final made = <ui.Image>[];
 
   setUp(() {
-    pictures = HeldPictures();
+    pictures = HeldPictures((picture) => picture.dispose());
     heldBefore = HeldPictures.debugHeld;
     made.clear();
   });

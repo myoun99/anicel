@@ -352,7 +352,7 @@ class _TreePlan {
     );
     _hold(chain, shows);
     plan.close(
-      opacity: _strengthOf(group.opacity),
+      opacity: strengthOf(group.opacity),
       mode: mode,
       chain: chain,
       matrix: _matrixOf(colour),
@@ -389,7 +389,7 @@ class _TreePlan {
     plan.close(
       mode: GpuBlend.normal,
       chain: chain,
-      mix: _strengthOf(mix),
+      mix: strengthOf(mix),
       matrix: _matrixOf(colour),
     );
   }
@@ -403,7 +403,7 @@ class _TreePlan {
     plan.open(opaque: opaque);
     _lay(rows);
     plan.closeAtop();
-    plan.close(opacity: _strengthOf(clip.opacity), mode: mode);
+    plan.close(opacity: strengthOf(clip.opacity), mode: mode);
   }
 
   /// [row] laid in [mode] — none where its pose collapses it: its tiles,
@@ -491,7 +491,7 @@ class _TreePlan {
         colour,
       ),
     });
-    final opacity = _strengthOf(row.opacity);
+    final opacity = strengthOf(row.opacity);
     if (row.held.isEmpty) {
       plan.row(
         set: _tiles.setOf(row.lineage, tiles),
@@ -1187,5 +1187,6 @@ int _blendOf(LayerBlendMode mode) => switch (mode) {
   },
 };
 
-/// [opacity] as the engine lays it, 65535 whole.
-int _strengthOf(double opacity) => (opacity * 65535).round();
+/// [opacity] as the engine lays it, 65535 whole: a plan's rows, and what
+/// an export lays over a frame ([GpuExport.lay]).
+int strengthOf(double opacity) => (opacity * 65535).round();
