@@ -14,6 +14,8 @@
 //!   last picture is made on the engine and read back once (①⑵).
 //! - `png` — a PNG's rows under their filters, from the frame's RGBA or
 //!   from `over_ground`'s RGB (①e).
+//! - `straight` — a frame straight, for the writers that keep its alpha
+//!   (①⑶).
 //!
 //! Each kernel reads its picture through three reads — straight,
 //! premultiplied, its alpha — that `frame.wgsl` gives on a run's output
@@ -27,6 +29,7 @@ mod nv12;
 mod opaque;
 mod over_ground;
 mod png;
+mod straight;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -40,6 +43,7 @@ pub(crate) use nv12::{Nv12, Nv12Shape};
 pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;
 pub(crate) use png::PngFilter;
+pub(crate) use straight::Straight;
 
 use std::sync::OnceLock;
 

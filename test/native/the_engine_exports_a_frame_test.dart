@@ -201,6 +201,25 @@ void main() {
     ]);
   });
 
+  // The half there pixel is red at its alpha, not its shade of red; the
+  // pixels nothing painted, nothing.
+  test('straight, a pixel is red first at its own alpha, row after row with '
+      'nothing between', () {
+    final bytes = readAll(export.straight(mixed(), 3, 5));
+
+    expect(bytes.length, 3 * 5 * 4);
+    for (var y = 0; y < 5; y++) {
+      for (var x = 0; x < 3; x++) {
+        final at = (y * 3 + x) * 4;
+        expect(bytes.sublist(at, at + 4), switch ((x, y)) {
+          (1, 4) => [255, 0, 0, 128],
+          final pixel when unpainted.contains(pixel) => [0, 0, 0, 0],
+          _ => [10 + 40 * x, 10 + 40 * y, 200, 255],
+        }, reason: '($x, $y)');
+      }
+    }
+  });
+
   // Two pixels of each of three rows from the second row's second pixel,
   // into rows of 7: each of the five numbers its own.
   test('rows are copied from where they are asked to where they go', () {

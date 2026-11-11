@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
-    Clear, Cover, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Source,
+    Clear, Cover, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Source, Straight,
 };
 use crate::device::Engine;
 use crate::fail;
@@ -32,6 +32,7 @@ pub struct Export {
     clear: Clear,
     opaque: Opaque,
     png: PngFilter,
+    straight: Straight,
     lay: Lay,
 }
 
@@ -89,6 +90,7 @@ pub extern "C" fn gpu_engine_export_new() -> *mut Export {
         clear: Clear::new(),
         opaque: Opaque::new(),
         png: PngFilter::new(),
+        straight: Straight::new(),
         lay: Lay::new(),
     }))
 }
@@ -535,6 +537,28 @@ pub unsafe extern "C" fn gpu_engine_export_shown_opaque(
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
     unsafe { opaque(export, engine, shown(frame), Picture { width, height }) }
+}
+
+/// The pixels of the picture of `width` × `height` in `frame` straight —
+/// four bytes each, red first, row after row with nothing between: what a
+/// writer that keeps the alpha takes. A frame shown alone: a run's tiles
+/// go to the engine's frames before the writers take them (①⑶). Null on
+/// failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_straight(
+    export: *const Export,
+    engine: *const Engine,
+    frame: *const Shown,
+    width: u32,
+    height: u32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine, frame) = unsafe { (&*export, &*engine, shown(frame)) };
+    let picture = Picture { width, height };
+    readout(export.straight.run(engine, frame, picture), picture.rgba_bytes())
 }
 
 /// Filters the rows of a PNG of `picture` in `frame`, four bytes a pixel,

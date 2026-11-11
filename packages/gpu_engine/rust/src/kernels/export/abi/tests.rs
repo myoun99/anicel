@@ -316,7 +316,7 @@ fn filled() -> *mut Surface {
 // pass would read other rows.
 #[test]
 fn each_shown_call_is_its_pass_on_the_surfaces_picture() {
-    let (surface, Rig { engine, nv12, over_ground, clear, opaque, png, .. }) = (filled(), rig());
+    let (surface, Rig { engine, nv12, over_ground, clear, opaque, png, straight, .. }) = (filled(), rig());
     // SAFETY: `surface` is live, made on `engine`.
     let texture = unsafe { &(*surface).texture };
     let ours = Shown::of(engine, texture, picture()).expect("shown");
@@ -336,6 +336,7 @@ fn each_shown_call_is_its_pass_on_the_surfaces_picture() {
             (gpu_engine_export_shown_clear(export(), *engine, shown, WIDTH, HEIGHT, 131), put(clear.run(engine, frame, picture(), 131), picture().clear_bytes())),
             (gpu_engine_export_shown_opaque(export(), *engine, shown, WIDTH, HEIGHT), put(opaque.run(engine, frame, picture()), 4)),
             (gpu_engine_export_shown_png_rgba(export(), *engine, shown, WIDTH, HEIGHT), put(png.rgba(engine, frame, picture()), picture().png_bytes(4))),
+            (gpu_engine_export_shown_straight(export(), *engine, shown, WIDTH, HEIGHT), put(straight.run(engine, frame, picture()), picture().rgba_bytes())),
         ];
         for (index, (readout, want)) in calls.into_iter().enumerate() {
             assert_eq!(read_out(readout), want, "call {index}");

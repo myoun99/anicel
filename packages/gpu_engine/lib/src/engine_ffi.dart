@@ -1168,6 +1168,23 @@ external Pointer<Readout> exportPngRgba(
   Pointer<Readout> Function(
     Pointer<Export>,
     Pointer<Engine>,
+    Pointer<Shown>,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_shown_straight')
+external Pointer<Readout> exportStraight(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Shown> frame,
+  int width,
+  int height,
+);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
     Pointer<Readout>,
     Uint32,
     Uint32,

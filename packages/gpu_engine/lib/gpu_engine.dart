@@ -2462,6 +2462,19 @@ class GpuExport {
     ),
   );
 
+  /// The picture of [width] × [height] in [frame] straight — four bytes a
+  /// pixel, red first, row after row with nothing between: what a writer
+  /// that keeps the alpha takes.
+  GpuReadout straight(GpuShown frame, int width, int height) => _readout(
+    rust.exportStraight(
+      _export,
+      _engine._engine,
+      frame._shown,
+      width,
+      height,
+    ),
+  );
+
   /// [pngRgba] for a PNG of three bytes a pixel, from [rgb] — what
   /// [overGround] put for the same picture, which stays on the GPU.
   GpuReadout pngRgb(GpuReadout rgb, int width, int height) => _readout(

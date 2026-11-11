@@ -58,7 +58,8 @@ pub(super) fn shown(width: u32, height: u32, bgra: bool, pixel: impl Fn(u32, u32
 
 /// What each pass puts for `picture` in `frame`, in one list: NV12, the
 /// picture over a ground and cut over it, its clear bits, whether it is
-/// opaque, and its PNG rows of four and of three bytes a pixel.
+/// opaque, its PNG rows of four and of three bytes a pixel, and its pixels
+/// straight.
 fn every_pass(frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
     let rig = rig();
     let engine = rig.engine;
@@ -80,6 +81,7 @@ fn every_pass(frame: Frame, picture: Picture) -> Vec<Vec<u8>> {
         read(rig.opaque.run(engine, frame, picture)),
         read(rig.png.rgba(engine, frame, picture)),
         read(rig.png.rgb(engine, &rgb, picture)),
+        read(rig.straight.run(engine, frame, picture)),
     ]
 }
 
@@ -150,6 +152,37 @@ fn every_alpha_makes_its_colours_straight_by_the_law() {
             assert_eq!(rgb[at..at + 3], [law(c, a), law(a - c, a), law(c / 3, a)], "({x}, {y})");
         }
     }
+}
+
+// The straight pass takes each pixel by the same law, its alpha kept:
+// every alpha, each colour of it, as the test above lays them; and the
+// pixel the PNG's row takes straight, the same four bytes.
+#[test]
+fn the_straight_pass_makes_every_pixel_straight_by_the_law() {
+    let rig = rig();
+    let picture = Picture { width: 255, height: 4 };
+    let colours = |x: u32, y: u32| {
+        let alpha = x + 1;
+        [0, alpha / 2, alpha, (alpha * 7 + y) % (alpha + 1)][y as usize]
+    };
+    let shown = shown(255, 4, true, |x, y| {
+        let c = colours(x, y);
+        u32::from_le_bytes([c as u8, (x + 1 - c) as u8, (c / 3) as u8, (x + 1) as u8])
+    });
+    let out = rig.straight.run(rig.engine, Frame::Shown(&shown), picture);
+    let rgba = read_buffer(rig.engine, &out.expect("straight"));
+    assert_eq!(rgba.len() as u64, picture.rgba_bytes());
+    let law = |c: u32, a: u32| ((c * 255 + a / 2) / a).min(255) as u8;
+    for y in 0..4 {
+        for x in 0..255 {
+            let (a, c) = (x + 1, colours(x, y));
+            let at = ((y * 255 + x) * 4) as usize;
+            assert_eq!(rgba[at..at + 4], [law(c, a), law(a - c, a), law(c / 3, a), a as u8], "({x}, {y})");
+        }
+    }
+    let one = self::shown(1, 1, false, |_, _| 0xc864_0032);
+    let pixel = rig.straight.run(rig.engine, Frame::Shown(&one), Picture { width: 1, height: 1 });
+    assert_eq!(read_buffer(rig.engine, &pixel.expect("straight"))[..4], straight(0xc864_0032)[1..]);
 }
 
 // A shown frame's alpha is the top byte of its words wherever it lies: a
