@@ -127,6 +127,13 @@ void main() {
       expect(built['a'], same(one));
     });
 
+    test('is the built one when a key is another, its value the same', () {
+      final given = frozenMap({'a': one});
+      final built = frozenMapOrSame(given, {'b': one});
+      expect(identical(built, given), isFalse);
+      expect(built.keys, ['b']);
+    });
+
     test('is the built one when an entry came or went', () {
       final given = frozenMap({'a': one});
       expect(

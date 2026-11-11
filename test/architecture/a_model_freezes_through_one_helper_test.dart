@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
 import '../helpers/source_ledger.dart';
 
@@ -140,8 +141,9 @@ final _freeze = RegExp(r'\b(List|Set|Map)(<[^()=;]*>)?\.unmodifiable\(');
 /// without saying it is their own, and the ones that say it of a field the
 /// class does not freeze in every constructor — each `Class.field @line`.
 ({List<String> unsaid, List<String> unearned}) _handOnsIn(String source) {
-  final lines = codeOfLines(source).split('\n');
-  final classes = _ClassesRead(lines);
+  final code = codeOfLines(source);
+  final lines = code.split('\n');
+  final classes = _ClassesRead(code);
   return (
     unsaid: [
       for (final (index, line) in lines.indexed)
@@ -159,27 +161,26 @@ final _freeze = RegExp(r'\b(List|Set|Map)(<[^()=;]*>)?\.unmodifiable\(');
   );
 }
 
-/// The class each line of a source stands in, and what each class freezes
+/// The class each line of [code] stands in, and what each class freezes
 /// and what its constructors take as handed (`this.field`).
 final class _ClassesRead {
-  _ClassesRead(List<String> lines) {
+  _ClassesRead(String code) {
     var owner = '';
-    for (final line in lines) {
+    var at = 0;
+    for (final line in code.split('\n')) {
       owner = _owner.firstMatch(line)?.group(1) ?? owner;
       _owners.add(owner);
       for (final match in _frozenAt.allMatches(line)) {
         (_frozen[owner] ??= {}).add(match.group(1)!);
       }
-      _readParameters(owner, line);
+      _readParameters(code, owner, line, at);
+      at += line.length + 1;
     }
   }
 
   final _owners = <String>[];
   final _frozen = <String, Set<String>>{};
   final _handed = <String, Set<String>>{};
-
-  /// How deep [_readParameters] stands in a constructor's parentheses.
-  var _depth = 0;
 
   /// Whether the class of line [index] freezes [field] in every
   /// constructor.
@@ -193,36 +194,24 @@ final class _ClassesRead {
   String nameOf(int index, String field) =>
       '${_owners[index]}.$field @${index + 1}';
 
-  /// The fields [line] hands a constructor of [owner] as they are, while
-  /// it stands in that constructor's parameters — a constructor DECLARED,
+  /// The fields a constructor of [owner] declared on [line] — which starts
+  /// at [at] in [code] — takes as they are handed. A constructor DECLARED,
   /// at a member's indent: one called at the head of a line stands deeper.
-  void _readParameters(String owner, String line) {
+  void _readParameters(String code, String owner, String line, int at) {
     final start = owner.isEmpty
         ? null
         : RegExp('^  (?:const )?$owner(?:\\.\\w+)?\\(').firstMatch(line);
-    if (start == null && _depth == 0) {
+    if (start == null) {
       return;
     }
-    final end = _closing(line, start == null ? 0 : start.end - 1);
-    for (final match in _selfAt.allMatches(line.substring(0, end))) {
+    final open = at + start.end - 1;
+    final parameters = code.substring(
+      open,
+      matchingClose(code, open) ?? code.length,
+    );
+    for (final match in _selfAt.allMatches(parameters)) {
       (_handed[owner] ??= {}).add(match.group(1)!);
     }
-  }
-
-  /// Where on [line] the parentheses open at [from] close — its end while
-  /// they go on.
-  int _closing(String line, int from) {
-    for (var i = from; i < line.length; i += 1) {
-      _depth += switch (line[i]) {
-        '(' => 1,
-        ')' => -1,
-        _ => 0,
-      };
-      if (_depth == 0) {
-        return i + 1;
-      }
-    }
-    return line.length;
   }
 }
 

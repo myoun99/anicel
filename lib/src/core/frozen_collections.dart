@@ -44,41 +44,33 @@ T _marked<T extends Object>(T frozen) {
   return frozen;
 }
 
-/// [items] frozen — [items] itself when it is a list frozen here.
-List<E> frozenList<E>(Iterable<E> items) {
-  if (items is List<E> && _isFrozen(items)) {
-    return items;
-  }
-  final frozen = List<E>.unmodifiable(items);
-  if (frozen.isEmpty) {
-    return (_noLists[E] ??= _marked(frozen)) as List<E>;
-  }
-  return _marked(frozen);
+/// [frozen] marked — or, when it holds nothing, the one empty collection
+/// of its kind and type: [empties]' under [type].
+T _settled<T extends Object>(T frozen, Map<Type, Object> empties, Type type) {
+  final empty = switch (frozen) {
+    final Iterable<Object?> items => items.isEmpty,
+    final Map<Object?, Object?> entries => entries.isEmpty,
+    _ => false,
+  };
+  return empty ? (empties[type] ??= _marked(frozen)) as T : _marked(frozen);
 }
+
+/// [items] frozen — [items] itself when it is a list frozen here.
+List<E> frozenList<E>(Iterable<E> items) =>
+    items is List<E> && _isFrozen(items)
+    ? items
+    : _settled(List<E>.unmodifiable(items), _noLists, E);
 
 /// [items] frozen — [items] itself when it is a set frozen here.
-Set<E> frozenSet<E>(Iterable<E> items) {
-  if (items is Set<E> && _isFrozen(items)) {
-    return items;
-  }
-  final frozen = Set<E>.unmodifiable(items);
-  if (frozen.isEmpty) {
-    return (_noSets[E] ??= _marked(frozen)) as Set<E>;
-  }
-  return _marked(frozen);
-}
+Set<E> frozenSet<E>(Iterable<E> items) =>
+    items is Set<E> && _isFrozen(items)
+    ? items
+    : _settled(Set<E>.unmodifiable(items), _noSets, E);
 
 /// [entries] frozen — [entries] itself when it is a map frozen here.
-Map<K, V> frozenMap<K, V>(Map<K, V> entries) {
-  if (_isFrozen(entries)) {
-    return entries;
-  }
-  final frozen = Map<K, V>.unmodifiable(entries);
-  if (frozen.isEmpty) {
-    return ((_noMaps[K] ??= {})[V] ??= _marked(frozen)) as Map<K, V>;
-  }
-  return _marked(frozen);
-}
+Map<K, V> frozenMap<K, V>(Map<K, V> entries) => _isFrozen(entries)
+    ? entries
+    : _settled(Map<K, V>.unmodifiable(entries), _noMaps[K] ??= {}, V);
 
 /// [frozen] — a collection the model handing it on froze itself, marked
 /// here so the model it is handed to keeps it as itself.
