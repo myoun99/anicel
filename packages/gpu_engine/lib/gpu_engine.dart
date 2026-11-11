@@ -3063,7 +3063,7 @@ class GpuPlugin {
           ..asTypedList(bytes.length).setAll(0, bytes);
         final plugin = rust.pluginOpen(engine._engine, at, bytes.length, cut);
         if (plugin == nullptr) {
-          throw StateError(_lastError());
+          throw GpuRefused(_lastError());
         }
         return GpuPlugin._(engine, plugin);
       });
