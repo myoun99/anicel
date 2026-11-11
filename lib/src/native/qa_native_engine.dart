@@ -59,7 +59,6 @@ final class QaTileBlocksAt {
 /// checklist.
 class QaNativeEngine {
   QaNativeEngine._(
-    this._premultiplyRgba,
     this._fillClearRect,
     this._fillComposeTile,
     this._fillFinishMask,
@@ -165,8 +164,6 @@ class QaNativeEngine {
       _composeBlends.pointer,
     );
   }
-
-  final void Function(Pointer<Uint8> pixels, int pixelCount) _premultiplyRgba;
 
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int pixelCount)
   _premultiplyRgbaCopy;
@@ -623,11 +620,6 @@ class QaNativeEngine {
           )) {
         return null;
       }
-      final premultiplyRgba = library
-          .lookupFunction<
-            Void Function(Pointer<Uint8>, Int32),
-            void Function(Pointer<Uint8>, int)
-          >('qa_premultiply_rgba');
       final fillClearRect = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Int32, Int32, Int32, Int32, Int32),
@@ -972,7 +964,6 @@ class QaNativeEngine {
             )
           >('qa_fill_compose_batch');
       return QaNativeEngine._(
-        premultiplyRgba,
         fillClearRect,
         fillComposeTile,
         fillFinishMask,
@@ -1381,25 +1372,6 @@ class QaNativeEngine {
           .asTypedList(elements)
           .setRange(0, elements, from.asTypedList(elements)),
     );
-  }
-
-  /// Persistent grow-only scratch for [premultiplyRgba]'s round trip.
-  final _premultiplyScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-
-  /// Premultiplies [pixels] (straight-alpha RGBA) IN PLACE through the
-  /// native kernel — byte-identical to the Dart reference (Skia
-  /// mul-div-255 rounding). Two memcpys through a persistent scratch
-  /// replace the 65k-iteration Dart loop per tile (A-2a).
-  void premultiplyRgba(Uint8List pixels) {
-    _ensurePremultiplyScratch(pixels.length);
-    final view = _premultiplyScratch.pointer.asTypedList(pixels.length);
-    view.setAll(0, pixels);
-    _premultiplyRgba(_premultiplyScratch.pointer, pixels.length ~/ 4);
-    pixels.setAll(0, view);
-  }
-
-  void _ensurePremultiplyScratch(int length) {
-    _premultiplyScratch.ensure(length);
   }
 
   /// Grow-only batch buffers (R18 A-3a): the tile spans of one dab and

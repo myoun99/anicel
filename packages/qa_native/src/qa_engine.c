@@ -71,7 +71,7 @@ static inline int32_t qa_round_wide(double value) {
 //
 // Returns nonzero when any destination byte changed (the caller marks the
 // tile dirty).
-QA_EXPORT int32_t qa_stamp_blend_row(
+static int32_t qa_stamp_blend_row(
     uint8_t* tile_row,
     const uint8_t* stamp_row,
     int32_t count,
@@ -1130,7 +1130,7 @@ static int qa_tip_row_reach(
 // qa_dab_store), and [tile_second] its second plane (qa_dual_view_rows) —
 // NULL for a stroke with one tip. Returns nonzero when any destination byte
 // changed.
-QA_EXPORT int32_t qa_dab_blend_tile(
+static int32_t qa_dab_blend_tile(
     uint8_t* tile_pixels,
     uint16_t* tile_wide,
     uint16_t* tile_second,
@@ -1478,10 +1478,6 @@ QA_EXPORT void qa_premultiply_rgba_copy(
   for (; i < pixel_count; i += 1) {
     qa_premultiply_pixel(dst + (ptrdiff_t)i * 4, src + (ptrdiff_t)i * 4);
   }
-}
-
-QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
-  qa_premultiply_rgba_copy(pixels, pixels, pixel_count);
 }
 
 // The same copy a row at a time between two strides (ABI 46): [rows] rows
@@ -2160,7 +2156,7 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
 // call overhead dwarfed the blend (commit.edit 55-95ms warm). One call
 // per (dab, tile) loops the rows here, through the SAME row kernel, so
 // the math (and its parity pins) are untouched.
-QA_EXPORT int32_t qa_stamp_blend_tile(
+static int32_t qa_stamp_blend_tile(
     uint8_t* tile_pixels,
     int32_t tile_size,
     int32_t tile_left,
@@ -3615,7 +3611,7 @@ static int32_t qa_stroke_blend_row(
   return changed;
 }
 
-QA_EXPORT int32_t qa_stroke_blend_tile(
+static int32_t qa_stroke_blend_tile(
     uint8_t* tile_pixels,
     int32_t tile_size,
     int32_t tile_left,
@@ -3691,41 +3687,6 @@ QA_EXPORT void qa_stroke_blend_tiles(
   context.mode = mode;
   context.changed_out = changed_out;
   qa_pool_run(qa_stroke_batch_item, &context, tile_count);
-}
-
-// ---------------------------------------------------------------------------
-// Tile alpha bounds (BB-N1, ABI 22): the per-tile word scan of
-// bitmapSurfaceContentBounds (R26 #13) - RGBA little-endian, alpha in the
-// word's top byte. Pure integer logic, so parity is structural. Each item
-// writes only its own 4-int slot; the Dart driver merges tile-local
-// bounds into world coordinates.
-
-// bounds_out per tile: minX, minY, maxX, maxY in TILE-LOCAL pixels;
-// an ink-free tile reports minX=0x7fffffff / maxX=-0x7fffffff (the same
-// sentinels the Dart merge loop starts from).
-QA_EXPORT void qa_tile_alpha_bounds(
-    const uint8_t* tile_pixels,
-    int32_t tile_size,
-    int32_t* bounds_out) {
-  int32_t min_x = 0x7fffffff, min_y = 0x7fffffff;
-  int32_t max_x = -0x7fffffff, max_y = -0x7fffffff;
-  const uint32_t* words = (const uint32_t*)tile_pixels;
-  for (int32_t y = 0; y < tile_size; y += 1) {
-    const uint32_t* row = words + (ptrdiff_t)y * tile_size;
-    for (int32_t x = 0; x < tile_size; x += 1) {
-      if ((row[x] & 0xff000000u) == 0) {
-        continue;
-      }
-      if (x < min_x) min_x = x;
-      if (x > max_x) max_x = x;
-      if (y < min_y) min_y = y;
-      if (y > max_y) max_y = y;
-    }
-  }
-  bounds_out[0] = min_x;
-  bounds_out[1] = min_y;
-  bounds_out[2] = max_x;
-  bounds_out[3] = max_y;
 }
 
 // ---------------------------------------------------------------------------
@@ -4785,4 +4746,8 @@ QA_EXPORT void qa_tile_pool_set_byte_cap(int64_t bytes) {
 // verbs run on the GPU engine's kernel.
 // v76: qa_resample_rgba leaves - every resample is the GPU engine's R1 (a
 // float's warps, a posed row a fill reads), and the C resamples nothing.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 76; }
+// v77: qa_tile_alpha_bounds and qa_premultiply_rgba leave - nothing bound
+// the first and nothing called the second - and qa_stamp_blend_row,
+// qa_dab_blend_tile, qa_stamp_blend_tile and qa_stroke_blend_tile are
+// exported no longer: each is called by a batch here and by nothing outside.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 77; }

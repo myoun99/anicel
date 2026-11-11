@@ -376,7 +376,14 @@ import '../core/on_a_worker.dart';
 /// - v76: `qa_resample_rgba` leaves the C: a float's warps and the posed
 ///   rows a fill reads are the GPU engine's R1 (`EngineStampPictures`,
 ///   float-warp-resamples-in-the-c-engine), and the C resamples nothing.
-const int kQaEngineAbiVersion = 76;
+/// - v77: `qa_tile_alpha_bounds` · `qa_premultiply_rgba` leave the C —
+///   nothing bound the first, and nothing called what bound the second
+///   (`QaNativeEngine.premultiplyRgba`, gone with it) — and
+///   `qa_stamp_blend_row` · `qa_dab_blend_tile` · `qa_stamp_blend_tile` ·
+///   `qa_stroke_blend_tile` are exported no longer: each is called by a
+///   batch of the C's own and by nothing outside (관제 2026-11-11,
+///   fill-runs-in-the-c-engine's first commit).
+const int kQaEngineAbiVersion = 77;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
