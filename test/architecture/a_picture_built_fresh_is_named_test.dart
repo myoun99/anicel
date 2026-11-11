@@ -211,7 +211,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 23);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 24);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '
