@@ -369,7 +369,10 @@ void main() {
 /// shown and not drawn — gone from canvas/display_resample,
 /// playback/frame_picture_store and playback/frame_pictures; a panel's shot
 /// is laid 1:1 over its ground in panel_pictures, read back from the engine.
-const int _knownRawDraws = 27;
+/// **26** on 2026-11-11 (gpu-export-path 1b ①): −1 in frame_shots — a
+/// shot's picture is laid over its ground on the engine (`GpuExport.lay`),
+/// not drawn over it on a Flutter canvas.
+const int _knownRawDraws = 26;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'
