@@ -34,6 +34,7 @@ import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
@@ -1185,41 +1186,82 @@ void main() {
           rotation: PropertyTrack<double>().withKey(0, 45),
         ),
       };
-      for (final MapEntry(key: how, value: fx) in poses.entries) {
-        testWidgets(how, (tester) async {
-          final (s, row) = await placed(
-            tester,
-            paper: () async {
-              final checker = await checkerImage(64);
-              try {
-                return await writeImagePng(tempDir, 'checker.png', checker);
-              } finally {
-                checker.dispose();
-              }
-            },
-          );
-          keptByAnotherConte(s, row);
-          posed(s, row, fx: fx);
-          final before = (await tester.runAsync(() => frame(s)))!;
-
-          final baked = await tester.runAsync(
-            () => s.importDoors.bakeReferenceAsSeen(
-              cutId: s.requireActiveCut.id,
-              layerId: row.id,
-            ),
-          );
-
-          expect(baked, isTrue, reason: 'LIVENESS: the conte bakes in place');
+      /// A conte of a 64-pixel checker [keptByAnotherConte], its reference
+      /// fx [fx] and its chain [key] when one is given: baked in place, the
+      /// frame is the frame it was. [shades] are the reds the frame shows,
+      /// hard-edged.
+      Future<void> bakedAsItShows(
+        WidgetTester tester,
+        TransformTrack fx, {
+        LayerEffect? key,
+        Set<int> shades = const {0, 255},
+      }) async {
+        final (s, row) = await placed(
+          tester,
+          paper: () async {
+            final checker = await checkerImage(64);
+            try {
+              return await writeImagePng(tempDir, 'checker.png', checker);
+            } finally {
+              checker.dispose();
+            }
+          },
+        );
+        keptByAnotherConte(s, row);
+        posed(s, row, fx: fx);
+        if (key != null) {
+          final bare = await tester.runAsync(() => frame(s));
+          s.effectsAndFx.updateLayerEffects(row.id, [key]);
           expect(
-            {for (var at = 0; at < before.length; at += 4) before[at]},
-            {0, 255},
-            reason: 'premise: the frame shows the checker, hard-edged',
+            await tester.runAsync(() => frame(s)),
+            isNot(bare),
+            reason: 'premise: the key keys the frame',
           );
-          expect(await tester.runAsync(() => frame(s)), before);
-          await tester.pump(const Duration(minutes: 1));
-          await stopTheWarmer(tester, s);
-        });
+        }
+        final before = (await tester.runAsync(() => frame(s)))!;
+
+        final baked = await tester.runAsync(
+          () => s.importDoors.bakeReferenceAsSeen(
+            cutId: s.requireActiveCut.id,
+            layerId: row.id,
+          ),
+        );
+
+        expect(baked, isTrue, reason: 'LIVENESS: the conte bakes in place');
+        expect(
+          {for (var at = 0; at < before.length; at += 4) before[at]},
+          shades,
+          reason: 'premise: the frame shows the checker, hard-edged',
+        );
+        expect(await tester.runAsync(() => frame(s)), before);
+        await tester.pump(const Duration(minutes: 1));
+        await stopTheWarmer(tester, s);
       }
+
+      for (final MapEntry(key: how, value: fx) in poses.entries) {
+        testWidgets(how, (tester) => bakedAsItShows(tester, fx));
+      }
+
+      // 🧭관제 2026-11-11 21:44: 「키 걸린 행을 제자리 굽기 = 그 프레임」. At
+      // half its amount, so a key laid twice — baked into the cels and still
+      // worn by the row — shows: the black halved twice.
+      testWidgets(
+        'turned 30° and keyed at half its amount',
+        (tester) => bakedAsItShows(
+          tester,
+          turnedOnce,
+          key: LayerEffect(
+            id: const EffectId('the-checker-key'),
+            kind: EffectKind.colorKey,
+            colors: {
+              'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFF000000),
+            },
+            parameters: {'amount': EffectParameter(value: 50)},
+          ),
+          // The black halved, over the white the frame stands on.
+          shades: {127, 255},
+        ),
+      );
 
       // The placement window's bake lays the file where the window stood
       // it — a file baked as it lands is the picture placed and then baked
