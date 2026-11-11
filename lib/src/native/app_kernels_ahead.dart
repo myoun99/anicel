@@ -90,8 +90,9 @@ Future<void> compileAppKernelsAhead() async {
 /// ONE fact for all that hold the app meanwhile: a frame keeps its picture
 /// from the screen (`FramePictureView`), the editor stands its one ring and
 /// takes no input (`EngineReadyGate`, 🗣️gpu-canonical-store-Q16: 「창
-/// 한가운데 하나」), and the windows a launch opens of itself wait
-/// ([onceTheAppIsLetGo], 🗣️gpu-canonical-store-Q17).
+/// 한가운데 하나」), and the windows a launch opens of itself wait, a
+/// handed file's door among them ([onceTheAppIsLetGo],
+/// 🗣️gpu-canonical-store-Q17 · Q18).
 ///
 /// 🗣️관제 2026-11-11 08:25: 「「준비가 끝난」 = 손이 쓰는 커널 전부, 블러
 /// 묶음 넷까지(그래야 고리가 걷힌 뒤 어느 도구도 안 멈춘다) … 띠 여섯은
@@ -113,9 +114,10 @@ void holdTheAppForItsEngine() => _getsReady.value = true;
 /// Once the app is let go ([appEngineGetsReady]) — at once where it is
 /// held for nothing.
 ///
-/// 🗣️gpu-canonical-store-Q17 (유저 2026-11-11): 「시작할 때 뜨는 창도 준비가
-/// 끝난 뒤에 띄운다」 — what a launch opens of itself over the editor waits
-/// for this (`HomePage._showLaunchWindows`).
+/// 🗣️유저 2026-11-11, gpu-canonical-store-Q17 「시작할 때 뜨는 창도 준비가
+/// 끝난 뒤에 띄운다」 · Q18 「열기도 준비가 끝난 뒤에 시작한다」 — a window
+/// no hand on the editor asked for, a launch's own or a handed file's door,
+/// waits for this (`HomePage._windowsMayOpen`).
 Future<void> onceTheAppIsLetGo() {
   if (!_getsReady.value) {
     return Future.value();

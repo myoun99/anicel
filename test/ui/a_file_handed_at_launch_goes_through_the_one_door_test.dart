@@ -12,6 +12,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/native/app_kernels_ahead.dart';
 import 'package:anicel/src/native/handed_files.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
@@ -165,6 +166,30 @@ void main() {
       find.byKey(const ValueKey<String>('unsupported-file-notice')),
       findsOneWidget,
     );
+  });
+
+  // 🗣️gpu-canonical-store-Q18 (유저 2026-11-11): 「열기도 준비가 끝난 뒤에
+  // 시작한다」 — the door's windows stand over the editor's ring no more
+  // than a launch's own.
+  testWidgets('a file handed to a launch held for its engine goes to the '
+      'door once the app is let go, and not before', (tester) async {
+    final path = nothingOpens();
+    holdTheAppForItsEngine();
+    addTearDown(debugLetTheAppGo);
+
+    await pumpApp(
+      tester,
+      HomePage(initialProject: createDefaultProject(), handedAtLaunch: [path]),
+    );
+    // A held app never settles: its ring turns.
+    for (var frame = 0; frame < 8; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(notice, findsNothing);
+
+    debugLetTheAppGo();
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget);
   });
 
   // Card open-door-windows-open-with (서피스 AI 실기 2026-10-23): an app

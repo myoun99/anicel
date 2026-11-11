@@ -28,9 +28,10 @@ import '../shortcuts/editor_key_funnel.dart';
 /// fact (`HomePage._invokeAction`).
 ///
 /// ⛔Not the windows over the editor: a route is no child of this. The ones
-/// a launch opens of itself wait for the same fact where they are opened
-/// (`HomePage._showLaunchWindows`, 🗣️gpu-canonical-store-Q17); the OS's
-/// own — closing the window, its size — are never held.
+/// no hand on the editor asked for — a launch's own, the door of a file
+/// handed to it — wait for the same fact where they are opened
+/// (`HomePage._windowsMayOpen`, 🗣️gpu-canonical-store-Q17 · Q18); the
+/// OS's own — closing the window, its size — are never held.
 ///
 /// The tree it stands in keeps one shape: both halves and the ring's seat
 /// are always mounted and only what they hold moves (`PlaybackActuationGate`

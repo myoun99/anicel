@@ -674,43 +674,45 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // too (2026-09-16).
   }
 
-  /// [handed] through the one door once the saved language is back
-  /// ([EditorAppSettings.languageRestored]) — the door says what it did in
-  /// notices whose words are written as they open, and the launch knocks in
-  /// the first frame, before the language the app was left in has been
-  /// read (F-170). ↩️It knocked at once: a file nothing opens was refused
-  /// in English under a Japanese list of it (서피스 AI 실기 2026-10-23,
-  /// card open-door-windows-open-with).
+  /// When a window may open over the editor that no hand on it asked for —
+  /// a launch's own, a handed file's door — ONE answer for both:
+  ///
+  /// - the saved language is back ([EditorAppSettings.languageRestored]):
+  ///   each is written in the program language as it opens, and the launch
+  ///   knocks in the first frame, before the language the app was left in
+  ///   has been read (F-170). ↩️A handed file knocked at once: a file
+  ///   nothing opens was refused in English under a Japanese list of it
+  ///   (서피스 AI 실기 2026-10-23, card open-door-windows-open-with);
+  /// - the app is let go ([onceTheAppIsLetGo]): none stands over the
+  ///   editor's ring. 🗣️유저 2026-11-11, gpu-canonical-store-Q17 「시작할 때
+  ///   뜨는 창도 준비가 끝난 뒤에 띄운다」 · Q18 「열기도 준비가 끝난 뒤에
+  ///   시작한다」.
+  Future<void> _windowsMayOpen() =>
+      Future.wait([_appSettings.languageRestored, onceTheAppIsLetGo()]);
+
+  /// [handed] through the one door, once its windows may open
+  /// ([_windowsMayOpen]): the door says what it did in notices, and opens
+  /// a project behind a window of its own.
   void _openHanded(List<FolderGrant> handed) => unawaited(
-    _appSettings.languageRestored.then(
-      (_) => _workspaceDoor.openHanded(handed),
-    ),
+    _windowsMayOpen().then((_) => _workspaceDoor.openHanded(handed)),
   );
 
   /// What a launch opens, one window after the other: on the machine's
   /// first launch its settings ([HomePage.firstLaunch]), then the usage
   /// statistics' question if it was never answered, then this build's
-  /// [notice] if it is due — after the first frame, and once the saved
-  /// language is back, for the reason [_openHanded] waits: each window is
-  /// written in the program language as it opens.
+  /// [notice] if it is due — after the first frame, and once they may
+  /// ([_windowsMayOpen]).
   ///
   /// 🗣️유저 2026-10-29 (I-144): 「순서를 첫설정창, 사용통계창, 안내창으로
   /// 하자, 안내창이 텍스트가 많아서 지치니까 지치기전에 … 수락하게하려고」.
   /// ↩️08:1x put the question after the notice (「따로 묻는 작은 창」, which
   /// stays its own window).
   ///
-  /// 🗣️gpu-canonical-store-Q17 (유저 2026-11-11): 「시작할 때 뜨는 창도 준비가
-  /// 끝난 뒤에 띄운다」 — and once the app is let go ([onceTheAppIsLetGo]):
-  /// none of them stands over the editor's ring.
-  ///
   /// ⚠️Each is opened from its store, as `_unlessTesting` hands them out: a
   /// test that hands neither in sees neither, and one that measures the
   /// launch hands its own in.
   void _showLaunchWindows(LaunchNotice? notice) => unawaited(
-    Future.wait([
-      _appSettings.languageRestored,
-      onceTheAppIsLetGo(),
-    ]).then((_) async {
+    _windowsMayOpen().then((_) async {
       if (widget.firstLaunch && mounted) {
         await showFirstRunSettings(context, _session);
       }
