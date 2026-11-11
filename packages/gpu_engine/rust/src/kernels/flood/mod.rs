@@ -25,11 +25,13 @@ pub(crate) mod picture;
 #[cfg(test)]
 mod tests;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES};
 use crate::kernels::mask::{MaskBox, MaskPasses};
-use crate::kernels::shared::{Encoded, PREMULTIPLY_WGSL, encode, encode_on, fits};
+use crate::kernels::shared::{Counted, Encoded, PREMULTIPLY_WGSL, encode, encode_on, fits};
 use crate::kernels::shared::{flat, pipeline, plane, range, whole, words_buffer};
 
 /// The rounds encoded between two looks at whether one moved nothing.
@@ -38,6 +40,24 @@ const ROUNDS: usize = 8;
 const FLAG_STEP: u64 = 256;
 /// The widest gap a fill closes: 3 × it, its threshold, is a word.
 const MOST_GAP: u32 = u32::MAX / 3;
+
+/// The bytes of every picture a fill reads ([`picture::Shown`]) and every
+/// fill finished for the app ([`abi::Filled`]) that is alive, counted where
+/// each is made and dropped ([`counted`]). Each is one press's: what is
+/// still counted once the press is over was never freed
+/// ([`abi::gpu_engine_flood_bytes`]).
+static FLOOD_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// The bytes the fill's pictures and finished fills hold alive.
+pub(crate) fn flood_bytes() -> u64 {
+    FLOOD_BYTES.load(Ordering::Relaxed)
+}
+
+/// `buffer`'s bytes among the fill's ([`FLOOD_BYTES`]), for as long as
+/// what this gives lives beside it.
+pub(crate) fn counted(buffer: &wgpu::Buffer) -> Counted {
+    Counted::among(&FLOOD_BYTES, buffer.size())
+}
 
 /// The picture a fill reads: the composite's output tiles over a grid of
 /// `across` × `down` tiles, row after row, and the box in the grid's pixels

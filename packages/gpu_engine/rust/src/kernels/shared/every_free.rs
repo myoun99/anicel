@@ -170,7 +170,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 31] {
             }
         }),
         ("gpu_engine_flood_filled_free", |name| {
-            let filled = Filled { mask: composited().out, size: MaskBox { width: 1, height: 1 } };
+            let filled = Filled::new(composited().out, MaskBox { width: 1, height: 1 });
             gives_back(name, Box::into_raw(Box::new(filled)), gpu_engine_flood_filled_free)
         }),
         ("gpu_engine_cel_pixels_free", |name| {

@@ -1323,6 +1323,9 @@ external bool floodFilledRead(
 )
 external void floodFilledFree(Pointer<FloodFilled> filled);
 
+@Native<Uint64 Function()>(symbol: 'gpu_engine_flood_bytes')
+external int floodBytes();
+
 @Native<
   Pointer<Faces> Function(
     Pointer<Pointer<Uint8>>,

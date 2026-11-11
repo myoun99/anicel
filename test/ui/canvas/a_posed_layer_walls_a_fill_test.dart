@@ -192,6 +192,29 @@ void main() {
     expect(reach.top + reach.height / 2, closeTo(17, 1.5));
   });
 
+  // The frame's world is wider than its page: ink a row holds past the
+  // paper shows there, and walls the fill of a row posed over it.
+  test('ink past the paper walls the fill of a paint layer moved over it: '
+      'the picture is cut at the world the frame holds, not at the box '
+      'the fill reads', () {
+    // A line down canvas x = −4, off the paper. The paint layer is moved 8
+    // left: its own pixels 0..31 lie over canvas −8..23, the line at its
+    // own x = 4 — what fills is its own 5..31.
+    // ⚠️Cut at the paint layer's box read as the canvas's (0..31), the
+    // line is not in the picture and the fill takes the layer whole
+    // (mutant FD29 lived, 2026-11-12).
+    final reach = filledAt(
+      CanvasPoint(x: 16, y: 16),
+      [row('line'), row('paint', position: CanvasPoint(x: 8, y: 16))],
+      celOfPixels(size, {
+        for (var y = 0; y < size.height; y += 1)
+          (-4, y): const [0, 0, 0, 255],
+      }),
+    );
+    expect(reach.left, inInclusiveRange(4, 6));
+    expect(reach.width, inInclusiveRange(26, 28));
+  });
+
   test('a line layer moved sideways walls the fill where it is drawn, '
       'tiles away from where it lies', () {
     // A 512 canvas is four cel tiles a side. The box, artwork x 20..40 and

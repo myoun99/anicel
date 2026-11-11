@@ -2761,6 +2761,12 @@ final class GpuFloods {
   static Pointer<rust.Floods> _compiled(Pointer<rust.Engine> on) =>
       rust.floodsNew(on);
 
+  /// The bytes of every picture a fill reads ([GpuFloodPicture]) and every
+  /// fill finished, made and not yet freed: counted by the engine where it
+  /// makes and lets go of them. Each is one press's — none stays counted
+  /// past it.
+  static int get liveBytes => rust.floodBytes();
+
   final GpuEngine _engine;
   final Pointer<rust.Floods> _floods;
 

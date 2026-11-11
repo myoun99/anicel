@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_fill_on_a_session.dart';
 
 /// 🚨★WHAT A FRAME'S CHAINS PUT IS HELD WHERE ITS SCREEN STANDS
 /// (`FramePictures.heldNodes` · `aheadNodes`; card
@@ -173,6 +174,37 @@ void main() {
       final held = still.playbackRig.framePictures;
       expect(held.aheadNodes.heldBytes, greaterThan(0), reason: 'nothing live');
       expect(held.heldNodes.heldBytes, 0);
+    });
+  });
+
+  // What a fill reads is the frame's rows planned as a screen's are
+  // (`fillPictureOf`), its chains' puts held among the canvas's (mutants
+  // FD05 · FD20 lived on every fill's pins, 2026-11-12: with no hold a
+  // press runs each chain again, and shows the same).
+  testWidgets('a fill pressed on the frame holds its chains where the '
+      'canvas that stands on it does: what the first press put, and one '
+      'hold with the canvas\'s', (tester) async {
+    await tester.runAsync(() async {
+      final pressed = session();
+      addTearDown(pressed.dispose);
+      drawn(pressed);
+      expect(
+        fillPressedOn(pressed, CanvasPoint(x: 30, y: 2)),
+        isNotNull,
+        reason: '⛔premise: it read a picture',
+      );
+      final first = pressed.playbackRig.framePictures;
+      final held = first.heldNodes.heldBytes;
+      expect(held, greaterThan(0));
+      expect(first.aheadNodes.heldBytes, 0);
+
+      final stood = session();
+      addTearDown(stood.dispose);
+      await shown(stood, drawn(stood));
+      final both = stood.playbackRig.framePictures;
+      expect(both.heldNodes.heldBytes, held, reason: '⛔premise: the same put');
+      fillPressedOn(stood, CanvasPoint(x: 30, y: 2));
+      expect(both.heldNodes.heldBytes, held);
     });
   });
 

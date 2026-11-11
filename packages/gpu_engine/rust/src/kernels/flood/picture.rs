@@ -15,9 +15,9 @@ use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet, WHOLE};
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::kernels::shared::{ResampleMap, ResampleMode, fits, tiles_a_page};
+use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, fits, tiles_a_page};
 
-use super::{Extent, Finished, Picture};
+use super::{Extent, Finished, Picture, counted};
 
 /// What a plan shows over a box on the canvas: the composite's output
 /// tiles over a grid of `across` × `down` tiles from canvas tile column and
@@ -28,6 +28,7 @@ pub(crate) struct Shown {
     across: u32,
     down: u32,
     inside: Extent,
+    _counted: Counted,
 }
 
 impl Shown {
@@ -64,6 +65,7 @@ impl Shown {
         };
         let done = composite.run(engine, plan, &tiles, extent, composite.widest())?;
         Some(Shown {
+            _counted: counted(&done.out),
             out: done.out,
             grid: (x0 as i32, y0 as i32),
             across: (x1 - x0) as u32,

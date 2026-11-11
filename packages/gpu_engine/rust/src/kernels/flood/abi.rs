@@ -19,9 +19,10 @@ use crate::kernels::composite::Composite;
 use crate::kernels::composite::abi::Planned;
 use crate::kernels::mask::{MaskBox, MaskPasses};
 use crate::kernels::pool::Pool;
+use crate::kernels::shared::Counted;
 
-use super::Flood;
 use super::picture::Shown;
+use super::{Flood, counted, flood_bytes};
 
 /// The flood's passes and the mask's it finishes by, compiled together:
 /// what the app compiles once, off its isolate.
@@ -34,6 +35,16 @@ pub struct Floods {
 pub struct Filled {
     pub(crate) mask: wgpu::Buffer,
     pub(crate) size: MaskBox,
+    _counted: Counted,
+}
+
+impl Filled {
+    /// `mask`, bytes over `size`, counted among the fill's for as long as
+    /// the app has it.
+    pub(crate) fn new(mask: wgpu::Buffer, size: MaskBox) -> Filled {
+        let _counted = counted(&mask);
+        Filled { mask, size, _counted }
+    }
 }
 
 /// The fill's kernels, compiled.
@@ -170,7 +181,7 @@ pub unsafe extern "C" fn gpu_engine_flood_run(
             let mask = shown.on_canvas(&finished);
             (mask.at, mask.size)
         };
-        Some((Filled { mask: finished.mask, size }, at))
+        Some((Filled::new(finished.mask, size), at))
     };
     let Some((filled, (left, top))) = filled() else {
         return std::ptr::null_mut();
@@ -196,7 +207,7 @@ pub unsafe extern "C" fn gpu_engine_flood_filled_read(
     capacity: usize,
 ) -> bool {
     // SAFETY: see the function's contract.
-    let (engine, Filled { mask, size }) = unsafe { (&*engine, &*filled) };
+    let (engine, Filled { mask, size, .. }) = unsafe { (&*engine, &*filled) };
     let width = size.width as usize;
     if capacity != width * size.height as usize {
         fail::<()>(format!("{capacity} bytes are not a mask of {size:?}"));
@@ -221,4 +232,11 @@ pub unsafe extern "C" fn gpu_engine_flood_filled_free(filled: *mut Filled) {
         // SAFETY: see the function's contract.
         drop(unsafe { Box::from_raw(filled) });
     }
+}
+
+/// The bytes of every picture a fill reads and every fill finished, made
+/// and not yet freed.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_flood_bytes() -> u64 {
+    flood_bytes()
 }

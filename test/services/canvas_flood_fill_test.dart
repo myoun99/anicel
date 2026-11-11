@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuFloods;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -76,6 +77,30 @@ void main() {
       }
     });
 
+    // 🚨A free gone answers every other test here as one that frees: the
+    // engine counts what a press made for the app until each is freed
+    // (`GpuFloods.liveBytes`; mutants FD07 · FD27 · FD28 lived,
+    // 2026-11-12).
+    test('a fill leaves nothing of its own on the engine: the picture it '
+        'read and each mask it finished are freed', () {
+      final before = GpuFloods.liveBytes;
+      var read = 0;
+      final pictureOver = pictureOf(boxOutline());
+      final range = fillRangeAt(
+        canvasSize: canvasSize,
+        pictureOver: (box) {
+          final picture = pictureOver(box);
+          read = GpuFloods.liveBytes - before;
+          return picture;
+        },
+        point: CanvasPoint(x: 3, y: 3),
+      );
+
+      expect(range, isNotNull, reason: '⛔premise: it flooded');
+      expect(read, greaterThan(0), reason: '⛔premise: a picture is counted');
+      expect(GpuFloods.liveBytes, before);
+    });
+
     test('a seed off the canvas fills nothing, and reads no picture', () {
       expect(
         fillRangeAt(
@@ -148,13 +173,81 @@ void main() {
       }
     });
 
+    // Which pixels a flood takes is the kernel's; that it is asked with the
+    // fill's own knobs is pinned here — its growth and its ramp beside the
+    // area's (an_area_is_finished_as_the_bucket_is_test.dart).
+    group('is flooded by the fill\'s own', () {
+      const page = CanvasSize(width: 32, height: 32);
+
+      /// How far across a fill pressed at [at] reaches, on a page of
+      /// [pixels].
+      int across(
+        Map<(int, int), List<int>> pixels,
+        CanvasPoint at,
+        FloodFillOptions options,
+      ) => piecesBox(
+        fillRangeAt(
+          canvasSize: page,
+          pictureOver: fillPictureOfRows([
+            fillRow(celOfPixels(page, pixels)),
+          ], canvasSize: page),
+          point: at,
+          options: options,
+        )!.dabsIn(0xFF3366CC),
+      ).width;
+
+      test('TOLERANCE: a faint wash over half the page fills with the '
+          'clear half within it, and walls a fill that takes none', () {
+        final wash = {
+          for (var y = 0; y < 32; y += 1)
+            for (var x = 16; x < 32; x += 1) (x, y): const [0, 0, 0, 20],
+        };
+        int reach(int tolerance) => across(
+          wash,
+          CanvasPoint(x: 4, y: 4),
+          FloodFillOptions(
+            tolerance: tolerance,
+            expandPx: 0,
+            antiAlias: false,
+          ),
+        );
+
+        expect(reach(32), 32);
+        expect(reach(0), 16);
+      });
+
+      test('GAP CLOSE: a ring with a pixel out of its wall leaks a plain '
+          'fill to the page\'s edge, and holds one that closes gaps', () {
+        const black = [0, 0, 0, 255];
+        final ring = {
+          for (var i = 8; i <= 24; i += 1) ...{
+            (i, 8): black,
+            (i, 24): black,
+            (8, i): black,
+            (24, i): black,
+          },
+        }..remove((8, 16));
+        int reach(int gap) => across(
+          ring,
+          CanvasPoint(x: 16, y: 16),
+          FloodFillOptions(gapClosePx: gap, expandPx: 0, antiAlias: false),
+        );
+
+        expect(reach(0), 32);
+        expect(reach(3), lessThanOrEqualTo(16));
+      });
+    });
+
     group('Fill Beyond Canvas (pasteboard)', () {
+      /// A box outline from ([left], [top]) to ([right], [bottom]).
+      Set<(int, int)> boxFrom(int left, int top, int right, int bottom) => {
+        for (var x = left; x <= right; x += 1) ...{(x, top), (x, bottom)},
+        for (var y = top + 1; y < bottom; y += 1) ...{(left, y), (right, y)},
+      };
+
       /// A closed box from (-3,2) to (4,5): walls cross the canvas's left
       /// edge; interior = x in [-2, 3], y in [3, 4].
-      Set<(int, int)> boxAcrossLeftEdge() => {
-        for (var x = -3; x <= 4; x += 1) ...{(x, 2), (x, 5)},
-        for (var y = 3; y <= 4; y += 1) ...{(-3, y), (4, y)},
-      };
+      Set<(int, int)> boxAcrossLeftEdge() => boxFrom(-3, 2, 4, 5);
 
       const past = FloodFillOptions(
         expandPx: 0,
@@ -318,17 +411,28 @@ void main() {
             )?.dabsIn(0xFF3366CC) ??
             const [];
 
-        test('a box whose wall stands past the pasteboard\'s is open', () {
-          var leaked = false;
-          final dabs = fill(
-            boxAcrossLeftEdge(),
-            at: CanvasPoint(x: 0, y: 3),
-            reach: PasteboardReach.quarter,
-            onOpenRegion: () => leaked = true,
-          );
-          expect(dabs, isEmpty);
-          expect(leaked, isTrue);
-        });
+        // 🚨EACH side by itself: a box open past one wall of the apron
+        // floods to that wall alone (mutants FD09–FD11 lived on the left
+        // side's pin, 2026-11-12).
+        for (final (side, ink, at) in [
+          ('left', boxFrom(-3, 2, 4, 5), CanvasPoint(x: 0, y: 3)),
+          ('top', boxFrom(2, -3, 5, 4), CanvasPoint(x: 3, y: 0)),
+          ('right', boxFrom(3, 2, 10, 5), CanvasPoint(x: 7, y: 3)),
+          ('bottom', boxFrom(2, 3, 5, 10), CanvasPoint(x: 3, y: 7)),
+        ]) {
+          test('a box whose wall stands past the pasteboard\'s on the $side '
+              'is open', () {
+            var leaked = false;
+            final dabs = fill(
+              ink,
+              at: at,
+              reach: PasteboardReach.quarter,
+              onOpenRegion: () => leaked = true,
+            );
+            expect(dabs, isEmpty);
+            expect(leaked, isTrue);
+          });
+        }
 
         test('a box closed inside it fills, off-canvas pixels included', () {
           final dab = fill(
