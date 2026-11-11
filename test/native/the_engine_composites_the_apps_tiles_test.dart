@@ -303,13 +303,14 @@ void main() {
     expect(pixel(plain, [(0, 0)], 1, 1), nothing);
   });
 
-  test('a plan the executor refuses says why, run or shown', () {
+  test('a plan the executor refuses says why, run or shown — by the name '
+      'the app tells a refusal by', () {
     final plan = GpuPlan()..close(mode: GpuBlend.normal);
     addTearDown(plan.free);
     final surface = shownSurfaceOf(8, 8);
     addTearDown(surface.free);
     final refused = throwsA(
-      isA<StateError>().having(
+      isA<GpuRefused>().having(
         (error) => error.message,
         'message',
         contains('not open'),

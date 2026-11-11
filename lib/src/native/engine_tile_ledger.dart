@@ -254,7 +254,7 @@ final GpuEngine _engine;
         return asked.length - landed.length;
       });
       if (short > 0) {
-        throw StateError(
+        throw TileRoomRefused(
           'the device lands ${landed.length} of the ${asked.length} tiles '
           'it was asked for',
         );
@@ -478,7 +478,7 @@ final GpuEngine _engine;
     // ⚠️No test reaches the throw: past both budgets a store falls short
     // only where the driver refuses a page, which no test has one do.
     if (short > 0) {
-      throw StateError(
+      throw TileRoomRefused(
         'the device stores $stored of the ${tiles.length} tiles a call holds',
       );
     }
@@ -673,6 +673,16 @@ final class TileHold {
         if (tile == null) null else slots[next++],
     ];
   }
+}
+
+/// The device had no room for tiles asked of it, room made every way the
+/// ledger makes it ([EngineTileLedger._shortAsRoomIsMade]): the stroke, the
+/// paste or the confirm that asked is not landed. A cause of its own among
+/// what the engine refuses, told as one (`EngineRefusals`,
+/// 🗣️gpu-canonical-store-Q14, 유저 2026-11-11: 「같은 실행에서 같은
+/// 까닭으로는 다시 띄우지 않는다」).
+final class TileRoomRefused extends GpuRefused {
+  TileRoomRefused(super.message);
 }
 
 /// A worker asked for the app's ledger ([EngineTileLedger.instance]): the

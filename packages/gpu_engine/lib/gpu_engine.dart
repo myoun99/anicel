@@ -40,6 +40,20 @@ Future<Pointer<T>> _compiledOff<T extends NativeType>(
 /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦).
 int get debugKernelsCompiledHere => rust.kernelsBuiltHere();
 
+/// A job the engine would not do — a C entry answered that it failed, or
+/// Flutter gave it no adapter or texture to do it with —, carrying the
+/// engine's last error. ⛔Everything this library throws of the device's
+/// is one, never a bare [StateError]: named, so an app can tell a job its
+/// graphics device refused from what its own code threw, and say so
+/// (🗣️gpu-canonical-store-Q14, 유저 2026-11-11: 「공통 알림 창으로 한 번
+/// 알린다」).
+///
+/// Sent as it is from an isolate a kernel is compiled on
+/// ([GpuEngine.opening]): it holds its message alone.
+base class GpuRefused extends StateError {
+  GpuRefused(super.message);
+}
+
 String _lastError() => using((arena) {
   const capacity = 1024;
   final buffer = arena<Uint8>(capacity);
@@ -57,7 +71,7 @@ int _held(int count) => count == 0 ? 1 : count;
 /// where it answered -1.
 int _checked(int answer) {
   if (answer < 0) {
-    throw StateError(_lastError());
+    throw GpuRefused(_lastError());
   }
   return answer;
 }
@@ -89,7 +103,7 @@ List<double> _twenty(List<double> matrix) {
 /// failure.
 Duration _ran(int nanos) {
   if (nanos < 0) {
-    throw StateError(_lastError());
+    throw GpuRefused(_lastError());
   }
   return Duration(microseconds: nanos ~/ 1000);
 }
@@ -108,7 +122,7 @@ class GpuEngine {
     }
     final luid = shim.flutterAdapterLuid();
     if (luid == 0) {
-      throw StateError('Flutter gave no graphics adapter');
+      throw GpuRefused('Flutter gave no graphics adapter');
     }
     return GpuEngine._(_opened(rust.engineOpen(luid)), luid);
   }
@@ -134,7 +148,7 @@ class GpuEngine {
 
   static Pointer<rust.Engine> _opened(Pointer<rust.Engine> engine) {
     if (engine == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return engine;
   }
@@ -163,7 +177,7 @@ class GpuEngine {
   GpuSurface surface(int width, int height, {required bool bgra}) {
     final surface = rust.surfaceNew(_engine, width, height, bgra);
     if (surface == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuSurface._(this, surface, width, height, bgra);
   }
@@ -185,7 +199,7 @@ class GpuEngine {
     if (window == nullptr) {
       final error = _lastError();
       await _plugin.invokeMethod<void>('release', {'textureId': textureId});
-      throw StateError(error);
+      throw GpuRefused(error);
     }
     return GpuWindow._(this, window, textureId);
   }
@@ -286,7 +300,7 @@ class GpuSurface extends GpuTarget {
   int fingerprint() => using((arena) {
     final hash = arena<Uint32>();
     if (!rust.surfaceFingerprint(_engine._engine, _surface, hash)) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return hash.value;
   });
@@ -372,7 +386,7 @@ Pointer<Uint32> _tileWords(
 /// A read back the engine refused: the tiles' bytes never came. Named so a
 /// caller can tell it from what its own work threw — a save, from a file
 /// that refused it (`SaveFailureCause.engineRead`).
-final class GpuReadFailed extends StateError {
+final class GpuReadFailed extends GpuRefused {
   GpuReadFailed(super.message);
 }
 
@@ -383,7 +397,7 @@ class GpuPool {
   factory GpuPool(GpuEngine engine, int mostBytes) {
     final pool = rust.poolNew(engine._engine, mostBytes);
     if (pool == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuPool._(engine, pool);
   }
@@ -419,7 +433,7 @@ class GpuPool {
         slots,
       );
       if (stored < 0) {
-        throw StateError(_lastError());
+        throw GpuRefused(_lastError());
       }
       return [
         for (var tile = 0; tile < stored; tile++)
@@ -472,7 +486,7 @@ final class GpuDabTexture implements Finalizable {
       (arena) => rust.dabTextureNew(_doubles(arena, texels), side),
     );
     if (made == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     final texture = GpuDabTexture._(made);
     _freed.attach(texture, made.cast());
@@ -605,7 +619,7 @@ List<GpuLanded> _landed(
   }
   final landed = call(arena, coordinates, under, places, changes);
   if (landed < 0) {
-    throw StateError(_lastError());
+    throw GpuRefused(_lastError());
   }
   return [
     for (var at = 0; at < landed; at++)
@@ -646,13 +660,13 @@ final class GpuBlurs {
 
   static void _stripsCompiled(int on) {
     if (!rust.blursCompileStrips(Pointer.fromAddress(on))) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   }
 
   static Pointer<rust.Blurs> _made(Pointer<rust.Blurs> blurs) {
     if (blurs == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return blurs;
   }
@@ -736,7 +750,7 @@ class GpuStroke {
   static Pointer<rust.Stroke> _compiled(Pointer<rust.Engine> on) {
     final stroke = rust.strokeNew(on);
     if (stroke == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return stroke;
   }
@@ -772,7 +786,7 @@ class GpuStroke {
       secondMode ?? -1,
       secondDensity,
     )) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   });
 
@@ -804,7 +818,7 @@ class GpuStroke {
       rubs.length,
     );
     if (met < 0) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     final coordinates = arena<Int32>(_held(2 * met));
     rust.strokeMet(_stroke, coordinates);
@@ -832,7 +846,7 @@ class GpuStroke {
       paperScale,
       paperHeight,
     )) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   });
 
@@ -938,7 +952,7 @@ final class GpuStampPicture implements Finalizable {
     int height,
   ) {
     if (made == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     final picture = GpuStampPicture._(engine, made, width, height);
     _freed.attach(picture, made.cast(), externalSize: width * height * 4);
@@ -988,7 +1002,7 @@ class GpuStampLanding {
   static Pointer<rust.StampLanding> _compiled(Pointer<rust.Engine> on) {
     final landing = rust.stampLandingNew(on);
     if (landing == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return landing;
   }
@@ -1719,7 +1733,7 @@ class GpuMask {
       );
     });
     if (mask == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuMask._(mask);
   }
@@ -1757,7 +1771,7 @@ class GpuComposite {
   static Pointer<rust.Composite> _compiled(Pointer<rust.Engine> on) {
     final composite = rust.compositeNew(on);
     if (composite == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return composite;
   }
@@ -1845,7 +1859,7 @@ class GpuComposite {
       );
     });
     if (out == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuComposited._(_engine, out, tiles.length);
   }
@@ -1901,7 +1915,7 @@ class GpuScreen {
       (arena) => rust.screenNew(_rect(arena, extent), radiusFloor),
     );
     if (screen == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuScreen._(composite, screen);
   }
@@ -1928,7 +1942,7 @@ class GpuScreen {
       ),
     );
     if (!composed) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   }
 
@@ -1954,7 +1968,7 @@ class GpuScreen {
       ),
     );
     if (!composed) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   }
 
@@ -2020,7 +2034,7 @@ class GpuComposited {
     final bytes = arena<Uint8>(_held(count));
     // ⚠️No test reaches the throw: a read fails only where the device does.
     if (!rust.compositedRead(_engine._engine, _composited, bytes, count)) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return Uint8List.fromList(bytes.asTypedList(count));
   });
@@ -2162,7 +2176,7 @@ class GpuExport {
 
   GpuReadout _readout(Pointer<rust.Readout> readout) {
     if (readout == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuReadout._(_engine, readout);
   }
@@ -2186,7 +2200,7 @@ class GpuReadout {
   /// them mapped.
   void map() {
     if (!rust.readoutMap(_engine._engine, _readout)) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   }
 
@@ -2211,7 +2225,7 @@ class GpuReadout {
       dstStride,
     );
     if (!copied) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   }
 
@@ -2246,7 +2260,7 @@ class GpuInk {
   static Pointer<rust.Ink> _compiled(Pointer<rust.Engine> on) {
     final ink = rust.inkNew(on);
     if (ink == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return ink;
   }
@@ -2284,7 +2298,7 @@ class GpuInk {
       capacity,
     );
     if (walked < 0) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     final put = out.asTypedList(capacity);
     return [
@@ -2351,7 +2365,7 @@ final class GpuCelPixels {
 
   static Pointer<rust.CelPixels> _made(Pointer<rust.CelPixels> pixels) {
     if (pixels == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return pixels;
   }
@@ -2429,7 +2443,7 @@ final class GpuCelPixels {
       spec,
     );
     if (passed == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuCelPassed._(_engine, passed);
   });
@@ -2466,7 +2480,7 @@ final class GpuCelPixels {
       into.length,
     );
     if (lifted < 0) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     if (lifted == 0) {
       return false;
@@ -2556,7 +2570,7 @@ class GpuFaces {
       return rust.facesNew(at, lengths, named, files.length);
     });
     if (faces == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuFaces._(faces);
   }
@@ -2644,7 +2658,7 @@ class GpuLetters {
     );
     final [x0, y0, columns, rows] = rect.asTypedList(4).toList();
     if (lettered == nullptr) {
-      return columns == 0 ? null : throw StateError(_lastError());
+      return columns == 0 ? null : throw GpuRefused(_lastError());
     }
     return GpuLettered._(composite._engine, lettered, (
       x0: x0,
@@ -2745,7 +2759,7 @@ class GpuGridPicture {
   factory GpuGridPicture(GpuEngine engine, int width, int height) {
     final picture = rust.gridPictureNew(engine._engine, width, height);
     if (picture == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return GpuGridPicture._(engine, picture, width, height);
   }
@@ -2763,7 +2777,7 @@ class GpuGridPicture {
     final bytes = arena<Uint8>(_held(count));
     // ⚠️No test reaches the throw: a read fails only where the device does.
     if (!rust.gridPictureRead(_engine._engine, _picture, bytes, count)) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return Uint8List.fromList(bytes.asTypedList(count));
   });
@@ -2870,7 +2884,7 @@ List<double> _six(List<double> affine) {
 /// error thrown.
 void _done(bool done) {
   if (!done) {
-    throw StateError(_lastError());
+    throw GpuRefused(_lastError());
   }
 }
 
@@ -2891,7 +2905,7 @@ class GpuLettered {
     final bytes = arena<Uint8>(_held(count));
     // ⚠️No test reaches the throw: a read fails only where the device does.
     if (!rust.letteredRead(_engine._engine, _lettered, bytes, count)) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return Uint8List.fromList(bytes.asTypedList(count));
   });
@@ -2941,7 +2955,7 @@ class GpuWindow extends GpuTarget {
   Pointer<rust.Texture> get _texture {
     final target = rust.windowTarget(_window);
     if (target == nullptr) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
     return target;
   }
@@ -2950,7 +2964,7 @@ class GpuWindow extends GpuTarget {
   /// Flutter.
   void present() {
     if (!rust.windowPresent(_engine._engine, _window)) {
-      throw StateError(_lastError());
+      throw GpuRefused(_lastError());
     }
   }
 
@@ -2977,7 +2991,7 @@ class SharedTexture {
       front.bgra,
     );
     if (id < 0) {
-      throw StateError('Flutter refused the texture');
+      throw GpuRefused('Flutter refused the texture');
     }
     return SharedTexture._(id);
   }
