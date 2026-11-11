@@ -156,6 +156,25 @@ void main() {
     expect((width, height), (size.width, size.height));
   });
 
+  // Blend, not Pick (`_pixelsOn`): the screen draws a posed layer filtered
+  // and the fill reads what the screen shows — a line its layer shrinks
+  // thinner than a pixel still shows there, faint, where a vote of the
+  // pixels under each would elect the ground and open the wall.
+  test('a line its layer shrinks thinner than a pixel walls the fill as it '
+      'shows — faint, not voted away', () {
+    // Artwork box 4..27 at 0.4× about the canvas centre (16,16): drawn
+    // over canvas 11.2..20.8, its lines 0.4 px wide.
+    final (width, height) = filledAt(
+      CanvasPoint(x: 16, y: 16),
+      cutOf([cel('line', scale: 0.4), cel('paint')]),
+      {'line': outline(4, 27)},
+      active: 'paint',
+    );
+    expect(width, lessThan(size.width), reason: 'the wall was voted away');
+    expect(width, inInclusiveRange(7, 11));
+    expect(height, inInclusiveRange(7, 11));
+  });
+
   test('the raster lies in the space the pen is in: a HALF-SIZED paint '
       'layer fills the line art\'s inside at its own scale', () {
     // Unposed box 8..23: inside canvas 9..22 (14). The paint layer is
