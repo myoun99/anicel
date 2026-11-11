@@ -90,4 +90,17 @@ void main() {
     expect(strokeLive, [true, false]);
     expect(commits, 1);
   });
+
+  testWidgets('a view that went hears no more of the app\'s engine: the '
+      'letting go asks nothing of it, nor a frame of the screen it is '
+      'not on', (tester) async {
+    await tester.pumpWidget(view());
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: '⛔premise');
+
+    theAppsEngineLostAndLetGo();
+
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
 }
