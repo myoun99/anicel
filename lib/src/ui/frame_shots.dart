@@ -107,16 +107,9 @@ Future<ui.Image> pictureOfShot(Future<GpuShown> shot) async {
 /// [laid] — a frame [export] made ([GpuExport.blank]) — read back once as
 /// a picture: what a panel or a preview is handed of a frame made on the
 /// engine.
-ui.Image pictureOfLaid(GpuExport export, GpuShown laid) {
-  final readout = export.read(laid);
-  try {
-    return pictureOf(
-      PremultipliedRows(readout.copy(), laid.width, laid.height),
-    );
-  } finally {
-    readout.free();
-  }
-}
+ui.Image pictureOfLaid(GpuExport export, GpuShown laid) => pictureOf(
+  PremultipliedRows(export.read(laid).take(), laid.width, laid.height),
+);
 
 /// [frameShot]'s frame as the engine keeps it, for the caller to free: a
 /// frame the export made ([GpuExport.blank]) on [ground], the frame's

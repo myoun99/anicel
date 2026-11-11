@@ -2558,6 +2558,16 @@ class GpuReadout {
     });
   }
 
+  /// [copy], and the readout freed: what a writer takes of one it reads
+  /// once.
+  Uint8List take() {
+    try {
+      return copy();
+    } finally {
+      free();
+    }
+  }
+
   /// Waits for the GPU and maps its bytes — once: a second call finds
   /// them mapped.
   void map() {

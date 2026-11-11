@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -38,7 +38,7 @@ class _HeldVideoRun extends VideoExportService {
   @override
   Future<ExportWriteSummary> exportVideo({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderFrame,
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,

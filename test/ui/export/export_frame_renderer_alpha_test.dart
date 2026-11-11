@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
+
 void main() {
   EditorSessionManager session() => EditorSessionManager(
     initialProject: Project(
@@ -89,15 +91,17 @@ void main() {
         session: manager,
         ground: const ui.Color(0x00000000),
       );
-      final baked = await renderer
-          .videoRun([gap], ExportSizeMode.camera)
-          .frame(0);
+      final baked = await pictureOfFilmFrame(
+        renderer.videoRun([gap], ExportSizeMode.camera).frame(0),
+      );
       expect(await cornerAlpha(baked), 255);
       baked.dispose();
 
-      final kept = await renderer
-          .videoRun([gap], ExportSizeMode.camera, preserveAlpha: true)
-          .frame(0);
+      final kept = await pictureOfFilmFrame(
+        renderer
+            .videoRun([gap], ExportSizeMode.camera, preserveAlpha: true)
+            .frame(0),
+      );
       expect(await cornerAlpha(kept), 0);
       kept.dispose();
     });
@@ -117,9 +121,9 @@ void main() {
         session: manager,
         ground: const ui.Color(0x00000000),
       );
-      final there = await renderer
-          .videoRun([gap], ExportSizeMode.camera)
-          .frame(0);
+      final there = await pictureOfFilmFrame(
+        renderer.videoRun([gap], ExportSizeMode.camera).frame(0),
+      );
       expect(
         await cornerAlpha(there),
         255,
@@ -128,9 +132,9 @@ void main() {
       there.dispose();
 
       manager.projectSettings.setProjectBackdropNone();
-      final absent = await renderer
-          .videoRun([gap], ExportSizeMode.camera)
-          .frame(0);
+      final absent = await pictureOfFilmFrame(
+        renderer.videoRun([gap], ExportSizeMode.camera).frame(0),
+      );
       expect(await cornerAlpha(absent), 0);
       absent.dispose();
     });
@@ -203,21 +207,23 @@ void main() {
         session: covered,
         ground: const ui.Color(0x00000000),
       );
-      final coveredFrame = await coveredRenderer.videoRun(
-        [
-          ExportFrameTask(
-            cut: covered.repository
-                .requireProject()
-                .tracks
-                .first
-                .cuts
-                .single,
-            frameIndex: -1,
-          ),
-        ],
-        ExportSizeMode.camera,
-        preserveAlpha: true,
-      ).frame(0);
+      final coveredFrame = await pictureOfFilmFrame(
+        coveredRenderer.videoRun(
+          [
+            ExportFrameTask(
+              cut: covered.repository
+                  .requireProject()
+                  .tracks
+                  .first
+                  .cuts
+                  .single,
+              frameIndex: -1,
+            ),
+          ],
+          ExportSizeMode.camera,
+          preserveAlpha: true,
+        ).frame(0),
+      );
       expect(
         await cornerAlpha(coveredFrame),
         255,
@@ -234,21 +240,23 @@ void main() {
         session: uncovered,
         ground: const ui.Color(0x00000000),
       );
-      final uncoveredFrame = await uncoveredRenderer.videoRun(
-        [
-          ExportFrameTask(
-            cut: uncovered.repository
-                .requireProject()
-                .tracks
-                .first
-                .cuts
-                .single,
-            frameIndex: -1,
-          ),
-        ],
-        ExportSizeMode.camera,
-        preserveAlpha: true,
-      ).frame(0);
+      final uncoveredFrame = await pictureOfFilmFrame(
+        uncoveredRenderer.videoRun(
+          [
+            ExportFrameTask(
+              cut: uncovered.repository
+                  .requireProject()
+                  .tracks
+                  .first
+                  .cuts
+                  .single,
+              frameIndex: -1,
+            ),
+          ],
+          ExportSizeMode.camera,
+          preserveAlpha: true,
+        ).frame(0),
+      );
       expect(
         await cornerAlpha(uncoveredFrame),
         0,

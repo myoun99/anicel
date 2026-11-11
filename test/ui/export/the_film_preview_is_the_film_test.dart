@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/held_pictures.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/export_preview_probe.dart';
 
@@ -293,9 +294,11 @@ void main() {
         expect(
           await filmFrame(session, mp4, mode),
           await bytesOf(
-            await renderer
-                .videoRun([first(session)], mode, preserveAlpha: false)
-                .frame(0),
+            await pictureOfFilmFrame(
+              renderer
+                  .videoRun([first(session)], mode, preserveAlpha: false)
+                  .frame(0),
+            ),
           ),
           reason: 'one frame, whoever asks for it ($mode)',
         );

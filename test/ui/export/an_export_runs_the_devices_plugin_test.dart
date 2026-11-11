@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/no_guides_laid.dart';
@@ -133,11 +134,13 @@ void main() {
   /// Each road out, drawing the session's cut.
   final roads =
       <String, Future<ui.Image> Function(EditorSessionManager s, Cut cut)>{
-        'a frame of the film': (s, cut) => _rendererOf(s)
-            .videoRun([
-              ExportFrameTask(cut: cut, frameIndex: 0),
-            ], ExportSizeMode.canvas)
-            .frame(0),
+        'a frame of the film': (s, cut) => pictureOfFilmFrame(
+          _rendererOf(s)
+              .videoRun([
+                ExportFrameTask(cut: cut, frameIndex: 0),
+              ], ExportSizeMode.canvas)
+              .frame(0),
+        ),
         'its rows kept apart': (s, cut) => _rendererOf(s, apart: true)
             .frameRows(
               ExportFrameTask(cut: cut, frameIndex: 0),

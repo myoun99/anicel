@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -126,12 +127,29 @@ void main() {
   ];
 
   /// A video run in [mode] of every frame of [cut], in order.
-  ExportRun runOf(ExportFrameRenderer renderer, Cut cut, ExportSizeMode mode) =>
+  ExportRun<GpuShown> runOf(
+    ExportFrameRenderer renderer,
+    Cut cut,
+    ExportSizeMode mode,
+  ) =>
       renderer.videoRun(framesOf(cut), mode);
 
   Future<Uint8List> bytesOf(ui.Image image) async => (await image.toByteData(
     format: ui.ImageByteFormat.rawRgba,
   ))!.buffer.asUint8List();
+
+  /// Every frame of [cut] of a video in [mode], in order, as a preview is
+  /// handed them ([ExportFrameRenderer.renderVideoFrame]): a frame held on
+  /// the engine read back once, and handed again as the same picture.
+  Future<ui.Image> Function(int index) filmPicturesOf(
+    ExportFrameRenderer renderer,
+    Cut cut,
+    ExportSizeMode mode,
+  ) {
+    final plan = framesOf(cut);
+    return (index) =>
+        renderer.renderVideoFrame(plan[index], mode, preserveAlpha: false);
+  }
 
   /// Every door a frame comes through — opened over a renderer and a cut,
   /// the frame at each index.
@@ -149,9 +167,9 @@ void main() {
               ExportSizeMode.canvas,
             ),
         'a canvas-size video frame': (renderer, cut) =>
-            runOf(renderer, cut, ExportSizeMode.canvas).frame,
+            filmPicturesOf(renderer, cut, ExportSizeMode.canvas),
         'a camera video frame (the track stack)': (renderer, cut) =>
-            runOf(renderer, cut, ExportSizeMode.camera).frame,
+            filmPicturesOf(renderer, cut, ExportSizeMode.camera),
       };
 
   group('f1 held for frames 0–2, then f2, f3, f4 one frame each', () {
@@ -338,10 +356,10 @@ void main() {
           addTearDown(renderer.dispose);
           final run = runOf(renderer, cut, mode);
 
-          (await run.frame(0)).dispose();
+          await run.frame(0);
           final made = renderer.debugPicturesMade;
           for (var index = 1; index < 4; index += 1) {
-            (await run.frame(index)).dispose();
+            await run.frame(index);
           }
           expect(
             renderer.debugPicturesMade,
@@ -353,7 +371,7 @@ void main() {
             2,
             reason: 'f1 and o1, read for frame 0',
           );
-          (await run.frame(4)).dispose();
+          await run.frame(4);
           expect(
             renderer.debugCelReads,
             2 + 1,
@@ -405,7 +423,7 @@ void main() {
     );
 
     /// A video run in [mode] of the O.L's first four frames, 12–15.
-    ExportRun mixedRun(
+    ExportRun<GpuShown> mixedRun(
       ExportFrameRenderer renderer,
       EditorSessionManager s,
       ExportSizeMode mode,
@@ -429,7 +447,7 @@ void main() {
           addTearDown(renderer.dispose);
           final run = mixedRun(renderer, s, mode);
 
-          (await run.frame(0)).dispose();
+          await run.frame(0);
           final made = renderer.debugPicturesMade;
           expect(
             made,
@@ -437,7 +455,7 @@ void main() {
             reason: 'LIVENESS: each cut\'s picture, and the mix',
           );
           for (var index = 1; index < 4; index += 1) {
-            (await run.frame(index)).dispose();
+            await run.frame(index);
             expect(
               renderer.debugPicturesMade,
               made + index,
@@ -526,17 +544,23 @@ void main() {
         image.debugGetOpenHandleStackTraces()!.length;
 
     /// Every run whose frames are held pictures, opened over a renderer and
-    /// the frames of a cut.
+    /// the frames of a cut: the picture at each index.
     final doors =
-        <String, ExportRun Function(ExportFrameRenderer renderer, Cut cut)>{
+        <
+          String,
+          Future<ui.Image> Function(int index) Function(
+            ExportFrameRenderer renderer,
+            Cut cut,
+          )
+        >{
           'a canvas-size video frame': (renderer, cut) =>
-              renderer.videoRun(framesOf(cut), ExportSizeMode.canvas),
+              filmPicturesOf(renderer, cut, ExportSizeMode.canvas),
           'a camera video frame (the track stack)': (renderer, cut) =>
-              renderer.videoRun(framesOf(cut), ExportSizeMode.camera),
+              filmPicturesOf(renderer, cut, ExportSizeMode.camera),
           'a canvas-size picture of a sequence': (renderer, cut) =>
-              renderer.stillRun(framesOf(cut), ExportSizeMode.canvas),
+              renderer.stillRun(framesOf(cut), ExportSizeMode.canvas).frame,
           'a camera-size picture of a sequence': (renderer, cut) =>
-              renderer.stillRun(framesOf(cut), ExportSizeMode.camera),
+              renderer.stillRun(framesOf(cut), ExportSizeMode.camera).frame,
         };
 
     for (final MapEntry(key: door, value: open) in doors.entries) {
@@ -551,7 +575,7 @@ void main() {
         addTearDown(renderer.dispose);
         return (
           renderer: renderer,
-          frameAt: open(renderer, s.requireActiveCut).frame,
+          frameAt: open(renderer, s.requireActiveCut),
         );
       }
 
@@ -655,11 +679,11 @@ void main() {
         parkEvery(s);
         final renderer = ExportFrameRenderer(session: s);
         addTearDown(renderer.dispose);
-        final frameAt = runOf(
+        final frameAt = filmPicturesOf(
           renderer,
           s.requireActiveCut,
           ExportSizeMode.camera,
-        ).frame;
+        );
 
         final first = await frameAt(0);
         final made = renderer.debugPicturesMade;
@@ -825,7 +849,7 @@ void main() {
           );
           final renderer = ExportFrameRenderer(session: s);
           addTearDown(renderer.dispose);
-          final frameAt = runOf(renderer, cut, mode).frame;
+          final frameAt = filmPicturesOf(renderer, cut, mode);
 
           final unnamed = await frameAt(0);
           final named = await frameAt(1);
@@ -877,16 +901,10 @@ void main() {
         addTearDown(renderer.dispose);
         final task = ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0);
 
-        (await renderer
-                .videoRun([task], ExportSizeMode.camera)
-                .frame(0))
-            .dispose();
+        await renderer.videoRun([task], ExportSizeMode.camera).frame(0);
         final made = renderer.debugPicturesMade;
         expect(made, 2, reason: 'LIVENESS: the cut\'s picture and the frame');
-        (await renderer
-                .videoRun([task], ExportSizeMode.canvas)
-                .frame(0))
-            .dispose();
+        await renderer.videoRun([task], ExportSizeMode.canvas).frame(0);
         expect(renderer.debugPicturesMade, made + 1);
       });
     });

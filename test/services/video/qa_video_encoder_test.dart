@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/os_video_codec.dart';
@@ -76,12 +78,10 @@ void main() {
     return ftyp && moov;
   }
 
-  /// One flat 64x48 picture, for the movies whose subject is not the picture.
-  Future<ui.Image> flatPicture() {
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
-    return recorder.endRecording().toImage(64, 48);
-  }
+  /// One flat 64x48 frame on the engine, for the movies whose subject is not
+  /// the picture.
+  Future<GpuShown> flatFrame() =>
+      filmFrameIn(const ui.Color(0xFF336699), width: 64, height: 48);
 
   test('the capability answer matches the OS', () {
     watch.step('the capability: asking for the encoder');
@@ -250,15 +250,11 @@ void main() {
       wav16Bytes(int16PcmOf(mixSamples), sampleRate: 48000, channels: 2),
     );
 
-    Future<ui.Image?> render(int index) async {
-      final recorder = ui.PictureRecorder();
-      final canvas = ui.Canvas(recorder);
-      canvas.drawRect(
-        const ui.Rect.fromLTWH(0, 0, 64, 48),
-        ui.Paint()..color = ui.Color.fromARGB(255, index * 10, 128, 200),
-      );
-      return recorder.endRecording().toImage(64, 48);
-    }
+    Future<GpuShown?> render(int index) => filmFrameIn(
+      ui.Color.fromARGB(255, index * 10, 128, 200),
+      width: 64,
+      height: 48,
+    );
 
     final service = VideoExportService(
       encoderResolver: () => QaVideoEncoder.instance,
@@ -267,7 +263,7 @@ void main() {
     watch.step('the service: exporting the movie');
     final summary = await service.exportVideo(
       count: 12,
-      renderImage: render,
+      renderFrame: render,
       outputFilePath: outputPath,
       frameRate: ProjectFrameRate.fps24,
       audioMixPath: mixPath,
@@ -323,7 +319,7 @@ void main() {
       watch.step('a led movie: exporting $name');
       final summary = await service.exportVideo(
         count: 12,
-        renderImage: (_) => flatPicture(),
+        renderFrame: (_) => flatFrame(),
         outputFilePath: outputPath,
         frameRate: ProjectFrameRate.fps24,
         audioMixPath: mixPath,
@@ -374,9 +370,9 @@ void main() {
     }
     final ffmpeg = FakeFfmpegProcess();
     final rendered = <int>[];
-    Future<ui.Image?> render(int index) {
+    Future<GpuShown?> render(int index) {
       rendered.add(index);
-      return flatPicture();
+      return flatFrame();
     }
 
     final service = VideoExportService(
@@ -386,7 +382,7 @@ void main() {
     watch.step('a refused job: exporting the movie');
     final summary = await service.exportVideo(
       count: 3,
-      renderImage: render,
+      renderFrame: render,
       outputFilePath: '${directory.path}/refused.mov',
       frameRate: ProjectFrameRate.fps24,
       container: ExportVideoContainer.mov,
@@ -403,23 +399,17 @@ void main() {
     if (osVideoEncoderOrSkip() == null) {
       return;
     }
-    final held = await flatPicture();
-    addTearDown(held.dispose);
+    final held = await flatFrame();
     final service = VideoExportService(
       encoderResolver: () => QaVideoEncoder.instance,
     );
     final outputPath = '${directory.path}/held.mp4';
     final readBefore = VideoExportService.debugReadbacks;
-    final handed = <ui.Image>[];
 
     watch.step('a held frame: exporting the movie');
     final summary = await service.exportVideo(
       count: 12,
-      renderImage: (_) async {
-        final again = held.clone();
-        handed.add(again);
-        return again;
-      },
+      renderFrame: (_) async => held,
       outputFilePath: outputPath,
       frameRate: ProjectFrameRate.fps24,
     );
@@ -427,11 +417,5 @@ void main() {
     expect(summary, (written: 12, processed: 12));
     expect(VideoExportService.debugReadbacks - readBefore, 1);
     expect(looksLikeMp4(outputPath), isTrue);
-    expect(
-      handed.every((image) => image.debugDisposed),
-      isTrue,
-      reason: 'each picture handed is let go of — the one kept to tell the '
-          'next by, when the movie is finished',
-    );
   });
 }

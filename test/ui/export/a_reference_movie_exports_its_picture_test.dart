@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/stand_in_movie.dart';
@@ -98,9 +99,11 @@ void main() {
     final s = await placed(tester);
 
     await tester.runAsync(() async {
-      final image = await ExportFrameRenderer(session: s).videoRun([
-        ExportFrameTask(cut: s.requireActiveCut, frameIndex: 5),
-      ], ExportSizeMode.camera).frame(0);
+      final image = await pictureOfFilmFrame(
+        ExportFrameRenderer(session: s).videoRun([
+          ExportFrameTask(cut: s.requireActiveCut, frameIndex: 5),
+        ], ExportSizeMode.camera).frame(0),
+      );
       expect(await centreIsRed(image), isTrue, reason: 'the take, not paper');
       image.dispose();
     });

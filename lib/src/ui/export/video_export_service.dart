@@ -4,14 +4,15 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:image/image.dart' as img;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/project_frame_rate.dart';
+import '../../native/app_gpu_engine.dart' show appGpuExport;
 import '../../native/qa_video_encoder.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../../services/media/media_byte_source.dart' show MediaFileBytes;
@@ -253,6 +254,11 @@ class VideoExportService {
 
   /// Walks the [count] frames into the movie at [outputFilePath].
   ///
+  /// Each frame is made on the engine and stays its maker's ([renderFrame]:
+  /// the renderer holds one until the frame after the next is asked —
+  /// `ExportFrameRenderer`'s held frames): the sink reads what it writes of
+  /// it before the next is asked, and lets go of none.
+  ///
   /// The movie is the size of the first frame that renders
   /// ([_firstRenderedFrame]), and every frame after it is held to that: a
   /// raw frame of another size would be read at this one by whichever sink
@@ -265,7 +271,7 @@ class VideoExportService {
   /// for ffmpeg.
   Future<ExportWriteSummary> exportVideo({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderFrame,
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
@@ -283,7 +289,7 @@ class VideoExportService {
     }
     final probe = await _firstRenderedFrame(
       count: count,
-      renderImage: renderImage,
+      renderFrame: renderFrame,
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
@@ -292,7 +298,7 @@ class VideoExportService {
     if (probe.cancelled) {
       return (written: 0, processed: processed);
     }
-    final first = probe.image;
+    final first = probe.frame;
     if (first == null) {
       // Nothing rendered at all: no frame says how large the movie is, so
       // there is no encoder to open.
@@ -300,61 +306,65 @@ class VideoExportService {
     }
     final width = first.width;
     final height = first.height;
-    final _FrameSink sink;
-    try {
-      sink = await _openSink(
-        width: width,
-        height: height,
-        outputFilePath: outputFilePath,
-        frameRate: frameRate,
-        audioMixPath: audioMixPath,
-        soundBefore: soundBefore,
-        container: container,
-        codec: codec,
-        alpha: alpha,
-        bitrateBps: bitrateBps,
-        gif: gif,
-      );
-    } on Object {
-      first.dispose();
-      rethrow;
-    }
+    final sink = await _openSink(
+      width: width,
+      height: height,
+      outputFilePath: outputFilePath,
+      frameRate: frameRate,
+      audioMixPath: audioMixPath,
+      soundBefore: soundBefore,
+      container: container,
+      codec: codec,
+      alpha: alpha,
+      bitrateBps: bitrateBps,
+      gif: gif,
+    );
+    var abandoned = false;
 
     /// Ends a run that cannot go on: [why], or what the sink says of it.
     Future<Never> giveUp([String? why]) async {
+      abandoned = true;
       final said = await sink.abandon();
       throw VideoExportException(why ?? said);
     }
 
-    if (!await sink.take(first)) {
-      await giveUp();
-    }
     var cancelled = false;
-    while (index < count) {
-      // Between the frame just taken and the next — so a press on Cancel
-      // during it is heard at once.
-      await _appsTurn();
-      if (isCancelled?.call() ?? false) {
-        cancelled = true;
-        break;
+    try {
+      if (!await sink.take(first)) {
+        await giveUp();
       }
-      final image = await renderImage(index);
-      index += 1;
-      if (image != null) {
-        if (image.width != width || image.height != height) {
-          final size = '${image.width}x${image.height}';
-          image.dispose();
-          await giveUp(
-            'video export: frame $index is $size in a movie of '
-            '${width}x$height',
-          );
+      while (index < count) {
+        // Between the frame just taken and the next — so a press on Cancel
+        // during it is heard at once.
+        await _appsTurn();
+        if (isCancelled?.call() ?? false) {
+          cancelled = true;
+          break;
         }
-        if (!await sink.take(image)) {
-          await giveUp();
+        final frame = await renderFrame(index);
+        index += 1;
+        if (frame != null) {
+          if (frame.width != width || frame.height != height) {
+            await giveUp(
+              'video export: frame $index is ${frame.width}x${frame.height} '
+              'in a movie of ${width}x$height',
+            );
+          }
+          if (!await sink.take(frame)) {
+            await giveUp();
+          }
         }
+        processed += 1;
+        onProgress?.call(processed, count);
       }
-      processed += 1;
-      onProgress?.call(processed, count);
+    } on Object {
+      // ⛔A run ends ONE of two ways ([_FrameSink]) — and one a frame threw
+      // in, made or taken (the engine refused it, or lost its device), is
+      // abandoned too, the error going on as it was.
+      if (!abandoned) {
+        await sink.abandon();
+      }
+      rethrow;
     }
     await sink.finish(cancelled: cancelled);
     return (written: sink.written, processed: processed);
@@ -375,12 +385,12 @@ class VideoExportService {
   ///
   /// ⚠️Its size is the geometry the encoder opens with, so the search
   /// cannot be skipped: a leading gap renders null and would open the
-  /// encoder at nothing. A null [image] with [cancelled] false means the
+  /// encoder at nothing. A null [frame] with [cancelled] false means the
   /// whole range rendered nothing.
-  Future<({ui.Image? image, int nextIndex, int processed, bool cancelled})>
+  Future<({GpuShown? frame, int nextIndex, int processed, bool cancelled})>
   _firstRenderedFrame({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderFrame,
     required void Function(int completed, int total)? onProgress,
     required bool Function()? isCancelled,
   }) async {
@@ -389,19 +399,19 @@ class VideoExportService {
     while (index < count) {
       if (isCancelled?.call() ?? false) {
         return (
-          image: null,
+          frame: null,
           nextIndex: index,
           processed: processed,
           cancelled: true,
         );
       }
-      final image = await renderImage(index);
+      final frame = await renderFrame(index);
       index += 1;
       processed += 1;
       onProgress?.call(processed, count);
-      if (image != null) {
+      if (frame != null) {
         return (
-          image: image,
+          frame: frame,
           nextIndex: index,
           processed: processed,
           cancelled: false,
@@ -409,7 +419,7 @@ class VideoExportService {
       }
     }
     return (
-      image: null,
+      frame: null,
       nextIndex: index,
       processed: processed,
       cancelled: false,
@@ -534,13 +544,14 @@ class VideoExportService {
   }
 }
 
-/// The pixels of the frame a sink took last, read off the GPU in [format].
+/// What a sink writes of the frame it took last, read off the GPU by
+/// [_read] — the conversion its writer takes, made on the engine before the
+/// readback (gpu-export-path ①⑶).
 ///
 /// 🚨A FRAME THAT IS THE PICTURE BEFORE IT IS NOT READ BACK. The renderer
-/// hands such a frame as the SAME image (`ExportFrameRenderer`'s held
-/// frames; `ui.Image.isCloneOf`), and one image is one set of bytes — so
-/// they go in again as they were read. Nothing here decides that two
-/// pictures look alike.
+/// hands such a frame as the SAME frame (`ExportFrameRenderer`'s held
+/// frames), and one frame is one set of bytes — so they go in again as
+/// they were read. Nothing here decides that two pictures look alike.
 ///
 /// ↩️Every frame was read back (F-289, measured 2026-10-07: 27 ms a frame
 /// of 960×540 beside 5.5 ms for the OS encoder to take it — on a film
@@ -550,35 +561,25 @@ class VideoExportService {
 /// writer (`PngSequenceExportService`'s `_BytesBefore`, 2026-10-13). Two
 /// are left apart until a third keeps something of the image before (the
 /// rule of three) — that one makes them one.
-class _FramePixels {
-  _FramePixels(this.format);
+class _FramePixels<T extends Object> {
+  _FramePixels(this._read);
 
-  final ui.ImageByteFormat format;
+  final T Function(GpuShown frame) _read;
 
-  ui.Image? _image;
-  Uint8List? _bytes;
+  GpuShown? _frame;
+  T? _pixels;
 
-  /// [image]'s pixels — and [image] is this's from here on: kept to know
-  /// the next frame by, or let go at once when it is the one already kept.
-  /// Null when the engine handed nothing back.
-  Future<Uint8List?> of(ui.Image image) async {
-    final kept = _image;
-    if (kept != null && image.isCloneOf(kept)) {
-      image.dispose();
-      return _bytes;
+  /// What [_read] reads of [frame] — and [frame] is known from here on, to
+  /// know the next frame by. By its identity alone: it is its maker's, and
+  /// nothing here reads it again or lets go of it.
+  T of(GpuShown frame) {
+    final pixels = _pixels;
+    if (pixels != null && identical(frame, _frame)) {
+      return pixels;
     }
-    kept?.dispose();
-    _image = image;
-    _bytes = null;
+    _frame = frame;
     VideoExportService.debugReadbacks += 1;
-    final data = await image.toByteData(format: format);
-    return _bytes = data?.buffer.asUint8List();
-  }
-
-  void dispose() {
-    _image?.dispose();
-    _image = null;
-    _bytes = null;
+    return _pixels = _read(frame);
   }
 }
 
@@ -592,9 +593,10 @@ abstract interface class _FrameSink {
   /// How many frames have gone in.
   int get written;
 
-  /// Takes [image]'s pixels and lets go of it. False means the sink can
-  /// take no more; the run is [abandon]ed.
-  Future<bool> take(ui.Image image);
+  /// Writes what it takes of [frame] — its maker's, read here and let go
+  /// of by nobody here. False means the sink can take no more; the run is
+  /// [abandon]ed.
+  Future<bool> take(GpuShown frame);
 
   /// Ends a run that reached its end or was [cancelled]: the file is
   /// finalized, and a cancelled run keeps the playable partial it got to.
@@ -632,18 +634,16 @@ class _OsEncoderFeed implements _FrameSink {
   int written = 0;
   int _audioCursor = 0;
 
-  /// Exactly what the encoder takes: the renderer's own premultiplied
-  /// rows.
-  final _FramePixels _pixels = _FramePixels(ui.ImageByteFormat.rawRgba);
+  /// Exactly what the encoder takes: the frame's own premultiplied rows.
+  final _FramePixels<Uint8List> _pixels = _FramePixels(
+    (frame) => appGpuExport.read(frame).take(),
+  );
 
-  /// Writes [image] and the audio that now owes for it. False means the
+  /// Writes [frame] and the audio that now owes for it. False means the
   /// encoder refused something and the run is over.
   @override
-  Future<bool> take(ui.Image image) async {
-    final rgba = await _pixels.of(image);
-    if (rgba == null) {
-      return false;
-    }
+  Future<bool> take(GpuShown frame) async {
+    final rgba = _pixels.of(frame);
     // Before the first frame, and so before any of its sound.
     if (written == 0 && !await _fillTheLead()) {
       return false;
@@ -677,7 +677,6 @@ class _OsEncoderFeed implements _FrameSink {
   /// mid-run yet, so `&& !cancelled` mutates away green.
   @override
   Future<void> finish({required bool cancelled}) async {
-    _pixels.dispose();
     if (!encoder.finish() && !cancelled) {
       final detail = encoder.lastError;
       throw VideoExportException(
@@ -689,7 +688,6 @@ class _OsEncoderFeed implements _FrameSink {
   /// A failed feed aborts the file.
   @override
   Future<String> abandon() async {
-    _pixels.dispose();
     final detail = encoder.lastError;
     encoder.abort();
     return detail.isEmpty ? 'video export: the OS encoder failed' : detail;
@@ -743,7 +741,13 @@ class _OsEncoderFeed implements _FrameSink {
 /// the frame that is the picture before it is the same bytes
 /// ([_FramePixels]), never two pictures found to look alike.
 class _GifFile implements _FrameSink {
-  _GifFile._(this._isolate, this._port, this._answers, this._requests);
+  _GifFile._(
+    this._isolate,
+    this._port,
+    this._answers,
+    this._requests, {
+    required bool alpha,
+  }) : _alpha = alpha;
 
   /// Starts the worker that writes [gif], and waits until it listens.
   static Future<_GifFile> open(_Gif gif) async {
@@ -761,7 +765,7 @@ class _GifFile implements _FrameSink {
       port.close();
       throw const VideoExportException('GIF: the writer did not start');
     }
-    return _GifFile._(isolate, port, answers, listening);
+    return _GifFile._(isolate, port, answers, listening, alpha: gif.alpha);
   }
 
   final Isolate _isolate;
@@ -769,15 +773,36 @@ class _GifFile implements _FrameSink {
   final StreamIterator<Object?> _answers;
   final SendPort _requests;
 
-  /// STRAIGHT alpha: a pixel the picture leaves part clear keeps the
-  /// colour it was laid with, where the GIF keeps it opaque.
-  final _FramePixels _pixels = _FramePixels(
-    ui.ImageByteFormat.rawStraightRgba,
+  /// Whether the GIF keeps a clear colour ([_Gif.alpha]).
+  final bool _alpha;
+
+  /// A picture as the GIF takes it, from the engine: its colours with the
+  /// alpha cut — at [_gifClearUnder] where the GIF keeps a clear colour,
+  /// nowhere where it keeps none —, each pixel left whole in the colour it
+  /// was laid with, and the pixels under the cut (over_ground.wgsl,
+  /// clear.wgsl): three bytes and a bit a pixel.
+  late final _FramePixels<_GifPixels> _pixels = _FramePixels(
+    (frame) => (
+      rgb: appGpuExport
+          .overGround(
+            frame,
+            frame.width,
+            frame.height,
+            0,
+            cut: _alpha ? _gifClearUnder : 0,
+          )
+          .take(),
+      clear: _alpha
+          ? appGpuExport
+                .clear(frame, frame.width, frame.height, _gifClearUnder)
+                .take()
+          : null,
+    ),
   );
 
-  /// The bytes of the picture last sent: a frame that hands these again is
-  /// that picture, held.
-  Uint8List? _sent;
+  /// The picture last sent: a frame that hands it again is that picture,
+  /// held.
+  _GifPixels? _sent;
 
   /// What the worker said when it could not go on.
   String? _complaint;
@@ -799,14 +824,16 @@ class _GifFile implements _FrameSink {
   }
 
   @override
-  Future<bool> take(ui.Image image) async {
-    final rgba = await _pixels.of(image);
-    if (rgba == null) {
-      return false;
-    }
-    if (!identical(rgba, _sent)) {
-      _sent = rgba;
-      if (!await _ask((TransferableTypedData.fromList([rgba]), written))) {
+  Future<bool> take(GpuShown frame) async {
+    final pixels = _pixels.of(frame);
+    if (!identical(pixels, _sent)) {
+      _sent = pixels;
+      final (:rgb, :clear) = pixels;
+      final picture = (
+        TransferableTypedData.fromList([rgb]),
+        clear == null ? null : TransferableTypedData.fromList([clear]),
+      );
+      if (!await _ask((picture, written))) {
         return false;
       }
     }
@@ -818,7 +845,6 @@ class _GifFile implements _FrameSink {
   /// finalize a playable partial.
   @override
   Future<void> finish({required bool cancelled}) async {
-    _pixels.dispose();
     final done = await _ask((null, written));
     _close();
     if (!done && !cancelled) {
@@ -828,7 +854,6 @@ class _GifFile implements _FrameSink {
 
   @override
   Future<String> abandon() async {
-    _pixels.dispose();
     _close();
     return _complaint ?? 'GIF: the writer failed';
   }
@@ -855,6 +880,18 @@ typedef _Gif = ({
 /// What [_writeGif] is started with.
 typedef _GifJob = ({SendPort answers, _Gif gif});
 
+/// A picture of a GIF as the engine reads it back ([_GifFile._pixels]):
+/// three bytes a pixel, and where the GIF keeps a clear colour a bit a
+/// pixel for the clear ones — pixel i bit i % 8 of byte i ~/ 8.
+typedef _GifPixels = ({Uint8List rgb, Uint8List? clear});
+
+/// [_GifPixels] on its way to [_writeGif].
+typedef _GifPicture = (TransferableTypedData, TransferableTypedData?);
+
+/// A pixel under half covered is the GIF's clear colour, the rest whole
+/// (`_gifPictureWithClear`'s call).
+const int _gifClearUnder = 128;
+
 /// The shortest a GIF can show a picture as it was meant: browsers show a
 /// delay of 0 or 1 hundredth as ten, so a picture the film holds for less
 /// is let go and the next takes its time — the film keeps its length.
@@ -877,9 +914,9 @@ Future<void> _writeGif(_GifJob job) async {
   img.Image? held;
   var heldFrom = 0;
   await for (final request in requests) {
-    final (pixels, frame) = request as (TransferableTypedData?, int);
+    final (picture, frame) = request as (_GifPicture?, int);
     final shown = held == null ? 0 : hundredths(frame) - hundredths(heldFrom);
-    if (pixels == null) {
+    if (picture == null) {
       if (held != null) {
         encoder.addFrame(held, duration: math.max(shown, _gifShortestDelay));
       }
@@ -900,7 +937,8 @@ Future<void> _writeGif(_GifJob job) async {
       encoder.addFrame(held, duration: shown);
       heldFrom = frame;
     }
-    held = _gifPictureOf(pixels.materialize(), gif);
+    final (rgb, clear) = picture;
+    held = _gifPictureOf(rgb.materialize(), clear?.materialize(), gif);
     job.answers.send(true);
   }
 }
@@ -925,24 +963,27 @@ Uint8List _playedOnce(Uint8List bytes) {
   ]);
 }
 
-/// [rgba]'s picture cut to [gif]'s palette ([ExportGifSettings]).
+/// The picture of [colours] cut to [gif]'s palette ([ExportGifSettings]).
 ///
-/// Where the GIF keeps a clear colour ([_Gif.alpha]) a pixel under half
-/// covered is that colour ([_gifPictureWithClear]); a movie the app writes
-/// is opaque otherwise, and the channel is left out.
-img.Image _gifPictureOf(ByteBuffer rgba, _Gif gif) {
-  final from = rgba.asUint8List();
+/// Where the GIF keeps a clear colour ([_Gif.alpha]) the pixels [clearBits]
+/// marks — under half covered — are that colour ([_gifPictureWithClear]);
+/// a movie the app writes is opaque otherwise, and the channel is left
+/// out. ↩️The worker cut the alpha and parted the colours itself, from the
+/// frame's straight RGBA: the engine does both before the readback
+/// ([_GifFile._pixels]).
+img.Image _gifPictureOf(ByteBuffer colours, ByteBuffer? clearBits, _Gif gif) {
+  final rgb = colours.asUint8List();
   final count = gif.width * gif.height;
-  final rgb = Uint8List(count * 3);
   final clear = Uint8List(count);
   var clearCount = 0;
-  for (var pixel = 0, source = 0; pixel < count; pixel += 1, source += 4) {
-    if (gif.alpha && from[source + 3] < 128) {
-      clear[pixel] = 1;
-      clearCount += 1;
-      continue;
+  if (clearBits != null) {
+    final bits = clearBits.asUint8List();
+    for (var pixel = 0; pixel < count; pixel += 1) {
+      if ((bits[pixel >> 3] >> (pixel & 7)) & 1 == 1) {
+        clear[pixel] = 1;
+        clearCount += 1;
+      }
     }
-    rgb.setRange(pixel * 3, pixel * 3 + 3, from, source);
   }
   if (clearCount > 0) {
     return _gifPictureWithClear(rgb, clear, count - clearCount, gif);
@@ -1090,14 +1131,17 @@ class _FfmpegPipe implements _FrameSink {
   /// STRAIGHT alpha, as `rgba` means to ffmpeg — and as the PNGs this pipe
   /// used to carry held it, so a pixel the picture leaves part clear goes
   /// in with the colour it went in with before.
-  final _FramePixels _pixels = _FramePixels(
-    ui.ImageByteFormat.rawStraightRgba,
+  final _FramePixels<Uint8List> _pixels = _FramePixels(
+    (frame) => appGpuExport.straight(frame, frame.width, frame.height).take(),
   );
 
   @override
-  Future<bool> take(ui.Image image) async {
+  Future<bool> take(GpuShown frame) async {
+    // Read before the pipe is asked anything: the engine refusing a frame
+    // is no broken pipe.
+    final rgba = _pixels.of(frame);
     try {
-      _process.stdin.add((await _pixels.of(image))!);
+      _process.stdin.add(rgba);
       await _process.stdin.flush();
       written += 1;
       return true;
@@ -1123,7 +1167,6 @@ class _FfmpegPipe implements _FrameSink {
   /// Closes the pipe and waits ffmpeg out: how it exited, and whether the
   /// pipe was already gone when it was closed.
   Future<({int exitCode, bool pipeBroken})> _waitOut() async {
-    _pixels.dispose();
     var pipeBroken = false;
     try {
       await _process.stdin.close();

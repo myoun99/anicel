@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 
 /// What an output keeps of the cut's heads (I-65, 유저 2026-10-25):
@@ -240,7 +241,7 @@ void main() {
     (
       'a film',
       (ExportFrameRenderer renderer, ExportFrameTask task, ExportSizeMode m) =>
-          renderer.videoRun([task], m).frame(0),
+          pictureOfFilmFrame(renderer.videoRun([task], m).frame(0)),
     ),
     (
       'a picture sequence',

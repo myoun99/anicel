@@ -1,12 +1,12 @@
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/camera_pose.dart';
@@ -70,7 +70,7 @@ class _AMovieOfOneByte extends VideoExportService {
   @override
   Future<ExportWriteSummary> exportVideo({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderFrame,
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,

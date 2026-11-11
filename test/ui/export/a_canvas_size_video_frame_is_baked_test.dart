@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 
 /// A CANVAS-size video frame is baked: the backdrop under it, the V row's
@@ -156,13 +157,15 @@ void main() {
       layerFx: layerFx,
     );
     final image = outputSize == null
-        ? await renderer
-              .videoRun(
-                [task],
-                ExportSizeMode.canvas,
-                preserveAlpha: preserveAlpha,
-              )
-              .frame(0)
+        ? await pictureOfFilmFrame(
+            renderer
+                .videoRun(
+                  [task],
+                  ExportSizeMode.canvas,
+                  preserveAlpha: preserveAlpha,
+                )
+                .frame(0),
+          )
         : await renderer.renderVideoFrame(
             task,
             ExportSizeMode.canvas,

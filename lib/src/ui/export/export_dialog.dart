@@ -3017,7 +3017,7 @@ class ExportDialogState extends State<ExportDialog> {
     try {
       return await widget.videoExportService.exportVideo(
         count: plan.length,
-        renderImage: run.frame,
+        renderFrame: run.frame,
         outputFilePath: path,
         frameRate: _session.projectSettings.projectFrameRate,
         audioMixPath: audioMixPath,

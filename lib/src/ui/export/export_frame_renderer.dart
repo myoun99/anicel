@@ -1183,22 +1183,24 @@ class ExportFrameRenderer {
 
   /// A video run of [plan] in [mode] — its frames, drawn in order
   /// ([ExportRun.frame]), each made of the cuts the frame shows
-  /// ([renderVideoFrame]), each drawn through its view ([_viewFor]).
-  ExportRun videoRun(
+  /// ([filmFrame]), each drawn through its view ([_viewFor]).
+  ExportRun<GpuShown> videoRun(
     List<ExportFrameTask> plan,
     ExportSizeMode mode, {
     bool preserveAlpha = false,
   }) => ExportRun._(
     plan: plan,
-    draw: (task) => renderVideoFrame(task, mode, preserveAlpha: preserveAlpha),
+    draw: (task) => filmFrame(task, mode, preserveAlpha: preserveAlpha),
   );
 
   /// A run of STILLS of [plan] in [mode] — a picture sequence's frames,
   /// each the picture [renderComposite] makes of its task, held as a video
   /// run holds its own: a frame made of what the frame before it was made
   /// of is that frame's picture, handed again ([_stillFrame]).
-  ExportRun stillRun(List<ExportFrameTask> plan, ExportSizeMode mode) =>
-      ExportRun._(plan: plan, draw: (task) => _stillFrame(task, mode));
+  ExportRun<ui.Image> stillRun(
+    List<ExportFrameTask> plan,
+    ExportSizeMode mode,
+  ) => ExportRun._(plan: plan, draw: (task) => _stillFrame(task, mode));
 
   /// The picture [renderComposite] makes of [task] in [mode] — at its full
   /// size, without the names — held as a cut's picture is ([_cutPicture]),
@@ -1282,27 +1284,45 @@ class ExportFrameRenderer {
   /// (export-film-preview-is-not-the-film). ↩️The window's preview of a film
   /// drew [renderComposite]'s still instead: no stage, no other track, no
   /// pose, no fade, and a checkerboard where the film lays its paper.
+  ///
+  /// A picture of the caller's own to dispose: the frame [filmFrame] makes,
+  /// read back once ([_handed]) — what a preview shows.
   Future<ui.Image> renderVideoFrame(
     ExportFrameTask task,
     ExportSizeMode mode, {
     required bool preserveAlpha,
     CanvasSize? outputSize,
-  }) async {
+  }) async => _handed(
+    await filmFrame(
+      task,
+      mode,
+      preserveAlpha: preserveAlpha,
+      outputSize: outputSize,
+    ),
+  );
+
+  /// [renderVideoFrame]'s frame as the engine holds it — what a film's
+  /// writer takes (gpu-export-path ①⑶): this renderer's, held until the
+  /// frame after the next is asked ([HeldPictures]), and freed by it.
+  Future<GpuShown> filmFrame(
+    ExportFrameTask task,
+    ExportSizeMode mode, {
+    required bool preserveAlpha,
+    CanvasSize? outputSize,
+  }) {
     _startFrame();
-    return _handed(
-      await switch (mode) {
-        ExportSizeMode.camera => _renderTrackStackForVideo(
-          task,
-          preserveAlpha: preserveAlpha,
-          outputSize: outputSize,
-        ),
-        ExportSizeMode.canvas => _canvasVideoFrame(
-          task,
-          preserveAlpha: preserveAlpha,
-          outputSize: outputSize,
-        ),
-      },
-    );
+    return switch (mode) {
+      ExportSizeMode.camera => _renderTrackStackForVideo(
+        task,
+        preserveAlpha: preserveAlpha,
+        outputSize: outputSize,
+      ),
+      ExportSizeMode.canvas => _canvasVideoFrame(
+        task,
+        preserveAlpha: preserveAlpha,
+        outputSize: outputSize,
+      ),
+    };
   }
 
   /// The CANVAS-size video frame of [task] ([renderVideoFrame]): the
@@ -2117,22 +2137,27 @@ class ExportFrameRenderer {
 
 /// The frames of a run — a video's ([ExportFrameRenderer.videoRun]) or a
 /// picture sequence's ([ExportFrameRenderer.stillRun]).
-final class ExportRun {
+///
+/// ⚠️[T] says whose a frame is: a video's is a frame on the engine, the
+/// renderer's own ([ExportFrameRenderer.filmFrame]); a still's is a
+/// picture of the caller's own to dispose — until the stills' writers take
+/// the engine's frames too (gpu-export-path ①⑶).
+final class ExportRun<T extends Object> {
   ExportRun._({
     required List<ExportFrameTask> plan,
-    required Future<ui.Image> Function(ExportFrameTask task) draw,
+    required Future<T> Function(ExportFrameTask task) draw,
   }) : _plan = plan,
        _draw = draw;
 
   final List<ExportFrameTask> _plan;
-  final Future<ui.Image> Function(ExportFrameTask task) _draw;
+  final Future<T> Function(ExportFrameTask task) _draw;
 
-  /// Frame [index] of the run, a picture of the caller's own to dispose.
+  /// Frame [index] of the run.
   ///
   /// ⚠️One at a time, in order: a frame holds what the frame after it may
   /// show again for one more frame ([HeldPictures]), and lets go of what
   /// the frame before it held.
-  Future<ui.Image> frame(int index) => _draw(_plan[index]);
+  Future<T> frame(int index) => _draw(_plan[index]);
 }
 
 /// The cuts a canvas-size video frame mixes, when a transition puts two in

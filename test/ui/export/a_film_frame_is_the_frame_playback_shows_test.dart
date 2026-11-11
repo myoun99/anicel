@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -34,7 +35,10 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/panel_pictures.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart'
     show ExportLayerRow;
+import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
+import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 
 /// 🗣️유저 2026-10-13 (card video-export-speed-Q2): 「캔버스 규칙으로」 — a
@@ -215,7 +219,9 @@ void main() {
       final task = ExportFrameTask(cut: cut, frameIndex: 0);
       return (
         video: await bytesOf(
-          await renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+          await pictureOfFilmFrame(
+            renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+          ),
         ),
         still: await stillOf(s),
         panel: await bytesOf(
@@ -367,7 +373,9 @@ void main() {
       final task = ExportFrameTask(cut: cut, frameIndex: 0);
 
       final video = await bytesOf(
-        await renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+        await pictureOfFilmFrame(
+          renderer.videoRun([task], ExportSizeMode.camera).frame(0),
+        ),
       );
       final still = await bytesOf(
         await renderer.renderComposite(task, ExportSizeMode.camera),
@@ -499,9 +507,9 @@ void main() {
         await tester.runAsync(() async {
           final (s, renderer) = filmAt(pose);
           final film = await bytesOf(
-            await renderer.videoRun([
+            await pictureOfFilmFrame(renderer.videoRun([
               ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-            ], ExportSizeMode.camera).frame(0),
+            ], ExportSizeMode.camera).frame(0)),
           );
           expect(
             pixelOf(film, canvas.width, 30, 10),
@@ -582,9 +590,9 @@ void main() {
           inked: false,
         );
         final film = await bytesOf(
-          await renderer.videoRun([
+          await pictureOfFilmFrame(renderer.videoRun([
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-          ], ExportSizeMode.camera).frame(0),
+          ], ExportSizeMode.camera).frame(0)),
         );
         // The canvas's foot, at canvas row 38: film row
         // 19 + (38 − 19.7) × 0.4 = 26.32.
@@ -609,9 +617,9 @@ void main() {
           size: small,
         );
         final film = await bytesOf(
-          await renderer.videoRun([
+          await pictureOfFilmFrame(renderer.videoRun([
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-          ], ExportSizeMode.camera).frame(0),
+          ], ExportSizeMode.camera).frame(0)),
         );
         // Film pixel p sees canvas [4 + (p − 4) × 4, 4 + (p − 3) × 4):
         // pixel 2, [-4, 0), is past the canvas and inside the 3x wall at
@@ -690,9 +698,9 @@ void main() {
       final renderer = ExportFrameRenderer(session: session);
       addTearDown(renderer.dispose);
       final frame = await bytesOf(
-        await renderer.videoRun([
+        await pictureOfFilmFrame(renderer.videoRun([
           ExportFrameTask(cut: cut, frameIndex: index),
-        ], ExportSizeMode.camera).frame(0),
+        ], ExportSizeMode.camera).frame(0)),
       );
       return pixelOf(frame, 8, 4, 4);
     }
@@ -782,12 +790,22 @@ void main() {
         ], ExportSizeMode.camera);
 
         expect(
-          pixelOf(await bytesOf(await run.frame(0)), 8, 4, 4),
+          pixelOf(
+            await bytesOf(await pictureOfFilmFrame(run.frame(0))),
+            8,
+            4,
+            4,
+          ),
           (255, 0, 0, 255),
           reason: 'CONTROL: the stage\'s red through the blank cut over it',
         );
         expect(
-          pixelOf(await bytesOf(await run.frame(1)), 8, 4, 4),
+          pixelOf(
+            await bytesOf(await pictureOfFilmFrame(run.frame(1))),
+            8,
+            4,
+            4,
+          ),
           (255, 255, 255, 255),
           reason: 'its own paper, where nothing lies under it',
         );
@@ -860,9 +878,9 @@ void main() {
           final renderer = ExportFrameRenderer(session: s);
           addTearDown(renderer.dispose);
           return bytesOf(
-            await renderer.videoRun([
+            await pictureOfFilmFrame(renderer.videoRun([
               ExportFrameTask(cut: cut, frameIndex: 0),
-            ], ExportSizeMode.camera).frame(0),
+            ], ExportSizeMode.camera).frame(0)),
           );
         }
 
@@ -906,9 +924,9 @@ void main() {
             final renderer = ExportFrameRenderer(session: s);
             addTearDown(renderer.dispose);
             return bytesOf(
-              await renderer.videoRun([
+              await pictureOfFilmFrame(renderer.videoRun([
                 ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
-              ], ExportSizeMode.camera).frame(0),
+              ], ExportSizeMode.camera).frame(0)),
             );
           }
 
@@ -953,7 +971,11 @@ void main() {
             'is another picture every frame — and under one that stands, '
             'the picture before', (tester) async {
           await tester.runAsync(() async {
-            Future<(ui.Image, ui.Image)> twoFrames(EffectParameter p) async {
+            /// The run's two frames, as its writer takes them — and the
+            /// picture of each.
+            Future<((GpuShown, ui.Image), (GpuShown, ui.Image))> twoFrames(
+              EffectParameter p,
+            ) async {
               final s = halfInked([brightness(p)]);
               addTearDown(s.dispose);
               final renderer = ExportFrameRenderer(session: s);
@@ -963,21 +985,26 @@ void main() {
                 for (final index in [0, 1])
                   ExportFrameTask(cut: cut, frameIndex: index),
               ], mode);
-              return (await run.frame(0), await run.frame(1));
+              Future<(GpuShown, ui.Image)> at(int index) async {
+                final frame = await run.frame(index);
+                return (frame, pictureOfLaid(appGpuExport, frame));
+              }
+
+              return (await at(0), await at(1));
             }
 
-            final (still0, still1) = await twoFrames(
+            final ((still0, picture0), (still1, picture1)) = await twoFrames(
               EffectParameter(value: 50),
             );
             expect(
-              still1.isCloneOf(still0),
-              isTrue,
-              reason: 'the chain resolved again, equal: the picture held',
+              still1,
+              same(still0),
+              reason: 'the chain resolved again, equal: the frame held',
             );
-            still0.dispose();
-            still1.dispose();
+            picture0.dispose();
+            picture1.dispose();
 
-            final (moving0, moving1) = await twoFrames(
+            final ((_, moving0), (_, moving1)) = await twoFrames(
               EffectParameter(
                 value: 0,
                 track: PropertyTrack<double>(
