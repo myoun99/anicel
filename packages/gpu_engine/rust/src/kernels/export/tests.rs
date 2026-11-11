@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use video::colour;
 
-use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
+use super::{Clear, Frame, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -28,11 +28,11 @@ pub(super) fn rig() -> &'static Rig {
         let engine = first_engine();
         Rig {
             engine,
-            nv12: Nv12::new(engine),
-            over_ground: OverGround::new(engine),
-            opaque: Opaque::new(engine),
-            clear: Clear::new(engine),
-            png: PngFilter::new(engine),
+            nv12: Nv12::new(),
+            over_ground: OverGround::new(),
+            opaque: Opaque::new(),
+            clear: Clear::new(),
+            png: PngFilter::new(),
         }
     })
 }
@@ -100,7 +100,7 @@ fn shape(src_width: u32, src_height: u32) -> Nv12Shape {
 
 fn nv12(frame: &wgpu::Buffer, shape: Nv12Shape) -> Vec<u8> {
     let Rig { engine, nv12, .. } = rig();
-    let out = nv12.run(engine, frame, shape).expect("nv12");
+    let out = nv12.run(engine, Frame::Tiles(frame), shape).expect("nv12");
     read_buffer(engine, &out)
 }
 
@@ -282,7 +282,7 @@ fn a_frame_the_encoder_cannot_take_is_refused() {
         Nv12Shape { y_stride: 6, ..shape(4, 4) },
         Nv12Shape { width: 6, y_stride: 4, ..shape(4, 4) },
     ] {
-        assert!(nv12.run(engine, &frame, bad).is_none(), "{bad:?}");
+        assert!(nv12.run(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
     }
 }
 
@@ -308,7 +308,7 @@ fn cut_over_ground(
         ..
     } = rig();
     let out = over_ground
-        .run(engine, frame, Picture { width, height }, ground, cut)
+        .run(engine, Frame::Tiles(frame), Picture { width, height }, ground, cut)
         .expect("over ground");
     read_buffer(engine, &out)
 }
@@ -431,7 +431,7 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(over_ground.run(engine, &frame, bad, [0, 0, 0], None).is_none(), "{bad:?}");
+        assert!(over_ground.run(engine, Frame::Tiles(&frame), bad, [0, 0, 0], None).is_none(), "{bad:?}");
     }
 }
 
@@ -441,7 +441,7 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
 fn opaque(frame: &wgpu::Buffer, width: u32, height: u32) -> u32 {
     let Rig { engine, opaque, .. } = rig();
     let out = opaque
-        .run(engine, frame, Picture { width, height })
+        .run(engine, Frame::Tiles(frame), Picture { width, height })
         .expect("opaque");
     let bytes = read_buffer(engine, &out);
     u32::from_le_bytes(bytes[..4].try_into().unwrap())
@@ -486,7 +486,7 @@ fn an_empty_picture_or_a_short_frame_is_not_asked() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(opaque.run(engine, &frame, bad).is_none(), "{bad:?}");
+        assert!(opaque.run(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
     }
 }
 
@@ -518,7 +518,7 @@ fn cut_at_nothing_every_pixel_is_its_own_colour() {
 fn clear_bits(frame: &wgpu::Buffer, width: u32, height: u32, cut: u8) -> Vec<u32> {
     let Rig { engine, clear, .. } = rig();
     let out = clear
-        .run(engine, frame, Picture { width, height }, cut)
+        .run(engine, Frame::Tiles(frame), Picture { width, height }, cut)
         .expect("clear");
     read_buffer(engine, &out)
         .chunks_exact(4)
@@ -592,7 +592,7 @@ fn clear_refuses_an_empty_picture_or_a_short_frame() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(clear.run(engine, &frame, bad, 128).is_none(), "{bad:?}");
+        assert!(clear.run(engine, Frame::Tiles(&frame), bad, 128).is_none(), "{bad:?}");
     }
 }
 
@@ -615,7 +615,7 @@ fn png_rows(out: &[u8], picture: Picture, pixel_bytes: u32) -> Vec<Vec<u8>> {
 fn png_rgba(frame: &wgpu::Buffer, width: u32, height: u32) -> Vec<u8> {
     let Rig { engine, png, .. } = rig();
     let out = png
-        .rgba(engine, frame, Picture { width, height })
+        .rgba(engine, Frame::Tiles(frame), Picture { width, height })
         .expect("png rgba");
     read_buffer(engine, &out)
 }
@@ -636,7 +636,7 @@ fn png_rgb(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Ve
     } = rig();
     let picture = Picture { width, height };
     let rgb = over_ground
-        .run(engine, frame, picture, ground, None)
+        .run(engine, Frame::Tiles(frame), picture, ground, None)
         .expect("over ground");
     let out = png.rgb(engine, &rgb, picture).expect("png rgb");
     read_buffer(engine, &out)
@@ -788,10 +788,10 @@ fn png_refuses_an_empty_picture_or_a_short_source() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(png.rgba(engine, &frame, bad).is_none(), "{bad:?}");
+        assert!(png.rgba(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
     }
     let rgb = over_ground
-        .run(engine, &frame, Picture { width: 4, height: 4 }, [0, 0, 0], None)
+        .run(engine, Frame::Tiles(&frame), Picture { width: 4, height: 4 }, [0, 0, 0], None)
         .expect("over ground");
     for bad in [
         Picture { width: 0, height: 4 },
@@ -818,7 +818,7 @@ fn a_picture_taller_than_a_dispatch_reaches_is_refused() {
     let height = engine.device.limits().max_compute_workgroups_per_dimension + 1;
     let tall = Picture { width: 1, height };
     let frame = frame(1, height, |_, _| WHITE);
-    assert!(over_ground.run(engine, &frame, tall, [0, 0, 0], None).is_none());
-    assert!(clear.run(engine, &frame, tall, 128).is_none());
-    assert!(png.rgba(engine, &frame, tall).is_none());
+    assert!(over_ground.run(engine, Frame::Tiles(&frame), tall, [0, 0, 0], None).is_none());
+    assert!(clear.run(engine, Frame::Tiles(&frame), tall, 128).is_none());
+    assert!(png.rgba(engine, Frame::Tiles(&frame), tall).is_none());
 }

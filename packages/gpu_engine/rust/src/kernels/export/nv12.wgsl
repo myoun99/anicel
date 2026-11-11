@@ -16,11 +16,13 @@
 //
 // The picture's alpha is not read, as the law reads none.
 //
-// Needs tile.wgsl and frame.wgsl before it.
+// Needs tile.wgsl and its picture's reads (frame.wgsl or
+// frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame.wgsl,
+  // frame_shown.wgsl).
+  stride: u32,
   // The picture.
   src_width: u32,
   src_height: u32,
@@ -35,7 +37,6 @@ struct Params {
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 @group(0) @binding(2) var<storage, read_write> nv12: array<u32>;
 
 // Pixel (x, y)'s red, green and blue; white past the picture — the
@@ -46,7 +47,7 @@ fn rgb_at(x: u32, y: u32) -> vec3<i32> {
   if (x >= params.src_width || y >= params.src_height) {
     return vec3<i32>(255);
   }
-  let word = frame[frame_word(params.columns, x, y)];
+  let word = frame_straight(x, y);
   return vec3<i32>(
     i32(word & 0xffu),
     i32((word >> 8u) & 0xffu),

@@ -1,10 +1,13 @@
 //! The export's C ABI (screen-on-the-engine 2c, gpu-export-path ①): the
-//! conversions a frame a run put takes before its readback, each its own
-//! call and each pass compiled where it is first asked, and what each put
-//! read out (저장 23:17): mapped once, then copied row by row straight
-//! into wherever its writer takes it — an encoder's planes, a codec's
-//! packed buffer, a PNG's rows without their padding — with no copy
-//! between.
+//! conversions a frame takes before its readback, each its own call and
+//! each pass compiled where it is first asked, and what each put read out
+//! (저장 23:17): mapped once, then copied row by row straight into wherever
+//! its writer takes it — an encoder's planes, a codec's packed buffer, a
+//! PNG's rows without their padding — with no copy between.
+//!
+//! A frame is a run's output tiles (`Composited`) or a frame as the screen
+//! shows it ([`gpu_engine_export_shown`], ①⑴); each conversion has a call
+//! for either, and one law.
 
 #[cfg(test)]
 mod tests;
@@ -12,20 +15,21 @@ mod tests;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
+use super::{Clear, Frame, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::Composited;
 use crate::kernels::shared::Counted;
+use crate::platform::Surface;
 
 /// The export's passes, each compiled where it is first asked: a still
 /// asks no NV12, a movie no PNG.
 pub struct Export {
-    nv12: OnceLock<Nv12>,
-    over_ground: OnceLock<OverGround>,
-    clear: OnceLock<Clear>,
-    opaque: OnceLock<Opaque>,
-    png: OnceLock<PngFilter>,
+    nv12: Nv12,
+    over_ground: OverGround,
+    clear: Clear,
+    opaque: Opaque,
+    png: PngFilter,
 }
 
 /// What a pass put: its buffer, the bytes of it its writer takes, and —
@@ -77,11 +81,11 @@ pub(crate) fn readout(out: Option<wgpu::Buffer>, bytes: u64) -> *mut Readout {
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_export_new() -> *mut Export {
     Box::into_raw(Box::new(Export {
-        nv12: OnceLock::new(),
-        over_ground: OnceLock::new(),
-        clear: OnceLock::new(),
-        opaque: OnceLock::new(),
-        png: OnceLock::new(),
+        nv12: Nv12::new(),
+        over_ground: OverGround::new(),
+        clear: Clear::new(),
+        opaque: Opaque::new(),
+        png: PngFilter::new(),
     }))
 }
 
@@ -95,13 +99,74 @@ pub unsafe extern "C" fn gpu_engine_export_free(export: *mut Export) {
     }
 }
 
-/// Converts the picture in `frame` — a run's output tiles for it, asked
-/// row by row from its top-left tile — into the encoder's NV12 frame of
+/// The picture of `width` × `height` from the top-left texel of
+/// `surface` — a frame as the screen shows it, premultiplied — copied on
+/// the GPU for the conversions of a frame shown (`gpu_engine_export_shown_*`):
+/// what the canvas shows is what a file is made of, and nothing crosses to
+/// the CPU before a writer's bytes. Null on failure; see the last error.
+///
+/// # Safety
+/// Both are live, `surface` made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown(
+    engine: *const Engine,
+    surface: *const Surface,
+    width: u32,
+    height: u32,
+) -> *mut Shown {
+    // SAFETY: see the function's contract.
+    let (engine, surface) = unsafe { (&*engine, &*surface) };
+    Shown::of(engine, &surface.texture, Picture { width, height })
+        .map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+}
+
+/// # Safety
+/// `shown` came from `gpu_engine_export_shown`, and its engine is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_free(shown: *mut Shown) {
+    if !shown.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(shown) });
+    }
+}
+
+/// A run's output tiles, as the conversions read them.
+///
+/// # Safety
+/// `frame` is live.
+unsafe fn tiles<'a>(frame: *const Composited) -> Frame<'a> {
+    // SAFETY: see the function's contract.
+    Frame::Tiles(unsafe { &(*frame).out })
+}
+
+/// A frame shown, as the conversions read it.
+///
+/// # Safety
+/// `frame` is live.
+unsafe fn shown<'a>(frame: *const Shown) -> Frame<'a> {
+    // SAFETY: see the function's contract.
+    Frame::Shown(unsafe { &*frame })
+}
+
+/// Converts the picture in `frame` into the encoder's NV12 frame of
 /// `shape`: the picture's width and height, the frame's (even, at least
 /// the picture's — the writer's, as it opened its encoder) and the bytes
 /// from one row to the next (a multiple of 4, at least the frame's width):
 /// `height` Y rows, then `height / 2` CbCr rows, `nv12.wgsl`'s law. Null
 /// on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`; `shape` holds five words.
+unsafe fn nv12(export: *const Export, engine: *const Engine, frame: Frame, shape: *const u32) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine, [src_width, src_height, width, height, y_stride]) =
+        unsafe { (&*export, &*engine, *shape.cast::<[u32; 5]>()) };
+    let shape = Nv12Shape { src_width, src_height, width, height, y_stride };
+    readout(export.nv12.run(engine, frame, shape), shape.bytes())
+}
+
+/// [`nv12`] of a run's output tiles for the picture, asked row by row from
+/// its top-left tile.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `shape` holds five words.
@@ -113,18 +178,56 @@ pub unsafe extern "C" fn gpu_engine_export_nv12(
     shape: *const u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    let (export, engine, frame, [src_width, src_height, width, height, y_stride]) =
-        unsafe { (&*export, &*engine, &*frame, *shape.cast::<[u32; 5]>()) };
-    let shape = Nv12Shape { src_width, src_height, width, height, y_stride };
-    let pass = export.nv12.get_or_init(|| Nv12::new(engine));
-    readout(pass.run(engine, &frame.out, shape), shape.bytes())
+    unsafe { nv12(export, engine, tiles(frame), shape) }
 }
 
-/// Lays the picture of `width` × `height` in `frame` over `ground` — red,
-/// green and blue, red the low byte — its alpha cut at `cut` where a GIF
-/// cuts it (-1 for none: its shades; 0 is a GIF with no clear colour), into
-/// three bytes a pixel, row after row with nothing between: `width` ×
-/// `height` × 3 bytes. Null on failure; see the last error.
+/// [`nv12`] of a frame shown.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`; `shape` holds five words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_nv12(
+    export: *const Export,
+    engine: *const Engine,
+    frame: *const Shown,
+    shape: *const u32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    unsafe { nv12(export, engine, shown(frame), shape) }
+}
+
+/// Lays the picture of `picture` in `frame` over `ground` — red, green and
+/// blue, red the low byte — its alpha cut at `cut` where a GIF cuts it (-1
+/// for none: its shades; 0 is a GIF with no clear colour), into three bytes
+/// a pixel, row after row with nothing between: width × height × 3 bytes.
+/// Null on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+unsafe fn over_ground(
+    export: *const Export,
+    engine: *const Engine,
+    frame: Frame,
+    picture: Picture,
+    ground: u32,
+    cut: i32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine) = unsafe { (&*export, &*engine) };
+    let [red, green, blue, _] = ground.to_le_bytes();
+    let cut = match cut {
+        -1 => None,
+        0..=255 => Some(cut as u8),
+        _ => {
+            fail::<()>(format!("a cut is an alpha or -1, not {cut}"));
+            return std::ptr::null_mut();
+        }
+    };
+    let out = export.over_ground.run(engine, frame, picture, [red, green, blue], cut);
+    readout(out, picture.rgb_bytes())
+}
+
+/// [`over_ground`] of a run's output tiles.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`.
@@ -139,25 +242,41 @@ pub unsafe extern "C" fn gpu_engine_export_over_ground(
     cut: i32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    let (export, engine, frame) = unsafe { (&*export, &*engine, &*frame) };
-    let picture = Picture { width, height };
-    let [red, green, blue, _] = ground.to_le_bytes();
-    let cut = match cut {
-        -1 => None,
-        0..=255 => Some(cut as u8),
-        _ => {
-            fail::<()>(format!("a cut is an alpha or -1, not {cut}"));
-            return std::ptr::null_mut();
-        }
-    };
-    let pass = export.over_ground.get_or_init(|| OverGround::new(engine));
-    readout(pass.run(engine, &frame.out, picture, [red, green, blue], cut), picture.rgb_bytes())
+    unsafe { over_ground(export, engine, tiles(frame), Picture { width, height }, ground, cut) }
 }
 
-/// Marks the pixels of the picture of `width` × `height` in `frame` whose
-/// alpha is under `cut`: pixel i is bit i % 8 of byte i / 8, low bit
-/// first, row after row with nothing between — ⌈`width` × `height` / 32⌉
-/// × 4 bytes. Null on failure; see the last error.
+/// [`over_ground`] of a frame shown.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_over_ground(
+    export: *const Export,
+    engine: *const Engine,
+    frame: *const Shown,
+    width: u32,
+    height: u32,
+    ground: u32,
+    cut: i32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    unsafe { over_ground(export, engine, shown(frame), Picture { width, height }, ground, cut) }
+}
+
+/// Marks the pixels of `picture` in `frame` whose alpha is under `cut`:
+/// pixel i is bit i % 8 of byte i / 8, low bit first, row after row with
+/// nothing between — ⌈width × height / 32⌉ × 4 bytes. Null on failure;
+/// see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+unsafe fn clear(export: *const Export, engine: *const Engine, frame: Frame, picture: Picture, cut: u8) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine) = unsafe { (&*export, &*engine) };
+    readout(export.clear.run(engine, frame, picture, cut), picture.clear_bytes())
+}
+
+/// [`clear`] of a run's output tiles.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`.
@@ -171,15 +290,39 @@ pub unsafe extern "C" fn gpu_engine_export_clear(
     cut: u8,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    let (export, engine, frame) = unsafe { (&*export, &*engine, &*frame) };
-    let picture = Picture { width, height };
-    let pass = export.clear.get_or_init(|| Clear::new(engine));
-    readout(pass.run(engine, &frame.out, picture, cut), picture.clear_bytes())
+    unsafe { clear(export, engine, tiles(frame), Picture { width, height }, cut) }
 }
 
-/// Asks whether every pixel of the picture of `width` × `height` in
-/// `frame` is opaque: four bytes, one little-endian word, 255 when every
-/// pixel is and less when one is not. Null on failure; see the last error.
+/// [`clear`] of a frame shown.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_clear(
+    export: *const Export,
+    engine: *const Engine,
+    frame: *const Shown,
+    width: u32,
+    height: u32,
+    cut: u8,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    unsafe { clear(export, engine, shown(frame), Picture { width, height }, cut) }
+}
+
+/// Asks whether every pixel of `picture` in `frame` is opaque: four bytes,
+/// one little-endian word, 255 when every pixel is and less when one is
+/// not. Null on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+unsafe fn opaque(export: *const Export, engine: *const Engine, frame: Frame, picture: Picture) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine) = unsafe { (&*export, &*engine) };
+    readout(export.opaque.run(engine, frame, picture), 4)
+}
+
+/// [`opaque`] of a run's output tiles.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`.
@@ -192,15 +335,39 @@ pub unsafe extern "C" fn gpu_engine_export_opaque(
     height: u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    let (export, engine, frame) = unsafe { (&*export, &*engine, &*frame) };
-    let pass = export.opaque.get_or_init(|| Opaque::new(engine));
-    readout(pass.run(engine, &frame.out, Picture { width, height }), 4)
+    unsafe { opaque(export, engine, tiles(frame), Picture { width, height }) }
 }
 
-/// Filters the rows of a PNG of the picture of `width` × `height` in
-/// `frame`, four bytes a pixel: each row its filter's byte and its own
-/// under it, [`gpu_engine_export_png_row_bytes`] from the last. Null on
-/// failure; see the last error.
+/// [`opaque`] of a frame shown.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_opaque(
+    export: *const Export,
+    engine: *const Engine,
+    frame: *const Shown,
+    width: u32,
+    height: u32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    unsafe { opaque(export, engine, shown(frame), Picture { width, height }) }
+}
+
+/// Filters the rows of a PNG of `picture` in `frame`, four bytes a pixel,
+/// straight: each row its filter's byte and its own under it,
+/// [`gpu_engine_export_png_row_bytes`] from the last. Null on failure; see
+/// the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+unsafe fn png_rgba(export: *const Export, engine: *const Engine, frame: Frame, picture: Picture) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (export, engine) = unsafe { (&*export, &*engine) };
+    readout(export.png.rgba(engine, frame, picture), picture.png_bytes(4))
+}
+
+/// [`png_rgba`] of a run's output tiles.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`.
@@ -213,15 +380,28 @@ pub unsafe extern "C" fn gpu_engine_export_png_rgba(
     height: u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    let (export, engine, frame) = unsafe { (&*export, &*engine, &*frame) };
-    let picture = Picture { width, height };
-    let pass = export.png.get_or_init(|| PngFilter::new(engine));
-    readout(pass.rgba(engine, &frame.out, picture), picture.png_bytes(4))
+    unsafe { png_rgba(export, engine, tiles(frame), Picture { width, height }) }
 }
 
-/// [`gpu_engine_export_png_rgba`] for a PNG of three bytes a pixel, from
-/// `rgb` — what [`gpu_engine_export_over_ground`] put for the same
-/// picture, which never crosses to the CPU.
+/// [`png_rgba`] of a frame shown.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_shown_png_rgba(
+    export: *const Export,
+    engine: *const Engine,
+    frame: *const Shown,
+    width: u32,
+    height: u32,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    unsafe { png_rgba(export, engine, shown(frame), Picture { width, height }) }
+}
+
+/// [`png_rgba`] for a PNG of three bytes a pixel, from `rgb` — what an
+/// over-the-ground call put for the same picture, which never crosses to
+/// the CPU.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`.
@@ -236,8 +416,7 @@ pub unsafe extern "C" fn gpu_engine_export_png_rgb(
     // SAFETY: see the function's contract.
     let (export, engine, rgb) = unsafe { (&*export, &*engine, &*rgb) };
     let picture = Picture { width, height };
-    let pass = export.png.get_or_init(|| PngFilter::new(engine));
-    readout(pass.rgb(engine, &rgb.out, picture), picture.png_bytes(3))
+    readout(export.png.rgb(engine, &rgb.out, picture), picture.png_bytes(3))
 }
 
 /// Where each row of a PNG's filtered rows starts from the last's, for a

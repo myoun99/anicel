@@ -27,7 +27,8 @@ use crate::kernels::composite::abi::{
 use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{Composited, TILE_TEXELS};
 use crate::kernels::export::abi::{
-    gpu_engine_export_free, gpu_engine_export_new, gpu_engine_export_opaque, gpu_engine_readout_free,
+    gpu_engine_export_free, gpu_engine_export_new, gpu_engine_export_opaque, gpu_engine_export_shown,
+    gpu_engine_export_shown_free, gpu_engine_readout_free,
 };
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::fill::{gpu_engine_fill_free, gpu_engine_fill_new};
@@ -75,7 +76,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 31] {
+fn frees() -> [(&'static str, fn(&'static str)); 32] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -136,6 +137,21 @@ fn frees() -> [(&'static str, fn(&'static str)); 31] {
             gives_back(name, made, gpu_engine_readout_free);
             // SAFETY: `export` is live.
             unsafe { gpu_engine_export_free(export) };
+        }),
+        ("gpu_engine_export_shown_free", |name| {
+            // As the surface free's: RGBA where the platform makes it, else
+            // BGRA.
+            let surface = [false, true]
+                .into_iter()
+                // SAFETY: the engine is live.
+                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra) })
+                .find(|surface| !surface.is_null())
+                .unwrap_or_else(|| panic!("{name}: {}", last_error()));
+            // SAFETY: both are live, made on the engine.
+            let made = unsafe { gpu_engine_export_shown(first_engine(), surface, 4, 4) };
+            gives_back(name, made, gpu_engine_export_shown_free);
+            // SAFETY: `surface` is live.
+            unsafe { gpu_engine_surface_free(surface) };
         }),
         ("gpu_engine_fill_free", |name| {
             // SAFETY: the engine is live.

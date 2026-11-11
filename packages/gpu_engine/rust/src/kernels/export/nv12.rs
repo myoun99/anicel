@@ -1,7 +1,7 @@
 //! A movie's frame as NV12, for its encoder (gpu-export-path ①a) —
 //! `nv12.wgsl` has the law and why each number is the one it is.
 
-use super::{Picture, compile, holds, out_plane, submit};
+use super::{Frame, Picture, Pipelines, out_plane, submit};
 use crate::device::Engine;
 use crate::fail;
 
@@ -19,7 +19,7 @@ pub(crate) struct Nv12Shape {
 }
 
 impl Nv12Shape {
-    /// The picture in the composite's frame.
+    /// The picture in the frame.
     fn picture(&self) -> Picture {
         Picture {
             width: self.src_width,
@@ -57,31 +57,25 @@ impl Nv12Shape {
 
 /// The NV12 pass.
 pub(crate) struct Nv12 {
-    pipeline: wgpu::ComputePipeline,
+    pipelines: Pipelines,
 }
 
 impl Nv12 {
-    pub(crate) fn new(engine: &Engine) -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            pipeline: compile(engine, &[include_str!("nv12.wgsl")], "nv12_pass"),
+            pipelines: Pipelines::new(&[include_str!("nv12.wgsl")], "nv12_pass"),
         }
     }
 
-    /// Converts `frame` — the composite's output tiles for the picture,
-    /// asked row by row from its top-left tile — and submits the work; the
-    /// caller waits. Returns the buffer the NV12 bytes are in
+    /// Converts the picture in `frame` and submits the work; the caller
+    /// waits. Returns the buffer the NV12 bytes are in
     /// ([`Nv12Shape::bytes`] of them), to be copied out for reading.
-    pub(crate) fn run(
-        &self,
-        engine: &Engine,
-        frame: &wgpu::Buffer,
-        shape: Nv12Shape,
-    ) -> Option<wgpu::Buffer> {
+    pub(crate) fn run(&self, engine: &Engine, frame: Frame, shape: Nv12Shape) -> Option<wgpu::Buffer> {
         shape.check()?;
         let picture = shape.picture();
-        holds(frame, picture.tiles())?;
+        frame.holds(picture)?;
         let params = [
-            picture.tiles().0,
+            frame.stride(picture),
             shape.src_width,
             shape.src_height,
             shape.width,
@@ -92,7 +86,8 @@ impl Nv12 {
         ];
         let groups = ((shape.y_stride / 4).div_ceil(16), (shape.height / 2).div_ceil(8));
         let out = out_plane(engine, "nv12 out", shape.bytes(), groups)?;
-        submit(engine, &self.pipeline, &params, frame, &out, groups);
+        let pipeline = self.pipelines.of(engine, frame);
+        submit(engine, pipeline, &params, frame.buffer(), &out, groups);
         Some(out)
     }
 }

@@ -2,9 +2,12 @@
 //! the law; `png_rgba.wgsl` and `png_rgb.wgsl` where a row's bytes come
 //! from.
 
-use super::{Picture, compile, holds, out_plane, submit};
+use std::sync::OnceLock;
+
+use super::{Frame, Picture, Pipelines, out_plane, submit};
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::shared::pipeline;
 
 impl Picture {
     /// Words a row of the filtered out takes, `pixel_bytes` a pixel: its
@@ -24,66 +27,58 @@ impl Picture {
     }
 }
 
-/// The filter pass, from either source.
+/// The filter pass, from either source: the frame's pixels straight, or
+/// the over-the-ground pass's RGB — which is no frame, so its pipeline
+/// reads none.
 pub(crate) struct PngFilter {
-    rgba: wgpu::ComputePipeline,
-    rgb: wgpu::ComputePipeline,
+    rgba: Pipelines,
+    rgb: OnceLock<wgpu::ComputePipeline>,
 }
 
+const PNG_WGSL: &str = include_str!("png.wgsl");
+
 impl PngFilter {
-    pub(crate) fn new(engine: &Engine) -> Self {
-        let own = include_str!("png.wgsl");
+    pub(crate) const fn new() -> Self {
         Self {
-            rgba: compile(engine, &[include_str!("png_rgba.wgsl"), own], "png_filter_pass"),
-            rgb: compile(engine, &[include_str!("png_rgb.wgsl"), own], "png_filter_pass"),
+            rgba: Pipelines::new(&[include_str!("png_rgba.wgsl"), PNG_WGSL], "png_filter_pass"),
+            rgb: OnceLock::new(),
         }
     }
 
-    /// Filters the rows of a PNG of four channels: the picture in `frame`
-    /// — the composite's output tiles for it, asked row by row from its
-    /// top-left tile —, and submits the work; the caller waits. Returns the
-    /// buffer of the rows, [`Picture::png_row_bytes`] apart, each its
-    /// filter's byte and its own under it.
-    pub(crate) fn rgba(
-        &self,
-        engine: &Engine,
-        frame: &wgpu::Buffer,
-        picture: Picture,
-    ) -> Option<wgpu::Buffer> {
+    /// Filters the rows of a PNG of four channels — the picture in
+    /// `frame` — and submits the work; the caller waits. Returns the buffer
+    /// of the rows, [`Picture::png_row_bytes`] apart, each its filter's
+    /// byte and its own under it.
+    pub(crate) fn rgba(&self, engine: &Engine, frame: Frame, picture: Picture) -> Option<wgpu::Buffer> {
         picture.check()?;
-        holds(frame, picture.tiles())?;
-        Self::run(engine, &self.rgba, frame, picture, 4)
+        frame.holds(picture)?;
+        let pipeline = self.rgba.of(engine, frame);
+        Self::run(engine, pipeline, frame.buffer(), frame.stride(picture), picture, 4)
     }
 
     /// [`Self::rgba`] for a PNG of three channels, from `rgb` — what the
     /// over-the-ground pass returned for the picture.
-    pub(crate) fn rgb(
-        &self,
-        engine: &Engine,
-        rgb: &wgpu::Buffer,
-        picture: Picture,
-    ) -> Option<wgpu::Buffer> {
+    pub(crate) fn rgb(&self, engine: &Engine, rgb: &wgpu::Buffer, picture: Picture) -> Option<wgpu::Buffer> {
         picture.check()?;
         let needed = picture.rgb_bytes().next_multiple_of(4);
         if rgb.size() < needed {
             return fail(format!("its RGB takes {needed} bytes; the buffer has {}", rgb.size()));
         }
-        Self::run(engine, &self.rgb, rgb, picture, 3)
+        let pipeline = self.rgb.get_or_init(|| {
+            pipeline(engine, &[include_str!("png_rgb.wgsl"), PNG_WGSL], "png_filter_pass")
+        });
+        Self::run(engine, pipeline, rgb, 0, picture, 3)
     }
 
     fn run(
         engine: &Engine,
         pipeline: &wgpu::ComputePipeline,
         source: &wgpu::Buffer,
+        stride: u32,
         picture: Picture,
         pixel_bytes: u32,
     ) -> Option<wgpu::Buffer> {
-        let params = [
-            picture.tiles().0,
-            picture.width,
-            picture.height,
-            picture.png_row_words(pixel_bytes),
-        ];
+        let params = [stride, picture.width, picture.height, picture.png_row_words(pixel_bytes)];
         let groups = (1, picture.height);
         let out = out_plane(engine, "png filter out", picture.png_bytes(pixel_bytes), groups)?;
         submit(engine, pipeline, &params, source, &out, groups);

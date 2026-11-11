@@ -2,8 +2,12 @@
 //! in Rust, its readout holds the bytes its writer takes, the rows copy
 //! reads them where it is asked, and what is refused says why.
 
+use std::sync::OnceLock;
+
 use super::*;
 use crate::kernels::export::tests::{Rig, frame, mixed, rig};
+use crate::kernels::fill::{gpu_engine_fill_free, gpu_engine_fill_new, gpu_engine_fill_run};
+use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
 use crate::testing::{last_error, read_buffer};
 
 /// 37 x 21: no side a tile's or a word's, so a width put for a height, or
@@ -65,14 +69,14 @@ fn nv12_puts_the_frame_its_five_words_shape() {
     let shape = Nv12Shape { src_width: WIDTH, src_height: HEIGHT, width: 38, height: 22, y_stride: 44 };
     let bytes = read_out(readout);
     assert_eq!(bytes.len(), 44 * 22 * 3 / 2);
-    assert_eq!(bytes, put(nv12.run(engine, &frame.out, shape), shape.bytes()));
+    assert_eq!(bytes, put(nv12.run(engine, Frame::Tiles(&frame.out), shape), shape.bytes()));
 }
 
 // Red is the ground's low byte and blue its third; the fourth is no colour.
 #[test]
 fn over_ground_lays_the_ground_red_first() {
     let (frame, Rig { engine, over_ground, .. }) = (ran(), rig());
-    let want = put(over_ground.run(engine, &frame.out, picture(), [0x32, 0x64, 0xc8], None), picture().rgb_bytes());
+    let want = put(over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [0x32, 0x64, 0xc8], None), picture().rgb_bytes());
     assert_eq!(want.len(), (WIDTH * HEIGHT * 3) as usize, "three bytes a pixel, nothing between rows");
     for ground in [0x00c8_6432, 0xffc8_6432] {
         // SAFETY: all are live, made on `engine`.
@@ -87,7 +91,7 @@ fn over_ground_lays_the_ground_red_first() {
 fn over_ground_cuts_where_it_is_asked() {
     let (frame, Rig { engine, over_ground, .. }) = (ran(), rig());
     for (cut, as_run) in [(-1, None), (0, Some(0)), (200, Some(200)), (255, Some(255))] {
-        let want = put(over_ground.run(engine, &frame.out, picture(), [9, 99, 199], as_run), picture().rgb_bytes());
+        let want = put(over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [9, 99, 199], as_run), picture().rgb_bytes());
         // SAFETY: all are live, made on `engine`.
         let readout = unsafe { gpu_engine_export_over_ground(export(), *engine, &frame, WIDTH, HEIGHT, 0xc7_6309, cut) };
         assert_eq!(read_out(readout), want, "cut {cut}");
@@ -108,7 +112,7 @@ fn over_ground_refuses_a_cut_that_is_no_alpha() {
 #[test]
 fn clear_marks_what_its_pass_marks() {
     let (frame, Rig { engine, clear, .. }) = (ran(), rig());
-    let want = put(clear.run(engine, &frame.out, picture(), 131), picture().clear_bytes());
+    let want = put(clear.run(engine, Frame::Tiles(&frame.out), picture(), 131), picture().clear_bytes());
     assert_eq!(want.len(), (WIDTH * HEIGHT).div_ceil(32) as usize * 4);
     // SAFETY: all are live, made on `engine`.
     let readout = unsafe { gpu_engine_export_clear(export(), *engine, &frame, WIDTH, HEIGHT, 131) };
@@ -121,7 +125,7 @@ fn clear_marks_what_its_pass_marks() {
 fn opaque_answers_in_one_word() {
     let Rig { engine, opaque, .. } = rig();
     for (composited, all) in [(ran(), false), (Composited { out: frame(WIDTH, HEIGHT, |_, _| 0xff12_3456), passes: 0 }, true)] {
-        let want = put(opaque.run(engine, &composited.out, picture()), 4);
+        let want = put(opaque.run(engine, Frame::Tiles(&composited.out), picture()), 4);
         // SAFETY: all are live, made on `engine`.
         let readout = unsafe { gpu_engine_export_opaque(export(), *engine, &composited, WIDTH, HEIGHT) };
         let bytes = read_out(readout);
@@ -133,7 +137,7 @@ fn opaque_answers_in_one_word() {
 #[test]
 fn png_rgba_filters_what_its_pass_filters() {
     let (frame, Rig { engine, png, .. }) = (ran(), rig());
-    let want = put(png.rgba(engine, &frame.out, picture()), picture().png_bytes(4));
+    let want = put(png.rgba(engine, Frame::Tiles(&frame.out), picture()), picture().png_bytes(4));
     assert_eq!(want.len(), HEIGHT as usize * 152, "37 x 4 + 1 bytes a row, filled out to 152");
     // SAFETY: all are live, made on `engine`.
     let readout = unsafe { gpu_engine_export_png_rgba(export(), *engine, &frame, WIDTH, HEIGHT) };
@@ -145,7 +149,7 @@ fn png_rgba_filters_what_its_pass_filters() {
 #[test]
 fn png_rgb_filters_over_grounds_rows() {
     let (frame, Rig { engine, over_ground, png, .. }) = (ran(), rig());
-    let rgb = over_ground.run(engine, &frame.out, picture(), [5, 6, 7], None).expect("over ground");
+    let rgb = over_ground.run(engine, Frame::Tiles(&frame.out), picture(), [5, 6, 7], None).expect("over ground");
     let want = put(png.rgb(engine, &rgb, picture()), picture().png_bytes(3));
     assert_eq!(want.len(), HEIGHT as usize * 112, "37 x 3 + 1 bytes a row, filled out to 112");
     // SAFETY: all are live, made on `engine`.
@@ -280,6 +284,74 @@ fn null_frees_nothing() {
     // SAFETY: null is what each takes for nothing.
     unsafe {
         gpu_engine_export_free(std::ptr::null_mut());
+        gpu_engine_export_shown_free(std::ptr::null_mut());
         gpu_engine_readout_free(std::ptr::null_mut());
+    }
+}
+
+// ---- A frame shown ----
+
+/// A surface as the platform makes the ones it shows — RGBA where it can,
+/// else BGRA (composite's ABI tests have why) — 3 texels wider and taller
+/// than the picture, filled with the fill kernel's pattern for 41.
+fn filled() -> *mut Surface {
+    let engine = rig().engine;
+    let surface = [false, true]
+        .into_iter()
+        // SAFETY: `engine` is live.
+        .map(|bgra| unsafe { gpu_engine_surface_new(engine, WIDTH + 3, HEIGHT + 3, bgra) })
+        .find(|surface| !surface.is_null())
+        .unwrap_or_else(|| panic!("{}", last_error()));
+    // SAFETY: all are live, made on `engine`.
+    unsafe {
+        let fill = gpu_engine_fill_new(engine);
+        assert!(gpu_engine_fill_run(fill, engine, &(*surface).texture, 41) >= 0, "{}", last_error());
+        gpu_engine_fill_free(fill);
+    }
+    surface
+}
+
+// Each shown call is its pass on the same surface's picture, and its five
+// numbers go where each is named — the picture's sides each other's, a
+// pass would read other rows.
+#[test]
+fn each_shown_call_is_its_pass_on_the_surfaces_picture() {
+    let (surface, Rig { engine, nv12, over_ground, clear, opaque, png, .. }) = (filled(), rig());
+    // SAFETY: `surface` is live, made on `engine`.
+    let texture = unsafe { &(*surface).texture };
+    let ours = Shown::of(engine, texture, picture()).expect("shown");
+    let frame = Frame::Shown(&ours);
+    // SAFETY: all are live, made on `engine`.
+    let shown = unsafe { gpu_engine_export_shown(*engine, surface, WIDTH, HEIGHT) };
+    assert!(!shown.is_null(), "{}", last_error());
+    let words = [WIDTH, HEIGHT, 38, 22, 44];
+    let shape = Nv12Shape { src_width: WIDTH, src_height: HEIGHT, width: 38, height: 22, y_stride: 44 };
+    let rgb = over_ground.run(engine, frame, picture(), [5, 6, 7], None);
+    // SAFETY: all are live, made on `engine`; `words` holds five.
+    unsafe {
+        let calls = [
+            (gpu_engine_export_shown_nv12(export(), *engine, shown, words.as_ptr()), put(nv12.run(engine, frame, shape), shape.bytes())),
+            (gpu_engine_export_shown_over_ground(export(), *engine, shown, WIDTH, HEIGHT, 0x07_0605, -1), put(rgb, picture().rgb_bytes())),
+            (gpu_engine_export_shown_over_ground(export(), *engine, shown, WIDTH, HEIGHT, 0x07_0605, 131), put(over_ground.run(engine, frame, picture(), [5, 6, 7], Some(131)), picture().rgb_bytes())),
+            (gpu_engine_export_shown_clear(export(), *engine, shown, WIDTH, HEIGHT, 131), put(clear.run(engine, frame, picture(), 131), picture().clear_bytes())),
+            (gpu_engine_export_shown_opaque(export(), *engine, shown, WIDTH, HEIGHT), put(opaque.run(engine, frame, picture()), 4)),
+            (gpu_engine_export_shown_png_rgba(export(), *engine, shown, WIDTH, HEIGHT), put(png.rgba(engine, frame, picture()), picture().png_bytes(4))),
+        ];
+        for (index, (readout, want)) in calls.into_iter().enumerate() {
+            assert_eq!(read_out(readout), want, "call {index}");
+        }
+        gpu_engine_export_shown_free(shown);
+        gpu_engine_surface_free(surface);
+    }
+}
+
+#[test]
+fn a_picture_past_its_surface_is_not_shown() {
+    let (surface, engine) = (filled(), rig().engine);
+    // SAFETY: all are live, made on `engine`.
+    unsafe {
+        assert!(gpu_engine_export_shown(engine, surface, WIDTH + 4, HEIGHT).is_null());
+        assert_eq!(last_error(), "a 41x21 picture is not in a 40x24 surface");
+        gpu_engine_surface_free(surface);
     }
 }

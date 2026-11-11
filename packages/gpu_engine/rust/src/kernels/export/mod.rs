@@ -13,8 +13,10 @@
 //! - `png` — a PNG's rows under their filters, from the frame's RGBA or
 //!   from `over_ground`'s RGB (①e).
 //!
-//! Each kernel reads the frame through `frame.wgsl`, after the shared
-//! `tile.wgsl`, and runs as one pass over it ([`submit`]).
+//! Each kernel reads its picture through three reads — straight,
+//! premultiplied, its alpha — that `frame.wgsl` gives on a run's output
+//! tiles and `frame_shown.wgsl` on a frame as the screen shows it
+//! ([`Frame`]), and runs as one pass over it ([`submit`]).
 
 pub(crate) mod abi;
 mod clear;
@@ -24,6 +26,8 @@ mod over_ground;
 mod png;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod shown_tests;
 
 pub(crate) use clear::Clear;
 pub(crate) use nv12::{Nv12, Nv12Shape};
@@ -31,15 +35,178 @@ pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;
 pub(crate) use png::PngFilter;
 
+use std::sync::OnceLock;
+
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, TILE_WGSL, encode, fits, flat, pipeline, plane, whole, words_buffer,
+    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, encode, fits, flat, pipeline_with, plane, whole,
+    words_buffer,
 };
 
-/// The frame read: `frame_word`.
+/// The three reads on a run's output tiles.
 const FRAME_WGSL: &str = include_str!("frame.wgsl");
+
+/// The three reads on a frame as the screen shows it.
+const FRAME_SHOWN_WGSL: &str = include_str!("frame_shown.wgsl");
+
+/// The picture a pass converts.
+#[derive(Clone, Copy)]
+pub(crate) enum Frame<'a> {
+    /// A run's output tiles for it, asked row by row from its top-left
+    /// tile: straight.
+    Tiles(&'a wgpu::Buffer),
+    /// A frame as the screen shows it.
+    Shown(&'a Shown),
+}
+
+/// How a pass reads its picture: each is a pipeline of its own.
+#[derive(Clone, Copy)]
+enum Read {
+    Tiles,
+    Shown { bgra: bool },
+}
+
+impl Frame<'_> {
+    fn read(&self) -> Read {
+        match self {
+            Self::Tiles(_) => Read::Tiles,
+            Self::Shown(shown) => Read::Shown { bgra: shown.bgra },
+        }
+    }
+
+    /// What the pass binds its picture as.
+    fn buffer(&self) -> &wgpu::Buffer {
+        match self {
+            Self::Tiles(tiles) => tiles,
+            Self::Shown(shown) => &shown.rows,
+        }
+    }
+
+    /// The pass's `stride`: tiles a row, or words.
+    fn stride(&self, picture: Picture) -> u32 {
+        match self {
+            Self::Tiles(_) => picture.tiles().0,
+            Self::Shown(shown) => shown.stride,
+        }
+    }
+
+    /// None, with why, unless the frame holds `picture`.
+    fn holds(&self, picture: Picture) -> Option<()> {
+        match self {
+            Self::Tiles(tiles) => holds(tiles, picture.tiles()),
+            Self::Shown(shown) if picture.width > shown.width || picture.height > shown.height => {
+                fail(format!(
+                    "a {}x{} picture is not in a {}x{} frame",
+                    picture.width, picture.height, shown.width, shown.height
+                ))
+            }
+            Self::Shown(_) => Some(()),
+        }
+    }
+}
+
+/// A frame as the screen shows it, for the export's passes
+/// (gpu-export-path ①⑴): a surface's texels copied on the GPU into rows a
+/// pass reads — premultiplied, `bgra` where the surface is laid so —, so
+/// the file a frame makes is the picture the canvas shows and only what a
+/// writer takes crosses to the CPU.
+pub struct Shown {
+    rows: wgpu::Buffer,
+    /// Words from one row to the next: a copy's rows start on
+    /// `COPY_BYTES_PER_ROW_ALIGNMENT`.
+    stride: u32,
+    width: u32,
+    height: u32,
+    bgra: bool,
+}
+
+impl Shown {
+    /// `picture` of `texture`, from its top-left texel, copied and the copy
+    /// submitted — none, with why, unless the texture holds it in 8-bit
+    /// RGBA or BGRA texels.
+    pub(crate) fn of(engine: &Engine, texture: &wgpu::Texture, picture: Picture) -> Option<Self> {
+        picture.check()?;
+        let bgra = match texture.format() {
+            wgpu::TextureFormat::Rgba8Unorm => false,
+            wgpu::TextureFormat::Bgra8Unorm => true,
+            other => return fail(format!("a frame shown is 8-bit RGBA or BGRA, not {other:?}")),
+        };
+        let Picture { width, height } = picture;
+        if width > texture.width() || height > texture.height() {
+            return fail(format!(
+                "a {width}x{height} picture is not in a {}x{} surface",
+                texture.width(),
+                texture.height()
+            ));
+        }
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let row = (width * 4).div_ceil(align) * align;
+        let bytes = u64::from(row) * u64::from(height);
+        fits(engine, &[bytes], std::iter::empty())?;
+        let rows = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("export shown"),
+            size: bytes,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &rows,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        engine.queue.submit([encoder.finish()]);
+        Some(Self { rows, stride: row / 4, width, height, bgra })
+    }
+}
+
+/// A pass's pipelines, one a [`Read`], each compiled where it is first
+/// asked: a device's surfaces are laid one way, so a run reads at most
+/// two.
+struct Pipelines {
+    own: &'static [&'static str],
+    entry: &'static str,
+    tiles: OnceLock<wgpu::ComputePipeline>,
+    rgba: OnceLock<wgpu::ComputePipeline>,
+    bgra: OnceLock<wgpu::ComputePipeline>,
+}
+
+impl Pipelines {
+    const fn new(own: &'static [&'static str], entry: &'static str) -> Self {
+        Self {
+            own,
+            entry,
+            tiles: OnceLock::new(),
+            rgba: OnceLock::new(),
+            bgra: OnceLock::new(),
+        }
+    }
+
+    /// The pipeline that reads its picture as `frame` is read.
+    fn of(&self, engine: &Engine, frame: Frame) -> &wgpu::ComputePipeline {
+        let (compiled, reads, bgra) = match frame.read() {
+            Read::Tiles => (&self.tiles, FRAME_WGSL, false),
+            Read::Shown { bgra: false } => (&self.rgba, FRAME_SHOWN_WGSL, false),
+            Read::Shown { bgra: true } => (&self.bgra, FRAME_SHOWN_WGSL, true),
+        };
+        compiled.get_or_init(|| {
+            let sources = [&[TILE_WGSL, PREMULTIPLY_WGSL, reads], self.own].concat();
+            let constants: &[(&str, f64)] = if bgra { &[("FRAME_BGRA", 1.0)] } else { &[] };
+            pipeline_with(engine, &sources, self.entry, constants)
+        })
+    }
+}
 
 /// A picture in the frame, from its top-left pixel.
 #[derive(Clone, Copy, Debug)]
@@ -65,12 +232,6 @@ impl Picture {
         }
         Some(())
     }
-}
-
-/// A kernel's pipeline: its `own` sources, in order, after the frame read
-/// they call.
-fn compile(engine: &Engine, own: &[&str], entry: &str) -> wgpu::ComputePipeline {
-    pipeline(engine, &[&[TILE_WGSL, FRAME_WGSL], own].concat(), entry)
 }
 
 /// None, with why, unless `frame` holds the tiles — a row of them, rows —
