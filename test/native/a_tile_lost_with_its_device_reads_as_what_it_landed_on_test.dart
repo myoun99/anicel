@@ -49,6 +49,9 @@ void main() {
     expect(read.pixels, everyElement(9), reason: '⛔premise: what landed');
     expect(onATile.isOnlyOnEngine, isTrue, reason: '⛔premise: no copy here');
     expect(onNone.hasInk, isTrue, reason: '⛔premise: as its maker said');
+    const said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
+    onATile.rememberInkBounds(said);
+    expect(onATile.inkBounds, said, reason: '⛔premise: as its maker said');
 
     engine.debugLose();
 
@@ -56,6 +59,7 @@ void main() {
     expect(onNone.pixels, everyElement(0));
     expect(onNone.hasInk, isFalse);
     expect(onATile.hasInk, isTrue);
+    expect(onATile.inkBounds, tileOf(7).inkBounds);
     expect(read.pixels, everyElement(9), reason: 'its bytes were here');
   });
 
@@ -94,6 +98,17 @@ void main() {
     expect(tiles.last.pixels, everyElement(9));
   });
 
+  test('a copy asked for once the device is gone gives each tile the '
+      'picture it landed on', () {
+    final tile = landed([tileOf(7)], 9).single;
+
+    engine.debugLose();
+    expect(ledger.copyHereABatch(), isFalse);
+
+    expect(tile.isOnlyOnEngine, isFalse);
+    expect(tile.pixels, everyElement(7));
+  });
+
   // What a save, a cel cooled and an undo record parked ask.
   test('a read of many gives each tile its bytes in order once the device '
       'is gone: its own where they are here, else the picture under it', () {
@@ -118,13 +133,15 @@ void main() {
 
   // ⛔What the engine refuses with its device still there is no loss: it
   // is thrown on, as it was (a_read_the_engine_refuses_changes_no_file).
-  test('a read refused by a device that is not gone is still refused', () {
+  test('a read refused by a device that is not gone is still refused — of '
+      'one tile and of many', () {
     final tile = landed([tileOf(7)], 9).single;
-    addTearDown(() => EngineTileLedger.debugBeforeRead = null);
-    EngineTileLedger.debugBeforeRead = (_) => throw GpuReadFailed('refused');
+    // Let go behind the ledger: the pool refuses a read of a slot not held.
+    expect(ledger.pool.release(ledger.slotOf(tile)!), isTrue);
     final into = calloc<Uint8>(gpuTileBytes);
     addTearDown(() => calloc.free(into));
 
+    expect(() => tile.pixels, throwsA(isA<GpuReadFailed>()));
     expect(
       () => ledger.read(cel, [tile], into),
       throwsA(isA<GpuReadFailed>()),
