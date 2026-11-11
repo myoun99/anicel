@@ -16,8 +16,19 @@ import 'screen_texture.dart';
 // for the frame grids' tiles (grid-on-the-engine ⑤); ⏳the tile ledger
 // (`EngineTileLedger.instance`) asks once the screen asks it
 // (screen-on-the-engine c6).
-GpuEngine get appGpuEngine => _engine ??= _opener()();
-GpuEngine? _engine;
+GpuEngine get appGpuEngine => _its.engine ??= _opener()();
+
+/// One engine of the app's, from before it is opened till the app lets it
+/// go ([letTheGoneAppGpuEngineGo]): the engine, the opening of it under
+/// way, and — by being this object — what everything kept on it is kept
+/// for ([KeptOnTheAppsEngine]). ONE fact, so no two of the three can speak
+/// of different engines.
+final class _AppsEngine {
+  GpuEngine? engine;
+  Future<GpuEngine>? opening;
+}
+
+_AppsEngine _its = _AppsEngine();
 
 /// Whether this isolate can have [appGpuEngine]: a worker cannot — the
 /// engine, and the tiles its pool holds, are the main isolate's.
@@ -27,7 +38,100 @@ bool get appGpuEngineIsHere => RootIsolateToken.instance != null;
 /// ([GpuEngine.isGone]) — asked without opening one. Every job is refused
 /// from then on, whatever the job: one cause, for what tells a refusal
 /// (`EngineRefusals`).
-bool get appGpuEngineIsGone => _engine?.isGone ?? false;
+bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
+
+/// Whether [engine] is the one the app has now — asked without opening
+/// one: what was made on another is not kept for the next use
+/// (`EngineStrokes.giveBack`).
+bool isTheAppsEngine(GpuEngine engine) => identical(engine, _its.engine);
+
+/// Lets go of the app's engine, its device gone ([appGpuEngineIsGone]) —
+/// of nothing where it is not: the next ask opens another ([appGpuEngine],
+/// [openAppGpuEngine]), what was kept on this one is made again on that
+/// ([KeptOnTheAppsEngine]), and [appGpuEngineOpen] says none is open till
+/// then.
+///
+/// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+/// 유지한다」 — 「장치를 잃으면 앱은 꺼지지 않고 새 장치를 열어 사본으로
+/// 되살린다」.
+///
+/// ⛔NOT CLOSED. A tile this engine made keeps its ledger, the ledger its
+/// pool and this engine, and such a tile is read through them once more —
+/// as the picture it landed on (`EngineTileLedger`) — and lets its slot go
+/// there whenever it is collected; a stamp's picture made here is asked
+/// for its bytes the same way. Closed, each of those would be at memory
+/// given back (`gpu_engine_close` frees the engine whole). What stays is
+/// one engine whose device the driver took, once a loss.
+///
+/// ⏳Nothing in the app asks yet: what shows on a screen still holds what
+/// the gone engine made, and lets it go first (관제 2026-11-11 22:35: 「(C3)
+/// 는 다섯이 다 선 뒤」).
+void letTheGoneAppGpuEngineGo() {
+  if (!appGpuEngineIsGone) {
+    return;
+  }
+  _its = _AppsEngine();
+  _opened.value = null;
+}
+
+/// What was made on [appGpuEngine] and is kept: the app's while that
+/// engine is, and kept no longer once the app has let that engine go
+/// ([letTheGoneAppGpuEngineGo]). What asks then makes it again, on the
+/// engine the app has by then.
+///
+/// 🚨EVERY CACHE OF WHAT THE ENGINE MADE IS ONE OF THESE — a set of
+/// kernels ([AppKernels]), the strokes at rest (`EngineStrokes`), the
+/// frame's tools (`appEngineFrameTools`), the tile ledger and its pool
+/// (`EngineTileLedger.instance`), the stamps' pictures
+/// (`EngineStampPictures`): what one device made, the next refuses.
+/// ⛔Not by listening ([appGpuEngineOpen]): a cache that forgot to listen
+/// would hand out what the last engine made, and nothing would say so
+/// till a job was refused. Asked here, it cannot. What stands on a screen
+/// is not a cache and does listen: it has a picture to lay again.
+///
+/// ⛔WHAT AN ENGINE LET GO MADE IS LEFT WITH IT, NOT FREED: what else was
+/// made there may hold it still and free itself after — a screen its
+/// executor (`GpuScreen`: 「before its executor is」), a tile its ledger —
+/// and a kernel freed under one would be at memory given back. It stays
+/// as that engine stays, once a loss ([forget], asked for, frees).
+final class KeptOnTheAppsEngine<T extends Object> {
+  /// [free] frees what [forget] lets go; nothing does where null.
+  KeptOnTheAppsEngine([this._free]);
+
+  final void Function(T)? _free;
+  T? _kept;
+  _AppsEngine? _on;
+
+  /// What is kept, null where nothing is.
+  T? get orNull {
+    if (!identical(_on, _its)) {
+      _kept = null;
+      _on = null;
+    }
+    return _kept;
+  }
+
+  /// What is kept — [make]'s, kept from now, where nothing is.
+  T of(T Function() make) {
+    final kept = orNull;
+    if (kept != null) {
+      return kept;
+    }
+    _on = _its;
+    return _kept = make();
+  }
+
+  /// Lets go of what is kept, freed — the memory is tight, or a test
+  /// starts as a launch does.
+  void forget() {
+    final kept = orNull;
+    _kept = null;
+    _on = null;
+    if (kept != null) {
+      _free?.call(kept);
+    }
+  }
+}
 
 /// Test seam: the error the app's engine raised that no job has been
 /// refused by, taken ([GpuEngine.debugTakeNoted]) — null where there is
@@ -38,14 +142,17 @@ bool get appGpuEngineIsGone => _engine?.isGone ?? false;
 /// that waits.
 @visibleForTesting
 String? debugTakeAppGpuEngineNoted() {
-  final engine = _engine;
+  final engine = _its.engine;
   return engine == null || engine.isGone ? null : engine.debugTakeNoted();
 }
 
 /// A set of kernels on [appGpuEngine], one for the app: compiled here the
-/// first time anything asks, if [warm] has not got there first.
+/// first time anything asks, if [warm] has not got there first — and
+/// again on the next engine, once the app lets this one go
+/// ([KeptOnTheAppsEngine]).
 final class AppKernels<T extends Object> {
-  AppKernels(this._here, this._off, this._free);
+  AppKernels(this._here, this._off, this._free)
+    : _kept = KeptOnTheAppsEngine(_free);
 
   /// Test seam: [warm] compiles on this isolate, as [kept] does. A widget
   /// test's clock is pumped, and lends a compile on another isolate no real
@@ -57,28 +164,35 @@ final class AppKernels<T extends Object> {
   final Future<T> Function(GpuEngine) _off;
   final void Function(T) _free;
 
-  T? _kept;
+  final KeptOnTheAppsEngine<T> _kept;
 
-  T get kept => _kept ??= _here(appGpuEngine);
+  T get kept => _kept.of(() => _here(appGpuEngine));
 
   /// [kept] where it has been compiled, null till then.
-  T? get compiled => _kept;
+  T? get compiled => _kept.orNull;
 
   /// [kept] compiled off this isolate, at once where it is compiled already:
   /// ahead of a first use that would otherwise wait with the app frozen.
   /// One compile, however many ask: what needs the kernels asks as the
   /// launch does, and waits on the same one (🗣️관제 2026-11-10 18:14,
   /// gpu-canonical-store ⑦).
-  Future<T> warm() => _warming ??= _warmed();
-  Future<T>? _warming;
+  Future<T> warm() => _warming.of(_warmed);
+  final _warming = KeptOnTheAppsEngine<Future<T>>();
 
   Future<T> _warmed() async {
     if (debugCompileHere) {
       return kept;
     }
-    final made = _kept ?? await _off(appGpuEngine);
+    final its = _its;
+    final made = _kept.orNull ?? await _off(appGpuEngine);
+    if (!identical(its, _its)) {
+      // The app let its engine go while this compiled on it: what it made
+      // is that engine's, and the app's is asked the same way.
+      _free(made);
+      return warm();
+    }
     // Asked for the other way while this compiled: the app keeps one.
-    final one = _kept ??= made;
+    final one = _kept.of(() => made);
     if (!identical(one, made)) {
       _free(made);
     }
@@ -89,12 +203,9 @@ final class AppKernels<T extends Object> {
   /// keeps ([GpuEngine.debugForgetKernels]), or the set would be made
   /// again of those, with nothing to compile.
   void debugForget() {
-    if (_kept case final kept?) {
-      _free(kept);
-    }
-    _kept = null;
-    _warming = null;
-    _engine?.debugForgetKernels();
+    _kept.forget();
+    _warming.forget();
+    _its.engine?.debugForgetKernels();
   }
 }
 
@@ -187,11 +298,12 @@ GpuEngine Function() _opener() => switch (debugGpuAdapterChoice) {
   GpuAdapterChoice.first => GpuEngine.onFirstAdapter,
 };
 
-/// [appGpuEngine] once [openAppGpuEngine] has opened it, null till then:
-/// what the app's screens on the engine wait for, drawing as they did
-/// before it till it is there (grid-on-the-engine ④, 관제 2026-11-08 20:54:
-/// 「열리기 전엔 모든 스팬이 지금의 차가운 스팬처럼 클래식 — 없다가 생기는 것
-/// 없음 · 장치는 첫 프레임 뒤에」).
+/// [appGpuEngine] once [openAppGpuEngine] has opened it, null till then —
+/// and again from the app letting one go till the next is open
+/// ([letTheGoneAppGpuEngineGo]): what the app's screens on the engine wait
+/// for, drawing as they did before it till it is there (grid-on-the-engine
+/// ④, 관제 2026-11-08 20:54: 「열리기 전엔 모든 스팬이 지금의 차가운 스팬처럼
+/// 클래식 — 없다가 생기는 것 없음 · 장치는 첫 프레임 뒤에」).
 ValueListenable<GpuEngine?> get appGpuEngineOpen => _opened;
 final ValueNotifier<GpuEngine?> _opened = ValueNotifier(null);
 
@@ -199,13 +311,19 @@ final ValueNotifier<GpuEngine?> _opened = ValueNotifier(null);
 /// where it is open already — and tells [appGpuEngineOpen]. The app asks
 /// after its first frame; a test that shows the engine's screens asks for
 /// itself.
-Future<GpuEngine> openAppGpuEngine() => _opening ??= () async {
-  final opened = _engine ?? await GpuEngine.opening(_opener());
-  // Asked the other way while this one opened: the app keeps one.
-  final engine = _engine ??= opened;
-  if (!identical(engine, opened)) {
-    opened.close();
-  }
-  return _opened.value = engine;
-}();
-Future<GpuEngine>? _opening;
+Future<GpuEngine> openAppGpuEngine() {
+  final its = _its;
+  return its.opening ??= () async {
+    final opened = its.engine ?? await GpuEngine.opening(_opener());
+    // Asked the other way while this one opened: the app keeps one.
+    final engine = its.engine ??= opened;
+    if (!identical(engine, opened)) {
+      opened.close();
+    }
+    // Let go while it opened, its device gone: not the app's to tell of.
+    if (identical(its, _its)) {
+      _opened.value = engine;
+    }
+    return engine;
+  }();
+}

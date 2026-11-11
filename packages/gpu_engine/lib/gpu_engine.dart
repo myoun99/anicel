@@ -820,6 +820,9 @@ class GpuStroke {
   final GpuEngine _engine;
   final Pointer<rust.Stroke> _stroke;
 
+  /// The engine its pages are made on.
+  GpuEngine get engine => _engine;
+
   /// The bytes of the pages made.
   int get bytes => rust.strokeBytes(_stroke);
 

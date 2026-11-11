@@ -5,9 +5,13 @@ import '../models/brush_stamp_image.dart';
 import 'app_gpu_engine.dart';
 
 /// The pictures of the stamps the engine lands, each on it once: a selection
-/// moved lands the same one at each step of the drag.
+/// moved lands the same one at each step of the drag. On the engine the
+/// app has: a stamp is handed up again to the next one, once the app lets
+/// this one go ([KeptOnTheAppsEngine]).
 abstract final class EngineStampPictures {
-  static final Expando<GpuStampPicture> _of = Expando();
+  static final _pictures = KeptOnTheAppsEngine<Expando<GpuStampPicture>>();
+
+  static Expando<GpuStampPicture> get _of => _pictures.of(Expando.new);
 
   /// [stamp]'s picture: its bytes handed over the first time it is asked
   /// for, or what the engine made it as ([carried]).

@@ -84,23 +84,30 @@ class EngineTileLedger implements TilePixelsOnEngine {
       pool = GpuPool(engine, byteBudget ?? _unbounded),
       _byteBudget = byteBudget;
 
-  /// The app's, on its engine — opened the first time anything asks.
+  /// The app's, on its engine — opened the first time anything asks, and
+  /// another on the next engine once the app lets this one go
+  /// ([KeptOnTheAppsEngine]).
   ///
   /// Refused on a worker, by name ([TileLedgerAskedOnAWorker]).
   static EngineTileLedger get instance {
     if (!appGpuEngineIsHere) {
       throw TileLedgerAskedOnAWorker();
     }
-    return _instance ??= EngineTileLedger(
-      appGpuEngine,
-      byteBudget: _appByteBudget,
+    return _instance.of(
+      () => EngineTileLedger(appGpuEngine, byteBudget: _appByteBudget),
     );
   }
 
-  static EngineTileLedger? _instance;
+  /// ⛔Let go with nothing freed: the ledger of an engine the app has let
+  /// go is its tiles' still. Each reads through it once more — its own
+  /// bytes where their copy came, else the picture it landed on
+  /// ([_layThePictureUnder]) — which is how the next ledger, asked for a
+  /// tile it never stored, comes by the bytes it stores ([_put]); and each
+  /// lets its slot go there when it is collected.
+  static final _instance = KeptOnTheAppsEngine<EngineTileLedger>();
 
   /// The app's, where anything has opened it — none for a warning to open.
-  static EngineTileLedger? get opened => _instance;
+  static EngineTileLedger? get opened => _instance.orNull;
 
   /// The budget of the app's ledger: the tile pictures' line
   /// (`CacheBudgetLine.tileImages`), which the session gives both — before
@@ -108,14 +115,14 @@ class EngineTileLedger implements TilePixelsOnEngine {
   static int? get appByteBudget => _appByteBudget;
   static set appByteBudget(int? bytes) {
     _appByteBudget = bytes;
-    _instance?.byteBudget = bytes;
+    opened?.byteBudget = bytes;
   }
 
   static int? _appByteBudget;
 
   /// The bytes of the pages the app's ledger has made — none before
   /// anything asks it — for the memory census.
-  static int get appPoolBytes => _instance?.pool.bytes ?? 0;
+  static int get appPoolBytes => opened?.pool.bytes ?? 0;
 
   /// The most a pool is told it may make: past any device.
   static const int _unbounded = 0x7fffffffffffffff;

@@ -5,9 +5,16 @@ import 'app_gpu_engine.dart';
 
 /// The strokes the app has made and is not drawing with: a stroke's pages
 /// are kept for the next one, a device taking tens of ms to make a page
-/// (rust/src/kernels/dab/stroke.rs).
+/// (rust/src/kernels/dab/stroke.rs) — kept while the engine they were made
+/// on is the app's ([KeptOnTheAppsEngine]).
 abstract final class EngineStrokes {
-  static final List<GpuStroke> _idle = [];
+  static final _idle = KeptOnTheAppsEngine<List<GpuStroke>>((strokes) {
+    for (final stroke in strokes) {
+      stroke.free();
+    }
+  });
+
+  static List<GpuStroke> get _atRest => _idle.of(() => []);
 
   /// The blur brush's kernels, one set for every stroke.
   static GpuBlurs get blurs => _blurs.kept;
@@ -20,8 +27,8 @@ abstract final class EngineStrokes {
   /// One stroke's kernels compiled off this isolate, ahead of the first
   /// pen-down, which would otherwise wait for them.
   static Future<void> warm() async {
-    if (_idle.isEmpty) {
-      _idle.add(await GpuStroke.opening(appGpuEngine));
+    if (_atRest.isEmpty) {
+      _rest(await GpuStroke.opening(appGpuEngine));
     }
   }
 
@@ -45,16 +52,16 @@ abstract final class EngineStrokes {
   /// stopped app within 13 s of the canvas (🗣️관제 06:42: 「같은 선이
   /// 걸린다」).
   static Future<void> warmBlurStrips() =>
-      _blurStrips ??= GpuBlurs.compilingStrips(appGpuEngine);
-  static Future<void>? _blurStrips;
+      _blurStrips.of(() => GpuBlurs.compilingStrips(appGpuEngine));
+  static final _blurStrips = KeptOnTheAppsEngine<Future<void>>();
 
   /// A stroke of no tiles.
   static GpuStroke take() =>
-      _idle.isEmpty ? GpuStroke(appGpuEngine) : _idle.removeLast();
+      _atRest.isEmpty ? GpuStroke(appGpuEngine) : _atRest.removeLast();
 
   /// Test seam: how many strokes wait for the next pen-down.
   @visibleForTesting
-  static int get debugIdle => _idle.length;
+  static int get debugIdle => _idle.orNull?.length ?? 0;
 
   /// Test seam: whether [blurs] is compiled.
   @visibleForTesting
@@ -64,18 +71,31 @@ abstract final class EngineStrokes {
   @visibleForTesting
   static void debugForgetBlurs() {
     _blurs.debugForget();
-    _blurStrips = null;
+    _blurStrips.forget();
   }
 
   /// [stroke] done with: cleared and kept for the next.
   static void giveBack(GpuStroke stroke) {
-    stroke.clear();
-    _idle.add(stroke);
+    if (isTheAppsEngine(stroke.engine)) {
+      stroke.clear();
+    }
+    _rest(stroke);
+  }
+
+  /// Keeps [stroke], of no tiles, for the next pen-down — freed where the
+  /// app has let the engine it was made on go: a pen was down, or a stroke
+  /// was compiling, while its device went.
+  static void _rest(GpuStroke stroke) {
+    if (isTheAppsEngine(stroke.engine)) {
+      _atRest.add(stroke);
+    } else {
+      stroke.free();
+    }
   }
 
   /// The bytes the strokes kept hold, for the memory census.
   static int get idleBytes =>
-      _idle.fold(
+      (_idle.orNull ?? const <GpuStroke>[]).fold(
         _blurs.compiled?.bytes ?? 0,
         (bytes, stroke) => bytes + stroke.bytes,
       );
@@ -83,9 +103,6 @@ abstract final class EngineStrokes {
   /// The OS says memory is tight: the strokes kept go.
   static void letGoIdle() {
     _blurs.compiled?.letGo();
-    for (final stroke in _idle) {
-      stroke.free();
-    }
-    _idle.clear();
+    _idle.forget();
   }
 }
