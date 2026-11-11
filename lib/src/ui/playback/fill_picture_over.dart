@@ -1,16 +1,64 @@
 import 'package:gpu_engine/gpu_engine.dart' show GpuFloodPicture;
 
+import '../../models/canvas_point.dart';
 import '../../models/cut.dart';
 import '../../models/dirty_region.dart';
+import '../../models/drawing_guide.dart' show SymmetryShape;
 import '../../models/layer_id.dart';
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
+import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/cut_frame_composite_plan.dart' show rowAsRead;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
+import '../editor_session_manager.dart';
 import '../session/editing_canvas.dart';
 import 'frame_pictures.dart';
+
+/// The range a fill pressed at [point] makes on the frame [session] stands
+/// on ([fillRangeAt]): its cut's frame read by the fill's read source and
+/// the row stood on ([fillPictureOver]) — the 「현재」 of that source is the
+/// layer the eyedropper's reads (I-36) —, the apron as far as the project's
+/// pasteboard reaches (I-109), in [space]: the space [point] is in, the
+/// artwork of the row the dab lands on where that is posed. The picture is
+/// read in the space the seed arrives in, and the symmetry's copies are
+/// made in it: one [space], handed on to both.
+///
+/// ⛔ONE DOOR, a canvas's and a test's that presses a fill on a session: a
+/// test that spelled the canvas's call again pinned its own spelling
+/// (mutants FD23 · FD25 lived, 2026-11-12).
+FillRange? fillRangeOn(
+  EditorSessionManager session,
+  CanvasPoint point, {
+  required FloodFillOptions options,
+  required LayerPlacement? space,
+  double opacity = 1.0,
+  SymmetryShape? symmetry,
+  void Function()? onOpenRegion,
+}) {
+  final cut = session.requireActiveCut;
+  return fillRangeAt(
+    canvasSize: cut.canvasSize,
+    pictureOver: (box) => fillPictureOver(
+      box,
+      pictures: session.playbackRig.framePictures,
+      canvas: session.editingCanvas,
+      cut: cut,
+      frameIndex: session.currentFrameIndex,
+      source: options.source,
+      activeLayerId: session.activeLayer?.id,
+      space: space,
+    ),
+    point: point,
+    opacity: opacity,
+    options: options,
+    space: space,
+    symmetry: symmetry,
+    onOpenRegion: onOpenRegion,
+    pasteboardReach: session.repository.requireProject().pasteboardReach,
+  );
+}
 
 /// The picture a fill pressed on [cut]'s frame [frameIndex] reads over
 /// [box] of the space its seed is in (`FillPictureOver`) — the canvas, or

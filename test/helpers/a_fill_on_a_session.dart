@@ -29,13 +29,15 @@ Layer drawingRow(String id) => Layer(
 /// A session whose one cut is [canvasSize] and holds [rows] — bottom first —
 /// beside the rows every cut is born with, standing on its first
 /// frame and on the row [standOn]: each cel named in [cels] storing those
-/// pixels. A file using it opens the engine first
+/// pixels — on a project that uses a pasteboard, or none where
+/// [pasteboardInUse] is off. A file using it opens the engine first
 /// (`opensTheEnginesScreens`).
 EditorSessionManager sessionOfRows(
   List<Layer> rows, {
   required CanvasSize canvasSize,
   required Map<(LayerId, FrameId), BitmapSurface> cels,
   required LayerId standOn,
+  bool pasteboardInUse = true,
 }) {
   final cut = importedCut(
     defaultCut: createDefaultTrack().cuts.single.copyWith(
@@ -47,6 +49,7 @@ EditorSessionManager sessionOfRows(
   final session = EditorSessionManager(
     initialProject: createDefaultProject().copyWith(
       tracks: [createDefaultTrack(firstCut: cut)],
+      pasteboardInUse: pasteboardInUse,
     ),
   );
   addTearDown(session.dispose);
@@ -61,10 +64,8 @@ EditorSessionManager sessionOfRows(
 }
 
 /// The range a fill pressed at [at] makes on the frame [session] stands
-/// on, asked as its canvas asks it (`_InteractiveCanvasBuild`'s
-/// `fillRangeAt`): the picture the canvas's own door reads
-/// ([fillPictureOver]) of the session's frame, its read source and the row
-/// stood on, in that row's space.
+/// on, through the door its canvas asks ([fillRangeOn]) — [at] in the space
+/// a canvas hands a press over in: the pose of the row stood on.
 FillRange? fillPressedOn(
   EditorSessionManager session,
   CanvasPoint at, {
@@ -72,28 +73,15 @@ FillRange? fillPressedOn(
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
 }) {
-  final cut = session.requireActiveCut;
   final stoodOn = session.editingCanvas.activeBrushEditorSelection?.layerId;
-  final space = stoodOn == null
-      ? null
-      : session.frameVerbs.layerCanvasPoseSample(stoodOn);
-  return fillRangeAt(
-    canvasSize: cut.canvasSize,
-    pictureOver: (box) => fillPictureOver(
-      box,
-      pictures: session.playbackRig.framePictures,
-      canvas: session.editingCanvas,
-      cut: cut,
-      frameIndex: session.currentFrameIndex,
-      source: options.source,
-      activeLayerId: session.activeLayer?.id,
-      space: space,
-    ),
-    point: at,
+  return fillRangeOn(
+    session,
+    at,
     options: options,
-    space: space,
+    space: stoodOn == null
+        ? null
+        : session.frameVerbs.layerCanvasPoseSample(stoodOn),
     symmetry: symmetry,
     onOpenRegion: onOpenRegion,
-    pasteboardReach: session.repository.requireProject().pasteboardReach,
   );
 }

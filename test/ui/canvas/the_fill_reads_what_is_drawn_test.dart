@@ -44,6 +44,7 @@ void main() {
     BitmapSurface surface, {
     required CanvasPoint at,
     bool pastTheCanvas = false,
+    bool pasteboardInUse = true,
     void Function()? onOpenRegion,
   }) {
     final session = sessionOfRows(
@@ -51,6 +52,7 @@ void main() {
       canvasSize: canvasSize,
       cels: {(ink, theCel): surface},
       standOn: ink,
+      pasteboardInUse: pasteboardInUse,
     );
     expect(
       session.projectSettings.projectBackground,
@@ -117,6 +119,36 @@ void main() {
     final dabs = fill(inkOf(block(-3, 2, 3, 5)), at: CanvasPoint(x: 1, y: 3));
 
     expect(piecesBox(dabs), (left: 0, top: 2, width: 4, height: 4));
+  });
+
+  // I-109: the apron a fill past the canvas floods into reaches as far as
+  // the PROJECT's pasteboard does — the canvas's door reads it of the
+  // project (`fillRangeOn`).
+  test('on a project that uses no pasteboard the fill past the canvas is '
+      'the canvas\'s: the empty canvas fills to the paper\'s edge, where '
+      'a project with one refuses it as open', () {
+    var refused = false;
+    final dabs = fill(
+      inkOf(block(2, 2, 5, 5)),
+      at: CanvasPoint(x: 0, y: 0),
+      pastTheCanvas: true,
+      pasteboardInUse: false,
+      onOpenRegion: () => refused = true,
+    );
+    expect(refused, isFalse, reason: 'an apron the project has not');
+    expect(piecesBox(dabs), (left: 0, top: 0, width: 8, height: 8));
+
+    expect(
+      fill(
+        inkOf(block(2, 2, 5, 5)),
+        at: CanvasPoint(x: 0, y: 0),
+        pastTheCanvas: true,
+        onOpenRegion: () => refused = true,
+      ),
+      isEmpty,
+      reason: '⛔premise: with a pasteboard the same press floods to its wall',
+    );
+    expect(refused, isTrue);
   });
 
   test('black line art walls a fill: nothing drawn and black ink differ '

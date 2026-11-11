@@ -570,50 +570,27 @@ class _InteractiveCanvasBuild {
       // the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
       transformOptions: _state.widget.transformOptions,
-      fillRangeAt: (point, symmetry) {
-        final cut = session.requireActiveCut;
-        final options =
-            _state.widget.fillOptions?.value ?? const FloodFillOptions();
-        return fillRangeAt(
-          canvasSize: cut.canvasSize,
-          pictureOver: (box) => fillPictureOver(
-            box,
-            pictures: session.playbackRig.framePictures,
-            canvas: session.editingCanvas,
-            cut: cut,
-            frameIndex: session.currentFrameIndex,
-            source: options.source,
-            // The 「현재」 of the fill's reference source (I-36) — the same
-            // layer the eyedropper's reads, above.
-            activeLayerId: session.activeLayer?.id,
-            space: _interactivePose,
-          ),
-          point: point,
-          // TP1: the FILL has its own opacity now — the strip's bar
-          // writes the fill's field, not the brush's.
-          opacity: _state.widget.brushToolState.value.activeOpacity,
-          options: options,
-          // The seed arrives through the draw-through wrap, in the posed
-          // layer's artwork — the picture is read in the same space
-          // (I-36).
-          space: _interactivePose,
-          // The same guide the brush obeys, handed down by the view
-          // that read it — a symmetry that replicates strokes
-          // replicates fills.
-          symmetry: symmetry,
-          // Extended fills refuse OPEN regions (the flood reached
-          // the pasteboard apron wall) — say why nothing filled.
-          onOpenRegion: () => showAppNotice(
-            _state.context,
-            title: AppText.strings.commonNotice,
-            message: AppText.strings.noticeFillRegionOpen,
-          ),
-          // The apron reaches as far as the pasteboard does (I-109).
-          pasteboardReach: session.repository
-              .requireProject()
-              .pasteboardReach,
-        );
-      },
+      fillRangeAt: (point, symmetry) => fillRangeOn(
+        session,
+        point,
+        options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
+        // The seed arrives through the draw-through wrap, in the posed
+        // layer's artwork — the picture is read in the same space (I-36).
+        space: _interactivePose,
+        // TP1: the FILL has its own opacity now — the strip's bar writes
+        // the fill's field, not the brush's.
+        opacity: _state.widget.brushToolState.value.activeOpacity,
+        // The same guide the brush obeys, handed down by the view that
+        // read it — a symmetry that replicates strokes replicates fills.
+        symmetry: symmetry,
+        // Extended fills refuse OPEN regions (the flood reached the
+        // pasteboard apron wall) — say why nothing filled.
+        onOpenRegion: () => showAppNotice(
+          _state.context,
+          title: AppText.strings.commonNotice,
+          message: AppText.strings.noticeFillRegionOpen,
+        ),
+      ),
       fillsContinuously: () =>
           _state.widget.fillOptions?.value.continuous ?? false,
       fillGradient: switch (_state.widget.colorBackground) {
