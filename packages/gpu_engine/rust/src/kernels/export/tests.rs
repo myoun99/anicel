@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use video::colour;
 
-use super::{Clear, Frame, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
+use super::{Clear, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -18,6 +18,7 @@ pub(super) struct Rig {
     pub(super) opaque: Opaque,
     pub(super) clear: Clear,
     pub(super) png: PngFilter,
+    pub(super) lay: Lay,
 }
 
 /// One device and one compiled pass each for every test here, as the app
@@ -33,6 +34,7 @@ pub(super) fn rig() -> &'static Rig {
             opaque: Opaque::new(),
             clear: Clear::new(),
             png: PngFilter::new(),
+            lay: Lay::new(),
         }
     })
 }

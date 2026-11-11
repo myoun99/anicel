@@ -10,6 +10,8 @@
 //!   `over_ground`'s with the alpha cut (①c).
 //! - `opaque` — whether a frame is opaque, so its PDF picture goes without
 //!   alpha (①d).
+//! - `lay` — a frame the export makes and pictures laid over it, so its
+//!   last picture is made on the engine and read back once (①⑵).
 //! - `png` — a PNG's rows under their filters, from the frame's RGBA or
 //!   from `over_ground`'s RGB (①e).
 //!
@@ -20,6 +22,7 @@
 
 pub(crate) mod abi;
 mod clear;
+mod lay;
 mod nv12;
 mod opaque;
 mod over_ground;
@@ -28,8 +31,11 @@ mod png;
 mod tests;
 #[cfg(test)]
 mod shown_tests;
+#[cfg(test)]
+mod lay_tests;
 
 pub(crate) use clear::Clear;
+pub(crate) use lay::{Cover, Lay, Source};
 pub(crate) use nv12::{Nv12, Nv12Shape};
 pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;
@@ -195,7 +201,12 @@ impl Pipelines {
 
     /// The pipeline that reads its picture as `frame` is read.
     fn of(&self, engine: &Engine, frame: Frame) -> &wgpu::ComputePipeline {
-        let (compiled, reads, bgra) = match frame.read() {
+        self.reading(engine, frame.read())
+    }
+
+    /// The pipeline that reads its picture by `read`.
+    fn reading(&self, engine: &Engine, read: Read) -> &wgpu::ComputePipeline {
+        let (compiled, reads, bgra) = match read {
             Read::Tiles => (&self.tiles, FRAME_WGSL, false),
             Read::Shown { bgra: false } => (&self.rgba, FRAME_SHOWN_WGSL, false),
             Read::Shown { bgra: true } => (&self.bgra, FRAME_SHOWN_WGSL, true),

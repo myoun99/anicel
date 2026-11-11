@@ -27,7 +27,8 @@ use crate::kernels::composite::abi::{
 use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{Composited, TILE_TEXELS};
 use crate::kernels::export::abi::{
-    gpu_engine_export_free, gpu_engine_export_new, gpu_engine_export_opaque, gpu_engine_export_shown,
+    gpu_engine_export_cover, gpu_engine_export_cover_free, gpu_engine_export_free, gpu_engine_export_new,
+    gpu_engine_export_opaque, gpu_engine_export_shown,
     gpu_engine_export_shown_free, gpu_engine_readout_free,
 };
 use crate::kernels::effects::blur::TileRect;
@@ -76,7 +77,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 32] {
+fn frees() -> [(&'static str, fn(&'static str)); 33] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -152,6 +153,12 @@ fn frees() -> [(&'static str, fn(&'static str)); 32] {
             gives_back(name, made, gpu_engine_export_shown_free);
             // SAFETY: `surface` is live.
             unsafe { gpu_engine_surface_free(surface) };
+        }),
+        ("gpu_engine_export_cover_free", |name| {
+            let alpha = [255u8; 16];
+            // SAFETY: the engine is live; `alpha` holds its 16 bytes.
+            let made = unsafe { gpu_engine_export_cover(first_engine(), alpha.as_ptr(), 16, 4, 4) };
+            gives_back(name, made, gpu_engine_export_cover_free)
         }),
         ("gpu_engine_fill_free", |name| {
             // SAFETY: the engine is live.

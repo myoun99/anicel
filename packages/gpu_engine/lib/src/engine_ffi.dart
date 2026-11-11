@@ -35,6 +35,8 @@ final class Readout extends Opaque {}
 
 final class Shown extends Opaque {}
 
+final class Cover extends Opaque {}
+
 final class Ink extends Opaque {}
 
 final class CelPixels extends Opaque {}
@@ -958,6 +960,102 @@ external Pointer<Shown> exportShown(
 
 @Native<Void Function(Pointer<Shown>)>(symbol: 'gpu_engine_export_shown_free')
 external void exportShownFree(Pointer<Shown> shown);
+
+@Native<
+  Pointer<Shown> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Uint32,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_blank')
+external Pointer<Shown> exportBlank(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  int width,
+  int height,
+  int ground,
+);
+
+@Native<
+  Pointer<Shown> Function(
+    Pointer<Engine>,
+    Pointer<Uint8>,
+    UintPtr,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_upload')
+external Pointer<Shown> exportUpload(
+  Pointer<Engine> engine,
+  Pointer<Uint8> rgba,
+  int length,
+  int width,
+  int height,
+);
+
+@Native<
+  Pointer<Cover> Function(
+    Pointer<Engine>,
+    Pointer<Uint8>,
+    UintPtr,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_cover')
+external Pointer<Cover> exportCover(
+  Pointer<Engine> engine,
+  Pointer<Uint8> alpha,
+  int length,
+  int width,
+  int height,
+);
+
+@Native<Void Function(Pointer<Cover>)>(symbol: 'gpu_engine_export_cover_free')
+external void exportCoverFree(Pointer<Cover> cover);
+
+@Native<
+  Bool Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Shown>,
+    Pointer<Shown>,
+    Int32,
+    Int32,
+    Uint8,
+    Pointer<Cover>,
+  )
+>(symbol: 'gpu_engine_export_lay')
+external bool exportLay(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Shown> onto,
+  Pointer<Shown> source,
+  int x,
+  int y,
+  int opacity,
+  Pointer<Cover> cover,
+);
+
+@Native<
+  Bool Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Shown>,
+    Uint32,
+    Uint8,
+    Pointer<Cover>,
+  )
+>(symbol: 'gpu_engine_export_lay_colour')
+external bool exportLayColour(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Shown> onto,
+  int colour,
+  int opacity,
+  Pointer<Cover> cover,
+);
 
 @Native<
   Pointer<Readout> Function(

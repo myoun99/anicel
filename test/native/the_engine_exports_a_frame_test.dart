@@ -312,4 +312,90 @@ void main() {
       ),
     );
   });
+
+  // A frame's last picture made on the engine (gpu-export-path ①⑵): what
+  // Dart hands the lay pass lands where it names it. Its law is the
+  // crate's to pin (rust/src/kernels/export/lay_tests.rs).
+  group('a frame laid', () {
+    const white = 0xFFFFFFFF;
+
+    GpuShown blank(int width, int height) {
+      final frame = export.blank(width, height, ground: white);
+      addTearDown(frame.free);
+      return frame;
+    }
+
+    /// [frame]'s pixels over black, three bytes each.
+    List<List<int>> pixelsOf(GpuShown frame, int width, int height) {
+      final rgb = readAll(export.overGround(frame, width, height, 0));
+      return [
+        for (var at = 0; at < rgb.length; at += 3) rgb.sublist(at, at + 3),
+      ];
+    }
+
+    test('a picture lands where Dart stands it, on the ground', () {
+      final frame = blank(4, 3);
+      final picture = export.upload(
+        Uint8List.fromList([for (var i = 0; i < 2; i++) ...[255, 0, 0, 255]]),
+        2,
+        1,
+      );
+      addTearDown(picture.free);
+
+      export.lay(frame, picture, x: 1, y: 2);
+
+      expect(pixelsOf(frame, 4, 3), [
+        for (var at = 0; at < 12; at++)
+          if (at == 9 || at == 10) [255, 0, 0] else [255, 255, 255],
+      ]);
+    });
+
+    // Red over white at half: green and blue 127 (lay_tests.rs).
+    test('a strength and a cover are handed where Dart names them', () {
+      final covered = blank(3, 1);
+      final cover = export.cover(Uint8List.fromList([0, 128, 255]), 3, 1);
+      addTearDown(cover.free);
+      final halved = blank(3, 1);
+
+      export
+        ..layColour(covered, red, cover: cover)
+        ..layColour(halved, red, opacity: 128);
+
+      expect(pixelsOf(covered, 3, 1), [
+        [255, 255, 255],
+        [255, 127, 127],
+        [255, 0, 0],
+      ]);
+      expect(pixelsOf(halved, 3, 1), List.filled(3, [255, 127, 127]));
+    });
+
+    test('a cover of another size is refused, and says why', () {
+      final cover = export.cover(Uint8List.fromList([255, 255, 255]), 3, 1);
+      addTearDown(cover.free);
+
+      expect(
+        () => export.layColour(blank(3, 2), red, cover: cover),
+        throwsA(
+          isA<GpuRefused>().having(
+            (error) => error.message,
+            'message',
+            "a 3x1 cover is not a 3x2 frame's",
+          ),
+        ),
+      );
+    });
+
+    test('a picture of too few bytes is refused, and says why', () {
+      expect(
+        () => export.upload(Uint8List(15), 2, 2),
+        throwsA(
+          isA<GpuRefused>().having(
+            (error) => error.message,
+            'message',
+            'a 2x2 picture is 16 bytes, not 15',
+          ),
+        ),
+      );
+    });
+  });
 }

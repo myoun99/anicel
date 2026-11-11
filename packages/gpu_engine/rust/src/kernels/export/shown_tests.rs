@@ -18,7 +18,7 @@ const PAST: u32 = 0xff12_3456;
 /// A texture three texels wider and taller than `width` x `height`, laid
 /// RGBA or `bgra`, holding `pixel` — a premultiplied word, red the low
 /// byte — and [`PAST`] beyond the picture; its picture copied.
-fn shown(width: u32, height: u32, bgra: bool, pixel: impl Fn(u32, u32) -> u32) -> Shown {
+pub(super) fn shown(width: u32, height: u32, bgra: bool, pixel: impl Fn(u32, u32) -> u32) -> Shown {
     let engine = rig().engine;
     let size = wgpu::Extent3d {
         width: width + 3,

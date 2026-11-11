@@ -15,7 +15,9 @@ mod tests;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::{Clear, Frame, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown};
+use super::{
+    Clear, Cover, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Shown, Source,
+};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::Composited;
@@ -30,6 +32,7 @@ pub struct Export {
     clear: Clear,
     opaque: Opaque,
     png: PngFilter,
+    lay: Lay,
 }
 
 /// What a pass put: its buffer, the bytes of it its writer takes, and —
@@ -86,6 +89,7 @@ pub extern "C" fn gpu_engine_export_new() -> *mut Export {
         clear: Clear::new(),
         opaque: Opaque::new(),
         png: PngFilter::new(),
+        lay: Lay::new(),
     }))
 }
 
@@ -128,6 +132,144 @@ pub unsafe extern "C" fn gpu_engine_export_shown_free(shown: *mut Shown) {
         // SAFETY: see the function's contract.
         drop(unsafe { Box::from_raw(shown) });
     }
+}
+
+/// A `width` × `height` frame the export makes, laid with `ground` —
+/// straight RGBA8, red the low byte; an alpha of 0 leaves it clear — for
+/// pictures to be laid over (`gpu_engine_export_lay`): its last picture,
+/// which the conversions read as they read a frame shown. Null on failure;
+/// see the last error.
+///
+/// # Safety
+/// Both are live, `export` on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_blank(
+    export: *const Export,
+    engine: *const Engine,
+    width: u32,
+    height: u32,
+    ground: u32,
+) -> *mut Shown {
+    // SAFETY: see the function's contract.
+    let (export, engine) = unsafe { (&*export, &*engine) };
+    Shown::blank(engine, Picture { width, height })
+        .and_then(|frame| {
+            export.lay.run(engine, &frame, Source::Solid(ground), 255, None)?;
+            Some(frame)
+        })
+        .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
+}
+
+/// The `length` bytes at `bytes`: none where it is null.
+///
+/// # Safety
+/// `bytes` holds `length` bytes where it is not null.
+unsafe fn held_bytes<'a>(bytes: *const u8, length: usize) -> &'a [u8] {
+    if bytes.is_null() {
+        return &[];
+    }
+    // SAFETY: see the function's contract.
+    unsafe { std::slice::from_raw_parts(bytes, length) }
+}
+
+/// The `length` bytes at `rgba` — `width` × `height` premultiplied pixels,
+/// four bytes each, red first, row after row — copied to the GPU as a
+/// picture to lay over a frame (`gpu_engine_export_lay`): what the app
+/// rasters of what it draws over one. Null on failure — `length` not the
+/// picture's bytes among them; see the last error.
+///
+/// # Safety
+/// `engine` is live; `rgba` holds `length` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_upload(
+    engine: *const Engine,
+    rgba: *const u8,
+    length: usize,
+    width: u32,
+    height: u32,
+) -> *mut Shown {
+    // SAFETY: see the function's contract.
+    let (engine, rgba) = unsafe { (&*engine, held_bytes(rgba, length)) };
+    Shown::uploaded(engine, rgba, Picture { width, height })
+        .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
+}
+
+/// The `length` bytes at `alpha` — a byte for each of `width` × `height`
+/// pixels, row after row: how much of what is laid each takes — copied to
+/// the GPU as a frame's cover (`gpu_engine_export_lay`). Null on failure —
+/// `length` not the frame's pixels among them; see the last error.
+///
+/// # Safety
+/// `engine` is live; `alpha` holds `length` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_cover(
+    engine: *const Engine,
+    alpha: *const u8,
+    length: usize,
+    width: u32,
+    height: u32,
+) -> *mut Cover {
+    // SAFETY: see the function's contract.
+    let (engine, alpha) = unsafe { (&*engine, held_bytes(alpha, length)) };
+    Cover::of(engine, alpha, Picture { width, height })
+        .map_or(std::ptr::null_mut(), |cover| Box::into_raw(Box::new(cover)))
+}
+
+/// # Safety
+/// `cover` came from `gpu_engine_export_cover`, and its engine is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_cover_free(cover: *mut Cover) {
+    if !cover.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(cover) });
+    }
+}
+
+/// Lays `source`, its top-left at (`x`, `y`) of `onto`, over `onto` at
+/// `opacity` — a byte, 255 as it is — each pixel taking of it what `cover`
+/// says, or all of it where `cover` is null, and submits the work. `onto`
+/// is a frame the export made (`gpu_engine_export_blank`). False on
+/// failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`, but `cover`, which may be null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_lay(
+    export: *const Export,
+    engine: *const Engine,
+    onto: *const Shown,
+    source: *const Shown,
+    x: i32,
+    y: i32,
+    opacity: u8,
+    cover: *const Cover,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (export, engine, onto, frame) = unsafe { (&*export, &*engine, &*onto, &*source) };
+    // SAFETY: see the function's contract.
+    let cover = unsafe { cover.as_ref() };
+    export.lay.run(engine, onto, Source::Frame { frame, x, y }, opacity, cover).is_some()
+}
+
+/// [`gpu_engine_export_lay`] of one colour over the whole of `onto` —
+/// straight RGBA8, red the low byte.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`, but `cover`, which may be null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_export_lay_colour(
+    export: *const Export,
+    engine: *const Engine,
+    onto: *const Shown,
+    colour: u32,
+    opacity: u8,
+    cover: *const Cover,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (export, engine, onto) = unsafe { (&*export, &*engine, &*onto) };
+    // SAFETY: see the function's contract.
+    let cover = unsafe { cover.as_ref() };
+    export.lay.run(engine, onto, Source::Solid(colour), opacity, cover).is_some()
 }
 
 /// A run's output tiles, as the conversions read them.

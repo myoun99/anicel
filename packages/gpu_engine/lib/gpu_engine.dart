@@ -76,6 +76,11 @@ String _lastError() => using((arena) {
 /// (POSIX), which ffi's allocator throws on.
 int _held(int count) => count == 0 ? 1 : count;
 
+/// [bytes] as bytes of [arena]'s, for a call that reads them there.
+Pointer<Uint8> _bytes(Arena arena, List<int> bytes) =>
+    arena<Uint8>(_held(bytes.length))
+      ..asTypedList(bytes.length).setAll(0, bytes);
+
 /// What a C entry answered — an index, a count —, or its last error thrown
 /// where it answered -1.
 int _checked(int answer) {
@@ -1064,8 +1069,7 @@ final class GpuStampPicture implements Finalizable {
     int height,
   ) {
     final made = using((arena) {
-      final bytes = arena<Uint8>(_held(rgba.length));
-      bytes.asTypedList(rgba.length).setAll(0, rgba);
+      final bytes = _bytes(arena, rgba);
       return rust.stampPictureNew(engine._engine, bytes, width, height);
     });
     return GpuStampPicture._kept(engine, made, width, height);
@@ -1414,8 +1418,7 @@ class GpuPlan {
       using((arena) {
         Pointer<Uint32> words(Uint32List table) =>
             arena<Uint32>(256)..asTypedList(256).setAll(0, table);
-        final bytes = arena<Uint8>(_held(maps.length))
-          ..asTypedList(maps.length).setAll(0, maps);
+        final bytes = _bytes(arena, maps);
         return rust.planKeyRun(
           _plan,
           keys,
@@ -1491,8 +1494,7 @@ class GpuPlan {
       final (left, top, right, bottom) = picture;
       final edges = arena<Int32>(4);
       edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
-      final bytes = arena<Uint8>(_held(straight.length));
-      bytes.asTypedList(straight.length).setAll(0, straight);
+      final bytes = _bytes(arena, straight);
       return rust.planChainPut(_plan, chain, edges, bytes, straight.length);
     }),
   );
@@ -1868,8 +1870,7 @@ class GpuMask {
       throw ArgumentError('${bytes.length} bytes, not $width × $height');
     }
     final mask = using((arena) {
-      final held = arena<Uint8>(_held(bytes.length))
-        ..asTypedList(bytes.length).setAll(0, bytes);
+      final held = _bytes(arena, bytes);
       return rust.maskNew(
         composite._engine._engine,
         held,
@@ -2221,6 +2222,103 @@ class GpuExport {
     return GpuShown._(shown);
   }
 
+  /// A [width] × [height] frame this export makes, laid with [ground] —
+  /// straight RGBA8, A<<24|B<<16|G<<8|R; an alpha of 0 leaves it clear —
+  /// for pictures to be laid over ([lay]): a frame's last picture made on
+  /// the engine, which the conversions read as they read a frame shown.
+  GpuShown blank(int width, int height, {int ground = 0}) => _shownOrWhy(
+    rust.exportBlank(_export, _engine._engine, width, height, ground),
+  );
+
+  /// [rgba] — [width] × [height] premultiplied pixels, four bytes each,
+  /// red first, row after row — on the GPU, to lay over a frame ([lay]):
+  /// what the app rasters of what it draws over one.
+  GpuShown upload(Uint8List rgba, int width, int height) => _shownOrWhy(
+    using(
+      (arena) => rust.exportUpload(
+        _engine._engine,
+        _bytes(arena, rgba),
+        rgba.length,
+        width,
+        height,
+      ),
+    ),
+  );
+
+  /// [alpha] — a byte for each of [width] × [height] pixels, row after
+  /// row — on the GPU as a frame's cover ([lay]): how much of what is laid
+  /// each pixel takes.
+  GpuCover cover(Uint8List alpha, int width, int height) {
+    final cover = using(
+      (arena) => rust.exportCover(
+        _engine._engine,
+        _bytes(arena, alpha),
+        alpha.length,
+        width,
+        height,
+      ),
+    );
+    if (cover == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return GpuCover._(cover);
+  }
+
+  /// Lays [source], its top-left at ([x], [y]) of [onto], over [onto] at
+  /// [opacity] — a byte, 255 as it is — each pixel taking of it what
+  /// [cover] says, all of it where there is none, and submits the work.
+  /// [onto] is a frame [blank] made.
+  void lay(
+    GpuShown onto,
+    GpuShown source, {
+    int x = 0,
+    int y = 0,
+    int opacity = 255,
+    GpuCover? cover,
+  }) => _laid(
+    rust.exportLay(
+      _export,
+      _engine._engine,
+      onto._shown,
+      source._shown,
+      x,
+      y,
+      opacity,
+      cover?._cover ?? nullptr,
+    ),
+  );
+
+  /// [lay] of one [colour] — straight RGBA8, A<<24|B<<16|G<<8|R — over
+  /// the whole of [onto].
+  void layColour(
+    GpuShown onto,
+    int colour, {
+    int opacity = 255,
+    GpuCover? cover,
+  }) => _laid(
+    rust.exportLayColour(
+      _export,
+      _engine._engine,
+      onto._shown,
+      colour,
+      opacity,
+      cover?._cover ?? nullptr,
+    ),
+  );
+
+  GpuShown _shownOrWhy(Pointer<rust.Shown> shown) {
+    if (shown == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return GpuShown._(shown);
+  }
+
+  void _laid(bool laid) {
+    if (!laid) {
+      throw GpuRefused(_lastError());
+    }
+  }
+
   /// The picture of [width] × [height] in [frame] as an encoder's NV12
   /// frame of [frameWidth] × [frameHeight], rows [stride] bytes apart —
   /// the writer's frame as it opened its encoder: `frameHeight` Y rows,
@@ -2358,6 +2456,17 @@ class GpuShown {
 
   /// Frees the copy; before its engine is closed.
   void free() => rust.exportShownFree(_shown);
+}
+
+/// How much of what is laid each pixel of a frame takes, on the GPU
+/// ([GpuExport.cover]).
+class GpuCover {
+  GpuCover._(this._cover);
+
+  final Pointer<rust.Cover> _cover;
+
+  /// Frees the cover; before its engine is closed.
+  void free() => rust.exportCoverFree(_cover);
 }
 
 /// What a conversion put: on the GPU until it is mapped, then copied row
@@ -2636,8 +2745,7 @@ final class GpuCelPixels {
       GpuCelValue(:final bytes) => bytes,
       GpuCelRecipe(:final bytes) => bytes,
     };
-    final held = arena<Uint8>(_held(bytes.length))
-      ..asTypedList(bytes.length).setAll(0, bytes);
+    final held = _bytes(arena, bytes);
     final spec = arena<rust.VerbSpec>();
     spec.ref
       ..bytes = channel.bytes
@@ -2953,8 +3061,7 @@ class GpuFaces {
       final named = arena<Uint32>(count);
       for (final (index, file) in files.indexed) {
         final bytes = file.bytes;
-        at[index] = arena<Uint8>(_held(bytes.length))
-          ..asTypedList(bytes.length).setAll(0, bytes);
+        at[index] = _bytes(arena, bytes);
         lengths[index] = bytes.length;
         named[index] = file.family;
       }
@@ -3081,8 +3188,7 @@ _clustered(Arena arena, List<GpuCluster> clusters) {
     origins[2 * index] = cluster.x;
     origins[2 * index + 1] = cluster.y;
   }
-  final bytes = arena<Uint8>(_held(text.length))
-    ..asTypedList(text.length).setAll(0, text);
+  final bytes = _bytes(arena, text);
   return (text: bytes, length: text.length, ends: ends, origins: origins);
 }
 
@@ -3125,8 +3231,7 @@ class GpuGrid {
             'bytes',
           );
         }
-        final bytes = arena<Uint8>(_held(alpha.length))
-          ..asTypedList(alpha.length).setAll(0, alpha);
+        final bytes = _bytes(arena, alpha);
         _done(
           rust.gridDraw(
             _grid,
@@ -3323,8 +3428,7 @@ GpuTileInk _walkedAt(Int32List words, int at) {
 /// The fingerprint of [bytes] by the engine's own code — for bytes read off
 /// Flutter's screen, so they are compared as the GPU's are.
 int fingerprintBytes(Uint8List bytes) => using((arena) {
-  final buffer = arena<Uint8>(bytes.length);
-  buffer.asTypedList(bytes.length).setAll(0, bytes);
+  final buffer = _bytes(arena, bytes);
   return rust.fingerprintBytes(buffer, bytes.length);
 });
 
@@ -3451,8 +3555,7 @@ class GpuPlugin {
   factory GpuPlugin.open(GpuEngine engine, String source, {bool cut = true}) =>
       using((arena) {
         final bytes = utf8.encode(source);
-        final at = arena<Uint8>(_held(bytes.length))
-          ..asTypedList(bytes.length).setAll(0, bytes);
+        final at = _bytes(arena, bytes);
         final plugin = rust.pluginOpen(engine._engine, at, bytes.length, cut);
         if (plugin == nullptr) {
           throw GpuRefused(_lastError());
