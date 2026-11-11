@@ -52,7 +52,7 @@ void main() {
   test('it is let go once the copy of what landed on it is here', () async {
     final (landed, under) = landedOnOne();
 
-    ledger.copyHereABatch();
+    await ledger.copyHereABatch();
     await collectGarbageUntil(() => under.target == null);
 
     expect(landed.isOnlyOnEngine, isFalse, reason: '⛔premise');

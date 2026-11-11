@@ -1,6 +1,7 @@
 //! The wgpu device every kernel runs on, opened on the adapter Flutter
 //! draws with so a shared texture lives on the GPU that reads it.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
@@ -390,19 +391,9 @@ impl Engine {
     }
 
     fn wait_within(&self, limit: Duration) -> Option<()> {
+        WAITED_HERE.with(|waited| waited.set(waited.get() + 1));
         let device = self.device.clone();
-        let polled = self.thread.run(move || {
-            let polled = device.poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: Some(limit),
-            });
-            polled.map(|_| ()).map_err(|error| match error {
-                wgpu::PollError::Timeout => {
-                    format!("the GPU did not finish within {limit:?}")
-                }
-                error => format!("poll: {error}"),
-            })
-        });
+        let polled = self.thread.run(move || polled(&device, limit));
         let Some(polled) = polled else {
             // The thread ended under a panic of wgpu's own: a poll's error
             // that is neither of the two above is fatal to it
@@ -531,16 +522,38 @@ impl Engine {
     /// Maps `buffer` — one the CPU maps — for reading, once the GPU is done
     /// with all that was submitted.
     pub(crate) fn map(&self, buffer: &wgpu::Buffer) -> Option<()> {
-        let (sender, receiver) = mpsc::channel();
-        buffer.map_async(wgpu::MapMode::Read, .., move |result| {
-            let _ = sender.send(result);
-        });
+        let mapping = asked_to_map(buffer);
         self.wait()?;
-        match receiver.recv() {
-            Ok(Ok(())) => Some(()),
-            Ok(Err(error)) => fail(format!("map_async: {error}")),
-            Err(error) => fail(format!("map_async never answered: {error}")),
-        }
+        answered(&mapping)
+    }
+
+    /// [`Self::map`] with its wait on the engine's thread and none for the
+    /// caller, who goes on: `then` is told there once the GPU is done with
+    /// all that was submitted — `buffer`, mapped, or why it is not, as a
+    /// wait fails by it ([`Self::wait`]). Told once, whatever becomes of
+    /// the wait ([`Told`]).
+    ///
+    /// 🗣️관제 2026-11-12 (a-lost-gpu-device-keeps-the-unsaved-tiles), of the
+    /// copies the app keeps of the engine's tiles: 「UI(또는 래스터) 스레드를
+    /// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다
+    /// (구형 기기 방침 — 서피스는 더 느리다)」. ⚠️What the caller submits
+    /// while that thread polls goes behind the poll ([`Queue::submit`]): as
+    /// long as the GPU still takes over what was submitted before it.
+    pub(crate) fn map_then(
+        &self,
+        buffer: wgpu::Buffer,
+        then: impl FnOnce(Result<wgpu::Buffer, String>) + Send + 'static,
+    ) {
+        let mapping = asked_to_map(&buffer);
+        let device = self.device.clone();
+        let told = Told { then: Some(then), refusals: self.refusals.clone() };
+        self.thread.post(move || {
+            let mapped = polled(&device, WAIT_LIMIT)
+                .map_or_else(fail, Some)
+                .and_then(|()| told.refusals.told())
+                .and_then(|()| answered(&mapping));
+            told.tell(mapped.map(|()| buffer).ok_or_else(last_error));
+        });
     }
 
     /// `buffer`'s bytes, mapped once the GPU is done with all that was
@@ -561,6 +574,75 @@ impl Engine {
                 Some(())
             }
             Err(error) => fail(format!("get_mapped_range: {error}")),
+        }
+    }
+}
+
+thread_local! {
+    /// How many waits for the GPU this thread has made
+    /// ([`gpu_engine_waits_here`]).
+    static WAITED_HERE: Cell<u64> = const { Cell::new(0) };
+}
+
+/// Polls `device` till the GPU has finished everything submitted, or says
+/// why not: that it did not within `limit`, or wgpu's own word. ⚠️In the
+/// driver that long, so on the engine's thread ([`EngineThread`]).
+fn polled(device: &wgpu::Device, limit: Duration) -> Result<(), String> {
+    let polled = device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(limit) });
+    polled.map(|_| ()).map_err(|error| match error {
+        wgpu::PollError::Timeout => format!("the GPU did not finish within {limit:?}"),
+        error => format!("poll: {error}"),
+    })
+}
+
+/// What answers whether a buffer asked to be mapped was ([`asked_to_map`]).
+type Mapping = mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>;
+
+/// Asks that `buffer` — one the CPU maps — be mapped for reading: it is
+/// inside a poll that comes once the GPU is done with it ([`answered`]).
+fn asked_to_map(buffer: &wgpu::Buffer) -> Mapping {
+    let (sender, receiver) = mpsc::channel();
+    buffer.map_async(wgpu::MapMode::Read, .., move |result| {
+        let _ = sender.send(result);
+    });
+    receiver
+}
+
+/// Whether the buffer `mapping` was asked of is mapped, after the poll
+/// that waited for the GPU.
+fn answered(mapping: &Mapping) -> Option<()> {
+    match mapping.recv() {
+        Ok(Ok(())) => Some(()),
+        Ok(Err(error)) => fail(format!("map_async: {error}")),
+        Err(error) => fail(format!("map_async never answered: {error}")),
+    }
+}
+
+/// Who is told how a wait ended that its caller did not stay for
+/// ([`Engine::map_then`]) — once, whatever becomes of the wait. Dropped
+/// untold, the engine's thread ended under the wait — wgpu's poll panics
+/// where the device is lost under one — or was gone before it: the device
+/// is gone, as for a wait that never came back ([`Engine::wait`]), and
+/// that is what is told.
+struct Told<Then: FnOnce(Result<wgpu::Buffer, String>)> {
+    then: Option<Then>,
+    refusals: Refusals,
+}
+
+impl<Then: FnOnce(Result<wgpu::Buffer, String>)> Told<Then> {
+    fn tell(mut self, ended: Result<wgpu::Buffer, String>) {
+        if let Some(then) = self.then.take() {
+            then(ended);
+        }
+    }
+}
+
+impl<Then: FnOnce(Result<wgpu::Buffer, String>)> Drop for Told<Then> {
+    fn drop(&mut self) {
+        if let Some(then) = self.then.take() {
+            self.refusals.lose("the engine's thread ended under a wait".into());
+            let _gone: Option<()> = self.refusals.told();
+            then(Err(last_error()));
         }
     }
 }
@@ -704,6 +786,12 @@ impl EngineThread {
             Err(error) => fail(format!("the engine's thread never answered: {error}")),
         }
     }
+
+    /// Hands `work` to this thread and returns, the caller waiting for
+    /// none of it. Dropped unrun where the thread is gone.
+    fn post(&self, work: impl FnOnce() + Send + 'static) {
+        let _ = self.0.send(Box::new(work));
+    }
 }
 
 /// Opens the engine on the adapter whose LUID is `luid` (high part in the
@@ -797,6 +885,15 @@ pub unsafe extern "C" fn gpu_engine_noted(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.refusals.taken().map_or(0, |error| copy_out(&error, buffer, capacity))
+}
+
+/// How many waits for the GPU the thread that asks has made
+/// ([`Engine::wait`]): what a test holds at none on the thread an app's
+/// frames are built on, over work that is to wait there for nothing
+/// ([`Engine::map_then`]).
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_waits_here() -> u64 {
+    WAITED_HERE.with(Cell::get)
 }
 
 /// Test seam: `engine`'s device destroyed — the nearest a test comes to a
@@ -1164,6 +1261,45 @@ mod tests {
             assert!(gpu_engine_gone(made));
             gpu_engine_close(made);
         }
+    }
+
+    // A buffer mapped with no wait for who asked: the engine's thread waits
+    // and tells, there, and the thread that asked has waited for no GPU —
+    // a wait of its own is one it has.
+    #[test]
+    fn a_buffer_is_mapped_then_with_no_wait_on_the_thread_that_asked() {
+        use super::gpu_engine_waits_here;
+        let engine = first_engine();
+        let four = engine.filled("four", &[1, 2, 3, 4], wgpu::BufferUsages::COPY_SRC);
+        let (tell, told) = std::sync::mpsc::channel();
+        let waits = gpu_engine_waits_here();
+        engine.map_then(engine.staged(&four, 4), move |mapped| {
+            let _ = tell.send((mapped, std::thread::current().id()));
+        });
+        let (mapped, on) = told.recv().expect("told");
+        assert_ne!(on, std::thread::current().id(), "told on the engine's thread");
+        assert_eq!(gpu_engine_waits_here(), waits, "who asked waited for no GPU");
+        let mapped = mapped.unwrap_or_else(|why| panic!("{why}"));
+        assert_eq!(&mapped.get_mapped_range(..).expect("mapped")[..], [1, 2, 3, 4]);
+        assert_eq!(engine.wait(), Some(()));
+        assert_eq!(gpu_engine_waits_here(), waits + 1, "a wait here is counted here");
+    }
+
+    // Who is told of a wait is told whatever becomes of it: dropped untold
+    // — the engine's thread ended under the wait, or was gone before it —
+    // it tells that the device is gone, which it then is.
+    #[test]
+    fn a_wait_that_never_came_back_tells_that_the_device_is_gone() {
+        use super::{Refusals, Told};
+        let refusals = Refusals::default();
+        let (tell, told) = std::sync::mpsc::channel();
+        let then = move |ended: Result<wgpu::Buffer, String>| {
+            let _ = tell.send(ended.map(|_| ()));
+        };
+        drop(Told { then: Some(then), refusals: refusals.clone() });
+        let gone = "the graphics device is gone: the engine's thread ended under a wait";
+        assert_eq!(told.recv(), Ok(Err(gone.to_string())));
+        assert!(refusals.gone());
     }
 
     #[test]

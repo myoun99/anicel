@@ -327,6 +327,21 @@ external bool poolRead(
   Pointer<Uint8> into,
 );
 
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Pool>,
+    Pointer<Engine>,
+    Pointer<Uint32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_pool_readout')
+external Pointer<Readout> poolReadout(
+  Pointer<Pool> pool,
+  Pointer<Engine> engine,
+  Pointer<Uint32> tiles,
+  int count,
+);
+
 @Native<Void Function(Pointer<Pool>, Uint64)>(
   symbol: 'gpu_engine_pool_most_bytes',
 )
@@ -1019,6 +1034,19 @@ external int readoutBytes(Pointer<Readout> readout);
 external bool readoutMap(Pointer<Engine> engine, Pointer<Readout> readout);
 
 @Native<
+  Void Function(
+    Pointer<Engine>,
+    Pointer<Readout>,
+    Pointer<NativeFunction<Void Function()>>,
+  )
+>(symbol: 'gpu_engine_readout_map_then')
+external void readoutMapThen(
+  Pointer<Engine> engine,
+  Pointer<Readout> readout,
+  Pointer<NativeFunction<Void Function()>> then,
+);
+
+@Native<
   Bool Function(
     Pointer<Readout>,
     Uint64,
@@ -1359,6 +1387,9 @@ external int lastError(Pointer<Uint8> buffer, int capacity);
 
 @Native<Uint64 Function()>(symbol: 'gpu_engine_kernels_built_here')
 external int kernelsBuiltHere();
+
+@Native<Uint64 Function()>(symbol: 'gpu_engine_waits_here')
+external int waitsHere();
 
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_kernels_forget')
 external void kernelsForget(Pointer<Engine> engine);

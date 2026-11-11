@@ -587,7 +587,13 @@ final GpuEngine _engine;
   /// the GPU's frees as many slots as it reads — and lets their slots go;
   /// whether there was one.
   bool _moveBytesHere(int short) {
-    final going = _onlyOnEngine(math.max(short, readBatch), _noHoldHas);
+    final going = [
+      for (final (:tile, slot: _)
+          in _engineAlone
+              .where((held) => _noHoldHas(held.tile))
+              .take(math.max(short, readBatch)))
+        tile,
+    ];
     if (going.isEmpty) {
       return false;
     }
@@ -596,20 +602,15 @@ final GpuEngine _engine;
     return true;
   }
 
-  /// The oldest tiles the engine alone holds that [of] names, [most] of
-  /// them at the most.
-  List<BitmapTile> _onlyOnEngine(int most, bool Function(BitmapTile) of) {
-    final tiles = <BitmapTile>[];
+  /// The tiles the engine alone holds, each with its slot, the oldest
+  /// first.
+  Iterable<({BitmapTile tile, _Slot slot})> get _engineAlone sync* {
     for (final slot in _stored) {
-      if (tiles.length == most) {
-        break;
-      }
       final tile = slot.out ? null : slot.tile.target;
-      if (tile != null && tile.isOnlyOnEngine && of(tile)) {
-        tiles.add(tile);
+      if (tile != null && tile.isOnlyOnEngine) {
+        yield (tile: tile, slot: slot);
       }
     }
-    return tiles;
   }
 
   /// Reads back the bytes of [tiles], each the engine's alone, and has each
@@ -628,35 +629,121 @@ final GpuEngine _engine;
     });
   }
 
-  /// Copies here the bytes of the oldest tiles the engine alone holds —
-  /// [copyBatch] of them, one wait of the GPU's —, their slots kept;
-  /// whether there may be more.
+  /// Copies here the bytes of the oldest tiles the engine alone holds that
+  /// no copy on its way was asked for ([_Slot.onItsWay]) — [copyBatch] of
+  /// them —, their slots kept; whether there may be more.
   ///
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
   /// 유지한다」 — a device the driver takes away takes every tile on it. One
   /// whose copy is here is stored again from it on the next device; one
   /// whose copy had not come reads as the picture it landed on
   /// ([_layThePictureUnder]).
-  bool copyHereABatch() {
-    final tiles = _onlyOnEngine(copyBatch, (_) => true);
-    _copyHere(tiles);
-    return tiles.length == copyBatch;
+  ///
+  /// 🚨THIS ISOLATE WAITS FOR NO GPU HERE (🗣️관제 2026-11-12,
+  /// a-lost-gpu-device-keeps-the-unsaved-tiles: 「UI(또는 래스터) 스레드를
+  /// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다
+  /// (구형 기기 방침 — 서피스는 더 느리다)」). The tiles' copy is submitted
+  /// here, where the pool is this isolate's alone ([GpuPool.readout]), and
+  /// waited for on the engine's thread ([GpuReadout.mapping]), which tells
+  /// this isolate once the bytes are mapped: a press, a frame of a
+  /// playback started as the hand came to rest go between the two.
+  /// ⚠️What they submit meanwhile goes behind that thread's poll — for as
+  /// long as the GPU still takes over what was submitted before it
+  /// (rust/src/device.rs, `Engine::map_then`). ↩️Read here ([_copyHere])
+  /// till 2026-11-12, a batch held this isolate for the GPU, one behind
+  /// another.
+  ///
+  /// 🚨WHAT COMES BACK IS KEPT BY THE TILE IT WAS ASKED OF, AND ONLY WHERE
+  /// THAT TILE STILL WAITS FOR IT ([_stillWaits]). The bytes are its own
+  /// whatever landed since: they are the ones its slot held as the copy
+  /// was submitted (rust/src/kernels/pool/mod.rs, `Pool::read_out`), and a
+  /// stroke over it lands on a tile of its own. But meanwhile it may have
+  /// come to hold them by a read here — a save's, a full pool's
+  /// ([_moveBytesHere]) — or been retired ([retire]).
+  ///
+  /// A device that goes under the wait takes these tiles with it: each
+  /// reads as the picture it landed on, as under a read here ([_copyHere]).
+  ///
+  /// The bytes come through one block [blocks] gives, given back whatever
+  /// becomes of the copy.
+  Future<bool> copyHereABatch({Allocator blocks = malloc}) async {
+    final asked = _engineAlone
+        .where((held) => !held.slot.onItsWay)
+        .take(copyBatch)
+        .toList();
+    if (asked.isEmpty) {
+      return false;
+    }
+    final tiles = [for (final (:tile, slot: _) in asked) tile];
+    final block = blocks<Uint8>(tiles.length * gpuTileBytes);
+    for (final (tile: _, :slot) in asked) {
+      slot.onItsWay = true;
+    }
+    try {
+      final readout = held(
+        (hold) => pool.readout(hold.slotsOf(landedCel, tiles)),
+      );
+      try {
+        await readout.mapping();
+        readout.rows(
+          block,
+          offset: 0,
+          stride: gpuTileBytes,
+          rowBytes: gpuTileBytes,
+          rows: tiles.length,
+          dstStride: gpuTileBytes,
+        );
+      } finally {
+        readout.free();
+      }
+      final bytes = block.asTypedList(tiles.length * gpuTileBytes);
+      for (final (at, (:tile, :slot)) in asked.indexed) {
+        if (_stillWaits(tile, slot)) {
+          final from = at * gpuTileBytes;
+          tile.keepBytesHere(
+            Uint8List.sublistView(bytes, from, from + gpuTileBytes),
+          );
+          slot.under = null;
+        }
+      }
+    } on GpuRefused {
+      if (!_engine.isGone) {
+        rethrow;
+      }
+      _copyHere([
+        for (final (:tile, :slot) in asked)
+          if (_stillWaits(tile, slot)) tile,
+      ]);
+    } finally {
+      for (final (tile: _, :slot) in asked) {
+        slot.onItsWay = false;
+      }
+      blocks.free(block);
+    }
+    return asked.length == copyBatch;
   }
 
-  /// The tiles a turn of the copies at rest copies ([copyHereABatch]): a
-  /// press that comes as they go waits for the turn under way, and no
-  /// more. 🔢브러시/렌더링's pick. 🔬Main PC (RTX 4080) beside a busy test
-  /// line, 2026-11-11: a read of 64 tiles is 5.6–9.6 ms (0.4–1.4 ms of one,
-  /// 0.9–3.1 ms of 8), and their bytes kept as 64 tiles as much again
-  /// (5.7–8.1 ms) — 15–29 ms a batch of 64, two frames of a hand that had
-  /// just come back. ⏳To measure on the Surface Pro 11 (관제 2026-11-11:
-  /// past a frame there, the read is taken on the engine's thread).
+  /// Whether [tile] still waits for the bytes asked of [slot], its own as
+  /// they were asked ([copyHereABatch]): the engine still holds the only
+  /// copy of them, in that slot.
+  bool _stillWaits(BitmapTile tile, _Slot slot) =>
+      tile.isOnlyOnEngine && !slot.out;
+
+  /// The tiles a batch of the copies at rest copies ([copyHereABatch]):
+  /// what this isolate is held for in one turn is a batch's asking, or its
+  /// bytes' keeping. 🔢브러시/렌더링's pick. 🔬Main PC (RTX 4080, DX12),
+  /// 2026-11-12, 512 tiles (test/native/copies_at_rest_benchmark_test.dart),
+  /// medians: a batch holds this isolate 0.2 ms as it is asked and 0.2 ms
+  /// as its bytes are kept, and has come 0.7 ms after it was asked — 0.1 ms
+  /// of that the wait for the GPU, the engine's thread's (1.3 ms at its
+  /// longest; 36 ms beside a busy test line, where each part is 3–5 times
+  /// as long). Read here, as till that day, a batch held this isolate
+  /// 0.24 ms and its keeping — that wait in it. ⏳The Surface's to come.
   static const int copyBatch = 8;
 
   /// How long after the last landing the hand is taken to rest, and the
   /// copies begin ([copyHereABatch]). 🔢브러시/렌더링's pick, to measure: a
-  /// landing comes at every frame of a stroke and at each pen's lift, and
-  /// a copy waits for the GPU.
+  /// landing comes at every frame of a stroke and at each pen's lift.
   static const Duration rest = Duration(milliseconds: 500);
 
   /// Whether a landing asks for copies once the hand rests: a launch's
@@ -668,18 +755,22 @@ final GpuEngine _engine;
   Timer? _atRest;
 
   /// Copies what the engine alone holds here once the hand has rested
-  /// ([rest]) — a batch a turn of this isolate, so a press between two is
-  /// heard — from the last landing: one more puts the copies off.
+  /// ([rest]) from the last landing: one more puts the copies off.
   void _copyHereOnceTheHandRests() {
     if (!copiesAtRest) {
       return;
     }
     _atRest?.cancel();
-    _atRest = Timer(rest, _copyHereAtRest);
+    _atRest = Timer(rest, () => unawaited(_copyHereAtRest()));
   }
 
-  void _copyHereAtRest() {
-    _atRest = copyHereABatch() ? Timer(Duration.zero, _copyHereAtRest) : null;
+  /// The batches of a rest, one behind another ([copyHereABatch]), till
+  /// none is left or a landing puts them off ([_atRest] armed again). A
+  /// rest that ends while the last one's batch is still on its way asks
+  /// for the tiles after it: no tile is asked for twice ([_Slot.onItsWay]).
+  Future<void> _copyHereAtRest() async {
+    _atRest = null;
+    while (_atRest == null && await copyHereABatch()) {}
   }
 
   bool _noHoldHas(BitmapTile? tile) =>
@@ -761,6 +852,11 @@ final class _Slot {
 
   /// Let go already — by its tile's finalizer, a full pool or a give-back.
   bool out = false;
+
+  /// Asked for by a copy that is still on its way
+  /// (`EngineTileLedger.copyHereABatch`): not one the next batch asks for
+  /// again.
+  bool onItsWay = false;
 }
 
 /// What a call of [EngineTileLedger.held] is handed: the slots asked for

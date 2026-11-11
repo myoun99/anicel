@@ -4,6 +4,10 @@
 //! holds are given back where its store asks, and the pages are what the
 //! write path copies to, a pass reads and a readback reads.
 
+use std::sync::{Condvar, Mutex};
+use std::thread::ThreadId;
+use std::time::Duration;
+
 use super::{Full, MOST_NAMED, Pool};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Rig, mix, rig, row, with_map};
@@ -676,5 +680,182 @@ fn the_c_abi_reads_back_the_tiles_its_words_name() {
         let free = [words[0], at(pages[0], slots[0] + 2).word()];
         assert!(!gpu_engine_pool_read(pool, engine, free.as_ptr(), 2, into.as_mut_ptr()), "a slot free");
         gpu_engine_pool_free(pool);
+    }
+}
+
+// A readout holds each tile's bytes in the order asked, from whichever
+// page it is on, as its slot held them when it was asked for: a slot let
+// go and written over since is read as it was — what the copies the app
+// keeps of the engine's tiles are taken by, with no wait on the thread
+// that asks.
+#[test]
+fn a_readout_holds_each_tile_s_bytes_as_its_slot_held_them_when_asked() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let bytes: Vec<Vec<u8>> = (0..5).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<&[u8]> = bytes[..4].iter().map(Vec::as_slice).collect();
+    let stored = pool.store(engine, cel, &tiles).expect("store");
+    let asked = [stored[2], stored[0], stored[3], stored[0]];
+    let out = pool.read_out(engine, &asked).expect("read out");
+    // The first tile's slot goes to another tile before the readout is read.
+    pool.release(stored[0]).expect("release");
+    let over = pool.store(engine, cel, &[bytes[4].as_slice()]).expect("store");
+    assert_eq!(over, [stored[0]], "⛔premise: the slot let go is the one written over");
+    let mut now = vec![0; TILE_BYTES as usize];
+    pool.read(engine, &over, &mut now).expect("read");
+    assert!(now == bytes[4], "⛔premise: it holds the tile stored over it");
+    let mut read = vec![0; 4 * TILE_BYTES as usize];
+    engine.mapped_into(&out, &mut read).expect("mapped");
+    assert!(read == [&bytes[2], &bytes[0], &bytes[3], &bytes[0]].map(Vec::as_slice).concat());
+}
+
+// A readout of a tile none holds — a slot free, a page past the pool's —
+// or of no tile is refused.
+#[test]
+fn a_readout_of_a_tile_none_holds_or_of_none_is_refused() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let places = cels_a_page_each(engine, &mut pool, 1);
+    let held = places[0][0];
+    pool.release(places[0][1]).expect("release");
+    for (asked, why) in [(places[0][1], "a slot free"), (at(2, 0), "a page past the pool's")] {
+        assert!(pool.read_out(engine, &[held, asked]).is_none(), "{why}");
+    }
+    assert!(pool.read_out(engine, &[]).is_none(), "none asked");
+    assert!(pool.read_out(engine, &[held]).is_some(), "a tile held reads out");
+}
+
+/// Where a wait its caller did not stay for says that it has ended — a
+/// test's, one a wait: the thread that said so.
+struct ToldOn(Mutex<Option<ThreadId>>, Condvar);
+
+impl ToldOn {
+    const fn new() -> Self {
+        Self(Mutex::new(None), Condvar::new())
+    }
+
+    fn tell(&self) {
+        *self.0.lock().expect("told") = Some(std::thread::current().id());
+        self.1.notify_all();
+    }
+
+    /// The thread that told, once one has.
+    fn told(&self) -> ThreadId {
+        let none_yet = |told: &mut Option<ThreadId>| told.is_none();
+        let (waiting, minute) = (self.0.lock().expect("told"), Duration::from_secs(60));
+        let (told, _) = self.1.wait_timeout_while(waiting, minute, none_yet).expect("told");
+        told.expect("a wait that ended is told within the minute")
+    }
+}
+
+// The C ABI reads out the tiles its words name with no wait on the thread
+// that asks — the engine's thread waits for the GPU and tells once they
+// are mapped, as the app is told with its frames going on — and hands them
+// over as rows of a tile's bytes, in the words' order; a word that names
+// none, a tile none holds and no tile at all are refused.
+#[test]
+fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() {
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_readout,
+        gpu_engine_pool_store,
+    };
+    use crate::device::gpu_engine_waits_here;
+    use crate::kernels::composite::NO_TILE;
+    use crate::kernels::export::abi::{
+        gpu_engine_readout_bytes, gpu_engine_readout_free, gpu_engine_readout_map_then,
+        gpu_engine_readout_rows,
+    };
+    use crate::testing::last_error;
+    static TOLD: ToldOn = ToldOn::new();
+    extern "C" fn told() {
+        TOLD.tell();
+    }
+    let engine = rig().engine;
+    let bytes: Vec<Vec<u8>> = (0..2).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<*const u8> = bytes.iter().map(|tile| tile.as_ptr()).collect();
+    let (mut pages, mut slots) = ([u16::MAX; 2], [u16::MAX; 2]);
+    let mut into = vec![0; 2 * TILE_BYTES as usize];
+    // SAFETY: the engine is the tests' own, alive for the run; the tiles,
+    // pages, slots and words hold two each, and `into` two tiles' bytes;
+    // the readout is left alone till its wait is told to have ended.
+    unsafe {
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let (to_pages, to_slots) = (pages.as_mut_ptr(), slots.as_mut_ptr());
+        let stored =
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, to_pages, to_slots);
+        assert_eq!(stored, 2);
+        let words = [at(pages[1], slots[1]).word(), at(pages[0], slots[0]).word()];
+        let readout = gpu_engine_pool_readout(pool, engine, words.as_ptr(), 2);
+        assert!(!readout.is_null(), "{}", last_error());
+        assert_eq!(gpu_engine_readout_bytes(readout), 2 * TILE_BYTES);
+        let (each, to) = (TILE_BYTES, into.as_mut_ptr());
+        assert!(!gpu_engine_readout_rows(readout, 0, each, each, 2, to, each), "not mapped yet");
+        let waits = gpu_engine_waits_here();
+        gpu_engine_readout_map_then(engine, readout, told);
+        assert_ne!(TOLD.told(), std::thread::current().id(), "told on the engine's thread");
+        assert_eq!(gpu_engine_waits_here(), waits, "the thread that asked waited for no GPU");
+        assert!(gpu_engine_readout_rows(readout, 0, each, each, 2, to, each), "{}", last_error());
+        assert!(into == [bytes[1].as_slice(), &bytes[0]].concat());
+        gpu_engine_readout_free(readout);
+        let none = [words[0], NO_TILE];
+        let refused = gpu_engine_pool_readout(pool, engine, none.as_ptr(), 2);
+        assert!(refused.is_null(), "a word of none");
+        let free = [words[0], at(pages[0], slots[0] + 2).word()];
+        assert!(gpu_engine_pool_readout(pool, engine, free.as_ptr(), 2).is_null(), "a slot free");
+        assert!(gpu_engine_pool_readout(pool, engine, words.as_ptr(), 0).is_null(), "no tile");
+        gpu_engine_pool_free(pool);
+    }
+}
+
+// A readout whose device went before its wait is told all the same, and
+// its rows fail by why — the word the app lays those tiles as the pictures
+// they landed on for. On an engine of the test's own: a device that is
+// gone is gone for every test after it.
+#[test]
+fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why() {
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_readout,
+        gpu_engine_pool_store,
+    };
+    use crate::device::{
+        gpu_engine_close, gpu_engine_gone, gpu_engine_lose, gpu_engine_open_first,
+    };
+    use crate::kernels::export::abi::{
+        gpu_engine_readout_free, gpu_engine_readout_map_then, gpu_engine_readout_rows,
+    };
+    use crate::testing::last_error;
+    static TOLD: ToldOn = ToldOn::new();
+    extern "C" fn told() {
+        TOLD.tell();
+    }
+    let bytes = le_bytes(&tile(0));
+    let (mut page, mut slot) = (u16::MAX, u16::MAX);
+    let mut into = vec![0; TILE_BYTES as usize];
+    // SAFETY: the engine is this test's own, live till its close; the tile,
+    // page, slot and word are one each, and `into` holds a tile's bytes;
+    // the readout is left alone till its wait is told to have ended.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let stored =
+            gpu_engine_pool_store(pool, engine, cel, &bytes.as_ptr(), 1, &mut page, &mut slot);
+        assert_eq!(stored, 1);
+        let word = at(page, slot).word();
+        let readout = gpu_engine_pool_readout(pool, engine, &word, 1);
+        assert!(!readout.is_null(), "{}", last_error());
+        gpu_engine_lose(engine);
+        gpu_engine_readout_map_then(engine, readout, told);
+        TOLD.told();
+        let (each, to) = (TILE_BYTES, into.as_mut_ptr());
+        assert!(!gpu_engine_readout_rows(readout, 0, each, each, 1, to, each));
+        assert!(last_error().starts_with("the graphics device is gone"), "{}", last_error());
+        assert!(gpu_engine_gone(engine));
+        gpu_engine_readout_free(readout);
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
     }
 }

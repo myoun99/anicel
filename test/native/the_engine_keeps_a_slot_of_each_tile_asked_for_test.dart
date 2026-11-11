@@ -401,6 +401,28 @@ void main() {
     expect([many.givenBack, few.givenBack], [1, 1]);
   });
 
+  test("a copy at rest asks for its batch's block, and gives it back — as "
+      'its bytes come, and as the copy is refused', () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final blocks = _Counted();
+    final tiles = [
+      for (final seed in [1, 2]) ledger.debugOnEngine(tileOf(seed)),
+    ];
+
+    expect(await ledger.copyHereABatch(blocks: blocks), isFalse);
+    expect(tiles.where((tile) => tile.isOnlyOnEngine), isEmpty);
+    final refused = ledger.debugOnEngine(tileOf(3));
+    // Let go behind the ledger: the pool refuses a read of a slot not held.
+    expect(ledger.pool.release(ledger.slotOf(refused)!), isTrue);
+    await expectLater(
+      ledger.copyHereABatch(blocks: blocks),
+      throwsA(isA<GpuReadFailed>()),
+    );
+
+    expect(blocks.asked, [2 * gpuTileBytes, gpuTileBytes]);
+    expect(blocks.givenBack, 2);
+  });
+
   test('what the engine finds of each tile is told to that tile — a box '
       'where it has ink, none where it has none', () {
     final ledger = EngineTileLedger(appGpuEngine);

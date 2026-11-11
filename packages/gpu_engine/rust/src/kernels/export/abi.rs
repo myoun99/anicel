@@ -31,12 +31,33 @@ pub struct Export {
 pub struct Readout {
     out: wgpu::Buffer,
     bytes: u64,
-    mapped: Option<wgpu::Buffer>,
+    /// How its wait ended, once one has: the buffer the CPU maps — or why
+    /// there is none, kept of a wait its caller did not stay for
+    /// ([`gpu_engine_readout_map_then`]), which has no one to fail to.
+    mapped: Option<Result<wgpu::Buffer, String>>,
+}
+
+/// A readout handed to the engine's thread for the length of a wait its
+/// caller did not stay for ([`Readout::map_then`]).
+struct Waited(*mut Readout);
+
+// SAFETY: nothing else has the readout till its wait has ended
+// ([`Readout::map_then`]'s contract).
+unsafe impl Send for Waited {}
+
+impl Waited {
+    /// # Safety
+    /// The readout is live, and nothing else has it.
+    unsafe fn end(self, ended: Result<wgpu::Buffer, String>) {
+        // SAFETY: see the function's contract.
+        unsafe { (*self.0).mapped = Some(ended) };
+    }
 }
 
 /// The readout of what a pass put — `bytes` of `out` its writer takes —,
-/// or null where it put nothing (see the last error).
-fn readout(out: Option<wgpu::Buffer>, bytes: u64) -> *mut Readout {
+/// or null where it put nothing (see the last error). A pool's tiles on
+/// their way back are one too (`gpu_engine_pool_readout`).
+pub(crate) fn readout(out: Option<wgpu::Buffer>, bytes: u64) -> *mut Readout {
     out.map_or(std::ptr::null_mut(), |out| {
         Box::into_raw(Box::new(Readout { out, bytes, mapped: None }))
     })
@@ -240,6 +261,28 @@ pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: 
     readout.map(engine).is_some()
 }
 
+/// [`gpu_engine_readout_map`] with no wait for its caller, who goes on:
+/// the engine's thread waits for the work behind `readout`, and calls
+/// `then` once its bytes are mapped for [`gpu_engine_readout_rows`] — or
+/// are not, which the rows then fail by. From that thread; from this one
+/// where that thread is gone, or the bytes were mapped already.
+///
+/// # Safety
+/// Both are live, `readout` made on `engine` — and `readout` is asked
+/// nothing more, nor freed, till `then` is called. `then` is one any
+/// thread may call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_readout_map_then(
+    engine: *const Engine,
+    readout: *mut Readout,
+    then: extern "C" fn(),
+) {
+    // SAFETY: see the function's contract.
+    let (engine, readout) = unsafe { (&*engine, &mut *readout) };
+    // SAFETY: the readout is the caller's to leave alone (the contract).
+    unsafe { readout.map_then(engine, move || then()) };
+}
+
 /// Copies `rows` rows of `row_bytes` from the mapped bytes of `readout` —
 /// the first at `offset`, each `stride` from the last — into `dst`, each
 /// `dst_stride` from the last. False where the readout is not mapped or a
@@ -287,21 +330,57 @@ impl Rows {
 impl Readout {
     fn map(&mut self, engine: &Engine) -> Option<()> {
         if self.mapped.is_some() {
-            return Some(());
+            return self.mapped().map(|_| ());
         }
-        // A copy is whole words; each pass's buffer is (its last filled out).
-        let staged = engine.staged(&self.out, self.bytes.next_multiple_of(4));
+        let staged = self.staged(engine);
         engine.map(&staged)?;
-        self.mapped = Some(staged);
+        self.mapped = Some(Ok(staged));
         Some(())
+    }
+
+    /// [`Self::map`] with no wait for its caller ([`Engine::map_then`]):
+    /// `then` is called once the wait has ended, how it did kept for
+    /// [`Self::rows`] — at once where one had.
+    ///
+    /// # Safety
+    /// `self` stays where it is, asked nothing, till `then` is called.
+    unsafe fn map_then(&mut self, engine: &Engine, then: impl FnOnce() + Send + 'static) {
+        if self.mapped.is_some() {
+            return then();
+        }
+        let staged = self.staged(engine);
+        let waited = Waited(std::ptr::from_mut(self));
+        engine.map_then(staged, move |ended| {
+            // SAFETY: the contract — nothing else has it till `then`.
+            unsafe { waited.end(ended) };
+            then();
+        });
+    }
+
+    /// The buffer the CPU maps of what the pass put: the pass's own where
+    /// it put one — a pool's tiles on their way back
+    /// (`gpu_engine_pool_readout`) —, else its copy, submitted. A copy is
+    /// whole words; each pass's buffer is (its last filled out).
+    fn staged(&self, engine: &Engine) -> wgpu::Buffer {
+        if self.out.usage().contains(wgpu::BufferUsages::MAP_READ) {
+            return self.out.clone();
+        }
+        engine.staged(&self.out, self.bytes.next_multiple_of(4))
+    }
+
+    /// The buffer mapped; fails by why there is none.
+    fn mapped(&self) -> Option<&wgpu::Buffer> {
+        match &self.mapped {
+            Some(Ok(mapped)) => Some(mapped),
+            Some(Err(why)) => fail(why.clone()),
+            None => fail("a readout is mapped before its rows are read"),
+        }
     }
 
     /// # Safety
     /// `dst` holds (`rows.rows` − 1) × `dst_stride` + `rows.row_bytes`.
     unsafe fn rows(&self, rows: Rows, dst: *mut u8, dst_stride: u64) -> Option<()> {
-        let Some(mapped) = &self.mapped else {
-            return fail("a readout is mapped before its rows are read");
-        };
+        let mapped = self.mapped()?;
         let Rows { offset, stride, row_bytes, rows: count } = rows;
         if rows.end().is_none_or(|end| end > self.bytes) {
             return fail(format!(

@@ -54,6 +54,7 @@ mod tests;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
+use crate::kernels::export::abi::{Readout, readout};
 use crate::kernels::shared::room;
 use crate::kernels::write::Write;
 use crate::platform::{self, VideoMemory};
@@ -299,9 +300,7 @@ impl Pool {
         if into.len() as u64 != bytes {
             return fail(format!("{} bytes to read {} tiles into; they hold {bytes}", into.len(), places.len()));
         }
-        for &at in places {
-            self.holding(at)?;
-        }
+        self.all_held(places)?;
         // ⚠️No test tells this from a read of nothing mapped: DX12 maps a
         // buffer of no bytes as one of some (mutant R03 lived, 11-09). It
         // stands so a read of no tile waits for no GPU and asks no driver
@@ -310,15 +309,53 @@ impl Pool {
             return Some(());
         }
         let readback = engine.readback(bytes);
+        self.gather(engine, places, &readback);
+        engine.mapped_into(&readback, into)
+    }
+
+    /// The tiles at `places`, each held, side by side in a buffer of their
+    /// own the CPU maps — a tile's bytes each, in order —, their copy
+    /// submitted and none of it waited for: what a readout maps once the
+    /// GPU is done, the wait the engine's thread's
+    /// (`gpu_engine_pool_readout`) — the copies the app keeps of what the
+    /// engine alone holds, taken while a hand rests with no wait on the
+    /// thread its frames are built on (🗣️관제 2026-11-12,
+    /// a-lost-gpu-device-keeps-the-unsaved-tiles: 「붙잡으면 (B) 안에서
+    /// 엔진 스레드 비동기로 옮긴 뒤 착지한다」).
+    ///
+    /// 🚨THE BYTES ARE THE ONES EACH SLOT HOLDS AS THIS IS ASKED: the copy
+    /// is submitted here, ahead of whatever is submitted after it, so a
+    /// slot let go and written over meanwhile is read as it was — the tile
+    /// that was asked for, never the one that took its slot.
+    ///
+    /// Nothing where one is not held, or none is asked.
+    pub(crate) fn read_out(&self, engine: &Engine, places: &[TileAt]) -> Option<wgpu::Buffer> {
+        self.all_held(places)?;
+        if places.is_empty() {
+            return fail("no tile to read out");
+        }
+        let out = engine.readback(places.len() as u64 * TILE_BYTES);
+        self.gather(engine, places, &out);
+        Some(out)
+    }
+
+    /// Whether a tile is held at each of `places` ([`Self::holding`]).
+    fn all_held(&self, places: &[TileAt]) -> Option<()> {
+        places.iter().try_for_each(|&at| self.holding(at))
+    }
+
+    /// Copies the tiles at `places`, each held, into `into` — a tile's
+    /// bytes each, in order — and submits.
+    fn gather(&self, engine: &Engine, places: &[TileAt], into: &wgpu::Buffer) {
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(places) {
+            let page = &self.buffers[usize::from(at.page)];
             let from = u64::from(at.slot) * TILE_BYTES;
-            encoder.copy_buffer_to_buffer(&self.buffers[usize::from(at.page)], from, &readback, to, TILE_BYTES);
+            encoder.copy_buffer_to_buffer(page, from, into, to, TILE_BYTES);
         }
         engine.queue.submit([encoder.finish()]);
-        engine.mapped_into(&readback, into)
     }
 
     /// The page of the tile at `at`, held; nothing where the pool has no
@@ -545,17 +582,52 @@ pub unsafe extern "C" fn gpu_engine_pool_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&*pool, &*engine) };
-    // SAFETY: `tiles` holds `count` words, `into` the bytes of `count` tiles.
-    let (words, into) = unsafe {
-        (
-            std::slice::from_raw_parts(tiles, count),
-            std::slice::from_raw_parts_mut(into, count * TILE_BYTES as usize),
-        )
+    // SAFETY: `tiles` holds `count` words.
+    let Some(places) = (unsafe { named(tiles, count) }) else {
+        return false;
     };
-    let Some(places) = words.iter().copied().map(TileAt::of_word).collect::<Option<Vec<_>>>() else {
-        return fail::<()>("a tile to read named by no tile's word").is_some();
-    };
+    // SAFETY: `into` holds the bytes of `count` tiles.
+    let into = unsafe { std::slice::from_raw_parts_mut(into, count * TILE_BYTES as usize) };
     pool.read(engine, &places, into).is_some()
+}
+
+/// The `count` tiles `tiles` names — each a tile's word ([`TileAt::word`])
+/// — on their way back ([`Pool::read_out`]): their bytes as their slots
+/// hold them now, a tile's each, in order, for a readout to map once the
+/// GPU is done (`gpu_engine_readout_map_then`, the wait the engine's
+/// thread's) and hand over as rows of a tile's bytes
+/// (`gpu_engine_readout_rows`).
+/// Submits the work and waits for none of it. Null where one is not held
+/// or none is asked; see the last error.
+///
+/// # Safety
+/// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
+/// holds `count` words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_readout(
+    pool: *const Pool,
+    engine: *const Engine,
+    tiles: *const u32,
+    count: usize,
+) -> *mut Readout {
+    // SAFETY: see the function's contract.
+    let (pool, engine) = unsafe { (&*pool, &*engine) };
+    // SAFETY: `tiles` holds `count` words.
+    let places = unsafe { named(tiles, count) };
+    let out = places.and_then(|places| pool.read_out(engine, &places));
+    readout(out, count as u64 * TILE_BYTES)
+}
+
+/// The tiles the `count` words at `tiles` name, or nothing where one names
+/// none; see the last error.
+///
+/// # Safety
+/// `tiles` holds `count` words.
+unsafe fn named(tiles: *const u32, count: usize) -> Option<Vec<TileAt>> {
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, count) };
+    let places = words.iter().copied().map(TileAt::of_word).collect::<Option<Vec<_>>>();
+    places.or_else(|| fail("a tile to read named by no tile's word"))
 }
 
 /// Makes no page more past `most_bytes` ([`Pool::set_most_bytes`]) — the

@@ -3,6 +3,7 @@
 /// (gpu-engine-skeleton, screen-on-the-engine).
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
@@ -39,6 +40,14 @@ Future<Pointer<T>> _compiledOff<T extends NativeType>(
 /// a test holds at none on the thread an app's frames are built on
 /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦).
 int get debugKernelsCompiledHere => rust.kernelsBuiltHere();
+
+/// How many waits for the GPU the thread that asks has made
+/// (rust/src/device.rs, `gpu_engine_waits_here`): what a test holds at
+/// none on the thread an app's frames are built on, over work that is to
+/// wait there for nothing (🗣️관제 2026-11-12,
+/// a-lost-gpu-device-keeps-the-unsaved-tiles: 「UI(또는 래스터) 스레드를
+/// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다」).
+int get debugWaitsHere => rust.waitsHere();
 
 /// A job the engine would not do — a C entry answered that it failed, or
 /// Flutter gave it no adapter or texture to do it with —, carrying the
@@ -483,6 +492,26 @@ class GpuPool {
     if (!rust.poolRead(_pool, _engine._engine, words, tiles.length, into)) {
       throw GpuReadFailed(_lastError());
     }
+  });
+
+  /// [tiles], each held, on their way back: their bytes as their slots
+  /// hold them now — [gpuTileBytes] each, in order —, for a readout to map
+  /// with no wait here ([GpuReadout.mapping]) and hand over a tile a row
+  /// ([GpuReadout.rows]). Submits the work and waits for none of it: a
+  /// slot let go and written over meanwhile is read as it was
+  /// (rust/src/kernels/pool/mod.rs `Pool::read_out`).
+  GpuReadout readout(List<GpuTile> tiles) => using((arena) {
+    final words = _tileWords(arena, tiles.length, 1, tiles);
+    final readout = rust.poolReadout(
+      _pool,
+      _engine._engine,
+      words,
+      tiles.length,
+    );
+    if (readout == nullptr) {
+      throw GpuReadFailed(_lastError());
+    }
+    return GpuReadout._(_engine, readout);
   });
 
   /// Makes no page more past [mostBytes]: the pages made stay — till
@@ -2235,9 +2264,36 @@ class GpuReadout {
     }
   }
 
+  /// [map] with no wait on this isolate, which goes on meanwhile: the
+  /// engine's thread waits for the GPU, and this ends once it has
+  /// (rust/src/kernels/export/abi.rs, `gpu_engine_readout_map_then`).
+  /// ⚠️It ends the same where the wait was refused — [rows] then throws
+  /// by why. Nothing else is asked of it, nor is it freed, till this has
+  /// ended.
+  Future<void> mapping() async {
+    debugBeforeMapping?.call();
+    final ended = Completer<void>();
+    // Not the tear-off: a listener takes a function of the C's own shape.
+    void end() => ended.complete();
+    final then = NativeCallable<Void Function()>.listener(end);
+    try {
+      rust.readoutMapThen(_engine._engine, _readout, then.nativeFunction);
+      await ended.future;
+    } finally {
+      then.close();
+    }
+  }
+
+  /// Test seam: called before the engine's thread is handed the wait
+  /// ([mapping]) — how a test has the device go between a copy's submit
+  /// and the wait for it.
+  @visibleForTesting
+  static void Function()? debugBeforeMapping;
+
   /// Copies [rows] rows of [rowBytes] — the first at [offset], each
   /// [stride] from the last — into [dst], each [dstStride] from the last.
-  /// It is mapped, and the rows end within its [bytes].
+  /// It is mapped, and the rows end within its [bytes]; one whose wait was
+  /// refused ([mapping]) throws by why.
   void rows(
     Pointer<Uint8> dst, {
     required int offset,

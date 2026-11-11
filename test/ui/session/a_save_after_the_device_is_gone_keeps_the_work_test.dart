@@ -52,7 +52,7 @@ void main() {
     // One tile of 7s, its copy come, and one of 9s landed on a tile of 3s.
     final ledger = EngineTileLedger.instance;
     final copied = landedOn(ledger, cel.cel, [null], 7).single;
-    expect(ledger.copyHereABatch(), isFalse);
+    expect(await ledger.copyHereABatch(), isFalse);
     expect(copied.isOnlyOnEngine, isFalse, reason: '⛔premise: its copy came');
     final under = BitmapTile(
       size: gpuTileSide,

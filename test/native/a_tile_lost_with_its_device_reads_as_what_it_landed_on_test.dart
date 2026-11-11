@@ -9,6 +9,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 
+import '../helpers/settle_async.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
@@ -77,21 +78,21 @@ void main() {
 
   test('a copy is a batch of the oldest tiles the engine alone holds, '
       'their slots kept — and a tile whose copy is here reads as itself '
-      'once the device is gone', () {
+      'once the device is gone', () async {
     const batch = EngineTileLedger.copyBatch;
     final tiles = landed(List.filled(batch + 1, null), 9);
     final slots = [for (final tile in tiles) ledger.slotOf(tile)];
 
-    expect(ledger.copyHereABatch(), isTrue, reason: 'one is left');
+    expect(await ledger.copyHereABatch(), isTrue, reason: 'one is left');
     expect(
       [for (final tile in tiles) tile.isOnlyOnEngine],
       [...List.filled(batch, false), true],
       reason: 'the oldest, a batch of them',
     );
-    expect(ledger.copyHereABatch(), isFalse, reason: 'none is left');
+    expect(await ledger.copyHereABatch(), isFalse, reason: 'none is left');
     expect(tiles.last.isOnlyOnEngine, isFalse);
     expect([for (final tile in tiles) ledger.slotOf(tile)], slots);
-    expect(ledger.copyHereABatch(), isFalse, reason: 'nothing to copy');
+    expect(await ledger.copyHereABatch(), isFalse, reason: 'nothing to copy');
 
     engine.debugLose();
 
@@ -100,11 +101,11 @@ void main() {
   });
 
   test('a copy asked for once the device is gone gives each tile the '
-      'picture it landed on', () {
+      'picture it landed on', () async {
     final tile = landed([tileOf(7)], 9).single;
 
     engine.debugLose();
-    expect(ledger.copyHereABatch(), isFalse);
+    expect(await ledger.copyHereABatch(), isFalse);
 
     expect(tile.isOnlyOnEngine, isFalse);
     expect(tile.pixels, everyElement(7));
@@ -112,9 +113,9 @@ void main() {
 
   // What a save, a cel cooled and an undo record parked ask.
   test('a read of many gives each tile its bytes in order once the device '
-      'is gone: its own where they are here, else the picture under it', () {
+      'is gone: its own where they are here, else the one under it', () async {
     final copied = landed([tileOf(1)], 2).single;
-    ledger.copyHereABatch();
+    await ledger.copyHereABatch();
     final lost = landed([tileOf(3)], 4).single;
     final here = tileOf(5);
     final asked = [lost, here, copied];
@@ -167,10 +168,47 @@ void main() {
     expect(first.first.isOnlyOnEngine, isTrue, reason: 'put off');
 
     await tester.pump(tick);
+    expect(first.first.isOnlyOnEngine, isTrue, reason: 'on its way');
+    // Each batch is told from the engine's thread once the GPU is done,
+    // which a pumped clock lends no time.
     expect(
-      [...first, second].where((tile) => tile.isOnlyOnEngine),
-      isEmpty,
-      reason: 'every batch, a turn after the last',
+      await settleAsync(
+        tester,
+        () => [...first, second].every((tile) => !tile.isOnlyOnEngine),
+      ),
+      isTrue,
+      reason: 'every batch, one behind another',
+    );
+  });
+
+  testWidgets('a landing while the copies go puts off the batches not yet '
+      'asked for', (tester) async {
+    EngineTileLedger.copiesAtRest = true;
+    addTearDown(() => EngineTileLedger.copiesAtRest = false);
+    const rest = EngineTileLedger.rest;
+    const batch = EngineTileLedger.copyBatch;
+
+    final first = landed(List.filled(batch + 1, null), 9);
+    await tester.pump(rest);
+    final since = landed([null], 9).single;
+    expect(
+      await settleAsync(tester, () => !first.first.isOnlyOnEngine),
+      isTrue,
+      reason: 'the batch on its way came',
+    );
+    // ⛔A window, not a wait: what is watched is that no batch more goes.
+    await lendBothClocks(tester, rounds: 12);
+    expect(first.last.isOnlyOnEngine, isTrue, reason: 'put off');
+    expect(since.isOnlyOnEngine, isTrue, reason: 'put off');
+
+    await tester.pump(rest);
+    expect(
+      await settleAsync(
+        tester,
+        () => [...first, since].every((tile) => !tile.isOnlyOnEngine),
+      ),
+      isTrue,
+      reason: 'asked for once the hand has rested again',
     );
   });
 
