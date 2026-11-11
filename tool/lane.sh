@@ -1019,6 +1019,7 @@ cmd_crate() {
   # the next one, once that was fixed.
   for profile in debug release; do
     flag=; [ "$profile" = release ] && flag=--release
+    still_landing
     echo "lane: crate — the GPU engine's tests ($profile)"
     from=$(wc -l <"$log")
     # The trunk's target folder: every lane reuses what the trunk and the
@@ -1083,6 +1084,20 @@ lane_is_clean() {
 # The turn this process holds while it lands (`land_turn` sets it).
 HELD_TURN=
 
+# A LAND THAT MOVES ON IS ALIVE, as one that waits is. Its turn's age is
+# how long since it last did either, so a land refreshes the turn at every
+# gate and while it waits; a turn taken over for its age is a hung land's,
+# never a long one's.
+# ↩️It was stamped once, when it was taken (관제 2026-11-11, card
+# a-long-land-loses-its-turn-at-45-minutes): a land that touched the crate
+# ran its gates for 48 minutes, the next land took its turn at 45, and that
+# land's fast-forward was refused — its gates run for nothing.
+# `touch -c`: a turn that is gone stays gone — a FILE of that name would
+# stand in every land's way after.
+still_landing() {
+  [ -z "$HELD_TURN" ] || touch -c "$HELD_TURN"
+}
+
 # ROOM FIRST (the head of this file: THE GATES ASK THE MACHINE). $1 is
 # `land` for a land's gates — the headroom alone — and anything else for a
 # run that takes one of the four places.
@@ -1097,8 +1112,7 @@ room_first() {
   $seen"
     [ -n "$told" ] || echo "lane: no room for the gates yet ($seen) — waiting"
     told=1
-    # A land that waits is alive: its turn is not one to take over.
-    [ -z "$HELD_TURN" ] || touch "$HELD_TURN"
+    still_landing
     sleep 20
   done
 }
@@ -1166,9 +1180,11 @@ gates() {
 
   # Refusal 5. Only a lane that touched the C pays for it — its parity run
   # outside the machine's line, as the architecture tests above run.
+  still_landing
   if lane_touched "$p" packages/qa_native/src; then
     cmd_native "$name" gates
   fi
+  still_landing
   crate_gate "$name" "$p"
 }
 
@@ -1240,7 +1256,9 @@ cmd_gate() {
 # worktree and every session — held from here to the end of the land,
 # however it ends.
 # ⚠️A lander that was killed leaves its turn behind. It is taken over when
-# the process that held it is gone, or when it is older than any land takes.
+# the process that held it is gone, or when it has not moved on for longer
+# than any one gate takes — a hung land (`still_landing` says why it is
+# not the whole land's length).
 land_turn() {
   local turn; turn="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/lane-land.turn"
   local holder told=
@@ -1257,6 +1275,8 @@ land_turn() {
   done
   echo "$$" >"$turn/pid"
   HELD_TURN="$turn"
+  # What the land runs keeps it alive while it waits too (cargo_turn.sh).
+  export LANE_LAND_TURN="$turn"
   # shellcheck disable=SC2064
   trap "rm -rf '$turn'" EXIT
 }

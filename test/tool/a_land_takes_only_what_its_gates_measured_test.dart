@@ -219,11 +219,80 @@ void main() {
       expect(at(room, 'sleep 20'), greaterThan(refused));
     });
 
-    test('a land that waits for room keeps its turn its own', () {
-      final room = codeOf('room_first');
+    test('a land keeps its turn its own while it moves on and while it '
+        'waits — a turn taken for its age is a hung land\'s, never a long '
+        'one\'s', () {
+      // ↩️관제 2026-11-11 (a-long-land-loses-its-turn-at-45-minutes): the
+      // turn was stamped once, when it was taken. A land that touched the
+      // crate ran its gates for 48 minutes, the next land took its turn at
+      // 45, and that land's fast-forward was refused.
+      expect(
+        at(
+          codeOf('still_landing'),
+          r'[ -z "$HELD_TURN" ] || touch -c "$HELD_TURN"',
+        ),
+        isNot(-1),
+        reason: '-c: a turn that is gone is not made again, as a file',
+      );
+      final taking = codeOf('land_turn');
+      expect(at(taking, r'HELD_TURN="$turn"'), isNot(-1));
+      expect(at(taking, r'export LANE_LAND_TURN="$turn"'), isNot(-1));
 
-      expect(at(room, r'[ -z "$HELD_TURN" ] || touch "$HELD_TURN"'), isNot(-1));
-      expect(at(codeOf('land_turn'), r'HELD_TURN="$turn"'), isNot(-1));
+      List<int> refreshes(List<String> code) => [
+        for (var i = 0; i < code.length; i++)
+          if (code[i].trim() == 'still_landing') i,
+      ];
+      bool between(List<String> code, int after, int before) =>
+          refreshes(code).any((i) => i > after && i < before);
+
+      final room = codeOf('room_first');
+      expect(
+        between(room, at(room, 'until seen='), at(room, 'sleep 20')),
+        isTrue,
+        reason: 'waiting for room',
+      );
+
+      final gates = codeOf('gates');
+      final native = at(gates, 'cmd_native');
+      final crate = at(gates, 'crate_gate');
+      expect(native, isNot(-1));
+      expect(crate, isNot(-1));
+      expect(
+        between(gates, at(gates, r'wait "$architecture"'), native),
+        isTrue,
+        reason: 'before the native build and parity',
+      );
+      expect(
+        between(gates, native, crate),
+        isTrue,
+        reason: 'before the crate',
+      );
+
+      final crateRun = codeOf('cmd_crate');
+      expect(
+        between(
+          crateRun,
+          at(crateRun, 'for profile in debug release'),
+          at(crateRun, 'test --locked --offline --no-fail-fast'),
+        ),
+        isTrue,
+        reason: 'before each of debug and release',
+      );
+
+      // While the crate's run waits for the shared target, in the script
+      // the land runs.
+      final cargo = File('tool/cargo_turn.sh')
+          .readAsStringSync()
+          .replaceAll('\r\n', '\n')
+          .split('\n');
+      final waits = cargo.indexWhere((l) => l.startsWith('until mkdir'));
+      final kept = cargo.indexWhere(
+        (l) => l.contains(r'[ -z "$LANE_LAND_TURN" ] || touch -c'),
+      );
+      final sleeps = cargo.indexWhere((l) => l.trim() == 'sleep 5');
+      expect(waits, isNot(-1));
+      expect(kept, greaterThan(waits));
+      expect(sleeps, greaterThan(kept));
     });
   });
 

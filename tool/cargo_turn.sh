@@ -102,6 +102,9 @@ until mkdir "$TURN" 2>/dev/null; do
     echo "cargo_turn: the shared target is held ($(cat "$TURN/what" 2>/dev/null)) — waiting" >&2
     told=1
   fi
+  # A land that waits here is alive: its turn is not one to take over
+  # (lane.sh, still_landing).
+  [ -z "$LANE_LAND_TURN" ] || touch -c "$LANE_LAND_TURN"
   sleep 5
 done
 echo "$$" >"$TURN/pid"
