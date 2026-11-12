@@ -23,8 +23,7 @@ import '../../helpers/app_faces.dart';
 /// An export's overlay is rastered only round where its painter inks
 /// ([PlaybackFramePainter.inkOf]) and laid where it stands on a blank of
 /// the whole raster ([drawnOnTheEngine]) — and the frame it makes on the
-/// engine is the whole raster's — to a channel's rounding where a name is
-/// resampled.
+/// engine is the whole raster's, byte for byte.
 ///
 /// Card an-exports-overlay-raster-reads-back-the-whole-frame: 🔬a 4K
 /// frame's names inked 1–20% of it, and the whole of it was rastered, read
@@ -135,18 +134,6 @@ void main() {
     return count;
   }
 
-  /// How far [a] and [b] part, in the most any channel of a pixel does.
-  int parted(Uint8List a, Uint8List b) {
-    var most = 0;
-    for (var i = 0; i < a.length; i += 1) {
-      final apart = (a[i] - b[i]).abs();
-      if (apart > most) {
-        most = apart;
-      }
-    }
-    return most;
-  }
-
   group('🚨names alone: rastered round them, the whole frame', () {
     for (final (name, painter, width, height) in [
       ('through the camera', over(), 640, 360),
@@ -181,6 +168,20 @@ void main() {
         640,
         360,
       ),
+      // Square to the frame at a camera's 1.25, a plate is magnified with no
+      // filter, its samples on ties a raster made off another corner takes
+      // across (🔬11-12: 68 pixels of the letter 159 apart) — and its box
+      // ends part way through a pixel, half inked, which the box rounds out
+      // to hold.
+      (
+        'a plate magnified with no filter',
+        over(
+          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.25),
+          tags: [tag('A', const ui.Offset(691, 371))],
+        ),
+        640,
+        360,
+      ),
     ]) {
       test(name, () async {
         final box = painter.inkOf(
@@ -193,15 +194,26 @@ void main() {
         );
         final whole = await laid(painter, width, height, round: false);
         expect(inked(whole), greaterThan(0), reason: 'LIVENESS: names');
-        // Moved by whole pixels, a name resampled through a turned or zoomed
-        // camera rounds a sample a hair apart: a channel parts by one at
-        // most (🔬11-12: 1–2 pixels of the frame, 101–106 px inside the
-        // box). A name cut short, a blur's reach left out or a part laid off
-        // its place parts by far more.
-        final round = await laid(painter, width, height, round: true);
-        expect(round.length, whole.length);
-        expect(parted(round, whole), lessThanOrEqualTo(1));
+        expect(await laid(painter, width, height, round: true), whole);
       });
+    }
+  });
+
+  // What the frame shows cannot tell a box too big from the names' own — it
+  // only rasters more. The box is laid through the view the names are: at a
+  // preview's scale, the frame's box scaled.
+  test('the names\' box takes the view\'s scale', () {
+    final frameBox = over().inkOf(const ui.Size(640, 360))!;
+    final previewBox = over(
+      viewport: CanvasViewport(zoom: 0.75),
+    ).inkOf(const ui.Size(480, 270))!;
+    for (final (edge, at, scaled) in [
+      ('left', previewBox.left, frameBox.left),
+      ('top', previewBox.top, frameBox.top),
+      ('right', previewBox.right, frameBox.right),
+      ('bottom', previewBox.bottom, frameBox.bottom),
+    ]) {
+      expect(at, closeTo(scaled * 0.75, 1), reason: '$edge of $previewBox');
     }
   });
 

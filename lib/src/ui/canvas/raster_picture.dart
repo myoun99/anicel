@@ -84,6 +84,38 @@ ui.Image shadedRaster(
   return rasterPicture(recorder, width, height, inFloats: inFloats);
 }
 
+/// The [width] × [height] of [image] from its pixel ([left], [top]), an
+/// image of its own for the caller to dispose: the pixels copied as they
+/// lie, none sampled again — a part of a raster read back without the rest.
+///
+/// 🚨Copied, not rastered again off the part's corner: a picture laid off
+/// another corner lands its draws elsewhere on the pixel grid, and a plate
+/// magnified with no filter (`filterQualityForDisplayScale`) takes the
+/// texel across a tie wherever the corner moves (🔬11-12: a name through a
+/// camera at 1.25, 68 pixels of its letter 159 apart).
+Future<ui.Image> imagePartOf(
+  ui.Image image, {
+  required int left,
+  required int top,
+  required int width,
+  required int height,
+}) async {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawImage(
+    image,
+    ui.Offset(-left.toDouble(), -top.toDouble()),
+    ui.Paint()
+      ..blendMode = ui.BlendMode.src
+      ..filterQuality = ui.FilterQuality.none,
+  );
+  final picture = recorder.endRecording();
+  try {
+    return await picture.toImage(width, height);
+  } finally {
+    picture.dispose();
+  }
+}
+
 /// Ends [recorder], hands the picture to [use], and releases it whatever
 /// [use] does — the one `finally` every raster above shares.
 T withPicture<T>(ui.PictureRecorder recorder, T Function(ui.Picture) use) {

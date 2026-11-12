@@ -19,6 +19,7 @@ import '../services/viewport_transform_matrix.dart' show viewportOfSimilarity;
 import 'canvas/canvas_layer_stack_view.dart'
     show CanvasStackRow, EngineStackScreen, FramePage;
 import 'canvas/fx_plugin_stages.dart';
+import 'canvas/raster_picture.dart' show imagePartOf;
 import 'canvas/viewport_canvas_transform.dart' show applyViewportTransform;
 import 'editor_session_manager.dart';
 import 'playback/camera_shot.dart'
@@ -324,11 +325,11 @@ Future<void> layDrawnOver(
 /// (gpu-export-path ①⑵: the letters are Flutter's, Q30).
 ///
 /// Where [inks] says where [draw] inks — in the raster's pixels, as its
-/// painter answers it — only the whole pixels round it are rastered, read
-/// back and put on the GPU, and laid where they stand on a blank of the
-/// raster's size there: the same frame, its other pixels clear. 🔬A 4K
-/// frame's names inked 1–20% of it, and reading the whole of it back and
-/// putting it up took 165–370 ms (card
+/// painter answers it — the raster is made whole as ever, and only the
+/// whole pixels round that are read back, put on the GPU and laid where
+/// they stand on a blank of the raster's size there: the same frame, its
+/// other pixels clear. 🔬A 4K frame's names inked 1–20% of it, and reading
+/// the whole of it back and putting it up took 165–370 ms (card
 /// an-exports-overlay-raster-reads-back-the-whole-frame).
 Future<GpuShown> drawnOnTheEngine(
   GpuExport export,
@@ -405,16 +406,10 @@ void _rastered(int width, int height) {
 /// RGBA — only its [part] — [left, top, right, bottom) — where one is
 /// named.
 ///
-/// ⚠️[draw] is recorded on the whole raster and its picture rastered off
-/// the part's corner, not drawn on a canvas moved there or cut to the part:
-/// a painter that reads where it stands on the canvas (`getTransform()` —
-/// a pan's phase, a checker's) or how far it reaches
-/// (`getLocalClipBounds()` — the buffer an effect is drawn through) reads
-/// what it would on the whole raster. It is moved there by a scene's
-/// offset, not drawn on a second canvas: the picture is the overlay's own
-/// lines and letters, and a picture drawn on a canvas is what
-/// `every_overlay_is_laid_on_the_engine_test` takes for a frame composed by
-/// Flutter.
+/// ⚠️The part is the whole raster's, copied ([imagePartOf]) before it is
+/// read back — not [draw] rastered again off the part's corner, which
+/// samples a magnified name across a tie elsewhere (its 🚨). The whole is
+/// rastered on the GPU, as before; what was saved is its read and upload.
 Future<Uint8List> _rasterOf(
   int width,
   int height,
@@ -429,43 +424,30 @@ Future<Uint8List> _rasterOf(
     ),
   );
   final drawn = recorder.endRecording();
+  final ui.Image whole;
   try {
-    final image = switch (part) {
-      (final left, final top, final right, final bottom) => await _partOf(
-        drawn,
+    whole = await drawn.toImage(width, height);
+  } finally {
+    drawn.dispose();
+  }
+  var image = whole;
+  try {
+    if (part case (final left, final top, final right, final bottom)) {
+      image = await imagePartOf(
+        whole,
         left: left,
         top: top,
         width: right - left,
         height: bottom - top,
-      ),
-      null => await drawn.toImage(width, height),
-    };
-    try {
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      return data!.buffer.asUint8List();
-    } finally {
+      );
+    }
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    return data!.buffer.asUint8List();
+  } finally {
+    if (!identical(image, whole)) {
       image.dispose();
     }
-  } finally {
-    drawn.dispose();
-  }
-}
-
-/// [picture] rastered on [width] × [height] from its pixel ([left], [top]).
-Future<ui.Image> _partOf(
-  ui.Picture picture, {
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-}) async {
-  final scene = (ui.SceneBuilder()
-        ..addPicture(ui.Offset(-left.toDouble(), -top.toDouble()), picture))
-      .build();
-  try {
-    return await scene.toImage(width, height);
-  } finally {
-    scene.dispose();
+    whole.dispose();
   }
 }
 
