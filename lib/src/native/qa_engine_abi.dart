@@ -407,7 +407,12 @@ import '../core/on_a_worker.dart';
 ///   (`settledDabAlpha`, `StrokePixel`, `strokeSourceOverAt`,
 ///   `dualViewAlpha`). The C draws nothing: it premultiplies a copy and
 ///   hands out tile blocks (board what-still-runs-on-the-cpu).
-const int kQaEngineAbiVersion = 80;
+/// - v81: `qa_premultiply_rgba_rows` leaves the C: its last caller, an
+///   export's sheet ink, is premultiplied on a Dart worker
+///   (`decodeStraightRgbaImageOnAWorker`, export-on-engine ⑶-2b), and
+///   the tiles' compose it served (`surfaceRegionPicture`) is gone —
+///   with `qa_zero_bytes`, whose last caller that compose was.
+const int kQaEngineAbiVersion = 81;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

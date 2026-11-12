@@ -32,7 +32,6 @@ import '../../models/tile_coord.dart';
 import 'active_stroke_overlay.dart' show OverlayMoveMark;
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
-import 'tiled_surface_compose.dart';
 import '../../services/composite_effect_paint.dart';
 import 'display_resample.dart';
 import 'landing_preview.dart';

@@ -172,11 +172,6 @@ void main() {
       isTrue,
       reason: 'the shared controller hands out the surface',
     );
-    expect(
-      shared.contains('composeTiledSurfaceImage'),
-      isFalse,
-      reason: 'and composes nothing — no image to hold stale',
-    );
     for (final path in const [
       'lib/src/ui/conte/conte_ink.dart',
       'lib/src/ui/envelope/cut_envelope_ink.dart',

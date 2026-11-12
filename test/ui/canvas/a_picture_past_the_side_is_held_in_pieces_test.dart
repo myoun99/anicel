@@ -7,15 +7,20 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/import/cel_picture.dart';
+import 'package:anicel/src/core/sync_image_upload.dart';
+import 'package:anicel/src/ui/canvas/chained_picture.dart';
 import 'package:anicel/src/ui/canvas/image_pieces.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
+import 'package:anicel/src/ui/canvas/tile_origin.dart';
 
 import '../../helpers/placement_reading.dart';
 
@@ -177,33 +182,21 @@ void main() {
     );
   }
 
-  /// [pieces] laid side by side into one image — each texel where it lands,
-  /// the oracle the pins read a picture in pieces through.
-  Future<Uint8List> together(List<ImagePiece> pieces) async {
-    final union = pieces.worldRect;
-    final texels = pieces.first.image.width / pieces.first.worldRect.width;
-    final recorder = ui.PictureRecorder();
-    final into = ui.Canvas(recorder);
-    for (final piece in pieces) {
-      into.drawImage(
-        piece.image,
-        ui.Offset(
-          (piece.worldRect.left - union.left) * texels,
-          (piece.worldRect.top - union.top) * texels,
-        ),
-        ui.Paint()..filterQuality = ui.FilterQuality.none,
-      );
-    }
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(
-      (union.width * texels).round(),
-      (union.height * texels).round(),
+  /// [surface]'s pixels over [rect] — through the one door ([pictureOf]),
+  /// with the chain a picture drawn reduced samples ([chainedPictureOf]).
+  ui.Image pictureOver(BitmapSurface surface, ui.Rect rect) {
+    final region = DirtyRegion.wholePixelsOf(rect);
+    final door = pictureOf(
+      StraightRgbaRows(
+        bitmapSurfaceRegionPixels(surface, region),
+        region.rightExclusive - region.left,
+        region.bottomExclusive - region.top,
+      ),
     );
-    picture.dispose();
     try {
-      return await bytesOf(image);
+      return chainedPictureOf(door);
     } finally {
-      image.dispose();
+      door.dispose();
     }
   }
 
@@ -252,102 +245,26 @@ void main() {
     });
   });
 
-  group('composed in pieces, the same bytes as whole', () {
-    /// ↩️And halved, and made now beside its snapshot, until no row image was
-    /// made (one-picture-per-frame ②-5b-1).
-    testWidgets('asynchronously, at full size', (tester) async {
-      await tester.runAsync(() async {
-        final surface = noise();
-        final content = surfaceContentWorldRect(surface);
-        expect(content, const ui.Rect.fromLTWH(0, 0, 192, 96), reason: '전제');
-
-        final whole = (await composePositionedSurfaceImage(surface))!;
-        debugPictureSideLimit = side;
-        final pieces = (await composePositionedSurfaceImage(surface))!;
-        debugPictureSideLimit = wholeSide;
-
-        expect(whole.pieces, hasLength(1));
-        expect(
-          [for (final piece in pieces.pieces) piece.worldRect],
-          piecesOver(content, side: side),
-        );
-        expect(pieces.worldRect, whole.worldRect);
-        expect(
-          pieces.pieces.every(
-            (piece) => !isPastTheSide(
-              piece.image.width,
-              piece.image.height,
-              side,
-            ),
-          ),
-          isTrue,
-        );
-        expect(
-          await together(pieces.pieces),
-          await together(whole.pieces),
-        );
-        expect(
-          pieces.pieces.estimatedBytes,
-          whole.pieces.estimatedBytes,
-          reason: 'weighed as the one picture they are',
-        );
-        for (final made in [whole, pieces]) {
-          made.pieces.disposeAll();
-        }
-      });
-    });
-
-    testWidgets('a piece pictures only the blocks that land on it', (
-      tester,
-    ) async {
-      await tester.runAsync(() async {
-        // Four tiles a block apart ([tileBlockEdge]), on a canvas four
-        // blocks wide: at a side of one block, one block a piece.
-        var surface = BitmapSurface(
-          canvasSize: const CanvasSize(width: 1024, height: tileSize),
-          tileSize: tileSize,
-        );
-        for (var x = 0; x < 4; x += 1) {
-          surface = surface.putTiles([
-            (
-              coord: TileCoord(x: x * 16, y: 0),
-              tile: BitmapTile(
-                size: tileSize,
-                pixels: Uint8List(tileSize * tileSize * 4)
-                  ..fillRange(0, tileSize * tileSize * 4, 0xFF),
-              ),
-            ),
-          ]);
-        }
-        // One tick a block with no picture visited: the clock of a run
-        // ([tilePictureRun]) is read once before the loop and once a block.
-        var ticks = 0;
-        debugTilePictureClock = () => ticks += 1;
-        addTearDown(() => debugTilePictureClock = null);
-        (await composePositionedSurfaceImage(surface))!.pieces.disposeAll();
-        expect(ticks, 1 + 4, reason: '전제: four blocks, one compose');
-        ticks = 0;
-        debugPictureSideLimit = 256;
-        final pieces = (await composePositionedSurfaceImage(surface))!.pieces;
-        expect(pieces, hasLength(4), reason: '전제');
-        pieces.disposeAll();
-
-        expect(
-          ticks,
-          4 * (1 + 1),
-          reason: 'each piece visits the one block that lands on it, not '
-              'all four',
-        );
-      });
-    });
-  });
-
   group('drawn in pieces, the same picture as whole', () {
     // Small, so what it sees of the cel fits the side, with a blur's reach
     // round it — and across a cut both ways.
     const frame = ui.Size(36, 28);
 
-    /// [draw] of [surface] composed at [at] onto a frame of [frame] over a
+    /// [surface]'s pixels held in the pieces a side of [at] cuts its content
+    /// into ([piecesOver]), each a picture carrying its chain.
+    ///
+    /// ↩️Made by the tiles' compose (`composePositionedSurfaceImage`) until
+    /// it left the app (export-on-engine ⑶-2b, 2026-11-12): what it made of
+    /// a piece was these bytes.
+    List<ImagePiece> piecesAt(int at, BitmapSurface surface) => [
+      for (final rect in piecesOver(
+        surfaceContentWorldRect(surface),
+        side: at,
+      ))
+        (image: pictureOver(surface, rect), worldRect: rect),
+    ];
+
+    /// [draw] of [surface] held at [at] onto a frame of [frame] over a
     /// grey ground — on a canvas that says what it can land on, unless
     /// [bounded] is false.
     Future<Uint8List> drawnAt(
@@ -359,7 +276,7 @@ void main() {
     }) async {
       debugPictureSideLimit = at;
       try {
-        final composed = (await composePositionedSurfaceImage(surface))!;
+        final pieces = piecesAt(at, surface);
         final recorder = ui.PictureRecorder();
         final canvas = bounded
             ? ui.Canvas(recorder, ui.Offset.zero & frame)
@@ -367,9 +284,11 @@ void main() {
         canvas.drawColor(const ui.Color(0xFF808890), ui.BlendMode.src);
         // Part of the cel off the frame, so what the frame sees is a part.
         canvas.translate(-50, -40);
-        draw(canvas, composed.pieces, surfaceContentWorldRect(surface));
+        draw(canvas, pieces, surfaceContentWorldRect(surface));
         final picture = recorder.endRecording();
-        composed.pieces.disposeAll();
+        for (final piece in pieces) {
+          piece.image.dispose();
+        }
         // ⚠️Through `toImageSync`: the part laid is a deferred image, the
         // whole a snapshot, and onto a snapshot's target this runner blends
         // the two ±1 apart (`a_cropped_cel_draws_the_same_bytes_test.dart`

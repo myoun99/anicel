@@ -69,7 +69,7 @@ import 'import_landing.dart';
 import 'independent_clip_mint.dart' show givePanelsTheirPictures;
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
-import '../canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
+import '../canvas/tile_origin.dart' show surfaceContentWorldRect;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';

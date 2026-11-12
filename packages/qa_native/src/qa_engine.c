@@ -1,5 +1,5 @@
 // Anicel native engine core (R18 A-track) - what is left of it: a
-// premultiplied copy, a memset and the tile allocator. Every kernel that
+// premultiplied copy and the tile allocator. Every kernel that
 // drew is the GPU engine's now (the ABI history at the foot of this file).
 //
 // ONE portable C source, cross-compiled per platform (Windows DLL, macOS
@@ -12,7 +12,6 @@
 // Apple clang rejected the file outright on CI's first run.
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
@@ -130,32 +129,6 @@ QA_EXPORT void qa_premultiply_rgba_copy(
   for (; i < pixel_count; i += 1) {
     qa_premultiply_pixel(dst + (ptrdiff_t)i * 4, src + (ptrdiff_t)i * 4);
   }
-}
-
-// The same copy a row at a time between two strides (ABI 46): [rows] rows
-// of [width] straight pixels, [src_stride] bytes apart, premultiplied into
-// [dst] at rows [dst_stride] bytes apart - a tile laid into a picture of
-// several tiles in one call, where a call a row costs more than its pixels.
-QA_EXPORT void qa_premultiply_rgba_rows(
-    uint8_t* dst,
-    int64_t dst_stride,
-    const uint8_t* src,
-    int64_t src_stride,
-    int32_t width,
-    int32_t rows) {
-  for (int32_t y = 0; y < rows; y += 1) {
-    qa_premultiply_rgba_copy(dst + (ptrdiff_t)y * dst_stride,
-                             src + (ptrdiff_t)y * src_stride, width);
-  }
-}
-
-// Plain memset exposed to Dart (ABI 40): the VM's typed-data fillRange runs
-// a loop in debug builds. 🔬Measured 2026-10-01 on a stroke's planes, which
-// were zeroed here then: with the loop, a 600-dab size-30 stroke's commit
-// took 9.7 ms against 5.2 without the planes, nearly all of the difference
-// spent zeroing and widening its four tiles.
-QA_EXPORT void qa_zero_bytes(uint8_t* dst, int64_t length) {
-  memset(dst, 0, (size_t)length);
 }
 
 // --- Tile allocator (R20-E1) -----------------------------------------------
@@ -498,4 +471,7 @@ QA_EXPORT void qa_tile_pool_set_byte_cap(int64_t bytes) {
 // pool they spread over. A stroke is the GPU engine's on its grid
 // (kernels/dab, kernels/blend) and the Dart kernel's on any other, and the
 // C draws nothing: it premultiplies a copy and hands out tile blocks.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 80; }
+// v81: qa_premultiply_rgba_rows leaves - an export's sheet ink, its last
+// caller, is premultiplied on a Dart worker (export-on-engine) - and
+// qa_zero_bytes with it: the tiles' compose was the last to zero here.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 81; }

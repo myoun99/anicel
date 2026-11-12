@@ -58,8 +58,6 @@ final class QaTileBlocksAt {
 class QaNativeEngine {
   QaNativeEngine._(
     this._premultiplyRgbaCopy,
-    this._premultiplyRgbaRows,
-    this._zeroBytes,
     this._tileAlloc,
     this._tileAllocPointer,
     this._tileFree,
@@ -71,56 +69,6 @@ class QaNativeEngine {
 
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int pixelCount)
   _premultiplyRgbaCopy;
-
-  final void Function(
-    Pointer<Uint8> dst,
-    int dstStride,
-    Pointer<Uint8> src,
-    int srcStride,
-    int width,
-    int rows,
-  )
-  _premultiplyRgbaRows;
-
-  /// [rows] rows of [width] straight pixels read [from] one place,
-  /// premultiplied [into] another, in ONE call (`qa_premultiply_rgba_rows`,
-  /// ABI 46) — the kernel of [premultipliedTileScratch] between two strides,
-  /// so a tile can be laid into a picture of several where a call a row
-  /// would cost more than the row.
-  void premultiplyRgbaRows({
-    required NativeRows from,
-    required NativeRows into,
-    required int width,
-    required int rows,
-  }) => _premultiplyRgbaRows(
-    into.start,
-    into.stride,
-    from.start,
-    from.stride,
-    width,
-    rows,
-  );
-
-  final _tilesPictureScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-
-  /// The engine's buffer for the bytes of ONE picture of several tiles —
-  /// at least [byteLength] of them, holding whatever the last picture left
-  /// there. Valid until the next ask: the upload that reads it consumes
-  /// the bytes inside its own call, so one buffer serves every picture,
-  /// and nothing holds it across an await.
-  ///
-  /// ⛔Not a buffer a picture: a block is a megabyte, and a fresh one each
-  /// time is fresh pages for the system to fault in and clear.
-  Pointer<Uint8> tilesPictureScratch(int byteLength) =>
-      _tilesPictureScratch.ensure(byteLength);
-
-  final void Function(Pointer<Uint8> dst, int length) _zeroBytes;
-
-  /// A native memset — a zeroed tile without the VM's debug-build
-  /// `fillRange` loop (`qa_zero_bytes`, ABI 40).
-  void zeroBytes(Pointer<Uint8> dst, int length) {
-    _zeroBytes(dst, length);
-  }
 
   final Pointer<Void> Function(int size) _tileAlloc;
   final Pointer<NativeFunction<Pointer<Void> Function(Int64)>>
@@ -209,23 +157,6 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_premultiply_rgba_copy');
-      final premultiplyRgbaRows = library
-          .lookupFunction<
-            Void Function(
-              Pointer<Uint8>,
-              Int64,
-              Pointer<Uint8>,
-              Int64,
-              Int32,
-              Int32,
-            ),
-            void Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int, int)
-          >('qa_premultiply_rgba_rows');
-      final zeroBytes = library
-          .lookupFunction<
-            Void Function(Pointer<Uint8>, Int64),
-            void Function(Pointer<Uint8>, int)
-          >('qa_zero_bytes');
       final tileAlloc = library
           .lookupFunction<
             Pointer<Void> Function(Int64),
@@ -256,8 +187,6 @@ class QaNativeEngine {
           );
       return QaNativeEngine._(
         premultiplyRgbaCopy,
-        premultiplyRgbaRows,
-        zeroBytes,
         tileAlloc,
         tileAllocPointer,
         tileFree,
@@ -319,10 +248,6 @@ class QaNativeEngine {
   }
 }
 
-/// Rows of pixels in native memory: where the first row starts and how many
-/// bytes on the next one does. A stride belongs to its rows — handed apart,
-/// one plane's stride could walk the other's rows.
-typedef NativeRows = ({Pointer<Uint8> start, int stride});
 
 /// A fresh premultiplied stamp buffer (R23 fill overlay): [view] feeds
 /// `ui.decodeImageFromPixels`, and [free] releases it.

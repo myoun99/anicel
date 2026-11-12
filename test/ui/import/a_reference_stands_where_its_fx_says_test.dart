@@ -61,8 +61,6 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/project_lookup.dart'
     show layerAnywhereOrNull, requireCut, requireCutPosition, requireLayer;
 import 'package:anicel/src/services/reference_move_carried.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
-    show debugComposesFromBytes;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart' show ExportFrameTask;
@@ -1035,9 +1033,9 @@ void main() {
     // 🗣️유저 2026-10-18 (a-picture-past-the-texture-limit-is-decoded
     // -squashed-Q1): 「원본 해상도 그대로」. A compose past the side this
     // device's engine hands a picture back at comes back smaller (20480×1024
-    // asked, 16384×819 made — `composePositionedSurfaceImage`); the test
-    // engine cuts nothing, so the side is named, and what is pinned is that
-    // no compose is asked.
+    // asked, 16384×819 made — the tiles' compose, which left the app with
+    // export-on-engine ⑶-2b); the test engine cuts nothing, so the side is
+    // named, and what is pinned is where the paper lands and what it keeps.
     testWidgets('🚨past the side the engine hands a picture back at, a paper '
         'is baked as it shows from the bytes its cel holds — never composed '
         'by the engine', (tester) async {
@@ -1047,7 +1045,6 @@ void main() {
       final (s, row) = await placed(tester, width: 7200, height: 60);
       rideAGoneRow(s, row);
       posed(s, row, fx: halved);
-      debugComposesFromBytes = 0;
 
       await tester.runAsync(
         () => s.importDoors.bakeReferenceAsSeen(
@@ -1056,7 +1053,6 @@ void main() {
         ),
       );
 
-      expect(debugComposesFromBytes, 0);
       expect(
         shown(s, rowOf(s, row)),
         const ui.Rect.fromLTRB(-630, 812, 2970, 842),

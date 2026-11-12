@@ -500,9 +500,11 @@ void main() {
       final awaited = countAwaitedUploads();
       await tester.runAsync(state.export);
       await tester.pump();
-      // The run waits for the ink's picture, so its tile is pictured at
-      // once — not after a decode round of its own.
-      expect(awaited(), 0);
+      // The box's ink goes up whole, once (`sheetInkPictureOf`). ↩️None
+      // until 2026-11-12: the tiles' compose pictured its tile through the
+      // door at once rather than after a decode round of its own (F-289),
+      // until it left the app (export-on-engine ⑶-2b).
+      expect(awaited(), 1);
 
       final image = (await tester.runAsync(
         () => decodeImageFromList(

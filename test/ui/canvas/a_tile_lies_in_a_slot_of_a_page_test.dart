@@ -15,7 +15,6 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/chained_picture.dart';
 import 'package:anicel/src/ui/canvas/tile_pages.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 
 /// 🚨★★★A COMMITTED TILE'S PICTURE IS A SLOT OF A PAGE, AND A PAINT LAYS A
@@ -317,35 +316,6 @@ void main() {
       pictures.cache.releasePicture(tile);
     }
     expect(pages.bytes, 128 * 128 * 4, reason: 'its last slot died');
-  }, skip: noFlutterGpu != null);
-
-  test('a surface composed from tiles in slots is the bytes of their own '
-      'pictures — at once, and in turn from the slots held', () async {
-    final pictures = picturesIn(TilePages());
-    final surface = surfaceOf(8);
-    final recorder = ui.PictureRecorder();
-    ownPicturesOf(ui.Canvas(recorder), surface);
-    final reference = recorder.endRecording();
-    final referenceImage = await reference.toImage(
-      canvasSize.width,
-      canvasSize.height,
-    );
-    reference.dispose();
-    final expected = await rgba(referenceImage);
-    referenceImage.dispose();
-
-    final now = composeTiledSurfaceImageNow(surface, reuse: pictures.cache);
-    for (final tile in surface.tiles.values) {
-      expect(pictures.cache.heldFor(tile), isA<TileSlot>());
-    }
-    expect(await rgba(now), expected, reason: 'at once');
-    now.dispose();
-    final inTurn = await composeTiledSurfaceImage(
-      surface,
-      reuse: pictures.cache,
-    );
-    expect(await rgba(inTurn!), expected, reason: 'in turn');
-    inTurn.dispose();
   }, skip: noFlutterGpu != null);
 
   test('drawn reduced, a tile in a slot leaves it for a picture of its own '

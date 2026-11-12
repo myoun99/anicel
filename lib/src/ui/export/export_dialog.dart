@@ -47,10 +47,8 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
-import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/guide_overlay.dart' show guideColorOf;
-import '../canvas/tiled_surface_compose.dart';
 import '../import/import_warnings_notice.dart';
 import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
@@ -98,6 +96,7 @@ import 'export_queue_column.dart';
 import 'export_settings_modules.dart';
 import 'export_timesheet_render.dart';
 import 'png_sequence_export_service.dart';
+import 'sheet_ink_picture.dart';
 import 'sheet_strata_rows.dart';
 import 'still_image_encoders.dart';
 import 'video_export_service.dart';
@@ -1261,10 +1260,10 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// Every sheet's saved ink for [keys], each read from the session store
-  /// its namespace names ([RenderCaches.sheetInkStoreFor]): its raster
-  /// composed, and the photos laid on it (I-97) — whose files a render asks
-  /// for as it paints them ([_sheetImageRun]). Caller disposes it
-  /// ([_disposeSheetInk]).
+  /// its namespace names ([RenderCaches.sheetInkStoreFor]): its picture
+  /// ([sheetInkPictureOf]), and the photos laid on it (I-97) — whose files
+  /// a render asks for as it paints them ([_sheetImageRun]). Caller
+  /// disposes it ([_disposeSheetInk]).
   ///
   /// ⛔ONE for the three sheets: the conte and the envelope each composed
   /// their own, and the timesheet's would have been the third.
@@ -1298,15 +1297,7 @@ class ExportDialogState extends State<ExportDialog> {
         continue;
       }
       _sheetPartsMade += 1;
-      final image = await composeTiledSurfaceImage(
-        surface,
-        reuse: BitmapTileImageCache.instance,
-        // An export's own render: the run waits for it.
-        missing: MissingTilePictures.madeAtOnce,
-      );
-      if (image != null) {
-        ink.rasters[key] = image;
-      }
+      ink.rasters[key] = await sheetInkPictureOf(surface);
       if (surface.photos.isNotEmpty) {
         ink.photos[key] = surface.photos;
       }

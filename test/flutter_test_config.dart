@@ -17,8 +17,6 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
-    show debugTilePictureClock;
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
@@ -174,16 +172,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // named: what the test engine measures, 65536 — it cuts no picture a test
   // makes. A test that stands at another side puts this one back.
   debugPictureSideLimit = 1 << 16;
-  // The same fake clock again: a compose that makes tile pictures in turn
-  // gives way through a turn of the REAL event queue (a port message),
-  // which a `testWidgets` clock never waits — a test that settles a cold
-  // cel looks before the cel lands. Read off the wall, a run is two
-  // milliseconds a loaded machine can spend before a compose's first
-  // picture (🔬a first call's compile alone took 0.56 ms on an idle one,
-  // 2026-10-15), and `static_bake_render_parity_test` failed only inside a
-  // full run. Held, no run ends; the group that studies the run holds a
-  // clock of its own.
-  debugTilePictureClock = () => 0;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;

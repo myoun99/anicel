@@ -48,8 +48,8 @@ import '../services/shaded_passes.dart'
     show IrisGatherPass, IrisMap, IrisMapChannel, LineBoxPass, irisTurnsOf;
 import '../ui/canvas/landing_preview.dart';
 import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
-import '../ui/canvas/tile_origin.dart' show tileCoordsWorldRect;
-import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
+import '../ui/canvas/tile_origin.dart'
+    show surfaceContentWorldRect, tileCoordsWorldRect;
 import 'engine_letters.dart';
 import 'engine_row_pose.dart';
 import 'engine_tile_ledger.dart';

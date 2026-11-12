@@ -472,6 +472,12 @@ const _imageHolders = <String, String>{
   'lib/src/ui/export/export_frame_renderer.dart → all':
       'one camera frame\'s track stack, laying pictures the run\'s '
       'HeldPictures holds — a frame described, not a holding',
+  'lib/src/ui/export/frames_of_pictures.dart → _held':
+      'the one page a run of files draws for itself — a sheet\'s, an '
+      'envelope, a conte\'s — laid on an engine frame for its writer, let '
+      'go when the next is asked or the run ends (dispose), and left with '
+      'the engine it was made on once the app lets it go '
+      '(KeptOnTheAppsEngine): the working set of a write',
   'lib/src/ui/canvas/canvas_selection_layer.dart → floats':
       'the open move\'s floats, one a cel it lifted: what each keeps of '
       'pictures is its warp preview — the newest resample, pictured only '
@@ -480,14 +486,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/selection_float_overlay.dart → floats':
       'a paint\'s floats: each picture is a float\'s warp preview, owned by '
       'the float (canvas_selection_layer.dart → floats)',
-
-  // — 2026-10-21, a picture past the side held in pieces (card
-  // a-cel-past-the-device-side-composes-smaller): ONE picture, as many
-  // images as the side cuts it into, held and counted where its one image
-  // was.
-  'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
-      'one compose\'s picture, in pieces past the side (piecesOver): its '
-      'holder keeps and counts them as it did the one image',
 
   // — 2026-10-31, a camera lens blur's table kept for its next gather.
   'lib/src/ui/canvas/iris_blur_shader.dart → _kept': 'counted:tableBytes',

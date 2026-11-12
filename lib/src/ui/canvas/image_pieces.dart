@@ -74,11 +74,4 @@ extension ImagePieces on List<ImagePiece> {
     for (final piece in this)
       (image: piece.image.clone(), worldRect: piece.worldRect),
   ];
-
-  /// Lets every piece's handle go.
-  void disposeAll() {
-    for (final piece in this) {
-      piece.image.dispose();
-    }
-  }
 }

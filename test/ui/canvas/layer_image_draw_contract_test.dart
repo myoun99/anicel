@@ -376,7 +376,11 @@ void main() {
 /// export/export_frame_renderer — a video frame's stack unit and a cut in a
 /// canvas-size frame are laid on the engine (`GpuExport.lay`), over a frame
 /// the export makes, not drawn into a layer on a Flutter canvas.
-const int _knownRawDraws = 24;
+/// **23** on 2026-11-12 (gpu-export-path 1b ①⑶-2b): −1 in
+/// canvas/tiled_surface_compose — the tiles' compose left the app with its
+/// last caller, an export's sheet ink, which uploads the surface's pixels
+/// (`sheetInkPictureOf`) rather than laying its tiles' pictures.
+const int _knownRawDraws = 23;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'
