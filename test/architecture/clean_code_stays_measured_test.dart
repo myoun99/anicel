@@ -1060,7 +1060,14 @@ void main() {
   /// against master (`c38c2eb02`) names those two. ⛔Not bundled to fit:
   /// the size, what is drawn and where it inks are asked of different
   /// owners — the frame, the overlay's draw and its painter.
-  const wideSignatures = 453;
+  ///
+  /// ⚠️453 → 452 on 2026-11-13, one gone and nothing added (card
+  /// conte-pdf-panels-read-back-twice): `frameShot` (ten) lost its last
+  /// caller when a panel's picture became its frame read back
+  /// (`PanelPictures.render` through `pictureOfShot`) and a conte PDF took
+  /// the frame itself. 🔬`clean_code_diff` against master (`b2f068f57`)
+  /// names that one.
+  const wideSignatures = 452;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
