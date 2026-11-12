@@ -161,14 +161,17 @@ List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
 /// picture stands behind here — which its parts do not carry.
 ///
 /// A worker has no engine ([EngineTileLedger.instance]), so it asks this
-/// isolate for the tiles ([onAWorkerAsking]).
+/// isolate for the tiles ([onAWorkerAsking]) — read as [cel]'s, the name
+/// its painters give the cel ([BrushFrameKey.cel]), or
+/// [BrushFrameKey.noCel] for a picture that is nobody's yet: a vector
+/// layer an import has drawn (`clipVectorTiles`).
 ///
 /// 🚨A BATCH AT A TIME, THROUGH ONE BLOCK [blocks] GIVES, NEVER THE CEL
 /// WHOLE: a block of every tile was 132 MiB on this isolate for a cel of
 /// 5800² inked whole (저장's review of the flip lane, 11-09), what
 /// [EngineTileLedger.readEach] was written not to ask for.
 Future<T> onAWorkerWithCelCopy<T>(
-  BrushFrameKey key,
+  Object cel,
   BitmapSurface surface,
   FutureOr<T> Function(BitmapSurface copy) job, {
   Allocator blocks = malloc,
@@ -193,7 +196,7 @@ Future<T> onAWorkerWithCelCopy<T>(
           first,
           math.min(first + batch, tiles.length),
         );
-        EngineTileLedger.instance.read(key.cel, asked, block);
+        EngineTileLedger.instance.read(cel, asked, block);
         return TransferableTypedData.fromList([
           block.asTypedList(asked.length * bytes),
         ]);

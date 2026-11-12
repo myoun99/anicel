@@ -42,10 +42,12 @@ class BrushSurfaceMaterialization {
 }
 
 /// Whether a commit on [surface] is laid on the engine: its grid, on the
-/// isolate that has the engine. ⛔A vector layer an import draws on a worker
-/// (`clipVectorTiles`) has none to ask, and what would come back are tiles
-/// of a pool no other isolate reads. ⏳It is drawn as the small grids are,
-/// till that route goes.
+/// isolate that has the engine. ⛔A worker has none to ask, and what would
+/// come back are tiles of a pool no other isolate reads: a vector layer an
+/// import draws plans its strokes on a worker and lays them on the isolate
+/// that has the engine (`clipVectorTiles`). ↩️Till 2026-11-12 it drew them
+/// on the worker, as the small grids are drawn — the last road that way had
+/// in the app; the small grids are tests' alone now.
 bool _landsOnEngine(BitmapSurface surface) =>
     surface.tileSize == gpuTileSide && appGpuEngineIsHere;
 

@@ -533,8 +533,9 @@ final class ClipImportDoor {
     return (mask: mask, place: place);
   }
 
-  /// [item] decoded on a worker of its own out of [bytes] — its blocks, its
-  /// strokes, or its texts' pictures — through its mask's [maskBlocks].
+  /// [item] decoded on a worker of its own out of [bytes] — its blocks, or
+  /// its texts' pictures; its strokes planned there and laid here
+  /// ([_drawn]) — through its mask's [maskBlocks].
   Future<Object?> _decodeOne(
     _ClipWork item,
     List<Uint8List> bytes,
@@ -565,7 +566,7 @@ final class ClipImportDoor {
         at(picture.left, picture.top),
         mask,
       ),
-      _Strokes() => _drawOnWorker(
+      _Strokes() => _drawn(
         bytes,
         (x: bake.source.offsetX, y: bake.source.offsetY),
         at(0, 0),
@@ -780,20 +781,18 @@ Object? _tilesOf(
   }
 }
 
-/// One vector layer drawn on a worker of its own ([clipVectorTiles]) — its
-/// tiles and its unread strokes, or the reason its strokes would not read.
-/// Its own function for the same reason as [_decodeOnWorker].
-Future<Object?> _drawOnWorker(
+/// One vector layer drawn ([clipVectorTiles]: its strokes planned on a
+/// worker of its own and laid here, on the engine) — its tiles and its
+/// unread strokes, or the reason its strokes would not read.
+Future<Object?> _drawn(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
   ClipCelTarget target,
   ClipStoredMask? mask,
-) {
-  return Isolate.run<Object?>(() {
-    try {
-      return clipVectorTiles(bodies, offset, target, mask: mask);
-    } on ClipFormatException catch (error) {
-      return error;
-    }
-  });
+) async {
+  try {
+    return await clipVectorTiles(bodies, offset, target, mask: mask);
+  } on ClipFormatException catch (error) {
+    return error;
+  }
 }

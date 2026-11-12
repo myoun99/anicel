@@ -77,7 +77,7 @@ void main() {
     final counted = _Counted();
 
     final read = await onAWorkerWithCelCopy(
-      key,
+      key.cel,
       surfaceOf([a, b]),
       _pixelsAcross,
       blocks: counted,
@@ -94,7 +94,7 @@ void main() {
     final tiles = seeded(130);
 
     final read = await onAWorkerWithCelCopy(
-      key,
+      key.cel,
       surfaceOf(tiles),
       _pixelsAcross,
       blocks: counted,
@@ -106,7 +106,7 @@ void main() {
   });
 
   test('a cel of exactly a batch is one read', () async {
-    await onAWorkerWithCelCopy(key, surfaceOf(seeded(64)), _pixelsAcross);
+    await onAWorkerWithCelCopy(key.cel, surfaceOf(seeded(64)), _pixelsAcross);
 
     expect(reads, [64]);
   });
@@ -117,7 +117,7 @@ void main() {
     final counted = _Counted();
 
     final twoPlaces = await onAWorkerWithCelCopy(
-      key,
+      key.cel,
       surfaceOf([same, same]),
       _firstTwoAreOne,
       blocks: counted,
@@ -130,7 +130,7 @@ void main() {
 
   test('two tiles of the same bytes are still two tiles', () async {
     final twoPlaces = await onAWorkerWithCelCopy(
-      key,
+      key.cel,
       surfaceOf([tile(3), tile(3)]),
       _firstTwoAreOne,
     );
@@ -144,7 +144,7 @@ void main() {
     final counted = _Counted();
 
     final read = await onAWorkerWithCelCopy(
-      key,
+      key.cel,
       surfaceOf(const []),
       _pixelsAcross,
       blocks: counted,
@@ -158,7 +158,7 @@ void main() {
 
   test('the copy stands behind the wall the picture stands behind', () async {
     final reach = await onAWorkerWithCelCopy(
-      key,
+      key.cel,
       surfaceOf([tile(3)], reach: PasteboardReach.quarter),
       (copy) => copy.pasteboardReach,
     );
@@ -172,7 +172,7 @@ void main() {
 
     await expectLater(
       onAWorkerWithCelCopy<void>(
-        key,
+        key.cel,
         surfaceOf([tile(3)]),
         (_) => throw StateError('the worker died'),
         blocks: counted,
@@ -191,7 +191,7 @@ void main() {
 
     await expectLater(
       onAWorkerWithCelCopy<void>(
-        key,
+        key.cel,
         surfaceOf([tile(3)]),
         (_) => worked = true,
         blocks: counted,
@@ -210,7 +210,7 @@ void main() {
       final tiles = seeded(130);
 
       final read = await onAWorkerWithCelCopy(
-        key,
+        key.cel,
         surfaceOf(tiles),
         _pixelsAcross,
       );
@@ -286,7 +286,7 @@ void main() {
 
       await expectLater(
         onAWorkerWithCelCopy(
-          key,
+          key.cel,
           surfaceOf(seeded(130)),
           _pixelsAcross,
           blocks: counted,

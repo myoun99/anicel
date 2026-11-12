@@ -74,7 +74,7 @@ void main() {
   /// and beside its strokes a render whose blocks the file does not hold, as
   /// the one sample with vectors keeps. Its strokes ([_Strokes.held]): one 0
   /// … 40 across at its row 10, six across, and one record of a kind not
-  /// drawn.
+  /// drawn — and after it a record cut short, for [_Strokes.cut].
   ///
   /// [papered] puts a paper 0x204060 under BG.
   ///
@@ -103,6 +103,10 @@ void main() {
       externalId(20): [
         ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
         ...vectorStrokeBytes([(0, 0, 1)], flags: 2),
+      ],
+      externalId(21): [
+        ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
+        ...Uint8List(8),
       ],
       externalId(30): blockRecordsBytes({0: Uint8List(256 * 256)}),
       // Timeline one, A: 「1」 at tick 0, 「2」 at tick 12 (frame 6 — two
@@ -242,7 +246,11 @@ void main() {
             'VectorData) VALUES (1, 1, 11, ?)',
             [
               Uint8List.fromList(
-                externalId(strokes == _Strokes.lost ? 97 : 20).codeUnits,
+                externalId(switch (strokes) {
+                  _Strokes.lost => 97,
+                  _Strokes.cut => 21,
+                  _ => 20,
+                }).codeUnits,
               ),
             ],
           );
@@ -664,6 +672,28 @@ void main() {
     expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
   });
 
+  test('strokes that would not read are said by name, and the layer '
+      'stays, empty — the rest of the file comes in', () async {
+    final opened = await openedClip(writeClip(strokes: _Strokes.cut));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipVector', 'lines'),
+        ('celUnreadable', 'lines'),
+      ]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
+  });
+
   test('a vector layer with no stroke is an empty picture — not one 「that '
       'could not be read」 for the render it keeps without blocks', () async {
     final opened = await openedClip(writeClip(strokes: _Strokes.none));
@@ -985,8 +1015,8 @@ void main() {
 }
 
 /// What the vector layer of [writeClip] holds: its strokes, strokes the file
-/// does not hold, or none at all.
-enum _Strokes { held, lost, none }
+/// does not hold, strokes whose last record is cut short, or none at all.
+enum _Strokes { held, lost, cut, none }
 
 /// Whether the file of [writeClip] holds the blocks of BG's mask.
 enum _Masked { held, lost }

@@ -198,7 +198,7 @@ Future<BitmapSurface?> _remakeHotCelInWorker(
   BitmapSurface? Function(BitmapSurface copy) remake,
 ) async {
   final made = await onAWorkerWithCelCopy(
-    key,
+    key.cel,
     surface,
     _remadeAndLaid(key, BitmapTile.blocks, remake),
   );

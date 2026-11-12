@@ -1,22 +1,25 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/on_a_worker.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
-import '../../models/dirty_region.dart';
-import '../../models/frame_id.dart';
-import '../../models/layer_id.dart';
-import '../brush_commit_builder.dart';
+import '../../models/pasteboard_bounds.dart';
+import '../../native/engine_tile_ledger.dart';
 import '../brush_dab_interpolator.dart';
-import '../mark_under_a_pixel.dart';
+import '../brush_stroke_landing.dart';
 import '../brush_pressure_dynamics.dart' show applyBrushInputDynamics;
 import '../brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
+import '../brush_tip_stamp_cache.dart';
+import '../persistence/brush_drawing_binary_codec.dart'
+    show onAWorkerWithCelCopy;
 import 'clip_cel_raster.dart';
 import 'clip_container.dart' show ClipFormatException;
 
@@ -181,65 +184,126 @@ final _pen = const BrushShape().withCurve(
 /// stored in the layer's own pixels), as cel tiles; and how many records
 /// were of a kind this reader does not draw.
 ///
-/// Each stroke lands as the brush lands one re-derived from its dabs
-/// ([brushCommitResultForBrushDabSequenceOnBitmapSurface]: piled up, then
-/// laid once at its opacity) and the picture is cut and baked as a stored
-/// one is ([clipCelTilesOf]) — through [mask] as well. Pure, so it runs on
-/// a worker.
-({List<ClipCelTile> tiles, int unread}) clipVectorTiles(
+/// 🚨THE STROKES ARE PLANNED ON A WORKER AND LAID HERE, ON THE ENGINE
+/// (🗣️clip-vector-import-draws-with-the-c-brush-Q1, 유저 2026-11-11; 관제:
+/// 「워커에서 획 계획만 · 메인에서 엔진 착지」). A worker has no engine —
+/// the engine and its pool's tiles are the main isolate's
+/// (`appGpuEngineIsHere`) — so the worker reads the strokes and lays each
+/// one's dabs along it ([_strokesLaid]), and asks this isolate to land it
+/// ([onAWorkerAsking]): a stroke at a time, so a layer's dabs are never
+/// held whole and the app has its turn between two strokes. ↩️Till
+/// 2026-11-12 the worker drew them itself, with the C brush: the last road
+/// the C brush, its blur and its span batch had in the app.
+///
+/// Each stroke lands as the brush lays a stroke ([_withStroke]: piled up,
+/// then laid once at its opacity) on the canvas and no further, and the
+/// picture is cut and baked as a stored one is ([clipCelTilesOf]) — through
+/// [mask] as well — on a worker handed a copy of it
+/// ([onAWorkerWithCelCopy]).
+///
+/// Throws [ClipFormatException] for strokes that would not read.
+Future<({List<ClipCelTile> tiles, int unread})> clipVectorTiles(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
   ClipCelTarget target, {
   ClipStoredMask? mask,
-}) {
-  final width = target.canvasWidth;
-  final height = target.canvasHeight;
+}) async {
   var surface = BitmapSurface(
-    canvasSize: CanvasSize(width: width, height: height),
+    canvasSize: CanvasSize(
+      width: target.canvasWidth,
+      height: target.canvasHeight,
+    ),
+    pasteboardReach: PasteboardReach.none,
     tileSize: target.tileSize,
   );
+  final unread = await onAWorkerAsking<BrushDabSequence, bool, int>((stroke) {
+    surface = _withStroke(surface, stroke);
+    return true;
+  }, _strokesLaid(bodies, offset));
+  return (
+    tiles: await onAWorkerWithCelCopy(
+      BrushFrameKey.noCel,
+      surface,
+      _cutOnto(target, mask),
+    ),
+    unread: unread,
+  );
+}
+
+/// [picture] with [stroke] laid on it as the brush lays a stroke
+/// ([strokeLandedOn]), the tiles it lay over let go now
+/// ([EngineTileLedger.retire]).
+///
+/// 🚨THE PICTURE IS THE IMPORT'S ALONE AND BEGINS EMPTY: a tile a stroke
+/// lays over is one an earlier stroke of the layer made, and nothing reads
+/// it again. Left to its collection it stays for as long as the tile laid
+/// over it is the engine's alone (`_Slot.under` — what a cel's tile reads as
+/// where a device goes), and a layer's strokes leave no rest between them
+/// for a copy to come here in: 🔬6,000 strokes at half opacity held 38,750
+/// slots, 2,432 MB of the pool, for a picture of 247 tiles (main PC,
+/// 2340 × 1654).
+///
+/// ⚠️What a tile let go was kept for goes with it: a device that goes while
+/// a layer is drawn leaves nothing for the picture's tiles to read as. An
+/// import that loses its device is not told apart yet, with or without
+/// this (card `a-lost-gpu-device-keeps-the-unsaved-tiles`).
+BitmapSurface _withStroke(BitmapSurface picture, BrushDabSequence stroke) {
+  final landed = strokeLandedOn(picture, stroke);
+  for (final (:coord, tile: _) in landed) {
+    final under = picture.tileAt(coord);
+    if (under != null) {
+      EngineTileLedger.instance.retire(under);
+    }
+  }
+  return picture.putMaterializedTiles(landed);
+}
+
+/// The worker's half of [clipVectorTiles] that plans: [bodies]' strokes,
+/// each laid along by the pen ([_dabsAlong]) and handed to `land` — waited
+/// for, one at a time, in the file's order — and how many records were of a
+/// kind this reader does not draw.
+///
+/// ⚠️Made HERE: the closure crosses, and one made beside the answer would
+/// carry the surface, whose tiles no isolate message carries
+/// (`on_a_worker.dart`'s `_reportingInto`).
+Future<int> Function(Future<bool> Function(BrushDabSequence stroke) land)
+_strokesLaid(List<Uint8List> bodies, ({int x, int y}) offset) => (land) async {
   var unread = 0;
   for (final body in bodies) {
     final read = parseClipVectorBody(body);
     unread += read.unread;
     for (final stroke in read.strokes) {
-      final dabs = _dabsAlong(stroke, offset);
-      if (dabs.isEmpty) {
-        continue;
-      }
-      surface = brushCommitResultForBrushDabSequenceOnBitmapSurface(
-        surface: surface,
-        sequence: BrushDabSequence(dabs, stroke.opacity),
-        layerId: const LayerId('clip-vector'),
-        frameId: const FrameId('clip-vector'),
-      ).afterSurface;
+      await land(BrushDabSequence(_dabsAlong(stroke, offset), stroke.opacity));
     }
   }
-  final rgba = bitmapSurfaceRegionPixels(
-    surface,
-    DirtyRegion(
+  return unread;
+};
+
+/// The worker's half of [clipVectorTiles] that cuts: the canvas read out of
+/// the picture's copy, as cel tiles on [target]'s canvas through [mask].
+/// ⚠️Made HERE for the reason [_strokesLaid] is.
+List<ClipCelTile> Function(BitmapSurface copy) _cutOnto(
+  ClipCelTarget target,
+  ClipStoredMask? mask,
+) => (copy) {
+  final canvas = copy.canvasSize;
+  return clipCelTilesOf(
+    (
+      rgba: bitmapSurfaceRegionPixels(copy, canvas.canvasRegion),
+      width: canvas.width,
+      height: canvas.height,
+    ),
+    (
       left: 0,
       top: 0,
-      rightExclusive: width,
-      bottomExclusive: height,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      alpha: target.alpha,
+      tileSize: target.tileSize,
     ),
+    mask: mask,
   );
-  return (
-    tiles: clipCelTilesOf(
-      (rgba: rgba, width: width, height: height),
-      (
-        left: 0,
-        top: 0,
-        canvasWidth: width,
-        canvasHeight: height,
-        alpha: target.alpha,
-        tileSize: target.tileSize,
-      ),
-      mask: mask,
-    ),
-    unread: unread,
-  );
-}
+};
 
 /// [stroke]'s dabs, laid along it the way the pen lays them: the stroke's
 /// widest point is the pen's size, and each point's width rides as its
@@ -247,6 +311,17 @@ final _pen = const BrushShape().withCurve(
 /// turned back into a size by the pen's own dynamics
 /// ([applyBrushInputDynamics]), so a line narrows toward a thin point as a
 /// pressed pen's does.
+///
+/// 🚨EACH IN THE FORM A STROKE'S DAB IS LAID IN
+/// ([BrushTipStampCache.resolveDab] — 「every dab a stroke lays comes
+/// through here」): its size on the steps a pen's is. ↩️Till 2026-11-12 a
+/// dab was lifted to a pixel ([liftedToOnePixel], that law's first half)
+/// and its size left as the width made it — so no two dabs of a narrowing
+/// line were one size, and a round tip is a table for each size
+/// (`RoundTipProfile.of`): 🔬735 dabs of a 300 px stroke at 2.4–6 px made
+/// 735 tables, 230–270 ms of the 300 ms the stroke took (main PC, a test's
+/// VM; 0.33 ms a table of a nib under 5 px built ahead of time) — 148 s
+/// for a layer of 500 such strokes, by the C brush as much as the engine.
 List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
   final widest = stroke.points.fold(0.0, (w, p) => math.max(w, p.width));
   if (widest <= 0) {
@@ -275,8 +350,7 @@ List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
       previous = laid.last;
     }
   }
-  return [
-    for (final dab in dabs)
-      liftedToOnePixel(applyBrushInputDynamics(dab, shape: _pen)),
-  ];
+  return BrushTipStampCache.instance.resolveDabs([
+    for (final dab in dabs) applyBrushInputDynamics(dab, shape: _pen),
+  ]);
 }
