@@ -1,6 +1,10 @@
 import '../models/attached_layer_mount.dart' show LayerAttachment;
 import '../models/attached_layer_resolve.dart'
-    show cutWithReconciledAttachedMirrors;
+    show
+        AttachedMirrorGiven,
+        attachedMirrorsGiven,
+        cutWithReconciledAttachedMirrors,
+        cutWithoutAttachedMirrors;
 import '../models/audio_clip.dart';
 import '../models/se_name_tag.dart';
 import '../models/camera_instruction.dart';
@@ -73,9 +77,14 @@ typedef _Settled = ({
 });
 
 /// What one [ProjectRepository.asOneConteWrite]'s laying made that the
-/// write's undo must take back: the rows it gave the cuts, and the heads it
-/// put on rows that joined a conte.
-typedef ConteWriteMade = ({Set<LayerId> fills, List<ConteHeadPut> heads});
+/// write's undo must take back: the rows it gave the cuts, the heads it
+/// put on rows that joined a conte, and the links its passes gave the
+/// synced attach rows.
+typedef ConteWriteMade = ({
+  Set<LayerId> fills,
+  List<ConteHeadPut> heads,
+  List<AttachedMirrorGiven> mirrors,
+});
 
 /// [cut] with [layer] inserted at [index] (appended when null) — the cut a
 /// row joins, and the one a conte picture draws through while the row its
@@ -127,8 +136,9 @@ class ProjectRepository {
   /// [body]'s writes as ONE write of the tracks' contes (F-343): the
   /// structure is laid once, after the last of them, against the cuts as
   /// they stood before the first — and what that laying made is what comes
-  /// back: the rows it gave the cuts ([isConteFill]) and the heads it put on
-  /// rows that joined a conte ([conteHeadsPut]).
+  /// back: the rows it gave the cuts ([isConteFill]), the heads it put on
+  /// rows that joined a conte ([conteHeadsPut]), and the links the synced
+  /// attach rows were given ([attachedMirrorsGiven]).
   ///
   /// 🚨A step that takes a row out of every cut's conte writes cut by cut
   /// (`DeleteLayerCommand`), and its undo puts them back the same way. Laid
@@ -137,7 +147,7 @@ class ProjectRepository {
   /// delete never finishing — and an undo putting back a row it had given
   /// back already would put a second one there. One step is one write of
   /// the structure: the history runs every step through this
-  /// (`ConteStepScope`).
+  /// (`RepositoryStepScope`).
   ///
   /// The 동기컷 are made one the same way, once, from what the whole step
   /// changed ([projectWithItsSyncsAligned]): a step that mirrors a linked
@@ -150,7 +160,7 @@ class ProjectRepository {
   ConteWriteMade asOneConteWrite(void Function() body) {
     if (_conteStart != null) {
       body();
-      return (fills: const {}, heads: const []);
+      return (fills: const {}, heads: const [], mirrors: const []);
     }
     final before = _currentProject;
     Project? written;
@@ -175,6 +185,7 @@ class ProjectRepository {
       heads: written == null || laid == null
           ? const []
           : conteHeadsPut(before, written, laid),
+      mirrors: attachedMirrorsGiven(before, laid),
     );
   }
 
@@ -187,20 +198,39 @@ class ProjectRepository {
   /// row filed in one is filed in going to the folder that one was in
   /// ([cutWithoutConteFills]).
   ///
-  /// The undo of the step whose laying gave them owes it (`ConteStepScope`):
-  /// the step's own undo takes back the row it made in its cut, and the
-  /// empty ones the other cuts were given for it would keep it in the
-  /// structure. ⚠️Only that undo — it is what knows they are still empty.
+  /// The undo of the step whose laying gave them owes it
+  /// (`RepositoryStepScope`): the step's own undo takes back the row it made
+  /// in its cut, and the empty ones the other cuts were given for it would
+  /// keep it in the structure. ⚠️Only that undo — it is what knows they are
+  /// still empty.
   void dropConteFills(Set<LayerId> rows) {
     if (rows.isEmpty) {
       return;
     }
+    _updateEveryCut((cut) => cutWithoutConteFills(cut, rows));
+  }
+
+  /// Takes off the synced attach rows each link of [given] — links a step
+  /// gave them, by [asOneConteWrite]'s answer — and the cel that came with
+  /// one ([cutWithoutAttachedMirrors]).
+  ///
+  /// The undo of the step that gave them owes it (`RepositoryStepScope`),
+  /// for [dropConteFills]'s reason: the step's own undo takes back the base
+  /// cel it made, and the empty cel and link the always-mirror pass gave the
+  /// rows for it stayed. ⚠️Only that undo — everything done after its step
+  /// is undone already, so the cel is as the pass made it.
+  void dropAttachedMirrors(List<AttachedMirrorGiven> given) {
+    if (given.isEmpty) {
+      return;
+    }
+    _updateEveryCut((cut) => cutWithoutAttachedMirrors(cut, given));
+  }
+
+  /// One write of every cut of the open timeline through [update].
+  void _updateEveryCut(Cut Function(Cut cut) update) {
     updateProject((project) {
       final tracks = mappedOrSame(project.tracks, (track) {
-        final cuts = mappedOrSame(
-          track.cuts,
-          (cut) => cutWithoutConteFills(cut, rows),
-        );
+        final cuts = mappedOrSame(track.cuts, update);
         return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
       });
       return identical(tracks, project.tracks)
@@ -213,7 +243,7 @@ class ProjectRepository {
   /// joined a conte, by [asOneConteWrite]'s answer — from the row it was put
   /// on ([withConteHeadTakenOff]).
   ///
-  /// The undo of the step whose laying put them owes it (`ConteStepScope`):
+  /// The undo of the step whose laying put them owes it (`RepositoryStepScope`):
   /// the step's own undo takes the row out of the conte, and no laying
   /// lays a row that is in none.
   void takeOffConteHeads(List<ConteHeadPut> heads) {

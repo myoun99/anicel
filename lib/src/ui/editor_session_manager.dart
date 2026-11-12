@@ -67,7 +67,7 @@ import '../models/track.dart';
 import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
-import '../services/conte_step_scope.dart';
+import '../services/repository_step_scope.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../models/playback_mode.dart';
 import '../models/track_transitions.dart' show drawnFrameCountsOf;
@@ -241,7 +241,7 @@ class EditorSessionManager extends ChangeNotifier
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
     historyManager = HistoryManager()
-      ..scope = ConteStepScope(repository)
+      ..scope = RepositoryStepScope(repository)
       ..places.placeNow = () => standingPlace;
     // 🚨With the history, not at its first step: from the first change it
     // lets go of the pictures only deep entries hold. Built lazily, it
