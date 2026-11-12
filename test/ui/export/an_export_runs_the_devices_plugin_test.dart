@@ -386,6 +386,9 @@ Future<List<int>> redOf(ui.Image image) async {
 /// plugin whose picture is its frame's, where the cel under it is not.
 final class _ShiftsByItsFrame implements FxPluginRunner {
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) =>
       moment.frameIndex + 1;
 
