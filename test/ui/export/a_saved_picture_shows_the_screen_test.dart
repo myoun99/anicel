@@ -31,6 +31,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/frame_image_file.dart';
@@ -184,19 +185,48 @@ void main() {
     await rendererOf(s).renderComposite(standing(s), ExportSizeMode.canvas),
   );
 
+  /// [s]'s standing drawing as the cels tab writes it, on nothing.
+  Future<Uint8List> cel(EditorSessionManager s) async {
+    final cut = s.requireActiveCut;
+    final row = cut.layers.firstWhere((layer) => layer.id == rowId);
+    final drawing = row.frames.firstWhere((frame) => frame.id == stood);
+    final image = await rendererOf(s).renderCelGroup(
+      ExportCelGroupTask(
+        cut: cut,
+        baseLayer: row,
+        members: [row],
+        memberFrames: [drawing],
+        baseFrame: drawing,
+        celName: '1',
+        fileName: 'A1.png',
+      ),
+      ExportSizeMode.canvas,
+      guideColor: guideInk,
+    );
+    return bytesOf(image!);
+  }
+
   /// The RGBA of ([x], [y]) of a [width] wide picture.
   List<int> at(Uint8List rgba, int x, int y, {int width = 200}) {
     final offset = (y * width + x) * 4;
     return rgba.sublist(offset, offset + 4);
   }
 
-  testWidgets('⛔with nothing over it the picture IS the film\'s, to the '
-      'byte: nothing is laid that the canvas does not show', (tester) async {
+  // 🗣️gpu-export-path ⑶ (관제 11-11 12:49): the picture as shown, the
+  // film's and the cels tab's come off one engine frame (`frameOnTheEngine`)
+  // — so a frame with nothing over it is the same bytes through all three.
+  testWidgets('⛔with nothing over it the picture IS the film\'s and the '
+      'cel\'s, to the byte: nothing is laid that the canvas does not show', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final s = sessionOf();
       ink(s, stood, 100, 100);
       expect(s.cameraViewMode.enabled.value, isFalse, reason: '⛔premise');
-      expect(await shown(s), await film(s));
+      final asShown = await shown(s);
+      expect(asShown.any((byte) => byte != 0), isTrue, reason: '⛔ink');
+      expect(asShown, await film(s), reason: 'the film');
+      expect(asShown, await cel(s), reason: 'the cels tab');
     });
   });
 
