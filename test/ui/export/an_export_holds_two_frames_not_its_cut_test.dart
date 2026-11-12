@@ -31,6 +31,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/export/held_pictures.dart';
 import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
 
 import '../../helpers/cels_parked_cold.dart';
@@ -671,6 +672,40 @@ void main() {
         });
       });
     }
+
+    // An AE script's camera path is a frame of the run's as a still is
+    // (`cameraPathOf` starts one): held for the ask after it, and no longer.
+    testWidgets('a camera path is held for the ask after it and let go at '
+        'the one after that', (tester) async {
+      await tester.runAsync(() async {
+        final s = sessionOf([
+          cut(
+            camera: CutCamera(
+              keyframes: {
+                0: CameraPose(center: standsAt),
+                1: CameraPose(center: movesTo),
+              },
+            ),
+          ),
+        ]);
+        addTearDown(s.dispose);
+        parkEvery(s);
+        final renderer = ExportFrameRenderer(session: s);
+        addTearDown(renderer.dispose);
+        final moving = s.requireActiveCut;
+        expect(await renderer.cameraPathOf(moving), isNotNull, reason: '전제');
+        final afterOne = HeldPictures.debugHeld;
+        await renderer.cameraPathOf(moving);
+        final afterTwo = HeldPictures.debugHeld;
+        expect(afterTwo, afterOne + 1, reason: 'its own, the one before held');
+        await renderer.cameraPathOf(moving);
+        expect(
+          HeldPictures.debugHeld,
+          afterTwo,
+          reason: 'two asks on, the first is let go',
+        );
+      });
+    });
 
     testWidgets('the camera moving over a held drawing: every frame is its '
         'own picture', (tester) async {
