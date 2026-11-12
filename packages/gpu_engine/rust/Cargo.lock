@@ -919,6 +919,7 @@ dependencies = [
  "read-fonts",
  "serde_json",
  "sha2",
+ "tile_blocks",
  "video",
  "wgpu",
  "windows",
@@ -2433,6 +2434,10 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "tile_blocks"
+version = "0.0.1"
 
 [[package]]
 name = "tinystr"

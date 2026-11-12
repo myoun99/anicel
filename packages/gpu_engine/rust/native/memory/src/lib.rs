@@ -9,7 +9,9 @@
 //!
 //! The rest of qa_engine.c does not come here: its pixel work is the GPU
 //! engine's kernels already, and its premultiply is a formula one of them
-//! holds (native-to-rust 11-07 14:02 — the table of the file).
+//! holds (native-to-rust 11-07 14:02 — the table of the file). Its tile
+//! blocks' lists came to a crate of their own (native/tile_blocks,
+//! 2026-11-12).
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,

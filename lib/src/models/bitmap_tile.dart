@@ -1,9 +1,7 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
-
-import '../native/qa_native_engine.dart';
+import '../native/tile_blocks.dart';
 
 /// The tight box of a tile's ink, in TILE-LOCAL pixels. Exclusive on the
 /// far edges, like every other rect in this codebase.
@@ -59,35 +57,6 @@ abstract interface class TilePixelsOnEngine {
   void readInto(BitmapTile tile, Pointer<Uint8> into);
 }
 
-/// Where tile blocks come from, as one isolate tells another: the engine's
-/// allocator by its functions' addresses, or `malloc` when that isolate runs
-/// without one (both zero). [BitmapTile.blocks] reads it, [tileBlocksHere]
-/// binds it.
-///
-/// 🚨A worker filling blocks for [BitmapTile.adoptNative] takes them from
-/// the isolate that ADOPTS them: [BitmapTile._adopt] attaches the finalizer
-/// by that isolate's engine, and the worker's own probe can answer otherwise.
-typedef TileBlocks = ({int alloc, int free});
-
-/// What fills tile blocks where [TileBlocks] were sent: where a block comes
-/// from, and where it goes back when the work it was for fails.
-typedef TileBlockHands = ({
-  Pointer<Uint8> Function(int byteLength) allocate,
-  void Function(Pointer<Uint8> block) free,
-});
-
-/// [blocks] bound in the isolate they were sent to.
-TileBlockHands tileBlocksHere(TileBlocks blocks) {
-  if (blocks.alloc == 0) {
-    return (
-      allocate: (byteLength) => malloc<Uint8>(byteLength),
-      free: malloc.free,
-    );
-  }
-  final engine = QaTileBlocksAt(alloc: blocks.alloc, free: blocks.free);
-  return (allocate: engine.alloc, free: engine.free);
-}
-
 /// One immutable 4-byte-RGBA tile whose pixels live in NATIVE memory
 /// (R19-Z zero-copy tile storage).
 ///
@@ -102,10 +71,9 @@ TileBlockHands tileBlocksHere(TileBlocks blocks) {
 ///
 /// Lifetime: a [NativeFinalizer] frees the buffer when the tile is
 /// collected; [externalSize] keeps the GC honest about the real weight.
-/// With the engine loaded, buffers come from the C free-list allocator
-/// (R20-E1) and the finalizer parks them for reuse — tile churn (decode,
-/// the engine's tiles read back, undo drops) recycles instead of
-/// malloc/freeing.
+/// Buffers come from the engine's lists ([TileBlocks], R20-E1) and the
+/// finalizer parks them there for reuse — tile churn (decode, the engine's
+/// tiles read back, undo drops) recycles instead of malloc/freeing.
 /// NOTE — Finalizable objects cannot cross isolates: the .anicel save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
 class BitmapTile implements Finalizable {
@@ -115,7 +83,7 @@ class BitmapTile implements Finalizable {
   }) {
     _validateSize(size);
     _validatePixelLength(pixels.length, size);
-    final buffer = _allocate(pixels.length);
+    final buffer = TileBlocks.alloc(pixels.length);
     buffer.asTypedList(pixels.length).setAll(0, pixels);
     return BitmapTile._adopt(size, buffer);
   }
@@ -123,7 +91,7 @@ class BitmapTile implements Finalizable {
   factory BitmapTile.blank({required int size}) {
     _validateSize(size);
     final length = bytesFor(size);
-    final buffer = _allocate(length);
+    final buffer = TileBlocks.alloc(length);
     buffer.asTypedList(length).fillRange(0, length, 0);
     return BitmapTile._adopt(size, buffer);
   }
@@ -141,7 +109,7 @@ class BitmapTile implements Finalizable {
     required void Function(Uint8List pixels) write,
   }) {
     _validateSize(size);
-    final tile = BitmapTile._adopt(size, _allocate(bytesFor(size)));
+    final tile = BitmapTile._adopt(size, TileBlocks.alloc(bytesFor(size)));
     write(tile._view);
     return tile;
   }
@@ -151,11 +119,8 @@ class BitmapTile implements Finalizable {
   /// on a worker comes home through this (`laidCelSurface`): its tiles
   /// stand with zero pixel copies on this isolate.
   ///
-  /// Allocation contract: the buffer must come from
-  /// [QaNativeEngine.tileAlloc] when the engine is loaded, from `malloc`
-  /// otherwise — the finalizer choice below mirrors exactly that. A
-  /// worker's blocks keep it by [tileBlocksHere] bound to this isolate's
-  /// [blocks].
+  /// Allocation contract: the buffer comes from [TileBlocks.alloc],
+  /// whichever isolate asked — the finalizer gives it back there.
   factory BitmapTile.adoptNative({
     required int size,
     required Pointer<Uint8> pixels,
@@ -186,8 +151,7 @@ class BitmapTile implements Finalizable {
   void _hold(Pointer<Uint8> pixels) {
     _block = pixels;
     _bytes = pixels.asTypedList(bytesFor(size));
-    final engine = QaNativeEngine.instance;
-    (engine == null ? _mallocFinalizer : engine.tileFinalizer).attach(
+    TileBlocks.finalizer.attach(
       this,
       pixels.cast(),
       detach: this,
@@ -209,34 +173,13 @@ class BitmapTile implements Finalizable {
   void keepBytesHere(Uint8List bytes) {
     assert(isOnlyOnEngine, 'its pixels are here already');
     _validatePixelLength(bytes.length, size);
-    final block = _allocate(bytes.length);
+    final block = TileBlocks.alloc(bytes.length);
     block.asTypedList(bytes.length).setAll(0, bytes);
     _hold(block);
   }
 
   /// Throws for a [size] no tile takes — what every constructor asks first.
   static void checkSize(int size) => _validateSize(size);
-
-  static Pointer<Uint8> _allocate(int byteLength) {
-    final engine = QaNativeEngine.instance;
-    if (engine != null) {
-      return engine.tileAlloc(byteLength);
-    }
-    return malloc<Uint8>(byteLength);
-  }
-
-  /// Where THIS isolate's tiles take their blocks from — [_allocate]'s
-  /// choice, as a worker filling blocks for [adoptNative] here is told it.
-  static TileBlocks get blocks {
-    final engine = QaNativeEngine.instance;
-    return engine == null
-        ? (alloc: 0, free: 0)
-        : (alloc: engine.tileAllocAddress, free: engine.tileFreeAddress);
-  }
-
-  static final NativeFinalizer _mallocFinalizer = NativeFinalizer(
-    malloc.nativeFree,
-  );
 
   static const int bytesPerPixel = 4;
 
@@ -262,7 +205,7 @@ class BitmapTile implements Finalizable {
   Uint8List get _view => _bytes ?? _readBack();
 
   Uint8List _readBack() {
-    _hold(_allocate(bytesFor(size)));
+    _hold(TileBlocks.alloc(bytesFor(size)));
     try {
       _onEngine!.readInto(this, _block!);
       return _bytes!;
@@ -289,8 +232,8 @@ class BitmapTile implements Finalizable {
   /// [Finalizable] protects a RECEIVER for the duration of a call, not a
   /// value that outlives the getter. A tile whose only reference was such
   /// a local could be collected mid-read: its [NativeFinalizer] handed the
-  /// block back to the C tile pool, the pool handed it to the next
-  /// allocation, and the copy then read/wrote another live buffer —
+  /// block back to the lists ([TileBlocks]), the lists handed it to the
+  /// next ask, and the copy then read/wrote another live buffer —
   /// an access violation when the block had been unmapped, silent pixel
   /// corruption when it had not. (Found the hard way: the stroke
   /// promotion round raised tile churn enough to make it reproducible,

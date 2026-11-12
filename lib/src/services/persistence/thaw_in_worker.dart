@@ -13,10 +13,9 @@ import 'brush_drawing_binary_codec.dart';
 import 'scratch_file.dart';
 
 /// [blob] inflated, parsed, put behind the wall of [reach] ([_behindReach])
-/// and laid into tile blocks on a worker isolate, from the allocator
-/// [blocks] names — the main isolate's ([BitmapTile.blocks]) — so all that
-/// is left there is adopting them standing behind [reach]
-/// ([laidCelSurface]).
+/// and laid into tile blocks on a worker isolate (`TileBlocks`, the
+/// process's one allocator) — so all that is left on the main isolate is
+/// adopting them standing behind [reach] ([laidCelSurface]).
 ///
 /// 🔬On the UI thread (card `cel-thaw-holds-the-ui-thread`, a profile build,
 /// 2026-10-15) this was 60–70 ms of a first playback's late frames: the tile
@@ -25,16 +24,14 @@ import 'scratch_file.dart';
 /// The bytes cross as a [TransferableTypedData], the parking path's way
 /// (`compressAnicelPayloadInWorker` says why).
 Future<AnicelLaidCel> layCelInWorker(
-  AnicelCelBlob blob,
-  TileBlocks blocks, {
+  AnicelCelBlob blob, {
   required PasteboardReach reach,
 }) {
   final sent = TransferableTypedData.fromList([blob.bytes]);
   return onAWorker(
-    () => AnicelCelBlob(sent.materialize().asUint8List()).decoded(
-      (entry) =>
-          layCelEntry(_behindReach(entry, reach), tileBlocksHere(blocks)),
-    ),
+    () => AnicelCelBlob(
+      sent.materialize().asUint8List(),
+    ).decoded((entry) => layCelEntry(_behindReach(entry, reach))),
   );
 }
 
@@ -97,10 +94,9 @@ final Turns celThawTurns = Turns(
 
 /// [blob]'s picture behind [reach] — the wall of the store it is kept in —
 /// as it [was] and as [move] leaves it ([translateBitmapSurface]), worked
-/// out on a worker: both laid into the main isolate's tile blocks
-/// ([BitmapTile.blocks]) for it to adopt standing behind [reach]
-/// ([laidCelSurface]). [moved] is null
-/// for a move of whole tiles ([movesWholeTiles]): made where it is taken, it
+/// out on a worker: both laid into tile blocks for the main isolate to
+/// adopt standing behind [reach] ([laidCelSurface]). [moved] is null for a
+/// move of whole tiles ([movesWholeTiles]): made where it is taken, it
 /// renames the very tiles the picture had — its undo shares them — where
 /// laid here it would copy every one.
 ///
@@ -114,26 +110,23 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
   required CelMove move,
 }) {
   final sent = TransferableTypedData.fromList([blob.bytes]);
-  final blocks = BitmapTile.blocks;
   return onAWorker(
     () => AnicelCelBlob(sent.materialize().asUint8List()).decoded((entry) {
-      final here = tileBlocksHere(blocks);
       final was = _behindReach(entry, reach);
       if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: entry.tileSize)) {
-        return (was: layCelEntry(was, here), moved: null);
+        return (was: layCelEntry(was), moved: null);
       }
       final laidMoved = layCelEntry(
         AnicelCelEntry.fromSurface(
           key,
           movedBy(surfaceBehindReach(entry.toSurface(), reach), move),
         ),
-        here,
       );
       try {
-        return (was: layCelEntry(was, here), moved: laidMoved);
+        return (was: layCelEntry(was), moved: laidMoved);
       } on Object {
         // Nothing else knows these blocks exist ([layCelEntry]'s own rule).
-        freeLaidCel(laidMoved, here);
+        freeLaidCel(laidMoved);
         rethrow;
       }
     }),
@@ -184,9 +177,9 @@ Future<BitmapSurface?> cutHotCelInWorker(
 }
 
 /// A hot cel's [surface] — copied into a worker's own tiles
-/// ([onAWorkerWithCelCopy]) — made anew there by [remake], laid into this
-/// isolate's tile blocks and adopted behind the wall [remake] left it at;
-/// null where [remake] leaves the picture as it is.
+/// ([onAWorkerWithCelCopy]) — made anew there by [remake], laid into tile
+/// blocks and adopted here behind the wall [remake] left it at; null where
+/// [remake] leaves the picture as it is.
 ///
 /// ⚠️A laid cel carries no wall of its own, so the wall crosses beside it:
 /// adopted with none and walled on the main isolate, every tile the wall
@@ -200,7 +193,7 @@ Future<BitmapSurface?> _remakeHotCelInWorker(
   final made = await onAWorkerWithCelCopy(
     key.cel,
     surface,
-    _remadeAndLaid(key, BitmapTile.blocks, remake),
+    _remadeAndLaid(key, remake),
   );
   return made == null
       ? null
@@ -212,17 +205,13 @@ Future<BitmapSurface?> _remakeHotCelInWorker(
 ({AnicelLaidCel laid, PasteboardReach standsBehind})? Function(BitmapSurface)
 _remadeAndLaid(
   BrushFrameKey key,
-  TileBlocks blocks,
   BitmapSurface? Function(BitmapSurface copy) remake,
 ) => (copy) {
   final made = remake(copy);
   return made == null
       ? null
       : (
-          laid: layCelEntry(
-            AnicelCelEntry.fromSurface(key, made),
-            tileBlocksHere(blocks),
-          ),
+          laid: layCelEntry(AnicelCelEntry.fromSurface(key, made)),
           standsBehind: made.pasteboardReach,
         );
 };
@@ -231,9 +220,9 @@ _remadeAndLaid(
 /// `to` another ([cutBehindReach]), worked out on a worker: null when the
 /// move cuts nothing of it, else the cut picture as [key]'s blob, parked at
 /// [parkAt] in the room, and the picture as it was — behind the wall it
-/// moves from ([_behindReach]) — laid into the main isolate's tile blocks
-/// ([BitmapTile.blocks]) for it to adopt standing there
-/// ([laidCelSurface]): what the undo keeps, and lays back behind that wall.
+/// moves from ([_behindReach]) — laid into tile blocks for the main
+/// isolate to adopt standing there ([laidCelSurface]): what the undo keeps,
+/// and lays back behind that wall.
 ///
 /// ★The decode, the cut, the encode and the park a move of the wall makes
 /// of a kept cel on the main isolate (`BrushFrameStore._rewriteHere`),
@@ -250,7 +239,6 @@ cutCelInWorker(
   required String parkAt,
 }) async {
   final sent = TransferableTypedData.fromList([blob.bytes]);
-  final blocks = BitmapTile.blocks;
   final cut = await onAWorker(
     () => AnicelCelBlob(sent.materialize().asUint8List()).decoded((entry) {
       final behind = cutBehindReach(entry.toSurface(), wall.to);
@@ -273,10 +261,7 @@ cutCelInWorker(
       return (
         blob: TransferableTypedData.fromList([kept.bytes]),
         path: path,
-        was: layCelEntry(
-          _behindReach(entry, wall.from),
-          tileBlocksHere(blocks),
-        ),
+        was: layCelEntry(_behindReach(entry, wall.from)),
       );
     }),
   );

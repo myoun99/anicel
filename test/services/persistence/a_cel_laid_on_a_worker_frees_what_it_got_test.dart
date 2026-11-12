@@ -1,15 +1,15 @@
 @TestOn('vm')
 library;
 
-import 'dart:ffi';
+import 'dart:typed_data';
 
-import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
 import '../../helpers/cel_photo_fixture.dart';
@@ -67,32 +67,43 @@ void main() {
   Map<TileCoord, List<int>> bytesByCoord(Map<TileCoord, BitmapTile> tiles) =>
       {for (final entry in tiles.entries) entry.key: entry.value.pixels};
 
-  /// Hands that take blocks from `malloc` and count them, giving up on the
-  /// [failAt]-th ask.
-  ({TileBlockHands hands, List<int> got, List<int> freed}) counted({
-    int? failAt,
-  }) {
-    final got = <int>[];
-    final freed = <int>[];
-    return (
-      hands: (
-        allocate: (byteLength) {
-          if (got.length == failAt) {
-            throw StateError('no block left');
-          }
-          final block = malloc<Uint8>(byteLength);
-          got.add(block.address);
-          return block;
-        },
-        free: (block) {
-          freed.add(block.address);
-          malloc.free(block);
-        },
-      ),
-      got: got,
-      freed: freed,
-    );
+  // A tile side no other tile in this process wears, so the list of its
+  // size ([TileBlocks]) holds what these tests park there and nothing a
+  // collected tile's finalizer brings.
+  const side = 24;
+  final length = BitmapTile.bytesFor(side);
+
+  /// Two blocks of [length] parked on the lists: the addresses the next two
+  /// asks of that size are answered with, in that order — the last freed
+  /// first.
+  List<int> twoParked() {
+    final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
+    blocks.forEach(TileBlocks.free);
+    return [blocks[1].address, blocks[0].address];
   }
+
+  /// What the next two asks of [length] are answered with, given back when
+  /// the test ends.
+  List<int> nextTwoAsks() {
+    final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
+    addTearDown(() => blocks.forEach(TileBlocks.free));
+    return [for (final block in blocks) block.address];
+  }
+
+  /// A cel of two whole tiles of [side], then [last].
+  AnicelCelEntry twoTilesThen(
+    List<AnicelTileRecord> last, {
+    int tileSize = side,
+  }) => AnicelCelEntry(
+    key: celTextTestKey,
+    canvasSize: const CanvasSize(width: side * 3, height: side),
+    tileSize: tileSize,
+    tiles: [
+      (x: 0, y: 0, pixels: Uint8List(length)),
+      (x: 1, y: 0, pixels: Uint8List(length)),
+      ...last,
+    ],
+  );
 
   test('what it laid is the cel — adopted here, the same tiles, the same '
       'texts and their plates, and the same photos as the copy the main '
@@ -100,9 +111,7 @@ void main() {
     final entry = entryOf(picture());
     final copied = entry.toSurface();
 
-    final laid = laidCelSurface(
-      layCelEntry(entry, tileBlocksHere(BitmapTile.blocks)),
-    );
+    final laid = laidCelSurface(layCelEntry(entry));
 
     expect(laid.canvasSize, copied.canvasSize);
     expect(laid.tileSize, copied.tileSize);
@@ -126,40 +135,34 @@ void main() {
 
   test('🚨a block it could not get frees every block it got — nothing else '
       'knows they exist', () {
-    final entry = entryOf(picture());
-    final blocks = counted(failAt: 2);
+    final parked = twoParked();
+    // The third tile asks for a block of no bytes, which the lists refuse.
+    final entry = twoTilesThen([(x: 2, y: 0, pixels: Uint8List(0))]);
 
-    expect(() => layCelEntry(entry, blocks.hands), throwsStateError);
+    expect(() => layCelEntry(entry), throwsStateError);
 
-    expect(blocks.got, hasLength(2), reason: 'premise: two blocks were got');
-    expect(blocks.freed, unorderedEquals(blocks.got));
+    expect(
+      nextTwoAsks(),
+      unorderedEquals(parked),
+      reason: 'the two it got are parked again: held still, these asks '
+          'would be answered with fresh blocks',
+    );
   });
 
   test('a tile size no tile takes is refused BEFORE the first block — the '
       'main isolate\'s adoption must never be the first to refuse', () {
-    final entry = entryOf(picture());
-    final blocks = counted();
+    final parked = twoParked();
 
     expect(
-      () => layCelEntry(
-        AnicelCelEntry(
-          key: entry.key,
-          canvasSize: entry.canvasSize,
-          tileSize: 0,
-          tiles: entry.tiles,
-        ),
-        blocks.hands,
-      ),
+      () => layCelEntry(twoTilesThen(const [], tileSize: 0)),
       throwsArgumentError,
     );
-    expect(blocks.got, isEmpty);
-  });
 
-  test('the blocks a worker is told of are this isolate\'s — malloc when it '
-      'runs without the engine', () {
-    QaNativeEngine.debugForceDartFallback = true;
-    addTearDown(() => QaNativeEngine.debugForceDartFallback = false);
-
-    expect(BitmapTile.blocks, (alloc: 0, free: 0));
+    expect(
+      nextTwoAsks(),
+      parked,
+      reason: 'the parked blocks lie as they lay: taken and given back, '
+          'they would lie the other way round',
+    );
   });
 }

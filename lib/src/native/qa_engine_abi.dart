@@ -412,7 +412,18 @@ import '../core/on_a_worker.dart';
 ///   (`decodeStraightRgbaImageOnAWorker`, export-on-engine ⑶-2b), and
 ///   the tiles' compose it served (`surfaceRegionPicture`) is gone —
 ///   with `qa_zero_bytes`, whose last caller that compose was.
-const int kQaEngineAbiVersion = 81;
+/// - v82: the tile allocator leaves the C — `qa_tile_alloc` ·
+///   `qa_tile_free` · `qa_tile_pool_cached_bytes` · `qa_tile_pool_trim` ·
+///   `qa_tile_pool_set_byte_cap` are the GPU engine library's
+///   (native/tile_blocks), the same five names over the same lists, bound
+///   by `@Native` (`TileBlocks`). 🔬The lists stay because they were
+///   measured (the crate's head): a block parked and handed back costs a
+///   fifth of a fresh one when a cel's worth is laid at once. A tile's
+///   block is the process's whichever isolate asks — a worker was handed
+///   the allocator's addresses till now (`QaTileBlocksAt`), and an isolate
+///   without this binary fell back to `malloc` — and the C premultiplies a
+///   copy, nothing more.
+const int kQaEngineAbiVersion = 82;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

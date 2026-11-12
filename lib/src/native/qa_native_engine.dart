@@ -5,40 +5,6 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
 import 'qa_engine_abi.dart';
-import 'native_scratch.dart';
-import 'native_upload_cache.dart';
-
-/// A block `qa_tile_alloc` answered, or the error it failed with — the one
-/// check both ways of reaching the allocator make ([QaNativeEngine.tileAlloc]
-/// and [QaTileBlocksAt.alloc]).
-Pointer<Uint8> qaTileBlockOrThrow(Pointer<Void> block, int byteLength) {
-  if (block == nullptr) {
-    throw StateError('qa_tile_alloc failed for $byteLength bytes');
-  }
-  return block.cast();
-}
-
-/// The engine's tile allocator bound from the addresses another isolate
-/// read off ITS engine ([QaNativeEngine.tileAllocAddress]) — so the blocks a
-/// worker fills here are the ones that isolate's tiles free.
-final class QaTileBlocksAt {
-  QaTileBlocksAt({required int alloc, required int free})
-    : _alloc =
-          Pointer<NativeFunction<Pointer<Void> Function(Int64)>>.fromAddress(
-            alloc,
-          ).asFunction<Pointer<Void> Function(int)>(),
-      _free = Pointer<NativeFunction<Void Function(Pointer<Void>)>>.fromAddress(
-        free,
-      ).asFunction<void Function(Pointer<Void>)>();
-
-  final Pointer<Void> Function(int size) _alloc;
-  final void Function(Pointer<Void> pixels) _free;
-
-  Pointer<Uint8> alloc(int byteLength) =>
-      qaTileBlockOrThrow(_alloc(byteLength), byteLength);
-
-  void free(Pointer<Uint8> block) => _free(block.cast());
-}
 
 /// The native engine core's FFI bindings (R18 A-track).
 ///
@@ -56,70 +22,10 @@ final class QaTileBlocksAt {
 /// in `qa_engine_abi.dart` — see [kQaEngineAbiVersion] for the bump
 /// checklist.
 class QaNativeEngine {
-  QaNativeEngine._(
-    this._premultiplyRgbaCopy,
-    this._tileAlloc,
-    this._tileAllocPointer,
-    this._tileFree,
-    this._tileFreePointer,
-    this._tilePoolCachedBytes,
-    this._tilePoolTrim,
-    this._tilePoolSetByteCap,
-  );
+  QaNativeEngine._(this._premultiplyRgbaCopy);
 
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int pixelCount)
   _premultiplyRgbaCopy;
-
-  final Pointer<Void> Function(int size) _tileAlloc;
-  final Pointer<NativeFunction<Pointer<Void> Function(Int64)>>
-  _tileAllocPointer;
-  final void Function(Pointer<Void> pixels) _tileFree;
-  final Pointer<NativeFinalizerFunction> _tileFreePointer;
-  final int Function() _tilePoolCachedBytes;
-  final void Function() _tilePoolTrim;
-  final void Function(int) _tilePoolSetByteCap;
-
-  /// Allocates tile pixel bytes from the C free-list allocator (R20-E1).
-  /// Freed/finalized tile blocks park in exact-size C-side lists, so a
-  /// "fresh" buffer is a recycled block, not a malloc (🔬the measure is
-  /// beside `qa_tile_alloc`). Free via [tileFree] or [tileFinalizer].
-  Pointer<Uint8> tileAlloc(int byteLength) =>
-      qaTileBlockOrThrow(_tileAlloc(byteLength), byteLength);
-
-  /// Returns a [tileAlloc] block to the C free list.
-  void tileFree(Pointer<Uint8> pixels) {
-    _tileFree(pixels.cast());
-  }
-
-  /// Finalizer that frees [tileAlloc] blocks — BitmapTile attaches this
-  /// when the engine is loaded (GC threads call qa_tile_free directly).
-  late final NativeFinalizer tileFinalizer = NativeFinalizer(_tileFreePointer);
-
-  /// [tileAlloc] and [tileFree] by address, for a worker that fills blocks
-  /// THIS isolate's tiles adopt ([QaTileBlocksAt]): the worker's own probe
-  /// can load another binary, or none — a test's path override and its
-  /// forced fallback are statics, and statics do not cross isolates.
-  int get tileAllocAddress => _tileAllocPointer.address;
-  int get tileFreeAddress => _tileFreePointer.address;
-
-  /// Bytes of tile blocks parked in the C free lists for reuse — resident,
-  /// and nobody's picture. The memory census reads it.
-  int get tilePoolParkedBytes => _tilePoolCachedBytes();
-
-  /// Caps what the pool may keep parked. The memory tab's allowance sets it
-  /// ([CacheBudgetLine.enginePool], v36); lowering it releases the excess
-  /// on the spot.
-  void setTilePoolByteCap(int bytes) => _tilePoolSetByteCap(bytes);
-
-  /// The OS says memory is tight: give back what only makes the NEXT call
-  /// cheaper — the tile blocks parked for reuse, and every scratch buffer
-  /// (each regrows on its next call). Static, and never the call that
-  /// loads the engine: a warning before any drawing has nothing to give.
-  /// The app hears it with the GPU engine's (`DrawingEngines`).
-  static void respondToMemoryPressure() {
-    _instance?._tilePoolTrim();
-    NativeScratch.releaseAll();
-  }
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -157,82 +63,11 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_premultiply_rgba_copy');
-      final tileAlloc = library
-          .lookupFunction<
-            Pointer<Void> Function(Int64),
-            Pointer<Void> Function(int)
-          >('qa_tile_alloc');
-      final tileAllocPointer = library
-          .lookup<NativeFunction<Pointer<Void> Function(Int64)>>(
-            'qa_tile_alloc',
-          );
-      final tileFree = library
-          .lookupFunction<
-            Void Function(Pointer<Void>),
-            void Function(Pointer<Void>)
-          >('qa_tile_free');
-      final tileFreePointer = library
-          .lookup<NativeFunction<Void Function(Pointer<Void>)>>('qa_tile_free');
-      final tilePoolCachedBytes = library
-          .lookupFunction<Int64 Function(), int Function()>(
-            'qa_tile_pool_cached_bytes',
-          );
-      final tilePoolTrim = library
-          .lookupFunction<Void Function(), void Function()>(
-            'qa_tile_pool_trim',
-          );
-      final tilePoolSetByteCap = library
-          .lookupFunction<Void Function(Int64), void Function(int)>(
-            'qa_tile_pool_set_byte_cap',
-          );
-      return QaNativeEngine._(
-        premultiplyRgbaCopy,
-        tileAlloc,
-        tileAllocPointer,
-        tileFree,
-        tileFreePointer,
-        tilePoolCachedBytes,
-        tilePoolTrim,
-        tilePoolSetByteCap,
-      );
+      return QaNativeEngine._(premultiplyRgbaCopy);
     } on Object {
       return null;
     }
   }
-
-  /// Uploaded stamp RGBA byte buffers keyed by the SOURCE Uint8List's
-  /// identity (BrushStampImage.rgba is a final field, so the identity is
-  /// stable for the stamp's lifetime). Small LRU: the same picture asked
-  /// for again ([premultipliedStampCopy]) is not copied in again. A freshly
-  /// uploaded entry is always the most recent, so it can never be evicted
-  /// while the call that asked for it still reads it.
-  final stampUploads = NativeUploadCache<Uint8List>(
-    entryCap: 4,
-    byteBudget: stampUploadByteBudget,
-  );
-
-  /// Bytes the native upload cache holds — the stamp bytes copied into
-  /// native memory. ↩️Till 2026-11-12 the C brush's mask alphas were a
-  /// second cache counted here, with half the allowance.
-  ///
-  /// 🔬Counted so the memory readout can NAME them: byte-budgeted and
-  /// reported to no one, their bytes landed in `untrackedBytes` and read as
-  /// engine overhead — which is exactly how a cache stops being anybody's
-  /// business.
-  int get nativeUploadBytes => stampUploads.residentBytes;
-
-  /// What the upload cache may hold — the memory tab's allowance sets it
-  /// ([CacheBudgets.nativeUploads]).
-  int get nativeUploadByteBudget => stampUploads.byteBudget;
-
-  set nativeUploadByteBudget(int bytes) {
-    stampUploads.byteBudget = bytes;
-  }
-
-  /// Entry-count AND byte-budgeted (R19-8K): a full-canvas fill stamp at
-  /// 8000² is 256MB — four of those resident was a 1GB RSS bomb. The
-  /// newest entry always survives even when it alone exceeds the budget.
-  static const int stampUploadByteBudget = 320 * 1024 * 1024;
 
   /// R25: fused premultiplied copy of an already-NATIVE tile buffer
   /// (the live rasterizer's stroke tiles) — one C call replaces the

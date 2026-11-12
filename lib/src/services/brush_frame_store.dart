@@ -1094,7 +1094,7 @@ class BrushFrameStore {
   Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async {
     final reach = _pasteboardReach;
     return _adoptedBehind(
-      await layCelInWorker(blob, BitmapTile.blocks, reach: reach),
+      await layCelInWorker(blob, reach: reach),
       reach,
     );
   }

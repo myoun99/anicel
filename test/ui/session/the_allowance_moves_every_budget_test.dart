@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/native/qa_memory.dart';
+import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/memory_allowance.dart';
@@ -159,6 +160,29 @@ void main() {
       MemoryAllowance.factor.value,
       laws.factorFor(session.automaticAllowance),
     );
+  });
+
+  test('🚨the allowance caps what the tile blocks\' lists may park, and a '
+      'lowered one frees the excess on the spot', () {
+    final session = newSession();
+    final laws = session.deviceCacheBudgets;
+    const length = 64 * 1024;
+    TileBlocks.free(TileBlocks.alloc(length));
+    expect(
+      TileBlocks.parkedBytes,
+      greaterThanOrEqualTo(length),
+      reason: 'fixture: a freed block parks under the automatic allowance',
+    );
+
+    // An allowance at which the lists' line is a kilobyte.
+    final small = laws.total ~/ (laws.enginePool ~/ 1024);
+    final pool = laws.toAllowance(small).enginePool;
+    expect(pool, lessThan(length), reason: 'fixture: under the block');
+    AppMemory.settings.value = AppMemorySettings(allowanceBytes: small);
+
+    // 유저 2026-09-16 (memory-allowance-Q2): the lists' cap was a
+    // compile-time 512MB, the one number the allowance did not reach.
+    expect(TileBlocks.parkedBytes, lessThanOrEqualTo(pool));
   });
 
   test("a test's own playback budget still wins over the allowance", () {

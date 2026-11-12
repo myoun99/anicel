@@ -204,11 +204,6 @@ const _notCensused = <String, String>{
 
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
-  'lib/src/native/native_upload_cache.dart → residentBytes':
-      'via:nativeUploadBytes — the engine keeps one of these (stamp '
-      'bytes); ALSO ledgered because the bare name is shared with '
-      'BrushTipStampCache, so a name match would pass this entry for the '
-      'wrong reason',
   'lib/src/ui/storyboard_cut_thumbnail_store.dart → thumbnailBytes':
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '

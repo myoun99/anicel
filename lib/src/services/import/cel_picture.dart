@@ -28,6 +28,7 @@ import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
+import '../../native/tile_blocks.dart';
 import '../media/png_reading.dart';
 import '../media/video_decode_worker.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
@@ -228,18 +229,16 @@ typedef CelLayout = ({
 /// canvas, on whole pixels, and the [layout] its lay makes.
 typedef PictureCut = ({int left, int top, CelLayout layout});
 
-/// [picture]'s file read on a worker and cut into tile blocks there, from
-/// the allocator of the isolate that adopts them ([BitmapTile.blocks]) —
-/// the cel-thaw's road (`layCelInWorker`): the main isolate copies nothing
-/// and the picture is never held whole, only its tiles and the row of them
+/// [picture]'s file read on a worker and cut into tile blocks there — the
+/// cel-thaw's road (`layCelInWorker`): the main isolate copies nothing and
+/// the picture is never held whole, only its tiles and the row of them
 /// under way.
 Future<AnicelLaidCel> cutFileInWorker(FilePicture picture, PictureCut cut) {
   final sent = TransferableTypedData.fromList([picture.bytes]);
-  final blocks = BitmapTile.blocks;
   final width = picture.width;
   final height = picture.height;
   return onAWorker(() {
-    final cutter = TileCutter(cut, width, tileBlocksHere(blocks));
+    final cutter = TileCutter(cut, width);
     try {
       readFileRows(
         sent.materialize().asUint8List(),
@@ -274,15 +273,10 @@ Future<PixelsPicture> readFileInWorker(FilePicture picture) {
   });
 }
 
-/// [picture]'s pixels cut into tile blocks here, from this isolate's own
-/// allocator — for pixels already in hand ([cutFileInWorker]'s cut, by the
-/// same [TileCutter]).
+/// [picture]'s pixels cut into tile blocks here — for pixels already in
+/// hand ([cutFileInWorker]'s cut, by the same [TileCutter]).
 AnicelLaidCel cutPixels(PixelsPicture picture, PictureCut cut) {
-  final cutter = TileCutter(
-    cut,
-    picture.width,
-    tileBlocksHere(BitmapTile.blocks),
-  );
+  final cutter = TileCutter(cut, picture.width);
   try {
     picture.rows(cutter.row);
     return cutter.finish();
@@ -415,15 +409,14 @@ readFramesInWorker(Uint8List bytes) {
   );
 }
 
-/// Rows of a picture laid 1:1 ([PictureCut]) written into tile blocks from
-/// [hands] as they arrive: the tiles of one tile row are open at a time,
-/// and a tile the picture left clear goes back as it closes.
+/// Rows of a picture laid 1:1 ([PictureCut]) written into tile blocks
+/// ([TileBlocks]) as they arrive: the tiles of one tile row are open at a
+/// time, and a tile the picture left clear goes back as it closes.
 final class TileCutter {
-  TileCutter(this.cut, this.width, this.hands);
+  TileCutter(this.cut, this.width);
 
   final PictureCut cut;
   final int width;
-  final TileBlockHands hands;
 
   final _done = <({int x, int y, int pixels})>[];
   final _open = <int, ({Pointer<Uint8> block, Uint8List view})>{};
@@ -462,7 +455,7 @@ final class TileCutter {
   ({Pointer<Uint8> block, Uint8List view}) _blockAt(int tileX) =>
       _open.putIfAbsent(tileX, () {
         final length = BitmapTile.bytesFor(_side);
-        final block = hands.allocate(length);
+        final block = TileBlocks.alloc(length);
         final view = block.asTypedList(length)..fillRange(0, length, 0);
         return (block: block, view: view);
       });
@@ -473,7 +466,7 @@ final class TileCutter {
       if (tileY != null && _anyInk(open.view)) {
         _done.add((x: tileX, y: tileY, pixels: open.block.address));
       } else {
-        hands.free(open.block);
+        TileBlocks.free(open.block);
       }
     }
     _open.clear();
@@ -488,8 +481,8 @@ final class TileCutter {
     return false;
   }
 
-  /// The cel the rows made: its tiles' blocks, for the isolate whose
-  /// allocator they came from to adopt (`laidCelSurface`).
+  /// The cel the rows made: its tiles' blocks, to adopt
+  /// (`laidCelSurface`).
   AnicelLaidCel finish() {
     _close();
     return (
@@ -505,11 +498,11 @@ final class TileCutter {
   /// Every block taken, given back — a cut that failed part-way.
   void giveBack() {
     for (final open in _open.values) {
-      hands.free(open.block);
+      TileBlocks.free(open.block);
     }
     _open.clear();
     for (final tile in _done) {
-      hands.free(Pointer<Uint8>.fromAddress(tile.pixels));
+      TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
     }
     _done.clear();
   }

@@ -50,23 +50,22 @@ set_target_properties(qa_engine PROPERTIES
 # on the engine's one worker pool (card clip-import-hangs-on-three-samples);
 # it went with the pool and the brush kernels the pool spread (ABI 80,
 # 2026-11-12). Nothing the C still does has a test of its own in C: its
-# premultiply and its tile blocks are held from Dart.
+# premultiply is held from Dart.
 
 # ↩️Vendored dr_libs and zstd emitted a few benign conversion warnings, which
 # were silenced on their translation units alone, until the connection round
 # deleted both: what is compiled here is ours, and keeps every warning.
 
-# The OS threading/dl primitives. 🪦The C's sound device (miniaudio) linked
+# Nothing of the OS is linked. 🪦The C's sound device (miniaudio) linked
 # CoreAudio here and OpenSLES on Android, and the C's sound decoder and movie
 # codecs linked AudioToolbox and CoreFoundation (Apple), mediandk (Android)
 # and Media Foundation with ole32 (Windows), until the connection round moved
 # them into the GPU engine's library (connection-round-checklist H,
 # 2026-11-08). 🪦shlwapi went before them, with the in-memory audio origin it
-# served (SHCreateMemStream, 2026-09-24).
-if(UNIX AND NOT ANDROID AND NOT APPLE)
-  find_package(Threads REQUIRED)
-  target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
-endif()
+# served (SHCreateMemStream, 2026-09-24). 🪦The threads and dl libraries went
+# last (ABI 82, 2026-11-12): the lock on the tile blocks' lists was the last
+# thing here that waited on another thread, and libm went with them — the
+# float kernels it served left at ABI 80.
 
 if(MSVC)
   # The engine must run OPTIMIZED even inside the app's Debug build (the
@@ -102,10 +101,6 @@ else()
   # 182 where the reference says 181. Contraction stays off so the same
   # source produces the same pixels on every CPU.
   target_compile_options(qa_engine PRIVATE -O3 -ffp-contract=off)
-  find_library(QA_M_LIB m)
-  if(QA_M_LIB)
-    target_link_libraries(qa_engine ${QA_M_LIB})
-  endif()
 endif()
 
 # 🚨EVERY COMPILER REFUSES WHAT THE STRICTEST ONE REFUSES.

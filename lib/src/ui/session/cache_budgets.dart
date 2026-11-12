@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../native/qa_native_engine.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_tip_stamp_cache.dart';
@@ -61,9 +60,9 @@ enum CacheBudgetLine {
   /// The sheets' media images — logos, covers, the photos on their ink.
   sheetImages({'sheetImages'}),
 
-  /// The C engine's stamp copies.
-  nativeUploads({'nativeUploads'}),
-
+  /// ↩️`nativeUploads` stood before this one till 2026-11-12: the C
+  /// engine's copies of stamps and of mask alphas, which went with the
+  /// last kernel that read them (C ABI 80).
   brushTips({'brushTips'}),
 
   liveStroke({'liveStroke'}),
@@ -98,7 +97,7 @@ enum CacheBudgetLine {
 
   /// The engine's parked tile blocks ([enginePool]): one full 8K frame of
   /// tiles (256MB) plus headroom for a previous frame still draining — the
-  /// number C starts from.
+  /// number the lists start from (native/tile_blocks `CAP_AT_START`).
   static const int engineTilePoolBytes = 512 * 1024 * 1024;
 
   /// This line's budget on a device with [physicalMemoryBytes] of RAM — null
@@ -121,7 +120,6 @@ enum CacheBudgetLine {
     CacheBudgetLine.sheetImages => viewerRasterBytesFor(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
-    CacheBudgetLine.nativeUploads => QaNativeEngine.stampUploadByteBudget,
     CacheBudgetLine.brushTips => BrushTipStampCache.defaultByteBudget,
     CacheBudgetLine.liveStroke =>
       BrushLiveStrokeRasterizer.defaultResidentResultByteBudget,
@@ -143,7 +141,6 @@ enum CacheBudgetLine {
     CacheBudgetLine.storyboardThumbnails ||
     CacheBudgetLine.sheetImages => viewerPageBytesAtCap,
     CacheBudgetLine.sheetInk ||
-    CacheBudgetLine.nativeUploads ||
     CacheBudgetLine.brushTips ||
     CacheBudgetLine.liveStroke ||
     CacheBudgetLine.imageCache ||
@@ -200,7 +197,6 @@ class CacheBudgets {
   int get viewerPages => this[CacheBudgetLine.viewerPages];
   int get storyboardThumbnails => this[CacheBudgetLine.storyboardThumbnails];
   int get sheetImages => this[CacheBudgetLine.sheetImages];
-  int get nativeUploads => this[CacheBudgetLine.nativeUploads];
   int get brushTips => this[CacheBudgetLine.brushTips];
   int get liveStroke => this[CacheBudgetLine.liveStroke];
   int get imageCache => this[CacheBudgetLine.imageCache];

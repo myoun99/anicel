@@ -1,20 +1,23 @@
 import 'engine_strokes.dart';
 import 'engine_tile_ledger.dart';
-import 'qa_native_engine.dart';
+import 'native_scratch.dart';
+import 'tile_blocks.dart';
 
-/// The process's drawing engines — the C engine and the GPU engine's tile
-/// ledger — heard together where what only makes their next call cheaper
-/// is given back. Neither is a project's, and neither is opened to hear it.
+/// What the process's drawing holds that is no project's — the tile blocks
+/// parked for reuse, the scratch buffers, the GPU engine's tile ledger —
+/// heard together where what only makes their next call cheaper is given
+/// back. None is opened to hear it.
 ///
-/// Here, not on either engine: the C engine's file is what a tile reaches
-/// (bitmap_tile.dart imports it), and the ledger reaches the tile, so the
-/// C engine calling the ledger would close an import loop.
+/// Here, not on any of them: a tile reaches its blocks' file
+/// (bitmap_tile.dart imports tile_blocks.dart), and the ledger reaches the
+/// tile, so the blocks calling the ledger would close an import loop.
 abstract final class DrawingEngines {
-  /// The OS says memory is tight, or a closed project was collected: the C
-  /// engine's parked tile blocks and scratch buffers, and the ledger's
-  /// pages nobody holds (pool-pages-given-back).
+  /// The OS says memory is tight, or a closed project was collected: the
+  /// parked tile blocks, every scratch buffer (each regrows on its next
+  /// call), and the ledger's pages nobody holds (pool-pages-given-back).
   static void respondToMemoryPressure() {
-    QaNativeEngine.respondToMemoryPressure();
+    TileBlocks.trim();
+    NativeScratch.releaseAll();
     EngineTileLedger.opened?.respondToMemoryPressure();
     EngineStrokes.letGoIdle();
   }

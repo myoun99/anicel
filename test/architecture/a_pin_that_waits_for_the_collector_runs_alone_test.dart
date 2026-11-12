@@ -340,7 +340,6 @@ void main() {
     expectSetMatchesLedger(
       tagged,
       const [
-        'test/native/native_upload_cache_test.dart',
         'test/services/brush_stroke_accumulation_guard_test.dart',
         'test/ui/canvas/a_parked_transform_lets_go_of_its_picture_test.dart',
         'test/ui/canvas/tile_images_are_counted_test.dart',
@@ -365,6 +364,9 @@ void main() {
         // painter lets go of the hole a memory warning took, and the picture
         // cannot say so — it draws the same pixels either way.
         'test/ui/canvas/a_lifted_row_lets_go_of_a_hole_a_warning_took_test.dart',
+        // tile-blocks-on-rust (11-12): a tile's block goes back to the
+        // lists by its finalizer alone, and only the collector runs it.
+        'test/models/a_collected_tile_gives_its_block_back_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '

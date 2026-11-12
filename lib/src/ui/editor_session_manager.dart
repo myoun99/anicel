@@ -93,7 +93,7 @@ import '../services/audio/audio_conform_runner.dart'
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
-import '../native/qa_native_engine.dart';
+import '../native/tile_blocks.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
 import 'session/cache_budgets.dart';
@@ -454,7 +454,6 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches.applyCacheBudgets(own);
     historyManager.byteBudget = budgets.undo;
     playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
-    QaNativeEngine.instance?.nativeUploadByteBudget = budgets.nativeUploads;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
     BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
     // The two the allowance did not reach until 2026-09-16 (Q2): the
@@ -462,7 +461,7 @@ class EditorSessionManager extends ChangeNotifier
     // and the engine's parked tile blocks, a compile-time cap until then.
     // ★A new [CacheBudgetLine] is applied HERE, and nowhere else.
     _frameworkImageCache?.maximumSizeBytes = budgets.imageCache;
-    QaNativeEngine.instance?.setTilePoolByteCap(budgets.enginePool);
+    TileBlocks.setByteCap(budgets.enginePool);
     // The canvas's tile pictures (render round, 2026-09-16): the walk that
     // lets the unshown ones go reads this ceiling after every paint.
     TilePictureBudget.instance.byteBudget = budgets.tileImages;

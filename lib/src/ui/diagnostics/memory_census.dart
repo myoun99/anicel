@@ -8,8 +8,8 @@ import '../../native/engine_strokes.dart';
 import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
 import '../../native/qa_memory.dart';
-import '../../native/qa_native_engine.dart';
 import '../../native/screen_texture.dart';
+import '../../native/tile_blocks.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
@@ -244,11 +244,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       id: 'brushTips',
       bytes:
           BrushTipStampCache.instance.residentBytes +
-          // ⛔The NATIVE copies of the same things belong on the same row:
-          // a stamp's bytes and a mask's alphas uploaded for the kernels.
-          // They were byte-budgeted and reported to nobody, so they read
-          // as engine overhead — 2026-09-10.
-          (QaNativeEngine.instance?.nativeUploadBytes ?? 0) +
           // The cut tool's HELD piece is the stamp's tip (유저: 「잘라내기 할
           // 때마다 가지고 있는 찍기 팁 교체야」), so it rides this row — the
           // app's one slot, counted once. 🆕I-14: a cut from the media
@@ -283,7 +278,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // allowance and half out.
     MemoryCensusItem(
       id: 'enginePool',
-      bytes: QaNativeEngine.instance?.tilePoolParkedBytes ?? 0,
+      bytes: TileBlocks.parkedBytes,
     ),
     MemoryCensusItem(id: 'engineScratch', bytes: NativeScratch.liveBytes),
     // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache

@@ -50,10 +50,9 @@ final class Lru<K, V> {
   final int Function()? limit;
 
   /// How many entries it may hold whatever they cost — beside [limit] for
-  /// a store bounded both ways (the engine's native uploads: a few big
-  /// copies and never more than a few), or alone for one whose [costOf] is
-  /// told and not bounded. Asked each time it fits, as [limit] is. Null:
-  /// [limit] alone.
+  /// a store bounded both ways (a few big copies and never more than a
+  /// few), or alone for one whose [costOf] is told and not bounded. Asked
+  /// each time it fits, as [limit] is. Null: [limit] alone.
   final int Function()? entryCap;
 
   /// Whether [K]'s entry is still being read: passed over as the newest

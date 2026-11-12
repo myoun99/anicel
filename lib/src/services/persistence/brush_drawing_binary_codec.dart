@@ -32,6 +32,7 @@ import '../../models/media_reference.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
 import '../../native/engine_tile_ledger.dart';
+import '../../native/tile_blocks.dart';
 
 /// One cel's BAKED raster — the persistence TRUTH from .anicel format v2 on
 /// (R19 bake-only): what you saved is exactly what reopens, byte for
@@ -294,7 +295,7 @@ CelPhoto _photoOf(AnicelPhotoRecord record) => CelPhoto(
   ),
 );
 
-/// [entry] laid into native blocks from [blocks] — the copies
+/// [entry] laid into tile blocks ([TileBlocks]) — the copies
 /// [AnicelCelEntry.toSurface] makes, made on the worker that decoded the
 /// cel, so they cost the screen nothing (card
 /// `cel-thaw-holds-the-ui-thread`: ~40 ms of a first playback's late frames
@@ -304,11 +305,11 @@ CelPhoto _photoOf(AnicelPhotoRecord record) => CelPhoto(
 /// they exist. ⚠️The tile size is asked BEFORE the first block: the main
 /// isolate's adoption asks it again, and must never be the first to refuse,
 /// for it would refuse with blocks not adopted yet.
-AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
+AnicelLaidCel layCelEntry(AnicelCelEntry entry) {
   BitmapTile.checkSize(entry.tileSize);
   final got = <Pointer<Uint8>>[];
   int laid(Uint8List pixels) {
-    final block = blocks.allocate(pixels.length);
+    final block = TileBlocks.alloc(pixels.length);
     got.add(block);
     block.asTypedList(pixels.length).setAll(0, pixels);
     return block.address;
@@ -331,28 +332,25 @@ AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
       laidBounds: entry.laidBounds,
     );
   } on Object {
-    for (final block in got) {
-      blocks.free(block);
-    }
+    got.forEach(TileBlocks.free);
     rethrow;
   }
 }
 
-/// Gives back every block [laid] holds to [blocks] — for a worker whose work
-/// failed after laying it, when nothing will adopt it ([layCelEntry]'s rule).
-void freeLaidCel(AnicelLaidCel laid, TileBlockHands blocks) {
+/// Gives back every block [laid] holds — for a worker whose work failed
+/// after laying it, when nothing will adopt it ([layCelEntry]'s rule).
+void freeLaidCel(AnicelLaidCel laid) {
   for (final tile in [
     ...laid.tiles,
     for (final text in laid.texts) ...text.plate,
   ]) {
-    blocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
+    TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
   }
 }
 
-/// [laid]'s blocks adopted as its tiles, on the isolate whose allocator they
-/// came from ([BitmapTile.blocks]) — no pixel is copied here — behind the
-/// wall the worker that laid them made the picture [standsBehind]: none,
-/// for one laid as its bytes were.
+/// [laid]'s blocks adopted as its tiles — no pixel is copied here — behind
+/// the wall the worker that laid them made the picture [standsBehind]:
+/// none, for one laid as its bytes were.
 BitmapSurface laidCelSurface(
   AnicelLaidCel laid, {
   PasteboardReach standsBehind = PasteboardReach.whole,
