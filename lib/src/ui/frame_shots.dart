@@ -437,16 +437,9 @@ Future<Uint8List> _rasterOf(
   );
   final drawn = recorder.endRecording();
   try {
-    final image = switch (part) {
-      (final left, final top, final right, final bottom) => await _partOf(
-        drawn,
-        left: left,
-        top: top,
-        width: right - left,
-        height: bottom - top,
-      ),
-      null => await drawn.toImage(width, height),
-    };
+    final image = part == null
+        ? await drawn.toImage(width, height)
+        : await _partOf(drawn, part);
     try {
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       return data!.buffer.asUint8List();
@@ -458,19 +451,17 @@ Future<Uint8List> _rasterOf(
   }
 }
 
-/// [picture] rastered on [width] × [height] from its pixel ([left], [top]).
+/// [picture]'s pixels [part] — [left, top, right, bottom) — rastered.
 Future<ui.Image> _partOf(
-  ui.Picture picture, {
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-}) async {
+  ui.Picture picture,
+  (int, int, int, int) part,
+) async {
+  final (left, top, right, bottom) = part;
   final scene = (ui.SceneBuilder()
         ..addPicture(ui.Offset(-left.toDouble(), -top.toDouble()), picture))
       .build();
   try {
-    return await scene.toImage(width, height);
+    return await scene.toImage(right - left, bottom - top);
   } finally {
     scene.dispose();
   }

@@ -1050,7 +1050,17 @@ void main() {
   /// `materializeStrokeBlendNative` and
   /// `BrushLiveStrokeRasterizer.preBlendTileInDart`. 🔬`clean_code_diff`
   /// against master (`8edb2a59d`) names those.
-  const wideSignatures = 451;
+  ///
+  /// ⚠️451 → 453 on 2026-11-13, two named as the rule above asks (card
+  /// an-exports-overlay-raster-reads-back-the-whole-frame-Q1, 유저 「빠른
+  /// 길 — 이름표 둘레만 굽는다」): `drawnOnTheEngine` (five) took where its
+  /// overlay inks — its painter's answer, the part a raster is made of —
+  /// and `ExportFrameRenderer._drawnOver` (five), the renderer's spelling of
+  /// it, asks that painter for it when it is drawn. 🔬`clean_code_diff`
+  /// against master (`c38c2eb02`) names those two. ⛔Not bundled to fit:
+  /// the size, what is drawn and where it inks are asked of different
+  /// owners — the frame, the overlay's draw and its painter.
+  const wideSignatures = 453;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
