@@ -6,9 +6,8 @@
 #include <stdint.h>
 
 // Looked up by Dart through DynamicLibrary.process() (lib/src/
-// texture_shim.dart), as the app looks up qa_native's: nothing in the app
-// calls them, so they are kept from dead-code stripping and from hidden
-// visibility.
+// texture_shim.dart): nothing in the app calls them, so they are kept from
+// dead-code stripping and from hidden visibility.
 #define GPU_ENGINE_EXPORT __attribute__((visibility("default"), used))
 
 // One registered texture: the CVPixelBuffers of two engine surfaces, of

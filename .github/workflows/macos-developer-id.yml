@@ -86,21 +86,15 @@ jobs:
       # The Apple-side correctness check, before anything expensive — the
       # same step and the same selector `testflight.yml` runs, for the same
       # reason: a check the release path cannot skip is worth more than a
-      # thorough one somewhere else.
-      - name: Native core (Apple clang)
-        run: |
-          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/ci-apple --config Release
-      - name: Parity against the Apple-built engine
-        env:
-          QA_ENGINE_PATH: ${{ github.workspace }}/build/ci-apple/libqa_engine.dylib
-          # A missing engine must FAIL rather than skip: a skipped parity
-          # suite and a passing one look identical in a summary.
-          QA_REQUIRE_NATIVE: '1'
+      # thorough one somewhere else. ↩️Till 2026-11-13 a step before it
+      # built the C core with Apple clang for the tests to run against
+      # (testflight.yml says the rest); the engine they open is the Rust
+      # library this run's build hook builds on this Mac.
+      - name: Tests on the Apple-built engine
         run: |
           set -euo pipefail
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
-          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          echo "engine subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
           dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {

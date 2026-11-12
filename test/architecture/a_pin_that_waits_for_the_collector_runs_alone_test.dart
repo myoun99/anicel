@@ -223,8 +223,8 @@ void main() {
     });
 
     test('🚨every place that runs the parity list runs it by the plan', () {
-      // `lane.sh` names the runner beside itself through tool/run.sh, the
-      // line broken before the flag.
+      // ↩️`lane.sh` was the fifth, naming the runner beside itself through
+      // tool/run.sh, till its native gate went with the C (2026-11-13).
       final byThePlan = RegExp(r'affected_tests(\.dart"?)?[\s\\]+--files-from');
       final places = <String>[];
       for (final dir in ['tool', '.github', '.githooks']) {
@@ -253,38 +253,19 @@ void main() {
         '.github/workflows/macos-developer-id.yml',
         '.github/workflows/testflight.yml',
         '.github/workflows/windows-arm64-release.yml',
-        'tool/lane.sh',
       ]);
     });
 
-    test('lane.sh hands its list to the runner beside itself — a lane cut '
-        'before the entrance would ignore --files-from', () {
-      expect(
-        File('tool/lane.sh').readAsStringSync(),
-        matches(
-          RegExp(r'bash "\$ROOT/tool/run\.sh" affected_tests[\s\\]+--files-from'),
-        ),
-      );
-    });
-
-    test("a land's gates run it outside the machine's line, as they run "
-        'their architecture tests — asked alone, it stands in the line', () {
+    test("a list run asked outside the machine's line takes no place in it "
+        '— asked alone, it stands in the line', () {
       expect(lineFor(['--files-from', 'parity.txt']).inTheLine, isTrue);
-      final gates = lineFor([
+      final shard = lineFor([
         '--files-from',
         'parity.txt',
         '--outside-the-line',
       ]);
-      expect(gates.inTheLine, isFalse);
-      expect(gates.refusal, isNull);
-      final lane = File('tool/lane.sh').readAsStringSync();
-      expect(
-        lane,
-        contains(r'cmd_native "$name" gates'),
-        reason: 'refusal 5 tells the parity run it is a gate',
-      );
-      expect(lane, contains(r'[ "${2:-}" = gates ] && line=--outside-the-line'));
-      expect(lane, contains(r'--files-from "$list" ${line:+"$line"})'));
+      expect(shard.inTheLine, isFalse);
+      expect(shard.refusal, isNull);
     });
 
     test("🗣️the build's wide check stands at the head of the line — every "

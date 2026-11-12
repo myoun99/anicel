@@ -151,10 +151,10 @@ serde_json = "1"
 # 2026-11-06 via 관제: no C left — what we wrote, third_party, .m, .cpp).
 # A lane moves one module whole, the C it calls with it, and touches only
 # its own folder under native/: these globs take a new crate in without a
-# line here, and `cargo test` in this folder runs every crate. Until the
-# connection round each module's Rust is held to the C byte for byte
-# (native/oracle); that round links the modules into this library and
-# deletes the C.
+# line here, and `cargo test` in this folder runs every crate. ↩️Until
+# the connection round each module's Rust was held to the C byte for byte
+# (native/oracle, the answer key then); that round linked the modules into
+# this library and deleted the C, the last of it on 2026-11-13.
 # ⚠️ONE LIBRARY, AND IT MUST NAME WHAT IT CARRIES. A crate this one depends
 # on but never names is not linked, and its extern "C" functions are not
 # exported — measured 2026-11-06 on a scratch workspace: the dependency

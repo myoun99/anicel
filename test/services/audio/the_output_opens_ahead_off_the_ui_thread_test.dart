@@ -38,8 +38,7 @@ void main() {
 
   test('🚨a worker opens the output and it is open HERE, for the setting it '
       'was opened for — under way until it is', () async {
-    // The road production takes: a worker of its own, carrying the binary
-    // this isolate loads (`onAWorkerWithThisEngine`).
+    // The road production takes: a worker of its own.
     debugWorkersRunHere = false;
     final device = aBenchDevice();
 

@@ -1044,12 +1044,14 @@ Future<T> standInLine<T>(
 /// starts holds what it asked at once — at most [kMachineSuites], as on a
 /// machine with no line ([Turn.take] with no folder).
 ///
-/// 🗣️A LAND'S GATES ONLY (유저 10-08, a-sent-lane-is-gated-once-Q1 「착지
-/// 게이트는 이 넷에 세지 않는다」): a land waiting in the line would hold the
-/// land's turn all the while, and every other lane's land behind it. Its
-/// analyze and architecture tests run straight from `tool/lane.sh`; its
-/// parity list comes through `affected_tests --outside-the-line`, and only
-/// a list run may ask for that there.
+/// ⚙️A CI SHARD'S (`affected_tests --outside-the-line`, which only a list
+/// run may ask for there): its runner holds one job, so there is no line
+/// to share. ↩️And a land's gates', for the parity list they ran through
+/// `affected_tests` till the C engine went (2026-11-13) — 유저 10-08,
+/// a-sent-lane-is-gated-once-Q1 「착지 게이트는 이 넷에 세지 않는다」: a land
+/// waiting in the line would hold the land's turn all the while, and every
+/// other lane's land behind it. A land's analyze and architecture tests
+/// run straight from `tool/lane.sh`.
 Future<T> outsideTheLine<T>(
   String what,
   Future<T> Function(Turn turn) run, {

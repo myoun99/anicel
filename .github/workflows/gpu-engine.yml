@@ -32,12 +32,11 @@ name: GPU engine on Metal and Mesa, built on ARM64 Windows
 # test step runs once the toolchain is in place, whatever the step before
 # it said — debug's red does not keep release from running.
 #
-# And every job builds the C engine first: the native crates (native/*,
-# native-to-rust 2026-11-06) are held to it byte for byte, through
-# QA_ENGINE_PATH, and a missing engine fails them (native/oracle). It is
-# built as every CI job builds it (.github/actions/native-engine, cached on
-# the C), whose provenance stamp runs on Dart — no Flutter is needed here,
-# so the Dart that Flutter 3.47.4 ships, alone.
+# ↩️And every job built the C engine first, with a Dart of its own for
+# the build's provenance stamp: the native crates (native/*, native-to-rust
+# 2026-11-06) were held to it byte for byte, through QA_ENGINE_PATH, and a
+# missing engine failed them (native/oracle) — till the C went
+# (2026-11-13). The crates are held to their ledger rows.
 on:
   workflow_dispatch:
 
@@ -61,14 +60,8 @@ jobs:
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.dylib
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: 3.13.3
-      - uses: ./.github/actions/native-engine
       # rustup reads rust-toolchain.toml: the pinned compiler, as on every
       # machine that builds the engine.
       - id: toolchain
@@ -133,14 +126,8 @@ jobs:
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: 3.13.3
-      - uses: ./.github/actions/native-engine
       # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU. The
       # audio device's cpal builds against ALSA (native-to-rust-Q7), which
       # alsa-sys finds through pkg-config; its tests open the null device.
@@ -244,14 +231,8 @@ jobs:
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}\build\native_standalone\Release\qa_engine.dll
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: 3.13.3
-      - uses: ./.github/actions/native-engine
       - id: toolchain
         run: rustup show
       # The fx SDK example as WebAssembly, the module the fx tests open on

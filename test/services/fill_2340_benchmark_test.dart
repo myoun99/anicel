@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/a_fill_on_the_engine.dart';
-import '../helpers/native_engine_path.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -15,7 +14,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -29,26 +27,10 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 /// with `--dart-define=BRUSH_LAB_PROFILE=true` for the inner probes too.
 void main() {
   opensTheEnginesScreens();
-  // R26/2A: resolved per platform (and via QA_ENGINE_PATH on CI) so this
-  // benchmark can run wherever an engine was built.
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
-
-  setUp(() {
-    debugQaEngineLibraryPathOverride = dllPath;
-  });
-
-  tearDown(() {
-    debugQaEngineLibraryPathOverride = null;
-  });
 
   test(
     'fill tap staged timings at 2340x1654',
     () {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       const canvasSize = CanvasSize(width: 2340, height: 1654);
       const key = BrushFrameKey(
         projectId: ProjectId('p'),

@@ -61,7 +61,7 @@ fn every_crate_finds_its_files_in_the_checkout_it_runs_in() {
     assert!(fixed.is_empty(), "read it when the test runs, {READ}: {fixed:?}");
     // The scan reaches the workspace's other crates as well as this one.
     let read = files_under(".", "rs", |text| text.contains(READ));
-    for file in ["native/oracle/src/lib.rs", "src/kernels/shared/source_scan.rs"] {
+    for file in ["native/audio/src/tests.rs", "src/kernels/shared/source_scan.rs"] {
         assert!(read.contains(file), "LIVENESS — the scan reads {file}: {read:?}");
     }
 }

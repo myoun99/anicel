@@ -1,7 +1,7 @@
 // A straight RGBA8 word premultiplied, as Flutter reads a surface it shows
 // (its embedder wraps an external texture premultiplied — Skia's road says
 // so, Impeller holds no other kind). The app's one premultiply
-// (core/rgba_premultiply.dart, qa_engine.c's qa_premultiply_pixel), which
+// (core/rgba_premultiply.dart; native/premultiply spells it for a tile), which
 // every upload of a picture to the screen runs: each colour byte times the
 // alpha over 255, rounded as Skia's SkMulDiv255Round rounds it, so a byte
 // the GPU shows is the byte the app showed. Alpha 255 gives the word back,

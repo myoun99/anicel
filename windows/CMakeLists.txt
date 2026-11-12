@@ -53,10 +53,7 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 add_subdirectory("runner")
 
 # Generated plugin build rules, which manage building the plugins and adding
-# them to the application. The native engine core (qa_engine.dll) rides in
-# here too: qa_native is an FFI plugin, so the plugin build compiles
-# packages/qa_native/src and lists the DLL in PLUGIN_BUNDLED_LIBRARIES (2A
-# migration, completed).
+# them to the application.
 include(flutter/generated_plugins.cmake)
 
 

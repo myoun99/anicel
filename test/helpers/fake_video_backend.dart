@@ -61,9 +61,10 @@ class FakeVideoBackend implements VideoDecodeBackend {
   /// ⚠️Settable so a test can say NO while the machine running it has a
   /// native engine sitting right there — which is the only way to prove
   /// that the document asks the BACKEND and not the decoder. Taking the
-  /// real engine away does not work: it is already loaded, and
-  /// `openQaEngineLibrary` finds it by bare name whatever the override
-  /// says (measured 2026-09-08).
+  /// real engine away does not work: it is already loaded (measured
+  /// 2026-09-08 on the C engine, which its loader found by bare name
+  /// whatever a path override said; the decoder is the GPU engine
+  /// library's now, bound by name).
   @override
   final bool supported;
 

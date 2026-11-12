@@ -32,11 +32,10 @@ void main() {
       code.indexWhere((line) => line.contains(text));
 
   /// The lines of [code] that run something IN the lane: flutter from
-  /// inside it, the native build and tests, and the GPU engine crate's.
+  /// inside it, and the GPU engine crate's tests.
   List<int> runsIn(List<String> code) => [
     for (var i = 0; i < code.length; i++)
       if (code[i].contains(r'(cd "$p" &&') ||
-          code[i].contains('cmd_native') ||
           code[i].contains('cmd_crate') ||
           code[i].contains('crate_gate'))
         i,
@@ -47,8 +46,8 @@ void main() {
     late final gates = codeOf('gates');
 
     test('LIVENESS — analyze with no arguments, the architecture tests, '
-        'the native build of a lane that touched the C, and the crate\'s '
-        'tests of a lane that touched the crate or its ledger', () {
+        'and the crate\'s tests of a lane that touched the crate, its '
+        'ledger or the fx SDK', () {
       final all = gates.join('\n');
       // Offline (관제 2026-11-06): what the lane resolved from this
       // machine's pub cache, and neither gate resolves it again.
@@ -58,8 +57,6 @@ void main() {
         all,
         contains(r'(cd "$p" && flutter test --no-pub test/architecture)'),
       );
-      expect(all, contains(r'lane_touched "$p" packages/qa_native/src'));
-      expect(all, contains(r'cmd_native "$name"'));
       expect(all, contains(r'crate_gate "$name" "$p"'));
       final crate = codeOf('crate_gate').join('\n');
       expect(
@@ -69,59 +66,45 @@ void main() {
           'test/fixtures/fingerprints.json',
         ),
       );
-      expect(crate, contains('    packages/qa_native/src sdk/fx; then'));
+      expect(crate, contains('    sdk/fx; then'));
       expect(crate, contains(r'cmd_crate "$name"'));
     });
 
-    // native-to-rust (관제 2026-11-06): the native crates are held to the
-    // engine the C builds — a key built from other C holds them to the
-    // wrong answers.
-    test('🚨the crate\'s tests are held to this lane\'s C: its engine is '
-        'built from it before cargo runs', () {
-      final crate = codeOf('cmd_crate');
-      final ensured = at(crate, r'ensure_engine "$p" || die');
-      expect(ensured, isNot(-1));
-      expect(ensured, lessThan(at(crate, r'"$ROOT/tool/cargo_turn.sh"')));
-    });
-
-    // 관제 2026-11-13 (what-still-runs-on-the-cpu): the lane that deletes
-    // the C engine is landed by the trunk's script, which built an engine
-    // for every lane that touched the C and refused one it could not
-    // build. ⚠️Both branches are that lane's to take out, with the engine's
-    // build. What they DO is `lane_test.sh`, section T: a lane with no C
-    // lands with none built, and one with its C is built and run as before.
-    test('a lane that left no C behind builds no engine and runs no '
-        'parity — one that holds its C still does both', () {
-      final gates = codeOf('gates');
-      final touched = at(
-        gates,
-        r'if lane_touched "$p" packages/qa_native/src \',
-      );
-      expect(touched, isNot(-1));
+    // 관제 2026-11-13 (what-still-runs-on-the-cpu): the C engine went, and
+    // refusals 5 and 6 with it — once the lane that deleted it had landed,
+    // the script was to say nothing of a C engine.
+    // ↩️It built one for every lane that touched the C and ran the parity
+    // list against it (refusal 5), asked of every engine it handed out
+    // whether it was built from the C beside it (refusal 6), and held the
+    // crates' tests to the lane's own (native-to-rust, 관제 2026-11-06 — a
+    // key built from other C held them to the wrong answers).
+    test('⛔nothing in the script builds a C engine, copies one or asks of '
+        'one', () {
+      final code = [
+        for (final line
+            in File('tool/lane.sh')
+                .readAsStringSync()
+                .replaceAll('\r\n', '\n')
+                .split('\n'))
+          if (!line.trimLeft().startsWith('#')) line,
+      ].join('\n');
       expect(
-        gates[touched + 1],
-        contains(r'&& [ -d "$p/packages/qa_native/src" ]; then'),
+        code,
+        contains(r'crate) shift; cmd_crate "$@" ;;'),
+        reason: 'LIVENESS — the code is read, its dispatch too',
       );
-      expect(gates[touched + 2], contains(r'cmd_native "$name" gates'));
-
-      final ensure = codeOf('ensure_engine');
-      final none = at(
-        ensure,
-        r'[ -d "$c/packages/qa_native/src" ] || return 0',
-      );
-      final asks = at(ensure, r'native_engine_provenance check "$c"');
-      final builds = at(ensure, r'build_engine "$c" || return 1');
-      expect(none, isNot(-1));
-      expect(
-        asks,
-        greaterThan(none),
-        reason: 'the folder is asked before the tool, which goes with the C',
-      );
-      expect(
-        builds,
-        greaterThan(asks),
-        reason: 'a checkout that holds its C is built from it, as before',
-      );
+      for (final gone in [
+        'qa_native',
+        'cmake',
+        'native_standalone',
+        'native_engine_provenance',
+        'native_parity_tests',
+        'QA_REQUIRE_NATIVE',
+        'cmd_native',
+        'cmd_engine',
+      ]) {
+        expect(code, isNot(contains(gone)), reason: gone);
+      }
     });
 
     // 저장 2026-11-05: four Dart files, opened before the trunk took crate
@@ -305,39 +288,19 @@ void main() {
       );
 
       final gates = codeOf('gates');
-      final native = at(gates, 'cmd_native');
       final crate = at(gates, 'crate_gate');
-      expect(native, isNot(-1));
       expect(crate, isNot(-1));
       expect(
-        between(gates, at(gates, r'wait "$architecture"'), native),
-        isTrue,
-        reason: 'before the native build and parity',
-      );
-      expect(
-        between(gates, native, crate),
+        between(gates, at(gates, r'wait "$architecture"'), crate),
         isTrue,
         reason: 'before the crate',
       );
 
       // ↩️관제 2026-11-12, same card: `tile-blocks-on-rust`'s native gate
-      // alone ran 61 minutes, stamped before and after it only.
-      final nativeRun = codeOf('cmd_native');
-      final built = at(nativeRun, r'ensure_engine "$p" ||');
-      final debug = at(nativeRun, "if grep -q '^CMAKE_CONFIGURATION_TYPES'");
-      final parity = at(nativeRun, 'bash tool/native_parity_tests.sh');
-      expect(built, isNot(-1));
-      expect(
-        between(nativeRun, built, debug),
-        isTrue,
-        reason: 'after the engine is built',
-      );
-      expect(
-        between(nativeRun, debug, parity),
-        isTrue,
-        reason: 'before the parity run, which beats it at every batch itself',
-      );
-
+      // alone ran 61 minutes, stamped before and after it only — so it
+      // stamped between its steps, and its parity run wrote a beat inside
+      // the turn at every batch, till the gate went with the C engine
+      // (2026-11-13).
       final crateRun = codeOf('cmd_crate');
       expect(
         between(

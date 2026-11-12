@@ -1,10 +1,10 @@
 //! The timeline's sound — `qa_engine.c`'s audio program 2B in Rust
 //! (native-to-rust, 타임라인/콘티): the mix bus every clip is summed into,
 //! the output stage that turns it into the device's samples, and the
-//! sample-rate conversion a sound is conformed with. The C is the mix
-//! bus's answer key until the mixer moves: the tests hold every sample to
-//! the engine's exports, bit for bit. The conversion's C went in the
-//! connection round (H) — the app's ledger holds it now.
+//! sample-rate conversion a sound is conformed with. ↩️The C was the
+//! answer key of both until each moved — the tests held every sample to
+//! the engine's exports, bit for bit — and went in the connection round
+//! (H): the app's ledger holds them now.
 //!
 //! Each half has a Dart twin it already agrees with bit for bit
 //! (`audio_mixer_reference.dart`, and the test answer key

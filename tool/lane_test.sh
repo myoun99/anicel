@@ -53,12 +53,12 @@
 # commits the trunk took after it was opened; and a lane stamped on another
 # machine still runs the crate's tests on this one before it merges.
 # ⚠️The script before THAT fails 4 of the 11 there: it refuses the Dart
-# lane, and lands a ledger row this machine's GPU never ran. 🆕Since
-# native-to-rust (2026-11-06) it also holds that a crate lane is refused,
-# before any crate test, when its engine — the native crates' answer key —
-# is not built from its C; and that a lane that changed only the C runs
-# the crates' tests too, held to it. And a run that passed no test is
-# refused, though it exits 0.
+# lane, and lands a ledger row this machine's GPU never ran. ↩️From
+# native-to-rust (2026-11-06) till the C went (2026-11-13) it also held
+# that a crate lane was refused, before any crate test, when its engine —
+# the native crates' answer key — was not built from its C; and that a
+# lane that changed only the C ran the crates' tests too, held to it. And
+# a run that passed no test is refused, though it exits 0.
 #
 # 🆕And the mirror's login (2026-11-05, gpu-engine-skeleton — section U,
 # 119 checks in all): a `git` in front of the real one writes down every
@@ -103,20 +103,21 @@
 # empties the folder through the junction.
 # 🆕And the turn's signs of life (2026-11-12, a-long-land-loses-its-turn-at-
 # 45-minutes — section Y, 180 checks in all): a turn two hours old whose land
-# beat lately is not taken over, one with no sign for 45 minutes is, a land
+# moved on lately is not taken over (↩️「beat lately」 — a test run under a
+# land wrote a beat inside its turn, till the native gate went, 2026-11-13),
+# one with no sign for 45 minutes is, a land
 # whose turn was taken stops at its next step and lands nothing, and the turn
 # it lost stays with the land that took it. ⚠️The script before THAT fails 6
 # of the 9 there: it takes the beating land's turn, runs on beside the land
 # that took its own and lands, and its exit removes the other land's turn.
-# 🆕And a lane with no C (2026-11-13, what-still-runs-on-the-cpu — section
-# T, 189 checks in all): a lane that left no C behind lands with no engine
-# asked for, none built and no parity run, its crate's tests held to no
-# engine — and a lane that still holds its C has its engine built from it
-# and its parity run against it, as before. The trunk here holds C from
-# its first commit, as the real one does, so a lane is asked of its engine
-# because it holds C and not because nothing looked. ⚠️The script before
-# THAT fails 5 of the 9 there: it refuses the lane that deleted the C, for
-# want of an engine built from it.
+# ↩️And a lane with no C (2026-11-13, what-still-runs-on-the-cpu — section
+# T, 189 checks in all, for the one land that needed them): a lane that
+# left no C behind landed with no engine asked for, none built and no
+# parity run, while a lane that still held its C had its engine built from
+# it and its parity run against it. That lane deleted the C, and took
+# refusals 5 and 6 out of the script with the checks on them — the engine
+# a crate lane was refused for, the C a lane changed, the engine behind
+# its C, the lane with none: 175 checks in all.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -166,14 +167,6 @@ EOF
 cat > "$E/bin/dart" <<'EOF'
 #!/bin/bash
 echo "$(basename "$PWD") dart $(basename "$1")${2:+ $2}" >> "$LANE_TEST_LOG"
-# Asked whether an engine is built from its C, it says no when
-# LANE_TEST_ENGINE says stale, and no until the checkout's build is
-# stamped, when it says behind.
-[ "$(basename "$1")" = native_engine_provenance.dart ] && [ "${LANE_TEST_ENGINE:-}" = stale ] \
-  && { echo "0000 not built from its C"; exit 1; }
-[ "$(basename "$1")" = native_engine_provenance.dart ] && [ "${LANE_TEST_ENGINE:-}" = behind ] \
-  && [ ! -f "$3/build/native_standalone/.built-from" ] \
-  && { echo "0000 not built from its C"; exit 1; }
 # Asked which crates a build takes, it is the real tool: its list is what
 # refusal 8 is checked for.
 [ "$(basename "$1")" = crates_for_host.dart ] && exec "$LANE_TEST_DART" "$@"
@@ -224,17 +217,6 @@ fi
 [ "${LANE_TEST_CARGO:-ok}" = empty ] || echo "test result: ok. 2 passed; 0 failed"
 echo "test result: ok. 0 passed; 0 failed"
 EOF
-# `cmake`, for a lane that changed the C (refusal 5): the engine builds —
-# red when LANE_TEST_ENGINE says stale, so a stale engine stays stale.
-# Configuring, it makes the folder it is told to build in, as cmake does:
-# the build's stamp is written there.
-cat > "$E/bin/cmake" <<'EOF'
-#!/bin/bash
-echo "$(basename "$PWD") cmake $*" >> "$LANE_TEST_LOG"
-[ "${LANE_TEST_ENGINE:-}" = stale ] && exit 1
-[ "$1" = -S ] && [ "$3" = -B ] && mkdir -p "$4"
-exit 0
-EOF
 # `rustc` answers for a machine of its own: its host, and its cfg.
 cat > "$E/bin/rustc" <<'EOF'
 #!/bin/bash
@@ -257,7 +239,7 @@ case " \$* " in *" backup "*)
 esac
 exec "$REAL_GIT" "\$@"
 EOF
-chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/cmake" "$E/bin/git" \
+chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/git" \
   "$E/bin/rustc"
 # The SDK's own dart, past its launcher, as tool/run.sh calls it: the
 # launcher, with these stand-ins first on PATH, cannot tell its engine's
@@ -303,18 +285,13 @@ mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/hom
 cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" \
   "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
   "$(dirname "${BASH_SOURCE[0]}")/source_brackets.dart" "$E/home/tool/"
-# And the parity selector the gate of a lane that changed the C asks.
-printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity_tests.sh"
 # And the packages the app does not depend on, with one to resolve.
 cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
 mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
-# And the C an engine is built from, which every lane holds till one
-# deletes it (section T).
-mkdir -p "$E/home/packages/qa_native/src"; echo "// the engine" > "$E/home/packages/qa_native/src/qa_engine.c"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh \
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh \
   tool/crates_for_host.dart tool/source_brackets.dart tool/resolve_packages.sh \
-  packages/gpu_engine/pubspec.yaml packages/qa_native/src/qa_engine.c a.txt .gitignore 2>/dev/null
+  packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
 git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
@@ -641,42 +618,6 @@ check "every crate ran past a red one, and release after a red debug" \
 has "and the refusal names both" "$O" "tests are red in debug release — this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 check "and the turn is free" "$(ls -d "$E/home/.git/lane-land.turn" 2>/dev/null | wc -l | tr -d ' ')" 0
-quiet "$E/home" open stale; mkdir -p "$HW/lane-stale/packages/gpu_engine/rust"
-commit "$HW/lane-stale" packages/gpu_engine/rust/s.wgsl "a kernel beside an engine of other C"
-: > "$LANE_TEST_LOG"; BEFORE=$(git -C "$E/home" rev-parse master)
-O=$(LANE_TEST_ENGINE=stale out "$E/home" land stale)
-has "a crate lane whose engine is not built from its C is refused — the native crates' answer key" \
-  "$O" "not built from this lane's C — this is refusal 8"
-check "before a crate test ran" "$(cargo_runs lane-stale)" 0
-check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
-mkdir -p "$E/home/build/native_standalone"  # the trunk's engine, which `open` copies
-quiet "$E/home" open cfile
-commit "$HW/lane-cfile" packages/qa_native/src/c.c "C that a module's Rust is held to"
-: > "$LANE_TEST_LOG"
-O=$(out "$E/home" land cfile)
-has "a lane that changed only the C lands" "$O" "merged work/cfile"
-check "and the crates were held to it, debug and release" "$(cargo_runs lane-cfile)" 2
-has "after its parity run against the engine" "$O" "native — green (1 parity files)"
-quiet "$E/home" open cbehind
-commit "$HW/lane-cbehind" packages/qa_native/src/b.c "C its engine is not built from yet"
-: > "$LANE_TEST_LOG"
-O=$(LANE_TEST_ENGINE=behind out "$E/home" land cbehind)
-has "a lane whose engine is behind its C lands" "$O" "merged work/cbehind"
-check "after its engine was built from it — configured, then built, once" \
-  "$(grep -c 'lane-cbehind cmake' "$LANE_TEST_LOG")" 2
-has "and its parity run against that engine" "$O" "native — green (1 parity files)"
-quiet "$E/home" open cgone; mkdir -p "$HW/lane-cgone/packages/gpu_engine/rust"
-git -C "$HW/lane-cgone" rm -q -r packages/qa_native
-commit "$HW/lane-cgone" packages/gpu_engine/rust/g.wgsl "the C engine deleted, and what the crate held to it"
-: > "$LANE_TEST_LOG"
-O=$(LANE_TEST_ENGINE=stale out "$E/home" land cgone)
-has "a lane that left no C behind lands — though an engine asked for would be refused" \
-  "$O" "merged work/cgone"
-lacks "with no native gate — there is no engine to build or to run against" "$O" "lane: native"
-check "none was built, in the lane or in the trunk" "$(grep -c ' cmake ' "$LANE_TEST_LOG")" 0
-check "and its crate's tests ran, debug and release, held to no engine" "$(cargo_runs lane-cgone)" 2
-lacks "and nothing is said of an engine, in the lane or in the trunk it left without C" \
-  "$O" "not built from"
 quiet "$E/home" open none; mkdir -p "$HW/lane-none/packages/gpu_engine/rust"
 commit "$HW/lane-none" packages/gpu_engine/rust/n.wgsl "a kernel whose crate ran no test"
 : > "$LANE_TEST_LOG"; BEFORE=$(git -C "$E/home" rev-parse master)
@@ -830,15 +771,15 @@ say "Y A LONG LAND KEEPS ITS TURN, AND ONE THAT LOST IT STOPS: its age is its ne
 # its turn at 45, and the first land ran on beside it.)
 T="$E/home/.git/lane-land.turn"
 sleep 300 & HOLDER=$!
-mkdir -p "$T"; echo "$HOLDER" > "$T/pid"; echo beat > "$T/beat"
-touch -d '2 hours ago' "$T" "$T/pid"  # after the beat: making it moved the turn
+mkdir -p "$T"; echo "$HOLDER" > "$T/pid"
+touch -d '2 hours ago' "$T/pid"  # taken two hours ago — and the turn stamped just now
 quiet "$E/home" open y1; commit "$HW/lane-y1" y1.txt "y1"
 BEFORE=$(git -C "$E/home" rev-parse master)
 O=$(cd "$E/home" && timeout 15 bash tool/lane.sh land y1 2>&1)
-has "a turn two hours old whose land beat lately is not taken over" "$O" "another lane is landing"
+has "a turn two hours old whose land moved on lately is not taken over" "$O" "another lane is landing"
 check "its holder keeps it" "$(cat "$T/pid" 2>/dev/null)" "$HOLDER"
 check "and nothing landed beside it" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
-touch -d '2 hours ago' "$T/beat"
+touch -d '2 hours ago' "$T"
 O=$(out "$E/home" land y1)
 has "with no sign of life for 45 minutes, its holder alive or not, it is taken over" "$O" "merged work/y1"
 check "and given back" "$(ls -d "$T" 2>/dev/null | wc -l | tr -d ' ')" 0

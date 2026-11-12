@@ -1695,7 +1695,6 @@ name = "oracle"
 version = "0.0.1"
 dependencies = [
  "compress",
- "libloading",
 ]
 
 [[package]]

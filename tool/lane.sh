@@ -4,9 +4,7 @@
 #   bash tool/lane.sh open  <name>     a worktree + branch off master, ready to run
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
 #   bash tool/lane.sh gate  <name>     run the land's gates on a lane as it stands, and stamp it
-#   bash tool/lane.sh native <name>    build the lane's C, run its tests and parity
 #   bash tool/lane.sh crate <name>     run the GPU engine crate's tests in the lane
-#   bash tool/lane.sh engine [<name>]  this checkout's engine (or a lane's) built from its own C
 #   bash tool/lane.sh furnish <dir>    a worktree that is not a lane, made ready to run as `open` makes one
 #   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
 #   bash tool/lane.sh list             what is open right now
@@ -23,7 +21,8 @@
 # every time. The account is suspended, so origin is frozen and LOCAL master is
 # the trunk — that is not a workaround to remember, it is what `open` does.
 #
-# ⛔THE EIGHT THINGS THIS REFUSES TO LET YOU DO
+# ⛔THE EIGHT THINGS THIS REFUSES TO LET YOU DO (↩️six of them now: 5 and
+# 6 went with the C engine)
 #
 # 1. Run a git command in a worktree that is not one. Removing a worktree
 #    fails on Windows whenever a file is locked, and it leaves the DIRECTORY
@@ -46,51 +45,28 @@
 #    land rather than being downloaded (resolve_offline says why).
 # 4. Leave master behind. `land` fast-forwards master last, so the next lane
 #    someone opens is based on what just landed.
-# 5. Land C that nobody compiled. `flutter analyze` does not read C, and the
-#    parity tests load whatever engine the lane was OPENED with — `open`
-#    copies the trunk's binary, so a lane's own C edits reach no test unless
-#    its author remembers to rebuild. 2026-09-09: a splice left
-#    `coverage = 1.0;` above qa_engine.c's first line; MSVC warned and built,
-#    every test passed against the old binary, and the iPad build (Apple
-#    clang) was the first thing to refuse it, a day later. So a lane that
-#    touched packages/qa_native/src is built here — EVERY target, because the
-#    pen DLL lives beside the engine and a directory holding only qa_engine
-#    fails the pen tests for a reason that has nothing to do with the change
-#    — and, where the generator holds every configuration (Windows), the
-#    engine once more in DEBUG, the configuration the app's Debug build
-#    compiles it in (2026-10-13: a C++ unit kept /RTC1 beside the engine's
-#    /O2 and only Debug refused it, cl D8016 — every Release step was green)
-#    — then the parity subset runs against what was just built, with
-#    QA_REQUIRE_NATIVE=1 so a missing binary fails instead of skipping
-#    (↩️its C tests ran between the two, until the last of them went with
-#    the engine's worker pool — C ABI 80, 2026-11-12).
-#    `bash tool/lane.sh native <name>` runs the same thing
-#    without landing. Measured 2026-09-10 from a clean
-#    directory: 241 s for all of it (configure, every target, the C tests, 67
-#    parity files). A lane that did not touch the C pays nothing.
-#    ⚠️Nor does a lane that left no C behind (관제 2026-11-13, board
-#    what-still-runs-on-the-cpu): the lane that deletes the engine is landed
-#    by this script as the trunk holds it, and has nothing to build and no
-#    parity to run against it. That lane takes this refusal out, and the
-#    branch with it.
-# 6. Hand anyone an engine that was not built from the C beside it. Every
-#    build this file runs stamps the name of the C it came from
-#    (`build/native_standalone/.built-from`; what that name is, and why not a
-#    file time or the ABI number, is at the head of
-#    tool/native_engine_provenance.dart), and every place that puts an engine
-#    in a checkout asks: `open` brings the TRUNK's engine up to the trunk's C
-#    before copying it, then asks again of the copy in the lane; `land` asks
-#    of the trunk once the merge has moved it; `native` and `engine` build
-#    only when the answer is no. Five times in five days a lane or the trunk
-#    ran its native pins against another checkout's C (2026-09-09..13) and
-#    each was found by running the same files somewhere else. ⚠️A trunk
-#    engine that cannot be rebuilt — a test run holding the DLL, a build
-#    already going — is a WARNING, never a failed land: the next lane builds
-#    its own. ⚠️`land` does not rebuild the LANE after its rebase: its gates
-#    never load the engine and a green land deletes the lane at once, so that
-#    build would be thrown away every time. What loads the engine says it
-#    instead — `affected_tests` names a foreign engine before and after it
-#    runs.
+# 5. ↩️Land C that nobody compiled — refused till the C engine went
+#    (2026-11-13, what-still-runs-on-the-cpu). `flutter analyze` does not
+#    read C, and the parity tests loaded whatever engine the lane was OPENED
+#    with. 2026-09-09: a splice left `coverage = 1.0;` above qa_engine.c's
+#    first line; MSVC warned and built, every test passed against the old
+#    binary, and the iPad build (Apple clang) was the first thing to refuse
+#    it, a day later. So a lane that touched the C had it built here —
+#    every target, and once more in Debug where the generator held every
+#    configuration (2026-10-13: cl D8016, which only Debug refused) — and
+#    the parity subset run against what was just built (`lane.sh native`;
+#    241 s from a clean directory, 2026-09-10).
+# 6. ↩️Hand anyone an engine that was not built from the C beside it —
+#    refused till the C engine went, the same day. Every build this file
+#    ran stamped the name of the C it came from, and every place that put
+#    an engine in a checkout asked: `open`, of the trunk before copying its
+#    engine and of the copy in the lane; `land`, of the trunk once the
+#    merge had moved it; `native` and `engine`. Five times in five days a
+#    lane or the trunk had run its native pins against another checkout's
+#    C (2026-09-09..13), each found by running the same files somewhere
+#    else. Nothing here builds an engine now, or copies one.
+#    ⚠️5 and 6 keep their numbers: 7 and 8 are what their messages, the
+#    tests and the cards call them.
 # 7. Land a lane that moved while its gates ran. The gates measure the
 #    WORKING TREE; the merge takes COMMITS, and the worktree is removed with
 #    --force right after it. 2026-09-30: while a land sat in `flutter
@@ -118,11 +94,11 @@
 #    check — so a stamped land still runs it, here (관제 2026-11-05: the
 #    Surface's surface11/fx-line-box pinned effects/line-blur and landed on
 #    its stamp, with this machine's GPU never asked).
-#    🆕AND THE C IS THEIR ANSWER KEY (native-to-rust, 2026-11-06): the
-#    native crates are held to the engine the C builds, so a lane that
-#    changed packages/qa_native/src runs them too, and every run builds the
-#    lane's engine from the lane's C first (refusal 6) — a key built from
-#    other C would hold the Rust to the wrong answers.
+#    ↩️AND THE C WAS THEIR ANSWER KEY (native-to-rust, 2026-11-06, till
+#    the C went — 2026-11-13): the native crates were held to the engine
+#    the C built, so a lane that changed the C ran them too, and every run
+#    built the lane's engine from the lane's C first (refusal 6) — a key
+#    built from other C would have held the Rust to the wrong answers.
 #    🆕AND THE fx SDK (2026-11-07): its spec crate and its example
 #    (sdk/fx) are the fx tests' source too, so a lane that changed them
 #    runs the crate's tests, and every run builds the example as
@@ -350,28 +326,13 @@ cmd_open() {
 # given exactly what one cut on this machine is.
 furnish() {
   local p="$1"
-  mkdir -p "$p/build"
-  # Refusal 6: what gets copied is first made the trunk's own, so a lane
-  # opened after a C landing does not inherit the engine from before it
-  # (2026-09-13: 156 reds in a lane gate, the trunk's 09-10 DLL).
-  ensure_engine "$ROOT" \
-    || echo "lane: ⚠️the trunk's engine is not built from the trunk's C — this lane builds its own" >&2
-  # The native engine, so parity pins RUN instead of skipping. A skip is not a pass.
-  [ -d "$ROOT/build/native_standalone" ] && cp -r "$ROOT/build/native_standalone" "$p/build/" 2>/dev/null
-  # 🚨AND THROW AWAY THE CMAKE CACHE THAT CAME WITH IT. A CMakeCache.txt
-  # remembers the ABSOLUTE directory it was created in, so `cmake --build
-  # build/native_standalone` inside the lane builds into the MAIN CHECKOUT
-  # — a lane's uncommitted C landing in the trunk's binary, silently
-  # (2026-09-08, caught while proving a decoder change). What the copy is
-  # for is the built .dll; the cache is not part of that, and deleting it
-  # makes a lane that wants to rebuild re-configure in its own directory,
-  # which is the only correct answer.
-  rm -f "$p/build/native_standalone/CMakeCache.txt"
-  # And the copy is asked again, of the lane: the trunk's engine is still
-  # the wrong one when it could not be rebuilt above, or when the main
-  # checkout holds C nobody has committed.
-  ensure_engine "$p" \
-    || echo "lane: ⚠️this lane's engine is not built from its C — native results here describe other C" >&2
+  # ↩️The trunk's C engine was copied in here, so that parity pins RAN
+  # instead of skipping, till the C went (2026-11-13): brought up to the
+  # trunk's C first, its CMake cache thrown away — a cache names the
+  # directory it was made in, and a lane building on the trunk's built
+  # into the MAIN CHECKOUT (2026-09-08) — and asked again of the lane
+  # (refusal 6). The engine a lane's tests open is the one its own build
+  # hook builds.
   resolve_offline "$p"
 }
 
@@ -803,152 +764,20 @@ cmd_incoming() {
       done
 }
 
-# cmake is on PATH on a Mac or a Linux box; on this Windows machine it lives
-# in its installer's folder, which Git Bash does not know about.
-find_cmake() {
-  command -v cmake 2>/dev/null && return 0
-  local c="/c/Program Files/CMake/bin/cmake.exe"
-  [ -x "$c" ] && { printf '%s\n' "$c"; return 0; }
-  return 1
-}
-
-# Refusal 6: the one question, and the one build that answers it.
-ENGINE_STAMP=build/native_standalone/.built-from
-
-# Is the engine in checkout $1 built from the C beside it? When it is not,
-# build it there and stamp it. Non-zero when the answer is still no; the
-# caller decides whether that is a warning or a refusal. Everything it says
-# goes to stderr, because `open` prints the lane's path as its only output.
-ensure_engine() {
-  local c="$1" out rc
-  # A checkout that holds no C has no engine to build, and nothing there is
-  # held to one: the lane that deletes the engine, and the trunk once that
-  # lane has landed — where the tool asked below went with the C, so the
-  # folder is asked and not the tool. ⚠️That lane takes this function out.
-  [ -d "$c/packages/qa_native/src" ] || return 0
-  out="$(bash "$ROOT/tool/run.sh" native_engine_provenance check "$c")"
-  rc=$?
-  [ "$rc" -eq 0 ] && return 0
-  [ "$rc" -eq 1 ] || {
-    echo "lane: ⚠️could not name the C in $c — its engine is unchecked" >&2
-    return 1
-  }
-  echo "lane: engine in $c: ${out#* } — building it from the C there" >&2
-  build_engine "$c" || return 1
-  printf '%s\n' "${out%% *}" >"$c/$ENGINE_STAMP"
-}
-
-# ⚠️ONE BUILD PER CHECKOUT AT A TIME. `open` and `land` both reach the
-# trunk's engine, and on the same minutes: a C landing is exactly when the
-# trunk's engine falls behind and exactly when the next lane gets opened.
-# Two MSBuilds in one directory overwrite each other's objects. The lock is
-# a directory because `mkdir` creates it or fails, atomically; a build that
-# is killed leaves it behind, and the warning names it.
-#
-# The stamp goes BEFORE the build starts, so a build that dies half way —
-# some targets relinked, some not — is never read as current afterwards.
-build_engine() {
-  local c="$1" cm ok=1
-  local lock="$c/build/.engine-building" log="$c/build/lane-native.log"
-  cm="$(find_cmake)" || {
-    echo "lane: ⚠️cmake not found — the engine in $c is not rebuilt" >&2
-    return 1
-  }
-  mkdir -p "$c/build"
-  mkdir "$lock" 2>/dev/null || {
-    echo "lane: ⚠️an engine build already holds $c — not starting a second one on top of it" >&2
-    echo "lane:   (if none is running, a killed one left $lock behind: remove it)" >&2
-    return 1
-  }
-  rm -f "$c/$ENGINE_STAMP"
-  : >"$log"
-  # The directory `open` copied holds the TRUNK's project files and no cache
-  # (open deletes it), so a lane that never configured here starts clean
-  # rather than building on top of another checkout's generator state.
-  [ -f "$c/build/native_standalone/CMakeCache.txt" ] || rm -rf "$c/build/native_standalone"
-  (cd "$c" \
-    && "$cm" -S packages/qa_native/src -B build/native_standalone -DCMAKE_BUILD_TYPE=Release \
-    && "$cm" --build build/native_standalone --config Release) >>"$log" 2>&1 && ok=0
-  rmdir "$lock"
-  [ "$ok" -eq 0 ] || echo "lane: ⚠️the engine build in $c is red — the whole log: $log" >&2
-  return "$ok"
-}
-
-# Refusal 6, runnable on its own: `engine` asks it of the checkout this file
-# sits in — the trunk, or a lane when run from inside one — and
-# `engine <name>` of that lane.
-cmd_engine() {
-  local c="$ROOT"
-  if [ -n "${1:-}" ]; then
-    local name; name="$(lane_named "$1")" || exit 1
-    c="$(lane_path "$name")"
-    require_worktree "$c"
-  fi
-  ensure_engine "$c" || die "the engine in $c is not built from its C — see above"
-  echo "lane: the engine in $c is built from its C"
-}
-
 # What `open` and `receive` do to a lane's worktree, for one that is not a
 # lane: the release round cuts its builds in `rel-<n>`, and runs the guide's
-# screenshots there. Their sound scene reads its peaks through the engine,
-# and a worktree that only ever built release bundles has none — the
-# import answered false, the pool stayed empty and every language's media
-# pool shot failed (2026-10-22). The same function, so the engine copy, its
-# cache and its provenance stay one answer for every checkout.
+# screenshots there. The same function, so what a checkout needs before
+# anything runs in it stays one answer for every checkout.
+# ↩️It was made for the C engine's copy: the screenshots' sound scene read
+# its peaks through that engine, and a worktree that only ever built
+# release bundles had none — the import answered false, the pool stayed
+# empty and every language's media pool shot failed (2026-10-22). The C
+# went (2026-11-13); the packages are resolved here still.
 cmd_furnish() {
   local p="${1:-}"
   [ -n "$p" ] || die "furnish needs a directory"
   require_worktree "$p"
   furnish "$p"
-}
-
-# Refusal 5, runnable on its own. The header says why each step is there.
-cmd_native() {
-  local name="${1:-}"; [ -n "$name" ] || die "native needs a name"
-  # $2 is `gates` when a land's gates ask (refusal 5): their parity run takes
-  # no place in the machine's line, as their architecture tests take none
-  # (유저 10-08 「착지 게이트는 이 넷에 세지 않는다」 — and a land waiting in
-  # the line would hold the land's turn). Asked alone, it is a session's
-  # test run and stands in the line (`affected_tests.dart`, `lineFor`).
-  local line=
-  [ "${2:-}" = gates ] && line=--outside-the-line
-  name="$(lane_named "$name")" || exit 1
-  local p; p="$(lane_path "$name")"
-  require_worktree "$p"
-  local cm; cm="$(find_cmake)" || die "cmake not found — not on PATH, not in C:/Program Files/CMake"
-  local log="$p/build/lane-native.log" list="$p/build/lane-parity.txt"
-  mkdir -p "$p/build"
-  : >"$log"
-  echo "lane: native — every target, then parity against them"
-  # Refusal 6 does the build: an engine already stamped with this lane's C
-  # was built from exactly that C, every target, and is not built twice.
-  ensure_engine "$p" || {
-    grep -aE 'error C[0-9]+|: error:| error ' "$log" | head -15 >&2
-    die "the engine is not built from this lane's C — this is refusal 5; the whole log: $log"
-  }
-  still_landing
-  if grep -q '^CMAKE_CONFIGURATION_TYPES' \
-    "$p/build/native_standalone/CMakeCache.txt" 2>/dev/null; then
-    (cd "$p" && "$cm" --build build/native_standalone --config Debug \
-      --target qa_engine) >>"$log" 2>&1 || {
-      grep -aE 'error [A-Z]+[0-9]+|: error:| error ' "$log" | head -15 >&2
-      die "the engine does not compile in Debug, as the app's Debug build compiles it — this is refusal 5; the whole log: $log"
-    }
-  fi
-  still_landing
-  (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
-    || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
-  # By the run plan, as every list run goes: the collector pins alone and
-  # last (`tool/affected_tests.dart`, `filesListed`). The runner beside this
-  # script, as `ensure_engine` asks the provenance tool beside it: `gate`
-  # runs on a lane as it stands, and one cut before --files-from existed
-  # would ignore the flag and run a selection of its own.
-  (cd "$p" && QA_REQUIRE_NATIVE=1 bash "$ROOT/tool/run.sh" affected_tests \
-    --files-from "$list" ${line:+"$line"}) >>"$log" 2>&1 || {
-    tr '\r' '\n' <"$log" | grep -a '\[E\]' | head -10 >&2
-    die "parity is red against the engine this lane just built — this is refusal 5; the whole log: $log"
-  }
-  echo "lane: native — green ($(wc -l <"$list") parity files)"
 }
 
 # The crates this machine's build of the workspace at $1 takes from a
@@ -982,11 +811,8 @@ cmd_crate() {
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
   command -v cargo >/dev/null 2>&1 || die "cargo is not on PATH — this is refusal 8
-  The lane changed the GPU engine crate, its ledger or the C. Put this
+  The lane changed the GPU engine crate, its ledger or the fx SDK. Put this
   machine's Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
-  # The native crates' answer key (native/oracle): the lane's own engine.
-  ensure_engine "$p" || die "the engine is not built from this lane's C — this is refusal 8
-  The native crates are compared with it. See above."
   local log="$p/build/lane-crate.log" profile flag from passed red=
   mkdir -p "$p/build"
   : >"$log"
@@ -1106,9 +932,9 @@ HELD_TURN=
 # ↩️And it was stamped between the gates alone (관제 2026-11-12, same card,
 # 브러시/렌더링's reading): `tile-blocks-on-rust`'s native gate ran for 61
 # minutes beside a wide test run, and a Surface lane took the turn at 45 —
-# so the native gate stamps between its steps too, and a test run under a
-# land's gates beats the turn at every batch (`affected_tests.dart`,
-# `beatTheLandsTurn`).
+# so the native gate stamped between its steps too, and its parity run
+# wrote a beat inside the turn at every batch (`affected_tests.dart`) —
+# till both went with the C engine (2026-11-13).
 # 🚨A LAND WHOSE TURN WAS TAKEN STOPS HERE (same day): that land ran its gates
 # on for sixteen minutes beside the land that took the turn — two at once,
 # what the turn is there to prevent — to have its fast-forward refused.
@@ -1177,10 +1003,10 @@ gates() {
   architecture=$!
   wait "$analyze"; analyzed=$?
   wait "$architecture"; tested=$?
-  # A red gate keeps its whole output in the lane, beside the native and
-  # crate logs. 관제 2026-11-05 (i163-dropper-no-paper): an architecture run
-  # went red with no [E] line, the folder was removed, and the same tree
-  # was green again — which test it was is lost for good.
+  # A red gate keeps its whole output in the lane, beside the crate log.
+  # 관제 2026-11-05 (i163-dropper-no-paper): an architecture run went red
+  # with no [E] line, the folder was removed, and the same tree was green
+  # again — which test it was is lost for good.
   mkdir -p "$p/build"
   cp "$out/analyze" "$p/build/lane-analyze.log"
   cp "$out/architecture" "$p/build/lane-architecture.log"
@@ -1201,15 +1027,6 @@ gates() {
   trunk's: land the lane, then lower the ceiling to the measured number."
   fi
 
-  # Refusal 5. Only a lane that touched the C pays for it — its parity run
-  # outside the machine's line, as the architecture tests above run — and
-  # only one that still holds it: a lane that left no C behind has none to
-  # build. ⚠️That lane takes this gate out.
-  still_landing
-  if lane_touched "$p" packages/qa_native/src \
-    && [ -d "$p/packages/qa_native/src" ]; then
-    cmd_native "$name" gates
-  fi
   still_landing
   crate_gate "$name" "$p"
 }
@@ -1235,7 +1052,7 @@ crate_gate() {
   # as well (native/fx_plugin and native/fx_sdk_example build them), and a
   # lane that changed them alone ran none (2026-11-07).
   if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json \
-    packages/qa_native/src sdk/fx; then
+    sdk/fx; then
     cmd_crate "$name"
   fi
 }
@@ -1290,8 +1107,9 @@ land_turn() {
   local holder told=
   until mkdir "$turn" 2>/dev/null; do
     holder="$(cat "$turn/pid" 2>/dev/null || true)"
-    # Its age is its newest sign of life: the turn itself (`still_landing`,
-    # cargo_turn.sh) or the beat a test run under it writes inside it.
+    # Its age is its newest sign of life: when it was taken (the pid inside
+    # it), or the last time its land moved on and stamped it
+    # (`still_landing`, cargo_turn.sh).
     if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
       || [ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]; then
       rm -rf "$turn"
@@ -1376,8 +1194,9 @@ cmd_land() {
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
   # ⛔NOBODY IS THERE TO ANSWER A LOGIN. A land runs unattended, and with no
   # saved login git-credential-manager waited for one: the land never
-  # returned, the trunk's engine below was never rebuilt, and the copy was
-  # never made (lane-land-hangs-on-mirror-login, 2026-09-24). Here the push
+  # returned, the trunk's C engine was never rebuilt (↩️a step that stood
+  # below, till the C went), and the copy was never made
+  # (lane-land-hangs-on-mirror-login, 2026-09-24). Here the push
   # fails at once (mirror_git) and says to run `backup`, which still asks
   # in a terminal — a person can log in there.
   mirror_trunk
@@ -1394,13 +1213,6 @@ cmd_land() {
   for gone in "sent/$name" "gated/$name" "work/$name"; do
     mirror_git push --quiet "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
   done
-  # Refusal 6: the merge moved the trunk's C whenever this lane carried any,
-  # and the trunk's engine follows it HERE, in the trunk's own directory and
-  # cache — ⛔never the lane's build copied over, whose cache names the
-  # lane's path (see `open`). Last, because the land has already happened: a
-  # trunk engine that cannot be rebuilt now is the next `open`'s to fix.
-  ensure_engine "$ROOT" \
-    || echo "lane: ⚠️the trunk's engine is not built from the trunk's C — the next open tries again" >&2
   # A package missing here is the next open's to name.
   resolve_packages "$ROOT" >/dev/null 2>&1 || true
 }
@@ -1408,9 +1220,7 @@ cmd_land() {
 { case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   land) shift; cmd_land "$@" ;;
-  native) shift; cmd_native "$@" ;;
   crate) shift; cmd_crate "$@" ;;
-  engine) shift; cmd_engine "$@" ;;
   furnish) shift; cmd_furnish "$@" ;;
   backup) shift; cmd_backup "$@" ;;
   list) shift; cmd_list "$@" ;;
@@ -1422,5 +1232,5 @@ cmd_land() {
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
   gate) shift; cmd_gate "$@" ;;
-  *) sed -n '2,20p' "$0"; exit 2 ;;
+  *) sed -n '2,18p' "$0"; exit 2 ;;
 esac; exit; }

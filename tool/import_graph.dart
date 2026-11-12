@@ -85,7 +85,8 @@ Set<String> pathsReadAsText(String source) => {
 /// ([pathsReadAsText]): the Dart sources, the platform folders the app's
 /// shells live in, and the packages beside the app — a scan reads the GPU
 /// engine's by path (its example's plugin registrants), while every suite
-/// reads only `kEngineSources`. 🆕And the CI's own files (2026-11-07): four
+/// reads none of them unnamed (`kEveryTestReadsUnder`). 🆕And the CI's own
+/// files (2026-11-07): four
 /// scans read workflows by path, and a change to one ran none of them — the
 /// GPU engine's job split that day was 「no test reaches」.
 const kTextRoots = [
@@ -106,7 +107,7 @@ final _sourcePathLiteral = RegExp(
 /// app's own is. 🆕2026-11-07: the app came to depend on the GPU engine
 /// (screen-on-the-engine), and while `package:gpu_engine` read as a third
 /// party's, a change to the engine selected none of the suites that call it.
-const kPathPackages = ['gpu_engine', 'qa_native'];
+const kPathPackages = ['gpu_engine'];
 
 /// The folder of the package of [kPathPackages] whose shipped code [file] is
 /// — `packages/<it>/` for a file under `packages/<it>/lib/` — or null.
@@ -180,7 +181,7 @@ Map<String, Set<String>> buildImportGraph({
 /// each package of [kPathPackages], which an import of one is an edge into.
 const kGraphRoots = [
   'lib', 'test', 'tool', //
-  'packages/gpu_engine/lib', 'packages/qa_native/lib',
+  'packages/gpu_engine/lib',
 ];
 
 /// Everything [start] can reach through [graph] — however far away, or no

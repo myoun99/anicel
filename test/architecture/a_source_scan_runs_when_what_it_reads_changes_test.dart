@@ -6,13 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show
-        changesTheEngine,
-        forcesFullRun,
-        kNearConfigImports,
-        kNearImports,
-        parityTests,
-        selectTests;
+    show forcesFullRun, kNearConfigImports, kNearImports, selectTests;
 import '../../tool/import_graph.dart'
     show buildImportGraph, kGraphRoots, pathsReadAsText;
 
@@ -285,7 +279,6 @@ void main() {
       'pubspec.lock',
       'analysis_options.yaml',
       'dart_test.yaml',
-      'packages/qa_native/src/brush.c',
       'test/flutter_test_config.dart',
       // What the pubspec bundles into every suite, as the green record has
       // always keyed it (10-20).
@@ -310,43 +303,19 @@ void main() {
     );
   });
 
-  test('🚨the engine\'s C runs every suite only in the wide run — near, it '
-      'is the tests that exercise the engine', () {
-    // 유저 10-21 (tests-crowd-the-machine-Q14): a lane that changed the C ran
-    // all 2,500 files before it landed; the wide check after landing runs
-    // them all against that C.
-    const c = 'packages/qa_native/src/brush.c';
-    expect(changesTheEngine(c), isTrue);
-    expect(changesTheEngine('lib/src/native/qa_engine_abi.dart'), isFalse);
-    expect(forcesFullRun(c), isTrue, reason: 'the wide run');
-    expect(forcesFullRun(c, near: true), isFalse, reason: 'the near run');
-    for (final blanket in [
-      'pubspec.yaml',
-      'analysis_options.yaml',
-      'test/flutter_test_config.dart',
-      'assets/fonts/BIZUDPGothic-Regular.ttf',
-    ]) {
-      expect(forcesFullRun(blanket, near: true), isTrue, reason: blanket);
-    }
-    final parity = parityTests();
-    expect(parity, isNotNull,
-        reason: 'tool/native_parity_tests.sh is the one answer');
-    expect(parity, contains('test/services/native_engine_present_test.dart'));
-    expect(parity!.length, lessThan(400),
-        reason: 'the engine\'s tests, not the suite');
-  });
+  // ↩️A pin stood here for the C engine's sources — every suite in the
+  // wide run and, near, the tests that exercise the engine (유저 10-21,
+  // tests-crowd-the-machine-Q14) — till the C went (2026-11-13).
 
-  test('🚨the GPU engine crate is not on the C\'s list — no change to it is '
-      'a blanket, and one that reads it by path runs when it changes', () {
+  test('🚨no change to the GPU engine crate is a blanket, and a test that '
+      'reads it by path runs when it changes', () {
     // 저장 · 관제 2026-11-05 (gpu-engine-skeleton): while every path under
     // `packages/` counted as the engine, a lane that changed only the
     // crate's Rust, WGSL and ledger ran 218 files with 165 parity tests.
-    // What a change to it runs is the graph's answer — read as the C's
+    // What a change to it runs is the graph's answer — read as the C's was
     // since connection-round-checklist-Q24 (the next pin).
     const crate = 'packages/gpu_engine/rust/src/kernels/fill/fill.wgsl';
-    expect(changesTheEngine(crate), isFalse);
-    expect(forcesFullRun(crate), isFalse, reason: 'the wide run');
-    expect(forcesFullRun(crate, near: true), isFalse, reason: 'the near run');
+    expect(forcesFullRun(crate), isFalse);
     const registrants = 'packages/gpu_engine/example/windows/flutter';
     expect(pathsReadAsText("'$registrants'"), {registrants});
   });
@@ -354,7 +323,8 @@ void main() {
   test('🚨a change to the GPU engine\'s Rust is read as the C\'s — near, the '
       'suites that call it, and wide, every suite', () {
     // 🗣️유저 2026-11-08, connection-round-checklist-Q24 「엔진 Rust 를 옛 C
-    // 엔진 소스처럼 읽는다」 — the law 10-21 Q14 set the C ([forcesFullRun]).
+    // 엔진 소스처럼 읽는다」 — the law 10-21 Q14 set the C, while there was
+    // one ([forcesFullRun] says what it was).
     // The app draws through the engine from deep in its widgets
     // (word_bake.dart), so the config reaches it: the wide run, which asks
     // the config at every distance, runs every suite, and a lane's near

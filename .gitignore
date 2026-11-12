@@ -44,10 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# NDK build cache — the native engine's Android build writes ~21 MB of
-# ninja/CMake state here, per ABI, on the first `flutter run -d <android>`.
-# Anywhere, not just packages/qa_native/android: the NDK puts one beside
-# every module it builds.
+# NDK build cache — a module's Android CMake build writes ninja/CMake state
+# here, per ABI, on the first `flutter run -d <android>` (↩️~21 MB for the C
+# engine's, measured before that package went). Anywhere: the NDK puts one
+# beside every module it builds.
 **/.cxx/
 
 # Signing material — never commit. CI reads these from repository secrets.

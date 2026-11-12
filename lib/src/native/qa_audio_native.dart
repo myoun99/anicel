@@ -70,7 +70,8 @@ external void _busToInt16(Pointer<Double> bus, int count, Pointer<Int16> out);
 /// It lives here because this file DECLARES the structs, and it is public
 /// because [QaAudioDevice] passes those same structs to the same library
 /// on the path that actually reaches a speaker. Both must call it; the
-/// roster test in `qa_engine_abi_test.dart` fails if one stops.
+/// roster test in `a_loader_opens_no_library_of_its_own_test.dart` fails if
+/// one stops.
 bool qaAudioStructLayoutsMatch() =>
     _clipSizeof() == sizeOf<QaAudioClipStruct>() &&
     _sourceSizeof() == sizeOf<QaAudioSourceStruct>() &&

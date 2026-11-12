@@ -8,10 +8,9 @@ name: Apple (macOS + iOS)
 on:
   workflow_dispatch:
   push:
-    # Also whenever the native core or the Apple projects change - those
-    # are exactly the edits this workflow exists to catch.
+    # Also whenever a package or the Apple projects change - those are
+    # exactly the edits this workflow exists to catch.
     paths:
-      - 'packages/qa_native/**'
       - 'packages/**'
       - 'ios/**'
       - 'macos/**'
@@ -32,7 +31,7 @@ env:
 
 jobs:
   apple:
-    name: macOS app + iOS simulator + native C
+    name: macOS app + iOS simulator
     runs-on: macos-latest
     # Compile verification only — the suite lives in apple-suite below,
     # on the cadence where nobody waits on it. ~8 minutes warm; 20 bounded
@@ -46,27 +45,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Cheapest signal first: does the portable C core compile with
-      # Apple clang for both host and iOS targets?
-      - name: Native core (Apple clang, host)
-        run: |
-          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/ci-apple --config Release
-          ls -la build/ci-apple
-
-      - name: Native core (arm64 iOS target)
-        run: |
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_engine.c \
-            -o /tmp/qa_engine_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99 -Wall
-          # ↩️The decoder TU (qa_audio_decode.c) was compiled for the device
-          # here too, for its AudioToolbox path, until the connection round
-          # moved the decoder to the Rust engine (connection-round-checklist
-          # H, 2026-11-08).
-          ls -la /tmp/qa_engine_ios.o
-
+      # ↩️The cheapest signal came first here: the portable C core compiled
+      # with Apple clang for the host and for the arm64 iOS target, till the
+      # C went (2026-11-13). The Rust engine is compiled by the two builds
+      # below, through its build hook: for the Mac and for the iOS
+      # simulator. The device's is testflight.yml's build.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}

@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
   s.frameworks       = 'CoreVideo'
   s.ios.dependency 'Flutter'
   s.osx.dependency 'FlutterMacOS'
-  # As qa_native's pods.
+  # ↩️As the C engine's pods had them, till that package went (2026-11-13).
   s.ios.deployment_target = '13.0'
   s.osx.deployment_target = '10.14'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }

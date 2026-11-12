@@ -5,7 +5,6 @@ import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
-import '../../native/qa_engine_abi.dart';
 import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../../services/audio/sound_span.dart';
 import '../../services/import/raster_cel_import.dart';
@@ -153,7 +152,7 @@ class TrimmedPieces {
     void Function(double fraction)? onProgress,
   ) async {
     final clock = _clock();
-    final written = await onAWorkerWithThisEngineReporting(
+    final written = await onAWorkerReporting(
       onProgress,
       (report) => writeMovieSpan(
         source,
@@ -177,7 +176,7 @@ class TrimmedPieces {
       inFrame: trim.inFrame,
       outFrame: trim.outFrame,
     );
-    final wav = await onAWorkerWithThisEngine(
+    final wav = await onAWorker(
       () => soundSpanAsWav(MediaFileBytes(source), kept, clock),
     );
     if (wav == null) {

@@ -10,11 +10,8 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// What ONE pointer move of a transform drag costs, and what that cost
 /// follows.
@@ -37,12 +34,6 @@ import '../helpers/native_engine_path.dart';
 ///
 /// Prints; asserts only that the work happened. Run it alone.
 void main() {
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    debugQaEngineLibraryPathOverride = null;
-  });
-
   /// A stamp of [width]×[height] with mixed alpha, so neither the opaque
   /// nor the transparent early-out carries the whole run.
   BrushDab stampDab(int width, int height) {
@@ -137,12 +128,6 @@ void main() {
   }
 
   test('the resample is the pointer move, and it follows the OUTPUT area', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    debugQaEngineLibraryPathOverride = dllPath;
-
     // Three sizes: a modest selection, a 1080p-ish cel, and the whole
     // picture on the default canvas — which is what an unselected
     // transform box opens on, and so the common case rather than the
@@ -188,12 +173,6 @@ void main() {
   });
 
   test('what the viewport clip buys: the same drag, only the visible part', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    debugQaEngineLibraryPathOverride = dllPath;
-
     // A whole-picture transform against a 1600×1000 window — a laptop
     // canvas pane over the default 2340×1654 canvas, which is the case
     // the tool is slowest in and the case a user hits by pressing Ctrl+T
@@ -247,12 +226,6 @@ void main() {
   });
 
   test('the same drag on LINE ART, which is what the tool is for', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    debugQaEngineLibraryPathOverride = dllPath;
-
     for (final mode in ResampleMode.values) {
       for (final (label, width, height) in const <(String, int, int)>[
         ('selection 512²', 512, 512),

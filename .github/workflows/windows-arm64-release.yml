@@ -1,5 +1,5 @@
-# 🪟THE WINDOWS BUILD FOR ARM PCs — a release bundle, checked against the
-# bytes every other platform draws, launched once, zipped.
+# 🪟THE WINDOWS BUILD FOR ARM PCs — a release bundle, the engine's tests
+# run on this CPU, launched once, zipped.
 #
 # 유저 2026-10-30 (board, windows-arm64-build): 「일단 arm64가 지금 없으니까
 # 이거 빌드에넣고싶」 — Windows on ARM has been a target since 2026-07-07, and
@@ -11,10 +11,11 @@
 # (2026-08-31). One run per release round, asked for by hand.
 #
 # ⚠️NOBODY HERE OWNS AN ARM PC. This file proves the bundle builds, that every
-# binary in it is ARM64, that the engine it ships draws the bytes every other
-# platform draws, that a .wasm plugin answers as its native twin does, and that
-# it opens its window on this runner. Whether a pen's pressure arrives, or a
-# real GPU keeps up, nobody has seen.
+# binary in it is ARM64, that the tests which call into the engine's library
+# pass on this CPU's build of it (↩️the C engine's byte parity with every other
+# platform, till the C went — 2026-11-13), that a .wasm plugin answers as its
+# native twin does, and that it opens its window on this runner. Whether a
+# pen's pressure arrives, or a real GPU keeps up, nobody has seen.
 name: Windows ARM64 (release bundle)
 
 on:
@@ -88,25 +89,22 @@ jobs:
             exit 1
           }
 
-      # The release path's parity check, as the Linux build runs it. The
-      # engine is read in the build folder, where its build left it, as the
-      # pins read it (test/helpers/native_engine_path.dart); `cmp` holds it
-      # to the file the bundle ships, so the file checked is the file handed
-      # out. MSVC on ARM64 is a compiler nothing else here runs, and the fx
-      # pin's WebAssembly twin is Wasmtime writing ARM64 code as a plugin
-      # opens, in the Rust engine's fx host, which nothing else here does.
-      # ↩️That was the C host's own test, run here, until 2026-11-08.
-      - name: Parity against the shipped engine
-        env:
-          QA_ENGINE_PATH: ${{ github.workspace }}/build/windows/arm64/plugins/qa_native/shared/Release/qa_engine.dll
-          # A missing engine must FAIL rather than skip: a skipped parity
-          # suite and a passing one look identical in a summary.
-          QA_REQUIRE_NATIVE: '1'
+      # The release path's check of the engine, as the Linux build runs it:
+      # the tests that call into the engine's library, on this runner's
+      # build of it. The engine built for ARM64 Windows is one nothing else
+      # here runs, and the fx pin's WebAssembly twin is Wasmtime writing
+      # ARM64 code as a plugin opens, in the Rust engine's fx host, which
+      # nothing else here does.
+      # ↩️That was the C host's own test, run here, until 2026-11-08. And
+      # till 2026-11-13 the step was the C engine's parity check — MSVC on
+      # ARM64, a compiler nothing else here ran — on the engine read in the
+      # build folder, which `cmp` held to the file the bundle shipped, with
+      # QA_REQUIRE_NATIVE so a missing engine failed rather than skipped.
+      - name: Tests on the engine as this runner builds it
         run: |
           set -euo pipefail
-          cmp "$QA_ENGINE_PATH" build/windows/arm64/runner/Release/qa_engine.dll
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
-          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          echo "engine subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
           dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"

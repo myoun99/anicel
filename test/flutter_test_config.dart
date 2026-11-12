@@ -9,7 +9,6 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart'
     show AppKernels, debugTakeAppGpuEngineNoted;
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
     show debugPictureSideLimit;
@@ -28,7 +27,6 @@ import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import 'helpers/a_shown_surface.dart';
-import 'helpers/native_engine_path.dart';
 import 'helpers/temp_dir.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
@@ -44,27 +42,6 @@ import 'helpers/temp_dir.dart';
 /// baseline (`AppInputSettings.testCorpusBaseline`), not to the
 /// product default `AppInputSettings()`.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
-  // 🚨★★★**THE ENGINE THE PARITY PINS NEED, POINTED AT FROM ONE PLACE.**
-  //
-  // 「Where is the engine」 had two answers and they disagreed.
-  // `nativeEngineLibraryPathOrNull` looks under `build/native_standalone`,
-  // so the suites that use it ran; `openQaEngineLibrary` — which is what
-  // PRODUCTION calls, and therefore what the C engine's bindings call
-  // (↩️the compressor's, the span reader's and the sound decoder's too,
-  // until the connection round moved them into the Rust engine) — tries
-  // `QA_ENGINE_PATH` and then
-  // the bare library name beside the
-  // executable, and `flutter test` has neither. So every suite gated on the
-  // compressor skipped SILENTLY with the DLL sitting right there: 27 pins
-  // over the zstd block frames, the carried conform and the staged blob
-  // (2026-09-08).
-  //
-  // ⛔The env var cannot be set from Dart, and that is the whole reason
-  // this seam exists. Setting it here makes the two answers one.
-  //
-  // ⚠️`??=`, so `QA_ENGINE_PATH` still wins: CI sets it, and a run that
-  // wants to measure the NO-engine world can too.
-  debugQaEngineLibraryPathOverride ??= nativeEngineLibraryPathOrNull();
   // The GPU engine opens on the first adapter: no Flutter names one here.
   // ⛔Nothing opens it now — a file that never asks for the engine opens no
   // device (app_gpu_engine.dart) — and nothing stands in for it: a test that

@@ -10,7 +10,7 @@
 // Flutter's premultiplied bytes, as a frame the screen shows holds them
 // (frame_shown.wgsl); a run's frame is straight, so its p is the engine's
 // own premultiply first — the shared `premultiply8` (premultiply.wgsl,
-// qa_engine.c `qa_premultiply_pixel`), round(c·a / 255) (frame.wgsl).
+// the app's `premultiplyRgbaInPlace`), round(c·a / 255) (frame.wgsl).
 // An opaque pixel is its own colour — p = c and nothing of the
 // ground —, as the app's branch for it says. Integers only: a float step
 // may be fused or reassociated on one device and not another (fill.wgsl).

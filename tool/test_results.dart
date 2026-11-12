@@ -19,19 +19,22 @@
 //
 // ⚠️WHAT THE KEY CANNOT SEE: a file a test reads by a path assembled behind
 // a variable — the same blind spot the selection has (CLAUDE.md's 머지
-// 게이트) — and anything outside the checkout but Flutter and the engine.
-// A green that should have been red there is CI's to catch.
+// 게이트) — and anything outside the checkout but Flutter. A green that
+// should have been red there is CI's to catch.
+//
+// ↩️The 「네이티브 엔진 도장」 of the answer above was the C engine's build
+// stamp, and left the key with that engine (2026-11-13): the GPU engine's
+// Rust is in the checkout, an input like any other (`Reaches`).
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'import_graph.dart';
-import 'native_engine_provenance.dart';
 import 'test_seconds.dart';
 
 /// Raised when what goes into a key changes shape, so every green kept
 /// before it is run again.
-const kResultsVersion = 1;
+const kResultsVersion = 2;
 
 /// What every test reads without naming it: the package and its lock, the
 /// test configuration, and every test's own `flutter_test_config.dart`
@@ -44,25 +47,21 @@ const kEveryTestReads = [
 ];
 
 /// Folders every test may read without naming them: the assets and shaders
-/// the pubspec bundles into every test, and the native package the engine
-/// is built from ([kEngineSources]).
-const kEveryTestReadsUnder = ['assets/', 'shaders/', kEngineSources];
-
-/// Where the engine's sources live: the native core the app depends on by
-/// path (pubspec.yaml, `qa_native`) — the C behind FFI that no import edge
-/// reaches.
+/// the pubspec bundles into every test.
 ///
-/// ⛔Not the whole of `packages/`. `packages/gpu_engine` is read by the
-/// suites that reach its bindings (import_graph.dart, `Reaches` — since
-/// 2026-11-07 the app depends on it) — every suite since the config reached
-/// them, which is the law (connection-round-checklist-Q24, 2026-11-08: the
-/// engine's Rust read as the C is) —, and a suite that reads it as text
-/// names it (`kTextRoots`). Until 2026-11-05 this was
-/// `packages/`: a lane that changed only the GPU engine's Rust, WGSL and
-/// ledger ran 218 files with 165 parity tests and held the Surface's line
-/// for forty minutes (저장 · 관제, gpu-engine-skeleton). The crate's own
-/// tests are the land's (tool/lane.sh, refusal 8).
-const kEngineSources = 'packages/qa_native/';
+/// ⛔Not `packages/`. `packages/gpu_engine` is read by the suites that reach
+/// its bindings (import_graph.dart, `Reaches` — since 2026-11-07 the app
+/// depends on it) — every suite since the config reached them, which is
+/// the law (connection-round-checklist-Q24, 2026-11-08: the engine's Rust
+/// read as the C was) —, and a suite that reads it as text names it
+/// (`kTextRoots`). Until 2026-11-05 the whole of `packages/` stood here: a
+/// lane that changed only the GPU engine's Rust, WGSL and ledger ran 218
+/// files with 165 parity tests and held the Surface's line for forty
+/// minutes (저장 · 관제, gpu-engine-skeleton). The crate's own tests are
+/// the land's (tool/lane.sh, refusal 8). ↩️From then `packages/qa_native/`
+/// stood here alone — the C engine, behind FFI where no import edge
+/// reached it — till that package went (2026-11-13).
+const kEveryTestReadsUnder = ['assets/', 'shaders/'];
 
 const kTestConfig = 'test/flutter_test_config.dart';
 
@@ -152,22 +151,17 @@ String keyOf(
 }
 
 /// What lies outside the checkout that every result depends on — Flutter
-/// as `flutter.version.json` describes it, and the engine's stamp — or
-/// null when either cannot be read, each one [unread] is told of. ⛔Then
-/// nothing is taken from the record: a key that cannot see Flutter change
-/// would keep its greens across an upgrade.
+/// as `flutter.version.json` describes it — or null when it cannot be
+/// read, which [unread] is told of. ⛔Then nothing is taken from the
+/// record: a key that cannot see Flutter change would keep its greens
+/// across an upgrade.
 String? outsideInputs(
-  String root,
   Map<String, String> environment, {
   void Function(String what)? unread,
 }) {
   final flutter = _flutterVersion(environment);
-  final engine = engineStampOf(root);
   if (flutter == null) unread?.call("Flutter's version");
-  if (engine == null) unread?.call("the engine's stamp");
-  return flutter == null || engine == null
-      ? null
-      : 'flutter $flutter\nengine $engine';
+  return flutter == null ? null : 'flutter $flutter';
 }
 
 String? _flutterVersion(Map<String, String> environment) {
@@ -366,8 +360,8 @@ class ResultCache {
 
   /// The cache for the checkout at [root] whose Dart files import each
   /// other as [imports] — or null when no key can be made: no machine
-  /// folder, git that cannot say, or Flutter or the engine unread, each
-  /// one [unread] is told of.
+  /// folder, git that cannot say, or Flutter unread, each one [unread] is
+  /// told of.
   static ResultCache? open(
     String root,
     Map<String, String> environment,
@@ -377,7 +371,7 @@ class ResultCache {
     final greens = greenRecord(environment);
     final flaky = flakyRecord(environment);
     if (greens == null || flaky == null) unread?.call('the machine folder');
-    final outside = outsideInputs(root, environment, unread: unread);
+    final outside = outsideInputs(environment, unread: unread);
     if (greens == null || flaky == null || outside == null) return null;
     final ids = contentIds(root);
     if (ids == null) {

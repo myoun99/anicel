@@ -12,7 +12,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -30,7 +29,6 @@ import 'package:anicel/src/ui/canvas/shown_cels.dart';
 import 'package:anicel/src/ui/session/history_pictures.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🚨★★★UNDO INTO AN ENTRY THE BUDGET PARKED SHOWS NO BLANK FRAME
@@ -303,9 +301,6 @@ class _Walk {
     bool releases = true,
     bool forkFirstStroke = false,
   }) async {
-    debugQaEngineLibraryPathOverride = nativeEngineLibraryPathOrNull();
-    addTearDown(() => debugQaEngineLibraryPathOverride = null);
-
     final keys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: keys,

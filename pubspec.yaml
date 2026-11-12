@@ -55,10 +55,6 @@ dependencies:
   # letters without case). Already in the lock through Flutter itself; named
   # here because lib now imports it.
   collection: ^1.19.1
-  # The native core as an FFI plugin (2A): each platform's own toolchain
-  # compiles packages/qa_native/src and ships the result with the app.
-  qa_native:
-    path: packages/qa_native
   # The GPU engine (Rust + wgpu), built by its own build hook and shipped
   # with the app — the screen, playback and export draw through it
   # (screen-on-the-engine, connection-round-checklist).
