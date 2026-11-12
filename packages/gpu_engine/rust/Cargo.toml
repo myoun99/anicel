@@ -36,6 +36,9 @@ image_encode = { path = "native/image_encode" }
 media = { path = "native/media" }
 memory = { path = "native/memory" }
 pen = { path = "native/pen" }
+# A tile's bytes premultiplied for its picture's upload, four pixels a step
+# — the last kernel the app took from the C engine.
+premultiply = { path = "native/premultiply" }
 # A tile's block of pixels, and the lists a freed one waits on — the last
 # memory the app took from the C engine.
 tile_blocks = { path = "native/tile_blocks" }

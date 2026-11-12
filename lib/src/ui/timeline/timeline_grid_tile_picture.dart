@@ -28,7 +28,7 @@ final class TimelineGridTilePicture {
   /// How many are not freed yet — a tile the store drew and then dropped
   /// on its way, which nothing hands back to hold, among them.
   /// ⛔Read it around an operation, never as an absolute
-  /// (`QaStampScratch.debugLiveCount`'s rule).
+  /// (`PremultipliedTileUpload.debugLiveCount`'s rule).
   @visibleForTesting
   static int get debugLive => _live;
   static int _live = 0;

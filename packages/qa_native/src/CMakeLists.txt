@@ -49,8 +49,8 @@ set_target_properties(qa_engine PROPERTIES
 # ↩️The last test here (qa_engine_pool_test.c) held several callers at once
 # on the engine's one worker pool (card clip-import-hangs-on-three-samples);
 # it went with the pool and the brush kernels the pool spread (ABI 80,
-# 2026-11-12). Nothing the C still does has a test of its own in C: its
-# premultiply is held from Dart.
+# 2026-11-12). The premultiply, the last thing the C did, was held from
+# Dart till it left for the GPU engine's library (ABI 83, 2026-11-13).
 
 # ↩️Vendored dr_libs and zstd emitted a few benign conversion warnings, which
 # were silenced on their translation units alone, until the connection round

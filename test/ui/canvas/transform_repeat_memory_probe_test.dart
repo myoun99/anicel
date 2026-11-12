@@ -15,7 +15,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/native/qa_memory.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -105,15 +104,6 @@ void main() {
 
   testWidgets('C-ipad-crash ①: what grows when a big picture is scaled up '
       'and back down, round after round', (tester) async {
-    // The device premultiplies a picture's bytes in the C engine's
-    // buffers; a probe on the Dart fallback would measure a different set
-    // of holders. `flutter_test_config.dart` points every test at the
-    // built engine — this only refuses to run without it.
-    expect(
-      QaNativeEngine.instance,
-      isNotNull,
-      reason: 'fixture: the engine loaded, so its holders are the real ones',
-    );
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final store = BrushFrameStore();
     final coordinator = BrushFrameEditingCoordinator(

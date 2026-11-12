@@ -423,7 +423,15 @@ import '../core/on_a_worker.dart';
 ///   the allocator's addresses till now (`QaTileBlocksAt`), and an isolate
 ///   without this binary fell back to `malloc` — and the C premultiplies a
 ///   copy, nothing more.
-const int kQaEngineAbiVersion = 82;
+/// - v83: `qa_premultiply_rgba_copy` leaves the C — a tile's premultiplied
+///   copy is the GPU engine library's (native/premultiply), the same name
+///   and the same four-pixel steps, bound by `@Native`
+///   (`premultiplyRgbaCopy`), and a tile's upload has no Dart fallback to
+///   take where a binary is missing. The binding class went with it
+///   (`QaNativeEngine`, `QaStampScratch`). The C exports this number and
+///   nothing else, and nothing in the app opens it: the package goes next
+///   (board connection-round-checklist).
+const int kQaEngineAbiVersion = 83;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

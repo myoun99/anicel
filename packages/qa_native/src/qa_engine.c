@@ -1,17 +1,10 @@
-// Anicel native engine core (R18 A-track) - what is left of it: a
-// premultiplied copy. Every kernel that drew is the GPU engine's now, and
-// the tile blocks' lists are its library's (native/tile_blocks) - the ABI
-// history at the foot of this file.
-//
-// ONE portable C source, cross-compiled per platform (Windows DLL, macOS
-// dylib, Android .so, ...). The premultiply has a Dart REFERENCE
-// implementation that stays in the tree; byte-parity between the two is
-// pinned by tests, so the native core can never silently diverge.
+// Anicel native engine core (R18 A-track) - nothing is left of it but the
+// number below. Every kernel that drew is the GPU engine's, and the last two
+// things the app took from here went to that engine's library: the tile
+// blocks' lists (native/tile_blocks) and the premultiplied copy
+// (native/premultiply) - the ABI history at the foot of this file. The
+// package goes next (board connection-round-checklist).
 
-// ptrdiff_t lives here. MSVC drags it in through another header, so the
-// omission was invisible for as long as Windows was the only build —
-// Apple clang rejected the file outright on CI's first run.
-#include <stddef.h>
 #include <stdint.h>
 
 #if defined(_WIN32)
@@ -19,118 +12,6 @@
 #else
 #define QA_EXPORT __attribute__((visibility("default")))
 #endif
-
-// The SIMD this build has — one fact for the file, read by the
-// premultiply's fours. SSE2 is baseline on x64 and NEON on aarch64, so
-// neither needs a runtime dispatch; 32-bit ARM keeps the scalar path.
-#if defined(_M_X64) || defined(__x86_64__) || defined(__SSE2__) || \
-    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-#define QA_SSE2 1
-#include <emmintrin.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#define QA_NEON 1
-#include <arm_neon.h>
-#endif
-
-// ---------------------------------------------------------------------------
-// Alpha premultiply (R18 A-2a): the display upload path's per-tile
-// conversion (BitmapTileImageCache.premultipliedTilePixels) - straight
-// alpha to premultiplied with Skia's own SkMulDiv255Round so uploads
-// round identically to Skia's rasterization. Pure integer math, ported
-// verbatim from the Dart reference.
-//
-// FOUR PIXELS A STEP where the build has the SIMD (2026-10-12): a tile's
-// premultiply was ~14% of the UI thread while playback made the camera
-// view's pictures (board playback-plays-the-screen-material), one byte at a
-// time behind a branch per pixel. The formula needs no branch — alpha 255
-// gives the byte back and alpha 0 gives 0, whatever the colour — so the
-// fast paths were only that, and every lane takes the same steps: the
-// product and its 128 fit sixteen bits (65,153 at most), and so does the
-// rounding added to it (65,407), so the bytes are the scalar's.
-//
-// ⛔Not spread across threads (lane tile-pictures-in-one-call, 10-12, not
-// landed — over the worker pool the brush kernels had till v80): a run of
-// tiles staged in one pooled call was never
-// faster where it was measured, the call waits for every worker it woke,
-// and the composes that give way between pictures took the one staging
-// block from each other — one make on a loaded machine staged its 72 runs
-// 945 times.
-static inline void qa_premultiply_pixel(uint8_t* d, const uint8_t* s) {
-  const int32_t alpha = s[3];
-  // SkMulDiv255Round: round(value * alpha / 255) for bytes.
-  int32_t product = s[0] * alpha + 128;
-  d[0] = (uint8_t)((product + (product >> 8)) >> 8);
-  product = s[1] * alpha + 128;
-  d[1] = (uint8_t)((product + (product >> 8)) >> 8);
-  product = s[2] * alpha + 128;
-  d[2] = (uint8_t)((product + (product >> 8)) >> 8);
-  d[3] = (uint8_t)alpha;
-}
-
-#if defined(QA_SSE2)
-static inline __m128i qa_premultiply4(__m128i px) {
-  const __m128i zero = _mm_setzero_si128();
-  const __m128i half = _mm_set1_epi16(128);
-  const __m128i alpha_bytes = _mm_set1_epi32((int32_t)0xFF000000u);
-  __m128i lo = _mm_unpacklo_epi8(px, zero);
-  __m128i hi = _mm_unpackhi_epi8(px, zero);
-  const __m128i alpha_lo = _mm_shufflehi_epi16(
-      _mm_shufflelo_epi16(lo, _MM_SHUFFLE(3, 3, 3, 3)),
-      _MM_SHUFFLE(3, 3, 3, 3));
-  const __m128i alpha_hi = _mm_shufflehi_epi16(
-      _mm_shufflelo_epi16(hi, _MM_SHUFFLE(3, 3, 3, 3)),
-      _MM_SHUFFLE(3, 3, 3, 3));
-  lo = _mm_add_epi16(_mm_mullo_epi16(lo, alpha_lo), half);
-  hi = _mm_add_epi16(_mm_mullo_epi16(hi, alpha_hi), half);
-  lo = _mm_srli_epi16(_mm_add_epi16(lo, _mm_srli_epi16(lo, 8)), 8);
-  hi = _mm_srli_epi16(_mm_add_epi16(hi, _mm_srli_epi16(hi, 8)), 8);
-  const __m128i colour = _mm_packus_epi16(lo, hi);
-  return _mm_or_si128(_mm_and_si128(px, alpha_bytes),
-                      _mm_andnot_si128(alpha_bytes, colour));
-}
-#elif defined(QA_NEON)
-static inline uint8x16_t qa_premultiply4(uint8x16_t px) {
-  static const uint8_t alpha_of[16] = {3,  3,  3,  3,  7,  7,  7,  7,
-                                       11, 11, 11, 11, 15, 15, 15, 15};
-  const uint8x16_t alpha = vqtbl1q_u8(px, vld1q_u8(alpha_of));
-  const uint16x8_t half = vdupq_n_u16(128);
-  uint16x8_t lo = vaddq_u16(vmull_u8(vget_low_u8(px), vget_low_u8(alpha)),
-                            half);
-  uint16x8_t hi = vaddq_u16(vmull_high_u8(px, alpha), half);
-  lo = vaddq_u16(lo, vshrq_n_u16(lo, 8));
-  hi = vaddq_u16(hi, vshrq_n_u16(hi, 8));
-  const uint8x16_t colour =
-      vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8));
-  return vbslq_u8(vreinterpretq_u8_u32(vdupq_n_u32(0xFF000000u)), px,
-                  colour);
-}
-#endif
-
-// Fused copy + premultiply (R19-Z): reads straight-alpha [src], writes
-// premultiplied bytes into [dst] in one pass - the decode-start path
-// used to pay a copy AND an in-place premultiply. [dst] may be [src]: a
-// step reads its pixels before it writes them.
-QA_EXPORT void qa_premultiply_rgba_copy(
-    uint8_t* dst,
-    const uint8_t* src,
-    int32_t pixel_count) {
-  int32_t i = 0;
-#if defined(QA_SSE2)
-  for (; i + 4 <= pixel_count; i += 4) {
-    const ptrdiff_t at = (ptrdiff_t)i * 4;
-    const __m128i px = _mm_loadu_si128((const __m128i*)(src + at));
-    _mm_storeu_si128((__m128i*)(dst + at), qa_premultiply4(px));
-  }
-#elif defined(QA_NEON)
-  for (; i + 4 <= pixel_count; i += 4) {
-    const ptrdiff_t at = (ptrdiff_t)i * 4;
-    vst1q_u8(dst + at, qa_premultiply4(vld1q_u8(src + at)));
-  }
-#endif
-  for (; i < pixel_count; i += 1) {
-    qa_premultiply_pixel(dst + (ptrdiff_t)i * 4, src + (ptrdiff_t)i * 4);
-  }
-}
 
 // Engine ABI version - ONE number for this whole binary, and the Dart
 // loader refuses a mismatched one.
@@ -321,4 +202,8 @@ QA_EXPORT void qa_premultiply_rgba_copy(
 // the same five names and the same lists. Bound there by name, a block is
 // the process's whichever isolate asks for it, and a build without this
 // binary parks its blocks as any other does.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 82; }
+// v83: qa_premultiply_rgba_copy leaves - a tile's premultiplied copy is the
+// GPU engine library's (native/premultiply), the same name and the same
+// four-pixel steps, bound there by name. Nothing is exported from here but
+// this number, and nothing in the app opens this binary.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 83; }

@@ -1,8 +1,11 @@
 /// Anicel's native core, packaged so every platform's toolchain
 /// compiles the same C sources.
 ///
-/// There is deliberately no API here. The engine is consumed through
-/// `dart:ffi` by `lib/src/native/qa_native_engine.dart` in the app, which
+/// There is deliberately no API here. ↩️The engine was consumed through
+/// `dart:ffi` by `lib/src/native/qa_native_engine.dart` in the app till its
+/// last kernel left for the GPU engine's library (C ABI 83, 2026-11-13);
+/// nothing in the app opens it now, and the package goes next (board
+/// connection-round-checklist). Its loader (`openQaEngineLibrary`)
 /// resolves symbols differently per platform:
 ///
 /// - **iOS / macOS**: the sources are compiled INTO the app binary by

@@ -16,7 +16,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -36,15 +35,11 @@ void main() {
   final available = dllPath != null;
 
   setUp(() {
-    QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
   });
 
   tearDown(() {
-    QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
   });
 
   test(

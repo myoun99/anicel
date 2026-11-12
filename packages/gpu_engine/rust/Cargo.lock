@@ -916,6 +916,7 @@ dependencies = [
  "objc2-metal",
  "pen",
  "pollster",
+ "premultiply",
  "read-fonts",
  "serde_json",
  "sha2",
@@ -1800,6 +1801,10 @@ checksum = "d83eb9bc6d8e5cf568e7a1101d60ee05e81ed50ea106026f3d18deeb046d7661"
 dependencies = [
  "zerovec",
 ]
+
+[[package]]
+name = "premultiply"
+version = "0.0.1"
 
 [[package]]
 name = "presser"

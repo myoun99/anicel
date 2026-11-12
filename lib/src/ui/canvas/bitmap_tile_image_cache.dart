@@ -1,12 +1,13 @@
+import 'dart:ffi';
 import 'dart:ui' as ui;
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/sync_image_upload.dart';
-import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_roll.dart';
-import '../../native/qa_native_engine.dart';
+import '../../native/premultiplied_copy.dart';
 import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
 import 'tile_pages.dart';
@@ -218,22 +219,16 @@ class BitmapTileImageCache {
   static PremultipliedTileUpload premultipliedTileUpload(BitmapTile tile) {
     // R18 A-2a / R19-Z: the fused native kernel reads the tile's NATIVE
     // buffer directly and premultiplies in one pass — byte-identical to
-    // the Dart reference below (parity-pinned). The scratch it writes is
-    // per-call, so it can be handed to the engine as-is and released
-    // right after.
-    final native = QaNativeEngine.instance;
-    if (native != null) {
-      final scratch = tile.readPixels(
-        (pointer, _) =>
-            native.premultipliedTileScratch(pointer, tile.size * tile.size),
-      );
-      return PremultipliedTileUpload._(scratch.view, scratch);
-    }
-    final pixels = tile.pixels;
-    premultiplyRgbaInPlace(pixels);
-    // The fallback's list is already the caller's own, so its release is
-    // the garbage collector's job.
-    return PremultipliedTileUpload._(pixels, null);
+    // the app's law (`premultiplyRgbaInPlace`, parity-pinned). The block
+    // it writes is per-call, so it can be handed to the engine as-is and
+    // released right after.
+    // ↩️Where no C engine was loaded the tile's bytes were lifted into a
+    // list and the law premultiplied them there; the kernel is the engine
+    // library's now, in every isolate and every build (C ABI 83).
+    final pixelCount = tile.size * tile.size;
+    return tile.readPixels(
+      (straight, _) => PremultipliedTileUpload._of(straight, pixelCount),
+    );
   }
 }
 
@@ -261,7 +256,7 @@ class _TilePictureBytes implements PictureBytes {
     try {
       return use(upload.view);
     } finally {
-      // ⚠️No earlier: the bytes may be a window onto native memory, and
+      // ⚠️No earlier: the bytes are a window onto native memory, and
       // the engine copies them into its own memory during the upload
       // itself. No later either — a staged 256 KB the frame keeps holding
       // is the cost this handoff exists to avoid paying twice.
@@ -273,20 +268,61 @@ class _TilePictureBytes implements PictureBytes {
 /// Premultiplied tile bytes staged for ONE upload, plus the release that
 /// goes with them.
 ///
-/// [view] may be a window onto native memory ([BitmapTileImageCache
-/// .premultipliedTileUpload] with the engine loaded), which is what keeps
-/// a 256KB VM copy out of every picture. The engine copies the bytes into
-/// its own memory during the upload call itself, so releasing right after
-/// it returns is safe — and releasing any earlier is not.
+/// [view] is a window onto native memory, which is what keeps a 256KB VM
+/// copy out of every picture. The engine copies the bytes into its own
+/// memory during the upload call itself, so releasing right after it
+/// returns is safe — and releasing any earlier is not.
 class PremultipliedTileUpload {
-  const PremultipliedTileUpload._(this.view, this._scratch);
+  PremultipliedTileUpload._(this._block, int byteLength)
+    : view = _block.asTypedList(byteLength) {
+    _live += 1;
+  }
+
+  /// [pixelCount] straight pixels at [straight], premultiplied into a
+  /// block of their own.
+  factory PremultipliedTileUpload._of(Pointer<Uint8> straight, int pixelCount) {
+    final block = malloc<Uint8>(pixelCount * 4);
+    premultiplyRgbaCopy(block, straight, pixelCount);
+    return PremultipliedTileUpload._(block, pixelCount * 4);
+  }
 
   /// The bytes to hand the engine. Valid until [free].
   final Uint8List view;
 
-  /// Null when [view] is an ordinary Dart list (the no-engine fallback).
-  final QaStampScratch? _scratch;
+  final Pointer<Uint8> _block;
 
   /// Call once the upload has consumed [view] — never before.
-  void free() => _scratch?.free();
+  ///
+  /// ⛔**NOT in a decode callback.** The staging's own note said so once,
+  /// and it was the bug: `ui.decodeImageFromPixels` does not invoke its
+  /// callback when it REFUSES, so a failed decode leaked the whole block.
+  /// Every call site was moved to a `finally` (see [debugLiveCount], and
+  /// the note beside the one in `straight_rgba_image.dart` — "THE
+  /// `finally` IS THE FIX") and the sentence outlived them, telling the
+  /// next reader to put it back.
+  void free() {
+    malloc.free(_block);
+    _live -= 1;
+  }
+
+  static int _live = 0;
+
+  /// How many of these are alive right now.
+  ///
+  /// 🧪★★★**A LEAK HERE IS INVISIBLE TO EVERYTHING ELSE.** This is a bare
+  /// `malloc` with no `NativeFinalizer` behind it, so an unfreed block is
+  /// not reclaimed by the GC, does not show up in Dart heap numbers, and
+  /// costs a whole tile — 256 KB at a 256 px tile. ↩️Four call sites freed
+  /// such a block inside a decode CALLBACK, which
+  /// `ui.decodeImageFromPixels` does not invoke when it refuses; every one
+  /// was moved to a `finally`, and without a count the difference between
+  /// those two shapes is something no test can see. Three of the four went
+  /// with the C brush's stamps (C ABI 80); the one that stays is a tile's
+  /// picture ([BitmapTileImageCache.pictureFor]), held by
+  /// a_tile_upload_is_the_apps_premultiply_test.
+  ///
+  /// ⛔Read it around an operation, never as an absolute: this is a
+  /// process-wide counter and other work holds blocks at the same time.
+  @visibleForTesting
+  static int get debugLiveCount => _live;
 }

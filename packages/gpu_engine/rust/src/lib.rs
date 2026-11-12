@@ -63,6 +63,11 @@ pub use media;
 // here, and the C's are gone.
 pub use memory;
 pub use pen;
+// A tile's bytes premultiplied for its picture's upload (board
+// what-still-runs-on-the-cpu, 2026-11-13): `qa_premultiply_rgba_copy` is
+// answered here, and the C's is gone. The app binds it with `@Native`
+// (premultiplied_copy.dart).
+pub use premultiply;
 // A tile's block of pixels, and the lists a freed one waits on (board
 // what-still-runs-on-the-cpu, 2026-11-12): `qa_tile_alloc` · `qa_tile_free`
 // · `qa_tile_pool_cached_bytes` · `qa_tile_pool_trim` ·

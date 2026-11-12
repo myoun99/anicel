@@ -11,7 +11,6 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 
@@ -41,9 +40,7 @@ void main() {
   final dllPath = nativeEngineLibraryPathOrNull();
 
   tearDown(() {
-    QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
   });
 
   /// A stamp of [width]×[height] with mixed alpha, so neither the opaque
@@ -144,9 +141,7 @@ void main() {
       markTestSkipped(nativeEngineMissingSkipReason);
       return;
     }
-    QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
 
     // Three sizes: a modest selection, a 1080p-ish cel, and the whole
     // picture on the default canvas — which is what an unselected
@@ -197,9 +192,7 @@ void main() {
       markTestSkipped(nativeEngineMissingSkipReason);
       return;
     }
-    QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
 
     // A whole-picture transform against a 1600×1000 window — a laptop
     // canvas pane over the default 2340×1654 canvas, which is the case
@@ -258,9 +251,7 @@ void main() {
       markTestSkipped(nativeEngineMissingSkipReason);
       return;
     }
-    QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
 
     for (final mode in ResampleMode.values) {
       for (final (label, width, height) in const <(String, int, int)>[

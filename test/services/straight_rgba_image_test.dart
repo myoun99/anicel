@@ -12,9 +12,10 @@ import '../helpers/pinned_fingerprints.dart';
 /// so. ↩️Beside it the C took the pass (`premultipliedStraightRgba`), and
 /// here stood its pins — the two branches one rounding, a refused decode
 /// giving its native scratch back — until nothing asked it
-/// (a-float-premultiplies-in-the-c-each-step). The C kernel itself is
-/// pinned to the Dart over every colour at every alpha where the tiles it
-/// still multiplies go up (`qa_native_engine_parity_test`).
+/// (a-float-premultiplies-in-the-c-each-step). The kernel itself — the
+/// GPU engine library's since C ABI 83 — is pinned to the Dart over every
+/// colour at every alpha where the tiles it still multiplies go up
+/// (`a_tile_upload_is_the_apps_premultiply_test`).
 void main() {
   /// 🚨★★★**A DECODE THAT CANNOT SUCCEED HAS TO SAY SO.**
   ///
