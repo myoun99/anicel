@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' show PictureRecorder;
 
 import 'package:flutter/widgets.dart';
 
@@ -214,29 +215,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
     }
     final resolvedViewport = viewport;
-    if (resolvedViewport != null) {
-      applyViewportTransform(
-        canvas,
-        resolvedViewport,
-        devicePixelRatio: devicePixelRatio,
-      );
-    }
+    final frameRect = _viewThrough(canvas);
     final canvasRect = canvasSize.canvasRect;
-
-    Rect? frameRect;
-    if (pose != null) {
-      // The camera's output frame takes the canvas's place in viewport
-      // space; the projection inside it is the camera's own
-      // ([cameraProjectionMatrix]).
-      final frameSize = cameraFrameSize!;
-      frameRect = Rect.fromLTWH(
-        0,
-        0,
-        frameSize.width.toDouble(),
-        frameSize.height.toDouble(),
-      );
-      canvas.clipRect(frameRect);
-    }
     // The cut's UNIT — what its fade thins and its transition's screen
     // covers: the camera's frame through the camera; seen through none, as
     // far as its pasteboard reaches — the plane and what is drawn on it
@@ -335,6 +315,80 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // stage thins it by its own weight, as it thins its picture.
     paintTransitionVeils(canvas, unit, veils, thinnedBy: imageOpacity);
     canvas.restore();
+  }
+
+  /// Puts the view on [canvas] — the viewport's transform and, through a
+  /// camera, its output frame's clip — and answers that frame: what [paint]
+  /// lays the cut's unit in, and [inkOf] asks the names' place of.
+  Rect? _viewThrough(Canvas canvas) {
+    if (viewport case final resolvedViewport?) {
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (cameraPose == null) {
+      return null;
+    }
+    // The camera's output frame takes the canvas's place in viewport
+    // space; the projection inside it is the camera's own
+    // ([cameraProjectionMatrix]).
+    final frameSize = cameraFrameSize!;
+    final frameRect = Rect.fromLTWH(
+      0,
+      0,
+      frameSize.width.toDouble(),
+      frameSize.height.toDouble(),
+    );
+    canvas.clipRect(frameRect);
+    return frameRect;
+  }
+
+  /// Where [paint] inks on [size], in its pixels — null for anywhere it
+  /// may. Only a painter handed its names and nothing else says: a box they
+  /// all lie in ([seNameTagsInk]), through the view and the camera [paint]
+  /// lays them by; empty where they ink nowhere.
+  ///
+  /// Asked by a raster that keeps to where its names are — an export's
+  /// names over its frame (card
+  /// an-exports-overlay-raster-reads-back-the-whole-frame: 🔬a 4K frame's
+  /// names inked 1–20% of it, and the whole of it was read back).
+  Rect? inkOf(Size size) {
+    if (size.isEmpty) {
+      return Rect.zero;
+    }
+    final pose = cameraPose;
+    final namesAlone =
+        seNameTags.isNotEmpty &&
+        veils.isEmpty &&
+        !paintPaper &&
+        (pose == null || (!paintLetterbox && pasteboardColor == null));
+    if (!namesAlone) {
+      return null;
+    }
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder)..clipRect(Offset.zero & size);
+    try {
+      _viewThrough(canvas);
+      if (pose != null) {
+        applyCameraProjection(canvas, pose, cameraFrameSize!);
+      }
+      final names = seNameTagsInk(
+        tags: seNameTags,
+        canvasSize: canvasSize,
+        within: canvas.getLocalClipBounds(),
+      );
+      if (names == null) {
+        return Rect.zero;
+      }
+      return MatrixUtils.transformRect(
+        Matrix4.fromFloat64List(canvas.getTransform()),
+        names,
+      ).intersect(canvas.getDestinationClipBounds());
+    } finally {
+      recorder.endRecording().dispose();
+    }
   }
 
   @override

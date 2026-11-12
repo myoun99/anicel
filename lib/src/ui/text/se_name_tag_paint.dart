@@ -111,14 +111,11 @@ void _composite(
   }
   drawSubtreeAsImage(
     canvas: canvas,
-    bounds: effectBufferBounds(
-      subtreeBufferBounds(
-        CompositeLeaf(tag),
-        within: canvas.getLocalClipBounds(),
-        extentOf: (_) => plate.worldRect,
-        placementOf: (tag) => tag.placement,
-      ),
-      effects.outsetPixels,
+    bounds: _bufferOf(
+      tag,
+      plate,
+      effects,
+      within: canvas.getLocalClipBounds(),
     ),
     rasterScale: rasterScale,
     paintSubtree: paintTag,
@@ -134,6 +131,57 @@ void _composite(
     paper: canvasSize.canvasRect,
     cell: rasterCellFor(effects.outsetPixels),
   );
+}
+
+/// The buffer [tag]'s [plate] is composited through on a canvas clipped to
+/// [within] ([_composite]) — under its placement, as far as its [effects]
+/// reach — in the space the canvas is handed.
+ui.Rect _bufferOf(
+  ResolvedSeNameTag tag,
+  ImagePiece plate,
+  CompositeEffectPlan effects, {
+  required ui.Rect within,
+}) => effectBufferBounds(
+  subtreeBufferBounds(
+    CompositeLeaf(tag),
+    within: within,
+    extentOf: (_) => plate.worldRect,
+    placementOf: (tag) => tag.placement,
+  ),
+  effects.outsetPixels,
+);
+
+/// Where [paintSeNameTags] inks [tags] on a canvas clipped to [within], in
+/// the space that canvas is handed — the buffer each is composited through
+/// ([_bufferOf]); a tag drawn straight on lies within its own. Null where
+/// none inks.
+///
+/// Asked by a raster that keeps to where its names are (card
+/// an-exports-overlay-raster-reads-back-the-whole-frame): an export's
+/// names over its frame.
+ui.Rect? seNameTagsInk({
+  required List<ResolvedSeNameTag> tags,
+  required CanvasSize canvasSize,
+  required ui.Rect within,
+}) {
+  ui.Rect? ink;
+  for (final tag in tags) {
+    if (tag.opacity <= 0) {
+      continue;
+    }
+    final plate = _plateOf(tag, canvasSize: canvasSize);
+    if (plate == null) {
+      continue;
+    }
+    final buffer = _bufferOf(
+      tag,
+      plate,
+      resolveCompositeEffectPlan(tag.effects, paper: canvasSize.canvasRect),
+      within: within,
+    );
+    ink = ink?.expandToInclude(buffer) ?? buffer;
+  }
+  return ink;
 }
 
 /// [tag]'s blocks ([_layoutsOf]) as one plate in its own space, on whole

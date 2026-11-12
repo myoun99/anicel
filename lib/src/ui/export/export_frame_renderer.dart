@@ -1129,20 +1129,24 @@ class ExportFrameRenderer {
   });
 
   /// What [draw] draws on a raster of [width] × [height], on the engine
-  /// ([drawnOnTheEngine]) — held under [props], what it is drawn from
-  /// ([_drawn]): the renderer's own.
+  /// ([drawnOnTheEngine]) — only round where it inks, where its painter
+  /// says ([inksOf], asked when it is drawn) — held under [props], what it
+  /// is drawn from ([_drawn]): the renderer's own. Where it inks is the
+  /// painter's answer from the same [props], so the key holds it too.
   Future<GpuShown> _drawnOver(
     Object props,
     int width,
     int height,
-    void Function(ui.Canvas canvas) draw,
-  ) => _onTheEngine(_drawn).of(
+    void Function(ui.Canvas canvas) draw, {
+    ui.Rect? Function()? inksOf,
+  }) => _onTheEngine(_drawn).of(
     (props, width, height),
     () async => drawnOnTheEngine(
       await appGpuExportKernels.ready,
       width,
       height,
       draw,
+      inks: inksOf?.call(),
     ),
   );
 
@@ -1705,6 +1709,7 @@ class ExportFrameRenderer {
     // them draws nothing, and nothing is rastered of it: laid, a raster of
     // nothing changes no pixel, and it would be drawn and read back on
     // every frame (as [_veilsOver]).
+    final raster = ui.Size(size.width.toDouble(), size.height.toDouble());
     Future<GpuShown?> drawn(
       PlaybackFramePainter painter, {
       required bool handed,
@@ -1713,10 +1718,8 @@ class ExportFrameRenderer {
             painter.props,
             size.width,
             size.height,
-            (canvas) => painter.paint(
-              canvas,
-              ui.Size(size.width.toDouble(), size.height.toDouble()),
-            ),
+            (canvas) => painter.paint(canvas, raster),
+            inksOf: () => painter.inkOf(raster),
           )
         : null;
     return _StackUnit(

@@ -321,28 +321,105 @@ Future<void> layDrawnOver(
 /// over a frame made on the engine — a shot's overlay, a stage's apron, a
 /// cut's names and its veils — drawn by Flutter and laid by the engine
 /// (gpu-export-path ①⑵: the letters are Flutter's, Q30).
+///
+/// Where [inks] says where [draw] inks — in the raster's pixels, as its
+/// painter answers it — only the whole pixels round it are rastered, read
+/// back and put on the GPU, and laid where they stand on a blank of the
+/// raster's size there: the same frame, its other pixels clear. 🔬A 4K
+/// frame's names inked 1–20% of it, and reading the whole of it back and
+/// putting it up took 165–370 ms (card
+/// an-exports-overlay-raster-reads-back-the-whole-frame).
 Future<GpuShown> drawnOnTheEngine(
   GpuExport export,
   int width,
   int height,
-  void Function(ui.Canvas canvas) draw,
-) async =>
-    export.upload(await _rasterOf(width, height, draw), width, height);
+  void Function(ui.Canvas canvas) draw, {
+  ui.Rect? inks,
+}) async {
+  if (inks == null) {
+    return export.upload(await _rasterOf(width, height, draw), width, height);
+  }
+  final (left, top, right, bottom) = _pixelsRound(inks, width, height);
+  final whole = export.blank(width, height);
+  if (right <= left || bottom <= top) {
+    return whole;
+  }
+  try {
+    final part = export.upload(
+      await _rasterOf(width, height, draw, part: (left, top, right, bottom)),
+      right - left,
+      bottom - top,
+    );
+    try {
+      export.lay(whole, part, x: left, y: top);
+    } finally {
+      part.free();
+    }
+    return whole;
+  } on Object {
+    whole.free();
+    rethrow;
+  }
+}
+
+/// The whole pixels of a [width] × [height] raster round [inks] —
+/// [left, top, right, bottom) — with [_inkReach] more on every side.
+(int, int, int, int) _pixelsRound(ui.Rect inks, int width, int height) {
+  if (inks.isEmpty) {
+    return (0, 0, 0, 0);
+  }
+  return (
+    (inks.left.floor() - _inkReach).clamp(0, width),
+    (inks.top.floor() - _inkReach).clamp(0, height),
+    (inks.right.ceil() + _inkReach).clamp(0, width),
+    (inks.bottom.ceil() + _inkReach).clamp(0, height),
+  );
+}
+
+/// How far past the box its painter answers a raster's ink may fall, in
+/// its pixels: an edge's anti-aliasing, and the filter a picture laid at a
+/// scale samples its neighbours by.
+const int _inkReach = 2;
 
 /// What [draw] draws on a raster of [width] × [height], premultiplied
-/// RGBA.
+/// RGBA — only its [part] — [left, top, right, bottom) — where one is
+/// named.
+///
+/// ⚠️[draw] is recorded on the whole raster and its picture rastered off
+/// the part's corner, not drawn on a canvas moved there or cut to the part:
+/// a painter that reads where it stands on the canvas (`getTransform()` —
+/// a pan's phase, a checker's) or how far it reaches
+/// (`getLocalClipBounds()` — the buffer an effect is drawn through) reads
+/// what it would on the whole raster. It is moved there by a scene's
+/// offset, not drawn on a second canvas: the picture is the overlay's own
+/// lines and letters, and a picture drawn on a canvas is what
+/// `every_overlay_is_laid_on_the_engine_test` takes for a frame composed by
+/// Flutter.
 Future<Uint8List> _rasterOf(
   int width,
   int height,
-  void Function(ui.Canvas canvas) draw,
-) async {
+  void Function(ui.Canvas canvas) draw, {
+  (int, int, int, int)? part,
+}) async {
   final recorder = ui.PictureRecorder();
-  final bounds =
-      ui.Offset.zero & ui.Size(width.toDouble(), height.toDouble());
-  draw(ui.Canvas(recorder, bounds));
-  final recorded = recorder.endRecording();
+  draw(
+    ui.Canvas(
+      recorder,
+      ui.Offset.zero & ui.Size(width.toDouble(), height.toDouble()),
+    ),
+  );
+  final drawn = recorder.endRecording();
   try {
-    final image = await recorded.toImage(width, height);
+    final image = switch (part) {
+      (final left, final top, final right, final bottom) => await _partOf(
+        drawn,
+        left: left,
+        top: top,
+        width: right - left,
+        height: bottom - top,
+      ),
+      null => await drawn.toImage(width, height),
+    };
     try {
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       return data!.buffer.asUint8List();
@@ -350,7 +427,25 @@ Future<Uint8List> _rasterOf(
       image.dispose();
     }
   } finally {
-    recorded.dispose();
+    drawn.dispose();
+  }
+}
+
+/// [picture] rastered on [width] × [height] from its pixel ([left], [top]).
+Future<ui.Image> _partOf(
+  ui.Picture picture, {
+  required int left,
+  required int top,
+  required int width,
+  required int height,
+}) async {
+  final scene = (ui.SceneBuilder()
+        ..addPicture(ui.Offset(-left.toDouble(), -top.toDouble()), picture))
+      .build();
+  try {
+    return await scene.toImage(width, height);
+  } finally {
+    scene.dispose();
   }
 }
 
