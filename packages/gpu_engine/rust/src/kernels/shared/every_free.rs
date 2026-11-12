@@ -22,7 +22,7 @@ use crate::kernels::composite::abi::{
     gpu_engine_chain_read_free, gpu_engine_chain_read_new, gpu_engine_composite_free, gpu_engine_composite_new,
     gpu_engine_composited_free, gpu_engine_held_free,
     gpu_engine_held_new, gpu_engine_mask_free, gpu_engine_mask_new, gpu_engine_plan_free, gpu_engine_plan_new,
-    gpu_engine_screen_free, gpu_engine_screen_new,
+    gpu_engine_put_picture_free, gpu_engine_put_picture_new, gpu_engine_screen_free, gpu_engine_screen_new,
 };
 use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{Composited, TILE_TEXELS};
@@ -77,7 +77,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 33] {
+fn frees() -> [(&'static str, fn(&'static str)); 34] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -100,6 +100,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 33] {
             // SAFETY: the engine is live, and the bytes hold the mask's one.
             let made = unsafe { gpu_engine_mask_new(first_engine(), [255].as_ptr(), 0, 0, 1, 1) };
             gives_back(name, made, gpu_engine_mask_free)
+        }),
+        ("gpu_engine_put_picture_free", |name| {
+            // SAFETY: the bytes hold the picture's four.
+            let made = unsafe { gpu_engine_put_picture_new([255; 4].as_ptr(), 4) };
+            gives_back(name, made, gpu_engine_put_picture_free)
         }),
         ("gpu_engine_held_free", |name| gives_back(name, gpu_engine_held_new(), gpu_engine_held_free)),
         ("gpu_engine_blurs_free", |name| {
