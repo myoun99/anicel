@@ -132,12 +132,12 @@ final class ShiftingFxPlugin implements FxPluginRunner {
       reachFails ? null : by ?? values[0].toInt();
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) {
+  }) async {
     renders += 1;
     inputs.add((
       left: input.left,

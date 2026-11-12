@@ -1724,23 +1724,43 @@ class GpuChainRead {
   final GpuEngine _engine;
   final Pointer<rust.ChainRead> _read;
 
+  /// It as any isolate asks it ([GpuChainReader]) — for as long as it is
+  /// not freed.
+  GpuChainReader get reader =>
+      GpuChainReader._(_engine._engine.address, _read.address);
+
+  /// Frees it; a plan that names it keeps its own hold.
+  void free() => rust.chainReadFree(_read);
+}
+
+/// A [GpuChainRead] as any isolate asks it: plain numbers, the engine's
+/// address and the read's, so it crosses to a worker — where the wait for
+/// the plan that ran through it is that worker's, not the asker's
+/// ([debugWaitsHere]).
+final class GpuChainReader {
+  const GpuChainReader._(this._engine, this._read);
+
+  final int _engine;
+  final int _read;
+
   /// The pixels of [picture] — left, top, right, bottom — straight RGBA8
   /// row after row; null where no plan ran through this read, a chain the
-  /// tiles asked for do not meet being no chain run.
+  /// tiles asked for do not meet being no chain run. ⚠️Waits for the GPU.
   Uint8List? pixels((int, int, int, int) picture) => using((arena) {
     final (left, top, right, bottom) = picture;
     final edges = arena<Int32>(4);
     edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
     final count = (right - left) * (bottom - top) * 4;
     final bytes = arena<Uint8>(_held(count));
-    if (!rust.chainReadPixels(_engine._engine, _read, edges, bytes, count)) {
-      return null;
-    }
-    return Uint8List.fromList(bytes.asTypedList(count));
+    final read = rust.chainReadPixels(
+      Pointer.fromAddress(_engine),
+      Pointer.fromAddress(_read),
+      edges,
+      bytes,
+      count,
+    );
+    return read ? Uint8List.fromList(bytes.asTypedList(count)) : null;
   });
-
-  /// Frees it; a plan that names it keeps its own hold.
-  void free() => rust.chainReadFree(_read);
 }
 
 /// What effect chains put, held past the run that made them
@@ -3350,6 +3370,11 @@ class GpuPlugin {
   final GpuEngine _engine;
   final Pointer<rust.Plugin> _plugin;
 
+  /// It as any isolate runs it ([GpuPluginRenderer]) — for as long as it
+  /// is not freed.
+  GpuPluginRenderer get renderer =>
+      GpuPluginRenderer._(_plugin.address, _engine._engine.address);
+
   /// How far past its input the plugin reaches, in output pixels, for
   /// [asked] — spending no more than [share] — or why not thrown: a value
   /// past what the plugin reads, or the reach cut.
@@ -3367,19 +3392,57 @@ class GpuPlugin {
     );
   });
 
+  /// Throws where [asked] has other than four values a kind: the engine
+  /// reads as many as the kinds say.
+  static void _whole(GpuPluginAsked asked) {
+    if (asked.values.length != 4 * asked.kinds.length) {
+      throw ArgumentError(
+        '${asked.values.length} values for ${asked.kinds.length} kinds',
+      );
+    }
+  }
+
+  static Pointer<Uint32> _kinds(Arena arena, List<GpuPluginValue> kinds) =>
+      arena<Uint32>(_held(kinds.length))
+        ..asTypedList(kinds.length).setAll(0, [
+          for (final kind in kinds) kind.index,
+        ]);
+
+  static Pointer<Double> _moment(Arena arena, GpuPluginAsked asked) =>
+      _doubles(arena, [
+        asked.frame.toDouble(),
+        asked.time,
+        asked.rate,
+        asked.scale,
+      ]);
+
+  /// Lets the compiled plugin go; it is asked nothing after.
+  void free() => rust.pluginFree(_plugin);
+}
+
+/// A [GpuPlugin] as any isolate runs it: plain numbers, the plugin's
+/// address and its engine's, so it crosses to a worker — where the waits
+/// of a run are that worker's, not the asker's ([debugWaitsHere]).
+final class GpuPluginRenderer {
+  const GpuPluginRenderer._(this._plugin, this._engine);
+
+  final int _plugin;
+  final int _engine;
+
   /// The plugin's picture of [input] over [layers] — the pictures its
   /// layer values name, by slot — with [asked], each pixel spending no
   /// more than [share]: a word a pixel of [input]'s size and place,
   /// transparent where it writes none — or why not thrown: a value past
   /// what the plugin reads, the run cut, or the device failed. A plugin
   /// opened not to be cut runs whole, in chunks sized as [share]'s are.
+  /// ⚠️Waits for the GPU, a chunk at a time.
   Uint32List render(
     GpuPluginPicture input,
     List<GpuPluginPicture> layers,
     GpuPluginAsked asked, {
     required int share,
   }) => using((arena) {
-    _whole(asked);
+    GpuPlugin._whole(asked);
     final pictures = [input, ...layers];
     for (final picture in pictures) {
       if (picture.width < 0 ||
@@ -3412,46 +3475,19 @@ class GpuPlugin {
     final output = arena<Uint32>(_held(count));
     _checked(
       rust.pluginRender(
-        _plugin,
-        _engine._engine,
+        Pointer.fromAddress(_plugin),
+        Pointer.fromAddress(_engine),
         pixels,
         rects,
         layers.length,
         _doubles(arena, asked.values),
-        _kinds(arena, asked.kinds),
+        GpuPlugin._kinds(arena, asked.kinds),
         asked.kinds.length,
-        _moment(arena, asked),
+        GpuPlugin._moment(arena, asked),
         share,
         output,
       ),
     );
     return Uint32List.fromList(output.asTypedList(count));
   });
-
-  /// Throws where [asked] has other than four values a kind: the engine
-  /// reads as many as the kinds say.
-  static void _whole(GpuPluginAsked asked) {
-    if (asked.values.length != 4 * asked.kinds.length) {
-      throw ArgumentError(
-        '${asked.values.length} values for ${asked.kinds.length} kinds',
-      );
-    }
-  }
-
-  static Pointer<Uint32> _kinds(Arena arena, List<GpuPluginValue> kinds) =>
-      arena<Uint32>(_held(kinds.length))
-        ..asTypedList(kinds.length).setAll(0, [
-          for (final kind in kinds) kind.index,
-        ]);
-
-  static Pointer<Double> _moment(Arena arena, GpuPluginAsked asked) =>
-      _doubles(arena, [
-        asked.frame.toDouble(),
-        asked.time,
-        asked.rate,
-        asked.scale,
-      ]);
-
-  /// Lets the compiled plugin go; it is asked nothing after.
-  void free() => rust.pluginFree(_plugin);
 }

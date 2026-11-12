@@ -6,6 +6,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/color_matrix.dart';
 import '../core/draw_space.dart';
+import '../core/on_a_worker.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/composite_tree.dart';
@@ -206,7 +207,17 @@ typedef ChainHolding = ({
   int? Function(CompositeNode<EngineRow> node) idOf,
 });
 
-/// [picture] as a chain had come to it, read back ([GpuChainRead]).
+/// [picture] as a chain had come to it, read back ([GpuChainRead]) on a
+/// worker ([onAWorker]): the wait for the plan that ran through it is that
+/// worker's, so the isolate that asks goes on meanwhile.
+///
+/// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine), with the
+/// plugin's run (`GpuFxPlugin.render`): 🔬Surface Pro 11, profile, S5_BA
+/// cut 352, a box dragged over a row under a device plugin — this read
+/// 56–60 ms p50 on the UI thread each time the box moved.
+///
+/// ⚠️Freed only once its read has ended: a recording's stages are let go
+/// of after their runs (`FxPluginStages._recordedOnce`).
 final class _ChainPicture implements PluginStepInput {
   _ChainPicture(this._read, this._picture);
 
@@ -214,11 +225,18 @@ final class _ChainPicture implements PluginStepInput {
   final (int, int, int, int) _picture;
 
   @override
-  Future<Uint8List?> straight() async => _read.pixels(_picture);
+  Future<Uint8List?> straight() => _readOnAWorker(_read.reader, _picture);
 
   @override
   void free() => _read.free();
 }
+
+/// [reader]'s pixels of [picture] on a worker ([onAWorker]). Made here, of
+/// plain values, so the job crosses with them alone.
+Future<Uint8List?> _readOnAWorker(
+  GpuChainReader reader,
+  (int, int, int, int) picture,
+) => onAWorker(() => reader.pixels(picture));
 
 class _TreePlan {
   _TreePlan(this._tiles, this.letters, this.holding, this.plugins);
@@ -597,21 +615,33 @@ class _TreePlan {
         ops.add(_paintedOp(painted, reads: picture, puts: picture));
       }
     }
+    final chain = _chainLaid(ops, carried.take(last + 1), picture);
+    return (chain: chain, keys: null, colour: colour);
+  }
+
+  /// [ops], then the Gaussians [carried], each putting as far past what
+  /// the one before put as it reaches from [picture], on a chain of the
+  /// plan — none where there is nothing to lay.
+  int? _chainLaid(
+    List<void Function(int chain)> ops,
+    Iterable<PaintedEffect> carried,
+    (int, int, int, int) picture,
+  ) {
     var extent = picture;
-    for (final painted in carried.take(last + 1)) {
+    for (final painted in carried) {
       final read = extent;
       extent = _grown(extent, painted);
       ops.add(_paintedOp(painted, reads: read, puts: extent));
     }
     if (ops.isEmpty) {
-      return (chain: null, keys: null, colour: colour);
+      return null;
     }
     final (x0, y0, columns, rows) = _tilesOf(extent);
     final chain = plan.chain(x0, y0, columns, rows);
     for (final op in ops) {
       op(chain);
     }
-    return (chain: chain, keys: null, colour: colour);
+    return chain;
   }
 
   /// [chain], if any, held as what [shows] is, where [holding] gives it a

@@ -385,7 +385,7 @@ final class _Stage {
     if (pixels == null || _input == null) {
       return;
     }
-    final made = output = _ranThrough(run, pixels);
+    final made = output = await _ranThrough(run, pixels);
     if (_kept case final kept? when !kept.ran) {
       kept
         ..ran = true
@@ -407,7 +407,7 @@ final class _Stage {
 
   /// [straight] — this step's input — through [run]'s plugin, which reads
   /// and draws straight ([FxPluginPicture]); null where the plugin fails.
-  Uint8List? _ranThrough(FxPluginRun run, Uint8List straight) {
+  Future<Uint8List?> _ranThrough(FxPluginRun run, Uint8List straight) async {
     final canvas = CanvasSize(
       width: (paper.width / scale).round(),
       height: (paper.height / scale).round(),
@@ -425,7 +425,7 @@ final class _Stage {
     final top = (-paper.top).round();
     FxPluginPicture handed(Uint8List pixels) =>
         (pixels: pixels, width: width, height: height, left: left, top: top);
-    final output = run.runner.render(
+    final output = await run.runner.render(
       input: handed(straight),
       values: values,
       layers: [

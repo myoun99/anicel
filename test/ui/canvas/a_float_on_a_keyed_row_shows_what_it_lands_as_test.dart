@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
@@ -11,6 +13,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
@@ -964,6 +967,72 @@ void main() {
     );
   });
 
+  /// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine): 「변화가
+  /// 몰리면 하나만 돈다(앞 것이 끝나야 다음, 마지막 변화는 반드시 돈다)」 — a
+  /// device's run takes real time, on a worker (`GpuFxPlugin.render`), so a
+  /// drag's moves come while a write is on its way through the plugin.
+  testWidgets('live: a sheet dragged by the box on a row whose chain runs a '
+      'PLUGIN goes through it one write at a time — what moves meanwhile '
+      'waits, and the last of it goes through once the write on its way has '
+      'ended', (tester) async {
+    final gate = _HeldAtTheGate(ShiftingFxPlugin(by: 100));
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, plugin: true),
+      fxPlugins: await installedShiftingFxPlugin(tester, runner: gate),
+    );
+    final region = await sheets(tester, c, _Rows.live);
+    final drawn = await composite(tester);
+    // Read with the text tool in hand, as [carry] reads them.
+    final hold = holdIn(tester, region);
+    final step = handFor(tester, 20, 15);
+    final commands = await select(tester, _Rows.live, region);
+    bool nothingOnItsWay() =>
+        (tester.state(theFramesPicture(within: mainCanvasPanel())) as dynamic)
+                .nothingOnItsWay
+            as bool;
+
+    final before = gate.asked;
+    gate.hold();
+    final hand = await tester.startGesture(
+      hold,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await hand.moveTo(hold + step);
+    await pumpFrames(tester, 2);
+    expect(gate.asked, before + 1, reason: '⛔CONTROL: a write on its way');
+    for (final times in [2.0, 3.0]) {
+      await hand.moveTo(hold + step * times);
+      await pumpFrames(tester, 2);
+    }
+    await hand.up();
+    await settle(tester);
+    expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
+    expect(
+      nothingOnItsWay(),
+      isFalse,
+      reason: 'the frame shows late what is on its way',
+    );
+    expect(
+      gate.asked,
+      before + 1,
+      reason: 'what moved meanwhile starts no write of its own',
+    );
+
+    // ⚠️Not how many runs follow: the write on its way records the live
+    // rows as they are at each of its rounds, and one whose step's picture
+    // grew with the move meets that step anew (`FxPluginStages`).
+    gate.letThrough();
+    final carried = await composite(tester);
+    await windowBehind(tester, () async => commands.applyTransform());
+    await settle(tester);
+    expectLandsAsCarried(
+      (carried: carried, landed: await composite(tester)),
+      drawn,
+    );
+  });
+
   for (final rows in [_Rows.live, _Rows.range]) {
     for (final warped in [false, true]) {
       final how = warped ? 'warped' : 'dragged';
@@ -1238,4 +1307,50 @@ int _apart(Uint8List a, Uint8List b) {
     }
   }
   return n;
+}
+
+/// [_shifting] whose runs wait, while it is held ([hold]), for the test to
+/// let them through ([letThrough]): a device's run takes real time, a
+/// stand-in's none.
+final class _HeldAtTheGate implements FxPluginRunner {
+  _HeldAtTheGate(this._shifting);
+
+  final ShiftingFxPlugin _shifting;
+  Completer<void>? _gate;
+
+  /// How many runs it was asked for.
+  int asked = 0;
+
+  void hold() => _gate ??= Completer<void>();
+
+  void letThrough() {
+    _gate?.complete();
+    _gate = null;
+  }
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      _shifting.reach(values, moment);
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) async {
+    asked += 1;
+    if (_gate case final gate?) {
+      await gate.future;
+    }
+    return _shifting.render(
+      input: input,
+      values: values,
+      layers: layers,
+      moment: moment,
+    );
+  }
+
+  @override
+  void close() => _shifting.close();
 }

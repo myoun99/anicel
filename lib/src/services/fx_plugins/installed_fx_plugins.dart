@@ -262,12 +262,12 @@ final class _Unopened implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => null;
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) => null;
+  }) async => null;
 
   @override
   void close() {}

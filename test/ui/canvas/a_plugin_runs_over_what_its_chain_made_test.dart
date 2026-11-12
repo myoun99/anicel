@@ -471,12 +471,12 @@ final class _LeavesColourInTheClear implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) {
+  }) async {
     renders += 1;
     final out = Uint8List.fromList(input.pixels);
     for (var at = 0; at < out.length; at += 4) {

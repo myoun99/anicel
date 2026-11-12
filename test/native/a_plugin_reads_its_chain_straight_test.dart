@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -113,6 +114,73 @@ void main() {
     ]);
     expect(next.lastInput, Uint8List(side * side * 4));
   });
+
+  /// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine): a box
+  /// dragged over a row under a device plugin held the UI thread for each
+  /// read of the step's input — 56–60 ms p50, 🔬Surface Pro 11. ⚠️The suite
+  /// runs every worker's job here (`debugWorkersRunHere`), so this turns it
+  /// off: the road the app takes.
+  group('🚨a step reads its chain on a worker (GpuChainReader)', () {
+    late bool corpus;
+    setUp(() => corpus = debugWorkersRunHere);
+    tearDown(() => debugWorkersRunHere = corpus);
+
+    test('the isolate that records the row waits for the GPU none of the '
+        'times it reads — from the round that met the step to its plug-in '
+        'asked', () async {
+      Future<int> waitedBeforeItsPlugin() async {
+        final heard = _HearsTheWaits();
+        int? met;
+        await aRowLaidThroughItsPlugins(
+          composite,
+          letters,
+          cel(),
+          [
+            ResolvedLayerEffect(
+              kind: EffectKind.plugin,
+              plugin: shiftingFxPluginDescription,
+              values: const [],
+              run: fxPluginRunOf(heard),
+            ),
+          ],
+          recorded: () => met ??= debugWaitsHere,
+        );
+        return heard.waited! - met!;
+      }
+
+      debugWorkersRunHere = true;
+      expect(
+        await waitedBeforeItsPlugin(),
+        greaterThan(0),
+        reason: '⛔CONTROL: read here',
+      );
+      debugWorkersRunHere = false;
+      expect(await waitedBeforeItsPlugin(), 0);
+    });
+  });
+}
+
+/// Hands its input on as it is, hearing how many waits for the GPU the
+/// isolate that asks it had made ([debugWaitsHere]).
+final class _HearsTheWaits implements FxPluginRunner {
+  int? waited;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) async {
+    waited ??= debugWaitsHere;
+    return Uint8List.fromList(input.pixels);
+  }
+
+  @override
+  void close() {}
 }
 
 /// Leaves every pixel clear, its colour as it was.
@@ -121,12 +189,12 @@ final class _ClearsItsColours implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) {
+  }) async {
     final out = Uint8List.fromList(input.pixels);
     for (var at = 3; at < out.length; at += 4) {
       out[at] = 0;

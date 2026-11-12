@@ -415,14 +415,14 @@ final class _FailsPast implements FxPluginRunner {
       _drawing.reach(values, moment);
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) => input.width > most
+  }) async => input.width > most
       ? null
-      : _drawing.render(
+      : await _drawing.render(
           input: input,
           values: values,
           layers: layers,

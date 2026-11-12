@@ -15,13 +15,14 @@ import 'package:gpu_engine/gpu_engine.dart';
 /// The straight pixels a row of [surface] lays through [effects], what a
 /// hand holds over it [held], over its canvas — laid by [composite] as a
 /// route that waits for its plug-ins lays it: a round of the plan each,
-/// till every step has run.
+/// till every step has run. [recorded] hears each round's end.
 Future<Uint8List> aRowLaidThroughItsPlugins(
   GpuComposite composite,
   EngineLetters letters,
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects, {
   List<EngineHeld> held = const [],
+  void Function()? recorded,
 }) async {
   final canvas = surface.canvasSize;
   final ledger = EngineTileLedger(appGpuEngine);
@@ -59,6 +60,7 @@ Future<Uint8List> aRowLaidThroughItsPlugins(
           return out.read();
         } finally {
           out.free();
+          recorded?.call();
         }
       } finally {
         plan.free();

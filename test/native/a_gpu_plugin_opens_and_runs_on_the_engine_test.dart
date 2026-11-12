@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_gpu_settings.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/native/gpu_fx_plugin.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show debugWaitsHere;
 
 import '../helpers/fx_plugin_file.dart';
 import '../helpers/temp_dir.dart';
@@ -55,17 +57,17 @@ void main() {
     expect(refusalOf('not WGSL'), isNotEmpty);
   });
 
-  test('it draws the straight picture handed it, in its place', () {
+  test('it draws the straight picture handed it, in its place', () async {
     final invert = opened(
       fxPluginFixture('invert'),
       fxPluginDescriptionOf('a.invert'),
     );
-    final drawn = invert.render(
+    final drawn = (await invert.render(
       input: pictureOf(input),
       values: Float64List(0),
       layers: const [],
       moment: moment,
-    )!;
+    ))!;
     for (var at = 0; at < input.length; at += 4) {
       expect(drawn.sublist(at, at + 4), [
         255 - input[at],
@@ -77,7 +79,7 @@ void main() {
   });
 
   test('a picture whose bytes start off a word is read as one that does '
-      'not', () {
+      'not', () async {
     final invert = opened(
       fxPluginFixture('invert'),
       fxPluginDescriptionOf('a.invert'),
@@ -85,13 +87,13 @@ void main() {
     final off = Uint8List(input.length + 1)..setAll(1, input);
     FxPluginPicture at(Uint8List pixels) => pictureOf(pixels);
     expect(
-      invert.render(
+      await invert.render(
         input: at(Uint8List.sublistView(off, 1)),
         values: Float64List(0),
         layers: const [],
         moment: moment,
       ),
-      invert.render(
+      await invert.render(
         input: at(input),
         values: Float64List(0),
         layers: const [],
@@ -100,7 +102,8 @@ void main() {
     );
   });
 
-  test('every kind of parameter reaches it as the spec says its words', () {
+  test('every kind of parameter reaches it as the spec says its '
+      'words', () async {
     final probe = opened(
       _probe,
       fxPluginDescriptionOf(
@@ -124,7 +127,7 @@ void main() {
         ],
       ),
     );
-    final drawn = probe.render(
+    final drawn = (await probe.render(
       input: (pixels: Uint8List(32 * 4), width: 32, height: 1, left: 3, top: 9),
       values: Float64List.fromList([
         1.5, 0, 0, 0, // number
@@ -137,7 +140,7 @@ void main() {
       ]),
       layers: const [],
       moment: moment,
-    )!;
+    ))!;
     final words = drawn.buffer.asInt32List(drawn.offsetInBytes, 32);
     expect(words, [
       7, 5 << 14, 24 << 16, 1 << 15, // the moment
@@ -163,7 +166,7 @@ void main() {
   });
 
   test('a layer it reads is the one its value names, where the canvas '
-      'puts it', () {
+      'puts it', () async {
     final layer = opened(
       fxPluginFixture('layer'),
       fxPluginDescriptionOf(
@@ -178,12 +181,12 @@ void main() {
       map.setAll(at * 4, [9, 99, at, 255]);
     }
     final clear = Uint8List(5 * 3 * 4)..fillRange(0, 4, 255);
-    final drawn = layer.render(
+    final drawn = (await layer.render(
       input: pictureOf(clear),
       values: Float64List.fromList([0, 0, 0, 0]),
       layers: [(pixels: map, width: 5, height: 3, left: 0, top: -2)],
       moment: moment,
-    )!;
+    ))!;
     expect(drawn.sublist(0, 4), [255, 255, 255, 255], reason: 'its own');
     for (var at = 1; at < 15; at += 1) {
       final (x, y) = (at % 5 - 1, at ~/ 5 - 2);
@@ -193,34 +196,43 @@ void main() {
   });
 
   test('each pixel of a run has this machine\'s share, however many pixels '
-      'there are', () {
+      'there are', () async {
     // 🗣️an-endless-plugin-stalls-the-app-Q19: 「화소 하나의 몫으로 고정」 —
     // ↩️the share was the limit over the pixels, so a picture of more of
     // them was cut first.
     final blur = opened(fxPluginFixture('blur'), _blurOf());
     final endless = opened(fxPluginFixture('endless'), _blurOf());
-    Uint8List? drawn(GpuFxPlugin plugin, int side) => plugin.render(
-      input: (
-        pixels: Uint8List(side * side * 4),
-        width: side,
-        height: side,
-        left: 0,
-        top: 0,
-      ),
-      values: Float64List.fromList([2, 0, 0, 0]),
-      layers: const [],
-      moment: moment,
-    );
+    Future<Uint8List?> drawn(GpuFxPlugin plugin, int side) =>
+        plugin.render(
+          input: (
+            pixels: Uint8List(side * side * 4),
+            width: side,
+            height: side,
+            left: 0,
+            top: 0,
+          ),
+          values: Float64List.fromList([2, 0, 0, 0]),
+          layers: const [],
+          moment: moment,
+        );
 
     AppGpu.settings.value = const AppGpuSettings(
       pluginShare: FxPluginShare.tenThousand,
     );
-    expect(drawn(blur, 1), isNotNull, reason: '⛔CONTROL: the least share');
-    expect(drawn(blur, 64), isNotNull, reason: '4,096 pixels, each its own');
-    expect(drawn(endless, 64), isNull, reason: 'cut');
+    expect(
+      await drawn(blur, 1),
+      isNotNull,
+      reason: '⛔CONTROL: the least share',
+    );
+    expect(
+      await drawn(blur, 64),
+      isNotNull,
+      reason: '4,096 pixels, each its own',
+    );
+    expect(await drawn(endless, 64), isNull, reason: 'cut');
   });
 
-  test('once closed it answers nothing', () {
+  test('once closed it answers nothing', () async {
     final (:plugin, refusal: _) = GpuFxPlugin.open(
       fxPluginFixture('invert'),
       fxPluginDescriptionOf('a.invert'),
@@ -229,7 +241,7 @@ void main() {
     plugin!.close();
     expect(plugin.reach(Float64List(0), moment), isNull);
     expect(
-      plugin.render(
+      await plugin.render(
         input: pictureOf(input),
         values: Float64List(0),
         layers: const [],
@@ -238,6 +250,60 @@ void main() {
       isNull,
     );
     plugin.close();
+  });
+
+  /// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine): a box
+  /// dragged over a row under a device plugin held the UI thread for each
+  /// run — 72–94 ms p50, 🔬Surface Pro 11. ⚠️The suite runs every worker's
+  /// job here (`debugWorkersRunHere`), so these turn it off: the road the
+  /// app takes.
+  group('🚨a run goes on a worker (GpuPluginRenderer)', () {
+    late bool corpus;
+    setUp(() => corpus = debugWorkersRunHere);
+    tearDown(() => debugWorkersRunHere = corpus);
+
+    Future<Uint8List?> inverted(GpuFxPlugin invert) => invert.render(
+      input: pictureOf(input),
+      values: Float64List(0),
+      layers: const [],
+      moment: moment,
+    );
+
+    GpuFxPlugin anInvert() =>
+        opened(fxPluginFixture('invert'), fxPluginDescriptionOf('a.invert'));
+
+    test('the isolate that asks waits for the GPU none of the times it '
+        'runs', () async {
+      final invert = anInvert();
+      Future<int> waited() async {
+        final before = debugWaitsHere;
+        expect(await inverted(invert), isNotNull);
+        return debugWaitsHere - before;
+      }
+
+      debugWorkersRunHere = true;
+      expect(await waited(), greaterThan(0), reason: '⛔CONTROL: run here');
+      debugWorkersRunHere = false;
+      expect(await waited(), 0);
+    });
+
+    test('closed while a run is on its way, it is let go once the run has '
+        'ended — the run drew', () async {
+      debugWorkersRunHere = false;
+      final invert = anInvert();
+      final drawing = inverted(invert);
+      invert.close();
+      expect(invert.debugLetGo, isFalse, reason: 'not under the run');
+      final drawn = (await drawing)!;
+      expect(invert.debugLetGo, isTrue, reason: 'once it has ended');
+      expect(drawn.sublist(0, 4), [
+        255 - input[0],
+        255 - input[1],
+        255 - input[2],
+        input[3],
+      ]);
+      expect(await inverted(invert), isNull, reason: 'closed');
+    });
   });
 
   group('installed on this device', () {
@@ -265,12 +331,12 @@ void main() {
         confirm: (_, {required replacing}) async => (asked += 1) > 0,
       );
       expect(installed, isA<FxPluginInstalled>());
-      final drawn = plugins.runnerFor(description)!.render(
+      final drawn = (await plugins.runnerFor(description)!.render(
         input: pictureOf(input),
         values: Float64List(0),
         layers: const [],
         moment: moment,
-      )!;
+      ))!;
       expect(drawn.sublist(0, 4), [
         255 - input[0],
         255 - input[1],
@@ -292,7 +358,7 @@ void main() {
         fxPluginFileOf(description, source: _spin),
         confirm: (_, {required replacing}) async => true,
       );
-      Uint8List? drawn() => plugins.runnerFor(description)!.render(
+      Future<Uint8List?> drawn() => plugins.runnerFor(description)!.render(
         input: (pixels: Uint8List(4), width: 1, height: 1, left: 0, top: 0),
         values: Float64List(0),
         layers: const [],
@@ -302,12 +368,12 @@ void main() {
       int? reach() =>
           plugins.runnerFor(description)!.reach(Float64List(0), moment);
 
-      expect(drawn(), isNull, reason: '⛔CONTROL: the standard share cuts it');
+      expect(await drawn(), isNull, reason: '⛔CONTROL: the standard share cuts it');
       expect(reach(), isNull, reason: '⛔CONTROL: and its reach');
       AppGpu.settings.value = const AppGpuSettings(
         pluginShare: FxPluginShare.uncut,
       );
-      expect(drawn(), isNotNull);
+      expect(await drawn(), isNotNull);
       expect(reach(), 0);
     });
   });

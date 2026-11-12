@@ -43,8 +43,9 @@ abstract interface class FxPluginRunner {
   /// [input] as the effect draws it, its size and place — or null where the
   /// plugin failed (the row is then drawn as if the effect were off).
   /// [layers] are the rows its layer parameters name, in the places the
-  /// values give them.
-  Uint8List? render({
+  /// values give them. A future: a device's run is a worker's wait for the
+  /// GPU, not the asker's (`GpuFxPlugin.render`).
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,

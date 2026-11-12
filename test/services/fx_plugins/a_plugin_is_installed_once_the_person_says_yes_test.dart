@@ -236,12 +236,12 @@ final class _Kept implements FxPluginRunner {
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) => null;
+  }) async => null;
 
   @override
   void close() => closed.add(number);
