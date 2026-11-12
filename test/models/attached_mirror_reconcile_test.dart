@@ -9,7 +9,11 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 
 Layer baseLayer(Map<int, (String, int)> blocks, {bool ghostAt1 = false}) {
   final frameIds = <String>{for (final b in blocks.values) b.$1};
@@ -129,5 +133,51 @@ void main() {
     );
     final cut = cutOf([baseLayer({0: ('a', 1)}), free]);
     expect(identical(cutWithReconciledAttachedMirrors(cut), cut), isTrue);
+  });
+
+  test('🚨what a write gave a synced attach row is what its undo takes back '
+      '— each link, and a cel only where it came with one '
+      '(undo-leaves-empty-mirror-cels-on-a-synced-attach-row)', () {
+    Project projectOf(Cut cut) => Project(
+      id: const ProjectId('project'),
+      name: 'project',
+      tracks: [
+        Track(id: const TrackId('track'), name: 'track', cuts: [cut]),
+      ],
+      createdAt: DateTime.utc(2026),
+    );
+    Frame cel(String id) =>
+        Frame(id: FrameId(id), duration: 1, strokes: const []);
+    final before = cutOf([
+      baseLayer({0: ('a', 1)}),
+      syncedAttach(frames: [cel('kept')]),
+    ]);
+    final written = {
+      const FrameId('a'): const FrameId('kept'),
+      const FrameId('b'): const FrameId('m-b'),
+    };
+    final after = cutOf([
+      baseLayer({0: ('a', 1), 2: ('b', 1)}),
+      syncedAttach(links: written, frames: [cel('kept'), cel('m-b')]),
+    ]);
+
+    final given = attachedMirrorsGiven(projectOf(before), projectOf(after));
+    expect({for (final link in given) link.baseCel: link.celCame}, {
+      const FrameId('a'): false,
+      const FrameId('b'): true,
+    });
+
+    // The step's own undo put the base back; the row kept what it was given.
+    final undone = cutOf([
+      baseLayer({0: ('a', 1)}),
+      syncedAttach(links: written, frames: [cel('kept'), cel('m-b')]),
+    ]);
+    final row = cutWithoutAttachedMirrors(undone, given).layers.last;
+    expect(row.baseFrameLinks, isEmpty);
+    expect(
+      [for (final frame in row.frames) frame.id],
+      [const FrameId('kept')],
+      reason: 'a cel the row held before the write is not the write\'s',
+    );
   });
 }
