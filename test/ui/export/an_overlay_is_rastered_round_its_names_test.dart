@@ -59,12 +59,12 @@ void main() {
 
   final names = [
     tag('A', const ui.Offset(640, 330)),
-    // A blur spreads past the plate it is laid on — what its buffer holds.
+    // A blur: its buffer reaches past its plate.
     tag(
       'B',
       const ui.Offset(690, 370),
       effects: [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [40, 0]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
       ],
     ),
     // Across the frame's top: cut where it is.
@@ -73,6 +73,7 @@ void main() {
 
   PlaybackFramePainter over({
     List<ResolvedSeNameTag>? tags,
+    CameraPose? camera,
     CanvasViewport? viewport,
     double imageOpacity = 1,
     bool paintPaper = false,
@@ -82,7 +83,7 @@ void main() {
   }) => PlaybackFramePainter(
     canvasSize: canvas,
     viewport: viewport,
-    cameraPose: pose,
+    cameraPose: camera ?? pose,
     cameraFrameSize: frame,
     paintPaper: paintPaper,
     paintLetterbox: paintLetterbox,
@@ -141,6 +142,28 @@ void main() {
       ),
       // An upper track's names, thinned with its picture.
       ('thinned', over(imageOpacity: 0.6), 640, 360),
+      // Square to the frame the box is its plate's own, with no corner to
+      // spare: a blur that spreads far past the plate is held by its reach.
+      (
+        'a wide blur, the camera square to the frame',
+        over(
+          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.2),
+          tags: [
+            tag(
+              'B',
+              const ui.Offset(690, 370),
+              effects: [
+                ResolvedLayerEffect(
+                  kind: EffectKind.blur,
+                  values: const [90, 0],
+                ),
+              ],
+            ),
+          ],
+        ),
+        640,
+        360,
+      ),
     ]) {
       test(name, () async {
         final box = painter.inkOf(
