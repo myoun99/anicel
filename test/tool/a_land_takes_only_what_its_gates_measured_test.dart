@@ -84,6 +84,46 @@ void main() {
       expect(ensured, lessThan(at(crate, r'"$ROOT/tool/cargo_turn.sh"')));
     });
 
+    // 관제 2026-11-13 (what-still-runs-on-the-cpu): the lane that deletes
+    // the C engine is landed by the trunk's script, which built an engine
+    // for every lane that touched the C and refused one it could not
+    // build. ⚠️Both branches are that lane's to take out, with the engine's
+    // build. What they DO is `lane_test.sh`, section T: a lane with no C
+    // lands with none built, and one with its C is built and run as before.
+    test('a lane that left no C behind builds no engine and runs no '
+        'parity — one that holds its C still does both', () {
+      final gates = codeOf('gates');
+      final touched = at(
+        gates,
+        r'if lane_touched "$p" packages/qa_native/src \',
+      );
+      expect(touched, isNot(-1));
+      expect(
+        gates[touched + 1],
+        contains(r'&& [ -d "$p/packages/qa_native/src" ]; then'),
+      );
+      expect(gates[touched + 2], contains(r'cmd_native "$name" gates'));
+
+      final ensure = codeOf('ensure_engine');
+      final none = at(
+        ensure,
+        r'[ -d "$c/packages/qa_native/src" ] || return 0',
+      );
+      final asks = at(ensure, r'native_engine_provenance check "$c"');
+      final builds = at(ensure, r'build_engine "$c" || return 1');
+      expect(none, isNot(-1));
+      expect(
+        asks,
+        greaterThan(none),
+        reason: 'the folder is asked before the tool, which goes with the C',
+      );
+      expect(
+        builds,
+        greaterThan(asks),
+        reason: 'a checkout that holds its C is built from it, as before',
+      );
+    });
+
     // 저장 2026-11-05: four Dart files, opened before the trunk took crate
     // commits, were refused for want of cargo — two dots read the trunk's
     // commits as the lane's.

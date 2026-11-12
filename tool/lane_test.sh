@@ -108,6 +108,15 @@
 # it lost stays with the land that took it. ⚠️The script before THAT fails 6
 # of the 9 there: it takes the beating land's turn, runs on beside the land
 # that took its own and lands, and its exit removes the other land's turn.
+# 🆕And a lane with no C (2026-11-13, what-still-runs-on-the-cpu — section
+# T, 189 checks in all): a lane that left no C behind lands with no engine
+# asked for, none built and no parity run, its crate's tests held to no
+# engine — and a lane that still holds its C has its engine built from it
+# and its parity run against it, as before. The trunk here holds C from
+# its first commit, as the real one does, so a lane is asked of its engine
+# because it holds C and not because nothing looked. ⚠️The script before
+# THAT fails 5 of the 9 there: it refuses the lane that deleted the C, for
+# want of an engine built from it.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -158,8 +167,12 @@ cat > "$E/bin/dart" <<'EOF'
 #!/bin/bash
 echo "$(basename "$PWD") dart $(basename "$1")${2:+ $2}" >> "$LANE_TEST_LOG"
 # Asked whether an engine is built from its C, it says no when
-# LANE_TEST_ENGINE says stale.
+# LANE_TEST_ENGINE says stale, and no until the checkout's build is
+# stamped, when it says behind.
 [ "$(basename "$1")" = native_engine_provenance.dart ] && [ "${LANE_TEST_ENGINE:-}" = stale ] \
+  && { echo "0000 not built from its C"; exit 1; }
+[ "$(basename "$1")" = native_engine_provenance.dart ] && [ "${LANE_TEST_ENGINE:-}" = behind ] \
+  && [ ! -f "$3/build/native_standalone/.built-from" ] \
   && { echo "0000 not built from its C"; exit 1; }
 # Asked which crates a build takes, it is the real tool: its list is what
 # refusal 8 is checked for.
@@ -213,10 +226,13 @@ echo "test result: ok. 0 passed; 0 failed"
 EOF
 # `cmake`, for a lane that changed the C (refusal 5): the engine builds —
 # red when LANE_TEST_ENGINE says stale, so a stale engine stays stale.
+# Configuring, it makes the folder it is told to build in, as cmake does:
+# the build's stamp is written there.
 cat > "$E/bin/cmake" <<'EOF'
 #!/bin/bash
 echo "$(basename "$PWD") cmake $*" >> "$LANE_TEST_LOG"
 [ "${LANE_TEST_ENGINE:-}" = stale ] && exit 1
+[ "$1" = -S ] && [ "$3" = -B ] && mkdir -p "$4"
 exit 0
 EOF
 # `rustc` answers for a machine of its own: its host, and its cfg.
@@ -292,10 +308,13 @@ printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity
 # And the packages the app does not depend on, with one to resolve.
 cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
 mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
+# And the C an engine is built from, which every lane holds till one
+# deletes it (section T).
+mkdir -p "$E/home/packages/qa_native/src"; echo "// the engine" > "$E/home/packages/qa_native/src/qa_engine.c"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
 git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh \
   tool/crates_for_host.dart tool/source_brackets.dart tool/resolve_packages.sh \
-  packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
+  packages/gpu_engine/pubspec.yaml packages/qa_native/src/qa_engine.c a.txt .gitignore 2>/dev/null
 git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
@@ -631,12 +650,33 @@ has "a crate lane whose engine is not built from its C is refused — the native
 check "before a crate test ran" "$(cargo_runs lane-stale)" 0
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 mkdir -p "$E/home/build/native_standalone"  # the trunk's engine, which `open` copies
-quiet "$E/home" open cfile; mkdir -p "$HW/lane-cfile/packages/qa_native/src"
+quiet "$E/home" open cfile
 commit "$HW/lane-cfile" packages/qa_native/src/c.c "C that a module's Rust is held to"
 : > "$LANE_TEST_LOG"
 O=$(out "$E/home" land cfile)
 has "a lane that changed only the C lands" "$O" "merged work/cfile"
 check "and the crates were held to it, debug and release" "$(cargo_runs lane-cfile)" 2
+has "after its parity run against the engine" "$O" "native — green (1 parity files)"
+quiet "$E/home" open cbehind
+commit "$HW/lane-cbehind" packages/qa_native/src/b.c "C its engine is not built from yet"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_ENGINE=behind out "$E/home" land cbehind)
+has "a lane whose engine is behind its C lands" "$O" "merged work/cbehind"
+check "after its engine was built from it — configured, then built, once" \
+  "$(grep -c 'lane-cbehind cmake' "$LANE_TEST_LOG")" 2
+has "and its parity run against that engine" "$O" "native — green (1 parity files)"
+quiet "$E/home" open cgone; mkdir -p "$HW/lane-cgone/packages/gpu_engine/rust"
+git -C "$HW/lane-cgone" rm -q -r packages/qa_native
+commit "$HW/lane-cgone" packages/gpu_engine/rust/g.wgsl "the C engine deleted, and what the crate held to it"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_ENGINE=stale out "$E/home" land cgone)
+has "a lane that left no C behind lands — though an engine asked for would be refused" \
+  "$O" "merged work/cgone"
+lacks "with no native gate — there is no engine to build or to run against" "$O" "lane: native"
+check "none was built, in the lane or in the trunk" "$(grep -c ' cmake ' "$LANE_TEST_LOG")" 0
+check "and its crate's tests ran, debug and release, held to no engine" "$(cargo_runs lane-cgone)" 2
+lacks "and nothing is said of an engine, in the lane or in the trunk it left without C" \
+  "$O" "not built from"
 quiet "$E/home" open none; mkdir -p "$HW/lane-none/packages/gpu_engine/rust"
 commit "$HW/lane-none" packages/gpu_engine/rust/n.wgsl "a kernel whose crate ran no test"
 : > "$LANE_TEST_LOG"; BEFORE=$(git -C "$E/home" rev-parse master)

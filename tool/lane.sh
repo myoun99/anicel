@@ -68,6 +68,11 @@
 #    without landing. Measured 2026-09-10 from a clean
 #    directory: 241 s for all of it (configure, every target, the C tests, 67
 #    parity files). A lane that did not touch the C pays nothing.
+#    ⚠️Nor does a lane that left no C behind (관제 2026-11-13, board
+#    what-still-runs-on-the-cpu): the lane that deletes the engine is landed
+#    by this script as the trunk holds it, and has nothing to build and no
+#    parity to run against it. That lane takes this refusal out, and the
+#    branch with it.
 # 6. Hand anyone an engine that was not built from the C beside it. Every
 #    build this file runs stamps the name of the C it came from
 #    (`build/native_standalone/.built-from`; what that name is, and why not a
@@ -816,6 +821,11 @@ ENGINE_STAMP=build/native_standalone/.built-from
 # goes to stderr, because `open` prints the lane's path as its only output.
 ensure_engine() {
   local c="$1" out rc
+  # A checkout that holds no C has no engine to build, and nothing there is
+  # held to one: the lane that deletes the engine, and the trunk once that
+  # lane has landed — where the tool asked below went with the C, so the
+  # folder is asked and not the tool. ⚠️That lane takes this function out.
+  [ -d "$c/packages/qa_native/src" ] || return 0
   out="$(bash "$ROOT/tool/run.sh" native_engine_provenance check "$c")"
   rc=$?
   [ "$rc" -eq 0 ] && return 0
@@ -1192,9 +1202,12 @@ gates() {
   fi
 
   # Refusal 5. Only a lane that touched the C pays for it — its parity run
-  # outside the machine's line, as the architecture tests above run.
+  # outside the machine's line, as the architecture tests above run — and
+  # only one that still holds it: a lane that left no C behind has none to
+  # build. ⚠️That lane takes this gate out.
   still_landing
-  if lane_touched "$p" packages/qa_native/src; then
+  if lane_touched "$p" packages/qa_native/src \
+    && [ -d "$p/packages/qa_native/src" ]; then
     cmd_native "$name" gates
   fi
   still_landing
