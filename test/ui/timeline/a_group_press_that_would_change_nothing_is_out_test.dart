@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/fx_basis.dart' show FxBasis, fxReadFrame;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -444,6 +445,57 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(pressOf(tester, rasterize), isNull, reason: 'held at 0 there');
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('an fx stepped on its row\'s blocks is asked where it reads '
+      'its keys: lit over a band inside a block it blurs at its start', (
+    tester,
+  ) async {
+    final session = await theApp(tester);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    await tester.pumpAndSettle();
+    final row = session.activeLayerId!;
+    await openLanes(tester, session, row);
+    final blur = _rowOf(session, row).effects.single.id;
+    final header = effectGroupLaneId(blur);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    for (var frame = 1; frame < 8; frame += 1) {
+      session.exposureVerbs.increaseSelectedExposure();
+    }
+    await tester.pumpAndSettle();
+    expect(
+      fxReadFrame(FxBasis.block, _rowOf(session, row).fxBlocks, 4),
+      0,
+      reason: '⛔premise: one block from frame 0',
+    );
+    session.effectsAndFx.updateLayerEffects(row, [
+      LayerEffect(
+        id: blur,
+        kind: EffectKind.blur,
+        basis: FxBasis.block,
+        parameters: {
+          'blurriness': EffectParameter(
+            track: PropertyTrack<double>()
+                .withKey(0, 12, outgoing: KeyExit.hold)
+                .withKey(2, 0),
+          ),
+        },
+      ),
+    ]);
+    session.laneRangeSelection.value = TimelineLaneSelection(
+      layerId: row,
+      laneId: header,
+      startIndex: 2,
+      endIndexExclusive: 6,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      pressOf(tester, rasterizeOf(row, header)),
+      isNotNull,
+      reason: 'each frame there reads its block\'s start, 12',
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 
