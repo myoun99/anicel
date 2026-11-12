@@ -186,6 +186,14 @@ String? debugTakeAppGpuEngineNoted() {
   return engine == null || engine.isGone ? null : engine.debugTakeNoted();
 }
 
+/// Test seam: whether anything has asked for the app's engine since the
+/// app last let one go — opened it or begun to ([openAppGpuEngine]), or
+/// made it at once ([appGpuEngine]). [appGpuEngineOpen] says only the
+/// first once it is done.
+@visibleForTesting
+bool get debugAppGpuEngineAskedFor =>
+    _its.engine != null || _its.opening != null;
+
 /// A set of kernels on [appGpuEngine], one for the app: compiled here the
 /// first time anything asks, if [warm] has not got there first — and
 /// again on the next engine, once the app lets this one go

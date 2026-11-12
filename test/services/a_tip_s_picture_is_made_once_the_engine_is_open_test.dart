@@ -24,10 +24,12 @@ void main() {
     final mask = _ramp('asked-early');
     final picture = BrushTipThumbnails.instance.of(mask);
     await pumpEventQueue();
+    // Asked for, not open yet: an opening begun is under way off this
+    // isolate, and would say nothing here till it is done.
     expect(
-      (picture.value, appGpuEngineOpen.value),
-      (null, null),
-      reason: 'nothing makes it, nor opens the engine to',
+      (picture.value, debugAppGpuEngineAskedFor),
+      (null, false),
+      reason: 'nothing makes it, nor asks for the engine to',
     );
 
     await openAppGpuEngine();
