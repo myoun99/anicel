@@ -1018,25 +1018,31 @@ void main() {
   /// holds them. 🔬`clean_code_diff` against the 7′ commit before it names
   /// that one added.
   ///
-  /// ⚠️464 → 458 on 2026-11-12, three names in and nine out
+  /// ⚠️464 → 459 on 2026-11-12, four names in and nine out
   /// (fill-runs-in-the-c-engine — the bucket's flood on the engine; master
   /// stood at 464 under 469). `fillPictureOver` (eight) is the one door a
   /// canvas's fill reads its frame's picture by, and its parameters are
   /// what that read is of — the box, the frame's pictures and the canvas
   /// whose rows a layer read names, the cut and the frame, the read source
-  /// and the row stood on, and the space the seed is in. `fillPictureOf`
-  /// (six) is the engine's picture of a stacked frame over a box, in a
-  /// space, with the tools it is laid by, and `_planned` (six) the one
-  /// laying of a frame's plan that the screen and that picture share — the
-  /// screen's `_laid` was it alone. Gone with the CPU flood and its C
-  /// calls: `floodFillRegion`, `_gapCloseFloodRegion`,
+  /// and the row stood on, and the space the seed is in. `fillRangeOn`
+  /// (seven) is the one call a fill pressed on a session is asked by — the
+  /// canvas's, and the helper's of the tests that press one, which spelled
+  /// it a second time till then — and its parameters are the press's own:
+  /// the session and the point, the tool's options, the space the point is
+  /// in, the fill's opacity, the guide's symmetry and who hears of an open
+  /// region. `fillPictureOf` (six) is the engine's picture of a stacked
+  /// frame over a box, in a space, with the tools it is laid by, and
+  /// `_planned` (six) the one laying of a frame's plan that the screen and
+  /// that picture share — the screen's `_laid` was it alone. Gone with the
+  /// CPU flood and its C calls: `floodFillRegion`, `_gapCloseFloodRegion`,
   /// `_cropAndFinishFloodRegion`, `_floodFinishBox`, and
   /// `QaNativeEngine.fillClearRect` · `fillComposeTile` · `floodFillRun` ·
   /// `gapCloseFillRun` · `finishFillMask`. 🔬`clean_code_diff` against
-  /// master (`2a11cfca6`) names those. ⛔Not bundled to fit: each of the
-  /// door's parameters is asked of a different owner — the playback rig,
-  /// the editing canvas, the tool's options, the selection.
-  const wideSignatures = 458;
+  /// master (`48604553a`) names those. ⛔Not bundled to fit: each of the
+  /// doors' parameters is asked of a different owner — the playback rig,
+  /// the editing canvas, the tool's options, the view's pose, the guide,
+  /// the selection.
+  const wideSignatures = 459;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
