@@ -20,7 +20,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
-import 'package:anicel/src/services/brush_blur_stroke_landing.dart';
+import 'package:anicel/src/services/brush_stroke_landing.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -333,7 +333,7 @@ void main() {
       for (var i = 0; i < 4; i++) rubbing(60.0 + i * 3, 64, sequence: i),
     ];
     final watched = rubbedOver(base)..blendFrom(dabs, from: 0);
-    final landed = blurStrokeLandedOn(base, dabs, opacity: 1);
+    final landed = strokeLandedOn(base, dabs, opacity: 1);
     expect(
       landed.single.tile.pixels,
       promoted(watched, base).single.tile.pixels,

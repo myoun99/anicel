@@ -20,7 +20,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_blur_kernel.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/brush_blur_stroke_landing.dart';
+import 'package:anicel/src/services/brush_stroke_landing.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_dab_dirty_region.dart';
 import 'package:anicel/src/services/brush_dab_kernel.dart';
@@ -874,6 +874,6 @@ void main() {
 
   test('a blur stroke with nothing to land lands nothing', () {
     final base = celOf((x, y) => 0x00000000);
-    expect(blurStrokeLandedOn(base, rub(), opacity: 1), isEmpty);
+    expect(strokeLandedOn(base, rub(), opacity: 1), isEmpty);
   });
 }

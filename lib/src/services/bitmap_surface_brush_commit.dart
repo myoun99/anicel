@@ -23,7 +23,7 @@ import '../native/engine_tile_ledger.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
-import 'brush_live_stroke_rasterizer.dart';
+import 'brush_stroke_landing.dart';
 import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
@@ -200,7 +200,7 @@ BrushSurfaceMaterialization _materializedOnEngine(
         dabs[end].erase == first.erase) {
       end += 1;
     }
-    put(_strokeOnEngine(landed, dabs.sublist(at, end), erase: first.erase));
+    put(strokeLandedOn(landed, dabs.sublist(at, end), erase: first.erase));
     at = end;
   }
   final coords = changed.toList()..sort(TileCoord.compareRowMajor);
@@ -208,31 +208,6 @@ BrushSurfaceMaterialization _materializedOnEngine(
     surface: landed,
     dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
   );
-}
-
-/// [dabs] piled and laid on [surface] as the live stroke is: the tiles they
-/// change.
-List<PlacedTile> _strokeOnEngine(
-  BitmapSurface surface,
-  List<BrushDab> dabs, {
-  required bool erase,
-}) {
-  final rasterizer = BrushLiveStrokeRasterizer(
-    pasteboard: surface.pasteboard,
-    tileSize: surface.tileSize,
-  )..blendFrom(dabs, from: 0);
-  try {
-    return [
-      for (final promoted in rasterizer.promoteStrokeTiles(
-        base: surface,
-        mode: BrushBlendMode.color,
-        erase: erase,
-      ))
-        (coord: promoted.coord, tile: promoted.tile),
-    ];
-  } finally {
-    rasterizer.clear();
-  }
 }
 
 /// [picture] over [landing], what the pasteboard's wall leaves of it — a

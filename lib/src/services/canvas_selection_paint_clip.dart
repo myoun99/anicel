@@ -7,7 +7,7 @@ import '../models/brush_stamp_image.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import 'bitmap_surface_brush_commit.dart';
-import 'brush_blur_stroke_landing.dart';
+import 'brush_stroke_landing.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_stroke_blend.dart';
 import 'brush_stroke_commit_data.dart';
@@ -285,7 +285,7 @@ BrushStrokeCommitData? _blurLandedThrough(
   BrushStrokeCommitData data,
   BitmapSurface surface,
 ) {
-  final tiles = blurStrokeLandedOn(
+  final tiles = strokeLandedOn(
     surface,
     data.sourceDabs,
     opacity: data.strokeOpacity,

@@ -10,7 +10,7 @@ import '../models/brush_dab_sequence.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'bitmap_surface_brush_commit.dart';
-import 'brush_blur_stroke_landing.dart';
+import 'brush_stroke_landing.dart';
 import 'brush_commit_cache_invalidation.dart';
 import 'brush_stroke_blend.dart';
 import 'canvas_selection_paint_clip.dart';
@@ -45,11 +45,11 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     );
   }
   // I-75: a BLUR stroke re-derived from its dabs is laid again over this
-  // surface by the rasterizer that showed it (`blurStrokeLandedOn`) — it
+  // surface by the rasterizer that showed it (`strokeLandedOn`) — it
   // has no stroke buffer for the routes below to composite.
   if (sequence.firstOrNull?.blurs ?? false) {
     return _installed(
-      blurStrokeLandedOn(surface, sequence.dabs, opacity: sequence.opacity),
+      strokeLandedOn(surface, sequence.dabs, opacity: sequence.opacity),
       on: surface,
       layerId: layerId,
       frameId: frameId,
