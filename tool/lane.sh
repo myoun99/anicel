@@ -916,6 +916,7 @@ cmd_native() {
     grep -aE 'error C[0-9]+|: error:| error ' "$log" | head -15 >&2
     die "the engine is not built from this lane's C — this is refusal 5; the whole log: $log"
   }
+  still_landing
   if grep -q '^CMAKE_CONFIGURATION_TYPES' \
     "$p/build/native_standalone/CMakeCache.txt" 2>/dev/null; then
     (cd "$p" && "$cm" --build build/native_standalone --config Debug \
@@ -924,6 +925,7 @@ cmd_native() {
       die "the engine does not compile in Debug, as the app's Debug build compiles it — this is refusal 5; the whole log: $log"
     }
   fi
+  still_landing
   (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
     || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
   # By the run plan, as every list run goes: the collector pins alone and
@@ -1091,8 +1093,22 @@ HELD_TURN=
 # land's fast-forward was refused — its gates run for nothing.
 # `touch -c`: a turn that is gone stays gone — a FILE of that name would
 # stand in every land's way after.
+# ↩️And it was stamped between the gates alone (관제 2026-11-12, same card,
+# 브러시/렌더링's reading): `tile-blocks-on-rust`'s native gate ran for 61
+# minutes beside a wide test run, and a Surface lane took the turn at 45 —
+# so the native gate stamps between its steps too, and a test run under a
+# land's gates beats the turn at every batch (`affected_tests.dart`,
+# `beatTheLandsTurn`).
+# 🚨A LAND WHOSE TURN WAS TAKEN STOPS HERE (same day): that land ran its gates
+# on for sixteen minutes beside the land that took the turn — two at once,
+# what the turn is there to prevent — to have its fast-forward refused.
 still_landing() {
-  [ -z "$HELD_TURN" ] || touch -c "$HELD_TURN"
+  [ -n "$HELD_TURN" ] || return 0
+  [ "$(cat "$HELD_TURN/pid" 2>/dev/null)" = "$$" ] || die "this land's turn was taken over — another land holds it now
+  Its gates went longer than the turn's 45 minutes without a sign of life.
+  Land again once that land is done: this one would be refused at the
+  fast-forward, on a master it never measured."
+  touch -c "$HELD_TURN"
 }
 
 # ROOM FIRST (the head of this file: THE GATES ASK THE MACHINE). $1 is
@@ -1261,8 +1277,10 @@ land_turn() {
   local holder told=
   until mkdir "$turn" 2>/dev/null; do
     holder="$(cat "$turn/pid" 2>/dev/null || true)"
+    # Its age is its newest sign of life: the turn itself (`still_landing`,
+    # cargo_turn.sh) or the beat a test run under it writes inside it.
     if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
-      || [ -n "$(find "$turn" -maxdepth 0 -mmin +45 2>/dev/null)" ]; then
+      || [ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]; then
       rm -rf "$turn"
       continue
     fi
@@ -1275,7 +1293,18 @@ land_turn() {
   # What the land runs keeps it alive while it waits too (cargo_turn.sh).
   export LANE_LAND_TURN="$turn"
   # shellcheck disable=SC2064
-  trap "rm -rf '$turn'" EXIT
+  trap "give_turn_back '$turn'" EXIT
+}
+
+# Gives the turn at $1 back — ONLY WHILE IT IS STILL THIS LAND'S.
+# ↩️It was removed whoever held it (관제 2026-11-12, 브러시/렌더링's reading
+# on card a-long-land-loses-its-turn-at-45-minutes): a land whose turn was
+# taken over, ending, would remove the turn of the land that held it then,
+# and a third land would walk in beside that one.
+give_turn_back() {
+  if [ "$(cat "$1/pid" 2>/dev/null)" = "$$" ]; then
+    rm -rf "$1"
+  fi
 }
 
 cmd_land() {

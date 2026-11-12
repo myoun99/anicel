@@ -777,6 +777,39 @@ O=$(out "$E/home" land linkl)
 has "a lane with a link lands" "$O" "merged work/linkl"
 check "and takes nothing through it either" "$(ls "$SHARED")" kept
 
+say "Y A LONG LAND KEEPS ITS TURN, AND ONE THAT LOST IT STOPS: its age is its newest sign of life, and a land gives back only its own turn"
+# (관제 2026-11-12, card a-long-land-loses-its-turn-at-45-minutes:
+# `tile-blocks-on-rust`'s native gate went 61 minutes, a Surface lane took
+# its turn at 45, and the first land ran on beside it.)
+T="$E/home/.git/lane-land.turn"
+sleep 300 & HOLDER=$!
+mkdir -p "$T"; echo "$HOLDER" > "$T/pid"; echo beat > "$T/beat"
+touch -d '2 hours ago' "$T" "$T/pid"  # after the beat: making it moved the turn
+quiet "$E/home" open y1; commit "$HW/lane-y1" y1.txt "y1"
+BEFORE=$(git -C "$E/home" rev-parse master)
+O=$(cd "$E/home" && timeout 15 bash tool/lane.sh land y1 2>&1)
+has "a turn two hours old whose land beat lately is not taken over" "$O" "another lane is landing"
+check "its holder keeps it" "$(cat "$T/pid" 2>/dev/null)" "$HOLDER"
+check "and nothing landed beside it" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+touch -d '2 hours ago' "$T/beat"
+O=$(out "$E/home" land y1)
+has "with no sign of life for 45 minutes, its holder alive or not, it is taken over" "$O" "merged work/y1"
+check "and given back" "$(ls -d "$T" 2>/dev/null | wc -l | tr -d ' ')" 0
+quiet "$E/home" open y2; commit "$HW/lane-y2" y2.txt "y2"
+BEFORE=$(git -C "$E/home" rev-parse master)
+( LANE_TEST_FLUTTER=slow out "$E/home" land y2 > "$E/land_y2.txt" ) &
+LANDING=$!
+for _ in $(seq 1 40); do [ -f "$T/pid" ] && break; sleep 0.25; done
+echo "$HOLDER" > "$T/pid"
+wait "$LANDING"
+O=$(cat "$E/land_y2.txt")
+has "a land whose turn was taken over stops at its next step" "$O" "turn was taken over"
+check "and lands nothing" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+check "the turn it lost stays with the land that took it" "$(cat "$T/pid" 2>/dev/null)" "$HOLDER"
+kill "$HOLDER" 2>/dev/null; rm -rf "$T"
+O=$(out "$E/home" land y2)
+has "and it lands once that land is done" "$O" "merged work/y2"
+
 echo
 echo "== $FAILS failed"
 exit "$FAILS"

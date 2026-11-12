@@ -639,6 +639,27 @@ String? _flagValue(List<String> args, String name) {
 
 void _report(String message) => stdout.writeln('[affected] $message');
 
+/// A LAND THAT MOVES ON IS ALIVE (`tool/lane.sh`, `still_landing`): a batch
+/// started under a land's gates — `LANE_LAND_TURN` in [environment] names
+/// the land's turn — writes a beat inside that turn, and the turn's age is
+/// its newest sign of life (`land_turn`). True where it beat.
+/// 🔬Why (관제 2026-11-12, card a-long-land-loses-its-turn-at-45-minutes):
+/// `tile-blocks-on-rust`'s native gate — its parity run is this tool —
+/// went 61 minutes without one, and another land took its turn at 45.
+/// ⛔A turn that is gone stays gone: nothing is made where it was.
+bool beatTheLandsTurn(Map<String, String> environment) {
+  final turn = environment['LANE_LAND_TURN'];
+  if (turn == null || turn.isEmpty || !Directory(turn).existsSync()) {
+    return false;
+  }
+  try {
+    File('$turn/beat').writeAsStringSync('${DateTime.now()}\n');
+    return true;
+  } on FileSystemException {
+    return false;
+  }
+}
+
 /// 🗣️유저 2026-09-24 「PC 굳히지 말 것」: every suite this launches runs at
 /// Idle, whoever launched the tool. `lane.sh` lowers its own shell before
 /// its gates; a run started straight from a shell lowered nothing, and on
@@ -1010,6 +1031,7 @@ Future<int> _runTests(
           turn.take(files: filesNamed(left), work: workOf(left, known)),
       run: (batch, suites, {required kind}) async {
         final i = launched++;
+        beatTheLandsTurn(Platform.environment);
         _report('batch ${i + 1}: ${batch.length} file(s) at $suites '
             'suite(s)${switch (kind) {
               BatchKind.crowd => '',
