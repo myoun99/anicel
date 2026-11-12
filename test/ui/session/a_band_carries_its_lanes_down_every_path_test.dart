@@ -150,6 +150,8 @@ List<int> _keysOf(Layer layer) =>
     layer.transformTrack.position.keys.keys.toList();
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('a hop onto a row of its own kind', () {
     test('an SE row carried onto another takes its sound there, and its '
         'keys go along their own lane', () {

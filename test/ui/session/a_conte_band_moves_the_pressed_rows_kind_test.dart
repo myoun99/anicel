@@ -106,6 +106,8 @@ List<int> _sound(EditorSessionManager s) =>
     s.activeTrack.seLayers.single.timeline.keys.toList();
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('pressed on the V row, the band moves the cuts — the sound stays on '
       'its frames', () {
     final s = _session();

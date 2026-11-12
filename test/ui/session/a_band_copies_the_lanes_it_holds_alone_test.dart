@@ -169,6 +169,8 @@ void _sweep(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('🚨a band over a row\'s cells and ANOTHER row\'s lane copies that '
       'lane\'s keys too — a paste lays them on that row\'s same lane, as far '
       'from where it starts as they were from the band\'s first cell, over '

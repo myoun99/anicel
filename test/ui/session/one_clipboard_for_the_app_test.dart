@@ -48,6 +48,8 @@ LayerClipboard layerBoardOf(EditorSessionManager session) =>
 KeyClipboard keyBoardOf(EditorSessionManager session) => session.keyClipboard;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late AppClipboard clipboard;
   setUp(() => clipboard = AppClipboard());
 

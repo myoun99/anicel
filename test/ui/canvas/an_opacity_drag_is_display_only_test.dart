@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// showing its stored opacity through the whole drag and nothing would
 /// have said so.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('a layer opacity drag reaches the editing stack and leaves the cut '
       'alone', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
