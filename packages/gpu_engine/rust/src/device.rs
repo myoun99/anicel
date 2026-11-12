@@ -45,6 +45,9 @@ pub struct Engine {
     /// What the device refused that no wait has told yet, and whether it
     /// is gone ([`Refusals`]).
     refusals: Refusals,
+    /// Why each wait no caller stayed for failed, till the caller asks
+    /// ([`gpu_engine_done_failure`]).
+    ended: Ended,
 }
 
 /// What the engine's device refused that no wait has told yet, and whether
@@ -372,6 +375,7 @@ impl Engine {
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
                     refusals,
+                    ended: Ended::default(),
                     instance,
                     adapter,
                     device,
@@ -528,31 +532,43 @@ impl Engine {
     }
 
     /// [`Self::map`] with its wait on the engine's thread and none for the
-    /// caller, who goes on: `then` is told there once the GPU is done with
-    /// all that was submitted — `buffer`, mapped, or why it is not, as a
-    /// wait fails by it ([`Self::wait`]). Told once, whatever becomes of
-    /// the wait ([`Told`]).
-    ///
-    /// 🗣️관제 2026-11-12 (a-lost-gpu-device-keeps-the-unsaved-tiles), of the
-    /// copies the app keeps of the engine's tiles: 「UI(또는 래스터) 스레드를
-    /// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다
-    /// (구형 기기 방침 — 서피스는 더 느리다)」. ⚠️What the caller submits
-    /// while that thread polls goes behind the poll ([`Queue::submit`]): as
-    /// long as the GPU still takes over what was submitted before it.
+    /// caller, who goes on ([`Self::done_then`]): `then` is told there
+    /// `buffer`, mapped, or why it is not.
     pub(crate) fn map_then(
         &self,
         buffer: wgpu::Buffer,
         then: impl FnOnce(Result<wgpu::Buffer, String>) + Send + 'static,
     ) {
         let mapping = asked_to_map(&buffer);
+        self.done_then(move |done| {
+            then(done.and_then(|()| {
+                answered(&mapping).map(|()| buffer).ok_or_else(last_error)
+            }));
+        });
+    }
+
+    /// [`Self::wait`] with the wait on the engine's thread and none for the
+    /// caller, who goes on: `then` is told there once the GPU is done with
+    /// all that was submitted, or why it is not, as a wait fails by it.
+    /// Told once, whatever becomes of the wait ([`Told`]).
+    ///
+    /// 🗣️관제 2026-11-12 (a-lost-gpu-device-keeps-the-unsaved-tiles), of the
+    /// copies the app keeps of the engine's tiles: 「UI(또는 래스터) 스레드를
+    /// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다
+    /// (구형 기기 방침 — 서피스는 더 느리다)」 — and a screen's frame, put up
+    /// once the GPU has finished it (🗣️유저 2026-11-12,
+    /// a-float-in-hand-draws-the-frame-as-it-stands-Q2). ⚠️What the caller
+    /// submits while that thread polls goes behind the poll
+    /// ([`Queue::submit`]): as long as the GPU still takes over what was
+    /// submitted before it.
+    pub(crate) fn done_then(&self, then: impl FnOnce(Result<(), String>) + Send + 'static) {
         let device = self.device.clone();
         let told = Told { then: Some(then), refusals: self.refusals.clone() };
         self.thread.post(move || {
-            let mapped = polled(&device, WAIT_LIMIT)
+            let done = polled(&device, WAIT_LIMIT)
                 .map_or_else(fail, Some)
-                .and_then(|()| told.refusals.told())
-                .and_then(|()| answered(&mapping));
-            told.tell(mapped.map(|()| buffer).ok_or_else(last_error));
+                .and_then(|()| told.refusals.told());
+            told.tell(done.ok_or_else(last_error));
         });
     }
 
@@ -618,26 +634,37 @@ fn answered(mapping: &Mapping) -> Option<()> {
     }
 }
 
+/// Why each wait no caller stayed for failed ([`gpu_engine_done_then`]),
+/// by the number its caller knows it by — kept till that caller asks.
+#[derive(Clone, Default)]
+struct Ended(Arc<Mutex<HashMap<u64, String>>>);
+
+impl Ended {
+    fn kept(&self) -> std::sync::MutexGuard<'_, HashMap<u64, String>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
 /// Who is told how a wait ended that its caller did not stay for
-/// ([`Engine::map_then`]) — once, whatever becomes of the wait. Dropped
+/// ([`Engine::done_then`]) — once, whatever becomes of the wait. Dropped
 /// untold, the engine's thread ended under the wait — wgpu's poll panics
 /// where the device is lost under one — or was gone before it: the device
 /// is gone, as for a wait that never came back ([`Engine::wait`]), and
 /// that is what is told.
-struct Told<Then: FnOnce(Result<wgpu::Buffer, String>)> {
+struct Told<Then: FnOnce(Result<(), String>)> {
     then: Option<Then>,
     refusals: Refusals,
 }
 
-impl<Then: FnOnce(Result<wgpu::Buffer, String>)> Told<Then> {
-    fn tell(mut self, ended: Result<wgpu::Buffer, String>) {
+impl<Then: FnOnce(Result<(), String>)> Told<Then> {
+    fn tell(mut self, ended: Result<(), String>) {
         if let Some(then) = self.then.take() {
             then(ended);
         }
     }
 }
 
-impl<Then: FnOnce(Result<wgpu::Buffer, String>)> Drop for Told<Then> {
+impl<Then: FnOnce(Result<(), String>)> Drop for Told<Then> {
     fn drop(&mut self) {
         if let Some(then) = self.then.take() {
             self.refusals.lose("the engine's thread ended under a wait".into());
@@ -885,6 +912,50 @@ pub unsafe extern "C" fn gpu_engine_noted(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.refusals.taken().map_or(0, |error| copy_out(&error, buffer, capacity))
+}
+
+/// [`Engine::done_then`] across the boundary: the engine's thread calls
+/// `then` with `wait` — the number its caller knows this wait by: one
+/// `then` serves every wait of a caller — and whether the GPU finished all
+/// that was submitted; where it did not, why is kept under that number for
+/// [`gpu_engine_done_failure`]. From that thread; from this one where that
+/// thread is gone.
+///
+/// # Safety
+/// `engine` is live. `then` is one any thread may call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_done_then(
+    engine: *const Engine,
+    then: extern "C" fn(u64, bool),
+    wait: u64,
+) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let ended = engine.ended.clone();
+    engine.done_then(move |done| {
+        if let Err(why) = &done {
+            ended.kept().insert(wait, why.clone());
+        }
+        then(wait, done.is_ok());
+    });
+}
+
+/// Takes why the wait `wait` failed ([`gpu_engine_done_then`]): copies it
+/// (UTF-8) into `buffer` and returns its full length, 0 where none failed
+/// under that number — and it is kept no more.
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_done_failure(
+    engine: *const Engine,
+    wait: u64,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.ended.kept().remove(&wait).map_or(0, |why| copy_out(&why, buffer, capacity))
 }
 
 /// How many waits for the GPU the thread that asks has made
@@ -1191,6 +1262,15 @@ mod tests {
         let engine = Engine::open_first().expect("an adapter");
         let ended = engine.thread.run(|| -> () { panic!("as wgpu's poll does") });
         assert_eq!(ended, None);
+        // Ended once it has let go of what it is handed: its panic answers
+        // the run above as it unwinds, before that. ↩️A wait asked at once
+        // was at times handed to the thread still unwinding, and told it
+        // never answered — 1 run in 20 in release (2026-11-12).
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while engine.thread.0.send(Box::new(|| {})).is_ok() {
+            assert!(std::time::Instant::now() < until, "the thread never ended");
+            std::thread::yield_now();
+        }
         assert!(!engine.gone(), "gone before a wait found the thread ended");
         assert_eq!(engine.wait(), None);
         assert_eq!(last_error(), "the engine's thread is gone");
@@ -1293,8 +1373,8 @@ mod tests {
         use super::{Refusals, Told};
         let refusals = Refusals::default();
         let (tell, told) = std::sync::mpsc::channel();
-        let then = move |ended: Result<wgpu::Buffer, String>| {
-            let _ = tell.send(ended.map(|_| ()));
+        let then = move |ended: Result<(), String>| {
+            let _ = tell.send(ended);
         };
         drop(Told { then: Some(then), refusals: refusals.clone() });
         let gone = "the graphics device is gone: the engine's thread ended under a wait";

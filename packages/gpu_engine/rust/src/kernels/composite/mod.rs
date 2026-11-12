@@ -631,16 +631,23 @@ impl Composite {
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
     /// right, bottom), the output's pixels being the surface's own — and
     /// leaves the rest of it as it was, the other panels of an atlas;
-    /// submits the work, waits for the GPU and returns how many passes it
-    /// took. The screen is this with one row: the canvas's composite posed
-    /// by the camera (gpu-canonical-store ④⑤).
+    /// submits the work and returns how many passes it took. The screen is
+    /// this with one row: the canvas's composite posed by the camera
+    /// (gpu-canonical-store ④⑤).
     ///
-    /// 🚨IT WAITS, as the fill, the grid and the wave do: Flutter shows a
-    /// surface without waiting on the engine's work — on Windows nothing
-    /// tells either side the other is done (gpu-engine-feasibility ⑤), on
-    /// Apple's Flutter waits on no GPU work of ours (the Apple bridge's ①),
-    /// on Android it waits on an image's fence from API 33 only — so a
-    /// surface handed over before the GPU is done shows what it held.
+    /// 🚨IT DOES NOT WAIT — what hands the surface to Flutter does, off the
+    /// thread that asked ([`Engine::done_then`], the app's screen texture):
+    /// Flutter shows a surface without waiting on the engine's work — on
+    /// Windows nothing tells either side the other is done
+    /// (gpu-engine-feasibility ⑤), on Apple's Flutter waits on no GPU work
+    /// of ours (the Apple bridge's ①), on Android it waits on an image's
+    /// fence from API 33 only — so a surface handed over before the GPU is
+    /// done shows what it held. What reads the surface back waits as a read
+    /// does. ↩️It waited here, as the fill, the grid and the wave do, until
+    /// a screen's frame was put up as the GPU finished it (🗣️유저
+    /// 2026-11-12, a-float-in-hand-draws-the-frame-as-it-stands-Q2): 🔬on the
+    /// Surface Pro 11 the UI thread waited here ≈19 ms of a frame's 22, a
+    /// float dragged over the whole of S5 cut 352.
     pub(crate) fn show(
         &self,
         engine: &Engine,
@@ -667,9 +674,7 @@ impl Composite {
             .collect();
         let target = Target::Surface(surface.create_view(&Default::default()));
         let extent = rect.map(|edge| edge as i32);
-        let passes = self.walk(engine, plan, &tiles, extent, Some(token), &target, budget)?;
-        engine.wait()?;
-        Some(passes)
+        self.walk(engine, plan, &tiles, extent, Some(token), &target, budget)
     }
 
     /// The surface's binding: past the plan, the work buffer and the pages.

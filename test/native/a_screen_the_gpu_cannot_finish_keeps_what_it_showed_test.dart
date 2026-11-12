@@ -40,6 +40,7 @@ void main() {
       asks: () => true,
       opened: (_) {},
       letGo: () {},
+      putUp: ({required behind}) {},
     )..wanted = (4, 4);
     await screen.open();
   });

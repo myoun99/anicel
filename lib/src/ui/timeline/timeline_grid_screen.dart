@@ -119,13 +119,22 @@ final class _GridScreen {
     // No row lays here till the next engine's is open: each paints again,
     // lets go of the tiles it laid, and draws its cells itself.
     letGo: _laysChanged,
+    // The rows' tiles, laid as the GPU finished them, are shown by the
+    // next scene — and laid again there where they changed meanwhile.
+    putUp: ({required behind}) {
+      if (behind) {
+        _laid = null;
+      }
+      _box?.markNeedsPaint();
+    },
   );
 
   ScreenTexture? get _texture => _shownThrough.texture;
 
-  /// Where the rows' tiles were last laid, in the box's own pixels, and the
-  /// id what was laid is shown by — null where they are to be laid again.
-  ({Rect at, int id})? _laid;
+  /// Where the rows' tiles were last laid, in the box's own pixels — null
+  /// where they are to be laid again. What is shown is the frame the GPU
+  /// finished last, where it was laid ([ScreenTexture.shownFor]).
+  Rect? _laid;
 
   /// Whether a row lays its tiles here: a box shows the screen, its texture
   /// is open and holds what it shows, and the grids' passes are compiled
@@ -342,22 +351,26 @@ class _RenderGridScreen extends RenderBox {
     }
     final texture = screen._texture!;
     final laid = screen._laid;
-    if (laid != null &&
-        _covers(MatrixUtils.transformRect(toView, laid.at), shown)) {
-      return laid;
+    if (laid == null ||
+        !_covers(MatrixUtils.transformRect(toView, laid), shown)) {
+      final window = _windowOf(texture, shown);
+      final at = MatrixUtils.inverseTransformRect(toView, window);
+      _layAt(
+        window.topLeft,
+        texture,
+        appGpuGridKernels.kept.lay,
+        owner!.rootNode!,
+        drawnFor: at,
+      );
+      screen._laid = at;
     }
-    final window = _windowOf(texture, shown);
-    final id = texture.nextTextureId;
-    _layAt(
-      window.topLeft,
-      texture,
-      appGpuGridKernels.kept.lay,
-      owner!.rootNode!,
-    );
-    return screen._laid = (
-      at: MatrixUtils.inverseTransformRect(toView, window),
-      id: id,
-    );
+    return switch (texture.shownFor) {
+      final Rect at when texture.showsAFrame => (
+        at: at,
+        id: texture.textureId.value,
+      ),
+      _ => null,
+    };
   }
 
   /// Whether the screen, standing at [laid], still has [shown] on it —
@@ -385,13 +398,15 @@ class _RenderGridScreen extends RenderBox {
   }
 
   /// Presents every slot's tiles on [texture], from [origin] in the device
-  /// pixels of [view] — what of them it holds, the rest of it clear.
+  /// pixels of [view] — what of them it holds, the rest of it clear — drawn
+  /// for [drawnFor], where it stands in the box.
   void _layAt(
     Offset origin,
     ScreenTexture texture,
     GpuGridLay lay,
-    RenderObject view,
-  ) {
+    RenderObject view, {
+    required Rect drawnFor,
+  }) {
     final (width, height) = (texture.width, texture.height);
     final laid = <GpuGridLaid>[];
     for (final slot in _screen._slots) {
@@ -414,7 +429,10 @@ class _RenderGridScreen extends RenderBox {
         ));
       }
     }
-    texture.present((next) => lay.lay(next, (0, 0, width, height), laid));
+    texture.present(
+      (next) => lay.lay(next, (0, 0, width, height), laid),
+      drawnFor: drawnFor,
+    );
   }
 
   /// What of this box the view shows, in its own pixels: its bounds within

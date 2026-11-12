@@ -164,6 +164,9 @@ class GpuEngine {
 
   final Pointer<rust.Engine> _engine;
 
+  /// Whether [close] has freed it ([_whyNotDone]).
+  bool _closed = false;
+
   /// The adapter's LUID where Flutter names its adapter by one (Windows).
   final int? adapterLuid;
   Pointer<rust.Fill>? _fill;
@@ -212,6 +215,66 @@ class GpuEngine {
   /// driver taking it away, which no test does. [isGone] says so once a
   /// job has waited.
   void debugLose() => rust.engineLose(_engine);
+
+  /// Ends once the GPU has finished all that was submitted on this engine,
+  /// with no wait on this isolate, which goes on meanwhile: the engine's
+  /// thread waits (rust/src/device.rs, `gpu_engine_done_then`). Fails by a
+  /// [GpuRefused] naming why where it did not finish — past the engine's
+  /// limit, or the device gone — as a wait does.
+  ///
+  /// 🗣️유저 2026-11-12 (a-float-in-hand-draws-the-frame-as-it-stands-Q2):
+  /// a screen's frame is put up as the GPU finishes it, the thread that
+  /// builds the app's frames waiting for none of it ([debugWaitsHere]).
+  ///
+  /// ⚠️[GpuReadout.mapping]'s twin — a number a wait, one listener for
+  /// every wait — kept apart while there are two (the rule of three): that
+  /// one maps its bytes in the same turn of the engine's thread.
+  Future<void> done() {
+    final ended = Completer<void>();
+    final wait = _asked++;
+    _ending[wait] = (ended: ended, engine: this);
+    _ended.keepIsolateAlive = true;
+    rust.doneThen(_engine, _ended.nativeFunction, wait);
+    return ended.future;
+  }
+
+  /// The waits on their way ([done]), each under the number it was asked
+  /// by.
+  static final Map<int, ({Completer<void> ended, GpuEngine engine})>
+  _ending = {};
+  static int _asked = 0;
+
+  /// How the engine's thread tells this isolate that a wait has ended, by
+  /// its number and whether the GPU finished: one for every [done] of the
+  /// isolate, kept alive while a wait is on its way and no longer.
+  static final NativeCallable<Void Function(Uint64, Bool)> _ended =
+      NativeCallable<Void Function(Uint64, Bool)>.listener(_end);
+
+  static void _end(int wait, bool finished) {
+    final (:ended, :engine) = _ending.remove(wait)!;
+    _ended.keepIsolateAlive = _ending.isNotEmpty;
+    if (finished) {
+      ended.complete();
+    } else {
+      ended.completeError(GpuRefused(engine._whyNotDone(wait)));
+    }
+  }
+
+  /// Why the wait [wait] did not end with the GPU done — taken. 🚨Of an
+  /// engine closed meanwhile nothing is read: its thread tells the waits
+  /// still on their way as it goes, and they come here after it has.
+  String _whyNotDone(int wait) {
+    if (_closed) {
+      return 'the engine was closed before the GPU had finished';
+    }
+    return using((arena) {
+      const capacity = 1024;
+      final buffer = arena<Uint8>(capacity);
+      final length = rust.doneFailure(_engine, wait, buffer, capacity);
+      final count = length < capacity ? length : capacity;
+      return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+    });
+  }
 
   /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra].
   GpuSurface surface(int width, int height, {required bool bgra}) {
@@ -289,6 +352,7 @@ class GpuEngine {
 
   /// Frees the device; every surface must be freed first.
   void close() {
+    _closed = true;
     final fill = _fill;
     if (fill != null) {
       rust.fillFree(fill);
@@ -1949,7 +2013,8 @@ class GpuComposite {
 
   /// Composites [plan] of [pool]'s tiles onto the pixels [rect] of
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
-  /// was, and waits for the GPU; returns how many passes it took.
+  /// was, and submits the work, waiting for none of it ([GpuEngine.done]);
+  /// returns how many passes it took.
   int show(
     GpuPool pool,
     GpuPlan plan,
@@ -2057,7 +2122,8 @@ class GpuScreen {
 
   /// Shows the kept canvas through the camera onto the pixels [rect] of
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
-  /// was, and waits for the GPU; returns how many passes it took. The
+  /// was, and submits the work, waiting for none of it ([GpuEngine.done]);
+  /// returns how many passes it took. The
   /// camera is [inverse] — a screen pixel to the canvas's, the affine
   /// `[a, b, c, d, e, f]` — at display [scale], device pixels a canvas
   /// pixel, sampled by [sampling].

@@ -184,6 +184,29 @@ external int engineNoted(
   int capacity,
 );
 
+@Native<
+  Void Function(
+    Pointer<Engine>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_done_then')
+external void doneThen(
+  Pointer<Engine> engine,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> then,
+  int wait,
+);
+
+@Native<Size Function(Pointer<Engine>, Uint64, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_done_failure',
+)
+external int doneFailure(
+  Pointer<Engine> engine,
+  int wait,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
+
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_lose')
 external void engineLose(Pointer<Engine> engine);
 

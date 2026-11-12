@@ -75,6 +75,7 @@ void main() {
         asks: () => true,
         opened: told.add,
         letGo: () => told.add('let go'),
+        putUp: ({required behind}) {},
       )..wanted = (4, 4);
       screen.start();
       addTearDown(screen.stop);
@@ -114,6 +115,7 @@ void main() {
         asks: () => true,
         opened: (_) {},
         letGo: () {},
+        putUp: ({required behind}) {},
       )..wanted = (4, 4);
       screen.start();
       addTearDown(screen.stop);

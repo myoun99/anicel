@@ -41,19 +41,24 @@ const int _screenSideStep = 512;
 /// device shows nothing of another's.
 final class EngineScreenTexture {
   /// A texture for a box that [asks] for one, [opened] telling that one has
-  /// just been opened on an engine and [letGo] that the one open went with
-  /// its engine.
+  /// just been opened on an engine, [letGo] that the one open went with its
+  /// engine, and [putUp] that a frame the GPU finished is up on it
+  /// ([ScreenTexture.putUp]) — the box shows it by a paint, and draws the
+  /// newest asked for meanwhile where it is [behind].
   EngineScreenTexture({
     required bool Function() asks,
     required void Function(GpuEngine engine) opened,
     required void Function() letGo,
+    required void Function({required bool behind}) putUp,
   }) : _asks = asks,
        _opened = opened,
-       _letGo = letGo;
+       _letGo = letGo,
+       _putUp = putUp;
 
   final bool Function() _asks;
   final void Function(GpuEngine engine) _opened;
   final void Function() _letGo;
+  final void Function({required bool behind}) _putUp;
 
   late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
     letGo: _wentWithItsEngine,
@@ -81,8 +86,9 @@ final class EngineScreenTexture {
         texture.height >= height;
   }
 
-  /// What [draw] puts on the next target of the texture open, [draw] told
-  /// its size, shown by a layer from [offset], one texel a device pixel.
+  /// [draw] presented on the texture open, [draw] told its size — and the
+  /// layer of the frame up on it, from [offset], one texel a device pixel:
+  /// the one drawn, once the GPU has finished it ([ScreenTexture.present]).
   Layer presented(
     void Function(GpuTarget next, (int, int) size) draw, {
     required Offset offset,
@@ -90,7 +96,8 @@ final class EngineScreenTexture {
   }) {
     final texture = _texture!;
     texture.present((next) => draw(next, (texture.width, texture.height)));
-    // After it is presented: a frame that failed stands as it stood.
+    // After it is presented: a frame that failed, or is still being drawn,
+    // stands as it stood.
     return _layerOf(texture, offset, devicePixelRatio);
   }
 
@@ -182,7 +189,7 @@ final class EngineScreenTexture {
       return;
     }
     _opening = null;
-    _texture = opened;
+    _texture = opened..putUp = _putUp;
     _opened(engine);
     await held?.free();
   }

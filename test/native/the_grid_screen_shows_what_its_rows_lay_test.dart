@@ -30,6 +30,12 @@ import '../helpers/the_apps_engine_let_go.dart';
 /// screen is as big as what of its box the view shows, rounded up; and before
 /// the app's engine is open, or the grids' passes are compiled on it, a row
 /// lays nothing and draws its cells itself.
+///
+/// 🗣️a-float-in-hand-draws-the-frame-as-it-stands-Q2 (유저 2026-11-12): on
+/// the app's textures what is laid is shown once the GPU has finished it,
+/// the frame up meanwhile standing where it was laid ([ScreenTexture.present])
+/// — a screen here shows a frame in the paint it is laid by, as a test's
+/// does where nothing holds the GPU.
 void main() {
   late TimelineGridTilePicture tile;
   // The same, for the one case that lets go of it as its store would.
@@ -279,6 +285,61 @@ void main() {
     scroll.jumpTo(0);
     await tester.pump();
 
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
+  });
+
+  testWidgets('🚨a scroll past what the screen holds while its frame is on '
+      'the GPU shows the one up where it was laid — and lays where the row '
+      'went once that one is up', (tester) async {
+    aSmallView(tester);
+    // The GPU finishes at once, till the test holds it.
+    var holding = false;
+    final gates = <Completer<void>>[];
+    debugOpenEngineScreen = (_, width, height) async {
+      surface = shownSurfaceOf(width, height);
+      surfaces.add(surface);
+      return ScreenTexture.debugOnSurface(
+        surface,
+        done: () {
+          if (!holding) {
+            return Future.value();
+          }
+          gates.add(Completer<void>());
+          return gates.last.future;
+        },
+      );
+    };
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(aGrid(_Row(() => tile), scroll: scroll));
+    await tester.pump();
+    // Up once the GPU has finished it: shown by the frame after.
+    await tester.pump();
+    Rect shown() => tester.layers.whereType<TextureLayer>().single.rect;
+    final atFirst = shown();
+    holding = true;
+
+    scroll.jumpTo(85);
+    await tester.pump();
+    expect(gates, hasLength(1), reason: '⛔premise: laid where the row went');
+    expect(shown(), atFirst, reason: 'the frame up, where it was laid');
+
+    scroll.jumpTo(0);
+    await tester.pump();
+    expect(gates, hasLength(1), reason: 'one frame on the GPU at a time');
+
+    gates.last.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(gates, hasLength(2), reason: 'laid again where the row went last');
+    final atScrolled = shown();
+    expect(atScrolled, isNot(atFirst), reason: 'the frame up, where laid');
+
+    gates.last.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(gates, hasLength(2), reason: 'a frame put up laid another');
+    expect(shown(), atFirst, reason: 'the newest, where it was laid');
     expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 

@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../core/laid_whole.dart';
 import '../../core/neighbour_pairs.dart';
 import '../../models/bitmap_surface.dart';
 import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;

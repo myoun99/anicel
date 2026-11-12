@@ -1240,7 +1240,28 @@ class _RenderFrameScreen extends RenderBox {
     asks: () => attached,
     opened: (_) => markNeedsPaint(),
     letGo: markNeedsPaint,
+    putUp: ({required behind}) =>
+        behind ? markNeedsPaint() : _showWhatIsUp(),
   );
+
+  /// Whether this box was asked to paint for anything but a frame put up:
+  /// a paint for that alone shows it and draws nothing — or every frame
+  /// the GPU finished would draw the next, for ever.
+  bool _drawAsked = true;
+
+  @override
+  void markNeedsPaint() {
+    _drawAsked = true;
+    super.markNeedsPaint();
+  }
+
+  /// A frame the GPU finished is up on the texture: painted again to show
+  /// it ([EngineScreenTexture.standing]).
+  void _showWhatIsUp() {
+    if (attached) {
+      super.markNeedsPaint();
+    }
+  }
 
   EngineFramePicture? _shown;
   StackedFrame? _asItStands;
@@ -1359,9 +1380,19 @@ class _RenderFrameScreen extends RenderBox {
     // Written before it is shown: what this frame's paint moves is what
     // this frame shows.
     _view._catchUp();
-    final (:layer, :refused) = _drawsAnything
+    final drawAsked = _drawAsked;
+    _drawAsked = false;
+    final (:layer, :refused) = !_drawsAnything
+        ? (layer: null, refused: false)
+        : drawAsked
         ? _layerNow(offset)
-        : (layer: null, refused: false);
+        : (
+            layer: _shownThrough.standing(
+              offset: offset,
+              devicePixelRatio: _devicePixelRatio,
+            ),
+            refused: false,
+          );
     _view._waitsAtPaint(refused: refused);
     if (layer == null) {
       return;

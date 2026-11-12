@@ -34,6 +34,11 @@ part of '../interactive_brush_edit_canvas_view.dart';
 /// filled 2010×1510 ellipse is built and laid in 23–33 ms on the desktop's
 /// VM, a 100px square of a 4px brush in 45–110 ms in the debug app (I-69-Q4)
 /// — which in one go would take the outline the hand drags down with it.
+///
+/// ⛔The law is [LaidWhole]'s, and this show holds two of it — the area
+/// and the stroke —, a screen's texture the third: what to ask, how a
+/// piece is laid and when it is whole are this show's, the rest is that
+/// one code's.
 class _BrushEditShapeShow implements ShapeShow {
   _BrushEditShapeShow(this._state);
 
@@ -49,14 +54,12 @@ class _BrushEditShapeShow implements ShapeShow {
 
   // ── an area ──────────────────────────────────────────────────────────
 
-  /// The area the hand asks for now.
-  ShapeArea? _wanted;
-
-  /// The area being laid, off screen.
-  _ShapeLaying? _laying;
-
-  /// The area on screen, whole.
-  _ShapeLaying? _shown;
+  /// The area the hand asks for, the one being laid off screen and the one
+  /// on screen, whole.
+  late final LaidWhole<ShapeArea, _ShapeLaying> _area = LaidWhole(
+    begin: _begin,
+    holds: _isOf,
+  );
 
   // ── a stroke of the brush ────────────────────────────────────────────
 
@@ -64,11 +67,12 @@ class _BrushEditShapeShow implements ShapeShow {
   /// ([_BrushEditStroke.openToolStroke]).
   bool _strokeOpen = false;
 
-  /// The path the hand asks for now.
-  _ToolPath? _wantedPath;
-
-  /// The path being laid, off screen.
-  _StrokeLaying? _strokeLaying;
+  /// The path the hand asks for, the stroke being laid along one off
+  /// screen and the one on screen, whole.
+  final LaidWhole<_ToolPath, _StrokeLaying> _path = LaidWhole(
+    begin: _StrokeLaying.new,
+    holds: (laid, path) => _samePath(laid.path, path),
+  );
 
   /// The path whose stroke is on screen AND whole in the live rasterizer —
   /// what a release on it lands. Null once a newer path is being laid: the
@@ -87,34 +91,30 @@ class _BrushEditShapeShow implements ShapeShow {
     }
     // The overlay shows one shape: an area asked for puts away a stroke.
     _dropTheStroke();
-    _wanted = area;
     // A shape being laid has its frame asked already, and the same shape
     // asked again asks for nothing — not a frame: the stamp's ghost is
     // asked again on every rebuild of its panel.
-    if (_laying == null && _shown?.area.shape != area.shape) {
-      _laying = _begin(area);
+    if (_area.ask(area)) {
       _askFrame();
     }
   }
 
   @override
   bool land(ShapeArea area) {
-    _wanted = null;
     if (!_canLay) {
       drop();
       return false;
     }
     _dropTheStroke();
-    final shown = _shown;
-    final laying = _laying;
-    final landing = shown != null && shown.area.shape == area.shape
+    final shown = _area.shown;
+    final laying = _area.laying;
+    final landing = shown != null && _isOf(shown, area)
         ? shown
-        : laying != null && laying.area.shape == area.shape
+        : laying != null && _isOf(laying, area)
         ? laying
         : _begin(area);
     while (landing.layNext()) {}
-    _laying = null;
-    _shown = null;
+    _area.drop();
     if (landing.tiles.isEmpty) {
       _state._overlay.resetOverlay();
       return false;
@@ -145,11 +145,7 @@ class _BrushEditShapeShow implements ShapeShow {
     }
     // The overlay shows one shape: a stroke asked for puts away an area.
     _dropTheArea();
-    final wanted = (points: path, pressure: pressure);
-    _wantedPath = wanted;
-    if (_strokeLaying == null && !_samePath(_rasterHolds, wanted)) {
-      _strokeLaying = _StrokeLaying(wanted);
-    }
+    _path.ask((points: path, pressure: pressure));
     _askFrame();
   }
 
@@ -164,7 +160,7 @@ class _BrushEditShapeShow implements ShapeShow {
     }
     final wanted = (points: path, pressure: pressure);
     if (!_samePath(_rasterHolds, wanted)) {
-      final laying = _strokeLaying;
+      final laying = _path.laying;
       final landing = laying != null && _samePath(laying.path, wanted)
           ? laying
           : _StrokeLaying(wanted);
@@ -191,10 +187,9 @@ class _BrushEditShapeShow implements ShapeShow {
       _state._pressure.pressureOf(press).pressure;
 
   void _dropTheArea() {
-    _wanted = null;
-    _laying = null;
-    if (_shown != null) {
-      _shown = null;
+    final shown = _area.shown;
+    _area.drop();
+    if (shown != null) {
       _state._overlay.resetOverlay();
     }
   }
@@ -214,10 +209,13 @@ class _BrushEditShapeShow implements ShapeShow {
 
   void _forgetTheStroke() {
     _strokeOpen = false;
-    _wantedPath = null;
-    _strokeLaying = null;
+    _path.drop();
     _rasterHolds = null;
   }
+
+  /// Whether [laid] is a laying of [area]'s shape.
+  static bool _isOf(_ShapeLaying laid, ShapeArea area) =>
+      laid.area.shape == area.shape;
 
   _ShapeLaying _begin(ShapeArea area) => _ShapeLaying(
     area,
@@ -247,7 +245,7 @@ class _BrushEditShapeShow implements ShapeShow {
   }
 
   void _layAreaFrame(Stopwatch clock) {
-    final laying = _laying;
+    final laying = _area.laying;
     if (laying == null) {
       return;
     }
@@ -256,23 +254,20 @@ class _BrushEditShapeShow implements ShapeShow {
       _askFrame();
       return;
     }
-    _laying = null;
-    _shown = laying;
+    _area.laid();
     _state._fill.showResult(
       base: laying.base,
       blend: laying.area.blend,
       tiles: laying.tiles.values.toList(),
     );
     // 「앞의 것을 다 그리면 지금 손 위치로 한 번 더」.
-    final wanted = _wanted;
-    if (wanted != null && wanted.shape != laying.area.shape) {
-      _laying = _begin(wanted);
+    if (_area.layTheNewest()) {
       _askFrame();
     }
   }
 
   void _layStrokeFrame(Stopwatch clock) {
-    final laying = _strokeLaying;
+    final laying = _path.laying;
     if (laying == null) {
       return;
     }
@@ -286,12 +281,10 @@ class _BrushEditShapeShow implements ShapeShow {
         return;
       }
     }
-    _strokeLaying = null;
+    _path.laid();
     _putUp(laying);
     // 「앞의 것을 다 그리면 지금 손 위치로 한 번 더」.
-    final wanted = _wantedPath;
-    if (wanted != null && !_samePath(laying.path, wanted)) {
-      _strokeLaying = _StrokeLaying(wanted);
+    if (_path.layTheNewest()) {
       _askFrame();
     }
   }

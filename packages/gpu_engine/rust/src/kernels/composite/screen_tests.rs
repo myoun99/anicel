@@ -4,7 +4,7 @@
 //! never against a CPU copy of a formula (`kernels/mod.rs` has why).
 
 use super::{Screen, meets};
-use crate::device::Engine;
+use crate::device::{Engine, gpu_engine_waits_here};
 use crate::kernels::composite::halvings::tests::{
     CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
 };
@@ -16,6 +16,7 @@ use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{last_error, read_buffer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 /// The one step laying a tile set whole and unposed: the canvas a composite
 /// of it is.
@@ -270,12 +271,16 @@ fn a_tile_meets_a_rectangle_holding_a_pixel_of_it() {
     assert!(!meets((1, 0), [130, -20, 140, 0]));
 }
 
-// A screen shown is done on the GPU when show returns (Composite::show's
-// 🚨): on an engine of its own — the tests' one is polled by every test at
-// once —, the work submitted before the show is seen done inside it, and
-// nothing it submitted is left after it.
+// A screen shown waits for no GPU on the thread that asked
+// (Composite::show's 🚨) — no wait is counted there —, and the engine's
+// thread says once all of it is done (Engine::done_then): on an engine of
+// its own — the tests' one is polled by every test at once —, the work
+// submitted before the show is seen done by then, and nothing is left
+// after it. ↩️It was done on the GPU when show returned, until a screen's
+// frame was put up as the GPU finished it
+// (a-float-in-hand-draws-the-frame-as-it-stands-Q2, 2026-11-12).
 #[test]
-fn a_screen_shown_is_done_on_the_gpu_when_show_returns() {
+fn a_screen_shown_waits_here_for_nothing_and_is_told_done() {
     let engine = Engine::open_first().expect("an engine of its own");
     let composite = Composite::new(&engine).expect("its executor");
     let mut screen = Screen::new(PAGE, 1.0).expect("screen");
@@ -288,10 +293,17 @@ fn a_screen_shown_is_done_on_the_gpu_when_show_returns() {
     let texture = surface_on(&engine, size, wgpu::TextureFormat::Rgba8Unorm);
     let camera = camera(1.7, (0.6, 0.8), (500.0, 100.0));
     let whole = [0, 0, size.0, size.1];
+    let waits = gpu_engine_waits_here();
     screen.show(&engine, &composite, camera, &texture, whole, composite.widest()).expect("show");
-    assert!(seen.load(Ordering::SeqCst), "the show waited on nothing");
+    assert_eq!(gpu_engine_waits_here(), waits, "the show waited here");
+    let (tell, told) = std::sync::mpsc::channel();
+    engine.done_then(move |done| {
+        let _ = tell.send(done);
+    });
+    assert_eq!(told.recv_timeout(Duration::from_secs(60)), Ok(Ok(())), "told it is done");
+    assert!(seen.load(Ordering::SeqCst), "told done before the work was");
     let after = engine.device.poll(wgpu::PollType::Poll).expect("poll");
-    assert!(after.is_queue_empty(), "the show left {after:?}");
+    assert!(after.is_queue_empty(), "done left {after:?}");
 }
 
 /// `pixel` over the pixels `extent`, nothing past it, on the tiles holding
