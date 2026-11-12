@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/import/clip_cel_raster.dart';
 import 'package:anicel/src/services/import/clip_container.dart'
     show ClipFormatException;
@@ -143,6 +144,33 @@ void main() {
         ),
         throwsA(isA<ClipFormatException>()),
       );
+    });
+  });
+
+  group('laying', () {
+    // 🔬735 dabs of a 300 px stroke at 2.4–6 px were 735 sizes, and a round
+    // tip is a table a size: 230–270 ms of the 300 ms the stroke took.
+    test('🚨each dab is in the form a stroke\'s dab is laid in — its size '
+        'on the steps a pen\'s is, not the width that made it', () {
+      final stroke = parseClipVectorBody(
+        vectorStrokeBytes([(10, 10, 1), (300, 40, 0.2)], radius: 3),
+      ).strokes.single;
+
+      final dabs = clipVectorDabs(stroke, (x: 0, y: 0));
+
+      expect(dabs.length, greaterThan(100), reason: 'premise: a line');
+      expect(
+        {for (final dab in dabs) dab.size}.length,
+        greaterThan(1),
+        reason: 'premise: it narrows',
+      );
+      for (final dab in dabs) {
+        expect(
+          identical(BrushTipStampCache.instance.resolveDab(dab), dab),
+          isTrue,
+          reason: 'a dab ${dab.size} across',
+        );
+      }
     });
   });
 

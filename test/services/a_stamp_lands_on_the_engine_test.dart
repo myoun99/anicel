@@ -19,6 +19,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 
@@ -229,6 +230,19 @@ void main() {
 
     final over = landed(empty(), [brush(sequence: 0)]);
     expect(pixelAt(over.surface, 40, 40), const [200, 100, 50, 255]);
+  });
+
+  // A stroke kept is its planes' pages on the GPU: one a run, never given
+  // back, is a layer's strokes held at once.
+  test('the stroke a run of brush dabs is piled on is given back: the '
+      'next run piles on it', () {
+    landed(empty(), [brush(sequence: 0)]);
+    final resting = EngineStrokes.debugIdle;
+    expect(resting, greaterThan(0), reason: 'it rests');
+
+    landed(empty(), [brush(sequence: 0)]);
+
+    expect(EngineStrokes.debugIdle, resting);
   });
 
   test('a brush that paints and one that erases are two strokes', () {

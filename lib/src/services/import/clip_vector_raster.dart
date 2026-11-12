@@ -259,7 +259,7 @@ BitmapSurface _withStroke(BitmapSurface picture, BrushDabSequence stroke) {
 }
 
 /// The worker's half of [clipVectorTiles] that plans: [bodies]' strokes,
-/// each laid along by the pen ([_dabsAlong]) and handed to `land` — waited
+/// each laid along by the pen ([clipVectorDabs]) and handed to `land` — waited
 /// for, one at a time, in the file's order — and how many records were of a
 /// kind this reader does not draw.
 ///
@@ -273,7 +273,8 @@ _strokesLaid(List<Uint8List> bodies, ({int x, int y}) offset) => (land) async {
     final read = parseClipVectorBody(body);
     unread += read.unread;
     for (final stroke in read.strokes) {
-      await land(BrushDabSequence(_dabsAlong(stroke, offset), stroke.opacity));
+      final dabs = clipVectorDabs(stroke, offset);
+      await land(BrushDabSequence(dabs, stroke.opacity));
     }
   }
   return unread;
@@ -305,7 +306,8 @@ List<ClipCelTile> Function(BitmapSurface copy) _cutOnto(
   );
 };
 
-/// [stroke]'s dabs, laid along it the way the pen lays them: the stroke's
+/// [stroke]'s dabs, moved by [offset] and laid along it the way the pen
+/// lays them — what [clipVectorTiles] has a worker plan: the stroke's
 /// widest point is the pen's size, and each point's width rides as its
 /// pressure — carried between two readings ([BrushDabInterpolator]) and
 /// turned back into a size by the pen's own dynamics
@@ -322,7 +324,10 @@ List<ClipCelTile> Function(BitmapSurface copy) _cutOnto(
 /// 735 tables, 230–270 ms of the 300 ms the stroke took (main PC, a test's
 /// VM; 0.33 ms a table of a nib under 5 px built ahead of time) — 148 s
 /// for a layer of 500 such strokes, by the C brush as much as the engine.
-List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
+List<BrushDab> clipVectorDabs(
+  ClipVectorStroke stroke,
+  ({int x, int y}) offset,
+) {
   final widest = stroke.points.fold(0.0, (w, p) => math.max(w, p.width));
   if (widest <= 0) {
     return const [];
