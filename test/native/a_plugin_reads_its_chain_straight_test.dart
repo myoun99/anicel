@@ -166,6 +166,9 @@ final class _HearsTheWaits implements FxPluginRunner {
   int? waited;
 
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
@@ -185,6 +188,9 @@ final class _HearsTheWaits implements FxPluginRunner {
 
 /// Leaves every pixel clear, its colour as it was.
 final class _ClearsItsColours implements FxPluginRunner {
+  @override
+  Future<void>? get toCome => null;
+
   @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 

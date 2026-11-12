@@ -395,6 +395,19 @@ _PaintPart _pluginPart(
           width: (paper.width / space.scale).round(),
           height: (paper.height / space.scale).round(),
         );
+  final across = paper == null
+      ? double.infinity
+      : math.max(paper.width, paper.height);
+  if (run.runner.toCome != null) {
+    // 🚨NOT KNOWN YET, AS FAR AS THE PAPER: its build is still being opened
+    // off the isolate that asks (an-endless-plugin-stalls-the-app ④,
+    // 2026-11-12). No step of it is run till it is — a recording waits and
+    // is made again then (`FrameKernelsToCome.forAPlugin`) —, so this
+    // reach is drawn by none; a route that draws it as if off is told it
+    // reads as far as any plugin may, never less than this one will (0
+    // would have a row's ink crop draw the same, `inkCropDrawsTheSame`).
+    return _PluginPart(reach: across);
+  }
   final values = fxPluginValuesOf(
     effect,
     paper: canvas,
@@ -423,9 +436,6 @@ _PaintPart _pluginPart(
   // bound wherever it stands (관제 2026-11-11, ⓓ; 절대명령 1): only a reach
   // past the paper's long side reads less than it did
   // (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
-  final across = paper == null
-      ? double.infinity
-      : math.max(paper.width, paper.height);
   return _PluginPart(reach: math.min(math.max(0, reach).toDouble(), across));
 }
 

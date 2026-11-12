@@ -131,7 +131,7 @@ void main() {
       room = Directory.systemTemp.createTempSync('anicel_kept_lanes_');
       plugins = InstalledFxPlugins(
         service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-        check: (_) => null,
+        check: (_) async => (opened: null, refusal: null),
       );
       session = sessionOf();
     });

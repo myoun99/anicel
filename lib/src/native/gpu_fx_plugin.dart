@@ -33,20 +33,49 @@ final class GpuFxPlugin implements FxPluginRunner {
     required bool cut,
   }) {
     try {
-      final plugin = GpuPlugin.open(appGpuEngine, source, cut: cut);
-      final kinds = [
-        for (final spec in description.parameters) _kindOf(spec.unit),
-      ];
-      return (plugin: GpuFxPlugin._(plugin, kinds), refusal: null);
+      return _opened(
+        GpuPlugin.open(appGpuEngine, source, cut: cut),
+        description,
+      );
     } on StateError catch (error) {
       return (plugin: null, refusal: error.message);
     }
   }
 
+  /// [open] off this isolate, which goes on meanwhile ([GpuPlugin.opening]).
+  static Future<GpuFxPluginOpened> opening(
+    String source,
+    FxPluginDescription description, {
+    required bool cut,
+  }) async {
+    try {
+      return _opened(
+        await GpuPlugin.opening(appGpuEngine, source, cut: cut),
+        description,
+      );
+    } on StateError catch (error) {
+      return (plugin: null, refusal: error.message);
+    }
+  }
+
+  static GpuFxPluginOpened _opened(
+    GpuPlugin plugin,
+    FxPluginDescription description,
+  ) => (
+    plugin: GpuFxPlugin._(plugin, [
+      for (final spec in description.parameters) _kindOf(spec.unit),
+    ]),
+    refusal: null,
+  );
+
   GpuPlugin? _plugin;
   final List<GpuPluginValue> _kinds;
 
   static FxPluginShare get _share => AppGpu.settings.value.pluginShare;
+
+  /// None: it is open as it is made ([open], [opening]).
+  @override
+  Future<void>? get toCome => null;
 
   GpuPluginAsked _asked(Float64List values, FxPluginMoment moment) => (
     values: values,

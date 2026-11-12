@@ -35,7 +35,7 @@ void main() {
       service: library,
       // The device is not asked here: opening WGSL on the GPU is
       // a_gpu_plugin_opens_and_runs_on_the_engine_test's.
-      check: (_) => null,
+      check: (_) async => (opened: null, refusal: null),
     );
   });
   tearDown(() => plugins.dispose());

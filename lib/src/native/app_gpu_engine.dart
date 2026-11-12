@@ -282,6 +282,17 @@ final appGpuExportKernels = AppKernels<GpuExport>(
   (export) => export.free(),
 );
 
+/// [here]'s answer where a test compiles on this isolate
+/// ([AppKernels.debugCompileHere]), [off]'s everywhere else: what the app
+/// compiles of its own on its engine — a plug-in's build, opened as a frame
+/// first asks for it (`InstalledFxPlugins.runnerFor`) or as it is installed
+/// — is compiled off the isolate its frames are built on, as its kernels
+/// are ([AppKernels.warm]).
+FutureOr<T> compiledHereOrOff<T>(
+  T Function() here,
+  Future<T> Function() off,
+) => AppKernels.debugCompileHere ? here() : off();
+
 /// A frame not laid: its plan names an effect chain whose kernels are still
 /// to be compiled, and a plan run compiles them where it is run — the thread
 /// the app's frames are built on (🗣️관제 2026-11-10 18:14,
@@ -291,7 +302,8 @@ final appGpuExportKernels = AppKernels<GpuExport>(
 /// ([compiled]): what was laying the frame lays it again once that is done
 /// — a route that can wait by waiting (`FxPluginStages.recordedThrough`), a
 /// screen in its paint by staying on the picture it showed
-/// (`FramePictureView`).
+/// (`FramePictureView`). A plug-in still opening is one more such compile
+/// ([FrameKernelsToCome.forAPlugin]).
 final class FrameKernelsToCome implements Exception {
   FrameKernelsToCome._(this.compiled);
 
@@ -309,6 +321,18 @@ final class FrameKernelsToCome implements Exception {
       throw FrameKernelsToCome._(composite.compileChains());
     }
   }
+
+  /// One for a step of a plug-in whose build is still being opened off this
+  /// isolate ([compiled] — `FxPluginRunner.toCome`): it waits for that, as
+  /// a chain does for its kernels.
+  ///
+  /// 🗣️관제 2026-11-12 22:25 (an-endless-plugin-stalls-the-app ④): 「새
+  /// 상태 없이 FrameKernelsToCome 법에 태운다」 — 🔬the open stopped the UI
+  /// at a plugin's first frame for its check and its device's compile
+  /// (Surface Pro 11: a check of 2,000 statements 79 ms, of 8,000 934 ms,
+  /// 11-12; a compile 0.7–11.7 s, 11-08). None is under way where a test
+  /// compiles on this isolate: a plugin opens as it is asked there.
+  FrameKernelsToCome.forAPlugin(this.compiled);
 
   @override
   String toString() =>

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -43,7 +44,7 @@ void main() {
     return recorder.endRecording().toImageSync(width, height);
   }
 
-  ResolvedLayerEffect plugin(ShiftingFxPlugin runner) => ResolvedLayerEffect(
+  ResolvedLayerEffect plugin(FxPluginRunner runner) => ResolvedLayerEffect(
     kind: EffectKind.plugin,
     plugin: shiftingFxPluginDescription,
     values: const [],
@@ -120,6 +121,33 @@ void main() {
     );
   });
 
+  // 🗣️관제 2026-11-12 22:25 (an-endless-plugin-stalls-the-app ④): its build
+  // opened off the isolate that asks, a plugin cannot say how far it reaches
+  // till it is.
+  test('one whose build is still to come reaches as far as the paper is '
+      'long, asked nothing and told nothing till it is open', () {
+    final opening = _OpensLater(ShiftingFxPlugin(by: 1));
+    var told = 0;
+    ResolvedLayerEffect telling() => ResolvedLayerEffect(
+      kind: EffectKind.plugin,
+      plugin: shiftingFxPluginDescription,
+      values: const [],
+      run: fxPluginRunOf(opening, told: ({required failed}) => told += 1),
+    );
+    expect(
+      resolveCompositeEffectPlan([telling()], paper: paper).outsetPixels,
+      width,
+    );
+    expect(opening.askedEarly, 0);
+    expect(told, 0, reason: 'not failed: still to come');
+    // ⛔liveness: open, the reach is its own.
+    opening.open();
+    expect(
+      resolveCompositeEffectPlan([telling()], paper: paper).outsetPixels,
+      1,
+    );
+  });
+
   test('a route that waits records again once the plugin has run, and the '
       'step draws what it made', () async {
     final runner = ShiftingFxPlugin(by: 2);
@@ -154,6 +182,48 @@ void main() {
       picture.debugGetOpenHandleStackTraces(),
       hasLength(1),
       reason: 'what its plugin was handed is let go of once it answers',
+    );
+    picture.dispose();
+  });
+
+  test('🚨a route that waits for a plugin whose build is still to come '
+      'records again once it is open — its step run once, over what it '
+      'reaches then', () async {
+    final runner = ShiftingFxPlugin(by: 2);
+    final opening = _OpensLater(runner);
+    final picture = source();
+    final waits = <bool>[];
+    var recordings = 0;
+    final making = FxPluginStages.recordedThrough(
+      () {
+        recordings += 1;
+        return recorded(picture, [plugin(opening)]);
+      },
+      discard: (made) => made.dispose(),
+      waitsForKernels: waits.add,
+    );
+    await pumpEventQueue();
+    expect(waits, [true], reason: 'it waits for the open');
+    expect(runner.renders, 0);
+    expect(
+      picture.debugGetOpenHandleStackTraces(),
+      hasLength(1),
+      reason: 'what its step would have been handed is let go of',
+    );
+
+    opening.open();
+    final made = await making;
+    final row = await rowOf(made);
+    made.dispose();
+    expect(row[2], red);
+    expect(waits, [true, false]);
+    expect(opening.askedEarly, 0);
+    expect(runner.renders, 1, reason: 'run once, once open');
+    expect(runner.inputs.single, (left: 0, top: 0, width: width, height: 2));
+    expect(
+      recordings,
+      3,
+      reason: 'the one that waited, then one to meet it and one to draw it',
     );
     picture.dispose();
   });
@@ -468,6 +538,9 @@ final class _LeavesColourInTheClear implements FxPluginRunner {
   int renders = 0;
 
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override
@@ -489,4 +562,52 @@ final class _LeavesColourInTheClear implements FxPluginRunner {
 
   @override
   void close() {}
+}
+
+/// [_build], its build still to come till [open] ([FxPluginRunner.toCome]),
+/// counting what it is asked before.
+final class _OpensLater implements FxPluginRunner {
+  _OpensLater(this._build);
+
+  final FxPluginRunner _build;
+  final Completer<void> _opened = Completer();
+
+  /// How often its reach or its picture was asked before it was open.
+  int askedEarly = 0;
+
+  void open() => _opened.complete();
+
+  void _asked() {
+    if (!_opened.isCompleted) {
+      askedEarly += 1;
+    }
+  }
+
+  @override
+  Future<void>? get toCome => _opened.isCompleted ? null : _opened.future;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) {
+    _asked();
+    return _build.reach(values, moment);
+  }
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    _asked();
+    return _build.render(
+      input: input,
+      values: values,
+      layers: layers,
+      moment: moment,
+    );
+  }
+
+  @override
+  void close() => _build.close();
 }

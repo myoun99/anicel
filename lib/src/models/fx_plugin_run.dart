@@ -35,6 +35,13 @@ typedef FxPluginMoment = ({
 /// and the picture it makes — the engine's device for a plugin this device
 /// has opened (`GpuFxPlugin`).
 abstract interface class FxPluginRunner {
+  /// The open of its build under way off the isolate that asks — null once
+  /// it is open, or would not open. Its reach and its picture are not
+  /// asked meanwhile: a step of it is not run till then, as a chain whose
+  /// kernels are still to be compiled is not (`FrameKernelsToCome`), and
+  /// how far it reaches is not known (`resolveCompositeEffectPlan`).
+  Future<void>? get toCome;
+
   /// How far past its input the effect reaches for [values] (four doubles
   /// a parameter, anicel_fx_value) at [moment], in output pixels — or null
   /// where the plugin failed to say.

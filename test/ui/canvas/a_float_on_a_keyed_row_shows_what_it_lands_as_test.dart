@@ -1354,6 +1354,9 @@ final class _HeldAtTheGate implements FxPluginRunner {
   }
 
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) =>
       _shifting.reach(values, moment);
 

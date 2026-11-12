@@ -64,7 +64,7 @@ void main() {
   Future<InstalledFxPlugins> deviceWith(List<String> ids) async {
     final plugins = InstalledFxPlugins(
       service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-      check: (_) => null,
+      check: (_) async => (opened: null, refusal: null),
     );
     addTearDown(plugins.dispose);
     for (final id in ids) {

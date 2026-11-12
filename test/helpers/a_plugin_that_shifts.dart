@@ -78,7 +78,7 @@ Future<InstalledFxPlugins> installedShiftingFxPlugin(
   final plugins = InstalledFxPlugins(
     service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
     // The stand-in is no WGSL a device would open: no device is asked.
-    check: (_) => null,
+    check: (_) async => (opened: null, refusal: null),
     open: (_, _) => opens ? runner ?? ShiftingFxPlugin(by: by) : null,
   );
   addTearDown(plugins.dispose);
@@ -126,6 +126,9 @@ final class ShiftingFxPlugin implements FxPluginRunner {
   late Uint8List lastInput;
   late Float64List lastValues;
   late List<FxPluginPicture> lastLayers;
+
+  @override
+  Future<void>? get toCome => null;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) =>

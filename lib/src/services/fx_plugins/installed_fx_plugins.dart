@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -6,20 +7,26 @@ import '../../models/app_gpu_settings.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/project.dart';
+import '../../native/app_gpu_engine.dart' show compiledHereOrOff;
 import '../../native/gpu_fx_plugin.dart';
 import '../project_lookup.dart' show projectLayersAnywhere;
 import 'fx_plugin_bundle.dart';
 import 'fx_plugin_library_service.dart';
 import 'fx_plugin_outcomes.dart';
 
-/// Opens a plugin's file on the device to see that it would run: null
-/// where it opens, the engine's words of why not where it does not.
-typedef FxPluginChecker = String? Function(FxPluginBundle bundle);
+/// What opening a plugin's file on the device came to: the build it opened
+/// — none where a stand-in opens nothing —, or the engine's words of why
+/// not.
+typedef FxPluginChecked = ({FxPluginRunner? opened, String? refusal});
 
-/// Opens [plugin], as [library] keeps it, to run — null where it will not
-/// open.
+/// Opens a plugin's file on the device to see that it would run.
+typedef FxPluginChecker =
+    Future<FxPluginChecked> Function(FxPluginBundle bundle);
+
+/// Opens [plugin], as [library] keeps it, to run — off the isolate that
+/// asks, at once where a test compiles there — null where it will not open.
 typedef FxPluginOpener =
-    FxPluginRunner? Function(
+    FutureOr<FxPluginRunner?> Function(
       InstalledFxPlugin plugin,
       FxPluginLibraryService library,
     );
@@ -144,6 +151,11 @@ class InstalledFxPlugins extends ChangeNotifier {
   /// — shown as failed (🗣️a-failed-plugin-shows-the-cel-silently-Q1), and
   /// not opened again each frame. ↩️It answered null, and its effect drew
   /// as if off with nothing to say why.
+  ///
+  /// Answered at once, its build opened off the isolate that asks
+  /// ([FxPluginRunner.toCome]) — ↩️opened right there till 2026-11-12,
+  /// the frame that asked stopped meanwhile (an-endless-plugin-stalls-the-
+  /// app ④, A5).
   FxPluginRunner? runnerFor(FxPluginDescription plugin) {
     final installed = _plugins
         .where((installed) => installed.description.id == plugin.id)
@@ -151,10 +163,12 @@ class InstalledFxPlugins extends ChangeNotifier {
     if (installed == null) {
       return null;
     }
-    return _runners.putIfAbsent(
-      plugin.id,
-      () => _open(installed, _service) ?? const _Unopened(),
-    );
+    return _runners.putIfAbsent(plugin.id, () {
+      final opened = _open(installed, _service);
+      return opened is Future<FxPluginRunner?>
+          ? _Opening(opened)
+          : opened ?? const _Unopened();
+    });
   }
 
   /// Closes plugin [id]'s opened build, if it has one, and lets go of what
@@ -193,8 +207,10 @@ class InstalledFxPlugins extends ChangeNotifier {
     if (bundle == null) {
       return const FxPluginUnreadable();
     }
-    if (_check(bundle) case final why?) {
-      return FxPluginUnopened(why);
+    final cutting = _cutting;
+    final (:opened, :refusal) = await _check(bundle);
+    if (refusal != null) {
+      return FxPluginUnopened(refusal);
     }
     final description = bundle.description;
     final previous = _plugins
@@ -202,6 +218,7 @@ class InstalledFxPlugins extends ChangeNotifier {
         .firstOrNull;
     final yes = await confirm(description, replacing: previous?.description);
     if (!yes || _disposed) {
+      opened?.close();
       return const FxPluginDeclined();
     }
     final kept = await _service.keep(bundle);
@@ -210,9 +227,24 @@ class InstalledFxPlugins extends ChangeNotifier {
         if (identical(plugin, previous)) kept else plugin,
       if (previous == null) kept,
     ]);
-    await _service.saveIndex(_plugins);
     if (previous != null) {
       _letGo(previous.description.id);
+    }
+    // 🗣️관제 2026-11-12 22:25 (an-endless-plugin-stalls-the-app A5): 「A5 는
+    // 설치 검사가 연 것을 러너로 쓴다」 — the build the check opened is the
+    // one its frames run, so the device compiles it once. ↩️The check let
+    // it go, and the first frame compiled it again. Kept as the list opens
+    // now ([_openedCutting]) — one opened the other way is let go, and
+    // opens again as asked.
+    if (opened != null) {
+      if (cutting == _openedCutting && !_disposed) {
+        _runners[description.id] = opened;
+      } else {
+        opened.close();
+      }
+    }
+    await _service.saveIndex(_plugins);
+    if (previous != null) {
       await _service.delete(previous);
     }
     if (!_disposed) {
@@ -259,6 +291,9 @@ final class _Unopened implements FxPluginRunner {
   const _Unopened();
 
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => null;
 
   @override
@@ -273,13 +308,77 @@ final class _Unopened implements FxPluginRunner {
   void close() {}
 }
 
-/// [plugin] opened on the app's GPU engine — null where its WGSL is gone,
-/// unreadable, or will not open.
+/// An installed plugin whose build is opened off the isolate that asks
+/// ([openInstalledFxPlugin]): it says so till it is ([toCome]), then it is
+/// that build — or one that would not open ([_Unopened]). What a frame
+/// bound meanwhile holds, so it is not bound again.
 ///
-/// ⚠️The WGSL is read here, at once: what asks for a runner is a frame
-/// being drawn, and it is read the first time only
-/// ([InstalledFxPlugins.runnerFor]).
-FxPluginRunner? openInstalledFxPlugin(
+/// ⏳LET GO OF WITH THE APP'S ENGINE BY (C3) ④ (🗣️관제 2026-11-12 22:25:
+/// 「놓기는 (C3) ④ 가 단다」, a-lost-gpu-device-keeps-the-unsaved-tiles):
+/// its build is that engine's, and this list holds it past a loss till
+/// then — as it holds one opened at once.
+final class _Opening implements FxPluginRunner {
+  _Opening(Future<FxPluginRunner?> opening) {
+    _toCome = opening.then(
+      _opened,
+      onError: (Object error, StackTrace stack) {
+        _opened(null);
+        Error.throwWithStackTrace(error, stack);
+      },
+    );
+  }
+
+  Future<void>? _toCome;
+  FxPluginRunner _build = const _Unopened();
+  bool _closed = false;
+
+  void _opened(FxPluginRunner? build) {
+    _toCome = null;
+    if (_closed) {
+      build?.close();
+    } else if (build != null) {
+      _build = build;
+    }
+  }
+
+  @override
+  Future<void>? get toCome => _toCome;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      _build.reach(values, moment);
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) => _build.render(
+    input: input,
+    values: values,
+    layers: layers,
+    moment: moment,
+  );
+
+  /// Lets its build go — one still to come as it comes.
+  @override
+  void close() {
+    _closed = true;
+    _build.close();
+  }
+}
+
+/// [plugin] opened on the app's GPU engine — null where its WGSL is gone,
+/// unreadable, or will not open: off the isolate that asks, where the file
+/// is read too; at once where a test compiles there
+/// ([compiledHereOrOff]).
+///
+/// ⚠️What asks for a runner is a frame being drawn, the first time only
+/// ([InstalledFxPlugins.runnerFor]). ↩️It was read and opened right there
+/// till 2026-11-12, the frame stopped for both (an-endless-plugin-stalls-
+/// the-app ④).
+FutureOr<FxPluginRunner?> openInstalledFxPlugin(
   InstalledFxPlugin plugin,
   FxPluginLibraryService library,
 ) {
@@ -287,12 +386,18 @@ FxPluginRunner? openInstalledFxPlugin(
   if (path == null) {
     return null;
   }
+  return compiledHereOrOff(
+    () => _openedHere(path, plugin.description),
+    () => _openedOff(path, plugin.description),
+  );
+}
+
+FxPluginRunner? _openedHere(String path, FxPluginDescription description) {
   try {
-    final source = File(path).readAsStringSync();
     return GpuFxPlugin.open(
-      source,
-      plugin.description,
-      cut: AppGpu.settings.value.pluginShare.cuts,
+      File(path).readAsStringSync(),
+      description,
+      cut: _cutting,
     ).plugin;
   } on FileSystemException {
     return null;
@@ -301,14 +406,34 @@ FxPluginRunner? openInstalledFxPlugin(
   }
 }
 
-/// [bundle]'s WGSL opened on the app's GPU engine and let go of: what an
-/// install asks before the person is shown the plugin.
-String? checkFxPluginOnTheDevice(FxPluginBundle bundle) {
-  final (:plugin, :refusal) = GpuFxPlugin.open(
-    bundle.source,
-    bundle.description,
-    cut: AppGpu.settings.value.pluginShare.cuts,
-  );
-  plugin?.close();
-  return refusal;
+Future<FxPluginRunner?> _openedOff(
+  String path,
+  FxPluginDescription description,
+) async {
+  try {
+    final source = await File(path).readAsString();
+    return (await GpuFxPlugin.opening(
+      source,
+      description,
+      cut: _cutting,
+    )).plugin;
+  } on FileSystemException {
+    return null;
+  } on FormatException {
+    return null;
+  }
 }
+
+/// [bundle]'s WGSL opened on the app's GPU engine: what an install asks
+/// before the person is shown the plugin — off the isolate that asks, at
+/// once where a test compiles there ([compiledHereOrOff]).
+Future<FxPluginChecked> checkFxPluginOnTheDevice(FxPluginBundle bundle) async {
+  final (:plugin, :refusal) = await compiledHereOrOff(
+    () => GpuFxPlugin.open(bundle.source, bundle.description, cut: _cutting),
+    () => GpuFxPlugin.opening(bundle.source, bundle.description, cut: _cutting),
+  );
+  return (opened: plugin, refusal: refusal);
+}
+
+/// Whether a plugin is opened to be cut ([FxPluginShare.cuts]).
+bool get _cutting => AppGpu.settings.value.pluginShare.cuts;

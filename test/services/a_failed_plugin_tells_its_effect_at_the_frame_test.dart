@@ -411,6 +411,9 @@ final class _FailsPast implements FxPluginRunner {
   final ShiftingFxPlugin _drawing = ShiftingFxPlugin(by: 1);
 
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) =>
       _drawing.reach(values, moment);
 

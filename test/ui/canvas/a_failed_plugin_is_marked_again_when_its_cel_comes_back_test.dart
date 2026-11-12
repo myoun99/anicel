@@ -602,6 +602,9 @@ final class _DrawsOnlyOverInk implements FxPluginRunner {
   int renders = 0;
 
   @override
+  Future<void>? get toCome => null;
+
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;
 
   @override

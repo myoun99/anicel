@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -48,9 +49,9 @@ void main() {
   setUp(checked.clear);
   InstalledFxPlugins plugins({String? refusal}) => InstalledFxPlugins(
     service: library,
-    check: (FxPluginBundle bundle) {
+    check: (FxPluginBundle bundle) async {
       checked.add(bundle.source);
-      return refusal;
+      return (opened: null, refusal: refusal);
     },
   );
 
@@ -182,7 +183,7 @@ void main() {
     final closed = <int>[];
     final installed = InstalledFxPlugins(
       service: library,
-      check: (_) => null,
+      check: (_) async => (opened: null, refusal: null),
       open: (_, _) {
         opened.add(AppGpu.settings.value.pluginShare.cuts);
         return _Kept(opened.length, closed);
@@ -223,6 +224,102 @@ void main() {
     );
     expect(reported, isEmpty, reason: 'one let go was told of a change');
   });
+
+  // 🗣️관제 2026-11-12 22:25 (an-endless-plugin-stalls-the-app A5): 「A5 는
+  // 설치 검사가 연 것을 러너로 쓴다」.
+  test('the build its check opened is the one its frames run — the device '
+      'opens it once; one declined is let go of', () async {
+    final closed = <int>[];
+    var checks = 0;
+    var opens = 0;
+    final installed = InstalledFxPlugins(
+      service: library,
+      check: (_) async => (opened: _Kept(checks += 1, closed), refusal: null),
+      open: (_, _) => _Kept(100 + (opens += 1), closed),
+    );
+    addTearDown(installed.dispose);
+    int runs() =>
+        (installed.runnerFor(installed.plugins.single.description)! as _Kept)
+            .number;
+
+    await installed.install(fileOf('a.b', '1'), confirm: answering(false));
+    expect(closed, [1], reason: 'one declined is let go of');
+    await installed.install(fileOf('a.b', '1'), confirm: answering(true));
+    expect(runs(), 2);
+    await installed.install(fileOf('a.b', '2'), confirm: answering(true));
+    expect(closed, [1, 2], reason: 'the build it replaces goes');
+    expect(runs(), 3);
+    expect(opens, 0, reason: 'none opened again');
+  });
+
+  test('a build its check opened the other way — never cutting chosen while '
+      'the person was asked — is let go of, and opens as asked', () async {
+    addTearDown(AppGpu.debugReset);
+    final closed = <int>[];
+    final opens = <bool>[];
+    final installed = InstalledFxPlugins(
+      service: library,
+      check: (_) async => (opened: _Kept(1, closed), refusal: null),
+      open: (_, _) {
+        opens.add(AppGpu.settings.value.pluginShare.cuts);
+        return _Kept(2, closed);
+      },
+    );
+    addTearDown(installed.dispose);
+    await installed.install(
+      fileOf('a.b', '1'),
+      confirm: (_, {required replacing}) async {
+        AppGpu.settings.value = const AppGpuSettings(
+          pluginShare: FxPluginShare.uncut,
+        );
+        return true;
+      },
+    );
+    expect(closed, [1]);
+    final runner = installed.runnerFor(installed.plugins.single.description);
+    expect((runner! as _Kept).number, 2);
+    expect(opens, [false]);
+  });
+
+  test('a build still to come is what a frame is handed at once: opened once '
+      'however many ask, failing every ask where it would not open, and let '
+      'go of as it comes where its plugin went meanwhile', () async {
+    final opening = <Completer<FxPluginRunner?>>[];
+    final closed = <int>[];
+    final installed = InstalledFxPlugins(
+      service: library,
+      check: (_) async => (opened: null, refusal: null),
+      open: (_, _) {
+        final open = Completer<FxPluginRunner?>();
+        opening.add(open);
+        return open.future;
+      },
+    );
+    addTearDown(installed.dispose);
+    await installed.install(fileOf('a.b', '1'), confirm: answering(true));
+    await installed.install(fileOf('c.d', '1'), confirm: answering(true));
+    final [ab, cd] = [
+      for (final plugin in installed.plugins) plugin.description,
+    ];
+    const moment = (frameIndex: 0, time: 0.0, frameRate: 24.0, scale: 1.0);
+
+    final unopened = installed.runnerFor(ab)!;
+    final toCome = unopened.toCome;
+    expect(toCome, isNotNull);
+    expect(installed.runnerFor(ab), same(unopened));
+    expect(opening, hasLength(1), reason: 'one open, however many ask');
+    opening.single.complete(null);
+    await toCome;
+    expect(unopened.toCome, isNull);
+    expect(unopened.reach(Float64List(0), moment), isNull);
+
+    final gone = installed.runnerFor(cd)!;
+    final coming = gone.toCome;
+    await installed.uninstall(cd.id);
+    opening.last.complete(_Kept(7, closed));
+    await coming;
+    expect(closed, [7], reason: 'let go of as it comes');
+  });
 }
 
 /// A build that says when it is let go.
@@ -231,6 +328,9 @@ final class _Kept implements FxPluginRunner {
 
   final int number;
   final List<int> closed;
+
+  @override
+  Future<void>? get toCome => null;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;

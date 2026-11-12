@@ -251,6 +251,13 @@ final class FxPluginStages implements PluginSteps {
     required ui.Rect paper,
     PluginStepSource? from,
   }) {
+    if (effect.run?.runner.toCome case final toCome?) {
+      // Not met while its plug-in's build is still to come: the recording
+      // is made again once it is, as for a chain's kernels — with its
+      // reach, which is not known till then.
+      input.free();
+      throw FrameKernelsToCome.forAPlugin(toCome);
+    }
     final at = _met++;
     final step = (
       effect: effect,

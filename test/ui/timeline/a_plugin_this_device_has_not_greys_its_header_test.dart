@@ -106,7 +106,7 @@ void main() {
       'heard by the project until it is closed', () async {
     final plugins = InstalledFxPlugins(
       service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-      check: (_) => null,
+      check: (_) async => (opened: null, refusal: null),
     );
     addTearDown(plugins.dispose);
     final session = EditorSessionManager(

@@ -3651,15 +3651,36 @@ class GpuPlugin {
   /// device compiles it with no count, so no run of it is cut on the
   /// device (🗣️-Q18 「설정에 『끊지 않음』」).
   factory GpuPlugin.open(GpuEngine engine, String source, {bool cut = true}) =>
-      using((arena) {
-        final bytes = utf8.encode(source);
-        final at = _bytes(arena, bytes);
-        final plugin = rust.pluginOpen(engine._engine, at, bytes.length, cut);
-        if (plugin == nullptr) {
-          throw GpuRefused(_lastError());
-        }
-        return GpuPlugin._(engine, plugin);
-      });
+      GpuPlugin._(engine, _openOf(utf8.encode(source), cut)(engine._engine));
+
+  /// [GpuPlugin.open] off this isolate, which goes on meanwhile — the
+  /// refusal's words thrown as it ends. 🔬The check and the count alone
+  /// (fx_wgsl) took 79 ms of a plugin of 2,000 statements and 934 ms of
+  /// one of 8,000, and the device's compile 0.7–11.7 s more (Surface Pro
+  /// 11, 11-08 · 11-12): an-endless-plugin-stalls-the-app A5.
+  static Future<GpuPlugin> opening(
+    GpuEngine engine,
+    String source, {
+    bool cut = true,
+  }) async => GpuPlugin._(
+    engine,
+    await _compiledOff(engine, _openOf(utf8.encode(source), cut)),
+  );
+
+  /// The open of [source]'s bytes, as [cut] says, on the engine it is
+  /// handed: made of plain values, so it crosses to the isolate that
+  /// compiles ([_compiledOff]).
+  static Pointer<rust.Plugin> Function(Pointer<rust.Engine> on) _openOf(
+    Uint8List source,
+    bool cut,
+  ) => (on) => using((arena) {
+    final at = _bytes(arena, source);
+    final plugin = rust.pluginOpen(on, at, source.length, cut);
+    if (plugin == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return plugin;
+  });
 
   final GpuEngine _engine;
   final Pointer<rust.Plugin> _plugin;

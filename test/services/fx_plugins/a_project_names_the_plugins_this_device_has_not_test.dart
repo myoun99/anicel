@@ -61,7 +61,7 @@ void main() {
   Future<InstalledFxPlugins> installing(List<FxPluginDescription> of) async {
     final installed = InstalledFxPlugins(
       service: library,
-      check: (_) => null,
+      check: (_) async => (opened: null, refusal: null),
     );
     for (final description in of) {
       await installed.install(

@@ -8,11 +8,13 @@ import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_gpu_settings.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/gpu_fx_plugin.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show debugWaitsHere;
+import 'package:gpu_engine/gpu_engine.dart'
+    show debugKernelsCompiledHere, debugWaitsHere;
 
 import '../helpers/fx_plugin_file.dart';
 import '../helpers/temp_dir.dart';
@@ -375,6 +377,45 @@ void main() {
       );
       expect(await drawn(), isNotNull);
       expect(reach(), 0);
+    });
+
+    test('🚨a frame that asks for a plugin is answered at once: its build is '
+        'opened off this isolate, which compiles nothing of it', () async {
+      // 🗣️관제 2026-11-12 22:25 (an-endless-plugin-stalls-the-app ④): the
+      // app's route, not a test's that compiles here.
+      AppKernels.debugCompileHere = false;
+      addTearDown(() => AppKernels.debugCompileHere = true);
+      final library = FxPluginLibraryService(directoryPath: '${room.path}/fx');
+      final description = fxPluginDescriptionOf('a.invert');
+      final installing = InstalledFxPlugins(service: library);
+      await installing.install(
+        fxPluginFileOf(description, source: fxPluginFixture('invert')),
+        confirm: (_, {required replacing}) async => true,
+      );
+      installing.dispose();
+      final plugins = InstalledFxPlugins(service: library);
+      addTearDown(plugins.dispose);
+      await plugins.load();
+
+      final compiledHere = debugKernelsCompiledHere;
+      final runner = plugins.runnerFor(description)!;
+      final toCome = runner.toCome;
+      expect(toCome, isNotNull, reason: 'its build is still to come');
+      await toCome;
+      expect(runner.toCome, isNull);
+      expect(debugKernelsCompiledHere, compiledHere);
+      final drawn = (await runner.render(
+        input: pictureOf(input),
+        values: Float64List(0),
+        layers: const [],
+        moment: moment,
+      ))!;
+      expect(drawn.sublist(0, 4), [
+        255 - input[0],
+        255 - input[1],
+        255 - input[2],
+        input[3],
+      ]);
     });
   });
 }

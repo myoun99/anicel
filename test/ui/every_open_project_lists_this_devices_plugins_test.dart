@@ -22,7 +22,7 @@ void main() {
       'one of them leaves it to the others', (tester) async {
     await tester.runAsync(() async {
       final device = InstalledFxPlugins(
-        check: (_) => null,
+        check: (_) async => (opened: null, refusal: null),
       );
       final archive = Archive()
         ..add(ArchiveFile.bytes('plugin.wgsl', const <int>[]))
