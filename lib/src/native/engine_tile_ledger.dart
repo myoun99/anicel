@@ -745,7 +745,12 @@ final GpuEngine _engine;
   /// of that the wait for the GPU, the engine's thread's (1.3 ms at its
   /// longest; 36 ms beside a busy test line, where each part is 3–5 times
   /// as long). Read here, as till that day, a batch held this isolate
-  /// 0.24 ms and its keeping — that wait in it. ⏳The Surface's to come.
+  /// 0.24 ms and its keeping — that wait in it. 🔬A Surface Pro 11
+  /// (검증/서피스, the same day, the same test): 0.2 ms as it is asked and
+  /// 0.3 ms as its bytes are kept, come 1.0–1.2 ms after — 0.5 ms of that
+  /// the engine's thread's wait (5.3 ms at its longest) — and no turn of
+  /// this isolate over 8 ms while the batches went; read here, a batch
+  /// held it 0.65 ms and its keeping.
   static const int copyBatch = 8;
 
   /// How long after the last landing the hand is taken to rest, and the
