@@ -29,12 +29,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// — the renderer drew a track's pictures on a canvas (twice) and the shot
 /// drew its frame under its overlay — and none now.
 ///
-/// An overlay's own raster cut to where it inks before it is read back
-/// (`_rasterOf` through `imagePartOf`, card
-/// an-exports-overlay-raster-reads-back-the-whole-frame) is an image drawn
-/// on a canvas too, and no frame: nothing lies under it. The copy
-/// (`raster_picture.dart`) takes one image and lays nothing under or over
-/// it.
+/// An overlay rastered only where it inks (`_rasterOf`, card
+/// an-exports-overlay-raster-reads-back-the-whole-frame) lays its own
+/// picture off the part's corner by a scene's offset, on no canvas and
+/// over nothing: no frame is under it.
 void main() {
   // A picture drawn on a canvas: what a frame composed by Flutter is. An
   // overlay's lines and letters are drawn on nothing, and match none.

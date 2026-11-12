@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/display_filter.dart'
+    show filterQualityForDisplayScale;
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -22,8 +24,9 @@ import '../../helpers/app_faces.dart';
 
 /// An export's overlay is rastered only round where its painter inks
 /// ([PlaybackFramePainter.inkOf]) and laid where it stands on a blank of
-/// the whole raster ([drawnOnTheEngine]) — and the frame it makes on the
-/// engine is the whole raster's, byte for byte.
+/// the whole raster ([drawnOnTheEngine]) — the whole raster's frame, as far
+/// as its names' sampling lets a raster moved by whole pixels be it (the
+/// groups below say how far).
 ///
 /// Card an-exports-overlay-raster-reads-back-the-whole-frame: 🔬a 4K
 /// frame's names inked 1–20% of it, and the whole of it was rastered, read
@@ -134,56 +137,84 @@ void main() {
     return count;
   }
 
-  group('🚨names alone: rastered round them, the whole frame', () {
-    for (final (name, painter, width, height) in [
-      ('through the camera', over(), 640, 360),
-      // A preview's size of the frame: the view scales the names.
+  /// How far [a] and [b] part, in the most any channel of a pixel does.
+  int parted(Uint8List a, Uint8List b) {
+    var most = 0;
+    for (var i = 0; i < a.length; i += 1) {
+      final apart = (a[i] - b[i]).abs();
+      if (apart > most) {
+        most = apart;
+      }
+    }
+    return most;
+  }
+
+  ResolvedSeNameTag wideBlur() => tag(
+    'あ',
+    const ui.Offset(690, 370),
+    effects: [
+      ResolvedLayerEffect(kind: EffectKind.blur, values: const [90, 0]),
+    ],
+  );
+
+  // 🗣️an-exports-overlay-raster-reads-back-the-whole-frame-Q1 (유저 11-12
+  // 23:46 「빠른 길 — 이름표 둘레만 굽는다」): only the part is rastered, so
+  // a name is held one of two ways, by how its plate is sampled — [scale]
+  // is the one it lands at, the view's times the camera's.
+  //
+  // Through a filter — laid under its own size — the frame is the whole
+  // raster's to a channel: moved by whole pixels, a turned or scaled name
+  // rounds a sample a hair apart (🔬11-12: a pixel or two, by one).
+  group('🚨names sampled through a filter: rastered round them, the whole '
+      'frame to a channel', () {
+    for (final (name, painter, scale, width, height) in [
       (
         'at a preview\'s scale',
         over(viewport: CanvasViewport(zoom: 0.75)),
+        0.75 * 1.2,
         480,
         270,
       ),
+      (
+        'through a camera drawn back, turned',
+        over(
+          camera: CameraPose(
+            center: CanvasPoint(x: 700, y: 380),
+            zoom: 0.8,
+            rotationDegrees: 30,
+          ),
+        ),
+        0.8,
+        640,
+        360,
+      ),
       // An upper track's names, thinned with its picture.
-      ('thinned', over(imageOpacity: 0.6), 640, 360),
+      (
+        'thinned',
+        over(viewport: CanvasViewport(zoom: 0.75), imageOpacity: 0.6),
+        0.75 * 1.2,
+        480,
+        270,
+      ),
       // Square to the frame the box is its plate's own, with no corner to
       // spare: a blur that spreads far past the plate is held by its reach.
       (
         'a wide blur, the camera square to the frame',
         over(
-          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.2),
-          tags: [
-            tag(
-              'あ',
-              const ui.Offset(690, 370),
-              effects: [
-                ResolvedLayerEffect(
-                  kind: EffectKind.blur,
-                  values: const [90, 0],
-                ),
-              ],
-            ),
-          ],
+          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 0.5),
+          tags: [wideBlur()],
         ),
-        640,
-        360,
-      ),
-      // Square to the frame at a camera's 1.25, a plate is magnified with no
-      // filter, its samples on ties a raster made off another corner takes
-      // across (🔬11-12: 68 pixels of the letter 159 apart) — and its box
-      // ends part way through a pixel, half inked, which the box rounds out
-      // to hold.
-      (
-        'a plate magnified with no filter',
-        over(
-          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.25),
-          tags: [tag('A', const ui.Offset(691, 371))],
-        ),
+        0.5,
         640,
         360,
       ),
     ]) {
       test(name, () async {
+        expect(
+          filterQualityForDisplayScale(scale),
+          isNot(ui.FilterQuality.none),
+          reason: 'LIVENESS: sampled through a filter',
+        );
         final box = painter.inkOf(
           ui.Size(width.toDouble(), height.toDouble()),
         )!;
@@ -194,7 +225,76 @@ void main() {
         );
         final whole = await laid(painter, width, height, round: false);
         expect(inked(whole), greaterThan(0), reason: 'LIVENESS: names');
-        expect(await laid(painter, width, height, round: true), whole);
+        final round = await laid(painter, width, height, round: true);
+        expect(round.length, whole.length);
+        expect(parted(round, whole), lessThanOrEqualTo(1));
+      });
+    }
+  });
+
+  // With no filter — at its own size or past it — a sample on a tie takes
+  // the texel across it wherever the part's corner moves it (🔬11-12: a name
+  // at 1.25, 68 pixels of its letter 159 apart): every pixel the whole frame
+  // inks lies in the part rastered.
+  group('🚨names magnified with no filter: every pixel the frame inks lies in '
+      'the part rastered', () {
+    for (final (name, painter, scale) in [
+      ('through the camera', over(), 1.2),
+      ('thinned', over(imageOpacity: 0.6), 1.2),
+      (
+        'a wide blur, the camera square to the frame',
+        over(
+          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.2),
+          tags: [wideBlur()],
+        ),
+        1.2,
+      ),
+      // A box's edge part way through a pixel, half inked: the part rounds
+      // out to hold it.
+      (
+        'a plate ending part way through a pixel',
+        over(
+          camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.25),
+          tags: [tag('A', const ui.Offset(691, 371))],
+        ),
+        1.25,
+      ),
+    ]) {
+      test(name, () async {
+        expect(
+          filterQualityForDisplayScale(scale),
+          ui.FilterQuality.none,
+          reason: 'LIVENESS: magnified with no filter',
+        );
+        const width = 640;
+        const height = 360;
+        final box = painter.inkOf(const ui.Size(640, 360))!;
+        expect(
+          box.width * box.height,
+          lessThan(width * height),
+          reason: 'LIVENESS: less than the frame is rastered ($box)',
+        );
+        final whole = await laid(painter, width, height, round: false);
+        var (inside, outside) = (0, 0);
+        for (var y = 0; y < height; y += 1) {
+          for (var x = 0; x < width; x += 1) {
+            if (whole[(y * width + x) * 4 + 3] == 0) {
+              continue;
+            }
+            final inBox =
+                x + 1 > box.left &&
+                x < box.right &&
+                y + 1 > box.top &&
+                y < box.bottom;
+            if (inBox) {
+              inside += 1;
+            } else {
+              outside += 1;
+            }
+          }
+        }
+        expect(inside, greaterThan(0), reason: 'LIVENESS: names');
+        expect(outside, 0, reason: 'inked past $box');
       });
     }
   });
