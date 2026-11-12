@@ -94,6 +94,30 @@ void main() {
     expect(alphaAt(moved, 100, 100), 0);
   });
 
+  test('past the canvas, on the pasteboard — the frame\'s picture reaches '
+      'as far as it stands', () {
+    final past = tag(shot: const LayerPlacement(1, 0, 0, 1, 600, 0));
+    final world = ui.Rect.fromLTWH(0, 0, size.width * 2.0, size.height + 0.0);
+    final rgba = pixelsOfFrame(
+      stackedFrameOf(
+        nameTagRows([past]),
+        page: (
+          canvasSize: size,
+          pasteboardReach: PasteboardReach.whole,
+          paintPaper: false,
+          paperBackground: ProjectBackground.defaultBackground,
+        ),
+        surfaceOf: (_) => null,
+      ),
+      world,
+    );
+    expect(
+      rgba[(100 * size.width * 2 + 700) * 4 + 3],
+      255,
+      reason: 'the box, 600 along: past the canvas\'s right edge',
+    );
+  });
+
   test('at the row\'s opacity — as one picture', () {
     expect(alphaAt(tag(opacity: 0.5), 100, 100), closeTo(128, 2));
     expect(alphaAt(tag(opacity: 0), 100, 100), 0);

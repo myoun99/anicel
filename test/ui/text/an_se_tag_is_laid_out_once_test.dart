@@ -27,7 +27,12 @@ import '../../helpers/dart_sources.dart';
 /// the same plate, made once.
 const _canvas = CanvasSize(width: 1920, height: 1080);
 
-ResolvedSeNameTag _tag(String name, {double along = 0}) => ResolvedSeNameTag(
+ResolvedSeNameTag _tag(
+  String name, {
+  double along = 0,
+  String line = 'おはよう',
+  String delivery = 'OFF',
+}) => ResolvedSeNameTag(
   layerId: 's1',
   widthBudget: 1920,
   shot: LayerPlacement(1, 0, 0, 1, along, 0),
@@ -36,11 +41,8 @@ ResolvedSeNameTag _tag(String name, {double along = 0}) => ResolvedSeNameTag(
     style: SeNameTag.defaultStyle,
     position: const ui.Offset(960, 900),
   ),
-  line: const TextCelContent(
-    text: 'おはよう',
-    style: SeNameTag.defaultLineStyle,
-  ),
-  delivery: const TextCelContent(text: 'OFF', style: SeNameTag.defaultStyle),
+  line: TextCelContent(text: line, style: SeNameTag.defaultLineStyle),
+  delivery: TextCelContent(text: delivery, style: SeNameTag.defaultStyle),
 );
 
 BitmapSurface _plate(ResolvedSeNameTag tag) =>
@@ -86,14 +88,20 @@ void main() {
     );
   });
 
-  test('another name is another plate', () {
-    final here = _plate(_tag('ヒロシ'));
-    final there = _plate(_tag('ヒロミ'));
-    expect(there.tiles, isNotEmpty, reason: 'LIVENESS: the tag lettered');
-    expect(
-      identical(there, here),
-      isFalse,
-      reason: '🚨another name answered with these letters',
-    );
-  });
+  for (final (what, other) in [
+    ('name', _tag('ヒロミ')),
+    ('line', _tag('ヒロシ', line: 'こんばんは')),
+    ('delivery', _tag('ヒロシ', delivery: 'MONO')),
+  ]) {
+    test('another $what is another plate', () {
+      final here = _plate(_tag('ヒロシ'));
+      final there = _plate(other);
+      expect(there.tiles, isNotEmpty, reason: 'LIVENESS: the tag lettered');
+      expect(
+        identical(there, here),
+        isFalse,
+        reason: '🚨another $what answered with these letters',
+      );
+    });
+  }
 }
