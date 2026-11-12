@@ -61,8 +61,7 @@ enum CacheBudgetLine {
   /// The sheets' media images — logos, covers, the photos on their ink.
   sheetImages({'sheetImages'}),
 
-  /// The engine's stamp and mask copies, split evenly between the two
-  /// caches.
+  /// The C engine's stamp copies.
   nativeUploads({'nativeUploads'}),
 
   brushTips({'brushTips'}),
@@ -122,7 +121,7 @@ enum CacheBudgetLine {
     CacheBudgetLine.sheetImages => viewerRasterBytesFor(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
-    CacheBudgetLine.nativeUploads => 2 * QaNativeEngine.stampUploadByteBudget,
+    CacheBudgetLine.nativeUploads => QaNativeEngine.stampUploadByteBudget,
     CacheBudgetLine.brushTips => BrushTipStampCache.defaultByteBudget,
     CacheBudgetLine.liveStroke =>
       BrushLiveStrokeRasterizer.defaultResidentResultByteBudget,

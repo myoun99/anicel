@@ -65,7 +65,7 @@ typedef BrushTipEdge = ({
 enum BrushAntiAlias {
   /// 없음 — a hard edge. The ramp collapses to a threshold at half
   /// coverage, which is the cut this engine already uses for its own hard
-  /// edges (`qa_engine.c`'s fill writes `coverage = 0.5 - d`).
+  /// edges.
   ///
   /// ⚠️The threshold cuts a raster tip's MASK coverage too, so a grain or
   /// chalk tip at 없음 is binarised whole — a preset that wants a pixel line

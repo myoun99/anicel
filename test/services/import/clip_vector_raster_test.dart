@@ -388,7 +388,7 @@ void main() {
 
     // 🗣️clip-vector-import-draws-with-the-c-brush-Q1 (유저 2026-11-11).
     test('🚨the strokes land on the engine — the picture handed on to be '
-        'cut is tiles the engine made, none the C brush\'s', () async {
+        'cut is tiles the engine made, none blended here', () async {
       late final ({List<ClipCelTile> tiles, int unread}) drawn;
       final readBack = await readBackWhile(() async {
         drawn = await clipVectorTiles(

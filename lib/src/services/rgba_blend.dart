@@ -67,6 +67,19 @@ StrokePixel strokeSourceOver({
 /// [strokeSourceOver] at a [sourceAlpha] the caller has already resolved —
 /// for a blend whose alpha depends on the destination (a brush dab settling
 /// at its opacity, F-205).
+///
+/// 🚨A DAB OVER NOTHING OR OVER ITS OWN COLOUR LANDS ITS OWN COLOUR, EXACTLY
+/// (ABI 40). The blend's colour, (c·a + d·b·(1 − a)) / (a + b·(1 − a)), is c
+/// in real numbers when the plane under it holds c or nothing (b = 0); in
+/// doubles it lands within a few units in the last place of c — some 1e-11
+/// of a step on the 16-bit plane — so both planes round it to c and c·257,
+/// exactly what the formula would have rounded to. A one-colour stroke is
+/// this case from its second dab on, and the three divisions it skips were
+/// most of what the plane cost the tile kernel (2026-10-01, a soft size-100
+/// stroke through the C kernel that stood then: 9.6 ms before the plane,
+/// 24.1 ms with it, measured before this was written). The tile kernel
+/// (`blendDabTilesDart`) takes the same road. ↩️Till 2026-11-12 this text
+/// stood beside the C kernel's `qa_dab_over_own_colour`.
 StrokePixel strokeSourceOverAt({
   required RgbaColor source,
   required StrokePixel destination,
@@ -81,7 +94,7 @@ StrokePixel strokeSourceOverAt({
   }
 
   // Over nothing or over its own colour the source lands its own colour
-  // exactly — `qa_dab_over_own_colour` says why that is the same bytes.
+  // exactly — the law above says why that is the same bytes.
   if (destination.a == 0 ||
       (destination.r == source.r * 257 &&
           destination.g == source.g * 257 &&

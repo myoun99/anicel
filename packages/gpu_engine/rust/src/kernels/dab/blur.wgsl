@@ -1,5 +1,5 @@
-// The blur brush's dab (I-75 흐리기 — BrushBlurPicture.blurDab, C's
-// qa_blur_dab): the stroke's picture under the dab moved toward its blur by
+// The blur brush's dab (I-75 흐리기 — BrushBlurPicture.blurDab): the
+// stroke's picture under the dab moved toward its blur by
 // what the dab would lay as paint onto nothing,
 //
 //     picture ← picture + (blurred(picture) − picture) × laid

@@ -19,16 +19,11 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_tile_set.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/bitmap_tile_operation_materialization.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
-import 'package:anicel/src/services/brush_dab_kernel.dart' show NativeDabBatcher;
 import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// Reference implementation of the stroke-commit rasterization, built from the
 /// retained per-pixel-operation pipeline (`brushPixelBlendOperationsForDabSequence`
@@ -200,71 +195,30 @@ final BrushTipMask _upperHalfTipMask = BrushTipMask(
 
 BrushDabSequence strokeOf(List<BrushDab> dabs) => BrushDabSequence(dabs);
 
-/// 🚨★★★THE THREE TRANSCRIPTIONS ARE COMPARED IN ONE RUN, NOT ONE PER MACHINE.
+/// THE TWO TRANSCRIPTIONS: the per-pixel reference above and the tile kernel
+/// (`blendDabTilesDart`), which a commit runs on any grid but the engine's —
+/// every grid here.
 ///
-/// The fast path picks the C kernel when the engine loads and the Dart kernel
-/// (`blendDabTilesDart`) when it does not, so a single call has only ever
-/// compared TWO of the three. That left the Dart kernel unpinned on a machine
-/// with the engine built and the C kernel unpinned on one without — and with
-/// origin frozen there is no second machine to cover the other half.
-///
-/// 🧪Measured 2026-09-09: dropping the density term from the dual blend in
-/// `brush_dab_kernel.dart` ALONE — the C and the reference left correct —
-/// passed this entire suite, and the overlay parity suite too. It fails on
-/// `(Dart kernel)` now.
-///
-/// ⚠️The C route asserts the engine actually LOADED. A path that exists but
-/// fails to load would quietly run the Dart kernel twice, and two identical
-/// routes agreeing is the shape of a green that measures nothing.
-typedef _FastRoute = ({String name, bool forceDart});
-
-const _FastRoute _dartKernelRoute = (name: 'Dart kernel', forceDart: true);
-const _FastRoute _cKernelRoute = (name: 'C kernel', forceDart: false);
-
-final List<_FastRoute> _fastRoutes = _resolveFastRoutes();
-
-List<_FastRoute> _resolveFastRoutes() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  if (libraryPath == null) {
-    return const [_dartKernelRoute];
-  }
-  debugQaEngineLibraryPathOverride = libraryPath;
-  return const [_dartKernelRoute, _cKernelRoute];
-}
-
+/// ↩️Three till 2026-11-12, compared in one run: the fast path picked the C
+/// kernel when the engine loaded and the Dart kernel when it did not, so a
+/// single call had only ever compared two of them, and a machine with the
+/// engine built left the Dart kernel unpinned. 🧪Measured 2026-09-09:
+/// dropping the density term from the dual blend in `brush_dab_kernel.dart`
+/// ALONE — the C and the reference left correct — passed this entire suite
+/// and the overlay parity suite too, until the Dart kernel had a route of
+/// its own here. The C kernel went with the C (ABI 80).
 void expectParity({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
   required String reason,
 }) {
   final reference = referenceMaterialize(surface: surface, sequence: sequence);
-  for (final route in _fastRoutes) {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = route.forceDart;
-    if (!route.forceDart) {
-      expect(
-        QaNativeEngine.instance,
-        isNotNull,
-        reason: 'the C route must really be the C kernel',
-      );
-    }
-    final fast = materializeBrushDabSequenceOnBitmapSurface(
-      surface: surface,
-      sequence: sequence,
-    );
-    expect(
-      fast.dirtyTiles,
-      reference.dirtyTiles,
-      reason: '$reason: dirtyTiles (${route.name})',
-    );
-    expect(
-      fast.surface,
-      reference.surface,
-      reason: '$reason: surface pixels (${route.name})',
-    );
-  }
-  QaNativeEngine.debugResetForTests();
-  QaNativeEngine.debugForceDartFallback = false;
+  final fast = materializeBrushDabSequenceOnBitmapSurface(
+    surface: surface,
+    sequence: sequence,
+  );
+  expect(fast.dirtyTiles, reference.dirtyTiles, reason: '$reason: dirtyTiles');
+  expect(fast.surface, reference.surface, reason: '$reason: surface pixels');
 }
 
 void main() {
@@ -275,21 +229,6 @@ void main() {
   }
 
   group('materializeBrushDabSequenceOnBitmapSurface parity with reference', () {
-    test('🚨the routes this machine actually compares', () {
-      // Every case below is only as wide as this list. A suite that quietly
-      // dropped to one route would still be green, so the count is stated
-      // here where a reader sees it — and CI, which sets QA_REQUIRE_NATIVE,
-      // FAILS instead of narrowing.
-      expect(_fastRoutes, contains(_dartKernelRoute));
-      if (_fastRoutes.contains(_cKernelRoute)) {
-        return;
-      }
-      if (nativeEngineRequired) {
-        fail(nativeEngineMissingSkipReason);
-      }
-      markTestSkipped(nativeEngineMissingSkipReason);
-    });
-
     test('single soft round dab on blank surface', () {
       expectParity(
         surface: blankSurface(),
@@ -356,16 +295,11 @@ void main() {
       );
     });
 
-    test('🚨every EDGE step agrees across all three transcriptions', () {
-      // The edge remap had to be written into all three transcriptions at the
+    test('🚨every EDGE step agrees across both transcriptions', () {
+      // The edge remap had to be written into every transcription at the
       // same point in the cascade, and this is the pin that says it was — one
       // dab per step, so a step written into only one of them fails here with
-      // the step named. `expectParity` walks every route, so all three are
-      // compared in this one run.
-      //
-      // 🧪Measured 2026-09-08: `+ 0.5` -> `+ 0.6` in the C kernel alone,
-      // rebuilt, and this went red on `edge step low` — so the C really is
-      // what the C route runs.
+      // the step named.
       //
       // I-50: the hard nib and the near-hard ellipse are the tips whose edge
       // the step WIDENS (the step pulls the hard radius in); the soft two
@@ -393,7 +327,7 @@ void main() {
       }
     });
 
-    test('🚨a small circle\'s SQUARE read agrees across all three '
+    test('🚨a small circle\'s SQUARE read agrees across both '
         'transcriptions', () {
       // Up to a radius of 2.5 a circle's tables are square (Q6 b,
       // `RoundTipProfile.rowLength`): each size at a spread of sub-pixel
@@ -577,10 +511,10 @@ void main() {
       );
     });
 
-    test('🚨a dual stroke at PARTIAL density agrees across all three', () {
+    test('🚨a dual stroke at PARTIAL density agrees across both', () {
       // ⚠️Density 1 is where the lerp collapses: every transcription would
       // still agree if one of them had dropped the density term entirely.
-      // Only a value that is neither 0 nor 1 makes the three compare.
+      // Only a value that is neither 0 nor 1 makes them compare.
       const view = BrushDualView(density: 0.35);
       expectParity(
         surface: blankSurface(),
@@ -601,7 +535,7 @@ void main() {
           secondDab(x: 43.1, y: 41.9, dual: view, tipMask: _testTipMask),
           secondDab(x: 49.7, y: 43.2, dual: view, size: 9, flow: 0.6),
         ]),
-        reason: 'the dual density blend must be one law in all three',
+        reason: 'the dual density blend must be one law in both',
       );
     });
 
@@ -799,19 +733,18 @@ void main() {
       expect(parted, lessThan(64), reason: 'a level apart only on a half');
     });
 
-    test('🚨every dual COMPOSITE MODE agrees across all three transcriptions',
-        () {
+    test('🚨every dual COMPOSITE MODE agrees across both transcriptions', () {
       // v33. Ours multiplied and only multiplied while both source formats
       // carried a mode — Clip Studio's `DualBrushCompositeMode` (the 合成
       // モード index; 1 and 12 in the user's own files) and Photoshop's
       // `dualBrush.BlnM` (eight codes across 765 brushes).
       //
-      // 🚨THE WHOLE TABLE, one stroke each, because the C switch and the two
-      // Dart transcriptions are three separate spellings of the same
-      // formulas and a mode nobody drives is a mode nobody has compared.
+      // 🚨THE WHOLE TABLE, one stroke each, because a mode nobody drives is
+      // a mode nobody has compared (↩️the C switch was a third spelling of
+      // the formulas, till 2026-11-12).
       // `add` is here for a reason of its own: it is NOT in the B(Cs, Cd)
       // table on either side — Skia's `plus` is a premultiplied saturating
-      // add — so it takes a branch of its own in all three, and it is one
+      // add — so it takes a branch of its own, and it is one
       // of the two modes actually found in a real file.
       for (final mode in SeparableBlendMode.values) {
         // ⛔NEITHER 0 NOR 1: at density 0 the mode cannot show and at 1 the
@@ -827,12 +760,12 @@ void main() {
             secondDab(x: 46.6, y: 43.5, dual: view, size: 8, flow: 0.7),
           ]),
           reason: 'the dual composite mode ${mode.name} must be one law in '
-              'all three',
+              'both',
         );
       }
     });
 
-    test('🚨the paper\'s HEIGHT agrees across all three transcriptions', () {
+    test('🚨the paper\'s HEIGHT agrees across both transcriptions', () {
       // v53 (F-451). The paper cuts the coverage instead of multiplying it:
       // a soft round, a sampled tip turned and squashed, and a third that
       // overlaps both. ⛔NEITHER DENSITY IS 0 OR 1: the reach is the
@@ -876,7 +809,7 @@ void main() {
             sequence: 2,
           ),
         ]),
-        reason: 'the paper\'s height must be one law in all three',
+        reason: 'the paper\'s height must be one law in both',
       );
     });
 
@@ -946,18 +879,7 @@ void main() {
       );
     });
 
-    // 🚨A HALF ROUNDS AWAY FROM ZERO IN EVERY TRANSCRIPTION — the engine's
-    // arithmetic contract (Dart's round() is llround). The C kernel rounds a
-    // channel inline now (`qa_round_byte`), and only an exact half can tell
-    // that from rounding a half to even: a hard dab at flow 0.5 over opaque
-    // ink lands every channel on (source + destination) / 2 exactly, so
-    // (100 + 53) / 2 = 76.5 must come out 77, not 76.
-    // The C kernel blends a masked tip two pixels at a time only when it has
-    // no texture mask and its tile shows no second plane (board
-    // `brush-kernel-next` ①): a tip under a paper texture must stay on the
-    // loop that multiplies the paper in, and the pairs must take every edge
-    // step the scalar loop takes.
-    test('a masked tip under a paper texture alone blends the same bytes', () {
+    test('a masked tip under a paper texture blends the same bytes', () {
       expectParity(
         surface: blankSurface(tileSize: 256),
         sequence: strokeOf([
@@ -973,11 +895,11 @@ void main() {
               sequence: i,
             ),
         ]),
-        reason: 'masked tip, texture only',
+        reason: 'masked tip under a texture',
       );
     });
 
-    test('every EDGE step agrees on a masked tip, two pixels at a time', () {
+    test('every EDGE step agrees on a masked tip', () {
       for (final antiAlias in BrushAntiAlias.values) {
         expectParity(
           surface: blankSurface(tileSize: 256),
@@ -1020,6 +942,11 @@ void main() {
       }
     });
 
+    // 🚨A HALF ROUNDS AWAY FROM ZERO IN EVERY TRANSCRIPTION (Dart's
+    // `round()`), and only an exact half can tell that from rounding a half
+    // to even: a hard dab at flow 0.5 over opaque ink lands every channel on
+    // (source + destination) / 2 exactly, so (100 + 53) / 2 = 76.5 must come
+    // out 77, not 76.
     test('a channel that lands on an exact half rounds away from zero', () {
       final opaque = materializeBrushDabSequenceOnBitmapSurface(
         surface: blankSurface(),
@@ -1088,245 +1015,6 @@ void main() {
       );
     });
 
-    // 🚨A DAB CUT INTO ROW BANDS BLENDS THE SAME BYTES (2026-09-24, board
-    // `preset-spacing-minimum`). The C kernel cuts a dab of at least two
-    // bands' worth of pixels into bands of whole rows when it covers fewer
-    // tiles than that — which no dab above does, on 64-pixel tiles. These
-    // reach it: 256-pixel tiles, dabs of 100 to 300 px, spans of every
-    // height where a dab straddles the tile corner at the origin.
-    test('a dab cut into row bands blends the same bytes', () {
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          dab(x: 100.3, y: 80.6, size: 100, hardness: 0.3, sequence: 0),
-          dab(x: 6.5, y: 4.5, size: 150, hardness: 0.8, sequence: 1),
-          dab(
-            x: 120.2,
-            y: 70.1,
-            size: 130,
-            hardness: 1,
-            roundness: 0.4,
-            angleDegrees: 30,
-            sequence: 2,
-          ),
-          dab(
-            x: 90.7,
-            y: 60.2,
-            size: 300,
-            opacity: 0.5,
-            flow: 0.4,
-            sequence: 3,
-          ),
-        ]),
-        reason: 'banded round and elliptical dabs',
-      );
-    });
-
-    test('a banded dab reads its lattices by row the same way', () {
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          dab(
-            x: 80.37,
-            y: 70.81,
-            size: 120,
-            roundness: 0.6,
-            angleDegrees: 20,
-            tipMask: _testTipMask,
-            sequence: 0,
-          ),
-          dab(
-            x: 110.2,
-            y: 64.9,
-            size: 140,
-            hardness: 0.5,
-            textureMask: _testTipMask,
-            textureScale: 1.5,
-            textureDensity: 0.4,
-            sequence: 1,
-          ),
-        ]),
-        reason: 'banded sampled tip and texture',
-      );
-    });
-
-    test('a banded dual stroke shows its view band by band the same way', () {
-      // The C batch rebuilds the view over each band's rows once its dabs
-      // have landed; a wide unrotated masked tip — the pairs' shape — lays
-      // its planes only, since the tile shows the view.
-      const view = BrushDualView(
-        compositeMode: SeparableBlendMode.overlay,
-        density: 0.7,
-      );
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          dab(
-            x: 80.37,
-            y: 70.81,
-            size: 120,
-            tipMask: _testTipMask,
-            dual: view,
-          ),
-          dab(x: 110.2, y: 64.9, size: 140, dual: view, sequence: 1),
-          secondDab(
-            x: 95.6,
-            y: 68.2,
-            dual: view,
-            size: 130,
-            tipMask: _testTipMask,
-          ),
-        ]),
-        reason: 'banded dual stroke',
-      );
-    });
-
-    test('a tile whose last band changes nothing is still reported changed', () {
-      // The tip is inked in its top half only, so the dab's lower bands
-      // change nothing while its upper ones do — a fold that let the last
-      // band speak for its tile would drop the tile from the dirty set.
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          dab(
-            x: 100,
-            y: 80,
-            size: 120,
-            hardness: 1,
-            tipMask: _upperHalfTipMask,
-            sequence: 0,
-          ),
-        ]),
-        reason: 'the fold keeps a band that changed',
-      );
-    });
-
-    // A call carries at most `NativeDabBatcher.maxDabs` dabs, and one more
-    // starts the next batch: a pixel-step stroke longer than that crosses
-    // the cut with every row still under the dabs before it.
-    test('a stroke longer than one batch blends the same bytes', () {
-      expect(NativeDabBatcher.maxDabs, lessThan(150));
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          for (var i = 0; i < 150; i += 1)
-            dab(
-              x: 40.25 + i * 0.8,
-              y: 60.5 + i * 0.35,
-              size: 48,
-              opacity: 0.6,
-              flow: 0.3,
-              sequence: i,
-            ),
-        ]),
-        reason: 'a stroke across batches',
-      );
-    });
-
-    test('dabs of different tips share a batch and keep their order', () {
-      // A pen stroke's tip is resolved per quantized size, so its mask
-      // changes every few dabs — and they still ride one call.
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          for (var i = 0; i < 12; i += 1)
-            dab(
-              x: 70.4 + i * 3.1,
-              y: 66.2 + i * 1.7,
-              size: 90,
-              hardness: 0.6,
-              tipMask: switch (i % 3) {
-                0 => _testTipMask,
-                1 => _upperHalfTipMask,
-                _ => null,
-              },
-              sequence: i,
-            ),
-        ]),
-        reason: 'mixed tips in one batch',
-      );
-    });
-
-    test('a batch ends where its masks would outgrow the upload cache', () {
-      // Every dab a tip of its own: the batch cuts once the next one would
-      // upload past what the engine's mask cache holds at once, and the
-      // next call lands on what the first left.
-      final tips = [
-        for (var k = 0; k < 11; k += 1)
-          BrushTipMask(
-            id: 'parity-distinct-$k',
-            size: 8,
-            alpha: Uint8List.fromList([
-              for (var index = 0; index < 64; index += 1)
-                (index * (k + 3) + k * 29) % 256,
-            ]),
-          ),
-      ];
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          for (var i = 0; i < tips.length; i += 1)
-            dab(
-              x: 72.6 + i * 4.3,
-              y: 61.9 + i * 2.2,
-              size: 96,
-              tipMask: tips[i],
-              sequence: i,
-            ),
-        ]),
-        reason: 'a batch cut at the mask allowance',
-      );
-    });
-
-    // 🚨A ROW VISITS ONLY THE PIXELS ITS TIP ROWS CAN INK (ABI 39, board
-    // `brush-kernel-next` ②). The C kernel narrows each pixel row of an
-    // unrotated tip to the columns its two mask rows ink, and skips a row
-    // whose two rows are bare. The pixels it leaves out must be exactly the
-    // ones the loop threw away at coverage 0: fractional centres put the
-    // edge pixel — the one whose second texel is the first inked — half on
-    // the ink.
-    test('a tip with bare margins blends the same bytes', () {
-      final margins = BrushTipMask(
-        id: 'parity-bare-margins',
-        size: 16,
-        alpha: Uint8List.fromList([
-          for (var y = 0; y < 16; y += 1)
-            for (var x = 0; x < 16; x += 1)
-              if (y >= 5 && y < 11 && x >= 3 && x < 12)
-                40 + (x * 13 + y * 7) % 200
-              else
-                0,
-        ]),
-      );
-      final ring = BrushTipMask(
-        id: 'parity-bare-ring',
-        size: 12,
-        alpha: Uint8List.fromList([
-          for (var y = 0; y < 12; y += 1)
-            for (var x = 0; x < 12; x += 1)
-              if ((x == 2 || x == 9) && y >= 2 && y < 10 ||
-                  (y == 2 || y == 9) && x >= 2 && x < 10)
-                230
-              else
-                0,
-        ]),
-      );
-      expectParity(
-        surface: blankSurface(tileSize: 256),
-        sequence: strokeOf([
-          for (var i = 0; i < 6; i += 1)
-            dab(
-              x: 60.37 + i * 9.61,
-              y: 58.13 + i * 4.29,
-              size: [23.0, 57.5, 118.0][i % 3],
-              tipMask: i.isEven ? margins : ring,
-              sequence: i,
-            ),
-        ]),
-        reason: 'tips with bare margins and a hole',
-      );
-    });
-
     test('round tips prerendered per size — the canvas path — blend the same '
         'bytes', () {
       // Every canvas dab is resolved to a mask like these before it is
@@ -1352,7 +1040,7 @@ void main() {
 
     test('🚨two colours crossing take the colour blend on every road — the '
         'own-colour road is only for a dab over its own colour', () {
-      // ABI 40 (`qa_dab_over_own_colour`): a dab over nothing or over its own
+      // ABI 40 (`strokeSourceOverAt`): a dab over nothing or over its own
       // colour skips the colour blend, and every other pixel must still pay
       // it — on the scalar loop, two pixels at a time (masked tips), and in
       // the reference. One colour alone cannot tell the roads apart.
@@ -1383,12 +1071,11 @@ void main() {
       }
     });
 
-    test('🚨a dab laying its share agrees across all three transcriptions', () {
-      // ABI 41 (`stampShareOf`, `qa_dab_even`): a dab laid closer than a
+    test('🚨a dab laying its share agrees across both transcriptions', () {
+      // ABI 41 (`stampShareOf`, `evenedLaid`): a dab laid closer than a
       // tenth of its size lays its share through a table, on the opaque
-      // road and the settling one, painting and erasing, on the scalar loop
-      // and two pixels at a time. A dab without a path step lays whole, so
-      // the cases above never reach the table.
+      // road and the settling one, painting and erasing. A dab without a
+      // path step lays whole, so the cases above never reach the table.
       final cache = BrushTipStampCache();
       final painted = materializeBrushDabSequenceOnBitmapSurface(
         surface: blankSurface(tileSize: 256),
@@ -1428,9 +1115,9 @@ void main() {
 
     test('🚨a hard dab at full flow lays its share of a whole stamp alike — '
         'the table read at a = 1', () {
-      // A laid alpha of exactly 1 reads the table's last pair: the opaque
-      // road through the pair path (qa_d2_even), the settling one through
-      // the scalar (qa_dab_even) — the two clamps at the table's end.
+      // A laid alpha of exactly 1 reads the table's last pair, on the
+      // opaque road and on the settling one: the clamp at the table's end
+      // (`evenedLaid`).
       final cache = BrushTipStampCache();
       for (final masked in [false, true]) {
         expectParity(

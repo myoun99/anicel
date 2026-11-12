@@ -378,11 +378,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// [coords] pre-blended against [preBlendBase] by [source], each handed
   /// to [take].
   ///
-  /// ONE pooled kernel call for the whole region (ABI 24). A pointer move
-  /// touches a neighbourhood of tiles, and staging + blending +
-  /// premultiplying them one at a time never engaged the C worker pool:
-  /// measured at 256px tiles, an 1800px brush spent 122ms of every frame
-  /// there and now spends ~21ms.
+  /// ONE call for the whole region: a pointer move touches a neighbourhood
+  /// of tiles, and the engine lands them in one pass. ↩️The C's reason
+  /// (ABI 24, till 2026-11-12): staging + blending + premultiplying them
+  /// one at a time never engaged its worker pool — measured at 256px tiles,
+  /// an 1800px brush spent 122ms of every frame there and ~21ms in one
+  /// pooled call.
   void _eachPreBlended(
     BrushLiveStrokeRasterizer source,
     List<TileCoord> coords,
@@ -475,24 +476,16 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Pictures an already pre-blended tile (single or batched) and adopts
   /// the image as this coordinate's overlay picture, with its revision
-  /// recorded beside it. The tile's staging is released read or not.
+  /// recorded beside it.
   void _showPreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
-    try {
-      _install(coord, _shownOf(coord, blended, revision: blended.revision));
-    } finally {
-      blended.free();
-    }
+    _install(coord, _shownOf(coord, blended, revision: blended.revision));
   }
 
   /// [_showPreBlended] kept off screen for [showStaged].
   void _stagePreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
-    try {
-      // Never on screen, so nothing can still be drawing it.
-      _staged.remove(coord)?.image?.dispose();
-      _staged[coord] = _shownOf(coord, blended, revision: blended.revision);
-    } finally {
-      blended.free();
-    }
+    // Never on screen, so nothing can still be drawing it.
+    _staged.remove(coord)?.image?.dispose();
+    _staged[coord] = _shownOf(coord, blended, revision: blended.revision);
   }
 
   /// What [coord] is shown by for [result] — a live stroke's bytes there,
@@ -695,11 +688,7 @@ typedef OverlayMoveMark = ({List<DirtyRegion> moves, int count});
 /// One overlay tile of the CLASSIC route (a host whose overlay grid differs
 /// from its surface's, or a plain colour-mode stroke), as the door reads
 /// it: the straight rows snapshotted from the live stroke — pre-blended
-/// against the cel when the overlay replaces coordinates — or, where the
-/// engine uploads, the R25 fused snapshot + premultiply in ONE C call over
-/// the native buffer (per 2000px move that is ~256 tiles — the Dart loops
-/// were the big-brush stall and the visible pre-stroke tiles). Same bytes:
-/// the C premultiply is parity-pinned against this exact rounding.
+/// against the cel when the overlay replaces coordinates.
 class _SnapshotBytes implements PictureBytes {
   _SnapshotBytes({
     required this.source,
@@ -726,10 +715,7 @@ class _SnapshotBytes implements PictureBytes {
   /// The straight-alpha rows, then — R27 #4 — the COMMIT's result,
   /// computed by the commit's own math against the cel's committed bytes
   /// where the overlay replaces coordinates: the painter replaces the base
-  /// with it, and pen-up lands the exact same bytes. (This forgoes the
-  /// fused C snapshot: correctness is the rule here; the giant-brush +
-  /// blend-mode combo pays some Dart time and is flagged for a native
-  /// lift if it ever shows.)
+  /// with it, and pen-up lands the exact same bytes.
   Uint8List _straight() {
     final left = coord.x * tileSize;
     final top = coord.y * tileSize;
@@ -763,24 +749,8 @@ class _SnapshotBytes implements PictureBytes {
 
   @override
   T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
-    final source = this.source;
-    if (preBlend == null &&
-        width == tileSize &&
-        height == tileSize &&
-        source is BrushLiveStrokeRasterizer &&
-        source.tileSize == tileSize) {
-      final fused = source.premultipliedOverlayTile(coord.x, coord.y);
-      if (fused != null) {
-        try {
-          return use(fused.view);
-        } finally {
-          fused.free();
-        }
-      }
-    }
-    // Premultiplied in place with the same per-pixel branches/rounding as
-    // the kernel: the alpha==0 case must ZERO the color bytes — a
-    // straight-alpha stroke pixel can round to alpha 0 while keeping
+    // Premultiplied in place: the alpha==0 case must ZERO the color bytes
+    // — a straight-alpha stroke pixel can round to alpha 0 while keeping
     // non-zero color, which would be invalid premultiplied data.
     final bytes = _straight();
     premultiplyRgbaInPlace(bytes);

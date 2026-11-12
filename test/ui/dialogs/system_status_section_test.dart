@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -18,15 +17,9 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 /// this file exists to catch), and fallback states must render as
 /// visible states, not vanish.
 void main() {
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = false;
-  });
-
   test('the report covers every switchable subsystem', () {
     final entries = collectRuntimePathReport();
     expect(entries.map((entry) => entry.subsystem), [
-      'Raster engine',
       'Audio import decoder',
       'Video export encoder',
       'PDF renderer',
@@ -64,16 +57,6 @@ void main() {
     expect(upload.isPrimary, isFalse, reason: 'flutter_tester runs Skia');
     expect(upload.active, contains('Synchronous draw'));
     expect(upload.detail, contains('Impeller'));
-  });
-
-  test('a missing raster engine reports the Dart fallback honestly', () {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = true;
-    final raster = collectRuntimePathReport().singleWhere(
-      (entry) => entry.subsystem == 'Raster engine',
-    );
-    expect(raster.isPrimary, isFalse);
-    expect(raster.active, contains('Dart fallback'));
   });
 
   testWidgets('the section renders one row per subsystem', (tester) async {

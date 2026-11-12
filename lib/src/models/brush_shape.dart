@@ -222,7 +222,7 @@ class BrushShape {
 
   /// The SECOND tip: a second stroke stamped along the same path at
   /// [dualMaskScale] times the first tip's size (`BrushSecondStroke`), shown
-  /// over the first through [dualView] (ABI 60, `qa_dual_view_rows`).
+  /// over the first through [dualView] (ABI 60, `dualViewAlpha`).
   /// ↩️Until v60 it was a mask tiled over every dab at a random phase.
   final BrushTipMask? dualMask;
   final double dualMaskScale;

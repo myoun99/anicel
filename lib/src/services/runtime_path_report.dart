@@ -1,7 +1,5 @@
 import 'dart:io';
 
-import '../native/qa_engine_abi.dart';
-import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
 import '../core/sync_image_upload.dart';
 import '../native/qa_video_encoder.dart';
@@ -10,9 +8,9 @@ import 'pdf/pdf_render_service.dart';
 /// One runtime-selected implementation path, reported to the user
 /// (Preferences > System).
 ///
-/// The app resolves several subsystems at runtime — native C engine vs
-/// the Dart reference, OS codec stacks vs the ffmpeg fallback, the
-/// Wintab sidecar vs plain OS pointer events. Each resolution is
+/// The app resolves several subsystems at runtime — OS codec stacks vs
+/// the ffmpeg fallback, the Wintab sidecar vs plain OS pointer events.
+/// Each resolution is
 /// GRACEFUL (absence falls back, never crashes), which also means it is
 /// SILENT — this report is where the silence becomes visible, with
 /// searchable technology names so a curious user can look them up.
@@ -28,10 +26,11 @@ class RuntimePathEntry {
     required this.detail,
   });
 
-  /// What part of the app this path serves ('Raster engine').
+  /// What part of the app this path serves ('PDF renderer').
   final String subsystem;
 
-  /// The implementation in use RIGHT NOW ('Native C — qa_engine, ABI 22').
+  /// The implementation in use RIGHT NOW ('PDFium (pdfrx, chromium
+  /// prebuilt)').
   final String active;
 
   /// False when a fallback path is engaged — the UI tints these so a
@@ -48,24 +47,11 @@ class RuntimePathEntry {
 List<RuntimePathEntry> collectRuntimePathReport() {
   final entries = <RuntimePathEntry>[];
 
-  // --- Raster engine (qa_engine): brush strokes, flood fill, the
-  // stroke blend, tile composite, bounds scans.
-  final raster = QaNativeEngine.instance;
-  entries.add(
-    RuntimePathEntry(
-      subsystem: 'Raster engine',
-      active: raster != null
-          ? 'Native C (qa_engine, ABI $kQaEngineAbiVersion) — '
-                'worker-pool parallel'
-          : 'Dart fallback (no native binary loaded)',
-      isPrimary: raster != null,
-      detail:
-          'Brush strokes, flood fill, brush blend modes and tile '
-          'composites, called through dart:ffi. The pure-Dart reference '
-          'produces byte-identical pixels but runs many times slower; '
-          'it engaging outside tests usually means a packaging problem.',
-    ),
-  );
+  // 🪦A 「Raster engine」 row named the C engine (`qa_engine`) against its
+  // Dart fallback — brush strokes, flood fill, brush blend modes, tile
+  // composites, bounds scans — until each of them went to the GPU engine,
+  // the brush last (C ABI 80, 2026-11-12). The GPU engine ships with the app
+  // and has no other path, so it has no row, as the note below says.
 
   // 🪦An 「Audio engine」 row named the C's playback mixer (and its
   // sample-rate conversion), until the conversion and the voice take's

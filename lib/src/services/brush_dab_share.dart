@@ -70,8 +70,7 @@ double stampShareOf(BrushDab dab) {
 /// Entries past the first in an evening table: a laid alpha `a` in [0, 1]
 /// reads entry `a * eveningTableSteps`, linearly between two. One more
 /// entry repeats `a = 1`, so a laid alpha of 1 reads its pair like any
-/// other — the C kernel's pair path reads both lanes' pairs without a
-/// branch (`qa_d2_even`).
+/// other, and no pixel branches ([evenedLaid]).
 const int eveningTableSteps = 1024;
 
 /// The tables built so far, as many as there are shares to lay
@@ -101,9 +100,10 @@ Float64List? eveningTableOf(BrushDab dab) {
 }
 
 /// `1 − (1 − a)^share` at `a = i / eveningTableSteps` — built once per
-/// share, and the ONE place `pow` is called: the Dart and C kernels, the
+/// share, and the ONE place `pow` is called: the Dart kernel, the
 /// reference and the swatch all read these numbers through [evenedLaid], so
-/// they agree to the byte, and no pixel pays a power.
+/// they agree to the byte, the engine's kernel is handed the same table
+/// (`dab_even`, dab.wgsl), and no pixel pays a power.
 Float64List eveningTableFor(double share) {
   final last = _lastTable;
   if (last != null && share == _lastShare) {
@@ -122,8 +122,8 @@ Float64List eveningTableFor(double share) {
   return table;
 }
 
-/// What a dab laying [laid] whole lays at the share [table] was built for —
-/// `qa_dab_even`'s arithmetic, operation by operation.
+/// What a dab laying [laid] whole lays at the share [table] was built for:
+/// read linearly between the table's two nearest entries.
 double evenedLaid(Float64List table, double laid) {
   final scaled = laid * eveningTableSteps;
   final x = scaled < eveningTableSteps ? scaled : eveningTableSteps.toDouble();

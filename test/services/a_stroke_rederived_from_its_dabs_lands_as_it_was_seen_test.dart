@@ -12,8 +12,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
@@ -23,13 +21,10 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 
-import '../helpers/native_engine_path.dart';
-
 /// 🚨★★★erase-live-and-dab-route-round-apart (2026-09-28): a stroke of
 /// brush dabs that reaches the commit WITHOUT its live buffer — re-derived
 /// from its dabs when the cel moved under the promotion, or laid down again
-/// by 확정 — lands the bytes the live overlay showed, in every blend mode,
-/// on both engines.
+/// by 확정 — lands the bytes the live overlay showed, in every blend mode.
 ///
 /// Laid on the cel dab by dab, the same stroke reached the same sum but
 /// rounded after every dab: an eraser over paint kept alpha 11 where the
@@ -40,13 +35,6 @@ void main() {
   const tileSize = 64;
   const layerId = LayerId('l');
   const frameId = FrameId('f');
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
 
   BrushDab dab({
     required double x,
@@ -212,27 +200,7 @@ void main() {
     }
   }
 
-  void onEachEngine(String name, void Function() body) {
-    test('$name — Dart engine', () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      expect(QaNativeEngine.instance, isNull);
-      body();
-    });
-    test('$name — native engine', () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      body();
-    });
-  }
-
-  onEachEngine('every blend mode over paint: the stroke re-derived from its '
+  test('every blend mode over paint: the stroke re-derived from its '
       'dabs is the stroke the overlay promoted', () {
     for (final mode in BrushBlendMode.values) {
       final dabs = loopBack(erase: mode == BrushBlendMode.erase);
@@ -245,7 +213,7 @@ void main() {
     }
   });
 
-  onEachEngine('the premise: the dabs piled up on an empty surface ARE the '
+  test('the premise: the dabs piled up on an empty surface ARE the '
       'overlay\'s buffer, byte for byte', () {
     for (final erase in [false, true]) {
       final dabs = loopBack(erase: erase);
@@ -269,7 +237,7 @@ void main() {
     }
   });
 
-  onEachEngine('a selection that covers the stroke lands the same bytes as '
+  test('a selection that covers the stroke lands the same bytes as '
       'none — one route with a clip, not two routes', () {
     final region = CanvasSelectionRegion.shape(
       CanvasSelectionShape.rect(left: 0, top: 0, right: 192, bottom: 128),
@@ -298,7 +266,7 @@ void main() {
     }
   });
 
-  onEachEngine('a STAMP still lands 1:1 — a pasted piece at 40% keeps its '
+  test('a STAMP still lands 1:1 — a pasted piece at 40% keeps its '
       'bytes, and a lift\'s landing still cuts the hole before it lays the '
       'piece', () {
     final image = piece();

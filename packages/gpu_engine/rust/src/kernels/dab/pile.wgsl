@@ -17,7 +17,7 @@
 @group(0) @binding(1) var<uniform> pile_run: vec4<u32>;
 
 // What a stroke with a second tip shows where its first plane stands
-// `first` high and its second `level` (qa_dual_view_rows, which has the
+// `first` high and its second `level` (`dualViewAlpha`, which has the
 // law): the second blended over the first by the stroke's mode at its
 // density — the second the source, the first the destination. Where the
 // first tip laid nothing, nothing shows.
@@ -28,7 +28,7 @@ fn dab_shown(first: u32, level: u32) -> u32 {
   let mode = plan[HEAD_SECOND];
   let density = plan[HEAD_SECOND_DENSITY];
   if (mode == BLEND_MULTIPLY) {
-    // ⛔MULTIPLY KEEPS ITS OWN LINE (qa_dual_view_rows): a·((1 − d) + d·s),
+    // ⛔MULTIPLY KEEPS ITS OWN LINE (`dualViewLevel`): a·((1 − d) + d·s),
     // the default written plainly — the general form is the same number
     // and not the same rounding.
     return blend_mul(first, W_ONE - density + blend_mul(density, level));
@@ -72,7 +72,7 @@ fn walk(
       continue;
     }
     // A second tip's dab piles its plane as any dab piles its alpha. On a
-    // stroke with no second plane it lays nothing (qa_dab_blend_tile).
+    // stroke with no second plane it lays nothing (`blendDabTilesDart`).
     let source = dab_source(at, x, y, level, paper);
     if (source != NOTHING) {
       level = blend_alpha_over(source, level);

@@ -205,10 +205,10 @@ const _notCensused = <String, String>{
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
   'lib/src/native/native_upload_cache.dart → residentBytes':
-      'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
-      'mask alphas) and sums them; ALSO ledgered because the bare name is '
-      'shared with BrushTipStampCache, so a name match would pass this '
-      'entry for the wrong reason',
+      'via:nativeUploadBytes — the engine keeps one of these (stamp '
+      'bytes); ALSO ledgered because the bare name is shared with '
+      'BrushTipStampCache, so a name match would pass this entry for the '
+      'wrong reason',
   'lib/src/ui/storyboard_cut_thumbnail_store.dart → thumbnailBytes':
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
@@ -227,11 +227,6 @@ const _notCensused = <String, String>{
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
-  'lib/src/native/qa_blur_kernel.dart → debugScratchBytes':
-      'via:liveBytes — the blur\'s scratch is a NativeScratch, which '
-      'NativeScratch.liveBytes already sums with every other (the census\'s '
-      'engineScratch row); this one is the test\'s pin that a stroke\'s end '
-      'lets it go',
 };
 
 /// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,

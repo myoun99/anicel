@@ -32,8 +32,9 @@ import '../core/on_a_worker.dart';
 /// There is no third Dart constant to remember — `qa_engine_abi_test.dart`
 /// fails if step 1 and step 2 disagree, and it needs no binary to say so.
 ///
-/// Raising the number breaks nothing by itself: it is a gate, and layout
-/// changes are caught separately by the `qa_*_sizeof` cross-checks. App
+/// Raising the number breaks nothing by itself: it is a gate (↩️layout
+/// changes were caught separately by `qa_*_sizeof` cross-checks while the C
+/// took structs; the last went with the brush, v80). App
 /// builds recompile the C every time, so only the standalone test binary
 /// can go stale — and then the parity suites fail loudly under
 /// `QA_REQUIRE_NATIVE=1` rather than skipping.
@@ -393,7 +394,20 @@ import '../core/on_a_worker.dart';
 /// - v79: `qa_key_rgba` leaves the C: a row's colour keys are the GPU
 ///   engine's key run (`KeyRun`), wherever a plugin stands in the chain
 ///   (float-warp-resamples-in-the-c-engine (2)), and the C keys nothing.
-const int kQaEngineAbiVersion = 79;
+/// - v80: the brush leaves the C — `qa_dab_blend_batch` (with
+///   `qa_dab_spec_sizeof` · `qa_tile_span_sizeof`) · `qa_stamp_blend_tiles`
+///   · `qa_stroke_blend_tiles` · `qa_pre_blend_tiles` · `qa_blur_dab` ·
+///   `qa_blur_result_tile` (with `qa_blur_tile_sizeof`) · `qa_copy_bytes` ·
+///   `qa_widen_bytes`, and the worker pool they spread over. A stroke is
+///   the GPU engine's on its grid and the Dart kernel's on any other
+///   (`blendDabTilesDart`, `BrushBlurPicture`, `blendStrokeRegionPixels` —
+///   what tests on a grid of their own ask, card
+///   the-cpu-brush-is-asked-by-tests-alone), and the laws whose one text
+///   stood in the C came to the Dart they were transcribed from
+///   (`settledDabAlpha`, `StrokePixel`, `strokeSourceOverAt`,
+///   `dualViewAlpha`). The C draws nothing: it premultiplies a copy and
+///   hands out tile blocks (board what-still-runs-on-the-cpu).
+const int kQaEngineAbiVersion = 80;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
@@ -474,18 +488,6 @@ bool qaEngineAbiMatches(DynamicLibrary library) {
     return false;
   }
 }
-
-/// Whether [library]'s `[symbol]()` — the size the C lays a struct out at —
-/// is [dartSize], what Dart lays it out at. Both sides must agree on every
-/// byte, or every field read is garbage; whoever declares the struct asks.
-/// Throws where [library] has no [symbol].
-bool qaStructSizeMatches(
-  DynamicLibrary library,
-  String symbol,
-  int dartSize,
-) =>
-    library.lookupFunction<Int32 Function(), int Function()>(symbol).call() ==
-    dartSize;
 
 DynamicLibrary? _open(String? path) {
   if (path != null && path.isNotEmpty) {

@@ -264,7 +264,8 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// ⚠️On the overlay's other roads — a grid of its own, a stroke not
   /// pre-blended — the stroke is drawn over the tiles, and no tile shows
   /// it: a host's and a test's, not the app's, where every stroke pre-blends
-  /// on its cel's grid (R27 #4). They go with the C rasterizer (flip lane ⓒ).
+  /// on its cel's grid (R27 #4). ⏳They are what tests on a grid of their
+  /// own ask (card `the-cpu-brush-is-asked-by-tests-alone`).
   BitmapSurface get shownSurface {
     final overlay = overlayModel;
     if (overlay == null || !_overlayReplacesCoords) {

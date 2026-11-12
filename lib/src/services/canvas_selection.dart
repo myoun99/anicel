@@ -759,7 +759,7 @@ void _featherMask(Uint8List mask, int width, int height, double featherPx) {
 /// means "these pixels" has to say so here or the meanings drift apart.
 ///
 /// ⛔THE ARITHMETIC IS NOT OURS TO KEEP A COPY OF. It is the fill finish's,
-/// it is also the C kernel's, and it used to be written out here — where it
+/// and it used to be written out here — where it
 /// promptly diverged, because the clamp above was added to this copy alone.
 /// [softenMaskBoundary] holds the formula; this line holds the meaning.
 void _antiAliasMask(Uint8List mask, int width, int height) {

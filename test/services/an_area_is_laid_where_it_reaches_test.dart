@@ -14,8 +14,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
@@ -29,8 +27,6 @@ import 'package:anicel/src/services/mask_soft_edge.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 
-import '../helpers/native_engine_path.dart';
-
 /// 🚨★★★board `an-area-dab-costs-its-box` (2026-10-09): an area — what the
 /// shape tool lays without the brush, and the fill tool's shape fill — was
 /// finished as ONE SHEET over its whole box, so a thin line across a big box
@@ -40,8 +36,8 @@ import '../helpers/native_engine_path.dart';
 ///
 /// Nothing a user sees may move for it: the pieces are pinned here against
 /// the one sheet itself, restated below as the old code built it, and their
-/// landing against that sheet's one stamp, on both engines, through every
-/// route a stamp lands by.
+/// landing against that sheet's one stamp, through every route a stamp
+/// lands by.
 void main() {
   const color = 0xFF336699;
   const layerId = LayerId('l');
@@ -382,14 +378,7 @@ void main() {
   });
 
   group('the pieces LAND what the one stamp landed', () {
-    final dllPath = nativeEngineLibraryPathOrNull();
     const canvas = CanvasSize(width: 512, height: 384);
-
-    tearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-    });
 
     /// Paint under the area, where a blend has something to read.
     BitmapSurface painted() => materializeBrushDabSequenceOnBitmapSurface(
@@ -465,27 +454,7 @@ void main() {
       return null;
     }
 
-    void onEachEngine(String name, void Function() body) {
-      test('$name — Dart engine', () {
-        QaNativeEngine.debugResetForTests();
-        QaNativeEngine.debugForceDartFallback = true;
-        expect(QaNativeEngine.instance, isNull);
-        body();
-      });
-      test('$name — native engine', () {
-        if (dllPath == null) {
-          markTestSkipped(nativeEngineMissingSkipReason);
-          return;
-        }
-        QaNativeEngine.debugResetForTests();
-        debugQaEngineLibraryPathOverride = dllPath;
-        QaNativeEngine.debugForceDartFallback = false;
-        expect(QaNativeEngine.instance, isNotNull);
-        body();
-      });
-    }
-
-    onEachEngine('painting, erasing, multiplying and 뒤에 그리기, with a '
+    test('painting, erasing, multiplying and 뒤에 그리기, with a '
         'selection and without', () {
       final base = painted();
       final selection = CanvasSelectionRegion.shape(
@@ -531,7 +500,7 @@ void main() {
       }
     });
 
-    onEachEngine('a fill shown before it commits is still its commit, cut '
+    test('a fill shown before it commits is still its commit, cut '
         'in pieces', () {
       final base = painted();
       final region = areas["a rectangle's outline astride the grid"]!;

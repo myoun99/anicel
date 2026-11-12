@@ -220,9 +220,7 @@ void main() {
 
   group('applySelectionMaskToStrokeAlpha — the ONE selection rule', () {
     // Every path that confines a stroke to a selection calls this: the
-    // live pre-blend's Dart route, the commit clip above, and a fill's
-    // stamp bytes. The C kernel's qa_mask_alpha is a transcription of it
-    // (pinned in stroke_overlay_pre_blend_parity_test.dart).
+    // live pre-blend, the commit clip above, and a fill's stamp bytes.
     test('scales alpha by coverage with Skia mul-div-255 rounding', () {
       // The case the old rules only agreed on by accident. "Zero the
       // texel outside" and "scale alpha" are the same thing at coverage

@@ -1042,7 +1042,15 @@ void main() {
   /// doors' parameters is asked of a different owner — the playback rig,
   /// the editing canvas, the tool's options, the view's pose, the guide,
   /// the selection.
-  const wideSignatures = 459;
+  ///
+  /// ⚠️459 → 451 on 2026-11-12, eight gone and nothing added (c-brush-goes,
+  /// card `what-still-runs-on-the-cpu` — the C brush left, ABI 80):
+  /// `QaNativeEngine.prepareDabAt` · `setTileSpan` · `stampBlendTiles` ·
+  /// `strokeBlendTiles`, `QaBlurKernel.blurDab` · `resultTile`,
+  /// `materializeStrokeBlendNative` and
+  /// `BrushLiveStrokeRasterizer.preBlendTileInDart`. 🔬`clean_code_diff`
+  /// against master (`8edb2a59d`) names those.
+  const wideSignatures = 451;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1442,7 +1450,14 @@ void main() {
   /// (`QaNativeEngine.floodFillRun`) went when the bucket's fill moved to
   /// the engine. 🔬`clean_code_diff` against master (`2a11cfca6`) names
   /// those.
-  const longBodies = 400;
+  ///
+  /// ⚠️400 → 395 on 2026-11-12, five gone and nothing added (c-brush-goes —
+  /// the C brush left, ABI 80): `QaNativeEngine.prepareDabAt`,
+  /// `QaBlurKernel.load` and the dab kernel's `_prepareDab` went with it,
+  /// the commit's `_blendStampDab` went under without the C's half, and
+  /// `BrushLiveStrokeRasterizer.preBlendedOverlayTiles` without its batch.
+  /// 🔬`clean_code_diff` against master (`8edb2a59d`) names those.
+  const longBodies = 395;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1871,7 +1886,12 @@ void main() {
   /// under (its thirty-one lookups became the `@Native` bindings beside it,
   /// connection-round-checklist H). 🔬`clean_code_diff` against the lane's
   /// base (`f5348acc6`) names it gone and no class added.
-  const longClasses = 84;
+  ///
+  /// ⚠️84 → 82 on 2026-11-12, following one down under a ceiling that stood
+  /// one over (master at 83): `QaNativeEngine` went under when the C brush
+  /// left it (c-brush-goes, ABI 80). 🔬`clean_code_diff` against master
+  /// (`8edb2a59d`) names it gone and no class added.
+  const longClasses = 82;
 
   late CleanCodeScan scan;
   setUpAll(() {

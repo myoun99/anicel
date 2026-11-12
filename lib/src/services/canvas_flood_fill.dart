@@ -932,8 +932,9 @@ typedef _Paint = ({int color, FillGradient? gradient, double opacity});
 /// blend, 뒤에 그리기) clears that wherever it passes — the one stamp passed
 /// over its whole box, a piece passes over itself.
 ///
-/// ⚠️A RUN, NOT A TILE, and it was measured: a stamp lands in one native
-/// call that fans its tiles out across the worker pool, and the call has a
+/// ⚠️A RUN, NOT A TILE, and it was measured — on the C stamp batch a piece
+/// landed through then (gone 2026-11-12): a stamp landed in one native
+/// call that fanned its tiles out across a worker pool, and the call had a
 /// price of its own. A piece a tile filled the 2010×1510 ellipse in 173
 /// calls and landed it in 28 ms where the one stamp had taken 12 (the VM on
 /// the desktop); a run of the row's covered tiles takes one call per run,

@@ -1,5 +1,5 @@
-//! The blur brush's box law: C's `qa_blur_box` (I-75 흐리기 —
-//! `BrushBlurPicture.blurDab`), three boxes along the rows, then three down
+//! The blur brush's box law (I-75 흐리기 — `BrushBlurPicture.blurDab`,
+//! its `_box`): three boxes along the rows, then three down
 //! the columns, a pass's mean rounded half up (box.wgsl). The dab
 //! (kernels/dab/blur.rs) runs them over a window that holds the picture
 //! three radii past it each side, so a pass reads real pixels wherever it

@@ -20,14 +20,12 @@ import '../models/tile_coord.dart';
 import '../native/app_gpu_engine.dart';
 import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
-import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
 import 'brush_stroke_landing.dart';
 import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
-import 'native_tile_span_batch.dart';
 
 class BrushSurfaceMaterialization {
   const BrushSurfaceMaterialization({
@@ -54,10 +52,11 @@ bool _landsOnEngine(BitmapSurface surface) =>
 /// Rasterizes [sequence] onto [surface] and returns the updated surface plus
 /// the tiles it changed.
 ///
-/// This is the stroke-commit hot path. It blends dabs directly into per-tile
-/// scratch byte buffers: each touched tile's pixels are copied at most once,
-/// and no per-pixel objects are allocated. The blend math is kept identical to
-/// the reference pixel pipeline (`brushPixelBlendOperationsForDabSequence` +
+/// On the engine's grid the engine lays it ([_materializedOnEngine]). On
+/// another the dabs blend here, directly into per-tile scratch byte
+/// buffers: each touched tile's pixels are copied at most once, and no
+/// per-pixel objects are allocated. The blend math is kept identical to the
+/// reference pixel pipeline (`brushPixelBlendOperationsForDabSequence` +
 /// `applyBrushPixelBlendOperationsToBitmapTile`), which remains as the slow
 /// per-pixel-operation oracle used by the parity test.
 BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
@@ -75,30 +74,11 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   final wall = surface.pasteboard;
   final tileSize = surface.tileSize;
 
-  // The scratch the dabs blend into — native pooled memory with the
-  // engine loaded, Dart byte lists otherwise (see CommitTileScratch).
-  final native = QaNativeEngine.instance;
   // A stroke with a second tip says so on every dab ([BrushDab.dual]).
   final secondTip =
       sequence.dabs.isNotEmpty && sequence.dabs.first.dual != null;
-  final nativeScratch = native == null
-      ? null
-      : NativeCommitScratch(native, surface, secondTip: secondTip);
-  final scratch =
-      nativeScratch ?? DartCommitScratch(surface, secondTip: secondTip);
+  final scratch = CommitTileScratch(surface, secondTip: secondTip);
   final changedCoords = <TileCoord>{};
-  // Native kernel (R18 A-1): identical pixel visits and float math, the
-  // run's dabs in pooled batches straight into the native-backed scratch
-  // (see NativeDabBatcher). The Dart loop below stays byte-for-byte as the
-  // reference fallback.
-  final dabBatch = nativeScratch == null
-      ? null
-      : NativeDabBatcher(
-          nativeScratch.native,
-          tileSize: tileSize,
-          planesFor: nativeScratch.pointersFor,
-          onTileChanged: changedCoords.add,
-        );
 
   for (final dab in sequence.dabs) {
     // RGBA stamp dabs (R14-④ bitmap lift) take a dedicated 1:1 blend path
@@ -107,16 +87,12 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // because stamps only enter through programmatic commits).
     final stamp = dab.stamp;
     if (stamp != null) {
-      // The dabs before it land first — a stamp is blended on what they
-      // left.
-      dabBatch?.flush();
       _blendStampDab(
         dab: dab,
         stamp: stamp,
         wall: wall,
         tileSize: tileSize,
         scratch: scratch,
-        nativeScratch: nativeScratch,
         changedCoords: changedCoords,
       );
       continue;
@@ -135,11 +111,6 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       continue;
     }
 
-    if (dabBatch != null) {
-      dabBatch.add(plan);
-      continue;
-    }
-
     blendDabTilesDart(
       plan,
       tileSize: tileSize,
@@ -149,13 +120,11 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
           changedCoords.add(TileCoord(x: tileX, y: tileY)),
     );
   }
-  dabBatch?.flush();
 
   return _finishMaterialization(
     surface: surface,
     scratch: scratch,
     changedCoords: changedCoords,
-    probeName: 'commit.putTiles',
   );
 }
 
@@ -263,42 +232,32 @@ List<PlacedTile> _pictureOnEngine(
   ];
 }
 
-/// The commit tail both landings share: the CHANGED scratch tiles become
-/// the surface's tiles, row-major, and whatever was staged but never
-/// changed goes back. A tile the pass emptied is DROPPED rather than
-/// stored — see [BitmapSurface.putMaterializedTiles].
+/// The commit's tail off the engine's grid: the CHANGED scratch tiles
+/// become the surface's tiles, row-major. A tile the pass emptied is
+/// DROPPED rather than stored — see [BitmapSurface.putMaterializedTiles].
 ///
 /// ⚠️[DirtyTileSet] still names a dropped coordinate, and has to: its one
 /// consumer is [CacheInvalidationPlan.fromDirtyTiles], and a coordinate
 /// whose tile just went away is exactly one whose cached picture must go
 /// with it.
-///
-/// R19-Z: the CHANGED scratch buffers become the finished tiles — the
-/// tile ADOPTS the native buffer (ownership leaves the pool; the
-/// tile's finalizer frees it), so a full-canvas commit writes zero
-/// pixel copies out. Untouched staged buffers still return to the
-/// pool below; the Dart fallback keeps the constructor copy.
 BrushSurfaceMaterialization _finishMaterialization({
   required BitmapSurface surface,
   required CommitTileScratch scratch,
   required Iterable<TileCoord> changedCoords,
-  required String probeName,
 }) {
   final sortedCoords = changedCoords.toList()..sort(TileCoord.compareRowMajor);
   if (sortedCoords.isEmpty) {
-    scratch.releaseUnfinished();
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
     );
   }
   var updatedSurface = surface;
-  labProbe(probeName, () {
+  labProbe('commit.putTiles', () {
     updatedSurface = surface.putMaterializedTiles([
       for (final coord in sortedCoords) (coord: coord, tile: scratch.finish(coord)),
     ]);
   });
-  scratch.releaseUnfinished();
   return BrushSurfaceMaterialization(
     surface: updatedSurface,
     dirtyTiles: DirtyTileSet(sortedCoords),
@@ -314,7 +273,6 @@ void _blendStampDab({
   required PasteboardWall wall,
   required int tileSize,
   required CommitTileScratch scratch,
-  required NativeCommitScratch? nativeScratch,
   required Set<TileCoord> changedCoords,
 }) {
   final dabOpacity = dab.opacity;
@@ -328,7 +286,7 @@ void _blendStampDab({
   if (clip == null) {
     return;
   }
-  // Locals, not field reads: the Dart loop below is per pixel.
+  // Locals, not field reads: the loop below is per pixel.
   final stampLeft = landing.left;
   final stampTop = landing.top;
   final left = clip.left;
@@ -337,48 +295,6 @@ void _blendStampDab({
   final bottomExclusive = clip.bottomExclusive;
   final rgba = stamp.rgba;
   final erase = dab.erase;
-
-  // R18 A-0/A-1.5/F-1: the native core blends whole (dab, tile) spans in
-  // ONE call each (the per-row FFI call overhead was the fill commit's
-  // dominant term), and both sides are native memory — the tile scratch
-  // is native-backed and the stamp uploads once per rgba identity (a
-  // move session re-commits the SAME stamp per drag move, so repeats are
-  // pure pointer math). Byte-identical to the Dart loop below
-  // (parity-pinned); Dart remains the reference and the fallback.
-  if (nativeScratch != null) {
-    final native = nativeScratch.native;
-    final stampUpload = labProbe(
-      'stamp.upload',
-      () => native.stampUploads.upload(rgba),
-    );
-    // One BATCH call for the whole stamp (R18 A-3a): spans fan out
-    // across the C worker pool; disjoint tiles keep it byte-identical
-    // to the sequential loop.
-    final coords = labProbe(
-      'stamp.stage',
-      () => stageTileSpans(
-        native,
-        clip: clip,
-        tileSize: tileSize,
-        pointerFor: nativeScratch.pointerFor,
-      ),
-    );
-    final changed = labProbe(
-      'stamp.blend',
-      () => native.stampBlendTiles(
-        count: coords.length,
-        tileSize: tileSize,
-        stampBytes: stampUpload,
-        stampWidth: stamp.width,
-        stampLeft: stampLeft,
-        stampTop: stampTop,
-        opacity: dabOpacity,
-        erase: erase,
-      ),
-    );
-    changedCoords.addAll(changedTileCoords(changed, coords));
-    return;
-  }
 
   // One blitter per dab: the stamp's bytes, its opacity and its erase
   // flag do not change between spans, so they are resolved before the
@@ -434,13 +350,11 @@ void _blendStampDab({
 /// dabs laid on the artwork one by one reach the same sum but round after
 /// every dab, a level away over paint.
 ///
-/// R21: implemented as ONE synthetic stamp dab through the ordinary
-/// materializer — the stroke buffer IS a stamp at the bounds (integer
-/// placement is exact: center = left + w/2 rounds back to left), and the
-/// stamp blend's opacity-1 source-over/destination-out is byte-identical
-/// to the old inline loop. That routes the pen-up composite through the
-/// SAME C kernels as everything else; the pure-Dart pass here was a
-/// measured ~91ms-avg/193ms-max UI hitch per stroke at 2340×1654.
+/// R21: off the engine's grid it is ONE synthetic stamp dab through the
+/// ordinary materializer — the stroke buffer IS a stamp at the bounds
+/// (integer placement is exact: center = left + w/2 rounds back to left),
+/// and the stamp blend's opacity-1 source-over/destination-out is
+/// byte-identical to the old inline loop.
 BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   required BitmapSurface surface,
   required Uint8List strokePixels,
@@ -493,27 +407,14 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
 
   // BB-1 (R26 #9): a non-trivial BRUSH BLEND applies once per stroke.
   if (blendMode != BrushBlendMode.color && blendMode != BrushBlendMode.erase) {
-    // BB-N1 (ABI 22): with the engine loaded, C blends the stroke buffer
-    // straight into the staged tile scratch — no region extraction, no
-    // result buffer, no two-pass stamp landing — fanned across the
-    // worker pool. Byte-identical to the Dart route below (parity-pinned).
-    final native = QaNativeEngine.instance;
-    if (native != null) {
-      return _materializeStrokeBlendNative(
-        surface: surface,
-        strokePixels: strokePixels,
-        bounds: bounds,
-        mode: blendMode,
-        native: native,
-      );
-    }
-    // Dart REFERENCE + fallback: the result region is computed through
-    // the blend kernel and lands through the SAME stamp passes as
-    // everything else: an erase-rect pass clears the bounds, then a
-    // source-over pass writes the result verbatim (over emptiness
-    // srcOver IS replace, byte-exactly). Pixels the stroke never touched
-    // come back verbatim from the kernel's alpha-0 copy rule, so the
-    // round trip is invisible outside the ink.
+    // The result region is computed through the blend kernel and lands
+    // through the SAME stamp passes as everything else: an erase-rect pass
+    // clears the bounds, then a source-over pass writes the result
+    // verbatim (over emptiness srcOver IS replace, byte-exactly). Pixels
+    // the stroke never touched come back verbatim from the kernel's
+    // alpha-0 copy rule, so the round trip is invisible outside the ink.
+    // ⚠️The dirty set is every tile of the bounds, not the true change
+    // set: the two passes mark each.
     final result = blendStrokeRegionPixels(
       dst: bitmapSurfaceRegionPixels(surface, bounds),
       src: strokePixels,
@@ -544,67 +445,5 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
         erase: erase || blendMode == BrushBlendMode.erase,
       ),
     ]),
-  );
-}
-
-/// BB-N1 (ABI 22): the native once-per-stroke blend landing. Stages every
-/// tile the bounds cover (existing bytes copied in, missing tiles zeroed
-/// — the kernel's da==0 branch IS the transparent read), blends the
-/// stroke buffer in place through `qa_stroke_blend_tiles` (one pooled
-/// call), and adopts the CHANGED buffers as the finished tiles. Pixels
-/// the stroke never inked copy through verbatim, so an untouched tile
-/// reports unchanged and returns to the pool — the dirty set is the
-/// TRUE change set (the Dart fallback route over-reports: its erase+
-/// rewrite passes mark every bounds tile).
-BrushSurfaceMaterialization _materializeStrokeBlendNative({
-  required BitmapSurface surface,
-  required Uint8List strokePixels,
-  required DirtyRegion bounds,
-  required BrushBlendMode mode,
-  required QaNativeEngine native,
-}) {
-  final wall = surface.pasteboard;
-  final tileSize = surface.tileSize;
-  // The stroke buffer is BOUNDS-LOCAL (stride = bounds width, origin =
-  // bounds top-left, like a stamp's raw placement); the blend clips at
-  // the pasteboard exactly like the stamp path.
-  final clip = bounds.intersection(wall.region);
-  if (clip == null) {
-    return BrushSurfaceMaterialization(
-      surface: surface,
-      dirtyTiles: DirtyTileSet.empty(),
-    );
-  }
-  final strokeUpload = labProbe(
-    'strokeBlend.upload',
-    () => native.stampUploads.upload(strokePixels),
-  );
-  final staging = NativeCommitScratch(native, surface);
-  final coords = labProbe(
-    'strokeBlend.stage',
-    () => stageTileSpans(
-      native,
-      clip: clip,
-      tileSize: tileSize,
-      pointerFor: staging.pointerFor,
-    ),
-  );
-  final changed = labProbe(
-    'strokeBlend.blend',
-    () => native.strokeBlendTiles(
-      count: coords.length,
-      tileSize: tileSize,
-      strokeBytes: strokeUpload,
-      strokeWidth: bounds.rightExclusive - bounds.left,
-      strokeLeft: bounds.left,
-      strokeTop: bounds.top,
-      mode: strokeBlendModeNativeId(mode),
-    ),
-  );
-  return _finishMaterialization(
-    surface: surface,
-    scratch: staging,
-    changedCoords: changedTileCoords(changed, coords),
-    probeName: 'strokeBlend.putTiles',
   );
 }

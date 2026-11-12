@@ -92,18 +92,20 @@ TileBlockHands tileBlocksHere(TileBlocks blocks) {
 /// (R19-Z zero-copy tile storage).
 ///
 /// Why native: tile pixels dominated the Dart heap (hundreds of MB at
-/// large canvas sizes — every GC walked them), every commit paid VM-speed
-/// copies in AND out of the native blend scratch, and the C kernels
-/// needed staging copies to get stable pointers. Native backing removes
-/// the GC weight, lets the engine memcpy at full speed, and lets a
-/// commit ADOPT its scratch buffer as the finished tile with ZERO copies
-/// ([BitmapTile.adoptNative]).
+/// large canvas sizes — every GC walked them). Native backing removes the
+/// GC weight, and lets a worker that lays a cel hand its blocks over as
+/// the finished tiles with ZERO copies ([BitmapTile.adoptNative]).
+/// ↩️Till 2026-11-12 the C brush was the rest of the reason: every commit
+/// paid VM-speed copies in AND out of its native blend scratch, its
+/// kernels needed staging copies to get stable pointers, and a commit
+/// adopted its scratch buffer as the finished tile.
 ///
 /// Lifetime: a [NativeFinalizer] frees the buffer when the tile is
 /// collected; [externalSize] keeps the GC honest about the real weight.
 /// With the engine loaded, buffers come from the C free-list allocator
 /// (R20-E1) and the finalizer parks them for reuse — tile churn (decode,
-/// commit adoption, undo drops) recycles instead of malloc/freeing.
+/// the engine's tiles read back, undo drops) recycles instead of
+/// malloc/freeing.
 /// NOTE — Finalizable objects cannot cross isolates: the .anicel save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
 class BitmapTile implements Finalizable {
@@ -145,15 +147,15 @@ class BitmapTile implements Finalizable {
   }
 
   /// Adopts a NATIVE buffer as this tile's pixels WITHOUT copying —
-  /// ownership transfers to the tile (freed by its finalizer). The commit
-  /// hot path hands its blend scratch over through this: a full-canvas
-  /// commit materializes with zero pixel copies out.
+  /// ownership transfers to the tile (freed by its finalizer). A cel laid
+  /// on a worker comes home through this (`laidCelSurface`): its tiles
+  /// stand with zero pixel copies on this isolate.
   ///
   /// Allocation contract: the buffer must come from
-  /// [QaNativeEngine.tileAlloc] when the engine is loaded (the commit
-  /// scratch does), from `malloc` otherwise — the finalizer choice below
-  /// mirrors exactly that. A worker's blocks keep it by [tileBlocksHere]
-  /// bound to this isolate's [blocks].
+  /// [QaNativeEngine.tileAlloc] when the engine is loaded, from `malloc`
+  /// otherwise — the finalizer choice below mirrors exactly that. A
+  /// worker's blocks keep it by [tileBlocksHere] bound to this isolate's
+  /// [blocks].
   factory BitmapTile.adoptNative({
     required int size,
     required Pointer<Uint8> pixels,
@@ -399,13 +401,13 @@ class BitmapTile implements Finalizable {
   /// The reference scan: this tile's words, in Dart.
   ///
   /// ⛔**IT IS WRITTEN OUT, AND THE WORD LOOP STAYS.** It runs per PIXEL,
-  /// and it is the twin the native parity test measures the C path
-  /// against — a helper call inside it would cost on both counts. It used
-  /// to live in `bitmap_surface_geometry`; it moved here so the batched C
-  /// scan and the reference answer the same question in one place, and so
-  /// the answer can be MEMOIZED where the pixels are. Since I-163 the loop
-  /// itself is [inkBoundsOfWords] — one call per tile, outside the pixel
-  /// loop — so a picture that is not a tile asks the same scan.
+  /// and a helper call inside it would cost there. It used to live in
+  /// `bitmap_surface_geometry`; it moved here so the answer can be
+  /// MEMOIZED where the pixels are. Since I-163 the loop itself is
+  /// [inkBoundsOfWords] — one call per tile, outside the pixel loop — so a
+  /// picture that is not a tile asks the same scan. ↩️Till ABI 74 it was
+  /// also the twin a native parity test measured a batched C scan against;
+  /// the engine finds a cel's ink now (`EngineTileLedger.rememberInk`).
   TileInkBounds _scanInkBounds() => inkBoundsOfWords(
     _view.buffer.asUint32List(_view.offsetInBytes, size * size),
     width: size,

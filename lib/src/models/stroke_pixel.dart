@@ -5,10 +5,24 @@ import 'rgba_color.dart';
 /// alpha * 65535 in [a] — and [bytes], what that plane shows everything
 /// downstream.
 ///
-/// 🚨The law and its reasons are written once, beside `qa_dab_store` in
-/// qa_engine.c (ABI 40, 유저 2026-10-01 「a는 제안한대로 16비트?」). This is
-/// the reference's half of it; the tile kernels hold the same two planes as
-/// typed lists (`BrushDabTileBuffers`).
+/// 🚨A STROKE PILES UP ON A 16-BIT PLANE (ABI 40; board
+/// `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
+/// 제안한대로 16비트?」). Every dab rounded what it left to a byte and the next
+/// dab read that byte back, so a soft tail laying under half a level a dab
+/// never piled up at all, and the rest piled up one rounding a dab — 10
+/// levels off a float pile at flow 3%, size 160 (measured). A stroke tile
+/// carries a second plane since, RGBA at 16 bits (alpha * 65535, a channel
+/// * 257), and a dab reads what is under it THERE and writes both planes
+/// from the same double. The bytes are the plane's view: the display, the
+/// commit and every kernel downstream read them exactly as before.
+///
+/// ⚠️The view is rounded from the double, not from the plane, so a first dab
+/// over nothing lands exactly the byte it always did.
+///
+/// This is the law's one text, and the reference's half of it; the tile
+/// kernel holds the same two planes as typed lists (`BrushDabTileBuffers`)
+/// and the engine's stroke its own pages. ↩️Till 2026-11-12 the text stood
+/// beside the C kernel's `qa_dab_store`, which went with the C.
 class StrokePixel {
   StrokePixel._({
     required this.bytes,
@@ -39,8 +53,8 @@ class StrokePixel {
   /// stand — and the premultiplied copies downstream drop such a colour
   /// where a straight composite keeps it, so one stroke landed as two
   /// artworks (`stroke_promotion_parity_test`, measured). The plane keeps
-  /// its colour: the dabs that pile on read it there. Both kernels round
-  /// the view the same way (`qa_dab_store`).
+  /// its colour: the dabs that pile on read it there. The tile kernel
+  /// rounds the view the same way (`blendDabTilesDart`).
   factory StrokePixel.rounded({
     required double red,
     required double green,
@@ -65,7 +79,7 @@ class StrokePixel {
   }
 
   /// A pixel of a second tip's plane: its [level], alpha * 65535, and no
-  /// colour — what that tip's dabs pile over (ABI 60, `qa_dual_view_rows`).
+  /// colour — what that tip's dabs pile over (ABI 60, `dualViewAlpha`).
   /// Its view is no one's: the stroke shows the two planes through its own.
   factory StrokePixel.level(int level) => StrokePixel._(
     bytes: _clearView,

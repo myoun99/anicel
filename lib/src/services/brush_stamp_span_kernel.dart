@@ -45,10 +45,8 @@ class BrushStampBlitter {
   /// this costs nothing per pixel even in a debug build, where nothing
   /// inlines.
   ///
-  /// The C kernel is a THIRD transcription and stays one: it is a
-  /// different language, gated behind the ABI version, and pinned
-  /// byte-exact by its own parity suite. It already has this exact shape
-  /// — `qa_stamp_blend_row(tile_row, stamp_row, count, opacity, erase)`
+  /// ↩️Till 2026-11-12 the C kernel held a third transcription,
+  /// `qa_stamp_blend_row(tile_row, stamp_row, count, opacity, erase)`
   /// returning whether the row changed — which is where the signature
   /// here comes from.
   bool blendSpanInPlace(

@@ -60,9 +60,11 @@
 #    engine once more in DEBUG, the configuration the app's Debug build
 #    compiles it in (2026-10-13: a C++ unit kept /RTC1 beside the engine's
 #    /O2 and only Debug refused it, cl D8016 — every Release step was green)
-#    — then its C tests run, then the parity subset runs against what was
-#    just built, with QA_REQUIRE_NATIVE=1 so a missing binary fails instead
-#    of skipping. `bash tool/lane.sh native <name>` runs the same thing
+#    — then the parity subset runs against what was just built, with
+#    QA_REQUIRE_NATIVE=1 so a missing binary fails instead of skipping
+#    (↩️its C tests ran between the two, until the last of them went with
+#    the engine's worker pool — C ABI 80, 2026-11-12).
+#    `bash tool/lane.sh native <name>` runs the same thing
 #    without landing. Measured 2026-09-10 from a clean
 #    directory: 241 s for all of it (configure, every target, the C tests, 67
 #    parity files). A lane that did not touch the C pays nothing.
@@ -907,7 +909,7 @@ cmd_native() {
   local log="$p/build/lane-native.log" list="$p/build/lane-parity.txt"
   mkdir -p "$p/build"
   : >"$log"
-  echo "lane: native — every target, the C tests, then parity against them"
+  echo "lane: native — every target, then parity against them"
   # Refusal 6 does the build: an engine already stamped with this lane's C
   # was built from exactly that C, every target, and is not built twice.
   ensure_engine "$p" || {
@@ -922,11 +924,6 @@ cmd_native() {
       die "the engine does not compile in Debug, as the app's Debug build compiles it — this is refusal 5; the whole log: $log"
     }
   fi
-  (cd "$p/build/native_standalone" \
-    && "$(dirname "$cm")/ctest" -C Release --output-on-failure) >>"$log" 2>&1 || {
-    grep -aE 'Failed|\*\*\*' "$log" | head -15 >&2
-    die "the C tests are red — this is refusal 5; the whole log: $log"
-  }
   (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
     || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
   # By the run plan, as every list run goes: the collector pins alone and

@@ -139,7 +139,6 @@ void main() {
       isNotNull,
       reason: 'at the revision of the last flush',
     );
-    blended.free();
   });
 
   test('a stroke let go owes nothing: no read pictures it', () {
@@ -208,7 +207,6 @@ void main() {
       erase: false,
     )!;
     final expected = blended.readPremultiplied(Uint8List.fromList);
-    blended.free();
     final data = await image!.toByteData(format: ui.ImageByteFormat.rawRgba);
     // ⛔Mutation: picture the straight bytes as if premultiplied, or a
     // stale tile → the readback is not the result.

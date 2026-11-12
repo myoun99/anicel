@@ -13,9 +13,8 @@ import '../widgets/settings_rows.dart';
 import 'usage_stats_switch_row.dart';
 
 /// Preferences ▸ System: the live runtime-path report — which
-/// implementation each switchable subsystem is ACTUALLY running (native
-/// engine vs Dart fallback, OS codecs vs ffmpeg, Wintab vs plain
-/// pointer events).
+/// implementation each switchable subsystem is ACTUALLY running (OS codecs
+/// vs ffmpeg, Wintab vs plain pointer events).
 ///
 /// User rule (07-22): every runtime-selected path that changes behavior
 /// on a real device is listed here, with searchable technology names, so

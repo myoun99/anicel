@@ -18,7 +18,8 @@ import 'mark_under_a_pixel.dart';
 ///  - Rotation is baked into the mask (1° steps), so every dab —
 ///    including direction-following rotated raster tips, previously the
 ///    slow per-pixel-rotation path — rides the fast unrotated-lattice
-///    path in the rasterizers AND the C kernel, with NO engine changes.
+///    path in the rasterizers (and the C kernel that stood then), with
+///    NO engine changes.
 ///    ↩️Not raster tips any more — see below.
 ///  - Subpixel placement needs no phase quantization: the existing
 ///    bilinear lattice sampling shifts the mask continuously.

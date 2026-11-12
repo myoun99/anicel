@@ -62,7 +62,8 @@ const NO_TABLE: u32 = u32::MAX;
 /// view and of the second plane, as many of each.
 const PILE_PAGES_AT: u32 = 2;
 
-// The C engine's flags (QA_DAB_FLAG_*), as dab.wgsl reads them.
+// A dab's flags, as dab.wgsl reads them (the numbers were the C dab
+// kernel's QA_DAB_FLAG_* and outlived it).
 const ERASE: u32 = 1;
 const ROUND: u32 = 2;
 const THRESHOLD: u32 = 32;
@@ -140,7 +141,7 @@ pub(crate) struct Paper<'a> {
     pub(crate) height: bool,
 }
 
-/// A stroke's second tip (`BrushSecondStroke`, `qa_dual_view_rows`): the
+/// A stroke's second tip (`BrushSecondStroke`, `dualViewAlpha`): the
 /// plane its dabs pile on — alpha alone, a word a pixel, on pages as the
 /// planes, a tile at its page and slot —, and the view the stroke shows of
 /// the two: the second's
@@ -182,7 +183,7 @@ pub(crate) enum Edge {
     Contrast(f64),
 }
 
-/// A dab as the app has it (`qa_dab_spec`).
+/// A dab as the app has it (`BrushDabPlan`).
 #[derive(Clone, Copy)]
 pub(crate) struct Dab<'a> {
     pub(crate) centre: [f64; 2],

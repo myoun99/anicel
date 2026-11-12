@@ -18,7 +18,6 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_dab_coverage.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
@@ -62,11 +61,6 @@ List<int> _alpha(List<BrushDab> dabs) {
 }
 
 void main() {
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = true;
-  });
-
   test('🚨a one-pixel dab never drops out — between pixel centres it lays '
       'most of what it lays on one', () {
     // ⚠️Not all of it: the square is read along the radius, which a line's

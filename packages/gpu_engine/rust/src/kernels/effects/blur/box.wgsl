@@ -1,4 +1,4 @@
-// The blur brush's box law (C's `qa_blur_box`, I-75 흐리기): each pixel of
+// The blur brush's box law (`BrushBlurPicture._box`, I-75 흐리기): each pixel of
 // a pass the mean of the `radius` pixels either side of it and itself,
 // rounded half up, on the premultiplied 16-bit scale. The order and the
 // rounding of every pass are part of the law (BrushBlurPicture has its

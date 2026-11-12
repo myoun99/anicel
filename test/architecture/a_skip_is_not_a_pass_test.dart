@@ -10,8 +10,8 @@ import '../../tool/affected_tests.dart' show lastSkipCount;
 /// `flutter test` ends with `00:03 +42 ~2: All tests passed!`. The tilde is
 /// two tests that did not run, and the sentence beside it says passed. In
 /// this repo the usual cause is a missing native engine: without
-/// `build/native_standalone`, every parity pin between the C kernel and the
-/// Dart reference becomes an empty stub with a `skip:` reason.
+/// `build/native_standalone`, every parity pin between the C and its Dart
+/// reference becomes an empty stub with a `skip:` reason.
 ///
 /// 🧪THIS EXISTS BECAUSE KNOWING WAS NOT ENOUGH. The memory file
 /// `affected-tests-not-full-suite.md` has said so since 2026-08-28 and told

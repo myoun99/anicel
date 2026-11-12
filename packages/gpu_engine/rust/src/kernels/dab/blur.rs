@@ -1,5 +1,5 @@
-//! The blur brush's dab on the GPU (I-75 흐리기 — `BrushBlurPicture.blurDab`,
-//! C's `qa_blur_dab`; gpu-canonical-store D5, 01:13): the stroke's picture
+//! The blur brush's dab on the GPU (I-75 흐리기 — `BrushBlurPicture.blurDab`;
+//! gpu-canonical-store D5, 01:13): the stroke's picture
 //! under each dab moved toward its blur by what the dab lays as paint onto
 //! nothing. `blur.wgsl` has what a dab reads and moves; the passes are the
 //! box law and its two schedules (`effects/blur/box.wgsl`, `three.wgsl`,
@@ -10,7 +10,7 @@
 //! ③).
 //!
 //! The picture is made from the cel — every tile a dab's window meets — and
-//! finished back as the cel stores it (`qa_blur_result_tile`) by
+//! finished back as the cel stores it (`BrushBlurPicture.resultTile`) by
 //! `blur_cel.wgsl`, the cel read as the executor copies a row whole and
 //! the finished tiles going out as its output does (캔버스 베이스 11-06
 //! 02:29) — no read of the pool of the blur's own.
@@ -166,7 +166,7 @@ pub(crate) fn window_of(region: [i32; 4], radius: u32) -> Option<[i32; 4]> {
 }
 
 /// Whether `dab` blurs anything: a second tip's dab lays nothing on a stroke
-/// with no second plane (qa_dab_blend_tile), so it blurs nothing; nor does a
+/// with no second plane (`blendDabTilesDart`), so it blurs nothing; nor does a
 /// dab of no region.
 pub(crate) fn blurs_anything(dab: &Dab) -> bool {
     let [left, top, right, bottom] = dab.region;

@@ -20,12 +20,15 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 
 /// 🚨EVERYTHING A DAB IS REACHES THE ENGINE (flip lane ⓒ): one stroke of each
-/// kind piled on the engine and on the C kernel the engine replaces gives
-/// the same picture within rounding — the kernels round apart, the engine's
-/// in integers, C's in floats — so no number was lost at the C ABI between
-/// them: the tip, its turn and squeeze, the edge, the paper, the second tip.
+/// kind piled on the engine and on the tile kernel that answers on any other
+/// grid (`blendDabTilesDart`) gives the same picture within rounding — the
+/// kernels round apart, the engine's in integers, the tile kernel's in
+/// floats — so no number was lost on the way to the engine: the tip, its
+/// turn and squeeze, the edge, the paper, the second tip.
 ///
-/// ⏳The C kernel is this pin's oracle, and its premise goes with it at ⓔ.
+/// ↩️The oracle was the C kernel till it went (ABI 80), and the tile kernel
+/// was held to that byte for byte. ⏳Its premise goes with the tile kernel
+/// (`the-cpu-brush-is-asked-by-tests-alone`).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvas = CanvasSize(width: 320, height: 256);
@@ -179,9 +182,9 @@ void main() {
     test(name, () {
       final onEngine = stroke(dabs, tileSize: 128)!;
       expect(onEngine.any((byte) => byte != 0), isTrue);
-      final onC = stroke(dabs, tileSize: 64)!;
-      expect(onEngine.length, onC.length);
-      expect(farthest(onEngine, onC), lessThanOrEqualTo(roundsApart));
+      final offEngine = stroke(dabs, tileSize: 64)!;
+      expect(onEngine.length, offEngine.length);
+      expect(farthest(onEngine, offEngine), lessThanOrEqualTo(roundsApart));
     });
   }
 }

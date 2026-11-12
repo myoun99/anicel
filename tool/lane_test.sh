@@ -204,16 +204,14 @@ fi
 [ "${LANE_TEST_CARGO:-ok}" = empty ] || echo "test result: ok. 2 passed; 0 failed"
 echo "test result: ok. 0 passed; 0 failed"
 EOF
-# `cmake` and `ctest`, for a lane that changed the C (refusal 5): the
-# engine builds — red when LANE_TEST_ENGINE says stale, so a stale engine
-# stays stale — and the C tests pass.
+# `cmake`, for a lane that changed the C (refusal 5): the engine builds —
+# red when LANE_TEST_ENGINE says stale, so a stale engine stays stale.
 cat > "$E/bin/cmake" <<'EOF'
 #!/bin/bash
 echo "$(basename "$PWD") cmake $*" >> "$LANE_TEST_LOG"
 [ "${LANE_TEST_ENGINE:-}" = stale ] && exit 1
 exit 0
 EOF
-printf '#!/bin/bash\nexit 0\n' > "$E/bin/ctest"
 # `rustc` answers for a machine of its own: its host, and its cfg.
 cat > "$E/bin/rustc" <<'EOF'
 #!/bin/bash
@@ -236,7 +234,7 @@ case " \$* " in *" backup "*)
 esac
 exec "$REAL_GIT" "\$@"
 EOF
-chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/cmake" "$E/bin/ctest" "$E/bin/git" \
+chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/cmake" "$E/bin/git" \
   "$E/bin/rustc"
 # The SDK's own dart, past its launcher, as tool/run.sh calls it: the
 # launcher, with these stand-ins first on PATH, cannot tell its engine's

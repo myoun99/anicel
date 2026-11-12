@@ -35,14 +35,14 @@ class _Pile {
   final _first = <_PixelKey, StrokePixel>{};
 
   // A stroke with a second tip piles that tip's dabs on a plane of their
-  // own and shows the two through its view (ABI 60, `qa_dual_view_rows`):
+  // own and shows the two through its view (ABI 60, `dualViewAlpha`):
   // each pixel's second level, and the bytes it shows.
   final _second = <_PixelKey, StrokePixel>{};
   final _shown = <_PixelKey, RgbaColor>{};
 
   void lay(BrushDab dab) {
     final dual = dab.dual;
-    // A second tip's dab piles over, never erases (`qa_dab_blend_tile`).
+    // A second tip's dab piles over, never erases (`blendDabTilesDart`).
     final piler = dab.second && dab.erase ? dab.copyWith(erase: false) : dab;
     final touched = <_PixelKey>[];
     // The VISITOR, not the list: this walk folds each pixel as it arrives, so

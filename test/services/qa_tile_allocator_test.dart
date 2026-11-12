@@ -9,10 +9,9 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import '../helpers/native_engine_path.dart';
 
 /// R20-E1: the C tile free-list allocator. Freed tile blocks must PARK on
-/// exact-size lists and be handed straight back — adoption (R19-Z) sends
-/// commit scratch out as finished tiles, so without recycling every
-/// full-canvas fill paid ~1024 fresh mallocs. Skips (loudly) when no
-/// locally built binary is found.
+/// exact-size lists and be handed straight back — a block fresh from
+/// `malloc` costs more than one handed back (🔬the measure is beside
+/// `qa_tile_alloc`). Skips (loudly) when no locally built binary is found.
 void main() {
   final dllPath = nativeEngineLibraryPathOrNull();
   final available = dllPath != null;
@@ -145,24 +144,6 @@ void main() {
     expect(a2.address, a.address);
     engine.tileFree(a2);
     engine.tileFree(b2);
-  });
-
-  test('acquireTileBuffer recycles through the C free list', () {
-    requireEngine();
-    if (!available) return;
-    final engine = QaNativeEngine.instance!;
-
-    const byteLength = 44_440;
-    final buffer = engine.acquireTileBuffer(byteLength, zeroed: true);
-    expect(buffer.view.every((byte) => byte == 0), isTrue);
-    buffer.view.fillRange(0, byteLength, 7);
-    engine.releaseTileBuffer(buffer);
-
-    // Same block comes back; zeroed=true must scrub the stale bytes.
-    final again = engine.acquireTileBuffer(byteLength, zeroed: true);
-    expect(again.pointer.address, buffer.pointer.address);
-    expect(again.view.every((byte) => byte == 0), isTrue);
-    engine.releaseTileBuffer(again);
   });
 
   test('BitmapTile allocates from the engine and round-trips bytes', () {

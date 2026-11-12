@@ -22,7 +22,7 @@ void main() {
       budgets.viewerPages,
       reason: 'the sheets\' media images take one viewer\'s share (I-97)',
     );
-    expect(budgets.nativeUploads, 640 * mb);
+    expect(budgets.nativeUploads, 320 * mb);
     expect(budgets.tileImages, 512 * mb);
   });
 

@@ -11,8 +11,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
@@ -20,8 +18,6 @@ import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// 🚨★★★board `a-stamp-rounds-twice-inside-a-selection` (2026-09-28): a
 /// stamp — a fill, a pasted or stamped piece — under 100% landed a level
@@ -35,13 +31,6 @@ void main() {
   const tileSize = 64;
   const layerId = LayerId('l');
   const frameId = FrameId('f');
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
 
   /// Paint under the stamp, where the two roundings part.
   BitmapSurface paintedBase() => materializeBrushDabSequenceOnBitmapSurface(
@@ -152,27 +141,7 @@ void main() {
     return null;
   }
 
-  void onEachEngine(String name, void Function() body) {
-    test('$name — Dart engine', () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      expect(QaNativeEngine.instance, isNull);
-      body();
-    });
-    test('$name — native engine', () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      body();
-    });
-  }
-
-  onEachEngine('a stamp at 40% lands the same bytes inside a selection that '
+  test('a stamp at 40% lands the same bytes inside a selection that '
       'covers it as with none — painting, erasing, multiplying', () {
     for (final (erase, mode) in [
       (false, BrushBlendMode.color),
@@ -192,7 +161,7 @@ void main() {
     }
   });
 
-  onEachEngine('half a selection: inside, the stamp lands as it does with no '
+  test('half a selection: inside, the stamp lands as it does with no '
       'selection; outside, the paint stands untouched', () {
     final base = paintedBase();
     final dab = stamp(opacity: 0.4);
