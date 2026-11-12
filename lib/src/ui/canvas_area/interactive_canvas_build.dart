@@ -983,10 +983,10 @@ class _InteractiveCanvasBuild {
   ) {
     final session = frame.session;
     final fade = _fadeShown(session);
-    final seNameTags = _seNameTagsShown(session);
     // A RUN shows the film: what is over the picture is what the picture
-    // has — its SE tags and its fade — and none of the chrome about editing
-    // it, the way playback has never drawn a guide or the camera's frame.
+    // has — its fade; its SE tags are rows of it (`CanvasNameTagRow`) — and
+    // none of the chrome about editing it, the way playback has never drawn
+    // a guide or the camera's frame.
     final editing = !_isPlaybackActive;
     final shot = _shotAt(session, _look(session), viewport);
     return _inTheCamerasFrame(
@@ -1013,13 +1013,6 @@ class _InteractiveCanvasBuild {
           // so it never stands between the brush and the cel.
           if (editing && frame.tool == CanvasTool.guide)
             _state._guideEditLayer(frame.session, viewport),
-          if (seNameTags.isNotEmpty)
-            _state._seNameTagOverlay(
-              shot?.frameView ?? viewport,
-              _canvasSize,
-              seNameTags,
-              context,
-            ),
           if (fade != null)
             _state._cutFadeWash(
               viewport,

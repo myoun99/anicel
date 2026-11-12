@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset;
 
+import '../core/collection_equality.dart';
 import '../models/canvas_size.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
@@ -111,6 +112,36 @@ class ResolvedSeNameTag {
   /// the box once the box is measured. Every type shows here — ON included
   /// (「캔버스에는 표시」); only the sheets leave ON out.
   final TextCelContent? delivery;
+
+  /// By value: a frame's picture is keyed by the tags it lays
+  /// (`SeNameTagRowSignature`), and a key that misses an input merges two
+  /// pictures into one.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResolvedSeNameTag &&
+          other.layerId == layerId &&
+          other.content == content &&
+          other.line == line &&
+          other.delivery == delivery &&
+          other.widthBudget == widthBudget &&
+          other.shot == shot &&
+          other.inShot == inShot &&
+          other.opacity == opacity &&
+          listEquals(other.effects, effects);
+
+  @override
+  int get hashCode => Object.hash(
+    layerId,
+    content,
+    line,
+    delivery,
+    widthBudget,
+    shot,
+    inShot,
+    opacity,
+    Object.hashAll(effects),
+  );
 }
 
 /// The tags visible at the TRACK's frame [shown] — the axis the rows
@@ -222,20 +253,3 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
   }
   return tags;
 }
-
-/// A cheap identity for "what would be drawn" — display code compares it
-/// to decide whether a repaint is needed without holding the tags.
-Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
-  for (final tag in tags)
-    Object.hash(
-      tag.layerId,
-      tag.content,
-      tag.line,
-      tag.delivery,
-      tag.widthBudget,
-      tag.shot,
-      tag.inShot,
-      tag.opacity,
-      Object.hashAll(tag.effects),
-    ),
-]);

@@ -19,15 +19,11 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/se_name_tag.dart';
-import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
-import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
-import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
@@ -159,7 +155,6 @@ void main() {
     required ValueNotifier<int?> frame,
     required List<StoryboardTimelineLayoutEntry> layout,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
-    List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
     _Run? run,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
@@ -181,7 +176,6 @@ void main() {
             cameraViewEnabled: cameraViewEnabled,
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
-            seNameTagsOf: seNameTagsOf,
             run: switch (run) {
               (landings: _, :final frameIsThere) => (
                 frameIsThere: frameIsThere,
@@ -348,46 +342,6 @@ void main() {
       isNot(CanvasViewport()),
       reason: 'seen through the camera: the panel\'s view with the '
           'projection under it',
-    );
-  });
-
-  testWidgets('each unit carries the names its OWN cut speaks, at its own '
-      'frame', (tester) async {
-    final f = fixture();
-    ResolvedSeNameTag tagOf(Cut cut, int frame) => ResolvedSeNameTag(
-      layerId: '${cut.id.value}@$frame',
-      widthBudget: 100,
-      shot: const LayerPlacement.identity(),
-      content: TextCelContent(
-        text: cut.id.value,
-        style: SeNameTag.defaultStyle,
-        position: Offset.zero,
-      ),
-    );
-
-    f.frame.value = 3;
-    await pumpView(
-      tester,
-      frame: f.frame,
-      layout: f.layout,
-      seNameTagsOf: (cut, frame) => [tagOf(cut, frame)],
-    );
-
-    expect(
-      [
-        for (final unit in unitsOf(tester))
-          [for (final tag in unit.over.seNameTags) tag.layerId],
-      ],
-      [
-        ['cut-a@3'],
-        ['cut-c@1'],
-      ],
-      reason: 'resolved PER CUT (R5b): each covered track its own speakers',
-    );
-    expect(
-      [for (final unit in unitsOf(tester)) unit.under.seNameTags],
-      everyElement(isEmpty),
-      reason: 'the names lie over the picture, never under it',
     );
   });
 

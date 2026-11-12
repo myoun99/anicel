@@ -14,7 +14,6 @@ import '../../models/project_background.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/frame_demand.dart' show FrameGhosts;
 import '../../services/playback/playback_frame_mapping.dart';
-import '../../services/se_name_tag_plan.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
 import '../canvas/stage_planes_painter.dart';
 import 'camera_shot.dart';
@@ -70,7 +69,6 @@ class CanvasTrackStackView extends StatelessWidget {
     required this.cameraFrameSize,
     required this.cameraPoseOf,
     this.cameraViewEnabled = true,
-    this.seNameTagsOf,
     this.run,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
@@ -116,12 +114,6 @@ class CanvasTrackStackView extends StatelessWidget {
 
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
-
-  /// The SE rows' on-canvas name tags (R5b): resolved PER CUT, so each
-  /// covered track shows its own speakers rather than the selected
-  /// track's.
-  final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
-  seNameTagsOf;
 
   /// Null where this view's cuts make what they lack themselves
   /// ([FramePictureView.laysWhatItMisses]): a parked frame, an O.L partner
@@ -294,10 +286,7 @@ class CanvasTrackStackView extends StatelessWidget {
       // canvas — on screen only.
       pasteboardNone: pasteboardNone,
       checkersAbsentPlanes: true,
-      seNameTags: under
-          ? const []
-          : seNameTagsOf?.call(cut, localFrame) ?? const [],
-      // An upper track thins its names and veils with its picture.
+      // An upper track thins its veils with its picture, its names in it.
       imageOpacity: isStage ? 1 : weight,
       veils: under ? const [] : position.veils,
     );

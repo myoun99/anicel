@@ -51,7 +51,6 @@ import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
-import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/paper_background.dart' show paintAbsentPlane;
 import 'canvas/stage_planes_painter.dart'
     show StagePlane, backdropOnScreen, stageColorOnScreen, stageGroundOf;
@@ -834,7 +833,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
-        seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         run: mount.run,
         viewport: viewport,
         background: session.projectSettings.projectBackground,
@@ -2072,29 +2070,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     ];
   }
 
-  Positioned _seNameTagOverlay(
-    CanvasViewport viewport,
-    CanvasSize canvasSize,
-    List<ResolvedSeNameTag> seNameTags,
-    BuildContext context,
-  ) {
-    return Positioned.fill(
-      // Rides the cut pose like the gizmo: the tag
-      // annotates the posed picture, exactly as the
-      // frame painter draws it inside the pose.
-      child: IgnorePointer(
-        child: CustomPaint(
-          painter: _SeNameTagOverlayPainter(
-            viewport: viewport,
-            canvasSize: canvasSize,
-            tags: seNameTags,
-            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-          ),
-        ),
-      ),
-    );
-  }
-
   Positioned _guideEditLayer(
     EditorSessionManager session,
     CanvasViewport viewport,
@@ -2225,48 +2200,6 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props =>
       (viewport, unit, ByList(veils), backdrop, share, devicePixelRatio);
-}
-
-/// The editing canvas's SE name tags (R5b): the same draw the frame
-/// painter makes during playback — each tag in its shot, laid on the
-/// canvas — so what you edit against is what plays and what exports.
-class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
-  const _SeNameTagOverlayPainter({
-    required this.viewport,
-    required this.canvasSize,
-    required this.tags,
-    required this.devicePixelRatio,
-  });
-
-  final CanvasViewport viewport;
-  final CanvasSize canvasSize;
-  final List<ResolvedSeNameTag> tags;
-
-  /// The pan-phase snap's device grid — the tags annotate the snapped
-  /// picture, so they ride the same phase.
-  final double devicePixelRatio;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.clipRect(Offset.zero & size);
-    applyViewportTransform(
-      canvas,
-      viewport,
-      devicePixelRatio: devicePixelRatio,
-    );
-    paintSeNameTags(
-      canvas,
-      tags: tags,
-      canvasSize: canvasSize,
-      rasterScale: displayScaleOf(viewport.zoom, devicePixelRatio),
-    );
-    canvas.restore();
-  }
-
-  @override
-  Object get props =>
-      (viewport, canvasSize, devicePixelRatio, seNameTagSignature(tags));
 }
 
 /// R13-3: committed seeks retarget the editing stack ONLY when the

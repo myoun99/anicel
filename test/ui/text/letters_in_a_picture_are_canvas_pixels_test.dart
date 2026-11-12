@@ -21,7 +21,6 @@ import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
-import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/app_faces.dart';
@@ -92,25 +91,47 @@ void main() {
     );
   }
 
-  void tag(ui.Canvas into, double scale) => paintSeNameTags(
-    into,
-    tags: [
-      ResolvedSeNameTag(
-        layerId: 's1',
-        widthBudget: 400,
-        shot: const LayerPlacement.identity(),
-        content: TextCelContent(
-          text: 'タロウ',
-          // A size between pixels: what the tag may paint ends between
-          // them too, and its plate still lies on whole ones.
-          style: SeNameTag.defaultStyle.copyWith(fontSize: 17.5),
-          position: const ui.Offset(60.4, 30.7),
+  /// The frame holding a name tag's row ([CanvasNameTagRow]), a canvas
+  /// pixel [zoom] to a side — the engine's.
+  ({Uint8List rgba, int width}) tagAt({double zoom = 1}) {
+    final world = ui.Rect.fromLTWH(
+      0,
+      0,
+      canvas.width.toDouble(),
+      canvas.height.toDouble(),
+    );
+    final frame = stackedFrameOf(
+      [
+        CompositeLeaf(
+          CanvasNameTagRow(
+            ResolvedSeNameTag(
+              layerId: 's1',
+              widthBudget: 400,
+              shot: const LayerPlacement.identity(),
+              content: TextCelContent(
+                text: 'タロウ',
+                // A size between pixels: what the tag may paint ends
+                // between them too, and its plate still lies on whole ones.
+                style: SeNameTag.defaultStyle.copyWith(fontSize: 17.5),
+                position: const ui.Offset(60.4, 30.7),
+              ),
+            ),
+          ),
         ),
+      ],
+      page: (
+        canvasSize: canvas,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: false,
+        paperBackground: ProjectBackground.defaultBackground,
       ),
-    ],
-    canvasSize: canvas,
-    rasterScale: scale,
-  );
+      surfaceOf: (_) => null,
+    );
+    return (
+      rgba: pixelsOfFrame(frame, world, zoom: zoom),
+      width: (world.width * zoom).round(),
+    );
+  }
 
   test('a cel number at 400% is its pixels at 100%, each four times over', () {
     _expectBlocks(numberAt(), numberAt(zoom: 4), 4);
@@ -126,36 +147,9 @@ void main() {
     );
   });
 
-  test('a name tag at 400% is its pixels at 100%, each four times over', () async {
-    final whole = await _pixels(canvas, 1, (into) => tag(into, 1));
-    final zoomed = await _pixels(
-      canvas,
-      4,
-      (into) => tag(into..scale(4), 4),
-    );
-
-    _expectBlocks(whole, zoomed, 4);
+  test('a name tag at 400% is its pixels at 100%, each four times over', () {
+    _expectBlocks(tagAt(), tagAt(zoom: 4), 4);
   });
-}
-
-/// [canvas] drawn by [paint] at [times] its size, as straight RGBA.
-Future<({Uint8List rgba, int width})> _pixels(
-  CanvasSize canvas,
-  int times,
-  void Function(ui.Canvas into) paint,
-) async {
-  final width = canvas.width * times;
-  final recorder = ui.PictureRecorder();
-  paint(ui.Canvas(recorder));
-  final image = recorder.endRecording().toImageSync(
-    width,
-    canvas.height * times,
-  );
-  final bytes = await image.toByteData(
-    format: ui.ImageByteFormat.rawStraightRgba,
-  );
-  image.dispose();
-  return (rgba: bytes!.buffer.asUint8List(), width: width);
 }
 
 /// Every pixel of [larger] is [whole]'s pixel under it, [times] to a side.

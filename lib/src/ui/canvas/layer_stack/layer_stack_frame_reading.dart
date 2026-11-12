@@ -286,12 +286,19 @@ class _FrameReading {
       paper: _canvasRect,
     ),
     _PaintPaper() => _canvasRect,
+    // What its plate is drawn over, in its own space: its chain is its
+    // folder's ([nameTagRows]).
+    _PaintNameTag(:final tag) => seNameTagExtent(
+      tag,
+      canvasSize: _painter.canvasSize,
+    ),
   };
 
   /// Where [row] lies.
   LayerPlacement? _placementOf(_PaintRow row) => switch (row) {
     final _SurfaceRow surface => surface.placement,
     _PaintPaper() => null,
+    _PaintNameTag(:final tag) => tag.placement,
   };
 
   /// What the root target holds, bottom → top: the paper, as the bottom row
@@ -354,8 +361,10 @@ class _FrameReading {
     final drawn => drawn,
   };
 
-  static CompositeLayerSignature? _signatureOf(_PaintRow row) => switch (row) {
+  static CompositeRowSignature? _signatureOf(_PaintRow row) => switch (row) {
     _PaintCelSurface(:final signature) => signature,
+    // Drawn from the tag alone: it is all the tag draws.
+    _PaintNameTag(:final tag) => SeNameTagRowSignature(tag),
     _ => null,
   };
 }

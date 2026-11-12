@@ -2008,6 +2008,8 @@ class EditorSessionManager extends ChangeNotifier
     ghostsAt: (cut, frameIndex, dragPreview) =>
         onionSkin.ghostsAt(cut, frameIndex, dragPreview),
     pluginsIn: fxPluginsIn,
+    nameTagsAt: (cut, frameIndex, dragPreview) => seEntries
+        .seNameTagsForCutFrame(cut, frameIndex, preview: dragPreview),
   );
 
   /// What runs the plugins [cut]'s chains run on this device

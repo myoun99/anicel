@@ -890,19 +890,18 @@ void main() {
         debugOverlayRasters = [];
         addTearDown(() => debugOverlayRasters = null);
         final named = await filmOf(named: true);
-        // Rastered only round where it inks (card
-        // an-exports-overlay-raster-reads-back-the-whole-frame) — which
-        // its pixels do not show.
+        final rasteredNamed = [...?debugOverlayRasters];
+        debugOverlayRasters = [];
+        final nameless = await filmOf(named: false);
+        // A row of the cut's picture (card
+        // the-flutter-fx-chain-is-a-second-chain) — which its pixels do not
+        // show.
         expect(
+          rasteredNamed,
           debugOverlayRasters,
-          contains(
-            predicate<(int, int)>(
-              (raster) => raster.$1 * raster.$2 < wide.width * wide.height,
-            ),
-          ),
-          reason: 'the name is rastered round it, not on the whole frame',
+          reason: 'nothing more is rastered over the frame for the name',
         );
-        expect(named, isNot(await filmOf(named: false)));
+        expect(named, isNot(nameless));
       });
     });
 

@@ -11,6 +11,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/transform_pose.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../../services/se_name_tag_plan.dart' show ResolvedSeNameTag;
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../timeline/timeline_drag_preview.dart'
@@ -59,8 +60,15 @@ class EditingCanvas {
     )
     ghostsAt,
     required FxPluginBinding Function(Cut cut) pluginsIn,
+    required List<ResolvedSeNameTag> Function(
+      Cut cut,
+      int frameIndex,
+      TimelineDragPreview? dragPreview,
+    )
+    nameTagsAt,
   }) : _ghostsAt = ghostsAt,
        _pluginsIn = pluginsIn,
+       _nameTagsAt = nameTagsAt,
        _cutEffectsAt = cutEffectsAt,
        _project = project,
        _selection = selection,
@@ -80,6 +88,15 @@ class EditingCanvas {
   /// What runs the plugins a cut's chains run on this canvas
   /// (`EditorSessionManager.fxPluginsIn`).
   final FxPluginBinding Function(Cut cut) _pluginsIn;
+
+  /// The SE rows' name tags at a cut's frame, a drag in flight showing
+  /// (`SeEntries.seNameTagsForCutFrame`).
+  final List<ResolvedSeNameTag> Function(
+    Cut cut,
+    int frameIndex,
+    TimelineDragPreview? dragPreview,
+  )
+  _nameTagsAt;
 
   /// Each onion row's ghosts at a cut's frame (`OnionSkin.ghostsAt`).
   final Map<LayerId, List<CutFrameCompositeGhost>> Function(
@@ -242,7 +259,17 @@ class EditingCanvas {
             dragPreview: null,
             preview: null,
           ),
+        ..._nameTagNodes(cut, frameIndex, dragPreview: null),
       ];
+
+  /// [cut]'s SE rows' name tags at its frame [frameIndex], [dragPreview]
+  /// showing — each a row of the frame's own picture over every other
+  /// ([nameTagRows]), outside the V row's fx as a film burns them in.
+  List<CompositeNode<CanvasStackRow>> _nameTagNodes(
+    Cut cut,
+    int frameIndex, {
+    required TimelineDragPreview? dragPreview,
+  }) => nameTagRows(_nameTagsAt(cut, frameIndex, dragPreview));
 
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
@@ -298,6 +325,9 @@ class EditingCanvas {
         dragPreview: dragPreview,
         preview: preview,
       ),
+      // A tag follows a drag on its row while it moves — a lane edit
+      // (F-195), its lines moved or stretched.
+      ..._nameTagNodes(cut, frameIndex, dragPreview: dragPreview),
     ];
     return (
       nodes: List.unmodifiable(nodes),

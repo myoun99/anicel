@@ -39,12 +39,16 @@ import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
 import '../../services/guide_geometry.dart' show GuideTransform;
+import '../../services/se_name_tag_plan.dart' show ResolvedSeNameTag;
 import '../../services/playback/cut_frame_composite_signature.dart'
     show
         CompositeLayerSignature,
         CompositeNodeSignature,
-        CutFrameCompositeSignature;
+        CompositeRowSignature,
+        CutFrameCompositeSignature,
+        SeNameTagRowSignature;
 import 'tile_origin.dart';
+import '../text/se_name_tag_paint.dart' show seNameTagExtent;
 import '../../core/display_filter.dart' show filterQualityForDisplayScale;
 import '../../models/dirty_region.dart';
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
@@ -209,6 +213,54 @@ class CanvasGhostImageRequest extends CanvasLayerImageRequest {
   });
 }
 
+/// An SE row's NAME TAG, a row of the frame's own picture (card
+/// the-flutter-fx-chain-is-a-second-chain, 🗣️-Q1 유저 2026-11-12
+/// 「가이드선이 이름표 위에 그려져도 된다 — 이름표를 엔진 그림 안으로」): its
+/// plate in its own space ([seNameTagExtent]), laid by its placement —
+/// normal, whatever the row's blend (🗣️F-387-Q5). It names no cel: it is
+/// drawn from the tag alone.
+///
+/// Its opacity and its chain are the folder round it ([nameTagRows]): they
+/// take the tag as ONE picture, as a folder's take its members — the box
+/// under the name is not seen through the name, and a blur reads both
+/// (🗣️F-387, 유저 2026-10-19: 「같은 fx인데 다른건 말이안됨. 다른것도
+/// 확인해서 통일」).
+///
+/// ↩️Each route painted the tags over the frame it had composited — the
+/// editing canvas, playback, the export and the parked track stack —, each
+/// through a chain of its own beside the engine's: never baked into a
+/// picture, so a rename made none again (R5b).
+final class CanvasNameTagRow extends CanvasStackRow {
+  const CanvasNameTagRow(this.tag);
+
+  final ResolvedSeNameTag tag;
+}
+
+/// [tags] as a frame's rows ([CanvasNameTagRow]), bottom to top — laid
+/// over every other row of it by whoever stacks the frame. None for a tag
+/// at no strength.
+///
+/// A tag at less than full strength or through a chain is a folder round
+/// its row, at its opacity through its chain — normal (🗣️F-387-Q5): the
+/// tag laid on the canvas first and taken as one picture there, the way a
+/// folder takes its members (🗣️F-387) — so its blur is the canvas's
+/// pixels wherever the shot lays it, and repeats the canvas's edge.
+List<CompositeNode<CanvasStackRow>> nameTagRows(
+  List<ResolvedSeNameTag> tags,
+) => [
+  for (final tag in tags)
+    if (tag.opacity > 0)
+      switch (CompositeLeaf<CanvasStackRow>(CanvasNameTagRow(tag))) {
+        final row when tag.opacity >= 1 && tag.effects.isEmpty => row,
+        final row => CompositeGroup(
+          children: [row],
+          opacity: tag.opacity,
+          blendMode: LayerBlendMode.normal,
+          effects: tag.effects,
+        ),
+      },
+];
+
 /// What a frame is drawn ON — the four a [StackedFrame] draws its nodes on:
 /// the page's size, how far its pasteboard reaches, whether it
 /// paints paper and which paper. One value because a frame's one picture
@@ -343,6 +395,7 @@ final class StackedFrame {
         frameKey: switch (of) {
           CanvasActiveLayerRow(:final frameKey) => frameKey,
           CanvasLayerImageRequest(:final frameKey) => frameKey,
+          CanvasNameTagRow() => null,
         },
       ),
       null => null,
@@ -350,6 +403,9 @@ final class StackedFrame {
     final drawn = mapCompositeLeaves<CanvasStackRow, _PaintRow>(
       nodes,
       (row) {
+        if (row case CanvasNameTagRow(:final tag)) {
+          return _PaintNameTag(tag);
+        }
         if (live != null) {
           if (_liveRowOf(row, live.rows, live.painters, storedRowOf)
               case final row?) {
@@ -531,6 +587,14 @@ sealed class _PaintRow {
 /// (brush-fidelity-Q4).
 final class _PaintPaper extends _PaintRow {
   const _PaintPaper();
+}
+
+/// An SE row's name tag ([CanvasNameTagRow]): its plate, made by the
+/// engine's letters as a cel number's is (`EngineLetters.seNameTagPlate`).
+final class _PaintNameTag extends _PaintRow {
+  const _PaintNameTag(this.tag);
+
+  final ResolvedSeNameTag tag;
 }
 
 /// A row drawn as a SURFACE — the live one, or one a lift holds beside it —

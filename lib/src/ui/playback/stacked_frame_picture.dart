@@ -98,7 +98,10 @@ FramePictureKey framePictureKeyOf(
   cutId: cutId,
   page: page,
   signature: CutFrameCompositeSignature.of(
-    mapCompositeLeaves(nodes, (row) {
+    mapCompositeLeaves<CanvasStackRow, CompositeRowSignature>(nodes, (row) {
+      if (row case CanvasNameTagRow(:final tag)) {
+        return SeNameTagRowSignature(tag);
+      }
       final stacked = _stackedCelOf(row);
       return stacked == null
           ? null
@@ -280,4 +283,6 @@ _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {
       tint: null,
     ),
   CanvasActiveLayerRow() => null,
+  // A name tag names no cel: it is signed and drawn from the tag alone.
+  CanvasNameTagRow() => null,
 };

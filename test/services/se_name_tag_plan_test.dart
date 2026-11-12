@@ -18,6 +18,8 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/services/camera_projection_matrix.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement;
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart'
+    show SeNameTagRowSignature;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 
 /// The on-canvas SE name tag resolution (R5b, §6-z15): which rows show
@@ -284,17 +286,20 @@ void main() {
 
     expect(tag.effects, hasLength(1), reason: 'the switched-off one drops');
     expect(tag.effects.single.parameter('blurriness'), 4);
-    // The effects change what is drawn, so the repaint has to know …
+    // The effects change what is drawn, so the frame's picture is keyed by
+    // them …
     expect(
-      seNameTagSignature(
-        resolve([dressed.copyWith(blendMode: LayerBlendMode.normal)]),
+      SeNameTagRowSignature(
+        resolve([dressed.copyWith(blendMode: LayerBlendMode.normal)]).single,
       ),
-      isNot(seNameTagSignature(plain)),
+      isNot(SeNameTagRowSignature(plain.single)),
     );
     // … the blend does not: the tag is laid normal whatever the row's is.
     expect(
-      seNameTagSignature(resolve([dressed.copyWith(effects: const [])])),
-      seNameTagSignature(plain),
+      SeNameTagRowSignature(
+        resolve([dressed.copyWith(effects: const [])]).single,
+      ),
+      SeNameTagRowSignature(plain.single),
     );
   });
 

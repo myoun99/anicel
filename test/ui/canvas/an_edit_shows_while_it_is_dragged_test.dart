@@ -22,7 +22,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -39,6 +38,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
+import '../../helpers/name_tags_laid.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/placement_reading.dart';
 
@@ -622,17 +622,7 @@ void main() {
       '${transformGroupHeaderLane.laneId}',
     );
     CanvasPoint tagOnTheCanvas() {
-      final overlay = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .firstWhere(
-            (painter) =>
-                painter.runtimeType.toString() == '_SeNameTagOverlayPainter',
-          );
-      // The overlay's painter is private; its tags are read through it.
-      // ignore: avoid_dynamic_calls
-      final tags = (overlay as dynamic).tags as List<ResolvedSeNameTag>;
-      final tag = tags.single;
+      final tag = nameTagsLaidBy(tester, theCanvasOwnPictures()).single;
       return tag.placement.apply(
         CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
       );

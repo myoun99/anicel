@@ -35,6 +35,8 @@ void main() {
           if (request.effects.isNotEmpty) {
             return request.effects;
           }
+        case CompositeLeaf(payload: CanvasNameTagRow()):
+          break;
         case CompositeGroup<CanvasStackRow>(:final children):
         case CompositeAdjustment<CanvasStackRow>(:final children):
         case CompositeBackdropBlend<CanvasStackRow>(:final children):

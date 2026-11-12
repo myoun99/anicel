@@ -10,15 +10,23 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../cut_frame_composite_plan.dart';
 import '../layer_pose_matrix.dart' show LayerPlacement;
+import '../se_name_tag_plan.dart' show ResolvedSeNameTag;
 
 /// Resolves the brush store's current source revision for a layer frame
 /// (0 when nothing has been drawn on it yet).
 typedef BrushFrameRevisionResolver =
     int Function(LayerId layerId, FrameId frameId);
 
+/// One ROW of a composited frame, reduced to exactly the inputs that
+/// change its pixels: a layer's cel ([CompositeLayerSignature]), or an SE
+/// row's name tag ([SeNameTagRowSignature]) where a screen stacks one.
+sealed class CompositeRowSignature {
+  const CompositeRowSignature();
+}
+
 /// One layer's contribution to a composited cut frame, reduced to exactly
 /// the inputs that change its pixels.
-class CompositeLayerSignature {
+class CompositeLayerSignature extends CompositeRowSignature {
   const CompositeLayerSignature({
     required this.layerId,
     required this.frameId,
@@ -94,6 +102,27 @@ class CompositeLayerSignature {
       'placement: $placement)';
 }
 
+/// An SE row's name tag as a frame's picture lays it (card
+/// the-flutter-fx-chain-is-a-second-chain, 🗣️-Q1 유저 2026-11-12
+/// 「이름표를 엔진 그림 안으로」): the tag itself, what it writes and where,
+/// how strong and through what — it is drawn from nothing stored.
+final class SeNameTagRowSignature extends CompositeRowSignature {
+  const SeNameTagRowSignature(this.tag);
+
+  final ResolvedSeNameTag tag;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SeNameTagRowSignature && other.tag == tag;
+
+  @override
+  int get hashCode => tag.hashCode;
+
+  @override
+  String toString() => 'SeNameTagRowSignature(${tag.layerId})';
+}
+
 /// One node of a composited cut frame's identity: a layer's contribution,
 /// or a FOLDER's group buffer around the ones inside it.
 ///
@@ -121,9 +150,9 @@ sealed class CompositeNodeSignature
 }
 
 final class CompositeLeafSignature extends CompositeNodeSignature {
-  const CompositeLeafSignature(this.layer);
+  const CompositeLeafSignature(this.row);
 
-  final CompositeLayerSignature layer;
+  final CompositeRowSignature row;
 
   @override
   List<CompositeNodeSignature> get children => const [];
@@ -131,13 +160,13 @@ final class CompositeLeafSignature extends CompositeNodeSignature {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is CompositeLeafSignature && other.layer == layer;
+      other is CompositeLeafSignature && other.row == row;
 
   @override
-  int get hashCode => layer.hashCode;
+  int get hashCode => row.hashCode;
 
   @override
-  String toString() => 'CompositeLeafSignature($layer)';
+  String toString() => 'CompositeLeafSignature($row)';
 }
 
 /// A group buffer's identity: what the folder applies to the composed
@@ -441,7 +470,7 @@ class CutFrameCompositeSignature {
   /// nothing are the same for both); a folder, an adjustment and a blend
   /// over its backdrop are signed here once.
   CutFrameCompositeSignature.of(
-    List<CompositeNode<CompositeLayerSignature>> tree, {
+    List<CompositeNode<CompositeRowSignature>> tree, {
     required CanvasSize canvasSize,
   }) : this(canvasSize: canvasSize, nodes: _nodeSignaturesOf(tree));
 
@@ -458,8 +487,9 @@ class CutFrameCompositeSignature {
       // Still exhaustive: a new leaf kind fails to compile until it says
       // whether it yields a painted layer.
       switch (node) {
-        case CompositeLeafSignature(:final layer):
+        case CompositeLeafSignature(row: final CompositeLayerSignature layer):
           yield layer;
+        case CompositeLeafSignature(row: SeNameTagRowSignature()):
         case CompositeGroupSignature():
         case CompositeAdjustmentSignature():
         case CompositeBackdropBlendSignature():
@@ -540,7 +570,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
 /// [CutFrameCompositeSignature.of]'s walk: [tree]'s nodes as the
 /// signature's, a row's own signature at each leaf.
 List<CompositeNodeSignature> _nodeSignaturesOf(
-  List<CompositeNode<CompositeLayerSignature>> tree,
+  List<CompositeNode<CompositeRowSignature>> tree,
 ) => [
   for (final node in tree)
     switch (node) {

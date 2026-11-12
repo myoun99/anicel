@@ -10,10 +10,12 @@ import '../models/cel_number_letters.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart' show PasteboardReach;
 import '../models/tile_coord.dart';
+import '../services/se_name_tag_plan.dart' show ResolvedSeNameTag;
 import '../ui/text/canvas_letter_plate.dart' show letterPlateBytesKept;
 import '../ui/text/canvas_letter_shapes.dart';
 import '../ui/text/canvas_letter_style.dart' show canvasLetterWeight;
 import '../ui/text/cel_number_paint.dart' show celNumberShapes;
+import '../ui/text/se_name_tag_paint.dart' show seNameTagShapes;
 import '../ui/text/text_measure.dart' show TextMeasure;
 import '../ui/theme/app_theme.dart' show AppTypography;
 import 'engine_faces.dart';
@@ -61,21 +63,53 @@ class EngineLetters {
           reach: row.pasteboardReach,
           fonts: TextMeasure.fontsNow,
         ),
-        () => _plateOf(letters, row),
+        () => _plateOf(
+          celNumberShapes(letters),
+          canvas: row.canvasSize,
+          reach: row.pasteboardReach,
+        ),
       );
 
-  BitmapSurface _plateOf(CelNumberLetters letters, BitmapSurface row) {
+  /// [tag]'s plate in its own space on a canvas of [canvas] — its blocks'
+  /// letters set as a cel number's are ([seNameTagShapes]), laid by its
+  /// placement as a row's picture is (card the-flutter-fx-chain-is-a-
+  /// second-chain, 🗣️-Q1 유저 2026-11-12 「가이드선이 이름표 위에 그려져도
+  /// 된다 — 이름표를 엔진 그림 안으로」) —, made the first time it is asked
+  /// for and kept. What it holds is its writing alone: where it is laid,
+  /// how strong and through what are the row's.
+  BitmapSurface seNameTagPlate(ResolvedSeNameTag tag, CanvasSize canvas) =>
+      _plates.resolve(
+        (
+          letters: (tag.content, tag.line, tag.delivery, tag.widthBudget),
+          canvas: canvas,
+          reach: PasteboardReach.whole,
+          fonts: TextMeasure.fontsNow,
+        ),
+        () => _plateOf(
+          switch (seNameTagShapes(tag, canvasSize: canvas)) {
+            null => null,
+            final layers => (layers: layers, stand: _whereTheyStand),
+          },
+          canvas: canvas,
+          reach: PasteboardReach.whole,
+        ),
+      );
+
+  BitmapSurface _plateOf(
+    ({List<CanvasLetterShapes> layers, List<double> stand})? shapes, {
+    required CanvasSize canvas,
+    required PasteboardReach reach,
+  }) {
     BitmapSurface on({
       Map<TileCoord, BitmapTile> tiles = const {},
       DirtyRegion? laid,
     }) => BitmapSurface(
-      canvasSize: row.canvasSize,
-      pasteboardReach: row.pasteboardReach,
+      canvasSize: canvas,
+      pasteboardReach: reach,
       tileSize: gpuTileSide,
       tiles: tiles,
       laidBounds: laid,
     );
-    final shapes = celNumberShapes(letters);
     if (shapes == null) {
       return on();
     }
@@ -121,7 +155,7 @@ class EngineLetters {
 }
 
 typedef _PlateKey = ({
-  CelNumberLetters letters,
+  Object letters,
   CanvasSize canvas,
   PasteboardReach reach,
   int fonts,

@@ -292,50 +292,25 @@ Future<void> layDrawnOver(
 /// What [draw] draws on a raster of [width] × [height], on the engine to
 /// be laid over a frame there, for the caller to free: what the app draws
 /// over a frame made on the engine — a shot's overlay, a stage's apron, a
-/// cut's names and its veils — drawn by Flutter and laid by the engine
+/// cut's veils — drawn by Flutter and laid by the engine
 /// (gpu-export-path ①⑵: the letters are Flutter's, Q30).
 ///
-/// Where [inks] says where [draw] inks — in the raster's pixels, as its
-/// painter answers it — only the whole pixels round it are rastered, read
-/// back and put on the GPU, and laid where they stand on a blank of the
-/// raster's size there: the frame, its other pixels clear ([_rasterOf] says
-/// how a magnified name's samples fall). 🔬A 4K frame's names inked 1–20%
-/// of it, and rastering the whole of it, reading it back and putting it up
-/// took 165–370 ms (card
-/// an-exports-overlay-raster-reads-back-the-whole-frame).
+/// ↩️Where its painter said where it inked — a cut's names — only the
+/// whole pixels round them were rastered, read back and put up
+/// (🗣️an-exports-overlay-raster-reads-back-the-whole-frame-Q1, 유저
+/// 2026-11-12 23:46: 「빠른 길 — 이름표 둘레만 굽는다」; 🔬a 4K frame's names
+/// inked 1–20% of it, and the whole of it took 165–370 ms), until the
+/// names were rows of the engine's picture (card
+/// the-flutter-fx-chain-is-a-second-chain): nothing over a frame inks a
+/// part of it alone since.
 Future<GpuShown> drawnOnTheEngine(
   GpuExport export,
   int width,
   int height,
-  void Function(ui.Canvas canvas) draw, {
-  ui.Rect? inks,
-}) async {
-  if (inks == null) {
-    _rastered(width, height);
-    return export.upload(await _rasterOf(width, height, draw), width, height);
-  }
-  final (left, top, right, bottom) = _pixelsRound(inks, width, height);
-  final whole = export.blank(width, height);
-  if (right <= left || bottom <= top) {
-    return whole;
-  }
-  try {
-    _rastered(right - left, bottom - top);
-    final part = export.upload(
-      await _rasterOf(width, height, draw, part: (left, top, right, bottom)),
-      right - left,
-      bottom - top,
-    );
-    try {
-      export.lay(whole, part, x: left, y: top);
-    } finally {
-      part.free();
-    }
-    return whole;
-  } on Object {
-    whole.free();
-    rethrow;
-  }
+  void Function(ui.Canvas canvas) draw,
+) async {
+  _rastered(width, height);
+  return export.upload(await _rasterOf(width, height, draw), width, height);
 }
 
 /// The size of each raster [drawnOnTheEngine] has made since a test began
@@ -354,52 +329,19 @@ void _rastered(int width, int height) {
   }());
 }
 
-/// The whole pixels of a [width] × [height] raster round [inks] —
-/// [left, top, right, bottom).
-///
-/// No margin past them: an edge's coverage and a filtered picture's
-/// samples fall inside the shape they are laid on, and the box holds the
-/// shapes. ↩️Two pixels more on every side were kept for that, until it was
-/// measured (11-12: at none, nothing inked past the box in any of seven
-/// frames of names).
-(int, int, int, int) _pixelsRound(ui.Rect inks, int width, int height) {
-  if (inks.isEmpty) {
-    return (0, 0, 0, 0);
-  }
-  return (
-    inks.left.floor().clamp(0, width),
-    inks.top.floor().clamp(0, height),
-    inks.right.ceil().clamp(0, width),
-    inks.bottom.ceil().clamp(0, height),
-  );
-}
-
 /// What [draw] draws on a raster of [width] × [height], premultiplied
-/// RGBA — only its [part] — [left, top, right, bottom) — where one is
-/// named.
+/// RGBA.
 ///
 /// [draw] is recorded on the whole raster — a painter that reads where it
-/// stands on its canvas or how far it reaches reads what it would there —
-/// and only the part is rastered: the picture laid off the part's corner by
-/// a scene's offset. A picture drawn on a canvas is what
+/// stands on its canvas or how far it reaches reads what it would there. A
+/// picture drawn on a canvas is what
 /// `every_overlay_is_laid_on_the_engine_test` takes for a frame composed by
 /// Flutter, and this one is the overlay's own lines and letters.
-///
-/// 🗣️an-exports-overlay-raster-reads-back-the-whole-frame-Q1 (유저
-/// 2026-11-12 23:46: 「빠른 길 — 이름표 둘레만 굽는다」): a raster made off
-/// another corner samples a plate magnified with no filter
-/// (`filterQualityForDisplayScale`) across a tie elsewhere — 🔬a name
-/// through a camera at 1.25 had 68 pixels of its letter 159 apart from the
-/// whole raster's, a filtered one a channel by one in a pixel or two — and
-/// a raster of the whole frame's size took ~130 ms at 4K whatever was drawn
-/// on it (clipped to the names, alike). ↩️The whole was rastered and its
-/// part copied out, byte for byte the whole's, until that answer.
 Future<Uint8List> _rasterOf(
   int width,
   int height,
-  void Function(ui.Canvas canvas) draw, {
-  (int, int, int, int)? part,
-}) async {
+  void Function(ui.Canvas canvas) draw,
+) async {
   final recorder = ui.PictureRecorder();
   draw(
     ui.Canvas(
@@ -409,9 +351,7 @@ Future<Uint8List> _rasterOf(
   );
   final drawn = recorder.endRecording();
   try {
-    final image = part == null
-        ? await drawn.toImage(width, height)
-        : await _partOf(drawn, part);
+    final image = await drawn.toImage(width, height);
     try {
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       return data!.buffer.asUint8List();
@@ -420,22 +360,6 @@ Future<Uint8List> _rasterOf(
     }
   } finally {
     drawn.dispose();
-  }
-}
-
-/// [picture]'s pixels [part] — [left, top, right, bottom) — rastered.
-Future<ui.Image> _partOf(
-  ui.Picture picture,
-  (int, int, int, int) part,
-) async {
-  final (left, top, right, bottom) = part;
-  final scene = (ui.SceneBuilder()
-        ..addPicture(ui.Offset(-left.toDouble(), -top.toDouble()), picture))
-      .build();
-  try {
-    return await scene.toImage(right - left, bottom - top);
-  } finally {
-    scene.dispose();
   }
 }
 

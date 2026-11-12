@@ -300,7 +300,7 @@ T _planned<T>(
         plan,
         mapCompositeLeaves<_PaintRow, EngineRow>(
           pass._rootNodes,
-          (row) => pass._engineRowOf(row, maskOf),
+          (row) => pass._engineRowOf(row, maskOf, letters),
           told: holds == null ? null : (node, to) => origins[to] = node,
         ),
         hold: hold,
@@ -354,10 +354,12 @@ extension on _FrameReading {
   /// them, a live stroke's in their place ([BitmapSurfacePainter
   /// .shownSurface]), kept under its cel's lineage, what a hand holds over
   /// them ([_heldOver]) and the range a fill holds
-  /// on it, marked under the mask [maskOf] gives its cover ([_markOn]).
+  /// on it, marked under the mask [maskOf] gives its cover ([_markOn]); a
+  /// name tag its plate in [letters], laid as a row's picture is.
   EngineRow _engineRowOf(
     _PaintRow row,
     GpuMask Function(FloodFillRegion cover) maskOf,
+    EngineLetters letters,
   ) => switch (row) {
     _PaintPaper() => EngineSolid(
       argb: _painter.paperBackground.paintedArgb,
@@ -374,6 +376,18 @@ extension on _FrameReading {
       lineage: lineage,
     ),
     final _SurfaceRow row => _engineTilesOf(row, maskOf),
+    // Normal, whatever the row's blend (🗣️F-387-Q5); its opacity and chain
+    // its folder's ([nameTagRows]).
+    _PaintNameTag(:final tag) => switch (letters.seNameTagPlate(
+      tag,
+      _painter.canvasSize,
+    )) {
+      final plate => EngineTiles(
+        lineage: plate,
+        surface: plate,
+        placement: tag.placement,
+      ),
+    },
   };
 
   EngineTiles _engineTilesOf(

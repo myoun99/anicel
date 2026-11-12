@@ -201,9 +201,13 @@ class FramePictures implements PlaybackPictures {
     }
     store.letGoUnpinnedWhere(
       (key) => preorderNodes(key.signature.nodes).any(
-        (node) =>
-            node is CompositeLeafSignature &&
-            left.contains(node.layer.sourceRevision),
+        (node) => switch (node) {
+          CompositeLeafSignature(
+            row: CompositeLayerSignature(:final sourceRevision),
+          ) =>
+            left.contains(sourceRevision),
+          _ => false,
+        },
       ),
     );
   }

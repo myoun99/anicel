@@ -33,7 +33,6 @@ import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_as_output.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
-import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show
         TrackStackContribution,
@@ -56,8 +55,10 @@ import '../canvas/canvas_layer_stack_view.dart'
     show
         CanvasActiveLayerRow,
         CanvasLayerImageRequest,
+        CanvasNameTagRow,
         CanvasStackRow,
-        FramePage;
+        FramePage,
+        nameTagRows;
 import '../canvas/guide_overlay.dart' show paintGuideLines;
 import '../conte/conte_fonts.dart' show conteTextStyle;
 import '../sheet_painting.dart';
@@ -74,7 +75,6 @@ import '../playback/transition_veil_paint.dart';
 import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
-import '../../services/se_name_tag_plan.dart';
 import '../timeline/memo_token.dart';
 import 'export_plan.dart';
 import 'held_pictures.dart';
@@ -668,6 +668,7 @@ class ExportFrameRenderer {
         _nodesFor(task, ghosts: inPlace ? _ghostsOf(task) : null),
         _stillChainOf(task),
       ),
+      ..._nameTagsOf(task),
       if (!inPlace) ..._ghostsAlone(task),
     ];
   }
@@ -695,7 +696,7 @@ class ExportFrameRenderer {
 
   /// What the canvas draws over [task]'s picture on the picture's own
   /// pixels, through [view], in the order it stacks them (`_overlayStack`):
-  /// the guides, the SE rows' name tags, the screens one-sided transitions
+  /// the guides, the screens one-sided transitions
   /// lay, the camera's path and the dim of its view. Null where it shows none
   /// of them.
   ///
@@ -724,10 +725,6 @@ class ExportFrameRenderer {
         ],
         view,
         guideInk,
-      ),
-      _nameTagsOver(
-        cut,
-        session.seEntries.seNameTagsForCutFrame(cut, task.frameIndex),
       ),
       if (veils.isNotEmpty)
         (canvas, _) => paintTransitionVeils(
@@ -807,9 +804,14 @@ class ExportFrameRenderer {
     final cut = task.cut;
     final view = _viewFor(cut, task.frameIndex, mode);
     final over = _shownOver(task, view, guideInk);
+    // The SE rows' name tags are rows of the canvas's picture, over every
+    // row the file keeps apart, and no row of the file holds one: shown
+    // over them, under the ghosts as the canvas lays them.
+    final names = _nameTagsOf(task);
     final ghosts = _ghostsAlone(task);
     final store = session.renderCaches.brushFrameStore;
     if (over == null &&
+        names.isEmpty &&
         stackOfDrawnCels(
           ghosts,
           drawn: store.celHasRenderableContent,
@@ -823,7 +825,7 @@ class ExportFrameRenderer {
         return pictureOfShot(_shot(
           cut,
           task.frameIndex,
-          _ghostsAlone(task),
+          [...names, ..._ghostsAlone(task)],
           view: view,
           ground: _clear,
           over: over,
@@ -1062,18 +1064,12 @@ class ExportFrameRenderer {
     return underTheCutsFx(_nodesFor(task), trackEffects);
   }
 
-  /// [nameTags] over [cut]'s picture. Null for none.
-  CameraOverlayPass? _nameTagsOver(
-    Cut cut,
-    List<ResolvedSeNameTag> nameTags,
-  ) => nameTags.isEmpty
-      ? null
-      : (canvas, rasterScale) => paintSeNameTags(
-          canvas,
-          tags: nameTags,
-          canvasSize: cut.canvasSize,
-          rasterScale: rasterScale,
-        );
+  /// [task]'s SE rows' name tags, rows of its picture over every other
+  /// ([nameTagRows]) — outside the V row's chain, as a film burns them in.
+  List<CompositeNode<CanvasStackRow>> _nameTagsOf(ExportFrameTask task) =>
+      nameTagRows(
+        session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex),
+      );
 
   /// The BACKDROP ground (R3b) under a video frame — null when nothing is
   /// laid down at all, which is what [preserveAlpha] asks for.
@@ -1129,35 +1125,31 @@ class ExportFrameRenderer {
   });
 
   /// What [draw] draws on a raster of [width] × [height], on the engine
-  /// ([drawnOnTheEngine]) — only round where it inks, where its painter
-  /// says ([inksOf], asked when it is drawn) — held under [props], what it
-  /// is drawn from ([_drawn]): the renderer's own. Where it inks is the
-  /// painter's answer from the same [props], so the key holds it too.
+  /// ([drawnOnTheEngine]) — held under [props], what it is drawn from
+  /// ([_drawn]): the renderer's own.
   Future<GpuShown> _drawnOver(
     Object props,
     int width,
     int height,
-    void Function(ui.Canvas canvas) draw, {
-    ui.Rect? Function()? inksOf,
-  }) => _onTheEngine(_drawn).of(
+    void Function(ui.Canvas canvas) draw,
+  ) => _onTheEngine(_drawn).of(
     (props, width, height),
     () async => drawnOnTheEngine(
       await appGpuExportKernels.ready,
       width,
       height,
       draw,
-      inks: inksOf?.call(),
     ),
   );
 
   /// [task]'s cut's picture through [view] at [outputSize] — under the V
-  /// row's [trackEffects], with [nameTags] drawn over it, on [ground] with
-  /// [paper] laid with its rows ([_shot]) — held ([_pictures]) under the key
-  /// the engine keeps its picture by ([FramePictures.keyOfStack]), the
-  /// ground, and [route]: whatever of the shot that key does not say —
-  /// which of the renders it is, the view it is drawn through, its size and
-  /// what is drawn over it. The renderer's own: nobody it is handed to
-  /// disposes it.
+  /// row's [trackEffects], its SE rows' name tags over it [withItsNames]
+  /// ([_nameTagsOf]), on [ground] with [paper] laid with its rows ([_shot])
+  /// — held ([_pictures]) under the key the engine keeps its picture by
+  /// ([FramePictures.keyOfStack]), the ground, and [route]: whatever of the
+  /// shot that key does not say — which of the renders it is, the view it
+  /// is drawn through and its size. The renderer's own: nobody it is handed
+  /// to disposes it.
   ///
   /// Cut at its canvas's edge: a film shows no pasteboard, and a picture of
   /// a sequence is one of its frames.
@@ -1167,12 +1159,15 @@ class ExportFrameRenderer {
     required Object route,
     CanvasSize? outputSize,
     List<ResolvedLayerEffect> trackEffects = const [],
-    List<ResolvedSeNameTag> nameTags = const [],
+    bool withItsNames = false,
     ui.Color? ground,
     ProjectBackground? paper,
   }) async {
     final cut = task.cut;
-    final nodes = await _cutNodes(task, trackEffects);
+    final nodes = [
+      ...await _cutNodes(task, trackEffects),
+      if (withItsNames) ..._nameTagsOf(task),
+    ];
     final on = ground ?? this.ground;
     final page = _pageOf(cut, on, paper);
     final key = session.playbackRig.framePictures.keyOfStack(
@@ -1194,7 +1189,6 @@ class ExportFrameRenderer {
         outputSize: outputSize,
         ground: on,
         paper: paper,
-        over: _nameTagsOver(cut, nameTags),
       ),
     );
   }
@@ -1217,15 +1211,14 @@ class ExportFrameRenderer {
     List<ResolvedLayerEffect> trackEffects, {
     CanvasSize? outputSize,
   }) {
-    final nameTags = session.seEntries.seNameTagsForCutFrame(cut, frameIndex);
     final view = _viewFor(cut, frameIndex, ExportSizeMode.canvas);
     return _cutPicture(
       ExportFrameTask(cut: cut, frameIndex: frameIndex),
       view,
-      route: ('canvas', seNameTagSignature(nameTags), view, outputSize),
+      route: ('canvas', view, outputSize),
       outputSize: outputSize,
       trackEffects: trackEffects,
-      nameTags: nameTags,
+      withItsNames: true,
       paper: session.projectSettings.projectBackground,
     );
   }
@@ -1667,14 +1660,15 @@ class ExportFrameRenderer {
       view,
       route: ('stack', view, outputSize),
       outputSize: outputSize,
+      withItsNames: true,
       trackEffects: trackEffects,
       ground: _clear,
       paper: paper,
     );
     final project = session.repository.requireProject();
     // A preview's size of the frame is the view playback shows a frame at
-    // ([PlaybackFramePainter.viewport]): what the painters raster, the names
-    // above all, rasters at the scale it is shown at.
+    // ([PlaybackFramePainter.viewport]): what the painters raster rasters at
+    // the scale it is shown at.
     final shownAt = outputSize == null
         ? null
         : CanvasViewport(zoom: outputSize.width / view.frameSize.width);
@@ -1685,7 +1679,6 @@ class ExportFrameRenderer {
     final apron = isStage && !preserveAlpha && !project.pasteboardNone
         ? ui.Color(project.pasteboardArgb)
         : null;
-    final nameTags = session.seEntries.seNameTagsForCutFrame(cut, frameIndex);
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
       canvasSize: cut.canvasSize,
       pasteboardReach: project.pasteboardReach,
@@ -1698,17 +1691,16 @@ class ExportFrameRenderer {
       // The output IS the camera frame — there is no outside to
       // letterbox, and an alpha master needs the ground transparent.
       paintLetterbox: false,
-      seNameTags: under ? const [] : nameTags,
-      // An upper track thins its names and veils with its picture.
+      // An upper track thins its veils with its picture, its names in it.
       imageOpacity: isStage ? 1 : weight,
       veils: under ? const [] : position.veils,
     );
     final size = outputSize ?? view.frameSize;
     // Each painter draws what it is handed and no more — the apron under
-    // the picture, the names and the veils over it — so one handed none of
-    // them draws nothing, and nothing is rastered of it: laid, a raster of
-    // nothing changes no pixel, and it would be drawn and read back on
-    // every frame (as [_veilsOver]).
+    // the picture, the veils over it — so one handed none of them draws
+    // nothing, and nothing is rastered of it: laid, a raster of nothing
+    // changes no pixel, and it would be drawn and read back on every frame
+    // (as [_veilsOver]).
     final raster = ui.Size(size.width.toDouble(), size.height.toDouble());
     Future<GpuShown?> drawn(
       PlaybackFramePainter painter, {
@@ -1719,7 +1711,6 @@ class ExportFrameRenderer {
             size.width,
             size.height,
             (canvas) => painter.paint(canvas, raster),
-            inksOf: () => painter.inkOf(raster),
           )
         : null;
     return _StackUnit(
@@ -1728,7 +1719,7 @@ class ExportFrameRenderer {
       pictureOpacity: isStage ? 1 : weight,
       over: await drawn(
         painter(under: false),
-        handed: nameTags.isNotEmpty || position.veils.isNotEmpty,
+        handed: position.veils.isNotEmpty,
       ),
       fade: isStage ? weight : 1,
     );
@@ -2057,6 +2048,8 @@ class ExportFrameRenderer {
       switch (row) {
         CanvasLayerImageRequest(:final effects) => effects,
         CanvasActiveLayerRow(:final effects) => effects,
+        // Its folder's ([nameTagRows]).
+        CanvasNameTagRow() => const [],
       };
 
   /// [cut] as a cel lays its rows: as the window's 레이어 FX keeps each

@@ -9,6 +9,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart'
+    show SeNameTagRowSignature;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
@@ -64,10 +66,10 @@ void main() {
     expect(over.center.dx, closeTo(box.center.dx, 0.5));
   });
 
-  test('a new delivery is a new picture — the repaint signature sees it', () {
+  test('a new delivery is a new picture — the frame\'s key sees it', () {
     expect(
-      seNameTagSignature([tagFor(SeLineType.on)]),
-      isNot(seNameTagSignature([tagFor(SeLineType.off)])),
+      SeNameTagRowSignature(tagFor(SeLineType.on)),
+      isNot(SeNameTagRowSignature(tagFor(SeLineType.off))),
     );
   });
 }
