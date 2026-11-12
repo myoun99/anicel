@@ -101,6 +101,13 @@
 # it is dropped and landed with the folder's files kept. ⚠️The script
 # before THAT fails 2 of the 5 there: on Windows its `git worktree remove`
 # empties the folder through the junction.
+# 🆕And the turn's signs of life (2026-11-12, a-long-land-loses-its-turn-at-
+# 45-minutes — section Y, 180 checks in all): a turn two hours old whose land
+# beat lately is not taken over, one with no sign for 45 minutes is, a land
+# whose turn was taken stops at its next step and lands nothing, and the turn
+# it lost stays with the land that took it. ⚠️The script before THAT fails 6
+# of the 9 there: it takes the beating land's turn, runs on beside the land
+# that took its own and lands, and its exit removes the other land's turn.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
