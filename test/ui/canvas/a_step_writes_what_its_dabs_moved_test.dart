@@ -9,6 +9,12 @@
 // the tiles' edges. `widestPatch` says the patches were the dabs' at all: at
 // a tile's width the comparison passes whatever is told.
 //
+// 🚨AND IT ASKS FOR NO PICTURE OF A TILE. The step is measured by what
+// shows each coordinate — the tile the engine laid — and a picture of that
+// is the tile read back, a wait for the GPU, for a screen that draws none.
+// 🔬The app on its engine, a pen's line across 13 tiles: a tile read back
+// at each paint that measured a step, and 13 at pen-up (2026-11-12).
+//
 // The writes are Flutter GPU's: the picture holds the steps only where
 // the GPU wrote them, so this runs in the `gpu` tag's batch.
 @Tags(['gpu'])
@@ -38,6 +44,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
@@ -237,6 +244,7 @@ void main() {
         stackOf: (_) => nodes,
       ).pictures.keyOfStack(nodes, picture);
 
+      final readBack = EngineTileLedger.instance.debugTileReads;
       for (final dab in dabs) {
         await tester.runAsync(() async {
           final from = overlay.dabs.length;
@@ -254,6 +262,16 @@ void main() {
               'frame drawn as it stands',
         );
         await inThePicture(tester);
+      }
+      if (inPlace) {
+        expect(
+          overlay.shownTiles.values.where((tile) => tile.isOnlyOnEngine),
+          isNotEmpty,
+          reason: '⛔premise: the engine alone holds what the stroke shows',
+        );
+        // ⛔Mutation: the measure copies the overlay's pictures → each is
+        // made, of a tile read back, at the step that moved it.
+        expect(EngineTileLedger.instance.debugTileReads, readBack);
       }
       expect(
         patched.widestPatch,

@@ -766,7 +766,11 @@ class _InteractiveBrushEditCanvasViewState
     // The canvas says which cel it draws — only while it draws one; the
     // merged stack draws it otherwise, and says so itself.
     if (widget.paintsContent && widget.editable) {
-      ShownCels.instance.show(this, (widget.layerId, widget.frameId));
+      ShownCels.instance.show(
+        this,
+        (widget.layerId, widget.frameId),
+        pictured: ShownCels.asItIs,
+      );
     } else {
       ShownCels.instance.hide(this);
     }

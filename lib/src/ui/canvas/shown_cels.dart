@@ -14,12 +14,12 @@ typedef CelSurface = (BrushFrameKey, BitmapSurface);
 
 typedef _Shown = ({
   ShownCel cel,
-  BitmapSurface Function(BitmapSurface surface) painted,
+  BitmapSurface Function(BitmapSurface surface)? pictured,
 });
 
-/// The cels the canvases are painting with tile pictures right now — and
-/// the pictures a change to one of them will need, made AHEAD so the paint
-/// that shows the change finds them ready.
+/// The cels the canvases are showing right now — and, for a canvas that
+/// draws tile pictures, the pictures a change to one of them will need,
+/// made AHEAD so the paint that shows the change finds them ready.
 ///
 /// 🚨★★★A STEP MUST NOT BREAK A WHOLE PICTURE (undo-held-tile-pictures,
 /// stage 1, 2026-09-11). A tile's picture is keyed on the tile OBJECT, so a
@@ -32,12 +32,15 @@ typedef _Shown = ({
 /// the paint that shows the next one.
 ///
 /// ⚠️**THE CANVASES REGISTER THEMSELVES** ([show], [hide]) under the scope
-/// their painter already names the cel by, and each says how it paints a
-/// surface of it: the drawing canvas draws the active row with its texts
-/// laid, so where a text lies the tiles it paints are other objects than
-/// the cel's own — warming the cel's own there would warm pictures nobody
-/// draws. ↩️Through its colour keys too, until the engine keyed a row
-/// (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
+/// their painter already names the cel by, and each says what it draws
+/// pictures of. The drawing canvas draws none: the engine lays its frame
+/// from the tiles (`EngineStackScreen`), and a picture made ahead for it
+/// is one nobody draws — of a tile the engine landed, a wait for the GPU
+/// to read it back. ↩️It said it painted the active row with its texts
+/// laid — other objects than the cel's own where a text lies — while its
+/// stack drew pictures (till 2026-11-12), and through its colour keys too,
+/// until the engine keyed a row (float-warp-resamples-in-the-c-engine (1),
+/// 2026-11-11).
 class ShownCels {
   ShownCels({BitmapTileImageCache? cache})
     : _cache = cache ?? BitmapTileImageCache.instance;
@@ -48,42 +51,47 @@ class ShownCels {
 
   final Map<Object, _Shown> _byCanvas = {};
 
-  /// [canvas] is painting [cel] — a surface of it turned into tiles the way
-  /// [painted] does, as it is when omitted. Calling again replaces it.
+  /// [canvas] is showing [cel]. [pictured] turns a surface of it into the
+  /// tiles the canvas draws pictures of ([asItIs] where those are the
+  /// cel's own) — null for a canvas that draws none, which has none made
+  /// ahead. Calling again replaces it.
   void show(
     Object canvas,
     ShownCel cel, {
-    BitmapSurface Function(BitmapSurface surface)? painted,
+    required BitmapSurface Function(BitmapSurface surface)? pictured,
   }) {
-    _byCanvas[canvas] = (cel: cel, painted: painted ?? _asIs);
+    _byCanvas[canvas] = (cel: cel, pictured: pictured);
   }
 
-  /// [canvas] is not painting a cel any more.
+  /// [canvas] is not showing a cel any more.
   void hide(Object canvas) {
     _byCanvas.remove(canvas);
   }
 
-  static BitmapSurface _asIs(BitmapSurface surface) => surface;
+  /// A surface as a canvas that draws pictures of the cel's own tiles
+  /// turns it into them ([show]).
+  static BitmapSurface asItIs(BitmapSurface surface) => surface;
 
-  /// Whether any canvas is painting a cel at all.
+  /// Whether any canvas is showing a cel at all.
   bool get anyShown => _byCanvas.isNotEmpty;
 
-  /// Whether a canvas is painting [key]'s cel.
+  /// Whether a canvas is showing [key]'s cel.
   bool isShown(BrushFrameKey key) {
     final cel = key.cel;
     return _byCanvas.values.any((shown) => shown.cel == cel);
   }
 
-  /// Every tile [cels] would put on screen, on every canvas showing it.
-  Iterable<BitmapTile> _painted(Iterable<CelSurface> cels) sync* {
+  /// Every tile of [cels] a canvas showing it would draw a picture of.
+  Iterable<BitmapTile> _pictured(Iterable<CelSurface> cels) sync* {
     final canvases = _byCanvas.values.toList();
     for (final (key, surface) in cels) {
       final cel = key.cel;
       for (final shown in canvases) {
-        if (shown.cel != cel) {
+        final pictured = shown.pictured;
+        if (shown.cel != cel || pictured == null) {
           continue;
         }
-        yield* shown.painted(surface).tiles.values;
+        yield* pictured(surface).tiles.values;
       }
     }
   }
@@ -100,7 +108,7 @@ class ShownCels {
   /// one it replaces is not next any more.
   void warm(Iterable<CelSurface> cels) {
     _queue = [
-      for (final tile in _painted(cels))
+      for (final tile in _pictured(cels))
         if (_cache.heldFor(tile) == null) tile,
     ];
     _pump();

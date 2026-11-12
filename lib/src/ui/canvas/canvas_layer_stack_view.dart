@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart'
     show
@@ -234,9 +232,10 @@ typedef LiveRows = ({
   Map<BrushFrameKey, LiftedCel> liftedRows,
 });
 
-/// What the live surface looked like, per coordinate: the overlay's tile
-/// images and the committed tiles. Identity per coordinate is what lets the
-/// next look say WHERE the surface changed ([StackedFrame.movedSince]).
+/// What the live surface looked like, per coordinate: what shows each of
+/// the overlay's (`ActiveStrokeOverlayModel.shownBy`) and the committed
+/// tiles. Identity per coordinate is what lets the next look say WHERE the
+/// surface changed ([StackedFrame.movedSince]).
 ///
 /// 🚨★★★F-130: AND WHAT THE PAINTER DRAWS OVER THE SURFACE. The picture
 /// holds it, and tokens that do not know a preview cannot say where it
@@ -721,13 +720,13 @@ final class _FrameRows {
   /// holds under a different token (or newly), and one [now] no longer
   /// holds at all.
   ///
-  /// Identity per coordinate — for the overlay's tile images and the
+  /// Identity per coordinate — for what shows the overlay's and the
   /// committed tiles alike. The overlay's tiles carry the stroke in
   /// flight, but they ACCUMULATE for the stroke's whole life (nothing
   /// leaves the map until pen-up), so "every overlay coordinate" is the
   /// bounding box of the WHOLE STROKE by the third dab: a long line paid
-  /// its full length again on every step. The overlay replaces a tile's
-  /// image only when a dab touched it, so an unchanged image object IS
+  /// its full length again on every step. The overlay replaces what shows
+  /// a coordinate only when a dab touched it, so an unchanged object IS
   /// "this tile did not move". A coordinate the overlay LEFT has to lose
   /// its ink (pen-up, reset).
   static Iterable<TileCoord> _movedCoords(
@@ -760,8 +759,15 @@ final class _FrameRows {
   /// "every overlay coordinate" is the bounding box of the WHOLE STROKE by
   /// the third dab: a long line paid its full length again on every step.
   /// Identity per coordinate instead, exactly like the committed tiles —
-  /// the overlay replaces a tile's image only when a dab touched it, so an
-  /// unchanged image object IS "this tile did not move".
+  /// the overlay replaces what shows a coordinate only when a dab touched
+  /// it, so an unchanged object IS "this tile did not move".
+  ///
+  /// 🚨NO PICTURE IS ASKED FOR, to measure by: what shows a coordinate is
+  /// the token (`ActiveStrokeOverlayModel.shownBy`). ↩️The overlay's
+  /// pictures were, copied here — and the copy read each, which made one
+  /// of every tile the step had moved: of a tile the engine laid, a wait
+  /// for the GPU to read it back, for a picture this screen never drew
+  /// (till 2026-11-12).
   ///
   /// Committed tiles: a commit replaces the tile — an identity change on
   /// its coordinate.
@@ -787,9 +793,7 @@ final class _FrameRows {
     // too, so a press that moves to another region patches both.
     final range = overlay?.fillRange;
     return (
-      overlay: <TileCoord, Object>{
-        ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
-      },
+      overlay: overlay?.shownBy ?? const <TileCoord, Object>{},
       overlayMoves: overlay?.moveMark,
       tiles: _tilesOf(surfacePainter?.surface),
       previews: [

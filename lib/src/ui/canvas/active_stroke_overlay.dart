@@ -67,6 +67,18 @@ import 'fill_range_mark.dart';
 /// pictures made 2381 → 666 at 100% and 1919 → 350 fitted, a flush 0.8 → 0.3
 /// ms, input to raster done p50 36.1 → 35.0 and 73.1 → 66.1 ms. Quiet, a
 /// flush for each step, 2879 → 2086, and no later.
+///
+/// 🚨A SCREEN THAT LAYS TILES IS ASKED FOR NO PICTURE (`EngineStackScreen`):
+/// it is handed the tiles ([shownTiles]) and measures a step by what shows
+/// each coordinate ([shownBy]). Of a tile the engine laid, a picture is a
+/// wait for the GPU — the tile read back, alone — so one nobody draws is
+/// not made: not at a step, not at pen-up, not of a fill's result.
+/// ↩️Till 2026-11-12 the screen's measure copied [tileImages], which made
+/// one of every tile the step had moved; pen-up made one of every tile it
+/// landed, and a fill one of every tile of its result. 🔬The app on its
+/// engine, a pen's line across 13 tiles: 13 tiles read back at pen-up,
+/// inside the pointer's handler, and one at each paint that measured a
+/// step — for pictures no screen drew.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
   ActiveStrokeOverlayModel({int tileSize = defaultCelTileSize})
     : _tileSize = tileSize;
@@ -156,7 +168,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Overlay tile pictures by tile coordinate. Tiles never overlap, so the
   /// painter draws each with plain source-over at `(coord * tileSize)`,
-  /// exactly like the committed tile images.
+  /// exactly like the committed tile images. One is made the first time it
+  /// is read ([_imageAt]); asking which coordinates have one makes none.
   Map<TileCoord, ui.Image> get tileImages {
     pictureOwed();
     return _PicturesOf(this);
@@ -173,6 +186,18 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     return {
       for (final MapEntry(key: coord, value: shown) in _shown.entries)
         coord: ?shown.tile,
+    };
+  }
+
+  /// What shows each coordinate, by identity: the tile where one shows it
+  /// ([shownTiles]), else its picture — another object once a dab moves
+  /// the coordinate, the same one while none does. What a screen measures
+  /// a step by (`LiveSurfaceTokens`), and no picture is made for it.
+  Map<TileCoord, Object> get shownBy {
+    pictureOwed();
+    return {
+      for (final MapEntry(key: coord, value: shown) in _shown.entries)
+        coord: shown.tile ?? shown.image!,
     };
   }
 
@@ -222,17 +247,18 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// 🚨★★★A FILL'S RESULT TILES, AS THIS OVERLAY'S PICTURES (유저 절대규칙
   /// 2026-09-17, `promoteFillDabs`): the tiles the commit will install,
-  /// each pictured from its own bytes and shown at its coordinate exactly
-  /// as a stroke's pre-blended tiles are — so the pen-up handoff takes
-  /// them at [fillPromotionRevision] and nothing is pictured twice. Every
-  /// picture exists before this returns: a fill appears whole.
+  /// each shown at its coordinate exactly as a stroke's pre-blended tiles
+  /// are, and pictured from its own bytes by the screen that draws
+  /// pictures ([_imageAt]) — so the pen-up handoff takes them at
+  /// [fillPromotionRevision] and nothing is pictured twice. A paint makes
+  /// every picture it shows: a fill appears whole. ↩️Every picture was
+  /// made before this returned, whoever drew it (till 2026-11-12).
   void showResultTiles(Iterable<PromotedStrokeTile> tiles) {
     pictureOwed();
     for (final entry in tiles) {
-      final shown = tileShownFor(entry.coord, entry.tile);
       _install(entry.coord, (
-        image: BitmapTileImageCache.pictureOfTile(shown),
-        tile: shown,
+        image: null,
+        tile: tileShownFor(entry.coord, entry.tile),
         landed: null,
         revision: entry.revision,
       ));
@@ -555,8 +581,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }
 
   /// [coord]'s picture, made from its tile the first time it is asked where
-  /// none was — the engine's results, which only a screen that draws
-  /// pictures asks for ([_shownOf]).
+  /// none was — the engine's results ([_shownOf]) and a fill's
+  /// ([showResultTiles]), which only a screen that draws pictures asks for.
   ui.Image? _imageAt(TileCoord coord) {
     final shown = _shown[coord];
     if (shown == null || shown.image != null) {
@@ -578,9 +604,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// very picture the screen showed to the committed tile. Null where
   /// nothing is pictured at [coord].
   ///
-  /// The painter is not told: at 100% it is the same picture. ⚠️A screen
-  /// that measures the live row by its pictures (`LiveSurfaceTokens`) sees
-  /// the coordinate change once and patches the same bytes once.
+  /// The painter is not told: at 100% it is the same picture.
   ui.Image? chainedTileImageAt(TileCoord coord) {
     pictureOwed();
     final image = _imageAt(coord);

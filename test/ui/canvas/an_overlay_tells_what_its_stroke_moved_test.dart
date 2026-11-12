@@ -149,7 +149,14 @@ void main() {
         ..showResultTiles([PromotedStrokeTile(farTile, tile, 1)]);
       final mark = markBeforeADab(model);
 
-      expect(model.takeTileImageAt(farTile, revision: 1), isNotNull);
+      // No picture of it was read — the screen that asks what moved draws
+      // none — and the coordinate leaves the overlay all the same.
+      model.takeTileImageAt(farTile, revision: 1);
+      expect(
+        model.shownBy.containsKey(farTile),
+        isFalse,
+        reason: '⛔premise: handed over',
+      );
 
       expect(model.movedSince(mark), isNull);
     });

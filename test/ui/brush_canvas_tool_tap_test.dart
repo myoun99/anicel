@@ -25,13 +25,18 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/services/cel_text_laying.dart'
+    show celSurfaceWithTextsLaid;
 
 import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/a_fill_on_the_engine.dart';
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/cel_text_fixture.dart' show textOf;
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
@@ -1457,6 +1462,114 @@ void main() {
         TileCoord(x: 0, y: 0),
       },
       reason: 'the stamp lands on the pasteboard as it lands on the canvas',
+    );
+  });
+
+  testWidgets('🚨landed under a text on a canvas that draws tile pictures, '
+      'a fill hands its picture to the tile shown under the letters', (
+    tester,
+  ) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final cel = coordinator.currentSurfaceOf(frameKeys.first);
+    final speck = Uint8List(BitmapTile.bytesFor(cel.tileSize))
+      ..setAll(0, const [255, 0, 255, 255]);
+    final under = TileCoord(x: 0, y: 0);
+    coordinator.restoreSurfaceSnapshot(
+      frameKeys.first,
+      cel.withTexts([
+        textOf(
+          1,
+          plate: {under: BitmapTile(size: cel.tileSize, pixels: speck)},
+        ),
+      ]),
+    );
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+          )),
+          fillRangeAt: (_, _) => rangeOf(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(10, 10),
+    );
+    // The tap frame draws the result's picture; the landing after it hands
+    // that picture over.
+    await tester.pump();
+    await tester.pump();
+
+    final after = coordinator.currentSurfaceOf(frameKeys.first);
+    final bare = after.tiles[under];
+    expect(bare, isNotNull, reason: '⛔premise: the fill landed');
+    final lettered = celSurfaceWithTextsLaid(after).tileAt(under)!;
+    expect(lettered, isNot(same(bare)), reason: '⛔premise: under the text');
+    expect(BitmapTileImageCache.instance.heldFor(lettered), isNotNull);
+    // ⛔Mutation: the picture handed to the tile the commit installs → a
+    // picture with letters in it stands for the bare drawing, and goes on
+    // showing them after the text is moved or deleted.
+    expect(BitmapTileImageCache.instance.heldFor(bare!), isNull);
+  });
+
+  testWidgets('🚨landed on a canvas whose screen draws no tile picture, a '
+      'fill has none made of its tiles', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final overlay = ActiveStrokeOverlayModel();
+    addTearDown(overlay.dispose);
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+          )),
+          fillRangeAt: (_, _) => rangeOf(),
+          // The drawing canvas: its frame is laid from the tiles, by a
+          // screen that asks the overlay for no picture — the engine's.
+          activeStrokeOverlayModel: overlay,
+          viewportUnderlayBuilder: (_, _, _, _) => const SizedBox.shrink(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(
+      tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          ) +
+          const Offset(10, 10),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final landed = coordinator.currentSurfaceOf(frameKeys.first).tiles.values;
+    expect(landed, isNotEmpty, reason: '⛔premise: the fill landed');
+    // ⛔Mutation: the landing pictures a tile no screen asked a picture of →
+    // of a tile the engine landed, a wait for the GPU apiece, inside the
+    // pointer's handler.
+    expect(
+      landed.where(
+        (tile) => BitmapTileImageCache.instance.heldFor(tile) != null,
+      ),
+      isEmpty,
     );
   });
 

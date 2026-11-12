@@ -323,16 +323,18 @@ void main() {
       }
     }
 
-    // The commit, the way landPromoted does it: hand over the images,
+    // The commit, the way landPromoted does it: hand over the pictures a
+    // screen asked for — this one lays the tiles, and asked for none —
     // install the same tile objects, drop the overlay.
     final placed = <PlacedTile>[];
     for (final entry in promoted) {
-      final image = overlay.takeTileImageAt(entry.coord, revision: entry.revision);
-      expect(image, isNotNull);
-      cache.adoptDecoded(
-        entry.tile,
-        image!,
+      final image = overlay.takeTileImageAt(
+        entry.coord,
+        revision: entry.revision,
       );
+      if (image != null) {
+        cache.adoptDecoded(entry.tile, image);
+      }
       placed.add((coord: entry.coord, tile: entry.tile));
     }
     final committed = base.putMaterializedTiles(placed);

@@ -1407,14 +1407,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
-    // The canvas says which cel it is drawing, and THROUGH what: the texts
-    // laid over it make the tiles it paints other objects than the cel's
-    // own, so a picture made ahead for the cel's own would go unused.
-    ShownCels.instance.show(
-      this,
-      token.key.cel,
-      painted: celSurfaceWithTextsLaid,
-    );
+    // The canvas says which cel it shows — the one the steps of an undo
+    // are read ahead for — and that it draws no picture of a tile: the
+    // engine lays the row from its tiles, so none is made ahead. ↩️It said
+    // through what it painted them, its texts laid, while its stack drew
+    // pictures (till 2026-11-12).
+    ShownCels.instance.show(this, token.key.cel, pictured: null);
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
       // ★DRAWN WITH ITS TEXTS LAID. They are laid per TILE, so a dab
       // re-lays the one tile it changed and the rest of the cel answers

@@ -122,8 +122,8 @@ void main() {
   }
 
   testWidgets('🚨the text is on the cel after the stroke, and through an '
-      'undo of it; the pen\'s tiles showed the letters while it was down '
-      'and handed their pictures to the tiles that show them', (tester) async {
+      'undo of it; the pen\'s tiles showed the letters while it was down, '
+      'and no picture of them is pinned to the bare drawing', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: oneFrameProject())),
     );
@@ -167,18 +167,16 @@ void main() {
       reason: 'the commit made a new picture — and it is the same text',
     );
 
-    // Every tile the stroke made is shown under the letters, and it is THAT
-    // tile — not the bare drawing's — that holds a picture.
+    // Every tile the stroke made is shown under the letters, and no
+    // picture is the bare drawing's. (One a screen asked the overlay for
+    // goes to the tile shown under the letters — pinned where a canvas
+    // draws pictures, `brush_canvas_tool_tap_test`; this canvas's screen
+    // lays the tiles and asks for none.)
     final shown = celSurfaceWithTextsLaid(after);
     final cache = BitmapTileImageCache.instance;
     for (final entry in after.tiles.entries) {
       final laid = shown.tileAt(entry.key)!;
       expect(laid, isNot(same(entry.value)), reason: '⛔fixture: under text');
-      expect(
-        cache.heldFor(laid),
-        isNotNull,
-        reason: '${entry.key}: the tile the canvas draws has its picture',
-      );
       expect(
         cache.heldFor(entry.value),
         isNull,
