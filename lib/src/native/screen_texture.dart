@@ -163,7 +163,6 @@ sealed class ScreenTexture {
     if (!began) {
       return;
     }
-    final frame = _frames.laying!;
     final done = _done;
     if (done == null) {
       // Up in the paint that drew it, which shows it: nobody to tell.
@@ -177,15 +176,14 @@ sealed class ScreenTexture {
             return;
           }
           _putUp();
-          putUp?.call(behind: _frames.wanted != frame.asked);
+          putUp?.call(behind: _frames.behind);
         },
         onError: (Object error, StackTrace stack) {
           _report(error, stack);
           if (_freed) {
             return;
           }
-          _frames.layingFailed();
-          putUp?.call(behind: _frames.wanted != frame.asked);
+          putUp?.call(behind: _frames.layingGivenUp());
         },
       ),
     );
@@ -198,7 +196,11 @@ sealed class ScreenTexture {
   }
 
   void _putUp() {
-    _frames.laid();
+    // Never let go of unseen: each frame is asked for by a number of its
+    // own, so what is up is never of the one asked for last.
+    if (_frames.laid() == null) {
+      return;
+    }
     _show();
     _showsAFrame = true;
   }

@@ -254,12 +254,13 @@ class _BrushEditShapeShow implements ShapeShow {
       _askFrame();
       return;
     }
-    _area.laid();
-    _state._fill.showResult(
-      base: laying.base,
-      blend: laying.area.blend,
-      tiles: laying.tiles.values.toList(),
-    );
+    if (_area.laid() != null) {
+      _state._fill.showResult(
+        base: laying.base,
+        blend: laying.area.blend,
+        tiles: laying.tiles.values.toList(),
+      );
+    }
     // 「앞의 것을 다 그리면 지금 손 위치로 한 번 더」.
     if (_area.layTheNewest()) {
       _askFrame();
@@ -281,8 +282,13 @@ class _BrushEditShapeShow implements ShapeShow {
         return;
       }
     }
-    _path.laid();
-    _putUp(laying);
+    // Let go of unseen ([LaidWhole.laid]), it is in the live rasterizer and
+    // not on screen: [_rasterHolds] stays null from its start, and a
+    // release lays its path again ([landStroke]). ⛔Not named there to save
+    // that laying — the record is of what is on screen AND in it.
+    if (_path.laid() != null) {
+      _putUp(laying);
+    }
     // 「앞의 것을 다 그리면 지금 손 위치로 한 번 더」.
     if (_path.layTheNewest()) {
       _askFrame();

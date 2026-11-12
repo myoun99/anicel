@@ -63,8 +63,10 @@ void main() {
     expect(begun, ['a']);
   });
 
-  test('asked back to what was up while another is laid, it is laid again '
-      'once that one is whole — what is up by then is the other', () {
+  // ↩️Till 2026-11-12 the other was put up and what was up laid again — a
+  // frame of a want given up (F-377).
+  test('🚨asked back to what is up while another is laid, the other is let '
+      'go of unseen once it is whole, and nothing is laid again', () {
     final (:pieces, :begun) = aHolder();
     pieces
       ..ask('a')
@@ -72,27 +74,67 @@ void main() {
       ..ask('b')
       ..ask('a');
 
-    pieces.laid();
+    expect(pieces.laid(), isNull, reason: 'b never comes up');
 
-    expect(pieces.shown, (of: 'b'));
-    expect(pieces.layTheNewest(), isTrue, reason: 'b is up; a is asked');
-    expect(begun, ['a', 'b', 'a']);
+    expect(pieces.shown, (of: 'a'));
+    expect(pieces.behind, isFalse);
+    expect(pieces.layTheNewest(), isFalse);
+    expect(begun, ['a', 'b']);
+  });
+
+  test('behind: what is up is not of what is asked for, and nothing is '
+      'being laid', () {
+    final (:pieces, begun: _) = aHolder();
+    expect(pieces.behind, isFalse, reason: 'nothing is asked for');
+    pieces.ask('a');
+    expect(pieces.behind, isFalse, reason: 'it is being laid');
+    pieces
+      ..ask('b')
+      ..laid();
+
+    expect(pieces.behind, isTrue, reason: 'a is up, b is asked for');
+    pieces.layTheNewest();
+    expect(pieces.behind, isFalse);
   });
 
   test('a piece that will never be whole leaves what was up standing, and '
-      'the newest is begun next', () {
+      'says whether another was asked for meanwhile — what failed is not '
+      'begun again of itself', () {
     final (:pieces, :begun) = aHolder();
     pieces
       ..ask('a')
       ..laid()
       ..ask('b');
 
-    pieces.layingFailed();
-
+    expect(pieces.layingGivenUp(), isFalse, reason: 'b is the newest');
     expect(pieces.shown, (of: 'a'));
     expect(pieces.laying, isNull);
+
+    pieces
+      ..ask('c')
+      ..ask('d');
+    expect(begun, ['a', 'b', 'c']);
+    expect(pieces.layingGivenUp(), isTrue, reason: 'd was asked meanwhile');
     expect(pieces.layTheNewest(), isTrue);
-    expect(begun, ['a', 'b', 'b']);
+    expect(begun, ['a', 'b', 'c', 'd']);
+  });
+
+  test('🚨a piece stood up unlaid while another is laid is what is up and '
+      'asked for: the other is let go of unseen once whole', () {
+    final (:pieces, :begun) = aHolder();
+    pieces
+      ..ask('a')
+      ..laid()
+      ..ask('b');
+
+    pieces.stand((of: 'c'), 'c');
+
+    expect(pieces.shown, (of: 'c'));
+    expect(pieces.wanted, 'c');
+    expect(pieces.laid(), isNull, reason: 'b was given up for c');
+    expect(pieces.shown, (of: 'c'));
+    expect(pieces.layTheNewest(), isFalse, reason: 'c is up');
+    expect(begun, ['a', 'b'], reason: 'what stands is not laid');
   });
 
   test('dropped, nothing is asked, laid or up', () {

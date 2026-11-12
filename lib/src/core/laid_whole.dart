@@ -15,17 +15,22 @@
 /// GPU finishes it.
 ///
 /// ⛔ONE LAW, NOT ONE A HOLDER: the shape tool's area and its stroke (the
-/// brush edit view's shape show) and a screen's texture (`ScreenTexture`)
-/// are three holders of it. The shape show wrote it out twice, line for
-/// line, until the screen made a third (2026-11-12) — kept apart, a fix to
-/// one is a bug left in the others.
+/// brush edit view's shape show), a screen's texture (`ScreenTexture`),
+/// the brush in hand drawn as a stroke (`BrushStrokeLivePreview`) and a
+/// text in hand (`CelTextSession`) are holders of it. The shape show wrote
+/// it out twice, line for line, until the screen made a third
+/// (2026-11-12); the stroke and the text had each written it out again
+/// (a-float-in-hand-draws-the-frame-as-it-stands ③④, 2026-11-12) — kept
+/// apart, a fix to one is a bug left in the others: what [laid] lets go of
+/// unseen was the text's alone.
 ///
 /// 🚨WHOLE OR NOT AT ALL. A piece half laid is a wrong picture, and the law
 /// allows only a LATE one: nothing is put up until it is whole ([laid]).
 ///
 /// How a piece is laid is its holder's: [ask] begins one where none is
 /// being laid ([_begin]), and the holder says when it is whole — a share of
-/// each frame for a shape, the GPU's word for a screen.
+/// each frame for a shape, the GPU's word for a screen, a worker's for a
+/// stroke, the engine's for a text.
 final class LaidWhole<W extends Object, L extends Object> {
   /// [begin] starts laying what is asked for, and [holds] says whether a
   /// piece laid is of what is asked for — what is up then needs nothing.
@@ -58,12 +63,36 @@ final class LaidWhole<W extends Object, L extends Object> {
   }
 
   /// What is being laid is whole: it is up in place of what stood, and is
-  /// answered.
-  L laid() {
+  /// answered — or null, where what is asked for went back meanwhile to
+  /// what is up: it is let go of unseen.
+  ///
+  /// 🚨A PIECE WHOSE WANT WENT BACK TO WHAT IS UP IS NOT PUT UP: up, it
+  /// would show for a frame before the screen went back — a step given up
+  /// while it was being set (F-377, the text tool's own until it was a
+  /// holder of this, 7abe6843a), and 「한 프레임 보이는 건 무조건 걸린다」.
+  L? laid() {
     final whole = _laying!;
     _laying = null;
+    final wanted = _wanted;
+    if (_shown case final shown? when wanted != null && _holds(shown, wanted)) {
+      return null;
+    }
     _shown = whole;
     return whole;
+  }
+
+  /// Whether what is up is not of what is asked for and nothing is being
+  /// laid: the newest is to be begun, where its holder begins it
+  /// ([layTheNewest]).
+  bool get behind {
+    final wanted = _wanted;
+    if (wanted == null || _laying != null) {
+      return false;
+    }
+    return switch (_shown) {
+      final shown? => !_holds(shown, wanted),
+      null => true,
+    };
   }
 
   /// 「앞의 것을 다 그리면 지금 손 위치로 한 번 더」: begins the newest asked
@@ -81,10 +110,28 @@ final class LaidWhole<W extends Object, L extends Object> {
     return true;
   }
 
-  /// What was being laid will never be whole: what is up stays, and the
-  /// newest asked is begun next time it is laid ([layTheNewest]).
-  void layingFailed() {
+  /// What was being laid will never be whole — it could not be made, or
+  /// its holder gave it up for a newer ask before laying it: what is up
+  /// stays. Answers whether something else was asked for meanwhile — that
+  /// is begun next time it is laid ([layTheNewest]); what was given up is
+  /// not asked of again till it is asked for again ([ask]), or a piece
+  /// that cannot be made is begun again and again.
+  bool layingGivenUp() {
+    final givenUp = _laying!;
     _laying = null;
+    final wanted = _wanted;
+    return wanted != null && !_holds(givenUp, wanted);
+  }
+
+  /// [piece] is up, whole, as what is asked for — [wanted] — made without
+  /// being laid here: a text carried by its very pixels, or taken back to
+  /// what its cel carries (`CelTextSession`). What is being laid meanwhile
+  /// goes on, and is let go of unseen once whole where nothing else is
+  /// asked for by then ([laid]).
+  void stand(L piece, W wanted) {
+    assert(_holds(piece, wanted), 'what stands is what is asked for');
+    _wanted = wanted;
+    _shown = piece;
   }
 
   /// Nothing is asked for, laid or up any more.

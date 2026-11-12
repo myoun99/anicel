@@ -208,6 +208,33 @@ void main() {
       await expectLater(waiting, completes);
     });
 
+    // ↩️Till 2026-11-12 the want made meanwhile went back with the refused
+    // one — the session's own loop had one slot for both (bcaeef502).
+    test('🚨a want made while the engine was refusing is the newest: it is '
+        'asked of the engine next, and the refused one never again', () async {
+      final (:session, :baker) = holding(null);
+      session.set(says('a'));
+      await baker.pending.answer();
+      session
+        ..set(says('ab'))
+        ..set(says('abc'));
+
+      await baker.pending.refuse(StateError('no raster'));
+
+      expect(session.content, says('abc'));
+      expect(session.shown.content, says('a'));
+      expect(session.settled, isFalse);
+      expect(baker.asked, hasLength(3));
+      expect(baker.pending.content, says('abc'));
+
+      await baker.pending.answer();
+
+      expect(session.failure, isNull);
+      expect(session.shown.content, says('abc'));
+      expect(session.settled, isTrue);
+      expect(baker.asked, hasLength(3), reason: '「ab」 is not asked again');
+    });
+
     test('the next want is asked of the engine again, and a bake it makes '
         'clears the failure', () async {
       final (:session, :baker) = holding(null);

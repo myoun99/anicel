@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/laid_whole.dart';
 import '../../models/brush_settings.dart';
 import '../effective_device_pixel_ratio.dart';
 import 'brush_stroke_preview.dart';
@@ -40,9 +41,11 @@ typedef BrushStrokeRasterize =
 /// lands on the value the hand stopped at. ⛔Without this the worker pool
 /// queues every intermediate value and the preview finishes long after the
 /// drag, which on an old tablet is the whole drag spent behind stale work.
+/// It is the law of [LaidWhole], the shape tool's and the screen's.
 ///
 /// ⚠️It OWNS the image it shows (that is what uncached means) and disposes
-/// it when the next one lands or the widget goes.
+/// it when the next one lands, when one is let go of unseen, or when the
+/// widget goes.
 class BrushStrokeLivePreview extends StatefulWidget {
   const BrushStrokeLivePreview({
     super.key,
@@ -60,10 +63,8 @@ class BrushStrokeLivePreview extends StatefulWidget {
 }
 
 class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
-  /// What is on screen. Owned here.
-  ui.Image? _shown;
-
-  /// What [_shown] was baked from — the request whose answer is already up.
+  /// The stroke asked for, baked off screen and put up whole, the last one
+  /// up standing meanwhile — ② above.
   ///
   /// 🚨★★★**WHAT IS ON SCREEN IS NOT WORTH ASKING FOR** (유저 2026-09-22:
   /// 「스트로크는 한번 굽고, **값이 바뀔때만** 구우면 되는게 맞지않나?」).
@@ -77,66 +78,53 @@ class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
   /// 화면이 갱신되고있어」, and this surface alone wore the 「alive」 badge
   /// under Show Repaints).
   ///
-  /// ⛔[_running] and [_queued] cannot answer it — both are null by the
-  /// time that rebuild runs. The preset preview has kept the same rule all
+  /// ↩️Answered here by a `_showing` of its own beside a `_running` and a
+  /// `_queued` till 2026-11-12; now by the law, which begins nothing whose
+  /// piece is up already. The preset preview has kept the same rule all
   /// along, in `_sampleSettings` (`BrushStrokePreview`).
-  (BrushSettings, int, int)? _showing;
-
-  /// The newest request nothing has started yet — the coalescing slot.
-  (BrushSettings, int, int)? _queued;
-
-  /// The request in flight, so an identical one is not started again.
-  (BrushSettings, int, int)? _running;
+  late final LaidWhole<_StrokeAsked, _Bake> _bakes = LaidWhole(
+    begin: (asked) {
+      final bake = _Bake(asked);
+      unawaited(_bake(bake));
+      return bake;
+    },
+    holds: (bake, asked) => bake.of == asked,
+  );
 
   @override
   void dispose() {
-    _shown?.dispose();
-    _shown = null;
+    _bakes.shown?.image?.dispose();
+    _bakes.drop();
     super.dispose();
   }
 
-  void _want(BrushSettings settings, int width, int height) {
-    final wanted = (settings, width, height);
-    if (wanted == _showing || wanted == _running || wanted == _queued) {
-      return;
-    }
-    _queued = wanted;
-    unawaited(_pump());
-  }
-
-  Future<void> _pump() async {
-    if (_running != null) {
-      return; // The completion below picks the queue up again.
-    }
-    final next = _queued;
-    if (next == null) {
-      return;
-    }
-    _queued = null;
-    _running = next;
+  Future<void> _bake(_Bake bake) async {
+    final (settings, width, height) = bake.of;
     final rasterize =
         widget.rasterize ?? BrushStrokePreviewCache.instance.rasterizeUncached;
-    BrushStrokeSample? sample;
+    final BrushStrokeSample sample;
     try {
-      sample = await rasterize(next.$1, next.$2, next.$3);
+      sample = await rasterize(settings, width, height);
     } on Object catch (_) {
       // A dead worker is the pool's problem to report; the preview simply
       // keeps whatever it was showing.
-      sample = null;
-    }
-    _running = null;
-    if (!mounted) {
-      sample?.image.dispose();
+      if (mounted && _bakes.layingGivenUp()) {
+        _bakes.layTheNewest();
+      }
       return;
     }
-    if (sample != null) {
-      setState(() {
-        _shown?.dispose();
-        _shown = sample!.image;
-        _showing = next;
-      });
+    if (!mounted) {
+      sample.image.dispose();
+      return;
     }
-    unawaited(_pump());
+    bake.image = sample.image;
+    final stood = _bakes.shown;
+    if (_bakes.laid() != null) {
+      setState(() => stood?.image?.dispose());
+    } else {
+      sample.image.dispose();
+    }
+    _bakes.layTheNewest();
   }
 
   @override
@@ -152,12 +140,12 @@ class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
         final devicePixelRatio = EffectiveDevicePixelRatio.of(context);
         // The same width LADDER the preset rows raster on: a panel splitter
         // drag must not be a re-bake per pixel either.
-        _want(
+        _bakes.ask((
           widget.settings,
           brushStrokePreviewRasterWidth(width.toDouble(), devicePixelRatio),
           (height * devicePixelRatio).round(),
-        );
-        final shown = _shown;
+        ));
+        final shown = _bakes.shown?.image;
         if (shown == null) {
           // ⛔The box still takes its place — the panel must not reflow when
           // the first bake lands (없다가 생기는 UI 금지).
@@ -178,4 +166,16 @@ class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
       },
     );
   }
+}
+
+/// A stroke asked for: the settings, and the pixel width and height of the
+/// box it fills.
+typedef _StrokeAsked = (BrushSettings, int, int);
+
+/// One stroke being baked, and — once it is — its image, owned here.
+class _Bake {
+  _Bake(this.of);
+
+  final _StrokeAsked of;
+  ui.Image? image;
 }
