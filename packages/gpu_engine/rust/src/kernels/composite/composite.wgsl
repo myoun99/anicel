@@ -110,7 +110,7 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 // keyed — nothing where it has no tile, where the tile's page is outside
 // the step's, or where this pass binds no such page. At `at | MASK_SOURCE`
 // it is the plan's mask as a picture instead: its byte at (x, y) the
-// word's alpha, nothing past the box (step_cover).
+// word's alpha, nothing past the box (step_sampled).
 //
 // A step: kind, mode, opacity, the first and last page it lays tiles from,
 // map_at, the map's first tile column and row, its columns and rows, where
@@ -139,19 +139,16 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   return row_keyed(at, page_word(k, index));
 }
 
-// What the row of step `at` shows at canvas pixel (x, y), straight on the
-// 16-bit scale. ⭐THE ONE PLACE A ROW IS SAMPLED: R1 (gpu-int-spec-canvas)
-// for every pose, a whole-pixel move being its copy — then the row's
-// colour matrix, where it runs one, on what R1 lays: the app folds a
-// row's colour effects into its paint's filter, which runs on what is
-// drawn (resolveCompositeEffectPaint; 캔버스 베이스 11-06 07:48).
-fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
-  var word = resample(step_map(at), at, x, y);
+// What the row of step `at` shows of the `word` R1 laid for it, straight
+// on the 16-bit scale: the word through the row's colour matrix, where it
+// runs one (step_sampled).
+fn row_shown(at: u32, word: u32) -> vec4<u32> {
+  var shown = word;
   let matrix = plan[at + 13u];
   if (matrix != NO_MATRIX) {
-    word = matrix_rgba8(matrix, word);
+    shown = matrix_rgba8(matrix, word);
   }
-  return blend_unpack8(word);
+  return blend_unpack8(shown);
 }
 
 // The map of step `at` — a row's, or a range mark's.
@@ -177,21 +174,64 @@ const MASK_SOURCE: u32 = 0x80000000u;
 // No test here can see it.
 override composite_with_mask: bool = true;
 
-// The coverage step `at` is laid by at canvas pixel (x, y): the plan's mask
-// read as the step's pixels are, through its own map by R1 in its mode.
-// The mask is a plane in the step's own space — a posed row reads its
-// selection in its own artwork, as the app cuts a dab by it there
-// (piece_landing.dart `regionInArtworkSpace`, 09-25 a-marquee-on-a-posed-row)
-// — and its edge is resampled as what lands under it will be, so what
-// shows while a stroke is drawn is what landing it shows (「보이는 중이랑
-// 결과랑」): exactly for a copy. A step under no mask takes 255 without a
-// second R1 for every row, so it is laid at its opacity by the same
-// multiply (R28, gpu-canonical-store 11-06 06:51).
-fn step_cover(at: u32, x: i32, y: i32) -> u32 {
-  if (!composite_with_mask || plan[at + 12u] == 0u) {
-    return 255u;
+// What step `at` lays at canvas pixel (x, y): what its row shows — nothing
+// where it is no row sampled here (`rowed`) — and the coverage it is laid
+// by, for a row that shows something there and for a range mark
+// (`marked`).
+struct StepSample {
+  shown: vec4<u32>,
+  cover: u32,
+}
+
+// ⭐THE ONE PLACE A ROW IS SAMPLED: R1 (gpu-int-spec-canvas) for every
+// pose, a whole-pixel move being its copy — then the row's colour matrix,
+// where it runs one, on what R1 lays (row_shown): the app folds a row's
+// colour effects into its paint's filter, which runs on what is drawn
+// (resolveCompositeEffectPaint; 캔버스 베이스 11-06 07:48).
+//
+// ⚠️ONE CALL OF R1, FOR THE ROW AND THEN ITS MASK — and one of blend_laid
+// in `composite`: the shader compiler writes every call out whole, with
+// every mode R1 and the blend have, and the pass every plan takes (every
+// mode, masked) held R1 three times and blend_laid four. DXC took 2.2 s
+// over that pass on a Surface Pro 11 and takes 1.1 s over it with one of
+// each, and the app's 「앱 준비」 window waits for two such passes (card
+// the-wait-window-stands-seven-seconds-on-the-surface, 2026-11-13). No
+// byte changes, only the compile's time; tests.rs pins the one call of
+// each.
+fn step_sampled(at: u32, x: i32, y: i32, rowed: bool, marked: bool) -> StepSample {
+  var sampled = StepSample(vec4<u32>(0u), 255u);
+  // 0 the row, 1 the plan's mask under it.
+  var source = select(1u, 0u, rowed);
+  let end = select(1u, 2u, rowed || marked);
+  loop {
+    if (source >= end) {
+      break;
+    }
+    // The coverage step `at` is laid by at canvas pixel (x, y): the plan's
+    // mask read as the step's pixels are, through its own map by R1 in its
+    // mode. The mask is a plane in the step's own space — a posed row
+    // reads its selection in its own artwork, as the app cuts a dab by it
+    // there (piece_landing.dart `regionInArtworkSpace`, 09-25
+    // a-marquee-on-a-posed-row) — and its edge is resampled as what lands
+    // under it will be, so what shows while a stroke is drawn is what
+    // landing it shows (「보이는 중이랑 결과랑」): exactly for a copy. A
+    // step under no mask takes 255 without a second R1 for every row, so
+    // it is laid at its opacity by the same multiply (R28,
+    // gpu-canonical-store 11-06 06:51). A row is read under its mask only
+    // where it shows something.
+    let unmasked = !composite_with_mask || plan[at + 12u] == 0u;
+    if (source == 1u && (unmasked || (rowed && sampled.shown.w == 0u))) {
+      break;
+    }
+    let word = resample(step_map(at), select(at, at | MASK_SOURCE, source == 1u), x, y);
+    if (source == 0u) {
+      sampled.shown = row_shown(at, word);
+    } else {
+      sampled.cover = word >> 24u;
+    }
+    source += 1u;
   }
-  return resample(step_map(at), at | MASK_SOURCE, x, y) >> 24u;
+  return sampled;
 }
 
 // A range mark's cell along one side (fill_range_mark.dart): floor((p −
@@ -281,16 +321,26 @@ fn composite(
   }
   for (var step = pass_.step_begin; step < pass_.step_end; step++) {
     let at = step * STEP_WORDS;
-    switch (plan[at]) {
-      // A row is sampled only on the output tiles where it reads a stored
-      // tile (its bit there, mod.rs's lay); anywhere else it shows nothing.
+    let kind = plan[at];
+    // A row is sampled only on the output tiles where it reads a stored
+    // tile (its bit there, mod.rs's lay); anywhere else it shows nothing.
+    let rowed = kind == STEP_ROW && ((plan[entry + 2u + step / 32u] >> (step % 32u)) & 1u) != 0u;
+    let sampled = step_sampled(at, x, y, rowed, kind == STEP_MARK);
+    // What the step lays on the stack's top, by the pass's one call of
+    // blend_laid (⚠️ above step_sampled).
+    var lays = false;
+    var mode = BLEND_NORMAL;
+    var opacity = W_ONE;
+    var cover = 255u;
+    var laid = vec4<u32>(0u);
+    switch (kind) {
       case STEP_ROW: {
-        if (((plan[entry + 2u + step / 32u] >> (step % 32u)) & 1u) != 0u) {
-          let shown = row_sample(at, x, y);
-          if (shown.w != 0u) {
-            let cover = step_cover(at, x, y);
-            stack[top] = blend_laid(plan[at + 1u], plan[at + 2u], cover, shown, stack[top]);
-          }
+        if (sampled.shown.w != 0u) {
+          mode = plan[at + 1u];
+          opacity = plan[at + 2u];
+          cover = sampled.cover;
+          laid = sampled.shown;
+          lays = true;
         }
       }
       case STEP_OPEN: {
@@ -312,7 +362,10 @@ fn composite(
           closed = blend_unpack8(matrix_rgba8(matrix, blend_pack8(closed)));
         }
         top -= 1u;
-        stack[top] = blend_laid(plan[at + 1u], plan[at + 2u], 255u, closed, stack[top]);
+        mode = plan[at + 1u];
+        opacity = plan[at + 2u];
+        laid = closed;
+        lays = true;
       }
       case STEP_CLOSE_ATOP: {
         let closed = stack[top];
@@ -327,18 +380,22 @@ fn composite(
         let x1 = bitcast<i32>(plan[at + 4u]);
         let y1 = bitcast<i32>(plan[at + 5u]);
         if (x >= x0 && x < x1 && y >= y0 && y < y1) {
-          let colour = blend_unpack8(plan[at + 1u]);
-          stack[top] = blend_laid(BLEND_NORMAL, W_ONE, 255u, colour, stack[top]);
+          laid = blend_unpack8(plan[at + 1u]);
+          lays = true;
         }
       }
       // A range mark's checker under the range (mod.rs's Step::Mark).
       case STEP_MARK: {
-        let cover = step_cover(at, x, y);
-        if (composite_with_mask && cover != 0u) {
-          stack[top] = blend_laid(BLEND_NORMAL, W_ONE, cover, mark_colour(at, x, y), stack[top]);
+        if (composite_with_mask && sampled.cover != 0u) {
+          cover = sampled.cover;
+          laid = mark_colour(at, x, y);
+          lays = true;
         }
       }
       default: {}
+    }
+    if (lays) {
+      stack[top] = blend_laid(mode, opacity, cover, laid, stack[top]);
     }
   }
   if (pass_.last == 1u) {

@@ -1883,7 +1883,7 @@ fn plan_words(
                 [5, colour, left, top, right, bottom, 0, 0, 0, 0, 0, 0, 0, 0]
             }
             // Its map and its mask where a row keeps them (composite.wgsl's
-            // mark_colour and step_cover read both).
+            // mark_colour and step_sampled read both).
             Step::Mark { map, shift: [x, y] } => {
                 [6, x as u32, y as u32, 0, 0, 0, 0, 0, 0, 0, posed(&map), 0, 1, 0]
             }

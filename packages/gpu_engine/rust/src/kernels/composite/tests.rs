@@ -2929,3 +2929,19 @@ fn a_tile_set_read_from_words_holds_each_tile_its_word_names() {
     assert_eq!((set.x0, set.y0, set.columns, set.rows), (-3, 4, 3, 1));
     assert_eq!(set.tiles, vec![Some(far), None, Some(near)]);
 }
+
+/// The pass calls R1 once and blend_laid once (composite.wgsl's ⚠️ above
+/// `step_sampled`): the shader compiler writes each call out whole, and
+/// the pass every plan takes held R1 three times and the blend four, which
+/// DXC took twice as long over on a Surface Pro 11 (2026-11-13). The calls
+/// are counted in the code, its comments left out.
+#[test]
+fn the_pass_calls_r1_once_and_the_blend_once() {
+    let code: Vec<&str> = include_str!("composite.wgsl")
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect();
+    let calls = |name: &str| code.iter().map(|line| line.matches(name).count()).sum::<usize>();
+    assert_eq!(calls("resample("), 1);
+    assert_eq!(calls("blend_laid("), 1);
+}
