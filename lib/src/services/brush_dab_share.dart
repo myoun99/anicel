@@ -74,14 +74,22 @@ double stampShareOf(BrushDab dab) {
 /// branch (`qa_d2_even`).
 const int eveningTableSteps = 1024;
 
-/// The tables built so far — a stroke lays a few shares, and a table is
-/// 8 KB. ⚠️Not an LRU: this is asked once per dab, and a recency shuffle a
-/// dab (remove, re-insert) was most of what the share cost a stroke of small
-/// dabs in a debug build (2026-10-01: a 301-dab size-30 commit, 2.0 ms →
-/// 2.8 ms). A full cache starts over instead; [_lastShare] answers the run
-/// of dabs one move lays, which share one step.
-final BoundedMemo<double, Float64List> _tables = BoundedMemo(_tableCap);
-const int _tableCap = 64;
+/// The tables built so far, as many as there are shares to lay
+/// ([shareSteps] — 8 KB a table, 8 MB were every one laid). ⚠️Not an LRU:
+/// this is asked once per dab, and a recency shuffle a dab (remove,
+/// re-insert) was most of what the share cost a stroke of small dabs in a
+/// debug build (2026-10-01: a 301-dab size-30 commit, 2.0 ms → 2.8 ms).
+/// [_lastShare] answers the run of dabs one move lays, which share one
+/// step.
+///
+/// ↩️64 till 2026-11-12, on 「a stroke lays a few shares」: it lays one a
+/// move, each move at its own pace (`BrushDabInterpolator`'s `pathStep`),
+/// and a line whose points lie a pixel apart — a vector layer an import
+/// draws (`clipVectorTiles`) — lays 50–130 in 300 px. 🔬Such a stroke of
+/// 117 shares built 134 tables, the memo started over under it, and every
+/// stroke after built its own again: 1.8–3.2 ms of a stroke's plan against
+/// 0.8 with its tables built (main PC, a test's VM, 700 dabs).
+final BoundedMemo<double, Float64List> _tables = BoundedMemo(shareSteps);
 double _lastShare = -1;
 Float64List? _lastTable;
 
