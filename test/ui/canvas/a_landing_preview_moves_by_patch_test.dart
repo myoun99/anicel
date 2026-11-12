@@ -235,7 +235,7 @@ void main() {
         painters: LiftedRowPainters(),
       ),
     );
-    final before = frame.tokens!;
+    final before = frame.tokens;
     final was = preview.value!.drawnWorldRect;
 
     // THE CARRY: the float moves, nothing else does — out past the live

@@ -60,10 +60,12 @@ typedef StackRun = ({Listenable landings, FramePictures pictures});
 /// to the frame's next key ([EngineFramePictureStore.move]). ↩️Drawn as it
 /// stood over the picture until then, a step and its picture were two
 /// images of one frame, and their edges drew apart (F-465).
-/// Where a change cannot be told by where it lands — a pose or a spreading
-/// effect on the row, a float or a lift in hand — the frame is drawn as it
-/// stands, on a screen of this view's that is no picture of the frame,
-/// until its key moves.
+/// A float or a lift in hand is a change like any other, told where it
+/// lands a step of the hand at a time (`LiveSurfaceTokens`). Where a change
+/// cannot be told by where it lands — a pose that turns the row off the
+/// canvas's axes, a posed row's own chain or blend, a cel a lift holds
+/// that is not in hand — the frame is drawn as it stands, on a screen of
+/// this view's that is no picture of the frame, until its key moves.
 ///
 /// 🚨★★★SHOWN THROUGH A TEXTURE OF ITS OWN, PRESENTED IN ITS PAINT
 /// ([_RenderFrameScreen]): a picture written into shows at the next paint.
@@ -818,10 +820,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   bool get _canCatchUp {
     final live = _live;
     final held = _held;
-    return live != null &&
-        held != null &&
-        live.steady &&
-        live.movedSince(held).located;
+    return live != null && held != null && live.movedSince(held).located;
   }
 
   /// The live rows were handed anew — a lift taken up or put down, the
@@ -865,7 +864,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       return;
     }
     final now = live.tokens;
-    if (!live.steady || _showsUnstored(now)) {
+    if (_showsUnstored(now)) {
       _standing.whole = true;
       return;
     }
@@ -873,10 +872,13 @@ class _FramePictureViewState extends State<FramePictureView> {
   }
 
   /// Whether the live rows, as [tokens] tell them, show what no cel stores
-  /// — the overlay's tiles, a preview the painter floats.
+  /// — the overlay's tiles, what floats over the live row, a row a lift
+  /// holds.
   static bool _showsUnstored(LiveSurfaceTokens? tokens) =>
       tokens != null &&
-      (tokens.overlay.isNotEmpty || tokens.previews.isNotEmpty);
+      (tokens.overlay.isNotEmpty ||
+          tokens.previews.isNotEmpty ||
+          tokens.lifted.isNotEmpty);
 
   /// The key the picture of [key] is kept under once it holds the live
   /// rows as [tokens] tell them: [key] where they show nothing no cel
@@ -953,14 +955,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _patchIn(FramePictureKey key, StackedFrame live) {
     final held = _held;
     if (held == null) {
-      // A live row whose change cannot be told by where it lands — none
-      // where nothing is drawn live at all.
-      _standing.whole =
-          !live.steady || widget.live?.activeSurfacePainter != null;
-      return;
-    }
-    if (!live.steady) {
-      _standing.whole = true;
+      // Nothing drawn live: where rows are handed, [_tell] holds what the
+      // picture holds of them, or draws the frame as it stands.
+      // ↩️A live row handed and none held drew the frame as it stands,
+      // until the live rows' tokens were never null — then no view reached
+      // it (thrown there, the 295 files near it ran green, 2026-11-12).
       return;
     }
     final moved = live.movedSince(held);
@@ -1079,8 +1078,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 🗣️I-132-Q34 a with F-240 (유저 2026-09-29: 「변형중에도 필터 통일적용하도록」):
   /// a frame that waits for its plugins is never drawn as it stands
   /// ([_drawnPicture]) — where its live rows moved where no patch can
-  /// follow (a float, a lift: [StackedFrame.steady]), all of it goes
-  /// through them at each change, on the picture shown meanwhile.
+  /// follow ([StackedFrame.movedSince]), all of it goes through them at
+  /// each change, on the picture shown meanwhile. ↩️A float and a lift were
+  /// two of those, until they were told (a-float-in-hand-draws-the-frame-
+  /// as-it-stands, 2026-11-12): through them whole at every step, a
+  /// plug-in's row paid ~29 ms a step on the Surface Pro 11.
   ///
   /// ↩️It stayed on the picture shown until its key moved (ef44c1e56,
   /// 2026-10-30 — the choice of who built Q34 a, not the user's answer), and

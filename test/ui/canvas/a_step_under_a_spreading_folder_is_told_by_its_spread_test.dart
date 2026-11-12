@@ -112,7 +112,7 @@ void main() {
         region: DirtyRegion.fromXYWH(x: 0, y: 2, width: 5, height: 5),
       );
     });
-    final moved = frame.movedSince(before!);
+    final moved = frame.movedSince(before);
     return (located: moved.located, dirty: moved.dirty);
   }
 

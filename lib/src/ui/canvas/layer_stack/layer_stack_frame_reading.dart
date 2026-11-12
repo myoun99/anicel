@@ -51,19 +51,28 @@ class _SurfaceSlot {
     final value => value.shownOn(keys, canvasToRow: canvasToSlot),
   };
 
+  /// Where the float draws as this row shows it ([shown]), in the slot's
+  /// own space — null where nothing floats. What [extent] covers past the
+  /// surface, and where a change of the float lands
+  /// ([_FrameRows._floatTold]).
+  late final Rect? floated = () {
+    final shown = this.shown;
+    final told = shown?.preview.drawnWorldRect;
+    if (shown == null || told == null || told.isEmpty) {
+      return null;
+    }
+    final intoSlot = shown.canvasToRow;
+    return intoSlot == null ? told : MatrixUtils.transformRect(intoSlot, told);
+  }();
+
   /// What the slot draws, in its own space — the law is
   /// [_FrameReading._activeSurfaceExtent]'s (F-85).
   late final Rect extent = () {
     final drawn = painter.drawnWorldRect;
-    final shown = this.shown;
-    final told = shown?.preview.drawnWorldRect;
-    if (shown == null || told == null || told.isEmpty) {
+    final floated = this.floated;
+    if (floated == null) {
       return drawn;
     }
-    final intoSlot = shown.canvasToRow;
-    final floated = intoSlot == null
-        ? told
-        : MatrixUtils.transformRect(intoSlot, told);
     // A slot that draws nothing answers [Rect.zero], and a union with it
     // would reach back to the origin.
     return drawn.isEmpty ? floated : drawn.expandToInclude(floated);

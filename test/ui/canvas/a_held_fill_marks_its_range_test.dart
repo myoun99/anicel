@@ -281,21 +281,21 @@ void main() {
       final was = markOf(0, 0, 8, 8);
 
       // It comes: where it is.
-      var before = frame.tokens!;
+      var before = frame.tokens;
       overlay.showFillRange(was);
       var moved = frame.movedSince(before);
       expect(moved.located, isTrue, reason: 'it is a patch');
       expect(moved.dirty, was.bounds.inflate(1));
 
       // Its checker is pushed (F-568): where it is, the outline unmoved.
-      before = frame.tokens!;
+      before = frame.tokens;
       overlay.showFillRange(was.shifted(const Offset(3, 0)));
       moved = frame.movedSince(before);
       expect(moved.located, isTrue);
       expect(moved.dirty, was.bounds.inflate(1));
 
       // It moves to another region: where it was and where it is.
-      before = frame.tokens!;
+      before = frame.tokens;
       final now = markOf(16, 16, 8, 8);
       overlay.showFillRange(now);
       moved = frame.movedSince(before);
@@ -303,7 +303,7 @@ void main() {
       expect(moved.dirty, was.bounds.expandToInclude(now.bounds).inflate(1));
 
       // It goes: where it was.
-      before = frame.tokens!;
+      before = frame.tokens;
       overlay.showFillRange(null);
       moved = frame.movedSince(before);
       expect(moved.located, isTrue);
