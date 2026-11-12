@@ -18,7 +18,7 @@ import '../ui/theme/app_theme.dart';
 /// second (「엔진 시작. 엔진 시작.. 엔진 시작...」), and no progress bar.
 ///
 /// The stages run in [stageNames]' order. The runner says the first two
-/// itself, before Dart runs — from what the LAST launch left in
+/// itself, before Dart runs — from what the LAST run left in
 /// [labelsFileName], since only Dart knows the app's language and face —
 /// and Dart says the last two over [channel].
 ///
@@ -86,27 +86,39 @@ abstract final class LaunchSplash {
   static String _faceFilesLine = '';
 
   /// Says the app is preparing, and leaves the face and the stage names
-  /// for the next launch's runner. Once, from `main()`, as soon as the
-  /// language is known.
+  /// for the next launch's runner — here, and at each language the app is
+  /// given while it runs ([_languageChanged]). Once, from `main()`, as soon
+  /// as the language is known.
   static Future<void> preparing(AppStrings strings) async {
     if (!_shown) {
       return;
     }
+    _faceFilesLine = await _faceOfTheLanguage();
+    _say(stageNames(strings)[2]);
+    _leaveForTheNextLaunch(_faceFilesLine, strings);
+    AppText.settings.addListener(_languageChanged);
+  }
+
+  /// The files of the face [AppTypography] gives the app's language now —
+  /// none where the manifest would not read: the runner then speaks in the
+  /// OS's face.
+  static Future<String> _faceOfTheLanguage() async {
     final families = [
       AppTypography.familyFor(AppText.language),
       ...AppTypography.fallbackFor(AppText.language),
     ];
     try {
-      _faceFilesLine = faceFiles(
+      return faceFiles(
         families,
         await rootBundle.loadString('FontManifest.json'),
       ).join('\t');
     } on Object {
-      // The runner then speaks in the OS's face.
-      _faceFilesLine = '';
+      return '';
     }
-    final names = stageNames(strings);
-    _say(names[2]);
+  }
+
+  /// Leaves [face] and [strings]' stage names in [labelsFileName].
+  static void _leaveForTheNextLaunch(String face, AppStrings strings) {
     final labels = File(
       testRedirectedAppSupportPath(labelsFileName, sandbox: 'launch'),
     );
@@ -115,7 +127,7 @@ abstract final class LaunchSplash {
           .create(recursive: true)
           .then(
             (_) => labels.writeAsString(
-              '$_faceFilesLine\n${names.join('\n')}\n',
+              '$face\n${stageNames(strings).join('\n')}\n',
             ),
           )
           .then<void>(
@@ -123,6 +135,21 @@ abstract final class LaunchSplash {
             // The next launch then shows last time's names, or none.
             onError: (Object _) {},
           ),
+    );
+  }
+
+  /// A language chosen while the app runs is the next launch's runner's
+  /// too. ↩️Till 2026-11-12 the names were left once a launch, so the
+  /// launch after a change of language said its first two stages — the
+  /// runner's — in the language before it, and only the one after that in
+  /// the language chosen (🔬검증/서피스 2026-11-12 09:08, a Surface Pro 11:
+  /// 「언어를 바꾼 뒤 첫 실행 한 번만 바뀌기 전 언어로 나온다」).
+  static void _languageChanged() {
+    final strings = AppText.strings;
+    unawaited(
+      _faceOfTheLanguage().then(
+        (face) => _leaveForTheNextLaunch(face, strings),
+      ),
     );
   }
 
