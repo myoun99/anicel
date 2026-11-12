@@ -23,7 +23,8 @@ import '../../helpers/app_faces.dart';
 /// An export's overlay is rastered only round where its painter inks
 /// ([PlaybackFramePainter.inkOf]) and laid where it stands on a blank of
 /// the whole raster ([drawnOnTheEngine]) — and the frame it makes on the
-/// engine is the whole raster's, byte for byte.
+/// engine is the whole raster's — to a channel's rounding where a name is
+/// resampled.
 ///
 /// Card an-exports-overlay-raster-reads-back-the-whole-frame: 🔬a 4K
 /// frame's names inked 1–20% of it, and the whole of it was rastered, read
@@ -134,7 +135,19 @@ void main() {
     return count;
   }
 
-  group('🚨names alone: rastered round them, the whole frame\'s bytes', () {
+  /// How far [a] and [b] part, in the most any channel of a pixel does.
+  int parted(Uint8List a, Uint8List b) {
+    var most = 0;
+    for (var i = 0; i < a.length; i += 1) {
+      final apart = (a[i] - b[i]).abs();
+      if (apart > most) {
+        most = apart;
+      }
+    }
+    return most;
+  }
+
+  group('🚨names alone: rastered round them, the whole frame', () {
     for (final (name, painter, width, height) in [
       ('through the camera', over(), 640, 360),
       // A preview's size of the frame: the view scales the names.
@@ -180,7 +193,14 @@ void main() {
         );
         final whole = await laid(painter, width, height, round: false);
         expect(inked(whole), greaterThan(0), reason: 'LIVENESS: names');
-        expect(await laid(painter, width, height, round: true), whole);
+        // Moved by whole pixels, a name resampled through a turned or zoomed
+        // camera rounds a sample a hair apart: a channel parts by one at
+        // most (🔬11-12: 1–2 pixels of the frame, 101–106 px inside the
+        // box). A name cut short, a blur's reach left out or a part laid off
+        // its place parts by far more.
+        final round = await laid(painter, width, height, round: true);
+        expect(round.length, whole.length);
+        expect(parted(round, whole), lessThanOrEqualTo(1));
       });
     }
   });

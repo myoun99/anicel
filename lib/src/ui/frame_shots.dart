@@ -382,23 +382,24 @@ void _rastered(int width, int height) {
 }
 
 /// The whole pixels of a [width] × [height] raster round [inks] —
-/// [left, top, right, bottom) — with [_inkReach] more on every side.
+/// [left, top, right, bottom).
+///
+/// No margin past them: an edge's coverage and a filtered picture's
+/// samples fall inside the shape they are laid on, and the box holds the
+/// shapes. ↩️Two pixels more on every side were kept for that, until it was
+/// measured (11-12: at none, nothing inked past the box in any of seven
+/// frames of names).
 (int, int, int, int) _pixelsRound(ui.Rect inks, int width, int height) {
   if (inks.isEmpty) {
     return (0, 0, 0, 0);
   }
   return (
-    (inks.left.floor() - _inkReach).clamp(0, width),
-    (inks.top.floor() - _inkReach).clamp(0, height),
-    (inks.right.ceil() + _inkReach).clamp(0, width),
-    (inks.bottom.ceil() + _inkReach).clamp(0, height),
+    inks.left.floor().clamp(0, width),
+    inks.top.floor().clamp(0, height),
+    inks.right.ceil().clamp(0, width),
+    inks.bottom.ceil().clamp(0, height),
   );
 }
-
-/// How far past the box its painter answers a raster's ink may fall, in
-/// its pixels: an edge's anti-aliasing, and the filter a picture laid at a
-/// scale samples its neighbours by.
-const int _inkReach = 2;
 
 /// What [draw] draws on a raster of [width] × [height], premultiplied
 /// RGBA — only its [part] — [left, top, right, bottom) — where one is
