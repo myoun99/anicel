@@ -140,9 +140,9 @@ sealed class ScreenTexture {
   /// [draw]s the next frame onto what Flutter is not showing — what it was
   /// drawn for told by [drawnFor] — and puts it up once the GPU has
   /// finished it, telling [putUp]. [draw] submits its work and waits for
-  /// none of it ([GpuScreen.show]). Asked while one is being drawn, it
-  /// draws nothing: the newest asked is drawn once that one is up, where it
-  /// is presented again.
+  /// none of it ([GpuScreen.show], [GpuGridLay.lay]). Asked while one is
+  /// being drawn, it draws nothing: the newest asked is drawn once that one
+  /// is up, where it is presented again.
   ///
   /// 🚨A frame that cannot be drawn or finished — the GPU past the
   /// engine's limit (`Engine::wait`), the device gone — leaves Flutter

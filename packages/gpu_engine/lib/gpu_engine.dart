@@ -3191,8 +3191,9 @@ class GpuGridLay {
 
   /// The pixels [rect] of [target] — (left, top, right, bottom) — clear,
   /// and each of [laid] over the pixels whose centres its `onto` holds, a
-  /// later one over an earlier; waits for the GPU. Throws for a rect past
-  /// the target and a tile laid from past its picture or onto no box.
+  /// later one over an earlier; submits the work, waiting for none of it
+  /// ([GpuEngine.done]). Throws for a rect past the target and a tile laid
+  /// from past its picture or onto no box.
   void lay(
     GpuTarget target,
     (int, int, int, int) rect,

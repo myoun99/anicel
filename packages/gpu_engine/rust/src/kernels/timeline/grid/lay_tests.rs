@@ -3,10 +3,11 @@
 //! — a test may read a screen, the app never does (관제 11-05 14:02).
 
 use std::ops::Range;
+use std::time::Duration;
 
 use super::super::{GridPicture, GridTile};
 use super::{GridLay, Laid};
-use crate::device::{Engine, storage_texture};
+use crate::device::{Engine, gpu_engine_waits_here, storage_texture};
 use crate::testing::{first_engine, last_error};
 
 const RGBA: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -232,4 +233,30 @@ fn a_lay_past_its_screen_or_its_tile_is_refused_with_why() {
     assert!(last_error().contains("laid onto [1.0, 0.0, 1.0, 2.0]"), "{}", last_error());
     let whole = one([0.0, 0.0, 2.0, 2.0], [0.0, 0.0, 2.0, 2.0]);
     assert!(lay.lay(engine, &screen, [0, 0, 4, 4], &whole).is_some(), "{}", last_error());
+}
+
+// A lay waits for no GPU on the thread that asked (GridLay::lay's 🚨) — no
+// wait is counted there —, and the engine's thread says once it is done
+// (Engine::done_then), its pixels laid by then: on an engine of its own,
+// the tests' one being polled by every test at once. ↩️It was done on the
+// GPU when lay returned, until the-grid-lay-waits-on-the-ui-thread
+// (2026-11-12).
+#[test]
+fn a_lay_waits_here_for_nothing_and_is_told_done() {
+    let engine = Engine::open_first().expect("an engine of its own");
+    let tile = plain(&engine, (2, 1), RED);
+    let screen = storage_texture(&engine.device, 4, 1, RGBA);
+    let laid = [Laid { picture: &tile, from: [0.0, 0.0, 2.0, 1.0], onto: [1.0, 0.0, 3.0, 1.0] }];
+    let mut lay = GridLay::new();
+    lay.ready(&engine, RGBA);
+    let waits = gpu_engine_waits_here();
+    lay.lay(&engine, &screen, [0, 0, 4, 1], &laid).unwrap_or_else(|| panic!("{}", last_error()));
+    assert_eq!(gpu_engine_waits_here(), waits, "the lay waited here");
+    let (tell, told) = std::sync::mpsc::channel();
+    engine.done_then(move |done| {
+        let _ = tell.send(done);
+    });
+    assert_eq!(told.recv_timeout(Duration::from_secs(60)), Ok(Ok(())), "told it is done");
+    let bytes = engine.read_texture(&screen).expect("the screen reads back");
+    assert_eq!([at(&bytes, 4, 0, 0), at(&bytes, 4, 1, 0), at(&bytes, 4, 3, 0)], [CLEAR, RED, CLEAR]);
 }

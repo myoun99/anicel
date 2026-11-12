@@ -265,10 +265,12 @@ impl GridTile {
     /// Draws `ops` into `tile` over `background` (an RGBA word), the
     /// letters from `atlas` (an `R8Uint` texture of coverages) — submitted,
     /// not waited for: what reads the tile after comes after it on the same
-    /// queue, and the pass that lays it on a screen waits for the GPU before
-    /// the screen is shown ([`lay::GridLay::lay`]), as a read back waits for
-    /// itself (`Engine::read_texture`). None, with the last error, for a
-    /// stream it refuses.
+    /// queue, and the screen it is laid on ([`lay::GridLay::lay`]) is put up
+    /// once the GPU has finished all of it (`Engine::done_then`), as a read
+    /// back waits for itself (`Engine::read_texture`). None, with the last
+    /// error, for a stream it refuses. ↩️The lay waited before the screen
+    /// was shown, on the UI thread, till 2026-11-12
+    /// (the-grid-lay-waits-on-the-ui-thread).
     ///
     /// ↩️It waited for the GPU after each tile: 🔬a zoom across S5_BA's cut
     /// 352 draws some 16 tiles a frame, in the row's paint, and the UI

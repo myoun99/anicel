@@ -288,6 +288,41 @@ void main() {
     expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 
+  // ↩️Till 2026-11-12 each lay waited for the GPU here, on the thread that
+  // builds the frame (the-grid-lay-waits-on-the-ui-thread).
+  testWidgets('🚨a scroll past what the screen holds lays it again waiting '
+      'for no GPU on the thread that builds the frame', (tester) async {
+    aSmallView(tester);
+    var laid = 0;
+    debugOpenEngineScreen = (_, width, height) async {
+      surface = shownSurfaceOf(width, height);
+      surfaces.add(surface);
+      return ScreenTexture.debugOnSurface(
+        surface,
+        done: () {
+          laid++;
+          return Future.value();
+        },
+      );
+    };
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(aGrid(_Row(() => tile), scroll: scroll));
+    await tester.pump();
+    await tester.pump();
+
+    final (waits, laidBefore) = (debugWaitsHere, laid);
+    for (final to in [85.0, 0.0]) {
+      scroll.jumpTo(to);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    expect(debugWaitsHere, waits, reason: 'a lay waited here');
+    expect(laid - laidBefore, 2, reason: '⛔premise: each scroll was laid');
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
+  });
+
   testWidgets('🚨a scroll past what the screen holds while its frame is on '
       'the GPU shows the one up where it was laid — and lays where the row '
       'went once that one is up', (tester) async {

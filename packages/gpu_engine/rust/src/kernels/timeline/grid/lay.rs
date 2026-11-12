@@ -75,9 +75,18 @@ impl GridLay {
     /// each of `laid` over the pixels whose centres its `onto` holds, by R1
     /// from its `from` ([`laid_by`]) — where two hold one pixel either may land,
     /// which no row lays —, premultiplied as Flutter reads a surface. The rest of `target` is left
-    /// as it was. Waits for the GPU. None, with the last error, for a rect
+    /// as it was. Submits the work and returns. None, with the last error, for a rect
     /// not in the target, a format a screen cannot store, or a tile laid from
     /// past its picture, from no box or onto none.
+    ///
+    /// 🚨IT DOES NOT WAIT, as the screen's composite does not
+    /// ([`Composite::show`](crate::kernels::composite::Composite::show) has
+    /// why): what hands the screen to Flutter waits off the thread that
+    /// asked ([`Engine::done_then`], the app's screen texture). ↩️It waited
+    /// here till 2026-11-12 — on the thread that builds the app's frames,
+    /// whenever a row changed, a scroll passed what the screen held or the
+    /// panel grew (the-grid-lay-waits-on-the-ui-thread; the same law as
+    /// a-float-in-hand-draws-the-frame-as-it-stands-Q2).
     pub(crate) fn lay(&mut self, engine: &Engine, target: &wgpu::Texture, rect: [u32; 4], laid: &[Laid]) -> Option<()> {
         let [left, top, right, bottom] = rect;
         if left >= right || top >= bottom || right > target.width() || bottom > target.height() {
@@ -126,7 +135,7 @@ impl GridLay {
         land_storage_writes(&mut encoder, target);
         encode_on(engine, &mut encoder, tiles);
         engine.queue.submit([encoder.finish()]);
-        engine.wait()
+        Some(())
     }
 }
 
