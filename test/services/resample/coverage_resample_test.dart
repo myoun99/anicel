@@ -31,8 +31,8 @@ void main() {
   }
 
   test('🚨a one-pixel checkerboard averages to the middle at an 8× '
-      'reduction — a 4-tap bilinear cannot see that far', () {
-    final out = resampleCoverage(
+      'reduction — a 4-tap bilinear cannot see that far', () async {
+    final out = await resampleCoverage(
       checkerboard(64),
       width: 64,
       height: 64,
@@ -54,13 +54,13 @@ void main() {
   });
 
   test('🚨a one-pixel DIAGONAL survives an 8× reduction as its share — '
-      'this is the hairline a 4-tap bilinear deletes', () {
+      'this is the hairline a 4-tap bilinear deletes', () async {
     final source = Uint8List(64 * 64);
     for (var i = 0; i < 64; i += 1) {
       source[i * 64 + i] = 255;
     }
 
-    final out = resampleCoverage(
+    final out = await resampleCoverage(
       source,
       width: 64,
       height: 64,
@@ -80,20 +80,26 @@ void main() {
     expect(out[7 * 8], 0);
   });
 
-  test('a 1:1 resize is the identity, byte for byte', () {
+  test('a 1:1 resize is the identity, byte for byte', () async {
     final source = Uint8List.fromList([1, 2, 3, 4, 250, 251, 252, 253]);
 
     expect(
-      resampleCoverage(source, width: 4, height: 2, newWidth: 4, newHeight: 2),
+      await resampleCoverage(
+        source,
+        width: 4,
+        height: 2,
+        newWidth: 4,
+        newHeight: 2,
+      ),
       source,
     );
   });
 
   test('⛔enlarging reconstructs rather than nearest-neighbouring — the '
-      'thumbnail of a tiny tip is not blocky', () {
+      'thumbnail of a tiny tip is not blocky', () async {
     // A two-pixel ramp blown up: nearest-neighbour would give two flat
     // runs and nothing between them.
-    final out = resampleCoverage(
+    final out = await resampleCoverage(
       Uint8List.fromList([0, 255]),
       width: 2,
       height: 1,
@@ -110,8 +116,8 @@ void main() {
     );
   });
 
-  test('a fully empty coverage map stays empty', () {
-    final out = resampleCoverage(
+  test('a fully empty coverage map stays empty', () async {
+    final out = await resampleCoverage(
       Uint8List(32 * 32),
       width: 32,
       height: 32,
@@ -123,10 +129,10 @@ void main() {
   });
 
   test('a solid interior stays solid — the reduction does not darken what '
-      'it did not need to touch', () {
+      'it did not need to touch', () async {
     final source = Uint8List(64 * 64)..fillRange(0, 64 * 64, 255);
 
-    final out = resampleCoverage(
+    final out = await resampleCoverage(
       source,
       width: 64,
       height: 64,

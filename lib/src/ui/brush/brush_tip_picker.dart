@@ -203,8 +203,7 @@ class _TipSwatch extends StatelessWidget {
                       color: colorScheme.onSurfaceVariant,
                     )
                   : BrushTipMaskPreview(
-                      alpha: current.alpha,
-                      side: current.size,
+                      mask: current,
                       well: AppShapes.container(AppShapes.wellRadius),
                     ),
             ),
@@ -443,10 +442,12 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
                     onTap: tip.mask == null
                         ? null
                         : () => _press(tip.id, tip.mask),
-                    child: BrushTipMaskPreview(
-                      alpha: tip.mask?.alpha ?? tip.thumbnail,
-                      side: tip.mask?.size ?? brushTipThumbnailSide,
-                    ),
+                    // What its index carries, else its mask's picture — a
+                    // built-in carries none.
+                    child: switch (tip.thumbnail) {
+                      final drawn? => BrushTipMaskPreview.thumbnail(drawn),
+                      null => BrushTipMaskPreview(mask: tip.mask!),
+                    },
                   ),
               ],
             ),
@@ -577,7 +578,7 @@ class _TurnCell extends StatelessWidget {
           onTap: silentPress(onTap),
           child: Padding(
             padding: _cellInset(edge),
-            child: BrushTipMaskPreview(alpha: mask.alpha, side: mask.size),
+            child: BrushTipMaskPreview(mask: mask),
           ),
         ),
       ),

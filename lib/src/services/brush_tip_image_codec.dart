@@ -48,7 +48,7 @@ Future<BrushTipMask> decodeBrushTipImage(
     if (byteData == null) {
       throw const FormatException('image pixels unavailable');
     }
-    return brushTipMaskFromCoverage(
+    return await brushTipMaskFromCoverage(
       brushTipCoverageOfRgba(byteData.buffer.asUint8List()),
       size: (width: image.width, height: image.height),
       id: id,
@@ -106,11 +106,13 @@ Future<Uint8List> encodeBrushTipImage(BrushTipMask mask) async {
 /// is a minification of a coverage map, which is the one question
 /// [resampleCoverage] answers, so it is not a second question and does not
 /// get a second filter (ARCH-audit-Q7, 2026-09-07).
-Uint8List brushTipThumbnailAlpha(BrushTipMask mask, {int side = 16}) =>
-    resampleCoverage(
-      mask.alpha,
-      width: mask.size,
-      height: mask.size,
-      newWidth: side,
-      newHeight: side,
-    );
+Future<Uint8List> brushTipThumbnailAlpha(
+  BrushTipMask mask, {
+  int side = 16,
+}) => resampleCoverage(
+  mask.alpha,
+  width: mask.size,
+  height: mask.size,
+  newWidth: side,
+  newHeight: side,
+);

@@ -136,7 +136,7 @@ class _WorkspaceBrushPresets {
       nextUserBrushTipId(sequence: _registeredCutTipSequence),
     );
     await _state._tipLibrary.register(
-      cutPieceToTipMask(piece, id: id),
+      await cutPieceToTipMask(piece, id: id),
       name: name,
     );
   }

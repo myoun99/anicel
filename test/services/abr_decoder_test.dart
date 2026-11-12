@@ -363,10 +363,10 @@ Uint8List _fixtureAbr({
 
 void main() {
   group('decodeAbrBrushFile', () {
-    test('the Pen Tilt angle control turns the tip with the pen', () {
+    test('the Pen Tilt angle control turns the tip with the pen', () async {
       // Photoshop's list: Off · Fade · Pen Pressure · Pen Tilt · … — 3 is the
       // lean, Clip Studio's ペンの方向 (F-176-Q1).
-      final result = decodeAbrBrushFile(
+      final result = await decodeAbrBrushFile(
         _fixtureAbr(angleControl: 3),
         sourceName: 'fixture',
       );
@@ -375,9 +375,9 @@ void main() {
     });
 
     test('the Rotation angle control turns the tip as the pen turns about '
-        'its barrel', () {
+        'its barrel', () async {
       // 5 is Photoshop's Rotation — Clip Studio's ペン軸の回転 (F-176-Q9).
-      final result = decodeAbrBrushFile(
+      final result = await decodeAbrBrushFile(
         _fixtureAbr(angleControl: 5),
         sourceName: 'fixture',
       );
@@ -385,8 +385,12 @@ void main() {
       expect(chalk.settings.rotationMode, BrushTipRotationMode.penTwist);
     });
 
-    test('imports sampled and computed brushes with their parameters', () {
-      final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+    test('imports sampled and computed brushes with their '
+        'parameters', () async {
+      final result = await decodeAbrBrushFile(
+        _fixtureAbr(),
+        sourceName: 'fixture',
+      );
 
       expect(result.warnings, isEmpty);
       // Two desc brushes; the second samp tip is consumed as the dual
@@ -483,7 +487,7 @@ void main() {
       expect(chalk.settings.textureMask, isNull);
     });
 
-    test('the BlnM terms import as the blends they name', () {
+    test('the BlnM terms import as the blends they name', () async {
       // brush-fidelity: the thirteen beyond the first twelve, under the
       // enumeration's own terms — string ids for the newer ones.
       const expected = <String, BrushBlendMode>{
@@ -503,8 +507,8 @@ void main() {
         'Clr ': BrushBlendMode.chroma,
         'Lmns': BrushBlendMode.luminosity,
       };
-      expected.forEach((term, mode) {
-        final result = decodeAbrBrushFile(
+      for (final MapEntry(key: term, value: mode) in expected.entries) {
+        final result = await decodeAbrBrushFile(
           _fixtureAbr(mainBlend: term),
           sourceName: 'fixture',
         );
@@ -512,10 +516,10 @@ void main() {
           (p) => p.name == 'Fancy Chalk',
         );
         expect(chalk.settings.blendMode, mode, reason: term);
-      });
+      }
     });
 
-    test('a dual tip combines through linear burn and hard mix', () {
+    test('a dual tip combines through linear burn and hard mix', () async {
       // 🔬2026-10-17, the user's nine packs: 11 dual tips name linearBurn
       // and 10 hardMix — both arrived as multiply, with a warning, until
       // the brush learned them.
@@ -523,7 +527,7 @@ void main() {
         ('linearBurn', SeparableBlendMode.linearBurn),
         ('hardMix', SeparableBlendMode.hardMix),
       ]) {
-        final result = decodeAbrBrushFile(
+        final result = await decodeAbrBrushFile(
           _fixtureAbr(dualBlend: term),
           sourceName: 'fixture',
         );
@@ -536,11 +540,11 @@ void main() {
     });
 
     test('🚨the dual brush\'s spacing, angle, roundness and scatter read as '
-        'the main brush\'s do', () {
-      final chalk = decodeAbrBrushFile(
+        'the main brush\'s do', () async {
+      final chalk = (await decodeAbrBrushFile(
         _fixtureAbr(dualWay: true),
         sourceName: 'fixture',
-      ).presets.firstWhere((p) => p.name == 'Fancy Chalk').settings;
+      )).presets.firstWhere((p) => p.name == 'Fancy Chalk').settings;
       expect(chalk.dualSpacing, closeTo(0.6, 1e-9));
       expect(chalk.dualAngleDegrees, closeTo(150, 1e-9));
       expect(chalk.dualRoundness, closeTo(0.5, 1e-9));
@@ -552,17 +556,17 @@ void main() {
       expect(chalk.scatterCount, 3);
       expect(chalk.scatterBothAxes, isTrue);
 
-      final plain = decodeAbrBrushFile(
+      final plain = (await decodeAbrBrushFile(
         _fixtureAbr(),
         sourceName: 'fixture',
-      ).presets.firstWhere((p) => p.name == 'Fancy Chalk').settings;
+      )).presets.firstWhere((p) => p.name == 'Fancy Chalk').settings;
       expect(plain.dualSpacing, closeTo(0.25, 1e-9), reason: 'no `Spcn`');
       expect(plain.dualScatterCount, 1, reason: 'no `useScatter`');
     });
 
     test('a dual tip naming a blend of three channels keeps the multiply '
-        'and says so', () {
-      final result = decodeAbrBrushFile(
+        'and says so', () async {
+      final result = await decodeAbrBrushFile(
         _fixtureAbr(dualBlend: 'H   '),
         sourceName: 'fixture',
       );
@@ -574,9 +578,9 @@ void main() {
       );
     });
 
-    test('a texture reference with no embedded pattern warns', () {
+    test('a texture reference with no embedded pattern warns', () async {
       // Real packs ship brushes whose paper was never embedded.
-      final result = decodeAbrBrushFile(
+      final result = await decodeAbrBrushFile(
         _fixtureAbr(patternsMissing: true),
         sourceName: 'fixture',
       );
@@ -589,8 +593,11 @@ void main() {
       );
     });
 
-    test('pads non-square tips to a centered square mask', () {
-      final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+    test('pads non-square tips to a centered square mask', () async {
+      final result = await decodeAbrBrushFile(
+        _fixtureAbr(),
+        sourceName: 'fixture',
+      );
       final mask = result.presets
           .firstWhere((p) => p.name == 'Fancy Chalk')
           .settings
@@ -609,8 +616,11 @@ void main() {
       }
     });
 
-    test('RLE and raw tips decode to the exact pixel bytes', () {
-      final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
+    test('RLE and raw tips decode to the exact pixel bytes', () async {
+      final result = await decodeAbrBrushFile(
+        _fixtureAbr(),
+        sourceName: 'fixture',
+      );
       // The raw (uniform) tip is consumed as the chalk brush's dual mask.
       final uniform = result.presets
           .firstWhere((p) => p.name == 'Fancy Chalk')
@@ -619,8 +629,8 @@ void main() {
       expect(uniform.alpha, everyElement(200));
     });
 
-    test('imports tips with default settings when desc is corrupt', () {
-      final result = decodeAbrBrushFile(
+    test('imports tips with default settings when desc is corrupt', () async {
+      final result = await decodeAbrBrushFile(
         _fixtureAbr(corruptDesc: true),
         sourceName: 'fixture',
       );
@@ -631,8 +641,8 @@ void main() {
       expect(result.presets.first.settings.tipMask, isNotNull);
     });
 
-    test('imports tips when there is no desc section at all', () {
-      final result = decodeAbrBrushFile(
+    test('imports tips when there is no desc section at all', () async {
+      final result = await decodeAbrBrushFile(
         _fixtureAbr(includeDesc: false),
         sourceName: 'fixture',
       );
@@ -640,28 +650,28 @@ void main() {
       expect(result.presets.every((p) => p.settings.tipMask != null), isTrue);
     });
 
-    test('rejects legacy and non-ABR files with clear errors', () {
+    test('rejects legacy and non-ABR files with clear errors', () async {
       final legacy = AbrBytes()
         ..i16(1)
         ..i16(0);
-      expect(
-        () => decodeAbrBrushFile(legacy.bytes, sourceName: 'old'),
+      await expectLater(
+        decodeAbrBrushFile(legacy.bytes, sourceName: 'old'),
         throwsA(isA<AbrDecodeException>()),
       );
-      expect(
-        () => decodeAbrBrushFile(
+      await expectLater(
+        decodeAbrBrushFile(
           Uint8List.fromList([0x50, 0x4B, 3, 4, 0, 0, 0, 0]),
           sourceName: 'zip',
         ),
         throwsA(isA<AbrDecodeException>()),
       );
-      expect(
-        () => decodeAbrBrushFile(Uint8List(2), sourceName: 'tiny'),
+      await expectLater(
+        decodeAbrBrushFile(Uint8List(2), sourceName: 'tiny'),
         throwsA(isA<AbrDecodeException>()),
       );
     });
 
-    test('brushes sharing one sampled tip get unique preset ids', () {
+    test('brushes sharing one sampled tip get unique preset ids', () async {
       // Real packs commonly define several brushes as variants of the SAME
       // tip bitmap. Duplicate preset ids crashed the preset chips (duplicate
       // widget keys), so the decoder must de-collide them deterministically.
@@ -705,7 +715,10 @@ void main() {
       write8bimSection(file, 'samp', samp.bytes);
       write8bimSection(file, 'desc', desc.bytes);
 
-      final result = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
+      final result = await decodeAbrBrushFile(
+        file.bytes,
+        sourceName: 'fixture',
+      );
       expect(result.presets, hasLength(2));
       expect(result.presets[0].id.value, 'abr-shared-tip');
       expect(result.presets[1].id.value, 'abr-shared-tip-2');
@@ -719,7 +732,7 @@ void main() {
       );
     });
 
-    test('skips unsupported 16-bit tips with a warning', () {
+    test('skips unsupported 16-bit tips with a warning', () async {
       final samp = AbrBytes();
       writeSampEntry(
         samp,
@@ -741,7 +754,10 @@ void main() {
         ..i16(2);
       write8bimSection(file, 'samp', samp.bytes);
 
-      final result = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
+      final result = await decodeAbrBrushFile(
+        file.bytes,
+        sourceName: 'fixture',
+      );
       expect(result.warnings.single, contains('16-bit'));
       expect(result.presets.single.id.value, 'abr-ok-tip');
     });

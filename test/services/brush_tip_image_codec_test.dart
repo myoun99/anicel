@@ -198,11 +198,11 @@ void main() {
 
       expect(
         (await decodeBrushTipImage(bytes, id: 'psd')).alpha,
-        brushTipMaskFromCoverage(
+        (await brushTipMaskFromCoverage(
           brushTipCoverageOfRgba(composite.rgba),
           size: (width: width, height: 1),
           id: 'psd',
-        ).alpha,
+        )).alpha,
       );
     });
   });
@@ -211,7 +211,7 @@ void main() {
     test('is the requested side and averages the source', () async {
       final mask = _sampleMask(size: 64);
 
-      final thumbnail = brushTipThumbnailAlpha(mask, side: 16);
+      final thumbnail = await brushTipThumbnailAlpha(mask, side: 16);
 
       expect(thumbnail.length, 16 * 16);
       // The source ramps left to right, so the thumbnail has to as well.
@@ -224,7 +224,7 @@ void main() {
     test('a mask smaller than the thumbnail still fills every cell', () async {
       // Integer cell arithmetic can hand out empty ranges when upscaling;
       // an empty range would punch holes in the preview.
-      final thumbnail = brushTipThumbnailAlpha(
+      final thumbnail = await brushTipThumbnailAlpha(
         BrushTipMask(
           id: 'tiny',
           size: 2,

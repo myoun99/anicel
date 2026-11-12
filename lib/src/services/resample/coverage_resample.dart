@@ -1,6 +1,12 @@
 import 'dart:typed_data';
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, GpuStampPicture;
+
+import '../../core/on_a_worker.dart';
+import '../../native/app_gpu_engine.dart';
 import 'resample_kernel.dart';
+import 'selection_resample.dart' show resampleTransformElements;
+
 
 /// Reads an 8-bit COVERAGE map to another size through the app's ONE
 /// resampler.
@@ -72,41 +78,65 @@ import 'resample_kernel.dart';
 /// shared resampler (`resampleRgbaReferenceInto`) is the answer for that"
 /// — and this IS that resampler, so the thumbnail of a tip smaller than
 /// its preview cell comes out reconstructed instead of blocky.
-Uint8List resampleCoverage(
+///
+/// 🚨★★★ON THE ENGINE'S R1, READ ON A WORKER (card
+/// tip-coverage-is-a-second-r1). This read down through a Dart R1 of its
+/// own — the engine's written a second time. 🗣️`-Q1` (유저 2026-11-12:
+/// 「미리 만들어 둔다 — 엔진이 열리면 기다리지 않고 받아 둔다」): what asks
+/// waits for the engine to be open and its kernels compiled
+/// ([openAppGpuEngine], [AppKernels.ready]) — opened and compiled off this
+/// isolate, never on it — and the GPU's answer is read on a worker
+/// ([onAWorker]), so the isolate that asks goes on meanwhile.
+Future<Uint8List> resampleCoverage(
   Uint8List source, {
   required int width,
   required int height,
   required int newWidth,
   required int newHeight,
-}) {
+}) async {
   final rgba = Uint8List(width * height * 4);
   for (var index = 0; index < source.length; index += 1) {
     rgba[index * 4 + 3] = source[index];
   }
-
+  final engine = await openAppGpuEngine();
+  final landing = await appGpuStampLandingKernels.ready;
   // Destination-to-source, so the scale is the REDUCTION: one destination
   // step covers `width / newWidth` source pixels, which is exactly the
   // extent the kernel turns into its tent radius.
-  final resampled = resampleRgbaReference(
-    src: rgba,
-    srcWidth: width,
-    srcHeight: height,
-    dstWidth: newWidth,
-    dstHeight: newHeight,
-    transform: ResampleTransform(
-      a: width / newWidth,
-      b: 0,
-      c: 0,
-      d: 0,
-      e: height / newHeight,
-      f: 0,
+  final resampled = await _readOnAWorker(
+    landing.carried(
+      GpuStampPicture(engine, rgba, width, height),
+      inverse: resampleTransformElements(
+        ResampleTransform(
+          a: width / newWidth,
+          b: 0,
+          c: 0,
+          d: 0,
+          e: height / newHeight,
+          f: 0,
+        ),
+      ),
+      radiusFloor: resampleRadiusFloor(ResampleMode.blend),
+      sampling: GpuSampling.blend,
+      width: newWidth,
+      height: newHeight,
     ),
-    mode: ResampleMode.blend,
   );
-
   final coverage = Uint8List(newWidth * newHeight);
   for (var index = 0; index < coverage.length; index += 1) {
     coverage[index] = resampled[index * 4 + 3];
   }
   return coverage;
+}
+
+/// [picture]'s pixels, read on a worker ([onAWorker]) — whose wait for the
+/// GPU is that worker's.
+///
+/// ⚠️[picture] is held here till the read is done: a local of a
+/// `Finalizable` type lives to the end of its scope, and the worker holds
+/// only its address ([GpuStampPicture.reader]).
+Future<Uint8List> _readOnAWorker(GpuStampPicture picture) async {
+  final reader = picture.reader;
+  final pixels = await onAWorker(reader.pixels);
+  return pixels;
 }

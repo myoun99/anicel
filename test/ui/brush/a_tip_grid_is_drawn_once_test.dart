@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_tip_entry.dart'
+    show brushTipThumbnailSide;
 import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
 
 /// 🚨A SAMPLED TIP'S GRID IS DRAWN ONCE AND PLACED 1:1 EVERY FRAME
@@ -12,15 +14,14 @@ import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
 /// not — so the drawing is held to the grid painted live within 3/255, at
 /// every ratio, overhang included.
 void main() {
-  const side = 32;
-  final mask = _softDisc(side);
+  final picture = _softDisc(brushTipThumbnailSide);
   const ink = Color(0xFFE6E1E5);
   const well = Color(0xFF36343B);
 
   testWidgets('a repaint places the drawing it made, and paints no rect', (
     tester,
   ) async {
-    await tester.pumpWidget(_icon(mask, side, ink: ink, extent: 24));
+    await tester.pumpWidget(_icon(picture, ink: ink, extent: 24));
     final grid = tester.renderObject<RenderBrushTipGrid>(
       find.byType(BrushTipMaskPreview),
     );
@@ -60,11 +61,11 @@ void main() {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              framed(drawn, BrushTipMaskPreview(alpha: mask, side: side)),
+              framed(drawn, BrushTipMaskPreview.thumbnail(picture)),
               framed(
                 live,
                 CustomPaint(
-                  painter: _LiveGrid(mask, side, ink),
+                  painter: _LiveGrid(picture, ink),
                   size: Size.infinite,
                 ),
               ),
@@ -96,7 +97,7 @@ void main() {
       'go', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(_icon(mask, side, ink: ink, extent: 24));
+    await tester.pumpWidget(_icon(picture, ink: ink, extent: 24));
     final grid = tester.renderObject<RenderBrushTipGrid>(
       find.byType(BrushTipMaskPreview),
     );
@@ -104,14 +105,14 @@ void main() {
     expect(first.width, 25, reason: '24 across and the half-pixel overhang');
 
     await tester.pumpWidget(
-      _icon(mask, side, ink: const Color(0xFF6750A4), extent: 24),
+      _icon(picture, ink: const Color(0xFF6750A4), extent: 24),
     );
     expect(first.debugDisposed, isTrue);
     final recoloured = grid.debugDrawing!;
     expect(recoloured, isNot(same(first)));
 
     await tester.pumpWidget(
-      _icon(mask, side, ink: const Color(0xFF6750A4), extent: 30),
+      _icon(picture, ink: const Color(0xFF6750A4), extent: 30),
     );
     expect(recoloured.debugDisposed, isTrue);
     final resized = grid.debugDrawing!;
@@ -138,15 +139,14 @@ Widget _themed(Color ink, Widget child) => MaterialApp(
 );
 
 Widget _icon(
-  Uint8List mask,
-  int side, {
+  Uint8List picture, {
   required Color ink,
   required double extent,
 }) => _themed(
   ink,
   SizedBox.square(
     dimension: extent,
-    child: BrushTipMaskPreview(alpha: mask, side: side),
+    child: BrushTipMaskPreview.thumbnail(picture),
   ),
 );
 
@@ -183,15 +183,14 @@ Future<Uint8List> _pixels(WidgetTester tester, GlobalKey key, double ratio) {
 }
 
 class _LiveGrid extends CustomPainter {
-  _LiveGrid(this.alpha, this.side, this.color);
+  _LiveGrid(this.alpha, this.color);
 
   final Uint8List alpha;
-  final int side;
   final Color color;
 
   @override
   void paint(Canvas canvas, Size size) =>
-      paintBrushTipGrid(canvas, size, alpha, side, color);
+      paintBrushTipGrid(canvas, size, alpha, color);
 
   @override
   bool shouldRepaint(_LiveGrid oldDelegate) => false;

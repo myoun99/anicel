@@ -41,10 +41,10 @@ class AbrDecodeException extends ImportRefusal {
 /// brushes, joined to their bitmaps by the sampled-data UUID. When the
 /// descriptor cannot be parsed, the tip bitmaps still import with default
 /// settings and a warning.
-AbrImportResult decodeAbrBrushFile(
+Future<AbrImportResult> decodeAbrBrushFile(
   Uint8List bytes, {
   required String sourceName,
-}) {
+}) async {
   final reader = PhotoshopByteReader(bytes);
   if (bytes.length < 4) {
     throw const AbrDecodeException(
@@ -143,7 +143,7 @@ AbrImportResult decodeAbrBrushFile(
       if (entry is! PsDescriptor) {
         continue;
       }
-      final preset = _presetFromBrushDescriptor(
+      final preset = await _presetFromBrushDescriptor(
         entry,
         tipsByKey: tipsByKey,
         patternsById: patternsById,
@@ -298,7 +298,7 @@ List<Object?>? _brushListOf(PsDescriptor? descriptor) {
 /// them into functions would move the defaults away from the keys they
 /// belong to, and a default that drifts from its key is how an imported
 /// brush stops matching the one in Photoshop.
-BrushPreset? _presetFromBrushDescriptor(
+Future<BrushPreset?> _presetFromBrushDescriptor(
   PsDescriptor entry, {
   required Map<String, BrushTipMask> tipsByKey,
   required Map<String, PsPattern> patternsById,
@@ -307,7 +307,7 @@ BrushPreset? _presetFromBrushDescriptor(
   required int Function() computedIndex,
   required BrushPresetId Function(String base) uniquePresetId,
   required List<String> warnings,
-}) {
+}) async {
   final tip = entry.childDescriptor('Brsh') ?? entry;
   final name = entry.textValue('Nm  ') ?? tip.textValue('Nm  ');
 
@@ -498,7 +498,7 @@ BrushPreset? _presetFromBrushDescriptor(
       // them unreachable forever: nothing kept the original to re-bake from,
       // so the panel could never offer the three controls Photoshop and Clip
       // Studio both put on a texture.
-      textureMask = brushTipMaskFromPattern(
+      textureMask = await brushTipMaskFromPattern(
         pattern,
         id: 'abr-pattern-${pattern.id}',
       );

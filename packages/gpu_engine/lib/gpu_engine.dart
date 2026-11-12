@@ -1110,15 +1110,51 @@ final class GpuStampPicture implements Finalizable {
   /// Its pixels, row after row, once the GPU has made them: what is asked
   /// of a picture whose bytes nothing here ever held
   /// ([GpuStampLanding.carried]'s). Waits for the GPU.
-  Uint8List pixels() => using((arena) {
-    final count = width * height * 4;
-    final into = arena<Uint8>(_held(count));
-    if (!rust.stampPictureRead(_engine._engine, _picture, into)) {
-      throw GpuReadFailed(_lastError());
-    }
-    return Uint8List.fromList(into.asTypedList(count));
-  });
+  Uint8List pixels() => _stampPixels(_engine._engine, _picture, _count);
+
+  /// It as any isolate asks it ([GpuStampPictureReader]) — for as long as
+  /// it is alive: what reads it on a worker holds it till the read is
+  /// done.
+  GpuStampPictureReader get reader => GpuStampPictureReader._(
+    _engine._engine.address,
+    _picture.address,
+    _count,
+  );
+
+  int get _count => width * height * 4;
 }
+
+/// A [GpuStampPicture] as any isolate asks it: plain numbers, the engine's
+/// address, the picture's and its size, so it crosses to a worker — where
+/// the wait for the GPU is that worker's, not the asker's ([debugWaitsHere]),
+/// as a [GpuChainReader]'s is.
+final class GpuStampPictureReader {
+  const GpuStampPictureReader._(this._engine, this._picture, this._count);
+
+  final int _engine;
+  final int _picture;
+  final int _count;
+
+  /// [GpuStampPicture.pixels], asked here. ⚠️Waits for the GPU.
+  Uint8List pixels() => _stampPixels(
+    Pointer.fromAddress(_engine),
+    Pointer.fromAddress(_picture),
+    _count,
+  );
+}
+
+/// The [bytes] of [picture] on [engine], once the GPU has made them.
+Uint8List _stampPixels(
+  Pointer<rust.Engine> engine,
+  Pointer<rust.StampPicture> picture,
+  int bytes,
+) => using((arena) {
+  final into = arena<Uint8>(_held(bytes));
+  if (!rust.stampPictureRead(engine, picture, into)) {
+    throw GpuReadFailed(_lastError());
+  }
+  return Uint8List.fromList(into.asTypedList(bytes));
+});
 
 /// What lands a stamp on a cel (rust/src/kernels/dab/stamp.rs).
 class GpuStampLanding {

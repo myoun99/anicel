@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_tip_entry.dart'
+    show brushTipThumbnailSide;
 import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
@@ -13,7 +15,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 /// the corner is the well's shape where the cell lies, and the grid is drawn
 /// so once.
 void main() {
-  const side = 16;
+  const side = brushTipThumbnailSide;
   // A square tip: every cell covered, so the corner cells reach the corner.
   final full = Uint8List(side * side)..fillRange(0, side * side, 255);
   const ink = Color(0xFFE6E1E5);
@@ -31,7 +33,6 @@ void main() {
       canvas,
       const Size.square(extent),
       full,
-      side,
       ink,
       within: shape,
     );
@@ -84,11 +85,7 @@ void main() {
               color: ground,
               child: SizedBox.square(
                 dimension: extent,
-                child: BrushTipMaskPreview(
-                  alpha: full,
-                  side: side,
-                  well: well,
-                ),
+                child: BrushTipMaskPreview.thumbnail(full, well: well),
               ),
             ),
           ),

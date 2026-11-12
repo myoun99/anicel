@@ -47,7 +47,7 @@ void main() {
       final index = await service.loadIndex();
       expect(index.single.name, 'Mine');
       expect(index.single.size, 8);
-      expect(index.single.thumbnail.length, 16 * 16);
+      expect(index.single.thumbnail, hasLength(16 * 16));
       // The index is names and previews; the pixels live in the PNG.
       expect(index.single.mask, isNull);
     });

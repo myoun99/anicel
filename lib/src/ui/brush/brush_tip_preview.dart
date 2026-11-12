@@ -5,17 +5,19 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
+import '../../models/brush_tip_entry.dart' show brushTipThumbnailSide;
+import '../../models/brush_tip_mask.dart';
+import '../../services/brush_tip_thumbnails.dart';
 import '../canvas/raster_picture.dart';
 import '../repaint_props.dart';
 import '../widgets/superellipse_clip.dart';
 
 /// A small synchronous preview of a brush tip for preset lists.
 ///
-/// Sampled tips render as a coarse grid averaged from the mask's alpha
-/// bytes (no async image decode, so it is deterministic in widget tests);
-/// the analytic tip renders its ellipse with roundness, angle,
-/// and a soft outer ring when hardness is low. This is a shape hint, not a
-/// rasterizer-accurate rendering.
+/// Sampled tips render as the coarse grid of their picture
+/// ([BrushTipMaskPreview]); the analytic tip renders its ellipse with
+/// roundness, angle, and a soft outer ring when hardness is low. This is a
+/// shape hint, not a rasterizer-accurate rendering.
 class BrushTipPreview extends StatelessWidget {
   const BrushTipPreview({super.key, required this.settings, this.well});
 
@@ -26,7 +28,6 @@ class BrushTipPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurface;
     // ⛔No `RepaintBoundary`. It looks free and is not: a boundary is a
     // composited layer of its own, a layer per row, per frame, to isolate a
     // painter that redraws only when its preset does. (It was two while the
@@ -40,13 +41,9 @@ class BrushTipPreview extends StatelessWidget {
     // through from the start.
     final mask = settings.tipMask;
     if (mask != null) {
-      return _BrushTipGrid(
-        alpha: mask.alpha,
-        side: mask.size,
-        color: color,
-        well: well,
-      );
+      return BrushTipMaskPreview(mask: mask, well: well);
     }
+    final color = Theme.of(context).colorScheme.onSurface;
     return CustomPaint(
       painter: _BrushTipPreviewPainter(settings: settings, color: color),
       size: Size.infinite,
@@ -54,14 +51,15 @@ class BrushTipPreview extends StatelessWidget {
   }
 }
 
-/// Preview raster resolution for sampled tips (cells per edge). The tip
-/// library's inline thumbnails are exactly this wide, so one of those paints
-/// at full fidelity here.
-const int brushTipPreviewGrid = 16;
-
-/// Paints [alpha] — a `side`x`side` coverage mask, whether a full tip or the
-/// library's thumbnail of one — as a coarse grid of cells, anchored at the
-/// top left and [Size.shortestSide] across.
+/// Paints [alpha] — a tip's picture, [brushTipThumbnailSide]² cells, a byte
+/// each ([BrushTipThumbnails]) — as a grid of cells, anchored at the top
+/// left and [Size.shortestSide] across.
+///
+/// 🚨ONE CELL A BYTE (tip-coverage-is-a-second-r1-Q1): the picture is
+/// already the mask read down by the app's one resampler, so a cell draws
+/// its byte. ↩️A grid handed a whole mask averaged it into its cells itself
+/// — a box filter of its own, beside that resampler (ARCH-audit-Q7 had
+/// joined three such and missed this one).
 ///
 /// Every cell overhangs its right and bottom neighbour by half a logical
 /// pixel, so the last row and column reach half a pixel past the grid.
@@ -75,37 +73,22 @@ void paintBrushTipGrid(
   Canvas canvas,
   Size size,
   Uint8List alpha,
-  int side,
   Color color, {
   ui.RSuperellipse? within,
 }) {
-  final cell = size.shortestSide / brushTipPreviewGrid;
-  final texelsPerCell = math.max(1, side ~/ brushTipPreviewGrid);
+  assert(
+    alpha.length == brushTipThumbnailSide * brushTipThumbnailSide,
+    'a tip picture of ${alpha.length} bytes',
+  );
+  final cell = size.shortestSide / brushTipThumbnailSide;
   final paint = Paint();
-  for (var row = 0; row < brushTipPreviewGrid; row += 1) {
-    for (var col = 0; col < brushTipPreviewGrid; col += 1) {
-      final startX = col * side ~/ brushTipPreviewGrid;
-      final startY = row * side ~/ brushTipPreviewGrid;
-      var total = 0;
-      var count = 0;
-      for (var dy = 0; dy < texelsPerCell; dy += 1) {
-        final y = startY + dy;
-        if (y >= side) {
-          break;
-        }
-        for (var dx = 0; dx < texelsPerCell; dx += 1) {
-          final x = startX + dx;
-          if (x >= side) {
-            break;
-          }
-          total += alpha[y * side + x];
-          count += 1;
-        }
-      }
-      if (count == 0 || total == 0) {
+  for (var row = 0; row < brushTipThumbnailSide; row += 1) {
+    for (var col = 0; col < brushTipThumbnailSide; col += 1) {
+      final value = alpha[row * brushTipThumbnailSide + col];
+      if (value == 0) {
         continue;
       }
-      paint.color = color.withValues(alpha: (total / count) / 255);
+      paint.color = color.withValues(alpha: value / 255);
       final at = Rect.fromLTWH(col * cell, row * cell, cell + 0.5, cell + 0.5);
       if (within == null) {
         canvas.drawRect(at, paint);
@@ -116,17 +99,25 @@ void paintBrushTipGrid(
   }
 }
 
-/// A standalone preview of one coverage mask — the picker's grid cell.
+/// A standalone preview of one tip — the picker's grid cell: its picture
+/// ([BrushTipThumbnails]), drawn by [paintBrushTipGrid].
 class BrushTipMaskPreview extends StatelessWidget {
+  /// [mask]'s picture, as it lands — its cell empty till then.
   const BrushTipMaskPreview({
     super.key,
-    required this.alpha,
-    required this.side,
+    required BrushTipMask this.mask,
     this.well,
-  });
+  }) : thumbnail = null;
 
-  final Uint8List alpha;
-  final int side;
+  /// [thumbnail], a picture a tip's index carries (`BrushTipEntry.thumbnail`).
+  const BrushTipMaskPreview.thumbnail(
+    Uint8List this.thumbnail, {
+    super.key,
+    this.well,
+  }) : mask = null;
+
+  final BrushTipMask? mask;
+  final Uint8List? thumbnail;
 
   /// The well it fills, whose corners cut it — null where it stands clear
   /// of every corner.
@@ -139,31 +130,40 @@ class BrushTipMaskPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _BrushTipGrid(
-      alpha: alpha,
-      side: side,
-      color: Theme.of(context).colorScheme.onSurface,
+    final color = Theme.of(context).colorScheme.onSurface;
+    Widget grid(Uint8List? alpha) => _BrushTipGrid(
+      alpha: alpha ?? _nothing,
+      color: color,
       well: well,
+    );
+    if (thumbnail case final drawn?) {
+      return grid(drawn);
+    }
+    return ValueListenableBuilder<Uint8List?>(
+      valueListenable: BrushTipThumbnails.instance.of(mask!),
+      builder: (context, alpha, _) => grid(alpha),
     );
   }
 }
 
+/// The picture of a tip whose own has not landed: no cell drawn.
+final Uint8List _nothing = Uint8List(
+  brushTipThumbnailSide * brushTipThumbnailSide,
+);
+
 class _BrushTipGrid extends LeafRenderObjectWidget {
   const _BrushTipGrid({
     required this.alpha,
-    required this.side,
     required this.color,
     required this.well,
   });
 
   final Uint8List alpha;
-  final int side;
   final Color color;
   final RoundedSuperellipseBorder? well;
 
   BrushTipGridLook _look(BuildContext context) => (
     alpha: alpha,
-    side: side,
     color: color,
     devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     well: well?.borderRadius.resolve(Directionality.maybeOf(context)),
@@ -186,7 +186,6 @@ class _BrushTipGrid extends LeafRenderObjectWidget {
 /// compares [alpha] by identity, as `Uint8List` does.
 typedef BrushTipGridLook = ({
   Uint8List alpha,
-  int side,
   Color color,
   double devicePixelRatio,
   BorderRadius? well,
@@ -296,7 +295,6 @@ class RenderBrushTipGrid extends RenderBox {
     canvas,
     size,
     _look.alpha,
-    _look.side,
     _look.color,
     within: _look.well?.toRSuperellipse(Offset.zero & size),
   );

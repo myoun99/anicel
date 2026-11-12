@@ -35,10 +35,10 @@ CutPiece _brightOnTransparent({int width = 8, int height = 8}) {
 }
 
 void main() {
-  test('a bright drawing on transparency survives registration', () {
+  test('a bright drawing on transparency survives registration', () async {
     // Photoshop's white-is-transparent rule would erase this piece; on a
     // transparent-background cel the silhouette is what was drawn.
-    final mask = cutPieceToTipMask(_brightOnTransparent(), id: 't');
+    final mask = await cutPieceToTipMask(_brightOnTransparent(), id: 't');
     var covered = 0;
     for (final value in mask.alpha) {
       if (value > 0) {
@@ -50,16 +50,16 @@ void main() {
     expect(covered, 8 * 8 ~/ 2);
   });
 
-  test('coverage is the alpha channel, verbatim', () {
-    final mask = cutPieceToTipMask(_brightOnTransparent(), id: 't');
+  test('coverage is the alpha channel, verbatim', () async {
+    final mask = await cutPieceToTipMask(_brightOnTransparent(), id: 't');
     expect(mask.size, 8);
     // Row 0: four opaque, four empty.
     expect(mask.alpha.sublist(0, 4), everyElement(255));
     expect(mask.alpha.sublist(4, 8), everyElement(0));
   });
 
-  test('the mask is square, with the content centred', () {
-    final mask = cutPieceToTipMask(
+  test('the mask is square, with the content centred', () async {
+    final mask = await cutPieceToTipMask(
       _brightOnTransparent(width: 8, height: 4),
       id: 't',
     );
@@ -70,9 +70,9 @@ void main() {
     expect(mask.alpha.sublist(2 * 8, 2 * 8 + 4), everyElement(255));
   });
 
-  test('an oversized piece is reduced to the library limit', () {
+  test('an oversized piece is reduced to the library limit', () async {
     const side = maxBrushTipMaskSide * 2;
-    final mask = cutPieceToTipMask(
+    final mask = await cutPieceToTipMask(
       _brightOnTransparent(width: side, height: side),
       id: 't',
     );
@@ -92,9 +92,10 @@ void main() {
     );
   });
 
-  test('the pose is honoured — registering takes what you are looking at', () {
+  test('the pose is honoured — registering takes what you are looking '
+      'at', () async {
     // Unlike paste-at-origin, which is always the untouched original.
-    final flipped = cutPieceToTipMask(
+    final flipped = await cutPieceToTipMask(
       _brightOnTransparent().copyWith(flipHorizontal: true),
       id: 't',
     );
@@ -103,7 +104,7 @@ void main() {
     expect(flipped.alpha.sublist(4, 8), everyElement(255));
   });
 
-  test('a fully transparent piece yields an empty mask, not a crash', () {
+  test('a fully transparent piece yields an empty mask, not a crash', () async {
     final blank = CutPiece(
       image: BrushStampImage(
         id: 'p',
@@ -114,7 +115,7 @@ void main() {
       originLeft: 0,
       originTop: 0,
     );
-    final mask = cutPieceToTipMask(blank, id: 't');
+    final mask = await cutPieceToTipMask(blank, id: 't');
     expect(mask.size, 4);
     expect(mask.alpha, everyElement(0));
   });
