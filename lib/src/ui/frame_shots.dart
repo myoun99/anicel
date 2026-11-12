@@ -104,6 +104,29 @@ Future<ui.Image> pictureOfShot(Future<GpuShown> shot) async {
   }
 }
 
+/// [picture] on a frame [export] makes ([GpuExport.blank]) — its
+/// premultiplied rows uploaded and laid over it — for the caller to free:
+/// what a writer is handed of a picture the app draws for itself, a
+/// sheet's page or a conte's, read back the way a frame made on the engine
+/// is ([pictureOfLaid]). [picture] stays the caller's.
+Future<GpuShown> frameOfPicture(GpuExport export, ui.Image picture) async {
+  final (width, height) = (picture.width, picture.height);
+  final rows = await picture.toByteData();
+  final uploaded = export.upload(rows!.buffer.asUint8List(), width, height);
+  try {
+    final frame = export.blank(width, height);
+    try {
+      export.lay(frame, uploaded);
+    } on Object {
+      frame.free();
+      rethrow;
+    }
+    return frame;
+  } finally {
+    uploaded.free();
+  }
+}
+
 /// [laid] — a frame [export] made ([GpuExport.blank]) — read back once as
 /// a picture: what a panel or a preview is handed of a frame made on the
 /// engine.

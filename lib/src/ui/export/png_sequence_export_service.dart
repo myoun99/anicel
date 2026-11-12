@@ -1,47 +1,50 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
-import 'png_srgb.dart';
+import 'still_frame_bytes.dart';
 
 /// What one export run did: [processed] tasks were attempted (fewer than the
 /// plan when cancelled) and [written] files hit the disk ([renderImage]
 /// returning `null` skips the file, e.g. empty cels).
 typedef ExportWriteSummary = ({int written, int processed});
 
-/// The bytes of one image's file, or null to write none.
-typedef ExportImageEncoder = Future<List<int>?> Function(ui.Image image);
+/// The bytes of one frame's file, or null to write none.
+typedef ExportImageEncoder = Future<List<int>?> Function(GpuShown frame);
 
-/// Streams rendered images to disk — one image rendered, encoded and
-/// released at a time, so a full-resolution sequence never lives in memory
-/// at once. The one before is kept until the next is in, to know it by
-/// ([_BytesBefore]).
+/// Streams rendered frames to disk — one frame rendered, encoded and
+/// written at a time, so a full-resolution sequence never lives in memory
+/// at once. The bytes of the one before are kept until the next is in, to
+/// know it by ([_BytesBefore]).
 class PngSequenceExportService {
   const PngSequenceExportService();
 
-  /// How many images every run has encoded (test hook) — a file whose image
+  /// How many frames every run has encoded (test hook) — a file whose frame
   /// is the one before, handed again, encodes none.
   @visibleForTesting
   static int debugEncodes = 0;
 
   /// [encoderFor] names the encoder of each file whose bytes are not the
-  /// default's — the engine PNG + the sRGB tag — (JPG, a PNG without alpha,
-  /// the stills the engine has no writer for, a PSD of its picture's rows).
-  /// It is asked a FILE: one run writes files of more than one
-  /// format (the Cels tab's cels beside its sheets and envelopes). A null
-  /// encoder is the default; a null encode RESULT skips the file like a null
-  /// render does.
+  /// default's — the engine PNG + the sRGB tag ([rgbaPngOf]) — (JPG, a PNG
+  /// without alpha, the stills the engine has no writer for, a PSD of its
+  /// picture's rows). It is asked a FILE: one run writes files of more
+  /// than one format (the Cels tab's cels beside its sheets and
+  /// envelopes). A null encoder is the default; a null encode RESULT skips
+  /// the file like a null render does.
   ///
-  /// 🚨A FILE WHOSE IMAGE IS THE ONE BEFORE IT, HANDED AGAIN, IS THE BYTES
-  /// BEFORE IT: an image that is a clone of the one before
-  /// (`ui.Image.isCloneOf` — a run's frame made of what the frame before it
-  /// was made of, `ExportFrameRenderer.stillRun`), under the same encoder,
-  /// is neither read back nor encoded again. A video's frames go to their
-  /// encoder the same way (`VideoExportService`).
+  /// ⚠️[renderImage]'s frame is its maker's, held till the frame after it
+  /// is asked (`ExportFrameRenderer`, `FramesOfPictures`): the run reads
+  /// what it writes of each before it asks the next, and frees none.
+  ///
+  /// 🚨A FILE WHOSE FRAME IS THE ONE BEFORE IT, HANDED AGAIN, IS THE BYTES
+  /// BEFORE IT: the frame before itself (a run's frame made of what the
+  /// frame before it was made of, `ExportFrameRenderer.stillRun`), under
+  /// the same encoder, is neither read back nor encoded again. A video's
+  /// frames go to their encoder the same way (`VideoExportService`).
   Future<ExportWriteSummary> exportImages({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderImage,
     required String Function(int index) fileNameFor,
     required String directoryPath,
     ExportImageEncoder? Function(int index)? encoderFor,
@@ -51,27 +54,23 @@ class PngSequenceExportService {
     var written = 0;
     var processed = 0;
     final before = _BytesBefore();
-    try {
-      for (var index = 0; index < count; index += 1) {
-        if (isCancelled?.call() ?? false) {
-          break;
-        }
-        final image = await renderImage(index);
-        if (image != null) {
-          final bytes = await before.of(image, encoderFor?.call(index));
-          if (bytes != null) {
-            await _write(
-              bytes,
-              '$directoryPath${Platform.pathSeparator}${fileNameFor(index)}',
-            );
-            written += 1;
-          }
-        }
-        processed += 1;
-        onProgress?.call(processed, count);
+    for (var index = 0; index < count; index += 1) {
+      if (isCancelled?.call() ?? false) {
+        break;
       }
-    } finally {
-      before.dispose();
+      final frame = await renderImage(index);
+      if (frame != null) {
+        final bytes = await before.of(frame, encoderFor?.call(index));
+        if (bytes != null) {
+          await _write(
+            bytes,
+            '$directoryPath${Platform.pathSeparator}${fileNameFor(index)}',
+          );
+          written += 1;
+        }
+      }
+      processed += 1;
+      onProgress?.call(processed, count);
     }
     return (written: written, processed: processed);
   }
@@ -85,53 +84,28 @@ class PngSequenceExportService {
   }
 }
 
-/// The file bytes of the image before, and that image and its encoder —
+/// The file bytes of the frame before, and that frame and its encoder —
 /// kept to know the next by.
 ///
 /// ⚠️A video's frames keep their pixels the same way (`VideoExportService`'s
 /// `_FramePixels`). Two are left apart until a third keeps something of the
-/// image before (the rule of three) — that one makes them one.
+/// frame before (the rule of three) — that one makes them one.
 final class _BytesBefore {
-  ui.Image? _image;
+  GpuShown? _frame;
   ExportImageEncoder? _encode;
   List<int>? _bytes;
 
-  /// [image]'s file bytes as [encode] writes them, or null to write none —
-  /// the bytes before, when [image] is the image before handed again and
+  /// [frame]'s file bytes as [encode] writes them, or null to write none —
+  /// the bytes before, when [frame] is the frame before handed again and
   /// [encode] the encoder before.
-  ///
-  /// ⚠️It OWNS [image] from here on: kept to know the next by, or let go at
-  /// once when it is the one kept already.
-  Future<List<int>?> of(ui.Image image, ExportImageEncoder? encode) async {
-    final kept = _image;
-    if (kept != null && image.isCloneOf(kept) && identical(encode, _encode)) {
-      image.dispose();
+  Future<List<int>?> of(GpuShown frame, ExportImageEncoder? encode) async {
+    if (identical(frame, _frame) && identical(encode, _encode)) {
       return _bytes;
     }
-    kept?.dispose();
-    _image = image;
+    _frame = frame;
     _encode = encode;
     _bytes = null;
     PngSequenceExportService.debugEncodes += 1;
-    return _bytes = await _encoded(image, encode);
+    return _bytes = await (encode ?? rgbaPngOf)(frame);
   }
-
-  void dispose() {
-    _image?.dispose();
-    _image = null;
-    _encode = null;
-    _bytes = null;
-  }
-}
-
-/// [image]'s file bytes as [encode] writes them — the engine's PNG with the
-/// sRGB tag where [encode] is null.
-Future<List<int>?> _encoded(ui.Image image, ExportImageEncoder? encode) async {
-  if (encode != null) {
-    return encode(image);
-  }
-  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-  // C1-v1: delivered PNGs declare the working color space (sRGB) so
-  // downstream tools stop guessing. Pixels untouched.
-  return bytes == null ? null : tagPngAsSrgb(bytes.buffer.asUint8List());
 }

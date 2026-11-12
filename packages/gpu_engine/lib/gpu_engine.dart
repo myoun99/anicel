@@ -2541,18 +2541,28 @@ class GpuReadout {
 
   /// All the bytes of it its writer takes, mapped and copied out as they
   /// lie.
-  Uint8List copy() {
+  Uint8List copy() => copyRows(stride: bytes, rowBytes: bytes, rows: 1);
+
+  /// [rows] rows of [rowBytes] — the first at its start, each [stride]
+  /// from the last — mapped and copied out one after another with nothing
+  /// between: a PNG's filtered rows without the filling that starts each
+  /// on a word ([GpuExport.pngRowBytes]).
+  Uint8List copyRows({
+    required int stride,
+    required int rowBytes,
+    required int rows,
+  }) {
     map();
     return using((arena) {
-      final count = bytes;
+      final count = rowBytes * rows;
       final into = arena<Uint8>(_held(count));
-      rows(
+      this.rows(
         into,
         offset: 0,
-        stride: count,
-        rowBytes: count,
-        rows: 1,
-        dstStride: count,
+        stride: stride,
+        rowBytes: rowBytes,
+        rows: rows,
+        dstStride: rowBytes,
       );
       return Uint8List.fromList(into.asTypedList(count));
     });

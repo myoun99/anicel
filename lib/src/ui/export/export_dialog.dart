@@ -5,6 +5,7 @@ import 'dart:typed_data' show Int16List;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
 import '../../core/path_names.dart';
 import '../../models/kept_span.dart';
@@ -87,6 +88,7 @@ import 'export_cut_grid.dart';
 import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
 import 'frame_image_file.dart';
+import 'frames_of_pictures.dart';
 import 'export_job.dart';
 import 'export_plan.dart';
 import 'export_preset_rail.dart';
@@ -2708,7 +2710,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// frames as it goes ([_AfterFile.steps]); the sentence counts files.
   Future<String> _runImageExport({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderImage,
     required String Function(int index) fileNameFor,
     required _Tally says,
     ExportImageEncoder? Function(int index)? encoderFor,
@@ -2790,18 +2792,25 @@ class ExportDialogState extends State<ExportDialog> {
       // Streamed like every image export: ONE page's cell pictures live
       // at a time (a cut spanning two pages re-renders once per page —
       // cheaper than holding the whole film's cells).
-      return _runImageExport(
-        count: pages.length,
-        renderImage: (index) => _renderContePage(
-          pages[index],
-          source,
-          pictureWidth: cameraSize.width,
-          words: words,
-        ),
-        fileNameFor: (index) => _contePageFileName(index, pages.length),
-        encoderFor: (_) => stillEncoderFor(spec.image),
-        says: _Tally.contePages,
-      );
+      final drawn = FramesOfPictures();
+      try {
+        return await _runImageExport(
+          count: pages.length,
+          renderImage: (index) => drawn.of(
+            _renderContePage(
+              pages[index],
+              source,
+              pictureWidth: cameraSize.width,
+              words: words,
+            ),
+          ),
+          fileNameFor: (index) => _contePageFileName(index, pages.length),
+          encoderFor: (_) => stillEncoderFor(spec.image),
+          says: _Tally.contePages,
+        );
+      } finally {
+        drawn.dispose();
+      }
     }
     // Vector PDF: one document, the layout's own points as page geometry.
     // Each cell renders, converts to raw bytes and FREES its ui.Image
@@ -2935,12 +2944,15 @@ class ExportDialogState extends State<ExportDialog> {
       }
       _reportProgress(index + 1, total);
     }
-    final composite = await render(0);
+    final drawn = FramesOfPictures();
     final List<int>? bytes;
     try {
-      bytes = await document.encode(composite, _specs.conte.image);
+      final composite = await drawn.of(render(0));
+      bytes = composite == null
+          ? null
+          : await document.encode(composite, _specs.conte.image);
     } finally {
-      composite.dispose();
+      drawn.dispose();
     }
     if (bytes == null) {
       return _exportDone(AppText.strings.exFileCount(0), skipped: 1);
@@ -3177,7 +3189,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// beside them the documents of the cuts in scope — one after another,
   /// each written as its own format says (유저 2026-10-05: 「타임시트 탭을
   /// 그냥 셀 탭의 내부로 편입. 컷봉투탭도 셀 내부로 편입」).
-  Future<String> _exportCels() {
+  Future<String> _exportCels() async {
     final spec = _specs.cels;
     final plan = _celGroupPlan();
     // Cels stay raw artwork (no FX) — the renderer carries the paper
@@ -3210,11 +3222,12 @@ class ExportDialogState extends State<ExportDialog> {
     // list the window PREVIEWS, so a cel whose switch was off was counted
     // out of the headline and written all the same (found reading the run
     // for F-289, 2026-10-06).
+    final drawn = FramesOfPictures();
     final pictures = <_PictureFile>[
       for (final task in plan.writtenCels)
         (
           fileName: task.fileName,
-          render: () => renderer.renderCelGroup(
+          render: () => renderer.celGroupFrame(
             task,
             spec.sizeMode,
             guideColor: guideInk,
@@ -3235,7 +3248,8 @@ class ExportDialogState extends State<ExportDialog> {
         if (sheet.kind == ExportCelKind.envelope)
           (
             fileName: sheet.fileName,
-            render: () => _renderEnvelope(_envelopeTask(sheet), face: face),
+            render: () =>
+                drawn.of(_renderEnvelope(_envelopeTask(sheet), face: face)),
             encoder: layeredEncoderFor(
               spec.envelopeImage,
               () => sheetStrataRows(
@@ -3252,7 +3266,9 @@ class ExportDialogState extends State<ExportDialog> {
             !isDigitalSheet(sheet))
           (
             fileName: sheet.fileName,
-            render: () => _renderSheetPage(_sheetPageTask(sheet), face: face),
+            render: () => drawn.of(
+              _renderSheetPage(_sheetPageTask(sheet), face: face),
+            ),
             encoder: layeredEncoderFor(
               spec.sheetImage,
               () => sheetStrataRows(
@@ -3266,28 +3282,33 @@ class ExportDialogState extends State<ExportDialog> {
             ),
           ),
     ];
-    return _runImageExport(
-      count: pictures.length,
-      renderImage: (index) => pictures[index].render(),
-      fileNameFor: (index) => pictures[index].fileName,
-      encoderFor: (index) => pictures[index].encoder,
-      thenWrite: [
-        for (final sheet in plan.writtenDocuments)
-          if (isDigitalSheet(sheet))
-            _AfterFile.whole(
-              () => _writeXdts(
-                sheet,
-                inkFace: writesInk && inkingSheets.contains(sheet)
-                    ? face
-                    : null,
-                viewerSheetFor: spec.viewerSheetFor,
-              ),
-            )
-          else if (sheet.kind == ExportCelKind.video)
-            _cutFilmFile(sheet),
-      ],
-      says: plan.writtenDocuments.isEmpty ? _Tally.cels : _Tally.files,
-    );
+    try {
+      return await _runImageExport(
+        count: pictures.length,
+        renderImage: (index) => pictures[index].render(),
+        fileNameFor: (index) => pictures[index].fileName,
+        encoderFor: (index) => pictures[index].encoder,
+        thenWrite: [
+          for (final sheet in plan.writtenDocuments)
+            if (isDigitalSheet(sheet))
+              _AfterFile.whole(
+                () => _writeXdts(
+                  sheet,
+                  inkFace: writesInk && inkingSheets.contains(sheet)
+                      ? face
+                      : null,
+                  viewerSheetFor: spec.viewerSheetFor,
+                ),
+              )
+            else if (sheet.kind == ExportCelKind.video)
+              _cutFilmFile(sheet),
+        ],
+        says: plan.writtenDocuments.isEmpty ? _Tally.cels : _Tally.files,
+      );
+    } finally {
+      drawn.dispose();
+      renderer.dispose();
+    }
   }
 
   /// The AE Script tab's run: the cels the list shows bright, written as
@@ -3295,7 +3316,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// of each cut it lays as a guide ([AeScriptExportSpec.guideCamera]), then
   /// the script that lays them out in After Effects beside them
   /// ([aeCompsOf]).
-  Future<String> _exportAeScript() {
+  Future<String> _exportAeScript() async {
     final ae = _specs.aeScript;
     final spec = ae.written;
     final plan = _celGroupPlan();
@@ -3320,38 +3341,42 @@ class ExportDialogState extends State<ExportDialog> {
         : paths[index - cels.length].fileName;
     // The script lays what the run wrote ([aeLaidOf]).
     final wrote = <String>{};
-    return _runImageExport(
-      count: cels.length + paths.length,
-      renderImage: (index) async {
-        final image = await (index < cels.length
-            ? renderer.renderCelGroup(
-                cels[index],
-                spec.sizeMode,
-                guideColor: guideInk,
-              )
-            : renderer.cameraPathOf(paths[index - cels.length].cut) ??
-                  Future.value());
-        if (image != null) {
-          wrote.add(fileNameFor(index));
-        }
-        return image;
-      },
-      fileNameFor: fileNameFor,
-      thenWrite: [
-        _AfterFile.whole(
-          () => _writeAeScript(
-            aeLaidOf(plan, wrote),
-            scope: spec.scope,
-            cameraPaths: {
-              for (final (:cut, :fileName) in paths)
-                if (wrote.contains(fileName)) cut.id: fileName,
-            },
-            claim: claim,
+    try {
+      return await _runImageExport(
+        count: cels.length + paths.length,
+        renderImage: (index) async {
+          final frame = await (index < cels.length
+              ? renderer.celGroupFrame(
+                  cels[index],
+                  spec.sizeMode,
+                  guideColor: guideInk,
+                )
+              : renderer.cameraPathOf(paths[index - cels.length].cut) ??
+                    Future.value());
+          if (frame != null) {
+            wrote.add(fileNameFor(index));
+          }
+          return frame;
+        },
+        fileNameFor: fileNameFor,
+        thenWrite: [
+          _AfterFile.whole(
+            () => _writeAeScript(
+              aeLaidOf(plan, wrote),
+              scope: spec.scope,
+              cameraPaths: {
+                for (final (:cut, :fileName) in paths)
+                  if (wrote.contains(fileName)) cut.id: fileName,
+              },
+              claim: claim,
+            ),
           ),
-        ),
-      ],
-      says: _Tally.files,
-    );
+        ],
+        says: _Tally.files,
+      );
+    } finally {
+      renderer.dispose();
+    }
   }
 
   /// The camera's path of each of [cuts] whose camera moves, a file named
@@ -5481,7 +5506,7 @@ typedef _FrameRun = ({
 /// encoder its format asks for (null is the default PNG).
 typedef _PictureFile = ({
   String fileName,
-  Future<ui.Image?> Function() render,
+  Future<GpuShown?> Function() render,
   ExportImageEncoder? encoder,
 });
 

@@ -18,6 +18,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -25,6 +26,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
+import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/no_guides_laid.dart';
@@ -335,16 +337,17 @@ void main() {
       );
       final renderer = ExportFrameRenderer(session: session, ground: white);
       final task = celOf(session);
-      final picture = (await renderer.renderCelGroup(
+      final frame = (await renderer.celGroupFrame(
         task,
         ExportSizeMode.canvas,
         guideColor: noGuidesLaid,
       ))!;
+      final picture = pictureOfLaid(appGpuExport, frame);
       final drawn = (await picture.toByteData(
         format: ui.ImageByteFormat.rawRgba,
       ))!.buffer.asUint8List();
       final bytes = await encodePsd(
-        picture,
+        frame,
         const ExportFormatSelection(
           kind: ExportMediaKind.still,
           stillFormat: ExportStillFormat.psd,

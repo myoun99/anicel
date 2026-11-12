@@ -305,6 +305,13 @@ class ExportFrameRenderer {
     () async => pictureOfLaid(await appGpuExportKernels.ready, frame),
   )).clone();
 
+  /// [shot]'s frame held as this renderer holds the frames it makes
+  /// ([_pictures]) — this frame and the next, under a key of its own: a
+  /// still a writer takes ([stillRun], [asShownFrame], [celGroupFrame],
+  /// [cameraPathOf]), read before the frame after it is asked.
+  Future<GpuShown> _heldShot(Future<GpuShown> Function() shot) =>
+      _onTheEngine(_pictures).of(Object(), shot);
+
   /// What runs the plugins [cut]'s chains run in this render: the device's,
   /// as the canvas runs them (`EditorSessionManager.fxPluginsIn`).
   FxPluginBinding _pluginsOf(Cut cut) => session.fxPluginsIn(cut);
@@ -598,7 +605,28 @@ class ExportFrameRenderer {
   /// the view's — cut at the panel's edges and at its zoom. It is what the
   /// canvas draws from, drawn by what draws it, at the file's pixels; what
   /// the canvas has hidden is in no picture of it.
+  ///
+  /// A picture of the caller's own to dispose, read back once of
+  /// [asShownFrame]'s frame: what a panel shows of the file.
   Future<ui.Image> renderAsShown(
+    ExportFrameTask task,
+    ExportSizeMode mode, {
+    required ui.Color guideInk,
+    CanvasSize? outputSize,
+    ProjectBackground? paper,
+  }) async => _handed(
+    await asShownFrame(
+      task,
+      mode,
+      guideInk: guideInk,
+      outputSize: outputSize,
+      paper: paper,
+    ),
+  );
+
+  /// [renderAsShown]'s frame, on the engine — the one a writer takes —
+  /// held till the frame after the next is asked ([_heldShot]).
+  Future<GpuShown> asShownFrame(
     ExportFrameTask task,
     ExportSizeMode mode, {
     required ui.Color guideInk,
@@ -609,16 +637,18 @@ class ExportFrameRenderer {
     final cut = task.cut;
     final view = _viewFor(cut, task.frameIndex, mode);
     await _hydrate(cut, task.frameIndex);
-    return pictureOfShot(_shot(
-      cut,
-      task.frameIndex,
-      _nodesAsShown(task),
-      view: view,
-      outputSize: outputSize,
-      paper: paper,
-      ghosts: _ghostsInPlace ? FrameGhosts.inPlace : FrameGhosts.none,
-      over: _shownOver(task, view, guideInk),
-    ));
+    return _heldShot(
+      () => _shot(
+        cut,
+        task.frameIndex,
+        _nodesAsShown(task),
+        view: view,
+        outputSize: outputSize,
+        paper: paper,
+        ghosts: _ghostsInPlace ? FrameGhosts.inPlace : FrameGhosts.none,
+        over: _shownOver(task, view, guideInk),
+      ),
+    );
   }
 
   /// Whether the canvas lays the onion's ghosts each directly under its
@@ -1199,7 +1229,7 @@ class ExportFrameRenderer {
   /// A video run of [plan] in [mode] — its frames, drawn in order
   /// ([ExportRun.frame]), each made of the cuts the frame shows
   /// ([filmFrame]), each drawn through its view ([_viewFor]).
-  ExportRun<GpuShown> videoRun(
+  ExportRun videoRun(
     List<ExportFrameTask> plan,
     ExportSizeMode mode, {
     bool preserveAlpha = false,
@@ -1212,28 +1242,27 @@ class ExportFrameRenderer {
   /// each the picture [renderComposite] makes of its task, held as a video
   /// run holds its own: a frame made of what the frame before it was made
   /// of is that frame's picture, handed again ([_stillFrame]).
-  ExportRun<ui.Image> stillRun(
+  ExportRun stillRun(
     List<ExportFrameTask> plan,
     ExportSizeMode mode,
   ) => ExportRun._(plan: plan, draw: (task) => _stillFrame(task, mode));
 
   /// The picture [renderComposite] makes of [task] in [mode] — at its full
   /// size, without the names — held as a cut's picture is ([_cutPicture]),
-  /// under the view it is drawn through: a picture of the caller's own to
-  /// dispose.
-  Future<ui.Image> _stillFrame(
+  /// under the view it is drawn through: a frame on the engine, the
+  /// renderer's own.
+  Future<GpuShown> _stillFrame(
     ExportFrameTask task,
     ExportSizeMode mode,
-  ) async {
+  ) {
     _startFrame();
     final view = _viewFor(task.cut, task.frameIndex, mode);
-    final picture = await _cutPicture(
+    return _cutPicture(
       task,
       view,
       route: ('still', view),
       trackEffects: _stillChainOf(task),
     );
-    return _handed(picture);
   }
 
   /// What a CANVAS-size video frame is made of: no cut in a gap; the cuts a
@@ -1711,7 +1740,27 @@ class ExportFrameRenderer {
   /// has no time of its own — where it first shows is the honest frame).
   /// The guides laid over it are drawn in [guideColor], the colour the
   /// canvas draws them in (`guideColorOf`).
+  ///
+  /// A picture of the caller's own to dispose, read back once of
+  /// [celGroupFrame]'s frame: what a panel shows of the file.
   Future<ui.Image?> renderCelGroup(
+    ExportCelGroupTask task,
+    ExportSizeMode mode, {
+    CanvasSize? outputSize,
+    required ui.Color guideColor,
+  }) async {
+    final frame = await celGroupFrame(
+      task,
+      mode,
+      outputSize: outputSize,
+      guideColor: guideColor,
+    );
+    return frame == null ? null : _handed(frame);
+  }
+
+  /// [renderCelGroup]'s frame, on the engine — the one a writer takes —
+  /// held till the frame after the next is asked ([_heldShot]).
+  Future<GpuShown?> celGroupFrame(
     ExportCelGroupTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
@@ -1752,7 +1801,7 @@ class ExportFrameRenderer {
       stack.addAll(over);
     }
     final frameIndex = celGroupFirstExposure(task);
-    return pictureOfShot(_shot(
+    return _heldShot(() => _shot(
       task.cut,
       frameIndex,
       _celStack(
@@ -2100,22 +2149,27 @@ class ExportFrameRenderer {
   /// [cut]'s camera path alone, on nothing, over its whole canvas — what a
   /// cel of it in the canvas's size lays with the camera's work
   /// ([_cameraWorkOver]); null where the camera moves nothing. The AE
-  /// Script tab's guide over the canvas comp (ae-script-export-Q3).
-  Future<ui.Image>? cameraPathOf(Cut cut) {
+  /// Script tab's guide over the canvas comp (ae-script-export-Q3): a frame
+  /// on the engine, a frame of its run, held till the frame after the next
+  /// is asked ([_heldShot]).
+  Future<GpuShown>? cameraPathOf(Cut cut) {
     final view = cameraViewOver(cut.canvasSize.canvasRect);
     final pass = _cameraPathOver(cut, view);
     if (pass == null) {
       return null;
     }
-    return pictureOfShot(_shot(
-      cut,
-      0,
-      const [],
-      view: view,
-      ground: _clear,
-      cutsToTheCanvas: false,
-      over: pass,
-    ));
+    _startFrame();
+    return _heldShot(
+      () => _shot(
+        cut,
+        0,
+        const [],
+        view: view,
+        ground: _clear,
+        cutsToTheCanvas: false,
+        over: pass,
+      ),
+    );
   }
 
   /// [cut]'s camera path as [_cameraWorkOver] lays it through [view] — null
@@ -2151,28 +2205,25 @@ class ExportFrameRenderer {
 }
 
 /// The frames of a run — a video's ([ExportFrameRenderer.videoRun]) or a
-/// picture sequence's ([ExportFrameRenderer.stillRun]).
-///
-/// ⚠️[T] says whose a frame is: a video's is a frame on the engine, the
-/// renderer's own ([ExportFrameRenderer.filmFrame]); a still's is a
-/// picture of the caller's own to dispose — until the stills' writers take
-/// the engine's frames too (gpu-export-path ①⑶).
-final class ExportRun<T extends Object> {
+/// picture sequence's ([ExportFrameRenderer.stillRun]): each a frame on
+/// the engine, the renderer's own, that its writer reads and frees not
+/// ([ExportFrameRenderer.filmFrame]).
+final class ExportRun {
   ExportRun._({
     required List<ExportFrameTask> plan,
-    required Future<T> Function(ExportFrameTask task) draw,
+    required Future<GpuShown> Function(ExportFrameTask task) draw,
   }) : _plan = plan,
        _draw = draw;
 
   final List<ExportFrameTask> _plan;
-  final Future<T> Function(ExportFrameTask task) _draw;
+  final Future<GpuShown> Function(ExportFrameTask task) _draw;
 
   /// Frame [index] of the run.
   ///
   /// ⚠️One at a time, in order: a frame holds what the frame after it may
   /// show again for one more frame ([HeldPictures]), and lets go of what
   /// the frame before it held.
-  Future<T> frame(int index) => _draw(_plan[index]);
+  Future<GpuShown> frame(int index) => _draw(_plan[index]);
 }
 
 /// The cuts a canvas-size video frame mixes, when a transition puts two in

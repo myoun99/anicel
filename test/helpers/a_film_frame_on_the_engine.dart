@@ -4,32 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
+import 'package:anicel/src/ui/frame_shots.dart'
+    show frameOfPicture, pictureOfLaid;
 
 /// [picture] as a film's writer takes a frame — a frame the export makes,
-/// [picture]'s premultiplied rows uploaded and laid over it, as the
-/// renderer hands one (`ExportFrameRenderer.filmFrame`) — and [picture]
-/// let go of.
+/// [picture] laid over it ([frameOfPicture]), as the renderer hands one
+/// (`ExportFrameRenderer.filmFrame`) — and [picture] let go of.
 ///
 /// The frame is the test's, freed when the test is done: a writer reads
 /// what it writes of a frame and lets go of none (`VideoExportService`).
 Future<GpuShown> filmFrameOf(ui.Image picture) async {
-  final (width, height) = (picture.width, picture.height);
   try {
-    final rows = await picture.toByteData();
-    final uploaded = appGpuExport.upload(
-      rows!.buffer.asUint8List(),
-      width,
-      height,
-    );
-    try {
-      final frame = appGpuExport.blank(width, height);
-      addTearDown(frame.free);
-      appGpuExport.lay(frame, uploaded);
-      return frame;
-    } finally {
-      uploaded.free();
-    }
+    final frame = await frameOfPicture(appGpuExport, picture);
+    addTearDown(frame.free);
+    return frame;
   } finally {
     picture.dispose();
   }

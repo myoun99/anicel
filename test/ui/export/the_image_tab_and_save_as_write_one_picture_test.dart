@@ -58,12 +58,29 @@ void main() {
       });
     });
 
+    // The preview's picture is the written frame read back, in the renderer
+    // (`renderAsShown` is `asShownFrame`'s, 2026-11-12: the stills went on
+    // the engine).
     test('🚨what that call writes and what the image tab previews are one '
         'render (F-547)', () {
-      expect(callersOf('.renderAsShown('), {
-        'lib/src/ui/export/export_dialog.dart': 1,
+      expect(callersOf('.asShownFrame('), {
         'lib/src/ui/export/frame_image_file.dart': 1,
       });
+      expect(callersOf('.renderAsShown('), {
+        'lib/src/ui/export/export_dialog.dart': 1,
+      });
+      expect(
+        RegExp(
+          r'Future<ui\.Image> renderAsShown\([^;]*?=> _handed\(\s*'
+          r'await asShownFrame\(',
+        ).hasMatch(
+          File(
+            'lib/src/ui/export/export_frame_renderer.dart',
+          ).readAsStringSync(),
+        ),
+        isTrue,
+        reason: 'the preview is the frame the file is written from',
+      );
     });
 
     test('JPG bytes are made in one place', () {

@@ -7,6 +7,7 @@ import 'package:anicel/src/services/media/png_writing.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/png_chunks.dart';
 
 /// 🗣️F-335 (유저 10-10): 「알파채널 아예없는걸 원하거든? RGBA가 아닌 RGB는
@@ -33,8 +34,7 @@ void main() {
     ui.Image image,
     ExportFormatSelection format,
   ) async {
-    final bytes = await stillEncoderFor(format)!(image);
-    image.dispose();
+    final bytes = await stillEncoderFor(format)!(await filmFrameOf(image));
     return Uint8List.fromList(bytes!);
   }
 

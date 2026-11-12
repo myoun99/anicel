@@ -26,10 +26,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
 
 import '../../helpers/cels_parked_cold.dart';
 
@@ -127,7 +129,7 @@ void main() {
   ];
 
   /// A video run in [mode] of every frame of [cut], in order.
-  ExportRun<GpuShown> runOf(
+  ExportRun runOf(
     ExportFrameRenderer renderer,
     Cut cut,
     ExportSizeMode mode,
@@ -137,6 +139,17 @@ void main() {
   Future<Uint8List> bytesOf(ui.Image image) async => (await image.toByteData(
     format: ui.ImageByteFormat.rawRgba,
   ))!.buffer.asUint8List();
+
+  /// [frame]'s bytes as [bytesOf] reads a picture's, read back once
+  /// ([pictureOfLaid]).
+  Future<Uint8List> bytesOfFrame(GpuShown frame) async {
+    final picture = pictureOfLaid(appGpuExport, frame);
+    try {
+      return await bytesOf(picture);
+    } finally {
+      picture.dispose();
+    }
+  }
 
   /// Every frame of [cut] of a video in [mode], in order, as a preview is
   /// handed them ([ExportFrameRenderer.renderVideoFrame]): a frame held on
@@ -423,7 +436,7 @@ void main() {
     );
 
     /// A video run in [mode] of the O.L's first four frames, 12–15.
-    ExportRun<GpuShown> mixedRun(
+    ExportRun mixedRun(
       ExportFrameRenderer renderer,
       EditorSessionManager s,
       ExportSizeMode mode,
@@ -543,20 +556,21 @@ void main() {
     int handlesOn(ui.Image image) =>
         image.debugGetOpenHandleStackTraces()!.length;
 
-    /// Every run whose frames are held pictures, opened over a renderer and
-    /// the frames of a cut: the picture at each index.
+    /// Every run whose frames are held, opened over a renderer and the
+    /// frames of a cut: the frame at each index, on the engine — the
+    /// renderer's own.
     final doors =
         <
           String,
-          Future<ui.Image> Function(int index) Function(
+          Future<GpuShown> Function(int index) Function(
             ExportFrameRenderer renderer,
             Cut cut,
           )
         >{
           'a canvas-size video frame': (renderer, cut) =>
-              filmPicturesOf(renderer, cut, ExportSizeMode.canvas),
+              renderer.videoRun(framesOf(cut), ExportSizeMode.canvas).frame,
           'a camera video frame (the track stack)': (renderer, cut) =>
-              filmPicturesOf(renderer, cut, ExportSizeMode.camera),
+              renderer.videoRun(framesOf(cut), ExportSizeMode.camera).frame,
           'a canvas-size picture of a sequence': (renderer, cut) =>
               renderer.stillRun(framesOf(cut), ExportSizeMode.canvas).frame,
           'a camera-size picture of a sequence': (renderer, cut) =>
@@ -568,7 +582,7 @@ void main() {
       /// cut's frames.
       ({
         ExportFrameRenderer renderer,
-        Future<ui.Image> Function(int index) frameAt,
+        Future<GpuShown> Function(int index) frameAt,
       })
       over(EditorSessionManager s) {
         final renderer = ExportFrameRenderer(session: s);
@@ -579,7 +593,7 @@ void main() {
         );
       }
 
-      testWidgets('$door: frames 0 and 1 are ONE picture and nothing is made '
+      testWidgets('$door: frames 0 and 1 are ONE frame and nothing is made '
           'for the second; frame 2 is another', (tester) async {
         await tester.runAsync(() async {
           final s = sessionOf([cut()]);
@@ -591,16 +605,11 @@ void main() {
           final made = renderer.debugPicturesMade;
           expect(made, greaterThan(0), reason: 'LIVENESS: frame 0 was made');
 
-          final again = await frameAt(1);
-          expect(again.isCloneOf(first), isTrue);
+          expect(await frameAt(1), same(first));
           expect(renderer.debugPicturesMade, made, reason: 'nothing made');
 
-          final next = await frameAt(2);
-          expect(next.isCloneOf(first), isFalse, reason: 'b2 is on');
+          expect(await frameAt(2), isNot(same(first)), reason: 'b2 is on');
           expect(renderer.debugPicturesMade, greaterThan(made));
-          for (final image in [first, again, next]) {
-            image.dispose();
-          }
         });
       });
 
@@ -616,14 +625,11 @@ void main() {
             if (!room) {
               s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(0);
             }
-            final (:renderer, :frameAt) = over(s);
-            final frames = <Uint8List>[];
-            for (final index in [0, 1, 2, 3]) {
-              final image = await frameAt(index);
-              frames.add(await bytesOf(image));
-              image.dispose();
-            }
-            return frames;
+            final (renderer: _, :frameAt) = over(s);
+            return [
+              for (final index in [0, 1, 2, 3])
+                await bytesOfFrame(await frameAt(index)),
+            ];
           }
 
           final held = await run(room: true);
@@ -631,7 +637,14 @@ void main() {
           expect(held, none);
         });
       });
+    }
 
+    // What a panel is handed of a held frame is held with it
+    // (`ExportFrameRenderer._handed`): the film's previews are.
+    for (final MapEntry(key: door, value: open) in {
+      'a canvas-size video frame': ExportSizeMode.canvas,
+      'a camera video frame (the track stack)': ExportSizeMode.camera,
+    }.entries) {
       testWidgets('$door: a picture is let go the frame after the last one '
           'made of it stops being the frame before, and every one when the '
           'run ends', (tester) async {
@@ -639,7 +652,9 @@ void main() {
           final s = sessionOf([cut()]);
           addTearDown(s.dispose);
           parkEvery(s);
-          final (:renderer, :frameAt) = over(s);
+          final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
+          final frameAt = filmPicturesOf(renderer, s.requireActiveCut, open);
 
           final first = await frameAt(0);
           expect(handlesOn(first), 2, reason: 'LIVENESS: the renderer\'s too');
@@ -732,21 +747,20 @@ void main() {
 
           final frames = [for (final index in [0, 1]) await run.frame(index)];
           expect(
-            frames[1].isCloneOf(frames[0]),
+            identical(frames[1], frames[0]),
             !moves,
             reason: 'frames 0 and 1 show a1 and b1',
           );
-          for (final (index, image) in frames.indexed) {
+          for (final (index, frame) in frames.indexed) {
             final plain = await ExportFrameRenderer(
               session: s,
             ).renderComposite(plan[index], mode);
             expect(
-              await bytesOf(image),
+              await bytesOfFrame(frame),
               await bytesOf(plain),
               reason: 'frame $index',
             );
             plain.dispose();
-            image.dispose();
           }
         });
       });
@@ -779,11 +793,10 @@ void main() {
               session: s,
             ).renderComposite(task, mode);
             expect(
-              await bytesOf(held),
+              await bytesOfFrame(held),
               await bytesOf(plain),
               reason: 'frame $index',
             );
-            held.dispose();
             plain.dispose();
           }
         });
@@ -882,9 +895,7 @@ void main() {
 
           final unnamed = await run.frame(0);
           final named = await run.frame(1);
-          expect(named.isCloneOf(unnamed), isTrue);
-          unnamed.dispose();
-          named.dispose();
+          expect(named, same(unnamed));
         });
       });
     }

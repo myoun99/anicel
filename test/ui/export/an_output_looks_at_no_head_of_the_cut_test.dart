@@ -246,7 +246,7 @@ void main() {
     (
       'a picture sequence',
       (ExportFrameRenderer renderer, ExportFrameTask task, ExportSizeMode m) =>
-          renderer.stillRun([task], m).frame(0),
+          pictureOfFilmFrame(renderer.stillRun([task], m).frame(0)),
     ),
     (
       'a still',
@@ -333,8 +333,10 @@ void main() {
       ], ExportSizeMode.canvas);
       int red(Uint8List rgba) => rgba[(10 * canvas.width + 10) * 4];
 
-      final first = red(await bytesOf(await run.frame(0)));
-      final second = red(await bytesOf(await run.frame(1)));
+      final first = red(await bytesOf(await pictureOfFilmFrame(run.frame(0))));
+      final second = red(
+        await bytesOf(await pictureOfFilmFrame(run.frame(1))),
+      );
       expect(first, closeTo(128, 2), reason: 'keyed at nothing there');
       expect(second, greaterThan(first + 20));
     });
