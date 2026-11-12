@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_mixing_method.dart';
 import 'package:anicel/src/models/brush_shape.dart';
@@ -112,8 +113,7 @@ void main() {
 
     final rederived = strokeLandedOn(
       cel,
-      landed.sourceDabs,
-      opacity: landed.strokeOpacity,
+      BrushDabSequence(landed.sourceDabs, landed.strokeOpacity),
     );
     expect(
       [for (final placed in shown) placed.coord],

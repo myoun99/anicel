@@ -287,8 +287,7 @@ BrushStrokeCommitData? _blurLandedThrough(
 ) {
   final tiles = strokeLandedOn(
     surface,
-    data.sourceDabs,
-    opacity: data.strokeOpacity,
+    BrushDabSequence(data.sourceDabs, data.strokeOpacity),
     selection: clip,
   );
   return tiles.isEmpty

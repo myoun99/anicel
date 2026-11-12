@@ -200,7 +200,7 @@ BrushSurfaceMaterialization _materializedOnEngine(
         dabs[end].erase == first.erase) {
       end += 1;
     }
-    put(strokeLandedOn(landed, dabs.sublist(at, end), erase: first.erase));
+    put(strokeLandedOn(landed, BrushDabSequence(dabs.getRange(at, end))));
     at = end;
   }
   final coords = changed.toList()..sort(TileCoord.compareRowMajor);

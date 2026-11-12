@@ -1,16 +1,17 @@
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
-import '../models/brush_dab.dart';
+import '../models/brush_dab_sequence.dart';
 import '../models/placed_tile.dart';
 import 'brush_live_stroke_rasterizer.dart';
 import 'selection_clip.dart';
 
 /// 🚨★★★A STROKE THAT HAS NOTHING BUT ITS DABS IS LAID BY THE ONE RASTERIZER
-/// THAT SHOWS A STROKE: [dabs] piled as the live stroke piles them
+/// THAT SHOWS A STROKE: [stroke]'s dabs piled as the live stroke piles them
 /// (`BrushLiveStrokeRasterizer`) and laid once over [surface] — the cel as
-/// it stands now — in [mode], capped by [opacity] and [selection] exactly as
-/// a live stroke is. So what lands is what a pen drawing the same dabs
-/// would have shown, on whichever grid the surface is.
+/// it stands now — capped by the stroke's opacity and by [selection]
+/// exactly as a live stroke is, erasing where its dabs erase. So what lands
+/// is what a pen drawing the same dabs would have shown, on whichever grid
+/// the surface is.
 ///
 /// I-75: a BLUR stroke re-derived from its dabs — the commit when the cel
 /// moved under its promotion, a selection's cut of it, 확정 laying it on
@@ -28,12 +29,8 @@ import 'selection_clip.dart';
 /// The tiles that differ from [surface]; none when the stroke moved nothing.
 List<PlacedTile> strokeLandedOn(
   BitmapSurface surface,
-  List<BrushDab> dabs, {
-  double opacity = 1,
+  BrushDabSequence stroke, {
   SelectionClip? selection,
-  // Neither is read by a blur: it lays no colour to blend or erase.
-  BrushBlendMode mode = BrushBlendMode.color,
-  bool erase = false,
 }) {
   final rasterizer =
       BrushLiveStrokeRasterizer(
@@ -41,17 +38,20 @@ List<PlacedTile> strokeLandedOn(
           tileSize: surface.tileSize,
         )
         ..selectionClip = selection
-        ..strokeOpacity = opacity;
-  if (dabs.firstOrNull?.blurs ?? false) {
+        ..strokeOpacity = stroke.opacity;
+  final first = stroke.firstOrNull;
+  if (first?.blurs ?? false) {
     rasterizer.blurOver(surface);
   }
   try {
-    rasterizer.blendFrom(dabs, from: 0);
+    rasterizer.blendFrom(stroke.dabs, from: 0);
     return [
       for (final promoted in rasterizer.promoteStrokeTiles(
         base: surface,
-        mode: mode,
-        erase: erase,
+        // Neither is read by a blur: it lays no colour to blend or erase.
+        mode: BrushBlendMode.color,
+        // A stroke is homogeneous: every dab shares the tool's erase mode.
+        erase: first?.erase ?? false,
       ))
         (coord: promoted.coord, tile: promoted.tile),
     ];

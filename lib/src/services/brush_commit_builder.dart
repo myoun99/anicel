@@ -49,7 +49,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   // has no stroke buffer for the routes below to composite.
   if (sequence.firstOrNull?.blurs ?? false) {
     return _installed(
-      strokeLandedOn(surface, sequence.dabs, opacity: sequence.opacity),
+      strokeLandedOn(surface, sequence),
       on: surface,
       layerId: layerId,
       frameId: frameId,

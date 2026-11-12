@@ -874,6 +874,6 @@ void main() {
 
   test('a blur stroke with nothing to land lands nothing', () {
     final base = celOf((x, y) => 0x00000000);
-    expect(strokeLandedOn(base, rub(), opacity: 1), isEmpty);
+    expect(strokeLandedOn(base, BrushDabSequence(rub())), isEmpty);
   });
 }

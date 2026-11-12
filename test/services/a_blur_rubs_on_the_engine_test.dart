@@ -11,6 +11,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -333,7 +334,7 @@ void main() {
       for (var i = 0; i < 4; i++) rubbing(60.0 + i * 3, 64, sequence: i),
     ];
     final watched = rubbedOver(base)..blendFrom(dabs, from: 0);
-    final landed = strokeLandedOn(base, dabs, opacity: 1);
+    final landed = strokeLandedOn(base, BrushDabSequence(dabs));
     expect(
       landed.single.tile.pixels,
       promoted(watched, base).single.tile.pixels,
