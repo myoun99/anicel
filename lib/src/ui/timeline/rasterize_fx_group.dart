@@ -3,7 +3,8 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../../models/layer_effect.dart' show EffectId;
+import '../../models/layer_effect.dart'
+    show EffectId, resolveLayerEffectsAt;
 import '../../models/layer_id.dart';
 import '../../services/editing/fx_bake_plan.dart';
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
@@ -60,30 +61,63 @@ BakedFrames? _bandOf(
 
 /// Whether RASTERIZE of [layer]'s fx [effectId] — the transform, where
 /// null — would change anything over the frames it bakes: none where it
-/// bakes nothing, nor where the transform stands at every one of them
-/// where its RESET puts it (`LaneVerbs.groupRestsOver`, the one question
-/// both buttons ask) — 🗣️F-583 (유저 2026-11-11) 「변형fx 지금 아무런 변경
+/// bakes nothing — 🗣️F-583 (유저 2026-11-11) 「변형fx 지금 아무런 변경
 /// 없는데 래스터라이즈가 활성화되있어서 누르면 작동함. 값이 안바뀌었으면
-/// 비활성화로」: by the header's own values, though a press of it bakes
-/// the fx on above it too (Q21). ⏳An fx's own values are asked once
-/// F-583-Q1 says whether one at its defaults, which can still draw, bakes.
+/// 비활성화로」 — by the header's own values, though a press of it bakes
+/// the fx on above it too (Q21).
+///
+/// 🗣️F-583-Q1 (유저 2026-11-11 「변형만 끈다 — 효과 · 참조 래스터라이즈는
+/// 지금처럼」, its note 「fx를 꺼도 변함이 있냐 없냐의 기준이면되려나?」):
+/// the transform is asked where its RESET puts it
+/// (`LaneVerbs.groupRestsOver`, the question both its buttons ask), its
+/// rest being no change, and by its switch, which bypasses all of it in
+/// every picture it lays (`layerOwnPlacementAt`'s one gate) — out where it
+/// is off, though its RESET is lit; an fx, whether it changes a pixel
+/// ([_draws]) — one at defaults that draw, a cel number's, is lit where its
+/// RESET is out. ↩️An fx's was lit wherever it baked a frame, and the
+/// transform's whatever its switch, until that note.
 bool _changes(
   EditorSessionManager session,
   Layer layer,
   PropertyLaneRow lane,
   EffectId? effectId,
 ) {
-  final frames = session.layerMerging.fxFramesBaked(
+  final baked = session.layerMerging.fxFramesBaked(
     layer.id,
     effectId,
     band: _bandOf(session, layer, lane),
   );
-  return frames != null &&
-      (effectId != null ||
-          !session.laneVerbs.groupRestsOver(layer.id, lane.laneId, [
-            for (var frame = frames.start; frame < frames.end; frame += 1)
-              frame,
-          ]));
+  if (baked == null) {
+    return false;
+  }
+  final frames = [
+    for (var frame = baked.start; frame < baked.end; frame += 1) frame,
+  ];
+  return switch (effectId) {
+    null =>
+      layer.transformEnabled &&
+          !session.laneVerbs.groupRestsOver(layer.id, lane.laneId, frames),
+    final pressed => _draws(layer, pressed, frames),
+  };
+}
+
+/// Whether [layer]'s fx [effectId] changes a pixel at one of [frames]: a
+/// sample there the renderer keeps — the one question it asks, dropping a
+/// switched-off fx and one that changes none (`ResolvedLayerEffect.isNoOp`)
+/// from the chain it draws ([resolveLayerEffectsAt]).
+bool _draws(Layer layer, EffectId effectId, List<int> frames) {
+  final pressed = [
+    for (final fx in layer.effects)
+      if (fx.id == effectId) fx,
+  ];
+  return frames.any(
+    (frame) => resolveLayerEffectsAt(
+      effects: pressed,
+      frameIndex: frame,
+      blocks: layer.fxBlocks,
+      worn: (owner: layer.id, wearer: layer.id),
+    ).isNotEmpty,
+  );
 }
 
 /// 🗣️I-120-Q11 (유저 2026-11-04 「래스터라이즈 버튼만 둔다(지금 참조

@@ -3,7 +3,9 @@
 // 동일하게 리셋버튼도 값 안바뀌었으면 동일하게 통일해서 비활성화」 — a group
 // header's RESET, and the Transform's RASTERIZE, are out while the values
 // they act on stand where a reset puts them: one question, the reset's,
-// asked over each one's frames.
+// asked over each one's frames. An fx header's RASTERIZE asks whether the
+// fx changes a pixel there (🗣️F-583-Q1, its note 「fx를 꺼도 변함이 있냐
+// 없냐의 기준이면되려나?」) — the renderer's question.
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -237,6 +239,31 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('the Transform\'s Rasterize is out while its switch is off — '
+      'the picture shows none of it — its Reset lit by the key off its '
+      'default', (tester) async {
+    final session = await theApp(tester);
+    final row = session.activeLayerId!;
+    await openLanes(tester, session, row);
+    final reset = resetOf(row, 'transform-group');
+    final rasterize = rasterizeOf(row, 'transform-group');
+    session.selectFrameIndex(0);
+    rotated(session, PropertyTrack<double>().withKey(0, 45));
+    await tester.pumpAndSettle();
+    expect(pressOf(tester, rasterize), isNotNull, reason: '⛔premise');
+
+    session.laneVerbs.toggleLaneGroupEnabled(
+      row,
+      'transform-group',
+      description: 'seed',
+    );
+    await tester.pumpAndSettle();
+    expect(_rowOf(session, row).transformEnabled, isFalse, reason: 'premise');
+    expect(pressOf(tester, rasterize), isNull);
+    expect(pressOf(tester, reset), isNotNull);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('the Reset is asked again as the playhead moves — out where '
       'the group stands at rest, lit where it is moved — and as a lane span '
       'is laid over its keys', (tester) async {
@@ -331,6 +358,92 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(pressOf(tester, reset), isNotNull);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯an fx header\'s Rasterize is out where the fx changes no '
+      'pixel — at its defaults, switched off — and lit where it changes '
+      'one: a cel number at its defaults, its Reset out', (tester) async {
+    final session = await theApp(tester);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    await tester.pumpAndSettle();
+    final row = session.activeLayerId!;
+    await openLanes(tester, session, row);
+    final blur = _rowOf(session, row).effects.single.id;
+    final rasterize = rasterizeOf(row, effectGroupLaneId(blur));
+    expect(pressOf(tester, rasterize), isNull, reason: 'a blur of nothing');
+
+    LayerEffect blurring({required bool enabled}) => LayerEffect(
+      id: blur,
+      kind: EffectKind.blur,
+      enabled: enabled,
+      parameters: {'blurriness': EffectParameter(value: 12)},
+    );
+    session.effectsAndFx.updateLayerEffects(row, [blurring(enabled: true)]);
+    await tester.pumpAndSettle();
+    expect(pressOf(tester, rasterize), isNotNull);
+
+    session.effectsAndFx.updateLayerEffects(row, [blurring(enabled: false)]);
+    await tester.pumpAndSettle();
+    expect(pressOf(tester, rasterize), isNull, reason: 'switched off');
+
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    await tester.pumpAndSettle();
+    final number = _rowOf(session, row).effects.last;
+    expect(number.kind, EffectKind.celNumber, reason: '⛔premise');
+    final header = effectGroupLaneId(number.id);
+    expect(pressOf(tester, resetOf(row, header)), isNull);
+    expect(
+      pressOf(tester, rasterizeOf(row, header)),
+      isNotNull,
+      reason: 'its letters at its defaults',
+    );
+    expect(
+      pressOf(tester, rasterize),
+      isNull,
+      reason: 'the blur still off: the letters are not its',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('an fx header\'s Rasterize is asked over the band that scopes '
+      'it: out over frames it changes no pixel on, lit over every frame', (
+    tester,
+  ) async {
+    final session = await theApp(tester);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    await tester.pumpAndSettle();
+    final row = session.activeLayerId!;
+    await openLanes(tester, session, row);
+    final blur = _rowOf(session, row).effects.single.id;
+    final header = effectGroupLaneId(blur);
+    final rasterize = rasterizeOf(row, header);
+    session.effectsAndFx.updateLayerEffects(row, [
+      LayerEffect(
+        id: blur,
+        kind: EffectKind.blur,
+        parameters: {
+          'blurriness': EffectParameter(
+            track: PropertyTrack<double>()
+                .withKey(0, 12, outgoing: KeyExit.hold)
+                .withKey(2, 0, outgoing: KeyExit.hold)
+                .withKey(6, 12),
+          ),
+        },
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    expect(pressOf(tester, rasterize), isNotNull, reason: '12 at frame 0');
+
+    // The band ends where the blur is back: the frames it bakes are its.
+    session.laneRangeSelection.value = TimelineLaneSelection(
+      layerId: row,
+      laneId: header,
+      startIndex: 2,
+      endIndexExclusive: 6,
+    );
+    await tester.pumpAndSettle();
+    expect(pressOf(tester, rasterize), isNull, reason: 'held at 0 there');
     session.playbackRig.prerenderScheduler.cancel();
   });
 
