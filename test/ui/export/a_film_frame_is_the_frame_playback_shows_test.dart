@@ -36,7 +36,8 @@ import 'package:anicel/src/ui/panel_pictures.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart'
     show ExportLayerRow;
 import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
-import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
+import 'package:anicel/src/ui/frame_shots.dart'
+    show debugOverlayRasters, pictureOfLaid;
 
 import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
@@ -884,7 +885,22 @@ void main() {
           );
         }
 
-        expect(await filmOf(named: true), isNot(await filmOf(named: false)));
+        debugOverlayRasters = [];
+        addTearDown(() => debugOverlayRasters = null);
+        final named = await filmOf(named: true);
+        // Rastered only round where it inks (card
+        // an-exports-overlay-raster-reads-back-the-whole-frame) — which
+        // its pixels do not show.
+        expect(
+          debugOverlayRasters,
+          contains(
+            predicate<(int, int)>(
+              (raster) => raster.$1 * raster.$2 < wide.width * wide.height,
+            ),
+          ),
+          reason: 'the name is rastered round it, not on the whole frame',
+        );
+        expect(named, isNot(await filmOf(named: false)));
       });
     });
 

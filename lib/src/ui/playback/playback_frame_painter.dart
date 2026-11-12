@@ -346,9 +346,9 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   }
 
   /// Where [paint] inks on [size], in its pixels — null for anywhere it
-  /// may. Only a painter handed its names and nothing else says: a box they
-  /// all lie in ([seNameTagsInk]), through the view and the camera [paint]
-  /// lays them by; empty where they ink nowhere.
+  /// may. Only a painter handed nothing but its names says: a box they all
+  /// lie in ([seNameTagsInk]), through the view and the camera [paint] lays
+  /// them by; empty where they ink nowhere — none handed, or none seen.
   ///
   /// Asked by a raster that keeps to where its names are — an export's
   /// names over its frame (card
@@ -360,7 +360,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     }
     final pose = cameraPose;
     final namesAlone =
-        seNameTags.isNotEmpty &&
         veils.isEmpty &&
         !paintPaper &&
         (pose == null || (!paintLetterbox && pasteboardColor == null));

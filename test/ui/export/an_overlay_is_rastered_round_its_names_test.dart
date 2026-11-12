@@ -59,12 +59,12 @@ void main() {
 
   final names = [
     tag('A', const ui.Offset(640, 330)),
-    // A blur spreads past its box — what its buffer holds.
+    // A blur spreads past the plate it is laid on — what its buffer holds.
     tag(
       'B',
       const ui.Offset(690, 370),
       effects: [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [40, 0]),
       ],
     ),
     // Across the frame's top: cut where it is.
@@ -158,14 +158,22 @@ void main() {
     }
   });
 
-  test('names that ink nowhere make a blank, rastering nothing', () async {
-    final painter = over(
-      tags: [tag('A', const ui.Offset(640, 330), opacity: 0)],
-    );
-    expect(painter.inkOf(const ui.Size(640, 360)), ui.Rect.zero);
-    final round = await laid(painter, 640, 360, round: true);
-    expect(inked(round), 0);
-    expect(round, await laid(painter, 640, 360, round: false));
+  group('names that ink nowhere make a blank, rastering nothing', () {
+    for (final (name, tags) in [
+      ('none handed', const <ResolvedSeNameTag>[]),
+      (
+        'one thinned to nothing',
+        [tag('A', const ui.Offset(640, 330), opacity: 0)],
+      ),
+    ]) {
+      test(name, () async {
+        final painter = over(tags: tags);
+        expect(painter.inkOf(const ui.Size(640, 360)), ui.Rect.zero);
+        final round = await laid(painter, 640, 360, round: true);
+        expect(inked(round), 0);
+        expect(round, await laid(painter, 640, 360, round: false));
+      });
+    }
   });
 
   group('🚨a painter handed more than names answers anywhere — the frame is '

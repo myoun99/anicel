@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/sync_image_upload.dart';
@@ -337,6 +338,7 @@ Future<GpuShown> drawnOnTheEngine(
   ui.Rect? inks,
 }) async {
   if (inks == null) {
+    _rastered(width, height);
     return export.upload(await _rasterOf(width, height, draw), width, height);
   }
   final (left, top, right, bottom) = _pixelsRound(inks, width, height);
@@ -345,6 +347,7 @@ Future<GpuShown> drawnOnTheEngine(
     return whole;
   }
   try {
+    _rastered(right - left, bottom - top);
     final part = export.upload(
       await _rasterOf(width, height, draw, part: (left, top, right, bottom)),
       right - left,
@@ -360,6 +363,22 @@ Future<GpuShown> drawnOnTheEngine(
     whole.free();
     rethrow;
   }
+}
+
+/// The size of each raster [drawnOnTheEngine] has made since a test began
+/// recording them — null, recording none, till one does: what a test reads
+/// of how much of a frame an overlay was rastered on, which its pixels do
+/// not show.
+///
+/// ⚠️Written under `assert`, so it costs a release build nothing.
+@visibleForTesting
+List<(int, int)>? debugOverlayRasters;
+
+void _rastered(int width, int height) {
+  assert(() {
+    debugOverlayRasters?.add((width, height));
+    return true;
+  }());
 }
 
 /// The whole pixels of a [width] × [height] raster round [inks] —
