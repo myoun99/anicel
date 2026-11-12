@@ -43,10 +43,10 @@ typedef PluginStepSource = ({
 abstract interface class PluginSteps {
   /// What [effect]'s plugin made of [input], [width] × [height] with
   /// [paper] where the paper lies in its pixels, straight RGBA row after
-  /// row: `ran` false where it is still to be run, [input] kept until it
-  /// is; `straight` null where it ran and failed — drawn as if off. [from]
-  /// says what [input] is made of, where the plan can say.
-  ({bool ran, Uint8List? straight}) stepOf(
+  /// row, on the engine: `ran` false where it is still to be run, [input]
+  /// kept until it is; `made` null where it ran and failed — drawn as if
+  /// off. [from] says what [input] is made of, where the plan can say.
+  ({bool ran, GpuPutPicture? made}) stepOf(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
     required int width,

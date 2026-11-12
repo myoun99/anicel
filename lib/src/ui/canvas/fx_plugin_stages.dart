@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:gpu_engine/gpu_engine.dart' show GpuPutPicture;
 
 import '../../core/rgba_premultiply.dart';
 import '../../core/signed_memo.dart';
@@ -219,7 +220,7 @@ final class FxPluginStages implements PluginSteps {
   }
 
   @override
-  ({bool ran, Uint8List? straight}) stepOf(
+  ({bool ran, GpuPutPicture? made}) stepOf(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
     required int width,
@@ -236,7 +237,7 @@ final class FxPluginStages implements PluginSteps {
       paper: paper,
       from: from,
     );
-    return (ran: met != null, straight: met?.output);
+    return (ran: met != null, made: met?.output);
   }
 
   /// The stage that met this step and has run — run in a recording before
@@ -317,10 +318,10 @@ typedef _StepAsked = ({
 
 /// A step kept past its recording ([FxPluginStages._keptSteps]): whether
 /// its plugin has run over the source it is kept on, and what it made,
-/// straight — null where it failed.
+/// on the engine — null where it failed.
 final class _KeptStep {
   bool ran = false;
-  Uint8List? output;
+  GpuPutPicture? output;
 }
 
 /// A picture of the walk's as a plugin's step reads it — premultiplied as
@@ -364,8 +365,9 @@ final class _Stage {
   /// Where what it makes is kept past its recording, if anywhere.
   final _KeptStep? _kept;
 
-  /// What the plugin made, straight.
-  Uint8List? output;
+  /// What the plugin made, moved to the engine once: every plan that puts
+  /// it names it there ([GpuPutPicture]).
+  GpuPutPicture? output;
 
   ui.Image? _image;
 
@@ -373,7 +375,7 @@ final class _Stage {
   ui.Image? get image => _image ??= switch (output) {
     null => null,
     final made => pictureOf(
-      PremultipliedRows(premultipliedRgbaCopy(made), width, height),
+      PremultipliedRows(premultipliedRgbaCopy(made.straight), width, height),
     ),
   };
 
@@ -392,12 +394,15 @@ final class _Stage {
     if (pixels == null || _input == null) {
       return;
     }
-    final made = output = await _ranThrough(run, pixels);
+    final made = output = switch (await _ranThrough(run, pixels)) {
+      null => null,
+      final straight => GpuPutPicture(straight),
+    };
     if (_kept case final kept? when !kept.ran) {
       kept
         ..ran = true
         ..output = made;
-      FxPluginStages._count(kept, made?.length ?? 0);
+      FxPluginStages._count(kept, made?.straight.length ?? 0);
     }
     run.told?.call(failed: made == null);
   }

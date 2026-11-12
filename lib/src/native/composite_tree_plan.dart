@@ -594,15 +594,15 @@ class _TreePlan {
             (each) => identical(each, effect),
             since,
           );
-          final made = _pluginStep(
+          final ran = _pluginStep(
             effect,
             picture,
             from: from == null
                 ? null
                 : (source: from, before: effects.sublist(since, at)),
           );
-          ops.addAll(made.ops);
-          from = made.straight;
+          ops.addAll(ran.ops);
+          from = ran.made;
           since = at + 1;
         case final lead:
           if (lead case ShadedEffect(:final effect)
@@ -745,9 +745,9 @@ class _TreePlan {
   /// to it, a round of the plan each ([plugins], 🗣️I-132-Q34 a) — what it
   /// made laid in place of what came before it once it has, and the chain
   /// read there until. As if off where no route waits for it. [from] says
-  /// what the picture is made of, where the plan can say; `straight` is
-  /// what it made, once it has.
-  ({List<void Function(int chain)> ops, Uint8List? straight}) _pluginStep(
+  /// what the picture is made of, where the plan can say; `made` is what
+  /// it made, once it has — named by the plan, not copied.
+  ({List<void Function(int chain)> ops, GpuPutPicture? made}) _pluginStep(
     ResolvedLayerEffect effect,
     (int, int, int, int) picture, {
     PluginStepSource? from,
@@ -755,7 +755,7 @@ class _TreePlan {
     final plugins = this.plugins;
     if (plugins == null) {
       _chainHasAStepOff = true;
-      return (ops: const [], straight: null);
+      return (ops: const [], made: null);
     }
     final (left, top, right, bottom) = picture;
     final read = GpuChainRead(plugins.engine);
@@ -769,13 +769,13 @@ class _TreePlan {
     );
     if (!step.ran) {
       _chainHasAStepOff = true;
-      return (ops: [(chain) => plan.chainRead(chain, read)], straight: null);
+      return (ops: [(chain) => plan.chainRead(chain, read)], made: null);
     }
-    return switch (step.straight) {
-      null => (ops: const [], straight: null),
+    return switch (step.made) {
+      null => (ops: const [], made: null),
       final made => (
         ops: [(chain) => plan.chainPut(chain, picture, made)],
-        straight: made,
+        made: made,
       ),
     };
   }

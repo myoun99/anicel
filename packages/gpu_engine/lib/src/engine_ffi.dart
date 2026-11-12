@@ -23,6 +23,8 @@ final class HeldChains extends Opaque {}
 
 final class ChainRead extends Opaque {}
 
+final class PutPicture extends Opaque {}
+
 final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
@@ -640,15 +642,32 @@ external int planChainRead(
   Pointer<ChainRead> read,
 );
 
+@Native<Pointer<PutPicture> Function(Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_put_picture_new',
+)
+external Pointer<PutPicture> putPictureNew(Pointer<Uint8> pixels, int length);
+
+@Native<Pointer<Uint8> Function(Pointer<PutPicture>)>(
+  symbol: 'gpu_engine_put_picture_pixels',
+)
+external Pointer<Uint8> putPicturePixels(Pointer<PutPicture> picture);
+
+@Native<Void Function(Pointer<PutPicture>)>(
+  symbol: 'gpu_engine_put_picture_free',
+)
+external void putPictureFree(Pointer<PutPicture> picture);
+
+@Native<Uint64 Function()>(symbol: 'gpu_engine_put_picture_bytes')
+external int putPictureBytes();
+
 @Native<
-  Int32 Function(Pointer<Planned>, Uint32, Pointer<Int32>, Pointer<Uint8>, Size)
+  Int32 Function(Pointer<Planned>, Uint32, Pointer<Int32>, Pointer<PutPicture>)
 >(symbol: 'gpu_engine_plan_chain_put')
 external int planChainPut(
   Pointer<Planned> plan,
   int chain,
   Pointer<Int32> picture,
-  Pointer<Uint8> pixels,
-  int length,
+  Pointer<PutPicture> made,
 );
 
 @Native<Pointer<ChainRead> Function()>(symbol: 'gpu_engine_chain_read_new')

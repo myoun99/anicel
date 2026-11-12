@@ -853,3 +853,45 @@ fn what_a_mark_refuses_says_why() {
         gpu_engine_mask_free(other);
     }
 }
+
+/// What effect chain 0 of `plan` puts first, as its op holds it.
+fn put_of(plan: *const Planned) -> Arc<[u8]> {
+    // SAFETY: `plan` is live.
+    let plan = unsafe { &*plan };
+    match &plan.chains[0].ops[0].0 {
+        Op::Put { pixels, .. } => Arc::clone(pixels),
+        _ => panic!("chain 0's first op puts nothing"),
+    }
+}
+
+// A plug-in's picture is made once, and each plan that puts it shares its
+// bytes — the picture's own, not a copy, as the app reads them —, kept by
+// the plan past the picture's free.
+#[test]
+fn a_picture_a_chain_puts_is_shared_with_each_plan_not_copied() {
+    let bytes: Vec<u8> = (0..4 * 3 * 4).map(|i| (i * 7) as u8).collect();
+    // SAFETY: `bytes` holds its length.
+    let made = unsafe { gpu_engine_put_picture_new(bytes.as_ptr(), bytes.len()) };
+    let plans = [gpu_engine_plan_new(), gpu_engine_plan_new()];
+    let picture = [0, 0, 4, 3];
+    for plan in plans {
+        // SAFETY: `plan` and `made` are live; `picture` holds four edges.
+        unsafe {
+            let chain = gpu_engine_plan_chain(plan, 0, 0, 1, 1);
+            assert_eq!(gpu_engine_plan_chain_put(plan, chain, picture.as_ptr(), made), 0);
+        }
+    }
+    // SAFETY: `made` is live until it is freed; each plan after.
+    unsafe {
+        for plan in plans {
+            assert!(Arc::ptr_eq(&put_of(plan), &(*made).pixels));
+        }
+        let read = std::slice::from_raw_parts(gpu_engine_put_picture_pixels(made), bytes.len());
+        assert_eq!(read, &bytes[..]);
+        gpu_engine_put_picture_free(made);
+        for plan in plans {
+            assert_eq!(&*put_of(plan), &bytes[..]);
+            gpu_engine_plan_free(plan);
+        }
+    }
+}

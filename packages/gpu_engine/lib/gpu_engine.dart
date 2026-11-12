@@ -1483,19 +1483,19 @@ class GpuPlan {
       _checked(rust.planChainRead(_plan, chain, read._read));
 
   /// Adds to effect chain [chain] what a plug-in made of [picture] — left,
-  /// top, right, bottom, in the chain's pixels: [straight] RGBA8 row after
-  /// row, in place of what the ops before it put; nothing outside it.
+  /// top, right, bottom, in the chain's pixels: [made], in place of what
+  /// the ops before it put; nothing outside it. Its bytes are named, not
+  /// copied ([GpuPutPicture]).
   void chainPut(
     int chain,
     (int, int, int, int) picture,
-    Uint8List straight,
+    GpuPutPicture made,
   ) => _checked(
     using((arena) {
       final (left, top, right, bottom) = picture;
       final edges = arena<Int32>(4);
       edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
-      final bytes = _bytes(arena, straight);
-      return rust.planChainPut(_plan, chain, edges, bytes, straight.length);
+      return rust.planChainPut(_plan, chain, edges, made._made);
     }),
   );
 
@@ -1896,6 +1896,49 @@ class GpuMask {
 
   /// Frees the mask; a plan that names it keeps its own hold.
   void free() => rust.maskFree(_mask);
+}
+
+/// What a plug-in made, straight RGBA8 row after row, moved to the engine
+/// once and named by each plan that puts it ([GpuPlan.chainPut]) — its
+/// bytes the engine's alone, read here through [straight]. Goes with the
+/// object; a plan that puts it keeps its own hold.
+///
+/// 🚨★ONE MOVE, HOWEVER MANY PLANS (ink-trails-further-on-intel-since-the-
+/// screen-waits-for-the-gpu, 관제 2026-11-13 「한 번 만들고 계획마다
+/// 이름만」): a frame is planned again at each write a pen makes, and the
+/// put took the plug-in's bytes each time — copied twice a plan, 25–40 ms
+/// of a write's 33 planned on the Surface Pro 11. ⛔Not kept beside a copy
+/// of its own here: a picture a canvas's size, twice.
+final class GpuPutPicture implements Finalizable {
+  /// [straight]'s bytes, moved to the engine.
+  factory GpuPutPicture(Uint8List straight) {
+    final length = straight.length;
+    final made = using(
+      (arena) => rust.putPictureNew(_bytes(arena, straight), length),
+    );
+    final read = rust
+        .putPicturePixels(made)
+        .asTypedList(length, finalizer: _freed, token: made.cast());
+    return GpuPutPicture._(made, read.asUnmodifiableView());
+  }
+
+  GpuPutPicture._(this._made, this.straight);
+
+  /// The engine's free, as the bytes [straight] reads are collected.
+  static final Pointer<NativeFinalizerFunction> _freed =
+      Native.addressOf<NativeFunction<Void Function(Pointer<rust.PutPicture>)>>(
+        rust.putPictureFree,
+      ).cast();
+
+  /// The bytes of every picture made and not yet collected, counted by
+  /// the engine where it makes and frees them.
+  static int get liveBytes => rust.putPictureBytes();
+
+  final Pointer<rust.PutPicture> _made;
+
+  /// Its pixels, the engine's bytes read in place: the engine's to free
+  /// once this view is collected, which this object holds.
+  final Uint8List straight;
 }
 
 /// The executor: plans of the pool's tiles composited on the GPU.
