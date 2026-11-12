@@ -226,14 +226,26 @@ void main() {
       // turn was stamped once, when it was taken. A land that touched the
       // crate ran its gates for 48 minutes, the next land took its turn at
       // 45, and that land's fast-forward was refused.
+      final alive = codeOf('still_landing');
+      final touched = at(alive, r'touch -c "$HELD_TURN"');
       expect(
-        at(
-          codeOf('still_landing'),
-          r'[ -z "$HELD_TURN" ] || touch -c "$HELD_TURN"',
-        ),
+        touched,
         isNot(-1),
         reason: '-c: a turn that is gone is not made again, as a file',
       );
+      // 🚨관제 2026-11-12, same card: a land whose turn was taken over ran its
+      // gates on beside the land that took it, to be refused at the
+      // fast-forward — it stops at its next step instead.
+      final ownsIt = at(
+        alive,
+        r'[ "$(cat "$HELD_TURN/pid" 2>/dev/null)" = "$$" ] || die',
+      );
+      expect(
+        ownsIt,
+        isNot(-1),
+        reason: 'a land asks whether the turn is still its own',
+      );
+      expect(touched, greaterThan(ownsIt), reason: 'before it stamps it');
       final taking = codeOf('land_turn');
       expect(at(taking, r'HELD_TURN="$turn"'), isNot(-1));
       expect(at(taking, r'export LANE_LAND_TURN="$turn"'), isNot(-1));
@@ -266,6 +278,24 @@ void main() {
         between(gates, native, crate),
         isTrue,
         reason: 'before the crate',
+      );
+
+      // ↩️관제 2026-11-12, same card: `tile-blocks-on-rust`'s native gate
+      // alone ran 61 minutes, stamped before and after it only.
+      final nativeRun = codeOf('cmd_native');
+      final built = at(nativeRun, r'ensure_engine "$p" ||');
+      final debug = at(nativeRun, "if grep -q '^CMAKE_CONFIGURATION_TYPES'");
+      final parity = at(nativeRun, 'bash tool/native_parity_tests.sh');
+      expect(built, isNot(-1));
+      expect(
+        between(nativeRun, built, debug),
+        isTrue,
+        reason: 'after the engine is built',
+      );
+      expect(
+        between(nativeRun, debug, parity),
+        isTrue,
+        reason: 'before the parity run, which beats it at every batch itself',
       );
 
       final crateRun = codeOf('cmd_crate');
@@ -420,6 +450,17 @@ void main() {
       expect(taken, isNot(-1));
       expect(handedBack, greaterThan(taken));
       expect(taking[handedBack], contains('EXIT'));
+      // ↩️관제 2026-11-12 (브러시/렌더링's reading, then seen at 21:13): it
+      // was `rm -rf` whoever held it — a land that had lost its turn,
+      // ending, removed the turn of the land that held it then.
+      expect(taking[handedBack], contains('give_turn_back'));
+      final giving = codeOf('give_turn_back');
+      final asked = at(
+        giving,
+        r'if [ "$(cat "$1/pid" 2>/dev/null)" = "$$" ]; then',
+      );
+      expect(asked, isNot(-1), reason: 'only while it is still this land\'s');
+      expect(at(giving, r'rm -rf "$1"'), greaterThan(asked));
       final all = taking.join('\n');
       expect(
         all,
@@ -432,7 +473,14 @@ void main() {
         contains(r'! kill -0 "$holder"'),
         reason: 'a killed lander\'s turn is taken over',
       );
-      expect(all, contains('-mmin +45'), reason: 'and so is a hung one\'s');
+      // ↩️It was the turn's own age (`-maxdepth 0 -mmin +45`); a test run
+      // under the land beats inside it, so its age is its newest sign of life
+      // (관제 2026-11-12).
+      expect(
+        all,
+        contains(r'[ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]'),
+        reason: 'and so is a hung one\'s: nothing in it moved for 45 minutes',
+      );
     });
   });
 

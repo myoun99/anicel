@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart' show beatTheLandsTurn;
+import '../helpers/temp_dir.dart';
 
 /// 관제 2026-11-12, card a-long-land-loses-its-turn-at-45-minutes: a land's
 /// turn is taken over once nothing in it has moved for 45 minutes
@@ -20,7 +21,24 @@ import '../../tool/affected_tests.dart' show beatTheLandsTurn;
 void main() {
   late Directory scratch;
   setUp(() => scratch = Directory.systemTemp.createTempSync('land-turn'));
-  tearDown(() => scratch.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(scratch));
+
+  test('every batch the run starts beats first', () {
+    final source = File('tool/affected_tests.dart')
+        .readAsStringSync()
+        .replaceAll('\r\n', '\n')
+        .split('\n');
+    final run = source.indexWhere(
+      (line) => line.contains('run: (batch, suites, {required kind}) async {'),
+    );
+    final beat = source.indexWhere(
+      (line) => line.trim() == 'beatTheLandsTurn(Platform.environment);',
+    );
+    final told = source.indexWhere((line) => line.contains("_report('batch"));
+    expect(run, isNot(-1), reason: 'LIVENESS — the batch is found');
+    expect(beat, greaterThan(run));
+    expect(told, greaterThan(beat), reason: 'as it starts');
+  });
 
   test('under a land, a batch writes a beat inside its turn', () {
     final turn = Directory('${scratch.path}/lane-land.turn')..createSync();
