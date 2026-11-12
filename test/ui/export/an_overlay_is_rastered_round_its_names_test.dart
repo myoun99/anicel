@@ -18,6 +18,8 @@ import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/frame_shots.dart' show drawnOnTheEngine;
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 
+import '../../helpers/app_faces.dart';
+
 /// An export's overlay is rastered only round where its painter inks
 /// ([PlaybackFramePainter.inkOf]) and laid where it stands on a blank of
 /// the whole raster ([drawnOnTheEngine]) — and the frame it makes on the
@@ -27,8 +29,10 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 /// frame's names inked 1–20% of it, and the whole of it was rastered, read
 /// back and put on the GPU.
 void main() {
-  // The names are laid out against the fonts the app has loaded.
+  // The names in the app's own faces, as an export letters them: a glyph's
+  // edge is where a raster moved by whole pixels would part from the whole.
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(loadTheAppFaces);
   const canvas = CanvasSize(width: 1280, height: 720);
   const frame = CanvasSize(width: 640, height: 360);
   // Turned and zoomed, off the canvas's middle: the names' box is laid
@@ -61,14 +65,14 @@ void main() {
     tag('A', const ui.Offset(640, 330)),
     // A blur: its buffer reaches past its plate.
     tag(
-      'B',
+      'あ',
       const ui.Offset(690, 370),
       effects: [
         ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
       ],
     ),
     // Across the frame's top: cut where it is.
-    tag('C', const ui.Offset(700, 250)),
+    tag('가', const ui.Offset(700, 250)),
   ];
 
   PlaybackFramePainter over({
@@ -150,7 +154,7 @@ void main() {
           camera: CameraPose(center: CanvasPoint(x: 700, y: 380), zoom: 1.2),
           tags: [
             tag(
-              'B',
+              'あ',
               const ui.Offset(690, 370),
               effects: [
                 ResolvedLayerEffect(
