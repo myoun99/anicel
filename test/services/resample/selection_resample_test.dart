@@ -20,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// the arithmetic the tool has always used".
 void main() {
   /// The kernel's destination-index → source-index map, evaluated the way
-  /// the kernel evaluates it (`resample_kernel.dart`).
+  /// the kernel evaluates it (R1's, `resample.wgsl`).
   ({double u, double v}) kernelSample(ResampleTransform t, int ox, int oy) {
     final x = ox + 0.5;
     final y = oy + 0.5;
@@ -373,20 +373,18 @@ void main() {
   });
 
   group('the radius floor', () {
-    test('the floor it passes matches the kernel default, and Pick no '
-        'longer has a radius for it to reach', () {
+    test('the floor every warp is handed is 1.0, and Pick no longer has a '
+        'radius for it to reach', () async {
       // The floor is 1.0 and belongs to Blend. It was 1.5 for Pick once,
       // on an argument about jagged spurs that only held while the weight
       // was a tent; it stopped meaning anything when the weight became
       // area, and it stopped existing when Pick started supersampling the
       // preimage instead of gathering taps around it.
       //
-      // The second assertion is the guard, and it points the opposite way
+      // The last assertion is the guard, and it points the opposite way
       // from the one it replaced: a floor that changed what Pick elected
       // would mean a radius had come back.
       expect(kSelectionResampleRadiusFloor, 1.0);
-      expect(resampleRadiusFloor(ResampleMode.pick), 1.0);
-      expect(resampleRadiusFloor(ResampleMode.blend), 1.0);
 
       const size = 40;
       final source = Uint8List(size * size * 4);
@@ -412,7 +410,7 @@ void main() {
         outLeft: 0,
         outTop: 0,
       );
-      Uint8List pickAt(double floor) => resampleRgbaReference(
+      Future<Uint8List> pickAt(double floor) => resampleOnTheEngine(
         src: source,
         srcWidth: size,
         srcHeight: size,
@@ -425,14 +423,14 @@ void main() {
 
       expect(
         Uint32List.view(
-          pickAt(kSelectionResampleRadiusFloor).buffer,
+          (await pickAt(kSelectionResampleRadiusFloor)).buffer,
         ).where((word) => word == ink).length,
         expected,
         reason: 'a quarter turn must be an exact permutation',
       );
       expect(
-        pickAt(4.0),
-        pickAt(kSelectionResampleRadiusFloor),
+        await pickAt(4.0),
+        await pickAt(kSelectionResampleRadiusFloor),
         reason:
             'Pick read the radius floor — it has no radius, and a value '
             'that reaches one is a footprint that has grown back',

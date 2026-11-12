@@ -244,7 +244,9 @@ impl ResampleMap {
     /// Whether the map moves by whole pixels and nothing else, so each pixel
     /// is one source word as it is — R1's integer copy, in either mode. The
     /// one place it is decided: the kernel reads it as its mode, and a plan
-    /// that splits a row's reads by page asks it here.
+    /// that splits a row's reads by page asks it here. A correctness contract,
+    /// not a speed trick: moving a drawing by an exact pixel count and getting
+    /// different bytes back would be a defect no filter quality could excuse.
     pub(crate) fn is_copy(&self) -> bool {
         let whole = |offset: i64| offset % i64::from(ONE) == 0;
         self.is_affine() && self.a == ONE && self.e == ONE && self.b == 0 && self.d == 0

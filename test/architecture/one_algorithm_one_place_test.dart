@@ -838,8 +838,16 @@ import '../../tool/refactor/clone_scan.dart';
 /// 88 → 87 (2026-11-11, clone-pairs-1111): the three ask `_onTheTrack`.
 /// 🔬`clones.dart` on the lane over master (`afe46b0f1`, at 88): that pair
 /// gone, none added.
+/// 87 → 80 (2026-11-13, tip-coverage-is-a-second-r1), under the ceiling —
+/// five pairs had left since without it following them down. Two left
+/// here: `resampleRgbaReferenceInto` · `boxFilterA8`, with the Dart R1 (a
+/// tip's coverage reads down on the engine's now, and the reference's
+/// contracts run there), and `softenMaskBoundary` · `paintBrushTipGrid`,
+/// with the grid's own average (it draws its picture a cell a byte).
+/// 🔬`clones.dart` on the lane over master (`b2f068f57`, at 82): those two
+/// gone, none added.
 void main() {
-  const ceiling = 87;
+  const ceiling = 80;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

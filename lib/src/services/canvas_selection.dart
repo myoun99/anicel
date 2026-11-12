@@ -379,7 +379,7 @@ BrushDab _carriedOnEngine({
     id: _resampledId(stamp, idPrefix),
     inverse: resampleTransformElements(transform),
     radiusFloor: kSelectionResampleRadiusFloor,
-    sampling: _samplingOf(mode),
+    sampling: resampleSampling(mode),
     width: out.width,
     height: out.height,
     window: window == null
@@ -387,12 +387,6 @@ BrushDab _carriedOnEngine({
         : (window.x, window.y, window.width, window.height),
   ),
 );
-
-/// R1's sampling of [mode], as the engine names it.
-GpuSampling _samplingOf(ResampleMode mode) => switch (mode) {
-  ResampleMode.blend => GpuSampling.blend,
-  ResampleMode.pick => GpuSampling.pick,
-};
 
 /// [stampDab] as the dab of [made], a resample of its stamp whose first
 /// pixel lies [at] on the canvas: centred on what it covers.
@@ -634,7 +628,7 @@ BrushDab transformStampDabMesh(
       source: _coordinatesOf(baseGrid),
       destination: _coordinatesOf(points),
       radiusFloor: kSelectionResampleRadiusFloor,
-      sampling: _samplingOf(mode),
+      sampling: resampleSampling(mode),
       window: (
         left,
         top,

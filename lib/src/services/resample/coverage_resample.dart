@@ -1,20 +1,15 @@
 import 'dart:typed_data';
 
-import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, GpuStampPicture;
-
-import '../../core/on_a_worker.dart';
-import '../../native/app_gpu_engine.dart';
 import 'resample_kernel.dart';
-import 'selection_resample.dart' show resampleTransformElements;
-
+import 'selection_resample.dart';
 
 /// Reads an 8-bit COVERAGE map to another size through the app's ONE
 /// resampler.
 ///
 /// 🚨AVERAGED, not sampled. A tip mask is coverage, and a resize that
 /// reads one source pixel per destination pixel drops the thin parts of a
-/// stroke entirely — the failure `resample_kernel.dart` describes for
-/// point sampling under reduction ("a destination pixel is not a point").
+/// stroke entirely — the failure R1 (`resample.wgsl`) is built against
+/// under reduction ("a destination pixel is not a point").
 /// Averaging every source pixel the destination covers keeps the ink that
 /// was drawn, at the weight it was drawn.
 ///
@@ -27,7 +22,7 @@ import 'selection_resample.dart' show resampleTransformElements;
 /// should become an area average; the answer came back one better — the
 /// SHARED resampler, because minification has to filter in proportion to
 /// the reduction and this kernel already does: its tent radius is the
-/// preimage's bounding box (`radiusX = math.max(floor, extentX)`), so
+/// preimage's bounding box (`resample_blend`, `max(extent, floor)`), so
 /// shrinking 4× reads 4 source pixels while a fixed 4-tap bilinear reads
 /// 4 whatever the reduction and aliases. The user's criterion was "do it
 /// the way professional tools do it; the tip's appearance changing is
@@ -51,7 +46,10 @@ import 'selection_resample.dart' show resampleTransformElements;
 /// on the way out — not in any hot loop. The kernel
 /// is untouched, so the native/Dart byte parity still holds unchanged.
 /// ↩️The C mirror is gone (`qa_resample_rgba`, ABI 76, 2026-11-11), so the
-/// first count no longer holds; the second still does.
+/// first count no longer holds; the second still does — of the engine's R1
+/// now (`resample.wgsl`), whose innermost loop a second accumulator would
+/// branch. And a tip's picture comes this way too, once a mask a launch
+/// (`BrushTipThumbnails`), its ≤256² read down to 16².
 ///
 /// ★COVERAGE RIDES IN ALPHA, OVER BLACK. That is already the app's RGBA
 /// spelling of a tip mask — `encodeBrushTipImage` writes a tip that way
@@ -79,14 +77,10 @@ import 'selection_resample.dart' show resampleTransformElements;
 /// — and this IS that resampler, so the thumbnail of a tip smaller than
 /// its preview cell comes out reconstructed instead of blocky.
 ///
-/// 🚨★★★ON THE ENGINE'S R1, READ ON A WORKER (card
-/// tip-coverage-is-a-second-r1). This read down through a Dart R1 of its
-/// own — the engine's written a second time. 🗣️`-Q1` (유저 2026-11-12:
-/// 「미리 만들어 둔다 — 엔진이 열리면 기다리지 않고 받아 둔다」): what asks
-/// waits for the engine to be open and its kernels compiled
-/// ([openAppGpuEngine], [AppKernels.ready]) — opened and compiled off this
-/// isolate, never on it — and the GPU's answer is read on a worker
-/// ([onAWorker]), so the isolate that asks goes on meanwhile.
+/// 🚨★★★ON THE ENGINE'S R1 ([resampleOnTheEngine]), waiting on no isolate
+/// that asks (card tip-coverage-is-a-second-r1, 🗣️`-Q1` 유저 2026-11-12:
+/// 「미리 만들어 둔다 — 엔진이 열리면 기다리지 않고 받아 둔다」). ↩️This read
+/// down through a Dart R1 of its own — the engine's written a second time.
 Future<Uint8List> resampleCoverage(
   Uint8List source, {
   required int width,
@@ -98,45 +92,28 @@ Future<Uint8List> resampleCoverage(
   for (var index = 0; index < source.length; index += 1) {
     rgba[index * 4 + 3] = source[index];
   }
-  final engine = await openAppGpuEngine();
-  final landing = await appGpuStampLandingKernels.ready;
   // Destination-to-source, so the scale is the REDUCTION: one destination
   // step covers `width / newWidth` source pixels, which is exactly the
-  // extent the kernel turns into its tent radius.
-  final resampled = await _readOnAWorker(
-    landing.carried(
-      GpuStampPicture(engine, rgba, width, height),
-      inverse: resampleTransformElements(
-        ResampleTransform(
-          a: width / newWidth,
-          b: 0,
-          c: 0,
-          d: 0,
-          e: height / newHeight,
-          f: 0,
-        ),
-      ),
-      radiusFloor: resampleRadiusFloor(ResampleMode.blend),
-      sampling: GpuSampling.blend,
-      width: newWidth,
-      height: newHeight,
+  // extent R1 turns into its tent radius.
+  final resampled = await resampleOnTheEngine(
+    src: rgba,
+    srcWidth: width,
+    srcHeight: height,
+    dstWidth: newWidth,
+    dstHeight: newHeight,
+    transform: ResampleTransform(
+      a: width / newWidth,
+      b: 0,
+      c: 0,
+      d: 0,
+      e: height / newHeight,
+      f: 0,
     ),
+    mode: ResampleMode.blend,
   );
   final coverage = Uint8List(newWidth * newHeight);
   for (var index = 0; index < coverage.length; index += 1) {
     coverage[index] = resampled[index * 4 + 3];
   }
   return coverage;
-}
-
-/// [picture]'s pixels, read on a worker ([onAWorker]) — whose wait for the
-/// GPU is that worker's.
-///
-/// ⚠️[picture] is held here till the read is done: a local of a
-/// `Finalizable` type lives to the end of its scope, and the worker holds
-/// only its address ([GpuStampPicture.reader]).
-Future<Uint8List> _readOnAWorker(GpuStampPicture picture) async {
-  final reader = picture.reader;
-  final pixels = await onAWorker(reader.pixels);
-  return pixels;
 }

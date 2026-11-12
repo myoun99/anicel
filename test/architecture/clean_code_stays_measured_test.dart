@@ -1067,7 +1067,17 @@ void main() {
   /// (`PanelPictures.render` through `pictureOfShot`) and a conte PDF took
   /// the frame itself. 🔬`clean_code_diff` against master (`b2f068f57`)
   /// names that one.
-  const wideSignatures = 452;
+  ///
+  /// ⚠️452 → 451 on 2026-11-13, two gone and one added
+  /// (tip-coverage-is-a-second-r1 — the Dart R1 left, a tip's coverage
+  /// reading down on the engine's): `resampleRgbaReference` and
+  /// `resampleRgbaReferenceInto` went with it, and `resampleOnTheEngine`
+  /// (eight) is the app's one door onto the engine's R1, the reference's
+  /// own eight — the source and its size, the output's, the map, the mode
+  /// and the radius floor. 🔬`clean_code_diff` against master
+  /// (`b2f068f57`) names those. ⛔Not bundled to fit: the arguments
+  /// are what the contracts it carries are stated in.
+  const wideSignatures = 451;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1474,7 +1484,12 @@ void main() {
   /// the commit's `_blendStampDab` went under without the C's half, and
   /// `BrushLiveStrokeRasterizer.preBlendedOverlayTiles` without its batch.
   /// 🔬`clean_code_diff` against master (`8edb2a59d`) names those.
-  const longBodies = 395;
+  ///
+  /// ⚠️395 → 394 on 2026-11-13, one gone and nothing added
+  /// (tip-coverage-is-a-second-r1): `resampleRgbaReferenceInto`, the Dart
+  /// R1's body, went with it. 🔬`clean_code_diff` against master
+  /// (`b2f068f57`) names it.
+  const longBodies = 394;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

@@ -320,7 +320,7 @@ typedef BoxFilterSpan = ({double origin, double step});
 /// not, spreads onto a row this leaves clear, peaks lower (「3a」 at ratio
 /// 1: 149 for 200) and keeps 16–30% less edge contrast; a 12px name
 /// narrowed to a half or under keeps 14–32% less along the line; and past
-/// sixteen source pixels a pixel (`kResampleRadiusCeiling`) Blend stops
+/// sixteen source pixels a pixel (`RESAMPLE_CEILING`, R1's) Blend stops
 /// averaging, which a narrowing to a twentieth asks of a 9px name — its
 /// ink came out from a fifth short to a third over.
 ///
