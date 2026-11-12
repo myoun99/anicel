@@ -78,9 +78,17 @@ class BrushTipStampCache {
   /// (lift/fill pixels) pass through untouched, but for a size under a
   /// pixel ([liftedToOnePixel] — every dab a stroke lays comes through
   /// here).
+  ///
+  /// A dab of no size passes through too: it lays nothing
+  /// (`dirtyRegionForBrushDab`), and the lift leaves it as it is — 「nothing
+  /// here says what it is」 (`markUnderAPixel`). ↩️Till 2026-11-12 its size
+  /// went on to the smallest step ([quantizeSizeStep]'s floor, from before
+  /// a mark under a pixel was lifted to one): a quarter of a pixel at the
+  /// dab's whole opacity, a speck where a pen's pressure — or a vector
+  /// line's width (`clipVectorTiles`) — came to nothing.
   BrushDab resolveDab(BrushDab raw) {
     final dab = liftedToOnePixel(raw);
-    if (dab.stamp != null || dab.tipMask != null) {
+    if (dab.stamp != null || dab.tipMask != null || dab.size <= 0.0) {
       return dab;
     }
     final sizeQ = quantizeSizeStep(dab.size);
