@@ -163,8 +163,8 @@ final class VideoViewerDocument implements ViewerDocument {
     // `_ensurePageRendered` holds an in-flight marker across this await that
     // its `on Object` arm could therefore never clear. One movie frame the
     // engine refused wedged the panel for the life of its `State`.
-    // [decodeStraightRgbaImage] carries why the SDK cannot report that, and
-    // [uploadRawRgba] is the upload that can.
+    // [decodeStraightRgbaImageOnAWorker] carries why the SDK cannot report
+    // that, and [uploadRawRgba] is the upload that can.
     return uploadRawRgba(
       premultiplied,
       width: _info.width,

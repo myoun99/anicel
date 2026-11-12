@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show CanvasActiveLayerRow;
+import 'package:anicel/src/ui/canvas/float_warp.dart' show FloatResampleShown;
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -81,20 +82,18 @@ void main() {
   );
 
   /// A float of [alpha] carried to (8, 8)–(40, 40) over [holed] — its own
-  /// surface, or [image] for a warp.
+  /// surface, or [resampled] for a warp.
   ({SelectionFloatPaint float, _Cel cel}) floatOver(
     BitmapSurface holed, {
     int alpha = 255,
     bool onCanvasGrid = true,
-    bool image = false,
+    bool resampled = false,
   }) {
     final cel = _Cel(holed, onCanvasGrid: onCanvasGrid);
     final stamp = stampOf(side, alpha);
-    final float = image
+    final float = resampled
         ? SelectionFloatPaint(
-            image: _image,
-            imageLeft: 8,
-            imageTop: 8,
+            resampled: FloatResampleShown.of(stamp),
             lands: (stamp: stamp, on: cel),
           )
         : SelectionFloatPaint(
@@ -118,10 +117,6 @@ void main() {
     image.dispose();
     return bytes.getUint8((y * canvasSize.width + x) * 4 + 3);
   }
-
-  setUpAll(() async {
-    _image = await _imageOf(side);
-  });
 
   test('an opaque float landing on nothing is its own pixels keyed — no '
       'landing is made, at any place it is carried to', () {
@@ -203,7 +198,7 @@ void main() {
   });
 
   test('a float a warp resampled is the landing', () {
-    final (:float, :cel) = floatOver(empty, image: true);
+    final (:float, :cel) = floatOver(empty, resampled: true);
 
     expect(float.shownOn(keys).preview, same(_landing));
     expect(cel.asked, 1);
@@ -326,20 +321,6 @@ void main() {
       }
     }
   });
-}
-
-late Image _image;
-
-Future<Image> _imageOf(int size) async {
-  final recorder = PictureRecorder();
-  Canvas(recorder).drawRect(
-    Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
-    Paint()..color = const Color(0xFF40C060),
-  );
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(size, size);
-  picture.dispose();
-  return image;
 }
 
 /// What the cel's landing would show — one object, so a test can tell it

@@ -288,10 +288,11 @@ void main() {
     return shot.rgba;
   }
 
-  /// Lets a step land: its frames, and the one thing here drawn off the
-  /// frame's clock — the picture an open warp resamples to, decoded by the
-  /// engine on a real thread — waited for until it is the one the box's
+  /// Lets a step land: its frames, and the resample an open warp shows
+  /// once a frame has ended, waited for until it is the one the box's
   /// values ask for now ([CanvasSelectionCommands.debugFloatsCaughtUp]).
+  /// ↩️That resample was decoded by the engine on a real thread, until the
+  /// canvas laid its tiles (a-float-premultiplies-in-the-c-each-step).
   ///
   /// ↩️It lent both clocks twelve rounds of 16 ms until 2026-10-25. 🔬On
   /// two pumped frames and no real time 17 of the 22 tests passed, their
@@ -508,15 +509,15 @@ void main() {
           switch (float) {
             null => 'nothing',
             _ when float.isEmpty => 'nothing',
-            _ when float.image != null => 'an image',
+            _ when float.resampled != null => 'its resample',
             _ => 'its surface',
           },
       ],
       [
         for (final _ in before)
-          if (warps.isNotEmpty) 'an image' else 'its surface',
+          if (warps.isNotEmpty) 'its resample' else 'its surface',
       ],
-      reason: 'every row floats — a warp as the image it resamples to, a '
+      reason: 'every row floats — a warp as what it resamples to, a '
           'drag as its own surface, in a box it opened or one already open',
     );
     expect(
@@ -738,6 +739,30 @@ void main() {
       ),
       drawn,
     );
+  });
+
+  // 🧭관제 2026-11-11 18:47 (a-float-premultiplies-in-the-c-each-step):
+  // 「플로트를 엔진에 놓아(`EngineHeld` 길) Flutter 표시용 디코드 자체를
+  // 없애는 쪽」 — the canvas lays an open warp's resample as its tiles, so
+  // nothing pictures it: no premultiply, no upload, a step of the box.
+  testWidgets('a sheet scaled in its box, and scaled again, is laid as its '
+      'tiles — no picture is made of what the canvas shows', (tester) async {
+    final c = await open(tester, projectOf(_Rows.live, keyed: false));
+    final region = await sheets(tester, c, _Rows.live);
+    final commands = await select(tester, _Rows.live, region);
+    await pressCtrl(tester, LogicalKeyboardKey.keyT);
+    commands.beginTransform();
+
+    final shown = <Object>{};
+    for (final by in [1.25, 1.5]) {
+      commands.editTransformValues((now) => now.copyWith(sx: by, sy: by));
+      await settle(tester);
+      final resampled = canvasOf(tester).live!.floatOverlay!.value!.resampled;
+      expect(resampled, isNotNull, reason: '⛔fixture: its resample shown');
+      shown.add(resampled!);
+      expect(resampled.debugPictured, isFalse, reason: 'scaled by $by');
+    }
+    expect(shown, hasLength(2), reason: '⛔CONTROL: each scale a resample');
   });
 
   testWidgets('a keyed sheet on a posed row shows what it lands as', (
@@ -1229,7 +1254,7 @@ void main() {
     await settle(tester);
     expect(commands.movePending, isTrue, reason: '⛔fixture: in hand');
     expect(
-      canvasOf(tester).live!.floatOverlay!.value!.image,
+      canvasOf(tester).live!.floatOverlay!.value!.resampled,
       isNull,
       reason: '⛔fixture: carried, the float its own pixels — no warp of the '
           'box\'s',

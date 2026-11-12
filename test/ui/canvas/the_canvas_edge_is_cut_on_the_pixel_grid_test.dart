@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
+import '../../helpers/a_resample_shown.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★ THE CANVAS EDGE IS CUT ON THE PIXEL GRID (F-67-paper-edge,
@@ -615,11 +616,15 @@ void main() {
       final square = await recorder.endRecording().toImage(2, 2);
       // At canvas (1, 1), so its edges fall at 6.15 · 8.35 and 4.15 · 6.35.
       for (final (route, float) in <(String, LandingPreview)>[
-        ('a transform', SelectionFloatPaint(
-          image: square,
-          imageLeft: 1,
-          imageTop: 1,
-        )),
+        (
+          'a transform',
+          SelectionFloatPaint(
+            resampled: resampleShownOver(
+              const Rect.fromLTWH(1, 1, 2, 2),
+              const [255, 0, 0, 255],
+            ),
+          ),
+        ),
         (
           'a text',
           CelTextLanding(picture: square, tiles: const {}, left: 1, top: 1),

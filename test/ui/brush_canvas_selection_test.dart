@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
-import 'dart:ui' as ui show Image;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -8,8 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/device_viewport.dart';
-import 'package:anicel/src/services/straight_rgba_image.dart'
-    show debugRawRgbaUploader;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -453,20 +450,22 @@ void main() {
   }
 
   /// True once the transform preview widget is mounted — the observable
-  /// end of the resample + decode round trip.
+  /// end of the resample, run once a frame has ended.
   bool previewIsUp() => find
       .byKey(const ValueKey<String>('transform-resample-preview'))
       .evaluate()
       .isNotEmpty;
 
-  /// True once a float draws its warped preview's DECODED image — what a
+  /// True once a float draws its warped preview's resample — what a
   /// confirm keeps. ⚠️Not [previewIsUp]: that key is the float overlay's,
   /// mounted wherever a float is.
-  bool decodedPreviewIsUp(WidgetTester tester) => tester
+  bool resampledPreviewIsUp(WidgetTester tester) => tester
       .widgetList<CustomPaint>(find.byType(CustomPaint))
       .map((paint) => paint.painter)
       .whereType<SelectionFloatPainter>()
-      .any((painter) => painter.floats.any((float) => float.image != null));
+      .any(
+        (painter) => painter.floats.any((float) => float.resampled != null),
+      );
 
   /// A window of both clocks, so the committed surface can paint and any
   /// hold releases.
@@ -722,130 +721,15 @@ void main() {
     );
   });
 
-  testWidgets('🚨a REFUSED resample still opens the gate, so the next '
-      'transform previews', (tester) async {
-    // 🚨★★★`_resampleInFlight` is the throughput gate — one resample at a
-    // time, so a drag cannot queue one full-canvas transform per pointer
-    // event. It was set before `ui.decodeImageFromPixels` and cleared only
-    // inside its callback, and that callback is never invoked on a refusal
-    // (read in the SDK source). One refused upload therefore left the gate
-    // closed for the life of the widget: the handles and the marching ants
-    // kept running at 60 fps while the transformed pixels stopped, for good.
-    //
-    // ⛔The fix is NOT to fold the gate into `_resampleImageRequest`. Those
-    // answer two different questions — which ask is current, versus whether
-    // an upload is outstanding — and `_discardFloatResample` invalidates the
-    // ask while deliberately leaving the gate CLOSED, because a discarded
-    // upload is still holding a whole-picture scratch and still occupying
-    // the engine. One field for both would start a second full-canvas upload
-    // every time a drag crossed back through identity.
-    //
-    // 🚨The refusal comes through the seam because the engine under
-    // `flutter test` never refuses on its own — the harness is
-    // `flutter_tester`, Skia, which
-    // `the_door_makes_the_same_picture_on_every_engine_test` pins by
-    // asserting `pictureOfUploads` is false there. (This used to say
-    // "because Windows runs Skia in every build"; that stopped being true
-    // when 3.47 made Impeller the desktop default, 2026-09-16, and the
-    // harness — not the platform — was always what this seam is for.)
-    // See [debugRawRgbaUploader].
-    // ⚠️THE SEAM IS GLOBAL, so the refusal is aimed: only the float's own
-    // stamp, identified by not being a square power-of-two upload. (Until
-    // 2026-09-17 this widget's canvas TILES went through the seam too, and
-    // refusing everything wedged the fixture itself — measured: the test
-    // ran to its ten-minute timeout. Tiles picture themselves through the
-    // door now; the aim stays, because anything else square that comes
-    // through here is still not the float.)
-    final resampleSizes = <String>[];
-    var resamples = 0;
-    var refuseResample = false;
-    ui.Image aSmallImage() {
-      final recorder = PictureRecorder();
-      Canvas(recorder).drawRect(
-        const Rect.fromLTWH(0, 0, 4, 4),
-        Paint()..color = const Color(0xFF00FF00),
-      );
-      return recorder.endRecording().toImageSync(4, 4);
-    }
-
-    debugRawRgbaUploader =
-        (
-          rgba, {
-          required int width,
-          required int height,
-          int? targetWidth,
-          int? targetHeight,
-        }) {
-          final isTile = width == height && (width & (width - 1)) == 0;
-          if (isTile) {
-            return Future<ui.Image>.value(aSmallImage());
-          }
-          resamples += 1;
-          resampleSizes.add('${width}x$height');
-          if (refuseResample) {
-            return Future<ui.Image>.error(StateError('the engine refused this'));
-          }
-          return Future<ui.Image>.value(aSmallImage());
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
-
-    // ⛔AND THE REFUSAL IS DELIBERATELY SILENT HERE, unlike the tile cache
-    // and the stroke overlay. This runs once per pointer move of a drag, so
-    // a report per refused resample would be a flood rather than a signal —
-    // and the ask retires itself: the next move is a different transform,
-    // which is why this site needs no refusal ledger either.
-    final env = await pumpSelectionPanel(tester);
-    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
-    await env.setTool(CanvasTool.move);
-    env.commands.beginTransform();
-    await tester.pump();
-
-    // A ROTATION: a pure translation short-circuits and never reaches the
-    // resampler at all, which is what the preview-parity test above says.
-    refuseResample = true;
-    env.commands.editTransformValues(
-      (now) => now.copyWith(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 24,
-        sx: 1,
-        sy: 1,
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-    final afterRefusal = resamples;
-
-    // A second, DIFFERENT transform. With the gate stuck closed this asks
-    // for nothing at all — the bug, seen from outside the widget.
-    refuseResample = false;
-    env.commands.editTransformValues(
-      (now) => now.copyWith(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 31,
-        sx: 1,
-        sy: 1,
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-
-    expect(
-      afterRefusal,
-      greaterThan(0),
-      reason: 'instrument: the rotation reached the resampler — at 0 the '
-          'assertion below would be measuring a transform that never ran '
-          '(sizes seen: $resampleSizes)',
-    );
-    expect(
-      resamples,
-      greaterThan(afterRefusal),
-      reason: 'the gate reopened on the refused road, so the preview keeps '
-          'following the drag (sizes seen: $resampleSizes)',
-    );
-  });
+  // ↩️「🚨a REFUSED resample still opens the gate, so the next transform
+  // previews」 stood here: one resample at a time was paced by its upload,
+  // and an upload the engine refused had left that gate closed for the life
+  // of the widget — the handles and ants at 60 fps over pixels that
+  // stopped. Its refusal came through `debugRawRgbaUploader`. Nothing is
+  // uploaded for the screen of a warp now — its resample is laid as tiles,
+  // and pictured, where a canvas asks, through the door every tile takes —
+  // and the frame paces it (a-float-premultiplies-in-the-c-each-step,
+  // `float_warp_test` 「what an open box shows, a frame at a time」).
 
   // ↩️「P3a: an arrow-key nudge with the box open moves the PICTURE, not just
   // the outline」 stood here. It pinned the nudge's own `_preview.schedule()`
@@ -5571,8 +5455,15 @@ void main() {
       // Stated as the invariant rather than the symptom: a painter may not
       // put ink where its own surface is empty. That holds whatever the
       // borrowing policy is.
-      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      //
+      // A box drawn, then the move tool: the lift is Ctrl+T's own, the box
+      // untouched. ↩️Drawn with the move tool in hand, the drag turned the
+      // box it opened (180°), and the float showed as its surface only
+      // while its resample's decode, which fake time never lands, was on
+      // its way — until nothing was decoded for it.
+      final env = await pumpSelectionPanel(tester);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
 
       Future<void> settle() => lendBothClocks(
         tester,
@@ -6154,11 +6045,11 @@ void main() {
           sy: 1.5,
         ),
       );
-      // The resample decodes asynchronously; the preview being up is what
-      // says the image the confirm will keep actually exists yet.
+      // The resample runs once a frame has ended; the preview being up is
+      // what says the resample the confirm will keep actually exists yet.
       await pumpUntil(
         tester,
-        () => decodedPreviewIsUp(tester),
+        () => resampledPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
       expect(
@@ -6228,7 +6119,7 @@ void main() {
       );
       await pumpUntil(
         tester,
-        () => decodedPreviewIsUp(tester),
+        () => resampledPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
       // The frames the confirm lands in, behind its wait window (F-551).
@@ -6431,7 +6322,7 @@ void main() {
       // The undo restores the pre-lift snapshot — the very tile objects
       // that were on screen before the lift, pictures and all — so the
       // frame after it is whole by construction. What this pins is the
-      // other half: that the confirm let the float go. A decoded resample
+      // other half: that the confirm let the float go. A resample
       // kept past its session paints the landing over whatever comes
       // next, the restored picture included — `ghost` ink where the
       // settled frame has none — and a picture that is let go cannot.
@@ -6456,7 +6347,7 @@ void main() {
       );
       await pumpUntil(
         tester,
-        () => decodedPreviewIsUp(tester),
+        () => resampledPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
       await windowBehind(tester, () async => env.commands.applyTransform());
@@ -6475,7 +6366,7 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('transform-resample-preview')),
         findsNothing,
-        reason: 'a decoded resample is still mounted after the undo',
+        reason: 'a resample is still mounted after the undo',
       );
 
       await settle(tester);
@@ -6540,8 +6431,8 @@ void main() {
       await tester.pump();
       await pumpUntil(
         tester,
-        () => decodedPreviewIsUp(tester),
-        reason: 'the drag-time resample to decode',
+        () => resampledPreviewIsUp(tester),
+        reason: 'the drag-time resample to be shown',
       );
       final window = debugLastResampledFloat!.stamp!;
       expect(
@@ -6681,7 +6572,7 @@ void main() {
         (80.0, 50.0),
         reason: '⛔fixture: the second drag moved it on, inside the box',
       );
-      expect(floats.single.image, isNull);
+      expect(floats.single.resampled, isNull);
     });
 
     testWidgets('🚨a move typed in halves shows the float where it lands — '
@@ -6710,9 +6601,9 @@ void main() {
           .expand((painter) => painter.floats)
           .single;
       expect(
-        float.image,
+        float.resampled,
         isNull,
-        reason: 'a typed move uploads no picture either',
+        reason: 'a typed move shows no resample either',
       );
       final held = bitmapSurfaceContentBounds(float.surface!.surface)!;
       final carried = (
@@ -6766,7 +6657,7 @@ void main() {
       );
       await pumpUntil(
         tester,
-        () => decodedPreviewIsUp(tester),
+        () => resampledPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
       await windowBehind(tester, () async => env.commands.applyTransform());
@@ -6944,7 +6835,7 @@ void main() {
       );
       await pumpUntil(
         tester,
-        () => decodedPreviewIsUp(tester),
+        () => resampledPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
       expect(

@@ -1,4 +1,5 @@
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_resample_shown.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -67,18 +68,6 @@ void main() {
   const pasteboardSpot = Rect.fromLTWH(-16, 16, 16, 16);
   const pasteboardProbe = Offset(24, 56);
   const red = [255, 0, 0, 255];
-
-  ui.Image redSquare() {
-    final recorder = ui.PictureRecorder();
-    Canvas(recorder).drawRect(
-      const Rect.fromLTWH(0, 0, 16, 16),
-      Paint()..color = const Color(0xFFFF0000),
-    );
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(16, 16);
-    picture.dispose();
-    return image;
-  }
 
   Uint8List redRgba() {
     final rgba = Uint8List(tileSize * tileSize * 4);
@@ -437,8 +426,6 @@ void main() {
   // the ghost is laid as a fill's result tiles — the case above.
 
   testWidgets('🚨a transform\'s float shows on the pasteboard', (tester) async {
-    final image = redSquare();
-    addTearDown(image.dispose);
     final float = SelectionFloatOverlay(null);
     addTearDown(float.dispose);
     final stack = await pumpStack(
@@ -455,10 +442,7 @@ void main() {
       what: 'a transform\'s resampled float',
       stack: stack,
       draw: (where) async => float.value = SelectionFloatPaint(
-        image: image,
-        imageTiles: tilesOfColorOver(where, red),
-        imageLeft: where.left,
-        imageTop: where.top,
+        resampled: resampleShownOver(where, red),
         clip: canvasSize.pasteboardAt(PasteboardReach.whole).rect,
       ),
     );
@@ -554,16 +538,10 @@ void main() {
   /// hand (F-344) — rides the same tokens and the same carry.
   testWidgets('🚨a landing preview leaves nothing behind when it crosses the '
       'extent edge, either way', (tester) async {
-    final image = redSquare();
-    addTearDown(image.dispose);
     final landing = ValueNotifier<LandingPreview?>(null);
     addTearDown(landing.dispose);
-    SelectionFloatPaint floatAt(Rect where) => SelectionFloatPaint(
-      image: image,
-      imageTiles: tilesOfColorOver(where, red),
-      imageLeft: where.left,
-      imageTop: where.top,
-    );
+    SelectionFloatPaint floatAt(Rect where) =>
+        SelectionFloatPaint(resampled: resampleShownOver(where, red));
     // A committed tile, blank so it draws nothing a probe could read. It was
     // load-bearing when this pin was written — an empty snapshot then read
     // as 「nothing to compare」 and refused the carry on its own — and since

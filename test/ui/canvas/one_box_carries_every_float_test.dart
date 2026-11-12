@@ -206,27 +206,34 @@ void main() {
     await tester.pump();
     env.commands.editTransformValues((now) => now.copyWith(sx: 2, sy: 2));
     await tester.pump();
-    // The decodes are real: let them land.
+    // The resamples run once the frame has ended: let them land.
     await settleAsync(
       tester,
       () =>
-          env.slotA.value?.image != null && env.slotB.value?.image != null,
+          env.slotA.value?.resampled != null &&
+          env.slotB.value?.resampled != null,
       beat: const Duration(milliseconds: 10),
     );
 
     final shownA = env.slotA.value;
     final shownB = env.slotB.value;
-    expect(shownA?.image, isNotNull, reason: 'A shows its resample');
+    expect(shownA?.resampled, isNotNull, reason: 'A shows its resample');
     expect(
-      shownB?.image,
+      shownB?.resampled,
       isNotNull,
       reason: 'B shows its resample — not its untransformed self under a '
           'scaled box',
     );
     // ×2 about (140, 90): A lands over (-60..20, -10..30), B over
     // (260..340, 110..190) — what the confirm writes (the pin below).
-    expect((shownA!.imageLeft, shownA.imageTop), (-60.0, -10.0));
-    expect((shownB!.imageLeft, shownB.imageTop), (260.0, 110.0));
+    expect(
+      (shownA!.resampled!.landing.left, shownA.resampled!.landing.top),
+      (-60, -10),
+    );
+    expect(
+      (shownB!.resampled!.landing.left, shownB.resampled!.landing.top),
+      (260, 110),
+    );
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -432,7 +432,7 @@ void main() {
       final bytes = await tester.runAsync(() async {
         ui.Image? image;
         if (decoded) {
-          image = await decodeStraightRgbaImage(
+          image = await decodeStraightRgbaImageOnAWorker(
             rgba: piece.image.rgba,
             width: piece.image.width,
             height: piece.image.height,

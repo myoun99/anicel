@@ -1,16 +1,12 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/layer_effect.dart';
-import '../../models/tile_coord.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
@@ -18,6 +14,7 @@ import '../../services/cel_source_effect_pass.dart'
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
 import 'display_resample.dart' show drawImageRectOnThePixelGrid;
+import 'float_warp.dart' show FloatResampleShown;
 import 'landing_preview.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
@@ -49,10 +46,7 @@ class SelectionFloatPaint implements LandingPreview {
   SelectionFloatPaint({
     this.surface,
     CanvasPoint? surfaceOffset,
-    this.image,
-    this.imageTiles,
-    this.imageLeft = 0,
-    this.imageTop = 0,
+    this.resampled,
     this.clip,
     this.lands,
   }) : surfaceOffset = surfaceOffset ?? CanvasPoint(x: 0, y: 0);
@@ -62,15 +56,10 @@ class SelectionFloatPaint implements LandingPreview {
   final BitmapSurfacePainter? surface;
   final CanvasPoint surfaceOffset;
 
-  /// The resampled preview (an open warp: the preview IS the result, drawn
-  /// unfiltered at the rect it will land in).
-  final ui.Image? image;
-
-  /// [image]'s pixels as tiles, where they land (`FloatResampleShown`) —
-  /// what the engine lays ([heldTiles]).
-  final Map<TileCoord, BitmapTile>? imageTiles;
-  final double imageLeft;
-  final double imageTop;
+  /// The resampled preview (an open warp: the preview IS the result, laid
+  /// unfiltered at the rect it will land in) — its tiles, what the engine
+  /// lays ([heldTiles]), and their picture for a canvas that draws one.
+  final FloatResampleShown? resampled;
 
   /// The pasteboard wall, in canvas coordinates. The landing clips there too,
   /// so a preview that kept showing pixels past it would promise something
@@ -81,7 +70,7 @@ class SelectionFloatPaint implements LandingPreview {
   /// it here: a host with no composite behind it, a layer mounted alone.
   final FloatLanding? lands;
 
-  bool get isEmpty => surface == null && image == null;
+  bool get isEmpty => surface == null && resampled == null;
 
   /// Everything this float draws, in canvas space — what a buffer holding it
   /// has to cover — or [Rect.zero] when nothing floats.
@@ -93,16 +82,11 @@ class SelectionFloatPaint implements LandingPreview {
   /// clip.
   @override
   Rect get drawnWorldRect {
-    final image = this.image;
+    final resampled = this.resampled;
     final surface = this.surface;
     final Rect drawn;
-    if (image != null) {
-      drawn = Rect.fromLTWH(
-        imageLeft,
-        imageTop,
-        image.width.toDouble(),
-        image.height.toDouble(),
-      );
+    if (resampled != null) {
+      drawn = _landingOf(resampled);
     } else if (surface != null) {
       drawn = surface.drawnWorldRect.shift(
         Offset(surfaceOffset.x, surfaceOffset.y),
@@ -124,8 +108,8 @@ class SelectionFloatPaint implements LandingPreview {
     if (bounds != null) {
       canvas.clipRect(bounds);
     }
-    final image = this.image;
-    if (image != null) {
+    final resampled = this.resampled;
+    if (resampled != null) {
       // The transform preview (P3a): the RESAMPLED float, drawn at the
       // canvas rect it will land in, through the ordinary viewport
       // transform.
@@ -143,16 +127,12 @@ class SelectionFloatPaint implements LandingPreview {
       // Its edge is one more texel boundary, cut on the grid as the
       // surface's coordinates are (`_drawImageAtTile`): drawn where it
       // falls, Impeller blends it inside a pixel.
+      final landing = _landingOf(resampled);
       drawImageRectOnThePixelGrid(
         canvas,
-        image,
-        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-        Rect.fromLTWH(
-          imageLeft,
-          imageTop,
-          image.width.toDouble(),
-          image.height.toDouble(),
-        ),
+        resampled.picture,
+        Offset.zero & landing.size,
+        landing,
         filterQuality: FilterQuality.none,
         pixelRatio: pixelRatio,
       );
@@ -176,11 +156,22 @@ class SelectionFloatPaint implements LandingPreview {
         ),
       ];
     }
-    final imageTiles = this.imageTiles;
+    final resampled = this.resampled;
     return [
-      if (image != null && imageTiles != null)
-        (tiles: imageTiles, dx: 0, dy: 0, laying: const LaidOver()),
+      if (resampled != null)
+        (tiles: resampled.tiles, dx: 0, dy: 0, laying: const LaidOver()),
     ];
+  }
+
+  /// Where [resampled] lands, in canvas space.
+  static Rect _landingOf(FloatResampleShown resampled) {
+    final landing = resampled.landing;
+    return Rect.fromLTWH(
+      landing.left.toDouble(),
+      landing.top.toDouble(),
+      landing.width.toDouble(),
+      landing.height.toDouble(),
+    );
   }
 
   /// This float as a row whose leading colour keys are [keys] shows it:
@@ -262,10 +253,7 @@ class SelectionFloatPaint implements LandingPreview {
           identical(other.surface, surface) &&
           other.surfaceOffset.x == surfaceOffset.x &&
           other.surfaceOffset.y == surfaceOffset.y &&
-          identical(other.image, image) &&
-          identical(other.imageTiles, imageTiles) &&
-          other.imageLeft == imageLeft &&
-          other.imageTop == imageTop &&
+          identical(other.resampled, resampled) &&
           other.clip == clip &&
           _landsAlike(other.lands, lands);
 
@@ -274,10 +262,7 @@ class SelectionFloatPaint implements LandingPreview {
     identityHashCode(surface),
     surfaceOffset.x,
     surfaceOffset.y,
-    identityHashCode(image),
-    identityHashCode(imageTiles),
-    imageLeft,
-    imageTop,
+    identityHashCode(resampled),
     clip,
     identityHashCode(lands?.on),
     identityHashCode(lands?.stamp.stamp),

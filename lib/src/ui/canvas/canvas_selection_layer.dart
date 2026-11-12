@@ -481,7 +481,7 @@ class _Float {
   /// The cel it lands on ([LiftedFloat.landsOn]).
   final FloatLandsOn? landsOn;
 
-  /// It through the open warp, resampled and decoded for the screen — see
+  /// It through the open warp, resampled for the screen — see
   /// [FloatResamplePreview]. Empty outside a warp.
   final FloatResamplePreview preview;
 
@@ -715,8 +715,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     box.session = null;
-    // Its pictures go with it ([_Float]) — the decoded resample is a GPU
-    // allocation the size of the selection.
+    // Its pictures go with it ([_Float]) — a resample is the size of the
+    // selection, and its picture, where one was made, a GPU allocation.
     for (final float in session.floats) {
       float.preview.discard();
     }
@@ -1247,8 +1247,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // differently it reads, and these two had already drifted apart.
     _disposing = true;
     // ⚠️The landing above ends the session, and a session's resamples end
-    // with it ([_endSession]) — the GPU images and the in-flight decodes'
-    // claims on this state alike.
+    // with it ([_endSession]) — their pictures and an ask still waiting on
+    // the frame alike.
     _interrupted(SessionInterruption.land);
     _cursor.dispose();
     _ants.dispose();
@@ -1815,9 +1815,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// viewport moves freely — Fit, the zoom pill, the pan bars — and a
   /// window computed for where the user WAS is a window with a hole in
   /// it. Rescheduling on a viewport change does not close that hole
-  /// either: the resample is synchronous but the decode is not, so the
-  /// frames between a pan and the new image would paint the old window
-  /// and nothing else. A drag cannot pan, so the question never arises.
+  /// either: the resample runs once the frame has ended (↩️ its decode
+  /// arrived later still), so the frame between a pan and the new
+  /// resample would paint the old window and nothing else. A drag cannot pan, so the question never arises.
   ///
   /// Worth anything, because a drag is the only thing that resamples
   /// dozens of times a second. At rest there is one resample, it computes
@@ -2317,28 +2317,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// move ⇒ the untouched lift at an offset is byte-exact by short circuit.
   SelectionFloatPaint _floatPaint(_Float float) {
     final pasteboard = widget.pasteboard.rect;
-    // The image and the dab it was decoded from travel together, so the
-    // rect the preview draws into always belongs to the pixels in it.
-    if (float.preview.shown case (
-      :final image,
-      :final dab,
-      :final landing,
-      :final tiles,
-    )) {
+    // The tiles and the dab they were made of travel together, so the
+    // rect the preview lays them on always belongs to the pixels in them.
+    if (float.preview.shown case final shown?) {
       return SelectionFloatPaint(
-        image: image,
-        imageTiles: tiles,
-        // The landing rect, the stamp blend's own: the dab centre rounded to
-        // an integer top-left. Previewing at the unrounded position would
+        // At the landing rect, the stamp blend's own: the dab centre rounded
+        // to an integer top-left. Previewing at the unrounded position would
         // put a sub-pixel Ctrl+T on screen half a pixel from where it lands.
-        imageLeft: landing.left.toDouble(),
-        imageTop: landing.top.toDouble(),
+        resampled: shown,
         // The pasteboard wall, because the landing clips there too
         // (`bitmap_surface_brush_commit`): a selection dragged past the stage
         // edge loses those pixels on Enter, and a preview that kept showing
         // them would be promising something the commit will not deliver.
         clip: pasteboard,
-        lands: _landsAs(float, dab),
+        lands: _landsAs(float, shown.dab),
       );
     }
     // ↩️`_drag is MoveDrag` stood here too, from when a move was its own

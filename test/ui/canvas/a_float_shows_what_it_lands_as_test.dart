@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -9,10 +8,14 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/float_warp.dart' show FloatResampleShown;
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+
+import '../../helpers/a_resample_shown.dart';
 
 /// 🚨★★★F-240 — WHILE IT FLOATS, IT SHOWS WHAT IT LANDS AS, AT EVERY ZOOM.
 ///
@@ -78,17 +81,11 @@ void main() {
     return BitmapSurface(canvasSize: canvasSize, tileSize: tile, tiles: tiles);
   }
 
-  Future<ui.Image> imageOf(Uint8List opaque, int w, int h) {
-    final done = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      opaque,
-      w,
-      h,
-      ui.PixelFormat.rgba8888,
-      done.complete,
-    );
-    return done.future;
-  }
+  /// A transform's resample of 22×14 landing at (13, 9).
+  FloatResampleShown transformed() => resampleShownOn(
+    DirtyRegion(left: 13, top: 9, rightExclusive: 35, bottomExclusive: 23),
+    pattern(22, 14, 2),
+  );
 
   /// [painter]'s content at [scale], the float laid through the surface
   /// pass — or, [floatOnTop], drawn over it at `none` afterwards, the way
@@ -201,12 +198,7 @@ void main() {
     final zoom = '${(scale * 100).round()}%';
 
     test('a TRANSFORM\'s float at $zoom shows the bytes it lands as', () async {
-      final floatImage = await imageOf(pattern(22, 14, 2), 22, 14);
-      final float = SelectionFloatPaint(
-        image: floatImage,
-        imageLeft: 13,
-        imageTop: 9,
-      );
+      final float = SelectionFloatPaint(resampled: transformed());
       final seen = await both(scale, float: float);
       expect(
         differing(seen.old, seen.landed),
@@ -241,14 +233,9 @@ void main() {
     // pixel drawn twice at half reads three quarters.
     test('a TRANSFORM\'s float at $zoom on a row at half opacity shows the '
         'bytes it lands as', () async {
-      final floatImage = await imageOf(pattern(22, 14, 2), 22, 14);
       final seen = await both(
         scale,
-        float: SelectionFloatPaint(
-          image: floatImage,
-          imageLeft: 13,
-          imageTop: 9,
-        ),
+        float: SelectionFloatPaint(resampled: transformed()),
         layerPaint: ui.Paint()..color = const ui.Color(0x80000000),
       );
       expect(differing(seen.old, seen.landed), greaterThan(20));

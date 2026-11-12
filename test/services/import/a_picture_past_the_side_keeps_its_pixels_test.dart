@@ -118,7 +118,11 @@ void main() {
   /// [rgba] as the engine holds it.
   Future<EnginePicture> engineOf(Uint8List rgba, int width, int height) async =>
       EnginePicture(
-        await decodeStraightRgbaImage(rgba: rgba, width: width, height: height),
+        await decodeStraightRgbaImageOnAWorker(
+          rgba: rgba,
+          width: width,
+          height: height,
+        ),
       );
 
   /// [ours] against [theirs] tile for tile: the same tiles, where the same

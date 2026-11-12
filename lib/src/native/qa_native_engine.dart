@@ -521,19 +521,6 @@ class QaNativeEngine {
   /// newest entry always survives even when it alone exceeds the budget.
   static const int stampUploadByteBudget = 320 * 1024 * 1024;
 
-  /// R23: straight-alpha stamp RGBA → PREMULTIPLIED bytes for the fill
-  /// overlay image, through the fused C kernel (a 64MP Dart premultiply
-  /// loop was seconds). The upload is the identity-cached stamp upload,
-  /// so the commit's stamp blend right after reuses it for free. The
-  /// returned scratch is FRESH (never aliased by a later call); free it
-  /// once the image decode has consumed the view.
-  QaStampScratch premultipliedStampCopy(Uint8List rgba) {
-    final source = stampUploads.upload(rgba);
-    final buffer = malloc<Uint8>(rgba.length);
-    _premultiplyRgbaCopy(buffer, source, rgba.length ~/ 4);
-    return QaStampScratch._(buffer.asTypedList(rgba.length), buffer);
-  }
-
   /// R25: fused premultiplied copy of an already-NATIVE tile buffer
   /// (the live rasterizer's stroke tiles) — one C call replaces the
   /// overlay's per-tile Dart row-copy + premultiply loops. Free the

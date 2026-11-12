@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -27,13 +25,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart'
     show materializeBrushDabSequenceOnBitmapSurface;
-import 'package:anicel/src/services/bitmap_surface_geometry.dart'
-    show tilesOfRegion;
 import 'package:anicel/src/services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/float_warp.dart' show FloatResampleShown;
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -476,16 +473,9 @@ void main() {
       width: 75,
       height: 33,
     );
-    final stamp = warped.stamp!;
-    final landing = stamp.landingRect(warped.center);
-    final image = await _imageOf(stamp);
-    addTearDown(image.dispose);
     final overlay = SelectionFloatOverlay(
       SelectionFloatPaint(
-        image: image,
-        imageTiles: tilesOfRegion(landing, stamp.rgba),
-        imageLeft: landing.left.toDouble(),
-        imageTop: landing.top.toDouble(),
+        resampled: FloatResampleShown.of(warped),
         clip: base.pasteboard.rect,
       ),
     );
@@ -589,19 +579,6 @@ void main() {
   });
 }
 
-/// [stamp]'s picture, as a warp's preview decodes it — its pixels clear or
-/// opaque, so its straight bytes are its premultiplied ones.
-Future<ui.Image> _imageOf(BrushStampImage stamp) {
-  final done = Completer<ui.Image>();
-  ui.decodeImageFromPixels(
-    stamp.rgba,
-    stamp.width,
-    stamp.height,
-    ui.PixelFormat.rgba8888,
-    done.complete,
-  );
-  return done.future;
-}
 
 /// A cel a float was taken up from: [holed] under it, on the canvas's grid
 /// or not, and its landing where it is asked for one.

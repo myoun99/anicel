@@ -26,12 +26,15 @@ import '../helpers/native_engine_path.dart';
 /// for, the ordinary transform now pays by itself. This measures what
 /// that is before anything is changed to make it smaller.
 ///
-/// Three questions, in the order that matters:
+/// Two questions, in the order that matters:
 ///
 ///   1. what does the resample cost, and does it follow the OUTPUT area?
-///   2. what else rides on the same pointer move (the premultiply)?
-///   3. how much bigger does the uniform (aspect-locked) solve make that
+///   2. how much bigger does the uniform (aspect-locked) solve make that
 ///      output than the free one, for the same hand movement?
+///
+/// ↩️A third — what else rides on the same pointer move: the premultiply
+/// for the decode — until nothing was decoded for the screen of a move
+/// (a-float-premultiplies-in-the-c-each-step).
 ///
 /// Prints; asserts only that the work happened. Run it alone.
 void main() {
@@ -186,37 +189,6 @@ void main() {
           expect(result.width, greaterThan(0));
         }
       }
-    }
-  });
-
-  test('the premultiply that rides the same pointer move', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-
-    // Every resample is followed by a premultiplied copy for the decode.
-    // It is a second full pass over the OUTPUT, so it belongs in the
-    // per-move total even though it is not the resample.
-    final native = QaNativeEngine.instance;
-    expect(native, isNotNull, reason: 'the native engine is the fast path');
-    for (final (label, width, height) in const <(String, int, int)>[
-      ('selection 512²', 512, 512),
-      ('whole picture 2340×1654', 2340, 1654),
-    ]) {
-      final rgba = stampDab(width, height).stamp!.rgba;
-      final ms = millisPer(4, () {
-        final scratch = native!.premultipliedStampCopy(rgba);
-        scratch.free();
-      });
-      debugPrint(
-        '[premultiply] $label  ${ms.toStringAsFixed(2)} ms  '
-        '(${(rgba.length / 1e6).toStringAsFixed(1)} MB)',
-      );
-      expect(ms, greaterThanOrEqualTo(0));
     }
   });
 

@@ -464,8 +464,9 @@ const _imageHolders = <String, String>{
       'HeldPictures holds — a frame described, not a holding',
   'lib/src/ui/canvas/canvas_selection_layer.dart → floats':
       'the open move\'s floats, one a cel it lifted: what each keeps of '
-      'pictures is its warp preview — the last resample decoded for the '
-      'screen, one at a time (FloatResamplePreview) — while the box is open',
+      'pictures is its warp preview — the newest resample, pictured only '
+      'where a canvas that draws pictures asks (FloatResamplePreview) — '
+      'while the box is open',
   'lib/src/ui/canvas/selection_float_overlay.dart → floats':
       'a paint\'s floats: each picture is a float\'s warp preview, owned by '
       'the float (canvas_selection_layer.dart → floats)',

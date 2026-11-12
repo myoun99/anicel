@@ -224,9 +224,11 @@ final class QaVideoDecoder {
   /// frees in [close].
   ///
   /// ⚠️Reusing `into` is safe because every consumer copies it
-  /// SYNCHRONOUSLY — `decodeStraightRgbaImage` premultiplies into its own
-  /// scratch (or a fresh list) before the async decode begins. A consumer
-  /// that held this buffer across an await would read the NEXT frame.
+  /// SYNCHRONOUSLY — the one that passes it (`movie_span`) writes each
+  /// frame to its encoder before it reads the next. ↩️So did
+  /// `decodeStraightRgbaImage`, premultiplying into its own scratch before
+  /// its async decode began. A consumer that held this buffer across an
+  /// await would read the NEXT frame.
   Pointer<Uint8> _scratch = nullptr;
   int _scratchBytes = 0;
 
