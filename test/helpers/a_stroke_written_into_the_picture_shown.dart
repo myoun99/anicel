@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
@@ -527,9 +528,74 @@ void aStrokeIsWrittenIntoThePictureShown({
     await tester.pumpWidget(const SizedBox());
   }, skip: skip);
 
-  testWidgets('🚨a landing that comes with a float in hand is no move: where '
-      'it lands cannot be told, and the picture it would leave under the '
-      'frame\'s key never gets it (F-525)', (tester) async {
+  // F-525: what the frame's key is given is the frame — a landing that
+  // came with a float in hand included. ↩️A float could not be told by
+  // where it lands, so such a landing was no move: the frame's next key
+  // was laid anew, and the pin held that it was (b874c1af6, 2026-11-01 —
+  // moved, it was the picture before the landing). A float is told now
+  // (a-float-in-hand-draws-the-frame-as-it-stands, 3b212a85e): the
+  // landing goes into the picture this view keeps of its own while the
+  // float is in hand, and the frame's key gets that picture once nothing
+  // floats — which has to be the frame's as a picture of its own lays it,
+  // and nothing else is under the frame's key meanwhile.
+
+  /// A float of the stroke's ink all over the cel's tile: what no cel
+  /// stores, wherever it stands.
+  SelectionFloatOverlay aFloatOfTheStrokesInk() {
+    final float = SelectionFloatOverlay(
+      SelectionFloatPaint(
+        surface: BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: canvasSize,
+            tileSize: tileSize,
+            tiles: {origin: tileAt(origin, (_) => stroke)},
+          ),
+          showTransparentBackground: false,
+        ),
+      ),
+    );
+    addTearDown(float.dispose);
+    return float;
+  }
+
+  /// [key]'s picture in [store] over the page, read back — null where
+  /// there is none.
+  Uint8List? pixelsUnder(
+    EngineFramePictureStore<FramePictureKey> store,
+    FramePictureKey key,
+  ) => switch (store.peek(key)) {
+    final picture? => pixelsOfPicture(picture, onThePage),
+    null => null,
+  };
+
+  /// [key]'s picture over the page as a store of its own lays it, of
+  /// [standing]'s cels.
+  Future<Uint8List> laidAnewOf(
+    WidgetTester tester,
+    LayerFrameImageCache images,
+    FramePictureKey key, {
+    required BitmapSurfacePainter live,
+  }) async {
+    final laidAnew = aStoreOfPictures();
+    addTearDown(laidAnew.dispose);
+    await pump(
+      tester,
+      runOf(images, laidAnew),
+      key: const ValueKey(1),
+      view: pannedView,
+      live: live,
+    );
+    expect(
+      await settleAsync(tester, () => laidAnew.bytesOf(key) != null),
+      isTrue,
+      reason: 'LIVENESS: a picture of its own is laid',
+    );
+    return pixelsUnder(laidAnew, key)!;
+  }
+
+  testWidgets('🚨a landing that comes with a float in hand is told where it '
+      'lands: what the frame\'s key holds, in hand and let go, is the '
+      'frame\'s, as one laid anew is (F-525)', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     final store = StoreTellingItsWrites();
@@ -547,11 +613,8 @@ void aStrokeIsWrittenIntoThePictureShown({
       isNot(standing.picture),
       reason: '⛔premise: the frame\'s key moved',
     );
-    final float = SelectionFloatOverlay(
-      SelectionFloatPaint(surface: standing.painter()),
-    );
-    addTearDown(float.dispose);
-    await pump(
+    final float = aFloatOfTheStrokesInk();
+    Future<void> standWith(SelectionFloatOverlay? float) => pump(
       tester,
       standing.run,
       key: const ValueKey(0),
@@ -559,15 +622,85 @@ void aStrokeIsWrittenIntoThePictureShown({
       live: standing.painter(),
       float: float,
     );
+    await standWith(float);
+    await lendBothClocks(tester, rounds: 2);
+    expect(
+      store.patched,
+      isNotEmpty,
+      reason: '⛔premise: the landing and the float went in by a patch',
+    );
+    final inHand = pixelsUnder(store, after);
+
+    float.value = null;
+    await standWith(float);
     expect(
       await settleAsync(tester, () => store.peek(after) != null),
       isTrue,
-      reason: 'LIVENESS: the frame\'s next key has its picture',
+      reason: 'LIVENESS: the frame\'s key has its picture once nothing floats',
+    );
+    final given = pixelsUnder(store, after);
+
+    final frameAsLaid = await laidAnewOf(
+      tester,
+      standing.images,
+      after,
+      live: standing.painter(),
     );
     expect(
-      store.laid,
-      contains(after),
-      reason: 'laid anew: ↩️moved, it was the picture before the landing',
+      given,
+      frameAsLaid,
+      reason: 'the frame\'s key holds the frame, the landing in it',
+    );
+    expect(
+      inHand == null || listEquals(inHand, frameAsLaid),
+      isTrue,
+      reason: 'the float in hand went under the frame\'s key',
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, skip: skip);
+
+  testWidgets('🚨a landing that comes with a float in hand, its write '
+      'refused, leaves the picture before it under no key of the frame\'s '
+      '(F-525, F-509)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = _WritesThrow();
+    addTearDown(store.dispose);
+    final standing = await standOnIt(
+      tester,
+      store,
+      view: pannedView,
+      lineage: 'a-refused-landing-with-a-float',
+    );
+    land(standing.cels, {origin: stroked(strokeAt)});
+    final after = standing.run.pictures.keyOfStack(nodes, frame);
+    store.refuses = true;
+    await pump(
+      tester,
+      standing.run,
+      key: const ValueKey(0),
+      view: pannedView,
+      live: standing.painter(),
+      float: aFloatOfTheStrokesInk(),
+    );
+    expect(
+      tester.takeException(),
+      isStateError,
+      reason: '⛔premise: the write was refused, by name',
+    );
+    final left = pixelsUnder(store, after);
+    store.refuses = false;
+
+    final frameAsLaid = await laidAnewOf(
+      tester,
+      standing.images,
+      after,
+      live: standing.painter(),
+    );
+    expect(
+      left == null || listEquals(left, frameAsLaid),
+      isTrue,
+      reason: 'the picture before the landing went under the frame\'s key',
     );
     await tester.pumpWidget(const SizedBox());
   }, skip: skip);
