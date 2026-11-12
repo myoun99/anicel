@@ -61,7 +61,8 @@ import '../canvas/canvas_layer_stack_view.dart'
 import '../canvas/guide_overlay.dart' show paintGuideLines;
 import '../conte/conte_fonts.dart' show conteTextStyle;
 import '../sheet_painting.dart';
-import '../../native/app_gpu_engine.dart' show appGpuExportKernels;
+import '../../native/app_gpu_engine.dart'
+    show KeptOnTheAppsEngine, appGpuExportKernels;
 import '../../native/composite_tree_plan.dart' show strengthOf;
 import '../editor_session_manager.dart';
 import '../frame_shots.dart';
@@ -219,17 +220,30 @@ class ExportFrameRenderer {
   ///
   /// Frames the engine keeps (gpu-export-path ①⑵): a frame's last picture
   /// is made there, a shot laid on its ground and a track's units laid over
-  /// one another.
-  final HeldPictures<GpuShown> _pictures = HeldPictures(
-    (frame) => frame.free(),
-  );
+  /// one another — held while the engine they were made on is the app's
+  /// ([_onTheEngine]).
+  final KeptOnTheAppsEngine<HeldPictures<GpuShown>> _pictures =
+      KeptOnTheAppsEngine();
 
   /// What the app draws over the pictures of a frame made on the engine — a
   /// stage's apron, a cut's names, its veils — rastered and on the engine,
   /// each under the props of what draws it ([RepaintOnProps.props]: the law
   /// the screen repaints by), held as [_pictures] are: drawn once while
   /// what it draws stands, the camera with it.
-  final HeldPictures<GpuShown> _drawn = HeldPictures((frame) => frame.free());
+  final KeptOnTheAppsEngine<HeldPictures<GpuShown>> _drawn =
+      KeptOnTheAppsEngine();
+
+  /// The frames [held] holds on the engine the app has — none yet on one
+  /// it opened after the app let go of the one they were made on, which
+  /// are left with it ([KeptOnTheAppsEngine]): a frame asked for again is
+  /// made again there.
+  ///
+  /// 🗣️관제 2026-11-12 08:43: 「네 `GpuExport` · 엔진 프레임 캐시와 lay 패스
+  /// 커널도 그 이음매로 들어간다(따로 쥐면 장치를 잃은 뒤 옛 엔진의 것을
+  /// 쓴다)」.
+  static HeldPictures<GpuShown> _onTheEngine(
+    KeptOnTheAppsEngine<HeldPictures<GpuShown>> held,
+  ) => held.of(() => HeldPictures((frame) => frame.free()));
 
   /// The pictures read back of the frames this renderer hands out
   /// ([_handed]), each under the frame it is of: one image for a frame
@@ -242,7 +256,7 @@ class ExportFrameRenderer {
   /// How many pictures this renderer has had to make (test hook) — a frame
   /// that is the picture before it makes none.
   @visibleForTesting
-  int get debugPicturesMade => _pictures.made;
+  int get debugPicturesMade => _pictures.orNull?.made ?? 0;
 
   /// The cels the frame a run draws looked at, and the ones the frame
   /// before it did ([CelLooks]): a cel drawn by frames in a row is read once
@@ -267,8 +281,8 @@ class ExportFrameRenderer {
   /// frame, and the cut picture inside a video frame starts none
   /// ([_cutPicture]).
   void _startFrame() {
-    _pictures.nextFrame();
-    _drawn.nextFrame();
+    _pictures.orNull?.nextFrame();
+    _drawn.orNull?.nextFrame();
     _handedOut.nextFrame();
     _looks.nextFrame();
   }
@@ -276,8 +290,9 @@ class ExportFrameRenderer {
   /// Lets go of the pictures and the cels a run held. The run's to call
   /// when its last frame is out.
   void dispose() {
-    _pictures.dispose();
-    _drawn.dispose();
+    // Kept, the run over: what is asked for after fails as a holder's does.
+    _onTheEngine(_pictures).dispose();
+    _onTheEngine(_drawn).dispose();
     _handedOut.dispose();
     _looks.letGo();
   }
@@ -1071,7 +1086,7 @@ class ExportFrameRenderer {
     required int height,
     required Future<void> Function(GpuExport export, GpuShown onto, T made)
     lay,
-  }) => _pictures.of((T, made), () async {
+  }) => _onTheEngine(_pictures).of((T, made), () async {
     final export = await appGpuExportKernels.ready;
     final frame = export.blank(width, height);
     try {
@@ -1091,7 +1106,7 @@ class ExportFrameRenderer {
     int width,
     int height,
     void Function(ui.Canvas canvas) draw,
-  ) => _drawn.of(
+  ) => _onTheEngine(_drawn).of(
     (props, width, height),
     () async => drawnOnTheEngine(
       await appGpuExportKernels.ready,
@@ -1135,7 +1150,7 @@ class ExportFrameRenderer {
     // again: a held one reads none of them, and the frame after it that
     // changes one row would read every row again.
     _looks.carry(stackedCelsOf(nodes), canvasSize: page.canvasSize);
-    return _pictures.of(
+    return _onTheEngine(_pictures).of(
       (route, key, on),
       () => _shot(
         cut,

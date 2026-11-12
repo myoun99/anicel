@@ -219,7 +219,7 @@ final class AppKernels<T extends Object> {
   /// and kept, and a future made under a widget test's faked clock tells
   /// one awaited in real time (`runAsync`) that it is done only when the
   /// faked clock is pumped — an export's frame waited for it for good.
-  FutureOr<T> get ready => _kept ?? warm();
+  FutureOr<T> get ready => _kept.orNull ?? warm();
 
   /// [kept] compiled off this isolate, at once where it is compiled already:
   /// ahead of a first use that would otherwise wait with the app frozen.

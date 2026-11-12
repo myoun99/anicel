@@ -239,13 +239,16 @@ const _notCensused = <String, String>{
 /// baked words', the brush list's strokes — 2026-10-17), and an export
 /// run's `HeldPictures` (2026-11-12: made generic for the frames the
 /// export holds on the engine, its two maps fell out of the census — the
-/// field that names what it holds is the holder). Record keys
+/// field that names what it holds is the holder), and a cache kept on the
+/// app's engine (`KeptOnTheAppsEngine` — 2026-11-12: those frames went
+/// into one, to be made again on the next engine, and fell out the same
+/// way). Record keys
 /// are allowed — `Map<(A, B), ui.Image>` is still a holder.
 /// Crude on purpose, like [_counter]: a holder that hides from this also
 /// hides from the reader looking for one.
 const _keepers =
     '(?:LinkedHash|Hash|SplayTree)?(?:Map|Set)|List|(?:List)?Queue|Expando'
-    '|(?:BakeOnce)?Lru|HeldPictures';
+    '|(?:BakeOnce)?Lru|HeldPictures|KeptOnTheAppsEngine';
 
 /// The fields of [source] that keep pictures — [pictures] being what a
 /// type names to be one ([_pictureTypesBy]) — typed
@@ -457,8 +460,9 @@ const _imageHolders = <String, String>{
       'an export run\'s pictures, made on the engine — a cut\'s whole '
       'picture, the finished frame — for the frame being drawn, held one '
       'frame more and let go after (HeldPictures.nextFrame), every one when '
-      'the run ends (dispose): the working set of a render, as the sheets\' '
-      '_pictures are',
+      'the run ends (dispose), and left with the engine they were made on '
+      'once the app lets it go (KeptOnTheAppsEngine): the working set of a '
+      'render, as the sheets\' _pictures are',
   'lib/src/ui/export/export_frame_renderer.dart → _drawn':
       'what the app draws over those frames — a stage\'s apron, a cut\'s '
       'names, its veils — rastered and on the engine, held as they are',

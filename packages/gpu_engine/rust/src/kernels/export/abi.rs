@@ -12,7 +12,6 @@
 #[cfg(test)]
 mod tests;
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
