@@ -37,8 +37,10 @@ media = { path = "native/media" }
 memory = { path = "native/memory" }
 pen = { path = "native/pen" }
 # The NV12 pass's tests hold it to video's `from_rgba` byte for byte too,
-# while the movie writers run it on the CPU (공통, gpu-export-path
-# 2026-11-07 23:20 ④); that pin goes when 7′ deletes it.
+# which a trimmed movie's re-encode still runs on the CPU — a worker has no
+# engine (관제 2026-11-12, gpu-export-path ⑶-3 ①). ↩️The pin was to go when
+# 7′ deleted `from_rgba` (공통, 2026-11-07 23:20 ④); it goes with the RGBA
+# road instead (board `trimmed-movie-decodes-to-nv12`).
 video = { path = "native/video" }
 # A Gaussian's weights are alike on every device (유저 gpu-same-formula-Q2):
 # their exp is libm's, the same Rust on every OS, not the device's maths

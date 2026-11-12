@@ -22,9 +22,12 @@
 //!     pair plus alpha and bitrate knobs (ABI v21). The audio codec follows
 //!     the video codec: ProRes carries PCM (the delivery convention),
 //!     H.264/H.265 carry AAC.
-//!   - `write_frame()` takes top-down RGBA (exactly what the renderer's
-//!     rawRgba hands over); any BGRA/NV12 conversion happens HERE, beside
-//!     the encoder that wants it.
+//!   - `write_frame()` takes top-down RGBA; a BGRA or YCbCr conversion
+//!     happens HERE, beside the encoder that wants it. `nv12_shape()` says
+//!     whether the open writer takes NV12 instead, and `write_nv12()` takes
+//!     it as the GPU engine made it — Android's and Apple's H.26x, for an
+//!     export's frames (gpu-export-path ⑶); a trimmed movie's frames, made
+//!     on a worker that has no engine, still come as RGBA.
 //!   - `write_audio()` takes interleaved int16 PCM chunks, interleaved with
 //!     the frames by the caller so no side buffers the whole track. Windows
 //!     puts a frame before the first (`windows.rs`, `AUDIO_LEAD`):
@@ -58,6 +61,11 @@ mod os;
 // read on every machine that runs the tests.
 #[cfg(any(windows, test))]
 mod edit_list;
+
+// Android's and Apple's H.26x writers take the engine's NV12; what they
+// lay of it is read on every machine that runs the tests.
+#[cfg(any(target_os = "android", target_vendor = "apple", test))]
+mod nv12;
 
 // The v10 lineup (ABI v21): MP4 = H.264/H.265, MOV = H.264 + ProRes. The
 // Dart enums map 1:1 onto these values. The containers are the law's; the
@@ -242,6 +250,52 @@ pub unsafe extern "C" fn qa_video_export_write_frame(rgba: *const u8) -> i32 {
 pub unsafe extern "C" fn qa_video_export_write_audio(interleaved: *const i16, frames: i32) -> i32 {
     // SAFETY: the caller's contract.
     unsafe { os::write_audio(interleaved, frames) as i32 }
+}
+
+/// Whether the open writer takes its frames as NV12
+/// ([`qa_video_export_write_nv12`]) — 1, its frame's width and height into
+/// `shape` — or as RGBA ([`qa_video_export_write_frame`]), 0. Android's and
+/// Apple's H.26x take the engine's NV12 (gpu-export-path ⑶, 2026-11-12):
+/// the colour law's bytes (`colour::from_rgba`), made on the GPU before the
+/// readback. Media Foundation keeps its own conversion (`colour.rs` says
+/// why), and ProRes is not 4:2:0.
+///
+/// # Safety
+/// `shape` is null or holds two.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_export_nv12_shape(shape: *mut i32) -> i32 {
+    #[cfg(any(target_os = "android", target_vendor = "apple"))]
+    let taken = os::nv12_shape();
+    #[cfg(not(any(target_os = "android", target_vendor = "apple")))]
+    let taken: Option<(usize, usize)> = None;
+    let Some((width, height)) = taken.filter(|_| !shape.is_null()) else {
+        return 0;
+    };
+    // SAFETY: the caller's contract.
+    unsafe {
+        *shape = width as i32;
+        *shape.add(1) = height as i32;
+    }
+    1
+}
+
+/// One frame as the engine made it NV12, for a writer that takes it
+/// ([`qa_video_export_nv12_shape`]): its height of Y rows, then half its
+/// height of CbCr rows, each `stride` bytes after the last.
+///
+/// # Safety
+/// `bytes` is null or holds that frame.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_export_write_nv12(bytes: *const u8, stride: i64) -> i32 {
+    #[cfg(any(target_os = "android", target_vendor = "apple"))]
+    // SAFETY: the caller's contract.
+    return unsafe { os::write_nv12(bytes, stride) as i32 };
+    #[cfg(not(any(target_os = "android", target_vendor = "apple")))]
+    {
+        let _ = (bytes, stride);
+        set_error("video export: this writer takes RGBA, not NV12");
+        0
+    }
 }
 
 /// The frames of sound this build's writer puts before the mix, for the

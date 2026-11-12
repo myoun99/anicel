@@ -50,6 +50,14 @@ external int _probe(int container, int codec);
 @Native<Int32 Function(Pointer<Uint8>)>(symbol: 'qa_video_export_write_frame')
 external int _writeFrame(Pointer<Uint8> rgba);
 
+@Native<Int32 Function(Pointer<Int32>)>(symbol: 'qa_video_export_nv12_shape')
+external int _nv12Shape(Pointer<Int32> shape);
+
+@Native<Int32 Function(Pointer<Uint8>, Int64)>(
+  symbol: 'qa_video_export_write_nv12',
+)
+external int _writeNv12(Pointer<Uint8> bytes, int stride);
+
 @Native<Int32 Function(Pointer<Int16>, Int32)>(
   symbol: 'qa_video_export_write_audio',
 )
@@ -137,9 +145,27 @@ final class QaVideoEncoder {
     }
   }
 
-  /// Writes one top-down RGBA frame (exactly the renderer's rawRgba).
+  /// Writes one top-down RGBA frame of the size [open] was given.
   bool writeFrame(Uint8List rgba) =>
       withNativeBytes(rgba, (buffer) => _writeFrame(buffer) != 0);
+
+  /// The frame the open writer takes as NV12 ([writeNv12]) — the encoder's,
+  /// padded even — or none where it takes RGBA ([writeFrame]). Android's
+  /// and Apple's H.26x take the GPU engine's NV12 (gpu-export-path ⑶);
+  /// Media Foundation and ProRes convert for themselves.
+  ({int width, int height})? get nv12Frame => using((arena) {
+    final shape = arena<Int32>(2);
+    if (_nv12Shape(shape) == 0) {
+      return null;
+    }
+    return (width: shape[0], height: shape[1]);
+  });
+
+  /// Writes one frame as the engine made it NV12: [nv12Frame]'s height of
+  /// Y rows, then half of it of CbCr rows, each [stride] bytes after the
+  /// last.
+  bool writeNv12(Uint8List bytes, {required int stride}) =>
+      withNativeBytes(bytes, (buffer) => _writeNv12(buffer, stride) != 0);
 
   /// Writes interleaved int16 PCM ([frames] per channel) — call in chunks
   /// alongside the frames so neither side buffers the whole track.

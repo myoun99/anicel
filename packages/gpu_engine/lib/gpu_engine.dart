@@ -2486,6 +2486,11 @@ class GpuExport {
   static int pngRowBytes(int width, int pixelBytes) =>
       rust.exportPngRowBytes(width, pixelBytes);
 
+  /// Where each row of an NV12 frame [width] wide ([nv12]) starts from the
+  /// last's, the least the pass takes: the width on whole words, as the
+  /// pass writes a word at a time.
+  static int nv12RowBytes(int width) => (width + 3) & ~3;
+
   GpuReadout _readout(Pointer<rust.Readout> readout) {
     if (readout == nullptr) {
       throw GpuRefused(_lastError());

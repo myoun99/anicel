@@ -2,9 +2,10 @@
 //! until the connection round deleted it).
 //! The writer IS the OS's MP4/MOV writer on macOS and iOS: hardware H.264
 //! and H.265 through VideoToolbox, ProRes where the machine has it, AAC
-//! through AudioToolbox, muxing included. Our pixel job is RGBA → NV12 in
-//! the app's colour law for H.26x, RGBA → BGRA for ProRes, plus the
-//! even-size pad.
+//! through AudioToolbox, muxing included. Our pixel job: for H.26x, an
+//! export's NV12 from the GPU engine laid into the two planes as it is, a
+//! trimmed movie's RGBA → NV12 in the app's colour law; RGBA → BGRA for
+//! ProRes; and the even-size pad.
 
 use std::ffi::c_void;
 use std::ptr::{self, NonNull};
@@ -55,6 +56,7 @@ use super::{
     BAD_OPEN, CODEC_H264, CODEC_HEVC, CODEC_PRORES_4444, CODEC_PRORES_422, CODEC_PRORES_HQ,
     CODEC_PRORES_LT, CODEC_PRORES_PROXY, CONTAINER_MOV, CONTAINER_MP4, Job, lock, set_error,
 };
+use super::nv12::{self, Nv12};
 use crate::colour::{self, Picture, Planes};
 
 pub const SUPPORTED: bool = true;
@@ -453,11 +455,24 @@ fn fill_bgra(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
     true
 }
 
-/// `rgba` into `pixels` as NV12 in the app's colour law (`colour`) — the
-/// H.26x road — and the buffer TOLD what it holds, so nothing between here
-/// and the encoder converts it again. False when the buffer is not the
-/// two-plane shape asked for.
+/// `rgba` into `pixels` as NV12 in the app's colour law (`colour`) — a
+/// trimmed movie's frames on the H.26x road.
 fn fill_ycbcr(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
+    let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
+    into_two_planes(writer, pixels, |planes| colour::from_rgba(&picture, writer.width, writer.height, planes))
+}
+
+/// `frame`, the GPU engine's NV12, into `pixels` as it is — an export's
+/// frames on the H.26x road: the colour law's bytes already, laid.
+fn fill_nv12(writer: &Writer, pixels: &CVPixelBuffer, frame: &Nv12) -> bool {
+    into_two_planes(writer, pixels, |planes| nv12::lay(frame, planes))
+}
+
+/// `pixels`' two planes handed to `fill` as NV12 lies in them, and the
+/// buffer TOLD what it holds, so nothing between here and the encoder
+/// converts it again. False when the buffer is not the two-plane shape
+/// asked for.
+fn into_two_planes(writer: &Writer, pixels: &CVPixelBuffer, fill: impl FnOnce(&mut Planes)) -> bool {
     if !CVPixelBufferIsPlanar(pixels) || CVPixelBufferGetPlaneCount(pixels) != 2 {
         return false;
     }
@@ -482,9 +497,7 @@ fn fill_ycbcr(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
             std::slice::from_raw_parts_mut(chroma, chroma_stride * (writer.height / 2)),
         )
     };
-    let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
-    let mut planes = Planes { y, y_stride: luma_stride, chroma, cb: 0, cr: 1, chroma_stride, chroma_step: 2 };
-    colour::from_rgba(&picture, writer.width, writer.height, &mut planes);
+    fill(&mut Planes { y, y_stride: luma_stride, chroma, cb: 0, cr: 1, chroma_stride, chroma_step: 2 });
     // SAFETY: the framework's constant keys, each with a value of its own.
     unsafe {
         for (key, value) in [
@@ -499,7 +512,9 @@ fn fill_ycbcr(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
 }
 
 impl Writer {
-    fn frame(&mut self, rgba: &[u8]) -> bool {
+    /// The next frame: a buffer of the adaptor's pool, filled by `fill`
+    /// while it is locked, appended at its time.
+    fn frame(&mut self, fill: impl FnOnce(&Writer, &CVPixelBuffer) -> bool) -> bool {
         if !ready(&self.video) {
             return false;
         }
@@ -523,7 +538,7 @@ impl Writer {
         if unsafe { CVPixelBufferLockBaseAddress(&pixels, CVPixelBufferLockFlags(0)) } != kCVReturnSuccess {
             return false;
         }
-        let filled = if self.ycbcr { fill_ycbcr(self, &pixels, rgba) } else { fill_bgra(self, &pixels, rgba) };
+        let filled = fill(self, &pixels);
         // SAFETY: locked above.
         unsafe { CVPixelBufferUnlockBaseAddress(&pixels, CVPixelBufferLockFlags(0)) };
         if !filled {
@@ -614,7 +629,35 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     };
     // SAFETY: the caller's contract.
     let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
-    autoreleasepool(|_| writer.frame(rgba))
+    autoreleasepool(|_| {
+        writer.frame(|writer, pixels| {
+            if writer.ycbcr { fill_ycbcr(writer, pixels, rgba) } else { fill_bgra(writer, pixels, rgba) }
+        })
+    })
+}
+
+/// The frame the open writer takes as NV12 — the H.26x road's, padded
+/// even; none for ProRes, which takes BGRA.
+pub fn nv12_shape() -> Option<(usize, usize)> {
+    lock(&WRITER).as_ref().filter(|writer| writer.ycbcr).map(|writer| (writer.width, writer.height))
+}
+
+/// # Safety
+/// `bytes` is null or holds the frame `nv12_shape` says, rows `stride`
+/// bytes apart.
+pub unsafe fn write_nv12(bytes: *const u8, stride: i64) -> bool {
+    let mut held = lock(&WRITER);
+    let Some(writer) = held.as_mut().filter(|writer| writer.ycbcr && !bytes.is_null() && stride > 0) else {
+        return false;
+    };
+    let (stride, width, height) = (stride as usize, writer.width, writer.height);
+    // SAFETY: the caller's contract.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, Nv12::bytes_of(stride, height)) };
+    let Some(frame) = Nv12::over(bytes, stride, width, height) else {
+        set_error("video export: an NV12 frame of another shape");
+        return false;
+    };
+    autoreleasepool(|_| writer.frame(|writer, pixels| fill_nv12(writer, pixels, &frame)))
 }
 
 /// # Safety

@@ -6,7 +6,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
+import 'package:gpu_engine/gpu_engine.dart' show GpuExport, GpuShown;
 import 'package:image/image.dart' as img;
 
 import '../../services/flutter_test_run.dart';
@@ -608,6 +608,13 @@ abstract interface class _FrameSink {
   Future<String> abandon();
 }
 
+/// What an OS-encoder run reads of a frame ([_FramePixels]) and how it
+/// hands that to the writer.
+typedef _EncoderFeed = ({
+  _FramePixels<Uint8List> pixels,
+  bool Function(Uint8List bytes) write,
+});
+
 /// The A/V feed of one OS-encoder run: how many video frames have gone
 /// in, and how much audio the timeline owes for them.
 ///
@@ -634,21 +641,50 @@ class _OsEncoderFeed implements _FrameSink {
   int written = 0;
   int _audioCursor = 0;
 
-  /// Exactly what the encoder takes: the frame's own premultiplied rows.
-  final _FramePixels<Uint8List> _pixels = _FramePixels(
-    (frame) => appGpuExport.read(frame).take(),
-  );
+  /// Exactly what the encoder takes, and how it is handed over: the GPU
+  /// engine's NV12 where the writer takes it ([QaVideoEncoder.nv12Frame] —
+  /// Android's and Apple's H.26x, gpu-export-path ⑶), and otherwise the
+  /// frame's own premultiplied rows, which the writer converts itself
+  /// (Media Foundation, ProRes).
+  late final _EncoderFeed _feed = switch (encoder.nv12Frame) {
+    null => (
+      pixels: _FramePixels((frame) => appGpuExport.read(frame).take()),
+      write: encoder.writeFrame,
+    ),
+    (:final width, :final height) => _nv12Feed(width, height),
+  };
+
+  /// The NV12 [QaVideoEncoder.nv12Frame] says, made on the engine and
+  /// handed as made.
+  _EncoderFeed _nv12Feed(int width, int height) {
+    final stride = GpuExport.nv12RowBytes(width);
+    return (
+      pixels: _FramePixels(
+        (frame) => appGpuExport
+            .nv12(
+              frame,
+              frame.width,
+              frame.height,
+              frameWidth: width,
+              frameHeight: height,
+              stride: stride,
+            )
+            .take(),
+      ),
+      write: (bytes) => encoder.writeNv12(bytes, stride: stride),
+    );
+  }
 
   /// Writes [frame] and the audio that now owes for it. False means the
   /// encoder refused something and the run is over.
   @override
   Future<bool> take(GpuShown frame) async {
-    final rgba = _pixels.of(frame);
+    final pixels = _feed.pixels.of(frame);
     // Before the first frame, and so before any of its sound.
     if (written == 0 && !await _fillTheLead()) {
       return false;
     }
-    if (!encoder.writeFrame(rgba)) {
+    if (!_feed.write(pixels)) {
       return false;
     }
     written += 1;

@@ -1,7 +1,8 @@
 //! Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer, through `ndk-sys`
 //! — the NDK's own headers, never a hand table (media's `served_span.rs`).
-//! Color conversion RGBA → YUV420 happens here, in the app's colour law
-//! (`crate::colour`) — hardware encoders overwhelmingly accept
+//! An export's frames come as the GPU engine's NV12 and are only laid
+//! (`nv12`); a trimmed movie's come as RGBA, converted here in the app's
+//! colour law (`crate::colour`). Hardware encoders overwhelmingly accept
 //! COLOR_FormatYUV420SemiPlanar; the planar variant is the fallback.
 //!
 //! 🪦The C once resolved its own NDK table, and its constants were wrong
@@ -32,6 +33,7 @@ use ndk_sys::{
 };
 
 use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
+use super::nv12::{self, Nv12};
 use crate::colour::{self, Picture, Planes};
 
 const AMEDIA_OK: media_status_t = media_status_t::AMEDIA_OK;
@@ -369,22 +371,58 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
         return false;
     };
-    let luma = writer.width * writer.height;
-    let frame_bytes = luma * 3 / 2;
     // RGBA → YUV420 in the app's colour law (BT.601 studio range — the
     // convention H.264 players assume for unflagged content). Pad pixels
     // render white.
     // SAFETY: the caller's contract.
     let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
     let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
-    let (y, chroma) = writer.yuv.split_at_mut(luma);
-    let mut planes = if writer.semi_planar {
-        Planes { y, y_stride: writer.width, chroma, cb: 0, cr: 1, chroma_stride: writer.width, chroma_step: 2 }
-    } else {
-        Planes { y, y_stride: writer.width, chroma, cb: 0, cr: luma / 4, chroma_stride: writer.width / 2, chroma_step: 1 }
-    };
-    colour::from_rgba(&picture, writer.width, writer.height, &mut planes);
+    let (width, height) = (writer.width, writer.height);
+    colour::from_rgba(&picture, width, height, &mut planes_of(writer));
+    queue(writer)
+}
 
+/// The frame the open writer takes as NV12: the codec's, padded even.
+pub fn nv12_shape() -> Option<(usize, usize)> {
+    lock(&WRITER).as_ref().map(|writer| (writer.width, writer.height))
+}
+
+/// # Safety
+/// `bytes` is null or holds the frame `nv12_shape` says, rows `stride`
+/// bytes apart.
+pub unsafe fn write_nv12(bytes: *const u8, stride: i64) -> bool {
+    let mut held = lock(&WRITER);
+    let Some(writer) = held.as_mut().filter(|_| !bytes.is_null() && stride > 0) else {
+        return false;
+    };
+    let (stride, width, height) = (stride as usize, writer.width, writer.height);
+    // SAFETY: the caller's contract.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, Nv12::bytes_of(stride, height)) };
+    let Some(frame) = Nv12::over(bytes, stride, width, height) else {
+        set_error("video export: an NV12 frame of another shape");
+        return false;
+    };
+    // The engine's bytes as they are: the semi-planar codec takes them row
+    // for row, the planar one with CbCr parted — no sum either way.
+    nv12::lay(&frame, &mut planes_of(writer));
+    queue(writer)
+}
+
+/// The conversion buffer as the codec lays a frame: Y, then CbCr side by
+/// side (semi-planar) or Cb's plane and Cr's (planar).
+fn planes_of(writer: &mut Writer) -> Planes<'_> {
+    let (width, luma) = (writer.width, writer.width * writer.height);
+    let (y, chroma) = writer.yuv.split_at_mut(luma);
+    if writer.semi_planar {
+        Planes { y, y_stride: width, chroma, cb: 0, cr: 1, chroma_stride: width, chroma_step: 2 }
+    } else {
+        Planes { y, y_stride: width, chroma, cb: 0, cr: luma / 4, chroma_stride: width / 2, chroma_step: 1 }
+    }
+}
+
+/// The conversion buffer handed to the codec as the next frame.
+fn queue(writer: &mut Writer) -> bool {
+    let frame_bytes = writer.width * writer.height * 3 / 2;
     // SAFETY: our codec; an input buffer is filled within its capacity and
     // queued once.
     unsafe {
