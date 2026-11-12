@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
+
 import '../models/cut.dart';
 import '../services/camera_frame_corners.dart' show CameraView, pictureView;
 import '../services/playback/frame_demand.dart';
@@ -25,8 +27,8 @@ import 'frame_shots.dart';
 /// `EditingCanvas._underTheCutsFx`): a frame the canvas shows under them is
 /// a picture of its own.
 ///
-/// Shot as every picture of a frame that goes to a file is ([frameShot]),
-/// on [exportFrameGround].
+/// Shot as every picture of a frame that goes to a file is
+/// ([frameOnTheEngine]), on [exportFrameGround].
 ///
 /// 🚨★★★THE PRINT IS ITS LIVE ONE (conte-picture-print-and-live-part-at-
 /// edges, 유저 11-07 「0 으로 맞춘다」 — F-215 「on하든off하든 바뀌는게
@@ -61,11 +63,21 @@ class PanelPictures {
     int frameIndex, {
     required int width,
     ui.Rect? region,
+  }) => pictureOfShot(frame(cut, frameIndex, width: width, region: region));
+
+  /// [render]'s frame as the engine keeps it, for the caller to free: what a
+  /// writer that reads it back itself takes (a conte PDF's cell, read once
+  /// as its file keeps it).
+  Future<GpuShown> frame(
+    Cut cut,
+    int frameIndex, {
+    required int width,
+    ui.Rect? region,
   }) async {
     final view = panelView(session, cut, frameIndex, region);
     await giveWay?.call();
     await session.movieCels.hydrate(cut, frameIndex);
-    return frameShot(
+    return frameOnTheEngine(
       session,
       pictures: session.playbackRig.framePictures,
       nodes: session.editingCanvas

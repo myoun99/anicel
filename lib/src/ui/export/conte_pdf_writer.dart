@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:gpu_engine/gpu_engine.dart' show GpuExport, GpuShown;
 import 'package:pdf/pdf.dart';
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
@@ -13,6 +14,7 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
+import '../../native/app_gpu_engine.dart' show appGpuExport;
 import '../../services/layer_pose_matrix.dart'
     show picturePlacement, placementMatrix;
 import '../conte/conte_fonts.dart';
@@ -24,6 +26,7 @@ import '../sheet_painting.dart'
         sheetInkPaperFromSurface,
         sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
+import 'still_frame_bytes.dart' show rgbOverGroundOf, straightOf;
 
 /// The conte sheet as ONE vector PDF.
 ///
@@ -82,18 +85,47 @@ class ContePdfFonts {
   }
 }
 
-/// A cell picture for the PDF: raw straight-alpha RGBA (what [PdfImage]
-/// expects — premultiplied bytes would darken translucent edges).
+/// A picture for the PDF as its file keeps it ([PdfImage]): four bytes a
+/// pixel, its colour straight (premultiplied bytes would darken translucent
+/// edges), the fourth made the image's alpha mask — or, where none of it
+/// lets the page through ([alpha] false), three, and no mask.
 class ContePdfPicture {
   const ContePdfPicture({
-    required this.rgba,
+    required this.pixels,
     required this.width,
     required this.height,
+    this.alpha = true,
   });
 
-  final Uint8List rgba;
+  final Uint8List pixels;
   final int width;
   final int height;
+  final bool alpha;
+
+  /// [frame] — made on the engine — read back once as the file keeps it:
+  /// three bytes a pixel where every pixel is opaque ([GpuExport.opaque]),
+  /// laid over a ground none of it shows ([rgbOverGroundOf]), and straight
+  /// ([straightOf]) where one is not.
+  ///
+  /// ↩️It was read back as a picture and read again from that
+  /// ([fromImage]), and every cell — on its opaque ground — carried an
+  /// alpha mask of its own, until card conte-pdf-panels-read-back-twice.
+  factory ContePdfPicture.ofFrame(GpuShown frame) {
+    final (width, height) = (frame.width, frame.height);
+    if (appGpuExport.opaque(frame, width, height)) {
+      return ContePdfPicture(
+        pixels: rgbOverGroundOf(frame, 0xFF000000),
+        width: width,
+        height: height,
+        alpha: false,
+      );
+    }
+    return ContePdfPicture(
+      pixels: straightOf(frame),
+      width: width,
+      height: height,
+    );
+  }
 
   static Future<ContePdfPicture?> fromImage(ui.Image? image) async {
     if (image == null) {
@@ -106,7 +138,7 @@ class ContePdfPicture {
       return null;
     }
     return ContePdfPicture(
-      rgba: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      pixels: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
       width: image.width,
       height: image.height,
     );
@@ -139,9 +171,10 @@ Future<Uint8List> writeContePdf({
   final document = PdfDocument();
   PdfImage embed(ContePdfPicture picture) => PdfImage(
     document,
-    image: picture.rgba,
+    image: picture.pixels,
     width: picture.width,
     height: picture.height,
+    alpha: picture.alpha,
   );
   final writer = _ContePdfPageWriter(
     document: document,

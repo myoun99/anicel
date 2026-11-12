@@ -122,9 +122,9 @@ typedef _CelGroup = ({
 });
 
 /// Renders export output on the engine: each cut's picture is the frame's
-/// one picture, shot through its view as a panel's is ([frameShot]) — so a
-/// film, a still and a panel of one frame through one view on one paper
-/// are one picture.
+/// one picture, shot through its view as a panel's is
+/// ([frameOnTheEngine]) — so a film, a still and a panel of one frame
+/// through one view on one paper are one picture.
 ///
 /// Its cels are read as LOOKS ([CelLooks]) and held for the frame it draws
 /// and the one before it ([_startFrame]).
@@ -463,7 +463,7 @@ class ExportFrameRenderer {
   }
 
   /// [cut]'s frame [frameIndex] on [page], with the onion's [ghosts] in it
-  /// as they lie: what the engine keeps its picture under ([frameShot]).
+  /// as they lie: what the engine keeps its picture under ([frameOnTheEngine]).
   static DemandedPicture _frameOn(
     Cut cut,
     int frameIndex,

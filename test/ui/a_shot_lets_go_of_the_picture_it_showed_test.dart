@@ -23,7 +23,8 @@ import 'package:anicel/src/ui/panel_pictures.dart';
 import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/cels_parked_cold.dart';
 
-/// 🚨A SHOT HOLDS THE PICTURE IT SHOWS, AND LETS GO OF IT (`frameShot`; the
+/// 🚨A SHOT HOLDS THE PICTURE IT SHOWS, AND LETS GO OF IT
+/// (`frameOnTheEngine`; the
 /// store's law 「HELD BY WHOEVER SHOWS IT」, 관제 11-10 08:48): the frame's
 /// one picture is handed to a shot held (`FramePictures.pictureOf`) — the
 /// store may let it go while the shot waits for the engine — and the shot

@@ -32,67 +32,6 @@ import 'playback/frame_pictures.dart';
 /// folder does.
 typedef CameraOverlayPass = void Function(ui.Canvas canvas, double rasterScale);
 
-/// [frame]'s one picture of [nodes] ([FramePictures.pictureOf]) shown
-/// through [view] onto a raster of [output] pixels — on [ground], cut at
-/// the canvas's edge where [cutsToTheCanvas] says ([canvasCutOnScreen]; a
-/// film shows no pasteboard, 「페이스트보드는 포함 안 시킴」), and [over]
-/// laid over it through the same view — made on the engine
-/// ([frameOnTheEngine]) and read back as a picture.
-///
-/// 🚨★★★ONE DOOR FOR EVERY PICTURE OF A FRAME THAT GOES TO A FILE OR A
-/// PANEL (7′, exports on the engine — 유저 11-08 「지금화면이랑
-/// 맞출필요는없어 … 바뀌고 나서만 동일하면되」): a panel's print, a film's
-/// frame, a still, a layered file's row, a cel. Each is the picture the
-/// engine keeps of the frame, as the canvas shows it ([EngineStackScreen
-/// .show]: the view snapped, the display's filter for the scale) — so a
-/// still and a panel through one view on one paper are one picture, to the
-/// byte. ↩️An export composited its rows again on Flutter, each through the
-/// camera (`CameraFrameRenderService.renderThroughCamera`), and a panel's
-/// picture came out a few levels apart from the still beside it.
-///
-/// A frame there is no picture to cut from — its page alone, one a canvas
-/// holds as its own over what no cel stores — is drawn as its cels stand
-/// ([FramePictures.drawingNow]), through the same view.
-///
-/// On [frame]'s page, or [page] where the picture is drawn on another
-/// ([FramePictures.keyOfStack]): a file's rows on the ground it is made on.
-///
-/// 🚨★★★ITS CELS ARE LOOKS ([CelLooks]; `gpu-canonical-store-Q10`, 유저
-/// 2026-11-10 「추천대로 법 지키도록」): what a shot reads leaves the store as
-/// it found it. Held by [looks] where a run holds them across its frames,
-/// else for this shot alone.
-///
-/// ⚠️[nodes] are asked of the frame after its movie cels are hydrated
-/// (`MovieCelHydrator.hydrate`): where a movie's picture was laid is part
-/// of where its row lies.
-Future<ui.Image> frameShot(
-  EditorSessionManager session, {
-  required FramePictures pictures,
-  required List<CompositeNode<CanvasStackRow>> nodes,
-  required DemandedPicture frame,
-  FramePage? page,
-  required CameraView view,
-  required CanvasSize output,
-  required ui.Color ground,
-  bool cutsToTheCanvas = true,
-  CameraOverlayPass? over,
-  CelLooks? looks,
-}) => pictureOfShot(
-  frameOnTheEngine(
-    session,
-    pictures: pictures,
-    nodes: nodes,
-    frame: frame,
-    page: page,
-    view: view,
-    output: output,
-    ground: ground,
-    cutsToTheCanvas: cutsToTheCanvas,
-    over: over,
-    looks: looks,
-  ),
-);
-
 /// The frame [shot] makes on the engine ([frameOnTheEngine]) read back
 /// once as a picture of the caller's own to dispose ([pictureOfLaid]), and
 /// the frame let go.
@@ -135,15 +74,48 @@ ui.Image pictureOfLaid(GpuExport export, GpuShown laid) => pictureOf(
   PremultipliedRows(export.read(laid).take(), laid.width, laid.height),
 );
 
-/// [frameShot]'s frame as the engine keeps it, for the caller to free: a
-/// frame the export made ([GpuExport.blank]) on [ground], the frame's
-/// picture laid over it cut at the canvas's edge, and [over] rastered and
-/// laid over that — its last picture made on the engine, so what a writer
-/// takes of it is read back once (gpu-export-path ①⑵).
+/// [frame]'s one picture of [nodes] ([FramePictures.pictureOf]) shown
+/// through [view] onto a frame of [output] pixels the export makes
+/// ([GpuExport.blank]) — on [ground], cut at the canvas's edge where
+/// [cutsToTheCanvas] says ([canvasCutOnScreen]; a film shows no pasteboard,
+/// 「페이스트보드는 포함 안 시킴」), and [over] rastered and laid over it
+/// through the same view — for the caller to free: its last picture made on
+/// the engine, so what a writer takes of it is read back once
+/// (gpu-export-path ①⑵), and a panel's picture of it is read back as one
+/// ([pictureOfShot]). ↩️`frameShot` read it back as a picture for every
+/// caller, until a conte PDF read its cells as its file keeps them (card
+/// conte-pdf-panels-read-back-twice).
 ///
 /// ⚠️A cut on whole pixels is laid within them, and only an anti-aliased
 /// one — a camera turned — through the cover the app rasters of it: the
 /// one cut either way ([canvasCutOnScreen]).
+///
+/// 🚨★★★ONE DOOR FOR EVERY PICTURE OF A FRAME THAT GOES TO A FILE OR A
+/// PANEL (7′, exports on the engine — 유저 11-08 「지금화면이랑
+/// 맞출필요는없어 … 바뀌고 나서만 동일하면되」): a panel's print, a film's
+/// frame, a still, a layered file's row, a cel. Each is the picture the
+/// engine keeps of the frame, as the canvas shows it ([EngineStackScreen
+/// .show]: the view snapped, the display's filter for the scale) — so a
+/// still and a panel through one view on one paper are one picture, to the
+/// byte. ↩️An export composited its rows again on Flutter, each through the
+/// camera (`CameraFrameRenderService.renderThroughCamera`), and a panel's
+/// picture came out a few levels apart from the still beside it.
+///
+/// A frame there is no picture to cut from — its page alone, one a canvas
+/// holds as its own over what no cel stores — is drawn as its cels stand
+/// ([FramePictures.drawingNow]), through the same view.
+///
+/// On [frame]'s page, or [page] where the picture is drawn on another
+/// ([FramePictures.keyOfStack]): a file's rows on the ground it is made on.
+///
+/// 🚨★★★ITS CELS ARE LOOKS ([CelLooks]; `gpu-canonical-store-Q10`, 유저
+/// 2026-11-10 「추천대로 법 지키도록」): what a shot reads leaves the store as
+/// it found it. Held by [looks] where a run holds them across its frames,
+/// else for this shot alone.
+///
+/// ⚠️[nodes] are asked of the frame after its movie cels are hydrated
+/// (`MovieCelHydrator.hydrate`): where a movie's picture was laid is part
+/// of where its row lies.
 Future<GpuShown> frameOnTheEngine(
   EditorSessionManager session, {
   required FramePictures pictures,
@@ -471,7 +443,7 @@ bool _stays() => false;
 
 /// Where [view] lays the canvas on a raster of [output] pixels — its
 /// camera's projection onto it, a device pixel the raster's: what every
-/// [frameShot] is drawn through, and a conte picture's live one
+/// [frameOnTheEngine] is drawn through, and a conte picture's live one
 /// (`ContePictureLive`).
 ///
 /// 🚨ONE SPELLING OF IT (conte-picture-print-and-live-part-at-edges, 유저

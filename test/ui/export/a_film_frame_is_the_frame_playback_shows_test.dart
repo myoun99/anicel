@@ -243,9 +243,10 @@ void main() {
           // 🗣️유저 11-08: 「지금화면이랑 맞출필요는없어. 어차피 더
           // 개선되는방향성이고, 바뀌고 나서만 동일하면되」 — both are the
           // frame's one picture through one view on one paper now (7′,
-          // `frameShot`). ↩️A panel was cut from that picture while a still
-          // composed its rows again through the camera: a few levels apart,
-          // and only beside a still at a camera moved by the panel's snap.
+          // `frameOnTheEngine`). ↩️A panel was cut from that picture while a
+          // still composed its rows again through the camera: a few levels
+          // apart, and only beside a still at a camera moved by the panel's
+          // snap.
           expect(panel, still);
           // The film lays the cut's picture — composed on clear — on its
           // stage's paper, as playback lays it: rounded once more than a
@@ -570,7 +571,8 @@ void main() {
           ];
           // ↩️Beside the still at a camera moved by the panel's snap, while
           // a still composed its rows again through the camera — until both
-          // were the frame's one picture through one view (7′, `frameShot`).
+          // were the frame's one picture through one view (7′,
+          // `frameOnTheEngine`).
           expect(apart, isEmpty);
         });
       });

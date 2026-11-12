@@ -32,7 +32,7 @@ import '../../helpers/cels_parked_cold.dart';
 
 /// A FILM'S FRAME IS WHAT THE CAMERA SEES: the frame's one picture on the
 /// engine, shown through the cut's camera onto the file's pixels — the whole
-/// road an export takes (`renderVideoFrame`, `frameShot`).
+/// road an export takes (`renderVideoFrame`, `frameOnTheEngine`).
 ///
 /// ↩️Asked of `CameraFrameRenderService`, which composited a shot's rows
 /// again on Flutter, until exports went on the engine and it had no caller.

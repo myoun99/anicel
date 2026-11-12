@@ -242,7 +242,7 @@ class FramePictures implements PlaybackPictures {
   ///
   /// [page] is the page the picture is drawn on where it is not the one
   /// [picture] is ([pageOf]) — a file's rows on the ground it is made on
-  /// (`frameShot`).
+  /// (`frameOnTheEngine`).
   FramePictureKey keyOfStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -488,8 +488,9 @@ class FramePictures implements PlaybackPictures {
   /// ([EngineFramePicture.hold] — the store's law 「HELD BY WHOEVER SHOWS
   /// IT」; 관제 11-10 08:48): the store may let it go while the asker is
   /// still on its way to showing it. ↩️It was handed unheld, and a shot
-  /// (`frameShot`) waits for the engine's tools between this and its show —
-  /// a picture the budget let go in that wait was freed, and its show threw.
+  /// (`frameOnTheEngine`) waits for the engine's tools between this and its
+  /// show — a picture the budget let go in that wait was freed, and its
+  /// show threw.
   Future<EngineFramePicture?> pictureOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {

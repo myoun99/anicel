@@ -36,17 +36,32 @@ Iterable<String> _streamContents(Uint8List pdf) sync* {
 /// file's own text or inside a compressed object stream. An image with an
 /// alpha mask counts twice, once for its mask.
 List<(int, int)> pdfImageSizes(Uint8List pdf) {
-  final image = RegExp(r'<<[^<>]*/Subtype\s*/Image\b[^<>]*>>');
   int? number(String dictionary, String key) => int.tryParse(
     RegExp('/$key\\s+(\\d+)').firstMatch(dictionary)?.group(1) ?? '',
   );
   return [
-    for (final text in [latin1.decode(pdf), ..._streamContents(pdf)])
-      for (final match in image.allMatches(text))
-        if ((number(match[0]!, 'Width'), number(match[0]!, 'Height'))
-            case (final int width, final int height))
-          (width, height),
+    for (final dictionary in _imageDictionaries(pdf))
+      if ((number(dictionary, 'Width'), number(dictionary, 'Height'))
+          case (final int width, final int height))
+        (width, height),
   ];
+}
+
+/// How many of the file's images carry an alpha mask (`/SMask`) — the
+/// mask an image of its own beside it, which [pdfImageSizes] counts too.
+int pdfMaskedImageCount(Uint8List pdf) => _imageDictionaries(
+  pdf,
+).where((dictionary) => dictionary.contains('/SMask')).length;
+
+/// Every image dictionary the file holds, in its own text or inside a
+/// compressed object stream.
+Iterable<String> _imageDictionaries(Uint8List pdf) sync* {
+  final image = RegExp(r'<<[^<>]*/Subtype\s*/Image\b[^<>]*>>');
+  for (final text in [latin1.decode(pdf), ..._streamContents(pdf)]) {
+    for (final match in image.allMatches(text)) {
+      yield match[0]!;
+    }
+  }
 }
 
 /// Every closed path the pages draw: `x y m`, then `x y l` …, then `h` —

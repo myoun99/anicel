@@ -29,6 +29,7 @@ import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../editor_session_manager.dart';
+import '../frame_shots.dart' show pictureOfShot;
 import '../panel_pictures.dart';
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
@@ -1428,8 +1429,10 @@ class ExportDialogState extends State<ExportDialog> {
   /// [width] wide ([contePictureRenderWidth]) — cut from the frame's one
   /// picture as the conte tab's are ([PanelPictures]; the tab holds them at
   /// its cells' size, a page's are cut again). [have] says which keys the
-  /// caller already holds, and [take] receives each image and owns it from
-  /// then on.
+  /// caller already holds, and [take] receives each as the engine keeps it
+  /// ([PanelPictures.frame]) and frees it: each export reads it back as it
+  /// takes it, once — a page as a picture to draw, the PDF as its file
+  /// keeps it ([ContePdfPicture.ofFrame]).
   ///
   /// ⛔ONE WALK FOR BOTH CONTE EXPORTS. The sheets and the PDF each wrote
   /// out the page/cell nesting, the (cut, frame) dedupe key, the cancel
@@ -1440,7 +1443,7 @@ class ExportDialogState extends State<ExportDialog> {
     List<ContePageLayout> pages, {
     required int width,
     required bool Function(SheetPictureKey key) have,
-    required Future<void> Function(SheetPictureKey key, ui.Image image) take,
+    required Future<void> Function(SheetPictureKey key, GpuShown frame) take,
   }) async {
     _contePictureSize = _session.camera.cameraFrameSize.scaledToWidth(width);
     final panels = PanelPictures(session: _session);
@@ -1458,7 +1461,7 @@ class ExportDialogState extends State<ExportDialog> {
         _sheetPartsMade += 1;
         await take(
           key,
-          await panels.render(
+          await panels.frame(
             cut,
             picture.pictureFrame,
             width: contePictureRenderWidth(picture, page.metrics, width),
@@ -1523,7 +1526,8 @@ class ExportDialogState extends State<ExportDialog> {
         pages,
         width: width,
         have: images.containsKey,
-        take: (key, image) async => images[key] = image,
+        take: (key, frame) async =>
+            images[key] = await pictureOfShot(Future.value(frame)),
       );
     } on Object {
       // A failed render must not strand the ones already made.
@@ -2804,23 +2808,20 @@ class ExportDialogState extends State<ExportDialog> {
       }
     }
     // Vector PDF: one document, the layout's own points as page geometry.
-    // Each cell renders, converts to raw bytes and FREES its ui.Image
-    // before the next renders — only the raw copies (the document's own
-    // material) live to the end.
+    // Each cell is made on the engine, read back once as the file keeps it
+    // and FREED before the next is made — only the raw copies (the
+    // document's own material) live to the end.
     _reportProgress(0, pages.length + 1);
     final pdfPictures = <SheetPictureKey, ContePdfPicture>{};
     await _forEachContePicture(
       pages,
       width: cameraSize.width,
       have: pdfPictures.containsKey,
-      take: (key, image) async {
+      take: (key, frame) async {
         try {
-          final picture = await ContePdfPicture.fromImage(image);
-          if (picture != null) {
-            pdfPictures[key] = picture;
-          }
+          pdfPictures[key] = ContePdfPicture.ofFrame(frame);
         } finally {
-          image.dispose();
+          frame.free();
         }
       },
     );
