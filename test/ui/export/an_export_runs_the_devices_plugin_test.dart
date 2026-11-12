@@ -10,6 +10,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
@@ -60,14 +61,16 @@ void main() {
     },
   );
 
-  /// A cut of one row showing [oneRed], wearing [effects] — in a folder
-  /// wearing [folder] where one is named, on a track whose V row wears
-  /// [track] — on a device whose installed plugins are [plugins].
+  /// A cut of one row showing [oneRed] for [frames] frames, wearing
+  /// [effects] — in a folder wearing [folder] where one is named, on a
+  /// track whose V row wears [track] — on a device whose installed plugins
+  /// are [plugins].
   EditorSessionManager sessionOn(
     InstalledFxPlugins plugins, {
     required List<LayerEffect> effects,
     List<LayerEffect>? folder,
     List<LayerEffect> track = const [],
+    int frames = 1,
   }) {
     const inFolder = LayerId('folder');
     final s = EditorSessionManager(
@@ -85,15 +88,17 @@ void main() {
               Cut(
                 id: const CutId('cut'),
                 name: 'Cut',
-                duration: 1,
+                duration: frames,
                 canvasSize: canvas,
                 layers: [
                   Layer(
                     id: cel,
                     name: 'cel',
-                    frames: [Frame(id: drawing, duration: 1, strokes: [])],
-                    timeline: const {
-                      0: TimelineExposure.drawing(drawing, length: 1),
+                    frames: [
+                      Frame(id: drawing, duration: frames, strokes: []),
+                    ],
+                    timeline: {
+                      0: TimelineExposure.drawing(drawing, length: frames),
                     },
                     effects: effects,
                     folderId: folder == null ? null : inFolder,
@@ -179,20 +184,7 @@ void main() {
       folder: folder,
       track: track,
     );
-    final image = await draw(s, s.requireActiveCut);
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    final columns = image.width;
-    image.dispose();
-    final bytes = data!.buffer.asUint8List();
-    bool isRed(int x) {
-      final at = (5 * columns + x) * 4;
-      return bytes[at] == 255 && bytes[at + 1] == 0 && bytes[at + 3] == 255;
-    }
-
-    return [
-      for (var x = 0; x < columns; x += 1)
-        if (isRed(x)) x,
-    ];
+    return redOf(await draw(s, s.requireActiveCut));
   }
 
   final shift = shiftingFxPluginLayerEffect();
@@ -289,6 +281,46 @@ void main() {
     });
   });
 
+  // 🗣️관제 2026-11-12 13:0x (gpu-export-path, plugin-chain `8edb2a59d`): a
+  // screen stands on the last picture finished till the next one comes
+  // (I-132-Q34 a); an export must not — each frame it writes is that
+  // frame's own plugin result, finished, though its cels are the frame
+  // before's.
+  final runs = <String,
+      ExportRun Function(ExportFrameRenderer renderer, List<ExportFrameTask>)>{
+    'a film': (renderer, plan) =>
+        renderer.videoRun(plan, ExportSizeMode.canvas),
+    'a picture sequence': (renderer, plan) =>
+        renderer.stillRun(plan, ExportSizeMode.canvas),
+  };
+  for (final MapEntry(key: road, value: runOf) in runs.entries) {
+    testWidgets('🚨each frame $road writes is its own plugin\'s finished '
+        'picture — none stands on the frame before', (tester) async {
+      final plugins = await installedShiftingFxPlugin(
+        tester,
+        runner: _ShiftsByItsFrame(),
+      );
+      await tester.runAsync(() async {
+        final s = sessionOn(plugins, effects: [shift], frames: 2);
+        final cut = s.requireActiveCut;
+        final run = runOf(_rendererOf(s), [
+          ExportFrameTask(cut: cut, frameIndex: 0),
+          ExportFrameTask(cut: cut, frameIndex: 1),
+        ]);
+        expect(
+          await redOf(await pictureOfFilmFrame(run.frame(0))),
+          [11],
+          reason: 'frame 0: its plugin moved the red one to the right',
+        );
+        expect(
+          await redOf(await pictureOfFilmFrame(run.frame(1))),
+          [12],
+          reason: 'frame 1: two — its own result, the same cel under it',
+        );
+      });
+    });
+  }
+
   testWidgets('the session binds the plugin reading each row it names as '
       'the store holds that row\'s cel', (tester) async {
     final reading = FxPluginDescription.fromJson({
@@ -330,6 +362,53 @@ void main() {
       expect(run.rows[cel]?.tiles.keys, [TileCoord(x: 0, y: 0)]);
     });
   });
+}
+
+/// Where the red is, by column, on the red pixel's row (5) of [image] —
+/// let go of here.
+Future<List<int>> redOf(ui.Image image) async {
+  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  final columns = image.width;
+  image.dispose();
+  final bytes = data!.buffer.asUint8List();
+  bool isRed(int x) {
+    final at = (5 * columns + x) * 4;
+    return bytes[at] == 255 && bytes[at + 1] == 0 && bytes[at + 3] == 255;
+  }
+
+  return [
+    for (var x = 0; x < columns; x += 1)
+      if (isRed(x)) x,
+  ];
+}
+
+/// Moves every pixel right by one more than the frame it runs at — a
+/// plugin whose picture is its frame's, where the cel under it is not.
+final class _ShiftsByItsFrame implements FxPluginRunner {
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      moment.frameIndex + 1;
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) async {
+    final shift = moment.frameIndex + 1;
+    final out = Uint8List(input.pixels.length);
+    for (var y = 0; y < input.height; y += 1) {
+      for (var x = shift; x < input.width; x += 1) {
+        final to = (y * input.width + x) * 4;
+        out.setRange(to, to + 4, input.pixels, to - shift * 4);
+      }
+    }
+    return out;
+  }
+
+  @override
+  void close() {}
 }
 
 /// A renderer of [s] on no ground — [apart], one that keeps a frame's rows
