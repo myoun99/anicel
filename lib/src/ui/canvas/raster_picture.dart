@@ -100,13 +100,12 @@ Future<ui.Image> imagePartOf(
   required int width,
   required int height,
 }) async {
+  // Laid 1:1 on whole pixels over nothing, a pixel lands as it lies.
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImage(
     image,
     ui.Offset(-left.toDouble(), -top.toDouble()),
-    ui.Paint()
-      ..blendMode = ui.BlendMode.src
-      ..filterQuality = ui.FilterQuality.none,
+    ui.Paint(),
   );
   final picture = recorder.endRecording();
   try {
