@@ -361,6 +361,10 @@ void main() {
         // tile lets go of the tile it landed on once its copy is here, and
         // only the collector can say it did.
         'test/native/a_landed_tile_lets_go_of_the_tile_under_it_test.dart',
+        // a-lifted-row-painter-holds-a-reclaimed-hole (11-12): a lifted row's
+        // painter lets go of the hole a memory warning took, and the picture
+        // cannot say so — it draws the same pixels either way.
+        'test/ui/canvas/a_lifted_row_lets_go_of_a_hole_a_warning_took_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '
