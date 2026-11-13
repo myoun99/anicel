@@ -481,22 +481,35 @@ void main() {
       );
     });
 
-    testWidgets('in a panel three lines tall, from the top of the list', (
+    testWidgets('in a panel a line tall, from the top of the list', (
       tester,
     ) async {
-      // No point's lines are built here: the list is put where the points
-      // before it reach, short of it, and then measured from lines it
-      // built on the way.
+      // No point's lines are built here, on the view or kept beside it: the
+      // list is put where the points before it reach — short of it by the
+      // lines over the first point, more than this view keeps — and then
+      // measured from lines it built on the way.
       final commands = await pumpMoveSettings(
         tester,
         options: dense,
-        size: const Size(320, 80),
+        size: const Size(320, 50),
       );
-      expect(field(0, 'x'), findsNothing, reason: '⛔premise: none built');
+      expect(
+        find.byKey(
+          const ValueKey<String>('move-point-0-x-field'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+        reason: '⛔premise: none built',
+      );
 
       await takeInHand(tester, commands, 200);
 
-      expectInView(tester, 200);
+      // The view holds less than a point's two lines: its first is brought
+      // to the view's first.
+      expect(
+        tester.getRect(field(200, 'x')).top,
+        closeTo(tester.getRect(list).top, 1),
+      );
     });
   });
 }
