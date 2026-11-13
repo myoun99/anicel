@@ -4,11 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart' show maxBrushTipMaskSide;
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
 import 'package:anicel/src/services/abr/abr_decoder.dart';
 import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
+import 'package:anicel/src/services/brush_tip_coverage.dart';
 
 import 'abr_test_builder.dart';
 
@@ -614,6 +616,56 @@ void main() {
           expect(mask.alpha[(y + 1) * 6 + x], _tipOnePixels[y * 6 + x]);
         }
       }
+    });
+
+    // 🚨THE ONE FIT EVERY TIP TAKES (card an-abr-sampled-tip-skips-the-one-
+    // fit-every-tip-takes, 2026-11-13): ↩️a sampled tip was squared as it
+    // came, a 2500px one kept at 2500².
+    test('a sampled tip past the tip size is fitted as every imported tip '
+        'is', () async {
+      // Split along the ROW axis, as the image tip's pin is: a mask that
+      // kept the full buffer while claiming the fitted side would read its
+      // first rows alone and come out clear.
+      const width = maxBrushTipMaskSide * 2;
+      const height = maxBrushTipMaskSide + 44;
+      final pixels = Uint8List(width * height);
+      for (var y = height ~/ 2; y < height; y += 1) {
+        pixels.fillRange(y * width, (y + 1) * width, 255);
+      }
+      final samp = AbrBytes();
+      writeSampEntry(
+        samp,
+        uuid: 'big-tip',
+        width: width,
+        height: height,
+        pixels: pixels,
+      );
+      final file = AbrBytes()
+        ..i16(6)
+        ..i16(2);
+      write8bimSection(file, 'samp', samp.bytes);
+
+      final mask = (await decodeAbrBrushFile(
+        file.bytes,
+        sourceName: 'fixture',
+      )).presets.single.settings.tipMask!;
+
+      expect(mask.size, maxBrushTipMaskSide);
+      final fitted = await brushTipMaskFromCoverage(
+        pixels,
+        size: (width: width, height: height),
+        id: 'abr-big-tip',
+      );
+      expect(mask.alpha, fitted.alpha, reason: 'the one fit, not another');
+      const row = maxBrushTipMaskSide * 3 ~/ 4;
+      expect(
+        mask.alpha.sublist(
+          row * maxBrushTipMaskSide + 4,
+          (row + 1) * maxBrushTipMaskSide - 4,
+        ),
+        everyElement(255),
+        reason: 'LIVENESS: the inked half is read',
+      );
     });
 
     test('RLE and raw tips decode to the exact pixel bytes', () async {

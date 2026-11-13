@@ -1,4 +1,5 @@
 import '../brush_preset_id_mint.dart';
+import '../brush_tip_coverage.dart' show brushTipMaskFromCoverage;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -90,7 +91,7 @@ Future<AbrImportResult> decodeAbrBrushFile(
     }
     switch (tag) {
       case 'samp':
-        _readSampledTips(
+        await _readSampledTips(
           reader,
           sectionEnd: sectionEnd,
           subversion: subversion,
@@ -209,14 +210,14 @@ bool _seekTo8bimSection(PhotoshopByteReader reader) {
   return false;
 }
 
-void _readSampledTips(
+Future<void> _readSampledTips(
   PhotoshopByteReader reader, {
   required int sectionEnd,
   required int subversion,
   required Map<String, BrushTipMask> tipsByKey,
   required List<String> tipOrder,
   required List<String> warnings,
-}) {
+}) async {
   while (reader.offset < sectionEnd - 4) {
     final entryLength = reader.readInt32();
     if (entryLength <= 0) {
@@ -256,11 +257,16 @@ void _readSampledTips(
       final pixels = compressed
           ? decodePackBitsScanlines(reader, bytesPerRow: width, height: height)
           : Uint8List.fromList(reader.readBytes(width * height));
-      final mask = BrushTipMask.square(
+      // 🚨THE ONE FIT EVERY TIP TAKES (card an-abr-sampled-tip-skips-the-
+      // one-fit-every-tip-takes, 2026-11-13): a sampled tip is coverage as
+      // an image's, a cut piece's, a SUT's and a pattern's are. ↩️It was
+      // squared as it came (f1cc6667e, 09-03) — left off the list as that
+      // law was written (b1868baed, 09-07), by no one's decision: a 2500px
+      // tip stayed 2500².
+      final mask = await brushTipMaskFromCoverage(
+        pixels,
+        size: (width: width, height: height),
         id: 'abr-$key',
-        pixels: pixels,
-        width: width,
-        height: height,
       );
       tipsByKey[key] = mask;
       tipOrder.add(key);
