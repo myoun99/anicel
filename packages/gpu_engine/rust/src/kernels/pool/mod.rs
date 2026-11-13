@@ -63,6 +63,21 @@ use crate::platform::{self, VideoMemory};
 
 /// The most a page holds where a binding holds more (1a ④).
 const MOST_PAGE_BYTES: u64 = 128 << 20;
+/// The most a page of the pictures' pool holds ([`Pictures`]): a 4K
+/// canvas's tiles — 3840 × 2160 lies on 30 × 17 = 510 tiles, and this is
+/// 512.
+///
+/// ⛔Not the cels' 128 MiB: a page is made whole for the first picture,
+/// and the slots of it no picture holds are bytes the app has for
+/// nothing — a blank project's pictures are a few MiB. 🔬Main PC, RTX 4080,
+/// DX12, a blank project's first strokes (2026-11-13, an allocator that
+/// says each block it makes): at 128 MiB the pictures' first page took a
+/// new 256 MiB block of the device's allocator beside the cels' first
+/// page — 512 to 768 MiB reserved.
+// ⏳My number, not measured against the passes a show takes where a
+// picture's tiles lie on more pages: to be settled from the Surface's
+// probe (H57).
+const MOST_PICTURE_PAGE_BYTES: u64 = 32 << 20;
 /// The slots a page may have and the pages a pool may: a `TileAt` names
 /// each by a u16.
 const MOST_NAMED: usize = u16::MAX as usize + 1;
@@ -106,7 +121,12 @@ impl Pool {
     /// at most, that makes no more pages than `most_bytes` hold — 1a ③'s
     /// budget, its store's to give.
     pub(crate) fn new(engine: &Engine, most_bytes: u64) -> Option<Self> {
-        let slots = (room(engine).min(MOST_PAGE_BYTES) / TILE_BYTES) as usize;
+        Self::paged(engine, MOST_PAGE_BYTES, most_bytes)
+    }
+
+    /// [`Pool::new`] of pages of `most_page_bytes` at most.
+    fn paged(engine: &Engine, most_page_bytes: u64, most_bytes: u64) -> Option<Self> {
+        let slots = (room(engine).min(most_page_bytes) / TILE_BYTES) as usize;
         // ⚠️No test reaches the pages' bound: 65,536 pages to make. It
         // stands so a page past what a TileAt names is refused, not named
         // as another.
@@ -492,7 +512,7 @@ impl Pictures {
     fn with<T>(&self, engine: &Engine, work: impl FnOnce(&mut Pool) -> Option<T>) -> Option<T> {
         let mut kept = self.kept();
         if kept.is_none() {
-            *kept = Some(Self::unbounded(Pool::new(engine, u64::MAX)?));
+            *kept = Some(Self::unbounded(Pool::paged(engine, MOST_PICTURE_PAGE_BYTES, u64::MAX)?));
         }
         work(kept.as_mut().expect("made above"))
     }

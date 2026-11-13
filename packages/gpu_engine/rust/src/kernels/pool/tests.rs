@@ -886,6 +886,16 @@ fn the_pictures_pool_holds_all_that_is_asked_or_none() {
     assert_eq!(pictures.idle_bytes(), 2 * TILE_BYTES, "the hold taken before the refusal");
 }
 
+// A page of the engine's pictures' pool holds a 4K canvas's tiles, 32 MiB
+// — or what one binding of the device does, where that is less.
+#[test]
+fn a_page_of_the_engines_pictures_holds_a_4k_canvass_tiles() {
+    let engine = rig().engine;
+    let slots = engine.pictures.slots(engine).expect("the pool") as u64;
+    assert_eq!(slots, room(engine).min(32 << 20) / TILE_BYTES);
+    assert!(room(engine) < 32 << 20 || slots >= 30 * 17, "{slots} slots a page");
+}
+
 // The engine's pictures' pool makes a page past the OS's budget, where the
 // cels' refuses one (⛔`Pictures`: what keeps a picture lets it go, not
 // this pool).
