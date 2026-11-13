@@ -83,19 +83,19 @@ Uint8List? soundSpanAsWav(
   }
   final read = clockPulledBy(clock, pull);
   final pace = read.rate.inSourceTime(read.speed);
-  final start = pace.frameToSample(frames.first, probe.sampleRate);
-  final end = pace.frameToSample(
-    frames.first + frames.count,
+  return _pulledBetween(
+    source,
+    pace.frameToSample(frames.first, probe.sampleRate),
+    pace.frameToSample(frames.first + frames.count, probe.sampleRate),
     probe.sampleRate,
+    pull,
   );
-  return pull == noPull
-      ? _decodedBetween(source, start, end)
-      : _pulledBetween(source, start, end, probe.sampleRate, pull);
 }
 
 /// [source]'s own sound frames [start] up to [end] played [pull] faster at
 /// its own [sampleRate]: its output frame j is the sound at [start] +
-/// j × [pull].
+/// j × [pull]. Pulled by nothing, the window as it was decoded — equal
+/// rates have no filter to reach with, and convert nothing.
 ///
 /// Converted with as much of the sound around the window as the filter
 /// reads ([resampleReach]) — alone, its edges would be converted against
@@ -123,8 +123,10 @@ Uint8List? soundSpanAsWav(
   final channels = decoded.channels;
   final silence = (from < 0 ? -from : 0) * channels;
   final converted = resampleAudio(
-    samples: Float32List(silence + decoded.samples.length)
-      ..setAll(silence, decoded.samples),
+    samples: silence == 0
+        ? decoded.samples
+        : (Float32List(silence + decoded.samples.length)
+            ..setAll(silence, decoded.samples)),
     channels: channels,
     inputRate: inputRate,
     outputRate: outputRate,
