@@ -11,6 +11,7 @@ import 'package:anicel/src/services/media/video_viewer_document.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
 
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/os_video_codec.dart';
 
 /// 🚨A movie frame shown is premultiplied WHERE IT IS DECODED, not on the
 /// isolate that paints it (viewer-frame-premultiply-on-the-worker).
@@ -38,12 +39,12 @@ void main() {
 
   group('the worker\'s frame arm', () {
     test('hands a frame premultiplied by the app\'s one law', () {
-      final frame = straight(5);
       expect(
-        transferOfFrame(frame, premultiplied: true).materialize().asUint8List(),
-        premultipliedRgbaCopy(frame),
+        transferOfFrame(straight(5), premultiplied: true)
+            .materialize()
+            .asUint8List(),
+        premultipliedRgbaCopy(straight(5)),
       );
-      expect(frame, straight(5), reason: 'the decoder\'s scratch is read');
     });
 
     test('hands a frame straight as it is', () {
@@ -57,8 +58,10 @@ void main() {
 
     test('a frame made in the kept buffer is its own, and the one before '
         'stays its own', () {
-      final first = transferOfFrame(straight(1), premultiplied: true);
-      final second = transferOfFrame(straight(2), premultiplied: true);
+      final room = straight(1);
+      final first = transferOfFrame(room, premultiplied: true);
+      room.setAll(0, straight(2));
+      final second = transferOfFrame(room, premultiplied: true);
       expect(
         second.materialize().asUint8List(),
         premultipliedRgbaCopy(straight(2)),
@@ -67,6 +70,32 @@ void main() {
         first.materialize().asUint8List(),
         premultipliedRgbaCopy(straight(1)),
         reason: 'the transfer copied the first out before the second came',
+      );
+    });
+
+    test('two frames in a row are decoded into one buffer it keeps, not a '
+        'fresh one each', () {
+      // 🔬The CPU audit (2026-11-13): the decoder copied each frame out of
+      // its scratch into a fresh 8 MB `Uint8List` when it was given no
+      // `into`, under the kept buffer the premultiply used — on the heap
+      // this worker shares with the UI isolate.
+      final decoder = osVideoDecoderOrSkip();
+      if (decoder == null) {
+        return;
+      }
+      addTearDown(decoder.close);
+      final document = decoder.openDocument(
+        'test/fixtures/tone_with_video.mp4',
+      );
+      expect(document, isNotNull, reason: 'the fixture must open');
+      final first = frameInTheRoom(decoder, document!, 0);
+      final second = frameInTheRoom(decoder, document, 1);
+      expect(second, isNotNull, reason: decoder.lastError);
+      expect(identical(first, second), isTrue);
+      expect(
+        second,
+        orderedEquals(decoder.frameOf(document, 1)!),
+        reason: 'and what is in it is the frame asked for',
       );
     });
   });

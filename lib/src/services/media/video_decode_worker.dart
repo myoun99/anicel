@@ -140,23 +140,27 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
   }
 
   @override
-  Future<Uint8List?> frame(int token, int index) async {
-    final rgba = _scratchOf(token, index);
-    // ⚠️Copied, because the direct path decodes into scratch the next frame
-    // overwrites and the isolate path hands over a buffer of its own. One
-    // contract, or callers learn which backend they have.
-    return rgba == null ? null : Uint8List.fromList(rgba);
-  }
+  Future<Uint8List?> frame(int token, int index) async =>
+      _frameOf(token, index);
 
   @override
   Future<Uint8List?> premultipliedFrame(int token, int index) async {
-    final rgba = _scratchOf(token, index);
-    // The premultiply's copy IS the copy out of the scratch.
-    return rgba == null ? null : premultipliedRgbaCopy(rgba);
+    final rgba = _frameOf(token, index);
+    if (rgba != null) {
+      premultiplyRgbaInPlace(rgba);
+    }
+    return rgba;
   }
 
-  /// Frame [index] of the document [token] names, in the decoder's scratch.
-  Uint8List? _scratchOf(int token, int index) {
+  /// Frame [index] of the document [token] names, in a buffer of the
+  /// caller's own — the decoder copies it out of its scratch into a fresh
+  /// one when it is given none to fill ([QaVideoDecoder.frameOf]).
+  ///
+  /// ⚠️The isolate path hands over a buffer of its own too, the transfer's.
+  /// One contract, or callers learn which backend they have. ↩️Until
+  /// 2026-11-13 this copied the decoder's fresh buffer once more, on the
+  /// word that it was the scratch.
+  Uint8List? _frameOf(int token, int index) {
     final document = _documentAt(token);
     return document == null
         ? null
@@ -210,9 +214,10 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   ///
   /// 🚨★★★**A REQUEST THAT WAS SENT ALWAYS GETS AN ANSWER.** `Isolate.spawn`
   /// defaults to `errorsAreFatal: true`, and the worker's body allocates
-  /// full frames per decode (a native scratch, the copy into the transfer,
-  /// and the premultiply's buffer when a frame of a new size comes — 8.3 MB
-  /// each at 1080p, 33 MB at 4K on the tablets this app is written for).
+  /// full frames per decode (the copy into the transfer, and the native
+  /// scratch and the room it is copied into when a frame of a new size
+  /// comes — 8.3 MB each at 1080p, 33 MB at 4K on the tablets this app is
+  /// written for).
   /// Any of those throwing used to KILL
   /// the isolate with nothing on this side listening: `reply.first` never
   /// completed, [_queue] never settled, and every later request — the
@@ -505,7 +510,7 @@ void _serve(
       final document = documentAt(args.token);
       final rgba = document == null
           ? null
-          : decoder.frameOf(document, args.index);
+          : frameInTheRoom(decoder, document, args.index);
       request.reply.send(
         rgba == null
             ? null
@@ -529,26 +534,31 @@ void _serve(
   }
 }
 
-/// What the frame arm sends of [rgba] — a view of the decoder's scratch —
-/// in the form asked: as it is, or [premultiplied]
+/// What the frame arm sends of [rgba] — the worker's room
+/// ([frameInTheRoom]), its own to change — in the form asked: as it is, or
+/// [premultiplied] there, by the app's one law
 /// ([VideoDecodeBackend.premultipliedFrame]).
 ///
-/// ⚠️A copy INTO the transfer, because the decoder hands back a view of
-/// scratch it reuses — `fromList` IS that copy. The copy stays on this
-/// isolate, which is the one with time to spare, and so does the
-/// premultiply. ↩️The scratch was copied into a fresh `Uint8List` first, and
-/// that was copied again.
+/// ⚠️A copy INTO the transfer, because the room is the next frame's too —
+/// `fromList` IS that copy. The copy stays on this isolate, which is the
+/// one with time to spare, and so does the premultiply. ↩️Until 2026-11-13
+/// a frame took three copies here and a fresh buffer: the decoder's out of
+/// its scratch into a fresh `Uint8List` (it was given no `into`), the
+/// premultiply's into a second kept buffer, and the transfer.
 @visibleForTesting
 TransferableTypedData transferOfFrame(
   Uint8List rgba, {
   required bool premultiplied,
-}) => TransferableTypedData.fromList([
-  if (premultiplied) _premultipliedInRoom(rgba) else rgba,
-]);
+}) {
+  if (premultiplied) {
+    premultiplyRgbaInPlace(rgba);
+  }
+  return TransferableTypedData.fromList([rgba]);
+}
 
-/// The worker's one buffer a frame is premultiplied in before the transfer
-/// copies it out — kept, and made anew only when a frame of another size
-/// comes.
+/// The worker's one buffer a frame is decoded into, out of the decoder's
+/// scratch, and premultiplied in before the transfer copies it out — kept,
+/// and made anew only when a frame of another size comes.
 ///
 /// 🔬KEPT BECAUSE A FRESH ONE STOPPED THE UI ISOLATE (2026-11-07, card
 /// viewer-frame-premultiply-on-the-worker — a 1080p movie's 240 frames in
@@ -557,18 +567,27 @@ TransferableTypedData transferOfFrame(
 /// held the UI isolate 9 ms a frame; this one kept, 5 ms. The worker is in
 /// the UI isolate's group (`Isolate.spawn`) and shares its heap — the
 /// likeliest road, not measured on its own.
-Uint8List? _premultiplyRoom;
-
-/// [rgba] premultiplied in [_premultiplyRoom], by the app's one law.
 ///
-/// ⚠️Valid until the next frame: the transfer copies it out at once, and
-/// the worker answers one request at a time.
-Uint8List _premultipliedInRoom(Uint8List rgba) {
-  final kept = _premultiplyRoom;
-  final room = kept != null && kept.length == rgba.length
+/// ↩️That kept the premultiply's buffer alone: the decoder's copy out of
+/// its scratch still made a fresh one a frame, under it, until 2026-11-13
+/// (the CPU audit), when the two became this one.
+Uint8List? _frameRoom;
+
+/// Frame [index] of [document], decoded into [_frameRoom].
+///
+/// ⚠️Valid until the next frame: [transferOfFrame] copies it out at once,
+/// and the worker answers one request at a time — the synchronous use
+/// [QaVideoDecoder.frameOf]'s `into` asks of whoever passes it.
+@visibleForTesting
+Uint8List? frameInTheRoom(
+  QaVideoDecoder decoder,
+  QaVideoDocument document,
+  int index,
+) {
+  final bytes = document.info.width * document.info.height * 4;
+  final kept = _frameRoom;
+  final room = kept != null && kept.length == bytes
       ? kept
-      : (_premultiplyRoom = Uint8List(rgba.length));
-  room.setAll(0, rgba);
-  premultiplyRgbaInPlace(room);
-  return room;
+      : (_frameRoom = Uint8List(bytes));
+  return decoder.frameOf(document, index, into: room);
 }

@@ -212,8 +212,9 @@ void main() {
   test('🚨a request whose work THROWS is answered before the worker dies', () {
     // 🚨★★★**THE STRONGER OF THE TWO NEVER-SETTLES.** `Isolate.spawn`
     // defaults to `errorsAreFatal: true`, and the frame arm allocates whole
-    // frames per decode — a native scratch, the copy into the transfer, and
-    // the premultiply's buffer, each 8.3 MB at 1080p and 33 MB at 4K. Those
+    // frames per decode — the copy into the transfer, and the native scratch
+    // and the room it is copied into when a frame of a new size comes, each
+    // 8.3 MB at 1080p and 33 MB at 4K. Those
     // raise (`ArgumentError('Could not allocate …')`, `OutOfMemoryError`)
     // rather than returning null, so before 2026-09-08 an out-of-memory
     // frame KILLED the worker with nobody listening: `reply.first` never
