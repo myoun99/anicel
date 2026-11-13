@@ -146,9 +146,10 @@ void main() {
 
     for (final coord in [underText, alsoUnderText]) {
       final laid = celTileWithPlatesLaid(
+        base,
+        coord,
         promoted[coord],
         plates[coord]!,
-        tileSize,
       )!;
       final shown = await bytesOfPicture(model.tileImages[coord]!);
 
@@ -157,7 +158,9 @@ void main() {
       expect(shown, isNot(pictured(promoted[coord]!)), reason: '$coord');
       expect(
         shown,
-        isNot(pictured(celTileWithPlatesLaid(ink, plates[coord]!, tileSize)!)),
+        isNot(
+          pictured(celTileWithPlatesLaid(base, coord, ink, plates[coord]!)!),
+        ),
         reason: '$coord',
       );
     }
@@ -218,7 +221,7 @@ void main() {
     expect(
       await bytesOfPicture(model.tileImages[underText]!),
       pictured(
-        celTileWithPlatesLaid(filled, plates[underText]!, tileSize)!,
+        celTileWithPlatesLaid(base, underText, filled, plates[underText]!)!,
       ),
     );
     expect(
@@ -249,7 +252,9 @@ void main() {
     // picture is that tile as the cel shows it.
     expect(
       await bytesOfPicture(model.tileImages[underText]!),
-      pictured(celTileWithPlatesLaid(ink, plates[underText]!, tileSize)!),
+      pictured(
+        celTileWithPlatesLaid(base, underText, ink, plates[underText]!)!,
+      ),
     );
   });
 

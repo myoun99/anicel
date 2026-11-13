@@ -14,10 +14,12 @@
 /// thumbnail, the fill's boundary and the eyedropper's pick.
 ///
 /// ★THE LAYING IS A STAMP. A text's plate lands on the drawing exactly as a
-/// picture stamped there at full strength would — [BrushStampBlitter], the
-/// one landing every stamp and every normal stroke already runs — so 「a
+/// picture stamped there at full strength would — [stampLaidOver], the
+/// commit's own landing of a picture, the engine's on its grid — so 「a
 /// text」 and 「those pixels drawn」 are the same bytes, and turning a text
-/// into drawing is keeping this result.
+/// into drawing is keeping this result. ↩️Until 2026-11-13 it was the CPU's
+/// stamp blend over the drawing's bytes, read back from the engine for it,
+/// after every stamp and stroke had gone to the engine (the CPU audit).
 ///
 /// ⛔NEVER STORED. Like a row's colour keys this is a view made when a cel
 /// is shown; the truth is the surface with its texts.
@@ -32,17 +34,16 @@
 /// (float-warp-resamples-in-the-c-engine (1)(2), 2026-11-11).
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/brush_stamp_image.dart';
 import '../models/cel_text.dart';
-import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
-import '../models/tiles_covering.dart';
-import 'bitmap_surface_geometry.dart' show celTextPlateSurface;
-import 'brush_stamp_span_kernel.dart';
-import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
+import 'bitmap_surface_brush_commit.dart' show stampLaidOver;
 
 /// [surface]'s drawing with every text it carries laid over it, bottom to
 /// top — a surface that carries no texts, whose tiles are the cel as shown.
@@ -59,18 +60,18 @@ BitmapSurface celSurfaceWithTextsLaid(BitmapSurface surface) {
   if (cached != null) {
     return cached;
   }
-  final laid = <TileCoord, BitmapTile>{};
-  for (final entry in celTextPlatesOver(surface)!.entries) {
-    final tile = celTileWithPlatesLaid(
-      surface.tileAt(entry.key),
-      entry.value,
-      surface.tileSize,
-    );
-    if (tile != null) {
-      laid[entry.key] = tile;
-    }
-  }
-  final result = surface.withTexts(const []).withRebuiltTiles(laid);
+  final shown = celTilesWithPlatesLaid(
+    surface,
+    {
+      for (final coord in celTextPlatesOver(surface)!.keys)
+        coord: surface.tileAt(coord),
+    },
+    [for (final text in surface.texts) (plate: text.plate, dx: 0, dy: 0)],
+  );
+  final result = surface.withTexts(const []).withRebuiltTiles({
+    for (final MapEntry(:key, :value) in shown.entries)
+      key: ?value,
+  });
   _laidSurfaces[surface] = result;
   return result;
 }
@@ -111,13 +112,16 @@ BitmapSurface celSurfaceWithTextAsDrawing(BitmapSurface surface, int id) {
 }
 
 /// The plates laid over each coordinate of [surface], bottom → top — every
-/// text's tile there, in the texts' order. Null when it carries no text.
+/// text's plate that has a tile there, in the texts' order. Null when it
+/// carries no text.
 ///
 /// What a live stroke asks for the cel it is drawn on: the tiles it is
 /// still changing have to show the letters over them too
 /// ([celTileWithPlatesLaid]), or a stroke passing under a text would wipe
 /// the letters off every tile it touched until the pen came up.
-Map<TileCoord, List<BitmapTile>>? celTextPlatesOver(BitmapSurface surface) {
+Map<TileCoord, List<Map<TileCoord, BitmapTile>>>? celTextPlatesOver(
+  BitmapSurface surface,
+) {
   if (surface.texts.isEmpty) {
     return null;
   }
@@ -126,110 +130,181 @@ Map<TileCoord, List<BitmapTile>>? celTextPlatesOver(BitmapSurface surface) {
       for (final text in surface.texts) ...text.plate.keys,
     })
       coord: [
-        for (final text in surface.texts) ?text.plate[coord],
+        for (final text in surface.texts)
+          if (text.plate.containsKey(coord)) text.plate,
       ],
   };
 }
 
-/// What a coordinate SHOWS: [under] — the drawing's tile there, or null
-/// where it has none — with [plates] laid over it bottom → top. Null when
-/// nothing is there at all: no tile, and no ink in any plate.
-///
-/// 🚨★★★THE ONE FOLD. A cel's laid surface, the picture a fill's result
-/// shows before it lands and the tile a pen-up hands its picture to all ask
-/// this, so the three cannot lay a text three ways.
+/// What [coord] SHOWS on [grid]'s cel: [under] — the drawing's tile there,
+/// or null where it has none — with [plates] laid over it bottom → top
+/// ([celTextPlatesOver]'s). Null when nothing is there at all: no tile, and
+/// no ink in any plate.
 BitmapTile? celTileWithPlatesLaid(
+  BitmapSurface grid,
+  TileCoord coord,
   BitmapTile? under,
-  List<BitmapTile> plates,
-  int tileSize,
+  List<Map<TileCoord, BitmapTile>> plates,
+) => celTilesWithPlatesLaid(grid, {coord: under}, [
+  for (final plate in plates) (plate: plate, dx: 0, dy: 0),
+])[coord];
+
+/// What [unders]' coordinates SHOW on [grid]'s cel — each the drawing's
+/// tile there, or null where it has none — with [plates] laid over them
+/// bottom → top, each moved by its whole pixels: what each becomes, null
+/// where nothing is there at all. A plate lays only on the coordinates
+/// asked.
+///
+/// 🚨★★★THE ONE FOLD. A cel's laid surface, the tile a pen-up hands its
+/// picture to, the picture a fill's result shows before it lands and where
+/// a carried text will land all ask this, so they cannot lay a text more
+/// ways than one.
+///
+/// A plate lands once for all the coordinates it lays on ([stampLaidOver]:
+/// one picture, one landing — the engine answers a landing at once, and a
+/// landing a tile was a wait a tile). What a coordinate became under a
+/// plate before is not laid again ([_laidOver]).
+Map<TileCoord, BitmapTile?> celTilesWithPlatesLaid(
+  BitmapSurface grid,
+  Map<TileCoord, BitmapTile?> unders,
+  List<CelTextPixels> plates,
 ) {
-  var laid = under;
+  final shown = {...unders};
   for (final plate in plates) {
-    if (laid != null) {
-      laid = _laidOver(laid, plate, tileSize);
-    } else if (plate.hasInk) {
-      // ⚠️Only a plate WITH ink: a blank plate tile over an empty
-      // coordinate lays nothing, and a stamp that lays nothing makes no
-      // tile.
-      laid = _laidOverNothing(plate, tileSize);
+    final asked = plate.dx == 0 && plate.dy == 0
+        ? _unknownUnderItsTiles(shown, plate.plate)
+        : _underItsMove(shown, plate, grid.tileSize);
+    if (asked.isEmpty) {
+      continue;
+    }
+    final (:stamp, :left, :top) = _stampOf(plate.plate, grid.tileSize);
+    final laid = stampLaidOver(
+      grid,
+      stamp,
+      left: left + plate.dx,
+      top: top + plate.dy,
+      unders: asked,
+    );
+    for (final MapEntry(:key, :value) in laid.entries) {
+      shown[key] = value;
+      if (plate.dx == 0 && plate.dy == 0 && value != null) {
+        _remember(asked[key], plate.plate[key]!, value);
+      }
     }
   }
-  return laid;
+  return shown;
 }
 
-/// A text's [pixels] laid over [straight] — straight rgba of [region] of
-/// [on]'s grid, a row [region]'s width — IN PLACE: the stamp a plate's tile
-/// is laid with ([celTileWithPlatesLaid]), over a region of the grid rather
-/// than a tile of it.
+/// What [plate], not moved, still has to land on of [shown]: each
+/// coordinate it has a tile at whose answer is not known, with what is
+/// under it. [shown] takes every answer that is known.
+Map<TileCoord, BitmapTile?> _unknownUnderItsTiles(
+  Map<TileCoord, BitmapTile?> shown,
+  Map<TileCoord, BitmapTile> plate,
+) {
+  final asked = <TileCoord, BitmapTile?>{};
+  for (final MapEntry(key: coord, value: tile) in plate.entries) {
+    if (!shown.containsKey(coord) || !tile.hasInk) {
+      // ⚠️A plate tile with no ink lays nothing: over a tile it leaves it,
+      // and over an empty coordinate a stamp that lays nothing makes no
+      // tile.
+      continue;
+    }
+    final under = shown[coord];
+    final known = _laidOver(under, tile);
+    if (known != null) {
+      shown[coord] = known;
+    } else {
+      asked[coord] = under;
+    }
+  }
+  return asked;
+}
+
+/// The coordinates of [shown] that [plate], moved by its whole pixels,
+/// reaches with a tile that holds ink, with what is under each.
+Map<TileCoord, BitmapTile?> _underItsMove(
+  Map<TileCoord, BitmapTile?> shown,
+  CelTextPixels plate,
+  int tileSize,
+) {
+  final asked = <TileCoord, BitmapTile?>{};
+  for (final MapEntry(key: coord, value: tile) in plate.plate.entries) {
+    if (!tile.hasInk) {
+      continue;
+    }
+    final left = coord.x * tileSize + plate.dx;
+    final top = coord.y * tileSize + plate.dy;
+    final across = {
+      floorDiv(left, tileSize),
+      floorDiv(left + tileSize - 1, tileSize),
+    };
+    final down = {
+      floorDiv(top, tileSize),
+      floorDiv(top + tileSize - 1, tileSize),
+    };
+    for (final x in across) {
+      for (final y in down) {
+        final reached = TileCoord(x: x, y: y);
+        if (shown.containsKey(reached)) {
+          asked[reached] = shown[reached];
+        }
+      }
+    }
+  }
+  return asked;
+}
+
+/// What [plate] over [under] was known to make — null when it is not known.
 ///
-/// 🚨What lands at a pixel is that pixel's own answer — one plate pixel
-/// over one pixel under it — so the bytes this makes over a region are the
-/// bytes the tiles there are laid with (F-344-Q3, 유저 2026-10-15: 「놓을
-/// 때와 같은 코드로 — 완전히 같게」). A plate none of whose tiles reach
-/// [region] costs a look at its coordinates.
-void layPixelsOverRegion(
-  Uint8List straight,
-  DirtyRegion region,
-  CelTextPixels pixels, {
-  required BitmapSurface on,
-}) {
-  final from = DirtyRegion(
-    left: region.left - pixels.dx,
-    top: region.top - pixels.dy,
-    rightExclusive: region.rightExclusive - pixels.dx,
-    bottomExclusive: region.bottomExclusive - pixels.dy,
-  );
-  final plate = celTextPlateSurface(
-    pixels.plate,
-    canvasSize: on.canvasSize,
-    pasteboardReach: on.pasteboardReach,
-    tileSize: on.tileSize,
-  );
-  if (tilesCovering(plate, from).isEmpty) {
+/// 🚨REMEMBERED PER PAIR OF TILES, which is what lets a person draw on a
+/// cel that carries text: a stroke commits a new surface, but it makes one
+/// new tile per coordinate it touched and every other tile is the object it
+/// was. Remembered per surface alone, each dab would lay every text again
+/// over the whole cel.
+///
+/// Over an empty coordinate a plate that holds nothing behind alpha 0 makes
+/// ITSELF — a baked plate holds nothing there (the engine hands its pixels
+/// back that way), so a text over bare paper costs no second copy of its
+/// pixels. Only a plate that does carry a colour where it has no ink is
+/// landed, onto nothing, to be rid of it. ↩️It cleared those pixels in a
+/// walk of its own until the clone ratchet named that walk as the colour
+/// keys' (`_keyedTile`, 90 → 91, 2026-10-06). The stamp already says what
+/// lands over nothing.
+BitmapTile? _laidOver(BitmapTile? under, BitmapTile plate) {
+  if (under == null) {
+    return _laidAlone[plate] ??
+        (_holdsColourBehindNothing(plate) ? null : plate);
+  }
+  final remembered = _laidPairs[under];
+  if (remembered == null) {
+    return null;
+  }
+  for (var i = 0; i < remembered.length; i += 1) {
+    final pair = remembered[i];
+    if (identical(pair.plate, plate)) {
+      if (i != 0) {
+        remembered
+          ..removeAt(i)
+          ..insert(0, pair);
+      }
+      return pair.laid;
+    }
+  }
+  return null;
+}
+
+/// That [plate] over [under] made [laid].
+void _remember(BitmapTile? under, BitmapTile plate, BitmapTile laid) {
+  if (under == null) {
+    _laidAlone[plate] = laid;
     return;
   }
-  _landed(
-    straight,
-    bitmapSurfaceRegionPixels(plate, from),
-    region.width * region.height,
-  );
-}
-
-/// [plate]'s tile stamped onto [pixels], one tile of them ([_landed]).
-bool _stamp(Uint8List pixels, BitmapTile plate, int tileSize) =>
-    plate.readPixels((_, view) => _landed(pixels, view, tileSize * tileSize));
-
-/// [plate] — straight rgba laid out as [pixels] is — stamped onto the first
-/// [count] pixels of [pixels] at full strength, in place: THE landing, and
-/// the stamp tool's own ([BrushStampBlitter]). Whether a byte changed.
-bool _landed(Uint8List pixels, Uint8List plate, int count) =>
-    BrushStampBlitter(
-      rgba: plate,
-      dabOpacity: 1.0,
-      erase: false,
-    ).blendSpanInPlace(pixels, 0, 0, count);
-
-/// [plate] laid over an empty coordinate — what the stamp makes there: it
-/// skips a pixel of alpha 0 and writes every other, as it is, over nothing.
-///
-/// A baked plate holds nothing behind alpha 0 (the engine hands its pixels
-/// back that way), and for such a plate the stamp's answer is the plate
-/// ITSELF: a text over bare paper costs no second copy of its pixels. Only
-/// a plate that does carry a colour where it has no ink is run through the
-/// stamp, onto a blank tile, to be rid of it.
-///
-/// ↩️It cleared those pixels in a walk of its own until the clone ratchet
-/// named that walk as the colour keys' (`_keyedTile`, 90 → 91, 2026-10-06).
-/// The stamp already says what lands over nothing.
-BitmapTile _laidOverNothing(BitmapTile plate, int tileSize) =>
-    _laidAlone[plate] ??= _holdsColourBehindNothing(plate)
-        ? _stampedOnBlank(plate, tileSize)
-        : plate;
-
-BitmapTile _stampedOnBlank(BitmapTile plate, int tileSize) {
-  final pixels = Uint8List(BitmapTile.bytesFor(tileSize));
-  _stamp(pixels, plate, tileSize);
-  return BitmapTile(size: tileSize, pixels: pixels);
+  final remembered = _laidPairs[under] ??= <_LaidPair>[];
+  remembered.insert(0, (plate: plate, laid: laid));
+  if (remembered.length > _pairsKeptPerTile) {
+    remembered.removeLast();
+  }
 }
 
 /// Whether any pixel of [tile] with no alpha still carries a colour.
@@ -247,37 +322,46 @@ bool _holdsColourBehindNothing(BitmapTile tile) => tile.readPixels((_, view) {
   return false;
 });
 
-/// [plate] stamped over [under] at full strength.
-///
-/// 🚨REMEMBERED PER PAIR OF TILES, which is what lets a person draw on a
-/// cel that carries text: a stroke commits a new surface, but it makes one
-/// new tile per coordinate it touched and every other tile is the object it
-/// was. Remembered per surface alone, each dab would lay every text again
-/// over the whole cel.
-BitmapTile _laidOver(BitmapTile under, BitmapTile plate, int tileSize) {
-  final remembered = _laidPairs[under] ??= <_LaidPair>[];
-  for (var i = 0; i < remembered.length; i += 1) {
-    final pair = remembered[i];
-    if (identical(pair.plate, plate)) {
-      if (i != 0) {
-        remembered
-          ..removeAt(i)
-          ..insert(0, pair);
+/// [plate] as one picture over the box of its tiles, and where its top-left
+/// pixel lies on the grid — made once for it: a plate is the object it is,
+/// and a text carried lands the same one at each step of the hand.
+({BrushStampImage stamp, int left, int top}) _stampOf(
+  Map<TileCoord, BitmapTile> plate,
+  int tileSize,
+) => _stamps[plate] ??= () {
+  final left = plate.keys.map((coord) => coord.x).reduce(math.min);
+  final top = plate.keys.map((coord) => coord.y).reduce(math.min);
+  final right = plate.keys.map((coord) => coord.x).reduce(math.max);
+  final bottom = plate.keys.map((coord) => coord.y).reduce(math.max);
+  final width = (right - left + 1) * tileSize;
+  final height = (bottom - top + 1) * tileSize;
+  const bytes = BitmapTile.bytesPerPixel;
+  final rgba = Uint8List(width * height * bytes);
+  final row = tileSize * bytes;
+  for (final MapEntry(key: coord, value: tile) in plate.entries) {
+    tile.readPixels((_, view) {
+      final x = (coord.x - left) * row;
+      for (var y = 0; y < tileSize; y += 1) {
+        final at = ((coord.y - top) * tileSize + y) * width * bytes + x;
+        rgba.setRange(at, at + row, view, y * row);
       }
-      return pair.laid;
-    }
+    });
   }
-  final pixels = under.pixels;
-  final changed = _stamp(pixels, plate, tileSize);
-  // A plate with no ink over this coordinate changes nothing: the
-  // drawing's own tile, the same object, with the pictures it has.
-  final laid = changed ? BitmapTile(size: tileSize, pixels: pixels) : under;
-  remembered.insert(0, (plate: plate, laid: laid));
-  if (remembered.length > _pairsKeptPerTile) {
-    remembered.removeLast();
-  }
-  return laid;
-}
+  _platesMade += 1;
+  return (
+    stamp: BrushStampImage(
+      id: 'cel-text-plate-$_platesMade',
+      width: width,
+      height: height,
+      rgba: rgba,
+    ),
+    left: left * tileSize,
+    top: top * tileSize,
+  );
+}();
+
+/// The plates made into pictures so far — what keeps each one's id its own.
+int _platesMade = 0;
 
 /// A plate and the tile it made over the tile this is remembered under.
 typedef _LaidPair = ({BitmapTile plate, BitmapTile laid});
@@ -297,15 +381,21 @@ final Expando<BitmapSurface> _laidSurfaces = Expando<BitmapSurface>(
 
 /// The plates over each coordinate, per source surface
 /// ([celTextPlatesOver]) — asked on every flush of a live stroke.
-final Expando<Map<TileCoord, List<BitmapTile>>> _platesOver =
-    Expando<Map<TileCoord, List<BitmapTile>>>('celTextPlatesOver');
+final Expando<Map<TileCoord, List<Map<TileCoord, BitmapTile>>>> _platesOver =
+    Expando<Map<TileCoord, List<Map<TileCoord, BitmapTile>>>>(
+      'celTextPlatesOver',
+    );
 
 /// What each drawing tile made under the plates laid over it lately.
 final Expando<List<_LaidPair>> _laidPairs = Expando<List<_LaidPair>>(
   'celTextLaidPairs',
 );
 
-/// What each plate tile is over an empty coordinate.
+/// What each plate tile is over an empty coordinate, once landed there.
 final Expando<BitmapTile> _laidAlone = Expando<BitmapTile>(
   'celTextLaidAlone',
 );
+
+/// Each plate as one picture ([_stampOf]).
+final Expando<({BrushStampImage stamp, int left, int top})> _stamps =
+    Expando<({BrushStampImage stamp, int left, int top})>('celTextPlateStamps');

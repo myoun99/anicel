@@ -5,6 +5,8 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels;
@@ -352,6 +354,50 @@ void main() {
         same(laidSecond),
       );
       expect(laidFirst, isNot(same(laidSecond)), reason: 'fixture');
+    });
+  });
+
+  group('on the engine', () {
+    // 🔬The CPU audit (2026-11-13): a text was laid by the CPU's stamp
+    // blend over the drawing's bytes, so a tile the engine alone held — a
+    // stroke's, a stamp's — was read back for it first. The engine lays it
+    // where the tile is.
+    test('a text laid over tiles the engine alone holds reads none of them '
+        'back', () {
+      final ledger = EngineTileLedger.instance;
+      final drawing = drawingOf({
+        a: ledger.debugOnEngine(drawingTile),
+        b: ledger.debugOnEngine(drawingTile),
+      });
+      final plate = {a: plateTile, b: plateTile};
+      final reads = ledger.debugTileReads;
+
+      final laid = celSurfaceWithTextsLaid(
+        drawing.withTexts([textOf(1, plate: plate)]),
+      );
+
+      expect(ledger.debugTileReads, reads);
+      expect(
+        pixelsOver(laid, [a, b]),
+        pixelsOver(stamped(drawingOf({a: drawingTile, b: drawingTile}), plate), [
+          a,
+          b,
+        ]),
+        reason: 'and what it laid is the stamp',
+      );
+    });
+
+    test('a plate goes to the engine once, however often it is laid', () {
+      final plate = {a: plateTile, c: plateTile};
+      final handedUp = EngineStampPictures.debugHandedUp;
+
+      for (final under in [drawingTile, tileFilledWith([1, 2, 3, 255])]) {
+        celSurfaceWithTextsLaid(
+          drawingOf({a: under, c: under}).withTexts([textOf(1, plate: plate)]),
+        );
+      }
+
+      expect(EngineStampPictures.debugHandedUp, handedUp + 1);
     });
   });
 }

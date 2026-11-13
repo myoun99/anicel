@@ -4,26 +4,30 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
+import '../models/tile_coord.dart';
 import 'bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds, celTextPlateSurface;
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'cel_text_laying.dart';
 
-/// THE SEAM, AT ONE COORDINATE: what a cel whose drawing holds [tile] there
-/// SHOWS there — [plates], the texts standing over the coordinate bottom →
-/// top (`celTextPlatesOver`; null where none does), laid over it. The very
-/// object [celSurfaceWithTextsLaid] holds at that coordinate once the cel
-/// holds [tile] — the laying answers a tile it has seen from its memo — so
-/// a picture made for one is the other's.
+/// THE SEAM, AT ONE COORDINATE: what [grid]'s cel SHOWS at [coord] once its
+/// drawing holds [tile] there — [plates], the texts standing over the
+/// coordinate bottom → top (`celTextPlatesOver`; null where none does),
+/// laid over it. The very object [celSurfaceWithTextsLaid] holds at that
+/// coordinate once the cel holds [tile] — the laying answers a tile it has
+/// seen from its memo — so a picture made for one is the other's.
 ///
 /// A live stroke's overlay shows its pictures in place of the cel's tiles,
 /// and pen-up hands each to the tile this answers
 /// (`ActiveStrokeOverlayModel.tileShownFor`).
 BitmapTile celTileAsShown(
+  BitmapSurface grid,
+  TileCoord coord,
   BitmapTile tile,
-  List<BitmapTile>? plates,
-  int tileSize,
-) => plates == null ? tile : celTileWithPlatesLaid(tile, plates, tileSize)!;
+  List<Map<TileCoord, BitmapTile>>? plates,
+) => plates == null
+    ? tile
+    : celTileWithPlatesLaid(grid, coord, tile, plates)!;
 
 /// THE SEAM, WHERE A TEXT A HAND CARRIES WILL LAND (F-344-Q3): the region
 /// of its cel the carried text's ink covers, and the straight rgba the cel
@@ -37,12 +41,12 @@ BitmapTile celTileAsShown(
 /// text floated over its cel is keyed by itself on a row with a colour
 /// key, where its landing keys it with the ink under it. This is the
 /// landing, asked where the text lies: [under] laid as
-/// [celSurfaceWithTextsLaid] lays it, the carried plate and then the texts
-/// above it stamped over that with the stamp a cel's texts are laid with
-/// ([layPixelsOverRegion]) — the landed cel's bytes there, which the row's
-/// chain then runs over with the cel's, as it runs over the landed cel.
-/// Outside the region the text holds no ink, and the cel without it is the
-/// cel with it.
+/// [celSurfaceWithTextsLaid] lays it, the carried plate where the hand has
+/// it and then the texts above it laid over that by the one fold a cel's
+/// texts are laid with ([celTilesWithPlatesLaid]) — the landed cel's bytes
+/// there, which the row's chain then runs over with the cel's, as it runs
+/// over the landed cel. Outside the region the text holds no ink, and the
+/// cel without it is the cel with it.
 ///
 /// ↩️On a row whose chain ran a plugin at its head, the landing was the
 /// whole cel through it, made here on the CPU (🗣️I-132-Q32 b) — until the
@@ -57,19 +61,25 @@ BitmapTile celTileAsShown(
   if (region == null) {
     return null;
   }
+  final laid = celSurfaceWithTextsLaid(under);
+  final shown = celTilesWithPlatesLaid(
+    under,
+    {
+      for (final coord in region.toTileCoords(tileSize: under.tileSize))
+        coord: laid.tileAt(coord),
+    },
+    [
+      carried,
+      for (final text in above) (plate: text.plate, dx: 0, dy: 0),
+    ],
+  );
   final straight = bitmapSurfaceRegionPixels(
-    celSurfaceWithTextsLaid(under),
+    laid.withRebuiltTiles({
+      for (final MapEntry(:key, :value) in shown.entries)
+        key: ?value,
+    }),
     region,
   );
-  layPixelsOverRegion(straight, region, carried, on: under);
-  for (final text in above) {
-    layPixelsOverRegion(
-      straight,
-      region,
-      (plate: text.plate, dx: 0, dy: 0),
-      on: under,
-    );
-  }
   return (region: region, straight: straight);
 }
 

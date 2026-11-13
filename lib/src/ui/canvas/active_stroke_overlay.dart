@@ -283,7 +283,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// Read off [preBlendBase] — the cel as the stroke found it — rather than
   /// set beside it, so there is no second thing for a stroke's start to
   /// forget.
-  List<BitmapTile>? _platesOver(TileCoord coord) {
+  List<Map<TileCoord, BitmapTile>>? _platesOver(TileCoord coord) {
     final base = preBlendBase;
     return base == null ? null : celTextPlatesOver(base)?[coord];
   }
@@ -292,8 +292,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// or it with the cel's texts laid over it — the tile the painter draws
   /// once the stroke has landed, and so the one a picture made for this
   /// coordinate belongs to ([takeTileImageAt]'s caller hands it over).
-  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) =>
-      celTileAsShown(tile, _platesOver(coord), tileSize);
+  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) {
+    final base = preBlendBase;
+    return base == null
+        ? tile
+        : celTileAsShown(base, coord, tile, _platesOver(coord));
+  }
 
   /// The overlay tiles that [region] touches moved in the live stroke
   /// [source]: pictured when they are next read ([pictureOwed]).

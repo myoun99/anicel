@@ -202,25 +202,16 @@ List<PlacedTile> _pictureOnEngine(
     for (var y = firstY; y <= lastY; y += 1)
       for (var x = firstX; x <= lastX; x += 1) TileCoord(x: x, y: y),
   ];
-  final landed = EngineTileLedger.instance.land(
-    EngineTileLedger.landedCel,
+  final landed = _landedOnEngine(
+    picture,
+    landing,
+    clip,
     [
       for (final coord in coords)
         (column: coord.x, row: coord.y, under: surface.tileAt(coord)),
     ],
-    by: (pool, cel, asked) => appGpuStampLanding.land(
-      appGpuComposite,
-      pool,
-      cel,
-      picture,
-      left: landing.left,
-      top: landing.top,
-      within: (clip.left, clip.top, clip.rightExclusive, clip.bottomExclusive),
-      asks: asked,
-      opacity: (opacity * 65535).round(),
-      mode: mode,
-    ),
-    compared: true,
+    opacity: (opacity * 65535).round(),
+    mode: mode,
   );
   return [
     for (var at = 0; at < landed.length; at += 1)
@@ -230,6 +221,102 @@ List<PlacedTile> _pictureOnEngine(
           tile: landed[at].tile ?? BitmapTile.blank(size: tileSize),
         ),
   ];
+}
+
+/// [picture], its top-left pixel at [landing]'s, laid by the engine on the
+/// tiles [asks] at [opacity] (65535 whole) in [mode] — what of it lies
+/// within [clip]: each result as the stamp landing hands it.
+List<LandedTile> _landedOnEngine(
+  GpuStampPicture picture,
+  DirtyRegion landing,
+  DirtyRegion clip,
+  List<TileAsk> asks, {
+  required int opacity,
+  required int mode,
+}) => EngineTileLedger.instance.land(
+  EngineTileLedger.landedCel,
+  asks,
+  by: (pool, cel, asked) => appGpuStampLanding.land(
+    appGpuComposite,
+    pool,
+    cel,
+    picture,
+    left: landing.left,
+    top: landing.top,
+    within: (clip.left, clip.top, clip.rightExclusive, clip.bottomExclusive),
+    asks: asked,
+    opacity: opacity,
+    mode: mode,
+  ),
+  compared: true,
+);
+
+/// [stamp], its top-left pixel at ([left], [top]), laid at full strength
+/// on [unders] — tiles of [grid]'s cel at their coordinates, null where it
+/// has none — as a picture stamped there lands
+/// ([compositeStrokePixelsOntoBitmapSurface]): what each becomes, the very
+/// tile where no byte of it changed, null where nothing is left.
+///
+/// ⚠️Only [unders]' coordinates are laid, however many more [stamp]
+/// reaches: a caller that already knows what the others become (the texts'
+/// pairs of tiles, cel_text_laying.dart) would otherwise have them laid a
+/// second time over what they became.
+Map<TileCoord, BitmapTile?> stampLaidOver(
+  BitmapSurface grid,
+  BrushStampImage stamp, {
+  required int left,
+  required int top,
+  required Map<TileCoord, BitmapTile?> unders,
+}) {
+  final landing = DirtyRegion(
+    left: left,
+    top: top,
+    rightExclusive: left + stamp.width,
+    bottomExclusive: top + stamp.height,
+  );
+  if (!_landsOnEngine(grid)) {
+    // Off the engine's grid the commit lands every tile the stamp reaches;
+    // the answers asked for are read off what it left.
+    final laid = compositeStrokePixelsOntoBitmapSurface(
+      surface: BitmapSurface(
+        canvasSize: grid.canvasSize,
+        pasteboardReach: grid.pasteboardReach,
+        tileSize: grid.tileSize,
+        tiles: {
+          for (final MapEntry(:key, :value) in unders.entries)
+            key: ?value,
+        },
+      ),
+      strokePixels: stamp.rgba,
+      bounds: landing,
+    );
+    return {
+      for (final MapEntry(:key, :value) in unders.entries)
+        key: laid.dirtyTiles.contains(key) ? laid.surface.tileAt(key) : value,
+    };
+  }
+  final clip = landing.intersection(grid.pasteboard.region);
+  if (clip == null) {
+    return {...unders};
+  }
+  final coords = unders.keys.toList();
+  final landed = _landedOnEngine(
+    EngineStampPictures.of(stamp),
+    landing,
+    clip,
+    [
+      for (final coord in coords)
+        (column: coord.x, row: coord.y, under: unders[coord]),
+    ],
+    opacity: 65535,
+    mode: engineBlendModeOf(BrushBlendMode.color, erase: false),
+  );
+  return {
+    for (final (at, coord) in coords.indexed)
+      coord: landed[at].change == GpuChange.same
+          ? unders[coord]
+          : landed[at].tile,
+  };
 }
 
 /// The commit's tail off the engine's grid: the CHANGED scratch tiles
