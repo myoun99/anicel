@@ -153,7 +153,7 @@ class MediaPoolPanel extends StatelessWidget {
 
   /// When each pool file the project points at was last written — the
   /// session's sweep fills it, so a row never stats the disk to draw
-  /// itself. A carried row shows its carry's date instead ([_subtitleFor]).
+  /// itself. A carried row shows its carry's date instead ([_dateOf]).
   final Map<String, DateTime> modifiedTimes;
 
   /// What each carried asset ACTUALLY occupies — compressed, in the
@@ -248,21 +248,9 @@ class MediaPoolPanel extends StatelessWidget {
     } else if (conform != null && conform > 0) {
       parts.add('+ ${byteSizeLabel(conform)}');
     }
-    // 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
-    // 띄운다」): a carried file's date is the one its carry recorded — the
-    // bytes the project holds do not change when the original does.
-    // ↩️It read the original's date now, edited or gone.
-    final modified = switch (asset.carriedAs) {
-      final carried? => carried.modified,
-      null => modifiedTimes[asset.path],
-    };
-    if (modified != null) {
-      parts.add(
-        '${modified.month.toString().padLeft(2, '0')}-'
-        '${modified.day.toString().padLeft(2, '0')} '
-        '${modified.hour.toString().padLeft(2, '0')}:'
-        '${modified.minute.toString().padLeft(2, '0')}',
-      );
+    final date = _dateOf(asset);
+    if (date != null) {
+      parts.add(date);
     }
     // Nothing known yet (a fresh pool before the first sweep): the path is
     // better than an empty line.
@@ -275,6 +263,26 @@ class MediaPoolPanel extends StatelessWidget {
       parts.add(asset.path);
     }
     return parts.join(' · ');
+  }
+
+  /// The date [asset]'s row shows, `MM-DD hh:mm` — null where none is known.
+  ///
+  /// 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
+  /// 띄운다」): a carried file's date is the one its carry recorded — the
+  /// bytes the project holds do not change when the original does.
+  /// ↩️It read the original's date now, edited or gone.
+  String? _dateOf(MediaAsset asset) {
+    final modified = switch (asset.carriedAs) {
+      final carried? => carried.modified,
+      null => modifiedTimes[asset.path],
+    };
+    if (modified == null) {
+      return null;
+    }
+    return '${modified.month.toString().padLeft(2, '0')}-'
+        '${modified.day.toString().padLeft(2, '0')} '
+        '${modified.hour.toString().padLeft(2, '0')}:'
+        '${modified.minute.toString().padLeft(2, '0')}';
   }
 
   /// [subtitle], with where the file lies on hover — on a row whose file
