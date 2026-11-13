@@ -73,8 +73,15 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // and of 296 wait windows one stood past ten seconds, at 11.5, where
   // twenty had — a rasterize's apart, which waits for no kernel (board
   // the-attach-row-bake-test-waits-a-gpu-read-a-frame-under-load).
-  // ⚠️What the folder does not change: the whole app's first frame in a
-  // new process stood 12–48 s under that load, the folder empty or full.
+  // ⚠️What the folder does not change is Dart's own start in a new
+  // process. 🔬By thread CPU (보드/인프라 and this lane, 2026-11-13, board
+  // a-fresh-test-process-waits-long-for-its-first-frame-at-a-batch-start),
+  // the brush library test alone, the folder the run's own and empty and
+  // then the machine's and full: its first `pumpWidget` 6.6 s and 5.6 s,
+  // 9.0 s and 8.2 s of CPU and none of it an engine thread's; its first
+  // round 13.2 s and 1.7 s, 15.8 s and 0.2 s of CPU on the engine's
+  // threads. Under eighteen suites the first frame stood 12–48 s, the
+  // folder full as well.
   //
   // ⛔Not in the run's temp: the line empties it as each run ends
   // (tool/test_queue.dart, `RunTemp`). ⛔Never the app's own container
