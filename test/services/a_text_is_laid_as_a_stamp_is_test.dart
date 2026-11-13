@@ -388,7 +388,9 @@ void main() {
     });
 
     test('a plate goes to the engine once, however often it is laid', () {
-      final plate = {a: plateTile, c: plateTile};
+      // ONE text, as a cel keeps it from stroke to stroke: a text made
+      // again freezes its plate again, a plate of its own.
+      final text = textOf(1, plate: {a: plateTile, c: plateTile});
       final handedUp = EngineStampPictures.debugHandedUp;
 
       // Unders no other test laid a plate over: a pair laid before is not
@@ -400,7 +402,7 @@ void main() {
       ]) {
         final under = tileFilledWith(rgba);
         celSurfaceWithTextsLaid(
-          drawingOf({a: under, c: under}).withTexts([textOf(1, plate: plate)]),
+          drawingOf({a: under, c: under}).withTexts([text]),
         );
       }
 
