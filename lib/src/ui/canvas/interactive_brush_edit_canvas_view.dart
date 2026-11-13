@@ -695,15 +695,13 @@ class _InteractiveBrushEditCanvasViewState
   /// device: let go of as it is where its cel goes, and the next press
   /// draws on the next engine's.
   late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
-    letGo: () {
-      _letGoOfWhatIsInFlight();
-      // A stroke ended from outside is told of after a frame: one comes.
-      SchedulerBinding.instance.ensureVisualUpdate();
-    },
+    letGo: _letGoOfWhatIsInFlight,
   );
 
   /// Ends a stroke in flight from OUTSIDE a pointer event — its cel changed
-  /// under the pen, or the view is going — and says so after the frame.
+  /// under the pen, the engine it is drawn on went, or the view is going —
+  /// and says so after the frame: one it asks for, where none is on its
+  /// way.
   ///
   /// R13-4: this runs inside the build/update phase. The stroke-end
   /// callback reached ancestor setState (the panel's _strokeActive then;
@@ -725,6 +723,9 @@ class _InteractiveBrushEditCanvasViewState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         notify?.call(StrokeInFlight.none);
       });
+      // An engine goes between two frames, and a view that keeps the
+      // input alone has no painter of its own to ask for the next.
+      SchedulerBinding.instance.ensureVisualUpdate();
     }
   }
 

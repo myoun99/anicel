@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 
@@ -28,8 +29,15 @@ import '../../helpers/the_apps_engine_let_go.dart';
 void main() {
   final strokeLive = <bool>[];
   var commits = 0;
+  setUp(() {
+    strokeLive.clear();
+    commits = 0;
+  });
 
-  Widget view() => MaterialApp(
+  /// The view on a blank cel: painting it and its stroke, or — where its
+  /// host does ([hostsOverlay]) — keeping the input alone, as the canvas
+  /// panel has it.
+  Widget view({ActiveStrokeOverlayModel? hostsOverlay}) => MaterialApp(
     home: Scaffold(
       body: Align(
         alignment: Alignment.topLeft,
@@ -42,6 +50,8 @@ void main() {
           frameId: const FrameId('frame-a'),
           editable: true,
           inputSettings: () => BrushEditCanvasInputSettings.defaults,
+          overlayModel: hostsOverlay,
+          paintsContent: hostsOverlay == null,
           onActiveStrokeChanged: (stroke) =>
               strokeLive.add(stroke != StrokeInFlight.none),
           onSourceStrokeCommitted: (_) => commits += 1,
@@ -89,6 +99,30 @@ void main() {
     await tester.pump();
     expect(strokeLive, [true, false]);
     expect(commits, 1);
+  });
+
+  testWidgets('the frame it is said after is the view\'s own to ask '
+      'for: one that keeps the input alone has no painter that would, its '
+      'overlay its host\'s to paint', (tester) async {
+    // A host's model outlives the view it lends it to.
+    final hosts = ActiveStrokeOverlayModel();
+    addTearDown(hosts.dispose);
+    await tester.pumpWidget(view(hostsOverlay: hosts));
+    final gesture = await beginStroke(tester);
+    // The pen rests: its line has come up to it, and no frame is on its
+    // way.
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: '⛔premise');
+
+    theAppsEngineLostAndLetGo();
+
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pump();
+    expect(strokeLive, [true, false]);
+    await gesture.up();
+    await tester.pump();
+    expect(commits, 0);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('a view that went hears no more of the app\'s engine: the '
