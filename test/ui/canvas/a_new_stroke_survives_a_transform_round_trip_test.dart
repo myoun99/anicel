@@ -152,7 +152,10 @@ void main() {
     };
   }
 
-  /// How much ink is ON SCREEN inside the drawing canvas.
+  /// How much of the stroke [strokeAt] draws from [start] is ON SCREEN:
+  /// points along the middle of its run, each read with the pixels around
+  /// it. ⚠️The middle only, so a box drawn around the stroke is never read
+  /// as the stroke.
   ///
   /// 🚨★★★**THIS IS THE AXIS, AND [inkOn] IS NOT.** 🧪Measured 2026-09-18:
   /// with the layer letting go of a session silently — the original defect
@@ -161,29 +164,14 @@ void main() {
   /// derives and draws, so 「그림이 사라짐」 is a fact about the screen and
   /// only the screen can report it.
   ///
-  /// ⚠️Scoped to [visibleCanvasRect]: this app's chrome is dark, so an ink
-  /// count over the whole window is a count of the panels. Inside the
-  /// canvas, dark means drawing — and a selection's marching ants, which
-  /// are black (F-65): a count that must not see a box reads along a
-  /// stroke instead ([inkAlong]).
-  Future<int> inkOnScreen(WidgetTester tester) async {
-    final dark = await darkOnScreen(tester);
-    final rect = visibleCanvasRect(tester);
-    var ink = 0;
-    for (var y = rect.top.toInt(); y < rect.bottom; y += 1) {
-      for (var x = rect.left.toInt(); x < rect.right; x += 1) {
-        if (dark(x, y)) {
-          ink += 1;
-        }
-      }
-    }
-    return ink;
-  }
-
-  /// How much of the stroke [strokeAt] draws from [start] is ON SCREEN:
-  /// points along the middle of its run, each read with the pixels around
-  /// it. ⚠️The middle only, so a box drawn around the stroke is never read
-  /// as the stroke.
+  /// ↩️The round trip counted every dark pixel inside the drawing canvas
+  /// (`inkOnScreen`), where dark means drawing — and whatever the tool in
+  /// hand lays on the canvas: a selection's ants, which are black (F-65),
+  /// and the Transform tool's pill, which stands under its box at rest
+  /// since F-585. Picking the brush took the pill's dark away, and the count
+  /// after the new stroke came out UNDER the one before it (3535 against
+  /// 3549; 🧪2026-11-14, green with the pill held back until a box opens
+  /// and red with it at rest). A stroke is asked for along its own run.
   Future<int> inkAlong(WidgetTester tester, Offset start) async {
     final dark = await darkOnScreen(tester);
     final from = visibleCanvasPoint(tester, offset: start);
@@ -266,7 +254,7 @@ void main() {
     // 유저: 「프레임1,2에 그림을 그려두고」.
     await strokeAt(tester, Offset.zero);
     final drewOnA = inkOn(tester, frameA);
-    final showedA = await inkOnScreen(tester);
+    final showedA = await inkAlong(tester, Offset.zero);
     await seekTo(tester, 1);
     await strokeAt(tester, const Offset(40, 0));
     final drewOnB = inkOn(tester, frameB);
@@ -323,7 +311,7 @@ void main() {
       drewOnA,
       reason: '프레임1은 확정된 적이 없으니 셀은 그대로다',
     );
-    final backOnA = await inkOnScreen(tester);
+    final backOnA = await inkAlong(tester, Offset.zero);
     expect(
       backOnA,
       greaterThan(showedA ~/ 2),
@@ -348,6 +336,11 @@ void main() {
       reason: '⛔CONTROL: the new stroke starts on the canvas, clear of the '
           'controls lying on it',
     );
+    expect(
+      await inkAlong(tester, fresh),
+      0,
+      reason: '⛔CONTROL: and nothing is there yet',
+    );
     await strokeAt(tester, fresh);
 
     expect(
@@ -355,14 +348,16 @@ void main() {
       greaterThan(drewOnA),
       reason: '⛔CONTROL: the new stroke reached the cel at all',
     );
+    const swallowed =
+        '⑤유저: 「새로 선을 그어도 긋고나서 커밋하면 사라짐」 — a cel drawn '
+        'through a stale hole swallows whatever is drawn on it next, so '
+        'the new stroke has to show ON SCREEN and the old ink has to '
+        'still be under it';
+    expect(await inkAlong(tester, fresh), greaterThan(0), reason: swallowed);
     expect(
-      await inkOnScreen(tester),
-      greaterThan(backOnA),
-      reason:
-          '⑤유저: 「새로 선을 그어도 긋고나서 커밋하면 사라짐」 — a cel drawn '
-          'through a stale hole swallows whatever is drawn on it next, so '
-          'the new stroke has to show ON SCREEN and the old ink has to '
-          'still be under it',
+      await inkAlong(tester, Offset.zero),
+      greaterThanOrEqualTo(backOnA),
+      reason: swallowed,
     );
   });
 
