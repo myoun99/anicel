@@ -8,7 +8,7 @@ use std::sync::{Condvar, Mutex};
 use std::thread::ThreadId;
 use std::time::Duration;
 
-use super::{Full, MOST_NAMED, Pool};
+use super::{Full, MOST_NAMED, Pictures, Pool};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Rig, mix, rig, row, with_map};
 use crate::kernels::composite::{
@@ -862,4 +862,37 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
     }
+}
+
+// The pictures' pool hands out slots and takes holds all or none: fresh
+// slots past the pages it makes leave none held, and a hold of tiles one
+// of which no one holds leaves the ones before it as they were.
+#[test]
+fn the_pictures_pool_holds_all_that_is_asked_or_none() {
+    use crate::testing::last_error;
+    let engine = rig().engine;
+    // One page of two tiles, and no page more.
+    let pool = Pool::sized(2, 1, u64::MAX).expect("pool");
+    let pictures = Pictures(std::sync::Arc::new(Mutex::new(Some(pool))));
+    let cel = pictures.cel(engine).expect("a cel");
+    assert!(pictures.fresh(engine, cel, 3).is_none());
+    assert!(last_error().contains("makes no page more"), "{}", last_error());
+    assert_eq!(pictures.idle_bytes(), 2 * TILE_BYTES, "the two handed out before the refusal");
+    let (places, _) = pictures.fresh(engine, cel, 1).expect("a slot");
+    let free = at(0, 1 - places[0].slot);
+    assert!(pictures.hold(engine, &[places[0], free]).is_none());
+    assert!(last_error().contains("is free"), "{}", last_error());
+    pictures.release(places.iter().copied());
+    assert_eq!(pictures.idle_bytes(), 2 * TILE_BYTES, "the hold taken before the refusal");
+}
+
+// The engine's pictures' pool makes a page past the OS's budget, where the
+// cels' refuses one (⛔`Pictures`: what keeps a picture lets it go, not
+// this pool).
+#[test]
+fn the_engines_pictures_pool_makes_a_page_past_the_oss_budget() {
+    let engine = rig().engine;
+    let said = Some(VideoMemory { used: 11, budget: Some(10) });
+    let fits = engine.pictures.with(engine, |pool| Some(pool.fits(said, pool.page_bytes())));
+    assert_eq!(fits, Some(true));
 }

@@ -11,7 +11,7 @@ use crate::kernels::composite::halvings::tests::{
 };
 use crate::kernels::composite::halvings::{Camera, Film, Halvings, Kept, Tiles, affine, plan, row};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on};
-use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
+use crate::kernels::composite::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
 use crate::kernels::pool::Pictures;
 use crate::kernels::shared::tests::{premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
@@ -63,6 +63,26 @@ fn a_canvas_kept_on_pages_of_any_size_is_the_canvas_composited() {
         assert_eq!(pictures.pages().len(), 15usize.div_ceil(per_page), "{per_page} a page");
         assert!(kept_bytes(&kept) == want, "{per_page} a page");
     }
+}
+
+// A canvas whose run takes several passes — its row's tiles on three
+// pages, a page a pass — is kept as that run puts it: its output tiles
+// wait in the work buffer past the stack one pass keeps for the next, and
+// go to their slots from there.
+#[test]
+fn a_canvas_composited_in_several_passes_is_kept_as_the_run_puts_it() {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::default();
+    let set = pool.drawn(noise(31), (0, 0), (5, 3), |column, _| Some(column as u16 % 3));
+    let pages = pool.upload(engine);
+    let plan = laid(&pages, &set);
+    let budget = Budget { pages: 1, ..composite.widest() };
+    let tiles: Vec<(i32, i32)> = (0..3).flat_map(|row| (0..5).map(move |column| (column, row))).collect();
+    let done = composite.run(engine, &plan, &tiles, PAGE, budget).expect("run");
+    assert!(done.passes > 1, "the premise: a page a pass");
+    let pictures = Pictures::sized(4).expect("a pool");
+    let kept = Kept::made_in(engine, composite, &plan, PAGE, None, &pictures, budget).expect("kept");
+    assert!(kept_bytes(&kept) == read_buffer(engine, &done.out));
 }
 
 // A picture let go leaves its slots free and its pages made: the next is
