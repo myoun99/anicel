@@ -1133,7 +1133,7 @@ pub unsafe extern "C" fn gpu_engine_plan_map_drawn(
 pub unsafe extern "C" fn gpu_engine_composite_new(engine: *const Engine) -> *mut Composite {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         Composite::new(engine).map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
     })
 }
@@ -1168,7 +1168,7 @@ pub unsafe extern "C" fn gpu_engine_composite_showing(engine: *const Engine, bgr
 pub unsafe extern "C" fn gpu_engine_composite_chains(composite: *const Composite, engine: *const Engine) {
     // SAFETY: see the function's contract.
     let (composite, engine) = unsafe { (&*composite, &*engine) };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         composite.chains(engine);
     })
 }

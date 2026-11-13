@@ -1835,11 +1835,6 @@ external int waitsHere();
 @Native<Uint64 Function()>(symbol: 'gpu_engine_device_entered_here')
 external int deviceEnteredHere();
 
-@Native<Uint64 Function(Pointer<Engine>)>(
-  symbol: 'gpu_engine_compiles_on_thread',
-)
-external int compilesOnThread(Pointer<Engine> engine);
-
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_kernels_forget')
 external void kernelsForget(Pointer<Engine> engine);
 

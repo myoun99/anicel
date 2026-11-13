@@ -201,7 +201,7 @@ pub unsafe extern "C" fn gpu_engine_dab_texture_free(texture: *mut Texture) {
 pub unsafe extern "C" fn gpu_engine_stroke_new(engine: *const Engine) -> *mut Stroke {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         Stroke::new(engine).map_or(std::ptr::null_mut(), |stroke| Box::into_raw(Box::new(stroke)))
     })
 }
@@ -281,7 +281,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
 pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blurs {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| Box::into_raw(Box::new(blurs)))
     })
 }
@@ -296,7 +296,7 @@ pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blu
 pub unsafe extern "C" fn gpu_engine_blurs_compile_strips(engine: *const Engine) -> bool {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| Blurs::compile_strips(engine).is_some())
+    engine.on_thread(|| Blurs::compile_strips(engine).is_some())
 }
 
 /// Whether a stroke of `blurs` goes by strips: the engine has their
@@ -769,7 +769,7 @@ pub extern "C" fn gpu_engine_stamp_picture_bytes() -> u64 {
 pub unsafe extern "C" fn gpu_engine_stamp_landing_new(engine: *const Engine) -> *mut StampLanding {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         StampLanding::new(engine).map_or(std::ptr::null_mut(), |landing| Box::into_raw(Box::new(landing)))
     })
 }

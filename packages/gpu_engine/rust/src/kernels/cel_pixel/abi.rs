@@ -115,7 +115,7 @@ pub struct CelKernels {
 pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mut CelKernels {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         CelPixels::new(engine)
             .zip(Lift::new(engine))
             .map_or(std::ptr::null_mut(), |(verbs, lift)| Box::into_raw(Box::new(CelKernels { verbs, lift })))
@@ -328,7 +328,7 @@ pub unsafe extern "C" fn gpu_engine_cel_passed_land(
 pub unsafe extern "C" fn gpu_engine_ink_new(engine: *const Engine) -> *mut Ink {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         Ink::new(engine).map_or(std::ptr::null_mut(), |ink| Box::into_raw(Box::new(ink)))
     })
 }

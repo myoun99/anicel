@@ -1,12 +1,11 @@
-//! Every verb of the C ABI that is handed the engine runs its body on a
-//! thread of the engine's (`EngineThread`, in `device.rs`, has why): the
-//! engine's one thread, or — where it compiles kernels — a thread made for
-//! it. A body left on its caller's takes the device in hand there, and
-//! waits there for the engine's thread with whatever lock it holds, which a
-//! body on that thread may be waiting for. A test of behaviour passes a
-//! verb nobody calls from a thread that matters, so this one reads the
-//! sources: each such verb goes through a door, or is on the ledger with
-//! why it stays on its caller's.
+//! Every verb of the C ABI that is handed the engine runs its body on the
+//! engine's thread (`EngineThread`, in `device.rs`, has why). A body left
+//! on its caller's takes the device in hand there, and waits there for the
+//! engine's thread with whatever lock it holds, which a body on that thread
+//! may be waiting for. A test of behaviour passes a verb nobody calls from
+//! a thread that matters, so this one reads the sources: each such verb
+//! goes through the door, or is on the ledger with why it stays on its
+//! caller's.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -16,9 +15,8 @@ use super::source_scan::files_where;
 /// The verbs that stay on their caller's thread, each with why: none takes
 /// the device in hand, and none hands the engine's thread anything it
 /// waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 11] = [
+const ON_THEIR_CALLERS: [(&str, &str); 10] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
-    ("gpu_engine_compiles_on_thread", "the engine's own count (`EngineThread`)"),
     ("gpu_engine_video_memory", "asks the OS of the adapter's memory (DXGI), not the device"),
     ("gpu_engine_gone", "reads the engine's own word of its device (`Refusals`)"),
     ("gpu_engine_noted", "takes the engine's own word of its device (`Refusals`)"),
@@ -35,25 +33,6 @@ const ON_THEIR_CALLERS: [(&str, &str); 11] = [
         "waits till the holds are let go: on the engine's thread every verb would stand behind it",
     ),
     ("gpu_engine_apart_held", "the engine's own count (`Apart`)"),
-];
-
-/// The verbs that compile kernels, each on a thread made for it
-/// (`Engine::on_a_thread` has why): what the app compiles ahead off its
-/// isolates, side by side, and what a caller makes its kernels with.
-const ON_THREADS_OF_THEIR_OWN: [&str; 13] = [
-    "gpu_engine_blurs_compile_strips",
-    "gpu_engine_blurs_new",
-    "gpu_engine_cel_pixels_new",
-    "gpu_engine_composite_chains",
-    "gpu_engine_composite_new",
-    "gpu_engine_export_warm",
-    "gpu_engine_fill_new",
-    "gpu_engine_floods_new",
-    "gpu_engine_grid_new",
-    "gpu_engine_ink_new",
-    "gpu_engine_plugin_open",
-    "gpu_engine_stamp_landing_new",
-    "gpu_engine_stroke_new",
 ];
 
 /// The verbs `text` exports that are handed the engine, each with its body:
@@ -95,41 +74,25 @@ fn on_the_engines_thread(body: &str) -> bool {
     body.contains(".on_thread(") || body.contains(".run_lent(")
 }
 
-/// Whether `body` hands itself to a thread made for it.
-fn on_a_thread_of_its_own(body: &str) -> bool {
-    body.contains(".on_a_thread(")
-}
-
 #[test]
-fn every_verb_handed_the_engine_runs_its_body_on_a_thread_of_the_engines() {
+fn every_verb_handed_the_engine_runs_its_body_on_the_engines_thread() {
     let verbs = verbs();
     assert!(verbs.contains_key("gpu_engine_pool_store"), "LIVENESS — the scan finds the verbs");
     let stays = |name: &str| ON_THEIR_CALLERS.iter().any(|(stays, _)| *stays == name);
     let off: Vec<_> = verbs
         .iter()
-        .filter(|(name, body)| !stays(name) && !on_the_engines_thread(body) && !on_a_thread_of_its_own(body))
+        .filter(|(name, body)| !stays(name) && !on_the_engines_thread(body))
         .map(|(name, _)| name)
         .collect();
     assert!(
         off.is_empty(),
-        "a verb's body on its caller's thread — hand it to `Engine::on_thread`, or to \
-         `Engine::on_a_thread` where it compiles kernels: {off:?}"
+        "a verb's body on its caller's thread — hand it to `Engine::on_thread`: {off:?}"
     );
     for (name, why) in ON_THEIR_CALLERS {
         let body = verbs.get(name).unwrap_or_else(|| panic!("{name} is no verb the sources export"));
-        let through = on_the_engines_thread(body) || on_a_thread_of_its_own(body);
-        assert!(!through, "{name} runs on a thread of the engine's — off the ledger with it ({why})");
+        assert!(
+            !on_the_engines_thread(body),
+            "{name} runs on the engine's thread — off the ledger with it ({why})"
+        );
     }
-}
-
-// 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
-// 「나란히 컴파일」): the verbs that compile kernels hold up neither each
-// other nor a body on the engine's thread — and no other verb is given a
-// thread of its own, whose bodies the engine's one thread keeps in order.
-#[test]
-fn the_verbs_that_compile_kernels_run_each_on_a_thread_of_its_own() {
-    let verbs = verbs();
-    let own: Vec<_> =
-        verbs.iter().filter(|(_, body)| on_a_thread_of_its_own(body)).map(|(name, _)| name.as_str()).collect();
-    assert_eq!(own, ON_THREADS_OF_THEIR_OWN);
 }

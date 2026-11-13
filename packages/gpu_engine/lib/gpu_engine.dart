@@ -469,13 +469,6 @@ class GpuEngine {
   /// ([whileCompilesApartWait]).
   int get debugCompilesApartHeld => rust.apartHeld(_engine);
 
-  /// Test seam: how many compiles a verb's body on the engine's thread
-  /// has waited for (rust/src/device.rs, `gpu_engine_compiles_on_thread`)
-  /// — every other verb's body stood behind each: what a test holds at
-  /// none over a stroke, a playback and a save (🗣️관제 2026-11-14 01:21,
-  /// the-ui-thread-never-enters-the-driver).
-  int get debugCompilesOnItsThread => rust.compilesOnThread(_engine);
-
   /// Frees the device; every surface must be freed first.
   void close() {
     _closed = true;

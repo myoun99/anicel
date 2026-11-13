@@ -146,7 +146,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_open(
 ) -> *mut Plugin {
     // SAFETY: see the function's contract.
     let (engine, source) = unsafe { (&*engine, std::slice::from_raw_parts(source, length)) };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         opened(engine, source, cut).map_or(std::ptr::null_mut(), |plugin| Box::into_raw(Box::new(plugin)))
     })
 }

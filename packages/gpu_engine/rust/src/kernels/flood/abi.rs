@@ -55,7 +55,7 @@ impl Filled {
 pub unsafe extern "C" fn gpu_engine_floods_new(engine: *const Engine) -> *mut Floods {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         let (flood, masks) = (Flood::new(engine), MaskPasses::new(engine));
         Box::into_raw(Box::new(Floods { flood, masks }))
     })

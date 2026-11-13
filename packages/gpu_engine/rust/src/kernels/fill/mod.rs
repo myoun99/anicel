@@ -85,7 +85,7 @@ impl Fill {
 pub unsafe extern "C" fn gpu_engine_fill_new(engine: *const Engine) -> *mut Fill {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         Box::into_raw(Box::new(Fill::new(engine)))
     })
 }

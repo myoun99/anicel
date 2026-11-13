@@ -115,7 +115,7 @@ pub unsafe extern "C" fn gpu_engine_export_free(export: *mut Export) {
 pub unsafe extern "C" fn gpu_engine_export_warm(export: *const Export, engine: *const Engine, bgra: bool) {
     // SAFETY: see the function's contract.
     let (export, engine) = unsafe { (&*export, &*engine) };
-    engine.on_a_thread(|| {
+    engine.on_thread(|| {
         export.lay.warm(engine, bgra);
     })
 }

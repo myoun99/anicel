@@ -482,56 +482,31 @@ impl Engine {
     /// What `work` answers, run on the engine's thread while the caller
     /// waits ([`EngineThread::run_lent`]): where a verb's body runs,
     /// whatever thread called the verb — one body at a time, in the order
-    /// they were called. On that thread already, it runs where it is.
+    /// they were called, but past one that waits for a compile
+    /// ([`EngineThread::stands_aside`]). On that thread already, it runs
+    /// where it is.
     pub(crate) fn on_thread<T>(&self, work: impl FnOnce() -> T) -> T {
         self.thread.run_lent(work)
     }
 
-    /// One more compile the calling thread waits for (`kernels::shared`,
-    /// `waited_here`) — counted where that thread is the engine's own: every
-    /// other verb's body stands behind it that long, where its caller's
-    /// thread alone stood till the bodies ran here
-    /// ([`gpu_engine_compiles_on_thread`]).
-    pub(crate) fn waits_for_a_compile(&self) {
-        if self.thread.is_here() {
-            self.thread.stood.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    /// What `work` answers, run on a thread of the engine's made for it
-    /// while the caller waits: where the body of a verb that compiles
-    /// kernels runs. ⛔Not [`Self::on_thread`]: a compile is seconds on a
-    /// slow device, every other verb's body would stand behind it, and the
-    /// app compiles ahead what a hand needs side by side (🗣️유저 2026-11-13,
+    /// What each of `works` answers, in their order, all under way at once
+    /// — each on a thread made for it while the caller waits: for works
+    /// that each wait for a compile ([`Self::compiling`]; 🗣️유저 2026-11-13,
     /// the-wait-window-stands-seven-seconds-on-the-surface-Q1, 「나란히
-    /// 컴파일」 — `compileAppKernelsAhead`, seven such verbs at once).
-    /// ⛔Nor a thread for compiling ([`Self::compiling`]): the body waits
-    /// there for each of its kernels, and as many bodies as there are such
-    /// threads would leave none to compile on. 🔬A thread made for a call
-    /// took 50–60 µs on the main PC (2026-11-09, [`EngineThread`]), against
-    /// the compile it is made for. On a thread of an engine's already, it
-    /// runs where it is.
-    pub(crate) fn on_a_thread<T>(&self, work: impl FnOnce() -> T) -> T {
-        if WORKS_FOR.get() != NO_ENGINE {
-            return work();
-        }
-        let lent = Lent((work, Callers::taken()));
-        let made = std::thread::scope(|scope| {
-            let body = move || {
-                let (work, callers) = lent.taken();
-                WORKS_FOR.set(A_THREAD_OF_ITS_OWN);
-                callers.put();
-                let worked = catch_unwind(AssertUnwindSafe(work));
-                Lent((worked, Callers::taken()))
-            };
-            match std::thread::Builder::new().name("gpu_engine".into()).spawn_scoped(scope, body) {
-                Ok(thread) => thread.join(),
-                Err(error) => panic!("no thread for the engine: {error}"),
-            }
-        });
-        let (worked, callers) = made.unwrap_or_else(|panic| resume_unwind(panic)).taken();
-        callers.put();
-        worked.unwrap_or_else(|panic| resume_unwind(panic))
+    /// 컴파일」). ⚠️A body waits here for those threads, not for a compile
+    /// of its own asking, so it is here that it leaves the engine's thread
+    /// to the bodies behind it ([`EngineThread::stands_aside`]) —
+    /// `one_side_by_side.rs` keeps this the one place a kernel's code waits
+    /// for threads of its own making.
+    pub(crate) fn side_by_side<T: Send>(
+        &self,
+        works: impl IntoIterator<Item = impl FnOnce() -> T + Send>,
+    ) -> Vec<T> {
+        self.thread.stands_aside();
+        std::thread::scope(|scope| {
+            let working: Vec<_> = works.into_iter().map(|work| scope.spawn(work)).collect();
+            working.into_iter().map(|one| one.join().unwrap_or_else(|panic| resume_unwind(panic))).collect()
+        })
     }
 
     /// A buffer holding `contents`, as long as they are padded to the
@@ -567,11 +542,16 @@ impl Engine {
 
     /// What `work` answers, run on the engine's thread for compiling
     /// ([`EngineThread`]) while the caller waits — the compiler its own for
-    /// that long ([`CompilerTurn`]).
+    /// that long ([`CompilerTurn`]). 🚨Every wait for a kernel passes here,
+    /// its own compile's and another caller's of the same one alike
+    /// (`kernels::shared`, `Kernel::pipeline`), so it is here that a body
+    /// leaves the engine's thread to the bodies behind it
+    /// ([`EngineThread::stands_aside`]).
     pub(crate) fn compiling<T: Send + 'static>(
         &self,
         work: impl FnOnce(&CompilerTurn) -> T + Send + 'static,
     ) -> T {
+        self.thread.stands_aside();
         self.compiling.run(move || work(&CompilerTurn(()))).expect("the engine's thread")
     }
 
@@ -722,14 +702,14 @@ thread_local! {
     /// How many times this thread, none of an engine's, has taken a device
     /// in hand ([`gpu_engine_device_entered_here`]).
     static ENTERED_HERE: Cell<u64> = const { Cell::new(0) };
+    /// Whether this thread, an engine's, has left that engine's jobs to
+    /// one made in its place ([`EngineThread::stands_aside`]): it ends with
+    /// the job it is in.
+    static STOOD_ASIDE: Cell<bool> = const { Cell::new(false) };
 }
 
 /// What [`WORKS_FOR`] holds on a thread that is none of an engine's.
 const NO_ENGINE: u64 = 0;
-
-/// What [`WORKS_FOR`] holds on a thread made for one body
-/// ([`Engine::on_a_thread`]): no [`EngineThread`]'s number.
-const A_THREAD_OF_ITS_OWN: u64 = u64::MAX;
 
 /// The number the next [`EngineThread`] is known by.
 static THREAD_NUMBERS: AtomicU64 = AtomicU64::new(NO_ENGINE + 1);
@@ -779,23 +759,6 @@ impl Callers {
         put_built_here(self.built);
         #[cfg(test)]
         crate::testing::put_held(self.held);
-    }
-}
-
-/// What a caller lends a thread of the engine's for one body, and what
-/// comes back of it: raw pointers and borrows among them, which are no
-/// thread's to send in name.
-struct Lent<T>(T);
-
-// SAFETY: the caller waits where it lent this till the body has run — it is
-// in one thread's hands at a time, as what a call is handed.
-unsafe impl<T> Send for Lent<T> {}
-
-impl<T> Lent<T> {
-    /// What was lent — by a method, so that a closure takes the whole of
-    /// this and not the field alone, which is not `Send`.
-    fn taken(self) -> T {
-        self.0
     }
 }
 
@@ -993,16 +956,41 @@ type Job = Box<dyn FnOnce() + Send>;
 /// making a 256 MiB block for it under its lock, 32–55 ms; and a block made
 /// ahead on another thread held that lock against the UI's small buffers
 /// all the same, as every dispatch makes some. So a verb's whole body runs
-/// here ([`Engine::on_thread`]) — the bodies that compile kernels each on a
-/// thread made for it ([`Engine::on_a_thread`]) — and a hand on the device
-/// from a thread that is none of the engine's is counted there
-/// ([`Engine::device`]).
+/// here ([`Engine::on_thread`]), and a hand on the device from a thread
+/// that is none of the engine's is counted there ([`Engine::device`]).
 ///
 /// ⏳One thread for every body, as every submit and wait was one thread's
 /// already (브러시/렌더링, 2026-11-14, the user asleep — theirs to overturn):
 /// what one isolate hands over and another reads after stays in order with
 /// no word between the two. ⛔Not a thread to each isolate, and not the UI's
 /// bodies alone — a worker isolate's thread is walked as the UI's is.
+///
+/// 🚨★★BUT NO BODY STANDS BEHIND A COMPILE ([`Self::stands_aside`]). A
+/// compile is seconds on a slow device, and behind a body that waited for
+/// one here every other isolate's verbs would stand — a stroke's behind a
+/// save's — where its caller's thread alone stood till the bodies ran here
+/// (🗣️관제 2026-11-14 01:21, the-ui-thread-never-enters-the-driver: 「길
+/// 위의 일이 아직 안 된 커널을 만나 길이 컴파일 동안 서면, 전에는 부른
+/// 스레드만 서던 것이 다른 아이솔레이트의 동사(획 · 재생)까지 선다 … 새
+/// 멈춤을 만들고 다음 단계로 가지 않는다」); and the app compiles ahead
+/// what a hand needs side by side (🗣️유저 2026-11-13,
+/// the-wait-window-stands-seven-seconds-on-the-surface-Q1, 「나란히
+/// 컴파일」 — `compileAppKernelsAhead`, seven verbs at once). So the thread
+/// a body waits for a compile on leaves the jobs to one made in its place
+/// and ends with its body: two bodies are under way at once only where
+/// one of them waits for a compile, as two callers' were on their own
+/// threads.
+///
+/// ⏳⛔Not the verbs that compile named one by one, each run on a thread
+/// made for it (↩️weighed 2026-11-14, 브러시/렌더링 — the user's to
+/// overturn): a kernel first asked for under any other verb — an effect
+/// chain's, a surface format's pass, an export's read — was a compile here
+/// all the same, held off by nothing but a count every test had to read.
+///
+/// ⚠️What this does not reach: a body that waits for a lock another holds
+/// across its compile — a cell both are to fill (`Composite::chains`) —
+/// waits here, and the bodies behind it with it, till that compile is
+/// through.
 ///
 /// ⚠️ALL OF THEM AT ONCE: a body left on its caller's thread, holding a
 /// lock of the engine's as it hands its submit here, waits for a body here
@@ -1020,9 +1008,10 @@ pub(crate) struct EngineThread {
     /// ([`Self::run_lent`]), which run nowhere else, and fail there by the
     /// device that is gone.
     ended: Arc<AtomicBool>,
-    /// How many compiles a body on this thread has waited for
-    /// ([`Engine::waits_for_a_compile`]).
-    stood: Arc<AtomicU64>,
+    /// What its threads take their jobs from, each the next once it is
+    /// through with its own — kept here for the thread made where one
+    /// stands aside ([`Self::stands_aside`]).
+    asked: Arc<Mutex<mpsc::Receiver<Job>>>,
 }
 
 impl EngineThread {
@@ -1034,29 +1023,62 @@ impl EngineThread {
     /// next job once it is through with its own.
     fn start_many(count: usize) -> Option<Self> {
         let (jobs, asked) = mpsc::channel::<Job>();
-        let asked = Arc::new(Mutex::new(asked));
-        let number = THREAD_NUMBERS.fetch_add(1, Ordering::Relaxed);
+        let started = Self {
+            jobs,
+            number: THREAD_NUMBERS.fetch_add(1, Ordering::Relaxed),
+            ended: Arc::default(),
+            asked: Arc::new(Mutex::new(asked)),
+        };
         for _ in 0..count {
-            let asked = Arc::clone(&asked);
-            let working = move || {
-                WORKS_FOR.set(number);
-                loop {
-                    let next = asked.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                    let Ok(job) = next else {
-                        return;
-                    };
-                    job();
-                }
-            };
-            if let Err(error) = std::thread::Builder::new().name("gpu_engine".into()).spawn(working) {
+            if let Err(error) = started.works() {
                 return fail(format!("no thread for the engine: {error}"));
             }
         }
-        Some(Self { jobs, number, ended: Arc::default(), stood: Arc::default() })
+        Some(started)
+    }
+
+    /// One more thread that takes this one's jobs in turn — till none is
+    /// left to hand it any, or to the end of the job it stands aside in
+    /// ([`Self::stands_aside`]).
+    fn works(&self) -> std::io::Result<()> {
+        let (asked, number) = (Arc::clone(&self.asked), self.number);
+        let working = move || {
+            WORKS_FOR.set(number);
+            while !STOOD_ASIDE.get() {
+                let next = asked.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                let Ok(job) = next else {
+                    return;
+                };
+                job();
+            }
+        };
+        std::thread::Builder::new().name("gpu_engine".into()).spawn(working).map(drop)
+    }
+
+    /// Leaves this thread's jobs to a thread made in the calling one's
+    /// place, where the calling thread is this one: what its job waits for
+    /// from here on, no job behind it waits for ([`EngineThread`] has why
+    /// — a compile). The calling thread goes on with its job, this thread
+    /// to itself still ([`Self::is_here`]) — what the job hands here runs
+    /// where it is, as it did — and ends with it. Once in a job: it has no
+    /// jobs left to leave. 🔬A thread made took 50–60 µs on the main PC
+    /// (2026-11-09, above), against the compile it is made for.
+    ///
+    /// With no thread to be had the job goes on where it is and those
+    /// behind it wait, as they did: nothing fails that worked.
+    ///
+    /// ⚠️Under way beside the jobs after it, not before them: a verb that
+    /// hands its body here and waits for none of it (stage 2 of
+    /// the-ui-thread-never-enters-the-driver) keeps its caller's order only
+    /// where that body waits for no compile.
+    fn stands_aside(&self) {
+        if self.is_here() && !STOOD_ASIDE.get() {
+            STOOD_ASIDE.set(self.works().is_ok());
+        }
     }
 
     /// Whether the calling thread is this one — one of these, where they
-    /// are many.
+    /// are many, one that stood aside among them.
     fn is_here(&self) -> bool {
         WORKS_FOR.get() == self.number
     }
@@ -1088,8 +1110,8 @@ impl EngineThread {
         });
         if self.is_here() {
             job();
-        } else if self.jobs.send(Box::new(job)).is_err() {
-            return fail("the engine's thread is gone");
+        } else {
+            let _ = self.jobs.send(Box::new(job));
         }
         match answered.recv() {
             Ok(worked) => Some(worked),
@@ -1320,24 +1342,6 @@ pub extern "C" fn gpu_engine_waits_here() -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_device_entered_here() -> u64 {
     ENTERED_HERE.with(Cell::get)
-}
-
-/// How many compiles a body on `engine`'s thread has waited for
-/// ([`Engine::waits_for_a_compile`]): what the app's pins hold at none over
-/// a stroke, a playback and a save. 🗣️관제 2026-11-14 01:21
-/// (the-ui-thread-never-enters-the-driver): 「길 위의 일이 아직 안 된 커널을
-/// 만나 길이 컴파일 동안 서면, 전에는 부른 스레드만 서던 것이 다른
-/// 아이솔레이트의 동사(획 · 재생)까지 선다 … 새 멈춤을 만들고 다음 단계로
-/// 가지 않는다」 — a kernel such a body would wait for is one to compile
-/// ahead, or on a thread of its own ([`Engine::on_a_thread`]).
-///
-/// # Safety
-/// `engine` is live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_compiles_on_thread(engine: *const Engine) -> u64 {
-    // SAFETY: see the function's contract.
-    let engine = unsafe { &*engine };
-    engine.thread.stood.load(Ordering::Relaxed)
 }
 
 /// Test seam: `engine`'s device destroyed — the nearest a test comes to a
@@ -1746,67 +1750,94 @@ mod tests {
             let small = engine.readback(4);
             engine.queue.write_buffer(&small, 0, &[0; 4]);
         });
-        engine.on_a_thread(|| {
-            let small = engine.readback(4);
-            engine.queue.write_buffer(&small, 0, &[0; 4]);
-        });
-        assert_eq!(entered(), before + 2, "counted on a thread of the engine's");
+        assert_eq!(entered(), before + 2, "counted on the engine's thread");
     }
 
-    // 🗣️관제 2026-11-14 01:21 (the-ui-thread-never-enters-the-driver): a
-    // compile a body on the engine's thread waits for is one every other
-    // verb's body stands behind, and is counted — one waited for on a
-    // caller's thread, or on a thread made for the body, is none.
-    #[test]
-    fn a_compile_waited_for_on_the_engines_thread_is_counted() {
-        let engine = Engine::open_first().expect("an adapter");
-        // SAFETY: the engine is live.
-        let stood = || unsafe { super::gpu_engine_compiles_on_thread(&engine) };
-        let compile = |of: &str| {
-            let source = format!("@compute @workgroup_size(1)\nfn main() {{}}\n// device.rs, {of}");
-            let _ = crate::kernels::shared::pipeline(&engine, &[&source], "main");
-        };
-        compile("a caller's");
-        engine.on_a_thread(|| compile("a thread of its own"));
-        assert_eq!(stood(), 0);
-        engine.on_thread(|| compile("the engine's thread"));
-        assert_eq!(stood(), 1);
-        // A kernel the engine has is no thread's wait.
-        engine.on_thread(|| compile("the engine's thread"));
-        assert_eq!(stood(), 1);
-    }
-
-    // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
-    // 「나란히 컴파일」): a body that compiles runs on a thread made for it
-    // — one under way holds up no body on the engine's thread, and no other
-    // of its kind — with its caller's own, as on the engine's thread.
-    #[test]
-    fn a_body_on_a_thread_of_its_own_holds_up_no_other() {
-        let engine = &Engine::open_first().expect("an adapter");
-        let (release, released) = std::sync::mpsc::channel::<()>();
+    /// Whether a body gets through `engine`'s thread within `within` while
+    /// one handed there before it is in `waits`, which returns once it is
+    /// let go.
+    fn a_body_gets_through_behind(
+        engine: &Engine,
+        within: std::time::Duration,
+        waits: impl FnOnce(std::sync::mpsc::Receiver<()>) + Send,
+    ) -> bool {
+        let (let_go, released) = std::sync::mpsc::channel::<()>();
+        let (began, begun) = std::sync::mpsc::channel();
         let (through, went) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
             scope.spawn(move || {
-                engine.on_a_thread(|| {
-                    let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                engine.on_thread(|| {
+                    let _ = began.send(());
+                    waits(released);
                 })
             });
+            begun.recv().expect("the body that waits began");
             scope.spawn(move || {
-                let _: Option<()> = fail("the caller's own");
-                let on = engine.on_a_thread(|| {
-                    assert_eq!(last_error(), "the caller's own");
-                    let _: Option<()> = fail("the body's");
-                    engine.on_thread(|| ());
-                    std::thread::current().id()
-                });
-                assert_ne!(on, std::thread::current().id());
-                assert_eq!(last_error(), "the body's");
+                engine.on_thread(|| ());
                 let _ = through.send(());
             });
-            let got_through = went.recv_timeout(std::time::Duration::from_secs(20));
-            let _ = release.send(());
-            assert!(got_through.is_ok(), "a body waited behind the one that compiles");
+            let got_through = went.recv_timeout(within).is_ok();
+            let _ = let_go.send(());
+            got_through
+        })
+    }
+
+    /// Long enough for a body that is held up by nothing.
+    const IN_TIME: std::time::Duration = std::time::Duration::from_secs(20);
+
+    // 🚨A body that waits for a compile leaves the engine's thread to the
+    // bodies behind it (🗣️관제 2026-11-14 01:21,
+    // the-ui-thread-never-enters-the-driver: 「새 멈춤을 만들고 다음 단계로
+    // 가지 않는다」; `EngineThread` has why) — and goes on where it was, the
+    // engine's thread to itself still.
+    #[test]
+    fn a_body_that_waits_for_a_compile_holds_up_no_body_behind_it() {
+        let engine = &Engine::open_first().expect("an adapter");
+        let got_through = a_body_gets_through_behind(engine, IN_TIME, |released| {
+            let here = std::thread::current().id();
+            engine.compiling(move |_| {
+                let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+            });
+            // Its wait, and a body it hands the thread, run where it is.
+            assert_eq!(engine.on_thread(|| std::thread::current().id()), here);
+            assert_eq!(engine.wait(), Some(()), "{}", last_error());
         });
+        assert!(got_through, "a body waited behind one that waits for a compile");
+        // The thread made in its place is the engine's from there on.
+        assert_eq!(engine.on_thread(|| 7), 7);
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+        // And the one that stood aside ended with its body: one body at a
+        // time again, the next behind one that waits for no compile.
+        let a_moment = std::time::Duration::from_millis(300);
+        let got_through = a_body_gets_through_behind(engine, a_moment, |released| {
+            let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+        });
+        assert!(!got_through, "two threads took the engine's jobs at once");
+    }
+
+    // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    // 「나란히 컴파일」): works side by side are under way at once and answer
+    // in their order — and the body that waits for them leaves the engine's
+    // thread to the bodies behind it, as one that waits for a compile.
+    #[test]
+    fn a_body_whose_works_run_side_by_side_holds_up_no_body_behind_it() {
+        let engine = &Engine::open_first().expect("an adapter");
+        let got_through = a_body_gets_through_behind(engine, IN_TIME, |released| {
+            let (meets, met) = std::sync::mpsc::channel::<()>();
+            let works: [Box<dyn FnOnce() -> &'static str + Send>; 2] = [
+                Box::new(move || {
+                    let met = met.recv_timeout(std::time::Duration::from_secs(20)).is_ok();
+                    let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                    if met { "met the other" } else { "ran alone" }
+                }),
+                Box::new(move || {
+                    let _ = meets.send(());
+                    "the other"
+                }),
+            ];
+            assert_eq!(engine.side_by_side(works), ["met the other", "the other"]);
+        });
+        assert!(got_through, "a body waited behind one whose works ran side by side");
     }
 
     // The tests' own engine keeps the alarm the process had: an error no

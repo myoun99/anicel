@@ -237,6 +237,28 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
           'and the app would go on as if it had worked',
     );
   });
+  // 🚨**THE THREAD A TEST'S FRAMES ARE BUILT ON TAKES NO GPU DEVICE IN
+  // HAND** (🗣️유저 2026-11-13, H57-Q1: 「C · 합성 전체를 엔진 스레드로 — 이게
+  // 가장 근본/구조적인 해결같은데 맞나?」 · 「근본/구조적 해결을 원해. 작업이
+  // 크더라도」): a verb's body runs on the engine's thread, whatever
+  // thread calls the verb (rust/src/device.rs, `EngineThread`, has what
+  // the UI thread paid in the device: 🔬32–55 ms each time the allocator
+  // made a block under a buffer it asked for, Surface Pro 11). Asked of
+  // this thread as each test ends — every test's frames are built on it:
+  // a verb whose body is left on its caller's is red in the first test
+  // that calls it, and in no test after for that call.
+  var enteredBefore = 0;
+  tearDown(() {
+    final entered = debugDeviceEnteredHere - enteredBefore;
+    enteredBefore += entered;
+    expect(
+      entered,
+      0,
+      reason:
+          'this thread took the GPU device in hand: a verb of the '
+          'engine\'s ran its body here, not on the engine\'s thread',
+    );
+  });
   // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test
   // queued drained inside the NEXT test — against the earlier test's
   // painter and resolvers, in the next test's zone (2026-09-26: a rows test

@@ -38,6 +38,8 @@ mod one_pass;
 #[cfg(test)]
 mod one_premultiply;
 #[cfg(test)]
+mod one_side_by_side;
+#[cfg(test)]
 mod one_sixteen_bit;
 mod paged;
 mod pages;
@@ -123,7 +125,7 @@ const FOREIGN_COMPILE_STACK: usize = 64 << 20;
 /// engine's turn at the compiler, as its own kernels' are
 /// (`CompilerTurn`, in `device.rs`).
 pub(crate) fn pipeline_or_why(engine: &Engine, sources: &[&str], entry: &str) -> Result<wgpu::ComputePipeline, String> {
-    waited_here(engine);
+    waited_here();
     let (device, source, entry) = (engine.device().clone(), sources.join("\n"), entry.to_owned());
     engine.compiling(move |turn| {
         std::thread::scope(|scope| {
@@ -225,7 +227,7 @@ impl Kernel {
             return made;
         }
         let (device, of, kept) = (engine.device().clone(), self.of.clone(), Arc::clone(&self.kept));
-        waited_here(engine);
+        waited_here();
         let made = engine.compiling(move |turn| {
             let made = kept.get_or_init(|| {
                 let constants: Vec<_> = of
@@ -247,12 +249,9 @@ thread_local! {
     static BUILT_HERE: Cell<u64> = const { Cell::new(0) };
 }
 
-/// One more kernel whose compile the calling thread waits on — the
-/// engine's own thread among them, which `engine` counts apart
-/// (`Engine::waits_for_a_compile`).
-fn waited_here(engine: &Engine) {
+/// One more kernel whose compile the calling thread waits on.
+fn waited_here() {
     BUILT_HERE.with(|built| built.set(built.get() + 1));
-    engine.waits_for_a_compile();
 }
 
 /// The calling thread's count ([`BUILT_HERE`]): a verb's body runs on a

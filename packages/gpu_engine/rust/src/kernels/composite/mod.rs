@@ -621,14 +621,9 @@ impl Composite {
         let shown = format.filter(|&format| stores(engine, format)).and_then(storage_format);
         let fulls = [Some(Compiled::full(None)), shown.map(|token| Compiled::full(Some(token)))];
         let (source, binding) = (&composite.pages.source(), composite.surface_binding());
-        let made: Vec<_> = std::thread::scope(|scope| {
-            let compiling: Vec<_> = fulls
-                .into_iter()
-                .flatten()
-                .map(|full| scope.spawn(move || (full, compile(engine, source, binding, full))))
-                .collect();
-            compiling.into_iter().map(|one| one.join().expect("a full pass compiled")).collect()
-        });
+        let made = engine.side_by_side(
+            fulls.into_iter().flatten().map(|full| move || (full, compile(engine, source, binding, full))),
+        );
         let mut passes = composite.passes.lock().unwrap_or_else(PoisonError::into_inner);
         passes.asked.extend(made.into_iter().map(|(full, pipeline)| (full, Some(pipeline))));
         drop(passes);
