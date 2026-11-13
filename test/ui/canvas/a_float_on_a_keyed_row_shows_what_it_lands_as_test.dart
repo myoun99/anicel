@@ -1025,13 +1025,15 @@ void main() {
     );
     await tester.pump();
     await hand.moveTo(hold + step);
-    await pumpFrames(tester, 2);
-    expect(gate.asked, before + 1, reason: '⛔CONTROL: a write on its way');
+    // 🔬Read before a frame: the next already owes the box's step behind
+    // the write, and owed alone would answer.
     expect(
       nothingOnItsWay(),
       isFalse,
-      reason: 'a write on its way is on its way, with nothing behind it yet',
+      reason: 'the write the move began is on its way, nothing behind it yet',
     );
+    await pumpFrames(tester, 2);
+    expect(gate.asked, before + 1, reason: '⛔CONTROL: a write on its way');
     for (final times in [2.0, 3.0]) {
       await hand.moveTo(hold + step * times);
       await pumpFrames(tester, 2);
