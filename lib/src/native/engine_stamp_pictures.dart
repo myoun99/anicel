@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -130,18 +132,78 @@ abstract final class EngineStampPictures {
     required String id,
   }) {
     final picture = make();
-    late final BrushStampImage made;
-    made = BrushStampImage.read(
+    return _withoutBytes(
       id: id,
       width: picture.width,
       height: picture.height,
-      rgba: () {
+      rgba: (made) {
         debugReadBack += 1;
         return of(made).pixels();
       },
+      keep: (made) {
+        _of[made] = picture;
+        _makes[made] = make;
+      },
     );
-    _of[made] = picture;
-    _makes[made] = make;
+  }
+
+  /// The stamps made of a mask rather than of a picture (stamp.rs
+  /// `Source::Mask`), and what each is made of on the engine
+  /// ([madeOfMask]).
+  static final Expando<({GpuMask Function() coverage, bool whole})> _masks =
+      Expando();
+
+  /// A stamp named [id], [width] × [height], made of a mask: what
+  /// [coverage] makes on the engine — on the engine the app has, as it asks
+  /// —, a pixel it covers at all taken wholly where [whole], else by its
+  /// byte; [rgba] its bytes for what reads them here. A selection's erase
+  /// (`selectionEraseDab`): the selection's own mask, laid by the eraser
+  /// ([GpuStampLanding.landMask]).
+  ///
+  /// ↩️Till 2026-11-14 the erase was a picture: the CPU made the
+  /// selection's mask, built an RGBA image of it and handed it up, at every
+  /// lift and every cut that takes — as much work as the selection is large
+  /// (board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+  static BrushStampImage ofMask({
+    required String id,
+    required int width,
+    required int height,
+    required GpuMask Function() coverage,
+    required bool whole,
+    required Uint8List Function() rgba,
+  }) => _withoutBytes(
+    id: id,
+    width: width,
+    height: height,
+    rgba: (_) => rgba(),
+    keep: (made) => _masks[made] = (coverage: coverage, whole: whole),
+  );
+
+  /// What [stamp] is made of on the engine if it is made of a mask
+  /// ([ofMask]) — null where it is a picture ([of]).
+  static ({GpuMask Function() coverage, bool whole})? madeOfMask(
+    BrushStampImage stamp,
+  ) => _masks[stamp];
+
+  /// A stamp named [id], [width] × [height], whose bytes [rgba] reads the
+  /// first time anything asks for them, and what made it [keep]s — the one
+  /// place a stamp is made without its bytes
+  /// (`a_stamp_without_its_bytes_is_made_in_one_place_test`).
+  static BrushStampImage _withoutBytes({
+    required String id,
+    required int width,
+    required int height,
+    required Uint8List Function(BrushStampImage made) rgba,
+    required void Function(BrushStampImage made) keep,
+  }) {
+    late final BrushStampImage made;
+    made = BrushStampImage.read(
+      id: id,
+      width: width,
+      height: height,
+      rgba: () => rgba(made),
+    );
+    keep(made);
     return made;
   }
 }

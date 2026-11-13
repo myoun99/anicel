@@ -18,7 +18,6 @@ import '../models/pasteboard_bounds.dart';
 import '../models/placed_tile.dart';
 import '../models/tile_coord.dart';
 import '../native/app_gpu_engine.dart';
-import '../native/engine_stamp_masks.dart';
 import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
 import '../core/dev_profile.dart';
@@ -177,33 +176,7 @@ BrushSurfaceMaterialization _materializedOnEngine(
     final stamp = first.stamp;
     if (stamp != null) {
       at += 1;
-      final landing = stamp.landingRect(first.center);
-      final opacity = (first.opacity * 65535).round();
-      final mode = engineBlendModeOf(BrushBlendMode.color, erase: first.erase);
-      final ofMask = EngineStampMasks.of(stamp);
-      put(
-        _stampOnEngine(
-          landed,
-          landing,
-          selection,
-          (clip, mask) => ofMask == null
-              ? _picture(
-                  EngineStampPictures.of(stamp),
-                  landing,
-                  clip,
-                  opacity: opacity,
-                  mode: mode,
-                  mask: mask,
-                )
-              : _ofMask(
-                  ofMask,
-                  colour: first.color,
-                  opacity: opacity,
-                  mode: mode,
-                  mask: mask,
-                ),
-        ),
-      );
+      put(_stampDabOnEngine(landed, first, stamp, selection));
       continue;
     }
     var end = at + 1;
@@ -219,6 +192,42 @@ BrushSurfaceMaterialization _materializedOnEngine(
   return BrushSurfaceMaterialization(
     surface: landed,
     dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
+  );
+}
+
+/// [dab]'s [stamp] laid on [surface] by the engine, under [selection]'s
+/// mask where there is one: a picture, or a mask in the dab's colour
+/// ([EngineStampPictures.madeOfMask]).
+List<PlacedTile> _stampDabOnEngine(
+  BitmapSurface surface,
+  BrushDab dab,
+  BrushStampImage stamp,
+  SelectionClip? selection,
+) {
+  final landing = stamp.landingRect(dab.center);
+  final opacity = (dab.opacity * 65535).round();
+  final mode = engineBlendModeOf(BrushBlendMode.color, erase: dab.erase);
+  final ofMask = EngineStampPictures.madeOfMask(stamp);
+  return _stampOnEngine(
+    surface,
+    landing,
+    selection,
+    (clip, mask) => ofMask == null
+        ? _picture(
+            EngineStampPictures.of(stamp),
+            landing,
+            clip,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+          )
+        : _ofMask(
+            ofMask,
+            colour: dab.color,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+          ),
   );
 }
 
@@ -286,9 +295,9 @@ LandedBy _picture(
   mask: mask,
 );
 
-/// A stamp [made] of a mask ([EngineStampMasks]) — its box made to the
-/// wall — as the engine lays it in [colour] at [opacity] (65535 whole) in
-/// [mode], under [mask] if any.
+/// A stamp [made] of a mask ([EngineStampPictures.ofMask]) — its box made
+/// to the wall — as the engine lays it in [colour] at [opacity] (65535
+/// whole) in [mode], under [mask] if any.
 LandedBy _ofMask(
   ({GpuMask Function() coverage, bool whole}) made, {
   required int colour,

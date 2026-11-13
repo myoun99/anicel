@@ -14,7 +14,7 @@ import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
 import '../models/tiles_covering.dart';
 import '../native/engine_cel_pixels.dart';
-import '../native/engine_stamp_masks.dart';
+import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
 import 'canvas_selection.dart' show SelectionMaskOptions;
 import 'canvas_selection_region.dart';
@@ -323,9 +323,9 @@ SelectionLiftDabs? buildSelectionLiftDabs({
 /// takes what it cuts (I-90) takes it through it — so what a piece took is
 /// what leaves the cel, to the pixel.
 ///
-/// A stamp made of the selection's own mask ([EngineStampMasks]): the
-/// engine lays that mask by the eraser, taken whole where the gather took
-/// whole — the twin of the gather, under the same mask on the engine's
+/// A stamp made of the selection's own mask ([EngineStampPictures.ofMask]):
+/// the engine lays that mask by the eraser, taken whole where the gather
+/// took whole — the twin of the gather, under the same mask on the engine's
 /// grid. ↩️Till 2026-11-14 it was a picture the CPU built of the mask's
 /// bytes at every lift and handed up (board
 /// `a-selection-mask-is-built-on-the-cpu-at-every-move` — 「한쪽만 엔진
@@ -344,7 +344,7 @@ BrushDab selectionEraseDab(SelectionPixels lifted, {required String id}) {
     tipShape: BrushTipShape.square,
     pressure: 1,
     sequence: 0,
-    stamp: EngineStampMasks.made(
+    stamp: EngineStampPictures.ofMask(
       id: id,
       width: width,
       height: height,
