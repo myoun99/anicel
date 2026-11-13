@@ -2107,13 +2107,12 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
         levels: 1,
         masked: false,
     };
-    let taken = apart().composite.pass(apart().engine, own);
-    let passes = apart().composite.passes.lock();
-    let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
-    for compiled in [own, Compiled::full(own.surface)] {
-        assert_eq!(passes.asked.iter().filter(|(asked, _)| *asked == compiled).count(), 1);
-    }
-    assert_eq!(passes.made(own), Some(taken));
+    let composite = &apart().composite;
+    let taken = composite.pass(apart().engine, own);
+    assert_eq!(composite.passes.asked_for().iter().filter(|asked| **asked == own).count(), 1);
+    assert_eq!(composite.fulls.outputs().iter().filter(|of| **of == own.surface).count(), 1);
+    assert!(composite.fulls.cell(own.surface).get().is_some());
+    assert_eq!(composite.passes.made(own), Some(taken));
 }
 
 // 🚨A pass of a plan's own is not compiled while what is compiled apart is
@@ -2126,8 +2125,7 @@ fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go
     let engine = turn.engine();
     let composite = Composite::new(&engine).expect("compile the composite");
     let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
-    let passes = || composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let made = || passes().made(own);
+    let made = || composite.passes.made(own);
     engine.apart.hold();
     let any = composite.pass(&engine, own);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
@@ -2151,12 +2149,13 @@ fn an_executor_opened_to_show_has_both_full_passes() {
     let engine = first_engine();
     for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Bgra8Unorm] {
         let composite = Composite::showing(engine, Some(format)).expect("the executor");
-        let passes = composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        assert!(passes.made(Compiled::full(None)).is_some(), "the tiles' ({format:?})");
+        let made = |output| composite.fulls.cell(output).get().is_some();
+        assert!(made(None), "the tiles' ({format:?})");
         let shown = super::storage_format(format).filter(|_| crate::platform::stores(engine, format));
-        assert!(passes.made(Compiled::full(shown)).is_some(), "the surface's ({format:?})");
-        assert_eq!(passes.asked.len(), 1 + usize::from(shown.is_some()), "no other ({format:?})");
-        assert!(!passes.compiling, "nothing compiled apart ({format:?})");
+        assert!(made(shown), "the surface's ({format:?})");
+        assert_eq!(composite.fulls.outputs().len(), 1 + usize::from(shown.is_some()), "no other ({format:?})");
+        assert!(composite.passes.asked_for().is_empty(), "nor a plan's own ({format:?})");
+        assert!(!composite.passes.compiling(), "nothing compiled apart ({format:?})");
     }
 }
 
@@ -2193,8 +2192,7 @@ fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
     let copies = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
     let turned = ResampleModes::default().with(&pose("turn").words());
     let masked_turn = Compiled { modes: turned, masked: true, ..copies };
-    let passes = apart().composite.passes.lock();
-    let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
+    let passes = &apart().composite.passes;
     assert!(passes.made(copies).is_some());
     assert!(passes.made(masked_turn).is_some());
 }

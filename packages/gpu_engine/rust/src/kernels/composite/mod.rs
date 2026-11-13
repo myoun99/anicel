@@ -75,6 +75,7 @@ pub(crate) mod abi;
 mod chained_tests;
 pub(crate) mod halvings;
 pub(crate) mod held;
+mod passes;
 pub(crate) mod screen;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -94,12 +95,12 @@ use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     ResampleModes, WIDE_WGSL, encode_on, kept_or_made, le_bytes, page_table, pipeline_with, room,
-    runs,
-    storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
+    runs, storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
 };
 use crate::platform::stores;
 
 use held::Made;
+use passes::{Fulls, Passes};
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -563,8 +564,11 @@ impl Batch {
 /// The composite pass, compiled for as many pages as the device lets a pass
 /// bind, once for each output and set of R1 modes ([`Compiled`]).
 pub(crate) struct Composite {
-    /// Shared with the threads that compile passes apart.
-    passes: Arc<Mutex<Passes>>,
+    /// The pass that takes any plan, one to an output.
+    fulls: Fulls,
+    /// A plan's own passes — shared with the thread that compiles them
+    /// apart.
+    passes: Arc<Passes>,
     /// The pages of the pool a pass binds, past the plan and the work.
     pages: Pages,
     /// The effect chains' blurs: seven kernels, compiled for a chain of any
@@ -615,19 +619,21 @@ impl Composite {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let composite = Self {
+            fulls: Fulls::default(),
             passes: Arc::default(),
             pages,
             chain: OnceLock::new(),
         };
         let shown = format.filter(|&format| stores(engine, format)).and_then(storage_format);
-        let fulls = [Some(Compiled::full(None)), shown.map(|token| Compiled::full(Some(token)))];
+        // The tiles' output, and the surface's where there is one.
+        let outputs = [Some(None), shown.map(Some)];
         let (source, binding) = (&composite.pages.source(), composite.surface_binding());
-        let made = engine.side_by_side(
-            fulls.into_iter().flatten().map(|full| move || (full, compile(engine, source, binding, full))),
-        );
-        let mut passes = composite.passes.lock().unwrap_or_else(PoisonError::into_inner);
-        passes.asked.extend(made.into_iter().map(|(full, pipeline)| (full, Some(pipeline))));
-        drop(passes);
+        let made = engine.side_by_side(outputs.into_iter().flatten().map(|output| {
+            move || (output, compile(engine, source, binding, Compiled::full(output)))
+        }));
+        for (output, pipeline) in made {
+            let _ = composite.fulls.cell(output).set(pipeline);
+        }
         Some(composite)
     }
 
@@ -810,31 +816,29 @@ impl Composite {
     /// has made it, and until then the full one, for every mode and level,
     /// which composites the same bytes, slower. A compile takes seconds
     /// where a frame takes milliseconds (1.7 s to 6 s cold on this PC,
-    /// 11-06), so no plan waits on one but an output's first: the full one,
-    /// compiled where it is first asked for — the tiles' in `new`, a
-    /// surface's in `shows` where the app has said what its screens are —
-    /// as before passes came apart.
+    /// 11-06), so no plan waits on one but an output's first: the full one
+    /// ([`Self::full`]), as before passes came apart.
     fn pass(&self, engine: &Engine, wanted: Compiled) -> wgpu::ComputePipeline {
-        let full = Compiled::full(wanted.surface);
-        let mut passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
-        let for_full = passes.made(full).unwrap_or_else(|| {
-            let pipeline = compile(engine, &self.pages.source(), self.surface_binding(), full);
-            passes.asked.push((full, Some(pipeline.clone())));
-            pipeline
-        });
-        if let Some(pipeline) = passes.made(wanted) {
-            return pipeline;
+        let for_full = self.full(engine, wanted.surface);
+        if wanted == Compiled::full(wanted.surface) {
+            return for_full;
         }
-        if !passes.was_asked(wanted) {
-            passes.asked.push((wanted, None));
-            // One thread at a time (`compile_apart`): a second would take a
-            // second core from the frames. No test sees it.
-            if !passes.compiling {
-                passes.compiling = true;
-                self.compile_apart(engine);
-            }
+        let (made, begins) = self.passes.asked(wanted);
+        if begins {
+            self.compile_apart(engine);
         }
-        for_full
+        made.unwrap_or(for_full)
+    }
+
+    /// The pass for `surface`'s output that takes any plan
+    /// ([`Compiled::full`]), compiled where it is first asked for: the
+    /// tiles' where the executor is made, and a surface's with it where
+    /// the app has said what its screens are ([`Self::showing`]) — here,
+    /// for an output it was not made with. ⛔Under no lock (`passes.rs`
+    /// has why): made, then put in its output's cell.
+    fn full(&self, engine: &Engine, surface: Option<&'static str>) -> wgpu::ComputePipeline {
+        let (cell, full) = (self.fulls.cell(surface), Compiled::full(surface));
+        kept_or_made(&cell, || compile(engine, &self.pages.source(), self.surface_binding(), full)).clone()
     }
 
     /// Compiles the passes asked for and not made, the latest asked first,
@@ -851,19 +855,11 @@ impl Composite {
         let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
         std::thread::spawn(move || loop {
             engine.apart.wait();
-            let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
-            let next = held.asked.iter().rev().find(|(_, made)| made.is_none());
-            let Some(&(wanted, _)) = next else {
-                held.compiling = false;
+            let Some(wanted) = passes.next() else {
                 return;
             };
-            drop(held);
             let pipeline = compile(&engine, &pages, surface_binding, wanted);
-            let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
-            let asked = held.asked.iter_mut().find(|(asked, _)| *asked == wanted);
-            if let Some((_, made)) = asked {
-                *made = Some(pipeline);
-            }
+            passes.put(wanted, pipeline);
         });
     }
 
@@ -872,8 +868,7 @@ impl Composite {
     pub(crate) fn settle(&self) {
         // Only a thread that never ends should fail here, never a slow one.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
-        let making = || self.passes.lock().unwrap_or_else(PoisonError::into_inner).compiling;
-        while making() {
+        while self.passes.compiling() {
             assert!(std::time::Instant::now() < deadline, "a pass compiled apart never came");
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
@@ -1373,26 +1368,6 @@ impl Compiled {
     /// every level, masked steps.
     fn full(surface: Option<&'static str>) -> Self {
         Self { surface, modes: ResampleModes::ALL, levels: DEPTH, masked: true }
-    }
-}
-
-/// Every composite pass asked for, with its pipeline once made — none until
-/// the thread compiling passes apart gets to it — and whether that thread
-/// runs.
-#[derive(Default)]
-struct Passes {
-    asked: Vec<(Compiled, Option<wgpu::ComputePipeline>)>,
-    compiling: bool,
-}
-
-impl Passes {
-    fn was_asked(&self, compiled: Compiled) -> bool {
-        self.asked.iter().any(|(asked, _)| *asked == compiled)
-    }
-
-    fn made(&self, compiled: Compiled) -> Option<wgpu::ComputePipeline> {
-        let asked = self.asked.iter().find(|(asked, _)| *asked == compiled);
-        asked.and_then(|(_, made)| made.clone())
     }
 }
 

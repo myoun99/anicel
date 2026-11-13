@@ -485,6 +485,14 @@ impl Engine {
     /// they were called, but past one that waits for a compile
     /// ([`EngineThread::stands_aside`]). On that thread already, it runs
     /// where it is.
+    ///
+    /// ⏳That a verb's body goes through here is the verb's own word,
+    /// which `every_verb.rs` reads the sources for. A device no code can
+    /// reach but through a token only this door hands out was weighed and
+    /// put off to stage 2 of the-ui-thread-never-enters-the-driver, not
+    /// thrown out (관제 2026-11-14 01:21): the stage where a verb hands its
+    /// body here and waits for none of it, each family's bodies written
+    /// again as it goes.
     pub(crate) fn on_thread<T>(&self, work: impl FnOnce() -> T) -> T {
         self.thread.run_lent(work)
     }
@@ -990,11 +998,9 @@ type Job = Box<dyn FnOnce() + Send>;
 /// ⚠️What this does not reach: a body that waits for a lock another holds
 /// across its compile waits here, and the bodies behind it with it, till
 /// that compile is through. So a cell a compile fills is made outside
-/// its lock (`kernels::shared`, `kept_or_made`). ⏳One such lock is left
-/// (브러시/렌더링, 2026-11-14): the composite's passes, held across the
-/// first full pass of an output the executor was not made with
-/// (`Composite::pass`; `Composite::showing` makes the tiles' and a named
-/// surface format's ahead) — no test could tell it let go.
+/// its lock (`kernels::shared`, `kept_or_made`), and the composite's
+/// passes lie behind locks nothing that compiles can reach
+/// (`kernels/composite/passes.rs`).
 ///
 /// ⚠️ALL OF THEM AT ONCE: a body left on its caller's thread, holding a
 /// lock of the engine's as it hands its submit here, waits for a body here
@@ -1842,6 +1848,49 @@ mod tests {
             assert_eq!(engine.side_by_side(works), ["met the other", "the other"]);
         });
         assert!(got_through, "a body waited behind one whose works ran side by side");
+    }
+
+    // 🚨What a body makes of its caller's own after it left the engine's
+    // thread goes back to that caller — its last error, its panic — and
+    // none of it to the caller of a body run meanwhile on the thread made
+    // in its place (🗣️관제 2026-11-14 02:29,
+    // the-ui-thread-never-enters-the-driver).
+    #[test]
+    fn a_body_that_left_the_thread_fails_and_panics_on_its_own_caller() {
+        let engine = &Engine::open_first().expect("an adapter");
+        for panics in [false, true] {
+            let (let_go, released) = std::sync::mpsc::channel::<()>();
+            let (began, begun) = std::sync::mpsc::channel();
+            std::thread::scope(|scope| {
+                let left = scope.spawn(move || {
+                    let _: Option<()> = fail("its caller's own");
+                    let body = || {
+                        engine.on_thread(|| {
+                            let _ = began.send(());
+                            engine.compiling(move |_| {
+                                let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                            });
+                            assert_eq!(last_error(), "its caller's own");
+                            let _: Option<()> = fail("its own, after it left the thread");
+                            assert!(!panics, "its own panic");
+                        })
+                    };
+                    let ended = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+                    (ended.is_err(), last_error())
+                });
+                begun.recv().expect("the body began");
+                let _: Option<()> = fail("another caller's own");
+                engine.on_thread(|| {
+                    assert_eq!(last_error(), "another caller's own");
+                    let _: Option<()> = fail("another body's");
+                });
+                let _ = let_go.send(());
+                let (panicked, error) = left.join().expect("its caller caught the panic");
+                assert_eq!(panicked, panics);
+                assert_eq!(error, "its own, after it left the thread");
+                assert_eq!(last_error(), "another body's", "the other caller's is its own body's");
+            });
+        }
     }
 
     // The tests' own engine keeps the alarm the process had: an error no
