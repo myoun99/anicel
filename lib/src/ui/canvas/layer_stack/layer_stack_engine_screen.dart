@@ -330,6 +330,14 @@ T _planned<T>(
 /// node's, on [paper], under what the node it came from shows ([origins])
 /// — none for one that shows a row drawn live
 /// ([_FrameReading._pictureOf]).
+///
+/// Five, the engine among them, and not bundled to fit: [holds] are the
+/// app's and outlive an engine, keeping a hold for the engine they are
+/// asked of ([EngineChainHolds.heldOf]), and [engine] is the composite's
+/// this frame is planned on — a hold is its engine's for its life, so
+/// the two are named apart where a frame is planned and nowhere held
+/// together (🗣️관제 2026-11-14 08:14: the reason stands here, the wide
+/// signatures' ceiling where it stood).
 ChainHolding? _holding(
   EngineChainHolds? holds,
   GpuEngine engine,
