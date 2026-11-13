@@ -78,6 +78,9 @@ String projectDisplayName(String path) {
 /// ⚠️No older shape was read for it, and it did not move the floor
 /// ([anicelOldestReadFormatVersion]): a cut and a timeline that list none
 /// hold no marker at THIS version too, so a v36 file is such a document.
+/// Carrying one over rewrites its number and nothing else (the save lane's
+/// ask, 2026-11-14: what carries a file over reads these paragraphs as its
+/// recipe).
 ///
 /// v36 (2026-11-14, F-589 — 유저 F-589-Q1: 「품을 때의 날짜를 적어 두고
 /// 그것을 띄운다」): a carried asset records when the file its bytes came

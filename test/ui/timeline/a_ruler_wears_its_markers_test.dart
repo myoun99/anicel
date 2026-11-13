@@ -105,7 +105,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Lets a double click's window go by, so the next press begins another.
+  /// Lets a double click's window go by, so the next press begins another
+  /// — and a test that ends on a press of the ruler leaves no window open
+  /// behind it: every press there is one a double click may begin (the
+  /// frame block's recognizer, its timers with it).
   Future<void> rest(WidgetTester tester) =>
       tester.pump(const Duration(milliseconds: 500));
 
@@ -288,6 +291,7 @@ void main() {
       session.undo();
       await tester.pump();
       expect(session.rulerMarkers.markersOn(cut), two);
+      await rest(tester);
     });
 
     testWidgets('the numbers\' half of a marker\'s cell scrubs as it always '
@@ -312,6 +316,7 @@ void main() {
       await tester.tapAt(markersHalf(timelineHeaderGlobalRect(tester, 10)));
       await tester.pump();
       expect(session.currentFrameIndex, 20);
+      await rest(tester);
     });
 
     testWidgets('🚨a double click on a marker — or on its cell\'s other '
@@ -427,7 +432,7 @@ void main() {
       );
       expect(writing().writtenOverMarkers(), isEmpty);
       await gesture.up();
-      await tester.pump();
+      await rest(tester);
     });
   });
 
@@ -482,19 +487,22 @@ void main() {
       expect(session.rulerMarkers.markersOn(cut), two.moved(0, 2));
       expect(session.currentFrameIndex, stoodOn, reason: 'no scrub');
 
-      // The numbers' side of a row scrubs; a double click there opens.
-      final row = xsheetFrameRowGlobalRect(tester, 14);
-      final numbers = Offset(row.right - 4, row.center.dy);
+      // The numbers' side of a row scrubs; a double click there opens. A
+      // row near the rail's head: the sheet's header block leaves the rail
+      // nine rows of this surface.
+      final row = xsheetFrameRowGlobalRect(tester, 2);
+      final numbers = Offset(row.left + row.width * 0.75, row.center.dy);
+      expect(stoodOn, isNot(2), reason: 'premise');
       await tester.tapAt(numbers);
       await tester.pump();
-      expect(session.currentFrameIndex, 14);
+      expect(session.currentFrameIndex, 2);
       await rest(tester);
       await doubleClick(tester, numbers);
       expect(find.text(AppText.strings.rulerMarkerNewTitle), findsOneWidget);
       await typeAndPressEnter(tester, 'x');
       expect(
-        session.rulerMarkers.markersOn(cut).inOrder.last,
-        const RulerMarker(start: 14, text: 'x'),
+        session.rulerMarkers.markersOn(cut).inOrder.first,
+        const RulerMarker(start: 2, text: 'x'),
       );
     });
   });
@@ -548,6 +556,7 @@ void main() {
         stoodOn,
         reason: 'a press on a marker scrubs the conte no more than a cut',
       );
+      await rest(tester);
     });
   });
 }

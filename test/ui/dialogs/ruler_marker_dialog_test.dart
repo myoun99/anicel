@@ -54,10 +54,19 @@ void main() {
     return () => (closed, result);
   }
 
-  PillItem pill(WidgetTester tester, RulerMarkerColor color) => tester
-      .widget<PillStrip>(find.byType(PillStrip))
-      .items
-      .singleWhere((item) => item.keyValue == 'ruler-marker-color-${color.name}');
+  /// The colours' strip — the length's field holds a strip of its own (the
+  /// way a count is typed).
+  PillStrip colours(WidgetTester tester) => tester.widget<PillStrip>(
+    find.ancestor(
+      of: find.byKey(const ValueKey<String>('ruler-marker-color-yellow')),
+      matching: find.byType(PillStrip),
+    ),
+  );
+
+  PillItem pill(WidgetTester tester, RulerMarkerColor color) =>
+      colours(tester).items.singleWhere(
+        (item) => item.keyValue == 'ruler-marker-color-${color.name}',
+      );
 
   String shown(WidgetTester tester, String key) => tester
       .widget<Text>(
@@ -83,7 +92,7 @@ void main() {
     expect(find.text(AppText.strings.rulerMarkerEditTitle), findsOneWidget);
     expect(tester.widget<TextField>(find.byKey(text)).controller!.text, '口パク');
     expect(shown(tester, length), '4');
-    final strip = tester.widget<PillStrip>(find.byType(PillStrip));
+    final strip = colours(tester);
     expect(
       [for (final item in strip.items) item.keyValue],
       [

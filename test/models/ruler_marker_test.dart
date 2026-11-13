@@ -201,18 +201,24 @@ void main() {
       expect(placesOf(markers.moved(1, 3)), [(2, 2), (9, 3), (12, 1)]);
     });
 
-    test('it trades places with a neighbour whose seat the hand reaches', () {
-      final traded = markers.moved(0, 9);
-      expect(
-        [for (final marker in traded.inOrder) marker.text],
-        ['b', 'a', 'c'],
-      );
-      for (final (index, marker) in traded.inOrder.indexed.skip(1)) {
-        expect(
-          marker.start,
-          greaterThanOrEqualTo(traded.inOrder[index - 1].endExclusive),
-          reason: 'none over another, whatever the drag',
-        );
+    test('it trades places with a neighbour once its far edge has cleared '
+        'that neighbour\'s — the blocks\' seat — and with the next one past '
+        'it', () {
+      List<String> order(int delta) => [
+        for (final marker in markers.moved(0, delta).inOrder) marker.text,
+      ];
+      expect(order(4), ['a', 'b', 'c'], reason: 'a frame short of the seat');
+      expect(order(5), ['b', 'a', 'c']);
+      expect(order(9), ['b', 'c', 'a']);
+      for (final delta in [4, 5, 9]) {
+        final traded = markers.moved(0, delta);
+        for (final (index, marker) in traded.inOrder.indexed.skip(1)) {
+          expect(
+            marker.start,
+            greaterThanOrEqualTo(traded.inOrder[index - 1].endExclusive),
+            reason: 'none over another, whatever the drag',
+          );
+        }
       }
     });
 
