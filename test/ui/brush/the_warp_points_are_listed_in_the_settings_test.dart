@@ -63,11 +63,14 @@ void main() {
     WidgetTester tester, {
     required TransformToolOptions options,
     Size size = const Size(320, 480),
+    CanvasSelectionCommands? handed,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final commands = CanvasSelectionCommands();
-    addTearDown(commands.dispose);
+    final commands = handed ?? CanvasSelectionCommands();
+    if (handed == null) {
+      addTearDown(commands.dispose);
+    }
     await tester.pumpWidget(
       MaterialApp(
         home: Material(
@@ -479,6 +482,48 @@ void main() {
         closeTo(view.top, 1),
         reason: 'its first line stands on the view\'s first',
       );
+    });
+
+    testWidgets('settings handed another project\'s channel read its points '
+        'and go to its point in hand — the one before is heard no more, nor '
+        'either once the settings are gone', (tester) async {
+      final before = await pumpMoveSettings(tester, options: dense);
+      final handed = CanvasSelectionCommands();
+      addTearDown(handed.dispose);
+      await pumpMoveSettings(tester, options: dense, handed: handed);
+
+      await takeInHand(tester, handed, 200);
+      expectInView(tester, 200);
+      handed.publishWarpPoints(
+        WarpPointsShown(
+          offsets: List.filled(points, rest)..[200] = at(7, -3),
+          inHand: const [200],
+        ),
+      );
+      await tester.pump();
+      expect(shownIn(tester, field(200, 'x')), '7.00');
+
+      final position = tester.state<ScrollableState>(
+        find.descendant(of: list, matching: find.byType(Scrollable)),
+      ).position;
+      final broughtTo = position.pixels;
+      await takeInHand(tester, before, 3);
+      expect(position.pixels, broughtTo, reason: 'it calls the list nowhere');
+      expect(
+        shownIn(tester, field(200, 'x')),
+        '7.00',
+        reason: 'and none of its numbers are read',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (final channel in [before, handed]) {
+        expect(
+          // ignore: invalid_use_of_protected_member
+          channel.liveWarpPoints.hasListeners,
+          isFalse,
+          reason: 'settings that are gone hear no channel',
+        );
+      }
     });
 
     testWidgets('in a panel a line tall, from the top of the list', (

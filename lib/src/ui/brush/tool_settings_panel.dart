@@ -1035,6 +1035,234 @@ class _BoxValue {
       '$unit';
 }
 
+/// A number the open box holds as a NUMBER BOX ([DragValueLabel.box]) — one
+/// of its affine's values (`_MoveSettingsState._valueBox`) or a coordinate
+/// of one of its warp's points ([_WarpPointList]): [onScrubbed] is handed
+/// how far a scrub or a step carried it, [onTyped] the number typed in its
+/// place.
+Widget _boxNumber(
+  CanvasSelectionCommands? commands, {
+  required String keyValue,
+  String? name,
+  required String text,
+  required ValueChanged<double> onScrubbed,
+  required ValueChanged<double> onTyped,
+}) => DragValueLabel.box(
+  keyValue: keyValue,
+  name: name,
+  text: text,
+  onDragDelta: onScrubbed,
+  // 🚨★★★**ONE SCRUB IS ONE STEP BACK** (유저 2026-09-20: 「변형에 대한
+  // **조작마다** 언두로 기록」). A scrub is forty writes and one
+  // operation; the canvas takes its own step when a press lands, and
+  // this is the same announcement from the other entrance.
+  onOperationStart: commands?.beginTransformStep,
+  onEditSubmit: (raw) {
+    final typed = columnValueOf(raw);
+    if (typed != null) {
+      onTyped(typed);
+    }
+  },
+);
+
+/// The warp's points as the Transform tool's settings list them: each
+/// point's two lines ([linesOf]), and the list brought to the point taken
+/// in hand ([scroll]).
+///
+/// 🗣️F-586-Q1 (유저 2026-11-14): 「모든 점 목록」 — and the cost the choice
+/// was read with: 「16×16 칸이면 578줄이 됩니다. 방금 움직인 점을 목록에서
+/// 찾아야 합니다」. So the list goes to the point as it is taken in hand —
+/// pressed on the canvas, or written here — and is the reader's to scroll
+/// from there: a point that stays in hand does not call it back.
+class _WarpPointList {
+  /// A warp point where it rests: what the list reads for one the box has
+  /// not moved, and for every one while no box is open.
+  static final CanvasPoint _atRest = CanvasPoint(x: 0, y: 0);
+
+  /// The section's scroller, kept here so the list can be brought to the
+  /// point in hand ([_bringThePointInHandIntoView]).
+  final ScrollController scroll = ScrollController();
+
+  /// Each point's lines in the list, by the point's place in it — the
+  /// handle a line is brought into view by. One is made as its lines are
+  /// first built, and kept: a line that is scrubbed keeps its element.
+  final Map<int, GlobalKey> _lines = {};
+
+  /// The point the list was last brought to — it follows a point once, as
+  /// it is taken in hand, and is the reader's to scroll after that.
+  int? _broughtTo;
+
+  /// The channel the points are read from and written through: the
+  /// settings' own, as it was last handed to them ([follow]).
+  CanvasSelectionCommands? _commands;
+
+  ValueListenable<WarpPointsShown?>? get _live => _commands?.liveWarpPoints;
+
+  /// Reads [commands]' points from here on, and the channel's before it no
+  /// longer.
+  void follow(CanvasSelectionCommands? commands) {
+    rebindListener(
+      _live,
+      commands?.liveWarpPoints,
+      _bringThePointInHandIntoView,
+    );
+    _commands = commands;
+  }
+
+  void dispose() {
+    _live?.removeListener(_bringThePointInHandIntoView);
+    scroll.dispose();
+  }
+
+  void _bringThePointInHandIntoView() {
+    final inHand = _live?.value?.inHand ?? const <int>[];
+    final point = inHand.isEmpty ? null : inHand.first;
+    if (point == _broughtTo) {
+      return;
+    }
+    _broughtTo = point;
+    if (point != null) {
+      _bringIntoView(point, tries: _triesToReachAPoint);
+    }
+  }
+
+  /// How many times the list is moved towards lines it has not built yet
+  /// ([_bringIntoView]). The first move can fall short — how far the list
+  /// runs is itself a guess while most of it is unbuilt — and the second is
+  /// measured from lines beside the ones wanted.
+  static const int _triesToReachAPoint = 2;
+
+  /// Brings the [point]-th point's two lines into view by the least scroll
+  /// that shows both — none, when they are in view already.
+  ///
+  /// ⚠️Lines far off the screen are in no tree (the list builds what is
+  /// near), so the list is first put near where they stand
+  /// ([_nearThePointLines]) — near enough for them to be built — and
+  /// brought to them exactly a frame later, once they are.
+  ///
+  /// A list that has gone has no scroller attached, which ends it.
+  void _bringIntoView(int point, {required int tries}) {
+    if (_broughtTo != point || !scroll.hasClients) {
+      return;
+    }
+    final lines = _lines[point]?.currentContext;
+    if (lines != null) {
+      for (final edge in const [
+        ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      ]) {
+        Scrollable.ensureVisible(lines, alignmentPolicy: edge);
+      }
+      return;
+    }
+    if (tries == 0) {
+      return;
+    }
+    final position = scroll.position;
+    scroll.jumpTo(
+      _nearThePointLines(point)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble(),
+    );
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) => _bringIntoView(point, tries: tries - 1))
+      ..ensureVisualUpdate();
+  }
+
+  /// Where the [point]-th point's lines stand down the list, as near as can
+  /// be told without them: measured from a point's lines that ARE built —
+  /// every point's stand as tall — or, with none in the tree, as far down
+  /// as the points before it reach.
+  double _nearThePointLines(int point) {
+    for (final MapEntry(key: built, value: handle) in _lines.entries) {
+      final lines = handle.currentContext?.findRenderObject();
+      if (lines is RenderBox && lines.hasSize) {
+        final top = RenderAbstractViewport.of(
+          lines,
+        ).getOffsetToReveal(lines, 0).offset;
+        return top + (point - built) * lines.size.height;
+      }
+    }
+    return point * 2 * ToolSettingsSection.rowHeight;
+  }
+
+  /// One coordinate of the warp's [point]-th point, as the list reads them
+  /// (`BoxWarp.asRead`): how far the point stands from where it rests,
+  /// along the box's own axes — the number the box keeps for it, which a
+  /// 초기화 puts back to zero. Live as the box's own digits are
+  /// (`_MoveSettingsState._valueBox`), and its own two alone: a point
+  /// dragged on the canvas repaints no other line.
+  ///
+  /// 🗣️F-586 (유저 2026-11-12): 「다시말하지만 화면에서 조작하는건 설정쪽에서도
+  /// 보여야함. 지금 중간 왼쪽아래 사각형 조작했는데 도구설정패널에서 바뀌는게
+  /// 없는거 보고 확인함. 포인트별로 좌표 둔다거나. 최대한 알기쉽게」.
+  Widget _pointBox(int point, {required bool horizontal}) {
+    void write(double Function(double now) change) =>
+        _commands?.editWarpPoint(
+          point,
+          (now) => horizontal
+              ? CanvasPoint(x: change(now.x), y: now.y)
+              : CanvasPoint(x: now.x, y: change(now.y)),
+        );
+    Widget box(CanvasPoint at) => _boxNumber(
+      _commands,
+      keyValue: 'move-point-$point-${horizontal ? 'x' : 'y'}-field',
+      name: horizontal ? 'X' : 'Y',
+      text: columnValueText(horizontal ? at.x : at.y),
+      onScrubbed: (units) => write((now) => now + units),
+      onTyped: (typed) => write((_) => typed),
+    );
+    final live = _live;
+    return live == null
+        ? box(_atRest)
+        : SlicedValueListenableBuilder<WarpPointsShown?, CanvasPoint>(
+            valueListenable: live,
+            slice: (shown) => shown?.offsetAt(point) ?? _atRest,
+            builder: (context, shown) =>
+                box(shown?.offsetAt(point) ?? _atRest),
+          );
+  }
+
+  /// The warp's [point]-th point as the list reads it: named by where it
+  /// stands in the grid — across · down, from the top left — on X's line,
+  /// with Y under it as 위치's stand; the name in the accent while the
+  /// point is in hand (`BoxWarp.inHand`).
+  ///
+  /// 🗣️F-586-Q1 (유저 2026-11-14): 「모든 점 목록」 — 「ae같은 메쉬변형? 대로
+  /// 하고싶음. 모든 점 목록이긴할것임」; the 퍼스 quad's four corners read
+  /// the same way (「같은 꼴로」, the page the answer was given on).
+  Widget linesOf(int point, {required int across}) {
+    final name = '${point % across + 1} · ${point ~/ across + 1}';
+    Widget lines({required bool inHand}) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ToolSettingRow.bar(
+          label: name,
+          labelLit: inHand,
+          bar: _pointBox(point, horizontal: true),
+        ),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _pointBox(point, horizontal: false),
+        ),
+      ],
+    );
+    final live = _live;
+    return KeyedSubtree(
+      key: _lines.putIfAbsent(point, GlobalKey.new),
+      child: live == null
+          ? lines(inHand: false)
+          : SlicedValueListenableBuilder<WarpPointsShown?, bool>(
+              valueListenable: live,
+              slice: (shown) => shown?.inHand.contains(point) ?? false,
+              builder: (context, shown) =>
+                  lines(inHand: shown?.inHand.contains(point) ?? false),
+            ),
+    );
+  }
+}
+
 /// The Move/Transform tool's numeric inputs (R17-U 유저 채택 설계:
 /// 좌표/각도 수치 입력): the LIVE transform box's move, angle, scales and
 /// anchor, each written through the selection channel as it is scrubbed or
@@ -1073,42 +1301,21 @@ class _MoveSettingsState extends State<_MoveSettings> {
   /// The most a typed or scrubbed scale reaches, as a ratio (3200%).
   static const double _scaleCeiling = 32;
 
-  /// A warp point where it rests: what the list reads for one the box has
-  /// not moved, and for every one while no box is open.
-  static final CanvasPoint _atRest = CanvasPoint(x: 0, y: 0);
-
-  /// The section's scroller, kept here so the list can be brought to the
-  /// point in hand ([_bringThePointInHandIntoView]).
-  final ScrollController _scroll = ScrollController();
-
-  /// Each warp point's lines in the list, by the point's place in it — the
-  /// handle a line is brought into view by. One is made as its lines are
-  /// first built, and kept: a line that is scrubbed keeps its element.
-  final Map<int, GlobalKey> _pointLines = {};
-
-  /// The point the list was last brought to — it follows a point once, as
-  /// it is taken in hand, and is the reader's to scroll after that.
-  int? _pointBroughtTo;
-
-  ValueListenable<WarpPointsShown?>? get _warpPoints =>
-      widget.selectionCommands?.liveWarpPoints;
+  /// The warp's points as this section lists them, under the box's values.
+  final _WarpPointList _points = _WarpPointList();
 
   @override
   void initState() {
     super.initState();
     widget.selectionCommands?.addListener(_syncFromSession);
-    _warpPoints?.addListener(_bringThePointInHandIntoView);
+    _points.follow(widget.selectionCommands);
     _syncFromSession();
   }
 
   @override
   void didUpdateWidget(covariant _MoveSettings oldWidget) {
     super.didUpdateWidget(oldWidget);
-    rebindListener(
-      oldWidget.selectionCommands?.liveWarpPoints,
-      _warpPoints,
-      _bringThePointInHandIntoView,
-    );
+    _points.follow(widget.selectionCommands);
     if (rebindListener(
       oldWidget.selectionCommands,
       widget.selectionCommands,
@@ -1121,84 +1328,8 @@ class _MoveSettingsState extends State<_MoveSettings> {
   @override
   void dispose() {
     widget.selectionCommands?.removeListener(_syncFromSession);
-    _warpPoints?.removeListener(_bringThePointInHandIntoView);
-    _scroll.dispose();
+    _points.dispose();
     super.dispose();
-  }
-
-  /// 🗣️F-586-Q1 (유저 2026-11-14): 「모든 점 목록」 — and the cost the choice
-  /// was read with: 「16×16 칸이면 578줄이 됩니다. 방금 움직인 점을 목록에서
-  /// 찾아야 합니다」. So the list goes to the point as it is taken in hand —
-  /// pressed on the canvas, or written here — and is the reader's to scroll
-  /// from there: a point that stays in hand does not call it back.
-  void _bringThePointInHandIntoView() {
-    final inHand = _warpPoints?.value?.inHand ?? const <int>[];
-    final point = inHand.isEmpty ? null : inHand.first;
-    if (point == _pointBroughtTo) {
-      return;
-    }
-    _pointBroughtTo = point;
-    if (point != null) {
-      _bringIntoView(point, tries: _triesToReachAPoint);
-    }
-  }
-
-  /// How many times the list is moved towards lines it has not built yet
-  /// ([_bringIntoView]). The first move can fall short — how far the list
-  /// runs is itself a guess while most of it is unbuilt — and the second is
-  /// measured from lines beside the ones wanted.
-  static const int _triesToReachAPoint = 2;
-
-  /// Brings the [point]-th point's two lines into view by the least scroll
-  /// that shows both — none, when they are in view already.
-  ///
-  /// ⚠️Lines far off the screen are in no tree (the list builds what is
-  /// near), so the list is first put near where they stand
-  /// ([_nearThePointLines]) — near enough for them to be built — and
-  /// brought to them exactly a frame later, once they are.
-  void _bringIntoView(int point, {required int tries}) {
-    if (!mounted || _pointBroughtTo != point || !_scroll.hasClients) {
-      return;
-    }
-    final lines = _pointLines[point]?.currentContext;
-    if (lines != null) {
-      for (final edge in const [
-        ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-        ScrollPositionAlignmentPolicy.keepVisibleAtStart,
-      ]) {
-        Scrollable.ensureVisible(lines, alignmentPolicy: edge);
-      }
-      return;
-    }
-    if (tries == 0) {
-      return;
-    }
-    final position = _scroll.position;
-    _scroll.jumpTo(
-      _nearThePointLines(point)
-          .clamp(position.minScrollExtent, position.maxScrollExtent)
-          .toDouble(),
-    );
-    WidgetsBinding.instance
-      ..addPostFrameCallback((_) => _bringIntoView(point, tries: tries - 1))
-      ..ensureVisualUpdate();
-  }
-
-  /// Where the [point]-th point's lines stand down the list, as near as can
-  /// be told without them: measured from a point's lines that ARE built —
-  /// every point's stand as tall — or, with none in the tree, as far down
-  /// as the points before it reach.
-  double _nearThePointLines(int point) {
-    for (final MapEntry(key: built, value: handle) in _pointLines.entries) {
-      final lines = handle.currentContext?.findRenderObject();
-      if (lines is RenderBox && lines.hasSize) {
-        final top = RenderAbstractViewport.of(
-          lines,
-        ).getOffsetToReveal(lines, 0).offset;
-        return top + (point - built) * lines.size.height;
-      }
-    }
-    return point * 2 * ToolSettingsSection.rowHeight;
   }
 
   void _syncFromSession() {
@@ -1266,7 +1397,8 @@ class _MoveSettingsState extends State<_MoveSettings> {
     String? name,
     required _BoxValue value,
   }) {
-    Widget box(TransformValues values) => _numberBox(
+    Widget box(TransformValues values) => _boxNumber(
+      widget.selectionCommands,
       keyValue: keyValue,
       name: name,
       text: value.shown(values),
@@ -1283,108 +1415,6 @@ class _MoveSettingsState extends State<_MoveSettings> {
             valueListenable: notifier,
             builder: (context, values, _) => box(values ?? _values),
           );
-  }
-
-  /// A number the open box holds as a NUMBER BOX ([DragValueLabel.box]) —
-  /// one of its affine's values ([_valueBox]) or a coordinate of one of its
-  /// warp's points ([_pointBox]): [onScrubbed] is handed how far a scrub or
-  /// a step carried it, [onTyped] the number typed in its place.
-  Widget _numberBox({
-    required String keyValue,
-    String? name,
-    required String text,
-    required ValueChanged<double> onScrubbed,
-    required ValueChanged<double> onTyped,
-  }) => DragValueLabel.box(
-    keyValue: keyValue,
-    name: name,
-    text: text,
-    onDragDelta: onScrubbed,
-    // 🚨★★★**ONE SCRUB IS ONE STEP BACK** (유저 2026-09-20: 「변형에 대한
-    // **조작마다** 언두로 기록」). A scrub is forty writes and one
-    // operation; the canvas takes its own step when a press lands, and
-    // this is the same announcement from the other entrance.
-    onOperationStart: widget.selectionCommands?.beginTransformStep,
-    onEditSubmit: (raw) {
-      final typed = columnValueOf(raw);
-      if (typed != null) {
-        onTyped(typed);
-      }
-    },
-  );
-
-  /// One coordinate of the warp's [point]-th point, as the list reads them
-  /// (`BoxWarp.asRead`): how far the point stands from where it rests,
-  /// along the box's own axes — the number the box keeps for it, which a
-  /// 초기화 puts back to zero. Live as [_valueBox]'s digits are, and its
-  /// own two alone: a point dragged on the canvas repaints no other line.
-  ///
-  /// 🗣️F-586 (유저 2026-11-12): 「다시말하지만 화면에서 조작하는건 설정쪽에서도
-  /// 보여야함. 지금 중간 왼쪽아래 사각형 조작했는데 도구설정패널에서 바뀌는게
-  /// 없는거 보고 확인함. 포인트별로 좌표 둔다거나. 최대한 알기쉽게」.
-  Widget _pointBox(int point, {required bool horizontal}) {
-    void write(double Function(double now) change) =>
-        widget.selectionCommands?.editWarpPoint(
-          point,
-          (now) => horizontal
-              ? CanvasPoint(x: change(now.x), y: now.y)
-              : CanvasPoint(x: now.x, y: change(now.y)),
-        );
-    Widget box(CanvasPoint at) => _numberBox(
-      keyValue: 'move-point-$point-${horizontal ? 'x' : 'y'}-field',
-      name: horizontal ? 'X' : 'Y',
-      text: columnValueText(horizontal ? at.x : at.y),
-      onScrubbed: (units) => write((now) => now + units),
-      onTyped: (typed) => write((_) => typed),
-    );
-    final live = _warpPoints;
-    return live == null
-        ? box(_atRest)
-        : SlicedValueListenableBuilder<WarpPointsShown?, CanvasPoint>(
-            valueListenable: live,
-            slice: (shown) => shown?.offsetAt(point) ?? _atRest,
-            builder: (context, shown) =>
-                box(shown?.offsetAt(point) ?? _atRest),
-          );
-  }
-
-  /// The warp's [point]-th point as the list reads it: named by where it
-  /// stands in the grid — across · down, from the top left — on X's line,
-  /// with Y under it as 위치's stand; the name in the accent while the
-  /// point is in hand (`BoxWarp.inHand`).
-  ///
-  /// 🗣️F-586-Q1 (유저 2026-11-14): 「모든 점 목록」 — 「ae같은 메쉬변형? 대로
-  /// 하고싶음. 모든 점 목록이긴할것임」; the 퍼스 quad's four corners read
-  /// the same way (「같은 꼴로」, the page the answer was given on).
-  Widget _pointLinesOf(int point, {required int across}) {
-    final name = '${point % across + 1} · ${point ~/ across + 1}';
-    Widget lines({required bool inHand}) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ToolSettingRow.bar(
-          label: name,
-          labelLit: inHand,
-          bar: _pointBox(point, horizontal: true),
-        ),
-        ToolSettingRow.bar(
-          label: '',
-          bar: _pointBox(point, horizontal: false),
-        ),
-      ],
-    );
-    final live = _warpPoints;
-    return KeyedSubtree(
-      key: _pointLines.putIfAbsent(point, GlobalKey.new),
-      child: live == null
-          ? lines(inHand: false)
-          : SlicedValueListenableBuilder<WarpPointsShown?, bool>(
-              valueListenable: live,
-              slice: (shown) => shown?.inHand.contains(point) ?? false,
-              builder: (context, shown) =>
-                  lines(inHand: shown?.inHand.contains(point) ?? false),
-            ),
-    );
   }
 
   /// The mesh grid's cell count on one axis, as a number box.
@@ -1463,7 +1493,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
       (foldOf) => ToolSettingsSection(
         tool: 'move',
         title: strings.toolTransform,
-        controller: _scroll,
+        controller: _points.scroll,
         children: [
           ToolSettingRow.bar(
             label: strings.trPosition,
@@ -1635,7 +1665,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
           // have them and no other, as 메시's two rows stand in 메쉬 alone
           // (F-478-Q1).
           for (var point = 0; point < points.across * points.down; point += 1)
-            _pointLinesOf(point, across: points.across),
+            _points.linesOf(point, across: points.across),
           ...toolSettingsGroup(
             strings.trFinish,
             fold: foldOf('finish'),
