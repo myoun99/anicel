@@ -1,4 +1,4 @@
-/// The frame's tools are opened on three engines here, each compiling
+/// The frame's tools are opened on four engines here, each compiling
 /// them where it is first asked: the bound is this file's own
 /// (`timeline_grid_tile_generation_test.dart` says why).
 @Timeout(Duration(minutes: 3))
@@ -32,7 +32,7 @@ import '../helpers/a_canvas_standing_on_a_frame.dart'
 /// the shell says so in the common window, after the wait window it stood
 /// behind meanwhile, with why the device went.
 ///
-/// On the app's own engine, which the test loses twice.
+/// On the app's own engine, which the test loses three times.
 void main() {
   opensTheEnginesScreens();
 
@@ -74,7 +74,7 @@ void main() {
   testWidgets('the app\'s device gone, the shell stands behind its wait '
       'window while another engine is opened, and says once it stands on '
       'it that the device started again, and why — each device that goes '
-      'its own saying', (tester) async {
+      'its own saying, and none to a shell that went', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     var now = DateTime(2026, 11, 13, 12);
@@ -169,5 +169,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(says, findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+
+    // The shell gone, it hears no more: said to one that went, the saying
+    // asks a window of no tree.
+    var saidToNone = 0;
+    void count() => saidToNone += 1;
+    EngineRefusals.openedAnother.addListener(count);
+    addTearDown(() => EngineRefusals.openedAnother.removeListener(count));
+    now = now.add(EngineRefusals.openAnotherApart);
+    theDeviceGoes(Completer<void>()..complete());
+    await tester.pump();
+    await itsToolsOpen();
+    await tester.pump();
+    expect(saidToNone, 1, reason: '⛔premise: the app says it');
+    expect(tester.takeException(), isNull);
   });
 }

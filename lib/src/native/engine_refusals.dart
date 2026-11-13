@@ -59,8 +59,9 @@ import 'app_kernels_ahead.dart' show openTheAppsEngineAgain;
 /// default it stops the whole machine at the sixth where five came, each
 /// recovered from, within one minute (Microsoft Learn, "Timeout detection
 /// and recovery", `TdrLimitCount` · `TdrLimitTime`; read 2026-11-13).
-/// ⚠️The bound and its minute are 브러시/렌더링's (2026-11-13), not yet the
-/// user's: a-lost-gpu-device-keeps-the-unsaved-tiles-Q2 asks.
+/// 🗣️a-lost-gpu-device-keeps-the-unsaved-tiles-Q2 (유저 2026-11-13): 「1분
+/// 안에 또 꺼지면 되살리지 않는다」 — the bound and its minute, built
+/// before they were asked of, as the user chose them.
 ///
 /// And where no engine stands in the place of the one let go — none would
 /// open, or its device went as it was made ready — that is told as a

@@ -18,9 +18,9 @@ import '../helpers/the_apps_engine_let_go.dart';
 /// place of a refusal.
 ///
 /// Told as a refusal is — 🗣️gpu-canonical-store-Q14: once a cause — are a
-/// device that goes within a minute of the last opening (⚖️브러시/렌더링's
-/// bound, a-lost-gpu-device-keeps-the-unsaved-tiles-Q2 asks) and one in
-/// whose place no engine stands.
+/// device that goes within a minute of the last opening
+/// (🗣️a-lost-gpu-device-keeps-the-unsaved-tiles-Q2, 유저 2026-11-13: 「1분
+/// 안에 또 꺼지면 되살리지 않는다」) and one in whose place no engine stands.
 ///
 /// How the app opens one is stood in for ([EngineRefusals.install]): the
 /// launch's own path is pinned where a session goes on by it
