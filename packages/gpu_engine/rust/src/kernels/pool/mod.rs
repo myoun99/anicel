@@ -259,7 +259,7 @@ impl Pool {
         if places.is_empty() {
             return Some(places);
         }
-        let staging = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let staging = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("tiles stored"),
             size: places.len() as u64 * TILE_BYTES,
             usage: wgpu::BufferUsages::COPY_SRC,
@@ -644,7 +644,7 @@ pub(crate) fn gather(
     into: &wgpu::Buffer,
 ) {
     let mut encoder = engine
-        .device
+        .device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(places) {
         let page = &pages[usize::from(at.page)];
@@ -662,8 +662,8 @@ fn nobody_s(page: &Option<Page>) -> bool {
 /// A page's buffer of `size` bytes — a page or a page given back's stand-in
 /// —, or none where the device refuses it for want of memory.
 fn made(engine: &Engine, label: &str, size: u64) -> Option<wgpu::Buffer> {
-    let made = engine.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-    let buffer = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let made = engine.device().push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+    let buffer = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
         size,
         // Bound by the passes, copied to by the write path and copied
@@ -692,7 +692,9 @@ fn made(engine: &Engine, label: &str, size: u64) -> Option<wgpu::Buffer> {
 pub unsafe extern "C" fn gpu_engine_pool_new(engine: *const Engine, most_bytes: u64) -> *mut Pool {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Pool::new(engine, most_bytes).map_or(std::ptr::null_mut(), |pool| Box::into_raw(Box::new(pool)))
+    engine.on_thread(|| {
+        Pool::new(engine, most_bytes).map_or(std::ptr::null_mut(), |pool| Box::into_raw(Box::new(pool)))
+    })
 }
 
 /// # Safety
@@ -745,21 +747,23 @@ pub unsafe extern "C" fn gpu_engine_pool_store(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    let tiles: Vec<&[u8]> = (0..count)
-        // SAFETY: a tile's bytes at each pointer, alive for the call.
-        .map(|at| unsafe { std::slice::from_raw_parts(*tiles.add(at), TILE_BYTES as usize) })
-        .collect();
-    let Some(places) = pool.store(engine, Cel(cel), &tiles) else {
-        return -1;
-    };
-    for (at, place) in places.iter().enumerate() {
-        // SAFETY: `pages` and `slots` hold `count` each, and no more are stored.
-        unsafe {
-            *pages.add(at) = place.page;
-            *slots.add(at) = place.slot;
+    engine.on_thread(|| {
+        let tiles: Vec<&[u8]> = (0..count)
+            // SAFETY: a tile's bytes at each pointer, alive for the call.
+            .map(|at| unsafe { std::slice::from_raw_parts(*tiles.add(at), TILE_BYTES as usize) })
+            .collect();
+        let Some(places) = pool.store(engine, Cel(cel), &tiles) else {
+            return -1;
+        };
+        for (at, place) in places.iter().enumerate() {
+            // SAFETY: `pages` and `slots` hold `count` each, and no more are stored.
+            unsafe {
+                *pages.add(at) = place.page;
+                *slots.add(at) = place.slot;
+            }
         }
-    }
-    places.len() as isize
+        places.len() as isize
+    })
 }
 
 /// Lets the slot at (`page`, `slot`) go — the store let its tile go. False
@@ -791,13 +795,15 @@ pub unsafe extern "C" fn gpu_engine_pool_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&*pool, &*engine) };
-    // SAFETY: `tiles` holds `count` words.
-    let Some(places) = (unsafe { named(tiles, count) }) else {
-        return false;
-    };
-    // SAFETY: `into` holds the bytes of `count` tiles.
-    let into = unsafe { std::slice::from_raw_parts_mut(into, count * TILE_BYTES as usize) };
-    pool.read(engine, &places, into).is_some()
+    engine.on_thread(|| {
+        // SAFETY: `tiles` holds `count` words.
+        let Some(places) = (unsafe { named(tiles, count) }) else {
+            return false;
+        };
+        // SAFETY: `into` holds the bytes of `count` tiles.
+        let into = unsafe { std::slice::from_raw_parts_mut(into, count * TILE_BYTES as usize) };
+        pool.read(engine, &places, into).is_some()
+    })
 }
 
 /// The `count` tiles `tiles` names — each a tile's word ([`TileAt::word`])
@@ -821,10 +827,12 @@ pub unsafe extern "C" fn gpu_engine_pool_readout(
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&*pool, &*engine) };
-    // SAFETY: `tiles` holds `count` words.
-    let places = unsafe { named(tiles, count) };
-    let out = places.and_then(|places| pool.read_out(engine, &places));
-    readout(out, count as u64 * TILE_BYTES)
+    engine.on_thread(|| {
+        // SAFETY: `tiles` holds `count` words.
+        let places = unsafe { named(tiles, count) };
+        let out = places.and_then(|places| pool.read_out(engine, &places));
+        readout(out, count as u64 * TILE_BYTES)
+    })
 }
 
 /// The tiles the `count` words at `tiles` name, or nothing where one names
@@ -873,7 +881,9 @@ pub unsafe extern "C" fn gpu_engine_pool_budget_instead(pool: *mut Pool, bytes: 
 pub unsafe extern "C" fn gpu_engine_pool_give_back(pool: *mut Pool, engine: *const Engine, most_bytes: u64) {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    pool.give_back(engine, most_bytes);
+    engine.on_thread(|| {
+        pool.give_back(engine, most_bytes);
+    })
 }
 
 /// The bytes of the pages a pool has made ([`Pool::bytes`]).

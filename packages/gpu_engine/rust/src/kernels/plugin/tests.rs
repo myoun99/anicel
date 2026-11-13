@@ -229,7 +229,7 @@ fn a_foreign_shader_reads_no_word_a_workgroup_before_it_left() {
     let engine = first_engine();
     let pipeline = pipeline_or_why(engine, &[LEFT_OVER], "main").expect("compiled");
     let size = u64::from(GROUPS) * 4;
-    let seen = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let seen = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,

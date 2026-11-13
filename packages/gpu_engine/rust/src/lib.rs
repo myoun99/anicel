@@ -106,6 +106,17 @@ pub(crate) fn last_error() -> String {
     LAST_ERROR.with(|last| last.borrow().clone())
 }
 
+/// This thread's last error, taken from it: a verb's body runs on the
+/// engine's thread with its caller's (`Callers`, in `device.rs`).
+pub(crate) fn take_last_error() -> String {
+    LAST_ERROR.with(RefCell::take)
+}
+
+/// `error`, this thread's last error from here on ([`take_last_error`]).
+pub(crate) fn put_last_error(error: String) {
+    LAST_ERROR.with(|last| *last.borrow_mut() = error);
+}
+
 /// Copies `text` into a caller's buffer of `capacity` bytes; returns its
 /// full length, which may exceed `capacity`.
 pub(crate) fn copy_out(text: &str, buffer: *mut u8, capacity: usize) -> usize {

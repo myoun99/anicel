@@ -752,7 +752,7 @@ fn a_mask_past_its_plane_is_refused() {
 #[test]
 fn a_pass_takes_as_many_tiles_as_a_binding_holds_at_their_worst() {
     let engine = rig().engine;
-    let limits = engine.device.limits();
+    let limits = engine.device().limits();
     let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
     let reach = u64::from(limits.max_compute_workgroups_per_dimension);
     let runs = TEXELS as u64 * 8;

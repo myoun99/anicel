@@ -62,7 +62,7 @@ pub(crate) fn given(
     let copied = band.as_ref().map_or(0, |(_, bytes)| bytes.end - bytes.start);
     let size = words.len() as u64 * 4 + copied;
     fits(engine, &[size], std::iter::empty())?;
-    let given = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let given = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("pass given"),
         size,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,

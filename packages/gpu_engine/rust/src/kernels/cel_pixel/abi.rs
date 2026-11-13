@@ -115,9 +115,11 @@ pub struct CelKernels {
 pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mut CelKernels {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    CelPixels::new(engine)
-        .zip(Lift::new(engine))
-        .map_or(std::ptr::null_mut(), |(verbs, lift)| Box::into_raw(Box::new(CelKernels { verbs, lift })))
+    engine.on_a_thread(|| {
+        CelPixels::new(engine)
+            .zip(Lift::new(engine))
+            .map_or(std::ptr::null_mut(), |(verbs, lift)| Box::into_raw(Box::new(CelKernels { verbs, lift })))
+    })
 }
 
 /// # Safety
@@ -162,24 +164,26 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
 ) -> i32 {
     // SAFETY: see the function's contract.
     let (kernels, engine, pool, mask) = unsafe { (&*kernels, &*engine, &*pool, (*mask).mask()) };
-    let bytes = u64::from(mask.size.width) * u64::from(mask.size.height) * 4;
-    if bytes != capacity as u64 {
-        fail::<()>(format!("room for {capacity} bytes; the box holds {bytes}"));
-        return -1;
-    }
-    // SAFETY: see the function's contract.
-    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-    let cel = TileSet::from_words(x0, y0, columns, rows, words);
-    let Some(lifted) = kernels.lift.run(engine, pool.pages(), &cel, &mask, whole) else {
-        return -1;
-    };
-    if !lifted.anything {
-        return 0;
-    }
-    let readback = engine.staged(&lifted.rgba, bytes);
-    // SAFETY: `out` holds the box's bytes.
-    let into = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
-    engine.mapped_into(&readback, into).map_or(-1, |()| 1)
+    engine.on_thread(|| {
+        let bytes = u64::from(mask.size.width) * u64::from(mask.size.height) * 4;
+        if bytes != capacity as u64 {
+            fail::<()>(format!("room for {capacity} bytes; the box holds {bytes}"));
+            return -1;
+        }
+        // SAFETY: see the function's contract.
+        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let Some(lifted) = kernels.lift.run(engine, pool.pages(), &cel, &mask, whole) else {
+            return -1;
+        };
+        if !lifted.anything {
+            return 0;
+        }
+        let readback = engine.staged(&lifted.rgba, bytes);
+        // SAFETY: `out` holds the box's bytes.
+        let into = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
+        engine.mapped_into(&readback, into).map_or(-1, |()| 1)
+    })
 }
 
 /// Runs the verb `spec` states over the cel of `columns` × `rows` tiles
@@ -209,17 +213,19 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
 ) -> *mut Passed {
     // SAFETY: see the function's contract.
     let (kernels, engine, pool, spec) = unsafe { (&*kernels, &*engine, &*pool, &*spec) };
-    // SAFETY: see the function's contract.
-    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-    let cel = TileSet::from_words(x0, y0, columns, rows, words);
-    // SAFETY: see the function's contract.
-    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
-    // SAFETY: see the function's contract.
-    let verb = unsafe { verb_of(spec) };
-    kernels
-        .verbs
-        .run(engine, pool.pages(), &cel, mask.as_ref(), &verb)
-        .map_or(std::ptr::null_mut(), |passed| Box::into_raw(Box::new(passed)))
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        // SAFETY: see the function's contract.
+        let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+        // SAFETY: see the function's contract.
+        let verb = unsafe { verb_of(spec) };
+        kernels
+            .verbs
+            .run(engine, pool.pages(), &cel, mask.as_ref(), &verb)
+            .map_or(std::ptr::null_mut(), |passed| Box::into_raw(Box::new(passed)))
+    })
 }
 
 /// # Safety
@@ -307,9 +313,11 @@ pub unsafe extern "C" fn gpu_engine_cel_passed_land(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (passed, engine, pool) = unsafe { (&*passed, &*engine, &mut *pool) };
-    let landed = passed.land(engine, (pool, Cel(cel)), first..first + count);
-    // SAFETY: see the function's contract.
-    unsafe { reported(landed, places, changes) }
+    engine.on_thread(|| {
+        let landed = passed.land(engine, (pool, Cel(cel)), first..first + count);
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
 }
 
 /// The scan, compiled. Null on failure; see the last error.
@@ -320,7 +328,9 @@ pub unsafe extern "C" fn gpu_engine_cel_passed_land(
 pub unsafe extern "C" fn gpu_engine_ink_new(engine: *const Engine) -> *mut Ink {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Ink::new(engine).map_or(std::ptr::null_mut(), |ink| Box::into_raw(Box::new(ink)))
+    engine.on_a_thread(|| {
+        Ink::new(engine).map_or(std::ptr::null_mut(), |ink| Box::into_raw(Box::new(ink)))
+    })
 }
 
 /// # Safety
@@ -363,29 +373,31 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (ink, engine, pool) = unsafe { (&*ink, &*engine, &*pool) };
-    // SAFETY: see the function's contract.
-    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-    let cel = TileSet::from_words(x0, y0, columns, rows, words);
-    let walked = cel.tiles.iter().flatten().count();
-    if walked * TILE_INK_WORDS > capacity {
-        fail::<()>(format!(
-            "room for {capacity} words; the {walked} tiles walked put {}",
-            walked * TILE_INK_WORDS
-        ));
-        return -1;
-    }
-    let Some(inks) = ink.run(engine, pool.pages(), &cel) else {
-        return -1;
-    };
-    if inks.is_empty() {
-        return 0;
-    }
-    // SAFETY: `out` holds `capacity` words, and the walk's are no more.
-    let out = unsafe { std::slice::from_raw_parts_mut(out, walked * TILE_INK_WORDS) };
-    for (tile, words) in inks.iter().zip(out.chunks_exact_mut(TILE_INK_WORDS)) {
-        let [left, top, right, bottom] =
-            tile.ink.map_or([0; 4], |ink| [ink.left, ink.top, ink.right, ink.bottom].map(|edge| edge as i32));
-        words.copy_from_slice(&[tile.column, tile.row, left, top, right, bottom]);
-    }
-    inks.len() as isize
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let walked = cel.tiles.iter().flatten().count();
+        if walked * TILE_INK_WORDS > capacity {
+            fail::<()>(format!(
+                "room for {capacity} words; the {walked} tiles walked put {}",
+                walked * TILE_INK_WORDS
+            ));
+            return -1;
+        }
+        let Some(inks) = ink.run(engine, pool.pages(), &cel) else {
+            return -1;
+        };
+        if inks.is_empty() {
+            return 0;
+        }
+        // SAFETY: `out` holds `capacity` words, and the walk's are no more.
+        let out = unsafe { std::slice::from_raw_parts_mut(out, walked * TILE_INK_WORDS) };
+        for (tile, words) in inks.iter().zip(out.chunks_exact_mut(TILE_INK_WORDS)) {
+            let [left, top, right, bottom] =
+                tile.ink.map_or([0; 4], |ink| [ink.left, ink.top, ink.right, ink.bottom].map(|edge| edge as i32));
+            words.copy_from_slice(&[tile.column, tile.row, left, top, right, bottom]);
+        }
+        inks.len() as isize
+    })
 }

@@ -25,7 +25,7 @@ pub fn first_engine() -> &'static Engine {
     ENGINE.get_or_init(|| {
         let engine = Engine::open_first().expect("these tests need a GPU adapter");
         let alarm = |error: wgpu::Error| panic!("wgpu error: {error}");
-        engine.device.on_uncaptured_error(std::sync::Arc::new(alarm));
+        engine.device().on_uncaptured_error(std::sync::Arc::new(alarm));
         engine
     })
 }
@@ -130,6 +130,13 @@ thread_local! {
 
 pub fn held() -> isize {
     HELD.with(std::cell::Cell::get)
+}
+
+/// `bytes`, what this thread is counted to hold from here on: a verb's
+/// body runs on a thread of the engine's as a call of its caller's, with
+/// its caller's count and back with it (`Callers`, in `device.rs`).
+pub fn put_held(bytes: isize) {
+    HELD.with(|held| held.set(bytes));
 }
 
 fn count(bytes: isize) {

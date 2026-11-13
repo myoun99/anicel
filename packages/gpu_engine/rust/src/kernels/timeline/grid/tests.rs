@@ -44,7 +44,7 @@ fn tile(
     ops: &[i32],
     letters: Option<&wgpu::Texture>,
 ) -> Option<Vec<u8>> {
-    let texture = storage_texture(&engine.device, width, height, format);
+    let texture = storage_texture(engine.device(), width, height, format);
     GridTile::new(engine).run(engine, &texture, background, ops, letters)?;
     engine.read_texture(&texture)
 }
@@ -457,7 +457,7 @@ fn every_device_writes_the_pinned_bytes() {
 fn the_two_orders_differ_only_by_red_and_blue() {
     let engine = first_engine();
     let storable = engine
-        .device
+        .device()
         .features()
         .contains(wgpu::Features::BGRA8UNORM_STORAGE);
     assert!(storable, "this adapter cannot store to bgra8unorm");

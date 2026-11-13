@@ -503,9 +503,11 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
     // SAFETY: see the function's contract.
     let (engine, bytes) =
         unsafe { (&*engine, std::slice::from_raw_parts(bytes, width as usize * height as usize)) };
-    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let plane = words_buffer(engine, "mask", &size.words_of(bytes), usage);
-    MaskPlane::kept(plane, (x, y), size)
+    engine.on_thread(|| {
+        let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+        let plane = words_buffer(engine, "mask", &size.words_of(bytes), usage);
+        MaskPlane::kept(plane, (x, y), size)
+    })
 }
 
 /// # Safety
@@ -537,9 +539,11 @@ pub unsafe extern "C" fn gpu_engine_mask_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, MaskPlane { plane, size, .. }) = unsafe { (&*engine, &*mask) };
-    // SAFETY: `bytes` holds `capacity`.
-    let into = unsafe { std::slice::from_raw_parts_mut(bytes, capacity) };
-    size.read_into(engine, plane, into)
+    engine.on_thread(|| {
+        // SAFETY: `bytes` holds `capacity`.
+        let into = unsafe { std::slice::from_raw_parts_mut(bytes, capacity) };
+        size.read_into(engine, plane, into)
+    })
 }
 
 /// The bytes of every mask the app keeps, made and not yet freed.
@@ -837,15 +841,17 @@ pub unsafe extern "C" fn gpu_engine_chain_read_pixels(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, read, picture) = unsafe { (&*engine, &*read, *picture.cast::<[i32; 4]>()) };
-    let Some(bytes) = read.pixels(engine, picture) else {
-        return false;
-    };
-    if bytes.len() != length {
-        return fail::<()>(format!("{} bytes read into {length}", bytes.len())).is_some();
-    }
-    // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
-    true
+    engine.on_thread(|| {
+        let Some(bytes) = read.pixels(engine, picture) else {
+            return false;
+        };
+        if bytes.len() != length {
+            return fail::<()>(format!("{} bytes read into {length}", bytes.len())).is_some();
+        }
+        // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
+        true
+    })
 }
 
 /// A hold for what the chains of the plans that name it put
@@ -1127,7 +1133,9 @@ pub unsafe extern "C" fn gpu_engine_plan_map_drawn(
 pub unsafe extern "C" fn gpu_engine_composite_new(engine: *const Engine) -> *mut Composite {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Composite::new(engine).map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+    engine.on_a_thread(|| {
+        Composite::new(engine).map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+    })
 }
 
 /// The executor, its full pass compiled and with it the one that stores to
@@ -1143,8 +1151,10 @@ pub unsafe extern "C" fn gpu_engine_composite_new(engine: *const Engine) -> *mut
 pub unsafe extern "C" fn gpu_engine_composite_showing(engine: *const Engine, bgra: bool) -> *mut Composite {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Composite::showing(engine, Some(surface_format(bgra)))
-        .map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+    engine.on_thread(|| {
+        Composite::showing(engine, Some(surface_format(bgra)))
+            .map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+    })
 }
 
 /// Compiles the effect chains' blurs on the calling thread if they are not
@@ -1158,7 +1168,9 @@ pub unsafe extern "C" fn gpu_engine_composite_showing(engine: *const Engine, bgr
 pub unsafe extern "C" fn gpu_engine_composite_chains(composite: *const Composite, engine: *const Engine) {
     // SAFETY: see the function's contract.
     let (composite, engine) = unsafe { (&*composite, &*engine) };
-    composite.chains(engine);
+    engine.on_a_thread(|| {
+        composite.chains(engine);
+    })
 }
 
 /// # Safety
@@ -1191,12 +1203,14 @@ pub unsafe extern "C" fn gpu_engine_composite_run(
 ) -> *mut Composited {
     // SAFETY: see the function's contract.
     let (composite, engine, pool, plan) = unsafe { (&*composite, &*engine, &*pool, &*plan) };
-    // SAFETY: see the function's contract.
-    let (words, extent) = unsafe { (std::slice::from_raw_parts(tiles, 2 * count), *extent.cast::<[i32; 4]>()) };
-    let tiles: Vec<(i32, i32)> = words.chunks_exact(2).map(|tile| (tile[0], tile[1])).collect();
-    let widest = composite.widest();
-    let ran = plan.laid(pool, |laid| composite.run(engine, laid, &tiles, extent, widest));
-    ran.map_or(std::ptr::null_mut(), |composited| Box::into_raw(Box::new(composited)))
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let (words, extent) = unsafe { (std::slice::from_raw_parts(tiles, 2 * count), *extent.cast::<[i32; 4]>()) };
+        let tiles: Vec<(i32, i32)> = words.chunks_exact(2).map(|tile| (tile[0], tile[1])).collect();
+        let widest = composite.widest();
+        let ran = plan.laid(pool, |laid| composite.run(engine, laid, &tiles, extent, widest));
+        ran.map_or(std::ptr::null_mut(), |composited| Box::into_raw(Box::new(composited)))
+    })
 }
 
 /// Copies `composited`'s pixels — straight RGBA8, tile after tile in the
@@ -1214,13 +1228,15 @@ pub unsafe extern "C" fn gpu_engine_composited_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, composited) = unsafe { (&*engine, &*composited) };
-    let Some(read) = engine.read_buffer(&composited.out) else {
-        return false;
-    };
-    let count = read.len().min(capacity);
-    // SAFETY: `bytes` holds `capacity`, and `count` is no more.
-    unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
-    true
+    engine.on_thread(|| {
+        let Some(read) = engine.read_buffer(&composited.out) else {
+            return false;
+        };
+        let count = read.len().min(capacity);
+        // SAFETY: `bytes` holds `capacity`, and `count` is no more.
+        unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
+        true
+    })
 }
 
 /// The bytes a run over `count` output tiles puts.
@@ -1259,11 +1275,13 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (composite, engine, pool, plan, target) = unsafe { (&*composite, &*engine, &*pool, &*plan, &*target) };
-    // SAFETY: see the function's contract.
-    let rect = unsafe { *rect.cast::<[u32; 4]>() };
-    let widest = composite.widest();
-    let shown = plan.laid(pool, |laid| composite.show(engine, laid, target, rect, widest));
-    shown.map_or(-1, |passes| passes as isize)
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let rect = unsafe { *rect.cast::<[u32; 4]>() };
+        let widest = composite.widest();
+        let shown = plan.laid(pool, |laid| composite.show(engine, laid, target, rect, widest));
+        shown.map_or(-1, |passes| passes as isize)
+    })
 }
 
 /// The screen of a canvas's composite over the pixels `extent` — [left,
@@ -1362,10 +1380,12 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (screen, composite, engine, pool, plan) = unsafe { (&mut *screen, &*composite, &*engine, &*pool, &*plan) };
-    // SAFETY: see the function's contract.
-    let changed = unsafe { *changed.cast::<[i32; 4]>() };
-    plan.laid(pool, |plan| {
-        screen.compose(engine, composite, plan, changed, composite.widest()).is_some()
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let changed = unsafe { *changed.cast::<[i32; 4]>() };
+        plan.laid(pool, |plan| {
+            screen.compose(engine, composite, plan, changed, composite.widest()).is_some()
+        })
     })
 }
 
@@ -1390,10 +1410,12 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
     // SAFETY: see the function's contract.
     let (screen, film, composite, engine, pool, plan) =
         unsafe { (&mut *screen, &*film, &*composite, &*engine, &*pool, &*plan) };
-    // SAFETY: see the function's contract.
-    let fresh = unsafe { *fresh.cast::<[i32; 4]>() };
-    plan.laid(pool, |plan| {
-        screen.compose_over(engine, composite, plan, film, fresh, composite.widest()).is_some()
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let fresh = unsafe { *fresh.cast::<[i32; 4]>() };
+        plan.laid(pool, |plan| {
+            screen.compose_over(engine, composite, plan, film, fresh, composite.widest()).is_some()
+        })
     })
 }
 
@@ -1423,12 +1445,14 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (screen, composite, engine, target) = unsafe { (&mut *screen, &*composite, &*engine, &*target) };
-    // SAFETY: see the function's contract.
-    let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 6]>(), *rect.cast::<[u32; 4]>()) };
-    let Some(mode) = sampling(sampling_id) else {
-        return -1;
-    };
-    let camera = Camera { inverse, scale, mode };
-    let shown = screen.show(engine, composite, camera, target, rect, composite.widest());
-    shown.map_or(-1, |passes| passes as isize)
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 6]>(), *rect.cast::<[u32; 4]>()) };
+        let Some(mode) = sampling(sampling_id) else {
+            return -1;
+        };
+        let camera = Camera { inverse, scale, mode };
+        let shown = screen.show(engine, composite, camera, target, rect, composite.widest());
+        shown.map_or(-1, |passes| passes as isize)
+    })
 }

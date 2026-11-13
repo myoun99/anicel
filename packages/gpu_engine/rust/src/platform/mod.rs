@@ -150,7 +150,7 @@ pub(crate) fn surface_format(bgra: bool) -> wgpu::TextureFormat {
 pub(crate) fn stores(engine: &Engine, format: wgpu::TextureFormat) -> bool {
     format != wgpu::TextureFormat::Bgra8Unorm
         || engine
-            .device
+            .device()
             .features()
             .contains(wgpu::Features::BGRA8UNORM_STORAGE)
 }
@@ -160,7 +160,7 @@ impl Surface {
         if !stores(engine, format) {
             return fail("this adapter cannot store to bgra8unorm from a compute pass");
         }
-        match native::create(&engine.device, width, height, format) {
+        match native::create(engine.device(), width, height, format) {
             Ok((texture, shared)) => Some(Self { texture, shared }),
             Err(error) => fail(error),
         }
@@ -182,8 +182,10 @@ pub unsafe extern "C" fn gpu_engine_surface_new(
 ) -> *mut Surface {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Surface::new(engine, width, height, surface_format(bgra))
-        .map_or(std::ptr::null_mut(), |surface| Box::into_raw(Box::new(surface)))
+    engine.on_thread(|| {
+        Surface::new(engine, width, height, surface_format(bgra))
+            .map_or(std::ptr::null_mut(), |surface| Box::into_raw(Box::new(surface)))
+    })
 }
 
 /// # Safety

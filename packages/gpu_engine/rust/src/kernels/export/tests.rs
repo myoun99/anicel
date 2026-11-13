@@ -819,7 +819,7 @@ fn a_picture_taller_than_a_dispatch_reaches_is_refused() {
         png,
         ..
     } = rig();
-    let height = engine.device.limits().max_compute_workgroups_per_dimension + 1;
+    let height = engine.device().limits().max_compute_workgroups_per_dimension + 1;
     let tall = Picture { width: 1, height };
     let frame = frame(1, height, |_, _| WHITE);
     assert!(over_ground.run(engine, Frame::Tiles(&frame), tall, [0, 0, 0], None).is_none());

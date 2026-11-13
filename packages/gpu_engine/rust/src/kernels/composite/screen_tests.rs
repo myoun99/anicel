@@ -548,7 +548,7 @@ fn a_screen_shown_waits_here_for_nothing_and_is_told_done() {
     });
     assert_eq!(told.recv_timeout(Duration::from_secs(60)), Ok(Ok(())), "told it is done");
     assert!(seen.load(Ordering::SeqCst), "told done before the work was");
-    let after = engine.device.poll(wgpu::PollType::Poll).expect("poll");
+    let after = engine.device().poll(wgpu::PollType::Poll).expect("poll");
     assert!(after.is_queue_empty(), "done left {after:?}");
 }
 

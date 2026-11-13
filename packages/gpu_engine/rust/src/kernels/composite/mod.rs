@@ -504,7 +504,7 @@ impl Work {
         if let Some(work) = kept.as_ref().filter(|work| work.size() >= size) {
             return work.clone();
         }
-        let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let work = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("composite work"),
             size,
             usage: wgpu::BufferUsages::STORAGE
@@ -663,7 +663,7 @@ impl Composite {
         extent: [i32; 4],
         budget: Budget,
     ) -> Option<Composited> {
-        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let out = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("composite out"),
             size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
             usage: wgpu::BufferUsages::STORAGE
@@ -1268,7 +1268,7 @@ impl Composite {
         // A binding holds something, even where nothing waits.
         let work = engine.work.of(engine, size.max(16));
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let [left, top, right, bottom] = extent.map(|edge| edge as u32);
         let mut passes = 0;

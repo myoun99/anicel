@@ -146,7 +146,9 @@ pub unsafe extern "C" fn gpu_engine_plugin_open(
 ) -> *mut Plugin {
     // SAFETY: see the function's contract.
     let (engine, source) = unsafe { (&*engine, std::slice::from_raw_parts(source, length)) };
-    opened(engine, source, cut).map_or(std::ptr::null_mut(), |plugin| Box::into_raw(Box::new(plugin)))
+    engine.on_a_thread(|| {
+        opened(engine, source, cut).map_or(std::ptr::null_mut(), |plugin| Box::into_raw(Box::new(plugin)))
+    })
 }
 
 fn opened(engine: &Engine, source: &[u8], cut: bool) -> Option<Plugin> {
@@ -257,27 +259,29 @@ pub unsafe extern "C" fn gpu_engine_plugin_render(
             *moment.cast::<[f64; 4]>(),
         )
     };
-    let Some(areas) = rects.iter().map(|&rect| area(rect)).collect::<Option<Vec<_>>>() else {
-        return -1;
-    };
-    // SAFETY: see the function's contract — `pixels` and `output` hold
-    // what the rects say, each now known to be no negative area.
-    let (pixels, output) = unsafe {
-        (std::slice::from_raw_parts(pixels, areas.iter().sum()), std::slice::from_raw_parts_mut(output, areas[0]))
-    };
-    let Some(asked) = Asked::new(values, kinds, moment) else {
-        return -1;
-    };
-    let (input, layered) = pixels.split_at(areas[0]);
-    let rows = planes(layered, &rects[1..], rects[0]);
-    let frame = asked.frame(rects[0], share, input, &rows);
-    output.fill(0);
-    match plugin.render(engine, &frame, output) {
-        Some(Ok(())) => 0,
-        Some(Err(Cut)) => {
-            fail::<()>(format!("the plugin spent each pixel's share of {share} and was cut"));
-            -1
+    engine.on_thread(|| {
+        let Some(areas) = rects.iter().map(|&rect| area(rect)).collect::<Option<Vec<_>>>() else {
+            return -1;
+        };
+        // SAFETY: see the function's contract — `pixels` and `output` hold
+        // what the rects say, each now known to be no negative area.
+        let (pixels, output) = unsafe {
+            (std::slice::from_raw_parts(pixels, areas.iter().sum()), std::slice::from_raw_parts_mut(output, areas[0]))
+        };
+        let Some(asked) = Asked::new(values, kinds, moment) else {
+            return -1;
+        };
+        let (input, layered) = pixels.split_at(areas[0]);
+        let rows = planes(layered, &rects[1..], rects[0]);
+        let frame = asked.frame(rects[0], share, input, &rows);
+        output.fill(0);
+        match plugin.render(engine, &frame, output) {
+            Some(Ok(())) => 0,
+            Some(Err(Cut)) => {
+                fail::<()>(format!("the plugin spent each pixel's share of {share} and was cut"));
+                -1
+            }
+            None => -1,
         }
-        None => -1,
-    }
+    })
 }

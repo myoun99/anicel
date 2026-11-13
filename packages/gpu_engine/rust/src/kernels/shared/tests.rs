@@ -83,7 +83,7 @@ fn dispatch(
     words: usize,
 ) -> Vec<u32> {
     let engine = rig().engine;
-    let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let results = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("shared results"),
         size: (words.max(1) * 4) as u64,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
@@ -1029,7 +1029,7 @@ fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
     ];
     let reader = pipeline(engine, &kernel, "read_pages");
     let asks = storage(engine, &[table[3], 2, table[1], 1, table[0], 0, table[2], 1]);
-    let got = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let got = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("page words"),
         size: 16,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
@@ -1139,7 +1139,7 @@ fn runs_under_a_selection_reach_no_more_tile_rows_than_tiles() {
 #[test]
 fn a_plane_past_a_binding_or_a_dispatch_past_its_groups_is_refused() {
     let engine = first_engine();
-    let limits = engine.device.limits();
+    let limits = engine.device().limits();
     let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
     let most = limits.max_compute_workgroups_per_dimension;
     let none = std::iter::empty;
@@ -1158,7 +1158,7 @@ fn a_plane_past_a_binding_or_a_dispatch_past_its_groups_is_refused() {
 #[test]
 fn a_pass_takes_the_tiles_its_binding_holds_past_its_own() {
     let engine = first_engine();
-    let limits = engine.device.limits();
+    let limits = engine.device().limits();
     let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
     let reach = u64::from(limits.max_compute_workgroups_per_dimension);
     let fixed = 4096;

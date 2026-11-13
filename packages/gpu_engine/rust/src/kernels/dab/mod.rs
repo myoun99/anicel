@@ -337,12 +337,12 @@ impl Plans {
                 (placed, floor) = (HashMap::new(), held);
                 placing(&textures, &mut placed, &mut floor)?;
                 let words = HEAD_WORDS + planned_with_more(&placed)?.frame.len() + held;
-                let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
+                let most = engine.device().limits().max_storage_buffer_binding_size as usize / 4;
                 if words > most {
                     return fail(format!("a plan of {words} words exceeds a binding's {most}"));
                 }
                 self.capacity = (2 * words).min(most);
-                self.buffer = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
+                self.buffer = Some(engine.device().create_buffer(&wgpu::BufferDescriptor {
                     label: Some("dab plan"),
                     size: self.capacity as u64 * 4,
                     // A uniform too: a pile's passes' own words are on it.
@@ -424,7 +424,7 @@ impl Dabs {
         }
         // A pass a run of the tiles, in their order: on no more pages than it
         // binds, and no more tiles than a dispatch reaches.
-        let most = engine.device.limits().max_compute_workgroups_per_dimension as usize;
+        let most = engine.device().limits().max_compute_workgroups_per_dimension as usize;
         let runs = runs(tiles.iter().map(|tile| Some(tile.at.page)), None, pages_per_pass, most);
         // Each tile's k: its page's binding among its run's.
         let ks: Option<Vec<u32>> = runs
@@ -442,7 +442,7 @@ impl Dabs {
         // page whole, of 106 to 121 (11-06, the main PC, by turns). The
         // second of two such uniforms, the other a blur dab's dispatches'
         // (blur.rs).
-        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
+        let stride = engine.device().limits().min_uniform_buffer_offset_alignment as usize / 4;
         let runs_at = Cell::new(0);
         let plan = self.plans.write(engine, tiles, dabs, paper, second, |plan| {
             let ks_at = plan.end();

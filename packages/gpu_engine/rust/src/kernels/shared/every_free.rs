@@ -72,7 +72,7 @@ fn gives_back<T>(name: &str, made: *mut T, free: unsafe extern "C" fn(*mut T)) {
 /// A run's output tiles, one of them, as a box the app frees.
 fn composited() -> Composited {
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let out = first_engine().device.create_buffer(&wgpu::BufferDescriptor {
+    let out = first_engine().device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("frees' composited"),
         size: TILE_TEXELS * 4,
         usage,

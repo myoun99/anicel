@@ -75,7 +75,7 @@ impl WavePeaks {
         }
         let levels = buckets.ilog2() as usize + 1;
         let bytes = (lanes.len() * levels * buckets).div_ceil(2) * 4;
-        let most = engine.device.limits().max_storage_buffer_binding_size as usize;
+        let most = engine.device().limits().max_storage_buffer_binding_size as usize;
         if bytes > most {
             return fail(format!("a table of {bytes} bytes is past the {most} bound"));
         }
@@ -177,7 +177,7 @@ pub(crate) struct WaveTile {
 
 impl WaveTile {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let params = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let params = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("wave params"),
             size: 48,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -262,7 +262,7 @@ impl WaveTile {
         });
         let groups = flat((tile.width().div_ceil(8), tile.height().div_ceil(8)));
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encode_on(
             engine,

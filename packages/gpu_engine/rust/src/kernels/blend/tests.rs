@@ -92,7 +92,7 @@ fn run(cases: &[(u32, Rgba, Rgba)]) -> Vec<Rgba> {
         .collect();
     let input = engine.filled("blend cases", &words, wgpu::BufferUsages::STORAGE);
     let size = (cases.len() * 16) as u64;
-    let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let results = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("blend results"),
         size,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,

@@ -201,7 +201,9 @@ pub unsafe extern "C" fn gpu_engine_dab_texture_free(texture: *mut Texture) {
 pub unsafe extern "C" fn gpu_engine_stroke_new(engine: *const Engine) -> *mut Stroke {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Stroke::new(engine).map_or(std::ptr::null_mut(), |stroke| Box::into_raw(Box::new(stroke)))
+    engine.on_a_thread(|| {
+        Stroke::new(engine).map_or(std::ptr::null_mut(), |stroke| Box::into_raw(Box::new(stroke)))
+    })
 }
 
 /// # Safety
@@ -232,7 +234,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_bytes(stroke: *const Stroke) -> u64 {
 pub unsafe extern "C" fn gpu_engine_stroke_clear(stroke: *mut Stroke, engine: *const Engine) {
     // SAFETY: see the function's contract.
     let (stroke, engine) = unsafe { (&mut *stroke, &*engine) };
-    stroke.clear(engine);
+    engine.on_thread(|| {
+        stroke.clear(engine);
+    })
 }
 
 /// Piles `dabs`, `count` of them, in their order, over the paper — `paper`,
@@ -259,11 +263,13 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
     // SAFETY: see the function's contract.
     let (stroke, engine, specs) =
         unsafe { (&mut *stroke, &*engine, std::slice::from_raw_parts(dabs, count)) };
-    // SAFETY: see the function's contract.
-    let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
-    let second = (second_mode != -1).then_some((second_mode as u32, second_density));
-    // SAFETY: a spec is as `DabSpec` says.
-    unsafe { with_dabs(specs, |dabs| stroke.pile(engine, dabs, paper.as_ref(), second).is_some()) }
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
+        let second = (second_mode != -1).then_some((second_mode as u32, second_density));
+        // SAFETY: a spec is as `DabSpec` says.
+        unsafe { with_dabs(specs, |dabs| stroke.pile(engine, dabs, paper.as_ref(), second).is_some()) }
+    })
 }
 
 /// The blur brush's kernels, compiled — on any thread. Null on failure; see
@@ -275,7 +281,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_pile(
 pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blurs {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| Box::into_raw(Box::new(blurs)))
+    engine.on_a_thread(|| {
+        Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| Box::into_raw(Box::new(blurs)))
+    })
 }
 
 /// Compiles the blur brush's strips' kernels, the engine's to keep
@@ -287,7 +295,8 @@ pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blu
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_blurs_compile_strips(engine: *const Engine) -> bool {
     // SAFETY: see the function's contract.
-    Blurs::compile_strips(unsafe { &*engine }).is_some()
+    let engine = unsafe { &*engine };
+    engine.on_a_thread(|| Blurs::compile_strips(engine).is_some())
 }
 
 /// Whether a stroke of `blurs` goes by strips: the engine has their
@@ -348,9 +357,11 @@ pub unsafe extern "C" fn gpu_engine_stroke_reach_blur(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (stroke, engine) = unsafe { (&mut *stroke, &*engine) };
-    // SAFETY: see the function's contract.
-    let met = unsafe { with_rubs(dabs, radii, count, |rubs| stroke.reach_blur(engine, rubs)) };
-    met.map_or(-1, |met| met as isize)
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let met = unsafe { with_rubs(dabs, radii, count, |rubs| stroke.reach_blur(engine, rubs)) };
+        met.map_or(-1, |met| met as isize)
+    })
 }
 
 /// Writes the column and the row of each tile the last
@@ -399,20 +410,22 @@ pub unsafe extern "C" fn gpu_engine_stroke_rub(
     // SAFETY: see the function's contract.
     let (stroke, engine, blurs, composite, pool) =
         unsafe { (&mut *stroke, &*engine, &mut *blurs, &*composite, &*pool) };
-    // SAFETY: see the function's contract.
-    let under: Vec<Option<TileAt>> = unsafe { std::slice::from_raw_parts(under, met) }
-        .iter()
-        .map(|&word| TileAt::of_word(word))
-        .collect();
-    // SAFETY: see the function's contract.
-    let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
-    let tools = (blurs, composite, pool.pages());
-    // SAFETY: see the function's contract.
-    unsafe {
-        with_rubs(dabs, radii, count, |rubs| {
-            stroke.rub(engine, tools, &under, rubs, paper.as_ref()).is_some()
-        })
-    }
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let under: Vec<Option<TileAt>> = unsafe { std::slice::from_raw_parts(under, met) }
+            .iter()
+            .map(|&word| TileAt::of_word(word))
+            .collect();
+        // SAFETY: see the function's contract.
+        let paper = unsafe { paper_of(paper, paper_scale, paper_height) };
+        let tools = (blurs, composite, pool.pages());
+        // SAFETY: see the function's contract.
+        unsafe {
+            with_rubs(dabs, radii, count, |rubs| {
+                stroke.rub(engine, tools, &under, rubs, paper.as_ref()).is_some()
+            })
+        }
+    })
 }
 
 /// Finishes `stroke`'s picture on the `count` tiles asked — `asks` their
@@ -443,15 +456,17 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
     // SAFETY: see the function's contract.
     let (stroke, engine, blurs, composite, pool) =
         unsafe { (&*stroke, &*engine, &*blurs, &*composite, &mut *pool) };
-    // SAFETY: see the function's contract.
-    let asked = unsafe { asked_of(asks, under, count) };
-    // SAFETY: see the function's contract.
-    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
-    let cover = Cover { opacity, mask: mask.as_ref() };
-    let kit = (blurs, composite, pool, Cel(cel));
-    let landed = stroke.land_blur(engine, kit, &asked, cover, compared);
-    // SAFETY: see the function's contract.
-    unsafe { reported(landed, places, changes) }
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let asked = unsafe { asked_of(asks, under, count) };
+        // SAFETY: see the function's contract.
+        let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+        let cover = Cover { opacity, mask: mask.as_ref() };
+        let kit = (blurs, composite, pool, Cel(cel));
+        let landed = stroke.land_blur(engine, kit, &asked, cover, compared);
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
 }
 
 /// Lays `stroke` on the `count` tiles asked — `asks` their column and row,
@@ -485,14 +500,16 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
     // SAFETY: see the function's contract.
     let (stroke, engine, composite, pool) =
         unsafe { (&*stroke, &*engine, &*composite, &mut *pool) };
-    // SAFETY: see the function's contract.
-    let asked = unsafe { asked_of(asks, under, count) };
-    // SAFETY: see the function's contract.
-    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
-    let laid = Laid { opacity, mode, mask: mask.as_ref() };
-    let landed = stroke.land(engine, (composite, pool, Cel(cel)), &asked, &laid, compared);
-    // SAFETY: see the function's contract.
-    unsafe { reported(landed, places, changes) }
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let asked = unsafe { asked_of(asks, under, count) };
+        // SAFETY: see the function's contract.
+        let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        let landed = stroke.land(engine, (composite, pool, Cel(cel)), &asked, &laid, compared);
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
 }
 
 /// The tiles a landing is asked: `asks` their column and row, `under` the
@@ -568,13 +585,15 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
     let bytes = u64::from(width) * u64::from(height) * 4;
     // SAFETY: see the function's contract.
     let (engine, rgba) = unsafe { (&*engine, std::slice::from_raw_parts(rgba, bytes as usize)) };
-    let pixels = engine.filled(
-        "stamp picture",
-        rgba,
-        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-    );
-    STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
-    Box::into_raw(Box::new(StampPicture { pixels, size: (width, height) }))
+    engine.on_thread(|| {
+        let pixels = engine.filled(
+            "stamp picture",
+            rgba,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        );
+        STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
+        Box::into_raw(Box::new(StampPicture { pixels, size: (width, height) }))
+    })
 }
 
 /// `picture` carried through `inverse` — an output's point to `picture`'s,
@@ -612,20 +631,22 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_carried(
     // SAFETY: see the function's contract.
     let (landing, engine, picture, inverse) =
         unsafe { (&*landing, &*engine, &*picture, *inverse.cast::<[f64; 9]>()) };
-    let Some(sampled) = sampling(sampling_id) else {
-        return std::ptr::null_mut();
-    };
-    if u64::from(left) + u64::from(width) > u64::from(columns)
-        || u64::from(top) + u64::from(height) > u64::from(rows)
-    {
-        let past = format!("a window of {width}x{height} at ({left}, {top}) past an output of {columns}x{rows}");
-        fail::<()>(past);
-        return std::ptr::null_mut();
-    }
-    let map = ResampleMap::new(inverse, radius_floor, sampled, columns, rows);
-    let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
-    let window = Window { at: (left as i32, top as i32), size: (width, height) };
-    kept(landing.carried(engine, &boxed, map.as_ref(), window), (width, height))
+    engine.on_thread(|| {
+        let Some(sampled) = sampling(sampling_id) else {
+            return std::ptr::null_mut();
+        };
+        if u64::from(left) + u64::from(width) > u64::from(columns)
+            || u64::from(top) + u64::from(height) > u64::from(rows)
+        {
+            let past = format!("a window of {width}x{height} at ({left}, {top}) past an output of {columns}x{rows}");
+            fail::<()>(past);
+            return std::ptr::null_mut();
+        }
+        let map = ResampleMap::new(inverse, radius_floor, sampled, columns, rows);
+        let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+        let window = Window { at: (left as i32, top as i32), size: (width, height) };
+        kept(landing.carried(engine, &boxed, map.as_ref(), window), (width, height))
+    })
 }
 
 /// `picture`, its top-left pixel at (`source_left`, `source_top`) on the
@@ -673,15 +694,17 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_meshed(
             std::slice::from_raw_parts(destination.cast::<[f64; 2]>(), points),
         )
     };
-    let Some(sampled) = sampling(sampling_id) else {
-        return std::ptr::null_mut();
-    };
-    let mesh = MeshGrid { columns, rows, source: source.to_vec(), destination: destination.to_vec() };
-    let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
-    let window = Window { at: (left, top), size: (width, height) };
-    let at = (source_left, source_top);
-    let made = landing.meshed(engine, &mesh, (&boxed, at), window, (radius_floor, sampled));
-    kept(made, (width, height))
+    engine.on_thread(|| {
+        let Some(sampled) = sampling(sampling_id) else {
+            return std::ptr::null_mut();
+        };
+        let mesh = MeshGrid { columns, rows, source: source.to_vec(), destination: destination.to_vec() };
+        let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+        let window = Window { at: (left, top), size: (width, height) };
+        let at = (source_left, source_top);
+        let made = landing.meshed(engine, &mesh, (&boxed, at), window, (radius_floor, sampled));
+        kept(made, (width, height))
+    })
 }
 
 /// A picture of `pixels`, `size` across and down, counted — or null where
@@ -709,12 +732,14 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, picture) = unsafe { (&*engine, &*picture) };
-    let Some(read) = engine.read_buffer(&picture.pixels) else {
-        return false;
-    };
-    // SAFETY: see the function's contract; a picture's buffer is its box.
-    unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), into, read.len()) };
-    true
+    engine.on_thread(|| {
+        let Some(read) = engine.read_buffer(&picture.pixels) else {
+            return false;
+        };
+        // SAFETY: see the function's contract; a picture's buffer is its box.
+        unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), into, read.len()) };
+        true
+    })
 }
 
 /// # Safety
@@ -744,7 +769,9 @@ pub extern "C" fn gpu_engine_stamp_picture_bytes() -> u64 {
 pub unsafe extern "C" fn gpu_engine_stamp_landing_new(engine: *const Engine) -> *mut StampLanding {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    StampLanding::new(engine).map_or(std::ptr::null_mut(), |landing| Box::into_raw(Box::new(landing)))
+    engine.on_a_thread(|| {
+        StampLanding::new(engine).map_or(std::ptr::null_mut(), |landing| Box::into_raw(Box::new(landing)))
+    })
 }
 
 /// # Safety
@@ -790,16 +817,18 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     let (landing, engine, composite, pool, picture, within) = unsafe {
         (&*landing, &*engine, &*composite, &mut *pool, &*picture, *within.cast::<[i32; 4]>())
     };
-    // SAFETY: see the function's contract.
-    let asked = unsafe { asked_of(asks, under, count) };
-    // SAFETY: see the function's contract.
-    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
-    let laid = Laid { opacity, mode, mask: mask.as_ref() };
-    let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
-    let source = Source::Picture { picture: &boxed, at: (left, top), within };
-    let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
-    // SAFETY: see the function's contract.
-    unsafe { reported(landed, places, changes) }
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let asked = unsafe { asked_of(asks, under, count) };
+        // SAFETY: see the function's contract.
+        let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+        let source = Source::Picture { picture: &boxed, at: (left, top), within };
+        let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
 }
 
 /// Lays `coverage` in `colour` — red, green and blue its low three bytes —

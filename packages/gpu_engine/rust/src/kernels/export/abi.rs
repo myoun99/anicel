@@ -115,7 +115,9 @@ pub unsafe extern "C" fn gpu_engine_export_free(export: *mut Export) {
 pub unsafe extern "C" fn gpu_engine_export_warm(export: *const Export, engine: *const Engine, bgra: bool) {
     // SAFETY: see the function's contract.
     let (export, engine) = unsafe { (&*export, &*engine) };
-    export.lay.warm(engine, bgra);
+    engine.on_a_thread(|| {
+        export.lay.warm(engine, bgra);
+    })
 }
 
 /// The picture of `width` × `height` from the top-left texel of
@@ -135,8 +137,10 @@ pub unsafe extern "C" fn gpu_engine_export_shown(
 ) -> *mut Shown {
     // SAFETY: see the function's contract.
     let (engine, surface) = unsafe { (&*engine, &*surface) };
-    Shown::of(engine, &surface.texture, Picture { width, height })
-        .map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+    engine.on_thread(|| {
+        Shown::of(engine, &surface.texture, Picture { width, height })
+            .map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+    })
 }
 
 /// # Safety
@@ -167,12 +171,14 @@ pub unsafe extern "C" fn gpu_engine_export_blank(
 ) -> *mut Shown {
     // SAFETY: see the function's contract.
     let (export, engine) = unsafe { (&*export, &*engine) };
-    Shown::blank(engine, Picture { width, height })
-        .and_then(|frame| {
-            export.lay.run(engine, &frame, Source::Solid(ground), u16::MAX, None, None)?;
-            Some(frame)
-        })
-        .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
+    engine.on_thread(|| {
+        Shown::blank(engine, Picture { width, height })
+            .and_then(|frame| {
+                export.lay.run(engine, &frame, Source::Solid(ground), u16::MAX, None, None)?;
+                Some(frame)
+            })
+            .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
+    })
 }
 
 /// The `length` bytes at `bytes`: none where it is null.
@@ -205,8 +211,10 @@ pub unsafe extern "C" fn gpu_engine_export_upload(
 ) -> *mut Shown {
     // SAFETY: see the function's contract.
     let (engine, rgba) = unsafe { (&*engine, held_bytes(rgba, length)) };
-    Shown::uploaded(engine, rgba, Picture { width, height })
-        .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
+    engine.on_thread(|| {
+        Shown::uploaded(engine, rgba, Picture { width, height })
+            .map_or(std::ptr::null_mut(), |frame| Box::into_raw(Box::new(frame)))
+    })
 }
 
 /// The `length` bytes at `alpha` — a byte for each of `width` × `height`
@@ -226,8 +234,10 @@ pub unsafe extern "C" fn gpu_engine_export_cover(
 ) -> *mut Cover {
     // SAFETY: see the function's contract.
     let (engine, alpha) = unsafe { (&*engine, held_bytes(alpha, length)) };
-    Cover::of(engine, alpha, Picture { width, height })
-        .map_or(std::ptr::null_mut(), |cover| Box::into_raw(Box::new(cover)))
+    engine.on_thread(|| {
+        Cover::of(engine, alpha, Picture { width, height })
+            .map_or(std::ptr::null_mut(), |cover| Box::into_raw(Box::new(cover)))
+    })
 }
 
 /// # Safety
@@ -286,9 +296,11 @@ pub unsafe extern "C" fn gpu_engine_export_lay(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (export, engine, onto, frame) = unsafe { (&*export, &*engine, &*onto, &*source) };
-    // SAFETY: see the function's contract.
-    let (cover, within) = unsafe { (cover.as_ref(), edges(within)) };
-    export.lay.run(engine, onto, Source::Frame { frame, x, y }, opacity, cover, within).is_some()
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let (cover, within) = unsafe { (cover.as_ref(), edges(within)) };
+        export.lay.run(engine, onto, Source::Frame { frame, x, y }, opacity, cover, within).is_some()
+    })
 }
 
 /// [`gpu_engine_export_lay`] of one colour over the whole of `onto` —
@@ -309,9 +321,11 @@ pub unsafe extern "C" fn gpu_engine_export_lay_colour(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (export, engine, onto) = unsafe { (&*export, &*engine, &*onto) };
-    // SAFETY: see the function's contract.
-    let (cover, within) = unsafe { (cover.as_ref(), edges(within)) };
-    export.lay.run(engine, onto, Source::Solid(colour), opacity, cover, within).is_some()
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let (cover, within) = unsafe { (cover.as_ref(), edges(within)) };
+        export.lay.run(engine, onto, Source::Solid(colour), opacity, cover, within).is_some()
+    })
 }
 
 /// A run's output tiles, as the conversions read them.
@@ -362,7 +376,9 @@ pub unsafe extern "C" fn gpu_engine_export_nv12(
     shape: *const u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { nv12(export, engine, tiles(frame), shape) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { nv12(export, engine, tiles(frame), shape) })
 }
 
 /// [`nv12`] of a frame shown.
@@ -377,7 +393,9 @@ pub unsafe extern "C" fn gpu_engine_export_shown_nv12(
     shape: *const u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { nv12(export, engine, shown(frame), shape) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { nv12(export, engine, shown(frame), shape) })
 }
 
 /// Lays the picture of `picture` in `frame` over `ground` — red, green and
@@ -426,7 +444,9 @@ pub unsafe extern "C" fn gpu_engine_export_over_ground(
     cut: i32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { over_ground(export, engine, tiles(frame), Picture { width, height }, ground, cut) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { over_ground(export, engine, tiles(frame), Picture { width, height }, ground, cut) })
 }
 
 /// [`over_ground`] of a frame shown.
@@ -444,7 +464,9 @@ pub unsafe extern "C" fn gpu_engine_export_shown_over_ground(
     cut: i32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { over_ground(export, engine, shown(frame), Picture { width, height }, ground, cut) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { over_ground(export, engine, shown(frame), Picture { width, height }, ground, cut) })
 }
 
 /// Marks the pixels of `picture` in `frame` whose alpha is under `cut`:
@@ -474,7 +496,9 @@ pub unsafe extern "C" fn gpu_engine_export_clear(
     cut: u8,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { clear(export, engine, tiles(frame), Picture { width, height }, cut) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { clear(export, engine, tiles(frame), Picture { width, height }, cut) })
 }
 
 /// [`clear`] of a frame shown.
@@ -491,7 +515,9 @@ pub unsafe extern "C" fn gpu_engine_export_shown_clear(
     cut: u8,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { clear(export, engine, shown(frame), Picture { width, height }, cut) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { clear(export, engine, shown(frame), Picture { width, height }, cut) })
 }
 
 /// Asks whether every pixel of `picture` in `frame` is opaque: four bytes,
@@ -519,7 +545,9 @@ pub unsafe extern "C" fn gpu_engine_export_opaque(
     height: u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { opaque(export, engine, tiles(frame), Picture { width, height }) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { opaque(export, engine, tiles(frame), Picture { width, height }) })
 }
 
 /// [`opaque`] of a frame shown.
@@ -535,7 +563,9 @@ pub unsafe extern "C" fn gpu_engine_export_shown_opaque(
     height: u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { opaque(export, engine, shown(frame), Picture { width, height }) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { opaque(export, engine, shown(frame), Picture { width, height }) })
 }
 
 /// The pixels of the picture of `width` × `height` in `frame` straight —
@@ -556,8 +586,10 @@ pub unsafe extern "C" fn gpu_engine_export_shown_straight(
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
     let (export, engine, frame) = unsafe { (&*export, &*engine, shown(frame)) };
-    let picture = Picture { width, height };
-    readout(export.straight.run(engine, frame, picture), picture.rgba_bytes())
+    engine.on_thread(|| {
+        let picture = Picture { width, height };
+        readout(export.straight.run(engine, frame, picture), picture.rgba_bytes())
+    })
 }
 
 /// Filters the rows of a PNG of `picture` in `frame`, four bytes a pixel,
@@ -586,7 +618,9 @@ pub unsafe extern "C" fn gpu_engine_export_png_rgba(
     height: u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { png_rgba(export, engine, tiles(frame), Picture { width, height }) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { png_rgba(export, engine, tiles(frame), Picture { width, height }) })
 }
 
 /// [`png_rgba`] of a frame shown.
@@ -602,7 +636,9 @@ pub unsafe extern "C" fn gpu_engine_export_shown_png_rgba(
     height: u32,
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
-    unsafe { png_rgba(export, engine, shown(frame), Picture { width, height }) }
+    let engine = unsafe { &*engine };
+    // SAFETY: see the function's contract.
+    engine.on_thread(|| unsafe { png_rgba(export, engine, shown(frame), Picture { width, height }) })
 }
 
 /// [`png_rgba`] for a PNG of three bytes a pixel, from `rgb` — what an
@@ -621,8 +657,10 @@ pub unsafe extern "C" fn gpu_engine_export_png_rgb(
 ) -> *mut Readout {
     // SAFETY: see the function's contract.
     let (export, engine, rgb) = unsafe { (&*export, &*engine, &*rgb) };
-    let picture = Picture { width, height };
-    readout(export.png.rgb(engine, &rgb.out, picture), picture.png_bytes(3))
+    engine.on_thread(|| {
+        let picture = Picture { width, height };
+        readout(export.png.rgb(engine, &rgb.out, picture), picture.png_bytes(3))
+    })
 }
 
 /// Where each row of a PNG's filtered rows starts from the last's, for a
@@ -653,7 +691,9 @@ pub unsafe extern "C" fn gpu_engine_readout_bytes(readout: *const Readout) -> u6
 pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: *mut Readout) -> bool {
     // SAFETY: see the function's contract.
     let (engine, readout) = unsafe { (&*engine, &mut *readout) };
-    readout.map(engine).is_some()
+    engine.on_thread(|| {
+        readout.map(engine).is_some()
+    })
 }
 
 /// [`gpu_engine_readout_map`] with no wait for its caller, who goes on:
@@ -677,8 +717,10 @@ pub unsafe extern "C" fn gpu_engine_readout_map_then(
 ) {
     // SAFETY: see the function's contract.
     let (engine, readout) = unsafe { (&*engine, &mut *readout) };
-    // SAFETY: the readout is the caller's to leave alone (the contract).
-    unsafe { readout.map_then(engine, move || then(wait)) };
+    engine.on_thread(|| {
+        // SAFETY: the readout is the caller's to leave alone (the contract).
+        unsafe { readout.map_then(engine, move || then(wait)) };
+    })
 }
 
 /// Copies `rows` rows of `row_bytes` from the mapped bytes of `readout` —

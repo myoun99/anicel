@@ -24,7 +24,9 @@ use super::{GridPicture, GridTile, atlas_of};
 pub unsafe extern "C" fn gpu_engine_grid_new(engine: *const Engine) -> *mut GridTile {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    Box::into_raw(Box::new(GridTile::for_pictures(engine)))
+    engine.on_a_thread(|| {
+        Box::into_raw(Box::new(GridTile::for_pictures(engine)))
+    })
 }
 
 /// # Safety
@@ -46,7 +48,9 @@ pub unsafe extern "C" fn gpu_engine_grid_free(grid: *mut GridTile) {
 pub unsafe extern "C" fn gpu_engine_grid_picture_new(engine: *const Engine, width: u32, height: u32) -> *mut GridPicture {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    GridPicture::new(engine, width, height).map_or(std::ptr::null_mut(), |picture| Box::into_raw(Box::new(picture)))
+    engine.on_thread(|| {
+        GridPicture::new(engine, width, height).map_or(std::ptr::null_mut(), |picture| Box::into_raw(Box::new(picture)))
+    })
 }
 
 /// # Safety
@@ -74,13 +78,15 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, picture) = unsafe { (&*engine, &*picture) };
-    let Some(read) = engine.read_texture(&picture.texture) else {
-        return false;
-    };
-    let count = read.len().min(capacity);
-    // SAFETY: `bytes` holds `capacity`, and `count` is no more.
-    unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
-    true
+    engine.on_thread(|| {
+        let Some(read) = engine.read_texture(&picture.texture) else {
+            return false;
+        };
+        let count = read.len().min(capacity);
+        // SAFETY: `bytes` holds `capacity`, and `count` is no more.
+        unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
+        true
+    })
 }
 
 /// Draws `ops` — `count` words — into `picture` over clear, its letters
@@ -109,18 +115,20 @@ pub unsafe extern "C" fn gpu_engine_grid_draw(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (grid, engine, picture) = unsafe { (&mut *grid, &*engine, &*picture) };
-    // SAFETY: see the function's contract.
-    let ops = unsafe { std::slice::from_raw_parts(ops, count) };
-    let bytes = match atlas_width as usize * atlas_height as usize {
-        // No atlas: its pointer may be null, which no slice may be.
-        0 => &[][..],
+    engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        length => unsafe { std::slice::from_raw_parts(atlas, length) },
-    };
-    let Some(atlas) = atlas_of(engine, bytes, atlas_width, atlas_height) else {
-        return false;
-    };
-    grid.run(engine, &picture.texture, 0, ops, atlas.as_ref()).is_some()
+        let ops = unsafe { std::slice::from_raw_parts(ops, count) };
+        let bytes = match atlas_width as usize * atlas_height as usize {
+            // No atlas: its pointer may be null, which no slice may be.
+            0 => &[][..],
+            // SAFETY: see the function's contract.
+            length => unsafe { std::slice::from_raw_parts(atlas, length) },
+        };
+        let Some(atlas) = atlas_of(engine, bytes, atlas_width, atlas_height) else {
+            return false;
+        };
+        grid.run(engine, &picture.texture, 0, ops, atlas.as_ref()).is_some()
+    })
 }
 
 /// The screen pass that lays tiles on a view's screen ([`GridLay`]),
@@ -143,7 +151,9 @@ pub extern "C" fn gpu_engine_grid_lay_new() -> *mut GridLay {
 pub unsafe extern "C" fn gpu_engine_grid_lay_ready(lay: *mut GridLay, engine: *const Engine, bgra: bool) {
     // SAFETY: see the function's contract.
     let (lay, engine) = unsafe { (&mut *lay, &*engine) };
-    lay.ready(engine, surface_format(bgra));
+    engine.on_thread(|| {
+        lay.ready(engine, surface_format(bgra));
+    })
 }
 
 /// # Safety
@@ -179,23 +189,25 @@ pub unsafe extern "C" fn gpu_engine_grid_lay(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (lay, engine, target) = unsafe { (&mut *lay, &*engine, &*target) };
-    // SAFETY: see the function's contract.
-    let (rect, pictures, boxes) = unsafe {
-        (
-            *rect.cast::<[u32; 4]>(),
-            std::slice::from_raw_parts(pictures, count),
-            std::slice::from_raw_parts(boxes, 8 * count),
-        )
-    };
-    let laid: Vec<Laid> = pictures
-        .iter()
-        .zip(boxes.chunks_exact(8))
-        .map(|(&picture, edges)| Laid {
-            // SAFETY: each tile is live (the function's contract).
-            picture: unsafe { &*picture },
-            from: [edges[0], edges[1], edges[2], edges[3]],
-            onto: [edges[4], edges[5], edges[6], edges[7]],
-        })
-        .collect();
-    lay.lay(engine, target, rect, &laid).is_some()
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let (rect, pictures, boxes) = unsafe {
+            (
+                *rect.cast::<[u32; 4]>(),
+                std::slice::from_raw_parts(pictures, count),
+                std::slice::from_raw_parts(boxes, 8 * count),
+            )
+        };
+        let laid: Vec<Laid> = pictures
+            .iter()
+            .zip(boxes.chunks_exact(8))
+            .map(|(&picture, edges)| Laid {
+                // SAFETY: each tile is live (the function's contract).
+                picture: unsafe { &*picture },
+                from: [edges[0], edges[1], edges[2], edges[3]],
+                onto: [edges[4], edges[5], edges[6], edges[7]],
+            })
+            .collect();
+        lay.lay(engine, target, rect, &laid).is_some()
+    })
 }

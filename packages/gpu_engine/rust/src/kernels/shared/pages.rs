@@ -74,7 +74,7 @@ impl Pages {
         if per_pass == 0 {
             return fail("the buffers a stage binds leave no page to bind");
         }
-        let blank = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let blank = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("blank page"),
             size: 16,
             usage: wgpu::BufferUsages::STORAGE,
@@ -86,7 +86,7 @@ impl Pages {
     /// How many buffers a stage binds past a kernel's `own`: what the
     /// storage buffers leave, and what the buffers of every kind leave.
     pub(crate) fn room(engine: &Engine, own: Own) -> usize {
-        let limits = engine.device.limits();
+        let limits = engine.device().limits();
         let storage = limits.max_storage_buffers_per_shader_stage.saturating_sub(own.storage);
         let every = limits.max_buffers_and_acceleration_structures_per_shader_stage;
         storage.min(every.saturating_sub(own.storage + own.uniform)) as usize

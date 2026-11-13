@@ -25,7 +25,7 @@ pub(super) fn shown(width: u32, height: u32, bgra: bool, pixel: impl Fn(u32, u32
         height: height + 3,
         depth_or_array_layers: 1,
     };
-    let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+    let texture = engine.device().create_texture(&wgpu::TextureDescriptor {
         label: Some("test shown"),
         size,
         mip_level_count: 1,

@@ -558,7 +558,7 @@ impl Blurs {
             }
             planned.push(Planned::InTurn(index..index + 1));
         }
-        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
+        let stride = engine.device().limits().min_uniform_buffer_offset_alignment as usize / 4;
         let steps_at = Cell::new(0);
         let plan = self.plans.write(engine, tiles, &white, paper, None, |plan| {
             let mut words = Vec::new();
@@ -739,7 +739,7 @@ impl Blurs {
         let rows: Option<Vec<i32>> = mask.map(|_| tiles.iter().map(|tile| tile.row).collect());
         let runs = runs(on, rows.as_deref(), pages_per_pass, most);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let given: Vec<wgpu::Buffer> = runs
             .iter()

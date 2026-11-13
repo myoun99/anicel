@@ -129,7 +129,7 @@ impl GridLay {
                 Encoded { pipeline: if picture.is_some() { &tile } else { &clear }, bound, groups: flat(*groups) }
             })
             .collect();
-        let mut encoder = engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let (clear, tiles) = encoded.split_at(1);
         encode_on(engine, &mut encoder, clear);
         land_storage_writes(&mut encoder, target);

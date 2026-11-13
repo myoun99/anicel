@@ -15,7 +15,7 @@ const BGRA: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 const RGBA: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 fn filled(engine: &Engine, format: wgpu::TextureFormat, seed: u32) -> Vec<u8> {
-    let texture = storage_texture(&engine.device, WIDTH, HEIGHT, format);
+    let texture = storage_texture(engine.device(), WIDTH, HEIGHT, format);
     Fill::new(engine).run(engine, &texture, seed).expect("fill");
     engine.read_texture(&texture).expect("read back")
 }
@@ -24,7 +24,7 @@ fn filled(engine: &Engine, format: wgpu::TextureFormat, seed: u32) -> Vec<u8> {
 fn every_device_writes_the_pinned_bytes() {
     let engine = first_engine();
     let storable = engine
-        .device
+        .device()
         .features()
         .contains(wgpu::Features::BGRA8UNORM_STORAGE);
     assert!(storable, "this adapter cannot store to bgra8unorm");

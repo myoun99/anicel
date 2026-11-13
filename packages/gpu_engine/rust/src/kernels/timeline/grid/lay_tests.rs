@@ -61,7 +61,7 @@ fn at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
 fn a_tile_laid_at_whole_pixels_is_its_pixels_premultiplied() {
     let engine = first_engine();
     let tile = picture(engine, (3, 2), &[(0, 0, 2, 2, [200, 100, 50, 128]), (2, 0, 1, 2, RED)]);
-    let screen = storage_texture(&engine.device, 5, 4, RGBA);
+    let screen = storage_texture(engine.device(), 5, 4, RGBA);
     let laid = [Laid { picture: &tile, from: [0.0, 0.0, 3.0, 2.0], onto: [1.0, 1.0, 4.0, 3.0] }];
     let bytes = laid_on(engine, &screen, [0, 0, 5, 4], &laid);
     for (x, y) in [(1, 1), (2, 2)] {
@@ -77,7 +77,7 @@ fn a_tile_laid_at_whole_pixels_is_its_pixels_premultiplied() {
 fn a_pixel_is_laid_by_the_tile_whose_box_holds_its_centre() {
     let engine = first_engine();
     let (green, blue) = (plain(engine, (2, 1), GREEN), plain(engine, (2, 1), BLUE));
-    let screen = storage_texture(&engine.device, 4, 1, RGBA);
+    let screen = storage_texture(engine.device(), 4, 1, RGBA);
     // Pixel 1's centre, 1.5, is where the green box ends and the blue one
     // begins: it is the blue one's alone.
     let laid = [
@@ -93,7 +93,7 @@ fn a_pixel_is_laid_by_the_tile_whose_box_holds_its_centre() {
 fn a_stand_in_is_stretched_by_the_texel_each_centre_lands_on() {
     let engine = first_engine();
     let tile = picture(engine, (2, 1), &[(0, 0, 1, 1, RED), (1, 0, 1, 1, GREEN)]);
-    let screen = storage_texture(&engine.device, 6, 1, RGBA);
+    let screen = storage_texture(engine.device(), 6, 1, RGBA);
     // Twice over: the centres 0.5 · 1.5 land at 0.25 · 0.75, the red texel;
     // 2.5 · 3.5 at 1.25 · 1.75, the green. Then the green half alone, over
     // two pixels.
@@ -113,7 +113,7 @@ fn a_stand_in_is_stretched_by_the_texel_each_centre_lands_on() {
 fn tiles_laid_off_whole_pixels_join_with_no_seam() {
     let engine = first_engine();
     let (red, green) = (plain(engine, (3, 1), RED), plain(engine, (3, 1), GREEN));
-    let screen = storage_texture(&engine.device, 8, 1, RGBA);
+    let screen = storage_texture(engine.device(), 8, 1, RGBA);
     let third = 1.0 / 3.0;
     let laid = [
         Laid { picture: &red, from: [0.0, 0.0, 3.0, 1.0], onto: [third, 0.0, 3.0 + third, 1.0] },
@@ -137,7 +137,7 @@ fn strip_tile(engine: &Engine, down: bool, length: u32, colour: [u8; 4]) -> Grid
 /// `laid` over the pixels `span` of a strip, read back along it.
 fn strip_laid(engine: &Engine, down: bool, length: u32, span: Range<u32>, laid: &[Laid]) -> Vec<[u8; 4]> {
     let (width, height) = if down { (1, length) } else { (length, 1) };
-    let screen = storage_texture(&engine.device, width, height, RGBA);
+    let screen = storage_texture(engine.device(), width, height, RGBA);
     let rect = if down { [0, span.start, 1, span.end] } else { [span.start, 0, span.end, 1] };
     let bytes = laid_on(engine, &screen, rect, laid);
     span.map(|p| if down { at(&bytes, width, 0, p) } else { at(&bytes, width, p, 0) }).collect()
@@ -186,7 +186,7 @@ fn a_pixel_centred_a_hair_inside_a_tiles_far_edge_reads_the_tile() {
 fn what_no_tile_holds_is_made_clear_and_past_the_rect_is_left_as_it_was() {
     let engine = first_engine();
     let tile = plain(engine, (4, 1), RED);
-    let screen = storage_texture(&engine.device, 4, 1, RGBA);
+    let screen = storage_texture(engine.device(), 4, 1, RGBA);
     let whole = [Laid { picture: &tile, from: [0.0, 0.0, 4.0, 1.0], onto: [0.0, 0.0, 4.0, 1.0] }];
     laid_on(engine, &screen, [0, 0, 4, 1], &whole);
     let bytes = laid_on(engine, &screen, [1, 0, 3, 1], &[]);
@@ -198,7 +198,7 @@ fn what_no_tile_holds_is_made_clear_and_past_the_rect_is_left_as_it_was() {
 fn a_bgra_screen_holds_the_same_pixels_in_its_order() {
     let engine = first_engine();
     let tile = plain(engine, (1, 1), RED);
-    let screen = storage_texture(&engine.device, 1, 1, BGRA);
+    let screen = storage_texture(engine.device(), 1, 1, BGRA);
     let laid = [Laid { picture: &tile, from: [0.0, 0.0, 1.0, 1.0], onto: [0.0, 0.0, 1.0, 1.0] }];
     assert_eq!(laid_on(engine, &screen, [0, 0, 1, 1], &laid), [0, 0, 255, 255]);
 }
@@ -221,7 +221,7 @@ fn a_lay_lands_its_clear_before_it_lays_a_tile() {
 fn a_lay_past_its_screen_or_its_tile_is_refused_with_why() {
     let engine = first_engine();
     let tile = plain(engine, (2, 2), RED);
-    let screen = storage_texture(&engine.device, 4, 4, RGBA);
+    let screen = storage_texture(engine.device(), 4, 4, RGBA);
     let mut lay = GridLay::new();
     let one = |from: [f64; 4], onto: [f64; 4]| [Laid { picture: &tile, from, onto }];
     assert!(lay.lay(engine, &screen, [0, 0, 5, 4], &[]).is_none());
@@ -246,7 +246,7 @@ fn a_lay_waits_here_for_nothing_and_is_told_done() {
     let turn = a_device_of_its_own();
     let engine = turn.engine();
     let tile = plain(&engine, (2, 1), RED);
-    let screen = storage_texture(&engine.device, 4, 1, RGBA);
+    let screen = storage_texture(engine.device(), 4, 1, RGBA);
     let laid = [Laid { picture: &tile, from: [0.0, 0.0, 2.0, 1.0], onto: [1.0, 0.0, 3.0, 1.0] }];
     let mut lay = GridLay::new();
     lay.ready(&engine, RGBA);

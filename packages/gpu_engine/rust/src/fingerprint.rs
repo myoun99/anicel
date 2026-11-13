@@ -68,14 +68,16 @@ pub unsafe extern "C" fn gpu_engine_surface_fingerprint(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, surface) = unsafe { (&*engine, &*surface) };
-    match engine.read_texture(&surface.texture) {
-        Some(bytes) => {
-            // SAFETY: see the function's contract.
-            unsafe { *fingerprint = of(&bytes) };
-            true
+    engine.on_thread(|| {
+        match engine.read_texture(&surface.texture) {
+            Some(bytes) => {
+                // SAFETY: see the function's contract.
+                unsafe { *fingerprint = of(&bytes) };
+                true
+            }
+            None => false,
         }
-        None => false,
-    }
+    })
 }
 
 /// Reads the surface back into `out`, `length` bytes: its width × height
@@ -94,19 +96,21 @@ pub unsafe extern "C" fn gpu_engine_surface_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, surface) = unsafe { (&*engine, &*surface) };
-    let Some(bytes) = engine.read_texture(&surface.texture) else {
-        return false;
-    };
-    if bytes.len() != length {
-        return crate::fail::<()>(format!(
-            "a surface of {} bytes read into {length}",
-            bytes.len()
-        ))
-        .is_some();
-    }
-    // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
-    true
+    engine.on_thread(|| {
+        let Some(bytes) = engine.read_texture(&surface.texture) else {
+            return false;
+        };
+        if bytes.len() != length {
+            return crate::fail::<()>(format!(
+                "a surface of {} bytes read into {length}",
+                bytes.len()
+            ))
+            .is_some();
+        }
+        // SAFETY: `out` holds `length` writable bytes, and `bytes` as many.
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, length) };
+        true
+    })
 }
 
 #[cfg(test)]

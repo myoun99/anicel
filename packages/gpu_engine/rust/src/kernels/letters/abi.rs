@@ -335,19 +335,21 @@ pub unsafe extern "C" fn gpu_engine_letters_set(
     // SAFETY: see the function's contract.
     let (letters, engine, composite, faces, to_grid) =
         unsafe { (&*letters, &*engine, &*composite, &*faces, affine(to_grid)) };
-    let Some(to_grid) = to_grid else {
-        return std::ptr::null_mut();
-    };
-    let Some(lettered) = set(engine, composite, faces, to_grid, &letters.passes) else {
-        return std::ptr::null_mut();
-    };
-    let at = lettered.as_ref().map_or([0; 4], |lettered| {
-        let at = lettered.rect;
-        [at.x0, at.y0, at.columns as i32, at.rows as i32]
-    });
-    // SAFETY: `rect` holds four words.
-    unsafe { *rect.cast::<[i32; 4]>() = at };
-    lettered.map_or(std::ptr::null_mut(), |lettered| Box::into_raw(Box::new(lettered)))
+    engine.on_thread(|| {
+        let Some(to_grid) = to_grid else {
+            return std::ptr::null_mut();
+        };
+        let Some(lettered) = set(engine, composite, faces, to_grid, &letters.passes) else {
+            return std::ptr::null_mut();
+        };
+        let at = lettered.as_ref().map_or([0; 4], |lettered| {
+            let at = lettered.rect;
+            [at.x0, at.y0, at.columns as i32, at.rows as i32]
+        });
+        // SAFETY: `rect` holds four words.
+        unsafe { *rect.cast::<[i32; 4]>() = at };
+        lettered.map_or(std::ptr::null_mut(), |lettered| Box::into_raw(Box::new(lettered)))
+    })
 }
 
 /// Copies `lettered`'s pixels — straight RGBA8, tile after tile, row by
@@ -365,13 +367,15 @@ pub unsafe extern "C" fn gpu_engine_lettered_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, lettered) = unsafe { (&*engine, &*lettered) };
-    let Some(read) = engine.read_buffer(&lettered.tiles) else {
-        return false;
-    };
-    let count = read.len().min(capacity);
-    // SAFETY: `bytes` holds `capacity`, and `count` is no more.
-    unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
-    true
+    engine.on_thread(|| {
+        let Some(read) = engine.read_buffer(&lettered.tiles) else {
+            return false;
+        };
+        let count = read.len().min(capacity);
+        // SAFETY: `bytes` holds `capacity`, and `count` is no more.
+        unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
+        true
+    })
 }
 
 /// # Safety

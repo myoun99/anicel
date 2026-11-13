@@ -56,7 +56,7 @@ fn at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
 
 #[test]
 fn a_tile_of_no_side_or_past_the_device_is_refused_with_why() {
-    let most = first_engine().device.limits().max_texture_dimension_2d;
+    let most = first_engine().device().limits().max_texture_dimension_2d;
     for (width, height) in [(0, 4), (4, 0), (most + 1, 4), (4, most + 1)] {
         assert!(picture(width, height).is_null(), "{width} × {height}");
         assert!(last_error().contains(&format!("a grid tile {width} × {height}")), "{}", last_error());
@@ -133,7 +133,7 @@ fn a_stream_the_pass_refuses_draws_nothing_and_says_why() {
 
 #[test]
 fn an_atlas_past_the_device_is_refused_with_why() {
-    let most = first_engine().device.limits().max_texture_dimension_2d;
+    let most = first_engine().device().limits().max_texture_dimension_2d;
     let long = vec![255; most as usize + 1];
     for (width, height) in [(most + 1, 1), (1, most + 1)] {
         let (ok, _) = drawn((1, 1), &[], (long.as_ptr(), width, height));
@@ -160,7 +160,7 @@ fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
     // SAFETY: every pointer is live and holds what it is said to.
     let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), NO_ATLAS.0, 0, 0) };
     assert!(drew, "{}", last_error());
-    let screen = crate::device::storage_texture(&engine.device, 3, 2, wgpu::TextureFormat::Rgba8Unorm);
+    let screen = crate::device::storage_texture(engine.device(), 3, 2, wgpu::TextureFormat::Rgba8Unorm);
     let lay = gpu_engine_grid_lay_new();
     let tiles = [tile.cast_const()];
     let laid = |rect: [u32; 4], boxes: [f64; 8]| {

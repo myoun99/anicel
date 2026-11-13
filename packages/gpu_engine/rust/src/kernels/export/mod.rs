@@ -155,14 +155,14 @@ impl Shown {
         let row = (width * 4).div_ceil(align) * align;
         let bytes = u64::from(row) * u64::from(height);
         fits(engine, &[bytes], std::iter::empty())?;
-        let rows = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let rows = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("export shown"),
             size: bytes,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),

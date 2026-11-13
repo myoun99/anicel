@@ -49,6 +49,13 @@ int get debugKernelsCompiledHere => rust.kernelsBuiltHere();
 /// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다」).
 int get debugWaitsHere => rust.waitsHere();
 
+/// How many times the thread that asks has taken an engine's device in
+/// hand (rust/src/device.rs, `gpu_engine_device_entered_here`): what a
+/// test holds at none on the thread an app's frames are built on — a
+/// verb's body runs on the engine's thread, whatever thread calls it
+/// (🗣️유저 2026-11-13, H57-Q1: 「C · 합성 전체를 엔진 스레드로」).
+int get debugDeviceEnteredHere => rust.deviceEnteredHere();
+
 /// A job the engine would not do — a C entry answered that it failed, or
 /// Flutter gave it no adapter or texture to do it with —, carrying the
 /// engine's last error. ⛔Everything this library throws of the device's
@@ -461,6 +468,13 @@ class GpuEngine {
   /// Test seam: how many hold what the engine compiles apart
   /// ([whileCompilesApartWait]).
   int get debugCompilesApartHeld => rust.apartHeld(_engine);
+
+  /// Test seam: how many compiles a verb's body on the engine's thread
+  /// has waited for (rust/src/device.rs, `gpu_engine_compiles_on_thread`)
+  /// — every other verb's body stood behind each: what a test holds at
+  /// none over a stroke, a playback and a save (🗣️관제 2026-11-14 01:21,
+  /// the-ui-thread-never-enters-the-driver).
+  int get debugCompilesOnItsThread => rust.compilesOnThread(_engine);
 
   /// Frees the device; every surface must be freed first.
   void close() {

@@ -324,7 +324,7 @@ impl Flood {
         picture: &Picture,
     ) -> Option<wgpu::Buffer> {
         let tiles = (picture.across, picture.down);
-        let flags = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let flags = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("flood moved"),
             size: FLAG_STEP * ROUNDS as u64,
             usage: wgpu::BufferUsages::STORAGE
@@ -335,7 +335,7 @@ impl Flood {
         let mut at = 0;
         loop {
             let mut encoder = engine
-                .device
+                .device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
             encoder.clear_buffer(&flags, 0, None);
             let rounds: Vec<Encoded> = (0..ROUNDS)

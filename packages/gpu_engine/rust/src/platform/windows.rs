@@ -398,7 +398,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         ] {
             assert_eq!(super::removed_by(reason), named, "{reason:?}");
         }
-        assert_eq!(super::device_went_by(&first_engine().device), WENT_UNSAID);
+        assert_eq!(super::device_went_by(first_engine().device()), WENT_UNSAID);
     }
 
     // ---- What DXC made, kept (vendor/wgpu-hal, dxil_cache.rs) ----
@@ -419,13 +419,13 @@ fn main() { out[0] = 7u; }
 
     fn keeping(turn: &DeviceTurn, folder: &std::path::Path) -> crate::device::Engine {
         let engine = turn.engine();
-        super::keep_dxil(&engine.device, Some(folder.to_path_buf()));
+        super::keep_dxil(engine.device(), Some(folder.to_path_buf()));
         engine
     }
 
     fn found(engine: &crate::device::Engine) -> u64 {
         // SAFETY: only reads a count.
-        unsafe { engine.device.as_hal::<super::Dx12>() }.expect("DX12").dxil_found()
+        unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_found()
     }
 
     fn kept_files(folder: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {

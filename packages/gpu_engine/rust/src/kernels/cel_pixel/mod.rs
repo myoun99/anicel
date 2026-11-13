@@ -306,7 +306,7 @@ impl CelPixels {
         fits(engine, &[counts_bytes], std::iter::empty())?;
         let counts = plane(engine, "cel pixel counts", counts_bytes);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let given = verb.given(engine, &mut encoder, pool.len(), &walk, &cut, mask, None)?;
         let counted: Vec<Encoded> = cut
@@ -343,7 +343,7 @@ impl CelPixels {
         made(engine, put_bytes)?;
         let put = plane(engine, "cel pixel runs", put_bytes);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let given = verb.given(engine, &mut encoder, pool.len(), &walk, &cut, mask, Some(&starts))?;
         let applied: Vec<Encoded> = cut
@@ -393,7 +393,7 @@ fn most(engine: &Engine, mask: Option<&Mask>, verb: &Verb) -> Option<usize> {
 /// Fails where this device makes no buffer of `bytes`: the new pixels and
 /// the runs are one buffer each, bound a pass's range at a time.
 fn made(engine: &Engine, bytes: u64) -> Option<()> {
-    let largest = engine.device.limits().max_buffer_size;
+    let largest = engine.device().limits().max_buffer_size;
     if bytes > largest {
         return fail(format!("{bytes} bytes exceed a buffer of {largest}"));
     }
@@ -402,7 +402,7 @@ fn made(engine: &Engine, bytes: u64) -> Option<()> {
 
 /// Where a binding may start in a storage buffer, in bytes.
 fn alignment(engine: &Engine) -> u64 {
-    u64::from(engine.device.limits().min_storage_buffer_offset_alignment)
+    u64::from(engine.device().limits().min_storage_buffer_offset_alignment)
 }
 
 /// Where each walked tile's pixels and runs start among the walk's, from

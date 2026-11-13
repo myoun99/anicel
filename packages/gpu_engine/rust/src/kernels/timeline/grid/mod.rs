@@ -59,11 +59,11 @@ impl GridPicture {
     /// A clear picture `width` × `height` pixels — None, with the last
     /// error, for a side of none or past what the device makes.
     pub(crate) fn new(engine: &Engine, width: u32, height: u32) -> Option<Self> {
-        let most = engine.device.limits().max_texture_dimension_2d;
+        let most = engine.device().limits().max_texture_dimension_2d;
         if width == 0 || height == 0 || width > most || height > most {
             return fail(format!("a grid tile {width} × {height}: a side is 1 to {most} pixels"));
         }
-        let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+        let texture = engine.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("grid tile"),
             size: wgpu::Extent3d {
                 width,
@@ -97,7 +97,7 @@ pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -
     if width == 0 || height == 0 {
         return Some(None);
     }
-    let most = engine.device.limits().max_texture_dimension_2d;
+    let most = engine.device().limits().max_texture_dimension_2d;
     if width > most || height > most {
         return fail(format!("a letters' atlas {width} × {height}: a side is 1 to {most} pixels"));
     }
@@ -109,7 +109,7 @@ pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -
         height,
         depth_or_array_layers: 1,
     };
-    let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+    let texture = engine.device().create_texture(&wgpu::TextureDescriptor {
         label: Some("grid atlas"),
         size,
         mip_level_count: 1,
@@ -202,13 +202,13 @@ fn fault_in(ops: &[i32], has_atlas: bool) -> Option<String> {
 
 impl GridTile {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let params = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        let params = engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("grid params"),
             size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let no_atlas = engine.device.create_texture(&wgpu::TextureDescriptor {
+        let no_atlas = engine.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("grid no atlas"),
             size: wgpu::Extent3d {
                 width: 1,
@@ -323,7 +323,7 @@ impl GridTile {
         });
         let groups = flat((tile.width().div_ceil(8), tile.height().div_ceil(8)));
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encode_on(
             engine,

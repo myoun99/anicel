@@ -122,11 +122,11 @@ impl Window {
         config.usage = usage;
         config.format = format;
         config.present_mode = wgpu::PresentMode::Fifo;
-        surface.configure(&engine.device, &config);
+        surface.configure(engine.device(), &config);
         Some(Self {
             surface,
             current: None,
-            staging: (!direct).then(|| storage_texture(&engine.device, width, height, format)),
+            staging: (!direct).then(|| storage_texture(engine.device(), width, height, format)),
             _native: native,
         })
     }
@@ -161,7 +161,7 @@ impl Window {
         };
         if let Some(staging) = &self.staging {
             let mut encoder = engine
-                .device
+                .device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
             encoder.copy_texture_to_texture(
                 staging.as_image_copy(),
@@ -207,11 +207,13 @@ pub unsafe extern "C" fn gpu_engine_window_new(
 ) -> *mut Window {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    NonNull::new(native)
-        .map(NativeWindow)
-        .or_else(|| fail("no window"))
-        .and_then(|native| Window::new(engine, native, width, height))
-        .map_or(std::ptr::null_mut(), |window| Box::into_raw(Box::new(window)))
+    engine.on_thread(|| {
+        NonNull::new(native)
+            .map(NativeWindow)
+            .or_else(|| fail("no window"))
+            .and_then(|native| Window::new(engine, native, width, height))
+            .map_or(std::ptr::null_mut(), |window| Box::into_raw(Box::new(window)))
+    })
 }
 
 /// # Safety
@@ -244,7 +246,9 @@ pub unsafe extern "C" fn gpu_engine_window_target(window: *mut Window) -> *const
 pub unsafe extern "C" fn gpu_engine_window_present(engine: *const Engine, window: *mut Window) -> bool {
     // SAFETY: see the function's contract.
     let (engine, window) = unsafe { (&*engine, &mut *window) };
-    window.present(engine).is_some()
+    engine.on_thread(|| {
+        window.present(engine).is_some()
+    })
 }
 
 /// # Safety

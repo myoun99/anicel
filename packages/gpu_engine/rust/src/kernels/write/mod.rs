@@ -133,7 +133,7 @@ impl Write {
         let changed = plane(engine, "write changed", changed_bytes);
         let cut = runs(places.iter().map(|place| place.map(|at| at.page)), None, per_pass, most);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let given = cut
             .iter()
@@ -186,7 +186,7 @@ impl Write {
             }
         }
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for &(index, at) in writes {
             let page = &pool[usize::from(at.page)];

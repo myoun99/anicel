@@ -15,7 +15,7 @@ use crate::kernels::composite::TILE_BYTES;
 /// A buffer a pass reads or puts, of `bytes` — nothing at first: wgpu
 /// zeroes a new buffer.
 pub(crate) fn plane(engine: &Engine, label: &str, bytes: u64) -> wgpu::Buffer {
-    engine.device.create_buffer(&wgpu::BufferDescriptor {
+    engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
         size: bytes,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
@@ -45,7 +45,7 @@ pub(crate) fn le_words(bytes: &[u8]) -> Vec<u32> {
 
 /// The bytes one binding holds on this device: no more than a buffer does.
 pub(crate) fn room(engine: &Engine) -> u64 {
-    let limits = engine.device.limits();
+    let limits = engine.device().limits();
     u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size)
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn room(engine: &Engine) -> u64 {
 /// fit. ⛔ONE COUNT: the composite, the blur dabs, the cel pixel verbs and
 /// the lift each worked it out (11-06, rule of three).
 pub(crate) fn tiles_a_pass(engine: &Engine, per_tile: u64, fixed: u64) -> Option<usize> {
-    let reach = u64::from(engine.device.limits().max_compute_workgroups_per_dimension);
+    let reach = u64::from(engine.device().limits().max_compute_workgroups_per_dimension);
     let held = room(engine).saturating_sub(fixed).checked_div(per_tile);
     match held.unwrap_or(reach).min(reach) {
         0 => fail(format!("one tile's {per_tile} bytes exceed a binding")),
@@ -80,7 +80,7 @@ pub(crate) fn fits(
     planes: &[u64],
     mut groups: impl Iterator<Item = (u32, u32)>,
 ) -> Option<()> {
-    let limits = engine.device.limits();
+    let limits = engine.device().limits();
     let room = room(engine);
     if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
         return fail(format!("a plane of {plane} bytes exceeds a binding of {room}"));
@@ -167,7 +167,7 @@ pub(crate) fn encode_on(
     let bind_groups: Vec<wgpu::BindGroup> = dispatches
         .iter()
         .map(|dispatch| {
-            engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            engine.device().create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &dispatch.pipeline.get_bind_group_layout(0),
                 entries: &dispatch.bound,
@@ -186,7 +186,7 @@ pub(crate) fn encode_on(
 /// Encodes `dispatches` in order and submits them; the caller waits.
 pub(crate) fn encode(engine: &Engine, dispatches: &[Encoded]) {
     let mut encoder = engine
-        .device
+        .device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     encode_on(engine, &mut encoder, dispatches);
     engine.queue.submit([encoder.finish()]);

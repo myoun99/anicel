@@ -37,9 +37,11 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_new(
 ) -> *mut SelectionMasks {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    let (region, passes) = (RegionMask::new(engine), MaskPasses::new(engine));
-    let (within, runs) = (MaskWithin::new(engine), MaskRuns::new(engine));
-    Box::into_raw(Box::new(SelectionMasks { region, passes, within, runs }))
+    engine.on_thread(|| {
+        let (region, passes) = (RegionMask::new(engine), MaskPasses::new(engine));
+        let (within, runs) = (MaskWithin::new(engine), MaskRuns::new(engine));
+        Box::into_raw(Box::new(SelectionMasks { region, passes, within, runs }))
+    })
 }
 
 /// # Safety
@@ -90,10 +92,10 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_new(
     };
     let size = MaskBox { width, height };
     let finish = Finish { grow, feather, anti_alias };
-    match masked(masks, engine, program, points, (x, y), size, finish) {
+    engine.on_thread(|| match masked(masks, engine, program, points, (x, y), size, finish) {
         Some(plane) => MaskPlane::kept(plane, (x, y), size),
         None => std::ptr::null_mut(),
-    }
+    })
 }
 
 /// `mask` cut by the selection `by` (within.wgsl) — a fill's range as its
@@ -115,10 +117,10 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_cut(
 ) -> *mut MaskPlane {
     // SAFETY: see the function's contract.
     let (masks, engine, mask, by) = unsafe { (&*masks, &*engine, (*mask).mask(), (*by).mask()) };
-    match masks.within.cut(engine, &mask, &by) {
+    engine.on_thread(|| match masks.within.cut(engine, &mask, &by) {
         Some(plane) => MaskPlane::kept(plane, mask.at, mask.size),
         None => std::ptr::null_mut(),
-    }
+    })
 }
 
 /// The hard mask of the selection `program` spells over `points`
@@ -158,15 +160,17 @@ pub unsafe extern "C" fn gpu_engine_selection_runs(
         )
     };
     let size = MaskBox { width, height };
-    let read = steps_of(program, points)
-        .and_then(|steps| masks.region.folded(engine, &steps, (x, y), size))
-        .and_then(|folded| masks.runs.read(engine, &folded, size));
-    let Some(runs) = read else {
-        return std::ptr::null_mut();
-    };
-    // SAFETY: see the function's contract.
-    unsafe { ends.write(runs.ends.len()) };
-    Box::into_raw(Box::new(runs))
+    engine.on_thread(|| {
+        let read = steps_of(program, points)
+            .and_then(|steps| masks.region.folded(engine, &steps, (x, y), size))
+            .and_then(|folded| masks.runs.read(engine, &folded, size));
+        let Some(runs) = read else {
+            return std::ptr::null_mut();
+        };
+        // SAFETY: see the function's contract.
+        unsafe { ends.write(runs.ends.len()) };
+        Box::into_raw(Box::new(runs))
+    })
 }
 
 /// Writes `runs`' rows' offsets — the box's height and one more — to

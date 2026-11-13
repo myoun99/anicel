@@ -55,8 +55,10 @@ impl Filled {
 pub unsafe extern "C" fn gpu_engine_floods_new(engine: *const Engine) -> *mut Floods {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    let (flood, masks) = (Flood::new(engine), MaskPasses::new(engine));
-    Box::into_raw(Box::new(Floods { flood, masks }))
+    engine.on_a_thread(|| {
+        let (flood, masks) = (Flood::new(engine), MaskPasses::new(engine));
+        Box::into_raw(Box::new(Floods { flood, masks }))
+    })
 }
 
 /// # Safety
@@ -87,10 +89,12 @@ pub unsafe extern "C" fn gpu_engine_flood_picture_new(
 ) -> *mut Shown {
     // SAFETY: see the function's contract.
     let (composite, engine, pool, plan) = unsafe { (&*composite, &*engine, &*pool, &*plan) };
-    // SAFETY: see the function's contract.
-    let extent = unsafe { *extent.cast::<[i32; 4]>() };
-    let shown = plan.laid(pool, |laid| Shown::of(engine, composite, laid, extent));
-    shown.map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let extent = unsafe { *extent.cast::<[i32; 4]>() };
+        let shown = plan.laid(pool, |laid| Shown::of(engine, composite, laid, extent));
+        shown.map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+    })
 }
 
 /// The picture a fill on a row posed on the canvas reads
@@ -117,14 +121,16 @@ pub unsafe extern "C" fn gpu_engine_flood_picture_posed(
 ) -> *mut Shown {
     // SAFETY: see the function's contract.
     let (composite, engine, pool, plan) = unsafe { (&*composite, &*engine, &*pool, &*plan) };
-    // SAFETY: see the function's contract.
-    let to_canvas = unsafe { *to_canvas.cast::<[f64; 9]>() };
-    // SAFETY: see the function's contract.
-    let (extent, within) = unsafe { (*extent.cast::<[i32; 4]>(), *within.cast::<[i32; 4]>()) };
-    let shown = plan.laid(pool, |laid| {
-        Shown::through(engine, composite, laid, to_canvas, extent, within)
-    });
-    shown.map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+    engine.on_thread(|| {
+        // SAFETY: see the function's contract.
+        let to_canvas = unsafe { *to_canvas.cast::<[f64; 9]>() };
+        // SAFETY: see the function's contract.
+        let (extent, within) = unsafe { (*extent.cast::<[i32; 4]>(), *within.cast::<[i32; 4]>()) };
+        let shown = plan.laid(pool, |laid| {
+            Shown::through(engine, composite, laid, to_canvas, extent, within)
+        });
+        shown.map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+    })
 }
 
 /// # Safety
@@ -165,31 +171,33 @@ pub unsafe extern "C" fn gpu_engine_flood_run(
 ) -> *mut Filled {
     // SAFETY: see the function's contract.
     let (Floods { flood, masks }, engine, shown) = unsafe { (&*floods, &*engine, &*picture) };
-    let filled = || {
-        let Some(seed) = shown.on_grid((x, y)) else {
-            return fail(format!("a press at ({x}, {y}) is off the picture"));
+    engine.on_thread(|| {
+        let filled = || {
+            let Some(seed) = shown.on_grid((x, y)) else {
+                return fail(format!("a press at ({x}, {y}) is off the picture"));
+            };
+            let picture = shown.picture();
+            // A gap of 0 floods as a plain flood does (`Flood::gap_closed`),
+            // by the passes that measure no distance.
+            let flooded = match gap {
+                0 => flood.region(engine, &picture, seed, tolerance),
+                gap => flood.gap_closed(engine, masks, &picture, seed, tolerance, gap),
+            }?;
+            let finished = flood.finish(engine, masks, &flooded, expand, anti_alias)?;
+            let (at, size) = {
+                let mask = shown.on_canvas(&finished);
+                (mask.at, mask.size)
+            };
+            Some((Filled::new(finished.mask, size), at))
         };
-        let picture = shown.picture();
-        // A gap of 0 floods as a plain flood does (`Flood::gap_closed`),
-        // by the passes that measure no distance.
-        let flooded = match gap {
-            0 => flood.region(engine, &picture, seed, tolerance),
-            gap => flood.gap_closed(engine, masks, &picture, seed, tolerance, gap),
-        }?;
-        let finished = flood.finish(engine, masks, &flooded, expand, anti_alias)?;
-        let (at, size) = {
-            let mask = shown.on_canvas(&finished);
-            (mask.at, mask.size)
+        let Some((filled, (left, top))) = filled() else {
+            return std::ptr::null_mut();
         };
-        Some((Filled::new(finished.mask, size), at))
-    };
-    let Some((filled, (left, top))) = filled() else {
-        return std::ptr::null_mut();
-    };
-    let MaskBox { width, height } = filled.size;
-    // SAFETY: see the function's contract.
-    unsafe { *covers.cast::<[i32; 4]>() = [left, top, width as i32, height as i32] };
-    Box::into_raw(Box::new(filled))
+        let MaskBox { width, height } = filled.size;
+        // SAFETY: see the function's contract.
+        unsafe { *covers.cast::<[i32; 4]>() = [left, top, width as i32, height as i32] };
+        Box::into_raw(Box::new(filled))
+    })
 }
 
 /// Copies `filled`'s mask — a byte a pixel, row after row, the app's
@@ -208,9 +216,11 @@ pub unsafe extern "C" fn gpu_engine_flood_filled_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, Filled { mask, size, .. }) = unsafe { (&*engine, &*filled) };
-    // SAFETY: `bytes` holds `capacity`.
-    let into = unsafe { std::slice::from_raw_parts_mut(bytes, capacity) };
-    size.read_into(engine, mask, into)
+    engine.on_thread(|| {
+        // SAFETY: `bytes` holds `capacity`.
+        let into = unsafe { std::slice::from_raw_parts_mut(bytes, capacity) };
+        size.read_into(engine, mask, into)
+    })
 }
 
 /// # Safety

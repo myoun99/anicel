@@ -241,7 +241,7 @@ impl Stroke {
     /// the whole of it on every tile it reaches, before anything reads it.
     pub(crate) fn clear(&mut self, engine: &Engine) {
         let mut encoder =
-            engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         clear_written(&mut encoder, &self.planes, self.tiles.len(), PLANE_TILE_BYTES);
         clear_written(&mut encoder, &self.levels, self.tiles.len(), TILE_BYTES);
         engine.queue.submit([encoder.finish()]);
@@ -267,7 +267,7 @@ fn make_pages(
     label: &str,
 ) {
     while made.len() < pages {
-        made.push(engine.device.create_buffer(&wgpu::BufferDescriptor {
+        made.push(engine.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: TILES_A_PAGE as u64 * tile_bytes,
             usage: wgpu::BufferUsages::STORAGE

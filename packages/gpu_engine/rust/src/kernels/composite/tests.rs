@@ -1833,7 +1833,7 @@ pub(crate) fn surface(size: (u32, u32), format: wgpu::TextureFormat) -> wgpu::Te
 
 /// [`surface`] on `engine`.
 pub(crate) fn surface_on(engine: &Engine, (width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
-    engine.device.create_texture(&wgpu::TextureDescriptor {
+    engine.device().create_texture(&wgpu::TextureDescriptor {
         label: Some("test surface"),
         size: wgpu::Extent3d {
             width,
@@ -1988,7 +1988,7 @@ fn a_surface_is_written_inside_its_rectangle_only() {
 // (platform::Surface), so there is nothing to show on it.
 #[test]
 fn a_bgra_surface_holds_the_rgba_pixels_red_and_blue_swapped() {
-    if !rig().engine.device.features().contains(wgpu::Features::BGRA8UNORM_STORAGE) {
+    if !rig().engine.device().features().contains(wgpu::Features::BGRA8UNORM_STORAGE) {
         return;
     }
     let (page, _) = composited_canvas();
@@ -2363,7 +2363,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
     let whole = read_buffer(engine, &whole.expect("composite").out);
     let mut laid = super::lay(&steps, &sets, &tiles, 1, 1).expect("lay");
     laid[0].live[1] = false;
-    let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
+    let out = engine.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("test out"),
         size: 2 * TILE_TEXELS * 4,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,

@@ -3,10 +3,13 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::time::Duration;
 
-use crate::{copy_out, fail, last_error, platform};
+use crate::kernels::shared::{built_here, put_built_here};
+use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_error};
 
 /// How long [`Engine::wait`] stays in the driver before it answers that the
 /// GPU did not finish: a failure with a name rather than a screen that
@@ -25,9 +28,13 @@ pub struct Engine {
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
-    pub(crate) device: wgpu::Device,
+    /// ⛔Private to this type, as the `wgpu::Queue` is to [`Queue`]: a
+    /// kernel takes it by [`Engine::device`], which counts the hands that
+    /// are no thread's of the engine.
+    device: wgpu::Device,
     pub(crate) queue: Queue,
-    /// What [`Engine::wait`] polls on.
+    /// Where a verb's body runs ([`Engine::on_thread`]), and what
+    /// [`Engine::wait`] polls on.
     thread: EngineThread,
     /// Where a kernel's compile enters the driver: threads of its own, so
     /// that seconds of one made ahead of its first use hold up no frame's
@@ -316,11 +323,13 @@ impl Queue {
     }
 
     pub(crate) fn write_buffer(&self, buffer: &wgpu::Buffer, offset: wgpu::BufferAddress, data: &[u8]) {
+        entered();
         self.queue.write_buffer(buffer, offset, data);
     }
 
     #[cfg(target_os = "android")]
     pub(crate) fn present(&self, texture: wgpu::SurfaceTexture) {
+        entered();
         self.queue.present(texture);
     }
 
@@ -331,6 +340,7 @@ impl Queue {
         layout: wgpu::TexelCopyBufferLayout,
         size: wgpu::Extent3d,
     ) {
+        entered();
         self.queue.write_texture(texture, data, layout, size);
     }
 
@@ -456,7 +466,72 @@ impl Engine {
         if self.refusals.gone_for_memory() {
             return platform::WENT_BY_MEMORY;
         }
-        platform::device_went_by(&self.device)
+        platform::device_went_by(self.device())
+    }
+
+    /// The device — a thread of the engine's has it in hand, and no other:
+    /// each time one that is none takes it is counted on that thread
+    /// ([`gpu_engine_device_entered_here`]), which the app's pin holds at
+    /// none on the thread its frames are built on ([`EngineThread`] has
+    /// why).
+    pub(crate) fn device(&self) -> &wgpu::Device {
+        entered();
+        &self.device
+    }
+
+    /// What `work` answers, run on the engine's thread while the caller
+    /// waits ([`EngineThread::run_lent`]): where a verb's body runs,
+    /// whatever thread called the verb — one body at a time, in the order
+    /// they were called. On that thread already, it runs where it is.
+    pub(crate) fn on_thread<T>(&self, work: impl FnOnce() -> T) -> T {
+        self.thread.run_lent(work)
+    }
+
+    /// One more compile the calling thread waits for (`kernels::shared`,
+    /// `waited_here`) — counted where that thread is the engine's own: every
+    /// other verb's body stands behind it that long, where its caller's
+    /// thread alone stood till the bodies ran here
+    /// ([`gpu_engine_compiles_on_thread`]).
+    pub(crate) fn waits_for_a_compile(&self) {
+        if self.thread.is_here() {
+            self.thread.stood.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// What `work` answers, run on a thread of the engine's made for it
+    /// while the caller waits: where the body of a verb that compiles
+    /// kernels runs. ⛔Not [`Self::on_thread`]: a compile is seconds on a
+    /// slow device, every other verb's body would stand behind it, and the
+    /// app compiles ahead what a hand needs side by side (🗣️유저 2026-11-13,
+    /// the-wait-window-stands-seven-seconds-on-the-surface-Q1, 「나란히
+    /// 컴파일」 — `compileAppKernelsAhead`, seven such verbs at once).
+    /// ⛔Nor a thread for compiling ([`Self::compiling`]): the body waits
+    /// there for each of its kernels, and as many bodies as there are such
+    /// threads would leave none to compile on. 🔬A thread made for a call
+    /// took 50–60 µs on the main PC (2026-11-09, [`EngineThread`]), against
+    /// the compile it is made for. On a thread of an engine's already, it
+    /// runs where it is.
+    pub(crate) fn on_a_thread<T>(&self, work: impl FnOnce() -> T) -> T {
+        if WORKS_FOR.get() != NO_ENGINE {
+            return work();
+        }
+        let lent = Lent((work, Callers::taken()));
+        let made = std::thread::scope(|scope| {
+            let body = move || {
+                let (work, callers) = lent.taken();
+                WORKS_FOR.set(A_THREAD_OF_ITS_OWN);
+                callers.put();
+                let worked = catch_unwind(AssertUnwindSafe(work));
+                Lent((worked, Callers::taken()))
+            };
+            match std::thread::Builder::new().name("gpu_engine".into()).spawn_scoped(scope, body) {
+                Ok(thread) => thread.join(),
+                Err(error) => panic!("no thread for the engine: {error}"),
+            }
+        });
+        let (worked, callers) = made.unwrap_or_else(|panic| resume_unwind(panic)).taken();
+        callers.put();
+        worked.unwrap_or_else(|panic| resume_unwind(panic))
     }
 
     /// A buffer holding `contents`, as long as they are padded to the
@@ -474,7 +549,7 @@ impl Engine {
         usage: wgpu::BufferUsages,
     ) -> wgpu::Buffer {
         let align = wgpu::COPY_BUFFER_ALIGNMENT;
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let buffer = self.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: (contents.len() as u64).div_ceil(align) * align,
             usage,
@@ -511,7 +586,7 @@ impl Engine {
         let padded = row.div_ceil(align) * align;
         let buffer = self.readback(u64::from(padded) * u64::from(texture.height()));
         let mut encoder = self
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
@@ -549,7 +624,7 @@ impl Engine {
     pub(crate) fn staged(&self, buffer: &wgpu::Buffer, size: u64) -> wgpu::Buffer {
         let readback = self.readback(size);
         let mut encoder = self
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encoder.copy_buffer_to_buffer(buffer, 0, &readback, 0, size);
         self.queue.submit([encoder.finish()]);
@@ -558,7 +633,7 @@ impl Engine {
 
     /// A buffer of `size` bytes a copy puts and the CPU maps.
     pub(crate) fn readback(&self, size: u64) -> wgpu::Buffer {
-        self.device.create_buffer(&wgpu::BufferDescriptor {
+        self.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("readback"),
             size,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
@@ -641,6 +716,87 @@ thread_local! {
     /// How many waits for the GPU this thread has made
     /// ([`gpu_engine_waits_here`]).
     static WAITED_HERE: Cell<u64> = const { Cell::new(0) };
+    /// Which of an engine's threads this one is, by the number of the
+    /// [`EngineThread`] it works for — [`NO_ENGINE`] on a caller's.
+    static WORKS_FOR: Cell<u64> = const { Cell::new(NO_ENGINE) };
+    /// How many times this thread, none of an engine's, has taken a device
+    /// in hand ([`gpu_engine_device_entered_here`]).
+    static ENTERED_HERE: Cell<u64> = const { Cell::new(0) };
+}
+
+/// What [`WORKS_FOR`] holds on a thread that is none of an engine's.
+const NO_ENGINE: u64 = 0;
+
+/// What [`WORKS_FOR`] holds on a thread made for one body
+/// ([`Engine::on_a_thread`]): no [`EngineThread`]'s number.
+const A_THREAD_OF_ITS_OWN: u64 = u64::MAX;
+
+/// The number the next [`EngineThread`] is known by.
+static THREAD_NUMBERS: AtomicU64 = AtomicU64::new(NO_ENGINE + 1);
+
+/// One more hand on a device, counted where the thread is none of an
+/// engine's ([`Engine::device`]).
+fn entered() {
+    if WORKS_FOR.get() == NO_ENGINE {
+        ENTERED_HERE.set(ENTERED_HERE.get() + 1);
+    }
+}
+
+/// What a caller's thread keeps for itself that a verb's body reads and
+/// writes — its last error ([`fail`]), the waits it has made
+/// ([`WAITED_HERE`]), the compiles it has waited for (`kernels::shared`,
+/// `BUILT_HERE`) — taken off one thread and put on another: over to the
+/// engine's with a body handed there, and back with what the body made of
+/// them. So a body run there fails by its caller's last error and counts on
+/// its caller's thread, as it did when it ran on it.
+struct Callers {
+    error: String,
+    waited: u64,
+    built: u64,
+    /// The bytes the tests count a thread to hold of the heap
+    /// (`testing::held`): what a body takes and gives back is its caller's,
+    /// and what handing it over took is no one's — put last, over it.
+    #[cfg(test)]
+    held: isize,
+}
+
+impl Callers {
+    /// The calling thread's, its last error taken from it.
+    fn taken() -> Self {
+        Self {
+            error: take_last_error(),
+            waited: WAITED_HERE.get(),
+            built: built_here(),
+            #[cfg(test)]
+            held: crate::testing::held(),
+        }
+    }
+
+    /// These, the calling thread's from here on.
+    fn put(self) {
+        put_last_error(self.error);
+        WAITED_HERE.set(self.waited);
+        put_built_here(self.built);
+        #[cfg(test)]
+        crate::testing::put_held(self.held);
+    }
+}
+
+/// What a caller lends a thread of the engine's for one body, and what
+/// comes back of it: raw pointers and borrows among them, which are no
+/// thread's to send in name.
+struct Lent<T>(T);
+
+// SAFETY: the caller waits where it lent this till the body has run — it is
+// in one thread's hands at a time, as what a call is handed.
+unsafe impl<T> Send for Lent<T> {}
+
+impl<T> Lent<T> {
+    /// What was lent — by a method, so that a closure takes the whole of
+    /// this and not the field alone, which is not `Send`.
+    fn taken(self) -> T {
+        self.0
+    }
 }
 
 /// Polls `device` till the GPU has finished everything submitted, or says
@@ -821,12 +977,53 @@ type Job = Box<dyn FnOnce() + Send>;
 /// | `create_bind_group` | 1,028 | 8,271 | 0 |
 /// | `create_view` | 172 | 6,287 | 0 |
 ///
-/// ⛔So the rest stay on their caller's: alone on a thread of 1 MiB,
-/// `write_buffer` of 4 MiB went 22,319 and `write_texture` of a tile 17,371,
-/// and no call but these two has a frame the walk can fault on. A device
-/// or driver that goes deeper is what would change that; this is one card.
+/// ↩️⛔The rest stayed on their caller's till 2026-11-14: alone on a thread
+/// of 1 MiB, `write_buffer` of 4 MiB went 22,319 and `write_texture` of a
+/// tile 17,371, and no call but these two has a frame the walk can fault
+/// on.
+///
+/// 🚨★★AND IT TAKES NO DEVICE IN HAND AT ALL
+/// (the-ui-thread-never-enters-the-driver, 2026-11-14). 🗣️유저 2026-11-13
+/// (H57-Q1): 「C · 합성 전체를 엔진 스레드로 — 이게 가장 근본/구조적인
+/// 해결같은데 맞나?」 · 「근본/구조적 해결을 원해. 작업이 크더라도」. The
+/// stack was not the only cost of a caller's thread in the device:
+/// 🔬Surface Pro 11, S5_BA cut 352 (캔버스 베이스, H57, 2026-11-13), every
+/// pause of 33 ms and more as a frame was first filled — sixteen, the
+/// longest 77 ms — was one buffer made on the UI thread, the allocator
+/// making a 256 MiB block for it under its lock, 32–55 ms; and a block made
+/// ahead on another thread held that lock against the UI's small buffers
+/// all the same, as every dispatch makes some. So a verb's whole body runs
+/// here ([`Engine::on_thread`]) — the bodies that compile kernels each on a
+/// thread made for it ([`Engine::on_a_thread`]) — and a hand on the device
+/// from a thread that is none of the engine's is counted there
+/// ([`Engine::device`]).
+///
+/// ⏳One thread for every body, as every submit and wait was one thread's
+/// already (브러시/렌더링, 2026-11-14, the user asleep — theirs to overturn):
+/// what one isolate hands over and another reads after stays in order with
+/// no word between the two. ⛔Not a thread to each isolate, and not the UI's
+/// bodies alone — a worker isolate's thread is walked as the UI's is.
+///
+/// ⚠️ALL OF THEM AT ONCE: a body left on its caller's thread, holding a
+/// lock of the engine's as it hands its submit here, waits for a body here
+/// that waits for that lock.
 #[derive(Clone)]
-pub(crate) struct EngineThread(mpsc::Sender<Job>);
+pub(crate) struct EngineThread {
+    jobs: mpsc::Sender<Job>,
+    /// What its threads know themselves by ([`WORKS_FOR`]).
+    number: u64,
+    /// Whether work of the driver's own panicked here ([`Self::run`],
+    /// [`Self::post`]) — wgpu's poll does, where a device is lost under it.
+    /// Ended, it is handed no such work again: a run fails by name and a
+    /// post is dropped unrun, as when the thread itself ended with the
+    /// panic (↩️till 2026-11-14). It goes on for the bodies handed to it
+    /// ([`Self::run_lent`]), which run nowhere else, and fail there by the
+    /// device that is gone.
+    ended: Arc<AtomicBool>,
+    /// How many compiles a body on this thread has waited for
+    /// ([`Engine::waits_for_a_compile`]).
+    stood: Arc<AtomicU64>,
+}
 
 impl EngineThread {
     fn start() -> Option<Self> {
@@ -838,29 +1035,60 @@ impl EngineThread {
     fn start_many(count: usize) -> Option<Self> {
         let (jobs, asked) = mpsc::channel::<Job>();
         let asked = Arc::new(Mutex::new(asked));
+        let number = THREAD_NUMBERS.fetch_add(1, Ordering::Relaxed);
         for _ in 0..count {
             let asked = Arc::clone(&asked);
-            let working = move || loop {
-                let next = asked.lock().unwrap_or_else(PoisonError::into_inner).recv();
-                let Ok(job) = next else {
-                    return;
-                };
-                job();
+            let working = move || {
+                WORKS_FOR.set(number);
+                loop {
+                    let next = asked.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                    let Ok(job) = next else {
+                        return;
+                    };
+                    job();
+                }
             };
             if let Err(error) = std::thread::Builder::new().name("gpu_engine".into()).spawn(working) {
                 return fail(format!("no thread for the engine: {error}"));
             }
         }
-        Some(Self(jobs))
+        Some(Self { jobs, number, ended: Arc::default(), stood: Arc::default() })
     }
 
-    /// What `work` answers, run on this thread while the caller waits.
+    /// Whether the calling thread is this one — one of these, where they
+    /// are many.
+    fn is_here(&self) -> bool {
+        WORKS_FOR.get() == self.number
+    }
+
+    /// `work`, as this thread runs it: not at all once the thread has
+    /// ended, and the thread's end where it panics ([`Self::ended`]).
+    fn till_it_ends<Work: FnOnce() + Send + 'static>(&self, work: Work) -> impl FnOnce() + Send + 'static + use<Work> {
+        let ended = Arc::clone(&self.ended);
+        move || {
+            if ended.load(Ordering::Acquire) {
+                return;
+            }
+            if catch_unwind(AssertUnwindSafe(work)).is_err() {
+                ended.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    /// What `work` answers, run on this thread while the caller waits —
+    /// where it is, on this thread already: a body's submit and its wait
+    /// ([`Self::run_lent`]), which handed over would wait for themselves.
     fn run<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        if self.ended.load(Ordering::Acquire) {
+            return fail("the engine's thread is gone");
+        }
         let (answer, answered) = mpsc::channel();
-        let job: Job = Box::new(move || {
+        let job = self.till_it_ends(move || {
             let _ = answer.send(work());
         });
-        if self.0.send(job).is_err() {
+        if self.is_here() {
+            job();
+        } else if self.jobs.send(Box::new(job)).is_err() {
             return fail("the engine's thread is gone");
         }
         match answered.recv() {
@@ -872,7 +1100,51 @@ impl EngineThread {
     /// Hands `work` to this thread and returns, the caller waiting for
     /// none of it. Dropped unrun where the thread is gone.
     fn post(&self, work: impl FnOnce() + Send + 'static) {
-        let _ = self.0.send(Box::new(work));
+        if !self.ended.load(Ordering::Acquire) {
+            let _ = self.jobs.send(Box::new(self.till_it_ends(work)));
+        }
+    }
+
+    /// What `work` answers, run on this thread while the caller waits, as
+    /// a call: with all the caller lends it — what `work` borrows, and what
+    /// the caller's thread keeps for itself, which goes over with it and
+    /// comes back ([`Callers`]) — and a panic of `work`'s the caller's, as
+    /// it was on the caller's thread. On this thread already, it runs where
+    /// it is.
+    fn run_lent<T>(&self, work: impl FnOnce() -> T) -> T {
+        if self.is_here() {
+            return work();
+        }
+        let callers = Callers::taken();
+        let mut worked = None;
+        let (through, waited) = mpsc::channel::<()>();
+        {
+            let worked = &mut worked;
+            let job: Box<dyn FnOnce() + '_> = Box::new(move || {
+                // Dropped as the job ends, run or not: the caller's word to
+                // go on.
+                let _through = through;
+                callers.put();
+                let answer = catch_unwind(AssertUnwindSafe(work));
+                *worked = Some((answer, Callers::taken()));
+            });
+            // SAFETY: the job borrows from this call's frame and is `Send`
+            // in name alone. The caller stays in this frame till the job
+            // has run or been dropped — `waited` answers at neither before
+            // — so what the job borrows outlives it, in one thread's hands
+            // at a time, as what a call is handed.
+            let job = unsafe { std::mem::transmute::<Box<dyn FnOnce() + '_>, Job>(job) };
+            let _ = self.jobs.send(job);
+        }
+        let _ = waited.recv();
+        // Let go before the caller's own are put back, the heap the tests
+        // count among them ([`Callers`]).
+        drop(waited);
+        let Some((answer, callers)) = worked else {
+            panic!("the engine's thread is gone");
+        };
+        callers.put();
+        answer.unwrap_or_else(|panic| resume_unwind(panic))
     }
 }
 
@@ -905,7 +1177,11 @@ pub extern "C" fn gpu_engine_open_first() -> *mut Engine {
 pub unsafe extern "C" fn gpu_engine_close(engine: *mut Engine) {
     if !engine.is_null() {
         // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(engine) });
+        let engine = unsafe { Box::from_raw(engine) };
+        // Let go on its own thread, as all it held of the device was taken
+        // there — this hold on the thread keeping it till then.
+        let thread = engine.thread.clone();
+        thread.run_lent(move || drop(engine));
     }
 }
 
@@ -961,7 +1237,7 @@ pub unsafe extern "C" fn gpu_engine_gone(engine: *const Engine) -> bool {
 pub unsafe extern "C" fn gpu_engine_went_by(engine: *const Engine) -> u32 {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.went_by()
+    engine.on_thread(|| engine.went_by())
 }
 
 /// Takes the error `engine` noted that no wait has told yet ([`Refusals`]):
@@ -1036,6 +1312,34 @@ pub extern "C" fn gpu_engine_waits_here() -> u64 {
     WAITED_HERE.with(Cell::get)
 }
 
+/// How many times the thread that asks, none of an engine's, has taken a
+/// device in hand ([`Engine::device`]) — made on it, encoded for it or
+/// written to it: what a test holds at none on the thread an app's frames
+/// are built on, a verb's body being the engine's thread's
+/// ([`EngineThread`] has what a caller's thread paid in the device).
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_device_entered_here() -> u64 {
+    ENTERED_HERE.with(Cell::get)
+}
+
+/// How many compiles a body on `engine`'s thread has waited for
+/// ([`Engine::waits_for_a_compile`]): what the app's pins hold at none over
+/// a stroke, a playback and a save. 🗣️관제 2026-11-14 01:21
+/// (the-ui-thread-never-enters-the-driver): 「길 위의 일이 아직 안 된 커널을
+/// 만나 길이 컴파일 동안 서면, 전에는 부른 스레드만 서던 것이 다른
+/// 아이솔레이트의 동사(획 · 재생)까지 선다 … 새 멈춤을 만들고 다음 단계로
+/// 가지 않는다」 — a kernel such a body would wait for is one to compile
+/// ahead, or on a thread of its own ([`Engine::on_a_thread`]).
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_compiles_on_thread(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.thread.stood.load(Ordering::Relaxed)
+}
+
 /// Test seam: `engine`'s device destroyed — the nearest a test comes to a
 /// driver taking it away, which no test does. The word that it is lost
 /// comes at the next wait ([`Refusals`]) — but where `for_memory`: that
@@ -1048,11 +1352,13 @@ pub extern "C" fn gpu_engine_waits_here() -> u64 {
 pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    if for_memory {
-        // As the lost callback keeps it ([`Engine::on`]).
-        engine.refusals.lose(format!("{:?} {OUT_OF_MEMORY}", wgpu::DeviceLostReason::Unknown));
-    }
-    engine.device.destroy();
+    engine.on_thread(|| {
+        if for_memory {
+            // As the lost callback keeps it ([`Engine::on`]).
+            engine.refusals.lose(format!("{:?} {OUT_OF_MEMORY}", wgpu::DeviceLostReason::Unknown));
+        }
+        engine.device().destroy();
+    })
 }
 
 /// Test seam: `engine` keeps none of its kernels ([`Kernels`]), as a launch
@@ -1065,7 +1371,7 @@ pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool
 pub unsafe extern "C" fn gpu_engine_kernels_forget(engine: *const Engine) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.kernels.forget();
+    engine.on_thread(|| engine.kernels.forget())
 }
 
 /// What `engine` compiles apart waits from here ([`Apart`]) till
@@ -1370,19 +1676,137 @@ mod tests {
         let engine = turn.engine();
         let ended = engine.thread.run(|| -> () { panic!("as wgpu's poll does") });
         assert_eq!(ended, None);
-        // Ended once it has let go of what it is handed: its panic answers
-        // the run above as it unwinds, before that. ↩️A wait asked at once
-        // was at times handed to the thread still unwinding, and told it
-        // never answered — 1 run in 20 in release (2026-11-12).
-        let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        while engine.thread.0.send(Box::new(|| {})).is_ok() {
-            assert!(std::time::Instant::now() < until, "the thread never ended");
-            std::thread::yield_now();
-        }
+        // Ended by its own word, said before the run above is answered.
+        // ↩️Till 2026-11-14 the thread itself ended with the panic, and a
+        // wait asked at once was at times handed to it still unwinding, and
+        // told it never answered — 1 run in 20 in release (2026-11-12).
         assert!(!engine.gone(), "gone before a wait found the thread ended");
         assert_eq!(engine.wait(), None);
         assert_eq!(last_error(), "the engine's thread is gone");
         assert!(engine.gone());
+        // 🚨And a body handed to it still runs: a verb's body runs nowhere
+        // else, and fails there by the device that is gone.
+        assert_eq!(engine.on_thread(|| engine.wait()), None);
+        assert_eq!(last_error(), "the engine's thread is gone");
+    }
+
+    // 🚨A verb's body runs on the engine's thread, whatever thread calls the
+    // verb (the-ui-thread-never-enters-the-driver; `EngineThread` has why)
+    // — as a call: it borrows what its caller holds, fails by its caller's
+    // last error, and its waits are counted on its caller's thread.
+    #[test]
+    fn a_body_runs_on_the_engines_thread_as_a_call_of_its_callers() {
+        let engine = Engine::open_first().expect("an adapter");
+        let mut lent = vec![1, 2, 3];
+        let _: Option<()> = fail("the caller's own");
+        let waited = super::gpu_engine_waits_here();
+        let on = engine.on_thread(|| {
+            lent.push(4);
+            assert_eq!(last_error(), "the caller's own");
+            let _: Option<()> = fail("the body's");
+            // Its wait, and a body it hands the thread, run where it is:
+            // handed over, each would wait for itself.
+            assert_eq!(engine.wait(), Some(()));
+            let here = std::thread::current().id();
+            assert_eq!(engine.on_thread(|| std::thread::current().id()), here);
+            here
+        });
+        assert_ne!(on, std::thread::current().id());
+        assert_eq!(lent, [1, 2, 3, 4]);
+        assert_eq!(last_error(), "the body's");
+        assert_eq!(super::gpu_engine_waits_here(), waited + 1);
+    }
+
+    // A panic of a body's is its caller's, as it was on the caller's thread
+    // — the engine's thread goes on to the next, and has not ended.
+    #[test]
+    fn a_bodys_panic_is_its_callers_and_the_thread_goes_on() {
+        let engine = Engine::open_first().expect("an adapter");
+        let body = || engine.on_thread(|| -> () { panic!("the body's own") });
+        let why = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
+            .expect_err("the panic stayed on the engine's thread");
+        assert_eq!(why.downcast_ref::<&str>(), Some(&"the body's own"));
+        assert_eq!(engine.on_thread(|| 7), 7);
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+    }
+
+    // 🚨A hand on the device is counted on a thread that is none of the
+    // engine's, and on no thread of the engine's: what the app's pin holds
+    // at none on the thread its frames are built on.
+    #[test]
+    fn a_hand_on_the_device_is_counted_on_a_callers_thread_alone() {
+        let engine = Engine::open_first().expect("an adapter");
+        let entered = super::gpu_engine_device_entered_here;
+        let before = entered();
+        let small = engine.readback(4);
+        assert_eq!(entered(), before + 1, "a buffer made");
+        engine.queue.write_buffer(&small, 0, &[0; 4]);
+        assert_eq!(entered(), before + 2, "a buffer written");
+        engine.on_thread(|| {
+            let small = engine.readback(4);
+            engine.queue.write_buffer(&small, 0, &[0; 4]);
+        });
+        engine.on_a_thread(|| {
+            let small = engine.readback(4);
+            engine.queue.write_buffer(&small, 0, &[0; 4]);
+        });
+        assert_eq!(entered(), before + 2, "counted on a thread of the engine's");
+    }
+
+    // 🗣️관제 2026-11-14 01:21 (the-ui-thread-never-enters-the-driver): a
+    // compile a body on the engine's thread waits for is one every other
+    // verb's body stands behind, and is counted — one waited for on a
+    // caller's thread, or on a thread made for the body, is none.
+    #[test]
+    fn a_compile_waited_for_on_the_engines_thread_is_counted() {
+        let engine = Engine::open_first().expect("an adapter");
+        // SAFETY: the engine is live.
+        let stood = || unsafe { super::gpu_engine_compiles_on_thread(&engine) };
+        let compile = |of: &str| {
+            let source = format!("@compute @workgroup_size(1)\nfn main() {{}}\n// device.rs, {of}");
+            let _ = crate::kernels::shared::pipeline(&engine, &[&source], "main");
+        };
+        compile("a caller's");
+        engine.on_a_thread(|| compile("a thread of its own"));
+        assert_eq!(stood(), 0);
+        engine.on_thread(|| compile("the engine's thread"));
+        assert_eq!(stood(), 1);
+        // A kernel the engine has is no thread's wait.
+        engine.on_thread(|| compile("the engine's thread"));
+        assert_eq!(stood(), 1);
+    }
+
+    // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    // 「나란히 컴파일」): a body that compiles runs on a thread made for it
+    // — one under way holds up no body on the engine's thread, and no other
+    // of its kind — with its caller's own, as on the engine's thread.
+    #[test]
+    fn a_body_on_a_thread_of_its_own_holds_up_no_other() {
+        let engine = &Engine::open_first().expect("an adapter");
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (through, went) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                engine.on_a_thread(|| {
+                    let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                })
+            });
+            scope.spawn(move || {
+                let _: Option<()> = fail("the caller's own");
+                let on = engine.on_a_thread(|| {
+                    assert_eq!(last_error(), "the caller's own");
+                    let _: Option<()> = fail("the body's");
+                    engine.on_thread(|| ());
+                    std::thread::current().id()
+                });
+                assert_ne!(on, std::thread::current().id());
+                assert_eq!(last_error(), "the body's");
+                let _ = through.send(());
+            });
+            let got_through = went.recv_timeout(std::time::Duration::from_secs(20));
+            let _ = release.send(());
+            assert!(got_through.is_ok(), "a body waited behind the one that compiles");
+        });
     }
 
     // The tests' own engine keeps the alarm the process had: an error no
