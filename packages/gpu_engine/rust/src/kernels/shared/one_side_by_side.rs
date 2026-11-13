@@ -19,11 +19,18 @@ const CALL: &str = concat!("thread::", "scope(");
 const HOME: &str = "device.rs";
 
 /// The files that do and are no body's wait, each with why.
-const LEDGER: [(&str, &str); 1] = [(
-    "kernels/shared/mod.rs",
-    "a plugin's compile, on a thread for its stack — inside a thread of the engine's for \
-     compiling, which a body waits for through `Engine::compiling`",
-)];
+const LEDGER: [(&str, &str); 2] = [
+    (
+        "kernels/shared/mod.rs",
+        "a plugin's compile, on a thread for its stack — inside a thread of the engine's for \
+         compiling, which a body waits for through `Engine::compiling`",
+    ),
+    (
+        "kernels/shared/one_device_turn.rs",
+        "the devices' turn's own test: a second test's thread, which takes the turn the first \
+         holds — a test's threads, no verb's body, in a file no `tests.rs`",
+    ),
+];
 
 #[test]
 fn a_kernels_code_waits_for_threads_of_its_own_through_the_engine_alone() {

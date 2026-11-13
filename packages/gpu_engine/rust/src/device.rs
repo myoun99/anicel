@@ -1711,7 +1711,8 @@ mod tests {
     #[test]
     fn a_body_runs_on_the_engines_thread_as_a_call_of_its_callers() {
         use crate::kernels::shared::{gpu_engine_kernels_built_here, pipeline};
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let mut lent = vec![1, 2, 3];
         let _: Option<()> = fail("the caller's own");
         let (waited, built) = (super::gpu_engine_waits_here(), gpu_engine_kernels_built_here());
@@ -1739,7 +1740,8 @@ mod tests {
     // — the engine's thread goes on to the next, and has not ended.
     #[test]
     fn a_bodys_panic_is_its_callers_and_the_thread_goes_on() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let body = || engine.on_thread(|| -> () { panic!("the body's own") });
         let why = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
             .expect_err("the panic stayed on the engine's thread");
@@ -1753,7 +1755,8 @@ mod tests {
     // the app's pin holds at none on the thread its frames are built on.
     #[test]
     fn a_hand_on_the_device_is_counted_on_the_thread_that_takes_it() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let entered = super::gpu_engine_device_entered_here;
         let before = entered();
         let small = engine.readback(4);
@@ -1806,7 +1809,8 @@ mod tests {
     // engine's thread to itself still.
     #[test]
     fn a_body_that_waits_for_a_compile_holds_up_no_body_behind_it() {
-        let engine = &Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
         let got_through = a_body_gets_through_behind(engine, IN_TIME, |released| {
             let here = std::thread::current().id();
             engine.compiling(move |_| {
@@ -1835,7 +1839,8 @@ mod tests {
     // thread to the bodies behind it, as one that waits for a compile.
     #[test]
     fn a_body_whose_works_run_side_by_side_holds_up_no_body_behind_it() {
-        let engine = &Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
         let got_through = a_body_gets_through_behind(engine, IN_TIME, |released| {
             let (meets, met) = std::sync::mpsc::channel::<()>();
             let works: [Box<dyn FnOnce() -> &'static str + Send>; 2] = [
@@ -1861,7 +1866,8 @@ mod tests {
     // the-ui-thread-never-enters-the-driver).
     #[test]
     fn a_body_that_left_the_thread_fails_and_panics_on_its_own_caller() {
-        let engine = &Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
         for panics in [false, true] {
             let (let_go, released) = std::sync::mpsc::channel::<()>();
             let (began, begun) = std::sync::mpsc::channel();
