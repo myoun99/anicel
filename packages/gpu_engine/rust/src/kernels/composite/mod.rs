@@ -506,6 +506,27 @@ const _: fn() = || {
 
 impl Composite {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        Self::showing(engine, None)
+    }
+
+    /// [`Composite::new`], and with it the full pass that stores to a
+    /// surface of `format`, so that the first [`Composite::show`] onto one
+    /// compiles nothing: the app asks where it makes the executor, off the
+    /// thread its frames are built on (gpu-canonical-store ⑦, as
+    /// [`Composite::chains`]). None where this adapter stores to no such
+    /// surface: none is made there (`platform::Surface`).
+    ///
+    /// The tiles' full pass is compiled here, where the engine starts, not
+    /// under a canvas's first composite — as before passes came apart. Only
+    /// when the compile is paid changes; no test sees it.
+    ///
+    /// 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    /// 「나란히 컴파일」): the two at once, each on a thread of the engine's
+    /// for compiling (`CompilerTurn`). 🔬One after the other they were the
+    /// app's wait window's last 3.2 s on the Surface Pro 11 with no shader
+    /// kept (1.76 s and 1.40 s, 11-13), all else in it through 2.5 s before.
+    /// ↩️The surface's was a call of its own after this one till then.
+    pub(crate) fn showing(engine: &Engine, format: Option<wgpu::TextureFormat>) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let composite = Self {
@@ -513,23 +534,21 @@ impl Composite {
             pages,
             chain: OnceLock::new(),
         };
-        // The tiles' full pass is compiled here, where the engine starts, not
-        // under a canvas's first composite — as before passes came apart.
-        // Only when the compile is paid changes; no test sees it.
-        composite.pass(engine, Compiled::full(None));
+        let shown = format.filter(|&format| stores(engine, format)).and_then(storage_format);
+        let fulls = [Some(Compiled::full(None)), shown.map(|token| Compiled::full(Some(token)))];
+        let (source, binding) = (&composite.pages.source(), composite.surface_binding());
+        let made: Vec<_> = std::thread::scope(|scope| {
+            let compiling: Vec<_> = fulls
+                .into_iter()
+                .flatten()
+                .map(|full| scope.spawn(move || (full, compile(engine, source, binding, full))))
+                .collect();
+            compiling.into_iter().map(|one| one.join().expect("a full pass compiled")).collect()
+        });
+        let mut passes = composite.passes.lock().unwrap_or_else(PoisonError::into_inner);
+        passes.asked.extend(made.into_iter().map(|(full, pipeline)| (full, Some(pipeline))));
+        drop(passes);
         Some(composite)
-    }
-
-    /// Compiles the full pass that stores to a surface of `format` where
-    /// the caller is, so that the first [`Composite::show`] onto one
-    /// compiles nothing: the app asks where it makes the executor, off the
-    /// thread its frames are built on (gpu-canonical-store ⑦, as
-    /// [`Composite::chains`]). Nothing where this adapter stores to no such
-    /// surface: none is made there (`platform::Surface`).
-    pub(crate) fn shows(&self, engine: &Engine, format: wgpu::TextureFormat) {
-        if let (true, Some(token)) = (stores(engine, format), storage_format(format)) {
-            self.pass(engine, Compiled::full(Some(token)));
-        }
     }
 
     /// The effect chains' blurs, compiled where the caller is if they are

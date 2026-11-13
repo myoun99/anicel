@@ -813,14 +813,10 @@ external int planMapDrawn(
 )
 external Pointer<Composite> compositeNew(Pointer<Engine> engine);
 
-@Native<Void Function(Pointer<Composite>, Pointer<Engine>, Bool)>(
-  symbol: 'gpu_engine_composite_shows',
+@Native<Pointer<Composite> Function(Pointer<Engine>, Bool)>(
+  symbol: 'gpu_engine_composite_showing',
 )
-external void compositeShows(
-  Pointer<Composite> composite,
-  Pointer<Engine> engine,
-  bool bgra,
-);
+external Pointer<Composite> compositeShowing(Pointer<Engine> engine, bool bgra);
 
 @Native<Void Function(Pointer<Composite>, Pointer<Engine>)>(
   symbol: 'gpu_engine_composite_chains',

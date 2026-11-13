@@ -1100,20 +1100,21 @@ pub unsafe extern "C" fn gpu_engine_composite_new(engine: *const Engine) -> *mut
     Composite::new(engine).map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
 }
 
-/// Compiles the full pass that stores to a surface of BGRA or RGBA 8-bit
-/// unorm texels — as `gpu_engine_surface_new` makes for the same `bgra`,
-/// and a window is RGBA — on the calling thread ([`Composite::shows`]): an
-/// app asks where it makes the executor, off the thread its frames are
-/// built on, and its first show compiles nothing there.
+/// The executor, its full pass compiled and with it the one that stores to
+/// a surface of BGRA or RGBA 8-bit unorm texels — as
+/// `gpu_engine_surface_new` makes for the same `bgra`, and a window is
+/// RGBA — the two at once ([`Composite::showing`]): an app asks where it
+/// makes the executor, off the thread its frames are built on, and its
+/// first show compiles nothing there. Null on failure; see the last error.
 ///
 /// # Safety
-/// `composite` and `engine` are live, and no other thread holds the
-/// executor yet: a pass asked for meanwhile waits for this one.
+/// `engine` is live; the executor is freed before it.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_composite_shows(composite: *const Composite, engine: *const Engine, bgra: bool) {
+pub unsafe extern "C" fn gpu_engine_composite_showing(engine: *const Engine, bgra: bool) -> *mut Composite {
     // SAFETY: see the function's contract.
-    let (composite, engine) = unsafe { (&*composite, &*engine) };
-    composite.shows(engine, surface_format(bgra));
+    let engine = unsafe { &*engine };
+    Composite::showing(engine, Some(surface_format(bgra)))
+        .map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
 }
 
 /// Compiles the effect chains' blurs on the calling thread if they are not

@@ -2135,23 +2135,22 @@ class GpuComposite implements _OfAnEngine {
   }) async =>
       GpuComposite._(engine, await _compiledOff(engine, _showing(bgra)));
 
-  static Pointer<rust.Composite> _compiled(Pointer<rust.Engine> on) {
-    final composite = rust.compositeNew(on);
+  static Pointer<rust.Composite> _compiled(Pointer<rust.Engine> on) =>
+      _made(rust.compositeNew(on));
+
+  /// [_compiled], and with it the pass that shows on a screen as [bgra]
+  /// says, the two at once (rust/src/kernels/composite, `showing`) — made
+  /// here, of a bool alone, for what crosses to the other isolate.
+  static Pointer<rust.Composite> Function(Pointer<rust.Engine>) _showing(
+    bool bgra,
+  ) => (on) => _made(rust.compositeShowing(on, bgra));
+
+  static Pointer<rust.Composite> _made(Pointer<rust.Composite> composite) {
     if (composite == nullptr) {
       throw GpuRefused(_lastError());
     }
     return composite;
   }
-
-  /// [_compiled], and the pass that shows on a screen as [bgra] says —
-  /// made here, of a bool alone, for what crosses to the other isolate.
-  static Pointer<rust.Composite> Function(Pointer<rust.Engine>) _showing(
-    bool bgra,
-  ) => (on) {
-    final composite = _compiled(on);
-    rust.compositeShows(composite, on, bgra);
-    return composite;
-  };
 
   GpuComposite._(this._engine, this._composite);
 

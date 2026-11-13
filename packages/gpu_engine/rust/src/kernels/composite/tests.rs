@@ -2121,6 +2121,24 @@ fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go
     assert!(made().is_some_and(|its_own| its_own != any));
 }
 
+// The executor an app opens has the tiles' full pass and the surface's,
+// both made as it is (`Composite::showing`): its first show compiles
+// nothing, and nothing is left to compile apart. Where the adapter stores
+// to no such surface it has the tiles' alone.
+#[test]
+fn an_executor_opened_to_show_has_both_full_passes() {
+    let engine = first_engine();
+    for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Bgra8Unorm] {
+        let composite = Composite::showing(engine, Some(format)).expect("the executor");
+        let passes = composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(passes.made(Compiled::full(None)).is_some(), "the tiles' ({format:?})");
+        let shown = super::storage_format(format).filter(|_| crate::platform::stores(engine, format));
+        assert!(passes.made(Compiled::full(shown)).is_some(), "the surface's ({format:?})");
+        assert_eq!(passes.asked.len(), 1 + usize::from(shown.is_some()), "no other ({format:?})");
+        assert!(!passes.compiling, "nothing compiled apart ({format:?})");
+    }
+}
+
 // A plan's pass compiled for its own R1 modes, stack levels and masked
 // steps, on a thread, composites what the full one does, which serves
 // until it is made: once made, every pinned scene and screen comes out the
