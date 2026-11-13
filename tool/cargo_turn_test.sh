@@ -13,7 +13,9 @@
 # lane · it is handed its arguments and its exit code is the run's · two
 # runs at once never overlap — the second waits, and says so · the turn is
 # let go after a run that failed too · a turn left by a dead holder is
-# taken over · it keeps no incremental cache (관제 2026-11-08 01:10).
+# taken over · it keeps no incremental cache (관제 2026-11-08 01:10) ·
+# the turn goes to the waiter that came first, and a killed waiter holds no
+# one back (2026-11-14).
 #
 # usage: bash tool/cargo_turn_test.sh
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +41,11 @@ CARGO
 chmod +x "$TMP/bin/cargo"
 export PATH="$TMP/bin:$PATH"
 TURN="$STAGE/.git/cargo-target.turn"
-WANT_TARGET="$(cd "$STAGE" && pwd)/packages/gpu_engine/rust/target"
+# The trunk as git spells it, as the script finds it: on Windows the
+# system temp is mounted at /tmp, and git says /tmp where `pwd` says the
+# folder (three checks failed so till 2026-11-14).
+WANT_TARGET="$(cd "$(git -C "$STAGE" rev-parse --path-format=absolute \
+  --git-common-dir)/.." && pwd)/packages/gpu_engine/rust/target"
 
 pass=0; fail=0
 check() { # name, condition result (0 = holds)
@@ -129,6 +135,36 @@ check "a folder of no name is refused, and runs no cargo" \
 (cd "$LANE" && CARGO_INCREMENTAL=1 bash tool/cargo_turn.sh test) 2>/dev/null
 check "cargo builds there with no incremental cache" \
   "$([ "$(cat "$TMP/env")" = "incremental 0" ]; echo $?)"
+
+# 8. First come, first served (a-batch-is-cut-silent-while-it-waits-for-
+# the-hook-turn, 2026-11-14): one that comes the moment the holder lets go,
+# while another has waited, waits behind it — the one waiting tries again
+# only seconds later, and the folder was free for whoever tried first.
+: > "$LOG"
+(cd "$STAGE" && FAKE_SECONDS=3 bash tool/cargo_turn.sh first) 2>/dev/null &
+sleep 0.3
+(cd "$LANE" && FAKE_SECONDS=0 bash tool/cargo_turn.sh second) 2>/dev/null &
+for _ in $(seq 100); do
+  grep -q '^end' "$LOG" && break
+  sleep 0.1
+done
+(cd "$STAGE" && FAKE_SECONDS=0 bash tool/cargo_turn.sh third) 2>/dev/null &
+wait
+second_start=$(awk '$1 == "start" && $5 == "second" { print $3 }' "$LOG")
+third_start=$(awk '$1 == "start" && $5 == "third" { print $3 }' "$LOG")
+check "one that came later waits behind one already waiting" \
+  "$([ -n "$second_start" ] && [ -n "$third_start" ] && [ "$second_start" -lt "$third_start" ]; echo $?)"
+check "and no ticket is left in the line" \
+  "$([ -z "$(ls "$TURN.line" 2>/dev/null)" ]; echo $?)"
+
+# 9. A waiter that was killed leaves its ticket: it holds no one back.
+: > "$LOG"
+mkdir -p "$TURN.line"
+: > "$TURN.line/1000000000-999999"
+(cd "$STAGE" && timeout 20 bash tool/cargo_turn.sh check) 2>/dev/null
+check "a dead waiter's ticket holds no one back" \
+  "$(grep -q ' check$' "$LOG"; echo $?)"
+check "and goes" "$([ ! -e "$TURN.line/1000000000-999999" ]; echo $?)"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
