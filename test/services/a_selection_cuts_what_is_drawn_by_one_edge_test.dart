@@ -6,7 +6,6 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
@@ -21,6 +20,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/engine_selection_masks.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
@@ -29,6 +30,7 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
+import 'package:anicel/src/services/selection_fold.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★WHATEVER DRAWS IN A SELECTION IS CUT BY ONE EDGE
@@ -401,6 +403,73 @@ void main() {
     expect(alphas(landed, 100), row);
   });
 
+  test('a stroke handed to the commit with its selection lands the ramp the '
+      'live stroke shows', () {
+    final landed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+      surface: blank(),
+      sequence: BrushDabSequence([
+        for (var x = 0.0; x <= 300; x += 8) paintDab(x, 100),
+      ]),
+      layerId: layerId,
+      frameId: frameId,
+      selection: soft,
+    ).afterSurface;
+    expect(alphas(landed, 100), row);
+  });
+
+  test('a blur handed to the commit with its selection rubs nothing the '
+      'selection does not take', () {
+    final rgba = Uint8List(300 * 200 * 4);
+    for (var at = 0; at < rgba.length; at += 4) {
+      if ((at ~/ 4 % 300 ~/ 4).isEven) {
+        rgba
+          ..[at] = 255
+          ..[at + 3] = 255;
+      }
+    }
+    final striped = materializeBrushDabSequenceOnBitmapSurface(
+      surface: blank(),
+      sequence: BrushDabSequence([
+        opaqueStamp().copyWith(
+          stamp: BrushStampImage(
+            id: 'stripes',
+            width: 300,
+            height: 200,
+            rgba: rgba,
+          ),
+        ),
+      ]),
+    ).surface;
+    final rubbed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+      surface: striped,
+      sequence: BrushDabSequence([
+        for (var i = 0; i < 27; i += 1)
+          paintDab(20.0 + i * 10, 100).copyWith(
+            size: 30,
+            blurs: true,
+            sequence: i,
+          ),
+      ]),
+      layerId: layerId,
+      frameId: frameId,
+      selection: SelectionClip.outline(rect(100, 0, 200, 200)),
+    ).afterSurface;
+
+    var rubbedInside = false;
+    for (var y = 85; y < 115; y += 1) {
+      for (var x = 0; x < 300; x += 1) {
+        final before = surfaceRgbaInPlace(striped, x, y);
+        final after = surfaceRgbaInPlace(rubbed, x, y);
+        if (x < 100 || x >= 200) {
+          expect(after, before, reason: '$x,$y lies outside the selection');
+        } else {
+          rubbedInside = rubbedInside || after != before;
+        }
+      }
+    }
+    expect(rubbedInside, isTrue, reason: 'fixture premise: it rubs inside');
+  });
+
   group('on the engine', () {
     // 🔬The CPU audit (2026-11-13): a stroke under a selection had the CPU
     // make the mask's bytes over the tiles of each landing, at every move,
@@ -464,29 +533,183 @@ void main() {
       }
     }
 
-    test('a stroke asks the engine for its selection once, however often it '
-        'lands, and lets it go when it is cleared', () {
+    /// Fails at the first pixel of [landed] whose alpha is not what
+    /// [whole] reads there.
+    void cutBy(SelectionMaskReading? whole, BitmapSurface landed) {
+      for (var y = 0; y < 200; y += 1) {
+        for (var x = 0; x < 300; x += 1) {
+          final alpha = (surfaceRgbaInPlace(landed, x, y) ?? 0) & 255;
+          if (alpha != readAt(whole, x, y)) {
+            fail(
+              '$x,$y took $alpha of it, the selection reads '
+              '${readAt(whole, x, y)}',
+            );
+          }
+        }
+      }
+    }
+
+    for (final MapEntry(key: name, value: region) in outlines.entries) {
+      for (final options in softnesses) {
+        final label =
+            '$name, grow ${options.growPx} feather ${options.featherPx} '
+            'aa ${options.antiAlias}';
+
+        test('a stamp is cut by the bytes a stroke is: $label', () {
+          final landed = materializeBrushDabSequenceOnBitmapSurface(
+            surface: BitmapSurface(canvasSize: canvas, tileSize: engineTile),
+            sequence: BrushDabSequence([opaqueStamp()]),
+            selection: SelectionClip.of(region, wall: wall, options: options),
+          ).surface;
+
+          cutBy(
+            selectionMaskOnPasteboard(region, wall: wall, options: options),
+            landed,
+          );
+        });
+      }
+    }
+
+    test('a stroke\'s buffer is cut by the bytes a stroke is', () {
+      final region = outlines['an ellipse']!;
+      const options = SelectionMaskOptions(growPx: 3, featherPx: 5);
+      final landed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(canvasSize: canvas, tileSize: engineTile),
+        sequence: BrushDabSequence([paintDab(150, 100).copyWith(size: 400)]),
+        layerId: layerId,
+        frameId: frameId,
+        selection: SelectionClip.of(region, wall: wall, options: options),
+      ).afterSurface;
+
+      cutBy(
+        selectionMaskOnPasteboard(region, wall: wall, options: options),
+        landed,
+      );
+    });
+
+    test('where the selection takes all of a stamp, it lands what it lands '
+        'with none', () {
+      final rgba = Uint8List(300 * 200 * 4);
+      for (var at = 0; at < rgba.length; at += 4) {
+        rgba
+          ..[at] = 200
+          ..[at + 1] = 90
+          ..[at + 2] = 30
+          ..[at + 3] = 101;
+      }
+      final stamp = opaqueStamp().copyWith(
+        opacity: 0.6,
+        stamp: BrushStampImage(id: 'half', width: 300, height: 200, rgba: rgba),
+      );
+      final under = BitmapSurface(canvasSize: canvas, tileSize: engineTile);
+      BitmapSurface landed(SelectionClip? selection) =>
+          materializeBrushDabSequenceOnBitmapSurface(
+            surface: under,
+            sequence: BrushDabSequence([stamp]),
+            selection: selection,
+          ).surface;
+      final inside = landed(soft);
+      final whole = landed(null);
+      final reads = selectionMaskOnPasteboard(
+        rect(60, 20, 240, 180),
+        wall: wall,
+        options: const SelectionMaskOptions(featherPx: 8),
+      );
+      expect(readAt(reads, 150, 100), 255, reason: 'fixture premise');
+      expect(readAt(reads, 20, 100), 0, reason: 'fixture premise');
+
+      for (var y = 0; y < 200; y += 1) {
+        for (var x = 0; x < 300; x += 1) {
+          final read = readAt(reads, x, y);
+          final at = surfaceRgbaInPlace(inside, x, y) ?? 0;
+          if (read == 255 && at != (surfaceRgbaInPlace(whole, x, y) ?? 0)) {
+            fail('$x,$y is wholly selected and landed otherwise');
+          }
+          if (read == 0 && at != 0) {
+            fail('$x,$y is not selected and took something');
+          }
+        }
+      }
+    });
+
+    test('a stamp the selection cannot reach is neither handed up nor cut',
+        () {
+      final clip = SelectionClip.of(
+        rect(60, 20, 240, 180),
+        wall: wall,
+        options: const SelectionMaskOptions(featherPx: 2),
+      );
+      final rgba = Uint8List(10 * 10 * 4)..fillRange(0, 10 * 10 * 4, 255);
+      final dab = paintDab(20, 190).copyWith(
+        stamp: BrushStampImage(id: 'away', width: 10, height: 10, rgba: rgba),
+      );
       final made = EngineSelectionMasks.debugMade;
-      final held = GpuMask.liveBytes;
-      final (shown, rasterizer) = strokedUnder(soft);
-      rasterizer
-        ..blendFrom([paintDab(40, 40), paintDab(260, 160)], from: 0)
-        ..preBlendedOverlayTiles(
-          coords: [for (final tile in shown.tiles.keys) tile],
-          base: shown,
-          mode: BrushBlendMode.color,
-          erase: false,
-        )
-        ..promoteStrokeTiles(
-          base: shown,
-          mode: BrushBlendMode.color,
-          erase: false,
-        );
+      final handed = EngineStampPictures.debugHandedUp;
+      final landed = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(canvasSize: canvas, tileSize: engineTile),
+        sequence: BrushDabSequence([dab]),
+        selection: clip,
+      );
+
+      expect(landed.hasChanges, isFalse);
+      expect(EngineSelectionMasks.debugMade, made);
+      expect(EngineStampPictures.debugHandedUp, handed);
+    });
+
+    test('a brush dab handed in with a selection is turned away', () {
+      expect(
+        () => materializeBrushDabSequenceOnBitmapSurface(
+          surface: BitmapSurface(canvasSize: canvas, tileSize: engineTile),
+          sequence: BrushDabSequence([opaqueStamp(), paintDab(40, 40)]),
+          selection: soft,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('a clip has its mask made once, for a fill\'s every piece and the '
+        'strokes after it', () {
+      final clip = SelectionClip.of(
+        rect(60, 20, 240, 180),
+        wall: wall,
+        options: const SelectionMaskOptions(featherPx: 8),
+      );
+      final made = EngineSelectionMasks.debugMade;
+      final pieces = [
+        for (final (x, y) in [(70.0, 40.0), (150.0, 100.0), (230.0, 160.0)])
+          opaqueStamp().copyWith(
+            center: CanvasPoint(x: x, y: y),
+            stamp: BrushStampImage(
+              id: 'piece $x',
+              width: 20,
+              height: 20,
+              rgba: Uint8List(20 * 20 * 4)..fillRange(0, 20 * 20 * 4, 255),
+            ),
+          ),
+      ];
+      final fill = promoteFillDabs(
+        surface: BitmapSurface(canvasSize: canvas, tileSize: engineTile),
+        dabs: pieces,
+        blendMode: BrushBlendMode.color,
+        selection: clip,
+        layerId: layerId,
+        frameId: frameId,
+      );
+      expect(fill, isNotEmpty, reason: 'fixture premise');
+      for (var stroke = 0; stroke < 2; stroke += 1) {
+        final (shown, rasterizer) = strokedUnder(clip);
+        rasterizer
+          ..blendFrom([paintDab(40, 40), paintDab(260, 160)], from: 0)
+          ..preBlendedOverlayTiles(
+            coords: [for (final tile in shown.tiles.keys) tile],
+            base: shown,
+            mode: BrushBlendMode.color,
+            erase: false,
+          )
+          ..clear();
+      }
 
       expect(EngineSelectionMasks.debugMade, made + 1);
-      expect(GpuMask.liveBytes, greaterThan(held));
-      rasterizer.clear();
-      expect(GpuMask.liveBytes, held);
     });
   });
 }

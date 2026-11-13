@@ -348,6 +348,10 @@ void main() {
         // tile-blocks-on-rust (11-12): a tile's block goes back to the
         // lists by its finalizer alone, and only the collector runs it.
         'test/models/a_collected_tile_gives_its_block_back_test.dart',
+        // selection-mask-on-the-engine (11-14): a selection's mask goes with
+        // the clip that asked for it by its finalizer alone, and only the
+        // collector runs it.
+        'test/native/a_selection_mask_goes_with_its_clip_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '

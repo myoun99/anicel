@@ -387,8 +387,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _results.clear();
     _blur?.dispose();
     _blur = null;
-    _selectionOnEngine?.mask.free();
-    _selectionOnEngine = null;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
@@ -571,29 +569,13 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     );
   }
 
-  /// The selection's mask on the engine and the clip it is of — made for
-  /// the first landing under that clip, let go by [clear].
-  ({SelectionClip clip, GpuMask mask})? _selectionOnEngine;
-
   /// The selection's mask over every pixel it can select, made on the
-  /// engine once for the stroke ([SelectionClip.maskOnEngine]); null with
-  /// no selection. ↩️Till 2026-11-13 the CPU made the bytes over the tiles
-  /// of each landing (`SelectionClip.maskFor`) and handed them up — at
-  /// every move of a stroke under a selection.
-  GpuMask? _selectionMask() {
-    final clip = selectionClip;
-    if (clip == null) {
-      return null;
-    }
-    final kept = _selectionOnEngine;
-    if (kept != null && identical(kept.clip, clip)) {
-      return kept.mask;
-    }
-    kept?.mask.free();
-    final mask = clip.maskOnEngine();
-    _selectionOnEngine = (clip: clip, mask: mask);
-    return mask;
-  }
+  /// engine once for the clip and kept with it
+  /// ([SelectionClip.maskOnEngine]); null with no selection. ↩️Till
+  /// 2026-11-13 the CPU made the bytes over the tiles of each landing
+  /// (`SelectionClip.maskFor`) and handed them up — at every move of a
+  /// stroke under a selection.
+  GpuMask? _selectionMask() => selectionClip?.maskOnEngine();
 
   /// The tile of [mask] as the engine reads a bitmap: once per mask.
   static GpuDabTexture _textureOf(BrushTipMask mask) =>

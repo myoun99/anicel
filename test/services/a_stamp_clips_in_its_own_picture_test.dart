@@ -18,6 +18,7 @@ import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
+import 'package:anicel/src/services/selection_fold.dart';
 
 /// 🚨★★★board `a-stamp-rounds-twice-inside-a-selection` (2026-09-28): a
 /// stamp — a fill, a pasted or stamped piece — under 100% landed a level

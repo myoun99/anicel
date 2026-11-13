@@ -14,7 +14,11 @@ import 'brush_stroke_landing.dart';
 import 'brush_commit_cache_invalidation.dart';
 import 'brush_stroke_blend.dart';
 import 'canvas_selection_paint_clip.dart';
+import 'selection_clip.dart';
 
+/// [selection] cuts what lands, where it lands: a stamp under its mask, a
+/// stroke's buffer as one ([compositeStrokePixelsOntoBitmapSurface]), a blur
+/// by its rasterizer — promoted tiles were cut as they were made.
 BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
@@ -25,6 +29,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
   List<PlacedTile>? promotedTiles,
+  SelectionClip? selection,
 }) {
   // PROMOTION fast path: the live overlay already produced the finished
   // tiles — pre-blended against `promotedBase` with these very kernels,
@@ -49,7 +54,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   // has no stroke buffer for the routes below to composite.
   if (sequence.firstOrNull?.blurs ?? false) {
     return _installed(
-      strokeLandedOn(surface, sequence),
+      strokeLandedOn(surface, sequence, selection: selection),
       on: surface,
       layerId: layerId,
       frameId: frameId,
@@ -151,10 +156,12 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
           // what the object already knows.
           erase: sequence.firstOrNull?.erase ?? false,
           blendMode: blendMode,
+          selection: selection,
         )
       : materializeBrushDabSequenceOnBitmapSurface(
           surface: surface,
           sequence: sequence,
+          selection: selection,
         );
   final cacheInvalidationPlan = cacheInvalidationPlanForDirtyTiles(
     layerId: layerId,

@@ -1369,8 +1369,8 @@ class GpuStampLanding {
 
   /// Lays [picture], its top-left pixel at ([left], [top]), what of it lies
   /// [within] the canvas's (left, top, right, bottom), on the tiles [asks]
-  /// at [opacity] (65535 whole) in [mode]. Each result compares with the
-  /// tile under it, and takes a fresh slot of [cel] of
+  /// at [opacity] (65535 whole) in [mode], under [mask] if any. Each result
+  /// compares with the tile under it, and takes a fresh slot of [cel] of
   /// [pool] where it is neither that tile nor empty. As many of [asks], the
   /// first, as [pool] has room for.
   List<GpuLanded> land(
@@ -1384,6 +1384,7 @@ class GpuStampLanding {
     required List<GpuTileAsk> asks,
     int opacity = 65535,
     required int mode,
+    GpuMask? mask,
   }) => _landed(
     asks,
     (arena, coordinates, under, places, changes) {
@@ -1408,6 +1409,7 @@ class GpuStampLanding {
         asks.length,
         opacity,
         mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
       );
@@ -2028,8 +2030,8 @@ class GpuHeldChains {
 /// A mask kept on the GPU (rust/src/kernels/composite/abi.rs): a byte a
 /// pixel over its box — a fill range's, in the space of the row it lies on
 /// — made once and named by each plan that lays steps under it
-/// ([GpuPlan.mask]) for as long as it is not freed.
-class GpuMask implements _OfAnEngine {
+/// ([GpuPlan.mask]) till it is freed, or let go of.
+class GpuMask implements _OfAnEngine, Finalizable {
   /// [bytes], a byte a pixel row after row over [width] × [height], whose
   /// top-left pixel is ([x], [y]), on [composite]'s engine.
   factory GpuMask(
@@ -2054,13 +2056,33 @@ class GpuMask implements _OfAnEngine {
         height,
       );
     });
-    if (mask == nullptr) {
+    return GpuMask._kept(composite._engine, mask, width * height);
+  }
+
+  /// [made] on [engine], [bytes] a byte a pixel: freed by [free], or with
+  /// the object where nothing freed it — a selection's mask lives as long
+  /// as the clip that asked for it (the app's `SelectionClip`), as a
+  /// stamp's picture does ([GpuStampPicture]).
+  factory GpuMask._kept(
+    GpuEngine engine,
+    Pointer<rust.MaskPlane> made,
+    int bytes,
+  ) {
+    if (made == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuMask._(composite._engine, mask);
+    final mask = GpuMask._(engine, made);
+    _freed.attach(mask, made.cast(), detach: mask, externalSize: bytes);
+    return mask;
   }
 
   GpuMask._(this._engine, this._mask);
+
+  static final NativeFinalizer _freed = NativeFinalizer(
+    Native.addressOf<NativeFunction<Void Function(Pointer<rust.MaskPlane>)>>(
+      rust.maskFree,
+    ).cast(),
+  );
 
   /// The bytes of every mask made and not yet freed, counted by the engine
   /// where it makes and frees them.
@@ -2070,8 +2092,11 @@ class GpuMask implements _OfAnEngine {
   final GpuEngine _engine;
   final Pointer<rust.MaskPlane> _mask;
 
-  /// Frees the mask; a plan that names it keeps its own hold.
-  void free() => rust.maskFree(_mask);
+  /// Frees the mask now; a plan that names it keeps its own hold.
+  void free() {
+    _freed.detach(this);
+    rust.maskFree(_mask);
+  }
 }
 
 /// What a plug-in made, straight RGBA8 row after row, moved to the engine
@@ -3410,8 +3435,8 @@ final class GpuSelectionMasks {
   /// The mask of the selection [program] spells over [points] — the
   /// spelling the engine reads (`steps_of`) — on the pixel box [width] ×
   /// [height] whose top-left pixel is ([x], [y]), finished by [grow],
-  /// [feather] and [antiAlias]. Kept on the GPU until it is freed; the
-  /// work is submitted and nothing waits for it.
+  /// [feather] and [antiAlias]. Kept on the GPU till it is freed or let
+  /// go of; the work is submitted and nothing waits for it.
   GpuMask selection({
     required Uint32List program,
     required Float64List points,
@@ -3442,10 +3467,7 @@ final class GpuSelectionMasks {
         antiAlias,
       );
     });
-    if (mask == nullptr) {
-      throw GpuRefused(_lastError());
-    }
-    return GpuMask._(_engine, mask);
+    return GpuMask._kept(_engine, mask, width * height);
   }
 
   void free() => rust.selectionMasksFree(_masks);

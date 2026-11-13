@@ -26,6 +26,8 @@ import 'brush_stroke_landing.dart';
 import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
+import 'selection_clip.dart';
+import 'selection_fold.dart';
 
 class BrushSurfaceMaterialization {
   const BrushSurfaceMaterialization({
@@ -59,12 +61,32 @@ bool _landsOnEngine(BitmapSurface surface) =>
 /// reference pixel pipeline (`brushPixelBlendOperationsForDabSequence` +
 /// `applyBrushPixelBlendOperationsToBitmapTile`), which remains as the slow
 /// per-pixel-operation oracle used by the parity test.
+///
+/// 🚨★★★A STAMP IN A SELECTION LANDS UNDER THE SELECTION'S MASK (2026-11-14,
+/// board `a-selection-mask-is-built-on-the-cpu-at-every-move`): [selection]
+/// cuts each stamp of [sequence] where it lands — on the engine's grid the
+/// stamp's own picture laid under [SelectionClip.maskOnEngine], the mask a
+/// stroke under the same clip lands under; off it folded into the picture
+/// first ([clipStampDabToSelection]). ↩️Every road cut its stamps on the CPU
+/// before they came here — a mask and a copy of the picture at each.
+///
+/// ⛔Stamps only: a stroke of brush dabs under a selection lands by its
+/// stroke ([strokeLandedOn]) or as one buffer
+/// ([compositeStrokePixelsOntoBitmapSurface]), and nothing hands one here.
 BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
+  SelectionClip? selection,
 }) {
+  if (selection != null && sequence.dabs.any((dab) => dab.stamp == null)) {
+    throw ArgumentError.value(
+      selection,
+      'selection',
+      'cuts stamps; a brush dab lands under a selection by its stroke',
+    );
+  }
   if (_landsOnEngine(surface)) {
-    return _materializedOnEngine(surface, sequence);
+    return _materializedOnEngine(surface, sequence, selection);
   }
   // Strokes clip at the PASTEBOARD (as far past the canvas as the
   // project's size reaches, the canvas itself when it is off — I-109),
@@ -85,16 +107,20 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // — the generic tip machinery below stays byte-untouched (its parity
     // pins never see stamps; live == commit still holds by construction
     // because stamps only enter through programmatic commits).
-    final stamp = dab.stamp;
-    if (stamp != null) {
-      _blendStampDab(
-        dab: dab,
-        stamp: stamp,
-        wall: wall,
-        tileSize: tileSize,
-        scratch: scratch,
-        changedCoords: changedCoords,
-      );
+    if (dab.stamp != null) {
+      final cut = selection == null
+          ? dab
+          : clipStampDabToSelection(dab, clip: selection);
+      if (cut != null) {
+        _blendStampDab(
+          dab: cut,
+          stamp: cut.stamp!,
+          wall: wall,
+          tileSize: tileSize,
+          scratch: scratch,
+          changedCoords: changedCoords,
+        );
+      }
       continue;
     }
 
@@ -130,11 +156,13 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
 
 /// [sequence] laid on [surface] by the engine (flip lane ⓒ), in its order:
 /// a run of brush dabs piled and laid as one stroke, each stamp by itself —
-/// a lift's landing means what it says only dab by dab. What each lands on
-/// is what the one before it left.
+/// a lift's landing means what it says only dab by dab —, under
+/// [selection]'s mask where there is one. What each lands on is what the
+/// one before it left.
 BrushSurfaceMaterialization _materializedOnEngine(
   BitmapSurface surface,
   BrushDabSequence sequence,
+  SelectionClip? selection,
 ) {
   var landed = surface;
   final changed = <TileCoord>{};
@@ -155,11 +183,12 @@ BrushSurfaceMaterialization _materializedOnEngine(
       put(
         _pictureOnEngine(
           landed,
-          EngineStampPictures.of(stamp),
+          () => EngineStampPictures.of(stamp),
           stamp.landingRect(first.center),
           (
             opacity: first.opacity,
             mode: engineBlendModeOf(BrushBlendMode.color, erase: first.erase),
+            within: selection,
           ),
         ),
       );
@@ -183,17 +212,18 @@ BrushSurfaceMaterialization _materializedOnEngine(
 
 /// [picture] over [landing], what the pasteboard's wall leaves of it — a
 /// selection dropped past the stage's edge keeps its pixels there —, laid
-/// on [surface] as [laid] says: the tiles it changes, a blank one where
-/// none is left.
+/// on [surface] as [laid] says, under its `within`'s mask where it has one:
+/// the tiles it changes, a blank one where none is left. [picture] is
+/// asked for only where something of it can land.
 List<PlacedTile> _pictureOnEngine(
   BitmapSurface surface,
-  GpuStampPicture picture,
+  GpuStampPicture Function() picture,
   DirtyRegion landing,
-  ({double opacity, int mode}) laid,
+  ({double opacity, int mode, SelectionClip? within}) laid,
 ) {
-  final (:opacity, :mode) = laid;
+  final (:opacity, :mode, :within) = laid;
   final clip = landing.intersection(surface.pasteboard.region);
-  if (clip == null) {
+  if (clip == null || !(within?.mayCover(clip) ?? true)) {
     return const [];
   }
   final tileSize = surface.tileSize;
@@ -203,7 +233,7 @@ List<PlacedTile> _pictureOnEngine(
       for (var x = firstX; x <= lastX; x += 1) TileCoord(x: x, y: y),
   ];
   final landed = _landedOnEngine(
-    picture,
+    picture(),
     landing,
     clip,
     [
@@ -212,6 +242,7 @@ List<PlacedTile> _pictureOnEngine(
     ],
     opacity: (opacity * 65535).round(),
     mode: mode,
+    mask: within?.maskOnEngine(),
   );
   return [
     for (var at = 0; at < landed.length; at += 1)
@@ -224,8 +255,8 @@ List<PlacedTile> _pictureOnEngine(
 }
 
 /// [picture], its top-left pixel at [landing]'s, laid by the engine on the
-/// tiles [asks] at [opacity] (65535 whole) in [mode] — what of it lies
-/// within [clip]: each result as the stamp landing hands it.
+/// tiles [asks] at [opacity] (65535 whole) in [mode], under [mask] if any —
+/// what of it lies within [clip]: each result as the stamp landing hands it.
 List<LandedTile> _landedOnEngine(
   GpuStampPicture picture,
   DirtyRegion landing,
@@ -233,6 +264,7 @@ List<LandedTile> _landedOnEngine(
   List<TileAsk> asks, {
   required int opacity,
   required int mode,
+  required GpuMask? mask,
 }) => EngineTileLedger.instance.land(
   EngineTileLedger.landedCel,
   asks,
@@ -247,6 +279,7 @@ List<LandedTile> _landedOnEngine(
     asks: asked,
     opacity: opacity,
     mode: mode,
+    mask: mask,
   ),
   compared: true,
 );
@@ -310,6 +343,7 @@ Map<TileCoord, BitmapTile?> stampLaidOver(
     ],
     opacity: 65535,
     mode: engineBlendModeOf(BrushBlendMode.color, erase: false),
+    mask: null,
   );
   return {
     for (final (at, coord) in coords.indexed)
@@ -442,29 +476,39 @@ void _blendStampDab({
 /// (integer placement is exact: center = left + w/2 rounds back to left),
 /// and the stamp blend's opacity-1 source-over/destination-out is
 /// byte-identical to the old inline loop.
+///
+/// [selection] cuts it as [materializeBrushDabSequenceOnBitmapSurface] cuts
+/// a stamp: under the clip's mask on the engine's grid, folded into the
+/// buffer off it ([clipStrokePixelsToSelection]).
 BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   required BitmapSurface surface,
   required Uint8List strokePixels,
   required DirtyRegion bounds,
   bool erase = false,
   BrushBlendMode blendMode = BrushBlendMode.color,
+  SelectionClip? selection,
 }) {
   final width = bounds.rightExclusive - bounds.left;
   final height = bounds.bottomExclusive - bounds.top;
+  final unchanged = BrushSurfaceMaterialization(
+    surface: surface,
+    dirtyTiles: DirtyTileSet.empty(),
+  );
   if (width <= 0 || height <= 0) {
-    return BrushSurfaceMaterialization(
-      surface: surface,
-      dirtyTiles: DirtyTileSet.empty(),
-    );
+    return unchanged;
   }
   if (_landsOnEngine(surface)) {
     // One landing whatever the blend: the engine lays the stroke's picture
     // in its mode.
     final tiles = _pictureOnEngine(
       surface,
-      GpuStampPicture(appGpuEngine, strokePixels, width, height),
+      () => GpuStampPicture(appGpuEngine, strokePixels, width, height),
       bounds,
-      (opacity: 1, mode: engineBlendModeOf(blendMode, erase: erase)),
+      (
+        opacity: 1,
+        mode: engineBlendModeOf(blendMode, erase: erase),
+        within: selection,
+      ),
     );
     final coords = [for (final tile in tiles) tile.coord]
       ..sort(TileCoord.compareRowMajor);
@@ -472,6 +516,16 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
       surface: coords.isEmpty ? surface : surface.putMaterializedTiles(tiles),
       dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
     );
+  }
+  final pixels = selection == null
+      ? strokePixels
+      : clipStrokePixelsToSelection(
+          pixels: strokePixels,
+          bounds: bounds,
+          clip: selection,
+        )?.pixels;
+  if (pixels == null) {
+    return unchanged;
   }
   BrushDab boundsStampDab({
     required String id,
@@ -504,7 +558,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
     // set: the two passes mark each.
     final result = blendStrokeRegionPixels(
       dst: bitmapSurfaceRegionPixels(surface, bounds),
-      src: strokePixels,
+      src: pixels,
       mode: blendMode,
       pixelCount: width * height,
     );
@@ -528,7 +582,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
     sequence: BrushDabSequence([
       boundsStampDab(
         id: 'stroke-composite',
-        rgba: strokePixels,
+        rgba: pixels,
         erase: erase || blendMode == BrushBlendMode.erase,
       ),
     ]),

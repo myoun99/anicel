@@ -7,7 +7,6 @@ import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'brush_commit_builder.dart';
 import 'brush_live_stroke_rasterizer.dart';
-import 'canvas_selection_paint_clip.dart';
 import 'selection_clip.dart';
 
 /// The stroke revision a promoted fill's tiles carry: a fill's pieces are
@@ -17,10 +16,11 @@ const int fillPromotionRevision = 1;
 
 /// 🚨★★★A FILL IS A STROKE OF ITS STAMP PIECES (유저 절대규칙 2026-09-17:
 /// 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The result tiles a fill tap
-/// will land, made NOW by the commit's own function — the same stamp clip
-/// the panel's commit funnel runs ([clipStampDabToSelection]), then
+/// will land, made NOW by the commit's own function —
 /// [brushCommitResultForBrushDabSequenceOnBitmapSurface] exactly as the
-/// commit would call it — so what the screen shows before the commit IS
+/// commit would call it, each piece cut by the selection where it lands
+/// (↩️till 2026-11-14 cut first by the CPU, `clipStampDabToSelection`) —
+/// so what the screen shows before the commit IS
 /// the commit, byte for byte and at every level (the tiles reach the
 /// overlay as its pre-blended result tiles, and the commit installs these
 /// very objects through `promotedTiles`, recomputing nothing).
@@ -49,22 +49,13 @@ List<PromotedStrokeTile> promoteFillDabs({
   required LayerId layerId,
   required FrameId frameId,
 }) {
-  final landings = [
-    for (final dab in dabs)
-      if (selection == null)
-        dab
-      else
-        ?clipStampDabToSelection(dab, clip: selection),
-  ];
-  if (landings.isEmpty) {
-    return const [];
-  }
   final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
     surface: surface,
-    sequence: BrushDabSequence(landings),
+    sequence: BrushDabSequence(dabs),
     layerId: layerId,
     frameId: frameId,
     blendMode: blendMode,
+    selection: selection,
   );
   if (!result.hasChanges) {
     return const [];

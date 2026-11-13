@@ -6,7 +6,7 @@ import '../models/pasteboard_bounds.dart';
 import 'brush_frame_editing_coordinator.dart';
 import 'cache_invalidation_executor.dart';
 import 'canvas_selection.dart' show SelectionMaskOptions;
-import 'canvas_selection_paint_clip.dart' show clipStampDabToSelection;
+import 'selection_fold.dart' show clipStampDabToSelection;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_region.dart' show regionInArtworkSpace;
 import 'command.dart';

@@ -18,6 +18,7 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
+import 'package:anicel/src/services/selection_fold.dart';
 
 /// R26 #18: painting clips to the selection. The clip runs on the
 /// stroke's own straight-alpha buffer, which is why one pass covers every

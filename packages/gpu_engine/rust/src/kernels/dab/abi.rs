@@ -760,7 +760,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_landing_free(landing: *mut StampLandin
 /// Lays `picture`, its top-left pixel at (`left`, `top`), what of it lies
 /// `within` the canvas's [left, top, right, bottom), on the `count` tiles
 /// asked as [`gpu_engine_stroke_land`] says, compared: at `opacity` in
-/// `mode`. Returns as it does.
+/// `mode`, under `mask` if not null. Returns as it does.
 ///
 /// # Safety
 /// As [`gpu_engine_stroke_land`]'s, `picture` live on `engine` and `within`
@@ -782,6 +782,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     count: usize,
     opacity: u32,
     mode: u32,
+    mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
 ) -> isize {
@@ -791,7 +792,9 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     };
     // SAFETY: see the function's contract.
     let asked = unsafe { asked_of(asks, under, count) };
-    let laid = Laid { opacity, mode, mask: None };
+    // SAFETY: see the function's contract.
+    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+    let laid = Laid { opacity, mode, mask: mask.as_ref() };
     let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
     let source = Source::Picture { picture: &boxed, at: (left, top), within };
     let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);

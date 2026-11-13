@@ -54,12 +54,16 @@ sealed class SelectionClip {
   });
 
   /// The bytes [maskFor] reads, over every pixel this clip can select, made
-  /// on the engine for what reads a selection there — the live stroke
-  /// (`BrushLiveStrokeRasterizer`). The caller frees it.
+  /// on the engine the first time what reads a selection there asks — the
+  /// live stroke (`BrushLiveStrokeRasterizer`), a stamp's landing
+  /// (`materializeBrushDabSequenceOnBitmapSurface`) — and kept as long as
+  /// this clip ([EngineSelectionMasks.keptFor]). Nothing frees it.
   ///
   /// ⚠️Only for a clip that [mayCover] some pixel: one that can select none
   /// has no box to make it over.
-  GpuMask maskOnEngine();
+  GpuMask maskOnEngine() => EngineSelectionMasks.keptFor(this, _madeOnEngine);
+
+  GpuMask _madeOnEngine();
 }
 
 final class _OutlineClip extends SelectionClip {
@@ -71,7 +75,7 @@ final class _OutlineClip extends SelectionClip {
   bool mayCover(DirtyRegion pixels) => _region.mayCover(pixels);
 
   @override
-  GpuMask maskOnEngine() => EngineSelectionMasks.of(
+  GpuMask _madeOnEngine() => EngineSelectionMasks.of(
     _region.spelled,
     box: _region.pixelBoxWithin(null)!,
     grow: 0,
@@ -126,10 +130,10 @@ final class _SoftClip extends SelectionClip {
   /// Over the whole reading's box: the windows [maskFor] reads are cut
   /// from it. ⚠️The whole box, which the class's note turns down for the
   /// CPU's bytes: on the engine it is passes the UI thread does not wait
-  /// for, made once for a stroke and let go with it (2026-11-13) — where
-  /// the CPU made a window's bytes and handed them up at every move.
+  /// for, made once for the clip and let go of with it (2026-11-13 · 14) —
+  /// where the CPU made a window's bytes and handed them up at every move.
   @override
-  GpuMask maskOnEngine() {
+  GpuMask _madeOnEngine() {
     final box = _box;
     if (box == null) {
       throw StateError('a selection that meets no pixel of its wall');
