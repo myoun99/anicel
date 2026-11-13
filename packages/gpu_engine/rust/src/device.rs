@@ -75,6 +75,11 @@ pub struct Engine {
 #[derive(Clone, Default)]
 pub(crate) struct Refusals(Arc<Mutex<Refused>>);
 
+/// wgpu's word of a device it loses for want of memory
+/// (`hal::DeviceError::OutOfMemory`, as wgpu-core's `Device::lose` hands it
+/// to the lost callback) — on every backend: a tablet's too.
+const OUT_OF_MEMORY: &str = "Out of memory";
+
 #[derive(Default)]
 struct Refused {
     /// Why the device is gone, once it is.
@@ -102,6 +107,12 @@ impl Refusals {
     /// Whether the device is gone.
     fn gone(&self) -> bool {
         self.kept().gone.is_some()
+    }
+
+    /// Whether the device is gone for want of memory: wgpu gave it up at
+    /// an allocation its backend refused, and said so ([`OUT_OF_MEMORY`]).
+    fn gone_for_memory(&self) -> bool {
+        self.kept().gone.as_deref().is_some_and(|why| why.ends_with(OUT_OF_MEMORY))
     }
 
     /// The error noted and not yet told, if any.
@@ -414,6 +425,16 @@ impl Engine {
     /// engine is of use again.
     pub(crate) fn gone(&self) -> bool {
         self.refusals.gone()
+    }
+
+    /// Why the device went, as far as anything says (`platform::WENT_*`):
+    /// wgpu, of one it gave up for want of memory; else the platform, of
+    /// one its driver took ([`platform::device_went_by`]).
+    pub(crate) fn went_by(&self) -> u32 {
+        if self.refusals.gone_for_memory() {
+            return platform::WENT_BY_MEMORY;
+        }
+        platform::device_went_by(&self.device)
     }
 
     /// A buffer holding `contents`, as long as they are padded to the
@@ -895,6 +916,20 @@ pub unsafe extern "C" fn gpu_engine_gone(engine: *const Engine) -> bool {
     engine.gone()
 }
 
+/// Why `engine`'s device went, as far as anything says — one of
+/// `platform::WENT_*`, unsaid where nothing does and while the device is
+/// there ([`Engine::went_by`]): what the app tells the person of a device
+/// it has opened another in place of.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_went_by(engine: *const Engine) -> u32 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.went_by()
+}
+
 /// Takes the error `engine` noted that no wait has told yet ([`Refusals`]):
 /// copies it (UTF-8) into `buffer` and returns its full length, 0 where
 /// there is none — and no wait fails by it after. For the app's tests,
@@ -969,14 +1004,20 @@ pub extern "C" fn gpu_engine_waits_here() -> u64 {
 
 /// Test seam: `engine`'s device destroyed — the nearest a test comes to a
 /// driver taking it away, which no test does. The word that it is lost
-/// comes at the next wait ([`Refusals`]).
+/// comes at the next wait ([`Refusals`]) — but where `for_memory`: that
+/// one is said here, as wgpu says it of a device it gave up for want of
+/// memory ([`OUT_OF_MEMORY`]), the one cause of a loss a test can name.
 ///
 /// # Safety
 /// `engine` is live.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine) {
+pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
+    if for_memory {
+        // As the lost callback keeps it ([`Engine::on`]).
+        engine.refusals.lose(format!("{:?} {OUT_OF_MEMORY}", wgpu::DeviceLostReason::Unknown));
+    }
     engine.device.destroy();
 }
 
@@ -1316,7 +1357,8 @@ mod tests {
     // a test's, a device destroyed.
     #[test]
     fn the_abi_says_whether_a_device_is_gone_and_what_it_noted() {
-        use super::{gpu_engine_gone, gpu_engine_lose, gpu_engine_noted};
+        use super::{gpu_engine_gone, gpu_engine_lose, gpu_engine_noted, gpu_engine_went_by};
+        use crate::platform::WENT_UNSAID;
         let made = opened(Engine::open_first);
         assert!(!made.is_null(), "{}", last_error());
         // SAFETY: `made` is live till the close below, and `noted` holds its
@@ -1335,11 +1377,43 @@ mod tests {
             assert_eq!(gpu_engine_noted(made, noted.as_mut_ptr(), noted.len()), 0);
             assert_eq!(engine.wait(), Some(()), "a wait failed by what was taken");
             assert!(!gpu_engine_gone(made));
-            gpu_engine_lose(made);
+            assert_eq!(gpu_engine_went_by(made), WENT_UNSAID, "a device that is there");
+            gpu_engine_lose(made, false);
             assert!(!gpu_engine_gone(made), "the word came before a wait");
             assert_eq!(engine.wait(), None);
             assert!(gpu_engine_gone(made));
+            assert_eq!(gpu_engine_went_by(made), WENT_UNSAID, "destroyed: no driver took it");
             gpu_engine_close(made);
+        }
+    }
+
+    // A device wgpu gave up for want of memory went by that, whatever the
+    // platform says of it — wgpu's word for it read as wgpu says it — and
+    // one lost by any other word did not. The test seam's is that word.
+    #[test]
+    fn a_device_wgpu_lost_for_want_of_memory_went_by_that() {
+        use super::{gpu_engine_gone, gpu_engine_lose, gpu_engine_went_by, Refusals};
+        use crate::platform::{WENT_BY_MEMORY, WENT_UNSAID};
+        let lost = |why: wgpu::hal::DeviceError| {
+            let refusals = Refusals::default();
+            // As the lost callback keeps it ([`Engine::on`]).
+            refusals.lose(format!("{:?} {why}", wgpu::DeviceLostReason::Unknown));
+            refusals
+        };
+        assert!(lost(wgpu::hal::DeviceError::OutOfMemory).gone_for_memory());
+        assert!(!lost(wgpu::hal::DeviceError::Lost).gone_for_memory());
+        assert!(!lost(wgpu::hal::DeviceError::Unexpected).gone_for_memory());
+        assert!(!Refusals::default().gone_for_memory(), "one that is there");
+
+        let made = opened(Engine::open_first);
+        assert!(!made.is_null(), "{}", last_error());
+        // SAFETY: `made` is live till the close below.
+        unsafe {
+            assert_eq!(gpu_engine_went_by(made), WENT_UNSAID);
+            gpu_engine_lose(made, true);
+            assert!(gpu_engine_gone(made), "said where it was lost");
+            assert_eq!(gpu_engine_went_by(made), WENT_BY_MEMORY);
+            super::gpu_engine_close(made);
         }
     }
 

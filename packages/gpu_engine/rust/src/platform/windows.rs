@@ -19,7 +19,7 @@ use std::ffi::{OsString, c_void};
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE};
+use windows::Win32::Foundation::{CloseHandle, E_OUTOFMEMORY, GENERIC_ALL, HANDLE, HMODULE};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_DESC,
     D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
@@ -29,12 +29,15 @@ use windows::Win32::Graphics::Direct3D12::{
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
 };
-use windows::Win32::Graphics::Dxgi::DXGI_MEMORY_SEGMENT_GROUP_LOCAL;
+use windows::Win32::Graphics::Dxgi::{
+    DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET,
+    DXGI_ERROR_DRIVER_INTERNAL_ERROR, DXGI_ERROR_INVALID_CALL, DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
+};
 use windows::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
     GetModuleFileNameW, GetModuleHandleExW,
 };
-use windows::core::PCWSTR;
+use windows::core::{HRESULT, PCWSTR};
 use wgpu::hal::api::Dx12;
 
 /// Flutter's ANGLE sits on D3D11, which opens a D3D12 resource by NT
@@ -172,6 +175,47 @@ pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
         .query_video_memory_info(DXGI_MEMORY_SEGMENT_GROUP_LOCAL)
         .ok()?;
     Some(super::VideoMemory { used: info.CurrentUsage, budget: Some(info.Budget) })
+}
+
+/// Why the device went, as D3D12 says it was removed
+/// (`GetDeviceRemovedReason`, [`removed_by`]) — unsaid while D3D12 names
+/// no reason: the device is there still, or went by no word of its
+/// driver's.
+///
+/// wgpu's own word of a lost device says none of this: its hal folds
+/// `DXGI_ERROR_DEVICE_RESET` and `DXGI_ERROR_DEVICE_REMOVED` into one
+/// `DeviceError::Lost` and every code else into `Unexpected`
+/// (wgpu-hal-30.0.1/src/auxil/dxgi/result.rs), and the device is lost by
+/// `DeviceLostReason::Unknown` whichever it was
+/// (wgpu-core-30.0.1/src/device/resource.rs, `Device::lose`).
+pub fn device_went_by(device: &wgpu::Device) -> u32 {
+    // SAFETY: only asks the device why it was removed.
+    let Some(hal) = (unsafe { device.as_hal::<Dx12>() }) else {
+        return super::WENT_UNSAID;
+    };
+    // SAFETY: as above.
+    match unsafe { hal.raw_device().GetDeviceRemovedReason() } {
+        Ok(()) => super::WENT_UNSAID,
+        Err(reason) => removed_by(reason.code()),
+    }
+}
+
+/// D3D12's reason for a device removed, as the app names it. Each as
+/// Microsoft says it (Learn, "Handle device removed scenarios in Direct3D
+/// 11", read 2026-11-13): hung — the driver stopped responding over
+/// commands this app sent; an invalid call — this app's own; removed —
+/// the device taken out or turned off, or its driver upgraded; reset — a
+/// command badly formed, with no word of whose; the driver's internal
+/// error — the driver failed and reset the device.
+fn removed_by(reason: HRESULT) -> u32 {
+    match reason {
+        DXGI_ERROR_DEVICE_HUNG | DXGI_ERROR_INVALID_CALL => super::WENT_BY_THIS_APP,
+        DXGI_ERROR_DEVICE_REMOVED => super::WENT_BY_REMOVAL,
+        DXGI_ERROR_DEVICE_RESET => super::WENT_BY_RESET,
+        DXGI_ERROR_DRIVER_INTERNAL_ERROR => super::WENT_BY_DRIVER,
+        E_OUTOFMEMORY => super::WENT_BY_MEMORY,
+        _ => super::WENT_UNSAID,
+    }
 }
 
 /// The pinned DXC (rust/build.rs), named by its full path — never wgpu's
@@ -315,5 +359,36 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         assert!(memory.budget.is_some_and(|budget| budget > 0), "{memory:?}");
         // SAFETY: the test process's engine lives as long as the process.
         assert!(unsafe { crate::device::gpu_engine_video_memory(engine) } > 0);
+    }
+
+    // Each reason D3D12 gives for a device removed is the cause the app
+    // says, and one it gives none for is unsaid — a device that is there
+    // among them.
+    #[test]
+    fn a_device_removed_is_named_by_what_d3d12_says_took_it() {
+        use windows::Win32::Foundation::{E_FAIL, E_OUTOFMEMORY, S_OK};
+        use windows::Win32::Graphics::Dxgi::{
+            DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET,
+            DXGI_ERROR_DRIVER_INTERNAL_ERROR, DXGI_ERROR_INVALID_CALL,
+        };
+
+        use crate::platform::{
+            WENT_BY_DRIVER, WENT_BY_MEMORY, WENT_BY_REMOVAL, WENT_BY_RESET, WENT_BY_THIS_APP,
+            WENT_UNSAID,
+        };
+
+        for (reason, named) in [
+            (DXGI_ERROR_DEVICE_HUNG, WENT_BY_THIS_APP),
+            (DXGI_ERROR_INVALID_CALL, WENT_BY_THIS_APP),
+            (DXGI_ERROR_DEVICE_REMOVED, WENT_BY_REMOVAL),
+            (DXGI_ERROR_DEVICE_RESET, WENT_BY_RESET),
+            (DXGI_ERROR_DRIVER_INTERNAL_ERROR, WENT_BY_DRIVER),
+            (E_OUTOFMEMORY, WENT_BY_MEMORY),
+            (E_FAIL, WENT_UNSAID),
+            (S_OK, WENT_UNSAID),
+        ] {
+            assert_eq!(super::removed_by(reason), named, "{reason:?}");
+        }
+        assert_eq!(super::device_went_by(&first_engine().device), WENT_UNSAID);
     }
 }

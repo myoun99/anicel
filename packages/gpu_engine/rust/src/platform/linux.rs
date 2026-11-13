@@ -279,6 +279,11 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
 pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     None
 }
+/// Why the device went — unsaid: Vulkan says that a device is lost, and
+/// not why.
+pub fn device_went_by(_device: &wgpu::Device) -> u32 {
+    super::WENT_UNSAID
+}
 
 #[cfg(test)]
 mod tests {

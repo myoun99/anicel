@@ -850,7 +850,7 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
         let word = at(page, slot).word();
         let readout = gpu_engine_pool_readout(pool, engine, &word, 1);
         assert!(!readout.is_null(), "{}", last_error());
-        gpu_engine_lose(engine);
+        gpu_engine_lose(engine, false);
         gpu_engine_readout_map_then(engine, readout, told, 0);
         TOLD.told();
         let (each, to) = (TILE_BYTES, into.as_mut_ptr());

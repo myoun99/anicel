@@ -212,6 +212,12 @@ pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     Some(super::VideoMemory { used, budget: None })
 }
 
+/// Why the device went — unsaid: nothing wgpu hands over of Metal says
+/// why a device is lost.
+pub fn device_went_by(_device: &wgpu::Device) -> u32 {
+    super::WENT_UNSAID
+}
+
 #[cfg(test)]
 mod tests {
     use objc2_core_video::{

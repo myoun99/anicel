@@ -36,7 +36,7 @@ use self::unsupported as native;
 #[cfg(windows)]
 use self::windows as native;
 
-pub(crate) use native::{adapter_luid, video_memory};
+pub(crate) use native::{adapter_luid, device_went_by, video_memory};
 
 use std::ffi::c_void;
 
@@ -67,6 +67,31 @@ pub struct VideoMemory {
     pub used: u64,
     pub budget: Option<u64>,
 }
+
+/// WHY A DEVICE WENT, as far as the engine can tell — what the app says of
+/// it to the person once it stands on another (`gpu_engine_went_by`).
+///
+/// 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles): 「그래픽
+/// 장치가 왜 다시시작되었는지는 알수있게. 사용자는 앱 원인인지 다른건지
+/// 모르니까 어느정도는 투명하게. 물론 확실하게 모를 가능성 높으니 그 경우
+/// 가능성높은 원인을 알려주도록」 — so a cause is named only where something
+/// says it: the platform, of a device its driver took ([`device_went_by`]),
+/// or wgpu, of one it gave up itself (`Engine::went_by`). This one is
+/// where nothing does.
+///
+/// ⚠️The numbers are the ABI's: Dart names them in this order
+/// (`GpuDeviceWent`).
+pub const WENT_UNSAID: u32 = 0;
+/// For want of video memory.
+pub const WENT_BY_MEMORY: u32 = 1;
+/// Over what this app sent it.
+pub const WENT_BY_THIS_APP: u32 = 2;
+/// Removed or turned off, or its driver upgraded.
+pub const WENT_BY_REMOVAL: u32 = 3;
+/// Reset over a command badly formed — whose, nothing says.
+pub const WENT_BY_RESET: u32 = 4;
+/// Reset by its driver, which failed.
+pub const WENT_BY_DRIVER: u32 = 5;
 
 /// A texture kernels write — and, where the platform shares textures,
 /// Flutter shows.

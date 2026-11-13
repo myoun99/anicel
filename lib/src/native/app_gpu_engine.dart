@@ -41,6 +41,13 @@ bool get appGpuEngineIsHere => RootIsolateToken.instance != null;
 /// (`EngineRefusals`).
 bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 
+/// Why the device of the app's engine went, as far as anything says
+/// ([GpuEngine.wentBy]) — unsaid where the app has opened none. Asked
+/// before that engine is let go ([letTheGoneAppGpuEngineGo]): what the app
+/// says of it once it stands on another (`EngineRefusals`).
+GpuDeviceWent get appGpuEngineWentBy =>
+    _its.engine?.wentBy ?? GpuDeviceWent.unsaid;
+
 /// Whether [engine] is the one the app has now — asked without opening
 /// one: what was made on another is not kept for the next use
 /// (`EngineStrokes.giveBack`).
@@ -68,9 +75,9 @@ bool isTheAppsEngine(GpuEngine engine) => identical(engine, _its.engine);
 /// ([StandsOnTheAppsEngine]) and marks its box to paint, which no phase of
 /// a frame may.
 ///
-/// ⏳Nothing in the app asks yet: what shows on a screen still holds what
-/// the gone engine made, and lets it go first (관제 2026-11-11 22:35: 「(C3)
-/// 는 다섯이 다 선 뒤」).
+/// Asked where the app opens another in its place
+/// (`openTheAppsEngineAgain`), the five that stand on a screen all hearing
+/// (관제 2026-11-11 22:35: 「(C3) 는 다섯이 다 선 뒤」).
 void letTheGoneAppGpuEngineGo() {
   if (!appGpuEngineIsGone) {
     return;

@@ -787,6 +787,20 @@ enum AppStrings {
   /// (`EngineRefusals`, gpu-canonical-store-Q14).
   String get gpuRefusedNotice => _s('gpuRefusedNotice');
 
+  /// What the common window says once the app stands on another engine,
+  /// its graphics device gone (`EngineRefusals.openedAnother`,
+  /// a-lost-gpu-device-keeps-the-unsaved-tiles-Q1) …
+  String get gpuStartedAgainNotice => _s('gpuStartedAgainNotice');
+
+  /// … and why the device went, as far as anything says — one a cause
+  /// (`GpuDeviceWent`, `gpuStartedAgainMessage`).
+  String get gpuWentUnsaid => _s('gpuWentUnsaid');
+  String get gpuWentByMemory => _s('gpuWentByMemory');
+  String get gpuWentByThisApp => _s('gpuWentByThisApp');
+  String get gpuWentByRemoval => _s('gpuWentByRemoval');
+  String get gpuWentByReset => _s('gpuWentByReset');
+  String get gpuWentByDriver => _s('gpuWentByDriver');
+
   // --- A save its file refused: why, and the failed copy (실패본) the work
   // went to instead (whole-write-temp-beside-the-file, 2026-09-23) ---
   String get saveFailedTitle => _s('saveFailedTitle');
@@ -2799,6 +2813,24 @@ enum AppStrings {
     'gpuRefusedNotice':
         'The graphics card could not complete an operation. What you just '
         'did may not have been applied. Save, then restart the program.',
+    'gpuStartedAgainNotice':
+        'The graphics card restarted. You can keep working. The stroke you '
+        'were drawing may not have been applied.',
+    'gpuWentUnsaid':
+        'The cause could not be determined. Common causes are a graphics '
+        'driver update, waking from sleep, or a driver error.',
+    'gpuWentByMemory': 'Cause: the graphics memory ran out.',
+    'gpuWentByThisApp':
+        'Cause: most likely an operation this program sent that the '
+        'graphics card could not complete.',
+    'gpuWentByRemoval':
+        'Cause: most likely a graphics driver update, or the graphics card '
+        'being turned off or disconnected. This program did not cause it.',
+    'gpuWentByReset':
+        'Cause: the graphics card was reset after an invalid command. '
+        'Whether it came from this program or another could not be '
+        'determined.',
+    'gpuWentByDriver': 'Cause: an error inside the graphics driver.',
     'uiScaleLabel': 'Interface scale',
     'colorModeLabel': 'Appearance',
     'colorModeDark': 'Dark',
@@ -4254,6 +4286,23 @@ enum AppStrings {
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'gpuRefusedNotice':
         'グラフィックカードが処理を完了できませんでした。直前の操作が反映されていない可能性があります。保存してからプログラムを再起動してください。',
+    'gpuStartedAgainNotice':
+        'グラフィックカードが再起動しました。そのまま作業を続けられます。'
+        '描いていたストロークは反映されていない可能性があります。',
+    'gpuWentUnsaid':
+        '原因は特定できませんでした。よくある原因は、グラフィックドライバーの更新、'
+        'スリープからの復帰、ドライバーのエラーです。',
+    'gpuWentByMemory': '原因：グラフィックメモリが不足しました。',
+    'gpuWentByThisApp':
+        '原因：このプログラムが送った処理をグラフィックカードが完了できなかった'
+        '可能性が高いです。',
+    'gpuWentByRemoval':
+        '原因：グラフィックドライバーが更新されたか、グラフィックカードが無効化または'
+        '取り外された可能性が高いです。このプログラムが原因ではありません。',
+    'gpuWentByReset':
+        '原因：グラフィックカードが不正な命令を受けてリセットされました。'
+        'このプログラムによるものか、他のプログラムによるものかは特定できませんでした。',
+    'gpuWentByDriver': '原因：グラフィックドライバーの内部でエラーが発生しました。',
     'uiScaleLabel': 'UIの大きさ',
     'colorModeLabel': 'カラーモード',
     'colorModeDark': 'ダーク',
@@ -6130,6 +6179,29 @@ enum AppStrings {
     // it stands: the other languages say it after this one.
     'gpuRefusedNotice':
         '그래픽 장치가 작업을 처리하지 못했습니다. 방금 한 작업이 반영되지 않았을 수 있습니다. 저장한 뒤 앱을 다시 시작해 주세요.',
+    // 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1):
+    // 「그래픽 장치가 다시 시작되었다고 알린다」 · 「그래픽장치가 왜
+    // 다시시작되었는지는 알수있게. 사용자는 앱 원인인지 다른건지 모르니까
+    // 어느정도는 투명하게. 물론 확실하게 모를 가능성 높으니 그 경우
+    // 가능성높은 원인을 알려주도록」. ⚠️The sentences are 브러시/렌더링's
+    // (2026-11-13), the user's to mend: the other languages say them after
+    // these.
+    'gpuStartedAgainNotice':
+        '그래픽 장치가 다시 시작되었습니다. 앱은 계속 쓸 수 있습니다. '
+        '그리던 획은 반영되지 않았을 수 있습니다.',
+    'gpuWentUnsaid':
+        '원인은 확인되지 않았습니다. 흔한 원인은 그래픽 드라이버 갱신, '
+        '절전에서 깨어남, 드라이버 오류입니다.',
+    'gpuWentByMemory': '원인: 그래픽 메모리가 부족했습니다.',
+    'gpuWentByThisApp':
+        '원인: 이 앱이 보낸 그래픽 작업을 장치가 처리하지 못한 것으로 보입니다.',
+    'gpuWentByRemoval':
+        '원인: 그래픽 드라이버가 갱신되었거나 그래픽 장치가 꺼지거나 분리된 것으로 '
+        '보입니다. 앱이 일으킨 것은 아닙니다.',
+    'gpuWentByReset':
+        '원인: 그래픽 장치가 잘못된 명령을 받아 초기화되었습니다. 이 앱 때문인지 '
+        '다른 프로그램 때문인지는 확인되지 않았습니다.',
+    'gpuWentByDriver': '원인: 그래픽 드라이버 안에서 오류가 났습니다.',
     'uiScaleLabel': 'UI 크기',
     'colorModeLabel': '화면 모드',
     'colorModeDark': '다크',
@@ -8053,6 +8125,27 @@ enum AppStrings {
         "La carte graphique n'a pas pu terminer une opération. Ce que vous "
         "venez de faire n'a peut-être pas été appliqué. Enregistrez, puis "
         'redémarrez le programme.',
+    'gpuStartedAgainNotice':
+        'La carte graphique a redémarré. Vous pouvez continuer à travailler. '
+        "Le trait que vous étiez en train de dessiner n'a peut-être pas été "
+        'appliqué.',
+    'gpuWentUnsaid':
+        "La cause n'a pas pu être déterminée. Les causes courantes sont une "
+        'mise à jour du pilote graphique, une sortie de veille ou une erreur '
+        'du pilote.',
+    'gpuWentByMemory': 'Cause : la mémoire graphique était insuffisante.',
+    'gpuWentByThisApp':
+        'Cause : très probablement une opération envoyée par ce programme '
+        "que la carte graphique n'a pas pu terminer.",
+    'gpuWentByRemoval':
+        'Cause : très probablement une mise à jour du pilote graphique, ou '
+        'la carte graphique désactivée ou déconnectée. Ce programme '
+        "n'en est pas la cause.",
+    'gpuWentByReset':
+        'Cause : la carte graphique a été réinitialisée après une commande '
+        "invalide. Il n'a pas été possible de déterminer si elle venait de "
+        "ce programme ou d'un autre.",
+    'gpuWentByDriver': 'Cause : une erreur interne du pilote graphique.',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -10021,6 +10114,13 @@ enum AppStrings {
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
     'gpuRefusedNotice': '显卡未能完成操作。刚才的操作可能没有生效。请保存后重新启动程序。',
+    'gpuStartedAgainNotice': '显卡已重新启动。您可以继续工作。正在绘制的笔画可能没有生效。',
+    'gpuWentUnsaid': '无法确定原因。常见原因是显卡驱动更新、从睡眠中唤醒或驱动程序错误。',
+    'gpuWentByMemory': '原因：显存不足。',
+    'gpuWentByThisApp': '原因：很可能是本程序发送的操作显卡未能完成。',
+    'gpuWentByRemoval': '原因：很可能是显卡驱动已更新，或显卡被禁用或断开。这不是本程序造成的。',
+    'gpuWentByReset': '原因：显卡收到无效命令后被重置。无法确定该命令来自本程序还是其他程序。',
+    'gpuWentByDriver': '原因：显卡驱动内部发生错误。',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',

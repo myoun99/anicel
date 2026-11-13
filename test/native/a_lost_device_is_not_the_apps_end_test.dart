@@ -1,26 +1,26 @@
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/engine_refusals.dart';
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 
 /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
 /// 유지한다」 — a device the driver took away (a reset, an update, a wake
 /// from sleep) is not the app's end. The first of it, here: nothing asked
-/// of a device that is gone ends the process, what waits for it is refused
-/// by name ([GpuRefused]), and the app says so once
-/// (🗣️gpu-canonical-store-Q14, [EngineRefusals]).
+/// of a device that is gone ends the process, and what waits for it is
+/// refused by name ([GpuRefused]). What the app makes of the first such
+/// refusal it hears — another engine, or one telling — is pinned where
+/// that is
+/// (`the_first_refusal_of_a_gone_device_opens_another_engine_test.dart`).
 ///
 /// What the engine makes of a device destroyed under it is its own tests'
 /// to pin (rust/src/device.rs) — here, what Dart makes of its C ABI.
 ///
-/// ⚠️IN THIS ORDER: the first test asks before any engine is open, and the
-/// last loses the app's own — one a process — for what is left of the file.
+/// ⚠️IN THIS ORDER: the first test asks before any engine is open.
 void main() {
   final held = <Pointer<Uint8>>[];
   tearDown(() {
@@ -102,50 +102,5 @@ void main() {
     // the one asking.
     expect(engine.debugTakeNoted(), isNotNull);
     expect(engine.debugTakeNoted(), isNull, reason: 'taken');
-  });
-
-  test('once the app\'s device is gone, whatever is refused for it is one '
-      'cause — told once, and a cause of its own', () async {
-    final reported = FlutterError.onError;
-    final uncaught = PlatformDispatcher.instance.onError;
-    addTearDown(() {
-      FlutterError.onError = reported;
-      PlatformDispatcher.instance.onError = uncaught;
-      EngineRefusals.debugForget();
-    });
-    FlutterError.onError = (_) {};
-    PlatformDispatcher.instance.onError = (_, _) => true;
-    EngineRefusals.install();
-    var tellings = 0;
-    void count() => tellings += 1;
-    EngineRefusals.told.addListener(count);
-    addTearDown(() => EngineRefusals.told.removeListener(count));
-    // [refused] reported as what caught it reports it; the tellings once
-    // the turn it was heard in is through.
-    Future<int> toldOf(Object refused) async {
-      FlutterError.reportError(FlutterErrorDetails(exception: refused));
-      await null;
-      return tellings;
-    }
-
-    final pool = GpuPool(appGpuEngine, 1 << 30);
-    addTearDown(pool.free);
-    final stored = pool.store(pool.cel(), [tileOf(7)]);
-    expect(await toldOf(GpuReadFailed('a read the device refused')), 1);
-
-    appGpuEngine.debugLose();
-    expect(appGpuEngineIsGone, isFalse, reason: 'the word comes in a wait');
-    final lost = refusedReading(pool, stored);
-    expect(lost, isA<GpuReadFailed>());
-    expect(appGpuEngineIsGone, isTrue);
-
-    expect(await toldOf(lost!), 2, reason: 'not the cause its type was');
-    expect(await toldOf(GpuRefused('a landing')), 2, reason: 'one cause');
-    expect(await toldOf(GpuReadFailed('a save')), 2, reason: 'one cause');
-
-    // What a lost device raises is no test's to answer for: each use of
-    // what was made on it raises one.
-    expect(debugTakeAppGpuEngineNoted(), isNull);
-    expect(appGpuEngine.debugTakeNoted(), isNotNull, reason: '⛔premise');
   });
 }

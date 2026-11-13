@@ -79,6 +79,7 @@ import 'brush/canvas_view_commands.dart';
 import 'cut_command_group.dart' show landCanvasAdjust, newCutPress;
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
+import 'gpu_started_again_message.dart';
 import 'menu/editor_top_strip.dart';
 import 'menu/project_open_door.dart';
 import 'panels/workspace_layout_store.dart';
@@ -621,6 +622,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
+    EngineRefusals.openedAnother.addListener(_sayTheDeviceStartedAgain);
     appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
     // A launch is held from before its first frame. `runApp` builds the
     // tree, then draws it: asked between the two — a microtask of that
@@ -1095,6 +1097,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ),
   );
 
+  /// The graphics device started again and the app stands on another
+  /// engine: said in the common window, with why the device went as far as
+  /// anything says ([EngineRefusals.openedAnother], told once the wait
+  /// window is down — [gpuStartedAgainMessage]).
+  ///
+  /// 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1):
+  /// 「그래픽 장치가 다시 시작되었다고 알린다」 · 「그래픽장치가 왜
+  /// 다시시작되었는지는 알수있게」.
+  void _sayTheDeviceStartedAgain() => unawaited(
+    showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('gpu-started-again-notice'),
+      title: AppText.strings.commonNotice,
+      message: gpuStartedAgainMessage(
+        AppText.strings,
+        EngineRefusals.wentBy,
+      ),
+    ),
+  );
+
   /// The app behind its one wait window while it gets its engine ready
   /// ([appEngineGetsReady]), as it is behind it for an open or a save: the
   /// window takes every pointer and key of the editor under it, and goes
@@ -1135,6 +1157,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
+    EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
     appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();

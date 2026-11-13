@@ -63,6 +63,43 @@ base class GpuRefused extends StateError {
   GpuRefused(super.message);
 }
 
+/// WHY A DEVICE WENT, as far as its engine can tell ([GpuEngine.wentBy]):
+/// what the app says of it to the person once it stands on another.
+///
+/// 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles): 「그래픽
+/// 장치가 왜 다시시작되었는지는 알수있게. 사용자는 앱 원인인지 다른건지
+/// 모르니까 어느정도는 투명하게. 물론 확실하게 모를 가능성 높으니 그 경우
+/// 가능성높은 원인을 알려주도록」.
+///
+/// ⚠️In the engine's order (rust/src/platform/mod.rs, `WENT_*`): the
+/// number it answers is the place here.
+enum GpuDeviceWent {
+  /// Nothing says: Vulkan and Metal name no cause, and D3D12 none for a
+  /// device its driver did not take.
+  unsaid,
+
+  /// For want of video memory.
+  memory,
+
+  /// Over what this app sent it: a job the driver stopped responding
+  /// over, or a call it would not take.
+  thisApp,
+
+  /// Removed or turned off, or its driver upgraded.
+  removal,
+
+  /// Reset over a command badly formed — whose, nothing says.
+  reset,
+
+  /// Reset by its driver, which failed.
+  driver;
+
+  /// The cause the engine names by [code] — unsaid for one this library
+  /// does not know.
+  static GpuDeviceWent of(int code) =>
+      code >= 0 && code < values.length ? values[code] : unsaid;
+}
+
 String _lastError() => using((arena) {
   const capacity = 1024;
   final buffer = arena<Uint8>(capacity);
@@ -239,6 +276,10 @@ class GpuEngine {
   /// 유지한다」 — a lost device is not the app's end.
   bool get isGone => rust.engineGone(_engine);
 
+  /// Why the device went, as far as anything says ([GpuDeviceWent]) —
+  /// unsaid while it is there.
+  GpuDeviceWent get wentBy => GpuDeviceWent.of(rust.engineWentBy(_engine));
+
   /// Test seam: the error the device raised that no job has been refused
   /// by yet, or null — taken, so no job is refused by it after. An error
   /// on a way that never waits is told to no one, and a test asks as it
@@ -256,8 +297,10 @@ class GpuEngine {
 
   /// Test seam: the device destroyed — the nearest a test comes to a
   /// driver taking it away, which no test does. [isGone] says so once a
-  /// job has waited.
-  void debugLose() => rust.engineLose(_engine);
+  /// job has waited — at once where it went [forMemory], the one cause a
+  /// test can name ([wentBy]).
+  void debugLose({bool forMemory = false}) =>
+      rust.engineLose(_engine, forMemory);
 
   /// Ends once the GPU has finished all that was submitted on this engine,
   /// with no wait on this isolate, which goes on meanwhile: the engine's

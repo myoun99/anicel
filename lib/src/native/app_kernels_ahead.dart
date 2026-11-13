@@ -139,6 +139,32 @@ Future<void> onceTheAppIsLetGo() {
   return letGo.future;
 }
 
+/// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+/// 않고 새 장치를 열어 사본으로 되살린다」 — the app's engine, its device
+/// gone, let go and another opened BY THE LAUNCH'S OWN PATH (관제 2026-11-11
+/// 22:3x: 「간 엔진을 내려놓고 시작 때와 같은 길(`holdTheAppForItsEngine` →
+/// `compileAppKernelsAhead`)로 새 엔진을 열어 커널을 컴파일한다. 준비 창 ·
+/// 입력 막음 · 걷힘이 시작 때의 그 코드 그대로다 — 새 창 · 새 상태를 만들지
+/// 않는다」): the app is held as a launch holds it, behind its one wait
+/// window ([appEngineGetsReady]) — from before the engine is let go, so
+/// nothing is asked of a screen in between —, what stood on the gone
+/// engine is let go ([letTheGoneAppGpuEngineGo]), and the list a launch
+/// compiles ahead is asked for on the next, which lets the app go as it
+/// lets a launch.
+///
+/// Ends as the app is let go: on the next engine — or on none, where one
+/// would not open, which the app's engine says ([appGpuEngineOpen]) and
+/// the list's error, ending at the door every error ends at
+/// (`EngineRefusals`), as a launch's does.
+///
+/// ⚠️BETWEEN FRAMES, as the letting go is.
+Future<void> openTheAppsEngineAgain() {
+  holdTheAppForItsEngine();
+  letTheGoneAppGpuEngineGo();
+  unawaited(compileAppKernelsAhead());
+  return onceTheAppIsLetGo();
+}
+
 /// Test seam: the app let go, as [compileAppKernelsAhead] lets it.
 @visibleForTesting
 void debugLetTheAppGo() => _getsReady.value = false;
