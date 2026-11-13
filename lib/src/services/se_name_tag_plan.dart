@@ -104,13 +104,19 @@ class ResolvedSeNameTag {
   /// off it.
   final double widthBudget;
 
-  /// The line's DELIVERY (I-20) — ON / OFF / MONO — as a tag of its own.
+  /// The line's DELIVERY (I-20) — ON / OFF / MONO — set in the name's
+  /// box, under the name; null for a line with no name.
   ///
-  /// 🗣️유저 2026-09-30: 「해당 타입의 텍스트는 네임태그로서 화면에 보이게함.
-  /// 위치는 캐릭터 이름 박스 위 중앙정렬」 — so it wears the NAME's style, and
-  /// like [line] it carries no usable position: the painter centres it over
-  /// the box once the box is measured. Every type shows here — ON included
+  /// 🗣️유저 2026-09-30: 「해당 타입의 텍스트는 네임태그로서 화면에 보이게함」
+  /// — so it wears the NAME's style, and like [line] it carries no usable
+  /// position: the painter sets it under the name once the name is
+  /// measured (I-173; ↩️「위치는 캐릭터 이름 박스 위 중앙정렬」 — a tag of
+  /// its own, over the box). Every type shows here — ON included
   /// (「캔버스에는 표시」); only the sheets leave ON out.
+  ///
+  /// 🗣️I-173-Q4 (유저 2026-11-14): 「이름없는 대사는 타입도 안보이게」.
+  /// ↩️A line with no name showed its delivery alone, over where the name
+  /// would stand.
   final TextCelContent? delivery;
 
   /// By value: a frame's picture is keyed by the tags it lays
@@ -236,11 +242,13 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
           style: nameStyle,
           position: anchor,
         ),
-        delivery: TextCelContent(
-          text: frame.seTypes.inCut(cutId).label,
-          style: nameStyle,
-          position: anchor,
-        ),
+        delivery: name.isEmpty
+            ? null
+            : TextCelContent(
+                text: frame.seTypes.inCut(cutId).label,
+                style: nameStyle,
+                position: anchor,
+              ),
         line: showsLine
             ? TextCelContent(
                 text: dialogue,

@@ -75,14 +75,14 @@ class TextCelLayout {
   void paint(ui.Canvas canvas) {
     final background = style.backgroundColor;
     if (background != null) {
-      _letters.paintBoxBehind(canvas, _box, background);
+      _letters.paintBoxBehind(canvas, box, background);
     }
     _letters.paintAt(canvas, topLeft, within: paintBounds, lines: _lines);
   }
 
   /// The アフレコ box: text bounds plus breathing room, the SE red-box
   /// vocabulary.
-  ui.Rect get _box => ui.Rect.fromLTWH(
+  ui.Rect get box => ui.Rect.fromLTWH(
     topLeft.dx - pad,
     topLeft.dy - pad,
     textSize.width + pad * 2,
@@ -91,16 +91,28 @@ class TextCelLayout {
 
   /// The layers [paint] draws, bottom to top, as the shapes each covers in
   /// its one paint — the box behind the letters, then the letters' own
-  /// layers ([CanvasLetterPasses.layers]) — for an engine that sets the
-  /// letters itself (`engine_letters.dart`).
+  /// layers ([letterLayers]) — for an engine that sets the letters itself
+  /// (`engine_letters.dart`).
   List<CanvasLetterShapes> get shapes => [
     if (style.backgroundColor case final background?)
-      (
-        argb: background,
-        hard: _letters.boxIsHard,
-        outline: 0,
-        shapes: [CanvasLetterRect(_box)],
-      ),
+      rectLayer(box, background),
+    ...letterLayers,
+  ];
+
+  /// [rect] in [argb] as a layer of the block's, cut as its box is
+  /// ([CanvasLetterPasses.boxIsHard]): the box behind its letters — its
+  /// own, or the one a host has grown round it (the SE name tag's,
+  /// `se_name_tag_paint.dart`) — and a rule drawn in that box.
+  CanvasLetterShapes rectLayer(ui.Rect rect, int argb) => (
+    argb: argb,
+    hard: _letters.boxIsHard,
+    outline: 0,
+    shapes: [CanvasLetterRect(rect)],
+  );
+
+  /// The letters' own layers ([CanvasLetterPasses.layers]), bottom to top
+  /// — [shapes] with no box behind them.
+  List<CanvasLetterShapes> get letterLayers => [
     for (final (:set, :pass, :hard) in _letters.layers)
       if (pass.draws(style))
         _shapesOf(set, pass.paintOf(style), hard: hard),

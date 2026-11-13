@@ -1,7 +1,10 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/canvas_size.dart';
-import '../../models/text_cel_style.dart' show TextCelContent;
+import '../../models/text_cel_style.dart' show TextCelContent, TextCelStyle;
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/display_resample.dart'
     show wholeLevelPixelsOutward;
@@ -10,7 +13,7 @@ import 'text_cel_render.dart';
 
 /// [tag] as the GPU engine is handed it to raster its plate itself
 /// (`EngineLetters.seNameTagPlate`): the layers of its blocks
-/// ([_layoutsOf]), bottom to top, where they stand in the tag's own space
+/// ([_laidOf]), bottom to top, where they stand in the tag's own space
 /// — null for a tag with none.
 ///
 /// 🚨★★★CANVAS PIXELS, LAID AS A ROW'S PICTURE IS (card
@@ -23,10 +26,21 @@ List<CanvasLetterShapes>? seNameTagShapes(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
 }) {
-  final layouts = _layoutsOf(tag, canvasSize: canvasSize);
-  return layouts.isEmpty
-      ? null
-      : [for (final layout in layouts) ...layout.shapes];
+  final (:box, :name, :rule, :delivery, :line) = _laidOf(
+    tag,
+    canvasSize: canvasSize,
+  );
+  final layers = [
+    if (name != null) ...[
+      if (tag.content.style.backgroundColor case final background?)
+        name.rectLayer(box, background),
+      ...name.letterLayers,
+      if (rule != null) name.rectLayer(rule, _ruleColor),
+      ...?delivery?.letterLayers,
+    ],
+    ...?line?.shapes,
+  ];
+  return layers.isEmpty ? null : layers;
 }
 
 /// The rect of its own space [tag] may paint, on whole pixels — what its
@@ -35,155 +49,188 @@ List<CanvasLetterShapes>? seNameTagShapes(
 ui.Rect seNameTagExtent(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
-}) => switch (_layoutsOf(tag, canvasSize: canvasSize)) {
-  [] => ui.Rect.zero,
-  final layouts => _drawnBy(layouts),
-};
+}) {
+  final laid = _laidOf(tag, canvasSize: canvasSize);
+  final blocks = [laid.name, laid.delivery, laid.line].nonNulls;
+  return blocks.isEmpty
+      ? ui.Rect.zero
+      : wholeLevelPixelsOutward(
+          blocks
+              .map((block) => block.paintBounds)
+              .fold(laid.box, (union, rect) => union.expandToInclude(rect)),
+          0,
+        );
+}
 
-/// What [layouts] may paint, on whole pixels.
-ui.Rect _drawnBy(List<TextCelLayout> layouts) => wholeLevelPixelsOutward(
-  layouts
-      .map((layout) => layout.paintBounds)
-      .reduce((union, rect) => union.expandToInclude(rect)),
-  0,
-);
+/// A tag as it is laid in its own space ([_laidOf]): its one [box] — a
+/// sliver at the anchor with no name in it —, the [name] in it, the
+/// [delivery] under a [rule] in the same box, and the dialogue [line] off
+/// the box's right edge.
+typedef SeNameTagLaid = ({
+  ui.Rect box,
+  TextCelLayout? name,
+  ui.Rect? rule,
+  TextCelLayout? delivery,
+  TextCelLayout? line,
+});
+
+/// How large the delivery's letters are set, as a share of the name's as
+/// they are drawn.
+///
+/// 🗣️I-173 (유저 2026-11-13): 「타입 텍스트는 최대한 작게」; I-173-Q1 (유저
+/// 2026-11-14, of 30 · 40 · 50% drawn for the choice): 「글자크기는 권장」
+/// — two fifths.
+const double _deliveryShare = 0.4;
+
+/// How thick the rule between the name and the delivery is, as a share of
+/// the name's letters.
+const double _ruleShare = 0.06;
+
+/// The rule's colour.
+///
+/// 🗣️I-173 (유저 2026-11-14): 「박스하나로 하고 가로선두란건 진짜 박스 하나로
+/// 하고 사이에 가로선 검정색 두란거였어. 공간두란게아니라」. ↩️The name's
+/// letters' colour — white in a tag's own style, which read as a gap that
+/// split the box in two.
+const int _ruleColor = 0xFF000000;
+
+/// [tag] as it is laid ([_laidOf]) — what a test states the rules by, in
+/// place of re-deriving them.
+@visibleForTesting
+SeNameTagLaid seNameTagLaid(
+  ResolvedSeNameTag tag, {
+  required CanvasSize canvasSize,
+}) => _laidOf(tag, canvasSize: canvasSize);
 
 /// [tag]'s text blocks, laid out where they stand in the tag's own space —
 /// kept ([textCelLaidOut]): a pan, a zoom and a run paint the same tag at
 /// every frame.
 ///
 /// GEOMETRY (R5 #7, the user's rule, corrected twice on the mockup):
-/// the tag's stored position is the name BOX's exact geometric centre, and
+/// the tag's stored position is the BOX's exact geometric centre, and
 /// the dialogue hangs off the box's right edge, vertically centred on it.
 /// So turning the dialogue off leaves the box exactly where it was —
 /// anchoring on the pair's combined centre would have slid it.
 ///
+/// 🗣️I-173 (유저 2026-11-13): 「지금 이름이랑 ON OFF같은 타입이랑 별도
+/// 박스로 나오도록 설계햇는데, 바꾸고싶음. 같은 박스안에 존재하도록.
+/// 구체적으론 이름텍스트는 지금이랑 같은느낌이고, ON OFF같은 텍스트가
+/// 존재할땐 박스가 커져서, 이름밑에 가로선두고 그 밑에 중앙정렬로 ON OFF같은
+/// 타입 텍스트 둠. 타입 텍스트는 최대한 작게.」 — the name's box, grown down
+/// by a rule and the storey the delivery stands in, and widened about its
+/// middle where the delivery is the wider. ↩️I-20 (유저 2026-09-30:
+/// 「위치는 캐릭터 이름 박스 위 중앙정렬」) set the delivery in a box of its
+/// own, the name's size, a line's gap over the name's.
+///
+/// 🗣️I-173-Q2 (유저 2026-11-14): 「기준점은 박스 전체의 가운데」 — the box
+/// the anchor centres is the WHOLE of it, so a name with a delivery under
+/// it stands half that storey over the anchor. ↩️The name's box alone,
+/// while the delivery stood outside it.
+///
 /// The placement lives here rather than in the plan because it needs the
 /// laid-out box, and nothing knows how wide a box is until it is measured.
-List<TextCelLayout> _layoutsOf(
+SeNameTagLaid _laidOf(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
 }) {
-  final layouts = <TextCelLayout>[];
   final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
-  // The name is laid out once to measure, then MOVED so its ink (box
-  // included) is centred on the anchor.
-  var nameInk = ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
-  if (tag.content.text.isNotEmpty) {
-    final probe = textCelLaidOut(
-      content: tag.content.copyWith(position: anchor),
-      canvas: canvasSize,
-      maxWidth: tag.widthBudget,
-    );
-    final drift = probe.inkBounds.center - anchor;
-    final name = textCelLaidOut(
-      content: tag.content.copyWith(position: anchor - drift),
-      canvas: canvasSize,
-      maxWidth: tag.widthBudget,
-    );
-    layouts.add(name);
-    nameInk = name.inkBounds;
-  }
+  TextCelLayout at(TextCelContent block, ui.Offset position) => textCelLaidOut(
+    content: block.copyWith(position: position),
+    canvas: canvasSize,
+    maxWidth: tag.widthBudget,
+  );
   // With no name the box is a zero-width sliver AT the anchor, so the
   // line still hangs off "the box's right edge" — one rule, not two.
-
-  // I-20: the delivery tag, centred over the box — measured the way the
-  // line is, since neither knows where it goes until the box has a size.
-  final delivery = tag.delivery;
-  if (delivery != null && delivery.text.isNotEmpty) {
-    layouts.add(
-      textCelLaidOut(
-        content: delivery.copyWith(
-          position: _deliveryPosition(
-            tag,
-            delivery,
-            box: nameInk,
-            canvasSize: canvasSize,
-          ),
+  var box = ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
+  TextCelLayout? name;
+  ui.Rect? rule;
+  TextCelLayout? delivery;
+  if (tag.content.text.isNotEmpty) {
+    // A block is laid out once to measure, then MOVED by what it
+    // measured: where its ink lands is known only once it is set.
+    final measured = at(tag.content, anchor);
+    // The delivery is said under a name (`ResolvedSeNameTag.delivery`).
+    final typed = switch (tag.delivery) {
+      final said? when said.text.isNotEmpty => said.copyWith(
+        style: _deliveryLetters(
+          said.style,
+          size: measured.letterSize * _deliveryShare,
         ),
-        canvas: canvasSize,
-        maxWidth: tag.widthBudget,
       ),
+      _ => null,
+    };
+    final lettered = typed == null ? null : at(typed, anchor);
+    final ruled = lettered == null ? 0.0 : measured.letterSize * _ruleShare;
+    final storey = ruled + (lettered?.textSize.height ?? 0);
+    name = at(
+      tag.content,
+      anchor + (anchor - ui.Offset(0, storey / 2) - measured.box.center),
     );
+    final named = name.box;
+    final half =
+        math.max(
+          named.width,
+          (lettered?.textSize.width ?? 0) + name.pad * 2,
+        ) /
+        2;
+    box = ui.Rect.fromLTRB(
+      named.center.dx - half,
+      named.top,
+      named.center.dx + half,
+      named.bottom + storey,
+    );
+    if (lettered != null) {
+      rule = ui.Rect.fromLTRB(
+        box.left,
+        named.bottom,
+        box.right,
+        named.bottom + ruled,
+      );
+      delivery = at(
+        typed!,
+        anchor +
+            (ui.Offset(
+                  named.center.dx - lettered.textSize.width / 2,
+                  rule.bottom,
+                ) -
+                lettered.topLeft),
+      );
+    }
   }
 
-  final line = tag.line;
-  if (line != null && line.text.isNotEmpty) {
-    final probe = textCelLaidOut(
-      content: line.copyWith(position: anchor),
-      canvas: canvasSize,
-      maxWidth: tag.widthBudget,
-    );
-    final gap = line.style.fontSize * 0.3;
-    // Left edge on the box's right edge; vertically centred on the box
-    // so a taller line reads as sitting beside the name, not under it.
-    final shift = ui.Offset(
-      nameInk.right + gap - probe.inkBounds.left,
-      nameInk.center.dy - probe.inkBounds.center.dy,
-    );
-    layouts.add(
-      textCelLaidOut(
-        content: line.copyWith(position: anchor + shift),
-        canvas: canvasSize,
-        maxWidth: tag.widthBudget,
-      ),
+  TextCelLayout? line;
+  if (tag.line case final said? when said.text.isNotEmpty) {
+    final probe = at(said, anchor);
+    final gap = said.style.fontSize * 0.3;
+    // Left edge on the box's right edge; vertically centred on the anchor
+    // — the box's centre — so a taller line reads as sitting beside the
+    // box, not under it.
+    line = at(
+      said,
+      anchor +
+          ui.Offset(
+            box.right + gap - probe.inkBounds.left,
+            anchor.dy - probe.inkBounds.center.dy,
+          ),
     );
   }
-  return layouts;
+  return (box: box, name: name, rule: rule, delivery: delivery, line: line);
 }
 
-/// Where [delivery] is laid out to sit over [box]: centred on it and a
-/// line's gap above it.
-///
-/// 🗣️I-20 (유저 2026-09-30): 「위치는 캐릭터 이름 박스 위 중앙정렬」. The
-/// painter and [seNameTagDeliveryBounds] both ask here, so the rule is
-/// written once.
-ui.Offset _deliveryPosition(
-  ResolvedSeNameTag tag,
-  TextCelContent delivery, {
-  required ui.Rect box,
-  required CanvasSize canvasSize,
-}) {
-  final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
-  final probe = textCelLaidOut(
-    content: delivery.copyWith(position: anchor),
-    canvas: canvasSize,
-    maxWidth: tag.widthBudget,
+/// The letters a delivery is set in: [style]'s — the name's
+/// (`ResolvedSeNameTag.delivery`) — at [size], what it measures by scaled
+/// with it.
+TextCelStyle _deliveryLetters(TextCelStyle style, {required double size}) {
+  final scale = size / style.fontSize;
+  return style.copyWith(
+    fontSize: size,
+    letterSpacing: style.letterSpacing * scale,
+    outlineWidth: style.outlineWidth * scale,
   );
-  final ink = probe.inkBounds;
-  final gap = delivery.style.fontSize * 0.3;
-  return anchor +
-      ui.Offset(box.center.dx - ink.center.dx, box.top - gap - ink.bottom);
 }
 
-/// Where the delivery tag lands for [tag], or null when it has none —
-/// exposed for the same reason [seNameTagBoxBounds] is.
-ui.Rect? seNameTagDeliveryBounds(
-  ResolvedSeNameTag tag, {
-  required CanvasSize canvasSize,
-}) {
-  final delivery = tag.delivery;
-  if (delivery == null || delivery.text.isEmpty) {
-    return null;
-  }
-  final landed = textCelLaidOut(
-    content: delivery.copyWith(
-      position: _deliveryPosition(
-        tag,
-        delivery,
-        box: seNameTagBoxBounds(tag, canvasSize: canvasSize),
-        canvasSize: canvasSize,
-      ),
-    ),
-    canvas: canvasSize,
-    maxWidth: tag.widthBudget,
-  );
-  final ink = landed.inkBounds;
-  return ink;
-}
-
-/// The tag's anchor — the name box's centre. Null position means "centre
-/// on the canvas", the grammar [TextCelContent] already speaks.
+/// The tag's anchor — the box's centre. Null position means "centre on
+/// the canvas", the grammar [TextCelContent] already speaks.
 ui.Offset seNameTagAnchorOf(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
@@ -191,27 +238,12 @@ ui.Offset seNameTagAnchorOf(
     tag.content.position ??
     ui.Offset(canvasSize.width / 2, canvasSize.height / 2);
 
-/// Where the name BOX lands for [tag] — the rectangle the anchor centres,
-/// exposed so a test can state the rule the painter follows instead of
-/// re-deriving it, and so the canvas gizmo can frame the same box. It is
-/// the tag's own rectangle: [ResolvedSeNameTag.placement] lays it.
+/// Where the tag's BOX lands for [tag] — the name's, grown by its
+/// delivery's storey: the rectangle the anchor centres —, exposed so a
+/// test can state the rule the painter follows instead of re-deriving it,
+/// and so the canvas gizmo can frame the same box. It is the tag's own
+/// rectangle: [ResolvedSeNameTag.placement] lays it.
 ui.Rect seNameTagBoxBounds(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
-}) {
-  final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
-  if (tag.content.text.isEmpty) {
-    return ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
-  }
-  final probe = textCelLaidOut(
-    content: tag.content.copyWith(position: anchor),
-    canvas: canvasSize,
-    maxWidth: tag.widthBudget,
-  );
-  final ink = probe.inkBounds;
-  return ui.Rect.fromCenter(
-    center: anchor,
-    width: ink.width,
-    height: ink.height,
-  );
-}
+}) => _laidOf(tag, canvasSize: canvasSize).box;
