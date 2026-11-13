@@ -14,8 +14,11 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
 /// R19 P3b: the stroke command owns its pre/post SURFACE references —
@@ -120,6 +123,27 @@ void main() {
     // surface, so the second copy was never ours to bill.
     final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     expect(command.estimatedRetainedBytes(undone: false), before.bytesNotSharedWith(after));
+  });
+
+  // 2026-11-14 (board `a-selection-mask-is-built-on-the-cpu-at-every-move`,
+  // L1b-1b): the funnel names the selection and the commit cuts where it
+  // lands — so the command hands it on, whichever road the stroke takes.
+  test('a stroke carried in with its selection lands cut by it', () {
+    final coordinator = _coordinator();
+    BrushStrokeHistoryCommand(
+      coordinator: coordinator,
+      strokeData: BrushStrokeCommitData(
+        sourceDabs: [_dab(0), _dab(1)],
+        selection: SelectionClip.outline(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(left: 0, top: 0, right: 1, bottom: 8),
+          ),
+        ),
+      ),
+    ).execute();
+
+    expect(pixelAt(coordinator, 0, 0), isNot(0), reason: 'inside it');
+    expect(pixelAt(coordinator, 1, 1), 0, reason: 'outside it');
   });
 
   test('the HistoryManager byte budget drops the DEEPEST snapshot '
