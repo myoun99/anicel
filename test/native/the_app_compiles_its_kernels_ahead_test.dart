@@ -85,7 +85,18 @@ void main() {
   final appHeldBeforeAHandsWereIn = <bool>[];
   ({bool aHandsAreIn, bool theGridsAreIn})? whenTheAppWasLetGo;
 
+  // Whether the folder the app's engine keeps its shaders in was empty
+  // before the engine opened.
+  var nothingWasKeptAtFirst = false;
+
   setUpAll(() async {
+    // The run's own container in place of the machine's folder
+    // (flutter_test_config.dart): that one holds what earlier runs kept,
+    // and would answer 「kept for the next launch」 whatever this run's
+    // engine did.
+    debugAppShaderFolder = null;
+    final folder = Directory(appShaderFolder());
+    nothingWasKeptAtFirst = !folder.existsSync() || folder.listSync().isEmpty;
     AppKernels.debugCompileHere = false;
     final before = debugKernelsCompiledHere;
     final looking = Timer.periodic(const Duration(milliseconds: 1), (_) {
@@ -189,6 +200,7 @@ void main() {
   test(
     'what the list compiled is kept for the next launch',
     () {
+      expect(nothingWasKeptAtFirst, isTrue, reason: '⛔premise: none before');
       final kept = Directory(appShaderFolder()).listSync().whereType<File>();
       expect(kept, isNotEmpty);
     },

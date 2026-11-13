@@ -418,11 +418,21 @@ final appGpuStampLandingKernels = AppKernels<GpuStampLanding>(
 );
 
 /// How [debugGpuAdapterChoice] opens the engine — read on this isolate:
-/// one [GpuEngine.opening] runs has its own, at the choice's default.
-GpuEngine Function() _opener() => switch (debugGpuAdapterChoice) {
-  GpuAdapterChoice.flutters => GpuEngine.onFlutterAdapter,
-  GpuAdapterChoice.first => GpuEngine.onFirstAdapter,
-};
+/// one [GpuEngine.opening] runs has its own, at the choice's default — its
+/// shaders' folder named first ([appShaderFolder]).
+///
+/// ⛔EVERY OPENING OF THE APP'S ENGINE NAMES THE FOLDER, the one
+/// [appGpuEngine] makes without a word too. ↩️[openAppGpuEngine] alone
+/// named it till 2026-11-13, the day the folder came: an engine a test
+/// opened by asking for it kept nothing, and compiled every kernel it drew
+/// with (board two-tests-spend-the-wait-windows-minute-under-load).
+GpuEngine Function() _opener() {
+  GpuEngine.keepShadersIn(appShaderFolder());
+  return switch (debugGpuAdapterChoice) {
+    GpuAdapterChoice.flutters => GpuEngine.onFlutterAdapter,
+    GpuAdapterChoice.first => GpuEngine.onFirstAdapter,
+  };
+}
 
 /// [appGpuEngine] once [openAppGpuEngine] has opened it, null till then —
 /// and again from the app letting one go till the next is open
@@ -456,9 +466,20 @@ final class _Open extends ChangeNotifier
 }
 
 /// Where the app's engines keep the shaders they compile, for the next
-/// launch ([GpuEngine.keepShadersIn]): `<container>/ShaderCache`.
+/// launch ([GpuEngine.keepShadersIn]): `<container>/ShaderCache` — or
+/// [debugAppShaderFolder], where a test run names one.
 String appShaderFolder() =>
+    debugAppShaderFolder ??
     testRedirectedAppSupportPath('ShaderCache', sandbox: 'shaders');
+
+/// Test seam: the folder in place of [appShaderFolder]'s own, for the
+/// engines opened from then on. A test run's own container is new and is
+/// removed as the run ends, so what a run kept there no later run found:
+/// the runs of a machine name one folder of theirs
+/// (`flutter_test_config.dart` says what was measured), and a pin of what
+/// an engine keeps names an empty one.
+@visibleForTesting
+String? debugAppShaderFolder;
 
 /// Opens [appGpuEngine] off this isolate ([GpuEngine.opening]) — at once
 /// where it is open already — and tells [appGpuEngineOpen]. The app asks
@@ -467,7 +488,6 @@ String appShaderFolder() =>
 Future<GpuEngine> openAppGpuEngine() {
   final its = _its;
   return its.opening ??= () async {
-    GpuEngine.keepShadersIn(appShaderFolder());
     final opened = its.engine ?? await GpuEngine.opening(_opener());
     // Asked the other way while this one opened: the app keeps one.
     final engine = its.engine ??= opened;

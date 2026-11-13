@@ -7,7 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart'
-    show AppKernels, debugTakeAppGpuEngineNoted;
+    show AppKernels, debugAppShaderFolder, debugTakeAppGpuEngineNoted;
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
+import '../tool/machine_cache.dart';
 import 'helpers/a_shown_surface.dart';
 import 'helpers/temp_dir.dart';
 
@@ -49,6 +50,32 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // config from the engine, which it reaches all the same since Q24
   // (gpu_adapter_choice.dart says why, and why that is the law).
   debugGpuAdapterChoice = GpuAdapterChoice.first;
+  // 🚨EVERY TEST RUN OF A MACHINE KEEPS ITS SHADERS IN ONE FOLDER OF THE
+  // MACHINE'S — `<machine cache>/test_shaders`, beside the line's own
+  // (tool/machine_cache.dart) — so what one run's engine compiled, the
+  // next run's is handed: a file there is used only where all that was
+  // asked of the compiler is the same, and is written beside its name and
+  // renamed to it, so runs side by side share the folder
+  // (rust/vendor/wgpu-hal, dxil_cache.rs).
+  //
+  // A run is a launch, and the container it stands in is new and its own
+  // (`testContainerFolder`), so each run compiled every kernel it drew
+  // with — on the test's thread, where a pumped clock has them compiled
+  // (`AppKernels.debugCompileHere`). 🔬2026-11-13, main PC, eighteen suites
+  // on the line (board two-tests-spend-the-wait-windows-minute-under-load):
+  // the first drawing of a file stood 39–65 s in five kernels (a Drive
+  // project opened in a tab) and 62–64 s in four (two rows merged) — 5–6 s
+  // alone — behind a wait of sixty (`waitPatience`): red six times of ten,
+  // and 38 and 24 red logs of lanes since 11-10, each the first test of
+  // its file.
+  //
+  // ⛔Not in the run's temp: the line empties it as each run ends
+  // (tool/test_queue.dart, `RunTemp`). ⛔Never the app's own container
+  // (`appSupportFilePath`): a test writes nothing among the user's files.
+  // A machine that names no cache folder keeps each run's shaders in the
+  // run's own container, as all did.
+  final machine = machineCacheFolder(Platform.environment);
+  debugAppShaderFolder = machine == null ? null : '$machine/test_shaders';
   // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
   // (2026-10-08). FIRST, before anything below asks for a temp path: from
   // here on `Directory.systemTemp` answers a folder of this file's own —
