@@ -90,7 +90,7 @@ Uint8List aRowLaidOnce(
     addTearDown(tiles.pool.free);
   }
   return tiles.held((hold) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     try {
       planCompositeTree(
         plan,

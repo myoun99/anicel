@@ -122,6 +122,35 @@ Duration _ran(int nanos) {
   return Duration(microseconds: nanos ~/ 1000);
 }
 
+/// 🚨WHAT ONE ENGINE MADE IS NAMED TO NO OTHER'S JOB. Each engine has a
+/// wgpu instance of its own, and wgpu looks what a job names up in the
+/// instance the job is on: a buffer of another's is no error it raises —
+/// it panics, which ends the process, or, where the two instances' numbers
+/// happen to meet, takes another buffer for it (🔬2026-11-13: `Cannot get
+/// BufferId(2,2), found other resource BufferId(2,1)` — a picture made on
+/// an engine the app had let go, its device gone, carried by the kernels
+/// of the one it opened next; 🗣️gpu-canonical-store-Q11, 유저 2026-11-10:
+/// 「장치를 잃으면 앱은 꺼지지 않고 새 장치를 열어 사본으로 되살린다」 — an
+/// app that opens a second engine in its life is where two meet).
+///
+/// So what holds something a device made is of ONE engine, this one, and a
+/// job names what another object holds through the engine the job is on
+/// alone ([GpuEngine._its]), which refuses another's by name. No read of
+/// another object's pointer is written any other way
+/// (`test/architecture/a_job_names_what_its_own_engine_made_test.dart`).
+///
+/// ⛔Not one wgpu instance for every engine, which would make of a mixed
+/// job an error wgpu raises (↩️weighed 2026-11-13): an adapter whose
+/// driver was updated — the commonest loss, and a harmless one — is seen
+/// by a DXGI factory made after the update and by none made before
+/// (Microsoft Learn, `IDXGIFactory1::IsCurrent`, read that day; ⚠️read,
+/// not measured — no test updates a driver), and an engine opened anew
+/// makes its instance anew (rust/src/platform).
+abstract interface class _OfAnEngine {
+  /// The engine what it holds was made on.
+  GpuEngine get _engine;
+}
+
 /// One wgpu device on the adapter Flutter draws with.
 class GpuEngine {
   GpuEngine._(this._engine, this.adapterLuid);
@@ -177,6 +206,15 @@ class GpuEngine {
   Pointer<rust.Fill>? _fill;
 
   Pointer<rust.Fill> get _fillKernel => _fill ??= rust.fillNew(_engine);
+
+  /// [made], for a job on this engine to name — refused by name where
+  /// another engine made it ([_OfAnEngine]).
+  T _its<T extends _OfAnEngine>(T made) {
+    if (!identical(made._engine, this)) {
+      throw GpuRefused('a job on one engine named what another engine made');
+    }
+    return made;
+  }
 
   String get adapterName => using((arena) {
     const capacity = 256;
@@ -369,9 +407,10 @@ class GpuEngine {
 /// What a kernel writes for the screen to show: a [GpuSurface] Flutter
 /// shows through a [SharedTexture], or a [GpuWindow]'s next image — one
 /// kernel entry for both (rust/src/kernels/mod.rs).
-sealed class GpuTarget {
+sealed class GpuTarget implements _OfAnEngine {
   GpuTarget(this._engine);
 
+  @override
   final GpuEngine _engine;
 
   /// The texture the kernel writes.
@@ -501,7 +540,7 @@ final class GpuReadFailed extends GpuRefused {
 
 /// The engine's pages of tiles (rust/src/kernels/pool): each tile stored
 /// lands in a fresh slot of its cel and stays there until let go.
-class GpuPool {
+class GpuPool implements _OfAnEngine {
   /// A pool on [engine] that makes no page past [mostBytes].
   factory GpuPool(GpuEngine engine, int mostBytes) {
     final pool = rust.poolNew(engine._engine, mostBytes);
@@ -513,6 +552,7 @@ class GpuPool {
 
   GpuPool._(this._engine, this._pool);
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.Pool> _pool;
 
@@ -764,16 +804,16 @@ List<GpuLanded> _landed(
 /// The blur brush's kernels (rust/src/kernels/dab/blur.rs): one set for
 /// every stroke — what a stroke cannot go without; the kernels a dab goes
 /// by strips with are the engine's, compiled apart ([compilingStrips]).
-final class GpuBlurs {
+final class GpuBlurs implements _OfAnEngine {
   /// Compiled on [engine], the caller waiting.
   factory GpuBlurs(GpuEngine engine) =>
-      GpuBlurs._(_made(rust.blursNew(engine._engine)));
+      GpuBlurs._(engine, _made(rust.blursNew(engine._engine)));
 
-  GpuBlurs._(this._blurs);
+  GpuBlurs._(this._engine, this._blurs);
 
   /// Compiled on [engine] off this isolate, which goes on meanwhile.
   static Future<GpuBlurs> opening(GpuEngine engine) async =>
-      GpuBlurs._(await _compiledOff(engine, _compiled));
+      GpuBlurs._(engine, await _compiledOff(engine, _compiled));
 
   static Pointer<rust.Blurs> _compiled(Pointer<rust.Engine> on) =>
       _made(rust.blursNew(on));
@@ -800,6 +840,8 @@ final class GpuBlurs {
     return blurs;
   }
 
+  @override
+  final GpuEngine _engine;
   final Pointer<rust.Blurs> _blurs;
 
   /// Test seam: whether its next stroke goes by strips — the engine has
@@ -966,9 +1008,9 @@ class GpuStroke {
     if (!rust.strokeRub(
       _stroke,
       _engine._engine,
-      blurs._blurs,
-      composite._composite,
-      pool._pool,
+      _engine._its(blurs)._blurs,
+      _engine._its(composite)._composite,
+      _engine._its(pool)._pool,
       words,
       met,
       specs,
@@ -1000,15 +1042,15 @@ class GpuStroke {
     (_, coordinates, under, places, changes) => rust.strokeLandBlur(
       _stroke,
       _engine._engine,
-      blurs._blurs,
-      composite._composite,
-      pool._pool,
+      _engine._its(blurs)._blurs,
+      _engine._its(composite)._composite,
+      _engine._its(pool)._pool,
       cel,
       coordinates,
       under,
       asks.length,
       opacity,
-      mask?._mask ?? nullptr,
+      mask == null ? nullptr : _engine._its(mask)._mask,
       compared,
       places,
       changes,
@@ -1035,15 +1077,15 @@ class GpuStroke {
     (_, coordinates, under, places, changes) => rust.strokeLand(
       _stroke,
       _engine._engine,
-      composite._composite,
-      pool._pool,
+      _engine._its(composite)._composite,
+      _engine._its(pool)._pool,
       cel,
       coordinates,
       under,
       asks.length,
       opacity,
       mode,
-      mask?._mask ?? nullptr,
+      mask == null ? nullptr : _engine._its(mask)._mask,
       compared,
       places,
       changes,
@@ -1060,7 +1102,7 @@ class GpuStroke {
 /// A stamp's picture on the GPU, straight RGBA8: a selection moved lands
 /// the same one at each step of the drag, its upload once. Goes with the
 /// object.
-final class GpuStampPicture implements Finalizable {
+final class GpuStampPicture implements Finalizable, _OfAnEngine {
   /// [rgba], [width] × [height] row after row.
   factory GpuStampPicture(
     GpuEngine engine,
@@ -1101,6 +1143,7 @@ final class GpuStampPicture implements Finalizable {
   /// The bytes of every picture alive, for the memory census.
   static int get liveBytes => rust.stampPictureBytes();
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.StampPicture> _picture;
 
@@ -1204,7 +1247,7 @@ class GpuStampLanding {
       (arena) => rust.stampPictureCarried(
         _landing,
         _engine._engine,
-        picture._picture,
+        _engine._its(picture)._picture,
         _doubles(arena, inverse),
         radiusFloor,
         sampling.id,
@@ -1250,7 +1293,7 @@ class GpuStampLanding {
       (arena) => rust.stampPictureMeshed(
         _landing,
         _engine._engine,
-        picture._picture,
+        _engine._its(picture)._picture,
         at.$1,
         at.$2,
         columns,
@@ -1297,10 +1340,10 @@ class GpuStampLanding {
       return rust.stampLand(
         _landing,
         _engine._engine,
-        composite._composite,
-        pool._pool,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
         cel,
-        picture._picture,
+        _engine._its(picture)._picture,
         left,
         top,
         box,
@@ -1409,9 +1452,13 @@ typedef GpuLens = ({
 /// colour matrices, effect chains and the blur maps their lens blurs read,
 /// and rows, folders, clips and solid colours laying them. The executor
 /// checks it where it runs.
-class GpuPlan {
-  GpuPlan() : _plan = rust.planNew();
+class GpuPlan implements _OfAnEngine {
+  /// A plan of nothing, for an executor of [engine]'s to run: what it
+  /// names is that engine's ([_OfAnEngine]).
+  GpuPlan(this._engine) : _plan = rust.planNew();
 
+  @override
+  final GpuEngine _engine;
   final Pointer<rust.Planned> _plan;
 
   /// Adds the tile set of [columns] × [rows] canvas tiles whose top-left is
@@ -1509,14 +1556,16 @@ class GpuPlan {
   /// Holds what effect chain [chain] puts in [held] under [id], the number
   /// the app gives what the chain shows: a run whose hold under [id] keeps
   /// what it put over the chain's tiles lays that, and does not run it.
-  void chainHeld(int chain, GpuHeldChains held, int id) =>
-      _checked(rust.planChainHeld(_plan, chain, held._held, id));
+  void chainHeld(int chain, GpuHeldChains held, int id) => _checked(
+    rust.planChainHeld(_plan, chain, held._heldFor(_engine, id), id),
+  );
 
   /// Adds to effect chain [chain] a read of what the ops before it put:
   /// the picture a plug-in's step runs over, [read]'s once this plan has
   /// run. What it put goes on to the ops after it as it is.
-  void chainRead(int chain, GpuChainRead read) =>
-      _checked(rust.planChainRead(_plan, chain, read._read));
+  void chainRead(int chain, GpuChainRead read) => _checked(
+    rust.planChainRead(_plan, chain, _engine._its(read)._read),
+  );
 
   /// Adds to effect chain [chain] what a plug-in made of [picture] — left,
   /// top, right, bottom, in the chain's pixels: [made], in place of what
@@ -1648,7 +1697,13 @@ class GpuPlan {
     required double focal,
     bool inverts = false,
   }) => _checked(
-    rust.planMapLaid(_plan, tiles._composited, channel.id, focal, inverts),
+    rust.planMapLaid(
+      _plan,
+      _engine._its(tiles)._composited,
+      channel.id,
+      focal,
+      inverts,
+    ),
   );
 
   /// How many steps the plan has: where the steps a blur map is drawn
@@ -1778,7 +1833,8 @@ class GpuPlan {
 
   /// Lays the plan's masked steps — its range marks ([mark]) — under
   /// [mask]: one a plan.
-  void mask(GpuMask mask) => _checked(rust.planMask(_plan, mask._mask));
+  void mask(GpuMask mask) =>
+      _checked(rust.planMask(_plan, _engine._its(mask)._mask));
 
   /// Adds the range a fill held down will cover, as the engine marks it: a
   /// checker of cells of 8 of its row's pixels, white and black at half
@@ -1820,9 +1876,10 @@ class GpuPlan {
 
 /// The picture an effect chain had come to at a plug-in's step, for the
 /// host to read once the plan that names it ran ([GpuPlan.chainRead]).
-class GpuChainRead {
+class GpuChainRead implements _OfAnEngine {
   GpuChainRead(this._engine) : _read = rust.chainReadNew();
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.ChainRead> _read;
 
@@ -1877,11 +1934,36 @@ class GpuHeldChains {
 
   final Pointer<rust.HeldChains> _held;
 
+  /// The numbers plans named that are not let go of yet ([letGo]), and
+  /// the engine those plans were of. ⚠️Of no engine while it holds no
+  /// number: one hold outlives the engine an app lets go, let go of whole
+  /// as that engine is (`EngineChainHolds`), and is the next's from the
+  /// first number a plan of that one names.
+  final Set<int> _named = {};
+  GpuEngine? _engine;
+
+  /// It, for a plan on [engine] to keep a chain's put in under [id] —
+  /// refused by name while it holds what another engine's plans named
+  /// ([_OfAnEngine]): what a run put is that engine's, and a plan that
+  /// finds it under its number lays it.
+  Pointer<rust.HeldChains> _heldFor(GpuEngine engine, int id) {
+    if (_named.isEmpty) {
+      _engine = engine;
+    } else if (!identical(_engine, engine)) {
+      throw GpuRefused('a plan of one engine named a hold of another engine');
+    }
+    _named.add(id);
+    return _held;
+  }
+
   /// The bytes it keeps under [id] — none where it keeps nothing.
   int bytesOf(int id) => rust.heldBytesOf(_held, id);
 
   /// Lets go of what it keeps under [id], if anything.
-  void letGo(int id) => rust.heldLetGo(_held, id);
+  void letGo(int id) {
+    rust.heldLetGo(_held, id);
+    _named.remove(id);
+  }
 
   /// Frees it; a plan that names it keeps its own hold.
   void free() => rust.heldFree(_held);
@@ -1891,7 +1973,7 @@ class GpuHeldChains {
 /// pixel over its box — a fill range's, in the space of the row it lies on
 /// — made once and named by each plan that lays steps under it
 /// ([GpuPlan.mask]) for as long as it is not freed.
-class GpuMask {
+class GpuMask implements _OfAnEngine {
   /// [bytes], a byte a pixel row after row over [width] × [height], whose
   /// top-left pixel is ([x], [y]), on [composite]'s engine.
   factory GpuMask(
@@ -1919,15 +2001,17 @@ class GpuMask {
     if (mask == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuMask._(mask);
+    return GpuMask._(composite._engine, mask);
   }
 
-  GpuMask._(this._mask);
+  GpuMask._(this._engine, this._mask);
 
   /// The bytes of every mask made and not yet freed, counted by the engine
   /// where it makes and frees them.
   static int get liveBytes => rust.maskBytes();
 
+  @override
+  final GpuEngine _engine;
   final Pointer<rust.MaskPlane> _mask;
 
   /// Frees the mask; a plan that names it keeps its own hold.
@@ -1978,7 +2062,7 @@ final class GpuPutPicture implements Finalizable {
 }
 
 /// The executor: plans of the pool's tiles composited on the GPU.
-class GpuComposite {
+class GpuComposite implements _OfAnEngine {
   /// The executor on [engine], its full pass compiled.
   factory GpuComposite(GpuEngine engine) =>
       GpuComposite._(engine, _compiled(engine._engine));
@@ -2015,6 +2099,7 @@ class GpuComposite {
 
   GpuComposite._(this._engine, this._composite);
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.Composite> _composite;
 
@@ -2078,8 +2163,8 @@ class GpuComposite {
       return rust.compositeRun(
         _composite,
         _engine._engine,
-        pool._pool,
-        plan._plan,
+        _engine._its(pool)._pool,
+        _engine._its(plan)._plan,
         at,
         tiles.length,
         _rect(arena, extent),
@@ -2105,9 +2190,9 @@ class GpuComposite {
       (arena) => rust.compositeShow(
         _composite,
         _engine._engine,
-        pool._pool,
-        plan._plan,
-        target._texture,
+        _engine._its(pool)._pool,
+        _engine._its(plan)._plan,
+        _engine._its(target)._texture,
         _edges(arena, rect),
       ),
     ),
@@ -2129,7 +2214,7 @@ Pointer<Uint32> _edges(Arena arena, (int, int, int, int) rect) {
 /// ([compose]), and shown through the camera ([show]) — a pan or a zoom
 /// shows what is kept, the canvas's pixels magnified, so what is shown
 /// while working is the result (gpu-canonical-store ④⑤).
-class GpuScreen {
+class GpuScreen implements _OfAnEngine {
   /// The screen of a canvas's composite over the pixels [extent] — [left,
   /// top, right, bottom): the page and what lies past it — on
   /// [composite]'s engine, shown on Blend's radius [radiusFloor] at least,
@@ -2153,6 +2238,9 @@ class GpuScreen {
   final GpuComposite _composite;
   final Pointer<rust.Screen> _screen;
 
+  @override
+  GpuEngine get _engine => _composite._engine;
+
   /// Composites [plan] of [pool]'s tiles onto the kept canvas over its
   /// tiles that meet the pixels [changed] — [left, top, right, bottom); the
   /// whole canvas the first time — and submits the work. The tiles
@@ -2162,10 +2250,10 @@ class GpuScreen {
     final composed = using(
       (arena) => rust.screenCompose(
         _screen,
-        _composite._composite,
-        _composite._engine._engine,
-        pool._pool,
-        plan._plan,
+        _engine._its(_composite)._composite,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        _engine._its(plan)._plan,
         _rect(arena, changed),
       ),
     );
@@ -2187,11 +2275,11 @@ class GpuScreen {
     final composed = using(
       (arena) => rust.screenComposeOver(
         _screen,
-        film._screen,
-        _composite._composite,
-        _composite._engine._engine,
-        pool._pool,
-        plan._plan,
+        _engine._its(film)._screen,
+        _engine._its(_composite)._composite,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        _engine._its(plan)._plan,
         _rect(arena, fresh),
       ),
     );
@@ -2221,12 +2309,12 @@ class GpuScreen {
       using(
         (arena) => rust.screenShow(
           _screen,
-          _composite._composite,
-          _composite._engine._engine,
+          _engine._its(_composite)._composite,
+          _engine._engine,
           _doubles(arena, inverse),
           scale,
           sampling.id,
-          target._texture,
+          _engine._its(target)._texture,
           _edges(arena, rect),
         ),
       ),
@@ -2247,9 +2335,10 @@ class GpuScreen {
 }
 
 /// What a run put: its output tiles' pixels, on the GPU.
-class GpuComposited {
+class GpuComposited implements _OfAnEngine {
   GpuComposited._(this._engine, this._composited, this.tiles);
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.Composited> _composited;
 
@@ -2275,7 +2364,7 @@ class GpuComposited {
 /// before its readback (gpu-export-path ①), each pass compiled where it
 /// is first asked. A frame is a [GpuShown] ([shown]); the picture is its
 /// width × height from the frame's top-left pixel.
-class GpuExport {
+class GpuExport implements _OfAnEngine {
   /// The export's passes on [engine], none compiled yet.
   GpuExport(GpuEngine engine)
     : _engine = engine,
@@ -2290,7 +2379,8 @@ class GpuExport {
     required bool bgra,
   }) async {
     final export = GpuExport(engine);
-    final (passes, on) = (export._export.address, engine._engine.address);
+    final passes = engine._its(export)._export.address;
+    final on = engine._engine.address;
     await Isolate.run(
       () => rust.exportWarm(
         Pointer<rust.Export>.fromAddress(passes),
@@ -2301,6 +2391,7 @@ class GpuExport {
     return export;
   }
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.Export> _export;
 
@@ -2311,14 +2402,14 @@ class GpuExport {
   GpuShown shown(GpuSurface surface, int width, int height) {
     final shown = rust.exportShown(
       _engine._engine,
-      surface._surface,
+      _engine._its(surface)._surface,
       width,
       height,
     );
     if (shown == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuShown._(shown, width, height);
+    return GpuShown._(_engine, shown, width, height);
   }
 
   /// A [width] × [height] frame this export makes, laid with [ground] —
@@ -2364,7 +2455,7 @@ class GpuExport {
     if (cover == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuCover._(cover);
+    return GpuCover._(_engine, cover);
   }
 
   /// Lays [source], its top-left at ([x], [y]) of [onto], over [onto] at
@@ -2385,12 +2476,12 @@ class GpuExport {
       (arena) => rust.exportLay(
         _export,
         _engine._engine,
-        onto._shown,
-        source._shown,
+        _engine._its(onto)._shown,
+        _engine._its(source)._shown,
         x,
         y,
         opacity,
-        cover?._cover ?? nullptr,
+        cover == null ? nullptr : _engine._its(cover)._cover,
         _rectOrNull(arena, within),
       ),
     ),
@@ -2409,10 +2500,10 @@ class GpuExport {
       (arena) => rust.exportLayColour(
         _export,
         _engine._engine,
-        onto._shown,
+        _engine._its(onto)._shown,
         colour,
         opacity,
-        cover?._cover ?? nullptr,
+        cover == null ? nullptr : _engine._its(cover)._cover,
         _rectOrNull(arena, within),
       ),
     ),
@@ -2420,13 +2511,14 @@ class GpuExport {
 
   /// What [frame] — one [blank] made — holds, to read back: its
   /// premultiplied RGBA, red first, row after row with nothing between.
-  GpuReadout read(GpuShown frame) => _readout(rust.exportRead(frame._shown));
+  GpuReadout read(GpuShown frame) =>
+      _readout(rust.exportRead(_engine._its(frame)._shown));
 
   GpuShown _shownOrWhy(Pointer<rust.Shown> shown, int width, int height) {
     if (shown == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuShown._(shown, width, height);
+    return GpuShown._(_engine, shown, width, height);
   }
 
   void _laid(bool laid) {
@@ -2453,7 +2545,7 @@ class GpuExport {
       return rust.exportNv12(
         _export,
         _engine._engine,
-        frame._shown,
+        _engine._its(frame)._shown,
         shape,
       );
     }),
@@ -2473,7 +2565,7 @@ class GpuExport {
     rust.exportOverGround(
       _export,
       _engine._engine,
-      frame._shown,
+      _engine._its(frame)._shown,
       width,
       height,
       ground,
@@ -2488,7 +2580,7 @@ class GpuExport {
     rust.exportClear(
       _export,
       _engine._engine,
-      frame._shown,
+      _engine._its(frame)._shown,
       width,
       height,
       cut,
@@ -2502,7 +2594,7 @@ class GpuExport {
       rust.exportOpaque(
         _export,
         _engine._engine,
-        frame._shown,
+        _engine._its(frame)._shown,
         width,
         height,
       ),
@@ -2535,7 +2627,7 @@ class GpuExport {
     rust.exportPngRgba(
       _export,
       _engine._engine,
-      frame._shown,
+      _engine._its(frame)._shown,
       width,
       height,
     ),
@@ -2548,7 +2640,7 @@ class GpuExport {
     rust.exportStraight(
       _export,
       _engine._engine,
-      frame._shown,
+      _engine._its(frame)._shown,
       width,
       height,
     ),
@@ -2557,7 +2649,13 @@ class GpuExport {
   /// [pngRgba] for a PNG of three bytes a pixel, from [rgb] — what
   /// [overGround] put for the same picture, which stays on the GPU.
   GpuReadout pngRgb(GpuReadout rgb, int width, int height) => _readout(
-    rust.exportPngRgb(_export, _engine._engine, rgb._readout, width, height),
+    rust.exportPngRgb(
+      _export,
+      _engine._engine,
+      _engine._its(rgb)._readout,
+      width,
+      height,
+    ),
   );
 
   /// Where each of a PNG's filtered rows starts from the last's, for a
@@ -2583,9 +2681,11 @@ class GpuExport {
 
 /// A frame as the screen shows it, copied on the GPU for the export's
 /// conversions ([GpuExport.shown]).
-class GpuShown {
-  GpuShown._(this._shown, this.width, this.height);
+class GpuShown implements _OfAnEngine {
+  GpuShown._(this._engine, this._shown, this.width, this.height);
 
+  @override
+  final GpuEngine _engine;
   final Pointer<rust.Shown> _shown;
 
   /// Its size in pixels: what it was made as.
@@ -2598,9 +2698,11 @@ class GpuShown {
 
 /// How much of what is laid each pixel of a frame takes, on the GPU
 /// ([GpuExport.cover]).
-class GpuCover {
-  GpuCover._(this._cover);
+class GpuCover implements _OfAnEngine {
+  GpuCover._(this._engine, this._cover);
 
+  @override
+  final GpuEngine _engine;
   final Pointer<rust.Cover> _cover;
 
   /// Frees the cover; before its engine is closed.
@@ -2609,9 +2711,10 @@ class GpuCover {
 
 /// What a conversion put: on the GPU until it is mapped, then copied row
 /// by row straight into wherever its writer takes it.
-class GpuReadout {
+class GpuReadout implements _OfAnEngine {
   GpuReadout._(this._engine, this._readout);
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.Readout> _readout;
 
@@ -2806,7 +2909,7 @@ class GpuInk {
     final walked = rust.inkRun(
       _ink,
       _engine._engine,
-      pool._pool,
+      _engine._its(pool)._pool,
       x0,
       y0,
       columns,
@@ -2950,13 +3053,13 @@ final class GpuCelPixels {
     final passed = rust.celPixelsRun(
       _pixels,
       _engine._engine,
-      pool._pool,
+      _engine._its(pool)._pool,
       x0,
       y0,
       columns,
       rows,
       _tileWords(arena, columns, rows, tiles),
-      mask?._mask ?? nullptr,
+      mask == null ? nullptr : _engine._its(mask)._mask,
       spec,
     );
     if (passed == nullptr) {
@@ -2985,13 +3088,13 @@ final class GpuCelPixels {
     final lifted = rust.celPixelsLift(
       _pixels,
       _engine._engine,
-      pool._pool,
+      _engine._its(pool)._pool,
       x0,
       y0,
       columns,
       rows,
       _tileWords(arena, columns, rows, tiles),
-      mask._mask,
+      _engine._its(mask)._mask,
       whole,
       out,
       into.length,
@@ -3050,7 +3153,7 @@ final class GpuCelPassed {
     (arena, _, _, places, changes) => rust.celPassedLand(
       _passed,
       _engine._engine,
-      pool._pool,
+      _engine._its(pool)._pool,
       cel,
       first,
       asks.length,
@@ -3066,7 +3169,7 @@ final class GpuCelPassed {
 /// plan shows over a box — the screen's with the paper left out, which is
 /// its maker's to leave out — kept on the GPU for every press that floods
 /// it ([GpuFloods.fill]) and freed by its maker.
-final class GpuFloodPicture {
+final class GpuFloodPicture implements _OfAnEngine {
   /// What [plan] of [pool]'s tiles shows over the pixels [extent] of the
   /// canvas — [left, top, right, bottom), nothing past it. Submits the
   /// work.
@@ -3075,17 +3178,21 @@ final class GpuFloodPicture {
     GpuPool pool,
     GpuPlan plan,
     (int, int, int, int) extent,
-  ) => GpuFloodPicture._(
-    using(
-      (arena) => rust.floodPictureNew(
-        composite._composite,
-        composite._engine._engine,
-        pool._pool,
-        plan._plan,
-        _rect(arena, extent),
+  ) {
+    final engine = composite._engine;
+    return GpuFloodPicture._(
+      engine,
+      using(
+        (arena) => rust.floodPictureNew(
+          engine._its(composite)._composite,
+          engine._engine,
+          engine._its(pool)._pool,
+          engine._its(plan)._plan,
+          _rect(arena, extent),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   /// What [plan] of [pool]'s tiles shows as a space posed on the canvas
   /// reads it, over the pixels [extent] of that space — [left, top, right,
@@ -3105,13 +3212,15 @@ final class GpuFloodPicture {
     if (toCanvas.length != 9) {
       throw ArgumentError('a pose of ${toCanvas.length}, not 9');
     }
+    final engine = composite._engine;
     return GpuFloodPicture._(
+      engine,
       using(
         (arena) => rust.floodPicturePosed(
-          composite._composite,
-          composite._engine._engine,
-          pool._pool,
-          plan._plan,
+          engine._its(composite)._composite,
+          engine._engine,
+          engine._its(pool)._pool,
+          engine._its(plan)._plan,
           _doubles(arena, toCanvas),
           _rect(arena, extent),
           _rect(arena, within),
@@ -3120,12 +3229,14 @@ final class GpuFloodPicture {
     );
   }
 
-  GpuFloodPicture._(this._picture) {
+  GpuFloodPicture._(this._engine, this._picture) {
     if (_picture == nullptr) {
       throw GpuRefused(_lastError());
     }
   }
 
+  @override
+  final GpuEngine _engine;
   final Pointer<rust.FloodPicture> _picture;
 
   void free() => rust.floodPictureFree(_picture);
@@ -3185,7 +3296,7 @@ final class GpuFloods {
     final filled = rust.floodRun(
       _floods,
       _engine._engine,
-      picture._picture,
+      _engine._its(picture)._picture,
       x,
       y,
       tolerance,
@@ -3323,10 +3434,11 @@ class GpuLetters {
     List<double> toGrid,
   ) => using((arena) {
     final rect = arena<Int32>(4)..asTypedList(4).fillRange(0, 4, -1);
+    final engine = composite._engine;
     final lettered = rust.lettersSet(
       _letters,
-      composite._engine._engine,
-      composite._composite,
+      engine._engine,
+      engine._its(composite)._composite,
       faces._faces,
       _floats(arena, _six(toGrid)),
       rect,
@@ -3335,7 +3447,7 @@ class GpuLetters {
     if (lettered == nullptr) {
       return columns == 0 ? null : throw GpuRefused(_lastError());
     }
-    return GpuLettered._(composite._engine, lettered, (
+    return GpuLettered._(engine, lettered, (
       x0: x0,
       y0: y0,
       columns: columns,
@@ -3413,7 +3525,7 @@ class GpuGrid {
           rust.gridDraw(
             _grid,
             _engine._engine,
-            picture._picture,
+            _engine._its(picture)._picture,
             stream,
             ops.length,
             bytes,
@@ -3428,7 +3540,7 @@ class GpuGrid {
 
 /// A frame grid's tile as the engine keeps it: [width] × [height] pixels,
 /// straight, drawn by [GpuGrid.draw] and laid by [GpuGridLay.lay].
-class GpuGridPicture {
+class GpuGridPicture implements _OfAnEngine {
   factory GpuGridPicture(GpuEngine engine, int width, int height) {
     final picture = rust.gridPictureNew(engine._engine, width, height);
     if (picture == nullptr) {
@@ -3439,6 +3551,7 @@ class GpuGridPicture {
 
   GpuGridPicture._(this._engine, this._picture, this.width, this.height);
 
+  @override
   final GpuEngine _engine;
   final Pointer<rust.GridPicture> _picture;
   final int width;
@@ -3513,7 +3626,7 @@ class GpuGridLay {
     final pictures = arena<Pointer<rust.GridPicture>>(_held(laid.length));
     final boxes = arena<Double>(_held(8 * laid.length));
     for (final (index, (:picture, :from, :onto)) in laid.indexed) {
-      pictures[index] = picture._picture;
+      pictures[index] = _engine._its(picture)._picture;
       final (x0, y0, x1, y1) = from;
       final (u0, v0, u1, v1) = onto;
       boxes
@@ -3524,7 +3637,7 @@ class GpuGridLay {
       rust.gridLay(
         _lay,
         _engine._engine,
-        target._texture,
+        _engine._its(target)._texture,
         edges,
         pictures,
         boxes,

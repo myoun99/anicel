@@ -91,7 +91,7 @@ void main() {
     List<double>? matrix,
     int? mode,
   }) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     final added = plan.row(
       set: plan.set(0, 0, set.length, 1, set),
@@ -168,7 +168,7 @@ void main() {
     const quarter = [1.0, 0.0, 0.25, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
     Uint8List floored(double radius) =>
         ran(oneRow(tiles, inverse: quarter, radiusFloor: radius), [(0, 0)]);
-    final unnamed = GpuPlan();
+    final unnamed = GpuPlan(appGpuEngine);
     addTearDown(unnamed.free);
     unnamed.row(
       set: unnamed.set(0, 0, 1, 1, tiles),
@@ -224,7 +224,7 @@ void main() {
   });
 
   test('a pose that lands nothing is left out', () {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
 
     expect(
@@ -241,7 +241,7 @@ void main() {
   });
 
   test("a solid, a folder's close and its matrix each take their own", () {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     final matrix = plan.matrix(green);
     plan
@@ -275,7 +275,7 @@ void main() {
       Uint8List(gpuTileBytes)..fillRange(0, gpuTileBytes, 255),
     );
     Uint8List clipped({required bool opaque}) {
-      final plan = GpuPlan();
+      final plan = GpuPlan(appGpuEngine);
       addTearDown(plan.free);
       final set = plan.set(0, 0, 1, 1, white);
       plan
@@ -305,7 +305,7 @@ void main() {
 
   test('a plan the executor refuses says why, run or shown — by the name '
       'the app tells a refusal by', () {
-    final plan = GpuPlan()..close(mode: GpuBlend.normal);
+    final plan = GpuPlan(appGpuEngine)..close(mode: GpuBlend.normal);
     addTearDown(plan.free);
     final surface = shownSurfaceOf(8, 8);
     addTearDown(surface.free);
@@ -322,7 +322,7 @@ void main() {
   });
 
   test('what the C entries cannot count is refused before them', () {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
 
     expect(() => plan.set(0, 0, 2, 1, [null]), throwsArgumentError);
@@ -358,7 +358,7 @@ void main() {
     ({int? keys, int? chain}) Function(GpuPlan plan) through, {
     int column = 0,
   }) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     final set = plan.set(column, 0, tiles.length, 1, tiles);
     final (:keys, :chain) = through(plan);
@@ -607,7 +607,7 @@ void main() {
     final tiles = storedOf(noise(3));
     final out = [(0, 0), (1, 0), (2, 0)];
     GpuPlan lensed(int Function(GpuPlan plan, int set) map) {
-      final plan = GpuPlan();
+      final plan = GpuPlan(appGpuEngine);
       addTearDown(plan.free);
       final set = plan.set(0, 0, 3, 1, tiles);
       plan.solid(0xFF00FF00, 0, 0, 40, 40);
@@ -631,7 +631,7 @@ void main() {
       return drawnFrom(plan, first);
     });
     final laid = lensed((plan, set) {
-      final rows = GpuPlan();
+      final rows = GpuPlan(appGpuEngine);
       addTearDown(rows.free);
       threeTileRow(rows, rows.set(0, 0, 3, 1, tiles), inverse: nudged);
       final put = composite.run(pool, rows, out, all);
@@ -666,7 +666,7 @@ void main() {
     // colours elsewhere, the alpha whole elsewhere.
     const atFocal = [0xFF0A0AC8, 0xFF0AC80A, 0xFFC80A0A, 0xC80A0A0A];
     Uint8List lensed(GpuMapChannel channel, int map) {
-      final plan = GpuPlan();
+      final plan = GpuPlan(appGpuEngine);
       addTearDown(plan.free);
       final set = plan.set(0, 0, 1, 1, tiles);
       plan.solid(atFocal[map], 0, 0, gpuTileSide, gpuTileSide);
@@ -702,7 +702,7 @@ void main() {
   // differs fails, naming its adapter.
   test('a plan of every chain op Dart builds composites as pinned', () {
     final [a, b, c] = storedOf(noise(3));
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     final pair = plan.set(0, 0, 2, 1, [a, b]);
     final one = plan.set(1, 0, 1, 1, [c]);
@@ -797,7 +797,7 @@ void main() {
   });
 
   test("what a chain's call cannot add says why", () {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     Matcher saying(String why) => throwsA(
       isA<StateError>().having(
@@ -878,7 +878,7 @@ void main() {
       'runs', () {
     final tiles = storedOf(noise(1));
     void refused(void Function(GpuPlan plan, int set) build, String why) {
-      final plan = GpuPlan();
+      final plan = GpuPlan(appGpuEngine);
       addTearDown(plan.free);
       build(plan, plan.set(0, 0, 1, 1, tiles));
       expect(

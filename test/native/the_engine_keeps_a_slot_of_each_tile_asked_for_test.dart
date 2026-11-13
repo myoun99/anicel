@@ -66,7 +66,7 @@ void main() {
   /// What a row of [slots] lays back copied over nothing: their bytes, as
   /// [tileOf]'s are opaque.
   Uint8List laidBack(EngineTileLedger ledger, List<GpuTile> slots) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     final added = plan.row(
       set: plan.set(0, 0, slots.length, 1, slots),

@@ -294,7 +294,7 @@ T _planned<T>(
   final origins =
       Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>>.identity();
   return ledger.held((hold) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(composite.engine);
     try {
       planCompositeTree(
         plan,

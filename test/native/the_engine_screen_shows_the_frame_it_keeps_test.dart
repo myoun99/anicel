@@ -153,7 +153,7 @@ void main() {
       ),
     ];
     final tiles = ledger.held((hold) {
-      final plan = GpuPlan();
+      final plan = GpuPlan(engine.composite.engine);
       addTearDown(plan.free);
       planCompositeTree(
         plan,

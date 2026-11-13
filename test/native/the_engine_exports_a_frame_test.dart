@@ -43,7 +43,7 @@ void main() {
     int height,
     int? Function(int, int) colour,
   ) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuEngine);
     addTearDown(plan.free);
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {

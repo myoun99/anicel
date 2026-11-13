@@ -530,7 +530,7 @@ Map<TileCoord, Uint8List> _ran(
   ];
   final ledger = EngineTileLedger.instance;
   return ledger.held((hold) {
-    final plan = GpuPlan();
+    final plan = GpuPlan(appGpuComposite.engine);
     try {
       final grid = hold.gridOf(BrushFrameKey.noCel, held.tiles);
       final GuideTransform(:a, :b, :c, :d, :tx, :ty) = back;
