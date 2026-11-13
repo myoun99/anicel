@@ -4,7 +4,8 @@ import '../../models/audio_pcm_scale.dart';
 import '../../models/kept_span.dart';
 import '../../models/movie_clock.dart' show ProjectClock, clockPulledBy;
 import '../../models/project_frame_rate.dart';
-import '../../native/qa_audio_resampler.dart' show resampleAudio;
+import '../../native/qa_audio_resampler.dart'
+    show resampleAudio, resampleReach;
 import '../media/media_byte_source.dart';
 import 'audio_conform_runner.dart' show decodeAudioSource;
 import 'wav16_header.dart';
@@ -82,22 +83,61 @@ Uint8List? soundSpanAsWav(
   }
   final read = clockPulledBy(clock, pull);
   final pace = read.rate.inSourceTime(read.speed);
-  final decoded = _decodedBetween(
-    source,
-    pace.frameToSample(frames.first, probe.sampleRate),
-    pace.frameToSample(frames.first + frames.count, probe.sampleRate),
+  final start = pace.frameToSample(frames.first, probe.sampleRate);
+  final end = pace.frameToSample(
+    frames.first + frames.count,
+    probe.sampleRate,
   );
+  return pull == noPull
+      ? _decodedBetween(source, start, end)
+      : _pulledBetween(source, start, end, probe.sampleRate, pull);
+}
+
+/// [source]'s own sound frames [start] up to [end] played [pull] faster at
+/// its own [sampleRate]: its output frame j is the sound at [start] +
+/// j × [pull].
+///
+/// Converted with as much of the sound around the window as the filter
+/// reads ([resampleReach]) — alone, its edges would be converted against
+/// silence, a click where the span begins (🔬F-588, 2026-11-14: 0.008 on a
+/// 0.37 tone in the first 16 samples). The sound before it is a whole
+/// number of [pull]'s numerators, so the outputs it gives are whole
+/// denominators and the window's first lands on [start] exactly; before
+/// the sound's first sample stands silence, as a whole conversion reads.
+({Float32List samples, int channels, int sampleRate})? _pulledBetween(
+  MediaByteSource source,
+  int start,
+  int end,
+  int sampleRate,
+  ({int numerator, int denominator}) pull,
+) {
+  final inputRate = sampleRate * pull.numerator;
+  final outputRate = sampleRate * pull.denominator;
+  final reach = resampleReach(inputRate: inputRate, outputRate: outputRate);
+  final turns = (reach + pull.numerator - 1) ~/ pull.numerator;
+  final from = start - turns * pull.numerator;
+  final decoded = _decodedBetween(source, from < 0 ? 0 : from, end + reach);
   if (decoded == null) {
     return null;
   }
+  final channels = decoded.channels;
+  final silence = (from < 0 ? -from : 0) * channels;
+  final converted = resampleAudio(
+    samples: Float32List(silence + decoded.samples.length)
+      ..setAll(silence, decoded.samples),
+    channels: channels,
+    inputRate: inputRate,
+    outputRate: outputRate,
+  );
+  final first = turns * pull.denominator * channels;
+  final count = (end - start) * pull.denominator ~/ pull.numerator * channels;
   return (
-    samples: resampleAudio(
-      samples: decoded.samples,
-      channels: decoded.channels,
-      inputRate: decoded.sampleRate * pull.numerator,
-      outputRate: decoded.sampleRate * pull.denominator,
+    samples: Float32List.sublistView(
+      converted,
+      first.clamp(0, converted.length),
+      (first + count).clamp(0, converted.length),
     ),
-    channels: decoded.channels,
+    channels: channels,
     sampleRate: decoded.sampleRate,
   );
 }

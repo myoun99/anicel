@@ -19,6 +19,16 @@ import 'native_scratch.dart';
 )
 external int _resampleFrames(int inputFrames, int inputRate, int outputRate);
 
+@Native<Int32 Function(Int32, Int32, Double, Double)>(
+  symbol: 'qa_audio_resample_taps',
+)
+external int _resampleTaps(
+  int inputRate,
+  int outputRate,
+  double stopbandDb,
+  double bandwidth,
+);
+
 @Native<
   Int64 Function(
     Pointer<Float>,
@@ -125,6 +135,26 @@ Float32List resampleAudio({
     calloc.free(output);
     calloc.free(input);
   }
+}
+
+/// How many input frames either side of its own instant an output frame of
+/// [resampleAudio] reads — 0 for equal rates. A window cut from inside a
+/// sound and converted alone is exact only that far in from its edges:
+/// past them the filter reads silence where the sound went on.
+int resampleReach({
+  required int inputRate,
+  required int outputRate,
+  double stopbandDb = defaultResamplerStopbandDb,
+  double bandwidth = defaultResamplerBandwidth,
+}) {
+  final taps = _resampleTaps(inputRate, outputRate, stopbandDb, bandwidth);
+  if (taps <= 0) {
+    return 0;
+  }
+  // The filter runs at the rate both meet at, interpolation × the input's.
+  final interpolation = outputRate ~/ outputRate.gcd(inputRate);
+  final half = (taps - 1) ~/ 2;
+  return (half + interpolation - 1) ~/ interpolation + 1;
 }
 
 /// A conversion of [channels] from [inputRate] to [outputRate] fed a piece
