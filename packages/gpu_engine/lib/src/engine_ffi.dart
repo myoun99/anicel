@@ -67,6 +67,8 @@ final class StampLanding extends Opaque {}
 
 final class Floods extends Opaque {}
 
+final class SelectionMasks extends Opaque {}
+
 final class FloodPicture extends Opaque {}
 
 final class FloodFilled extends Opaque {}
@@ -551,6 +553,49 @@ external void maskFree(Pointer<MaskPlane> mask);
 
 @Native<Uint64 Function()>(symbol: 'gpu_engine_mask_bytes')
 external int maskBytes();
+
+@Native<Pointer<SelectionMasks> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_selection_masks_new',
+)
+external Pointer<SelectionMasks> selectionMasksNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<SelectionMasks>)>(
+  symbol: 'gpu_engine_selection_masks_free',
+)
+external void selectionMasksFree(Pointer<SelectionMasks> masks);
+
+@Native<
+  Pointer<MaskPlane> Function(
+    Pointer<SelectionMasks>,
+    Pointer<Engine>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Double>,
+    Size,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Int32,
+    Double,
+    Bool,
+  )
+>(symbol: 'gpu_engine_selection_mask_new')
+external Pointer<MaskPlane> selectionMaskNew(
+  Pointer<SelectionMasks> masks,
+  Pointer<Engine> engine,
+  Pointer<Uint32> program,
+  int programLength,
+  Pointer<Double> points,
+  int pointsLength,
+  int x,
+  int y,
+  int width,
+  int height,
+  int grow,
+  double feather,
+  bool antiAlias,
+);
 
 @Native<Int32 Function(Pointer<Planned>, Pointer<MaskPlane>)>(
   symbol: 'gpu_engine_plan_mask',

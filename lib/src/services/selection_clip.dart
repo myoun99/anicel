@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
+
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
+import '../native/engine_selection_masks.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 
@@ -49,6 +52,14 @@ sealed class SelectionClip {
     required int width,
     required int height,
   });
+
+  /// The bytes [maskFor] reads, over every pixel this clip can select, made
+  /// on the engine for what reads a selection there — the live stroke
+  /// (`BrushLiveStrokeRasterizer`). The caller frees it.
+  ///
+  /// ⚠️Only for a clip that [mayCover] some pixel: one that can select none
+  /// has no box to make it over.
+  GpuMask maskOnEngine();
 }
 
 final class _OutlineClip extends SelectionClip {
@@ -58,6 +69,15 @@ final class _OutlineClip extends SelectionClip {
 
   @override
   bool mayCover(DirtyRegion pixels) => _region.mayCover(pixels);
+
+  @override
+  GpuMask maskOnEngine() => EngineSelectionMasks.of(
+    _region.spelled,
+    box: _region.pixelBoxWithin(null)!,
+    grow: 0,
+    feather: 0,
+    antiAlias: false,
+  );
 
   @override
   Uint8List maskFor({
@@ -101,6 +121,26 @@ final class _SoftClip extends SelectionClip {
         pixels.left < box.left + box.width &&
         pixels.bottomExclusive > box.top &&
         pixels.top < box.top + box.height;
+  }
+
+  /// Over the whole reading's box: the windows [maskFor] reads are cut
+  /// from it. ⚠️The whole box, which the class's note turns down for the
+  /// CPU's bytes: on the engine it is passes the UI thread does not wait
+  /// for, made once for a stroke and let go with it (2026-11-13) — where
+  /// the CPU made a window's bytes and handed them up at every move.
+  @override
+  GpuMask maskOnEngine() {
+    final box = _box;
+    if (box == null) {
+      throw StateError('a selection that meets no pixel of its wall');
+    }
+    return EngineSelectionMasks.of(
+      _region.spelled,
+      box: box,
+      grow: _options.growPx,
+      feather: _options.featherPx,
+      antiAlias: _options.antiAlias,
+    );
   }
 
   @override

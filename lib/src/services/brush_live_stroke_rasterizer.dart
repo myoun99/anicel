@@ -387,6 +387,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _results.clear();
     _blur?.dispose();
     _blur = null;
+    _selectionOnEngine?.mask.free();
+    _selectionOnEngine = null;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
@@ -536,67 +538,61 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (coords.isEmpty) {
       return const [];
     }
-    final mask = _selectionMaskOver(coords);
-    try {
-      return EngineTileLedger.instance.land(
-        EngineTileLedger.landedCel,
-        [
-          for (final coord in coords)
-            (column: coord.x, row: coord.y, under: base.tileAt(coord)),
-        ],
-        by: (pool, cel, asked) => _blur == null
-            ? stroke.land(
-                appGpuComposite,
-                pool,
-                cel,
-                asked,
-                // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
-                opacity: (strokeOpacity * 65535).round(),
-                mode: mode,
-                mask: mask,
-                compared: compared,
-              )
-            : stroke.landBlur(
-                EngineStrokes.blurs,
-                appGpuComposite,
-                pool,
-                cel,
-                asked,
-                opacity: (strokeOpacity * 65535).round(),
-                mask: mask,
-                compared: compared,
-              ),
-        compared: compared,
-      );
-    } finally {
-      mask?.free();
-    }
+    final mask = _selectionMask();
+    return EngineTileLedger.instance.land(
+      EngineTileLedger.landedCel,
+      [
+        for (final coord in coords)
+          (column: coord.x, row: coord.y, under: base.tileAt(coord)),
+      ],
+      by: (pool, cel, asked) => _blur == null
+          ? stroke.land(
+              appGpuComposite,
+              pool,
+              cel,
+              asked,
+              // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
+              opacity: (strokeOpacity * 65535).round(),
+              mode: mode,
+              mask: mask,
+              compared: compared,
+            )
+          : stroke.landBlur(
+              EngineStrokes.blurs,
+              appGpuComposite,
+              pool,
+              cel,
+              asked,
+              opacity: (strokeOpacity * 65535).round(),
+              mask: mask,
+              compared: compared,
+            ),
+      compared: compared,
+    );
   }
 
+  /// The selection's mask on the engine and the clip it is of — made for
+  /// the first landing under that clip, let go by [clear].
+  ({SelectionClip clip, GpuMask mask})? _selectionOnEngine;
 
-  /// The selection over the box of [coords], a byte a pixel; null with no
-  /// selection.
-  GpuMask? _selectionMaskOver(List<TileCoord> coords) {
+  /// The selection's mask over every pixel it can select, made on the
+  /// engine once for the stroke ([SelectionClip.maskOnEngine]); null with
+  /// no selection. ↩️Till 2026-11-13 the CPU made the bytes over the tiles
+  /// of each landing (`SelectionClip.maskFor`) and handed them up — at
+  /// every move of a stroke under a selection.
+  GpuMask? _selectionMask() {
     final clip = selectionClip;
     if (clip == null) {
       return null;
     }
-    final region = coords.map(_regionOf).reduce((a, b) => a.union(b));
-    final width = region.rightExclusive - region.left;
-    final height = region.bottomExclusive - region.top;
-    return GpuMask(
-      appGpuComposite,
-      clip.maskFor(
-        left: region.left,
-        top: region.top,
-        width: width,
-        height: height,
-      ),
-      x: region.left,
-      y: region.top,
-      width: width,
-      height: height,
-    );
+    final kept = _selectionOnEngine;
+    if (kept != null && identical(kept.clip, clip)) {
+      return kept.mask;
+    }
+    kept?.mask.free();
+    final mask = clip.maskOnEngine();
+    _selectionOnEngine = (clip: clip, mask: mask);
+    return mask;
   }
 
   /// The tile of [mask] as the engine reads a bitmap: once per mask.

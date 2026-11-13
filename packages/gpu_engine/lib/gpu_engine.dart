@@ -3387,6 +3387,70 @@ final class GpuFloods {
   void free() => rust.floodsFree(_floods);
 }
 
+/// A selection's mask made on the engine (rust/src/kernels/mask/abi.rs):
+/// its hard mask's passes and its finishing's, one set for every
+/// selection.
+final class GpuSelectionMasks {
+  /// Compiled on [engine], the caller waiting.
+  factory GpuSelectionMasks(GpuEngine engine) =>
+      GpuSelectionMasks._(engine, _compiled(engine._engine));
+
+  GpuSelectionMasks._(this._engine, this._masks);
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuSelectionMasks> opening(GpuEngine engine) async =>
+      GpuSelectionMasks._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.SelectionMasks> _compiled(Pointer<rust.Engine> on) =>
+      rust.selectionMasksNew(on);
+
+  final GpuEngine _engine;
+  final Pointer<rust.SelectionMasks> _masks;
+
+  /// The mask of the selection [program] spells over [points] — the
+  /// spelling the engine reads (`steps_of`) — on the pixel box [width] ×
+  /// [height] whose top-left pixel is ([x], [y]), finished by [grow],
+  /// [feather] and [antiAlias]. Kept on the GPU until it is freed; the
+  /// work is submitted and nothing waits for it.
+  GpuMask selection({
+    required Uint32List program,
+    required Float64List points,
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+    required int grow,
+    required double feather,
+    required bool antiAlias,
+  }) {
+    final mask = using((arena) {
+      final words = arena<Uint32>(_held(program.length))
+        ..asTypedList(program.length).setAll(0, program);
+      return rust.selectionMaskNew(
+        _masks,
+        _engine._engine,
+        words,
+        program.length,
+        _doubles(arena, points),
+        points.length,
+        x,
+        y,
+        width,
+        height,
+        grow,
+        feather,
+        antiAlias,
+      );
+    });
+    if (mask == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return GpuMask._(_engine, mask);
+  }
+
+  void free() => rust.selectionMasksFree(_masks);
+}
+
 /// The faces letters are set in (rust/src/kernels/letters/glyphs.rs): each
 /// family's files, the families in the order a letter goes down them.
 class GpuFaces {

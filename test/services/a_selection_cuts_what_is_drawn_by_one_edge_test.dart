@@ -1,6 +1,12 @@
+// The first stroke on the engine compiles the executor and the stroke's
+// kernels: 40 s on a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
@@ -14,6 +20,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/native/engine_selection_masks.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
@@ -373,6 +380,95 @@ void main() {
       frameId: frameId,
     ).afterSurface;
     expect(alphas(landed, 100), row);
+  });
+
+  group('on the engine', () {
+    // 🔬The CPU audit (2026-11-13): a stroke under a selection had the CPU
+    // make the mask's bytes over the tiles of each landing, at every move,
+    // and hand them up. The engine makes the selection's mask once for the
+    // stroke, by the same law.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    const engineTile = 128;
+
+    /// A stroke of one opaque square over the whole picture, under [clip],
+    /// on the engine's grid; the rasterizer is handed back unclear.
+    (BitmapSurface, BrushLiveStrokeRasterizer) strokedUnder(
+      SelectionClip clip,
+    ) {
+      final base = BitmapSurface(canvasSize: canvas, tileSize: engineTile);
+      final rasterizer =
+          BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: engineTile)
+            ..selectionClip = clip;
+      rasterizer.blendFrom([
+        paintDab(150, 100).copyWith(size: 400),
+      ], from: 0);
+      final shown = base.putMaterializedTiles([
+        for (final tile in rasterizer.promoteStrokeTiles(
+          base: base,
+          mode: BrushBlendMode.color,
+          erase: false,
+        ))
+          (coord: tile.coord, tile: tile.tile),
+      ]);
+      return (shown, rasterizer);
+    }
+
+    for (final MapEntry(key: name, value: region) in outlines.entries) {
+      for (final options in softnesses) {
+        final label =
+            '$name, grow ${options.growPx} feather ${options.featherPx} '
+            'aa ${options.antiAlias}';
+
+        test('a stroke is cut by the bytes the whole box reads: $label', () {
+          final whole = selectionMaskOnPasteboard(
+            region,
+            wall: wall,
+            options: options,
+          );
+          final (shown, rasterizer) = strokedUnder(
+            SelectionClip.of(region, wall: wall, options: options),
+          );
+          rasterizer.clear();
+
+          for (var y = 0; y < 200; y += 1) {
+            for (var x = 0; x < 300; x += 1) {
+              final alpha = (surfaceRgbaInPlace(shown, x, y) ?? 0) & 255;
+              if (alpha != readAt(whole, x, y)) {
+                fail(
+                  '$x,$y took $alpha of the stroke, the selection reads '
+                  '${readAt(whole, x, y)}',
+                );
+              }
+            }
+          }
+        });
+      }
+    }
+
+    test('a stroke asks the engine for its selection once, however often it '
+        'lands, and lets it go when it is cleared', () {
+      final made = EngineSelectionMasks.debugMade;
+      final held = GpuMask.liveBytes;
+      final (shown, rasterizer) = strokedUnder(soft);
+      rasterizer
+        ..blendFrom([paintDab(40, 40), paintDab(260, 160)], from: 0)
+        ..preBlendedOverlayTiles(
+          coords: [for (final tile in shown.tiles.keys) tile],
+          base: shown,
+          mode: BrushBlendMode.color,
+          erase: false,
+        )
+        ..promoteStrokeTiles(
+          base: shown,
+          mode: BrushBlendMode.color,
+          erase: false,
+        );
+
+      expect(EngineSelectionMasks.debugMade, made + 1);
+      expect(GpuMask.liveBytes, greaterThan(held));
+      rasterizer.clear();
+      expect(GpuMask.liveBytes, held);
+    });
   });
 }
 

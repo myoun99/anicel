@@ -7,6 +7,7 @@ import 'app_gpu_engine.dart';
 import 'engine_cel_pixels.dart';
 import 'engine_floods.dart';
 import 'engine_frame_tools.dart';
+import 'engine_selection_masks.dart';
 import 'engine_strokes.dart';
 
 /// Every set of kernels the app compiles ahead of its first use, off this
@@ -78,6 +79,7 @@ Future<void> compileAppKernelsAhead() async {
         EngineCelPixels.warm(),
         appGpuStampLandingKernels.warm(),
         EngineFloods.warm(),
+        EngineSelectionMasks.warm(),
         EngineStrokes.warmBlurs(),
       ]);
       return opened;

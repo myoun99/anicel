@@ -66,6 +66,14 @@ pub(crate) struct MaskPlane {
 }
 
 impl MaskPlane {
+    /// `plane` — bytes over `size` whose top-left pixel is `at` — kept for
+    /// the app, counted among its masks until it lets it go
+    /// ([`gpu_engine_mask_free`]).
+    pub(crate) fn kept(plane: wgpu::Buffer, at: (i32, i32), size: MaskBox) -> *mut MaskPlane {
+        MASK_BYTES.fetch_add(size.bytes(), Ordering::Relaxed);
+        Box::into_raw(Box::new(MaskPlane { plane, at, size }))
+    }
+
     pub(crate) fn mask(&self) -> Mask<'_> {
         Mask { plane: &self.plane, at: self.at, size: self.size }
     }
@@ -497,12 +505,12 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
         unsafe { (&*engine, std::slice::from_raw_parts(bytes, width as usize * height as usize)) };
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
     let plane = words_buffer(engine, "mask", &size.words_of(bytes), usage);
-    MASK_BYTES.fetch_add(size.bytes(), Ordering::Relaxed);
-    Box::into_raw(Box::new(MaskPlane { plane, at: (x, y), size }))
+    MaskPlane::kept(plane, (x, y), size)
 }
 
 /// # Safety
-/// `mask` came from `gpu_engine_mask_new`.
+/// `mask` came from `gpu_engine_mask_new` or
+/// `gpu_engine_selection_mask_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
     if !mask.is_null() {

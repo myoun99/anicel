@@ -13,13 +13,7 @@
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
 //! layout.
 
-// ⏳Nothing outside the tests runs the selection's passes or makes its hard
-// mask until the canvas's verbs come to the engine (gpu-canonical-store,
-// stage 4): the fill finishes and closes gaps by its own two
-// (`kernels/flood/abi.rs`), and the executor reads the fill range's (flip
-// lane ⓐ-3).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
 pub(crate) mod region;
 #[cfg(test)]
 pub(crate) mod tests;
