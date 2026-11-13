@@ -4,8 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/brush_tip_entry.dart' show brushTipThumbnailSide;
 import '../models/brush_tip_mask.dart';
-import '../native/app_gpu_engine.dart'
-    show appGpuEngineIsGone, appGpuEngineOpen;
+import '../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import 'brush_tip_image_codec.dart' show brushTipThumbnailAlpha;
 
 /// Each tip mask's picture as the grids draw it — [brushTipThumbnailSide]²
@@ -57,29 +56,51 @@ final class BrushTipThumbnails {
     }
   }
 
+  /// Test seam: how a mask's picture is made, in place of the engine's —
+  /// in the test's own time.
+  @visibleForTesting
+  static Future<Uint8List> Function(BrushTipMask mask)? debugMake;
+
+  static Future<Uint8List> _onTheEngine(BrushTipMask mask) =>
+      brushTipThumbnailAlpha(mask, side: brushTipThumbnailSide);
+
   /// Once the engine is open, makes what is asked, one after another.
+  ///
+  /// 🚨A PICTURE WHOSE DEVICE WENT AS IT WAS MADE IS ASKED AGAIN — and
+  /// whether it went is asked of THE ENGINE THE MAKING BEGAN ON
+  /// (`GpuEngine.isGone`), after the wait. 🗣️gpu-canonical-store-Q11 (유저
+  /// 2026-11-10): 「장치를 잃으면 앱은 꺼지지 않고 새 장치를 열어 사본으로
+  /// 되살린다」. ↩️It was asked of whichever engine the app had by then
+  /// (`appGpuEngineIsGone`), and the app lets a gone engine go the turn
+  /// after it first hears of it (`EngineRefusals`): a making whose failure
+  /// came back later than that — a worker's read, kernels still compiling
+  /// — found the app on no engine or on the next, was said as an error,
+  /// and its cell stayed empty for the run (read from the code 2026-11-13,
+  /// board `a-tip-thumbnail-read-as-its-device-went-stays-empty`).
   Future<void> _makeWhatIsAsked() async {
     if (_making) {
       return;
     }
     _making = true;
     try {
-      while (_asked.isNotEmpty && appGpuEngineOpen.value != null) {
+      while (_asked.isNotEmpty) {
+        final engine = appGpuEngineOpen.value;
+        if (engine == null || engine.isGone) {
+          // None to ask: the next the app opens asks again.
+          break;
+        }
         final mask = _asked.removeAt(0).target;
         if (mask == null) {
           continue;
         }
         try {
-          _of[mask]!.value = await brushTipThumbnailAlpha(
-            mask,
-            side: brushTipThumbnailSide,
-          );
+          _of[mask]!.value = await (debugMake ?? _onTheEngine)(mask);
         } on Object catch (error, stack) {
-          if (appGpuEngineIsGone) {
-            // Its device went as it made it: asked again of the next, once
-            // that one is open.
+          if (engine.isGone) {
+            // Asked again ahead of what waits behind it — of the engine
+            // the app has by now, or of the next it opens.
             _asked.insert(0, WeakReference(mask));
-            break;
+            continue;
           }
           // A picture the engine would not make leaves its cell empty —
           // said, not swallowed.

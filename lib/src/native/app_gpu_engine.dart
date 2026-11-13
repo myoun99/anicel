@@ -39,6 +39,15 @@ bool get appGpuEngineIsHere => RootIsolateToken.instance != null;
 /// ([GpuEngine.isGone]) — asked without opening one. Every job is refused
 /// from then on, whatever the job: one cause, for what tells a refusal
 /// (`EngineRefusals`).
+///
+/// ⛔NOT WHAT WORK BEGUN ON AN ENGINE ASKS AFTER A WAIT: this speaks of the
+/// engine the app has at the moment it is asked, and the app lets a gone
+/// one go the turn after it hears of it — by then it is on none, or on
+/// the next, and this says no. Such work keeps the engine it began on and
+/// asks that ([GpuEngine.isGone]) — ↩️a tip's picture asked here, and was
+/// left empty for the run (`BrushTipThumbnails`, 2026-11-13).
+/// `test/architecture/a_gone_device_is_asked_of_the_engine_begun_on_test
+/// .dart` names every reader.
 bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 
 /// Why the device of the app's engine went, as far as anything says
