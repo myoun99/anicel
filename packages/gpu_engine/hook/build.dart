@@ -172,8 +172,9 @@ void _shipCopies(
   output.dependencies.addAll(
     readByTheBuild(
       built.dependencies,
-      input.outputDirectory.resolve('target/'),
-      input.packageRoot.resolve('rust/'),
+      target: input.outputDirectory.resolve('target/'),
+      rust: input.packageRoot.resolve('rust/'),
+      checkout: input.packageRoot.resolve('../../'),
     ),
   );
 }

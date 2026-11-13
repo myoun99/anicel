@@ -1,8 +1,9 @@
 import 'dart:io';
 
 /// What the hook reports its build read, out of what the builder [named]:
-/// those outside the build's [target] folder, and the workspace's
-/// manifests under [rust] ([manifestsOf]).
+/// those outside the build's [target] folder, every file of the [rust]
+/// workspace ([workspaceFiles]), and the manifests beside each source up to
+/// the [checkout] ([manifestsBeside]).
 ///
 /// 🚨WHAT THE BUILD MADE IS NOT WHAT IT READ (card
 /// a-batch-is-cut-silent-while-it-waits-for-the-hook-turn, 2026-11-13):
@@ -14,30 +15,42 @@ import 'dart:io';
 /// and waited behind whoever held it: 9 minutes of a run's 13 once, for a
 /// cargo that then had nothing to build (0.8 s).
 ///
-/// ⚠️THE MANIFESTS ARE NOT IN THE DEP-INFO: cargo names the sources it
-/// compiled. A lane that changed a version in a Cargo.toml and the lock and
-/// nothing else would be run on its old engine once the hook no longer ran
-/// every time.
-List<Uri> readByTheBuild(Iterable<Uri> named, Uri target, Uri rust) {
-  final made = _comparable(target.toFilePath());
-  return [
+/// ⚠️THE DEP-INFO DOES NOT NAME ALL THE BUILD READS (measured 2026-11-14 in
+/// a dep-info of 208 files): cargo names the sources of the path crates it
+/// reaches through path crates — not those of rust/vendor, patched in for
+/// registry crates (wgpu-hal, symphonia), nor any manifest. Once the hook
+/// no longer ran every time, a lane that changed only those would have run
+/// its tests on its old engine; hence the workspace's every file, and the
+/// manifests of a crate outside it (sdk/fx/anicel-fx, read from rust/).
+List<Uri> readByTheBuild(
+  Iterable<Uri> named, {
+  required Uri target,
+  required Uri rust,
+  required Uri checkout,
+}) {
+  final sources = [
     for (final dependency in named)
-      if (!_comparable(dependency.toFilePath()).startsWith(made)) dependency,
-    ...manifestsOf(rust),
+      if (!lies(dependency, under: target)) dependency,
   ];
+  return {
+    ...sources,
+    ...workspaceFiles(rust),
+    ...manifestsBeside(sources, checkout),
+  }.toList();
 }
 
-/// Every `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` under [rust],
-/// past no folder named `target…` — the trunk's hook folder lies there, its
-/// builds holding copies of the registry's manifests — nor a hidden one.
-List<Uri> manifestsOf(Uri rust) {
+/// Every file under [rust], past no folder named `target…` — the trunk's
+/// hook folder lies there, its builds holding copies of the registry's
+/// manifests — nor a hidden one: cargo, run from the package root, reads no
+/// rust/.cargo (build.dart, QA_CHECKOUT).
+List<Uri> workspaceFiles(Uri rust) {
   final found = <Uri>[];
   void walk(Directory folder) {
     for (final entity in folder.listSync(followLinks: false)) {
       final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
       if (entity is Directory) {
         if (!name.startsWith('target') && !name.startsWith('.')) walk(entity);
-      } else if (_manifests.contains(name)) {
+      } else if (entity is File) {
         found.add(entity.uri);
       }
     }
@@ -47,7 +60,39 @@ List<Uri> manifestsOf(Uri rust) {
   return found;
 }
 
+/// The `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` in every
+/// folder from each of [sources] up to [checkout]: a crate's manifest, and
+/// the workspace's a crate inherits from.
+List<Uri> manifestsBeside(Iterable<Uri> sources, Uri checkout) {
+  final found = <Uri>[];
+  final seen = <String>{};
+  for (final source in sources) {
+    var folder = File.fromUri(source).parent;
+    while (lies(folder.uri, under: checkout) && seen.add(folder.path)) {
+      for (final name in _manifests) {
+        final manifest = File('${folder.path}${Platform.pathSeparator}$name');
+        if (manifest.existsSync()) found.add(manifest.uri);
+      }
+      folder = folder.parent;
+    }
+  }
+  return found;
+}
+
 const _manifests = {'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'};
 
-String _comparable(String path) =>
-    Platform.isWindows ? path.toLowerCase() : path;
+/// Whether [path] is [under] that folder or is it.
+bool lies(Uri path, {required Uri under}) {
+  String comparable(Uri uri) {
+    final text = uri.toFilePath();
+    final trimmed = text.endsWith(Platform.pathSeparator)
+        ? text.substring(0, text.length - 1)
+        : text;
+    return Platform.isWindows ? trimmed.toLowerCase() : trimmed;
+  }
+
+  final folder = comparable(under);
+  final candidate = comparable(path);
+  return candidate == folder ||
+      candidate.startsWith('$folder${Platform.pathSeparator}');
+}

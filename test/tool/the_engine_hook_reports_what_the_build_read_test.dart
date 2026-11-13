@@ -11,13 +11,16 @@ import '../helpers/temp_dir.dart';
 /// The library's dep-info named `out/dxcompiler.dll` under the build's
 /// target folder, which goes when the hook ends, and the hooks runner ran
 /// the hook again for every `flutter test` — every run took the hook
-/// folder's turn, for a cargo with nothing to build. The manifests, which
-/// cargo reads and its dep-info does not name, take its place: a lane that
-/// changes only a version is built again. Measured once by hand with
-/// `flutter test -v` (the runner's 「Skipping build for gpu_engine」 on a
-/// second run, 「Rerunning」 after a Cargo.toml changed).
+/// folder's turn, for a cargo with nothing to build. What the dep-info
+/// does not name takes its place (2026-11-14): every file of the workspace
+/// — rust/vendor's patched crates among them — and the manifests of a
+/// crate outside it, so a lane that changes only those is built again.
+/// Measured once by hand with `flutter test -v` (the runner's 「Skipping
+/// build for gpu_engine」 on a second run, 「Rerunning」 after a vendored
+/// source or the fx SDK's manifest changed).
 void main() {
   late Directory root;
+  late Uri checkout;
   late Uri rust;
 
   File made(String path) =>
@@ -33,52 +36,66 @@ void main() {
   setUp(() {
     root = Directory.systemTemp.createTempSync('hook-inputs');
     root = Directory(root.resolveSymbolicLinksSync().replaceAll(r'\', '/'));
-    rust = Directory('${root.path}/rust').uri;
+    checkout = Directory('${root.path}/checkout').uri;
+    rust = Directory('${root.path}/checkout/rust').uri;
     for (final path in [
-      'rust/Cargo.toml',
-      'rust/Cargo.lock',
-      'rust/rust-toolchain.toml',
-      'rust/src/lib.rs',
-      'rust/native/audio/Cargo.toml',
-      'rust/vendor/wgpu-hal/Cargo.toml',
-      'rust/.cargo/config.toml',
-      'rust/target-hook/release/build/x/Cargo.toml',
-      'rust/target/debug/build/y/Cargo.toml',
+      'checkout/rust/Cargo.toml',
+      'checkout/rust/Cargo.lock',
+      'checkout/rust/src/lib.rs',
+      'checkout/rust/vendor/wgpu-hal/src/lib.rs',
+      'checkout/rust/.cargo/config.toml',
+      'checkout/rust/target-hook/release/build/x/Cargo.toml',
+      'checkout/rust/target/debug/build/y/Cargo.toml',
+      'checkout/sdk/Cargo.toml',
+      'checkout/sdk/fx/src/lib.rs',
+      'checkout/sdk/fx/Cargo.toml',
+      'checkout/sdk/example/Cargo.toml',
+      'Cargo.toml',
     ]) {
       made(path);
     }
   });
   tearDown(() => deleteTempQuietly(root));
 
-  test('the manifests are every Cargo.toml, the lock and the toolchain, '
-      'past no target folder', () {
-    expect(names(manifestsOf(rust)), {
-      'rust/Cargo.toml',
-      'rust/Cargo.lock',
-      'rust/rust-toolchain.toml',
-      'rust/native/audio/Cargo.toml',
-      'rust/vendor/wgpu-hal/Cargo.toml',
+  test('the workspace is its every file, past no target folder nor a '
+      'hidden one', () {
+    expect(names(workspaceFiles(rust)), {
+      'checkout/rust/Cargo.toml',
+      'checkout/rust/Cargo.lock',
+      'checkout/rust/src/lib.rs',
+      'checkout/rust/vendor/wgpu-hal/src/lib.rs',
+    });
+  });
+
+  test('beside a source, the manifests of every folder up to the checkout '
+      'and none past it', () {
+    final source = File('${root.path}/checkout/sdk/fx/src/lib.rs').uri;
+    expect(names(manifestsBeside([source], checkout)), {
+      'checkout/sdk/fx/Cargo.toml',
+      'checkout/sdk/Cargo.toml',
     });
   });
 
   test('what lies under the build\'s target folder is left out, and the '
-      'manifests join the sources', () {
-    final source = made('rust/src/lib.rs').uri;
+      'workspace and the manifests join the sources', () {
+    final source = made('checkout/sdk/fx/src/lib.rs').uri;
     final built = made('out/target/release/build/g/out/dxcompiler.dll').uri;
     final shipped = made('out/dxc/dxcompiler.dll').uri;
     final read = readByTheBuild(
       [source, built, shipped],
-      Directory('${root.path}/out/target').uri,
-      rust,
+      target: Directory('${root.path}/out/target').uri,
+      rust: rust,
+      checkout: checkout,
     );
     expect(names(read), {
-      'rust/src/lib.rs',
+      'checkout/sdk/fx/src/lib.rs',
       'out/dxc/dxcompiler.dll',
-      'rust/Cargo.toml',
-      'rust/Cargo.lock',
-      'rust/rust-toolchain.toml',
-      'rust/native/audio/Cargo.toml',
-      'rust/vendor/wgpu-hal/Cargo.toml',
+      'checkout/rust/Cargo.toml',
+      'checkout/rust/Cargo.lock',
+      'checkout/rust/src/lib.rs',
+      'checkout/rust/vendor/wgpu-hal/src/lib.rs',
+      'checkout/sdk/fx/Cargo.toml',
+      'checkout/sdk/Cargo.toml',
     });
   });
 }
