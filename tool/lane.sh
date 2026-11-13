@@ -1102,16 +1102,29 @@ cmd_gate() {
 # the process that held it is gone, or when it has not moved on for longer
 # than any one gate takes — a hung land (`still_landing` says why it is
 # not the whole land's length).
+# 🚨FIRST COME, FIRST SERVED (관제 2026-11-14 05:31, card
+# a-land-takes-its-turn-before-one-that-waited): a land takes the turn only
+# when its ticket is the oldest of a land that waits and lives. With every
+# waiter trying the turn every 10 s, the one that tried first after a land
+# ended took it — that morning a land waiting since 04:53 was passed by a
+# Surface lane that came at 05:09, then waited behind two more, and took
+# the turn at 06:1x.
 land_turn() {
   local turn; turn="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/lane-land.turn"
-  local holder told=
-  until mkdir "$turn" 2>/dev/null; do
+  local line="$turn.line" ticket holder told=
+  mkdir -p "$line"
+  ticket="$(date +%s)-$$"
+  : >"$line/$ticket"
+  # shellcheck disable=SC2064
+  trap "rm -f '$line/$ticket'" EXIT
+  until [ "$(first_in_line "$line")" = "$ticket" ] && mkdir "$turn" 2>/dev/null; do
     holder="$(cat "$turn/pid" 2>/dev/null || true)"
     # Its age is its newest sign of life: when it was taken (the pid inside
     # it), or the last time its land moved on and stamped it
-    # (`still_landing`, cargo_turn.sh).
-    if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
-      || [ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]; then
+    # (`still_landing`, cargo_turn.sh). A turn nobody holds, while a land
+    # before this one in the line is about to take it, has no age.
+    if [ -d "$turn" ] && { { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
+      || [ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]; }; then
       rm -rf "$turn"
       continue
     fi
@@ -1119,12 +1132,28 @@ land_turn() {
     told=1
     sleep 10
   done
+  rm -f "$line/$ticket"
   echo "$$" >"$turn/pid"
   HELD_TURN="$turn"
   # What the land runs keeps it alive while it waits too (cargo_turn.sh).
   export LANE_LAND_TURN="$turn"
   # shellcheck disable=SC2064
   trap "give_turn_back '$turn'" EXIT
+}
+
+# The oldest ticket in the line at $1 of a waiter that lives; a dead
+# waiter's goes.
+# ⚠️TWO PLACES, NOT THREE: tool/cargo_turn.sh keeps the same line for the
+# shared target's turn — change both or neither.
+first_in_line() {
+  local ticket
+  for ticket in $(ls "$1" 2>/dev/null | sort); do
+    if kill -0 "${ticket##*-}" 2>/dev/null; then
+      echo "$ticket"
+      return
+    fi
+    rm -f "$1/$ticket"
+  done
 }
 
 # Gives the turn at $1 back — ONLY WHILE IT IS STILL THIS LAND'S.

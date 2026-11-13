@@ -122,19 +122,23 @@ TICKET="$(date +%s)-$$"
 # shellcheck disable=SC2064
 trap "rm -f '$LINE/$TICKET'" EXIT
 
-# The oldest ticket of a waiter that lives; a dead waiter's goes.
+# The oldest ticket in the line at $1 of a waiter that lives; a dead
+# waiter's goes.
+# ⚠️TWO PLACES, NOT THREE: tool/lane.sh keeps the same line for the land's
+# turn (2026-11-14) — change both or neither.
 first_in_line() {
-  for ticket in $(ls "$LINE" 2>/dev/null | sort); do
+  local ticket
+  for ticket in $(ls "$1" 2>/dev/null | sort); do
     if kill -0 "${ticket##*-}" 2>/dev/null; then
       echo "$ticket"
       return
     fi
-    rm -f "$LINE/$ticket"
+    rm -f "$1/$ticket"
   done
 }
 
 told=
-until [ "$(first_in_line)" = "$TICKET" ] && mkdir "$TURN" 2>/dev/null; do
+until [ "$(first_in_line "$LINE")" = "$TICKET" ] && mkdir "$TURN" 2>/dev/null; do
   holder="$(cat "$TURN/pid" 2>/dev/null || true)"
   if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
     || [ -n "$(find "$TURN" -maxdepth 0 -mmin +$STALE_MINUTES 2>/dev/null)" ]; then

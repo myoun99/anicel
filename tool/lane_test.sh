@@ -118,6 +118,12 @@
 # refusals 5 and 6 out of the script with the checks on them — the engine
 # a crate lane was refused for, the C a lane changed, the engine behind
 # its C, the lane with none: 175 checks in all.
+# 🆕And first come, first served (2026-11-14, a-land-takes-its-turn-before-
+# one-that-waited — section Z, 182 checks in all): a land that comes the
+# moment the turn is free waits behind one that was waiting and lands after
+# it, and a killed waiter's ticket holds no one back and goes. ⚠️The script
+# before THAT fails 3 of the 7 there: the one that came later takes the
+# turn at once and lands first, and the dead ticket stays.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -797,6 +803,31 @@ check "the turn it lost stays with the land that took it" "$(cat "$T/pid" 2>/dev
 kill "$HOLDER" 2>/dev/null; rm -rf "$T"
 O=$(out "$E/home" land y2)
 has "and it lands once that land is done" "$O" "merged work/y2"
+
+say "Z FIRST COME, FIRST SERVED: a land that comes the moment the turn is free waits behind one that was waiting, and a killed waiter's ticket holds no one back"
+# (관제 2026-11-14 05:31, card a-land-takes-its-turn-before-one-that-waited:
+# a land waiting since 04:53 was passed by a Surface lane that came at 05:09.)
+sleep 300 & HOLDER=$!
+mkdir -p "$T"; echo "$HOLDER" > "$T/pid"
+quiet "$E/home" open z1; commit "$HW/lane-z1" z1.txt "z1"
+quiet "$E/home" open z2; commit "$HW/lane-z2" z2.txt "z2"
+( out "$E/home" land z1 > "$E/land_z1.txt" ) &
+for _ in $(seq 1 80); do [ -n "$(ls "$T.line" 2>/dev/null)" ] && break; sleep 0.25; done
+sleep 1
+kill "$HOLDER" 2>/dev/null; rm -rf "$T"
+( out "$E/home" land z2 > "$E/land_z2.txt" ) &
+wait
+Z1=$(cat "$E/land_z1.txt"); Z2=$(cat "$E/land_z2.txt")
+has "the one that waited lands" "$Z1" "merged work/z1"
+has "the one that came later lands" "$Z2" "merged work/z2"
+check "and the one that waited landed first" "$(git -C "$E/home" log --format=%s -2 master | tr '\n' ' ')" "z2 z1 "
+has "the one that came later waited for it" "$Z2" "another lane is landing"
+check "no ticket is left in the line" "$(ls "$T.line" 2>/dev/null | wc -l | tr -d ' ')" 0
+mkdir -p "$T.line"; : > "$T.line/1000000000-999999"
+quiet "$E/home" open z3; commit "$HW/lane-z3" z3.txt "z3"
+O=$(cd "$E/home" && timeout 30 bash tool/lane.sh land z3 2>&1)
+has "a killed waiter's ticket holds no one back" "$O" "merged work/z3"
+check "and goes" "$(ls "$T.line" 2>/dev/null | wc -l | tr -d ' ')" 0
 
 echo
 echo "== $FAILS failed"

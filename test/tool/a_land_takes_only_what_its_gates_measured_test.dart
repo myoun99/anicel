@@ -450,8 +450,17 @@ void main() {
       expect(turn, lessThan(at(land, r'lane_is_clean "$p" || die')));
 
       final taking = codeOf('land_turn');
-      final taken = at(taking, r'until mkdir "$turn"');
-      final handedBack = at(taking, 'trap ');
+      // 🚨관제 2026-11-14 (a-land-takes-its-turn-before-one-that-waited): a
+      // land that came later took the turn before one that had waited for
+      // sixteen minutes — only the oldest ticket in the line tries it.
+      final taken = taking.indexWhere(
+        (l) =>
+            l.trimLeft().startsWith('until ') &&
+            l.contains(r'first_in_line "$line"') &&
+            l.contains(r'mkdir "$turn"'),
+      );
+      // The ticket's own trap comes first; the turn's replaces it.
+      final handedBack = taking.lastIndexWhere((l) => l.contains('trap '));
       expect(taken, isNot(-1));
       expect(handedBack, greaterThan(taken));
       expect(taking[handedBack], contains('EXIT'));
@@ -486,6 +495,18 @@ void main() {
         contains(r'[ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]'),
         reason: 'and so is a hung one\'s: nothing in it moved for 45 minutes',
       );
+      expect(
+        all,
+        contains(r'if [ -d "$turn" ] && '),
+        reason: 'a turn nobody holds has no age — a land behind another in '
+            'the line waits for it, and does not spin',
+      );
+    });
+
+    test('⚠️keeps the same line as the shared target\'s turn — two places, '
+        'not three', () {
+      final cargo = LaneScript(File('tool/cargo_turn.sh').readAsStringSync());
+      expect(codeOf('first_in_line'), cargo.codeOf('first_in_line'));
     });
   });
 
