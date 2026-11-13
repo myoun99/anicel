@@ -96,9 +96,29 @@ void main() {
       underline: true,
       backgroundColor: 0xFFE02020,
     );
-    final [box, outline, fill] = laid('SE', style).shapes;
+    final layout = laid('SE', style);
+    final [box, outline, fill] = layout.shapes;
     expect((box.argb, box.hard, box.outline), (0xFFE02020, false, 0.0));
-    expect(box.shapes, [isA<CanvasLetterRect>()]);
+    expect(box.shapes, hasLength(1));
+    expect(rectsOf(box), [layout.box]);
+    expect(
+      layout.box,
+      rectMoreOrLessEquals(
+        (layout.topLeft & layout.textSize).inflate(layout.pad),
+        epsilon: 0.001,
+      ),
+      reason: 'the letters and their breathing room',
+    );
+    expect(layout.pad, greaterThan(0));
+    // The letters' layers apart, for a host that draws the box itself
+    // (the SE name tag's, round more than one block).
+    expect(
+      [
+        for (final layer in layout.letterLayers)
+          (layer.argb, layer.outline, rectsOf(layer).length),
+      ],
+      [(0xFFFFFFFF, 6.0, 1), (0xFF202020, 0.0, 1)],
+    );
     expect(
       (outline.argb, outline.hard, outline.outline),
       (0xFFFFFFFF, false, 6.0),
