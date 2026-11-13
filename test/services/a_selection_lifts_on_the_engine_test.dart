@@ -10,6 +10,7 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -218,6 +219,59 @@ void main() {
       );
       expect(asked, isEmpty, reason: labelOf('the region', options));
     }
+  });
+
+  test('an erase laid in a selection is cut by its mask, as its picture is',
+      () {
+    final surface = artwork();
+    final lifted = liftSelectionPixels(
+      region: rect(100, 20, 160, 40),
+      surface: surface,
+      options: SelectionMaskOptions.none,
+    )!;
+    final erase = selectionEraseDab(lifted, id: 'erase');
+    final stamp = erase.stamp!;
+    final within = SelectionClip.of(
+      rect(130, 0, 200, 60),
+      wall: surface.pasteboard,
+      options: const SelectionMaskOptions(featherPx: 4),
+    );
+    BitmapSurface laid(BrushDab dab) =>
+        materializeBrushDabSequenceOnBitmapSurface(
+          surface: surface,
+          sequence: BrushDabSequence([dab]),
+          selection: within,
+        ).surface;
+    final onEngine = laid(erase);
+    final asPicture = laid(
+      erase.copyWith(
+        stamp: BrushStampImage(
+          id: 'erase-picture',
+          width: stamp.width,
+          height: stamp.height,
+          rgba: stamp.rgba,
+        ),
+      ),
+    );
+    for (var y = 0; y < 60; y += 1) {
+      for (var x = 90; x < 200; x += 1) {
+        expect(
+          surfaceRgbaInPlace(onEngine, x, y),
+          surfaceRgbaInPlace(asPicture, x, y),
+          reason: '$x,$y',
+        );
+      }
+    }
+    expect(
+      surfaceRgbaInPlace(onEngine, 111, 30),
+      surfaceRgbaInPlace(surface, 111, 30),
+      reason: '⛔premise: the selection keeps what lies left of it',
+    );
+    expect(
+      surfaceRgbaInPlace(onEngine, 151, 30),
+      isNot(surfaceRgbaInPlace(surface, 151, 30)),
+      reason: '⛔premise: it erases inside the selection',
+    );
   });
 
   test('a lift refuses a box its room is not the size of', () {

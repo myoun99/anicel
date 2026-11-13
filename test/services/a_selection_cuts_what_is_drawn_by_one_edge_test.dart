@@ -217,6 +217,37 @@ void main() {
     );
   });
 
+  for (final options in const [
+    SelectionMaskOptions.none,
+    SelectionMaskOptions(featherPx: 4),
+  ]) {
+    test('a selection reads inside its wall, softness asked of it or not: '
+        'feather ${options.featherPx}', () {
+      final strip = rect(-40, 60, 120, 110);
+      final clip = SelectionClip.of(strip, wall: wall, options: options);
+      expect(
+        clip.box,
+        strip.pixelBoxWithin(wall.region, pad: options.bboxPad),
+        reason: 'the box a lift takes is the wall\'s',
+      );
+      expect(clip.box!.left, 0, reason: '⛔premise: the wall cuts it');
+
+      final beyond = SelectionClip.of(
+        rect(500, 500, 520, 520),
+        wall: wall,
+        options: options,
+      );
+      expect(beyond.box, isNull);
+      expect(
+        beyond.mayCover(
+          DirtyRegion.fromXYWH(x: 505, y: 505, width: 4, height: 4),
+        ),
+        isFalse,
+        reason: 'nothing past the wall is selected',
+      );
+    });
+  }
+
   test('a selection with no softness asked of it is its own outline', () {
     final region = outlines['an ellipse']!;
     expect(
