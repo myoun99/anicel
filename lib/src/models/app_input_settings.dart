@@ -58,6 +58,7 @@ class AppInputSettings {
     this.rotationSnapDegrees = 15,
     this.zoomSnapPercents = defaultZoomSnapPercents,
     this.zoomCeiling,
+    this.toolSizes = defaultToolSizes,
     // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
     this.drawingCursor = DrawingCursor.crosshair,
     this.touchIgnored = false,
@@ -160,6 +161,65 @@ class AppInputSettings {
   /// 기본값 아무것도 없도록」). A key no earlier file wrote reads them as no
   /// lock, with no code that reads the earlier shape (no production data).
   final double? zoomCeiling;
+
+  /// The tool size panel's rack (I-2): the sizes it shows as buttons, the
+  /// stops the size bar's ± walk (F-325) and where a held size drag catches
+  /// (F-391) — a list the user edits, smallest first, each size once.
+  ///
+  /// 🗣️I-170 (유저 2026-11-13): 「도구 브러시크기 프리셋패널, 슬슬
+  /// 추가/삭제버튼 추가」. ↩️A const list in the panel
+  /// (`ToolSizePresetPanel.presets`), the same for everyone.
+  final List<double> toolSizes;
+
+  /// The rack the app starts with, as the screenshot on I-2 draws it: dense
+  /// at the low end, where a pen actually lives, and coarse above it.
+  ///
+  /// ⛔A LIST, NOT A FORMULA. It is read off the reference the user gave
+  /// (「무조건 스샷 참고」) rather than generated from a ratio, because the
+  /// steps are not one ratio — 0.7→1→1.5 is finer than 1200→1500→1700, and
+  /// a curve fitted to both would miss every value at one end.
+  static const List<double> defaultToolSizes = [
+    0.7,
+    1,
+    1.5,
+    2,
+    2.5,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10,
+    12,
+    15,
+    17,
+    20,
+    25,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    100,
+    120,
+    150,
+    170,
+    200,
+    250,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    1000,
+    1200,
+    1500,
+    1700,
+    2000,
+  ];
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
   /// modifier constraint glues the CURRENT zoom to the nearest entry —
@@ -296,6 +356,7 @@ class AppInputSettings {
     double? rotationSnapDegrees,
     List<double>? zoomSnapPercents,
     Object? zoomCeiling = _unset,
+    List<double>? toolSizes,
     DrawingCursor? drawingCursor,
     bool? touchIgnored,
   }) => AppInputSettings(
@@ -323,6 +384,7 @@ class AppInputSettings {
     zoomCeiling: identical(zoomCeiling, _unset)
         ? this.zoomCeiling
         : (zoomCeiling as num?)?.toDouble(),
+    toolSizes: toolSizes ?? this.toolSizes,
     drawingCursor: drawingCursor ?? this.drawingCursor,
     touchIgnored: touchIgnored ?? this.touchIgnored,
   );
@@ -345,6 +407,7 @@ class AppInputSettings {
     'rotationSnapDegrees': rotationSnapDegrees,
     'zoomSnapPercents': zoomSnapPercents,
     'zoomCeiling': zoomCeiling,
+    'toolSizes': toolSizes,
     'drawingCursor': drawingCursor.name,
     'touchIgnored': touchIgnored,
   };
@@ -375,6 +438,18 @@ class AppInputSettings {
     }
     return stored;
   }
+
+  /// The rack a settings file holds, as it was left — an empty one
+  /// included: only a file that holds no rack reads as the one the app
+  /// starts with. A size at nothing or below it, or no number at all, is a
+  /// file somebody edited by hand, and is left off.
+  static List<double> _toolSizesFrom(Object? stored) => switch (stored) {
+    final List<Object?> sizes => [
+      for (final size in sizes)
+        if (size is num && size > 0 && size.isFinite) size.toDouble(),
+    ],
+    _ => defaultToolSizes,
+  };
 
   static AppInputSettings fromJson(
     Map<String, dynamic> json,
@@ -430,6 +505,7 @@ class AppInputSettings {
         percent.toDouble(),
       _ => null,
     },
+    toolSizes: _toolSizesFrom(json['toolSizes']),
     drawingCursor:
         DrawingCursor.values.asNameMap()[json['drawingCursor']] ??
         DrawingCursor.crosshair,
@@ -456,6 +532,7 @@ class AppInputSettings {
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
       other.zoomCeiling == zoomCeiling &&
+      listEquals(other.toolSizes, toolSizes) &&
       other.drawingCursor == drawingCursor &&
       other.touchIgnored == touchIgnored;
 
@@ -478,6 +555,7 @@ class AppInputSettings {
     rotationSnapDegrees,
     Object.hashAll(zoomSnapPercents),
     zoomCeiling,
+    Object.hashAll(toolSizes),
     drawingCursor,
     touchIgnored,
   ]);

@@ -89,7 +89,6 @@ import 'playback/frame_wait_mark.dart';
 import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';
-import 'panels/tool_size_preset_panel.dart' show ToolSizePresetPanel;
 import 'debug/device_grid_probe.dart';
 import 'debug/input_inspector.dart';
 import 'text/app_face.dart';
@@ -952,7 +951,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (snap) {
       // 🗣️F-391 (유저 2026-10-17): 「브러시 크기 스냅은 … 툴 사이즈 패널을
       // 바탕으로」 — the rack the size bar's ± step through (F-325).
-      next = AppInput.snapToList(next, ToolSizePresetPanel.presets);
+      next = AppInput.snapToList(next, AppInput.settings.value.toolSizes);
     }
     widget.onBrushToolStateChanged?.call(
       widget.brushToolState.value.withActiveSize(

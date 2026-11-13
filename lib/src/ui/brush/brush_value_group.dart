@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
 import '../canvas/canvas_capsule.dart';
-import '../panels/tool_size_preset_panel.dart';
 import '../shortcuts/editor_action_registry.dart' show blendModeActionId;
 import '../sliced_value_listenable_builder.dart';
 import '../text/app_strings.dart';
@@ -174,8 +174,9 @@ class BrushValueBars extends StatelessWidget {
     // sizes where a pixel matters.
     scale: FieldSliderScale.exponential,
     // F-325 (유저 2026-10-09): the +/− and the wheel step through the tool
-    // size panel's rack, as it is.
-    stops: ToolSizePresetPanel.presets,
+    // size panel's rack, as it is — as the user has it now (I-170), which
+    // is why [build] listens for it.
+    stops: AppInput.settings.value.toolSizes,
     // 🗣️I-125-Q1 (유저 2026-10-23): in the pill, 「px는 필요없어보임」 — and
     // its readout over it writes 「20.0」 (I-135).
     unit: stand.layout.stood ? '' : ' px',
@@ -365,8 +366,19 @@ class BrushValueBars extends StatelessWidget {
     );
   }
 
+  /// The bars, built again when the rack changes: a size put on it or taken
+  /// off it (I-170) is the size bar's next step ([_sizeBar]), and nothing
+  /// else in the input settings moves them — a copy that leaves the rack
+  /// alone hands on the same list.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SlicedValueListenableBuilder<AppInputSettings, List<double>>(
+        valueListenable: AppInput.settings,
+        slice: (settings) => settings.toolSizes,
+        builder: (context, _) => _onTheTool(context),
+      );
+
+  Widget _onTheTool(BuildContext context) {
     // 🚨Sliced to what the bars SHOW (2026-09-26): the whole state moved them
     // on every colour-wheel frame and every other bar's drag, two bars and
     // two curve buttons rebuilt for news none of them draws. The curves are

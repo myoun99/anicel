@@ -7,7 +7,6 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
 
 import '../../helpers/touch_batches.dart';
 
@@ -28,7 +27,7 @@ void main() {
 
     // 10 × 2^(30/120) ≈ 11.9, which the rack holds as 12 — not the 11.9 the
     // drag made, and not the 8 of the ladder the settings kept.
-    expect(ToolSizePresetPanel.presets, contains(12));
+    expect(AppInputSettings.defaultToolSizes, contains(12));
     expect(size, 12);
   });
 
@@ -42,7 +41,7 @@ void main() {
     final size = await sizeAfterAHeldDrag(tester, from: 1, upward: -60);
 
     // 1 × 2^(-60/120) ≈ 0.71, which the rack holds as 0.7 — not a pixel.
-    expect(ToolSizePresetPanel.presets, contains(0.7));
+    expect(AppInputSettings.defaultToolSizes, contains(0.7));
     expect(size, 0.7);
   });
 
@@ -61,20 +60,41 @@ void main() {
     // 10 × 2^(30/120) ≈ 11.892, which the bar writes 「11.9」.
     expect(size, 11.9);
   });
+
+  // 🗣️I-170 (유저 2026-11-13): 「도구 브러시크기 프리셋패널, 슬슬
+  // 추가/삭제버튼 추가」 — the rack is the user's, and the drag catches on
+  // it as they keep it.
+  testWidgets('a held drag lands on the rack as the user keeps it', (
+    tester,
+  ) async {
+    final size = await sizeAfterAHeldDrag(
+      tester,
+      from: 10,
+      upward: 30,
+      rack: const [3, 50],
+    );
+
+    // ≈ 11.9 is nearer 3 than 50 — and the 12 it lands on above is not on
+    // this rack.
+    expect(size, 3);
+  });
 }
 
 /// The brush size after the canvas's three-finger size drag moves [upward]
 /// pixels from [from] while a late finger holds it — the hold that snaps —
-/// or, not [held], with no finger holding it.
+/// or, not [held], with no finger holding it. Over [rack], or the rack the
+/// app starts with.
 Future<double> sizeAfterAHeldDrag(
   WidgetTester tester, {
   required double from,
   required double upward,
   bool held = true,
+  List<double>? rack,
 }) async {
   // The engine stands down while one finger draws — the corpus baseline.
   AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
     touchDragOneFinger: CanvasTouchDragAction.flip,
+    toolSizes: rack,
   );
   final session = EditorSessionManager(
     initialProject: createDefaultProject(),

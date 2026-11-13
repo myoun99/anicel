@@ -34,6 +34,7 @@ import '../services/font_library_service.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../models/app_language.dart' show AppLanguage;
 import '../models/brush_tip_entry.dart';
 import '../models/canvas_size.dart';

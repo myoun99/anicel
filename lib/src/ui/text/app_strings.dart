@@ -1370,6 +1370,10 @@ enum AppStrings {
   String get panelMediaViewerSub => _s('panelMediaViewerSub');
   String get panelOnionSkin => _s('panelOnionSkin');
   String get panelToolSize => _s('panelToolSize');
+
+  /// What the tool size panel's ＋ is refused with (I-170, 유저 2026-11-13:
+  /// 「입력한게 중복된거면 거부. 존재한다는 메시지창과함께」).
+  String get toolSizeAlreadyThere => _s('toolSizeAlreadyThere');
   /// 🗣️F-76 (유저 2026-09-11): 「콘티패널은 지금의 스토리보드패널을
   /// 콘티패널로 명명하고, 기존 콘티패널은 알기쉽게 콘티 프리뷰 패널이나 콘티
   /// 용지 패널? 이거는 이름은 제안해주도록」 — F-76-Q1 (09-30): 「콘티 용지」.
@@ -3061,6 +3065,7 @@ enum AppStrings {
     'panelMedia': 'Media',
     'panelOnionSkin': 'Onion skin',
     'panelToolSize': 'Tool size',
+    'toolSizeAlreadyThere': 'That size is already there.',
     'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'timelines': 'Timelines',
@@ -4777,6 +4782,7 @@ enum AppStrings {
     'panelMedia': 'メディア',
     'panelOnionSkin': 'オニオンスキン',
     'panelToolSize': 'ツールサイズ',
+    'toolSizeAlreadyThere': '同じサイズが既にあります。',
     'panelStoryboard': 'コンテ',
     'panelTimeline': 'タイムライン',
     'timelines': 'タイムライン',
@@ -6701,6 +6707,7 @@ enum AppStrings {
     'panelMedia': '미디어',
     'panelOnionSkin': '어니언 스킨',
     'panelToolSize': '툴 사이즈',
+    'toolSizeAlreadyThere': '같은 크기가 이미 있습니다.',
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
     'timelines': '타임라인',
@@ -8679,6 +8686,7 @@ enum AppStrings {
     'panelMedia': 'Médias',
     'panelOnionSkin': "Pelure d'oignon",
     'panelToolSize': 'Taille de l\'outil',
+    'toolSizeAlreadyThere': 'Cette taille existe déjà.',
     'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'timelines': 'Timelines',
@@ -10658,6 +10666,7 @@ enum AppStrings {
     'panelMedia': '媒体',
     'panelOnionSkin': '洋葱皮',
     'panelToolSize': '工具大小',
+    'toolSizeAlreadyThere': '该大小已存在。',
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
     'timelines': '时间轴',

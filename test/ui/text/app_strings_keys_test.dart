@@ -558,6 +558,7 @@ void main() {
     'panelMediaViewerSub': (s) => s.panelMediaViewerSub,
     'panelOnionSkin': (s) => s.panelOnionSkin,
     'panelToolSize': (s) => s.panelToolSize,
+    'toolSizeAlreadyThere': (s) => s.toolSizeAlreadyThere,
     'panelStoryboard': (s) => s.panelStoryboard,
     'panelTimeline': (s) => s.panelTimeline,
     'timelines': (s) => s.timelines,

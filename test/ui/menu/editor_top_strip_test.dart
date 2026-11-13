@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/brush_values_on_strip.dart';
 import '../../helpers/settings_flyout.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
@@ -9,7 +10,6 @@ import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
-import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
@@ -480,7 +480,7 @@ void main() {
       expect(tool.value.activeSize, 8, reason: 'and back down past 10, to 8');
       expect(
         barOf(tester, 'top-strip-size-bar').stops,
-        same(ToolSizePresetPanel.presets),
+        same(AppInput.settings.value.toolSizes),
         reason: 'the rack itself, not a copy of it',
       );
 
@@ -495,6 +495,53 @@ void main() {
         0.7,
         reason: 'the rack\'s first — ↩️the floor at 1 held the − there',
       );
+    });
+
+    // 🗣️I-170 (유저 2026-11-13): 「도구 브러시크기 프리셋패널, 슬슬
+    // 추가/삭제버튼 추가」 — the rack is the user's, and the bar standing on
+    // the strip steps through it as it is NOW.
+    testWidgets('🚨a size put on the rack is the size bar\'s next step, and '
+        'one taken off it is stepped past', (tester) async {
+      addTearDown(() {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+      });
+      await pumpHomeWithBars(tester);
+      final tool = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .brushTool!;
+      tool.value = tool.value.withActiveSize(10);
+      await tester.pumpAndSettle();
+      final bar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+      Finder hand(String key) => find.descendant(
+        of: bar,
+        matching: find.byKey(ValueKey<String>(key)),
+      );
+      void keep(List<double> rack) => AppInput.settings.value = AppInput
+          .settings
+          .value
+          .copyWith(toolSizes: rack);
+
+      // 11 put on between 10 and 12 — and nothing else told the strip.
+      keep([
+        for (final size in AppInputSettings.defaultToolSizes) ...[
+          size,
+          if (size == 10) 11,
+        ],
+      ]);
+      await tester.pumpAndSettle();
+      await tester.tap(hand('field-slider-step-up'));
+      await tester.pumpAndSettle();
+      expect(tool.value.activeSize, 11, reason: 'the size just put on');
+
+      // 12 taken off: the next one up from 11 is 15.
+      keep([
+        for (final size in AppInput.settings.value.toolSizes)
+          if (size != 12) size,
+      ]);
+      await tester.pumpAndSettle();
+      await tester.tap(hand('field-slider-step-up'));
+      await tester.pumpAndSettle();
+      expect(tool.value.activeSize, 15, reason: '12 is not a stop any more');
     });
 
     testWidgets('opacity is per tool: the fill keeps its own', (tester) async {

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/text_finders.dart';
 
 /// **I-2 — the tool's sizes, as buttons.**
@@ -24,31 +27,69 @@ import '../../helpers/text_finders.dart';
 /// is gone, so 「sparse to be usable」 above was a guess. The test that
 /// pinned the two lists apart went with the ladder; the drag's own pin is
 /// `a_snapped_size_drag_lands_on_the_rack_test`.
+///
+/// 🗣️I-170 (유저 2026-11-13): 「도구 브러시크기 프리셋패널, 슬슬 추가/삭제버튼
+/// 추가. 추가버튼 작동시 숫자입력 공용창? 열리고 입력한게 중복된거면 거부.
+/// 존재한다는 메시지창과함께. 정상적이면 프리셋에 추가. 삭제는 선택(강조색
+/// 되있는)되있는 크기를 삭제하는버튼」 — the rack is handed in, and handed
+/// back changed.
 void main() {
-  Future<List<double>> pumpPanel(WidgetTester tester, {double size = 8}) async {
+  /// The panel over [rack] with the tool at [size]: the sizes it was
+  /// pressed for, and each rack it handed back.
+  Future<({List<double> picked, List<List<double>> kept})> pumpPanel(
+    WidgetTester tester, {
+    double size = 8,
+    List<double> rack = AppInputSettings.defaultToolSizes,
+  }) async {
     final picked = <double>[];
+    final kept = <List<double>>[];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
             width: 300,
             height: 600,
-            child: ToolSizePresetPanel(size: size, onSizeSelected: picked.add),
+            child: ToolSizePresetPanel(
+              size: size,
+              onSizeSelected: picked.add,
+              presets: rack,
+              onPresetsChanged: kept.add,
+            ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    return picked;
+    return (picked: picked, kept: kept);
   }
 
   Finder cell(double value) => find.byKey(
     ValueKey<String>('tool-size-preset-${ToolSizePresetPanel.label(value)}'),
   );
+  final add = find.byKey(const ValueKey<String>(ToolSizePresetPanel.addKey));
+  final delete = find.byKey(
+    const ValueKey<String>(ToolSizePresetPanel.deleteKey),
+  );
+  final notice = find.byKey(const ValueKey<String>('app-notice-close'));
+
+  /// The ＋ pressed, [keys] pressed on the pad it opens, and its ✓.
+  Future<void> addOnThePad(WidgetTester tester, List<String> keys) async {
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    for (final key in [...keys, 'enter']) {
+      await tester.tap(
+        find.byKey(
+          ValueKey<String>('${ToolSizePresetPanel.addKey}-pad-$key'),
+        ),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('the rack is the dense list off the card — the sizes a pen '
       'actually lives at', (tester) async {
-    final picked = await pumpPanel(tester);
+    final (:picked, kept: _) = await pumpPanel(tester);
 
     // 0.7 is on the reference the user gave (「무조건 스샷 참고」). ↩️This
     // said it could never be a snap; since F-391 the drag catches on it.
@@ -134,5 +175,141 @@ void main() {
         reason: 'no plate behind the selected cell, and none behind the rest',
       );
     }
+  });
+
+  group('🗣️I-170: the rack is the user\'s to edit', () {
+    testWidgets('the cells are the rack it is handed, in its order', (
+      tester,
+    ) async {
+      await pumpPanel(tester, rack: const [3, 9, 40]);
+
+      expect(cell(3), findsOneWidget);
+      expect(cell(9), findsOneWidget);
+      expect(cell(40), findsOneWidget);
+      expect(cell(8), findsNothing, reason: 'not on this rack');
+      expect(
+        tester.getTopLeft(cell(3)).dx,
+        lessThan(tester.getTopLeft(cell(9)).dx),
+      );
+    });
+
+    testWidgets('the ＋ and the delete stand whatever the rack holds — the '
+        'delete grey while no cell is lit', (tester) async {
+      await pumpPanel(tester, size: 8);
+      expect(tester.appIconButton(add).onPressed, isNotNull);
+      expect(tester.appIconButton(delete).onPressed, isNotNull);
+      expect(
+        tester.appIconButton(delete).iconColor,
+        AppColors.danger,
+        reason: 'a delete that can be pressed is the red every delete is',
+      );
+
+      // 9 is on no cell: nothing is lit, and there is nothing to take off.
+      await pumpPanel(tester, size: 9);
+      expect(tester.appIconButton(add).onPressed, isNotNull);
+      expect(delete, findsOneWidget, reason: 'it does not go');
+      expect(tester.appIconButton(delete).onPressed, isNull);
+      expect(
+        tester.appIconButton(delete).iconColor,
+        AppColors.glyphDisabled,
+        reason: 'and one that cannot wears no red',
+      );
+
+      await pumpPanel(tester, rack: const []);
+      expect(tester.appIconButton(add).onPressed, isNotNull);
+      expect(tester.appIconButton(delete).onPressed, isNull);
+    });
+
+    testWidgets('🚨the ＋ opens the number pad on the tool\'s size, and the '
+        'number it comes back with is put on the rack where its size '
+        'stands', (tester) async {
+      final (picked: _, :kept) = await pumpPanel(
+        tester,
+        size: 8,
+        rack: const [3, 8, 40],
+      );
+
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(
+                const ValueKey<String>(
+                  '${ToolSizePresetPanel.addKey}-pad-number',
+                ),
+              ),
+            )
+            .data,
+        '8',
+        reason: 'the pad opens on the size in hand',
+      );
+      // A press away from the pad, off the panel.
+      await tester.tapAt(const Offset(700, 500));
+      await tester.pumpAndSettle();
+      expect(kept, isEmpty, reason: 'a pad left untouched puts nothing on');
+
+      await addOnThePad(tester, ['1', '2', 'point', '5']);
+      expect(kept, [
+        [3, 8, 12.5, 40],
+      ]);
+      expect(notice, findsNothing);
+    });
+
+    testWidgets('🚨a size the rack already holds is refused, and the notice '
+        'says so', (tester) async {
+      final (picked: _, :kept) = await pumpPanel(
+        tester,
+        size: 3,
+        rack: const [3, 8, 40],
+      );
+
+      await addOnThePad(tester, ['8']);
+
+      expect(kept, isEmpty, reason: 'the rack is as it was');
+      expect(notice, findsOneWidget);
+      expect(find.text(AppText.strings.toolSizeAlreadyThere), findsOneWidget);
+
+      await tester.tap(notice);
+      await tester.pumpAndSettle();
+      expect(notice, findsNothing);
+      expect(
+        find.byKey(
+          const ValueKey<String>('${ToolSizePresetPanel.addKey}-pad-number'),
+        ),
+        findsNothing,
+        reason: 'the pad went before the notice came',
+      );
+    });
+
+    testWidgets('a number past the brush\'s range goes on as the size the '
+        'size bar holds it at, and that one is refused twice', (tester) async {
+      final (picked: _, :kept) = await pumpPanel(
+        tester,
+        rack: const [3, 2000],
+      );
+
+      await addOnThePad(tester, ['9', '9', '9', '9']);
+
+      expect(kept, isEmpty, reason: '9999 is held at 2000, which is there');
+      expect(notice, findsOneWidget);
+    });
+
+    testWidgets('🚨the delete takes the lit size off the rack, and only it', (
+      tester,
+    ) async {
+      final (picked: _, :kept) = await pumpPanel(
+        tester,
+        size: 8,
+        rack: const [3, 8, 40],
+      );
+
+      await tester.tap(delete);
+      await tester.pumpAndSettle();
+
+      expect(kept, [
+        [3, 40],
+      ]);
+    });
   });
 }
