@@ -343,6 +343,48 @@ void main() {
       expect(seen, [0, 3, 3, 3, 6]);
     });
 
+    testWidgets('it is held by the word it is built with NOW — a rebuild '
+        'that brings another lets go of the first', (tester) async {
+      final model = _Counter();
+      final first = ValueNotifier<bool>(true);
+      final second = ValueNotifier<bool>(false);
+      addTearDown(model.dispose);
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      final seen = <int>[];
+
+      Widget host(ValueNotifier<bool> still) => SlicedListenableBuilder<int>(
+        listenable: model,
+        slice: () => model.shown,
+        stillWhile: still,
+        builder: (context, shown) {
+          seen.add(shown);
+          return const SizedBox();
+        },
+      );
+
+      await tester.pumpWidget(host(first));
+      model.bumpShown();
+      await tester.pump();
+      expect(seen, [0], reason: 'held by the first');
+
+      await tester.pumpWidget(host(second));
+      expect(seen, [0, 1], reason: 'the second holds nothing');
+      model.bumpShown();
+      await tester.pump();
+      expect(seen, [0, 1, 2]);
+
+      second.value = true;
+      model.bumpShown();
+      first.value = false;
+      await tester.pump();
+      expect(seen, [0, 1, 2], reason: 'the first releases nothing now');
+
+      second.value = false;
+      await tester.pump();
+      expect(seen, [0, 1, 2, 3]);
+    });
+
     test('a listener that is not a widget hears nothing while it is '
         'held, reads the slice as it was, and hears the release once', () {
       final model = _Counter();
