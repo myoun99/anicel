@@ -4,6 +4,7 @@
 #
 #   bash tool/cargo_turn.sh [--folder hook] <cargo arguments…>
 #   bash tool/cargo_turn.sh [--folder hook] --hold
+#   bash tool/cargo_turn.sh [--folder hook] --where
 #
 # cargo, run where it is called from, with the trunk's
 # packages/gpu_engine/rust/target as its target folder and no incremental
@@ -15,6 +16,10 @@
 # hook (packages/gpu_engine/hook/build.dart), which copies its library out
 # of the folder before another cargo may build there again (관제 ·
 # 브러시/렌더링 2026-11-07, connection-round-checklist (나) ⓑ).
+#
+# `--where` takes no turn and runs no cargo: it says the folder as `--hold`
+# does, for the hook to look there for what another checkout built from the
+# same files before it asks for the turn (hook/shared_copies.dart).
 #
 # `--folder hook` is the build hook's folder of its own,
 # packages/gpu_engine/rust/target-hook, with a turn of its own — the same
@@ -100,6 +105,16 @@ esac
 # Longer than a cold debug and release build with every test after it.
 STALE_MINUTES=120
 
+say_folder() {
+  mkdir -p "$SHARED_TARGET"
+  # The caller may be no bash: on Windows, the folder as Windows writes it.
+  (cd "$SHARED_TARGET" && { pwd -W 2>/dev/null || pwd; })
+}
+if [ "$1" = --where ]; then
+  say_folder
+  exit 0
+fi
+
 LINE="$TURN.line"
 mkdir -p "$LINE"
 TICKET="$(date +%s)-$$"
@@ -143,9 +158,7 @@ trap "rm -rf '$TURN'" EXIT
 [ -z "$told" ] || echo "cargo_turn: the shared target is this run's now" >&2
 
 if [ "$1" = --hold ]; then
-  mkdir -p "$SHARED_TARGET"
-  # The caller may be no bash: on Windows, the folder as Windows writes it.
-  (cd "$SHARED_TARGET" && { pwd -W 2>/dev/null || pwd; })
+  say_folder
   cat >/dev/null
   exit 0
 fi

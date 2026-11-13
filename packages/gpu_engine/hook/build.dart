@@ -8,6 +8,7 @@ import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 import '../../../tool/bash_executable.dart';
 import '../../../tool/machine_variables.dart';
 import 'build_inputs.dart';
+import 'shared_copies.dart';
 import 'target_link.dart';
 
 // Builds rust/ with the toolchain pinned in rust/rust-toolchain.toml and
@@ -46,6 +47,14 @@ import 'target_link.dart';
 // shell, as from Android Studio: the main PC's PATH has Git's folder of
 // commands, not its shell (measured 2026-11-07). The user's own builds are
 // the trunk's, one checkout, which a shared folder saves nothing for.
+//
+// A BUILD OF THE SAME FILES IS COPIED, NOT BUILT AGAIN (card
+// a-batch-is-cut-silent-while-it-waits-for-the-hook-turn, 2026-11-14):
+// before it asks for the turn, and again once it has it, the hook looks
+// among the folder's copies for what another checkout built from files
+// that read the same as its own, and after a build it keeps what it made
+// there (hook/shared_copies.dart). With no bash to say where the folder
+// is, it neither looks nor keeps.
 const _asset = 'src/engine_ffi.dart';
 
 void main(List<String> args) async {
@@ -56,51 +65,17 @@ void main(List<String> args) async {
     final windows = input.config.buildCodeAssets &&
         input.config.code.targetOS == OS.windows;
     final dxc = input.outputDirectory.resolve('dxc/');
-    final turn = await _Turn.take(
-      input.packageRoot.resolve('../../tool/cargo_turn.sh'),
-    );
-    try {
-      final folder =
-          turn.folder ?? input.outputDirectory.resolve('own_target/');
-      final homes = [
-        for (final name in kMachineVariables)
-          '$name=${Platform.environment[name] ?? 'the default'}',
-      ].join(' ');
-      // Which way it built and with which Rust, in the log the hooks runner
-      // keeps (stdout.txt beside the hook's input) — never a silent second
-      // way (관제 22:55). ⚠️In one write: the runner appends each piece of
-      // output to that file without waiting for the one before, and of two
-      // lines written at once one was lost, either one (2026-11-08).
-      stdout.writeln(
-        turn.folder == null
-            ? "gpu_engine: ${turn.why} — built in this checkout's own target, "
-                '${folder.toFilePath()}, with Rust from $homes'
-            : "gpu_engine: built in the trunk's hook folder, "
-                '${folder.toFilePath()}, under its turn, '
-                'with Rust from $homes',
+    final script = input.packageRoot.resolve('../../tool/cargo_turn.sh');
+    final copies = await _copiesFor(script, input);
+    if (copies == null || !_shipKept(copies, input, output)) {
+      await _buildUnderTheTurn(
+        script,
+        copies,
+        input,
+        output,
+        windows: windows,
+        dxc: dxc,
       );
-      await withTargetAimed(input.outputDirectory, folder, () async {
-        final built = BuildOutputBuilder();
-        await RustBuilder(
-          assetName: _asset,
-          // ⛔NOT A LOCK OF CARGO'S CHOOSING (관제 2026-11-13, card
-          // the-engine-hook-builds-without-locked-and-rewrites-the-lock):
-          // the builder runs a plain `cargo build`, which mends a lock that
-          // is out of step with the manifests and builds what it chose — a
-          // mutant of the lock's names was rewritten before the test that
-          // read it ran. Every build of the app is the lock's, as the
-          // land's crate gate and gpu-engine.yml already build. Not
-          // `--offline`: a CI runner fetches the crates.
-          extraCargoBuildArgs: const ['--locked'],
-          extraCargoEnvironmentVariables: {
-            'QA_CHECKOUT': input.packageRoot.resolve('rust/').toFilePath(),
-            if (windows) 'GPU_ENGINE_DXC_OUT': dxc.toFilePath(),
-          },
-        ).run(input: input, output: built);
-        _shipCopies(built.build(), input, output);
-      });
-    } finally {
-      await turn.release();
     }
     if (!windows) return;
     final dll = dxc.resolve('dxcompiler.dll');
@@ -117,6 +92,149 @@ void main(List<String> args) async {
       ),
     );
   });
+}
+
+/// Builds the engine under the hook folder's turn — unless another
+/// checkout kept a build of the same files while this one waited — and
+/// keeps what it made in [copies].
+Future<void> _buildUnderTheTurn(
+  Uri script,
+  SharedCopies? copies,
+  BuildInput input,
+  BuildOutputBuilder output, {
+  required bool windows,
+  required Uri dxc,
+}) async {
+  final turn = await _Turn.take(script);
+  try {
+    if (copies != null && _shipKept(copies, input, output)) return;
+    final folder = turn.folder ?? input.outputDirectory.resolve('own_target/');
+    final homes = [
+      for (final name in kMachineVariables)
+        '$name=${Platform.environment[name] ?? 'the default'}',
+    ].join(' ');
+    // Which way it built and with which Rust, in the log the hooks runner
+    // keeps (stdout.txt beside the hook's input) — never a silent second
+    // way (관제 22:55). ⚠️In one write: the runner appends each piece of
+    // output to that file without waiting for the one before, and of two
+    // lines written at once one was lost, either one (2026-11-08).
+    stdout.writeln(
+      turn.folder == null
+          ? "gpu_engine: ${turn.why} — built in this checkout's own target, "
+              '${folder.toFilePath()}, with Rust from $homes'
+          : "gpu_engine: built in the trunk's hook folder, "
+              '${folder.toFilePath()}, under its turn, '
+              'with Rust from $homes',
+    );
+    await withTargetAimed(input.outputDirectory, folder, () async {
+      final started = DateTime.now();
+      final built = BuildOutputBuilder();
+      await RustBuilder(
+        assetName: _asset,
+        // ⛔NOT A LOCK OF CARGO'S CHOOSING (관제 2026-11-13, card
+        // the-engine-hook-builds-without-locked-and-rewrites-the-lock):
+        // the builder runs a plain `cargo build`, which mends a lock that
+        // is out of step with the manifests and builds what it chose — a
+        // mutant of the lock's names was rewritten before the test that
+        // read it ran. Every build of the app is the lock's, as the
+        // land's crate gate and gpu-engine.yml already build. Not
+        // `--offline`: a CI runner fetches the crates.
+        extraCargoBuildArgs: const ['--locked'],
+        extraCargoEnvironmentVariables: {
+          'QA_CHECKOUT': input.packageRoot.resolve('rust/').toFilePath(),
+          if (windows) 'GPU_ENGINE_DXC_OUT': dxc.toFilePath(),
+        },
+      ).run(input: input, output: built);
+      final made = built.build();
+      final read = _shipCopies(made, input, output);
+      if (copies != null) {
+        _keep(copies, made, read, input, started, windows: windows);
+      }
+    });
+  } finally {
+    await turn.release();
+  }
+}
+
+/// The trunk's copies for this hook's config — null with no bash to say
+/// where the hook folder is.
+Future<SharedCopies?> _copiesFor(Uri script, BuildInput input) async {
+  final ProcessResult said;
+  try {
+    said = await Process.run(bashExecutable, [
+      script.toFilePath(),
+      '--folder',
+      'hook',
+      '--where',
+    ]);
+  } on ProcessException {
+    return null;
+  }
+  final folder = (said.stdout as String).trim();
+  if (said.exitCode != 0 || folder.isEmpty) return null;
+  return SharedCopies.forConfig(folder, input.config.json);
+}
+
+/// Ships the copy a build of the same files kept; false when there is
+/// none, or when it went while this one took it.
+bool _shipKept(
+  SharedCopies copies,
+  BuildInput input,
+  BuildOutputBuilder output,
+) {
+  final checkout = input.packageRoot.resolve('../../');
+  final KeptCopy? kept;
+  try {
+    kept = copies.find(checkout);
+  } on FileSystemException {
+    return false;
+  }
+  if (kept == null || !kept.copyTo(input.outputDirectory)) return false;
+  // In one write, as the line of a build (above).
+  stdout.writeln(
+    'gpu_engine: a copy of the build of the same files, ${kept.where.path}',
+  );
+  output.assets.code.add(
+    CodeAsset(
+      package: input.packageName,
+      name: _asset,
+      linkMode: DynamicLoadingBundled(),
+      file: input.outputDirectory.resolve(kept.library),
+    ),
+  );
+  output.dependencies.addAll(kept.readIn(checkout));
+  return true;
+}
+
+/// Keeps the library the build made — with DXC beside it on Windows — for
+/// a checkout whose files read the same. ⛔Only a library loaded at run
+/// time, which is what [_shipKept] ships; and a copy it could not keep
+/// fails no build, as the build it would save was made.
+void _keep(
+  SharedCopies copies,
+  BuildOutput built,
+  List<Uri> read,
+  BuildInput input,
+  DateTime started, {
+  required bool windows,
+}) {
+  if (built.assets.code case [final asset]
+      when asset.linkMode is DynamicLoadingBundled) {
+    final library = asset.file!.pathSegments.last;
+    try {
+      copies.keep(
+        checkout: input.packageRoot.resolve('../../'),
+        outputDirectory: input.outputDirectory,
+        read: read,
+        hook: input.packageRoot.resolve('hook/'),
+        library: library,
+        made: [library, if (windows) 'dxc/dxcompiler.dll'],
+        started: started,
+      );
+    } on FileSystemException catch (error) {
+      stderr.writeln('gpu_engine: kept no copy of this build — $error');
+    }
+  }
 }
 
 /// ⛔THIS MACHINE'S RUST HOMES, WHICH THE HOOKS RUNNER TAKES AWAY (관제
@@ -150,8 +268,9 @@ Future<int?> _againWithThisMachinesRustHomes(List<String> args) async {
 }
 
 /// The builder's library, copied beside the hook's output and shipped
-/// from there, and what the build read ([readByTheBuild]).
-void _shipCopies(
+/// from there, and what the build read ([readByTheBuild]), which it
+/// returns.
+List<Uri> _shipCopies(
   BuildOutput built,
   BuildInput input,
   BuildOutputBuilder output,
@@ -169,14 +288,14 @@ void _shipCopies(
       ),
     );
   }
-  output.dependencies.addAll(
-    readByTheBuild(
-      built.dependencies,
-      target: input.outputDirectory.resolve('target/'),
-      rust: input.packageRoot.resolve('rust/'),
-      checkout: input.packageRoot.resolve('../../'),
-    ),
+  final read = readByTheBuild(
+    built.dependencies,
+    target: input.outputDirectory.resolve('target/'),
+    rust: input.packageRoot.resolve('rust/'),
+    checkout: input.packageRoot.resolve('../../'),
   );
+  output.dependencies.addAll(read);
+  return read;
 }
 
 /// The trunk's hook folder's turn, held by `tool/cargo_turn.sh --folder

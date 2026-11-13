@@ -166,5 +166,19 @@ check "a dead waiter's ticket holds no one back" \
   "$(grep -q ' check$' "$LOG"; echo $?)"
 check "and goes" "$([ ! -e "$TURN.line/1000000000-999999" ]; echo $?)"
 
+# 10 (2026-11-14). --where: the folder --hold says, while another holds the
+# turn — no wait and no cargo.
+: > "$LOG"
+{ sleep 2; } | (cd "$STAGE" && bash tool/cargo_turn.sh --folder hook --hold) \
+  > /dev/null 2>&1 &
+sleep 0.5
+said_where="$(cd "$LANE" && timeout 3 bash tool/cargo_turn.sh --folder hook \
+  --where 2>"$TMP/where.err")"
+code=$?
+wait
+check "--where says the hook folder, as --hold does, and does not wait" \
+  "$([ "$code" -eq 0 ] && [ "$said_where" = "$(cd "${WANT_TARGET}-hook" && { pwd -W 2>/dev/null || pwd; })" ] && ! grep -q held "$TMP/where.err"; echo $?)"
+check "and runs no cargo" "$([ ! -s "$LOG" ]; echo $?)"
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
