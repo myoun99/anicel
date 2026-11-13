@@ -128,6 +128,60 @@ void main() {
       );
     });
 
+    // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    // 「고친 사본을 묶는다」): wgpu-hal is built from a copy of ours, as
+    // symphonia's four are, and the lock names no source for a copy. Walked
+    // by every edge, wgpu-hal would bring Apple's and Android's crates into
+    // Windows's list.
+    test('a copy of a release is walked as the release declares — carried by '
+        'the binary, downloaded by no build', () {
+      final withACopy = lockPackages(
+        lockOf([
+          'name = "engine"\nversion = "0.1.0"\ndependencies = [\n'
+              ' "copied",\n]\n',
+          'name = "copied"\nversion = "1.0.0"\ndependencies = [\n'
+              ' "apple",\n "plain",\n]\n',
+          'name = "apple"\nversion = "1.0.0"\n$registry\n',
+          'name = "plain"\nversion = "1.0.0"\n$registry\n',
+        ]),
+      );
+      final engine = {
+        'engine 0.1.0': <Declared>[
+          (crate: 'copied', kind: 'normal', target: null),
+        ],
+      };
+      final released = <Declared>[
+        (crate: 'apple', kind: 'normal', target: 'cfg(target_os = "macos")'),
+        (crate: 'plain', kind: 'normal', target: null),
+      ];
+      Set<String> walked(Walk walk) => cratesFor(
+        withACopy,
+        engine,
+        (p) => p.name == 'copied' ? released : const [],
+        windows,
+        walk: walk,
+        copies: {'copied 1.0.0'},
+      );
+      expect(walked(Walk.binary), {'copied-1.0.0', 'plain-1.0.0'});
+      expect(walked(Walk.build), {'plain-1.0.0'});
+    });
+
+    test('the copies are the vendor folder\'s, by their manifests\' package',
+        () {
+      final workspace = Directory.systemTemp.createTempSync('copies');
+      addTearDown(() => deleteTempQuietly(workspace));
+      File('${workspace.path}/vendor/wgpu-hal/Cargo.toml')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(
+          '# generated\r\n\r\n[package]\r\nedition = "2021"\r\n'
+          'name = "wgpu-hal"\r\nversion = "30.0.1"\r\n\r\n'
+          '[dependencies.naga]\r\nversion = "30"\r\n',
+        );
+      Directory('${workspace.path}/vendor/not-a-crate').createSync();
+      expect(copiedCrates(workspace).keys, ['wgpu-hal 30.0.1']);
+      expect(copiedCrates(Directory('${workspace.path}/none')), isEmpty);
+    });
+
     test('a crate whose declarations are not here has every edge walked', () {
       for (final walk in Walk.values) {
         expect(

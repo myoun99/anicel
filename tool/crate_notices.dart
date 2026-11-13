@@ -113,10 +113,14 @@ CrateLicence licenceIn(Directory folder) {
     '^$key\\s*=\\s*"([^"]*)"',
     multiLine: true,
   ).firstMatch(manifest)?.group(1);
+  // In LF, as the registry ships them: a copy in the workspace (vendor/)
+  // is checked out in CRLF where `core.autocrlf` is on, and the same text
+  // would be listed twice.
   final files = <String, String>{
     for (final file in folder.listSync().whereType<File>())
       if (isLicenceFile(file.uri.pathSegments.last))
-        file.uri.pathSegments.last: file.readAsStringSync(),
+        file.uri.pathSegments.last:
+            file.readAsStringSync().replaceAll('\r\n', '\n'),
   };
   return (
     expression: field('license'),
@@ -254,6 +258,7 @@ Future<Map<String, List<String>>> shippedOn(
       (package) => indexDependencies(index, package.name, package.version),
       TargetPlatform(target, LineSplitter.split(cfg)),
       walk: Walk.binary,
+      copies: copiedCrates(Directory(workspace)).keys.toSet(),
     );
     for (final crate in crates) {
       (on[spacedOf[crate]!] ??= []).add(target);
@@ -261,6 +266,21 @@ Future<Map<String, List<String>>> shippedOn(
   }
   return on;
 }
+
+/// Every crate of [lock] a notice may be owed for, `name version`: the
+/// registry's, and the registry releases built from a copy of the
+/// workspace's own ([copies], [copiedCrates]) — a workspace crate is ours.
+///
+/// ↩️Till 2026-11-13 the registry's alone: the four symphonia crates copied
+/// on 11-07 left the list unnoticed (their source no longer the
+/// registry's), and wgpu-hal would have as it was copied
+/// (the-wait-window-stands-seven-seconds-on-the-surface-Q1).
+Set<String> shippable(List<LockPackage> lock, Set<String> copies) => {
+  for (final package in lock)
+    if (package.fromRegistry ||
+        copies.contains('${package.name} ${package.version}'))
+      '${package.name} ${package.version}',
+};
 
 /// The registry's folder for the crate `name version`: a name holds no
 /// space, so the first one is where the version starts.
@@ -271,15 +291,19 @@ String folderOf(String crate) => crate.replaceFirst(' ', '-');
 /// for, each named on stderr.
 ({Map<String, CrateLicence> read, Map<String, int> missing}) licencesOf(
   Map<String, List<String>> on,
-  List<Directory> sources,
-) {
+  List<Directory> sources, {
+  Map<String, Directory> copies = const {},
+}) {
   final read = <String, CrateLicence>{};
   final missing = <String, int>{};
   for (final MapEntry(key: crate, value: targets) in on.entries) {
-    final folder = sources
-        .map((source) => Directory('${source.path}/${folderOf(crate)}'))
-        .where((folder) => folder.existsSync())
-        .firstOrNull;
+    // A copy's licence is the one in the folder it is built from
+    // ([copiedCrates]), whatever the registry holds.
+    final folder = copies[crate] ??
+        sources
+            .map((source) => Directory('${source.path}/${folderOf(crate)}'))
+            .where((folder) => folder.existsSync())
+            .firstOrNull;
     if (folder == null) {
       stderr.writeln('not here: $crate (${targets.join(', ')})');
       for (final target in targets) {
@@ -310,16 +334,16 @@ Future<void> main(List<String> args) async {
     Directory('${registry.path}/index'),
   );
   final sources = Directory('${registry.path}/src').listSync().whereType<Directory>();
-  final (:read, :missing) = licencesOf(on, sources.toList());
+  final copies = copiedCrates(Directory(workspace));
+  final (:read, :missing) =
+      licencesOf(on, sources.toList(), copies: copies);
   if (missing.isNotEmpty) {
     stderr.writeln('crates whose source is not on this machine, by target: '
         '$missing — nothing written');
     exit(1);
   }
-  final unshipped = {
-    for (final package in lock)
-      if (package.fromRegistry) '${package.name} ${package.version}',
-  }.difference(read.keys.toSet());
+  final unshipped = shippable(lock, copies.keys.toSet())
+      .difference(read.keys.toSet());
   final notices = noticesOf(read, pinned: pinnedTexts());
   final file = noticesFile(targets, notices, unshipped);
   File(args[1]).writeAsStringSync(

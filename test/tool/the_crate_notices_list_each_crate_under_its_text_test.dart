@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/crate_notices.dart';
+import '../../tool/crates_for_host.dart';
 import '../helpers/dart_sources.dart';
 import '../helpers/temp_dir.dart';
 
@@ -245,6 +246,29 @@ void main() {
       expect(read.values.single.files, {'LICENSE': 'Copyright T'});
       expect(missing, {'a': 1});
       expect(folderOf('md-5 0.10.6'), 'md-5-0.10.6');
+    });
+
+    // ↩️The copies were left unnoticed till 2026-11-13 (`shippable`).
+    test('give a crate built from the workspace\'s copy the licence in that '
+        'copy, and owe a notice for it as for the registry\'s', () {
+      final copy = Directory('${registry.path}/vendor/wgpu-hal')
+        ..createSync(recursive: true);
+      File('${copy.path}/Cargo.toml')
+          .writeAsStringSync('[package]\nlicense = "MIT OR Apache-2.0"\n');
+      File('${copy.path}/LICENSE.MIT').writeAsStringSync('Copyright W');
+      final (:read, :missing) = licencesOf(
+        {'wgpu-hal 30.0.1': ['a']},
+        [registry],
+        copies: {'wgpu-hal 30.0.1': copy},
+      );
+      expect(missing, isEmpty);
+      expect(read.values.single.files, {'LICENSE.MIT': 'Copyright W'});
+      final lock = lockPackages(
+        '\n[[package]]\nname = "engine"\nversion = "0.1.0"\n'
+        '\n[[package]]\nname = "wgpu-hal"\nversion = "30.0.1"\n',
+      );
+      expect(shippable(lock, {'wgpu-hal 30.0.1'}), {'wgpu-hal 30.0.1'});
+      expect(shippable(lock, const {}), isEmpty);
     });
   });
 

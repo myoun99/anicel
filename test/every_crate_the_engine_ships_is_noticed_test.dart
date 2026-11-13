@@ -42,14 +42,15 @@ void main() {
     expect(file.targets.toSet(), toolchainTargets(toolchain).toSet());
   });
 
+  // The registry's crates and the workspace's copies of them (vendor/):
+  // each a release someone else wrote, whose licence ships with it.
   test('every crate of the lock is noticed or ships nowhere, once', () {
     final lock = lockPackages(
       File('packages/gpu_engine/rust/Cargo.lock').readAsStringSync(),
     );
-    final registry = [
-      for (final package in lock)
-        if (package.fromRegistry) '${package.name} ${package.version}',
-    ]..sort();
-    expect([...file.noticed, ...file.unshipped]..sort(), registry);
+    final copies = copiedCrates(Directory('packages/gpu_engine/rust'));
+    expect(copies.keys, contains('wgpu-hal 30.0.1'), reason: '⛔premise');
+    final owed = shippable(lock, copies.keys.toSet()).toList()..sort();
+    expect([...file.noticed, ...file.unshipped]..sort(), owed);
   });
 }

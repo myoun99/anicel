@@ -191,6 +191,11 @@ enum Walk {
     Walk.build => fromMember || kind != 'dev',
     Walk.binary => kind == 'normal',
   };
+
+  /// Whether the walk's list names a crate built from the workspace's own
+  /// copy ([copiedCrates]): the library carries it, and its notice with it,
+  /// but no build downloads it.
+  bool get carriesCopies => this == Walk.binary;
 }
 
 /// The registry crates, `name-version`, that [walk] reaches from every
@@ -207,6 +212,7 @@ Set<String> cratesFor(
   List<Declared>? Function(LockPackage) declaredOf,
   TargetPlatform platform, {
   required Walk walk,
+  Set<String> copies = const {},
 }) {
   LockPackage named(String dependency) {
     final words = dependency.split(' ');
@@ -225,8 +231,9 @@ Set<String> cratesFor(
   while (queue.isNotEmpty) {
     final package = queue.removeLast();
     final member = members['${package.name} ${package.version}'];
+    final copy = copies.contains('${package.name} ${package.version}');
     final declared = member ??
-        (package.fromRegistry ? declaredOf(package) : null);
+        (package.fromRegistry || copy ? declaredOf(package) : null);
     for (final dependency in package.dependencies.map(named)) {
       final asNamed =
           declared?.where((d) => d.crate == dependency.name) ?? const [];
@@ -241,8 +248,41 @@ Set<String> cratesFor(
   }
   return {
     for (final package in reached)
-      if (package.fromRegistry) '${package.name}-${package.version}',
+      if (package.fromRegistry ||
+          (walk.carriesCopies &&
+              copies.contains('${package.name} ${package.version}')))
+        '${package.name}-${package.version}',
   };
+}
+
+/// The registry releases a workspace builds from copies of its own — its
+/// `vendor/` folder, patched in (`[patch.crates-io]`) — by `name version`,
+/// each with its folder. The lock names no source for one: it is the
+/// workspace's path, not the registry's.
+///
+/// ⚠️A copy is walked as its release declares ([cratesFor], the index entry
+/// it was copied from): what is ours in it adds no crate (symphonia's
+/// `libm`, wgpu-hal's dx12 DXIL cache — each marked in it). One that does
+/// would be a dependency the release never had, and missed here.
+Map<String, Directory> copiedCrates(Directory workspace) {
+  final vendor = Directory('${workspace.path}/vendor');
+  if (!vendor.existsSync()) return {};
+  final copies = <String, Directory>{};
+  for (final folder in vendor.listSync().whereType<Directory>()) {
+    final manifest = File('${folder.path}/Cargo.toml');
+    if (!manifest.existsSync()) continue;
+    final package = manifest.readAsStringSync().split('\n[').firstWhere(
+      (section) => section.trimLeft().startsWith('package]'),
+      orElse: () => '',
+    );
+    String? field(String key) => RegExp(
+      '^$key = "([^"]*)"',
+      multiLine: true,
+    ).firstMatch(package)?.group(1);
+    final (name, version) = (field('name'), field('version'));
+    if (name != null && version != null) copies['$name $version'] = folder;
+  }
+  return copies;
 }
 
 void main(List<String> args) {
@@ -260,6 +300,7 @@ void main(List<String> args) {
     (package) => indexDependencies(index, package.name, package.version),
     TargetPlatform(args[3], File(args[2]).readAsLinesSync()),
     walk: Walk.build,
+    copies: copiedCrates(File(args[0]).parent).keys.toSet(),
   ).toList()..sort();
   stdout.write(crates.map((crate) => '$crate\n').join());
 }
