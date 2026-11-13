@@ -17,12 +17,17 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/brush_stroke_landing.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/brush_commit_builder.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
@@ -340,6 +345,44 @@ void main() {
       promoted(watched, base).single.tile.pixels,
     );
     watched.clear();
+  });
+
+  // ↩️Pinned off the engine's grid till 2026-11-14 (`a_blur_brush_rubs_the_
+  // picture_it_finds_test`), where the funnel laid the blur again through the
+  // clip; a selection cuts on the engine alone now, at the commit.
+  test('a stroke re-derived from its dabs under a selection is the stroke '
+      'watched — the commit cuts it where it lands', () {
+    final base = surfaceOf({origin: edge()});
+    final clip = SelectionClip.outline(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 200, bottom: 64),
+      ),
+    );
+    final dabs = [
+      for (var i = 0; i < 4; i++) rubbing(60.0 + i * 3, 64, sequence: i),
+    ];
+    final watched = rubbedOver(base, selection: clip)..blendFrom(dabs, from: 0);
+    final shown = promoted(watched, base).single;
+    watched.clear();
+    final funneled = clipStrokeCommitToSelection(
+      BrushStrokeCommitData(sourceDabs: dabs),
+      clip: clip,
+      surface: base,
+    )!;
+    final landed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+      surface: base,
+      sequence: BrushDabSequence(funneled.sourceDabs),
+      layerId: const LayerId('row'),
+      frameId: const FrameId('cel'),
+      selection: funneled.selection,
+    ).afterSurface;
+
+    expect(
+      at(shown.tile.pixels, 68, 70),
+      nothing,
+      reason: 'fixture premise: the selection takes part',
+    );
+    expect(landed.tileAt(shown.coord)!.pixels, shown.tile.pixels);
   });
 
   group('on the engine as on the route it replaced', () {

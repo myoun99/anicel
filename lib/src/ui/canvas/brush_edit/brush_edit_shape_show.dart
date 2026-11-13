@@ -427,7 +427,7 @@ class _ShapeLaying {
       surface: _laidOn,
       dabs: [dab],
       blendMode: area.blend,
-      selection: area.selection,
+      selection: area.selection(),
       layerId: layerId,
       frameId: frameId,
     );

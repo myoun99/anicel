@@ -26,14 +26,41 @@ sealed class SelectionClip {
   const SelectionClip();
 
   /// [region] as a selection reads, at its [options], inside the pasteboard
-  /// [wall].
+  /// [wall] — the same clip for as long as [region] is asked at that
+  /// softness inside that wall, so what it makes on the engine
+  /// ([maskOnEngine]) is made once for every verb under the selection.
+  ///
+  /// ↩️Till 2026-11-14 each asking made a clip of its own — every stroke,
+  /// fill and stamp under one selection had the engine make its mask again.
   factory SelectionClip.of(
     CanvasSelectionRegion region, {
     required PasteboardWall wall,
     required SelectionMaskOptions options,
-  }) => options.isHard
-      ? _OutlineClip(region)
-      : _SoftClip(region, wall: wall, options: options);
+  }) {
+    final kept = _kept[region];
+    if (kept != null &&
+        kept.wall == wall &&
+        kept.options.growPx == options.growPx &&
+        kept.options.featherPx == options.featherPx &&
+        kept.options.antiAlias == options.antiAlias) {
+      return kept.clip;
+    }
+    final clip = options.isHard
+        ? _OutlineClip(region)
+        : _SoftClip(region, wall: wall, options: options);
+    _kept[region] = (wall: wall, options: options, clip: clip);
+    return clip;
+  }
+
+  /// The clip [SelectionClip.of] made last of each region.
+  static final _kept =
+      Expando<
+        ({
+          PasteboardWall wall,
+          SelectionMaskOptions options,
+          SelectionClip clip,
+        })
+      >();
 
   /// [region]'s own outline, every pixel in or out by its centre.
   const factory SelectionClip.outline(CanvasSelectionRegion region) =
@@ -191,5 +218,24 @@ final class _SoftClip extends SelectionClip {
       );
     }
     return mask;
+  }
+}
+
+/// ⛔A selection cuts on the engine's grid alone (2026-11-14, board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move` ④ — 관제's call,
+/// handed the night's decisions by 유저 「판단생기면 알아서해줘」, on reading
+/// the app's grids and its workers): no road of the app draws under one
+/// anywhere else — its cels are on that grid, on the isolate that has the
+/// engine — and a rule of its own off it cut the same selection to other
+/// bytes (the CPU's 8-bit fold against the engine's 16-bit cover: 2 levels
+/// at a feathered edge, measured that day).
+///
+/// ↩️The CPU folded the selection's mask in there: into a stamp's picture
+/// (`clipStampDabToSelection`), a stroke's buffer
+/// (`clipStrokePixelsToSelection`) and the live stroke's tiles, a mask a
+/// tile.
+void cutOnTheEngineOnly(SelectionClip? selection) {
+  if (selection != null) {
+    throw StateError('a selection cuts on the engine\'s grid alone');
   }
 }

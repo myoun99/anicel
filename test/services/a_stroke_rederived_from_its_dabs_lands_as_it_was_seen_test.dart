@@ -222,7 +222,7 @@ void main() {
         tileSize: tileSize,
       );
       rasterizer.blendFrom(dabs, from: 0);
-      final piled = rasterizeStrokeForClipping(
+      final piled = rasterizeStrokeCoverage(
         dabs: dabs,
         canvasSize: canvasSize,
         tileSize: tileSize,

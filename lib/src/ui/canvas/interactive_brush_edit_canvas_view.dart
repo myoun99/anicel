@@ -102,19 +102,20 @@ Duration shapeShowFrameShare = const Duration(microseconds: 4000);
 /// afresh — under [blend]. [shape] is what the pieces are OF, compared by
 /// value: the same shape asked for again asks for nothing new.
 ///
-/// 🚨A piece is cut ONCE. [selection] is what the view lays the pieces
-/// through, and null for a held picture's ghost (brush-fidelity-Q9: the
-/// ghost is what lands), whose pieces come through the door cut already.
-/// ↩️The maker cut a shape's too, so the dabs a shape landed with were cut
-/// ones: harmless at a hard outline, but under a soft one the commit
-/// re-deriving them on a cel that had moved, or 확정 laying them again,
-/// took the selection's ramp a second time (brush-fidelity-Q11). A fill's
-/// dabs have always stayed whole.
+/// 🚨A piece is cut ONCE, where it lands: [selection] is what the view lays
+/// the pieces through, asked when it lays them — a held picture's ghost
+/// answers with the selection the door reads for the cel on screen
+/// (brush-fidelity-Q9: the ghost is what lands). ↩️The maker cut a shape's
+/// too, so the dabs a shape landed with were cut ones: harmless at a hard
+/// outline, but under a soft one the commit re-deriving them on a cel that
+/// had moved, or 확정 laying them again, took the selection's ramp a second
+/// time (brush-fidelity-Q11). ↩️Till 2026-11-14 the ghost's pieces came
+/// through the door cut on the CPU, and laid through no selection.
 typedef ShapeArea = ({
   Object shape,
   Iterable<BrushDab> Function() pieces,
   BrushBlendMode blend,
-  SelectionClip? selection,
+  SelectionClip? Function() selection,
 });
 
 /// The fill's gradient knobs and the sub colour — the rail swatch's back

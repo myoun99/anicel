@@ -86,23 +86,6 @@ Uint8List engineSurfaceRegionPixels(
       EngineTileLedger.instance.readEach(BrushFrameKey.noCel, tiles, use),
 );
 
-/// THE selection rule (R26 #18): scales a straight-alpha stroke buffer's
-/// ALPHA by [mask]'s coverage, in place.
-///
-/// Every path that confines a stroke to a selection goes through this —
-/// the live pre-blend's Dart route, the commit's clip for strokes with no
-/// live raster, and a fill's stamp bytes. One rule, one rounding
-/// (Skia's mul-div-255), so the preview, the committed pixels and a redo
-/// cannot disagree about where the selection ends. Three separate rules
-/// is what this replaced, and they only agreed by accident: while masks
-/// are binary, "zero the texel" and "scale alpha by 0" are the same
-/// thing; the moment a mask goes soft (the selection tool's feather / AA
-/// knobs) they stop being.
-///
-/// RGB is left alone deliberately. Alpha 0 is the documented "the
-/// destination survives untouched" input of every commit kernel — none
-/// of them read colour behind it — and premultiplying for display zeroes
-/// those bytes anyway.
 /// The stroke's own OPACITY as a coverage byte — the channel a selection
 /// mask already speaks.
 ///
@@ -123,39 +106,41 @@ Uint8List engineSurfaceRegionPixels(
 int strokeOpacityCoverage(double opacity) =>
     (opacity.clamp(0.0, 1.0) * 255).round();
 
-/// [selection] with [opacity] folded in, or a uniform mask when there is no
-/// selection — null when there is nothing to scale at all.
+/// [opacity] as a mask over [pixelCount] pixels — null at full opacity,
+/// nothing to scale.
 ///
-/// ⚠️Folded into the MASK rather than applied as a second pass, because a
-/// pre-blend takes exactly one mask: `mul255(a, mul255(m, o))` is what
-/// every road computes, and one that folded the other way round would
-/// drift by a byte at soft edges (↩️the C kernel's was the first to take
-/// one, till 2026-11-12).
+/// ↩️It folded a selection's mask in till 2026-11-14 — into the MASK, not
+/// as a second pass, so that every road computed `mul255(a, mul255(m, o))`
+/// — and a selection cuts on the engine alone now (`cutOnTheEngineOnly`).
 Uint8List? strokeCoverageMask({
-  Uint8List? selection,
   required int pixelCount,
   required double opacity,
 }) {
   final uniform = strokeOpacityCoverage(opacity);
   if (uniform >= 255) {
-    return selection;
+    return null;
   }
-  if (selection == null) {
-    return Uint8List(pixelCount)..fillRange(0, pixelCount, uniform);
-  }
-  final folded = Uint8List(pixelCount);
-  for (var i = 0; i < pixelCount; i += 1) {
-    final coverage = selection[i];
-    if (coverage == 0) {
-      continue;
-    }
-    final product = coverage * uniform + 128;
-    folded[i] = (product + (product >> 8)) >> 8;
-  }
-  return folded;
+  return Uint8List(pixelCount)..fillRange(0, pixelCount, uniform);
 }
 
-void applySelectionMaskToStrokeAlpha({
+/// THE coverage rule (R26 #18): scales a straight-alpha stroke buffer's
+/// ALPHA by [mask]'s coverage, in place — the stroke's opacity ceiling
+/// (F-12) off the engine's grid, which the commit's buffer and the live
+/// pre-blend both go through, so the preview, the committed pixels and a
+/// redo round it the same (Skia's mul-div-255).
+///
+/// ↩️It was THE selection rule till 2026-11-14: every path that confined
+/// a stroke to a selection went through it — the live pre-blend, the
+/// commit's buffer, a fill's stamp bytes — where three rules had agreed
+/// only while masks were binary ("zero the texel" and "scale alpha by 0"
+/// part the moment a mask goes soft). A selection cuts on the engine
+/// alone now (`cutOnTheEngineOnly`).
+///
+/// RGB is left alone deliberately. Alpha 0 is the documented "the
+/// destination survives untouched" input of every commit kernel — none
+/// of them read colour behind it — and premultiplying for display zeroes
+/// those bytes anyway.
+void applyCoverageToStrokeAlpha({
   required Uint8List pixels,
   required Uint8List mask,
   required int pixelCount,
@@ -526,11 +511,12 @@ int _clampByte(double value) {
 /// blitter's srcOver at opacity 1 (the color landing is one stamp of the
 /// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
 /// ONE display pipeline, live == commit unconditionally).
-/// [mask] (R28 selection): 1 byte of coverage per pixel, scaling the
-/// STROKE's alpha before the composite — `a = mul255(a, mask)`, the same
-/// rounding the kernel uses. Null means no selection and is byte-for-byte
-/// the pre-mask path. It applies to the ACCUMULATED stroke, never per
-/// dab: masking dabs individually would break soft masks, because
+/// [mask] (R28): 1 byte of coverage per pixel — the stroke's opacity
+/// ceiling ([applyCoverageToStrokeAlpha]) — scaling the STROKE's alpha
+/// before the composite, `a = mul255(a, mask)`, the same rounding the
+/// kernel uses. Null means nothing to scale and is byte-for-byte the
+/// pre-mask path. It applies to the ACCUMULATED stroke, never per dab:
+/// masking dabs individually would break soft masks, because
 /// srcOver(a₁·m, a₂·m) ≠ srcOver(a₁, a₂)·m.
 Uint8List preBlendStrokeOverlayPixels({
   required Uint8List dst,
@@ -544,7 +530,7 @@ Uint8List preBlendStrokeOverlayPixels({
     // One masked copy up front keeps the kernels below untouched — they
     // are the commit's own code and must stay byte-identical to it.
     final masked = Uint8List.fromList(src);
-    applySelectionMaskToStrokeAlpha(
+    applyCoverageToStrokeAlpha(
       pixels: masked,
       mask: mask,
       pixelCount: pixelCount,

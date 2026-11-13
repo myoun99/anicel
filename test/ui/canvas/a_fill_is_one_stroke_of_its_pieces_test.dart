@@ -159,6 +159,7 @@ void main() {
       frameId: frameId,
       prerasterizedStrokePixels: funneled.strokePixels,
       prerasterizedStrokeBounds: funneled.strokeBounds,
+      selection: funneled.selection,
     );
     // And the promotion route, as the commit lands it: a tile PUT.
     final installed = brushCommitResultForBrushDabSequenceOnBitmapSurface(

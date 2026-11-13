@@ -246,7 +246,7 @@ class _BrushEditFill implements GradientRangeHold {
       shape: (range, gradient),
       pieces: () => range.piecesUnder(gradient),
       blend: input.blendMode,
-      selection: _state.widget.selectionNow?.call(),
+      selection: () => _state.widget.selectionNow?.call(),
     );
   }
 

@@ -6,6 +6,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/native/engine_selection_masks.dart';
 import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
@@ -30,17 +32,21 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
-import 'package:anicel/src/services/selection_fold.dart';
 import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★WHATEVER DRAWS IN A SELECTION IS CUT BY ONE EDGE
 /// (brush-fidelity-Q11 · Q12, 유저 2026-10-18).
 ///
-/// The clip reads the selection a window at a time so that a stroke pays for
-/// the tiles it touches, and the bytes must be the ones the whole box reads
+/// The clip reads the selection a window at a time (what a flood keeps of
+/// its fill), and the bytes must be the ones the whole box reads
 /// ([selectionMaskOnPasteboard], what a lift and a held picture go by):
 /// a window that softens against its own edge is a seam on the tile grid.
+/// On the engine the clip's mask is made once over its whole box, and a
+/// stroke, a stamp and a stroke's buffer land under it (2026-11-14) — off
+/// the engine's grid none lands under a selection at all.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  final engineTile = gpuTileSide;
   const canvas = CanvasSize(width: 300, height: 200);
   final wall = canvas.pasteboardAt(PasteboardReach.none);
   const layerId = LayerId('row');
@@ -277,7 +283,8 @@ void main() {
     for (var x = 0; x < 300; x += 1) (surfaceRgbaInPlace(surface, x, y) ?? 0) & 255,
   ];
 
-  BitmapSurface blank() => BitmapSurface(canvasSize: canvas, tileSize: 64);
+  BitmapSurface blank() =>
+      BitmapSurface(canvasSize: canvas, tileSize: engineTile);
 
   final soft = SelectionClip.of(
     rect(60, 20, 240, 180),
@@ -286,7 +293,8 @@ void main() {
   );
   final row = soft.maskFor(left: 0, top: 100, width: 300, height: 1);
 
-  test('a stamp the selection cannot reach reads nothing of it', () {
+  test('a stamp the selection cannot reach reads nothing of it, and is not '
+      'committed at all', () {
     final asked = <int>[];
     final rgba = Uint8List(10 * 10 * 4)..fillRange(0, 10 * 10 * 4, 255);
     final dab = paintDab(20, 190).copyWith(
@@ -295,30 +303,15 @@ void main() {
     final clip = SelectionClip.outline(
       _ReadsSpied(rect(60, 20, 240, 180), asked),
     );
-    expect(clipStampDabToSelection(dab, clip: clip), isNull);
-    expect(asked, isEmpty);
-  });
-
-  test('a dab the selection cannot reach is left out before the stroke is '
-      'rastered: it widens nothing that is read', () {
-    final asked = <int>[];
-    final clip = SelectionClip.outline(
-      _ReadsSpied(rect(60, 20, 240, 180), asked),
-    );
-    List<int> readFor(List<BrushDab> dabs) {
-      asked.clear();
-      clipDabsToSelection(
-        dabs: dabs,
-        canvasSize: canvas,
-        tileSize: 64,
+    expect(
+      clipStrokeCommitToSelection(
+        BrushStrokeCommitData(sourceDabs: [dab]),
         clip: clip,
-      );
-      return List.of(asked);
-    }
-
-    final near = readFor([paintDab(150, 100)]);
-    expect(near, isNotEmpty, reason: 'fixture premise');
-    expect(readFor([paintDab(150, 100), paintDab(20, 190)]), near);
+        surface: blank(),
+      ),
+      isNull,
+    );
+    expect(asked, isEmpty);
   });
 
   test('fixture premise: the row reads a ramp', () {
@@ -335,7 +328,7 @@ void main() {
     ];
     final base = blank();
     final rasterizer =
-        BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: 64)
+        BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: engineTile)
           ..selectionClip = soft;
     rasterizer.blendFrom(dabs, from: 0);
     final shown = base.putMaterializedTiles([
@@ -361,6 +354,7 @@ void main() {
       frameId: frameId,
       prerasterizedStrokePixels: funneled.strokePixels,
       prerasterizedStrokeBounds: funneled.strokeBounds,
+      selection: funneled.selection,
     ).afterSurface;
     expect(alphas(landed, 100), row);
   });
@@ -399,22 +393,139 @@ void main() {
       sequence: BrushDabSequence(funneled.sourceDabs),
       layerId: layerId,
       frameId: frameId,
+      promotedBase: funneled.promotedBase,
+      promotedTiles: funneled.promotedTiles,
+      selection: funneled.selection,
     ).afterSurface;
     expect(alphas(landed, 100), row);
   });
 
-  test('a stroke handed to the commit with its selection lands the ramp the '
-      'live stroke shows', () {
-    final landed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+  // 🚨관제 2026-11-14 (board `a-selection-mask-is-built-on-the-cpu-at-every-
+  // move`, L1b-1b): the funnel no longer cuts — it names the selection, and
+  // the commit cuts where it lands. A cel that moved between the preview and
+  // the commit is where the two could part: the promoted tiles answer for
+  // the cel they were blended on, and the commit lays the stroke again.
+  test('🚨a fill on a cel that moved under it lands what its preview on '
+      'that cel shows, byte for byte', () {
+    final picture = Uint8List(300 * 200 * 4);
+    for (var at = 0; at < picture.length; at += 4) {
+      picture
+        ..[at] = 230
+        ..[at + 1] = 40
+        ..[at + 2] = 60
+        ..[at + 3] = 60 + (at ~/ 4 % 300) % 150;
+    }
+    final dab = opaqueStamp().copyWith(
+      opacity: 0.6,
+      stamp: BrushStampImage(id: 'fill', width: 300, height: 200, rgba: picture),
+    );
+    List<PlacedTile> fillOn(BitmapSurface cel) => [
+      for (final tile in promoteFillDabs(
+        surface: cel,
+        dabs: [dab],
+        blendMode: BrushBlendMode.color,
+        selection: soft,
+        layerId: layerId,
+        frameId: frameId,
+      ))
+        (coord: tile.coord, tile: tile.tile),
+    ];
+    final base = blank();
+    final promoted = fillOn(base);
+
+    final under = Uint8List(300 * 200 * 4);
+    for (var at = 0; at < under.length; at += 4) {
+      under
+        ..[at + 1] = 90
+        ..[at + 2] = 200
+        ..[at + 3] = 140;
+    }
+    final moved = materializeBrushDabSequenceOnBitmapSurface(
       surface: blank(),
       sequence: BrushDabSequence([
-        for (var x = 0.0; x <= 300; x += 8) paintDab(x, 100),
+        opaqueStamp().copyWith(
+          stamp: BrushStampImage(
+            id: 'under',
+            width: 300,
+            height: 200,
+            rgba: under,
+          ),
+        ),
       ]),
+    ).surface;
+    final preview = moved.putMaterializedTiles(fillOn(moved));
+
+    final funneled = clipStrokeCommitToSelection(
+      BrushStrokeCommitData(
+        sourceDabs: [dab],
+        promotedBase: base,
+        promotedTiles: promoted,
+      ),
+      clip: soft,
+      surface: moved,
+    )!;
+    final landed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+      surface: moved,
+      sequence: BrushDabSequence(funneled.sourceDabs),
       layerId: layerId,
       frameId: frameId,
-      selection: soft,
+      promotedBase: funneled.promotedBase,
+      promotedTiles: funneled.promotedTiles,
+      selection: funneled.selection,
     ).afterSurface;
-    expect(alphas(landed, 100), row);
+
+    final atTheEdge = surfaceRgbaInPlace(preview, 62, 100);
+    expect(
+      atTheEdge,
+      isNot(surfaceRgbaInPlace(moved, 62, 100)),
+      reason: 'fixture premise: the fill lands at the edge',
+    );
+    expect(
+      atTheEdge,
+      isNot(surfaceRgbaInPlace(preview, 150, 100)),
+      reason: 'fixture premise: the edge is soft there',
+    );
+    for (var y = 0; y < 200; y += 1) {
+      for (var x = 0; x < 300; x += 1) {
+        final want = surfaceRgbaInPlace(preview, x, y);
+        final got = surfaceRgbaInPlace(landed, x, y);
+        if (got != want) {
+          fail(
+            '$x,$y landed ${got?.toRadixString(16)}, the preview on the '
+            'cel shows ${want?.toRadixString(16)}',
+          );
+        }
+      }
+    }
+  });
+
+  test('off the engine\'s grid a selection is turned away — by the commit, '
+      'a stamp\'s landing and the live stroke alike', () {
+    final small = BitmapSurface(canvasSize: canvas, tileSize: 64);
+    expect(
+      () => brushCommitResultForBrushDabSequenceOnBitmapSurface(
+        surface: small,
+        sequence: BrushDabSequence([paintDab(150, 100)]),
+        layerId: layerId,
+        frameId: frameId,
+        selection: soft,
+      ),
+      throwsStateError,
+    );
+    expect(
+      () => materializeBrushDabSequenceOnBitmapSurface(
+        surface: small,
+        sequence: BrushDabSequence([opaqueStamp()]),
+        selection: soft,
+      ),
+      throwsStateError,
+    );
+    expect(
+      () => BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: 64)
+        ..selectionClip = soft
+        ..blendFrom([paintDab(150, 100)], from: 0),
+      throwsStateError,
+    );
   });
 
   test('a blur handed to the commit with its selection rubs nothing the '
@@ -475,8 +586,6 @@ void main() {
     // make the mask's bytes over the tiles of each landing, at every move,
     // and hand them up. The engine makes the selection's mask once for the
     // stroke, by the same law.
-    TestWidgetsFlutterBinding.ensureInitialized();
-    const engineTile = 128;
 
     /// A stroke of one opaque square over the whole picture, under [clip],
     /// on the engine's grid; the rasterizer is handed back unclear.
@@ -665,6 +774,43 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+
+    test('a region asked for its clip again, at its softness inside its wall, '
+        'is the clip it was — its mask made once for every verb under it', () {
+      final region = rect(60, 20, 240, 180);
+      SelectionClip clipAt(double feather, {PasteboardWall? within}) =>
+          SelectionClip.of(
+            region,
+            wall: within ?? wall,
+            options: SelectionMaskOptions(featherPx: feather),
+          );
+      final first = clipAt(3);
+
+      expect(identical(clipAt(3), first), isTrue);
+      expect(
+        identical(clipAt(4), first),
+        isFalse,
+        reason: 'another softness is another clip',
+      );
+      expect(
+        identical(
+          clipAt(
+            3,
+            within: const CanvasSize(
+              width: 400,
+              height: 300,
+            ).pasteboardAt(PasteboardReach.none),
+          ),
+          first,
+        ),
+        isFalse,
+        reason: 'another wall is another clip',
+      );
+      final made = EngineSelectionMasks.debugMade;
+      clipAt(3).maskOnEngine();
+      clipAt(3).maskOnEngine();
+      expect(EngineSelectionMasks.debugMade, made + 1);
     });
 
     test('a clip has its mask made once, for a fill\'s every piece and the '

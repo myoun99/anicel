@@ -13,6 +13,7 @@ import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'brush_edit_session_state_operations.dart';
 import 'cache_invalidation_executor.dart';
+import 'selection_clip.dart';
 
 BrushEditSessionCacheOperationResult
 commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
@@ -26,6 +27,7 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
   List<PlacedTile>? promotedTiles,
+  SelectionClip? selection,
 }) {
   final commitResult = commitBrushDabSequenceToBrushEditSessionState(
     sessionState: sessionState,
@@ -37,6 +39,7 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
     blendMode: blendMode,
     promotedBase: promotedBase,
     promotedTiles: promotedTiles,
+    selection: selection,
   );
   final historyEntry = commitResult.historyEntry;
 

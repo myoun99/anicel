@@ -419,6 +419,7 @@ void main() {
         frameId: frameId,
         prerasterizedStrokePixels: data.strokePixels,
         prerasterizedStrokeBounds: data.strokeBounds,
+        selection: data.selection,
         blendMode: mode,
       ).afterSurface;
     }

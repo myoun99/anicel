@@ -24,11 +24,6 @@ import 'package:anicel/src/services/brush_dab_kernel.dart';
 import 'package:anicel/src/services/brush_ground_color_mixing.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
-import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
-import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/services/canvas_selection_shape.dart';
-import 'package:anicel/src/services/selection_clip.dart';
 
 /// 🗣️I-75 흐리기 (유저 2026-10-27): a brush in the mixing group that blurs
 /// what is already drawn — no slider of its own (Q3: its size is how far it
@@ -117,13 +112,9 @@ void main() {
     List<BrushDab> dabs,
     BitmapSurface base, {
     double opacity = 1,
-    CanvasSelectionRegion? selection,
   }) {
     final rasterizer =
         BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
-          ..selectionClip = selection == null
-              ? null
-              : SelectionClip.outline(selection)
           ..strokeOpacity = opacity
           ..blurOver(base);
     for (var from = 0; from < dabs.length; from += 5) {
@@ -234,8 +225,8 @@ void main() {
     return moved;
   }
 
-  test('what the screen showed is what lands — promoted at pen-up, '
-      're-derived from the dabs, and cut by a selection that covers it', () {
+  test('what the screen showed is what lands — promoted at pen-up, and '
+      're-derived from the dabs', () {
     final base = edgeCel();
     final dabs = rub();
     final watched = live(dabs, base);
@@ -245,26 +236,6 @@ void main() {
       reason: 'premise: the stroke smeared the edge',
     );
     expectSameArtwork(rederived(dabs, base), watched, 're-derived');
-
-    final clipped = clipStrokeCommitToSelection(
-      BrushStrokeCommitData(sourceDabs: dabs),
-      clip: SelectionClip.outline(CanvasSelectionRegion.shape(
-        CanvasSelectionShape.rect(left: 0, top: 0, right: 192, bottom: 128),
-      )),
-      surface: base,
-    )!;
-    expectSameArtwork(
-      brushCommitResultForBrushDabSequenceOnBitmapSurface(
-        surface: base,
-        sequence: BrushDabSequence(dabs),
-        layerId: layerId,
-        frameId: frameId,
-        promotedBase: clipped.promotedBase,
-        promotedTiles: clipped.promotedTiles,
-      ).afterSurface,
-      watched,
-      'through a selection that covers it',
-    );
   });
 
   test('the screen shows, tile for tile, what pen-up lands', () {
@@ -670,38 +641,6 @@ void main() {
         }
       }
     }
-  });
-
-  test('the selection keeps what lies outside it', () {
-    final base = edgeCel();
-    final selection = CanvasSelectionRegion.shape(
-      CanvasSelectionShape.rect(left: 0, top: 0, right: 100, bottom: 128),
-    );
-    final blurred = live(rub(), base, selection: selection);
-    var movedInside = 0;
-    for (var y = 0; y < canvasSize.height; y += 1) {
-      for (var x = 0; x < canvasSize.width; x += 1) {
-        final moved = pixelAt(blurred, x, y) != pixelAt(base, x, y);
-        if (x >= 100) {
-          expect(moved, isFalse, reason: '($x, $y) lies outside');
-        } else if (moved) {
-          movedInside += 1;
-        }
-      }
-    }
-    expect(movedInside, greaterThan(100));
-    expectSameArtwork(
-      clipStrokeCommitToSelection(
-            BrushStrokeCommitData(sourceDabs: rub()),
-            clip: SelectionClip.outline(selection),
-            surface: base,
-          )!.promotedTiles!.fold(
-            base,
-            (surface, placed) => surface.putTiles([placed]),
-          ),
-      blurred,
-      'the selection cut re-derived',
-    );
   });
 
   test('the tool\'s opacity caps how far the picture moves', () {

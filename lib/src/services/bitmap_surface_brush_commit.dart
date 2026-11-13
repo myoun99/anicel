@@ -27,7 +27,6 @@ import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
 import 'selection_clip.dart';
-import 'selection_fold.dart';
 
 class BrushSurfaceMaterialization {
   const BrushSurfaceMaterialization({
@@ -66,8 +65,8 @@ bool _landsOnEngine(BitmapSurface surface) =>
 /// board `a-selection-mask-is-built-on-the-cpu-at-every-move`): [selection]
 /// cuts each stamp of [sequence] where it lands — on the engine's grid the
 /// stamp's own picture laid under [SelectionClip.maskOnEngine], the mask a
-/// stroke under the same clip lands under; off it folded into the picture
-/// first ([clipStampDabToSelection]). ↩️Every road cut its stamps on the CPU
+/// stroke under the same clip lands under; off it refused
+/// ([cutOnTheEngineOnly]). ↩️Every road cut its stamps on the CPU
 /// before they came here — a mask and a copy of the picture at each.
 ///
 /// ⛔Stamps only: a stroke of brush dabs under a selection lands by its
@@ -88,6 +87,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   if (_landsOnEngine(surface)) {
     return _materializedOnEngine(surface, sequence, selection);
   }
+  cutOnTheEngineOnly(selection);
   // Strokes clip at the PASTEBOARD (as far past the canvas as the
   // project's size reaches, the canvas itself when it is off — I-109),
   // not the canvas — drawing off the stage is the point.
@@ -107,20 +107,16 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // — the generic tip machinery below stays byte-untouched (its parity
     // pins never see stamps; live == commit still holds by construction
     // because stamps only enter through programmatic commits).
-    if (dab.stamp != null) {
-      final cut = selection == null
-          ? dab
-          : clipStampDabToSelection(dab, clip: selection);
-      if (cut != null) {
-        _blendStampDab(
-          dab: cut,
-          stamp: cut.stamp!,
-          wall: wall,
-          tileSize: tileSize,
-          scratch: scratch,
-          changedCoords: changedCoords,
-        );
-      }
+    final stamp = dab.stamp;
+    if (stamp != null) {
+      _blendStampDab(
+        dab: dab,
+        stamp: stamp,
+        wall: wall,
+        tileSize: tileSize,
+        scratch: scratch,
+        changedCoords: changedCoords,
+      );
       continue;
     }
 
@@ -478,8 +474,8 @@ void _blendStampDab({
 /// byte-identical to the old inline loop.
 ///
 /// [selection] cuts it as [materializeBrushDabSequenceOnBitmapSurface] cuts
-/// a stamp: under the clip's mask on the engine's grid, folded into the
-/// buffer off it ([clipStrokePixelsToSelection]).
+/// a stamp: under the clip's mask on the engine's grid, refused off it
+/// ([cutOnTheEngineOnly]).
 BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   required BitmapSurface surface,
   required Uint8List strokePixels,
@@ -517,16 +513,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
       dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
     );
   }
-  final pixels = selection == null
-      ? strokePixels
-      : clipStrokePixelsToSelection(
-          pixels: strokePixels,
-          bounds: bounds,
-          clip: selection,
-        )?.pixels;
-  if (pixels == null) {
-    return unchanged;
-  }
+  cutOnTheEngineOnly(selection);
   BrushDab boundsStampDab({
     required String id,
     required Uint8List rgba,
@@ -558,7 +545,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
     // set: the two passes mark each.
     final result = blendStrokeRegionPixels(
       dst: bitmapSurfaceRegionPixels(surface, bounds),
-      src: pixels,
+      src: strokePixels,
       mode: blendMode,
       pixelCount: width * height,
     );
@@ -582,7 +569,7 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
     sequence: BrushDabSequence([
       boundsStampDab(
         id: 'stroke-composite',
-        rgba: pixels,
+        rgba: strokePixels,
         erase: erase || blendMode == BrushBlendMode.erase,
       ),
     ]),

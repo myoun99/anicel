@@ -103,17 +103,18 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     // re-derived from its dabs, a stamp that blends), materialize the dabs
     // onto an EMPTY surface first — same kernels, same pixels.
     if (strokePixels == null || strokeBounds == null) {
-      // 🚨★★★**THE SAME RASTERIZER THE CLIP PATH USES, and it had to be:
+      // 🚨★★★**THE SAME RASTERIZER THE CLIP PATH USED, and it had to be:
       // this was a second copy of it that had lost the one rule that
-      // matters.** Both build the stroke's coverage on an EMPTY surface,
+      // matters.** Both built the stroke's coverage on an EMPTY surface,
       // and there `dab.erase` erases nothing from nothing — the copy here
       // kept the flag on, so an erase stroke arriving without live pixels
       // rasterized to an all-zero buffer and committed as a no-op. The
       // sibling flips it off and says why (「what is wanted here is the
       // stroke's COVERAGE, which the commit then re-applies as one erase
       // stamp」). Two implementations of one algorithm, and the one
-      // without the law was this one.
-      final raster = rasterizeStrokeForClipping(
+      // without the law was this one. (The clip path went 2026-11-14: a
+      // selection cuts on the engine, where the stroke lands.)
+      final raster = rasterizeStrokeCoverage(
         dabs: sequence.dabs,
         canvasSize: surface.canvasSize,
         tileSize: surface.tileSize,
@@ -139,7 +140,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     );
     if (coverage != null) {
       strokePixels = Uint8List.fromList(strokePixels);
-      applySelectionMaskToStrokeAlpha(
+      applyCoverageToStrokeAlpha(
         pixels: strokePixels,
         mask: coverage,
         pixelCount: coverage.length,

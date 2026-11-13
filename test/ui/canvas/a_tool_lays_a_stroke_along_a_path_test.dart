@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_correction.dart';
@@ -841,7 +842,7 @@ void main() {
             options: const FloodFillOptions(expandPx: 0, antiAlias: false),
           ),
           blend: BrushBlendMode.color,
-          selection: null,
+          selection: () => null,
         );
       }
 
@@ -901,7 +902,7 @@ void main() {
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
         ),
         blend: BrushBlendMode.color,
-        selection: null,
+        selection: () => null,
       );
       expect(area.pieces(), hasLength(2), reason: 'fixture: one tile, two');
 
@@ -917,12 +918,13 @@ void main() {
 
     // brush-fidelity-Q11: the dabs a shape lands with are what the commit
     // re-derives it from, and what 확정 lays again. Cut already, the
-    // selection's ramp would be taken twice.
+    // selection's ramp would be taken twice. On the engine's grid, where a
+    // selection cuts (`cutOnTheEngineOnly`).
     testWidgets('an area is cut through its selection once: the tiles are '
         'cut, the dabs it lands with stay whole', (tester) async {
       final big = BitmapSurface(
         canvasSize: const CanvasSize(width: 256, height: 256),
-        tileSize: 256,
+        tileSize: gpuTileSide,
       );
       final host = _Host();
       final overlay = ActiveStrokeOverlayModel();
@@ -930,6 +932,13 @@ void main() {
       await _pump(tester, host, _brush(), overlay: overlay, cel: big);
       final region = CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 10, top: 40, right: 60, bottom: 90),
+      );
+      final selection = SelectionClip.of(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 0, top: 50, right: 256, bottom: 80),
+        ),
+        wall: big.pasteboard,
+        options: const SelectionMaskOptions(featherPx: 4),
       );
       final area = (
         shape: region,
@@ -939,13 +948,7 @@ void main() {
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
         ),
         blend: BrushBlendMode.color,
-        selection: SelectionClip.of(
-          CanvasSelectionRegion.shape(
-            CanvasSelectionShape.rect(left: 0, top: 50, right: 256, bottom: 80),
-          ),
-          wall: big.pasteboard,
-          options: const SelectionMaskOptions(featherPx: 4),
-        ),
+        selection: () => selection,
       );
 
       host.show!.show(area);
@@ -953,8 +956,10 @@ void main() {
       expect(host.show!.land(area), isTrue);
 
       final data = host.data.single;
-      final landed = data.promotedTiles!.single.tile.pixels;
-      int alphaAt(int x, int y) => landed[(y * 256 + x) * 4 + 3];
+      final landed = data.promotedTiles!.single.tile;
+      int alphaAt(int x, int y) => landed.readPixels(
+        (_, pixels) => pixels[(y * gpuTileSide + x) * 4 + 3],
+      );
       expect(alphaAt(30, 45), 0, reason: 'above the selection');
       expect(alphaAt(30, 50), greaterThan(0));
       expect(alphaAt(30, 50), lessThan(255), reason: 'the selection\'s ramp');

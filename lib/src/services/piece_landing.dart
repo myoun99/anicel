@@ -6,7 +6,6 @@ import '../models/pasteboard_bounds.dart';
 import 'brush_frame_editing_coordinator.dart';
 import 'cache_invalidation_executor.dart';
 import 'canvas_selection.dart' show SelectionMaskOptions;
-import 'selection_fold.dart' show clipStampDabToSelection;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_region.dart' show regionInArtworkSpace;
 import 'command.dart';
@@ -69,13 +68,22 @@ class PieceStamp {
   final String description;
 }
 
-/// One cel's share of a landing: the dab as it landed there — through the
-/// selection, if there is one — and the step that lands it.
-typedef PieceLanding = ({BrushDab dab, Command landing});
+/// One cel's share of a landing: the dab as it lands there, the selection
+/// it lands through there, if there is one, and the step that lands it.
+typedef PieceLanding = ({
+  BrushDab dab,
+  SelectionClip? within,
+  Command landing,
+});
 
 /// One cel's answer from the door, before anything lands: the key that
-/// answered for the cel, and the dab as it lands there ([pieceDabs]).
-typedef PieceDab = ({BrushFrameKey key, BrushDab dab});
+/// answered for the cel, the dab as it lands there and the selection it
+/// lands through there ([pieceDabs]).
+typedef PieceDab = ({
+  BrushFrameKey key,
+  BrushDab dab,
+  SelectionClip? within,
+});
 
 /// 🚨★★★**THE PIECE DOOR** — a held picture, landed on every cel a press
 /// names. 픽셀 위 / 아래 붙여넣기 (I-55), and the cut tool's stamp by all three
@@ -127,11 +135,13 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
     for (final MapEntry(key: cel, value: answer) in answers.entries)
       cel: (
         dab: answer.dab,
+        within: answer.within,
         landing: BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
           frameKey: answer.key,
           preLiftSurface: coordinator.currentSurfaceOf(answer.key),
           landingDabs: [answer.dab],
+          landingSelection: answer.within,
           blendMode: stamp.blend,
           description: stamp.description,
           // Without a sink the canvas keeps the old composite until you
@@ -191,22 +201,28 @@ Map<BrushFrameKey, PieceDab> pieceDabs({
     }
     // 🚨ERASE rides a flag on the DAB ([BrushDab.underBlend] says why);
     // every road a piece lands by passes this line.
-    answered[cel] = (key: key, dab: inside.underBlend(stamp.blend));
+    answered[cel] = (
+      key: key,
+      dab: inside.dab.underBlend(stamp.blend),
+      within: inside.within,
+    );
   }
   return answered;
 }
 
-/// The selection as each row shows it, and a dab cut through it once per
-/// distinct outline.
+/// The selection as each row shows it: a clip per distinct outline, which
+/// the engine cuts the piece by where it lands
+/// ([BrushLiftMoveHistoryCommand.landingSelection]).
 ///
-/// A range is mostly one row, and rows are mostly unplaced: without the
-/// three memos a feathered marquee over twenty-four cels is rasterized
-/// twenty-four times and the piece copied as often.
+/// A range is mostly one row, and rows are mostly unplaced: every plain row
+/// shares one clip, so a feathered marquee over twenty-four cels has its
+/// mask made once ([SelectionClip.maskOnEngine]). ↩️Till 2026-11-14 the
+/// piece was cut here on the CPU, once per distinct outline
+/// (`clipStampDabToSelection`) — a mask and a copy of the piece each.
 ///
 /// ⛔One per asking of the door, dropped with it. ↩️The stamp's ghost kept
 /// one across a hover (brush-fidelity-Q9): it read the marquee at the
-/// softness and the placements of the hover's first asking, and held every
-/// piece it ever cut — a new dab per move.
+/// softness and the placements of the hover's first asking.
 class _SelectionOnTheRows {
   _SelectionOnTheRows(this._ground, this._wall);
 
@@ -216,22 +232,22 @@ class _SelectionOnTheRows {
   /// A row's placement is the row's, whichever of its cels asks.
   final _ofRow = <LayerId, SelectionClip?>{};
 
-  /// An unposed row gets the selection back as the same object, so every
-  /// plain row shares one clip.
-  final _ofOutline = Map<CanvasSelectionRegion, SelectionClip>.identity();
-
-  final _cuts = Map<BrushDab, Map<SelectionClip, BrushDab?>>.identity();
-
-  /// [dab] through the selection as the row at [placement] shows it — [dab]
-  /// itself with nothing selected, null when nothing of it survives.
-  BrushDab? cut(
+  /// [dab] and the selection it lands through as the row at [placement]
+  /// shows it — no selection with nothing selected; null where the
+  /// selection reaches none of it ([SelectionClip.mayCover]).
+  ///
+  /// ⚠️Null no longer says that the selection leaves nothing of [dab]'s ink
+  /// — only that it reaches none of its pixels: a piece whose ink all lies
+  /// outside a selection its box meets lands nothing, and its landing
+  /// changes no tile.
+  ({BrushDab dab, SelectionClip? within})? cut(
     BrushDab dab, {
     required LayerId row,
     required LayerPlacement? placement,
   }) {
     final selection = _ground.selection;
     if (selection == null) {
-      return dab;
+      return (dab: dab, within: null);
     }
     final clip = _ofRow.putIfAbsent(row, () {
       // Drawn on the canvas, read in the row's own artwork: a posed row
@@ -242,20 +258,11 @@ class _SelectionOnTheRows {
       );
       return onTheRow == null
           ? null
-          : _ofOutline.putIfAbsent(
-              onTheRow,
-              () => SelectionClip.of(
-                onTheRow,
-                wall: _wall,
-                options: _ground.options,
-              ),
-            );
+          : SelectionClip.of(onTheRow, wall: _wall, options: _ground.options);
     });
-    if (clip == null) {
+    if (clip == null || !clip.mayCover(dab.stamp!.landingRect(dab.center))) {
       return null;
     }
-    return _cuts
-        .putIfAbsent(dab, () => {})
-        .putIfAbsent(clip, () => clipStampDabToSelection(dab, clip: clip));
+    return (dab: dab, within: clip);
   }
 }

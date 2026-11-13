@@ -1,6 +1,12 @@
+// The first stroke on the engine compiles the executor and the stroke's
+// kernels: 40 s on a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -27,6 +33,7 @@ import 'package:anicel/src/services/selection_clip.dart';
 /// ceiling has to scale the ACCUMULATED stroke, once — which is what the
 /// selection mask already does, so opacity travels as a mask with no shape.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const layerId = LayerId('layer-a');
   const frameId = FrameId('frame-a');
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -174,43 +181,8 @@ void main() {
       }
     });
 
-    test('a selection and the ceiling BOTH survive', () {
-      final selection = Uint8List(4)..setAll(0, [0, 128, 200, 255]);
-      final folded = strokeCoverageMask(
-        selection: selection,
-        pixelCount: 4,
-        opacity: 0.5,
-      )!;
-
-      expect(folded[0], 0, reason: 'outside the selection stays outside');
-      // mul255(128, 128) = 64, mul255(200, 128) = 100, mul255(255, 128) = 128
-      expect(folded[1], 64);
-      expect(folded[2], 100);
-      expect(folded[3], 128, reason: 'fully selected is capped by the ceiling');
-      expect(
-        selection,
-        Uint8List(4)..setAll(0, [0, 128, 200, 255]),
-        reason: 'the caller keeps its selection — the fold copies',
-      );
-    });
-
-    test('a masked tile at full opacity is the selection mask untouched', () {
-      final selection = Uint8List(3)..setAll(0, [0, 77, 255]);
-      expect(
-        identical(
-          strokeCoverageMask(selection: selection, pixelCount: 3, opacity: 1),
-          selection,
-        ),
-        isTrue,
-        reason:
-            'no ceiling = no work, so the no-opacity path allocates exactly '
-            'what it always did',
-      );
-      expect(
-        strokeCoverageMask(pixelCount: 3, opacity: 1),
-        isNull,
-        reason: 'and with no selection either there is nothing to mask',
-      );
+    test('at full opacity there is nothing to mask', () {
+      expect(strokeCoverageMask(pixelCount: 3, opacity: 1), isNull);
     });
 
     test('with no selection the ceiling still reaches the kernel', () {
@@ -239,11 +211,12 @@ void main() {
       );
     });
 
-    test('a selection still clips while the ceiling caps', () {
+    test('a selection still clips while the ceiling caps — on the engine, '
+        'where a selection cuts', () {
       final rasterizer =
           BrushLiveStrokeRasterizer(
               pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-              tileSize: 8,
+              tileSize: gpuTileSide,
             )
             ..strokeOpacity = 0.5
             ..selectionClip = SelectionClip.outline(CanvasSelectionRegion.shape(
@@ -255,16 +228,25 @@ void main() {
       final live = rasterizer.preBlendedOverlayTile(
         tileX: 0,
         tileY: 0,
-        base: emptySurface(),
+        base: BitmapSurface(canvasSize: canvasSize, tileSize: gpuTileSide),
         mode: BrushBlendMode.color,
         erase: false,
       );
+      rasterizer.clear();
+      final bytes = live?.readPremultiplied(Uint8List.fromList);
+      int alphaAt(int x, int y) => bytes?[(y * gpuTileSide + x) * 4 + 3] ?? 0;
 
       // (2, 2) is outside a selection that ends at x = 2.
       expect(
-        live?.readPremultiplied(Uint8List.fromList)[(2 * 8 + 2) * 4 + 3] ?? 0,
+        alphaAt(2, 2),
         0,
         reason: 'the selection is not softened into a 50% edge by the fold',
+      );
+      expect(alphaAt(1, 2), greaterThan(0), reason: 'inside, it lands');
+      expect(
+        alphaAt(1, 2),
+        lessThanOrEqualTo(128),
+        reason: 'and the ceiling caps it',
       );
     });
   });

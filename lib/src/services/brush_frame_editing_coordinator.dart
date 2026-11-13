@@ -24,6 +24,7 @@ import 'brush_edit_session_cache_operations.dart';
 import 'brush_frame_edit_session_store.dart';
 import 'brush_frame_store.dart';
 import 'cache_invalidation_executor.dart';
+import 'selection_clip.dart';
 
 /// The brush editing spine (R19 P3b): sessions hold the CURRENT surface
 /// only. Undo/redo live at the app level as pre/post SURFACE REFERENCES
@@ -249,6 +250,7 @@ class BrushFrameEditingCoordinator {
     List<BrushDab> dabs, {
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushFrameKey? key,
+    SelectionClip? selection,
   }) {
     if (dabs.isEmpty) {
       throw ArgumentError.value(dabs, 'dabs', 'must not be empty');
@@ -261,6 +263,7 @@ class BrushFrameEditingCoordinator {
       frameId: target.frameId,
       cacheInvalidationSink: _NoopCacheInvalidationSink(),
       blendMode: blendMode,
+      selection: selection,
     );
     if (result.affectedEntry == null) {
       return null;
@@ -282,6 +285,7 @@ class BrushFrameEditingCoordinator {
     double strokeOpacity = 1,
     BitmapSurface? promotedBase,
     List<PlacedTile>? promotedTiles,
+    SelectionClip? selection,
   }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');
@@ -303,6 +307,7 @@ class BrushFrameEditingCoordinator {
         blendMode: blendMode,
         promotedBase: promotedBase,
         promotedTiles: promotedTiles,
+        selection: selection,
       ),
     );
     final committedState = result.sessionState;

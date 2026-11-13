@@ -2867,7 +2867,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// The ghost of [preview] as the area the view lays ([ShapeArea]): the
-  /// door's own answer for the cel on screen ([pieceDabs]), read and cut
+  /// door's own answer for the cel on screen ([pieceDabs]), read
   /// when the view lays it — inside a frame's share, never in the build or
   /// the hover that asked.
   ShapeArea _stampGhostArea(
@@ -2892,6 +2892,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       description: 'Stamp',
     );
     final standing = store.canonicalKeyOf(coordinator.activeFrameKey);
+    // Asked once, when the view lays the ghost — its piece and the
+    // selection the door lands it through on the cel on screen.
+    PieceDab? answered;
+    var asked = false;
+    PieceDab? answer() {
+      if (!asked) {
+        asked = true;
+        answered = pieceDabs(
+          coordinator: coordinator,
+          ground: ground,
+          stamp: stamp,
+          only: standing,
+        )[standing];
+      }
+      return answered;
+    }
+
     return (
       // 🚨EVERYTHING THE GHOST'S BYTES ARE MADE OF — the aim, the cel as it
       // is now, and every fact of the ground the door reads — so whatever
@@ -2912,18 +2929,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ]),
       ),
       pieces: () sync* {
-        final answer = pieceDabs(
-          coordinator: coordinator,
-          ground: ground,
-          stamp: stamp,
-          only: standing,
-        )[standing];
-        if (answer != null) {
+        if (answer() case final answer?) {
           yield answer.dab;
         }
       },
       blend: blend,
-      selection: null,
+      selection: () => answer()?.within,
     );
   }
 
@@ -3102,7 +3113,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
             ),
       blend: blend,
-      selection: _selectionSeat.clipNow(),
+      selection: _selectionSeat.clipNow,
     );
   }
 
@@ -3292,10 +3303,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final standing = coordinator.frameStore.canonicalKeyOf(
       coordinator.activeFrameKey,
     );
+    final record = landed[standing] ?? landed.values.first;
     widget.lastStroke?.hold(
       BrushStrokeCommitData(
-        sourceDabs: [(landed[standing] ?? landed.values.first).dab],
+        sourceDabs: [record.dab],
         blendMode: blend,
+        selection: record.within,
       ),
     );
     setState(() {
@@ -3404,6 +3417,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           strokeOpacity: strokeData.strokeOpacity,
           promotedBase: strokeData.promotedBase,
           promotedTiles: strokeData.promotedTiles,
+          selection: strokeData.selection,
         );
         return;
       }

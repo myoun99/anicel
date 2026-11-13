@@ -102,22 +102,15 @@ class PromotedStrokeTile {
   final int revision;
 }
 
-/// One tile's selection coverage (R28): 1 byte per pixel on the stroke
-/// grid, built once per stroke.
+/// A tile's stroke coverage off the engine's grid — the opacity ceiling
+/// (F-12): 1 byte per pixel on the stroke grid, built once per stroke.
 ///
-/// [allInside] / [allOutside] are the two cases worth special-casing —
-/// a tile deep inside the selection needs no mask at all (and takes the
-/// kernel's byte-identical null path), and one entirely outside needs no
-/// blend at all.
+/// [allOutside]: a ceiling of nothing needs no blend at all. ↩️It held a
+/// selection's coverage too till 2026-11-14 ([cutOnTheEngineOnly]).
 class _MaskTile {
-  _MaskTile({
-    required this.bytes,
-    required this.allInside,
-    required this.allOutside,
-  });
+  _MaskTile({required this.bytes, required this.allOutside});
 
   final Uint8List bytes;
-  final bool allInside;
   final bool allOutside;
 }
 
@@ -240,13 +233,14 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
   /// R28 selection: strokes land only inside this region. Set before the
   /// first dab and never changed mid-stroke — the selection layer is not
-  /// even mounted while a painting tool is active, which is what makes
-  /// the per-tile mask cache below valid for the stroke's whole life.
+  /// even mounted while a painting tool is active.
   ///
   /// The mask reaches the KERNEL (it scales the accumulated stroke's
   /// alpha), so the pre-blended result equals the base wherever the
   /// selection excludes it — which is what lets the overlay keep
-  /// replacing whole coordinates instead of falling back to a clip.
+  /// replacing whole coordinates instead of falling back to a clip. On the
+  /// engine's grid alone ([cutOnTheEngineOnly]): the engine's stroke lands
+  /// under [SelectionClip.maskOnEngine].
   SelectionClip? selectionClip;
 
   /// 🚨★F-12 — the stroke's opacity CEILING, in the same channel and by the
@@ -269,8 +263,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// Folding it in here rather than adding a scalar to the dab kernel is
   /// what kept the kernel's transcriptions parity-pinned for free: none
   /// learnt a new input. Like the region it is set before the first dab and
-  /// never changes mid-stroke, which is what keeps the per-tile cache valid
-  /// for the stroke's whole life.
+  /// never changes mid-stroke, which is what lets one mask serve the
+  /// stroke's whole life.
   double strokeOpacity = 1;
 
   /// I-75: the cel a BLUR stroke rewrites ([BrushBlurPicture]) — set by
@@ -292,16 +286,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _blur = BrushBlurPicture(base: base, wall: pasteboard);
   }
 
-  /// Lazily built stroke coverage per tile (see [_maskTileFor]).
-  final Map<int, _MaskTile> _maskTiles = <int, _MaskTile>{};
-
-  /// The ceiling's own mask when there is no selection to fold it into.
+  /// The ceiling's mask ([_maskTile]).
   ///
-  /// ONE tile for the whole stroke rather than one per coordinate: with no
-  /// selection every tile's coverage is the same constant, so a per-tile
-  /// copy would cost 64KB per touched tile to hold identical bytes.
-  /// Read-only for the stroke's whole life, which is what makes sharing it
-  /// safe.
+  /// ONE tile for the whole stroke rather than one per coordinate: every
+  /// tile's coverage is the same constant, so a per-tile copy would cost
+  /// 64KB per touched tile to hold identical bytes. Read-only for the
+  /// stroke's whole life, which is what makes sharing it safe.
   _MaskTile? _uniformMask;
 
   /// How many times a dab has touched each tile. A RESULT tile
@@ -382,7 +372,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _secondTip = false;
     _tileCoords.clear();
     _tileRevisions.clear();
-    _maskTiles.clear();
     _uniformMask = null;
     _results.clear();
     _blur?.dispose();
@@ -446,16 +435,16 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return _landedOnEngine(coords, base, mode, erase);
     }
     final results = List<PreBlendedOverlayTile?>.filled(coords.length, null);
+    final mask = _maskTile();
+    if (mask != null && mask.allOutside) {
+      // A ceiling of nothing: every result would equal the base, so there
+      // is nothing to show or promote.
+      return results;
+    }
     for (var slot = 0; slot < coords.length; slot += 1) {
       final coord = coords[slot];
       final key = _tileKey(coord.x, coord.y);
       if (!_tileCoords.containsKey(key)) {
-        continue;
-      }
-      final mask = _maskTileFor(key, coord);
-      if (mask != null && mask.allOutside) {
-        // The selection excludes this coordinate completely: the result
-        // would equal the base, so there is nothing to show or promote.
         continue;
       }
       final result = _blendResultTile(
@@ -683,64 +672,23 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     );
   }
 
-  /// The stroke coverage for a tile — the selection folded with the
-  /// opacity ceiling — built once per stroke.
+  /// The stroke's coverage on a tile off the engine's grid — its opacity
+  /// ceiling — built once per stroke; null at full opacity, nothing to
+  /// mask. The ceiling is fixed at pen-down, so one build lasts the stroke.
   ///
-  /// Null = nothing to mask (full opacity and either no selection or a
-  /// tile lying entirely inside it). Neither input can change
-  /// mid-stroke: the selection layer is not even mounted while a painting
-  /// tool is active and the ceiling is fixed at pen-down, so one build per
-  /// tile lasts the stroke.
-  _MaskTile? _maskTileFor(int key, TileCoord coord) {
-    final clip = selectionClip;
-    if (clip == null) {
-      if (strokeOpacityCoverage(strokeOpacity) >= 255) {
-        return null;
-      }
-      return _uniformMask ??= _buildMaskTile(
-        strokeCoverageMask(
-          pixelCount: tileSize * tileSize,
-          opacity: strokeOpacity,
-        )!,
-      );
+  /// ↩️It folded a selection's mask in, a tile at a time, till 2026-11-14:
+  /// a selection cuts on the engine alone ([cutOnTheEngineOnly]).
+  _MaskTile? _maskTile() {
+    final coverage = strokeOpacityCoverage(strokeOpacity);
+    if (coverage >= 255) {
+      return null;
     }
-    final cached = _maskTiles[key];
-    if (cached != null) {
-      return cached.allInside ? null : cached;
-    }
-    final bytes = strokeCoverageMask(
-      selection: clip.maskFor(
-        left: coord.x * tileSize,
-        top: coord.y * tileSize,
-        width: tileSize,
-        height: tileSize,
-      ),
-      pixelCount: tileSize * tileSize,
-      opacity: strokeOpacity,
-    )!;
-    final mask = _buildMaskTile(bytes);
-    _maskTiles[key] = mask;
-    return mask.allInside ? null : mask;
-  }
-
-  _MaskTile _buildMaskTile(Uint8List bytes) {
-    var allInside = true;
-    var allOutside = true;
-    for (final coverage in bytes) {
-      if (coverage != 255) {
-        allInside = false;
-      }
-      if (coverage != 0) {
-        allOutside = false;
-      }
-      if (!allInside && !allOutside) {
-        break;
-      }
-    }
-    return _MaskTile(
-      bytes: bytes,
-      allInside: allInside,
-      allOutside: allOutside,
+    return _uniformMask ??= _MaskTile(
+      bytes: strokeCoverageMask(
+        pixelCount: tileSize * tileSize,
+        opacity: strokeOpacity,
+      )!,
+      allOutside: coverage == 0,
     );
   }
 
@@ -847,14 +795,14 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return _promotedFromEngine(base, mode, erase);
     }
     final promoted = <PromotedStrokeTile>[];
+    final mask = _maskTile();
+    if (mask != null && mask.allOutside) {
+      // A ceiling of nothing: the stroke contributes nothing, so every
+      // committed tile must stay as it is.
+      return promoted;
+    }
     for (final key in _tileCoords.keys.toList()) {
       final coord = _tileCoords[key]!;
-      final mask = _maskTileFor(key, coord);
-      if (mask != null && mask.allOutside) {
-        // The selection excludes this coordinate: the stroke contributes
-        // nothing there, so the committed tile must stay as it is.
-        continue;
-      }
       final result = _blendResultTile(
         key: key,
         tileX: coord.x,
@@ -1077,12 +1025,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return null;
     }
 
+    final selection = selectionClip;
+    if (!_onEngine) {
+      cutOnTheEngineOnly(selection);
+    }
     // A dab the selection cannot reach is never accumulated: the mask
     // would zero every pixel of it, so the tiles it would touch hold
     // exactly what they hold without it. That is what keeps one stroke
     // over a sheet's windows (each hearing it, each confined to its own
     // slice) at the cost of one stroke rather than one per window.
-    final selection = selectionClip;
     final reach = selection == null ? null : dirtyRegionForBrushDab(dab);
     if (selection != null && (reach == null || !selection.mayCover(reach))) {
       return null;

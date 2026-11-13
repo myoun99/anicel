@@ -16,9 +16,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
-import 'package:anicel/src/services/canvas_selection.dart';
-import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/services/selection_clip.dart';
 
 /// R27 #4: the live overlay's PRE-BLEND must be byte-identical to the
 /// pen-up commit — for EVERY brush blend mode, erase included. This is the
@@ -128,11 +125,12 @@ void main() {
     }
   }
 
-  /// R28: the selection mask must mean the same thing wherever a stroke is
-  /// confined — the rasterizer scales the stroke's alpha by its tile's
-  /// mask, and that has to agree byte for byte with the blend the commit
-  /// runs, or the live display and the commit would drift exactly at the
-  /// selection boundary.
+  /// R28: a mask must mean the same thing wherever a stroke is scaled by
+  /// it — the rasterizer scales the stroke's alpha by its tile's mask, and
+  /// that has to agree byte for byte with the blend the commit runs, or the
+  /// live display and the commit would drift. Off the engine's grid the
+  /// mask is the opacity ceiling's; ↩️it was a selection's till 2026-11-14
+  /// (`cutOnTheEngineOnly`).
   test(
     'MASKED pre-blend: a tile of the rasterizer == the stroke blend by '
     'hand, mask included — every mode, byte for byte',
@@ -157,17 +155,12 @@ void main() {
         tileSize: liveTile,
         tiles: baseTiles,
       );
-      // A selection with a hard edge THROUGH the tile, so the mask is
-      // neither all-in nor all-out (both of which take shortcuts).
-      final region = CanvasSelectionRegion.shape(
-        CanvasSelectionShape.rect(left: 0, top: 0, right: 33, bottom: 128),
-      );
-      final maskBytes = region.maskFor(
-        left: 0,
-        top: 0,
-        width: liveTile,
-        height: liveTile,
-      );
+      // A ceiling neither whole nor nothing (both of which take shortcuts).
+      const ceiling = 0.6;
+      final maskBytes = strokeCoverageMask(
+        pixelCount: liveTile * liveTile,
+        opacity: ceiling,
+      )!;
 
       int mul255Round(int value, int alpha) {
         final product = value * alpha + 128;
@@ -178,7 +171,7 @@ void main() {
         final rasterizer = BrushLiveStrokeRasterizer(
           pasteboard: bigCanvas.pasteboardAt(PasteboardReach.whole),
           tileSize: liveTile,
-        )..selectionClip = SelectionClip.outline(region);
+        )..strokeOpacity = ceiling;
         rasterizer.blendFrom([
           BrushDab(
             center: CanvasPoint(x: 32, y: 32),

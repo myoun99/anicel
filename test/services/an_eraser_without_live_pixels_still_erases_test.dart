@@ -20,7 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// buffer came out all zero and the commit was a no-op.
 ///
 /// ⛔The law was already written one file over, in
-/// `rasterizeStrokeForClipping`: 「Erase dabs rasterize with the flag
+/// `rasterizeStrokeCoverage`: 「Erase dabs rasterize with the flag
 /// flipped OFF: what is wanted here is the stroke's COVERAGE, which the
 /// commit then re-applies as one erase stamp」. There were two
 /// implementations of that one algorithm and only one of them knew it.

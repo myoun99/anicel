@@ -1,6 +1,12 @@
+// The first stroke on the engine compiles the executor and the stroke's
+// kernels: 40 s on a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -10,20 +16,26 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
-import 'package:anicel/src/services/selection_fold.dart';
 
-/// R26 #18: painting clips to the selection. The clip runs on the
-/// stroke's own straight-alpha buffer, which is why one pass covers every
-/// brush blend mode (alpha 0 = "destination survives" for all of them).
+import '../helpers/surface_rgba_in_place.dart';
+
+/// R26 #18: painting clips to the selection — the funnel names the
+/// selection a stroke lands through, and the commit cuts it there, on the
+/// engine (`cutOnTheEngineOnly`). Off the engine's grid what scales a
+/// stroke's alpha is its opacity ceiling, by the one coverage rule.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   CanvasSelectionRegion regionRect(double l, double t, double r, double b) =>
       CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: l, top: t, right: r, bottom: b),
@@ -42,23 +54,6 @@ void main() {
   int alphaAt(Uint8List pixels, DirtyRegion bounds, int x, int y) =>
       pixels[((y - bounds.top) * bounds.width + (x - bounds.left)) * 4 + 3];
 
-  test('pixels inside the region survive, pixels outside are zeroed', () {
-    final bounds = DirtyRegion.fromLTBR(
-      left: 0,
-      top: 0,
-      rightExclusive: 20,
-      bottomExclusive: 20,
-    );
-    final clipped = clipStrokePixelsToSelection(
-      pixels: solidBlock(bounds),
-      bounds: bounds,
-      clip: SelectionClip.outline(regionRect(5, 5, 15, 15)),
-    )!;
-    expect(alphaAt(clipped.pixels, bounds, 10, 10), 255);
-    expect(alphaAt(clipped.pixels, bounds, 2, 2), 0);
-    expect(alphaAt(clipped.pixels, bounds, 17, 17), 0);
-  });
-
   test(
     'colour left behind α0 cannot reach the canvas — the commit is '
     'identical to one whose excluded texels were zeroed outright',
@@ -75,18 +70,22 @@ void main() {
         rightExclusive: 4,
         bottomExclusive: 4,
       );
-      final clipped = clipStrokePixelsToSelection(
-        pixels: solidBlock(bounds),
-        bounds: bounds,
-        clip: SelectionClip.outline(regionRect(2, 2, 4, 4)),
-      )!;
+      final clipped = solidBlock(bounds);
+      applyCoverageToStrokeAlpha(
+        pixels: clipped,
+        mask: Uint8List.fromList([
+          for (var y = 0; y < 4; y += 1)
+            for (var x = 0; x < 4; x += 1) if (x < 2 || y < 2) 0 else 255,
+        ]),
+        pixelCount: 16,
+      );
       expect(
-        clipped.pixels[3],
+        clipped[3],
         0,
-        reason: '(0, 0) is outside the selection: no alpha survives',
+        reason: '(0, 0) has no coverage: no alpha survives',
       );
 
-      final scrubbed = Uint8List.fromList(clipped.pixels);
+      final scrubbed = Uint8List.fromList(clipped);
       for (var i = 0; i < bounds.width * bounds.height; i += 1) {
         if (scrubbed[i * 4 + 3] == 0) {
           scrubbed[i * 4] = 0;
@@ -122,56 +121,14 @@ void main() {
       ).surface;
 
       expect(
-        commit(clipped.pixels).tileAt(TileCoord(x: 0, y: 0))!.pixels,
+        commit(clipped).tileAt(TileCoord(x: 0, y: 0))!.pixels,
         commit(scrubbed).tileAt(TileCoord(x: 0, y: 0))!.pixels,
         reason: 'the colour behind α0 changed nothing',
       );
     },
   );
 
-  test('a stroke entirely outside the selection clips to NOTHING', () {
-    final bounds = DirtyRegion.fromLTBR(
-      left: 0,
-      top: 0,
-      rightExclusive: 4,
-      bottomExclusive: 4,
-    );
-    expect(
-      clipStrokePixelsToSelection(
-        pixels: solidBlock(bounds),
-        bounds: bounds,
-        clip: SelectionClip.outline(regionRect(50, 50, 60, 60)),
-      ),
-      isNull,
-    );
-  });
-
-  test('the composite region clips through the SAME fold (hole stays out)', () {
-    final bounds = DirtyRegion.fromLTBR(
-      left: 0,
-      top: 0,
-      rightExclusive: 20,
-      bottomExclusive: 20,
-    );
-    final region = regionRect(
-      0,
-      0,
-      20,
-      20,
-    ).combinedWith(
-      CanvasSelectionShape.rect(left: 8, top: 8, right: 12, bottom: 12),
-      SelectionCombineMode.subtract,
-    )!;
-    final clipped = clipStrokePixelsToSelection(
-      pixels: solidBlock(bounds),
-      bounds: bounds,
-      clip: SelectionClip.outline(region),
-    )!;
-    expect(alphaAt(clipped.pixels, bounds, 2, 2), 255);
-    expect(alphaAt(clipped.pixels, bounds, 10, 10), 0, reason: 'in the hole');
-  });
-
-  group('rasterizeStrokeForClipping (no live raster available)', () {
+  group('rasterizeStrokeCoverage (no live raster available)', () {
     BrushDab dab(double x, double y, {bool erase = false}) => BrushDab(
       center: CanvasPoint(x: x, y: y),
       color: 0xFF0000FF,
@@ -185,25 +142,19 @@ void main() {
       erase: erase,
     );
 
-    test('rasterizes coverage the clip can then cut', () {
-      final rasterized = rasterizeStrokeForClipping(
+    test('rasterizes the stroke\'s coverage on its own', () {
+      final rasterized = rasterizeStrokeCoverage(
         dabs: [dab(20, 20)],
         canvasSize: const CanvasSize(width: 64, height: 64),
         tileSize: 32,
       )!;
       expect(rasterized.bounds.width, greaterThan(0));
-      final clipped = clipStrokePixelsToSelection(
-        pixels: rasterized.pixels,
-        bounds: rasterized.bounds,
-        clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
-      );
-      // The dab straddles x = 20, so the left half survives the clip.
-      expect(clipped, isNotNull);
+      expect(alphaAt(rasterized.pixels, rasterized.bounds, 20, 20), 255);
     });
 
     test('ERASE dabs rasterize as coverage (the flag is re-applied at the '
         'composite, never inside the buffer)', () {
-      final erased = rasterizeStrokeForClipping(
+      final erased = rasterizeStrokeCoverage(
         dabs: [dab(20, 20, erase: true)],
         canvasSize: const CanvasSize(width: 64, height: 64),
         tileSize: 32,
@@ -219,9 +170,11 @@ void main() {
     });
   });
 
-  group('applySelectionMaskToStrokeAlpha — the ONE selection rule', () {
-    // Every path that confines a stroke to a selection calls this: the
-    // live pre-blend, the commit clip above, and a fill's stamp bytes.
+  group('applyCoverageToStrokeAlpha — the ONE coverage rule', () {
+    // Every path that scales a stroke by its opacity ceiling off the
+    // engine's grid calls this: the live pre-blend and the commit's buffer.
+    // ↩️It was the selection's rule too till 2026-11-14 (a fill's stamp
+    // bytes, the commit clip).
     test('scales alpha by coverage with Skia mul-div-255 rounding', () {
       // The case the old rules only agreed on by accident. "Zero the
       // texel outside" and "scale alpha" are the same thing at coverage
@@ -233,7 +186,7 @@ void main() {
         10, 20, 30, 200,
         10, 20, 30, 0,
       ]);
-      applySelectionMaskToStrokeAlpha(
+      applyCoverageToStrokeAlpha(
         pixels: pixels,
         mask: Uint8List.fromList([255, 128, 0, 128]),
         pixelCount: 4,
@@ -259,7 +212,7 @@ void main() {
     test('a full-coverage mask is a no-op, byte for byte', () {
       final pixels = Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]);
       final before = Uint8List.fromList(pixels);
-      applySelectionMaskToStrokeAlpha(
+      applyCoverageToStrokeAlpha(
         pixels: pixels,
         mask: Uint8List.fromList([255, 255]),
         pixelCount: 2,
@@ -300,21 +253,27 @@ void main() {
     );
 
     test('promoted tiles pass straight through on the surface they were '
-        'blended against — the kernel already masked them', () {
+        'blended against — the kernel already masked them — and the '
+        'stroke carries its selection all the same', () {
       final surface = BitmapSurface(canvasSize: canvas, tileSize: 32);
       final data = promotedOn(surface, [dab(10, 10)]);
+      final clip = SelectionClip.outline(regionRect(0, 0, 20, 64));
+      final passed = clipStrokeCommitToSelection(
+        data,
+        clip: clip,
+        surface: surface,
+      )!;
+      expect(passed.promotedTiles, same(data.promotedTiles));
+      expect(passed.promotedBase, same(surface));
       expect(
-        clipStrokeCommitToSelection(
-          data,
-          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
-          surface: surface,
-        ),
-        same(data),
+        passed.selection,
+        same(clip),
+        reason: 'a redo onto a cel that moved re-derives it from its dabs',
       );
       expect(
         clipStrokeCommitToSelection(
           promotedOn(surface, [dab(10, 10)], empty: true),
-          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
+          clip: clip,
           surface: surface,
         ),
         isNull,
@@ -322,16 +281,21 @@ void main() {
       );
     });
 
-    test('once something has landed on the cel in between, the dabs are '
-        'clipped here — the whole stroke never lands', () {
-      final base = BitmapSurface(canvasSize: canvas, tileSize: 32);
-      final landedSince = BitmapSurface(canvasSize: canvas, tileSize: 32);
-      final landed = clipStrokeCommitToSelection(
+    test('once something has landed on the cel in between, the commit cuts '
+        'the stroke where it lands — the whole stroke never lands', () {
+      // The selection cuts on the engine's grid (`cutOnTheEngineOnly`).
+      final base = BitmapSurface(canvasSize: canvas, tileSize: gpuTileSide);
+      final landedSince = BitmapSurface(
+        canvasSize: canvas,
+        tileSize: gpuTileSide,
+      );
+      final clip = SelectionClip.outline(regionRect(0, 0, 20, 64));
+      final funneled = clipStrokeCommitToSelection(
         promotedOn(base, [dab(10, 10), dab(18, 10), dab(40, 10)]),
-        clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
+        clip: clip,
         surface: landedSince,
       )!;
-      expect(landed.promotedTiles, isNull);
+      expect(funneled.selection, same(clip));
       expect(
         clipStrokeCommitToSelection(
           BrushStrokeCommitData(
@@ -340,32 +304,31 @@ void main() {
             promotedTiles: const [],
             end: CanvasPoint(x: 10, y: 10),
           ),
-          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
+          clip: clip,
           surface: landedSince,
         )!.end,
         CanvasPoint(x: 10, y: 10),
-        reason: 'clipped, it is the same stroke, and ended where it did '
+        reason: 'funneled, it is the same stroke, and ended where it did '
             '(I-119)',
       );
-      final pixels = landed.strokePixels!;
-      final bounds = landed.strokeBounds!;
-      expect(alphaAt(pixels, bounds, 10, 10), 255);
-      expect(alphaAt(pixels, bounds, 19, 10), 255);
-      expect(
-        alphaAt(pixels, bounds, 20, 10),
-        0,
-        reason: 'the dab straddling the edge is cut at it',
-      );
-      expect(
-        bounds.rightExclusive,
-        lessThanOrEqualTo(21),
-        reason: 'the dab at x=40 cannot reach the selection, so it was '
-            'never rasterized',
-      );
+      final landed = brushCommitResultForBrushDabSequenceOnBitmapSurface(
+        surface: landedSince,
+        sequence: BrushDabSequence(funneled.sourceDabs),
+        layerId: const LayerId('row'),
+        frameId: const FrameId('cel'),
+        promotedBase: funneled.promotedBase,
+        promotedTiles: funneled.promotedTiles,
+        selection: funneled.selection,
+      ).afterSurface;
+      int alpha(int x, int y) => (surfaceRgbaInPlace(landed, x, y) ?? 0) & 255;
+      expect(alpha(10, 10), 255);
+      expect(alpha(19, 10), 255);
+      expect(alpha(20, 10), 0, reason: 'the dab straddling the edge is cut at it');
+      expect(alpha(40, 10), 0, reason: 'the dab at x=40 lies outside it');
       expect(
         clipStrokeCommitToSelection(
           promotedOn(base, [dab(40, 10)]),
-          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
+          clip: clip,
           surface: landedSince,
         ),
         isNull,
