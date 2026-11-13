@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/crates_for_host.dart';
+import '../helpers/project_scratch_folder.dart';
 import '../helpers/temp_dir.dart';
 
 /// 관제 2026-11-07 (native-memory-safety): refusal 8 named every crate the
@@ -169,7 +170,7 @@ void main() {
     test('the copies are the vendor folder\'s, by their manifests\' package',
         () {
       final workspace = Directory.systemTemp.createTempSync('copies');
-      addTearDown(() => deleteTempQuietly(workspace));
+      deleteAfterSessionEnds(workspace);
       File('${workspace.path}/vendor/wgpu-hal/Cargo.toml')
         ..createSync(recursive: true)
         ..writeAsStringSync(
