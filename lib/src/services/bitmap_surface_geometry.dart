@@ -227,7 +227,7 @@ BitmapSurface wallCrossingsOf(BitmapSurface surface, BitmapSurface behind) {
 /// [surface] behind the wall of [reach] when the wall takes anything of its
 /// picture ([_BehindWall.took]) — null when every pixel stays as it was.
 /// What a kept cel's rewrite asks, on the main isolate and on a worker alike
-/// (`cutCelInWorker`), and a hot cel's move of the wall.
+/// (`remakeKeptCelInWorker`), and a hot cel's move of the wall.
 BitmapSurface? cutBehindReach(BitmapSurface surface, PasteboardReach reach) {
   final (:behind, :took) = _behindReach(surface, reach);
   return took ? behind : null;

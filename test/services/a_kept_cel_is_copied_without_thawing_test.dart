@@ -19,9 +19,11 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/scratch_file.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/files_written_under.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// 🗣️Card `store-copies-a-kept-cel-without-thawing` (유저 2026-11-04,
@@ -83,8 +85,8 @@ void main() {
     expect(looked(store, 'a'), pixelsOf(inked(1)));
   });
 
-  test('🎯a parked cel is parked again under the copy\'s name: the copy '
-      'keeps its picture once the source thaws and lets its file go', () async {
+  test('🎯a parked cel\'s copy keeps its picture once the source thaws and '
+      'lets go of what it kept', () async {
     final store = BrushFrameStore();
     parkCold(store, {key('a'): inked(2)});
 
@@ -373,5 +375,122 @@ void main() {
         key('b'): pixelsOf(inked(6)),
       });
     });
+  });
+
+  // 🗣️Card a-kept-cel-copied-to-another-canvas-size-is-rewritten-on-the-ui-
+  // thread (저장 11-14): a copy at its source's size keeps the very ref, a
+  // parked file as a stretch of the saved file — the file read and written
+  // again on the UI thread was 3 ms a cel of small ones.
+  group('a parked copy at its source\'s size keeps the very file', () {
+    /// Every file in the run's room — once what was let go is gone.
+    Future<Set<String>> roomFiles() async {
+      await ScratchFile.lettingGo;
+      return filesWrittenUnder(
+        Directory(SessionScratch.stagedFolder()),
+      ).toSet();
+    }
+
+    test('🎯nothing is written, and its bytes are counted once', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+      final before = await roomFiles();
+      final bytes = store.coldBakedBytes;
+
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+
+      expect(await roomFiles(), before);
+      expect(store.coldBakedBytes, bytes);
+      expect(store.isCelCold(key('b')), isTrue);
+    });
+
+    test('🎯the file goes with the last cel that keeps it', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+      final before = await roomFiles();
+      final bytes = store.coldBakedBytes;
+
+      store.bakedSurfaceOrNull(key('a'));
+
+      expect(await roomFiles(), before, reason: 'the copy keeps it');
+      expect(store.coldBakedBytes, bytes);
+
+      store.bakedSurfaceOrNull(key('b'));
+
+      expect(before.difference(await roomFiles()), hasLength(1));
+      expect(store.coldBakedBytes, 0);
+    });
+
+    test('a pass that rewrites the source leaves the copy the file it '
+        'keeps', () async {
+      final store = BrushFrameStore();
+      const elsewhere = BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('d'),
+        layerId: LayerId('l'),
+        frameId: FrameId('b'),
+      );
+      parkCold(store, {key('a'): inked(2)});
+      store.copyCel(key('a'), elsewhere, canvasSize: size);
+      const bigger = CanvasSize(
+        width: 4 * defaultCelTileSize,
+        height: 4 * defaultCelTileSize,
+      );
+
+      store.resizeBakedSurfaces(bigger, cutId: const CutId('c'));
+      await ScratchFile.lettingGo;
+
+      expect(
+        pixelsOf(store.bakedSurfaceOrNull(elsewhere, read: CelRead.look)),
+        pixelsOf(inked(2)),
+      );
+      expect(
+        store.bakedSurfaceOrNull(key('a'), read: CelRead.look)!.canvasSize,
+        bigger,
+        reason: 'fixture: the source was rewritten',
+      );
+    });
+
+    test('a copy onto the key it is copied from keeps its picture', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+
+      store.copyCel(key('a'), key('a'), canvasSize: size);
+      await ScratchFile.lettingGo;
+
+      expect(store.isCelCold(key('a')), isTrue);
+      expect(looked(store, 'a'), pixelsOf(inked(2)));
+    });
+  });
+
+  test('a room that will not take a copy laid to another size leaves the '
+      'copy hot', () {
+    final store = BrushFrameStore();
+    keepInAFile(store, {key('a'): inked(4)});
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
+    // A FILE where the room's folder has to go (`a_cooled_cel_parks_on_disk_
+    // test`).
+    final room = Directory(SessionScratch.stagedFolder());
+    if (room.existsSync()) {
+      room.deleteSync(recursive: true);
+    }
+    final blocker = File(SessionScratch.stagedFolder())
+      ..createSync(recursive: true)
+      ..writeAsBytesSync(const [0]);
+    addTearDown(() {
+      if (blocker.existsSync()) {
+        blocker.deleteSync();
+      }
+    });
+
+    expect(store.copyCel(key('a'), key('b'), canvasSize: bigger), bigger);
+
+    final copy = store.hotBakedSurfaceOrNull(key('b'))!;
+    expect(copy.canvasSize, bigger);
+    expect(pixelsOf(copy), pixelsOf(inked(4)));
   });
 }

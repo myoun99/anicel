@@ -67,7 +67,7 @@ class ScratchCelFiles {
   ///
   /// ⚠️Asked on the isolate that owns the store, as [newNamespace] is: a
   /// worker counts from nothing, so its names would be that isolate's
-  /// again. A worker that parks is handed its path (`cutCelInWorker`).
+  /// again. A worker that parks is handed its path (`remakeKeptCelInWorker`).
   static String newPath(String namespace, String entryName) =>
       '${SessionScratch.stagedFolder()}/$namespace-$entryName.${_parks++}.cel';
 

@@ -7,6 +7,7 @@ import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../bitmap_surface_geometry.dart';
 import 'brush_drawing_binary_codec.dart';
@@ -156,7 +157,8 @@ Future<BitmapSurface> moveHotCelInWorker(
 /// ([wallCrossingsOf]), and the rest decided here as a cut here decides it
 /// ([surfaceBehindReach]) — so a tile it keeps whole is still the very
 /// tile, and the undo shares it. Null where the wall cuts nothing of it.
-/// The cut [cutCelInWorker] makes of a kept cel, for one already thawed.
+/// The cut a move of the wall makes of a kept cel ([remakeKeptCelInWorker]
+/// with [cutBehind]), for one already thawed.
 ///
 /// 🗣️[F-432] (유저 2026-10-21: 「이런 시간 걸리는 로직은 규칙으로서 공용
 /// 로딩창 표시해야함」): a pasteboard's step undone and done again lays back
@@ -216,61 +218,115 @@ _remadeAndLaid(
         );
 };
 
-/// [blob]'s picture as [wall] moves `from` the wall its store keeps it at
-/// `to` another ([cutBehindReach]), worked out on a worker: null when the
-/// move cuts nothing of it, else the cut picture as [key]'s blob, parked at
-/// [parkAt] in the room, and the picture as it was — behind the wall it
-/// moves from ([_behindReach]) — laid into tile blocks for the main
-/// isolate to adopt standing there ([laidCelSurface]): what the undo keeps,
-/// and lays back behind that wall.
+/// What a kept cel's picture is made into — null where it is left as it is
+/// ([remakeKeptCel]). It crosses to a worker with the picture's bytes
+/// ([remakeKeptCelInWorker]), so each is made by a function of this file
+/// and holds only what it names ([cutBehind], [laidOn]).
+typedef KeptCelRemake = BitmapSurface? Function(BitmapSurface picture);
+
+/// The cut a move of the wall to [to] makes of a picture ([cutBehindReach]).
+KeptCelRemake cutBehind(PasteboardReach to) =>
+    (picture) => cutBehindReach(picture, to);
+
+/// A picture laid on a canvas of [size] — top-left anchored, as a resize
+/// lays it ([resizeBitmapSurfaceCanvas]) — behind the wall of [reach].
+KeptCelRemake laidOn(CanvasSize size, {required PasteboardReach reach}) =>
+    (picture) =>
+        resizeBitmapSurfaceCanvas(surfaceBehindReach(picture, reach), size);
+
+/// [blob]'s picture made anew by [remake] as [key]'s blob, parked at
+/// [parkAt] in the room — null where [remake] leaves it as it is, and a
+/// [path] of null where the room would not take the bytes. Where
+/// [wasBehind] names a wall, the picture as it [was] comes too, behind
+/// that wall ([_behindReach]) and laid into tile blocks for the main
+/// isolate to adopt standing there ([laidCelSurface]): what an undo keeps.
 ///
-/// ★The decode, the cut, the encode and the park a move of the wall makes
-/// of a kept cel on the main isolate (`BrushFrameStore._rewriteHere`),
-/// made here instead — the bytes cross as [layCelInWorker]'s do. [parkAt]
-/// is a path resolved there: the room's name means nothing on a worker
-/// (`SessionScratch.ensureThisRunsFolder`).
-///
-/// Throws when the room will not take the bytes: nothing was worked out.
-Future<({AnicelCelBlob blob, String path, AnicelLaidCel was})?>
-cutCelInWorker(
+/// 🚨★★★**ONE ALGORITHM, WHEREVER IT RUNS.** The decode, the remake, the
+/// encode and the park were written out three times — on a worker for a
+/// move of the wall, on the UI thread for a kept cel the worker had not
+/// worked out (`BrushFrameStore._rewriteHere`), and once more for a copy
+/// onto a canvas of another size (`BrushFrameStore.copyCel`). 🗣️Card
+/// `a-kept-cel-copied-to-another-canvas-size-is-rewritten-on-the-ui-thread`
+/// (관제 11-14, from the same law as the store's one rewrite loop): they
+/// differ only in where they run, so the three call this.
+RemadeKeptCel? remakeKeptCel(
   BrushFrameKey key,
   AnicelCelBlob blob,
-  ({PasteboardReach from, PasteboardReach to}) wall, {
+  KeptCelRemake remake, {
   required String parkAt,
+  PasteboardReach? wasBehind,
+}) => blob.decoded((entry) {
+  final made = remake(entry.toSurface());
+  if (made == null) {
+    return null;
+  }
+  // ⛔A worker has no engine — the app's one is the main isolate's
+  // (`appGpuEngine`, a static) — so what it decoded it writes from the
+  // bytes it decoded; and on the main isolate a picture decoded here holds
+  // no tile of the engine's either. ⏳Till a tile's bytes are the engine's
+  // alone (flip lane ⓔ), when a worker's cut works on the stream's tiles.
+  final kept = AnicelCelBlob.ofSurface(key, made, bytesOf: readTilesInPlace);
+  final path = ScratchFile.write(parkAt, kept.bytes);
+  // ⚠️Laid only once the bytes are parked: nothing else knows the blocks
+  // exist ([layCelEntry]'s own rule), so a refusal would leave them behind.
+  if (path == null || wasBehind == null) {
+    return (blob: kept, path: path, was: null);
+  }
+  return (
+    blob: kept,
+    path: path,
+    was: layCelEntry(_behindReach(entry, wasBehind)),
+  );
+});
+
+/// A kept cel remade ([remakeKeptCel]).
+typedef RemadeKeptCel = ({
+  AnicelCelBlob blob,
+  String? path,
+  AnicelLaidCel? was,
+});
+
+/// [remakeKeptCel] on a worker — the bytes cross as [layCelInWorker]'s do.
+/// [parkAt] is a path resolved here: the room's name means nothing on a
+/// worker (`SessionScratch.ensureThisRunsFolder`).
+///
+/// Throws when the room will not take the bytes: nothing was worked out.
+Future<({AnicelCelBlob blob, String path, AnicelLaidCel? was})?>
+remakeKeptCelInWorker(
+  BrushFrameKey key,
+  AnicelCelBlob blob,
+  KeptCelRemake remake, {
+  required String parkAt,
+  PasteboardReach? wasBehind,
 }) async {
   final sent = TransferableTypedData.fromList([blob.bytes]);
-  final cut = await onAWorker(
-    () => AnicelCelBlob(sent.materialize().asUint8List()).decoded((entry) {
-      final behind = cutBehindReach(entry.toSurface(), wall.to);
-      if (behind == null) {
-        return null;
-      }
-      // ⛔A worker has no engine — the app's one is the main isolate's
-      // (`appGpuEngine`, a static) — so what it decoded it writes from the
-      // bytes it decoded. ⏳Till a tile's bytes are the engine's alone
-      // (flip lane ⓔ), when a worker's cut works on the stream's tiles.
-      final kept = AnicelCelBlob.ofSurface(
-        key,
-        behind,
-        bytesOf: readTilesInPlace,
-      );
-      final path = ScratchFile.write(parkAt, kept.bytes);
-      if (path == null) {
-        throw StateError('The room would not take $parkAt.');
-      }
-      return (
-        blob: TransferableTypedData.fromList([kept.bytes]),
-        path: path,
-        was: layCelEntry(_behindReach(entry, wall.from)),
-      );
-    }),
-  );
-  if (cut == null) {
+  final made = await onAWorker(() {
+    final remade = remakeKeptCel(
+      key,
+      AnicelCelBlob(sent.materialize().asUint8List()),
+      remake,
+      parkAt: parkAt,
+      wasBehind: wasBehind,
+    );
+    if (remade == null) {
+      return null;
+    }
+    final path = remade.path;
+    if (path == null) {
+      throw StateError('The room would not take $parkAt.');
+    }
+    return (
+      blob: TransferableTypedData.fromList([remade.blob.bytes]),
+      path: path,
+      was: remade.was,
+    );
+  });
+  if (made == null) {
     return null;
   }
   return (
-    blob: AnicelCelBlob(cut.blob.materialize().asUint8List()),
-    path: cut.path,
-    was: cut.was,
+    blob: AnicelCelBlob(made.blob.materialize().asUint8List()),
+    path: made.path,
+    was: made.was,
   );
 }
