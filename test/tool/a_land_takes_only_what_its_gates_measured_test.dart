@@ -318,7 +318,9 @@ void main() {
           .readAsStringSync()
           .replaceAll('\r\n', '\n')
           .split('\n');
-      final waits = cargo.indexWhere((l) => l.startsWith('until mkdir'));
+      final waits = cargo.indexWhere(
+        (l) => l.startsWith('until ') && l.contains(r'mkdir "$TURN"'),
+      );
       final kept = cargo.indexWhere(
         (l) => l.contains(r'[ -z "$LANE_LAND_TURN" ] || touch -c'),
       );
