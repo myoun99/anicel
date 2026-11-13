@@ -1280,6 +1280,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       confirmPendingMove: _confirmSession,
       transformValues: _transformValuesNow,
       editTransformValues: _editTransformValues,
+      editWarpPoint: _editWarpPoint,
       undoTransformStep: _undoTransformStep,
       canUndoTransformStep: () => _box?.steps.isNotEmpty ?? false,
       beginTransformStep: _pushTransformStep,
@@ -1304,7 +1305,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the float AND re-run the ants. An edit that skipped the resample
   /// would leave the ants drawn around the OLD shape while the picture
   /// shows the new one.
-  void _editTransform(SelectionAffine Function(SelectionAffine affine) edit) {
+  void _editBox(void Function(TransformBox box) edit) {
     if (!_canEditTransform()) {
       return;
     }
@@ -1315,12 +1316,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (box == null) {
       return;
     }
-    setState(() {
-      box.affine = edit(box.affine);
-    });
+    setState(() => edit(box));
     _scheduleResamples();
     _syncAnts();
   }
+
+  /// [_editBox] for the box's affine — the numbers every mode has.
+  void _editTransform(SelectionAffine Function(SelectionAffine affine) edit) =>
+      _editBox((box) => box.affine = edit(box.affine));
+
+  /// One of the warp's points put where the tool settings say
+  /// ([CanvasSelectionCommands.editWarpPoint]) — a box edit like a typed X,
+  /// through the same door, and the point is in hand after it
+  /// ([BoxWarp.moveRead]).
+  void _editWarpPoint(
+    int index,
+    CanvasPoint Function(CanvasPoint now) change,
+  ) => _editBox((box) => box.warp.moveRead(index, change));
 
   void _flipTransform({required bool horizontal}) => _editTransform(
     (affine) => horizontal
@@ -1577,6 +1589,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // left on it for the next mount to take as a selection.
       _endLanded();
       _clearTransform();
+      // The numbers the box held go with it: the channel outlives this
+      // layer too, and the next mount's settings would read a box that is
+      // not there — its move, and every point its warp had pulled.
+      _publishTransformValues();
       return;
     }
     _confirmSession();
@@ -2220,8 +2236,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// deliberately does NOT funnel through the ants (a rebuild per pointer
   /// move on this layer is the R4 #3 hazard), so the numbers would
   /// otherwise sit still until the drag ended — which is the symptom.
-  void _publishTransformValues() =>
-      widget.selectionCommands?.publishTransformValues(_transformValuesNow());
+  ///
+  /// The warp's points go with them (F-586): a box's numbers are its
+  /// affine's and its points', and a reader of either hears at the same
+  /// moments.
+  ///
+  /// ⚠️Through the door every word to the host leaves by ([_tellHost]): the
+  /// readers are another subtree, and a mode or a grid this layer is handed
+  /// changes the points from inside a build — as its going away closes the
+  /// box from inside one ([_landOpenSession]).
+  void _publishTransformValues() {
+    final channel = widget.selectionCommands;
+    final values = _transformValuesNow();
+    final points = _warpPointsNow();
+    _tellHost(() {
+      channel?.publishTransformValues(values);
+      channel?.publishWarpPoints(points);
+    });
+  }
+
+  /// The open box's warp points as the tool settings list them, or null
+  /// with no box up or one whose mode holds none — each point then reads
+  /// at rest, as the box the tool stands at rest draws them.
+  WarpPointsShown? _warpPointsNow() {
+    final warp = _box?.warp;
+    final offsets = warp?.asRead;
+    return warp == null || offsets == null
+        ? null
+        : WarpPointsShown(offsets: offsets, inHand: warp.inHandAsRead);
+  }
 
   void _deselect() {
     // ⚠️「Is there anything to clear」, not 「did the user select」: Ctrl+D
@@ -2568,8 +2611,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// R17-U 핸들 상시: with the always-on box (Move tool), grabbing a
-  /// scale/rotate HANDLE promotes the implicit box into a real session
-  /// on the spot — the lift happens here, at the first interaction.
+  /// HANDLE — a grip, the cross, a point of its quad or its grid — or the
+  /// stage outside it promotes the implicit box into a real session on the
+  /// spot — the lift happens here, at the first interaction.
   ///
   /// Null when the press was refused (the lift failed); otherwise the
   /// session now open (the one already open, or the one this press opened)
@@ -2798,10 +2842,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// three lines and the step has to be taken before the drag can move
   /// anything. A branch that forgot it would be a gesture the user could
   /// not take back, and nothing else would notice.
+  ///
+  /// A drag of the warp's own points takes them in hand at the press, and
+  /// says so at once: the tool settings' list goes to the point pressed
+  /// before it has moved ([BoxWarp.inHand]).
   void _startTransformDrag(TransformDrag drag) {
     _pushTransformStep();
-    setState(() => _drag = drag);
+    setState(() {
+      _drag = drag;
+      if (drag is WarpPointDrag) {
+        _box?.warp.inHand = drag.points;
+      }
+    });
     _notifyDragActive(true);
+    _publishTransformValues();
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -2930,7 +2984,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         box.warp.corners = moved;
       }
     });
-    _syncAnts();
+    // ↩️It left through [_syncAnts], whose ping rebuilds the whole settings
+    // panel — once a pointer move, while the box's own grips said their
+    // numbers alone ([_dragBoxHandle]). The points have numbers of their
+    // own to say now (F-586), and say them as the grips do (F-164: 「패널
+    // 리빌드하지말고 글자만 바꾸게」); the release is what pings.
+    _publishTransformValues();
   }
 
   /// [pointer] for a drag of [drag]'s that MOVES something — the inside, the
@@ -3939,6 +3998,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // ants painter is already repainting for its dashes.
             cursor: _tapsVertices ? _cursor : null,
             transformChrome: chrome,
+            // The warp points in hand, lit (F-586): the chrome lists the
+            // warp's own points first among its handles, each at its place
+            // in the warp's offsets ([BoxOnScreen.transformChrome]).
+            handlesInHand: _box?.warp.inHand ?? const [],
             // 🚨★★★**THE SAME VALUE THE CONFIRM BUTTON WEARS**, which is
             // the whole of H28 (「the box says the same thing the ants
             // say」). ↩️It read `_movePending && _sessionHasChanges` until

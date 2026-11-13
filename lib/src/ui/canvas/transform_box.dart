@@ -147,6 +147,22 @@ class BoxWarp {
   int _stashedMeshColumns = 0;
   int _stashedMeshRows = 0;
 
+  /// The points last taken in hand — pressed on the canvas, or written from
+  /// the tool settings — by their place in the mode's offsets ([corners] or
+  /// [mesh]): what the canvas and the settings' list both light.
+  ///
+  /// 🗣️F-586 (유저 2026-11-12): 「다시말하지만 화면에서 조작하는건 설정쪽에서도
+  /// 보여야함. 지금 중간 왼쪽아래 사각형 조작했는데 도구설정패널에서 바뀌는게
+  /// 없는거 보고 확인함. 포인트별로 좌표 둔다거나. 최대한 알기쉽게」 — and
+  /// F-586-Q1 (11-14) 「모든 점 목록」. A grid sixteen cells a side lists 289
+  /// points, so the one just moved has to be told from the rest on both
+  /// sides.
+  ///
+  /// ⚠️ON THE WARP, so it goes with the box and with the points it names: a
+  /// mode or a grid that changes them leaves nothing in hand
+  /// ([syncToMode]), and neither does 리셋 ([reset]).
+  List<int> inHand = const [];
+
   static bool offsetsAreZero(List<CanvasPoint>? offsets) =>
       offsets == null ||
       !offsets.any((offset) => offset.x != 0 || offset.y != 0);
@@ -166,6 +182,7 @@ class BoxWarp {
         : zeroOffsets((meshColumns + 1) * (meshRows + 1));
     _stashedCorners = null;
     _stashedMesh = null;
+    inHand = const [];
   }
 
   /// Brings the offset lists in line with [mode] over an OPEN box.
@@ -216,6 +233,9 @@ class BoxWarp {
         meshColumns = columns;
         meshRows = rows;
     }
+    // The points are other points now — every branch that kept them as they
+    // were has returned.
+    inHand = const [];
   }
 
   void _stash() {
@@ -227,6 +247,48 @@ class BoxWarp {
       _stashedMeshColumns = meshColumns;
       _stashedMeshRows = meshRows;
     }
+  }
+
+  /// Where each point a list reads stands in [corners]: the quad is kept
+  /// TL/TR/BR/BL, the way its outline walks it, and read as the two rows of
+  /// two it is — top left, top right, bottom left, bottom right. Its own
+  /// inverse.
+  static const List<int> _quadAsRead = [0, 1, 3, 2];
+
+  /// The mode's displacements as a list reads them — row by row from the
+  /// top, each row left to right: the 메쉬 grid as it is kept, the 퍼스 quad
+  /// through [_quadAsRead]. Null in 일반, which holds none.
+  List<CanvasPoint>? get asRead {
+    final quad = corners;
+    return mesh ??
+        (quad == null ? null : [for (final kept in _quadAsRead) quad[kept]]);
+  }
+
+  /// [inHand] as places in [asRead].
+  List<int> get inHandAsRead => mesh != null
+      ? inHand
+      : [for (final kept in inHand) _quadAsRead[kept]];
+
+  /// Puts the point [asRead] lists [index]-th where [change] says — handed
+  /// where it stands now — and takes it in hand. Nothing in 일반, or past
+  /// the list's end.
+  ///
+  /// ⚠️A NEW LIST, as a drag leaves one: a step back holds the list it was
+  /// handed ([TransformBox.pushStep] copies, the live reading does not).
+  void moveRead(int index, CanvasPoint Function(CanvasPoint now) change) {
+    final grid = mesh;
+    final offsets = grid ?? corners;
+    if (offsets == null || index < 0 || index >= offsets.length) {
+      return;
+    }
+    final kept = grid != null ? index : _quadAsRead[index];
+    final moved = List.of(offsets)..[kept] = change(offsets[kept]);
+    if (grid != null) {
+      mesh = moved;
+    } else {
+      corners = moved;
+    }
+    inHand = [kept];
   }
 
   /// The mesh grid's four corner displacements, in TL/TR/BR/BL order.
