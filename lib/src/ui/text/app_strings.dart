@@ -763,7 +763,6 @@ enum AppStrings {
   String get memoryItemTileImages => _s('memoryItemTileImages');
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
-  String get memoryItemLensBlurTables => _s('memoryItemLensBlurTables');
   String get memoryItemPluginSteps => _s('memoryItemPluginSteps');
 
   /// What sits outside the allowance — the rows named in [items] — as one
@@ -2727,7 +2726,6 @@ enum AppStrings {
     'memoryItemTileImages': 'Canvas tile images',
     'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
-    'memoryItemLensBlurTables': 'Camera Lens Blur tables',
     'memoryItemPluginSteps': 'FX plugin pictures',
     'memoryOutsideAllowanceTemplate':
         'Outside the allowance, because no ceiling can be set on it: '
@@ -4217,7 +4215,6 @@ enum AppStrings {
     'memoryItemTileImages': 'キャンバスのタイル画像',
     'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
-    'memoryItemLensBlurTables': 'ブラー（カメラレンズ）の表',
     'memoryItemPluginSteps': 'FXプラグインの画像',
     'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
     'containerAreaSettings': '設定',
@@ -6092,7 +6089,6 @@ enum AppStrings {
     'memoryItemTileImages': '캔버스 타일 이미지',
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
-    'memoryItemLensBlurTables': '카메라 렌즈 흐림 표',
     'memoryItemPluginSteps': 'FX 플러그인 이미지',
     'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
     'containerAreaSettings': '설정',
@@ -7990,7 +7986,6 @@ enum AppStrings {
     'memoryItemTileImages': 'Images des tuiles du canevas',
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
-    'memoryItemLensBlurTables': "Tables du flou d'objectif",
     'memoryItemPluginSteps': 'Images des plug-ins FX',
     'memoryOutsideAllowanceTemplate':
         "Hors de l'allocation, faute de plafond possible : {items}.",
@@ -9992,7 +9987,6 @@ enum AppStrings {
     'memoryItemTileImages': '画布图块图像',
     'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
-    'memoryItemLensBlurTables': '相机镜头模糊表',
     'memoryItemPluginSteps': 'FX 插件图像',
     'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
     'containerAreaSettings': '设置',

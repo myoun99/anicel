@@ -5,9 +5,7 @@ import 'package:flutter/foundation.dart' show immutable;
 
 import '../core/argb_channels.dart';
 import '../core/color_matrix.dart';
-import '../core/draw_space.dart';
 import '../models/canvas_size.dart';
-import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import 'camera_lens_blur_passes.dart';
@@ -37,129 +35,6 @@ double blurSpreadForRadius(double radius) => radius;
 ui.Color alphaOnly(double opacity) =>
     ui.Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0));
 
-/// The paint one node composites with: its opacity, its blend, and its own
-/// effect chain, in that order.
-///
-/// ⛔ONE FUNCTION, because four places build it — the editing stack twice (a
-/// folder and the live layer), the playback cache, and the camera. #1304
-/// unified the WALK those routes share and left this hand-written in each,
-/// and the copies had already drifted: the editing stack clamped the
-/// opacity, the camera and the playback cache did not. Same document, two
-/// answers, decided by which panel you were looking at.
-///
-/// ⛔A BEHAVIOUR TEST CANNOT HOLD THIS SHUT — copies that agree today pass
-/// every pixel comparison, and what breaks is the route added next year.
-/// `one_composite_paint_test` scans the source instead. That the chain
-/// reaches the PICTURE is behaviour, and
-/// `a_film_frame_is_what_the_camera_sees_test` already holds it — a second
-/// pixel test here would be a copy.
-///
-/// ⚠️IT TAKES A RESOLVED CHAIN, NOT THE EFFECT LIST. `rasterScale` is NOT the
-/// same at every site and must not be folded in here: a route drawing under
-/// a scaled CTM leaves it 1 (Skia maps the sigma through the matrix), while
-/// the playback cache rasters at 1:1 and multiplies the sigma itself — see
-/// [resolveCompositeEffectPaint]'s contract.
-ui.Paint layerCompositePaint({
-  required double opacity,
-  required LayerBlendMode blendMode,
-  required CompositeEffectPaint effects,
-}) {
-  final paint = ui.Paint()
-    ..color = alphaOnly(opacity)
-    ..blendMode = blendMode.paintBlendMode;
-  effects.applyTo(paint);
-  return paint;
-}
-
-/// The Skia form of a resolved effect chain — ONE pure translation from
-/// effect samples to paint state, shared by every composite route (editing
-/// stack, playback cache, camera renders, export). The R5b lesson applied:
-/// one resolver, one painter, no surface deciding for itself what a blur
-/// means.
-///
-/// The chain lands in exactly one of the two fields:
-/// - **colorFilter** while the chain is colors only. Color filters run
-///   INLINE, with no offscreen, so the overwhelmingly common case
-///   ("brighten this layer") costs a matrix multiply per pixel and nothing
-///   else. Several colour effects fold into one matrix
-///   ([composeColorMatrices]).
-/// - **imageFilter** as soon as a blur appears — a blur needs an offscreen
-///   anyway, so the colours ride along inside the composed filter (setting
-///   both fields would leave Skia's application order deciding the look).
-class CompositeEffectPaint {
-  const CompositeEffectPaint({
-    this.colorFilter,
-    this.imageFilter,
-    this.outsetPixels = 0,
-  });
-
-  static const CompositeEffectPaint none = CompositeEffectPaint();
-
-  final ui.ColorFilter? colorFilter;
-  final ui.ImageFilter? imageFilter;
-
-  /// How far the chain paints beyond its input's bounds (blur spread, in
-  /// the same space the plan was resolved for).
-  final double outsetPixels;
-
-  bool get isEmpty => colorFilter == null && imageFilter == null;
-  bool get isNotEmpty => !isEmpty;
-
-  /// Writes the plan onto [paint] — the ONLY way a route should apply
-  /// effects.
-  ///
-  /// [paint] must arrive with NO `colorFilter` of its own. It once arrived
-  /// carrying the onion tint, and that is exactly what this class now takes
-  /// over ([resolveCompositeEffectPaint]'s `tint`) — the slot holds one
-  /// filter, so anything writing it beforehand silently decided the ghost
-  /// could not also wear its row's chain. The assert makes a second writer
-  /// a test failure rather than a look nobody can explain.
-  void applyTo(ui.Paint paint) {
-    if (isEmpty) {
-      return;
-    }
-    assert(
-      paint.colorFilter == null,
-      'A paint already carrying a colorFilter (the onion tint) must not '
-      'also take effects — ghosts resolve to CompositeEffectPaint.none.',
-    );
-    if (colorFilter != null) {
-      paint.colorFilter = colorFilter;
-      return;
-    }
-    paint.imageFilter = imageFilter;
-  }
-
-  /// The plan as one filter, for a layer that carries it — null for none.
-  /// The plan holds one filter or the other, never both.
-  ui.ImageFilter? get filter => colorFilter ?? imageFilter;
-
-  /// [inner], then the plan, as ONE image filter — what [applyTo] gives a
-  /// draw whose own shading is [inner], for a layer that filter carries:
-  /// the draw's order, its shading first, the plan over it.
-  ui.ImageFilter after(ui.ImageFilter inner) {
-    final outer = filter;
-    return outer == null
-        ? inner
-        : ui.ImageFilter.compose(outer: outer, inner: inner);
-  }
-
-  // A VALUE, so a painter can ask "is this the same filter as last frame?"
-  // in `shouldRepaint` — the V row's cut chain is resolved fresh every build,
-  // and identity would call a static grade a change on every rebuild.
-  // dart:ui's filters carry value equality themselves.
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CompositeEffectPaint &&
-          other.colorFilter == colorFilter &&
-          other.imageFilter == imageFilter &&
-          other.outsetPixels == outsetPixels;
-
-  @override
-  int get hashCode => Object.hash(colorFilter, imageFilter, outsetPixels);
-}
-
 /// The single folded matrix for a COLOUR-ONLY chain; null as soon as the
 /// chain holds anything a matrix cannot say — a blur, which reads past the
 /// pixel, or a colour key, which rides the raster — and null for a chain
@@ -178,7 +53,7 @@ List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
     if (effect.kind.spreadsPixels) {
       return null;
     }
-    switch (_paintPartOf(effect, DrawSpace.canvas)) {
+    switch (_paintPartOf(effect)) {
       case _ColourPart(:final next):
         matrix = matrix == null ? next : composeColorMatrices(next, matrix);
       case _NoPart():
@@ -218,7 +93,7 @@ List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
     final key = CelColorKey.fromResolved(effect);
     if (key == null) {
       runInput = null;
-      final part = _paintPartOf(effect, DrawSpace.canvas);
+      final part = _paintPartOf(effect);
       if (part is _ColourPart) {
         final filtered = applyColorMatrixToStraightColor(
           part.next,
@@ -241,8 +116,8 @@ int _byte(double channel) => channel.round().clamp(0, 255);
 
 /// What ONE sampled effect is to a paint — the one place each kind's paint
 /// is written (I-132 「fx 하나 = 한 곳」): a colour matrix, a spatial filter, or
-/// nothing a paint can carry. Every reader of a chain — the painter
-/// ([resolveCompositeEffectPaint]), an adjustment's one pass
+/// nothing a paint can carry. Every reader of a chain — the plan
+/// ([paintedEffectsOf]), an adjustment's one pass
 /// ([resolveColorOnlyMatrix]) and the eyedropper ([pixelThroughChain]) —
 /// asks it, so a colour kind's matrix is spelled once. ↩️Each wrote its own
 /// switch, the matrices twice.
@@ -311,18 +186,17 @@ final class _SplitPart extends _PaintPart {
   final String splitBy;
 }
 
-/// [paper] is where the paper lies in [space]'s pixels — what a radial
-/// blur's centre stands on ([_radialBlurPart]); a reader that does no
-/// spatial work at all, the eyedropper's, asks without one. [rasterWidth]
-/// is how wide the raster a step is drawn in is, which a camera lens
-/// blur's row sums run across ([_cameraLensBlurPart]) — null for a reader
-/// that draws none, a plan's among them.
-_PaintPart _paintPartOf(
-  ResolvedLayerEffect effect,
-  DrawSpace space, {
-  ui.Rect? paper,
-  int? rasterWidth,
-}) {
+/// [paper] is where the paper lies — what a radial blur's centre stands on
+/// ([_radialBlurPart]); a reader that does no spatial work at all, the
+/// eyedropper's, asks without one.
+///
+/// 🚨IN CANVAS PIXELS, a canvas pixel a pixel: the engine runs a chain at
+/// the canvas's own. ↩️A draw space scaled what reaches past the pixel
+/// (`DrawSpace`, 유저 2026-08-28 「남은 개선안까지 깔끔하게가자」): Skia mapped a
+/// sigma through a canvas-space CTM, and the playback cache rastered pre-
+/// scaled with none, till every row stood on the engine and the Flutter
+/// chain went (the-flutter-fx-chain-is-a-second-chain).
+_PaintPart _paintPartOf(ResolvedLayerEffect effect, {ui.Rect? paper}) {
   // An effect that changes no pixel is no part, whatever its kind
   // ([ResolvedLayerEffect.isNoOp]: its defaults, or its strength of nothing).
   if (effect.isNoOp) {
@@ -342,15 +216,10 @@ _PaintPart _paintPartOf(
         lightness: effect.parameter('lightness'),
       ),
     ),
-    EffectKind.blur => _blurPart(effect, space),
-    EffectKind.directionalBlur => _directionalBlurPart(effect, space),
-    EffectKind.radialBlur => _radialBlurPart(effect, space, paper),
-    EffectKind.cameraLensBlur => _cameraLensBlurPart(
-      effect,
-      space,
-      paper,
-      rasterWidth,
-    ),
+    EffectKind.blur => _blurPart(effect),
+    EffectKind.directionalBlur => _directionalBlurPart(effect),
+    EffectKind.radialBlur => _radialBlurPart(effect, paper),
+    EffectKind.cameraLensBlur => _cameraLensBlurPart(effect, paper),
     // ⛔A KEY IS A LEAD OF THE PLAN, NEVER A PAINT: `resolveCompositeEffectPlan`
     // takes each into a `KeyRun` before a paint is resolved. A color key
     // changes ALPHA by a threshold test — there is no color matrix for it,
@@ -372,19 +241,15 @@ _PaintPart _paintPartOf(
     // 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — a plugin,
     // at the head of a cel's chain or past anything, runs over the picture
     // the chain made before it, read back.
-    EffectKind.plugin => _pluginPart(effect, space, paper),
+    EffectKind.plugin => _pluginPart(effect, paper),
   };
 }
 
-/// A plugin's step ([PluginEffect]), reaching as far as its plugin says at
-/// [space]'s scale — where it has a run on this device
-/// ([ResolvedLayerEffect.run]); none where it has not, or where its plugin
-/// cannot say: drawn as if off, as a plugin that fails.
-_PaintPart _pluginPart(
-  ResolvedLayerEffect effect,
-  DrawSpace space,
-  ui.Rect? paper,
-) {
+/// A plugin's step ([PluginEffect]), reaching as far as its plugin says —
+/// where it has a run on this device ([ResolvedLayerEffect.run]); none
+/// where it has not, or where its plugin cannot say: drawn as if off, as a
+/// plugin that fails.
+_PaintPart _pluginPart(ResolvedLayerEffect effect, ui.Rect? paper) {
   final run = effect.run;
   if (run == null) {
     return const _NoPart();
@@ -392,8 +257,8 @@ _PaintPart _pluginPart(
   final canvas = paper == null
       ? const CanvasSize(width: 0, height: 0)
       : CanvasSize(
-          width: (paper.width / space.scale).round(),
-          height: (paper.height / space.scale).round(),
+          width: paper.width.round(),
+          height: paper.height.round(),
         );
   final across = paper == null
       ? double.infinity
@@ -405,7 +270,8 @@ _PaintPart _pluginPart(
     // is made again then (`FrameKernelsToCome.forAPlugin`) —, so this
     // reach is drawn by none; a route that draws it as if off is told it
     // reads as far as any plugin may, never less than this one will (0
-    // would have a row's ink crop draw the same, `inkCropDrawsTheSame`).
+    // would cut what it reads at the row's own extent,
+    // [rowExtentWithItsReach]).
     return _PluginPart(reach: across);
   }
   final values = fxPluginValuesOf(
@@ -417,7 +283,8 @@ _PaintPart _pluginPart(
     frameIndex: run.moment.frameIndex,
     time: run.moment.time,
     frameRate: run.moment.frameRate,
-    scale: space.scale,
+    // A canvas pixel a pixel, as the chain runs ([_paintPartOf]).
+    scale: 1,
   ));
   if (reach == null) {
     // What it draws tells the rest, once its step has run (FxPluginStages).
@@ -441,8 +308,8 @@ _PaintPart _pluginPart(
 
 /// A Gaussian: a filter the composite draw carries, or a step where it
 /// repeats the paper's edge ([PaperEdgeEffect]).
-_PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
-  final radius = effect.parameter('blurriness') * space.scale;
+_PaintPart _blurPart(ResolvedLayerEffect effect) {
+  final radius = effect.parameter('blurriness');
   // The words of Blur Dimensions, in order: both, across, up and down.
   final dimensions = effect.parameter('blurDimensions').round();
   final radiusX = dimensions == 2 ? 0.0 : radius;
@@ -470,12 +337,11 @@ final class PaintedColour extends PaintedEffect {
   final List<double> matrix;
 }
 
-/// fx Gaussian Blur at a draw's scale ([_blurPart]) as the walk and the
-/// engine both take it: its sigma each way, how far each way it reaches
-/// past a pixel ([blurSpreadForRadius]), and whether it repeats its
-/// input's edge. The walk draws it by [filter]; the engine lays the
-/// Gaussian itself from the same numbers (🗣️유저 gpu-canonical-store-Q2,
-/// composite_tree_plan.dart).
+/// fx Gaussian Blur at a draw's scale ([_blurPart]) as the engine takes it:
+/// its sigma each way, how far each way it reaches past a pixel
+/// ([blurSpreadForRadius]), and whether it repeats its input's edge — the
+/// engine lays the Gaussian itself from these numbers (🗣️유저
+/// gpu-canonical-store-Q2, composite_tree_plan.dart).
 @immutable
 final class GaussianBlur extends PaintedEffect {
   const GaussianBlur({
@@ -490,6 +356,13 @@ final class GaussianBlur extends PaintedEffect {
   final double sigmaY;
   final double reachX;
   final double reachY;
+
+  /// Whether it reads past its input as the input's edge pixels. Not as a
+  /// rule: a layer's artwork must not smear its edge pixels outward forever
+  /// — outside its coverage there is nothing, and that is what the picture
+  /// should show. Over the paper cut out alone, the edge is the paper's.
+  /// ↩️The Flutter walk drew it by a `ui.ImageFilter.blur`, DECAL, CLAMP for
+  /// this, till the Flutter chain went (the-flutter-fx-chain-is-a-second-chain).
   final bool repeatsTheEdge;
 
   /// How far past its input it paints: the farther way's reach.
@@ -500,32 +373,17 @@ final class GaussianBlur extends PaintedEffect {
   /// reads a chain puts it — one answer for both, or a reach put short
   /// leaves its last pixels out.
   (int, int) get wholeReach => (reachX.ceil(), reachY.ceil());
-
-  /// The filter the walk draws it by. DECAL, not the clamp default: a
-  /// layer's artwork must not smear its edge pixels outward forever —
-  /// outside its coverage there is nothing, and that is what the picture
-  /// should show. CLAMP where the edge is to be repeated: drawn over the
-  /// paper cut out alone, it is the paper's.
-  ui.ImageFilter get filter => ui.ImageFilter.blur(
-    sigmaX: sigmaX,
-    sigmaY: sigmaY,
-    tileMode: repeatsTheEdge ? ui.TileMode.clamp : ui.TileMode.decal,
-  );
 }
 
 /// What [effects] — a run of a chain's painted effects, which a draw
-/// carries ([CompositeEffectPlan.finalEffects], a step's `then`) — paint
-/// at [space], in their order: each Gaussian, and the colour between them
-/// folded into one matrix; nothing for an effect that changes no pixel.
-/// The walk folds them into a paint ([resolveCompositeEffectPaint]), the
-/// engine lays each (composite_tree_plan.dart).
-List<PaintedEffect> paintedEffectsOf(
-  List<ResolvedLayerEffect> effects, {
-  DrawSpace space = DrawSpace.canvas,
-}) {
+/// carries ([CompositeEffectPlan.finalEffects], a step's `then`) — paint,
+/// in their order: each Gaussian, and the colour between them folded into
+/// one matrix; nothing for an effect that changes no pixel. The engine
+/// lays each (composite_tree_plan.dart).
+List<PaintedEffect> paintedEffectsOf(List<ResolvedLayerEffect> effects) {
   final painted = <PaintedEffect>[];
   for (final effect in effects) {
-    switch (_paintPartOf(effect, space)) {
+    switch (_paintPartOf(effect)) {
       // Reaching here means a route resolved a chain without splitting it —
       // an assert rather than a silent skip, because the silent version
       // looks exactly like "the artist set Amount to 0".
@@ -553,8 +411,8 @@ List<PaintedEffect> paintedEffectsOf(
 }
 
 /// A directional blur: a step of passes along its way.
-_PaintPart _directionalBlurPart(ResolvedLayerEffect effect, DrawSpace space) {
-  final length = effect.parameter('blurLength') * space.scale;
+_PaintPart _directionalBlurPart(ResolvedLayerEffect effect) {
+  final length = effect.parameter('blurLength');
   final radians = effect.parameter('direction') * math.pi / 180;
   return _StepPart(
     directionalBlurPasses(
@@ -574,26 +432,18 @@ _PaintPart _directionalBlurPart(ResolvedLayerEffect effect, DrawSpace space) {
 /// it reaches past its input, and how finely it is laid
 /// ([radialBlurPasses]). Ink past the paper is blurred as finely as its
 /// edge is.
-_PaintPart _radialBlurPart(
-  ResolvedLayerEffect effect,
-  DrawSpace space,
-  ui.Rect? paper,
-) {
+_PaintPart _radialBlurPart(ResolvedLayerEffect effect, ui.Rect? paper) {
   final amount = effect.parameter('amount');
   // Asked by a reader that does no spatial work: it skips the part, so
   // nothing in it is read.
   if (paper == null) {
     return const _StepPart([], reach: 0);
   }
-  final scale = space.scale;
   final point = effectPointOnPaper(
     effect.points['center'],
-    CanvasSize(
-      width: (paper.width / scale).round(),
-      height: (paper.height / scale).round(),
-    ),
+    CanvasSize(width: paper.width.round(), height: paper.height.round()),
   );
-  final center = paper.topLeft + ui.Offset(point.x, point.y) * scale;
+  final center = paper.topLeft + ui.Offset(point.x, point.y);
   final farthest = [
     paper.topLeft,
     paper.topRight,
@@ -631,21 +481,16 @@ LayerId? effectReadsRow(ResolvedLayerEffect effect) =>
 
 /// A camera lens blur of no radius changes no pixel, whatever its iris —
 /// as [_directionalBlurPart]'s length. Its iris covers pixel centres within
-/// its radius (`shaders/iris_table.frag`): that is how far it reaches past
-/// its input. Its edge, repeated, is the paper's on whole pixels, as the
-/// Gaussian's is ([paperOnWholePixels]).
-_PaintPart _cameraLensBlurPart(
-  ResolvedLayerEffect effect,
-  DrawSpace space,
-  ui.Rect? paper,
-  int? rasterWidth,
-) {
-  final radius = effect.parameter('blurRadius') * space.scale;
+/// its radius (the engine's iris_table.wgsl): that is how far it reaches
+/// past its input. Its edge, repeated, is the paper's on whole pixels, as
+/// the Gaussian's is ([paperOnWholePixels]).
+_PaintPart _cameraLensBlurPart(ResolvedLayerEffect effect, ui.Rect? paper) {
+  final radius = effect.parameter('blurRadius');
   final repeatsTheEdge = effect.flag('repeatEdgePixels');
   return _StepPart(
-    // Asked by a reader that draws no raster: it reads how far the part
-    // reaches, or skips it, so nothing in its passes is read.
-    rasterWidth == null || (repeatsTheEdge && paper == null)
+    // Asked with no paper where it repeats the paper's edge: a reader that
+    // does no spatial work, which skips the part, so nothing in it is read.
+    repeatsTheEdge && paper == null
         ? const []
         : cameraLensBlurPasses(
             (
@@ -666,7 +511,6 @@ _PaintPart _cameraLensBlurPart(
                 linear: effect.flag('useLinearWorkingSpace'),
               ),
             ),
-            rasterWidth: rasterWidth,
             paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
             map: effectReadsRow(effect) == null
                 ? null
@@ -692,41 +536,24 @@ ui.Rect paperOnWholePixels(ui.Rect paper) => ui.Rect.fromLTRB(
   paper.bottom.roundToDouble(),
 );
 
-/// The rasters [effect] — a step's [ShadedEffect] — is drawn in at [space],
-/// the raster's own, [rasterWidth] wide, with [paper] where the paper lies
-/// in it: empty where it changes no pixel there.
+/// The rasters [effect] — a step's [ShadedEffect] — is drawn in, with
+/// [paper] where the paper lies: empty where it changes no pixel there.
 List<ShadedPass> shadedPassesOf(
-  ResolvedLayerEffect effect,
-  DrawSpace space, {
+  ResolvedLayerEffect effect, {
   required ui.Rect paper,
-  required int rasterWidth,
-}) => switch (_paintPartOf(
-  effect,
-  space,
-  paper: paper,
-  rasterWidth: rasterWidth,
-)) {
+}) => switch (_paintPartOf(effect, paper: paper)) {
   _StepPart(:final passes) => passes,
   _ => const [],
 };
 
-/// The blur [effect] — a step's [PaperEdgeEffect] — draws over the paper
-/// at [space], the raster's own: null where it changes no pixel there.
-GaussianBlur? paperEdgeBlurOf(ResolvedLayerEffect effect, DrawSpace space) =>
-    switch (_paintPartOf(effect, space)) {
+/// The blur [effect] — a step's [PaperEdgeEffect] — draws over the paper:
+/// null where it changes no pixel there.
+GaussianBlur? paperEdgeBlurOf(ResolvedLayerEffect effect) =>
+    switch (_paintPartOf(effect)) {
       _PaperEdgePart(:final blur) => blur,
       _ => null,
     };
 
-/// Translates [effects] (already sampled at a frame) into paint state.
-///
-/// [rasterScale] is the ratio between the space this paint draws in and
-/// CANVAS space. Colour is scale-free, but a blur radius is measured in
-/// canvas pixels: the playback cache composes at a reduced raster and draws
-/// its pre-scaled images 1:1, so without this a half-size preview would
-/// show a double-strength blur. Routes that draw under a scaled CANVAS
-/// TRANSFORM (the editing stack, the camera projection) leave it 1 — Skia
-/// maps the sigma through the CTM for them.
 /// The onion-skin Colors tint as a color matrix: every pixel takes the
 /// tint's RGB and keeps only its own alpha (scaled by the tint's).
 ///
@@ -752,68 +579,6 @@ List<double> onionTintColorMatrix(int argb) {
     0, 0, 0, 0, blue,
     0, 0, 0, alpha, 0,
   ];
-}
-
-CompositeEffectPaint resolveCompositeEffectPaint(
-  List<ResolvedLayerEffect> effects, {
-  DrawSpace space = DrawSpace.canvas,
-  int? tint,
-}) {
-  if (effects.isEmpty && tint == null) {
-    return CompositeEffectPaint.none;
-  }
-
-  // Colour matrices accumulate until a blur forces an offscreen; then the
-  // pending matrix becomes the innermost node of the image-filter chain.
-  List<double>? pendingColor;
-  ui.ImageFilter? chain;
-  var outset = 0.0;
-
-  void flushPendingColor() {
-    if (pendingColor == null) {
-      return;
-    }
-    final filter = ui.ColorFilter.matrix(pendingColor!);
-    chain = chain == null
-        ? filter
-        : ui.ImageFilter.compose(outer: filter, inner: chain!);
-    pendingColor = null;
-  }
-
-  for (final painted in paintedEffectsOf(effects, space: space)) {
-    switch (painted) {
-      case PaintedColour(:final matrix):
-        pendingColor = matrix;
-      case GaussianBlur(:final filter, :final reach):
-        flushPendingColor();
-        chain = chain == null
-            ? filter
-            : ui.ImageFilter.compose(outer: filter, inner: chain!);
-        outset += reach;
-    }
-  }
-
-  if (tint != null) {
-    // LAST, over the finished pixel: the ghost is a picture of the row as
-    // the screen shows it, converted to the peg's colour.
-    final tintMatrix = onionTintColorMatrix(tint);
-    pendingColor = pendingColor == null
-        ? tintMatrix
-        : composeColorMatrices(tintMatrix, pendingColor!);
-  }
-
-  if (chain == null) {
-    // Null when the chain held nothing this function paints — a release
-    // build reaching the assert above lands here, and "no paint state" is
-    // the honest answer for it.
-    final matrix = pendingColor;
-    if (matrix == null || colorMatrixIsIdentity(matrix)) {
-      return CompositeEffectPaint.none;
-    }
-    return CompositeEffectPaint(colorFilter: ui.ColorFilter.matrix(matrix));
-  }
-  flushPendingColor();
-  return CompositeEffectPaint(imageFilter: chain, outsetPixels: outset);
 }
 
 /// What a step draws before its painted effects — each draw a fragment
@@ -844,7 +609,9 @@ final class KeyRun extends EffectStepLead {
 /// ([CompositeEffectPlan.outsetPixels]) — and INSIDE that raster, where
 /// neither holds, a directional or a radial blur's passes are shader
 /// filters on Impeller: the layers of one picture, not a raster a pass
-/// (🗣️effect-step-passes-each-pay-a-snapshot-Q1 a, `applyEffectSteps`).
+/// (🗣️effect-step-passes-each-pay-a-snapshot-Q1 a, `applyEffectSteps`, as
+/// the Flutter chain ran them till it went —
+/// the-flutter-fx-chain-is-a-second-chain).
 final class ShadedEffect extends EffectStepLead {
   const ShadedEffect(this.effect);
 
@@ -912,34 +679,34 @@ class CompositeEffectStep {
 /// second draw, and this is the list of them.
 ///
 /// ⛔The split is not the caller's to get right. [preSteps] are the rasters
-/// that happen before the composite draw and [finalPaint] is what that draw
-/// carries — the same thing a route folded into its group paint before passes
-/// existed. Applying a step's paint twice, or forgetting the last one, would
-/// be a rendering bug with no error; there is no way to spell either here.
+/// that happen before the composite draw and [finalEffects] are what that
+/// draw carries. Running a step's effects twice, or forgetting the last
+/// ones, would be a rendering bug with no error; there is no way to spell
+/// either here.
+///
+/// ↩️The draw carried them as a `ui.Paint` too (`CompositeEffectPaint`, put
+/// on every Flutter route by one `layerCompositePaint` once #1304 found the
+/// routes clamping opacity apart), till every row stood on the engine and
+/// the Flutter chain went (the-flutter-fx-chain-is-a-second-chain): the
+/// engine lays them (composite_tree_plan.dart).
 @immutable
 class CompositeEffectPlan {
   const CompositeEffectPlan._({
     required this.preSteps,
-    required this.finalPaint,
     required this.finalEffects,
     required this.outsetPixels,
   });
 
   static const CompositeEffectPlan none = CompositeEffectPlan._(
     preSteps: [],
-    finalPaint: CompositeEffectPaint.none,
     finalEffects: [],
     outsetPixels: 0,
   );
 
   final List<CompositeEffectStep> preSteps;
 
-  /// The paint state the composite draw carries.
-  final CompositeEffectPaint finalPaint;
-
-  /// The effects [finalPaint] is resolved from, unresolved — what a reader
-  /// that paints no `ui.Paint` lays in its place, the engine's chain
-  /// (composite_tree_plan.dart).
+  /// The painted effects the composite draw carries, unresolved — what the
+  /// engine lays after the last step ([paintedEffectsOf]).
   final List<ResolvedLayerEffect> finalEffects;
 
   /// How far the whole chain paints beyond its input's bounds, summed over
@@ -952,12 +719,8 @@ class CompositeEffectPlan {
   bool get isSingleDraw => preSteps.isEmpty;
 }
 
-/// [effects] as the steps a composited picture takes.
-///
-/// [rasterScale] is the scale [finalPaint] will be drawn at, exactly as
-/// [resolveCompositeEffectPaint] means it. A step's own effects are left
-/// unresolved for the renderer, which knows the scale of the raster it is
-/// about to make.
+/// [effects] as the steps a composited picture takes. A step's own effects
+/// are left unresolved for the renderer, which lays the raster it runs in.
 ///
 /// [paper] is where the paper lies, in canvas space: a radial blur reaches
 /// as far past its input as the paper's corners lie from its centre
@@ -965,8 +728,6 @@ class CompositeEffectPlan {
 /// says where its paper is.
 CompositeEffectPlan resolveCompositeEffectPlan(
   List<ResolvedLayerEffect> effects, {
-  DrawSpace space = DrawSpace.canvas,
-  int? tint,
   required ui.Rect paper,
 }) {
   // Each run is "the lead that opens it — keys, or a shaded effect — then
@@ -974,21 +735,10 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   final leads = <EffectStepLead?>[null];
   final runs = <List<ResolvedLayerEffect>>[<ResolvedLayerEffect>[]];
   var outset = 0.0;
-  // In the space's own pixels, as the reach it gives is.
-  final scaled = ui.Rect.fromLTRB(
-    paper.left * space.scale,
-    paper.top * space.scale,
-    paper.right * space.scale,
-    paper.bottom * space.scale,
-  );
   for (final effect in effects) {
     final key = CelColorKey.fromResolved(effect);
     if (key == null) {
-      final (lead, reach) = switch (_paintPartOf(
-        effect,
-        space,
-        paper: scaled,
-      )) {
+      final (lead, reach) = switch (_paintPartOf(effect, paper: paper)) {
         _StepPart(:final reach) => (ShadedEffect(effect), reach),
         _PaperEdgePart(:final reach) => (PaperEdgeEffect(effect), reach),
         _PluginPart(:final reach) => (PluginEffect(effect), reach),
@@ -1019,22 +769,17 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     runs.add(<ResolvedLayerEffect>[]);
   }
   final last = runs.length - 1;
-  final finalPaint = resolveCompositeEffectPaint(
-    runs[last],
-    space: space,
-    tint: tint,
-  );
-  outset += finalPaint.outsetPixels;
+  final carried = paintedEffectsOf(runs[last]);
+  outset += _reachOf(carried);
   if (last == 0) {
     // No lead survived: the chain is one draw, exactly as it always was.
-    return finalPaint.isEmpty
-        ? CompositeEffectPlan.none
-        : CompositeEffectPlan._(
+    return _paints(carried)
+        ? CompositeEffectPlan._(
             preSteps: const [],
-            finalPaint: finalPaint,
             finalEffects: runs[last],
             outsetPixels: outset,
-          );
+          )
+        : CompositeEffectPlan.none;
   }
   final steps = <CompositeEffectStep>[];
   for (var i = 0; i < last; i += 1) {
@@ -1043,10 +788,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
       // which is the ordinary shape.
       continue;
     }
-    outset += resolveCompositeEffectPaint(
-      runs[i],
-      space: space,
-    ).outsetPixels;
+    outset += _reachOf(paintedEffectsOf(runs[i]));
     steps.add(CompositeEffectStep(lead: leads[i], then: runs[i]));
   }
   // The last lead has to happen before the final draw carries what follows
@@ -1054,11 +796,26 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   steps.add(CompositeEffectStep(lead: leads[last], then: const []));
   return CompositeEffectPlan._(
     preSteps: steps,
-    finalPaint: finalPaint,
     finalEffects: runs[last],
     outsetPixels: outset,
   );
 }
+
+/// How far [painted] paints past its input: each Gaussian's reach, summed,
+/// as each blurs what the one before it made.
+double _reachOf(List<PaintedEffect> painted) => painted.fold(
+  0.0,
+  (reach, each) => each is GaussianBlur ? reach + each.reach : reach,
+);
+
+/// Whether [painted] changes a pixel: a Gaussian does, a colour where it is
+/// not the identity.
+bool _paints(List<PaintedEffect> painted) => painted.any(
+  (each) => switch (each) {
+    GaussianBlur() => true,
+    PaintedColour(:final matrix) => !colorMatrixIsIdentity(matrix),
+  },
+);
 
 /// The `saveLayer` bounds for a buffered group whose chain paints
 /// [outsetPixels] past its input: [bounds] grown by them, so a group blur is
@@ -1091,195 +848,3 @@ ui.Rect rowExtentWithItsReach(
         content,
         resolveCompositeEffectPlan(effects, paper: paper).outsetPixels,
       );
-
-/// How a route paints an ADJUSTMENT scope (R6b) — the semantics in ONE
-/// place, so the four composite routes only have to run the steps.
-///
-/// The row's opacity is a MIX, not a fade: half strength means half a
-/// grade, never a half-transparent stack. Getting that right is the whole
-/// content of this class, and the naive spelling is wrong twice over:
-///
-/// - `saveLayer(alpha)` around the filtered scope thins the picture toward
-///   transparent — the shocking answer;
-/// - drawing the scope unfiltered and then the filtered copy over it with
-///   src-over gives `m·F + (1 − m·aF)·U`, which is `lerp(U, F, m)` only
-///   where the scope is fully OPAQUE. On a translucent picture it COMPOUNDS
-///   alpha (a 50 % layer under a 50 % mix came out at 62.5 %).
-///
-/// So a colour-only chain folds the mix into its own matrix
-/// ([lerpColorMatrixFromIdentity]) and paints in ONE pass — exact, and no
-/// second draw of the scope at all. Only a chain with a BLUR needs the two
-/// passes, and those are done inside one crossfade buffer with the second
-/// pass ADDED (`BlendMode.plus`) onto a `1 − mix` first pass, which is a
-/// true lerp with alpha left alone.
-class AdjustmentScopePass {
-  const AdjustmentScopePass({
-    required this.bufferBounds,
-    required this.filteredPaint,
-    this.crossfadeLayerPaint,
-    this.unfilteredPaint,
-    this.blitEffects = CompositeEffectPaint.none,
-    this.preSteps = const [],
-    this.outsetPixels = 0,
-  });
-
-  /// How far the chain paints past the scope, summed over its steps — what
-  /// says the raster is read by a chain that spreads (`rasterCellFor`).
-  final double outsetPixels;
-
-  /// The chain the filtered pass's BLIT carries: the whole of it where it
-  /// spreads (a blur), else none — the chain then rides [filteredPaint].
-  ///
-  /// 🚨A BLUR READS THE SCOPE'S RASTER, NEVER A LAYER (card
-  /// nested-folder-buffers-read-past-the-view). A blur reduces what it reads
-  /// on a grid counted from that picture's own corner, and a `saveLayer`'s
-  /// picture starts where the clip cuts it — at the view's edge, one pixel
-  /// further at each pan — while the raster lies on the canvas's grid
-  /// (`blurReductionCell`'s law). 🔬On the Windows app (2026-10-27) a blurred
-  /// adjustment by the view's edge came out 2/255 apart pan to pan, and
-  /// 4/255 apart from a blurred folder over the same row; with the blur on
-  /// the blit, 0 and 0. The layer keeps the pass's alpha and blend, so the
-  /// crossfade still adds layers ([composeAdjustmentScope]).
-  final CompositeEffectPaint blitEffects;
-
-  /// The rasters the chain takes before either pass composites the scope —
-  /// its colour keys, which are shaders and cannot ride a pass's paint.
-  ///
-  /// ⚠️Only the FILTERED pass blits the result. The mix crossfades between
-  /// the scope and the scope with the chain on it, so the unfiltered pass
-  /// blits the raw raster (see [composeAdjustmentScope]).
-  final List<CompositeEffectStep> preSteps;
-
-  /// The buffer bounds for every pass.
-  final ui.Rect bufferBounds;
-
-  /// The filtered pass's layer: its alpha and blend, and the chain where it
-  /// does not spread ([blitEffects]). Non-null always.
-  final ui.Paint filteredPaint;
-
-  /// Non-null ONLY when the scope must crossfade (a blur below full mix):
-  /// the outer buffer the two passes add up inside.
-  final ui.Paint? crossfadeLayerPaint;
-
-  /// The unfiltered pass's paint; non-null exactly when
-  /// [crossfadeLayerPaint] is.
-  final ui.Paint? unfilteredPaint;
-
-  /// Whether the route has to COMPOSITE the scope a second time. It does not
-  /// have to PAINT it twice — see [composeAdjustmentScope].
-  bool get crossfades => crossfadeLayerPaint != null;
-}
-
-/// How the passes go over a scope that has already been rasterised — the
-/// `compose` a route hands to `drawSubtreeAsImage`.
-///
-/// ⛔ONE COPY. Three routes ran these six lines and the shape is easy to get
-/// subtly wrong (a mutation that fed the FILTERED paint to the unfiltered
-/// pass survived every test in the repo, because each route held its own
-/// copy and no test drove the branch at any of them). Now there is one
-/// implementation, and the proof that it equals the recipe it replaced tests
-/// that implementation.
-///
-/// 🧪THE LAYERS ARE WHY IT IS EXACT. Blitting with a pass's own paint instead
-/// of restoring a layer into it rounds each pass separately, and a crossfade
-/// ADDS two of them: measured at 2/255 over 488 pixels. Painting the scope
-/// once was always the win; the saveLayer was never the cost.
-void Function(void Function(ui.Paint paint, {bool stepped}) blit)
-composeAdjustmentScope(
-  ui.Canvas canvas,
-  AdjustmentScopePass pass,
-) => (blit) {
-  if (pass.crossfades) {
-    canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-    canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-    // ⛔THE RAW SCOPE. The mix crossfades between the scope and the scope
-    // WITH the chain on it, and the chain now includes colour keys — which
-    // ride the raster rather than a paint. An unfiltered pass that blitted
-    // the keyed raster would key at full strength however low the mix went.
-    blit(ui.Paint(), stepped: false);
-    canvas.restore();
-  }
-  canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-  final carried = ui.Paint();
-  pass.blitEffects.applyTo(carried);
-  blit(carried);
-  canvas.restore();
-  if (pass.crossfades) {
-    canvas.restore();
-  }
-};
-
-/// Resolves the pass for an adjustment scope of [effects] at [mix] over
-/// [bounds]. [rasterScale] follows the same rule as
-/// [resolveCompositeEffectPaint].
-///
-/// A route runs it as ONE raster and one or two blits. The scope is the same
-/// picture in both passes, so it is rasterised once — on the playback route
-/// "drawing the scope" means awaiting every layer image in it, and the second
-/// pass was not a rounding error. The blits go as [composeAdjustmentScope]
-/// lays them.
-///
-/// [paper] is where the paper lies, as [resolveCompositeEffectPlan] asks.
-AdjustmentScopePass resolveAdjustmentScopePass({
-  required ui.Rect bounds,
-  required List<ResolvedLayerEffect> effects,
-  required double mix,
-  DrawSpace space = DrawSpace.canvas,
-  required ui.Rect paper,
-}) {
-  final strength = mix.clamp(0.0, 1.0);
-  if (strength < 1) {
-    final colorMatrix = resolveColorOnlyMatrix(effects);
-    if (colorMatrix != null) {
-      // The exact answer in one pass: the mix IS part of the matrix.
-      return AdjustmentScopePass(
-        bufferBounds: bounds,
-        filteredPaint: ui.Paint()
-          ..colorFilter = ui.ColorFilter.matrix(
-            lerpColorMatrixFromIdentity(colorMatrix, strength),
-          ),
-      );
-    }
-  }
-  final resolved = resolveCompositeEffectPlan(
-    effects,
-    space: space,
-    paper: paper,
-  );
-  final plan = resolved.finalPaint;
-  final bufferBounds = effectBufferBounds(bounds, resolved.outsetPixels);
-  // What spreads rides the blit ([AdjustmentScopePass.blitEffects]); a
-  // chain per pixel rides the pass's layer, as it always did.
-  final blitEffects = plan.imageFilter == null
-      ? CompositeEffectPaint.none
-      : plan;
-  final layerEffects = blitEffects.isEmpty ? plan : CompositeEffectPaint.none;
-  if (strength >= 1) {
-    final paint = ui.Paint();
-    layerEffects.applyTo(paint);
-    return AdjustmentScopePass(
-      bufferBounds: bufferBounds,
-      filteredPaint: paint,
-      blitEffects: blitEffects,
-      preSteps: resolved.preSteps,
-      outsetPixels: resolved.outsetPixels,
-    );
-  }
-  // A spatial chain below full strength: two passes ADDED inside one
-  // buffer. `plus` on premultiplied colour gives (1−m)·U + m·F exactly,
-  // and the two alphas sum back to the scope's own.
-  final filtered = ui.Paint()
-    ..color = alphaOnly(strength)
-    ..blendMode = ui.BlendMode.plus;
-  layerEffects.applyTo(filtered);
-  return AdjustmentScopePass(
-    bufferBounds: bufferBounds,
-    filteredPaint: filtered,
-    crossfadeLayerPaint: ui.Paint(),
-    unfilteredPaint: ui.Paint()
-      ..color = alphaOnly(1 - strength),
-    blitEffects: blitEffects,
-    preSteps: resolved.preSteps,
-    outsetPixels: resolved.outsetPixels,
-  );
-}

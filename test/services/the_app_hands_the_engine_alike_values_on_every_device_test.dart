@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/color_matrix.dart';
-import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
@@ -28,19 +27,23 @@ import '../helpers/pinned_fingerprints.dart';
 void main() {
   const paper = ui.Rect.fromLTWH(0, 0, 1920, 1080);
 
-  List<LineBoxPass> passesOf(ResolvedLayerEffect effect, DrawSpace space) =>
-      shadedPassesOf(effect, space, paper: paper, rasterWidth: 1920).cast();
+  List<LineBoxPass> passesOf(ResolvedLayerEffect effect) =>
+      shadedPassesOf(effect, paper: paper).cast();
 
   test('a directional blur hands the pinned steps', () {
     final values = <double>[];
-    for (final space in const [DrawSpace.canvas, DrawSpace.preScaled(4)]) {
+    // ↩️Four times as long was a raster drawn at four times
+    // (`DrawSpace.preScaled(4)`) till the Flutter chain went
+    // (the-flutter-fx-chain-is-a-second-chain): the same doubles, so the
+    // same pin.
+    for (final times in const [1.0, 4.0]) {
       for (final length in _lengths) {
         for (var quarter = -720; quarter <= 720; quarter += 1) {
           final effect = _effect(EffectKind.directionalBlur, {
             'direction': quarter / 4,
-            'blurLength': length,
+            'blurLength': length * times,
           });
-          for (final pass in passesOf(effect, space)) {
+          for (final pass in passesOf(effect)) {
             values.addAll(_handed(pass));
           }
         }
@@ -57,10 +60,10 @@ void main() {
     // passes of 11 taps (11³), 1728 of 12.
     for (final (length, taps) in [(332.75, 11), (432.0, 12)]) {
       final effect = _effect(EffectKind.directionalBlur, {
-        'blurLength': length,
+        'blurLength': length * 4,
       });
       expect(
-        passesOf(effect, const DrawSpace.preScaled(4)).map((p) => p.taps),
+        passesOf(effect).map((p) => p.taps),
         [taps, taps, taps],
         reason: '${length * 4} pixels',
       );
@@ -78,7 +81,7 @@ void main() {
               {'amount': half / 2, 'type': type, 'antialiasing': antialiasing},
               points: {'center': center},
             );
-            for (final pass in passesOf(effect, DrawSpace.canvas)) {
+            for (final pass in passesOf(effect)) {
               values.addAll(_handed(pass));
             }
           }

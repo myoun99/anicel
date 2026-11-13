@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -52,13 +51,16 @@ ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
     rectOutwardOnGrid(bounds, 1.0 / (1 << level));
 
 /// [bounds] grown out to the grid of [scale] cells per canvas unit counted
-/// from [origin] — the smallest rect on that grid that holds [bounds].
+/// from the origin — the smallest rect on that grid that holds [bounds].
 ///
 /// 🚨ONE snap for every raster grid: a mip level's
-/// ([wholeLevelPixelsOutward]), a sub-tree image's at its device scale, a
-/// tile's — copies of it once (↩️a display level's and the pyramid's from a
-/// surface's content origin among them, until one-picture-per-frame ②-5b).
-/// It multiplies by the scale and divides back, which is exact whenever the
+/// ([wholeLevelPixelsOutward]), a camera shot's device pixels, a tile's —
+/// copies of it once (↩️a display level's and the pyramid's from a
+/// surface's content origin among them, until one-picture-per-frame ②-5b;
+/// a sub-tree image's from where a canvas's pixels cross, and a picture's
+/// pieces' from their corner, counted from an `origin` of their own, till
+/// the Flutter chain went — the-flutter-fx-chain-is-a-second-chain). It
+/// multiplies by the scale and divides back, which is exact whenever the
 /// scale is a power of two, so every level grid lands to the bit where the
 /// copy that divided by the level's step put it.
 ///
@@ -66,38 +68,16 @@ ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
 /// be on it: a line reached through other operands — a box's logical
 /// pixels, a raster's device ones — lands a few ulps off it. Zero: a side
 /// is on a line only to the bit.
-ui.Rect rectOutwardOnGrid(
-  ui.Rect bounds,
-  double scale, {
-  ui.Offset origin = ui.Offset.zero,
-  double noise = 0,
-}) {
-  double down(double value, double start) =>
-      start + ((value - start) * scale + noise).floorToDouble() / scale;
-  double up(double value, double start) =>
-      start + ((value - start) * scale - noise).ceilToDouble() / scale;
+ui.Rect rectOutwardOnGrid(ui.Rect bounds, double scale, {double noise = 0}) {
+  double down(double value) => (value * scale + noise).floorToDouble() / scale;
+  double up(double value) => (value * scale - noise).ceilToDouble() / scale;
   return ui.Rect.fromLTRB(
-    down(bounds.left, origin.dx),
-    down(bounds.top, origin.dy),
-    up(bounds.right, origin.dx),
-    up(bounds.bottom, origin.dy),
+    down(bounds.left),
+    down(bounds.top),
+    up(bounds.right),
+    up(bounds.bottom),
   );
 }
-
-/// How many levels of a picture's mip chain a draw at [displayScale] —
-/// device pixels per canvas pixel ([displayScaleOf]) — reads: none where it
-/// is not reduced, and otherwise down to the one past the level its
-/// reduction lands at, the two a sampler blends between.
-///
-/// ⚠️Down to one level at any reduction, `low` included, though `low`
-/// reads none (`FramePicture.readAt`): what is laid by this comes out wider
-/// than `low` needs, and a bilinear read does reach past a rect. ↩️It said
-/// Impeller on Vulkan reads a picture's chain under `low` too
-/// (one-picture-per-frame ②-5b-2 착지 줄의 🔬): the engine does not, nor did
-/// the tester's Vulkan measured 2026-10-31.
-int levelsReadAt(double displayScale) => displayScale >= 1
-    ? 0
-    : (math.log(1 / displayScale) / math.ln2).floor() + 1;
 
 /// Whether the OUTER EDGE of what lands on the display — the display
 /// buffer's blit, the paper rect under it, the playback composite that
@@ -190,27 +170,6 @@ bool cellsFallOffThePixelGrid(
   final (:sx, :sy, :tx, :ty) = grid;
   bool off(double pixels) => pixels != pixels.roundToDouble();
   return off(tx) || off(ty) || off(sx * cell) || off(sy * cell);
-}
-
-/// The point of [canvas]'s space nearest its origin where the edges of its
-/// pixels cross, for a raster of [scale] pixels to a unit of the space laid
-/// on it 1:1 — the scale that says how many of the canvas's pixels a unit
-/// covers past its transform, the screen's ratio on the screen and 1 in a
-/// raster. A grid counted from here ([rectOutwardOnGrid]'s `origin`) is the
-/// canvas's pixels; a turned or projected space has no edge on the grid,
-/// and its grid is counted from the origin.
-ui.Offset pixelGridOriginAt(ui.Canvas canvas, double scale) {
-  final space = _pixelGridOf(canvas, 1);
-  if (space == null) {
-    return ui.Offset.zero;
-  }
-  final (:sx, :sy, :tx, :ty) = space;
-  double from(double translation, double unit) {
-    final pixels = translation * scale / unit.abs();
-    return (pixels.roundToDouble() - pixels) / (unit.sign * scale);
-  }
-
-  return ui.Offset(from(tx, sx), from(ty, sy));
 }
 
 /// [canvas]'s space on its pixels — each axis's scale and origin, carried

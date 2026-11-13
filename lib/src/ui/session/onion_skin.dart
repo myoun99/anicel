@@ -273,8 +273,9 @@ class OnionSkin {
                 // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the
                 // screen shows. It used to carry NO chain, which read as a
                 // design ("editing scaffolding") but was really the Colors
-                // tint owning the paint's one color-filter slot — the fold
-                // in `resolveCompositeEffectPaint` retired that constraint.
+                // tint owning the paint's one color-filter slot — folding
+                // the tint into the chain's matrix (`onionTintColorMatrix`)
+                // retired that constraint.
                 //
                 // Sampled at the GHOST's own frame: the chain the composite
                 // lays the row with ([chainWornBy]). ↩️A carrier rule of its

@@ -46,8 +46,9 @@ const kEveryTestReads = [
   kTestConfig,
 ];
 
-/// Folders every test may read without naming them: the assets and shaders
-/// the pubspec bundles into every test.
+/// Folders every test may read without naming them: the assets the pubspec
+/// bundles into every test. ↩️And the shaders it bundled (`shaders/`), till
+/// the Flutter chain's went (the-flutter-fx-chain-is-a-second-chain).
 ///
 /// ⛔Not `packages/`. `packages/gpu_engine` is read by the suites that reach
 /// its bindings (import_graph.dart, `Reaches` — since 2026-11-07 the app
@@ -61,7 +62,7 @@ const kEveryTestReads = [
 /// the land's (tool/lane.sh, refusal 8). ↩️From then `packages/qa_native/`
 /// stood here alone — the C engine, behind FFI where no import edge
 /// reached it — till that package went (2026-11-13).
-const kEveryTestReadsUnder = ['assets/', 'shaders/'];
+const kEveryTestReadsUnder = ['assets/'];
 
 const kTestConfig = 'test/flutter_test_config.dart';
 

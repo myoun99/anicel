@@ -15,7 +15,6 @@ import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/crate_licences.dart';
 import 'src/services/licence_entry.dart';
-import 'src/services/import/cel_picture.dart' show pictureSideLimit;
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
@@ -24,9 +23,6 @@ import 'src/services/persistence/app_window_store.dart';
 import 'src/services/persistence/app_language_settings_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
-import 'src/ui/canvas/colour_key_shader.dart';
-import 'src/ui/canvas/directional_blur_shader.dart';
-import 'src/ui/canvas/iris_blur_shader.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -103,18 +99,7 @@ Future<void> main(List<String> handedAtLaunch) async {
   // keyboard, so a Japanese or Korean input mode cannot swallow a shortcut.
   // Once, for the app's lifetime — see the class.
   KeyboardImeSwitch.install();
-  // 🚨AWAITED, BEFORE THE FIRST FRAME. The colour key on a folder is a
-  // fragment shader, and a `Paint` is built inside a paint — which cannot
-  // wait for an asset. A composite that reached a key with no program would
-  // have to drop the effect, and a dropped effect is the screen lying about
-  // the file. Loading it here is what lets the paint-time guard stay a
-  // guard rather than a case.
-  await ColourKeyShader.load();
-  // 🚨The same, for a directional, a radial and a camera lens blur
-  // (I-132-Q3): rasters of a chain's step, as a key is.
-  await DirectionalBlurShader.load();
-  await IrisBlurShader.load();
-  // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
+  // 🚨AWAITED, BEFORE THE FIRST FRAME (I-103-Q1): the top strip keeps
   // a place for the battery on a device that has one and never on one that
   // has not — a place that came a frame later would be UI popping into
   // existence. One question to the OS.
@@ -256,13 +241,6 @@ Future<void> main(List<String> handedAtLaunch) async {
   // (유저 2026-10-26) took it back: 「앞으로는 앱 키고 이 허용을 체크해야
   // 권한묻도록」 — ⛔nothing asks at launch; the OS first hears of the
   // microphone when Preferences ▸ Audio ▸ Allow microphone is turned on.
-  // The side this engine holds, read once after the first frame (a few small
-  // pictures, off the frame): a compose past it is made
-  // in pieces (`piecesOver`), and one made inside a build before it is read
-  // is made whole, as it always was.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(pictureSideLimit()),
-  );
   // The GPU engine the frame grids' tiles are drawn and shown on, opened
   // off this isolate once the first frame is on the screen (관제 2026-11-08
   // 20:54: 「장치는 첫 프레임 뒤에」): till it is open every row draws its

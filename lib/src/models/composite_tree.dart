@@ -79,7 +79,7 @@ final class CompositeGroup<L> extends CompositeNode<L> {
 ///
 /// [mix] is the row's opacity, and it means MIX, not fade: 0.5 is a
 /// half-strength grade, never a half-transparent stack. See
-/// [resolveAdjustmentScopePass] for how a route paints that.
+/// the engine's adjustment (composite_tree_plan.dart) for how it lays that.
 final class CompositeAdjustment<L> extends CompositeNode<L> {
   const CompositeAdjustment({
     required this.children,

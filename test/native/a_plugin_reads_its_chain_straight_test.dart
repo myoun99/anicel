@@ -15,7 +15,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_letters.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
-import '../helpers/a_row_laid_through_its_plugins.dart';
+import '../helpers/a_row_laid_on_the_engine.dart';
 
 /// 🚨★★A PLUG-IN IS HANDED ITS CHAIN STRAIGHT, AS THE CHAIN HOLDS IT,
 /// WHEREVER IT STANDS (float-warp-resamples-in-the-c-engine (2) ⓐ, 관제
@@ -77,7 +77,7 @@ void main() {
   Future<Uint8List> laid(
     BitmapSurface surface,
     List<ResolvedLayerEffect> effects,
-  ) => aRowLaidThroughItsPlugins(composite, letters, surface, effects);
+  ) => aRowLaidOnTheEngine(composite, letters, surface, effects);
 
   test("the first plug-in of a cel's chain is handed the cel's own bytes, "
       'the next what the first made, and the row lays what the last '
@@ -131,7 +131,7 @@ void main() {
       Future<int> waitedBeforeItsPlugin() async {
         final heard = _HearsTheWaits();
         int? met;
-        await aRowLaidThroughItsPlugins(
+        await aRowLaidOnTheEngine(
           composite,
           letters,
           cel(),

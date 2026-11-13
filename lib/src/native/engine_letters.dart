@@ -24,8 +24,7 @@ import 'engine_faces.dart';
 /// letters set by the engine itself, in the app's canvas letters' faces
 /// ([AppTypography.canvasLetterFaces]), each cluster where the app's one
 /// layout of them put it ([celNumberShapes]) — the plate a numbered row
-/// lays on the engine (`planCompositeTree`) as the walk lays the app's
-/// (`celNumberPlate`).
+/// lays on the engine (`planCompositeTree`).
 ///
 /// 🚨★★★THE PLATE IS CANVAS PIXELS ON THE ROW'S PAPER (the law of
 /// cel-number-on-the-engine-letters, 유저 2026-11-07 「지금까지가 셀번호가

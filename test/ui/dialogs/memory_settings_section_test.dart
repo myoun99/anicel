@@ -117,7 +117,6 @@ void main() {
       'tileImages',
       'enginePool',
       'engineScratch',
-      'lensBlurTables',
       'pluginSteps',
     });
   });

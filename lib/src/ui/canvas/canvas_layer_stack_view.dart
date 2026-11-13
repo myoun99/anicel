@@ -34,7 +34,7 @@ import '../../services/composite_effect_paint.dart';
 import 'display_resample.dart';
 import 'landing_preview.dart';
 import 'selection_float_overlay.dart';
-import 'subtree_image_composite.dart';
+import 'subtree_buffer_bounds.dart';
 import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
@@ -186,8 +186,8 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// ([CanvasGhostImageRequest]): ✅유저 2026-08-27 (I-8-Q5) 「a ghost shows
   /// the pixels the screen shows」. ↩️Ghosts carried none while the Colors
   /// tint owned the paint's one colour-filter slot, which read as a design
-  /// ("editing scaffolding") until `resolveCompositeEffectPaint` folded the
-  /// two.
+  /// ("editing scaffolding") until the tint was folded into the chain's
+  /// matrix (`onionTintColorMatrix`).
   ///
   /// ⛔THE WHOLE CHAIN: the two `shouldRepaint` comparisons diff this
   /// field, and the composite applies all of it.

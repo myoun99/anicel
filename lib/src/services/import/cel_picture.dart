@@ -44,20 +44,20 @@ import '../straight_rgba_image.dart';
 /// 10-20), so a test names the side ([debugPictureSideLimit]); every test
 /// stands at that one (`flutter_test_config.dart`), as a `testWidgets`
 /// clock never waits the measurement out.
+///
+/// ↩️A compose past it was held in pieces inside it too (`piecesOver`,
+/// 🗣️유저 2026-10-21, a-cel-past-the-device-side-composes-smaller-Q1 「나눠
+/// 든다」 — playback and export show the file's pixels as they are), the
+/// side read once after the first frame for a compose inside a build, till
+/// every row stood on the engine's tiles and the Flutter chain went
+/// (the-flutter-fx-chain-is-a-second-chain).
 Future<int> pictureSideLimit() {
   final named = debugPictureSideLimit;
   if (named != null) {
     return Future<int>.value(named);
   }
-  return _measuredSide ??= _measureSide().then((side) => _sideRead = side);
+  return _measuredSide ??= _measureSide();
 }
-
-/// [pictureSideLimit]'s answer once it has been read — or the side a test
-/// names — and null before: for a compose made inside a build, which
-/// cannot wait for it (`piecesOver`).
-int? get pictureSideLimitIfMeasured => debugPictureSideLimit ?? _sideRead;
-
-int? _sideRead;
 
 /// The side a test stands this device's engine at, in place of
 /// [pictureSideLimit]'s measurement — or null.

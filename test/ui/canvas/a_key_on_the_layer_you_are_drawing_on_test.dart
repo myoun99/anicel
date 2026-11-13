@@ -17,7 +17,6 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
@@ -37,8 +36,6 @@ import '../../helpers/the_frame_as_it_stands.dart';
 void main() {
   opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  setUpAll(ColourKeyShader.load);
 
   const canvasSize = CanvasSize(width: 32, height: 32);
 

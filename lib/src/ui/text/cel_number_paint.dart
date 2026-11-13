@@ -8,8 +8,6 @@ import '../../models/canvas_size.dart';
 import '../../models/cel_number_letters.dart';
 import '../../models/text_cel_style.dart';
 import '../canvas/display_resample.dart' show wholeLevelPixelsOutward;
-import '../canvas/image_pieces.dart';
-import 'canvas_letter_plate.dart';
 import 'canvas_letter_shapes.dart';
 import 'text_cel_render.dart';
 
@@ -25,32 +23,18 @@ import 'text_cel_render.dart';
 /// 🚨★★★CANVAS PIXELS, LAID AS THE ROW'S PICTURE IS (card
 /// cel-number-letters-drawn-as-vectors, 유저 2026-11-07 「지금까지가 셀번호가
 /// 벡터엿던게 버그야. 통일하지 않았던거니까」): the letters are a plate on the
-/// row's paper ([keptLetterPlate]), which the walk draws as it draws the
-/// row's picture. ↩️They were drawn as vectors under the row's placement:
-/// a file showed them at its own resolution, and a row turned or scaled
-/// showed them smooth over its pixels.
+/// row's paper, which the engine's letters raster from these shapes
+/// (cel-number-on-the-engine-letters, `EngineLetters.celNumberPlate`) and
+/// the plan lays as it lays the row's picture. ↩️They were drawn as vectors
+/// under the row's placement: a file showed them at its own resolution, and
+/// a row turned or scaled showed them smooth over its pixels. ↩️The app
+/// rastered the plate itself too (`keptLetterPlate`) while a walk drew in
+/// Flutter, until the last — the SE name tags — moved onto the engine
+/// (the-flutter-fx-chain-is-a-second-chain).
 ///
-/// Null for letters that paint nothing. 🚨Draw it at once ([keptLetterPlate]).
-ImagePiece? celNumberPlate(CelNumberLetters letters) {
-  final window = celNumberExtent(letters);
-  if (window.isEmpty) {
-    return null;
-  }
-  final layout = _layoutOf(letters);
-  final plate = keptLetterPlate((layout, letters), window, (into) {
-    into.save();
-    into.transform(_standOf(letters, layout).storage);
-    layout.paint(into);
-    into.restore();
-  });
-  return (image: plate, worldRect: window);
-}
-
-/// [letters] as the GPU engine is handed them to raster their plate itself
-/// (cel-number-on-the-engine-letters): the layers of the one layout
-/// [celNumberPlate] draws, and where it stands on the row's paper — the
-/// six floats a, b, c, d, e, f of x' = a·x + c·y + e, y' = b·x + d·y + f.
-/// Null where [celNumberPlate] is.
+/// The layers of the one layout, and where it stands on the row's paper —
+/// the six floats a, b, c, d, e, f of x' = a·x + c·y + e, y' = b·x + d·y +
+/// f. Null for letters that paint nothing.
 ({List<CanvasLetterShapes> layers, List<double> stand})? celNumberShapes(
   CelNumberLetters letters,
 ) {

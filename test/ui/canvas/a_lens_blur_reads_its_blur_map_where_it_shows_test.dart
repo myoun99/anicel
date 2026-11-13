@@ -23,7 +23,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🗣️I-132-Q21 a (유저 2026-10-28): a camera lens blur reads its blur map's
@@ -38,7 +37,6 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// blurred row's own pixels lie instead, the seam would stand [shift] over.
 void main() {
   opensTheEnginesScreens();
-  setUpAll(IrisBlurShader.load);
 
   const width = 64;
   const height = 32;

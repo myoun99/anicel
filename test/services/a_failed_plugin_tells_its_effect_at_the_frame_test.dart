@@ -26,7 +26,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
-import '../helpers/a_row_laid_through_its_plugins.dart';
+import '../helpers/a_row_laid_on_the_engine.dart';
 
 /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08): 「원래 셀
 /// + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」 — a plugin that cannot
@@ -38,7 +38,7 @@ import '../helpers/a_row_laid_through_its_plugins.dart';
 /// to is `a_gpu_plugin_opens_and_runs_on_the_engine_test`'s.
 ///
 /// A cel is shown here as a route that waits for its plug-ins lays it on
-/// the engine, its chain's steps run (`aRowLaidThroughItsPlugins`) — where a
+/// the engine, its chain's steps run (`aRowLaidOnTheEngine`) — where a
 /// plug-in is run, at the head of a cel's chain as anywhere in it.
 /// ↩️It was the CPU's seam (`celSurfaceAsShown`) while a plugin at the head
 /// ran there (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
@@ -97,7 +97,7 @@ void main() {
     );
     final place = (owner: row.id, effect: effect.id);
     Future<void> shown(BitmapSurface cel, int frame) =>
-        aRowLaidThroughItsPlugins(
+        aRowLaidOnTheEngine(
           composite,
           letters,
           cel,
@@ -163,7 +163,7 @@ void main() {
       effects: [effect],
     );
     await tester.runAsync(
-      () => aRowLaidThroughItsPlugins(
+      () => aRowLaidOnTheEngine(
         composite,
         letters,
         cel,

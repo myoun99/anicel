@@ -380,7 +380,10 @@ void main() {
 /// canvas/tiled_surface_compose — the tiles' compose left the app with its
 /// last caller, an export's sheet ink, which uploads the surface's pixels
 /// (`sheetInkPictureOf`) rather than laying its tiles' pictures.
-const int _knownRawDraws = 23;
+/// **19** on 2026-11-13 (the-flutter-fx-chain-is-a-second-chain): −4 in
+/// canvas/subtree_image_composite — a chain's steps, its pictures and its
+/// buffers went with the Flutter chain; the engine runs a row's chain.
+const int _knownRawDraws = 19;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'

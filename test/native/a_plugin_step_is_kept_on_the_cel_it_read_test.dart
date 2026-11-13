@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
-import '../helpers/a_row_laid_through_its_plugins.dart';
+import '../helpers/a_row_laid_on_the_engine.dart';
 
 /// 🚨★A PLUG-IN'S STEP IS KEPT ON THE CEL IT READ, where the cel is all it
 /// read (float-warp-resamples-in-the-c-engine (2) ⓒ, 관제 2026-11-11):
@@ -59,7 +59,7 @@ void main() {
     final cel = oneTile((3, 3), const [200, 10, 10, 255]);
     final before = FxPluginStages.keptBytes;
 
-    await aRowLaidThroughItsPlugins(composite, letters, cel, [
+    await aRowLaidOnTheEngine(composite, letters, cel, [
       through(ShiftingFxPlugin(by: 0)),
     ]);
 
@@ -73,11 +73,11 @@ void main() {
     final cel = oneTile((3, 3), const [200, 10, 10, 255]);
     final runner = ShiftingFxPlugin(by: 0);
     final effects = [through(runner)];
-    await aRowLaidThroughItsPlugins(composite, letters, cel, effects);
+    await aRowLaidOnTheEngine(composite, letters, cel, effects);
     expect(runner.renders, 1, reason: '⛔premise: run over the cel');
 
     final float = oneTile((9, 9), const [10, 200, 10, 255]);
-    await aRowLaidThroughItsPlugins(
+    await aRowLaidOnTheEngine(
       composite,
       letters,
       cel,
@@ -97,7 +97,7 @@ void main() {
     final cel = oneTile((3, 3), const [200, 10, 10, 255]);
     final runner = ShiftingFxPlugin(by: 1);
     final effects = [through(runner)];
-    final made = await aRowLaidThroughItsPlugins(
+    final made = await aRowLaidOnTheEngine(
       composite,
       letters,
       cel,
@@ -105,11 +105,11 @@ void main() {
     );
     expect(
       made,
-      isNot(await aRowLaidThroughItsPlugins(composite, letters, cel, const [])),
+      isNot(await aRowLaidOnTheEngine(composite, letters, cel, const [])),
       reason: '⛔liveness: the plugin moves the cel',
     );
 
-    final kept = await aRowLaidThroughItsPlugins(
+    final kept = await aRowLaidOnTheEngine(
       composite,
       letters,
       cel,
@@ -130,7 +130,7 @@ void main() {
     final cel = oneTile((3, 3), const [200, 10, 10, 255]);
     final runner = ShiftingFxPlugin(by: 1);
     final effects = [through(runner)];
-    final made = await aRowLaidThroughItsPlugins(
+    final made = await aRowLaidOnTheEngine(
       composite,
       letters,
       cel,
@@ -138,7 +138,7 @@ void main() {
     );
     expect(runner.renders, 1, reason: '⛔premise: run, and kept');
 
-    final ahead = await aRowLaidThroughItsPlugins(
+    final ahead = await aRowLaidOnTheEngine(
       composite,
       letters,
       cel,

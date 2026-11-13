@@ -140,19 +140,17 @@ Rect placedRectBounds(LayerPlacement placement, Rect rect) => pointsBounds([
     Offset(corner.x, corner.y),
 ]);
 
-/// [placement] as the matrix a `Canvas` takes. [rasterScale] restates the
-/// same canvas-space placement in a scaled raster (a level of the display's
-/// pyramid, say): the raster's pixels are the canvas's times it, so what the
-/// placement does to a direction stays and where it sends the origin
-/// scales.
-Matrix4 placementMatrix(LayerPlacement placement, {double rasterScale = 1}) =>
-    Matrix4.identity()
-      ..setEntry(0, 0, placement.a)
-      ..setEntry(1, 0, placement.b)
-      ..setEntry(0, 1, placement.c)
-      ..setEntry(1, 1, placement.d)
-      ..setEntry(0, 3, placement.tx * rasterScale)
-      ..setEntry(1, 3, placement.ty * rasterScale);
+/// [placement] as the matrix a `Canvas` takes. ↩️It restated the placement
+/// in a scaled raster too (`rasterScale`: a level of the display's pyramid,
+/// a step's raster) till the Flutter chain went
+/// (the-flutter-fx-chain-is-a-second-chain).
+Matrix4 placementMatrix(LayerPlacement placement) => Matrix4.identity()
+  ..setEntry(0, 0, placement.a)
+  ..setEntry(1, 0, placement.b)
+  ..setEntry(0, 1, placement.c)
+  ..setEntry(1, 1, placement.d)
+  ..setEntry(0, 3, placement.tx)
+  ..setEntry(1, 3, placement.ty);
 
 /// CANVAS space → a placed row's ARTWORK space: [placement] run backwards.
 /// Null when the placement has COLLAPSED its row — a scale of zero on an

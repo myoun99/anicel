@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/color_matrix.dart';
-import '../core/draw_space.dart';
 import '../core/on_a_worker.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -47,7 +46,7 @@ import '../services/layer_pose_matrix.dart'
 import '../services/shaded_passes.dart'
     show IrisGatherPass, IrisMap, IrisMapChannel, LineBoxPass, irisTurnsOf;
 import '../ui/canvas/landing_preview.dart';
-import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
+import '../ui/canvas/subtree_buffer_bounds.dart' show subtreeBufferBounds;
 import '../ui/canvas/tile_origin.dart'
     show surfaceContentWorldRect, tileCoordsWorldRect;
 import 'engine_letters.dart';
@@ -311,7 +310,7 @@ class _TreePlan {
         );
       // A row's letters lie where the row does (I-65), a plate on its paper
       // laid as the row's picture is — the engine's own raster of them
-      // ([EngineLetters]), as the walk lays the app's (`celNumberPlate`).
+      // ([EngineLetters]).
       case CompositeCelNumber(
         on: CompositeLeaf(payload: final EngineTiles row),
         letters: final number,
@@ -369,9 +368,14 @@ class _TreePlan {
     final CompositeAdjustment(:children, :effects, :mix) = adjustment;
     plan.open();
     _lay(children);
-    // A mix is no fade: a colour's is folded into its matrix, a grade of
-    // that strength, and a chain's lays the scope under what the chain
-    // puts, graded (resolveAdjustmentScopePass).
+    // A mix is no fade (R6b): half strength is half a grade, never a
+    // half-transparent stack. A colour's is folded into its matrix, a grade
+    // of that strength, and a chain's lays the scope under what the chain
+    // puts, graded. ↩️The Flutter routes crossfaded it in a buffer, a
+    // `1 − mix` pass with the graded one ADDED — src-over had compounded a
+    // translucent scope's alpha (a 50 % layer under a 50 % mix came out at
+    // 62.5 %) — till the Flutter chain went
+    // (the-flutter-fx-chain-is-a-second-chain).
     if (resolveColorOnlyMatrix(effects) case final colour? when mix < 1) {
       plan.close(
         mode: GpuBlend.normal,
@@ -468,8 +472,10 @@ class _TreePlan {
     final picture = _rowExtentOf(row, paper);
     // Its chain runs on its own picture, the whole of what it stands for —
     // as far as the chain paints past what it holds — and is cut there,
-    // before its pose (steppedForChain); the rows it reads drawn there
-    // too, under its pose undone (rowsUnderPlacement).
+    // before its pose; the rows it reads drawn there too, under its pose
+    // undone. ↩️As the Flutter chain ran it (`steppedForChain`,
+    // `rowsUnderPlacement`) till it went
+    // (the-flutter-fx-chain-is-a-second-chain).
     final (:chain, :keys, :colour) = _chainOf(
       row.effects,
       over: (_) => picture,
@@ -482,7 +488,7 @@ class _TreePlan {
     );
     final tint = row.tint;
     // The tint LAST, over the finished pixel: the ghost is the row as the
-    // screen shows it, in the peg's colour (resolveCompositeEffectPaint).
+    // screen shows it, in the peg's colour (onionTintColorMatrix).
     final matrix = _matrixOf(switch ((colour, tint)) {
       (_, null) => colour,
       (null, final tint?) => onionTintColorMatrix(tint),
@@ -708,13 +714,11 @@ class _TreePlan {
     // In the chain's own pixels, as its plate and its paper are.
     ShadedEffect(:final effect) => switch (shadedPassesOf(
       effect,
-      DrawSpace.canvas,
       paper: paper,
-      rasterWidth: picture.$3 - picture.$1,
     )) {
       [] => const [],
-      // The sums before it are the engine lens blur's own.
-      [..., final IrisGatherPass gather] => [
+      // Its row sums are the engine lens blur's own.
+      [final IrisGatherPass gather] => [
         (chain) => _lens(
           chain,
           gather,
@@ -731,10 +735,7 @@ class _TreePlan {
         ]),
       ],
     },
-    PaperEdgeEffect(:final effect) => switch (paperEdgeBlurOf(
-      effect,
-      DrawSpace.canvas,
-    )) {
+    PaperEdgeEffect(:final effect) => switch (paperEdgeBlurOf(effect)) {
       null => const [],
       final blur => [(chain) => _onThePaper(chain, blur, picture)],
     },
@@ -827,10 +828,10 @@ class _TreePlan {
 
   /// [gather] — a camera lens blur's iris gathered out of its row sums —
   /// on [chain] over [picture], the paper it repeats past it cut to the
-  /// picture, as its shader cuts it (iris_blur_shader.dart): where none of
-  /// the paper is there, the cut leaves nothing. Its blur map is the row
-  /// [drawn] draw; where none draw it, the row it names is none of the
-  /// cut's, and it blurs at its whole radius ([IrisGatherPass.unmapped]).
+  /// picture: where none of the paper is there, the cut leaves nothing. Its
+  /// blur map is the row [drawn] draw; where none draw it, the row it names
+  /// is none of the cut's, and it blurs at its whole radius
+  /// ([IrisGatherPass.unmapped]).
   void _lens(
     int chain,
     IrisGatherPass gather,

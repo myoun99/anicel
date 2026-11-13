@@ -136,13 +136,6 @@ flutter:
     - assets/launch/ko/
     - assets/launch/fr/
     - assets/launch/zhHans/
-    # 🚨A FILE A SHADER #includes, LISTED SO A CHANGE TO IT REBUILDS THEM.
-    # Nothing loads it. flutter rebuilds the compiled shaders only when a
-    # listed asset is newer than them (`flutter test`'s `_needsRebuild`,
-    # the build's asset depfile) — and an include is no shader of its own.
-    # 🔬10-28: nine mutants of this file lived, every test drawing with the
-    # shaders compiled before them.
-    - shaders/lens_light.glsl
 
   # 🚨THE APP UI's OWN FACE (유저 확정 2026-08-28). The app used to have no
   # font of its own and wore whatever the OS handed it, so the same screen
@@ -177,14 +170,13 @@ flutter:
         - asset: assets/fonts/NotoSansSC-Bold.ttf
           weight: 700
 
-  # Fragment shaders. `flutter: shaders:` compiles each to the SPIR-V a
-  # `FragmentProgram.fromAsset` loads; the path here is the asset key.
-  shaders:
-    - shaders/colour_key.frag
-    - shaders/directional_blur.frag
-    - shaders/row_sum.frag
-    - shaders/iris_table.frag
-    - shaders/iris_gather.frag
+  # ↩️Fragment shaders (`shaders:`) stood here till the Flutter chain went
+  # (the-flutter-fx-chain-is-a-second-chain, 2026-11-13): the engine's WGSL
+  # draws every effect. Two laws they kept, for one that comes back: ONE
+  # LOADER for every program (`LoadedFragmentProgram`, merged at the third),
+  # awaited before the first frame — a paint cannot wait for an asset; and
+  # a file a shader #includes LISTED among the assets, or a change to it
+  # rebuilds nothing (🔬10-28: nine mutants of `lens_light.glsl` lived).
 
   # To add assets to your application, add an assets section, like this:
   # assets:

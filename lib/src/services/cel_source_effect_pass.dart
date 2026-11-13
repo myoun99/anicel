@@ -68,8 +68,10 @@ class CelColorKey {
   /// ⛔FLOAT32, DELIBERATELY, in a language whose doubles are 64-bit. This
   /// effect has two implementations by necessity: the BUTTON edits stored
   /// bytes, which only Dart can do, and the FX keys a composited buffer,
-  /// which only a fragment shader can do (`shaders/colour_key.frag`). A
-  /// specification one of them cannot follow is not a specification.
+  /// which only the GPU can do (the engine's key.wgsl, in float32;
+  /// ↩️`shaders/colour_key.frag` till the Flutter chain went —
+  /// the-flutter-fx-chain-is-a-second-chain). A specification one of them
+  /// cannot follow is not a specification.
   ///
   /// 🧪MEASURED, not feared: computing the mix in doubles disagreed with the
   /// shader on **222 of 25856** (alpha, amount) pairs. Every one of them was

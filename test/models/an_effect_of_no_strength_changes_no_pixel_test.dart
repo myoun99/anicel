@@ -63,7 +63,7 @@ void main() {
       ], paper: const Rect.fromLTWH(0, 0, 64, 48));
       expect(plan.isSingleDraw, isTrue);
       expect(plan.outsetPixels, 0);
-      expect(plan.finalPaint.isEmpty, isTrue);
+      expect(plan.finalEffects, isEmpty);
     });
   }
 

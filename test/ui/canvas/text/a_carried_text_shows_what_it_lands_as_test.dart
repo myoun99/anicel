@@ -14,7 +14,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
-import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -355,9 +354,6 @@ void main() {
   }
 
   group('on a layer that KEYS a colour away', () {
-    // The app loads it before its first frame (`main`).
-    setUpAll(ColourKeyShader.load);
-
     // What the canvas lays for the row, before the row's chain — whose
     // keys the engine runs over it as over the cel it lands on
     // (`celSourceKeys`): the same bytes in, the same keyed out.

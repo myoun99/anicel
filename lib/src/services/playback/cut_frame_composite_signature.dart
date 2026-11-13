@@ -137,8 +137,8 @@ sealed class CompositeNodeSignature
   ///
   /// 🚨THE STRENGTH A NODE IS LAID AT IS NOT IN ITS PICTURE (card
   /// a-dragged-opacity-slider-lags-at-rest): a folder's or a clipping group's,
-  /// and an adjustment's mix, go on as the picture is blitted
-  /// (`drawSubtreeAsImage`'s `compose`), over the same raster and the same
+  /// and an adjustment's mix, go on as the picture is laid (the engine's
+  /// `close`, composite_tree_plan.dart), over the same picture and the same
   /// steps at every value. 🔬Signed into what the picture is held by, a
   /// blurred folder's own slider ran its chain at each value: S5_BA cut 353,
   /// in turn with it out, let go to its picture 1.3–1.9 s → 0.22–0.40 s, the

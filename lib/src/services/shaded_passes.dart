@@ -7,16 +7,16 @@ import '../core/color_matrix.dart' show luminanceB, luminanceG, luminanceR;
 
 /// One raster of a step a fragment shader draws ([ShadedEffect]): the whole
 /// raster at the identity, over the picture the raster before it made
-/// (`applyEffectSteps`). A kind is drawn in these when it reads past the
-/// pixel and no `ui.ImageFilter` carries it.
+/// (the engine's chain, composite_tree_plan.dart). A kind is drawn in these
+/// when it reads past the pixel and no `ui.ImageFilter` carries it.
 @immutable
 sealed class ShadedPass {
   const ShadedPass();
 }
 
 /// One raster of a blur along a way through every pixel: each the average
-/// of [taps] samples along it, centred on it (`shaders/directional_blur.frag`)
-/// — a line's, [stepX], [stepY] raster pixels apart (a directional blur),
+/// of [taps] samples along it, centred on it (the engine's line.wgsl) — a
+/// line's, [stepX], [stepY] raster pixels apart (a directional blur),
 /// or, about ([centerX], [centerY]) in raster pixels, a circle's [turn]
 /// radians apart (a spin) or a ray's [grow] apart in the log of the way out
 /// (a zoom).
@@ -46,8 +46,7 @@ final class LineBoxPass extends ShadedPass {
 
   /// The first tap's turn and scale about the centre: the map of the
   /// (taps − 1)/2 taps it lies back from the middle one. With [eachMap],
-  /// what the shader (`DirectionalBlurShader`) and the engine's line blur
-  /// (line.rs's `first` and `each`) are handed.
+  /// what the engine's line blur (line.rs's `first` and `each`) is handed.
   List<double> get firstMap => _mapOf(-(taps - 1) / 2);
 
   /// The turn and scale each next tap takes from the one before.
@@ -84,48 +83,17 @@ final class LineBoxPass extends ShadedPass {
       'about: ($centerX, $centerY), $taps)';
 }
 
-/// How a camera lens blur reads the light it spreads
-/// (`shaders/lens_light.glsl`): in [linear] light or as the picture is
-/// stored, and every pixel brighter than [threshold] (0…1) boosted by
-/// [gain] times how far past it it is, the boost [saturation] (0…1) its
-/// own colour and the rest white.
+/// How a camera lens blur reads the light it spreads (the engine's
+/// light.wgsl): in [linear] light or as the picture is stored, and every
+/// pixel brighter than [threshold] (0…1) boosted by [gain] times how far
+/// past it it is, the boost [saturation] (0…1) its own colour and the rest
+/// white.
 typedef LensLight = ({
   double gain,
   double threshold,
   double saturation,
   bool linear,
 });
-
-/// One raster of a ROW SUM: every texel the sum of [taps] texels [stride]
-/// apart along its row — itself, then the ones to its left, none past the
-/// raster's edge (`shaders/row_sum.frag`). Strides 1, taps, taps², … make
-/// each texel the sum of its row up to it (`rowSumPasses`), as a box's
-/// passes make its average (`lineBoxPlan`).
-///
-/// [light] is how the pass reads the texels it sums — the first pass's, of
-/// the step's own picture — and null where it sums them as they are.
-///
-/// 🚨LAID IN FLOATS: a sum runs past 1, and a byte would clamp it.
-final class RowSumPass extends ShadedPass {
-  const RowSumPass({required this.stride, required this.taps, this.light});
-
-  final int stride;
-  final int taps;
-  final LensLight? light;
-
-  @override
-  bool operator ==(Object other) =>
-      other is RowSumPass &&
-      other.stride == stride &&
-      other.taps == taps &&
-      other.light == light;
-
-  @override
-  int get hashCode => Object.hash(stride, taps, light);
-
-  @override
-  String toString() => 'RowSumPass($stride, $taps, light: $light)';
-}
 
 /// A camera lens blur's Iris Properties, as Adobe's help names them (read
 /// 2026-10-28): its Shape's [sides], its [roundness] (0…1), its [aspect] —
@@ -163,8 +131,8 @@ enum IrisMapChannel {
 /// it where it [inverts], lies from [focal], over 255.
 typedef IrisMap = ({IrisMapChannel channel, double focal, bool inverts});
 
-/// What a camera lens blur's table of its iris's rows is laid of
-/// (`iris_table.frag`), and all it is laid of: its [radius], its iris's
+/// What a camera lens blur's table of its iris's rows is laid of (the
+/// engine's iris_table.wgsl), and all it is laid of: its [radius], its iris's
 /// shape — [sides], [roundness], [aspect], [rotation] — and where it reads
 /// a blur map its [levels]: the map's focal distance and whether it
 /// inverts. Its fringe, paper, light and the map's channel are the gather's.
@@ -179,9 +147,10 @@ typedef IrisRows = ({
 
 /// The turns an iris of [sides] at [rotation] is laid by — its rotation's,
 /// half a side's and a whole side's, each as its cosine and sine — worked
-/// out here, in doubles: a GPU's sin and cos miss by too much (the
-/// uniforms of `iris_table.frag` say how much). What that shader and the
-/// engine's lens blur (lens.rs's `Iris`) are handed.
+/// out here, in doubles: a GPU's sin and cos miss by too much (↩️the
+/// Flutter shader's uniforms, `iris_table.frag`, said how much, till the
+/// Flutter chain went — the-flutter-fx-chain-is-a-second-chain). What the
+/// engine's lens blur (lens.rs's `Iris`) is handed.
 ({
   (double, double) rotation,
   (double, double) halfSide,
@@ -198,19 +167,19 @@ irisTurnsOf({required int sides, required double rotation}) {
   );
 }
 
-/// A camera lens blur's iris gathered out of its row sums
-/// (`shaders/iris_gather.frag`, after [RowSumPass]es): every pixel the
-/// mean of the pixels the iris covers about it — the ones of each row two
-/// reads of its sums. Its rows are laid by the GPU (`iris_table.frag`):
-/// the iris [radius] raster pixels out, as its [iris] shapes it, at one
-/// level, or — where it reads a blur [map] — at each of the map's 256.
+/// A camera lens blur's iris gathered out of its row sums (the engine's
+/// sums.wgsl, then gather.wgsl): every pixel the mean of the pixels the
+/// iris covers about it — the ones of each row two reads of its sums. Its
+/// rows are laid by the GPU (iris_table.wgsl): the iris [radius] raster
+/// pixels out, as its [iris] shapes it, at one level, or — where it reads
+/// a blur [map] — at each of the map's 256.
 ///
 /// [paper] is the paper on whole pixels where the iris repeats its edge
 /// pixels past it — read where it reads past the paper, and cut to it —
 /// and null where past the raster there is nothing to read.
 ///
-/// [light] is how its sums read the light ([RowSumPass.light]): the edge
-/// pixels it reads are read so too, and what it draws is put back as a
+/// [light] is how its sums read the light: the edge pixels it reads are
+/// read so too, and what it draws is put back as a
 /// picture is stored. Null where the sums are of the picture as it is.
 final class IrisGatherPass extends ShadedPass {
   const IrisGatherPass({

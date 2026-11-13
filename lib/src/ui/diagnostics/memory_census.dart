@@ -16,9 +16,7 @@ import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/fx_plugin_stages.dart';
-import '../canvas/iris_blur_shader.dart';
 import '../editor_session_manager.dart';
-import '../text/canvas_letter_plate.dart' as letter_plates;
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
 import '../widgets/static_raster.dart';
@@ -340,15 +338,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // store bounded by how many, up to 512, 512 and 768 of them. They read
     // as engine overhead until 2026-10-17 (card
     // census-misses-bake-once-images): no field of theirs had the shape the
-    // census ratchet looked for.
-    // And the plates of the letters a picture holds — a cel number's, a
-    // name tag's — rastered once and drawn from after (card
-    // cel-number-letters-drawn-as-vectors, 2026-11-07).
+    // census ratchet looked for. ↩️And the plates of the letters a picture
+    // holds — a cel number's, a name tag's — while the app rastered them
+    // (cel-number-letters-drawn-as-vectors, 2026-11-07), until the engine's
+    // letters made them, in its tiles (the-flutter-fx-chain-is-a-second-chain).
     if (textures)
       MemoryCensusItem(
         id: 'textImages',
-        bytes:
-            BakedWords.instance.imageBytes + letter_plates.letterPlateBytes,
+        bytes: BakedWords.instance.imageBytes,
       ),
     if (textures)
       MemoryCensusItem(
@@ -365,13 +362,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // in for the reason `drawings` gives above; the canvas's own
             // view, when it takes one, is no timeline's and needs a row.
             ScreenTexture.liveBytes,
-      ),
-    // The table of a camera lens blur's iris last laid, the app's one,
-    // kept for the next gather of the same iris (2026-10-31).
-    if (textures)
-      MemoryCensusItem(
-        id: 'lensBlurTables',
-        bytes: IrisBlurShader.tableBytes,
       ),
     // What a plug-in in a chain made, kept on the cel it was run over —
     // a picture a canvas's size a step (관제 2026-11-11, (2) ⓒ). Bytes in

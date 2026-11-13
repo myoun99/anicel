@@ -325,19 +325,20 @@ Map<String, String> _pictureTypesBy(Map<String, String> sources) {
 }
 
 /// The types of [source] whose values wrap one of [pictures]: a class or
-/// mixin with a field of it — or of the pieces of one (2026-10-21: a
-/// picture past the side is held in pieces, `List<ImagePiece>`, and the
-/// stored picture and the compose, each one image the day before, fell out
-/// of the chain with every holder above them) — or an abstract getter of
-/// one, whose kinds each keep it their own way (2026-10-29: a tile's slot
-/// came to read its page's picture on the getter, and the tile cache fell
-/// out with `TilePicture`) — a record typedef with one.
-/// ⛔Only pieces: a list of any picture is a holding, and a holder of
-/// holdings no picture of its own (widened so, the home page's sessions
-/// came up).
+/// mixin with a field of it — or an abstract getter of one, whose kinds
+/// each keep it their own way (2026-10-29: a tile's slot came to read its
+/// page's picture on the getter, and the tile cache fell out with
+/// `TilePicture`) — a record typedef with one.
+/// ⛔A list of any picture is a holding, and a holder of holdings no
+/// picture of its own (widened so, the home page's sessions came up).
+/// ↩️A field of the pieces of one counted too (2026-10-21: a picture past
+/// the side was held in pieces, `List<ImagePiece>`, and the stored picture
+/// and the compose fell out of the chain with every holder above them),
+/// till the pieces went with the Flutter chain
+/// (the-flutter-fx-chain-is-a-second-chain).
 Iterable<String> _wrappersIn(String source, String pictures) sync* {
   final field = RegExp(
-    '^  (?:late )?(?:final )?(?:$pictures|List<ImagePiece>)'
+    '^  (?:late )?(?:final )?(?:$pictures)'
     r'\??\s+\w+\s*[;=]',
     multiLine: true,
   );
@@ -448,9 +449,6 @@ const _imageHolders = <String, String>{
       '(viewerRasterBytes, storyboardThumbnailBytes, sheetImageBytes) — '
       '↩️until 10-30 three fields, each its own holding',
   // … and what one draw, one edit or one render holds while it lasts.
-  'lib/src/ui/canvas/subtree_image_composite.dart → _images':
-      'what one effect chain\'s picture draws while it is laid (_Laying), '
-      'let go once that picture is recorded — the working set of a chain',
   'lib/src/ui/export/export_frame_renderer.dart → _pictures':
       'an export run\'s pictures, made on the engine — a cut\'s whole '
       'picture, the finished frame — for the frame being drawn, held one '
@@ -481,18 +479,4 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/selection_float_overlay.dart → floats':
       'a paint\'s floats: each picture is a float\'s warp preview, owned by '
       'the float (canvas_selection_layer.dart → floats)',
-
-  // — 2026-10-31, a camera lens blur's table kept for its next gather.
-  'lib/src/ui/canvas/iris_blur_shader.dart → _kept': 'counted:tableBytes',
-
-  // — 2026-11-07, the plates of the letters a picture holds (card
-  // cel-number-letters-drawn-as-vectors).
-  'lib/src/ui/text/canvas_letter_plate.dart → _plates':
-      'counted:letterPlateBytes',
-
-  // — 2026-10-31, a plugin anywhere in a chain (I-132-Q34 a).
-  'lib/src/ui/canvas/fx_plugin_stages.dart → _stages':
-      'one recording through its plugins: each step\'s input read back and '
-      'what its plugin made, the stages made and let go of by the one call '
-      'that records (recordedThrough) — the working set of a render',
 };

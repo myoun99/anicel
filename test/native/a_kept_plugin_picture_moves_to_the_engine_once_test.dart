@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
-import '../helpers/a_row_laid_through_its_plugins.dart';
+import '../helpers/a_row_laid_on_the_engine.dart';
 
 /// 🚨★A KEPT PLUG-IN PICTURE MOVES TO THE ENGINE ONCE, HOWEVER MANY PLANS
 /// PUT IT (ink-trails-further-on-intel-since-the-screen-waits-for-the-gpu,
@@ -64,7 +64,7 @@ void main() {
     final before = GpuPutPicture.liveBytes;
 
     for (var plans = 0; plans < 4; plans += 1) {
-      await aRowLaidThroughItsPlugins(composite, letters, cel, effects);
+      await aRowLaidOnTheEngine(composite, letters, cel, effects);
     }
 
     expect(runner.renders, 1, reason: '⛔premise: kept, not run again');

@@ -81,24 +81,6 @@ void main() {
         _expectClose(_map(matrix, _map(inverse, point)), point);
       }
     });
-
-    test(
-      'rasterScale adapts the same canvas-space placement to a scaled '
-      'raster',
-      () {
-        const rasterScale = 0.25;
-        final full = layerPoseMatrix(_pose(), _canvasSize);
-        final scaled = placementMatrix(
-          placedBy(_pose(), _canvasSize),
-          rasterScale: rasterScale,
-        );
-
-        const artworkPoint = Offset(200, 500);
-        final fullMapped = _map(full, artworkPoint);
-        final scaledMapped = _map(scaled, artworkPoint * rasterScale);
-        _expectClose(scaledMapped, fullMapped * rasterScale);
-      },
-    );
   });
 
   group('placementViewportWrapMatrix', () {

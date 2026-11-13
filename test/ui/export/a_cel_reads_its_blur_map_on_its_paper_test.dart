@@ -24,7 +24,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
@@ -43,7 +42,6 @@ import '../../helpers/no_guides_laid.dart';
 /// black, the cel comes out sharp left of the seam and blurred whole right
 /// of it — the seam where the map is drawn, not where the screen shows it.
 void main() {
-  setUpAll(IrisBlurShader.load);
 
   const width = 64;
   const height = 32;

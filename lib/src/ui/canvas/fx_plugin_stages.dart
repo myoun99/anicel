@@ -7,7 +7,6 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuPutPicture;
 
 import '../../core/rgba_premultiply.dart';
 import '../../core/signed_memo.dart';
-import '../../core/sync_image_upload.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
@@ -188,7 +187,7 @@ final class FxPluginStages implements PluginSteps {
   };
 
   /// [record], each plugin's step met in it drawing what its plugin made
-  /// where these stages hold it ([ranOver]).
+  /// where these stages hold it ([stepOf]).
   T _recording<T>(T Function() record) {
     _met = 0;
     _missed = false;
@@ -214,35 +213,6 @@ final class FxPluginStages implements PluginSteps {
     _stages.clear();
   }
 
-  /// [input] — the picture a chain made before [effect], [scale] of its
-  /// pixels a canvas pixel, with [paper] where the paper lies in them —
-  /// through [effect]'s plugin, a picture the caller owns: what the
-  /// recording these stages run met at this step ([_recording]); null where
-  /// no recording that can wait is running, or where this step is still to
-  /// be run.
-  static ui.Image? ranOver(
-    ui.Image input,
-    ResolvedLayerEffect effect, {
-    required double scale,
-    required ui.Rect paper,
-  }) {
-    final stages = Zone.current[_zoneKey];
-    if (stages is! FxPluginStages) {
-      return null;
-    }
-    final met = stages._taken(
-      effect,
-      _ImageInput(input),
-      width: input.width,
-      height: input.height,
-      scale: scale,
-      paper: paper,
-    );
-    // Null where it failed: drawn as if off, as a plugin that fails is
-    // ([FxPluginRunner.render]).
-    return met?.image?.clone();
-  }
-
   @override
   ({bool ran, GpuPutPicture? made}) stepOf(
     ResolvedLayerEffect effect,
@@ -258,7 +228,6 @@ final class FxPluginStages implements PluginSteps {
       input,
       width: width,
       height: height,
-      scale: 1,
       paper: paper,
       from: from,
       ofThePensFrame: ofThePensFrame,
@@ -275,7 +244,6 @@ final class FxPluginStages implements PluginSteps {
     PluginStepInput input, {
     required int width,
     required int height,
-    required double scale,
     required ui.Rect paper,
     PluginStepSource? from,
     bool ofThePensFrame = false,
@@ -292,7 +260,6 @@ final class FxPluginStages implements PluginSteps {
       effect: effect,
       width: width,
       height: height,
-      scale: scale,
       paper: paper,
     );
     final kept = switch (from) {
@@ -345,7 +312,6 @@ typedef _StepAsked = ({
   ResolvedLayerEffect effect,
   int width,
   int height,
-  double scale,
   ui.Rect paper,
 });
 
@@ -355,27 +321,6 @@ typedef _StepAsked = ({
 final class _KeptStep {
   bool ran = false;
   GpuPutPicture? output;
-}
-
-/// A picture of the walk's as a plugin's step reads it — premultiplied as
-/// the picture holds it, straightened for the plugin.
-final class _ImageInput implements PluginStepInput {
-  _ImageInput(ui.Image image) : _image = image.clone();
-
-  final ui.Image _image;
-
-  @override
-  Future<Uint8List?> straight() async {
-    final data = await _image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    return data == null
-        ? null
-        : straightRgbaFor(
-            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-          );
-  }
-
-  @override
-  void free() => _image.dispose();
 }
 
 /// A plugin's step as a recording met it: its input, held until it is run.
@@ -388,7 +333,6 @@ final class _Stage {
   final _StepAsked step;
 
   ResolvedLayerEffect get effect => step.effect;
-  double get scale => step.scale;
   ui.Rect get paper => step.paper;
   int get width => step.width;
   int get height => step.height;
@@ -401,16 +345,6 @@ final class _Stage {
   /// What the plugin made, moved to the engine once: every plan that puts
   /// it names it there ([GpuPutPicture]).
   GpuPutPicture? output;
-
-  ui.Image? _image;
-
-  /// [output] as a picture, the step's own until it is let go of.
-  ui.Image? get image => _image ??= switch (output) {
-    null => null,
-    final made => pictureOf(
-      PremultipliedRows(premultipliedRgbaCopy(made.straight), width, height),
-    ),
-  };
 
   /// Whether it has been run — [output] null after it is a plugin that
   /// failed.
@@ -454,8 +388,8 @@ final class _Stage {
   /// and draws straight ([FxPluginPicture]); null where the plugin fails.
   Future<Uint8List?> _ranThrough(FxPluginRun run, Uint8List straight) async {
     final canvas = CanvasSize(
-      width: (paper.width / scale).round(),
-      height: (paper.height / scale).round(),
+      width: paper.width.round(),
+      height: paper.height.round(),
     );
     final rows = fxPluginRowsOf(effect, run);
     final values = fxPluginValuesOf(effect, paper: canvas, rows: rows);
@@ -463,7 +397,9 @@ final class _Stage {
       frameIndex: run.moment.frameIndex,
       time: run.moment.time,
       frameRate: run.moment.frameRate,
-      scale: scale,
+      // A canvas pixel a pixel: the engine runs a chain in canvas pixels
+      // (composite_effect_paint.dart's `_paintPartOf`).
+      scale: 1.0,
     );
     // Where the picture's first pixel lies from the paper's, in its pixels.
     final left = (-paper.left).round();
@@ -488,43 +424,27 @@ final class _Stage {
   }
 
   /// [row]'s own picture on this step's grid — its first pixel at ([left],
-  /// [top]) from the paper's, [scale] of them a canvas pixel, each read
-  /// from the canvas pixel it lies in — straight; clear where no cel is.
+  /// [top]) from the paper's, a canvas pixel a pixel — straight; clear where
+  /// no cel is.
   Uint8List _rowOnTheGrid(
     BitmapSurface? row, {
     required int left,
     required int top,
-  }) {
-    final out = Uint8List(width * height * 4);
-    if (row == null) {
-      return out;
-    }
-    final region = DirtyRegion(
-      left: (left / scale).floor(),
-      top: (top / scale).floor(),
-      rightExclusive: ((left + width) / scale).ceil(),
-      bottomExclusive: ((top + height) / scale).ceil(),
-    );
-    final straight = engineSurfaceRegionPixels(
-      celSurfaceWithTextsLaid(row),
-      region,
-    );
-    for (var y = 0; y < height; y += 1) {
-      final from = (((top + y) / scale).floor() - region.top) * region.width;
-      for (var x = 0; x < width; x += 1) {
-        final at = (from + ((left + x) / scale).floor() - region.left) * 4;
-        final to = (y * width + x) * 4;
-        out.setRange(to, to + 4, straight, at);
-      }
-    }
-    return out;
-  }
+  }) => row == null
+      ? Uint8List(width * height * 4)
+      : engineSurfaceRegionPixels(
+          celSurfaceWithTextsLaid(row),
+          DirtyRegion(
+            left: left,
+            top: top,
+            rightExclusive: left + width,
+            bottomExclusive: top + height,
+          ),
+        );
 
   void dispose() {
     _input?.free();
     _input = null;
-    _image?.dispose();
-    _image = null;
     output = null;
   }
 }

@@ -34,7 +34,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
+import 'package:anicel/src/ui/canvas/subtree_buffer_bounds.dart'
     show subtreeBufferBounds;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';

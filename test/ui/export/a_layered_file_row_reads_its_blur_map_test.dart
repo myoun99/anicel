@@ -23,7 +23,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
-import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
@@ -41,7 +40,6 @@ import '../../helpers/cels_parked_cold.dart';
 /// distance at black, the row it blurs comes out of the file sharp left of
 /// the seam, the pixel itself, and at the blur's whole radius right of it.
 void main() {
-  setUpAll(IrisBlurShader.load);
 
   const width = 64;
   const height = 32;

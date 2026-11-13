@@ -68,14 +68,11 @@ void paintSheetPhotos(
     );
     drawPosedLayerImage(
       canvas,
-      pieces: [(image: image, worldRect: own)],
-      extent: own,
-      // A photo wears no chain: its own picture is all the paper it has.
-      paper: own,
+      image: image,
+      worldRect: own,
       placement: picturePlacement(pose, picture),
       opacity: 1,
       blendMode: LayerBlendMode.normal,
-      texelScale: null,
       filterQuality: filterQualityForDisplayScale(displayScale * perTexel),
     );
   }

@@ -283,7 +283,6 @@ void main() {
       // What the pubspec bundles into every suite, as the green record has
       // always keyed it (10-20).
       'assets/fonts/BIZUDPGothic-Regular.ttf',
-      'shaders/x.frag',
     ]) {
       expect(forcesFullRun(blanket), isTrue, reason: blanket);
     }

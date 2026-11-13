@@ -19,7 +19,7 @@ import 'package:anicel/src/services/composite_effect_paint.dart'
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 
 import '../helpers/a_plugin_that_shifts.dart';
-import '../helpers/a_row_laid_through_its_plugins.dart';
+import '../helpers/a_row_laid_on_the_engine.dart';
 import '../helpers/an_effect_sampled.dart';
 
 /// 🚨★★★A ROW'S LEADING COLOUR KEYS ARE THE ENGINE'S, AND IT KEYS EACH
@@ -228,6 +228,23 @@ void main() {
   });
   final blur = fx(EffectKind.blur, {'blurriness': 6});
 
+  // 🗣️I-132-Q2: a keep gives back what ITS run took; a colour between ends
+  // the run before it, so a keep past one gives back to a run of its own.
+  // ↩️Held on the Flutter chain (order_is_free_test) till it went
+  // (the-flutter-fx-chain-is-a-second-chain).
+  test('a keep past a colour gives back to its own run — nothing, where '
+      'that run took nothing', () {
+    final cel = celOf(const [0, 1]);
+    final away = keyOut(const [64, 192, 96, 10, 100]);
+    final back = keep(const [64, 192, 96, 10, 100]);
+    expect(
+      laid(rowOf(cel, [away, colour, back])),
+      laid(rowOf(cel, [away, colour])),
+    );
+    // ⛔liveness: with nothing between, the keep gives the paper back.
+    expect(laid(rowOf(cel, [away, back])), isNot(laid(rowOf(cel, [away]))));
+  });
+
   // No picture of the row is made to key it where its own keys can: the
   // chain's op is that row laid over nothing (kernels/chain).
   test("keys alone, or before a colour, are the row's own — a chain only "
@@ -281,14 +298,14 @@ void main() {
         values: const [],
         run: fxPluginRunOf(plugin),
       );
-      final engine = await aRowLaidThroughItsPlugins(
+      final engine = await aRowLaidOnTheEngine(
         composite,
         letters,
         cel,
         [...keys, through],
       );
       expect(plugin.renders, 1, reason: '⛔fixture: the plug-in ran');
-      final reference = await aRowLaidThroughItsPlugins(
+      final reference = await aRowLaidOnTheEngine(
         composite,
         letters,
         keyedByDefinition(cel, keys),
@@ -296,7 +313,7 @@ void main() {
       );
       expect(engine, reference);
       expect(
-        await aRowLaidThroughItsPlugins(composite, letters, cel, const []),
+        await aRowLaidOnTheEngine(composite, letters, cel, const []),
         isNot(reference),
         reason: '⛔liveness: the keys took some of what the row lays',
       );

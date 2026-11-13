@@ -66,14 +66,15 @@ import 'test_seconds.dart';
 /// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
 /// Dependencies and toolchain change what every file compiles to; the
-/// assets and shaders the pubspec bundles reach every suite with no import
-/// edge to them (↩️as the C engine's sources did, behind FFI, till they
-/// went — 2026-11-13); and `test/flutter_test_config.dart` is loaded by
-/// flutter_test before every suite in the tree while nothing imports it —
-/// an edge the graph cannot see because it does not exist in the source.
-/// ↩️Until 10-20 this was a list of its own that left `assets/` and
-/// `shaders/` out, while the green record already ran every suite again
-/// for them.
+/// assets the pubspec bundles reach every suite with no import edge to them
+/// (↩️as the C engine's sources did, behind FFI, till they went —
+/// 2026-11-13 — and the shaders it bundled, till the Flutter chain's went —
+/// the-flutter-fx-chain-is-a-second-chain); and
+/// `test/flutter_test_config.dart` is loaded by flutter_test before every
+/// suite in the tree while nothing imports it — an edge the graph cannot
+/// see because it does not exist in the source. ↩️Until 10-20 this was a
+/// list of its own that left `assets/` and `shaders/` out, while the green
+/// record already ran every suite again for them.
 ///
 /// ↩️THE PLATFORM FOLDERS ARE NO LONGER HERE (유저 10-20,
 /// tests-crowd-the-machine-Q6 「전부」). `android/ ios/ linux/ macos/

@@ -27,7 +27,6 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
@@ -49,8 +48,6 @@ void main() {
   const canvasSize = CanvasSize(width: 150, height: 101);
   const view = Size(176, 128);
   final screenKey = GlobalKey();
-
-  setUpAll(ColourKeyShader.load);
 
   BrushFrameKey key(String id) => BrushFrameKey(
     projectId: const ProjectId('p'),

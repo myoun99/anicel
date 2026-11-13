@@ -84,7 +84,8 @@ typedef _Stack = ({double r, double g, double b, double coverage});
 /// What an ADJUSTMENT row makes of [stack] — everything laid up below it —
 /// as the paint routes grade its scope: its chain run over the pixel in
 /// the chain's order, as a row's own runs ([pixelThroughChain]), and that
-/// crossfaded with the pixel by the row's MIX ([resolveAdjustmentScopePass]).
+/// crossfaded with the pixel by the row's MIX, as the engine lays it
+/// (composite_tree_plan.dart).
 /// Null when the row filters nothing this walk can answer (hidden, in a
 /// hidden folder, mix 0, nothing laid up to grade).
 ///
