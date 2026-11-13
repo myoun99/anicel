@@ -71,7 +71,7 @@ class SeInstanceDialogResult {
 }
 
 /// The SE layer's instance editor — name (speaker/effect, accent box) +
-/// dialogue (can run long → multiline) with the live paper-block preview.
+/// dialogue, one line each (F-584), with the live paper-block preview.
 /// New entries are created ONE frame long, like drawing cels — the comma
 /// grips own the length afterwards (the R3 length input is retired). Pops
 /// a [SeInstanceDialogResult], or nothing on cancel.
@@ -390,11 +390,18 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 🗣️F-584 (유저 2026-11-12): 「se블록의 이름/대사는 1줄만 허용.
+          // 엔터누르면 해당 편집창의 저장버튼 작동하도록」 — Enter in either is
+          // the window's primary button, as in every one-line field of a
+          // window (`AppPromptDialog`, the work settings). ↩️The dialogue
+          // took line breaks (since 07-09, nobody's order) that a block,
+          // laying its glyphs along one line, had no place for.
           AppWindowField(
             label: strings.seNameLabel,
             child: TextField(
               key: const ValueKey<String>('se-name-field'),
               controller: _seNameController,
+              onSubmitted: (_) => _submit(),
             ),
           ),
           const SizedBox(height: 12),
@@ -407,8 +414,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
               key: const ValueKey<String>('se-dialogue-field'),
               controller: _dialogueController,
               autofocus: true,
-              minLines: 2,
-              maxLines: null,
+              onSubmitted: (_) => _submit(),
             ),
           ),
           const SizedBox(height: 12),

@@ -132,6 +132,9 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
     return text.isEmpty ? null : text;
   }
 
+  /// The primary button's — and Enter's in any of the written fields, as
+  /// in the SE window of the same shell (F-584), where the button being
+  /// off stops nothing: it asks [_canSubmit] itself.
   void _submit() {
     if (!_canSubmit) {
       return;
@@ -215,6 +218,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
               child: TextField(
                 key: const ValueKey<String>('instruction-text-field'),
                 controller: _textController,
+                onSubmitted: (_) => _submit(),
               ),
             ),
             const SizedBox(height: 12),
@@ -227,6 +231,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                     child: TextField(
                       key: const ValueKey<String>('instruction-value-a-field'),
                       controller: _valueAController,
+                      onSubmitted: (_) => _submit(),
                     ),
                   ),
                 ),
@@ -237,6 +242,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                     child: TextField(
                       key: const ValueKey<String>('instruction-value-b-field'),
                       controller: _valueBController,
+                      onSubmitted: (_) => _submit(),
                     ),
                   ),
                 ),

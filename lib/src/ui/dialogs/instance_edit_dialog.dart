@@ -27,8 +27,8 @@ class InstanceEditDialogShell extends StatelessWidget {
   final String title;
   final IconData? titleIcon;
 
-  /// Kind-specific field column; scrolls when tall (long SE dialogue), the
-  /// preview below keeps its height.
+  /// Kind-specific field column; scrolls when tall (an SE line's linked
+  /// sounds), the preview below keeps its height.
   final Widget body;
 
   /// Live preview pane ([InstanceEditPreview] usually); null hides the slot.
