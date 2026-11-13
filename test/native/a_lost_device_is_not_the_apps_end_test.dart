@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -102,5 +103,36 @@ void main() {
     // the one asking.
     expect(engine.debugTakeNoted(), isNotNull);
     expect(engine.debugTakeNoted(), isNull, reason: 'taken');
+  });
+
+  // The causes the package names are the numbers the engine answers by: a
+  // number written twice is two numbers the day one of them moves — and
+  // the person is told of a cause that was not theirs.
+  test('the causes the package names a device\'s going by are the '
+      'engine\'s, number for number, and a number it does not know is no '
+      'cause said', () {
+    final engine = File(
+      'packages/gpu_engine/rust/src/platform/mod.rs',
+    ).readAsStringSync();
+    expect(
+      {
+        for (final named in RegExp(
+          r'pub const WENT_(\w+): u32 = (\d+);',
+        ).allMatches(engine))
+          GpuDeviceWent.of(int.parse(named[2]!)): named[1]!,
+      },
+      {
+        GpuDeviceWent.unsaid: 'UNSAID',
+        GpuDeviceWent.memory: 'BY_MEMORY',
+        GpuDeviceWent.thisApp: 'BY_THIS_APP',
+        GpuDeviceWent.removal: 'BY_REMOVAL',
+        GpuDeviceWent.reset: 'BY_RESET',
+        GpuDeviceWent.driver: 'BY_DRIVER',
+      },
+    );
+    expect(
+      [-1, GpuDeviceWent.values.length].map(GpuDeviceWent.of),
+      everyElement(GpuDeviceWent.unsaid),
+    );
   });
 }
