@@ -199,7 +199,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
       - uses: ./.github/actions/rust-engine
       # The project's green rule: the exit code decides, never the tail.
-      - name: Run tests against the gcc-built engine
+      - name: Run tests against the engine this run built
         uses: ./.github/actions/test-shard
         with:
           total: 3

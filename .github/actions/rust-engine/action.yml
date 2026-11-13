@@ -1,7 +1,8 @@
 name: Ready the GPU engine's Rust
 description: >
   The pinned compiler and its targets, the crates the engine is built from,
-  and on Windows the pinned DXC — for a job whose Flutter build or test run
+  on Windows the pinned DXC and on Linux the system libraries the engine
+  links — for a job whose Flutter build or test run
   builds packages/gpu_engine through its build hook (hook/build.dart), as
   every one does once the app depends on the engine.
 
@@ -42,3 +43,16 @@ runs:
       with:
         path: ~/AppData/Local/anicel-build/dxc
         key: dxc-${{ hashFiles('packages/gpu_engine/rust/build.rs') }}
+    # The sound device (native/audio_device) plays through cpal, whose Linux
+    # backend links ALSA: alsa-sys's build script asks pkg-config for it, and
+    # a runner has neither the headers nor the .pc file. The bundle PR's
+    # three Linux shards stopped there (run 43405643508, 2026-11-13), for
+    # ci.yml's list was the one of three without it. ⚖️HERE, not in each
+    # workflow's list, since every job that builds the engine comes through
+    # this action — the Android job too, which builds none of it for Linux
+    # and pays the install's seconds rather than a list to keep in step.
+    # What each -sys crate needs is named beside the lock in
+    # test/architecture/every_system_library_the_engine_links_is_installed_test.dart.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
