@@ -202,6 +202,47 @@ void main() {
       }
     });
 
+    test('🚨its 16-bit window is the samples the mix holds — what the float '
+        'window narrowed back gave, without the trip', () {
+      // the-export-sound-blocks-the-ui-isolate: the export's encoder and a
+      // mix's tail took the float window and narrowed it back.
+      final path = writeMix(4000);
+      final reader = ConformPcmStreamReader.overWav16(MediaFileBytes(path))!;
+
+      final window = reader.readInt16Window(1234, 500);
+
+      expect(window.startSample, 1234);
+      expect(window.samples, int16PcmOf(reader.readWindow(1234, 500).samples));
+      for (var frame = 0; frame < 500; frame += 1) {
+        final value = ((1234 + frame) % 1000) / 1000.0;
+        expect(window.samples[frame * 2], int16FromUnitSample(value));
+        expect(window.samples[frame * 2 + 1], int16FromUnitSample(-value));
+      }
+    });
+
+    test('its 16-bit window clamps into the file as the float one does, and '
+        'a read cut short hands back only what landed', () {
+      final path = writeMix(1000);
+      final reader = ConformPcmStreamReader.overWav16(MediaFileBytes(path))!;
+
+      final head = reader.readInt16Window(-50, 100);
+      expect(head.startSample, 0);
+      expect(head.samples, int16PcmOf(reader.readWindow(0, 100).samples));
+      final tail = reader.readInt16Window(950, 100);
+      expect(tail.startSample, 950);
+      expect(tail.samples, hasLength(50 * 2));
+      expect(reader.readInt16Window(5000, 100).samples, isEmpty);
+
+      final whole = reader.readInt16Window(0, 1000).samples;
+      final bytes = File(path).readAsBytesSync();
+      File(path).writeAsBytesSync(
+        Uint8List.sublistView(bytes, 0, bytes.length - 400 * 2 * 2),
+      );
+      final short = reader.readInt16Window(500, 200);
+      expect(short.samples, hasLength(100 * 2));
+      expect(short.samples, Int16List.sublistView(whole, 1000, 1200));
+    });
+
     test('a conform is not the mix, and the mix is not a conform', () {
       expect(
         ConformPcmStreamReader.overWav16(MediaFileBytes(writeRamp(100))),

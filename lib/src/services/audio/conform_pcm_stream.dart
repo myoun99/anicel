@@ -250,4 +250,41 @@ class ConformPcmStreamReader {
       return (startSample: start, samples: Float32List(0));
     }
   }
+
+  /// The same window as [readWindow], as the 16-bit samples the file holds
+  /// — for a writer that hands them on as 16-bit (an export's encoder, the
+  /// tail of a mix put before a movie's).
+  ///
+  /// ↩️Each read the window as floats and narrowed it back
+  /// (`int16PcmOf`): an exact round trip ([conformPcmToFloat32]'s
+  /// 「bit-exactly」), every sample twice, for nothing (card
+  /// `the-export-sound-blocks-the-ui-isolate`, the CPU census — 관제
+  /// 2026-11-13). In the platform's byte order, as [conformPcmToFloat32]'s
+  /// view reads them.
+  ({int startSample, Int16List samples}) readInt16Window(
+    int startSample,
+    int sampleCount,
+  ) {
+    final (:start, :count) = windowAt(startSample, sampleCount);
+    if (count == 0) {
+      return (startSample: start, samples: Int16List(0));
+    }
+    final out = Int16List(count * channels);
+    try {
+      final read = _source.readIntoSync(
+        Uint8List.view(out.buffer, out.offsetInBytes, out.lengthInBytes),
+        _dataOffset + start * 2 * channels,
+        out.lengthInBytes,
+      );
+      final got = read ~/ (2 * channels);
+      return (
+        startSample: start,
+        samples: got == count
+            ? out
+            : Int16List.sublistView(out, 0, got * channels),
+      );
+    } on Object {
+      return (startSample: start, samples: Int16List(0));
+    }
+  }
 }

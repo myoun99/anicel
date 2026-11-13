@@ -19,7 +19,6 @@ import '../../services/media/media_byte_source.dart' show MediaFileBytes;
 import 'gif_black_white_quantizer.dart';
 import 'gif_octree_quantizer.dart';
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
-import '../../models/audio_pcm_scale.dart';
 
 /// Whether the app writes a movie in [container] itself, with no encoder of
 /// the machine's — a GIF ([_GifFile]): no OS encoder and no ffmpeg is asked
@@ -736,7 +735,8 @@ class _OsEncoderFeed implements _FrameSink {
     }
     final target = frameRate.frameToSample(frames, reader.sampleRate);
     while (_audioCursor < target) {
-      final window = reader.readWindow(
+      // As the mix wrote them ([ConformPcmStreamReader.readInt16Window]).
+      final window = reader.readInt16Window(
         _audioCursor,
         math.min(target - _audioCursor, 65536),
       );
@@ -747,9 +747,7 @@ class _OsEncoderFeed implements _FrameSink {
         return _padSilenceTo(target, reader.channels);
       }
       final frameCount = window.samples.length ~/ reader.channels;
-      // The exact inverse of the WAV decode — see int16FromUnitSample.
-      final pcm = int16PcmOf(window.samples);
-      if (!encoder.writeAudio(pcm, frameCount)) {
+      if (!encoder.writeAudio(window.samples, frameCount)) {
         return false;
       }
       _audioCursor += frameCount;
