@@ -470,7 +470,7 @@ impl Engine {
     }
 
     /// The device — a thread of the engine's has it in hand, and no other:
-    /// each time one that is none takes it is counted on that thread
+    /// each time a thread takes it is counted on that thread
     /// ([`gpu_engine_device_entered_here`]), which the app's pin holds at
     /// none on the thread its frames are built on ([`EngineThread`] has
     /// why).
@@ -707,8 +707,9 @@ thread_local! {
     /// Which of an engine's threads this one is, by the number of the
     /// [`EngineThread`] it works for — [`NO_ENGINE`] on a caller's.
     static WORKS_FOR: Cell<u64> = const { Cell::new(NO_ENGINE) };
-    /// How many times this thread, none of an engine's, has taken a device
-    /// in hand ([`gpu_engine_device_entered_here`]).
+    /// How many times this thread has taken a device in hand
+    /// ([`gpu_engine_device_entered_here`]) — on a thread of an engine's,
+    /// a count no one asks for.
     static ENTERED_HERE: Cell<u64> = const { Cell::new(0) };
     /// Whether this thread, an engine's, has left that engine's jobs to
     /// one made in its place ([`EngineThread::stands_aside`]): it ends with
@@ -722,12 +723,9 @@ const NO_ENGINE: u64 = 0;
 /// The number the next [`EngineThread`] is known by.
 static THREAD_NUMBERS: AtomicU64 = AtomicU64::new(NO_ENGINE + 1);
 
-/// One more hand on a device, counted where the thread is none of an
-/// engine's ([`Engine::device`]).
+/// One more hand on a device, the calling thread's ([`Engine::device`]).
 fn entered() {
-    if WORKS_FOR.get() == NO_ENGINE {
-        ENTERED_HERE.set(ENTERED_HERE.get() + 1);
-    }
+    ENTERED_HERE.set(ENTERED_HERE.get() + 1);
 }
 
 /// What a caller's thread keeps for itself that a verb's body reads and
@@ -1344,11 +1342,11 @@ pub extern "C" fn gpu_engine_waits_here() -> u64 {
     WAITED_HERE.with(Cell::get)
 }
 
-/// How many times the thread that asks, none of an engine's, has taken a
-/// device in hand ([`Engine::device`]) — made on it, encoded for it or
-/// written to it: what a test holds at none on the thread an app's frames
-/// are built on, a verb's body being the engine's thread's
-/// ([`EngineThread`] has what a caller's thread paid in the device).
+/// How many times the thread that asks has taken a device in hand
+/// ([`Engine::device`]) — made on it, encoded for it or written to it:
+/// what a test holds at none on the thread an app's frames are built on, a
+/// verb's body being the engine's thread's ([`EngineThread`] has what a
+/// caller's thread paid in the device).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_device_entered_here() -> u64 {
     ENTERED_HERE.with(Cell::get)
@@ -1707,13 +1705,16 @@ mod tests {
     // 🚨A verb's body runs on the engine's thread, whatever thread calls the
     // verb (the-ui-thread-never-enters-the-driver; `EngineThread` has why)
     // — as a call: it borrows what its caller holds, fails by its caller's
-    // last error, and its waits are counted on its caller's thread.
+    // last error, and its waits, and the compiles it waits for, are counted
+    // on its caller's thread (the app's pin of the kernels the thread its
+    // frames are built on waits for reads that count there).
     #[test]
     fn a_body_runs_on_the_engines_thread_as_a_call_of_its_callers() {
+        use crate::kernels::shared::{gpu_engine_kernels_built_here, pipeline};
         let engine = Engine::open_first().expect("an adapter");
         let mut lent = vec![1, 2, 3];
         let _: Option<()> = fail("the caller's own");
-        let waited = super::gpu_engine_waits_here();
+        let (waited, built) = (super::gpu_engine_waits_here(), gpu_engine_kernels_built_here());
         let on = engine.on_thread(|| {
             lent.push(4);
             assert_eq!(last_error(), "the caller's own");
@@ -1723,12 +1724,15 @@ mod tests {
             assert_eq!(engine.wait(), Some(()));
             let here = std::thread::current().id();
             assert_eq!(engine.on_thread(|| std::thread::current().id()), here);
+            let source = "@compute @workgroup_size(1)\nfn main() {}\n// device.rs, a body's own";
+            let _ = pipeline(&engine, &[source], "main");
             here
         });
         assert_ne!(on, std::thread::current().id());
         assert_eq!(lent, [1, 2, 3, 4]);
         assert_eq!(last_error(), "the body's");
         assert_eq!(super::gpu_engine_waits_here(), waited + 1);
+        assert_eq!(gpu_engine_kernels_built_here(), built + 1);
     }
 
     // A panic of a body's is its caller's, as it was on the caller's thread
@@ -1744,11 +1748,11 @@ mod tests {
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
     }
 
-    // 🚨A hand on the device is counted on a thread that is none of the
-    // engine's, and on no thread of the engine's: what the app's pin holds
-    // at none on the thread its frames are built on.
+    // 🚨A hand on the device is counted on the thread that takes it — a
+    // body's on the engine's thread, and none of it on its caller's: what
+    // the app's pin holds at none on the thread its frames are built on.
     #[test]
-    fn a_hand_on_the_device_is_counted_on_a_callers_thread_alone() {
+    fn a_hand_on_the_device_is_counted_on_the_thread_that_takes_it() {
         let engine = Engine::open_first().expect("an adapter");
         let entered = super::gpu_engine_device_entered_here;
         let before = entered();
@@ -1760,7 +1764,7 @@ mod tests {
             let small = engine.readback(4);
             engine.queue.write_buffer(&small, 0, &[0; 4]);
         });
-        assert_eq!(entered(), before + 2, "counted on the engine's thread");
+        assert_eq!(entered(), before + 2, "a body's hand is the engine's thread's");
     }
 
     /// Whether a body gets through `engine`'s thread within `within` while
