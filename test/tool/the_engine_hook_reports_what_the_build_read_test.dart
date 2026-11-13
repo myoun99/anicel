@@ -81,8 +81,9 @@ void main() {
     final source = made('checkout/sdk/fx/src/lib.rs').uri;
     final built = made('out/target/release/build/g/out/dxcompiler.dll').uri;
     final shipped = made('out/dxc/dxcompiler.dll').uri;
+    final beside = made('out/targeted/notes.txt').uri;
     final read = readByTheBuild(
-      [source, built, shipped],
+      [source, built, shipped, beside],
       target: Directory('${root.path}/out/target').uri,
       rust: rust,
       checkout: checkout,
@@ -90,6 +91,7 @@ void main() {
     expect(names(read), {
       'checkout/sdk/fx/src/lib.rs',
       'out/dxc/dxcompiler.dll',
+      'out/targeted/notes.txt',
       'checkout/rust/Cargo.toml',
       'checkout/rust/Cargo.lock',
       'checkout/rust/src/lib.rs',
@@ -98,4 +100,13 @@ void main() {
       'checkout/sdk/Cargo.toml',
     });
   });
+
+  test('on Windows a path lies under its folder whatever their case', () {
+    final built = made('out/target/release/lib.d').uri;
+    final upper = Uri.file(
+      '${root.path}/out/target'.replaceAll('/', r'\').toUpperCase(),
+      windows: true,
+    );
+    expect(lies(built, under: upper), isTrue);
+  }, skip: Platform.isWindows ? false : 'paths there are one case');
 }
