@@ -416,7 +416,12 @@ Uint8List encodeCelEntryFromSurface(
   final read =
       bytesOf ??
       (tiles, use) => EngineTileLedger.instance.readEach(key.cel, tiles, use);
-  final writer = _ByteWriter();
+  // Each tile its coordinate and its bytes, and a page for the rest.
+  final writer = _ByteWriter(
+    expected:
+        surface.keptTileCount * (BitmapTile.bytesFor(surface.tileSize) + 8) +
+        4096,
+  );
   writer.celStreamHeader(
     key,
     surface.canvasSize,
@@ -693,7 +698,8 @@ class AnicelCelBlob {
     required List<String> photoPaths,
     required Uint8List body,
   }) {
-    final writer = _ByteWriter()
+    // The body and a page for the head before it.
+    final writer = _ByteWriter(expected: body.length + 4096)
       ..u8(_anicelCelBlobVersion)
       ..celIdentity(key, canvasSize, tileSize)
       ..u8(codec)
@@ -748,36 +754,76 @@ class AnicelCelBlob {
   BitmapSurface toSurface() => decoded((entry) => entry.toSurface());
 }
 
+/// The bytes of a stream or a head, written into ONE buffer made room for
+/// at once — [expected] bytes, which a writer of tiles knows before its
+/// first (a cel's tiles are most of its stream).
+///
+/// ↩️A `BytesBuilder(copy: true)`, which starts at a kilobyte and doubles:
+/// a cel's 20.6 MB stream was laid into fifteen buffers, each new one
+/// zeroed and the last copied into it, before the stream was whole —
+/// 🧪12–20 ms a whole-canvas cel on a worker (Surface Pro 11, profile,
+/// 2026-11-13, card `a-save-serialises-each-hot-cel-on-the-ui-isolate`),
+/// on the save's road, the cooling's and the parked undo's alike. A
+/// writer that guessed short still doubles, as that one did.
 class _ByteWriter {
-  final BytesBuilder _builder = BytesBuilder(copy: true);
+  _ByteWriter({int expected = 0})
+    : _buffer = Uint8List(math.max(expected, _least));
+
+  static const int _least = 256;
+
+  Uint8List _buffer;
+  int _length = 0;
   final ByteData _scratch = ByteData(8);
 
-  void u8(int value) => _builder.addByte(value);
+  /// Room for [count] more bytes past what is written.
+  void _roomFor(int count) {
+    final needed = _length + count;
+    if (needed <= _buffer.length) {
+      return;
+    }
+    var size = _buffer.length * 2;
+    while (size < needed) {
+      size *= 2;
+    }
+    _buffer = Uint8List(size)..setRange(0, _length, _buffer);
+  }
+
+  void _add(List<int> value) {
+    _roomFor(value.length);
+    _buffer.setRange(_length, _length + value.length, value);
+    _length += value.length;
+  }
+
+  void u8(int value) {
+    _roomFor(1);
+    _buffer[_length] = value;
+    _length += 1;
+  }
 
   void u16(int value) {
     _scratch.setUint16(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 2));
+    _add(_scratch.buffer.asUint8List(0, 2));
   }
 
   void u32(int value) {
     _scratch.setUint32(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 4));
+    _add(_scratch.buffer.asUint8List(0, 4));
   }
 
   void i32(int value) {
     _scratch.setInt32(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 4));
+    _add(_scratch.buffer.asUint8List(0, 4));
   }
 
   void f32(double value) {
     _scratch.setFloat32(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 4));
+    _add(_scratch.buffer.asUint8List(0, 4));
   }
 
   void string(String value) {
     final encoded = utf8.encode(value);
     u16(encoded.length);
-    _builder.add(encoded);
+    _add(encoded);
   }
 
   /// The cel stream's header, written in ONE place: what the cel is — its
@@ -866,7 +912,7 @@ class _ByteWriter {
   void longString(String value) {
     final encoded = utf8.encode(value);
     u32(encoded.length);
-    _builder.add(encoded);
+    _add(encoded);
   }
 
   /// Tiles off a surface or a plate — each one's coordinate, then its bytes
@@ -885,9 +931,16 @@ class _ByteWriter {
     });
   }
 
-  void bytes(List<int> value) => _builder.add(value);
+  void bytes(List<int> value) => _add(value);
 
-  Uint8List takeBytes() => _builder.takeBytes();
+  /// What is written, as a view of the one buffer — not copied out, as
+  /// `BytesBuilder.takeBytes` did not; the writer starts empty again.
+  Uint8List takeBytes() {
+    final written = Uint8List.sublistView(_buffer, 0, _length);
+    _buffer = Uint8List(_least);
+    _length = 0;
+    return written;
+  }
 }
 
 class _ByteReader {
