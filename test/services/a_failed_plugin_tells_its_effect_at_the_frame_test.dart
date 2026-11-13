@@ -3,6 +3,7 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/app_gpu_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -162,7 +163,7 @@ void main() {
       frames: const [],
       effects: [effect],
     );
-    await tester.runAsync(
+    Future<void> shown() async => tester.runAsync(
       () => aRowLaidOnTheEngine(
         composite,
         letters,
@@ -185,8 +186,26 @@ void main() {
         ),
       ),
     );
+    await shown();
     final place = (owner: row.id, effect: effect.id);
 
+    expect(plugins.outcomes.failedAt(place, 2), isTrue);
+
+    // 🚨Its build let go — here as the choice to cut changes — it fails as
+    // it did: one that never opened is never closed (card a-closed-plugin-
+    // runners-run-tells-no-one; `FxPluginRun.tell`).
+    addTearDown(AppGpu.debugReset);
+    AppGpu.settings.value = const AppGpuSettings(
+      pluginShare: FxPluginShare.uncut,
+    );
+    expect(plugins.outcomes.failedAt(place, 2), isFalse,
+        reason: '⛔premise: let go, what it told forgotten');
+    expect(
+      identical(plugins.runnerFor(shiftingFxPluginDescription), runner),
+      isTrue,
+      reason: '⛔premise: the one it was before',
+    );
+    await shown();
     expect(plugins.outcomes.failedAt(place, 2), isTrue);
 
     var heard = 0;
@@ -434,4 +453,7 @@ final class _FailsPast implements FxPluginRunner {
 
   @override
   void close() {}
+
+  @override
+  bool get closed => false;
 }

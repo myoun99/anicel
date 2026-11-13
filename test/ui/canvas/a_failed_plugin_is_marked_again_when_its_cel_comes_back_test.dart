@@ -636,4 +636,7 @@ final class _DrawsOnlyOverInk implements FxPluginRunner {
 
   @override
   void close() {}
+
+  @override
+  bool get closed => false;
 }

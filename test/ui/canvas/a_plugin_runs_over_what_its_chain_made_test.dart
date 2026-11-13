@@ -536,4 +536,7 @@ final class _OpensLater implements FxPluginRunner {
 
   @override
   void close() => _build.close();
+
+  @override
+  bool get closed => _build.closed;
 }

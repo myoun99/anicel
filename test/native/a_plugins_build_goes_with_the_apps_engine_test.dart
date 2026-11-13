@@ -128,6 +128,21 @@ void main() {
     expect(await drawnBy(plugins.runnerFor(description)!), inverted);
   });
 
+  test('🚨a build let go with its engine is closed at once, its run on its '
+      'way still to end — what that run comes to tells nobody', () async {
+    final plugins = await installed();
+    final build = plugins.runnerFor(description)! as GpuFxPlugin;
+    expect(build.closed, isFalse, reason: '⛔premise: open');
+    final onItsWay = drawnBy(build);
+
+    theAppsEngineLostAndLetGo();
+
+    expect(build.closed, isTrue);
+    expect(build.debugLetGo, isFalse, reason: 'LIVENESS: still on its way');
+    await onItsWay;
+    expect(build.debugLetGo, isTrue, reason: 'freed once it ended');
+  });
+
   test('what its runs told on the engine let go is forgotten with '
       'it', () async {
     final plugins = await installed();
@@ -226,10 +241,12 @@ void main() {
 
     theAppsEngineLostAndLetGo();
 
+    expect(first.closed, isTrue);
     final next = plugins.runnerFor(description)!;
     expect(next, isNot(same(first)));
     await toCome;
     expect(await drawnBy(first), isNull);
+    expect(first.closed, isTrue, reason: 'its own, whatever came of it');
     await next.toCome;
     expect(await drawnBy(next), inverted);
   });

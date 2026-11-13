@@ -184,6 +184,9 @@ final class _HearsTheWaits implements FxPluginRunner {
 
   @override
   void close() {}
+
+  @override
+  bool get closed => false;
 }
 
 /// Leaves every pixel clear, its colour as it was.
@@ -210,4 +213,7 @@ final class _ClearsItsColours implements FxPluginRunner {
 
   @override
   void close() {}
+
+  @override
+  bool get closed => false;
 }

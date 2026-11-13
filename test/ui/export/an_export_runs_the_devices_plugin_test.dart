@@ -412,6 +412,9 @@ final class _ShiftsByItsFrame implements FxPluginRunner {
 
   @override
   void close() {}
+
+  @override
+  bool get closed => false;
 }
 
 /// A renderer of [s] on no ground — [apart], one that keeps a frame's rows

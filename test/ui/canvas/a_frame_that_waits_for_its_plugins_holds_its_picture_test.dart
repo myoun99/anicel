@@ -721,6 +721,43 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // 🚨A CLOSED RUNNER'S RUN TELLS NOBODY (card a-closed-plugin-runners-run-
+  // tells-no-one, 2026-11-13; `FxPluginRun.tell`): the frame's picture, and
+  // the step kept for it, are told again as each is shown — by a run whose
+  // build the list let go, of nothing.
+  testWidgets('a plugin that failed on a row the pen is not on, its runner '
+      'closed since, is told of by none of the pictures it is kept for', (
+    tester,
+  ) async {
+    final tells = <bool>[];
+    final runner = ShiftingFxPlugin(by: 0, fails: true);
+    final (:overlay, :store, handAnew: _) = await standingBeside(tester, [
+      aBlur,
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(
+          runner,
+          told: ({required failed}) => tells.add(failed),
+        ),
+      ),
+    ]);
+    final first = tells.length;
+    expect(first, greaterThan(0), reason: '⛔premise: run, and told');
+
+    runner.close();
+    await stepsOf(tester, overlay);
+
+    expect(
+      store.went.where((went) => went),
+      isNotEmpty,
+      reason: 'LIVENESS: the steps went in — the frame recorded again',
+    );
+    expect(tells.length, first);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// The columns [colour] shows in on [shot].
   Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
     for (var at = 0; at < shot.rgba.length; at += 4)
@@ -1578,6 +1615,9 @@ final class _ShiftsByItsFrame implements FxPluginRunner {
 
   @override
   void close() {}
+
+  @override
+  bool get closed => false;
 }
 
 /// A store whose writes through a frame's plugins go on when let

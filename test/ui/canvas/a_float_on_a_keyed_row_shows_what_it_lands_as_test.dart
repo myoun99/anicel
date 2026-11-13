@@ -1381,4 +1381,7 @@ final class _HeldAtTheGate implements FxPluginRunner {
 
   @override
   void close() => _shifting.close();
+
+  @override
+  bool get closed => _shifting.closed;
 }

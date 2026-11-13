@@ -6,7 +6,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/fx_plugin_run.dart' show FxPluginTold;
+import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
 import '../canvas/fx_plugin_stages.dart';
@@ -62,12 +62,14 @@ class EngineFramePicture extends ChangeNotifier {
   /// effect's value — showed what was told of the picture it had been
   /// (float-warp-resamples-in-the-c-engine (2) C, 관제 「계열 전부를 한
   /// 법으로」).
-  Map<FxPluginTold, bool> _told = const {};
+  FxPluginRunsTold _told = const {};
 
   /// A hold on the picture by one that shows it; balanced by [release].
   EngineFramePicture hold() {
     _holds += 1;
-    _told.forEach((told, failed) => told(failed: failed));
+    for (final (:run, :failed) in _told.values) {
+      run.tell(failed: failed);
+    }
     return this;
   }
 
@@ -374,7 +376,7 @@ class EngineFramePictureStore<K extends Object> {
     }
     // Its plug-ins' steps run first: nothing goes in until they have
     // (🗣️I-132-Q34 a).
-    var told = const <FxPluginTold, bool>{};
+    FxPluginRunsTold? told;
     final made = await FxPluginStages.recordedThrough<EngineFramePicture?>(
       () => stands() && identical(_entries[from], entry)
           ? _stepped(entry.picture, from, to, frame, rect, holds)
@@ -389,7 +391,7 @@ class EngineFramePictureStore<K extends Object> {
     if (made == null) {
       return false;
     }
-    made._told = {...made._told, ...told};
+    made._told = {...made._told, ...?told};
     _stepTaken(entry, made, from: from, to: to);
     return true;
   }

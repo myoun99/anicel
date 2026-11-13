@@ -160,6 +160,11 @@ final class GpuFxPlugin implements FxPluginRunner {
     }
   }
 
+  /// At once as it is closed — not once it is freed ([debugLetGo]), which
+  /// waits for the runs on their way: those are the ones to tell nobody.
+  @override
+  bool get closed => _plugin == null;
+
   void _free(GpuPlugin plugin) {
     plugin.free();
     _letGo = true;

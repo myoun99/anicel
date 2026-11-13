@@ -324,10 +324,10 @@ void main() {
 
 /// A build that says when it is let go.
 final class _Kept implements FxPluginRunner {
-  _Kept(this.number, this.closed);
+  _Kept(this.number, this.closings);
 
   final int number;
-  final List<int> closed;
+  final List<int> closings;
 
   @override
   Future<void>? get toCome => null;
@@ -344,5 +344,8 @@ final class _Kept implements FxPluginRunner {
   }) async => null;
 
   @override
-  void close() => closed.add(number);
+  void close() => closings.add(number);
+
+  @override
+  bool get closed => closings.contains(number);
 }

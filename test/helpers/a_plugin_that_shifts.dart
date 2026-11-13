@@ -169,5 +169,8 @@ final class ShiftingFxPlugin implements FxPluginRunner {
   }
 
   @override
-  void close() {}
+  void close() => closed = true;
+
+  @override
+  bool closed = false;
 }

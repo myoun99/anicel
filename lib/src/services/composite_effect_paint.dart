@@ -288,7 +288,7 @@ _PaintPart _pluginPart(ResolvedLayerEffect effect, ui.Rect? paper) {
   ));
   if (reach == null) {
     // What it draws tells the rest, once its step has run (FxPluginStages).
-    run.told?.call(failed: true);
+    run.tell(failed: true);
     return const _NoPart();
   }
   // No farther than the paper is long: a plugin that names a wild reach is

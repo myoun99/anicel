@@ -347,6 +347,13 @@ final class _Unopened implements FxPluginRunner {
 
   @override
   void close() {}
+
+  /// 🚨NEVER: one const for every plug-in that would not open, the same
+  /// before the list lets it go and after — what its runs tell is true of
+  /// the next one too, and its ⚠ stays (card a-closed-plugin-runners-run-
+  /// tells-no-one, 브러시 2026-11-13 10:37).
+  @override
+  bool get closed => false;
 }
 
 /// An installed plugin whose build is opened off the isolate that asks
@@ -409,6 +416,11 @@ final class _Opening implements FxPluginRunner {
     _closed = true;
     _build.close();
   }
+
+  /// Its own, not its build's: one that would not open is never closed
+  /// ([_Unopened]), and this was let go all the same.
+  @override
+  bool get closed => _closed;
 }
 
 /// [plugin] opened on the app's GPU engine — null where its WGSL is gone,

@@ -139,7 +139,7 @@ final class FxPluginStages implements PluginSteps {
     T Function() record, {
     required void Function(T made) discard,
     void Function(bool waits)? waitsForKernels,
-    void Function(Map<FxPluginTold, bool> told)? told,
+    void Function(FxPluginRunsTold told)? told,
   }) async {
     while (true) {
       try {
@@ -158,7 +158,7 @@ final class FxPluginStages implements PluginSteps {
   static Future<T> _recordedOnce<T>(
     T Function() record,
     void Function(T made) discard,
-    void Function(Map<FxPluginTold, bool> told)? told,
+    void Function(FxPluginRunsTold told)? told,
   ) async {
     final stages = FxPluginStages._();
     try {
@@ -181,9 +181,10 @@ final class FxPluginStages implements PluginSteps {
   /// What each step the last round met told — its plugin failed or drew,
   /// run or kept ([_Stage.takeKept]): what a picture recorded here tells
   /// again wherever it is shown (`EngineFramePicture.hold`).
-  Map<FxPluginTold, bool> get _told => {
+  FxPluginRunsTold get _told => {
     for (final stage in _stages.take(_met))
-      if (stage.ran) ?stage.effect.run?.told: stage.output == null,
+      if (stage.effect.run case final run? when stage.ran)
+        ?run.told: (run: run, failed: stage.output == null),
   };
 
   /// [record], each plugin's step met in it drawing what its plugin made
@@ -371,7 +372,7 @@ final class _Stage {
         ..output = made;
       FxPluginStages._count(kept, made?.straight.length ?? 0);
     }
-    run.told?.call(failed: made == null);
+    run.tell(failed: made == null);
   }
 
   /// This step as it ran in a recording before ([_kept]) — its input let
@@ -381,7 +382,7 @@ final class _Stage {
     _input = null;
     ran = true;
     output = _kept?.output;
-    effect.run?.told?.call(failed: output == null);
+    effect.run?.tell(failed: output == null);
   }
 
   /// [straight] — this step's input — through [run]'s plugin, which reads
