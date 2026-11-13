@@ -137,6 +137,7 @@ import 'session/render_caches.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
+import 'session/ruler_marker_verbs.dart';
 import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
@@ -2833,6 +2834,13 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/movie_end_drag.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final MovieEndDragVerbs movieEnd = MovieEndDragVerbs(
+    project: this,
+    changes: this,
+    dragPreview: dragPreview,
+  );
+
+  // ── the ruler markers (I-169): their own object, in their own file ─────
+  late final RulerMarkerVerbs rulerMarkers = RulerMarkerVerbs(
     project: this,
     changes: this,
     dragPreview: dragPreview,
