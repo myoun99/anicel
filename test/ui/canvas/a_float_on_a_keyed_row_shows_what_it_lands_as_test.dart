@@ -1027,6 +1027,11 @@ void main() {
     await hand.moveTo(hold + step);
     await pumpFrames(tester, 2);
     expect(gate.asked, before + 1, reason: '⛔CONTROL: a write on its way');
+    expect(
+      nothingOnItsWay(),
+      isFalse,
+      reason: 'a write on its way is on its way, with nothing behind it yet',
+    );
     for (final times in [2.0, 3.0]) {
       await hand.moveTo(hold + step * times);
       await pumpFrames(tester, 2);

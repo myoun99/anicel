@@ -199,6 +199,9 @@ void main() {
     store.storeBakedSurface(key('f2'), inked(13));
 
     await expectLater(store.drainCooling(), throwsStateError);
+    // Asked again, as a read or a budget's fall asks — nothing an edit or a
+    // swap would change: a pass begun would throw again, here.
+    store.coolToBudget();
     await store.drainCooling();
 
     expect(store.isCelCold(k1), isFalse);
