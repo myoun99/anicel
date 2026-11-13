@@ -568,6 +568,28 @@ void main() {
       expect(over(windowed, const [RulerMarker(start: 24)]).map(textOf), [
         '1',
       ]);
+
+      // …and the painter shows none of a marker off its window: a tick
+      // neither clips by that ribbon nor walks its neighbourhood.
+      final preview = ValueNotifier<TimelineDragPreview?>(null);
+      addTearDown(preview.dispose);
+      final playhead = ValueNotifier<int?>(null);
+      addTearDown(playhead.dispose);
+      expect(
+        TimelineRulerPlayheadWritingPainter(
+          scale: windowed,
+          playhead: playhead,
+          layout: TimelineFrameRulerPainter.glyphsAt,
+          markers: hooksOf(
+            RulerMarkers.settled(const [
+              RulerMarker(start: 24),
+              RulerMarker(start: 4800),
+            ]),
+            preview,
+          ),
+        ).markersShown(),
+        const [RulerMarker(start: 24)],
+      );
     });
 
     test('🚨on the rail the frame\'s number stands across the whole '

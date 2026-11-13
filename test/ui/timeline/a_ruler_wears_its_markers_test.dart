@@ -200,6 +200,21 @@ void main() {
               as RulerMarkerRibbonPainter;
       expect(painterOf(0).color, rulerMarkerRibbon(RulerMarkerColor.yellow));
       expect(painterOf(1).color, rulerMarkerRibbon(RulerMarkerColor.sky));
+      expect(
+        [
+          for (final index in [0, 1])
+            tester
+                .widget<DialogueFitText>(
+                  find.descendant(
+                    of: ribbon(index),
+                    matching: find.byType(DialogueFitText),
+                  ),
+                )
+                .frames,
+        ],
+        [2, 1],
+        reason: 'the letters are set over the frames their marker runs',
+      );
 
       for (final index in [0, 1]) {
         final size = tester.getSize(ribbon(index));
@@ -292,6 +307,19 @@ void main() {
       await tester.pump();
       expect(session.rulerMarkers.markersOn(cut), two);
       await rest(tester);
+
+      // The marker pressed is the one that moves.
+      final second = await tester.startGesture(
+        tester.getCenter(ribbon(1)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await second.moveBy(Offset(-(cell + 2), 0));
+      await tester.pump();
+      await second.up();
+      await tester.pump();
+      expect(session.rulerMarkers.markersOn(cut), two.moved(1, -1));
+      expect(two.moved(1, -1), isNot(two.moved(0, -1)), reason: 'LIVENESS');
+      await rest(tester);
     });
 
     testWidgets('the numbers\' half of a marker\'s cell scrubs as it always '
@@ -326,6 +354,18 @@ void main() {
       final cut = cutOf(session);
       session.rulerMarkers.setMarkers(cut, two);
       await tester.pump();
+
+      // 확인 on a marker left as it stands is no step.
+      final steps = session.historyManager.undoCount;
+      await doubleClick(tester, tester.getCenter(ribbon(0)));
+      expect(find.text(AppText.strings.rulerMarkerEditTitle), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(session.rulerMarkers.markersOn(cut), two);
+      expect(session.historyManager.undoCount, steps);
+      await rest(tester);
 
       // The second frame of the span, by the numbers' half.
       await doubleClick(
@@ -403,10 +443,15 @@ void main() {
               as TimelineRulerPlayheadWritingPainter;
       expect(writing().writtenOverMarkers(), isEmpty, reason: 'premise');
 
-      // Frame 25 is where the first second is written.
+      // Frame 25 is where the first second is written. The marker far off
+      // the window is none of the writing's: it shows the ones that stand
+      // in what is painted.
       session.rulerMarkers.setMarkers(
         cut,
-        RulerMarkers.settled(const [RulerMarker(start: 23, length: 3)]),
+        RulerMarkers.settled(const [
+          RulerMarker(start: 23, length: 3),
+          RulerMarker(start: 90000, text: 'far'),
+        ]),
       );
       session.selectFrameIndex(2);
       await tester.pump();

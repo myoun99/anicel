@@ -151,23 +151,21 @@ bool timelineMarkStandsDownFor(Rect mark, List<Rect> pair) =>
 /// which stands across the rail's whole breadth.
 ///
 /// The walk is each ribbon's own neighbourhood ([_writingReach]), as the
-/// pair's is — a tick of a playing run asks this once more.
+/// pair's is — a tick of a playing run asks this once more, of the markers
+/// that stand in the painted window
+/// ([TimelineRulerPlayheadWritingPainter.markersShown]).
 List<TimelineGlyphPlacement> timelineRulerWritingOverMarkers({
   required TimelineRulerScale scale,
   required TimelineRulerGlyphLayout layout,
   required List<RulerMarker> markers,
   required List<Rect> pair,
 }) {
-  final window = scale.visibleWindow();
-  final ribbons = <Rect>[];
-  final frames = <int>{};
-  for (final marker in markers) {
-    if (!_standsIn(window, marker)) {
-      continue;
-    }
-    ribbons.add(rulerMarkerRect(scale, marker));
-    frames.addAll(
-      scale.framesWrittenIn(
+  final ribbons = [
+    for (final marker in markers) rulerMarkerRect(scale, marker),
+  ];
+  final frames = <int>{
+    for (final marker in markers)
+      ...scale.framesWrittenIn(
         _writingReach(
           scale: scale,
           layout: layout,
@@ -178,8 +176,7 @@ List<TimelineGlyphPlacement> timelineRulerWritingOverMarkers({
           extent: 0,
         ),
       ),
-    );
-  }
+  };
   return [
     for (final frameIndex in frames)
       for (final glyph in scale.writtenAt(layout, frameIndex, current: false))
@@ -320,9 +317,9 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
             layout: layout,
           );
     final window = scale.visibleWindow();
+    final shown = markersShown();
     final ribbons = [
-      for (final marker in markersShown())
-        if (_standsIn(window, marker)) rulerMarkerRect(scale, marker),
+      for (final marker in shown) rulerMarkerRect(scale, marker),
     ];
     final pair = writing?.pair ?? const <TimelineGlyphPlacement>[];
     for (final rect in writing?.covered ?? const <Rect>[]) {
@@ -349,7 +346,9 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
       }
       canvas.save();
       canvas.clipPath(outlines);
-      for (final glyph in writtenOverMarkers()) {
+      for (final glyph in _writtenOver(shown, [
+        for (final mine in pair) mine.rect,
+      ])) {
         glyph.paint(canvas);
       }
       canvas.restore();
@@ -359,35 +358,46 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
     }
   }
 
-  /// The ruler's markers as they are shown — a drag in flight's where one
-  /// is (the probe surface).
+  /// The ruler's markers that stand in the painted window, as they are
+  /// shown — a drag in flight's where one is (the probe surface). A marker
+  /// off the window is no work of a tick's: there is no ribbon of it to
+  /// clip by and no neighbourhood of it to walk.
   List<RulerMarker> markersShown() {
     final markers = this.markers;
-    return markers == null
-        ? const []
-        : rulerMarkersUnder(
-            markers.dragPreview.value,
-            markers.holder,
-            markers.markers,
-          ).inOrder;
+    if (markers == null) {
+      return const [];
+    }
+    final window = scale.visibleWindow();
+    return [
+      for (final marker in rulerMarkersUnder(
+        markers.dragPreview.value,
+        markers.holder,
+        markers.markers,
+      ).inOrder)
+        if (_standsIn(window, marker)) marker,
+    ];
   }
 
   /// What is written over the ruler's ribbons ([timelineRulerWritingOverMarkers])
   /// with the playhead where it is — the probe surface.
   List<TimelineGlyphPlacement> writtenOverMarkers() {
     final frame = writtenFrame();
-    return timelineRulerWritingOverMarkers(
-      scale: scale,
-      layout: layout,
-      markers: markersShown(),
-      pair: frame == null
-          ? const []
-          : [
-              for (final mine in scale.writtenAt(layout, frame, current: true))
-                mine.rect,
-            ],
-    );
+    return _writtenOver(markersShown(), [
+      if (frame != null)
+        for (final mine in scale.writtenAt(layout, frame, current: true))
+          mine.rect,
+    ]);
   }
+
+  List<TimelineGlyphPlacement> _writtenOver(
+    List<RulerMarker> shown,
+    List<Rect> pair,
+  ) => timelineRulerWritingOverMarkers(
+    scale: scale,
+    layout: layout,
+    markers: shown,
+    pair: pair,
+  );
 
   /// Clips to [rect] where no ribbon stands. A ribbon is over the strip
   /// already — the glyph the pair covers is hidden there — and paper laid

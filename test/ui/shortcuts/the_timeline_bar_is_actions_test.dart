@@ -151,8 +151,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // From a second cut, where the movie's frame is not the cut's.
+    session.cutVerbs.createCut();
+    session.selectFrameIndex(3);
+    await tester.pumpAndSettle();
     await workIn(tester, WorkingPanel.storyboard);
     final at = session.playheadCursors.trackFrameNow()!;
+    expect(at, isNot(session.currentFrameIndex), reason: 'premise');
     await pressKeyOf(tester, EditorActionIds.rulerMarkerEdit);
     expect(find.text(AppText.strings.rulerMarkerNewTitle), findsOneWidget);
     await typeAndPressEnter('movie');
