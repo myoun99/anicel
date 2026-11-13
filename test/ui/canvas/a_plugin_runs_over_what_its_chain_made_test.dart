@@ -440,6 +440,29 @@ void main() {
     expect(runner.renders, 1);
   });
 
+  // ↩️A moment's scale was how many of its picture's pixels a canvas pixel
+  // was while the Flutter chain rastered a step at a route's own
+  // resolution (the-flutter-fx-chain-is-a-second-chain).
+  test('is handed its moment a canvas pixel a pixel, as the engine runs a '
+      'chain, whatever scale its run was met at', () async {
+    final runner = ShiftingFxPlugin(by: 0);
+    await aRowLaidOnTheEngine(composite, letters, source(), [
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: FxPluginRun(
+          runner: runner,
+          moment: (frameIndex: 0, time: 0, frameRate: 24, scale: 3.0),
+          rows: const {},
+        ),
+      ),
+    ]);
+
+    expect(runner.renders, 1, reason: '⛔fixture: the step ran');
+    expect(runner.lastMoment.scale, 1);
+  });
+
   test('a step tells its run how it went: failed — its picture, or how far '
       'it reaches, not given — or drew '
       '(🗣️a-failed-plugin-shows-the-cel-silently-Q1)', () async {

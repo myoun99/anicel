@@ -126,6 +126,7 @@ final class ShiftingFxPlugin implements FxPluginRunner {
   late Uint8List lastInput;
   late Float64List lastValues;
   late List<FxPluginPicture> lastLayers;
+  late FxPluginMoment lastMoment;
 
   @override
   Future<void>? get toCome => null;
@@ -151,6 +152,7 @@ final class ShiftingFxPlugin implements FxPluginRunner {
     lastInput = input.pixels;
     lastValues = values;
     lastLayers = layers;
+    lastMoment = moment;
     if (fails) {
       return null;
     }
