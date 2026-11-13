@@ -25,7 +25,9 @@ import '../helpers/the_apps_engine_let_go.dart';
 /// lands (`a_tip_s_picture_is_made_once_the_engine_is_open_test.dart`).
 ///
 /// On the app's own engine, which two of these lose: the one after finds
-/// the next.
+/// the next. ⚠️And on the app's one line of pictures
+/// ([BrushTipThumbnails.instance]): a scene that fails leaves it mid-way,
+/// and those after it fail with it — the first red is the one to read.
 void main() {
   late List<({BrushTipMask of, Completer<Uint8List> made})> making;
   late List<Object> said;
