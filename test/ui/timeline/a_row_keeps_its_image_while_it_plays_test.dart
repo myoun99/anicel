@@ -53,7 +53,15 @@ void main() {
           id: FrameId('$id-$i'),
           duration: 1,
           strokes: const [],
-          name: '${i + 1}',
+          // 🚨THE FRAMES HOLD NOTHING TO LAY, AN S ROW'S BLOCKS NO WRITING:
+          // the run plays in the test's own time. A frame with something on
+          // it is laid by the engine in time of its own, which a test's
+          // pumps never give, and the run waits on its first frame for it
+          // — an S block's name is a row of the frame's picture since the
+          // SE name tag went into it (the-flutter-fx-chain-is-a-second-chain
+          // ①). 🔬2026-11-13: named, its four pictures landed after the
+          // test had ended, the run still on frame 0.
+          name: kind == LayerKind.se ? null : '${i + 1}',
         ),
     ],
     timeline: {
