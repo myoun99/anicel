@@ -2892,23 +2892,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       description: 'Stamp',
     );
     final standing = store.canonicalKeyOf(coordinator.activeFrameKey);
-    // Asked once, when the view lays the ghost — its piece and the
-    // selection the door lands it through on the cel on screen.
-    PieceDab? answered;
-    var asked = false;
-    PieceDab? answer() {
-      if (!asked) {
-        asked = true;
-        answered = pieceDabs(
-          coordinator: coordinator,
-          ground: ground,
-          stamp: stamp,
-          only: standing,
-        )[standing];
-      }
-      return answered;
-    }
-
+    final answer = _ghostAnsweredOnce(coordinator, ground, stamp, standing);
     return (
       // 🚨EVERYTHING THE GHOST'S BYTES ARE MADE OF — the aim, the cel as it
       // is now, and every fact of the ground the door reads — so whatever
@@ -2936,6 +2920,31 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       blend: blend,
       selection: () => answer()?.within,
     );
+  }
+
+  /// The door's answer for [stamp] on [standing] ([pieceDabs]) — asked
+  /// once, when the view lays the ghost: its piece and the selection the
+  /// door lands it through on the cel on screen.
+  PieceDab? Function() _ghostAnsweredOnce(
+    BrushFrameEditingCoordinator coordinator,
+    PieceGround ground,
+    PieceStamp stamp,
+    BrushFrameKey standing,
+  ) {
+    PieceDab? answered;
+    var asked = false;
+    return () {
+      if (!asked) {
+        asked = true;
+        answered = pieceDabs(
+          coordinator: coordinator,
+          ground: ground,
+          stamp: stamp,
+          only: standing,
+        )[standing];
+      }
+      return answered;
+    };
   }
 
   /// What the stamp's ghost listens to, let go: the aim and the softness
