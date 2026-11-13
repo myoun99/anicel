@@ -363,6 +363,20 @@ void main() {
     expect(anicelFormatVersion, greaterThan(34));
   });
 
+  // F-589 (format 36): a carry records when the file its bytes came from
+  // had last changed (`carriedModified`). A v35 build drops the word and its
+  // next save writes the carry back with no date, nothing said — so a file
+  // this build writes says a number a v35 build refuses as newer. No older
+  // shape went for it: a v35 file's carries open undated.
+  test('🚨a file that may hold a carry\'s date says a format a v35 build '
+      'refuses as newer — and a v35 file still opens', () {
+    expect(anicelFormatVersion, greaterThan(35));
+    expect(
+      decodeAnicelProjectDocument(documentSaying(35)).project,
+      isNotNull,
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
