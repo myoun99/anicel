@@ -14,7 +14,9 @@ import 'dart:io';
 /// cargo, a path crate's fingerprint gone, deletes the library's `.d` and
 /// exits 0 all the same (output_depinfo.rs), and the hook failed reading
 /// it. Nothing reads the link after the build: the library is copied out
-/// of the folder, and the dependencies the hook reports are the sources.
+/// of the folder, and of the dependencies the hook reports none lies
+/// under it (build_inputs.dart — ↩️one did till 2026-11-13, and the hook
+/// ran again for every `flutter test`).
 Future<T> withTargetAimed<T>(
   Uri outputDirectory,
   Uri folder,

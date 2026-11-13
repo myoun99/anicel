@@ -7,6 +7,7 @@ import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
 import '../../../tool/bash_executable.dart';
 import '../../../tool/machine_variables.dart';
+import 'build_inputs.dart';
 import 'target_link.dart';
 
 // Builds rust/ with the toolchain pinned in rust/rust-toolchain.toml and
@@ -149,7 +150,7 @@ Future<int?> _againWithThisMachinesRustHomes(List<String> args) async {
 }
 
 /// The builder's library, copied beside the hook's output and shipped
-/// from there.
+/// from there, and what the build read ([readByTheBuild]).
 void _shipCopies(
   BuildOutput built,
   BuildInput input,
@@ -168,7 +169,13 @@ void _shipCopies(
       ),
     );
   }
-  output.dependencies.addAll(built.dependencies);
+  output.dependencies.addAll(
+    readByTheBuild(
+      built.dependencies,
+      input.outputDirectory.resolve('target/'),
+      input.packageRoot.resolve('rust/'),
+    ),
+  );
 }
 
 /// The trunk's hook folder's turn, held by `tool/cargo_turn.sh --folder
