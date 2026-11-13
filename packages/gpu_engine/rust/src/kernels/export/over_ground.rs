@@ -25,7 +25,7 @@ const NO_CUT: u32 = 256;
 
 /// The over-the-ground pass.
 pub(crate) struct OverGround {
-    pipelines: Pipelines,
+    pub(super) pipelines: Pipelines,
 }
 
 impl OverGround {

@@ -23,8 +23,16 @@ use crate::kernels::composite::Composited;
 use crate::kernels::shared::Counted;
 use crate::platform::Surface;
 
-/// The export's passes, each compiled where it is first asked: a still
-/// asks no NV12, a movie no PNG.
+/// The export's passes, compiled ahead by the app once what a hand needs
+/// is ([`gpu_engine_export_warm`]), and where one is first asked till
+/// then.
+///
+/// ↩️Till 2026-11-14 the lay alone was compiled ahead (6696e3600: 「a
+/// still asks no NV12, a movie no PNG」 — no one's word), and the first
+/// file of a kind compiled its conversion on the thread the app's
+/// frames are built on (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦:
+/// 「선 = UI 스레드가 직접 하는 커널 컴파일 0개」; 2026-11-14 03:33, card
+/// a-first-mesh-warp-…: 「내보내기 변환 일곱은 뒤 목록」).
 pub struct Export {
     nv12: Nv12,
     over_ground: OverGround,
@@ -107,10 +115,18 @@ pub unsafe extern "C" fn gpu_engine_export_free(export: *mut Export) {
     unsafe { let_go(export) };
 }
 
-/// Compiles the lay pass for the frames the export makes and for frames
+/// Compiles every pass for the frames the export makes and for frames
 /// shown on surfaces laid `bgra` or not — on the thread that asks, which an
-/// app keeps off the one its frames are built on — so no lay compiles where
-/// it is first asked.
+/// app keeps off the one its frames are built on — so no frame laid, and
+/// none converted for a file of any kind, compiles where it is first
+/// asked.
+///
+/// ⏳Each conversion for both reads, as the lay — 브러시/렌더링 2026-11-14,
+/// the user asleep; theirs to overturn. The app hands a conversion the
+/// frames the export made alone today (read, not pinned), and the six
+/// pipelines of the other read are compiled for no run; but a frame
+/// shown is one the bindings take there, and what compiles here is no
+/// one's wait.
 ///
 /// # Safety
 /// Both are live, `export` on `engine`.
@@ -119,7 +135,18 @@ pub unsafe extern "C" fn gpu_engine_export_warm(export: *const Export, engine: *
     // SAFETY: see the function's contract.
     let (export, engine) = unsafe { (&*export, &*engine) };
     engine.on_thread(|| {
-        export.lay.warm(engine, bgra);
+        let read_a_frame = [
+            &export.lay.pipelines,
+            &export.nv12.pipelines,
+            &export.over_ground.pipelines,
+            &export.clear.pipelines,
+            &export.opaque.pipelines,
+            &export.straight.pipelines,
+        ];
+        for pass in read_a_frame {
+            pass.warm(engine, bgra);
+        }
+        export.png.warm(engine, bgra);
     })
 }
 

@@ -64,10 +64,21 @@ impl PngFilter {
         if rgb.size() < needed {
             return fail(format!("its RGB takes {needed} bytes; the buffer has {}", rgb.size()));
         }
-        let pipeline = kept_or_made(&self.rgb, || {
+        Self::run(engine, self.rgb_pipeline(engine), rgb, 0, picture, 3)
+    }
+
+    /// The pass of three channels, compiled once.
+    fn rgb_pipeline(&self, engine: &Engine) -> &wgpu::ComputePipeline {
+        kept_or_made(&self.rgb, || {
             pipeline(engine, &[include_str!("png_rgb.wgsl"), PNG_WGSL], "png_filter_pass")
-        });
-        Self::run(engine, pipeline, rgb, 0, picture, 3)
+        })
+    }
+
+    /// Compiles both passes, the one of four channels as every pass
+    /// that reads a frame is ([`Pipelines::warm`]).
+    pub(super) fn warm(&self, engine: &Engine, bgra: bool) {
+        self.rgba.warm(engine, bgra);
+        self.rgb_pipeline(engine);
     }
 
     fn run(

@@ -7,7 +7,7 @@ use crate::kernels::shared::words_buffer;
 
 /// The opaque pass.
 pub(crate) struct Opaque {
-    pipelines: Pipelines,
+    pub(super) pipelines: Pipelines,
 }
 
 impl Opaque {

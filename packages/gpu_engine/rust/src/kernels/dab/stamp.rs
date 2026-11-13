@@ -30,7 +30,6 @@
 #[path = "stamp_tests.rs"]
 pub(crate) mod tests;
 
-use std::sync::OnceLock;
 
 use super::landing::{self, Asked, Laid, Over};
 use crate::device::Engine;
@@ -41,7 +40,7 @@ use crate::kernels::mesh::{MeshGrid, MeshOwners};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
     Encoded, PREMULTIPLY_WGSL, ResampleMap, ResampleMode, TILE_WGSL, WIDE_WGSL, encode,
-    kept_or_made, pipeline, plane, tiles_a_page, whole, words_buffer,
+    pipeline, plane, tiles_a_page, whole, words_buffer,
 };
 use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::kernels::write::{Change, Write};
@@ -269,9 +268,22 @@ pub(crate) struct StampLanding {
     stamps: Stamps,
     write: Write,
     warp: Warp,
-    /// Compiled where a mesh is first carried: the landing is compiled as
-    /// the app launches, and a mesh's warp is the one most never make.
-    owners: OnceLock<MeshOwners>,
+    /// Compiled with the rest, as the app launches under its wait window:
+    /// a mesh's warp is a hand's tool, and has no lighter way to go by
+    /// meanwhile (🗣️관제 2026-11-11, `app_kernels_ahead.dart`: 「「준비가
+    /// 끝난」 = 손이 쓰는 커널 전부 … 그래야 고리가 걷힌 뒤 어느 도구도 안
+    /// 멈춘다」; 2026-11-14 03:33, card a-first-mesh-warp-…: 「준비 창 아래
+    /// 목록에 넣고」).
+    ///
+    /// ↩️Till 2026-11-14 compiled where a mesh was first carried, the
+    /// thread the app's frames are built on waiting for both (d4ad640cd:
+    /// 「a mesh's warp is the one most never make」 — no one's word).
+    /// 🔬The two (`mesh_clear`, `mesh_own`), main PC (RTX 4080), release,
+    /// no window, once beside four other suites, 2026-11-14: 75 ms cold
+    /// where the rest of the landing took 2,575 ms, 11 ms from the DXIL
+    /// kept on disk where it took 37–40 ms. ⚠️Not measured on the
+    /// Surface.
+    owners: MeshOwners,
 }
 
 impl StampLanding {
@@ -282,7 +294,7 @@ impl StampLanding {
             stamps: Stamps::new(engine),
             write: Write::new(engine)?,
             warp: Warp::new(engine),
-            owners: OnceLock::new(),
+            owners: MeshOwners::new(engine),
         })
     }
 
@@ -322,8 +334,7 @@ impl StampLanding {
         window: Window,
         (radius_floor, mode): (f64, ResampleMode),
     ) -> Option<wgpu::Buffer> {
-        let owners = kept_or_made(&self.owners, || MeshOwners::new(engine));
-        self.warp.mesh(engine, (owners, mesh), picture, source_at, window, radius_floor, mode)
+        self.warp.mesh(engine, (&self.owners, mesh), picture, source_at, window, radius_floor, mode)
     }
 
     /// Lays `source` on the tiles `asked`, each result compared with the

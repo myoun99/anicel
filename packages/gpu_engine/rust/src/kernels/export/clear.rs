@@ -14,7 +14,7 @@ impl Picture {
 
 /// The clear pass.
 pub(crate) struct Clear {
-    pipelines: Pipelines,
+    pub(super) pipelines: Pipelines,
 }
 
 impl Clear {

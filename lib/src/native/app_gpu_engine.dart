@@ -312,9 +312,9 @@ final appGpuCompositeKernels = AppKernels<GpuComposite>(
 
 /// The export's passes on [appGpuEngine]: what a frame's last picture is
 /// laid with, and what turns it into a writer's bytes (gpu-export-path ①),
-/// warmed for the first frame a panel or a file is made of: its lay pass
-/// compiled off this isolate ([GpuExport.opening]), the conversions where
-/// a writer first asks.
+/// warmed for the first frame a panel or a file is made of: the lay pass
+/// and every conversion a writer asks, compiled off this isolate
+/// ([GpuExport.opening]).
 GpuExport get appGpuExport => appGpuExportKernels.kept;
 final appGpuExportKernels = AppKernels<GpuExport>(
   GpuExport.new,

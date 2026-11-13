@@ -222,7 +222,7 @@ fn a_lay_warmed_on_another_thread_compiles_nothing_where_it_lays() {
     let engine = rig().engine;
     let lay = Lay::new();
     std::thread::scope(|scope| {
-        scope.spawn(|| lay.warm(engine, true));
+        scope.spawn(|| lay.pipelines.warm(engine, true));
     });
     let surface_laid = shown(2, 1, true, |_, _| RED);
     let before = gpu_engine_kernels_built_here();

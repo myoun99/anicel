@@ -13,7 +13,7 @@ impl Picture {
 
 /// The straight pass.
 pub(crate) struct Straight {
-    pipelines: Pipelines,
+    pub(super) pipelines: Pipelines,
 }
 
 impl Straight {

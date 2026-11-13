@@ -59,9 +59,9 @@ pub(crate) struct Window {
     pub(crate) size: (u32, u32),
 }
 
-/// The warp, compiled once. ⛔Not a mesh's owners with it: what carries a
-/// picture by one map — a stamp's landing, compiled as the app launches —
-/// compiles no pass it never runs, so a mesh's warp is handed them.
+/// The warp, compiled once. A mesh's owners are the mesh's own pass
+/// (`kernels::mesh`), which a mesh's warp is handed: a stamp's landing
+/// compiles both as the app launches (`StampLanding`).
 pub(crate) struct Warp {
     window: wgpu::ComputePipeline,
 }

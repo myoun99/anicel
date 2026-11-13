@@ -107,23 +107,13 @@ pub(crate) enum Source<'a> {
 
 /// The lay pass.
 pub(crate) struct Lay {
-    pipelines: Pipelines,
+    pub(super) pipelines: Pipelines,
 }
 
 impl Lay {
     pub(crate) const fn new() -> Self {
         Self {
             pipelines: Pipelines::new(&[ISQRT_WGSL, BLEND_WGSL, include_str!("lay.wgsl")], "lay_pass"),
-        }
-    }
-
-    /// Compiles the pass for the frames the export makes and for frames
-    /// shown on surfaces laid `bgra` or not, where it is first asked of a
-    /// frame: a lay waits for no compile after.
-    pub(crate) fn warm(&self, engine: &Engine, bgra: bool) {
-        self.pipelines.reading(engine, Read::Shown { bgra: false });
-        if bgra {
-            self.pipelines.reading(engine, Read::Shown { bgra: true });
         }
     }
 

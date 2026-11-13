@@ -57,7 +57,7 @@ impl Nv12Shape {
 
 /// The NV12 pass.
 pub(crate) struct Nv12 {
-    pipelines: Pipelines,
+    pub(super) pipelines: Pipelines,
 }
 
 impl Nv12 {

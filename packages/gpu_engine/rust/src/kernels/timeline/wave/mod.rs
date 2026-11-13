@@ -19,6 +19,14 @@
 // ⏳Nothing outside the tests calls it until the app's bridge round
 // (gpu-int-spec-timeline, 관제 13:5x — the app connects after the bridges
 // land).
+// 🔜The lane that lays that bridge puts this pass in the list the app
+// compiles ahead (`compileAppKernelsAhead`, app_kernels_ahead.dart): it
+// is compiled where a tile of a format is first run
+// (`WaveTile::pipeline`), and the thread an app's frames are built on
+// compiles no kernel (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦:
+// 「선 = UI 스레드가 직접 하는 커널 컴파일 0개」; left out of card
+// a-first-mesh-warp-…, 2026-11-14 03:02, the app having no way to it
+// yet).
 #![cfg_attr(not(test), allow(dead_code))]
 
 #[cfg(test)]

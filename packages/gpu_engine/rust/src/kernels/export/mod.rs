@@ -181,9 +181,9 @@ impl Shown {
     }
 }
 
-/// A pass's pipelines, one a [`Read`], each compiled where it is first
-/// asked: a device's surfaces are laid one way, so a run reads at most
-/// two.
+/// A pass's pipelines, one a [`Read`]: compiled ahead for the reads a
+/// frame the app hands a pass takes ([`Self::warm`]), and where it is
+/// first asked for the rest.
 struct Pipelines {
     own: &'static [&'static str],
     entry: &'static str,
@@ -200,6 +200,17 @@ impl Pipelines {
             tiles: OnceLock::new(),
             rgba: OnceLock::new(),
             bgra: OnceLock::new(),
+        }
+    }
+
+    /// Compiles the pass for the frames the export makes and for frames
+    /// shown on surfaces laid `bgra` or not, so a frame the app hands it
+    /// waits for no compile. ⛔Not for a run's tiles: no verb the app
+    /// binds hands a pass those.
+    fn warm(&self, engine: &Engine, bgra: bool) {
+        self.reading(engine, Read::Shown { bgra: false });
+        if bgra {
+            self.reading(engine, Read::Shown { bgra: true });
         }
     }
 

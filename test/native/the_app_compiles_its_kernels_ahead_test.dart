@@ -274,6 +274,30 @@ void main() {
     expect(builtHereBy(() => appGpuStampLanding), 0);
   });
 
+  // As a selection's float is carried through a mesh
+  // (`EngineStampPictures.meshed`): the mesh's own two passes and the
+  // warp's.
+  test('a float carried through a mesh builds none', () {
+    final float = GpuStampPicture(appGpuEngine, Uint8List(2 * 2 * 4), 2, 2);
+
+    expect(
+      builtHereBy(
+        () => appGpuStampLanding.meshed(
+          float,
+          at: (0, 0),
+          columns: 1,
+          rows: 1,
+          source: const [0, 0, 2, 0, 0, 2, 2, 2],
+          destination: const [0, 0, 2, 0, 0, 2, 3, 3],
+          radiusFloor: 1,
+          sampling: GpuSampling.blend,
+          window: (0, 0, 4, 4),
+        ),
+      ),
+      0,
+    );
+  });
+
   test('the bucket\'s fill builds none', () {
     expect(builtHereBy(() => EngineFloods.kernels), 0);
   });
@@ -334,6 +358,60 @@ void main() {
       0,
     );
   });
+
+  // What a file's writer turns its frame into bytes by
+  // (`still_frame_bytes.dart`, `video_export_service.dart`,
+  // `conte_pdf_writer.dart`), each handed a frame as a file's is made
+  // (`frameOnTheEngine`) and a frame shown on a screen of this
+  // platform's: the app hands them the first alone today, and the
+  // bindings take the second.
+  final conversions = <String, void Function(GpuExport, GpuShown)>{
+    'a movie\'s frame turned to NV12': (export, frame) => export
+        .nv12(
+          frame,
+          2,
+          2,
+          frameWidth: 2,
+          frameHeight: 2,
+          stride: GpuExport.nv12RowBytes(2),
+        )
+        .free(),
+    'a picture put over its ground': (export, frame) =>
+        export.overGround(frame, 2, 2, 0xFFFFFF).free(),
+    'a GIF\'s clear pixels found': (export, frame) =>
+        export.clear(frame, 2, 2, 128).free(),
+    'a picture asked whether it is opaque': (export, frame) =>
+        export.opaque(frame, 2, 2),
+    'a picture turned straight': (export, frame) =>
+        export.straight(frame, 2, 2).free(),
+    'a PNG\'s rows of four bytes a pixel filtered': (export, frame) =>
+        export.pngRgba(frame, 2, 2).free(),
+    'a PNG\'s rows of three bytes a pixel filtered': (export, frame) {
+      final rgb = export.overGround(frame, 2, 2, 0xFFFFFF);
+      export.pngRgb(rgb, 2, 2).free();
+      rgb.free();
+    },
+  };
+  for (final MapEntry(key: kind, value: convert) in conversions.entries) {
+    test('$kind builds none', () {
+      final export = appGpuExportKernels.compiled!;
+      final surface = ScreenTexture.surfaceOf(appGpuEngine, 2, 2);
+      addTearDown(surface.free);
+
+      expect(
+        builtHereBy(() {
+          for (final frame in [
+            export.blank(2, 2, ground: 0xFFFFFFFF),
+            export.shown(surface, 2, 2),
+          ]) {
+            convert(export, frame);
+            frame.free();
+          }
+        }),
+        0,
+      );
+    });
+  }
 
   test('a frame whose folder is blurred waits for no kernel, and builds '
       'none', () {

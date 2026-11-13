@@ -2523,10 +2523,11 @@ class GpuExport implements _OfAnEngine {
     : _engine = engine,
       _export = rust.exportNew(engine._engine);
 
-  /// The export's passes on [engine], its lay pass compiled off this
-  /// isolate for the frames it makes and for frames shown on surfaces laid
-  /// [bgra] or not: no frame's first lay compiles where it is laid
-  /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦).
+  /// The export's passes on [engine], compiled off this isolate for the
+  /// frames it makes and for frames shown on surfaces laid [bgra] or not:
+  /// no frame's first lay, and no file's first conversion of any kind,
+  /// compiles where it is asked (🗣️관제 2026-11-10 18:14,
+  /// gpu-canonical-store ⑦).
   static Future<GpuExport> opening(
     GpuEngine engine, {
     required bool bgra,
