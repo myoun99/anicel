@@ -3351,15 +3351,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the same place on the cel you stand on — one step, one undo
   /// (confirm-button, 유저 2026-09-24).
   ///
-  /// ⛔It goes through [_commitSourceStroke] like any stroke, so the live
-  /// selection clips it and the history takes it the way it takes a stroke.
+  /// ⛔What landed, cut by the selection it landed through
+  /// ([BrushStrokeCommitData.selection]) — not by the marquee standing now:
+  /// the screen showed it so, and what 확정 lays must be what was seen
+  /// (관제 2026-11-14 by 유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안
+  /// 되」, board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+  /// ↩️From 09-24 it went down [_commitSourceStroke] whole, and the live
+  /// selection cut it again — the funnel reused, which nobody had asked
+  /// for. It lands the way a stroke lands all the same ([_landStroke]).
   void _reinputLastStroke() {
     final stroke = widget.lastStroke?.stroke;
     if (stroke == null) {
       return;
     }
     if (widget._editableCoordinator != null) {
-      _commitSourceStroke(stroke);
+      _landStroke(stroke);
       return;
     }
     // No cel to lay it on: the door a stroke on an empty cell takes — the
@@ -3375,7 +3381,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     WidgetsBinding.instance
       ..addPostFrameCallback((_) {
         if (mounted && widget._editableCoordinator != null) {
-          _commitSourceStroke(stroke);
+          _landStroke(stroke);
         }
         widget.onAutoFrameSettled?.call();
       })
@@ -3399,12 +3405,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       setState(() {});
       return;
     }
-    // What landed, clipped as it landed — the pixels 확정 lays down again.
+    // What landed, with the selection it landed through — what 확정 lays
+    // down again.
     // ⛔Here, for every verb that comes down this funnel: each passes this
     // line, so none can be the one that forgets to record itself. The one
     // drawing verb that lands elsewhere — the cut tool's stamp, through the
     // piece door — records at its own ([_landStamp]).
     widget.lastStroke?.hold(strokeData);
+    _landStroke(strokeData);
+  }
+
+  /// [strokeData] onto the cel you stand on, as one step of the history —
+  /// a stroke past the funnel, or the one 확정 lays down again.
+  void _landStroke(BrushStrokeCommitData strokeData) {
+    final coordinator = widget._editableCoordinator!;
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
