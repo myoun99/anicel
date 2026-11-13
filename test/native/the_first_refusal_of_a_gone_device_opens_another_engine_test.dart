@@ -7,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_refusals.dart';
 
+import '../helpers/poll_until.dart';
 import '../helpers/the_apps_engine_let_go.dart';
 
 /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
@@ -221,11 +222,11 @@ void main() {
 /// Once the app's next engine is open and all that sets off is through —
 /// an engine opens off this isolate, in its own time.
 Future<void> untilTheNextIsOpen() async {
-  final deadline = DateTime.now().add(const Duration(seconds: 60));
-  while (appGpuEngineOpen.value == null) {
-    expect(DateTime.now().isBefore(deadline), isTrue, reason: 'never open');
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
+  expect(
+    await pollUntil(() => appGpuEngineOpen.value != null),
+    isTrue,
+    reason: 'never open',
+  );
   await pumpEventQueue();
 }
 
