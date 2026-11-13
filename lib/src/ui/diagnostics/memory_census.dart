@@ -2,7 +2,7 @@ import 'dart:io' show ProcessInfo;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuStampPicture;
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask, GpuStampPicture;
 
 import '../../native/engine_strokes.dart';
 import '../../native/engine_tile_ledger.dart';
@@ -258,14 +258,17 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
     // The engine's slots of the same tiles ride it (screen-on-the-engine
     // c4): its pool's pages, each whole — what the pictures become, under
-    // the same line.
+    // the same line. So do the masks a canvas verb keeps there — a
+    // selection's, which its clip holds (2026-11-14), a held fill's.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
         bytes:
             BitmapTileImageCache.liveImageBytes +
             EngineTileLedger.appPoolBytes +
-            EngineStrokes.idleBytes + GpuStampPicture.liveBytes,
+            EngineStrokes.idleBytes +
+            GpuStampPicture.liveBytes +
+            GpuMask.liveBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest
