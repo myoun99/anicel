@@ -822,6 +822,8 @@ void main() {
       ),
     );
 
+    File(path).setLastModifiedSync(DateTime(2026, 9, 2, 8, 15));
+
     final opened = await openedClip(path);
     final session = opened!.session;
     addTearDown(session.dispose);
@@ -838,6 +840,12 @@ void main() {
       (asset) => asset.path == clip.filePath,
     );
     expect(asset.carriedAs, isNotNull, reason: 'carried, as a recording is');
+    expect(
+      (asset.sourcePath, asset.carriedAs!.modified),
+      (path, DateTime(2026, 9, 2, 8, 15)),
+      reason: 'taken out of the .clip, with its date — not the moment the '
+          'copy was taken out (F-589)',
+    );
     expect(session.projectFile.projectHoldsMediaBytes(clip.filePath), isTrue);
     expect(
       File(clip.filePath).existsSync(),

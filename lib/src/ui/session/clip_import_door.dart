@@ -62,9 +62,11 @@ final class ClipProjectRead {
     required this.project,
     required ClipImportPlan plan,
     required ({String path, bool staged}) source,
+    required String clipPath,
     required List<String> sounds,
   }) : _plan = plan,
        _source = source,
+       _clipPath = clipPath,
        _sounds = sounds;
 
   /// The project the file becomes — every timeline a 겸용 cut, its layers
@@ -75,6 +77,10 @@ final class ClipProjectRead {
   /// The bytes the pictures are baked from — a staged copy the bake
   /// deletes when it is done with it.
   final ({String path, bool staged}) _source;
+
+  /// The file as it was asked for, where [_source] may be a copy of it —
+  /// what its sounds say they were taken out of (F-589).
+  final String _clipPath;
 
   /// The sounds taken out of the file, where the project's SE rows play
   /// them from until the bake carries them into the project.
@@ -136,6 +142,7 @@ Future<ClipProjectRead?> readClipProject({
     project: _projectOf(name, document, plan),
     plan: plan,
     source: source,
+    clipPath: clipPath,
     sounds: [...sounds.values],
   );
 }
@@ -342,7 +349,7 @@ final class ClipImportDoor {
         onProgress: onProgress,
         isCancelled: isCancelled,
       );
-      await _carrySounds(read._sounds);
+      await _carrySounds(read._sounds, from: read._clipPath);
       _file.markDirty();
       _changes.warmActiveCut();
       _changes.notifyChanged();
@@ -357,12 +364,13 @@ final class ClipImportDoor {
   /// as a recording is: their bytes held in the project, so the copies
   /// taken out go once held (the pool does not call a carried asset whose
   /// original left 「missing」). Registered as the file's, not as an edit
-  /// to undo — the .tvpp door's way with its sounds.
-  Future<void> _carrySounds(List<String> paths) async {
+  /// to undo — the .tvpp door's way with its sounds. Each has the date of
+  /// the file it was taken out of ([from], F-589).
+  Future<void> _carrySounds(List<String> paths, {required String from}) async {
     if (paths.isEmpty) {
       return;
     }
-    await _mediaPool.addMediaAssets(paths, carried: true);
+    await _mediaPool.addMediaAssets(paths, carried: true, from: from);
     _project.historyManager.clear();
     _projectDoor.warmAudioConforms();
     for (final path in paths) {

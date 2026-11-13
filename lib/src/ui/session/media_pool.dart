@@ -120,16 +120,25 @@ class MediaPool {
   /// ⚠️SOUNDS: every caller registers one — a clip's file, a take, a
   /// .tvpp's sounds — and the entry says so, as the model's default always
   /// did. The pool's import of any kind is [importMediaFiles].
-  Future<void> addMediaAssets(List<String> paths, {bool carried = false}) =>
-      _admit([
-        for (final path in paths)
-          importedMediaAsset(
-            path: path,
-            kind: MediaAssetKind.audio,
-            identity: readMediaIdentity(path),
-            carried: carried,
-          ),
-      ]);
+  ///
+  /// [from]: the file [paths] were taken out of — a .clip's sounds — which
+  /// they say they were copied from ([MediaAsset.sourcePath]), and whose
+  /// date a carry of them records (🗣️F-589-Q1, [importedMediaAsset]): when
+  /// a copy was taken out is not when the file is from.
+  Future<void> addMediaAssets(
+    List<String> paths, {
+    bool carried = false,
+    String? from,
+  }) => _admit([
+    for (final path in paths)
+      importedMediaAsset(
+        path: path,
+        kind: MediaAssetKind.audio,
+        sourcePath: from,
+        identity: readMediaIdentity(path),
+        carried: carried,
+      ),
+  ]);
 
   /// Records the [entries] the pool does not have yet — once the bytes of
   /// every one that is CARRIED are held.

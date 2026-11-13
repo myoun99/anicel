@@ -102,6 +102,7 @@ void main() {
     addTearDown(manager.dispose);
     final lane = manager.activeTrack.seLayers.first;
     final before = stagedNames().length;
+    final recording = DateTime.now();
 
     expect(
       await manager.voiceRecording.placeVoiceRecording(
@@ -112,6 +113,14 @@ void main() {
       isTrue,
     );
 
+    final dated = manager.mediaPool.mediaAssets.single.carriedAs!.modified;
+    expect(
+      dated != null &&
+          !dated.isBefore(recording) &&
+          !dated.isAfter(DateTime.now()),
+      isTrue,
+      reason: 'a take is from the moment it was recorded (F-589): $dated',
+    );
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
     expect(
       clip.filePath,

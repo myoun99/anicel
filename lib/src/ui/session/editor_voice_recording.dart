@@ -1315,10 +1315,10 @@ class EditorVoiceRecording {
               // clearing the Recordings folder before saving used to take
               // the performance with it. Carrying now means held, not just
               // flagged.
-              carriedAs: (
-                token: carry.token,
-                modified: readMediaModified(path),
-              ),
+              //
+              // Its date is now, the moment it was recorded (F-589): its
+              // path is an address in the run's room, not a file to ask.
+              carriedAs: (token: carry.token, modified: DateTime.now()),
               identity: readMediaIdentity(path),
             ),
           ],
