@@ -399,5 +399,29 @@ void main() {
 
       expect(EngineStampPictures.debugHandedUp, handedUp + 1);
     });
+
+    test('a tile a moved plate reaches with none of its ink stays the '
+        'tile it was', () {
+      // Moved by whole pixels, the plate's one tile reaches four; its ink
+      // lies in its corner, so it lands on the first alone. The engine
+      // says the other three are the same — it hands back no tile for
+      // them — and the tiles under them are what they show.
+      final d = TileCoord(x: 1, y: 1);
+      final unders = {
+        a: drawingTile,
+        b: drawingTile,
+        c: drawingTile,
+        d: drawingTile,
+      };
+
+      final laid = celTilesWithPlatesLaid(drawingOf(unders), unders, [
+        (plate: {a: plateTile}, dx: 5, dy: 3),
+      ]);
+
+      for (final coord in [b, c, d]) {
+        expect(laid[coord], same(drawingTile), reason: '$coord');
+      }
+      expect(laid[a], isNot(same(drawingTile)), reason: 'the ink landed');
+    });
   });
 }
