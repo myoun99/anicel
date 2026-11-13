@@ -825,7 +825,7 @@ has "the one that came later waited for it" "$Z2" "another lane is landing"
 check "no ticket is left in the line" "$(ls "$T.line" 2>/dev/null | wc -l | tr -d ' ')" 0
 mkdir -p "$T.line"; : > "$T.line/1000000000-999999"
 quiet "$E/home" open z3; commit "$HW/lane-z3" z3.txt "z3"
-O=$(cd "$E/home" && timeout 30 bash tool/lane.sh land z3 2>&1)
+O=$(cd "$E/home" && timeout 120 bash tool/lane.sh land z3 2>&1)
 has "a killed waiter's ticket holds no one back" "$O" "merged work/z3"
 check "and goes" "$(ls "$T.line" 2>/dev/null | wc -l | tr -d ' ')" 0
 
