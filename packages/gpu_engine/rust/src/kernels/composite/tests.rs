@@ -25,7 +25,7 @@ use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode, ResampleModes, words_buffer};
 use crate::kernels::warp::Boxed;
-use crate::testing::{assert_pinned, first_engine, read_buffer};
+use crate::testing::{a_device_of_its_own, assert_pinned, first_engine, read_buffer};
 
 pub(crate) struct Rig {
     pub(crate) engine: &'static Engine,
@@ -2102,7 +2102,8 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
 // device of its own: a hold stops every composite's passes on its engine.
 #[test]
 fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go() {
-    let engine = Engine::open_first().expect("an adapter");
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
     let composite = Composite::new(&engine).expect("compile the composite");
     let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
     let passes = || composite.passes.lock().unwrap_or_else(std::sync::PoisonError::into_inner);

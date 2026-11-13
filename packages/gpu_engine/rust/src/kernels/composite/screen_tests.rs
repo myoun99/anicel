@@ -4,7 +4,7 @@
 //! never against a CPU copy of a formula (`kernels/mod.rs` has why).
 
 use super::{Screen, meets};
-use crate::device::{Engine, gpu_engine_waits_here};
+use crate::device::gpu_engine_waits_here;
 use crate::kernels::composite::halvings::tests::{
     CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
 };
@@ -13,7 +13,7 @@ use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surf
 use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
 use crate::kernels::shared::tests::{premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
-use crate::testing::{last_error, read_buffer};
+use crate::testing::{a_device_of_its_own, last_error, read_buffer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -281,7 +281,8 @@ fn a_tile_meets_a_rectangle_holding_a_pixel_of_it() {
 // (a-float-in-hand-draws-the-frame-as-it-stands-Q2, 2026-11-12).
 #[test]
 fn a_screen_shown_waits_here_for_nothing_and_is_told_done() {
-    let engine = Engine::open_first().expect("an engine of its own");
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
     let composite = Composite::new(&engine).expect("its executor");
     let mut screen = Screen::new(PAGE, 1.0).expect("screen");
     let (pages, set, _) = composite_on(&engine, noise(23), CANVAS);

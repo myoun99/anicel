@@ -22,6 +22,8 @@ mod one_builder;
 #[cfg(test)]
 mod one_checkout;
 #[cfg(test)]
+mod one_device_turn;
+#[cfg(test)]
 mod one_filler;
 #[cfg(test)]
 mod one_framing;

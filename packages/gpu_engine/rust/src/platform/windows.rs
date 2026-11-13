@@ -282,7 +282,7 @@ fn beside_engine() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use crate::kernels::shared::{pipeline, pipeline_or_why};
-    use crate::testing::first_engine;
+    use crate::testing::{DeviceTurn, a_device_of_its_own, first_engine};
 
     // The shape R1's vote table was first written in (gpu-canonical-store,
     // 브러시/렌더링 2026-11-05): indexed writes into arrays inside a struct
@@ -417,8 +417,8 @@ fn main() { out[0] = 7u; }
         folder
     }
 
-    fn keeping(folder: &std::path::Path) -> crate::device::Engine {
-        let engine = crate::device::Engine::open_first().expect("an adapter");
+    fn keeping(turn: &DeviceTurn, folder: &std::path::Path) -> crate::device::Engine {
+        let engine = turn.engine();
         super::keep_dxil(&engine.device, Some(folder.to_path_buf()));
         engine
     }
@@ -461,8 +461,9 @@ fn main() { out[0] = 7u; }
     // it is that kernel.
     #[test]
     fn what_dxc_made_is_handed_to_the_next_engine() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("handed");
-        let first = keeping(&folder);
+        let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         assert_eq!(found(&first), 0, "nothing was kept before");
         let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
@@ -474,7 +475,7 @@ fn main() { out[0] = 7u; }
         let file = std::fs::File::options().write(true).open(&path).expect("the file");
         file.set_modified(an_hour_ago).expect("its age");
         drop(file);
-        let next = keeping(&folder);
+        let next = keeping(&turn, &folder);
         let handed = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 1, "the next engine is handed it");
         assert_eq!(first_word(&next, &handed), 7);
@@ -487,8 +488,9 @@ fn main() { out[0] = 7u; }
     // again, and kept whole.
     #[test]
     fn a_kept_file_cut_short_is_compiled_again() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("cut");
-        let _ = pipeline(&keeping(&folder), &[WRITES_SEVEN], "main");
+        let _ = pipeline(&keeping(&turn, &folder), &[WRITES_SEVEN], "main");
         let Ok([(path, whole)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
             panic!("one file is kept");
         };
@@ -497,7 +499,7 @@ fn main() { out[0] = 7u; }
             .open(&path)
             .and_then(|file| file.set_len(whole - 1))
             .expect("the file cut short");
-        let next = keeping(&folder);
+        let next = keeping(&turn, &folder);
         let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 0, "what was cut short is handed to no one");
         assert_eq!(first_word(&next, &compiled), 7);
@@ -509,15 +511,16 @@ fn main() { out[0] = 7u; }
     // again: the hash it holds says so.
     #[test]
     fn a_kept_file_changed_on_the_disk_is_compiled_again() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("changed");
-        let _ = pipeline(&keeping(&folder), &[WRITES_SEVEN], "main");
+        let _ = pipeline(&keeping(&turn, &folder), &[WRITES_SEVEN], "main");
         let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
             panic!("one file is kept");
         };
         let mut bytes = std::fs::read(&path).expect("the file");
         *bytes.last_mut().expect("a byte of DXIL") ^= 1;
         std::fs::write(&path, &bytes).expect("the file changed");
-        let next = keeping(&folder);
+        let next = keeping(&turn, &folder);
         let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 0, "what changed is handed to no one");
         assert_eq!(first_word(&next, &compiled), 7);
@@ -529,8 +532,9 @@ fn main() { out[0] = 7u; }
     // what was asked is in the file.
     #[test]
     fn a_file_under_another_s_name_is_not_handed() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("renamed");
-        let first = keeping(&folder);
+        let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
             panic!("one file is kept");
@@ -538,7 +542,7 @@ fn main() { out[0] = 7u; }
         let _ = pipeline(&first, &[&WRITES_SEVEN.replace("7u", "8u")], "main");
         let eight = kept_files(&folder).into_iter().map(|(path, _)| path).find(|path| *path != seven);
         std::fs::rename(eight.expect("the second file"), &seven).expect("put under the first's name");
-        let next = keeping(&folder);
+        let next = keeping(&turn, &folder);
         let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 0, "what another asked is handed to no one");
         assert_eq!(first_word(&next, &compiled), 7);
@@ -550,14 +554,14 @@ fn main() { out[0] = 7u; }
     // what DXC made there, and hands it to the next.
     #[test]
     fn engines_opened_once_the_app_names_a_folder_keep_their_shaders_there() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("named");
         let named = folder.to_string_lossy().into_owned();
         // SAFETY: `named` holds its length.
         unsafe { crate::platform::gpu_engine_keep_shaders_in(named.as_ptr(), named.len()) };
-        let opened = (crate::device::Engine::open_first(), crate::device::Engine::open_first());
+        let (first, next) = (turn.engine(), turn.engine());
         // SAFETY: a length of 0 reads nothing.
         unsafe { crate::platform::gpu_engine_keep_shaders_in(std::ptr::null(), 0) };
-        let (first, next) = (opened.0.expect("an adapter"), opened.1.expect("an adapter"));
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         let handed = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 1, "the next engine is handed it");
@@ -570,14 +574,15 @@ fn main() { out[0] = 7u; }
     // makes of it: two sources that differ in a comment are one.)
     #[test]
     fn what_was_asked_otherwise_is_kept_apart() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("apart");
         let writes_eight = WRITES_SEVEN.replace("7u", "8u");
-        let first = keeping(&folder);
+        let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         let _ = pipeline(&first, &[&writes_eight], "main");
         assert_eq!(found(&first), 0);
         assert_eq!(kept_files(&folder).len(), 2);
-        let next = keeping(&folder);
+        let next = keeping(&turn, &folder);
         let (seven, eight) = (
             pipeline(&next, &[WRITES_SEVEN], "main"),
             pipeline(&next, &[&writes_eight], "main"),
@@ -591,6 +596,7 @@ fn main() { out[0] = 7u; }
     // as a device starts to keep its shaders there.
     #[test]
     fn a_folder_past_its_most_lets_its_oldest_go() {
+        let turn = a_device_of_its_own();
         let folder = kept_in("most");
         std::fs::create_dir_all(&folder).expect("the folder");
         let old = folder.join("old.dxil");
@@ -601,7 +607,7 @@ fn main() { out[0] = 7u; }
             let then = std::time::SystemTime::now() - std::time::Duration::from_secs(age);
             file.set_modified(then).expect("its age");
         }
-        drop(keeping(&folder));
+        drop(keeping(&turn, &folder));
         assert!(!old.exists(), "the one used longest ago went");
         assert!(new.exists(), "what fits stayed");
         let _ = std::fs::remove_dir_all(&folder);

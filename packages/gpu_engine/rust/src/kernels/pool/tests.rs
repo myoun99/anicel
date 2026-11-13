@@ -828,11 +828,12 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
     use crate::kernels::export::abi::{
         gpu_engine_readout_free, gpu_engine_readout_map_then, gpu_engine_readout_rows,
     };
-    use crate::testing::last_error;
+    use crate::testing::{a_device_of_its_own, last_error};
     static TOLD: ToldOn = ToldOn::new();
     extern "C" fn told(wait: u64) {
         TOLD.tell(wait);
     }
+    let _turn = a_device_of_its_own();
     let bytes = le_bytes(&tile(0));
     let (mut page, mut slot) = (u16::MAX, u16::MAX);
     let mut into = vec![0; TILE_BYTES as usize];

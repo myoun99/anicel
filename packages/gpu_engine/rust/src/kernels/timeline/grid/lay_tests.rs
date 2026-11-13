@@ -8,7 +8,7 @@ use std::time::Duration;
 use super::super::{GridPicture, GridTile};
 use super::{GridLay, Laid};
 use crate::device::{Engine, gpu_engine_waits_here, storage_texture};
-use crate::testing::{first_engine, last_error};
+use crate::testing::{a_device_of_its_own, first_engine, last_error};
 
 const RGBA: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const BGRA: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -243,7 +243,8 @@ fn a_lay_past_its_screen_or_its_tile_is_refused_with_why() {
 // (2026-11-12).
 #[test]
 fn a_lay_waits_here_for_nothing_and_is_told_done() {
-    let engine = Engine::open_first().expect("an engine of its own");
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
     let tile = plain(&engine, (2, 1), RED);
     let screen = storage_texture(&engine.device, 4, 1, RGBA);
     let laid = [Laid { picture: &tile, from: [0.0, 0.0, 2.0, 1.0], onto: [1.0, 0.0, 3.0, 1.0] }];

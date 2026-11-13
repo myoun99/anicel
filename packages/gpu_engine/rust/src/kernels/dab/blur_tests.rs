@@ -14,8 +14,7 @@ use super::{Blurs, Cover, MOST_STRIPS_RADIUS, Route, Ways, Window};
 use crate::kernels::composite::{Composite, TileAt, TileSet};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::device::Engine;
-use crate::testing::{assert_pinned, first_engine, read_buffer};
+use crate::testing::{a_device_of_its_own, assert_pinned, first_engine, read_buffer};
 
 const ONE: u32 = 65535;
 const WHITE: [u8; 4] = [255; 4];
@@ -319,7 +318,8 @@ fn a_dab_the_strips_take_goes_by_them() {
 // shared one's strips.
 #[test]
 fn a_dab_goes_a_pass_a_dispatch_till_the_strips_are_compiled() {
-    let engine = &Engine::open_first().expect("an adapter");
+    let turn = a_device_of_its_own();
+    let engine = &turn.engine();
     let step: Vec<u8> = (0..SIDE * SIDE)
         .flat_map(|texel| if texel % SIDE >= 64 { [0xff; 8] } else { [0; 8] })
         .collect();

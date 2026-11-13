@@ -1112,11 +1112,12 @@ pub unsafe extern "C" fn gpu_engine_apart_held(engine: *const Engine) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{Apart, Engine, gpu_engine_close, opened};
-    use crate::testing::first_engine;
+    use crate::testing::{a_device_of_its_own, first_engine};
     use crate::{fail, last_error};
 
     #[test]
     fn a_device_is_opened_on_a_thread_of_its_own_not_the_callers() {
+        let _turn = a_device_of_its_own();
         let (sender, on) = std::sync::mpsc::channel();
         let made = opened(move || {
             let _ = sender.send(std::thread::current().id());
@@ -1130,7 +1131,8 @@ mod tests {
 
     #[test]
     fn a_submit_enters_the_driver_on_a_thread_of_the_engines_not_the_callers() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let (sender, answered) = std::sync::mpsc::channel();
         // What a submit refuses reaches this handler on the thread that
         // submitted.
@@ -1154,7 +1156,8 @@ mod tests {
 
     #[test]
     fn a_compile_under_way_holds_up_no_submit() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let (release, released) = std::sync::mpsc::channel::<()>();
         let (submitted, answered) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
@@ -1178,7 +1181,8 @@ mod tests {
     // thread of the engine's for compiling of its own (`CompilerTurn`).
     #[test]
     fn a_compile_under_way_holds_up_no_other() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let (release, released) = std::sync::mpsc::channel::<()>();
         let (compiled, answered) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
@@ -1232,7 +1236,8 @@ mod tests {
 
     #[test]
     fn a_compile_enters_the_driver_on_a_thread_of_the_engines_not_the_callers() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let (sender, answered) = std::sync::mpsc::channel();
         // What a compile refuses reaches this handler on the thread that
         // compiled.
@@ -1299,7 +1304,8 @@ mod tests {
     // buffer of it (`Refusals` has the measurement) — returns.
     #[test]
     fn a_device_that_is_gone_fails_every_wait_by_name_and_panics_nowhere() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let before = engine.filled("before", &[1, 2, 3, 4], wgpu::BufferUsages::COPY_SRC);
         assert_eq!(engine.read_buffer(&before), Some(vec![1, 2, 3, 4]), "{}", last_error());
         assert!(!engine.gone());
@@ -1325,7 +1331,8 @@ mod tests {
     // once — the engine stands, and its thread with it.
     #[test]
     fn an_error_no_scope_catches_fails_the_next_wait_and_is_told_once() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
         let small = engine.readback(4);
         let source = engine.filled("source", &[1, 2, 3, 4], wgpu::BufferUsages::COPY_SRC);
@@ -1351,7 +1358,8 @@ mod tests {
     // so as of a device lost.
     #[test]
     fn an_engine_whose_thread_ended_is_gone() {
-        let engine = Engine::open_first().expect("an adapter");
+        let turn = a_device_of_its_own();
+        let engine = turn.engine();
         let ended = engine.thread.run(|| -> () { panic!("as wgpu's poll does") });
         assert_eq!(ended, None);
         // Ended once it has let go of what it is handed: its panic answers
@@ -1410,6 +1418,7 @@ mod tests {
     fn the_abi_says_whether_a_device_is_gone_and_what_it_noted() {
         use super::{gpu_engine_gone, gpu_engine_lose, gpu_engine_noted, gpu_engine_went_by};
         use crate::platform::WENT_UNSAID;
+        let _turn = a_device_of_its_own();
         let made = opened(Engine::open_first);
         assert!(!made.is_null(), "{}", last_error());
         // SAFETY: `made` is live till the close below, and `noted` holds its
@@ -1456,6 +1465,7 @@ mod tests {
         assert!(!lost(wgpu::hal::DeviceError::Unexpected).gone_for_memory());
         assert!(!Refusals::default().gone_for_memory(), "one that is there");
 
+        let _turn = a_device_of_its_own();
         let made = opened(Engine::open_first);
         assert!(!made.is_null(), "{}", last_error());
         // SAFETY: `made` is live till the close below.

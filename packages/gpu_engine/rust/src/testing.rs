@@ -1,6 +1,6 @@
 //! What the GPU tests share.
 
-use std::sync::OnceLock;
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use crate::device::Engine;
 use crate::kernels::composite::TileAt;
@@ -28,6 +28,60 @@ pub fn first_engine() -> &'static Engine {
         engine.device.on_uncaptured_error(std::sync::Arc::new(alarm));
         engine
     })
+}
+
+/// The turn a test holds for as long as a device of its own is up
+/// ([`a_device_of_its_own`]): one test's at a time, beside
+/// [`first_engine`]'s.
+///
+/// 🚨★★SEVERAL DEVICES UP AT ONCE, EACH COMPILING AND BINDING, END THE
+/// PROCESS — exit 2173, which is 0x87D, the D3D12 debug layer's break on an
+/// error: `Create…View: Specified CPU descriptor handle … does not refer to
+/// a location in a descriptor heap`, of a heap its thread had only just
+/// made. 2026-11-05 with eighteen up (blend's tests, above), and again
+/// 2026-11-14 with sixteen: `device::tests` run first and all at once, ten
+/// of them opened an engine each, and six more were to (🔬the dump of
+/// 02:52, its stack named: wgpu's own bind group as it makes a device,
+/// `create_bind_group` in `CreateUnorderedAccessView`, on the thread of a
+/// test that opened one).
+///
+/// 🔬RTX 4080, 2026-11-14, on the code as it stood before those six:
+/// sixteen threads each opening a device, compiling a kernel cold and
+/// binding a buffer to it — dead within seconds, two runs of two, the same
+/// stack; and of one wgpu instance all the same. The same compiles and
+/// binds on ONE device from sixteen threads, 384 of them: none. Devices
+/// opened and let go with nothing else, 640 on sixteen threads: none. One
+/// device at work on twelve threads and others opened beside it one at a
+/// time, nine minutes: none. ⚠️Why D3D12 reads such a heap so is not
+/// known. Only a debug build has the layer: the crate's own tests, not the
+/// app's library.
+///
+/// ↩️The fix of 2026-11-05 was a word — "as the app opens one device" —
+/// and ten of `device::tests` and as many tests again elsewhere came to
+/// open one of their own after it. So a test's
+/// own device is opened under this turn and no other way
+/// (`kernels/shared/one_device_turn.rs` reads the sources for it):
+/// 🗣️관제 2026-11-14 04:20, the-ui-thread-never-enters-the-driver, 「이번엔
+/// 쓸 수 없게 닫는다」.
+static A_DEVICE_OF_ITS_OWN: Mutex<()> = Mutex::new(());
+
+/// A test's hold on [`A_DEVICE_OF_ITS_OWN`], let go where it is dropped:
+/// after every device opened under it, so it is taken first.
+pub(crate) struct DeviceTurn(#[allow(dead_code)] MutexGuard<'static, ()>);
+
+impl DeviceTurn {
+    /// An engine on the platform's first adapter, this test's own: for one
+    /// whose thread or device a test ends, loses or stands alone on.
+    pub(crate) fn engine(&self) -> Engine {
+        Engine::open_first().expect("these tests need a GPU adapter")
+    }
+}
+
+/// The turn for a device of the calling test's own — waited for while
+/// another test has one up. A test that failed with it in hand left it
+/// behind in good order: the lock guards nothing but the turn.
+pub(crate) fn a_device_of_its_own() -> DeviceTurn {
+    DeviceTurn(A_DEVICE_OF_ITS_OWN.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 /// `buffer`'s bytes once the GPU is done with all that was submitted — the
