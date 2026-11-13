@@ -1730,26 +1730,25 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The open box laid over what floats, as the layer holds it right now:
   /// the box, the rect it stands on and the tool's knobs, read at the call.
-  FloatWarp get floatWarp => _warpOver(null);
+  FloatWarp get floatWarp => _warpOf(_box);
 
   /// [floatWarp] over one [float] — what its preview resamples.
-  FloatWarp _floatWarpOf(_Float float) => _warpOver(float.stamp);
+  FloatWarp _floatWarpOf(_Float float) => _warpOf(_box, float: float.stamp);
 
-  FloatWarp _warpOver(BrushDab? float) => FloatWarp(
-    box: _box,
+  FloatWarp _warpOf(TransformBox? box, {BrushDab? float}) => FloatWarp(
+    box: box,
     float: float,
     options: widget.transformOptions,
     pasteboard: widget.pasteboard.region,
   );
 
-  /// The box as the screen shows it now — its handles, what a press lands
+  /// [box] as the screen shows it now — its handles, what a press lands
   /// on and the chrome over it, read at the call. See [BoxOnScreen].
-  BoxOnScreen get _onScreen => BoxOnScreen(
+  BoxOnScreen _onScreen(TransformBox? box) => BoxOnScreen(
     viewport: widget.viewport,
     pasteboard: widget.pasteboard,
     mode: _mode,
-    boxOpen: _transform != null,
-    warp: floatWarp,
+    warp: _warpOf(box),
   );
 
   /// Asks every float's preview to catch up with the box
@@ -1974,15 +1973,42 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       ..baseHeight = bounds.height;
   }
 
-  /// A box framing [region] as it stands here, untransformed and with
-  /// nothing riding it — open once it is the layer's [_box].
+  /// A box framing [region] as it stands here: untransformed, its warp the
+  /// armed mode's ([BoxWarp.syncToMode]) and with nothing riding it — open
+  /// once it is the layer's [_box].
+  ///
+  /// ↩️It was made with no warp, and each door that opened one brought the
+  /// warp in line a line later — so a box not open yet had no quad and no
+  /// grid to show (F-586).
   _OpenBox _boxOver(CanvasSelectionRegion region) {
     final bounds = _regionBounds(region);
     return _OpenBox(
       affine: SelectionAffine(pivot: bounds.center),
       baseWidth: bounds.width,
       baseHeight: bounds.height,
-    );
+    )..warp.syncToMode(_mode, columns: _meshColumns, rows: _meshRows);
+  }
+
+  /// The box the Move tool stands at rest, and what it frames: the
+  /// selection, or the whole picture with none (R26 #13) — there before any
+  /// session opens (R17-U 핸들 상시), as a press on it would open it. Null
+  /// while a box is open or another tool is in hand.
+  ///
+  /// 🗣️F-586 (유저 2026-11-12): 「매쉬변형, 변형시작해야 내부 사각형들
+  /// 뜨는데, 그냥 매쉬변형인 상태면 뜨도록. 변형안한상태로 그것들 잡아끌어서
+  /// 변형한다는게 안되는게 이유」 — it is a box whole, its warp included, so
+  /// what is drawn of it and what a press takes of it are the open box's.
+  /// ↩️The chrome drew a rect of its own for it and the press made a box of
+  /// its own, neither with a warp.
+  ({CanvasSelectionRegion region, _OpenBox box})? _restingBox() {
+    if (_box != null ||
+        !widget.alwaysShowTransformBox ||
+        widget.tool != CanvasSelectionTool.move) {
+      return null;
+    }
+    final region =
+        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
+    return (region: region, box: _boxOver(region));
   }
 
   void _beginTransform() {
@@ -2012,7 +2038,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     setState(() {
       _box = box;
-      _syncOffsetsToMode();
       _buildFloatSurfaces();
     });
     _syncAnts();
@@ -2555,37 +2580,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ({TransformBox? box, bool insideImplicitBox})? _pressOnImplicitBox(
     PointerDownEvent event,
   ) {
-    final open = _box;
-    if (open != null ||
-        !widget.alwaysShowTransformBox ||
-        widget.tool != CanvasSelectionTool.move ||
-        widget.onLiftRequested == null) {
-      return (box: open, insideImplicitBox: false);
-    }
     // R26 #13: with NO selection the always-on box frames the WHOLE
     // picture — grabbing one of its handles opens the session on the
     // implicit whole-canvas shape.
-    final implicitRegion =
-        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
-    // The box already on screen, asked before it is open: a handle press
-    // makes it the open one, anything else leaves it unopened.
-    final candidate = _boxOver(implicitRegion);
-    // A box that is not open has no warp, so nothing but its handles.
-    final handle = switch (_onScreen.grabAt(event.localPosition, candidate)) {
-      HandleGrab(:final handle) => handle,
-      _ => null,
-    };
-    if (handle == null || handle == TransformHandle.inside) {
+    final resting = widget.onLiftRequested == null ? null : _restingBox();
+    if (resting == null) {
+      return (box: _box, insideImplicitBox: false);
+    }
+    final (region: implicitRegion, box: candidate) = resting;
+    // The box already on screen, asked before it is open: a press on a
+    // handle — a grip, the cross, a point of its quad or its grid — or
+    // outside it makes it the open one, anything else leaves it unopened.
+    //
+    // ↩️「A box that is not open has no warp, so nothing but its handles」:
+    // a grid point was not there to press until something else had opened
+    // the box (F-586).
+    final grab = _onScreen(candidate).grabAt(event.localPosition);
+    final inside =
+        grab is HandleGrab && grab.handle == TransformHandle.inside;
+    if (grab == null || inside) {
       // Inside/miss: fall through to the ordinary move-drag flow — but
       // remember WHICH (TP4). "Inside" is the box the user can see, and
       // the box is the promise: 유저 확정 (변형툴 라운드 ④) already said
       // 사각형(박스)을 잡아야 해당 기능, while the flow below asked the
       // REGION instead. A lasso's box has corners the outline does not
       // fill, and pressing there did nothing at all.
-      return (
-        box: null,
-        insideImplicitBox: handle == TransformHandle.inside,
-      );
+      return (box: null, insideImplicitBox: inside);
     }
     if (_region == null) {
       setState(
@@ -2601,7 +2621,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     setState(() {
       _box = candidate;
-      _syncOffsetsToMode();
       _buildFloatSurfaces();
     });
     return (box: candidate, insideImplicitBox: false);
@@ -2673,7 +2692,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // is already on screen (R17-U), so this is the moment the numbers
       // behind it start existing, not a new thing appearing.
       _box = box;
-      _syncOffsetsToMode();
       final affine = box.affine;
       // ⚠️AFTER the box exists: an inside grab that opened it steps back
       // to the box as it opened, which is what the user sees.
@@ -2703,7 +2721,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // of its own: 메쉬 ended a press off every point (no move, no turn), and
     // 퍼스 called the gap between a pulled quad and the affine box a miss —
     // while inside the quad grown past that box was the turn (F-412).
-    final grab = _onScreen.grabAt(event.localPosition, box);
+    final grab = _onScreen(box).grabAt(event.localPosition);
     if (grab is WarpPointGrab) {
       // 퍼스: the four corners move freely — no modifier, because the MODE
       // is the door now (the Ctrl+corner gesture this replaces could not
@@ -3544,29 +3562,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // open QUAD (R20-D2) maps the region through the homography instead.
     final displayShape = _displayShape(transform, region, warpCorners);
     // R17-U 핸들 상시: with the Move tool a selection shows its box
-    // chrome even before any session opens (identity affine around the
-    // shape bounds; grabbing a handle opens the session at that moment).
-    var chromeAffine = transform;
-    var chromeWidth = _box?.baseWidth ?? 0;
-    var chromeHeight = _box?.baseHeight ?? 0;
-    if (chromeAffine == null &&
-        widget.alwaysShowTransformBox &&
-        widget.tool == CanvasSelectionTool.move &&
-        _drag == null) {
-      // R26 #13: no selection = the box frames the WHOLE picture (the
-      // canvas rect) — grabbing a handle opens the implicit session.
-      final bounds = _regionBounds(
-        region ?? CanvasSelectionRegion.shape(_wholeCanvasShape()),
-      );
-      chromeAffine = SelectionAffine(pivot: bounds.center);
-      chromeWidth = bounds.width;
-      chromeHeight = bounds.height;
-    }
-    final chrome = _onScreen.transformChrome(
-      chromeAffine,
-      chromeWidth,
-      chromeHeight,
-    );
+    // chrome even before any session opens (the box at rest —
+    // [_restingBox]; grabbing a handle opens the session at that moment).
+    // R26 #13: no selection = the box frames the WHOLE picture.
+    final chrome = _onScreen(
+      _box ?? (_drag == null ? _restingBox()?.box : null),
+    ).transformChrome();
     // While a hold is up, whichever float is drawn is drawn ONLY over the
     // tiles the base cannot paint yet — screen space, because it wraps
     // the painters rather than living inside one of them, and both
@@ -3614,8 +3615,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // one painting code path, two mount points.
           if (drawnHere.isNotEmpty) _floatPreview(drawnHere, context),
           _antsLayer(displayShape, region, chrome),
-          // R16-①: the CONFIRM button — in the pill under the box while
-          // there is something to confirm.
+          // R16-①: the CONFIRM button — in the pill under the box
+          // (↩️「while there is something to confirm」: F-585, below).
           //
           // ↩️**IT ASKED `_movePending` ALONE**, and that was the same
           // stale premise the ants carried: when it was written a box could
@@ -3630,7 +3631,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // ↩️Then it asked both, while a session could stand a line without
           // its box. It rides the box now ([_OpenBox]), so the box is the
           // whole answer.
-          if (_transform != null && displayShape != null)
+          //
+          // 🗣️F-585 (유저 2026-11-12): 「변형도구 아래 알약, 변형의 값이
+          // 바껴야(변형시작해야) 뜨는데, 그냥 변형도구상태면 뜨도록. 대신 값이
+          // 안바뀐상태면 확정/취소버튼 존재는 하되 비활성화」 — the pill
+          // stands under the box the screen DRAWS, the Move tool's at rest
+          // as much as an open one.
+          // ↩️`_transform != null && displayShape != null`: it waited for
+          // the box to open, under a box that was already drawn.
+          if (chrome != null)
             // 🚨★★★**THE WAY OUT CANNOT LEAVE THE SCREEN.** The bar sat
             // 34px ABOVE the box's top-right, which was safe only while a
             // scale grew the box down and right — it anchors on the corner
@@ -3641,7 +3650,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             //
             // ⚠️Its own [Positioned.fill]: the pill is laid out against
             // the layer's SIZE, and this is the only child that needs it.
-            Positioned.fill(child: _confirmPill(displayShape, chrome)),
+            Positioned.fill(child: _confirmPill(chrome)),
           if (_selectionFinished && displayShape != null)
             Positioned.fill(child: _selectionPill(displayShape)),
         ],
@@ -3681,7 +3690,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final mask = widget.maskOptions;
     return CanvasTargetPill(
       keyValue: 'selection-pill',
-      target: _pillTarget(displayShape, null),
+      target: _pillTarget(displayShape),
       children: [
         AppIconButton(
           keyValue: 'selection-pill-deselect',
@@ -3774,15 +3783,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// fact the ants and the box already show in the session's red. The
   /// BUTTON says it the app's own way instead of wearing a colour of its
   /// own.
-  Widget _confirmPill(
-    CanvasSelectionRegion displayShape,
-    SelectionTransformChrome? chrome,
-  ) {
+  ///
+  /// 🗣️F-585 (유저 2026-11-12): 「값이 안바뀐상태면 확정/취소버튼 존재는
+  /// 하되 비활성화」 — over a box nothing has changed ([_sessionHasChanges]:
+  /// the Move tool's at rest, or one opened and left as it opened) 취소 is
+  /// grey, and ✓ is whatever 적용 answers there ([_applyAction]).
+  ///
+  /// It stands under [chrome] — the box's outline as the screen draws it.
+  /// ⚠️The OUTLINE's bounds, not the shape's: a turned box reaches past the
+  /// shape it carries, so a pill placed under the shape would sit on the
+  /// box's lower corner. The handles stand on the outline and need no
+  /// asking of their own.
+  Widget _confirmPill(SelectionTransformChrome chrome) {
     final turn = widget.onTransformOptionsChanged;
     final options = widget.transformOptions;
     return CanvasTargetPill(
       keyValue: 'selection-confirm-pill',
-      target: _pillTarget(displayShape, chrome),
+      target: pointsBounds(chrome.box),
       children: [
         // 🗣️I-165 (유저 2026-11-05): 「그리고 변형도구도 이제부터 알약에
         // 추가로 안티앨리어스,좌우반전,상하반전 버튼 배치.」
@@ -3798,31 +3815,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         ...targetPillVerbs(
           'selection-move',
           onConfirm: _applyAction() == null ? null : _applyTransform,
-          onCancel: _cancelTransform,
+          onCancel: _sessionHasChanges ? _cancelTransform : null,
           changed: _sessionHasChanges,
         ),
       ],
     );
   }
 
-  /// What the pill stands under: the box's outline as the screen draws it,
-  /// or the shape where no box is drawn.
-  ///
-  /// ⚠️The OUTLINE's bounds, not the shape's: a turned box reaches past the
-  /// shape it carries, so a pill placed under the shape would sit on the
-  /// box's lower corner. The handles stand on the outline and need no
-  /// asking of their own.
+  /// What a finished selection's pill stands under: [displayShape] on the
+  /// screen — where the box's pill stands over the same selection
+  /// ([_confirmPill]).
   ///
   /// ⚠️No drag offset: with the move living in the affine, the chrome and
   /// the shape the caller hands are both already TRANSFORMED, so the pill
   /// already rides the box it is supposed to ride.
-  Rect _pillTarget(
-    CanvasSelectionRegion displayShape,
-    SelectionTransformChrome? chrome,
-  ) {
-    if (chrome != null) {
-      return pointsBounds(chrome.box);
-    }
+  /// ↩️It answered for the box's pill too, handed a chrome or none.
+  Rect _pillTarget(CanvasSelectionRegion displayShape) {
     final bounds = displayShape.selectedBounds;
     return pointsBounds([
       for (final (x, y) in [
@@ -3868,7 +3876,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             startShape: switch (_box) {
               null => null,
               final box => CanvasSelectionRegion.shape(
-                _onScreen.startSilhouette(box),
+                _onScreen(box).startSilhouette(box),
               ),
             },
             // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
