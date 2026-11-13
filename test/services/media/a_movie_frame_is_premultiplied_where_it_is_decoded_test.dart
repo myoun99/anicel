@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -73,12 +75,12 @@ void main() {
       );
     });
 
-    test('two frames in a row are decoded into one buffer it keeps, not a '
-        'fresh one each', () {
-      // 🔬The CPU audit (2026-11-13): the decoder copied each frame out of
-      // its scratch into a fresh 8 MB `Uint8List` when it was given no
-      // `into`, under the kept buffer the premultiply used — on the heap
-      // this worker shares with the UI isolate.
+    test('two frames in a row are decoded into the one buffer it keeps, '
+        'not a fresh one each', () async {
+      // 🔬The CPU audit (2026-11-13): the arm asked the decoder with no
+      // `into`, so the decoder copied each frame out of its scratch into a
+      // fresh 8 MB `Uint8List`, under the kept buffer the premultiply used
+      // — on the heap this worker shares with the UI isolate.
       final decoder = osVideoDecoderOrSkip();
       if (decoder == null) {
         return;
@@ -88,15 +90,37 @@ void main() {
         'test/fixtures/tone_with_video.mp4',
       );
       expect(document, isNotNull, reason: 'the fixture must open');
-      final first = frameInTheRoom(decoder, document!, 0);
-      final second = frameInTheRoom(decoder, document, 1);
-      expect(second, isNotNull, reason: decoder.lastError);
-      expect(identical(first, second), isTrue);
+      final port = ReceivePort();
+      addTearDown(port.close);
+      final replies = StreamIterator<Object?>(port);
+      Future<Uint8List> served(int index) async {
+        serveVideoDecodeRequest(
+          // 1 is the frame op — see the_decode_leaves_the_ui_thread_test.
+          (
+            op: 1,
+            args: (token: 0, index: index, premultiplied: false),
+            reply: port.sendPort,
+          ),
+          {0: document!},
+          (token) => token == 0 ? document : null,
+        );
+        expect(await replies.moveNext(), isTrue);
+        final sent = replies.current;
+        expect(sent, isNotNull, reason: decoder.lastError);
+        return (sent! as TransferableTypedData).materialize().asUint8List();
+      }
+
+      final first = await served(2);
+      final room = debugFrameRoom;
+      expect(room, orderedEquals(first), reason: 'decoded into the room');
+      final second = await served(5);
       expect(
         second,
-        orderedEquals(decoder.frameOf(document, 1)!),
-        reason: 'and what is in it is the frame asked for',
+        isNot(orderedEquals(first)),
+        reason: 'fixture: two frames that differ',
       );
+      expect(identical(debugFrameRoom, room), isTrue);
+      expect(room, orderedEquals(second));
     });
   });
 

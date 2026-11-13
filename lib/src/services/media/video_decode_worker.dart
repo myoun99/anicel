@@ -510,7 +510,7 @@ void _serve(
       final document = documentAt(args.token);
       final rgba = document == null
           ? null
-          : frameInTheRoom(decoder, document, args.index);
+          : _frameInTheRoom(decoder, document, args.index);
       request.reply.send(
         rgba == null
             ? null
@@ -535,7 +535,7 @@ void _serve(
 }
 
 /// What the frame arm sends of [rgba] — the worker's room
-/// ([frameInTheRoom]), its own to change — in the form asked: as it is, or
+/// ([_frameInTheRoom]), its own to change — in the form asked: as it is, or
 /// [premultiplied] there, by the app's one law
 /// ([VideoDecodeBackend.premultipliedFrame]).
 ///
@@ -573,13 +573,17 @@ TransferableTypedData transferOfFrame(
 /// (the CPU audit), when the two became this one.
 Uint8List? _frameRoom;
 
+/// [_frameRoom] of the isolate that asks — this one's when a test serves
+/// a request here ([serveVideoDecodeRequest]).
+@visibleForTesting
+Uint8List? get debugFrameRoom => _frameRoom;
+
 /// Frame [index] of [document], decoded into [_frameRoom].
 ///
 /// ⚠️Valid until the next frame: [transferOfFrame] copies it out at once,
 /// and the worker answers one request at a time — the synchronous use
 /// [QaVideoDecoder.frameOf]'s `into` asks of whoever passes it.
-@visibleForTesting
-Uint8List? frameInTheRoom(
+Uint8List? _frameInTheRoom(
   QaVideoDecoder decoder,
   QaVideoDocument document,
   int index,

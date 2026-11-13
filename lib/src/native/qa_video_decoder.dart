@@ -226,7 +226,7 @@ final class QaVideoDecoder {
   /// ⚠️Reusing `into` is safe because every consumer copies it
   /// SYNCHRONOUSLY — the two that pass it write each frame out before they
   /// read the next: `movie_span` to its encoder, the decode worker's frame
-  /// arm into its transfer (`frameInTheRoom`). ↩️So did
+  /// arm into its transfer (`_frameInTheRoom`). ↩️So did
   /// `decodeStraightRgbaImage`, premultiplying into its own scratch before
   /// its async decode began. A consumer that held this buffer across an
   /// await would read the NEXT frame.
