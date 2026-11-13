@@ -190,6 +190,19 @@ symphonia-core = { path = "vendor/symphonia-core" }
 symphonia-codec-aac = { path = "vendor/symphonia-codec-aac" }
 symphonia-bundle-mp3 = { path = "vendor/symphonia-bundle-mp3" }
 symphonia-codec-vorbis = { path = "vendor/symphonia-codec-vorbis" }
+# 🚨WGPU-HAL IS OURS TO PATCH TOO (유저 2026-11-13,
+# the-wait-window-stands-seven-seconds-on-the-surface-Q1: 「고친 사본을 묶는다
+# — 디스크 캐시 + 나란히 컴파일」). DXC was nine tenths of every compile the
+# app's wait window stood for on the Surface Pro 11, and wgpu-hal 30 kept
+# none of what it made past the run and compiled on one compiler from every
+# thread: what DXC makes is now kept on disk (src/dx12/dxil_cache.rs) and
+# each compile under way takes a compiler of its own
+# (src/dx12/shader_compilation.rs, `DxcCompilers`). Every change of ours
+# says ANICEL. ⚠️EVERY UPGRADE OF WGPU DOES IT AGAIN: copy the new
+# release's wgpu-hal here whole from the registry, put back what
+# `grep -rn ANICEL vendor/wgpu-hal` finds in this one, and run this crate's
+# tests on Windows. MIT/Apache-2.0: no source has to be offered.
+wgpu-hal = { path = "vendor/wgpu-hal" }
 
 # A DEPENDENCY'S DEBUG INFO IS ITS LINE TABLES (브러시/렌더링 23:09 · 관제
 # 2026-11-07, connection-round-checklist): the shared target had grown to
