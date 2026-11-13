@@ -193,7 +193,7 @@ typedef _Found = ({_Plane plane, int position, CelPlace place});
 class _CelPlaceIndex {
   _CelPlaceIndex(Project project) {
     for (final asset in project.mediaAssets) {
-      if (asset.carriedAs case final carry?) {
+      if (asset.carriedAs?.token case final carry?) {
         _viewers[carry] = (
           plane: _Plane.viewer,
           position: _viewers.length,

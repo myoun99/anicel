@@ -378,7 +378,7 @@ void main() {
             MediaAsset(
               path: audio,
               name: '대사',
-              carriedAs: mediaCarryNamed(audio, 'c1'),
+              carriedAs: (token: mediaCarryNamed(audio, 'c1'), modified: null),
             ),
           ],
         ),

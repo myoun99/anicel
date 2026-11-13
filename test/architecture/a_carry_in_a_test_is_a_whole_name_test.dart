@@ -17,8 +17,11 @@ import '../helpers/dart_sources.dart';
 /// with `mediaCarryNamed`.
 void main() {
   test('no test builds a carry on a bare token', () {
+    // A carry is written with its date now — `carriedAs: (token: '…'` —
+    // and its name is still the one to look at (F-589).
     final bare = RegExp(
-      r"(?:carriedAs:\s*|poolPath:[^,()]*,\s*token:\s*)'([A-Za-z0-9_]*)'",
+      r'(?:carriedAs:\s*(?:\(\s*token:\s*)?|poolPath:[^,()]*,\s*token:\s*)'
+      "'([A-Za-z0-9_]*)'",
     );
     final carries = RegExp('carriedAs:|poolPath:');
     var seen = 0;

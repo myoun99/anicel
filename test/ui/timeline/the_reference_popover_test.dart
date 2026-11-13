@@ -526,7 +526,12 @@ void main() {
     expect(mediaAssetPoolState(linked), 'Linked');
     expect(
       mediaAssetPoolState(
-        linked.copyWith(carriedAs: mediaCarryNamed(linked.path, 'c1')),
+        linked.copyWith(
+          carriedAs: (
+            token: mediaCarryNamed(linked.path, 'c1'),
+            modified: null,
+          ),
+        ),
       ),
       'In the project',
     );

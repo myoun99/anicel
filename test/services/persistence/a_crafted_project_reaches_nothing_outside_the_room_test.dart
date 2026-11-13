@@ -146,7 +146,13 @@ void main() {
     File('${outside.path}/victim-1.bin').writeAsBytesSync(secret);
     const escaping = '../../outside/victim-1.bin';
     final path = crafted(
-      assets: [MediaAsset(path: original, name: 'take', carriedAs: escaping)],
+      assets: [
+        MediaAsset(
+          path: original,
+          name: 'take',
+          carriedAs: (token: escaping, modified: null),
+        ),
+      ],
     );
 
     await openAndSave(path);

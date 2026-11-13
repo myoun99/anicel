@@ -14,6 +14,22 @@ export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
 /// the path alone.
 typedef MediaCarry = ({String poolPath, String token});
 
+/// What an asset records of its 품기 ([MediaAsset.carriedAs]): the name its
+/// bytes are stored under, minted when it was carried ([mintMediaCarry]),
+/// and when the file they were taken from had last changed — read at that
+/// moment, null where nothing could be read.
+///
+/// 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
+/// 띄운다」): the pool row's date. ↩️It read the original's modification
+/// time now — so editing the original changed the date of bytes that had
+/// not changed, and deleting it took the date away.
+///
+/// ⛔ONE value with the name, not a field beside it: two fields could say a
+/// date for an asset nothing carries. A piece cut from a file, or a sound
+/// taken out of a movie, has the date of the file it came from — when its
+/// bytes were written is not when the file is from.
+typedef MediaCarriedAs = ({String token, DateTime? modified});
+
 /// A fresh [MediaAsset.carriedAs] for carrying [poolPath], one per 품기 —
 /// the NAME its bytes are stored under for good,
 /// `<path hash>-<random>-<file name>` ([mediaCarryName]).
@@ -190,25 +206,28 @@ enum MediaFitMode {
 /// 「파일마다 배치 기본값(맞춤 · 시작 · 길이)」) — ⛔not one field at a
 /// time, and not from the §6-z10 table alone.
 ///
-/// SOURCE-TRACKING fields ([sourcePath], [sourceStamp]) power the
-/// "original changed" badge for COPIED assets (§6-g): the copy stays the
-/// truth, the badge only offers re-import.
+/// [sourcePath] says where a COPY came from (§6-g).
 ///
 /// [identity] is the one that looks like source-tracking and is not. It
 /// describes the file at [path] rather than the origin, it is recorded for
 /// REFERENCES as much as copies, and it answers "which file is this?" so
-/// relink can recognize one that moved. The stamp cannot do that job —
-/// it carries an mtime precisely so it CAN notice a touched file, which is
-/// the opposite requirement. Detection-only metadata ([sourceFps],
-/// [frameCount], [pageCount]) is recorded at registration and never
-/// forces a policy (§6-x).
+/// relink can recognize one that moved. A modification time cannot do that
+/// job — it notices a touched file, the opposite requirement; the one an
+/// asset keeps is its carry's date ([MediaCarriedAs]). Detection-only
+/// metadata ([sourceFps], [frameCount], [pageCount]) is recorded at
+/// registration and never forces a policy (§6-x).
+///
+/// ↩️A `sourceStamp` (mtime + size of the original, JSON `sourceStamp`)
+/// stood beside [sourcePath] for an 「original changed」 badge. Nothing
+/// wrote it from 08-13 (`a34926a79`, the day carrying stopped copying a
+/// file) and nothing read it; it went with F-589, when the carry took a
+/// date of its own.
 class MediaAsset {
   MediaAsset({
     required String path,
     required this.name,
     this.kind = MediaAssetKind.audio,
     this.sourcePath,
-    this.sourceStamp,
     this.carriedAs,
     this.identity,
     this.sourceFps,
@@ -246,14 +265,6 @@ class MediaAsset {
   /// what it is not given, so a relink leaves whatever tracking was there
   /// and whoever MAKES a copy is the one that writes these two.
   final String? sourcePath;
-
-  /// Change-detection stamp of the source at copy/registration time
-  /// (mtime+size fingerprint); null = never stamped.
-  ///
-  /// ⚠️ Answers "did the original change?", NOT "is this the same file?".
-  /// It carries a modification time, so it stops matching when a file is
-  /// moved or restored — use [identity] for that question.
-  final String? sourceStamp;
 
   /// Whether the project should CARRY this asset's bytes rather than
   /// point at them.
@@ -300,13 +311,16 @@ class MediaAsset {
   /// ⚠️`''` is the carry an asset had before carries had names — its bytes
   /// are under the name the path alone derives, which is what a project
   /// written then holds ([mediaCarryName]).
-  final String? carriedAs;
+  ///
+  /// And when the file its bytes came from had last changed — the carry's
+  /// date ([MediaCarriedAs]).
+  final MediaCarriedAs? carriedAs;
 
   /// [carriedAs] with the path the asset is at now — what the bytes are
   /// found by ([mediaCarryName]).
   MediaCarry? get carry {
-    final token = carriedAs;
-    return token == null ? null : (poolPath: path, token: token);
+    final carried = carriedAs;
+    return carried == null ? null : (poolPath: path, token: carried.token);
   }
 
   /// What the file at [path] looked like when it was registered — the
@@ -336,8 +350,7 @@ class MediaAsset {
     String? name,
     MediaAssetKind? kind,
     String? sourcePath,
-    String? sourceStamp,
-    String? carriedAs,
+    MediaCarriedAs? carriedAs,
     MediaIdentity? identity,
     double? sourceFps,
     int? frameCount,
@@ -349,7 +362,6 @@ class MediaAsset {
       name: name ?? this.name,
       kind: kind ?? this.kind,
       sourcePath: sourcePath ?? this.sourcePath,
-      sourceStamp: sourceStamp ?? this.sourceStamp,
       carriedAs: carriedAs ?? this.carriedAs,
       identity: identity ?? this.identity,
       sourceFps: sourceFps ?? this.sourceFps,
@@ -364,8 +376,12 @@ class MediaAsset {
     'name': name,
     'kind': kind.toJson(),
     if (sourcePath != null) 'sourcePath': sourcePath,
-    if (sourceStamp != null) 'sourceStamp': sourceStamp,
-    if (carriedAs != null) 'carriedAs': carriedAs,
+    if (carriedAs case final carried?) ...{
+      'carriedAs': carried.token,
+      // UTC, so the file says one instant wherever it is opened.
+      if (carried.modified case final modified?)
+        'carriedModified': modified.toUtc().toIso8601String(),
+    },
     if (identity != null) 'identity': identity!.toJson(),
     if (sourceFps != null) 'sourceFps': sourceFps,
     if (frameCount != null) 'frameCount': frameCount,
@@ -389,12 +405,20 @@ class MediaAsset {
       name: _storedName(json),
       kind: MediaAssetKind.fromJson(json['kind']),
       sourcePath: json['sourcePath'] as String?,
-      sourceStamp: json['sourceStamp'] as String?,
       // ↩️A project written before carries had names said `carried` — or,
       // before that, only a `sourcePath` — and read here as the carry named
       // by the path alone, 「once no build that wrote them is in use」
       // (audit 09-25). The format's floor made that so.
-      carriedAs: json['carriedAs'] as String?,
+      carriedAs: switch (json['carriedAs']) {
+        final String token => (
+          token: token,
+          modified: switch (json['carriedModified']) {
+            final String at => DateTime.tryParse(at)?.toLocal(),
+            _ => null,
+          },
+        ),
+        _ => null,
+      },
       identity: MediaIdentity.fromJson(json['identity']),
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,
@@ -411,7 +435,6 @@ class MediaAsset {
           other.name == name &&
           other.kind == kind &&
           other.sourcePath == sourcePath &&
-          other.sourceStamp == sourceStamp &&
           other.carriedAs == carriedAs &&
           other.identity == identity &&
           other.sourceFps == sourceFps &&
@@ -425,7 +448,6 @@ class MediaAsset {
     name,
     kind,
     sourcePath,
-    sourceStamp,
     carriedAs,
     identity,
     sourceFps,

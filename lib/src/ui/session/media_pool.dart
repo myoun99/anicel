@@ -404,7 +404,9 @@ class MediaPool {
           _project.cutCommandCoordinator.relinkMediaAsset(
             oldPath: oldPath,
             newPath: newPath,
-            carriedAs: carry?.token,
+            carriedAs: carry == null
+                ? null
+                : (token: carry.token, modified: readMediaModified(newPath)),
           )
           ? {oldPath: newPath}
           : const {},
@@ -493,7 +495,9 @@ class MediaPool {
   @visibleForTesting
   bool Function(String path)? debugMediaFileExists;
 
-  /// When each pool file was last written, for the browser's rows.
+  /// When each pool file the project points at was last written, for the
+  /// browser's rows — a carried one shows its carry's date
+  /// ([MediaCarriedAs]).
   ///
   /// Filled by the same sweep that answers "is it still there", because
   /// the sweep is already touching every file: a row that asked the disk
@@ -521,6 +525,10 @@ class MediaPool {
         if (!_file.projectHoldsMediaBytes(asset.path)) {
           missing.add(asset.path);
         }
+        continue;
+      }
+      if (asset.carried) {
+        // Its row shows the date its carry recorded (F-589-Q1).
         continue;
       }
       try {
@@ -609,8 +617,13 @@ class MediaPool {
     }
     // A carry of its own, even for a path carried once before and removed:
     // that one's bytes are an undo's to bring back ([MediaAsset.carriedAs]).
-    final carriedAs = mintMediaCarry(path);
-    await _staging.stageCarriedBytes([(poolPath: path, token: carriedAs)]);
+    final carriedAs = (
+      token: mintMediaCarry(path),
+      modified: readMediaModified(path),
+    );
+    await _staging.stageCarriedBytes([
+      (poolPath: path, token: carriedAs.token),
+    ]);
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         if (asset.path == path) asset.copyWith(carriedAs: carriedAs) else asset,
@@ -645,14 +658,17 @@ class MediaPool {
         if (asset.carried &&
             asked.contains(asset.path) &&
             File(asset.path).existsSync())
-          asset.path: mintMediaCarry(asset.path),
+          asset.path: (
+            token: mintMediaCarry(asset.path),
+            modified: readMediaModified(asset.path),
+          ),
     };
     if (anew.isEmpty) {
       return const {};
     }
     await _staging.stageCarriedBytes([
-      for (final MapEntry(key: path, value: token) in anew.entries)
-        (poolPath: path, token: token),
+      for (final MapEntry(key: path, value: carried) in anew.entries)
+        (poolPath: path, token: carried.token),
     ]);
     // Read after the wait, as [_admit] does: what changed meanwhile stays.
     _project.cutCommandCoordinator.updateMediaAssets([

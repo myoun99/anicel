@@ -50,7 +50,8 @@ void main() {
     final carry = session.repository
         .requireProject()
         .mediaAssetByPath(path)!
-        .carriedAs!;
+        .carriedAs!
+        .token;
     final store = session.renderCaches.viewerInkStore;
     final first = viewerInkPageKey(carry, 0);
     final second = viewerInkPageKey(carry, 1);

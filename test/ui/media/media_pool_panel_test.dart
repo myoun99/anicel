@@ -40,6 +40,7 @@ Future<void> _pump(
   Future<String?> Function()? picker,
   Map<String, int> storedBytes = const {},
   Map<String, int> conformBytes = const {},
+  Map<String, DateTime> modifiedTimes = const {},
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -65,6 +66,7 @@ Future<void> _pump(
             mediaFilePicker: picker,
             storedBytes: storedBytes,
             conformBytes: conformBytes,
+            modifiedTimes: modifiedTimes,
             // RELINK-2: the panel no longer probes the disk — the session
             // caches the answer and hands down the MISSING set. The suite
             // still declares which paths exist, so the inversion happens
@@ -160,7 +162,7 @@ void main() {
         MediaAsset(
           path: foot,
           name: 'foot.wav',
-          carriedAs: mediaCarryNamed(foot, 'c1'),
+          carriedAs: (token: mediaCarryNamed(foot, 'c1'), modified: null),
         ),
         MediaAsset(path: clap, name: 'clap.wav'),
       ],
@@ -179,6 +181,48 @@ void main() {
       find.textContaining(foot),
       findsNothing,
       reason: 'nor on its line, where nothing else is known of it yet',
+    );
+  });
+
+  testWidgets('🎯F-589-Q1: a carried row shows the date its carry recorded, '
+      'not its original\'s now — a linked row its file\'s', (tester) async {
+    // 유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을 띄운다」.
+    const clap = 'C:/snd/clap.wav';
+    const bell = 'C:/snd/bell.wav';
+    await _pump(
+      tester,
+      _Callbacks()..existingPaths = {foot, clap, bell},
+      assets: [
+        MediaAsset(
+          path: foot,
+          name: 'foot.wav',
+          carriedAs: (
+            token: mediaCarryNamed(foot, 'c1'),
+            modified: DateTime(2026, 9, 2, 8, 15),
+          ),
+        ),
+        MediaAsset(path: clap, name: 'clap.wav'),
+        MediaAsset(
+          path: bell,
+          name: 'bell.wav',
+          carriedAs: (token: mediaCarryNamed(bell, 'c1'), modified: null),
+        ),
+      ],
+      // What each original says now — edited after the carry, all three.
+      modifiedTimes: {
+        foot: DateTime(2026, 11, 13, 19, 41),
+        clap: DateTime(2026, 11, 12, 7, 5),
+        bell: DateTime(2026, 11, 11, 23, 59),
+      },
+    );
+
+    expect(find.textContaining('09-02 08:15'), findsOneWidget);
+    expect(find.textContaining('11-13 19:41'), findsNothing);
+    expect(find.textContaining('11-12 07:05'), findsOneWidget);
+    expect(
+      find.textContaining('11-11 23:59'),
+      findsNothing,
+      reason: 'a carry that recorded no date shows none, not the original\'s',
     );
   });
 
@@ -502,7 +546,7 @@ void main() {
           MediaAsset(
             path: foot,
             name: 'foot.wav',
-            carriedAs: mediaCarryNamed(foot, 'c1'),
+            carriedAs: (token: mediaCarryNamed(foot, 'c1'), modified: null),
           ),
         ],
       );

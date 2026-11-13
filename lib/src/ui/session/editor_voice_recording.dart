@@ -1315,7 +1315,10 @@ class EditorVoiceRecording {
               // clearing the Recordings folder before saving used to take
               // the performance with it. Carrying now means held, not just
               // flagged.
-              carriedAs: carry.token,
+              carriedAs: (
+                token: carry.token,
+                modified: readMediaModified(path),
+              ),
               identity: readMediaIdentity(path),
             ),
           ],

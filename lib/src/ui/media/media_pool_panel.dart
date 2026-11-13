@@ -151,8 +151,9 @@ class MediaPoolPanel extends StatelessWidget {
   /// counts ghosts is worse than one that is a beat late.
   final Set<String> missingPaths;
 
-  /// When each pool file was last written — the session's sweep fills it,
-  /// so a row never stats the disk to draw itself.
+  /// When each pool file the project points at was last written — the
+  /// session's sweep fills it, so a row never stats the disk to draw
+  /// itself. A carried row shows its carry's date instead ([_subtitleFor]).
   final Map<String, DateTime> modifiedTimes;
 
   /// What each carried asset ACTUALLY occupies — compressed, in the
@@ -247,7 +248,14 @@ class MediaPoolPanel extends StatelessWidget {
     } else if (conform != null && conform > 0) {
       parts.add('+ ${byteSizeLabel(conform)}');
     }
-    final modified = modifiedTimes[asset.path];
+    // 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
+    // 띄운다」): a carried file's date is the one its carry recorded — the
+    // bytes the project holds do not change when the original does.
+    // ↩️It read the original's date now, edited or gone.
+    final modified = switch (asset.carriedAs) {
+      final carried? => carried.modified,
+      null => modifiedTimes[asset.path],
+    };
     if (modified != null) {
       parts.add(
         '${modified.month.toString().padLeft(2, '0')}-'

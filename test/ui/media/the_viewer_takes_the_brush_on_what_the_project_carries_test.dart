@@ -124,7 +124,8 @@ void main() {
     final carry = session.repository
         .requireProject()
         .mediaAssetByPath(path)!
-        .carriedAs!;
+        .carriedAs!
+        .token;
     final (:slot, :ink) = await view(tester, session, path);
 
     expect(

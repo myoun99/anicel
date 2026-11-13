@@ -506,7 +506,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (!mounted) {
       return;
     }
-    final carry = _shownAsset?.carriedAs;
+    final carry = _shownAsset?.carriedAs?.token;
     if (carry != _openedCarry) {
       final anew = carry != null && _openedCarry != null;
       _openedCarry = carry;
@@ -737,7 +737,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // A position past the end of a shorter document reads clamped
     // ([_turnToPage] and the build both clamp), never out of range.
     setState(_disposeContent);
-    _openedCarry = _shownAsset?.carriedAs;
+    _openedCarry = _shownAsset?.carriedAs?.token;
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
     }
@@ -1429,7 +1429,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final pageIndex = _pageShown;
     _drawnName = _shownName;
     final carry = _shownAsset;
-    _drawnCarry = carry?.carriedAs;
+    _drawnCarry = carry?.carriedAs?.token;
 
     // Document space: the page/frame being shown. ONE answer now — the
     // document knows its own page size, whether that is PDF points, image
@@ -1682,7 +1682,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                     box.biggest,
                     asking: !framingPending,
                   );
-                  final carried = carry?.carriedAs;
+                  final carried = carry?.carriedAs?.token;
                   final inkWindows = ink == null || carried == null
                       ? const <SheetInkWindow>[]
                       : _inkWindowsOf(

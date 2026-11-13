@@ -1662,7 +1662,7 @@ class CutCommandCoordinator {
   bool relinkMediaAsset({
     required String oldPath,
     required String newPath,
-    String? carriedAs,
+    MediaCarriedAs? carriedAs,
     String description = 'Relink media',
   }) {
     final project = repository.requireProject();

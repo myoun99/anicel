@@ -284,7 +284,7 @@ void main() {
               path: path,
               name: mediaAssetDefaultName(path),
               kind: MediaAssetKind.video,
-              carriedAs: mintMediaCarry(path),
+              carriedAs: (token: mintMediaCarry(path), modified: null),
             ),
           ],
         ),

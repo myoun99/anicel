@@ -67,7 +67,7 @@ MediaAsset _asset(String path, MediaAssetKind kind, {bool carried = true}) =>
       path: path,
       name: path,
       kind: kind,
-      carriedAs: carried ? 'c1' : null,
+      carriedAs: carried ? (token: 'c1', modified: null) : null,
     );
 
 void main() {

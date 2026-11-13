@@ -1385,7 +1385,7 @@ class _InkOwners {
   late final Set<CutId> _cuts = _everyCutId(_project);
   late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
   late final Set<String> _carries = {
-    for (final asset in _project.mediaAssets) ?asset.carriedAs,
+    for (final asset in _project.mediaAssets) ?asset.carriedAs?.token,
   };
 
   bool stillHold(BrushFrameKey key) {

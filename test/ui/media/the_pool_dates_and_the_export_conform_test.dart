@@ -105,6 +105,31 @@ void main() {
     expect(session.mediaPool.missingMediaPaths, {gone});
   });
 
+  test('🎯F-589-Q1: a carried file is not asked its date — its row shows the '
+      'one its carry recorded', () {
+    final carried = plant('품음.wav', 64);
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject().copyWith(
+        mediaAssets: [
+          MediaAsset(
+            path: carried,
+            name: '품음.wav',
+            carriedAs: (
+              token: mediaCarryNamed(carried, 'c1'),
+              modified: DateTime(2026, 9, 2, 8, 15),
+            ),
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+
+    session.mediaPool.refreshMediaExistence();
+
+    expect(session.mediaPool.mediaModifiedTimes.containsKey(carried), isFalse);
+    expect(session.mediaPool.missingMediaPaths, isEmpty);
+  });
+
   test('a re-sweep that finds the same answers does not notify', () {
     final here = plant('한번.wav', 32);
     final session = EditorSessionManager(

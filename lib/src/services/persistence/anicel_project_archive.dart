@@ -66,6 +66,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v36 (2026-11-14, F-589 — 유저 F-589-Q1: 「품을 때의 날짜를 적어 두고
+/// 그것을 띄운다」): a carried asset records when the file its bytes came
+/// from had last changed (`carriedModified`, written only where there is
+/// one — [MediaCarriedAs]). A v35 build knows no such word: it drops it on
+/// open, and its next save writes the carry back with no date, and nothing
+/// said. The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️Nothing to carry over, and the floor did not move
+/// ([anicelOldestReadFormatVersion]): a carry with no date is one at THIS
+/// version too, so a v35 file opens as it is and its carries show none. Its
+/// `sourceStamp` is not read any more — nothing had written one since
+/// 08-13 (`a34926a79`), so no file at the floor holds one.
+///
 /// v35 (2026-11-10, F-578 — 유저: 「색라벨의 미술이란 공정 없앨까
 /// 생각중 … 공정을 나눌 필요가 없음」): a colour label has no 美術 —
 /// `LayerProcess` lost `art`. An older file's `"process": "art"` names no
@@ -547,7 +560,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 35;
+const int anicelFormatVersion = 36;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -1234,20 +1247,27 @@ Project projectWithEveryCarryNamed(Project project) {
   final worn = <String>{};
   final shared = {
     for (final asset in project.mediaAssets)
-      if (asset.carriedAs case final name? when !worn.add(name)) name,
+      if (asset.carriedAs?.token case final name? when !worn.add(name)) name,
   };
   bool holdsNoneOfItsOwn(String? name) =>
       name != null && (!isOneStoredName(name) || shared.contains(name));
   if (!project.mediaAssets.any(
-    (asset) => holdsNoneOfItsOwn(asset.carriedAs),
+    (asset) => holdsNoneOfItsOwn(asset.carriedAs?.token),
   )) {
     return project;
   }
   return project.copyWith(
     mediaAssets: [
       for (final asset in project.mediaAssets)
-        if (holdsNoneOfItsOwn(asset.carriedAs))
-          asset.copyWith(carriedAs: mintMediaCarry(asset.path))
+        if (asset.carriedAs case final carried?
+            when holdsNoneOfItsOwn(carried.token))
+          // A new name; the file it was carried from is as old as it was.
+          asset.copyWith(
+            carriedAs: (
+              token: mintMediaCarry(asset.path),
+              modified: carried.modified,
+            ),
+          )
         else
           asset,
     ],

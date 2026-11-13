@@ -222,7 +222,7 @@ void main() {
       final asset = MediaAsset(
         path: path,
         name: 'take 1',
-        carriedAs: mintMediaCarry(path),
+        carriedAs: (token: mintMediaCarry(path), modified: null),
       );
       final relinked = asset.copyWith(path: 'D:/moved/other.wav');
 
@@ -263,6 +263,56 @@ void main() {
       expect(
         mediaCarryNamed('C:/media/take 1.wav', 'c0ffee01'),
         mediaCarryNamed(path, 'c0ffee01'),
+      );
+    });
+  });
+
+  /// 🗣️F-589-Q1 (유저 2026-11-14): 「품을 때의 날짜를 적어 두고 그것을
+  /// 띄운다」.
+  group('a carry\'s date', () {
+    const path = r'C:\media\take 1.wav';
+    final token = mediaCarryNamed(path, 'c0ffee01');
+
+    test('🎯the project file keeps the instant the carried file had last '
+        'changed, as one instant wherever it is opened', () {
+      final at = DateTime.utc(2026, 11, 13, 10, 41, 7);
+      final asset = MediaAsset(
+        path: path,
+        name: 'take 1',
+        carriedAs: (token: token, modified: at.toLocal()),
+      );
+
+      final json = asset.toJson();
+      expect(json['carriedModified'], '2026-11-13T10:41:07.000Z');
+      final read = MediaAsset.fromJson(json);
+      expect(read.carriedAs!.token, token);
+      expect(read.carriedAs!.modified, at.toLocal());
+      expect(read.carriedAs!.modified!.isUtc, isFalse, reason: 'shown here');
+    });
+
+    test('a carry that could read no date writes none, and a link carries '
+        'neither', () {
+      final undated = MediaAsset(
+        path: path,
+        name: 'take 1',
+        carriedAs: (token: token, modified: null),
+      ).toJson();
+      expect(undated.containsKey('carriedModified'), isFalse);
+      expect(MediaAsset.fromJson(undated).carriedAs, (
+        token: token,
+        modified: null,
+      ));
+
+      final linked = MediaAsset(path: path, name: 'take 1').toJson();
+      expect(linked.containsKey('carriedAs'), isFalse);
+      expect(linked.containsKey('carriedModified'), isFalse);
+      expect(
+        MediaAsset.fromJson({
+          ...linked,
+          'carriedModified': '2026-11-13T10:41:07.000Z',
+        }).carriedAs,
+        isNull,
+        reason: 'a date read without a carry names nothing carried',
       );
     });
   });

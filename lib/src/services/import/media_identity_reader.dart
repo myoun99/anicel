@@ -17,12 +17,20 @@ import '../../models/media_identity.dart';
 /// Records the length alone. Reading the bytes for a CRC is what this
 /// deliberately does not do — see [MediaIdentity.crc32].
 MediaIdentity? readMediaIdentity(String path) {
+  final stat = _fileStatOf(path);
+  return stat == null ? null : MediaIdentity(lengthBytes: stat.size);
+}
+
+/// When the file at [path] was last changed, or null when nothing is there
+/// — what a 품기 of it records ([MediaCarriedAs]), read as it is carried.
+DateTime? readMediaModified(String path) => _fileStatOf(path)?.modified;
+
+/// The stat of the FILE at [path] — null for a directory, for nothing, and
+/// for a path the system will not answer about.
+FileStat? _fileStatOf(String path) {
   try {
     final stat = FileStat.statSync(path);
-    if (stat.type != FileSystemEntityType.file) {
-      return null;
-    }
-    return MediaIdentity(lengthBytes: stat.size);
+    return stat.type == FileSystemEntityType.file ? stat : null;
   } on Object {
     return null;
   }
