@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 
@@ -145,6 +146,40 @@ void main() {
     );
     expect(tester.getRect(unusedMark).left, tester.getRect(usedMark).left);
     expect(tester.getSize(unusedMark), tester.getSize(usedMark));
+  });
+
+  testWidgets('🚨F-589: a carried row says nothing of where its file lay — '
+      'a linked row does, on hover', (tester) async {
+    // 유저 2026-11-13: 「품었는데 이거 필요한지?」 — nothing reads a carried
+    // file's first place again.
+    const clap = 'C:/snd/clap.wav';
+    await _pump(
+      tester,
+      _Callbacks()..existingPaths = {foot, clap},
+      assets: [
+        MediaAsset(
+          path: foot,
+          name: 'foot.wav',
+          carriedAs: mediaCarryNamed(foot, 'c1'),
+        ),
+        MediaAsset(path: clap, name: 'clap.wav'),
+      ],
+    );
+    Finder hoverOf(String path) => find.byWidgetPredicate(
+      (widget) => widget is AppTooltip && widget.message == path,
+    );
+
+    expect(
+      hoverOf(clap),
+      findsOneWidget,
+      reason: '⛔premise: a linked file still says where it lies',
+    );
+    expect(hoverOf(foot), findsNothing);
+    expect(
+      find.textContaining(foot),
+      findsNothing,
+      reason: 'nor on its line, where nothing else is known of it yet',
+    );
   });
 
   testWidgets('the row drags its chip from the POINTER', (tester) async {

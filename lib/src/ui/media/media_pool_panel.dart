@@ -262,12 +262,27 @@ class MediaPoolPanel extends StatelessWidget {
     // ⚠️Counted against ONE, not zero. The carried/linked word above always
     // lands, so「empty」stopped being reachable the moment it was added —
     // and a row that said only「Linked」would have dropped the path a fresh
-    // pool has nothing else to show.
-    if (parts.length == 1) {
+    // pool has nothing else to show. Never a carried row's ([_placeOnHover]).
+    if (parts.length == 1 && !asset.carried) {
       parts.add(asset.path);
     }
     return parts.join(' · ');
   }
+
+  /// [subtitle], with where the file lies on hover — on a row whose file
+  /// lives outside the project.
+  ///
+  /// 🗣️F-589 (유저 11-13: 「품었는데 이거 필요한지?」): a carried file's
+  /// bytes are the project's, and nothing the person does with it goes to
+  /// its first place again — relink is never offered for it (its original
+  /// leaving is not「missing」, `MediaPool.refreshMediaExistence`) and the
+  /// pool has no verb that opens or refreshes from it. The path stays the
+  /// asset's key, which nothing shows. ↩️The hover named the path on every
+  /// row since 2c5176b0f (08-30), when size and date took its place on the
+  /// line — nobody asked for it on a carried row.
+  Widget _placeOnHover(MediaAsset asset, Widget subtitle) => asset.carried
+      ? subtitle
+      : AppTooltip(message: asset.path, child: subtitle);
 
   Future<void> _rename(BuildContext context, MediaAsset asset) async {
     final name = await showDialog<String>(
@@ -589,9 +604,9 @@ class MediaPoolPanel extends StatelessWidget {
                   // pool actually asks is how big a file is and whether it
                   // is the one they exported an hour ago. The path is one
                   // hover away and no longer the only thing on offer.
-                  AppTooltip(
-                    message: asset.path,
-                    child: EllipsisText(
+                  _placeOnHover(
+                    asset,
+                    EllipsisText(
                       _subtitleFor(asset),
                       maxLines: 1,
                       style: TextStyle(
