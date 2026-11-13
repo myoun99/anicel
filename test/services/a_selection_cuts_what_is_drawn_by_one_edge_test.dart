@@ -67,6 +67,25 @@ void main() {
       CanvasSelectionShape.ellipse(left: 120, top: 70, right: 180, bottom: 130),
       SelectionCombineMode.subtract,
     )!,
+    // A selection folded in as ONE operand, as 선택반전 makes it (I-23).
+    'a hole that is a selection of its own': CanvasSelectionRegion([
+      CanvasSelectionStep(
+        CanvasSelectionShape.rect(left: 20, top: 15, right: 280, bottom: 185),
+        SelectionCombineMode.replace,
+      ),
+      CanvasSelectionStep.region(
+        rect(90, 60, 210, 140).combinedWith(
+          CanvasSelectionShape.ellipse(
+            left: 150,
+            top: 40,
+            right: 250,
+            bottom: 120,
+          ),
+          SelectionCombineMode.add,
+        )!,
+        SelectionCombineMode.subtract,
+      ),
+    ]),
     'a strip the wall cuts': rect(-40, 60, 120, 110),
     'a sliver thinner than the softness': rect(100, 20, 103, 180),
     'the whole picture': rect(0, 0, 300, 200),

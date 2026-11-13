@@ -32,6 +32,7 @@ import 'package:anicel/src/native/app_kernels_ahead.dart';
 import 'package:anicel/src/native/engine_cel_pixels.dart';
 import 'package:anicel/src/native/engine_floods.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
+import 'package:anicel/src/native/engine_selection_masks.dart';
 import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -263,6 +264,10 @@ void main() {
 
   test('the bucket\'s fill builds none', () {
     expect(builtHereBy(() => EngineFloods.kernels), 0);
+  });
+
+  test('a stroke under a selection builds none for its mask', () {
+    expect(builtHereBy(() => EngineSelectionMasks.kernels), 0);
   });
 
   test('a grid tile drawn and laid on a screen builds none', () {
