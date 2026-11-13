@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/decode_audio_file.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/import_span.dart';
@@ -836,6 +837,19 @@ void main() {
       expect(entry.kind, MediaAssetKind.video);
       expect(mediaFileName(entry.path), endsWith('.mp4'));
       expectCutFrom(entry, movie);
+      final held = await tester.runAsync(
+        () => s.projectFile.mediaByteSourceFor(entry.path).read(),
+      );
+      expect(
+        decodeAudioFile(movie),
+        isNotNull,
+        reason: 'the premise: the movie has a sound',
+      );
+      expect(
+        decodeAudioBytes(held!),
+        isNull,
+        reason: 'what the pool holds is the picture alone',
+      );
     });
 
     testWidgets('put in the pool and pointed at, the movie is taken whole — '
