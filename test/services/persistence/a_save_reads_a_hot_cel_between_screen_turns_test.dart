@@ -5,7 +5,6 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart' show readTilesInPlace;
-import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
@@ -58,21 +57,7 @@ void main() {
       (true, true),
       reason: '⛔premise: room for 9 × 8 tiles',
     );
-    // A dab at the middle of each of 9 × 8 tiles: 72, past a batch of 64.
-    for (var y = 0; y < 8; y += 1) {
-      for (var x = 0; x < 9; x += 1) {
-        inkCel(
-          s,
-          key,
-          canvasSize: canvas,
-          at: CanvasPoint(
-            x: x * defaultCelTileSize + defaultCelTileSize / 2,
-            y: y * defaultCelTileSize + defaultCelTileSize / 2,
-          ),
-          size: 4,
-        );
-      }
-    }
+    inkEachTileOf(s, key, canvasSize: canvas, columns: 9, rows: 8);
     final here = s.renderCaches.brushFrameStore.hotBakedSurfaceOrNull(key)!;
     expect(here.tiles, hasLength(72), reason: '⛔premise: one tile a dab');
     final expected = encodeCelEntryFromSurface(key, here);

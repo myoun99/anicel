@@ -83,6 +83,32 @@ void inkCel(
   tipShape: tipShape,
 );
 
+/// A dab at the middle of each of [columns] × [rows] tiles of [key]'s cel,
+/// from its top left ([inkCel]): a cel of exactly that many tiles — past a
+/// batch of the engine's reads where it is more than 64.
+void inkEachTileOf(
+  EditorSessionManager s,
+  BrushFrameKey key, {
+  required CanvasSize canvasSize,
+  required int columns,
+  required int rows,
+}) {
+  for (var y = 0; y < rows; y += 1) {
+    for (var x = 0; x < columns; x += 1) {
+      inkCel(
+        s,
+        key,
+        canvasSize: canvasSize,
+        at: CanvasPoint(
+          x: x * defaultCelTileSize + defaultCelTileSize / 2,
+          y: y * defaultCelTileSize + defaultCelTileSize / 2,
+        ),
+        size: 4,
+      );
+    }
+  }
+}
+
 /// [inkCel] into a bare [store] — through a coordinator of its own, straight
 /// into the store, in [color] (black unless asked) on tiles of [tileSize]:
 /// the engine's side unless asked, the only tile a cel's save, cooling or

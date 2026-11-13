@@ -407,7 +407,7 @@ class AnicelFileService {
   const AnicelFileService();
 
   /// Test hook: told after each cel in RAM a save made ready, once the
-  /// screen has had its turn ([_workForDirtyKey]) — what lets a pin see
+  /// screen has had its turn ([_celWorksTwoUnderWay]) — what lets a pin see
   /// that the event loop really ran between two cels.
   @visibleForTesting
   static void Function()? debugAfterScreenTurn;
@@ -748,10 +748,15 @@ class AnicelFileService {
     })
     baked,
   ) async {
+    final keys = [...dirty];
     final works = <_CelWork>[];
     final removedNames = <String>[];
-    for (final key in dirty) {
-      final work = await _workForDirtyKey(key, baked);
+    final resolved = await _celWorksTwoUnderWay(
+      keys,
+      (key) => _workForDirtyKey(key, baked),
+    );
+    for (final (index, key) in keys.indexed) {
+      final work = resolved[index];
       if (work == null) {
         removedNames.add(anicelCelEntryName(key));
       } else {
@@ -761,23 +766,62 @@ class AnicelFileService {
     return (works: works, removedNames: removedNames);
   }
 
+  /// [resolve] of each of [keys], answered in their order — the next begun
+  /// before the one before it is done, never more than two under way.
+  ///
+  /// A cel in RAM is read here and serialised on a worker
+  /// ([_workForDirtyKey]); taken one at a time, the worker stood idle while
+  /// this isolate read and this isolate waited while the worker wrote
+  /// (🧪Surface Pro 11, profile, 2026-11-13: 33–38 ms a whole-canvas cel,
+  /// half of it waiting). ⚠️Two, not all: a cel under way holds its copy and
+  /// its stream on its worker, 40 MB for a whole-canvas cel.
+  ///
+  /// 🚨A cel in RAM is the save's one stretch of work on the UI isolate —
+  /// its tiles are the engine's, which only this isolate reads — so after
+  /// each one the screen gets its turn (a frame, the save window's spinner
+  /// its next step) before the next is taken (F-304: 「멈추는게 아니라 뭔가
+  /// 하고있다라는걸 제대로 표시하기위해」). ⚠️Taken HERE, in their order: two
+  /// under way end together, and a turn each took for itself was one turn.
+  static Future<List<W>> _celWorksTwoUnderWay<W extends _CelWork?>(
+    Iterable<BrushFrameKey> keys,
+    Future<W> Function(BrushFrameKey key) resolve,
+  ) async {
+    final done = <W>[];
+    final underWay = <Future<W>>[];
+    Future<void> take(Future<W> next) async {
+      final work = await next;
+      done.add(work);
+      if (work?.hot != null) {
+        await Future<void>.delayed(Duration.zero);
+        debugAfterScreenTurn?.call();
+      }
+    }
+
+    for (final key in keys) {
+      // ⚠️Heard at once, and so not an error nobody handled where it fails
+      // while the one before it is still awaited: it is thrown at its turn.
+      underWay.add(resolve(key)..ignore());
+      if (underWay.length == 2) {
+        await take(underWay.removeAt(0));
+      }
+    }
+    for (final next in underWay) {
+      await take(next);
+    }
+    return done;
+  }
+
   /// Resolves a dirty key's current content to a [_CelWork], or null for
   /// a removed cel (its entry name must vanish from the archive).
   ///
-  /// 🚨A cel still in RAM is the save's one stretch of work on the UI
-  /// isolate — its tiles are the engine's, which only this isolate reads —
-  /// so after each one the screen gets its turn (a frame, the save window's
-  /// spinner its next step) before the next cel is taken (F-304: 「멈추는게
-  /// 아니라 뭔가 하고있다라는걸 제대로 표시하기위해」).
-  ///
-  /// ↩️It was serialised here, the whole cel in one stretch: its tiles read
-  /// back, written into the stream and the stream copied for the save's
-  /// isolate — 🧪30–43 ms a whole-canvas cel (315 tiles, 20.6 MB; the heavy
-  /// save benchmark under `flutter test`, Surface Pro 11, 2026-11-13: read
-  /// back 10–18 ms, the stream 12–23, its copy 6–11). A worker serialises it
-  /// now from a copy it is handed a batch of tiles at a time
-  /// ([onAWorkerWithCelCopy]), and the screen has its turns between the
-  /// batches; what stays here is the read (card
+  /// ↩️A cel in RAM was serialised here, the whole cel in one stretch: its
+  /// tiles read back, written into the stream and the stream copied for the
+  /// save's isolate — 🧪30–43 ms a whole-canvas cel (315 tiles, 20.6 MB;
+  /// the heavy save benchmark under `flutter test`, Surface Pro 11,
+  /// 2026-11-13: read back 10–18 ms, the stream 12–23, its copy 6–11). A
+  /// worker serialises it now from a copy it is handed a batch of tiles at
+  /// a time ([onAWorkerWithCelCopy]), and the screen has its turns between
+  /// the batches; what stays here is the read (card
   /// `a-save-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
   /// 관제 2026-11-13).
   static Future<_CelWork?> _workForDirtyKey(
@@ -792,7 +836,7 @@ class AnicelFileService {
     final name = anicelCelEntryName(key);
     final surface = baked.hot[key];
     if (surface != null) {
-      final work = _CelWork(
+      return _CelWork(
         key: key,
         name: name,
         hot: (
@@ -804,9 +848,6 @@ class AnicelFileService {
           showsSomething: surface.showsSomething,
         ),
       );
-      await Future<void>.delayed(Duration.zero);
-      debugAfterScreenTurn?.call();
-      return work;
     }
     final cold = baked.cold[key];
     if (cold != null) {
@@ -1380,7 +1421,6 @@ class AnicelFileService {
       ...baked.cold.keys,
       ...baked.fileRefs.keys,
     };
-    final works = <_CelWork>[];
     // 🚨A CLEAN CEL THAT IS STILL HOT IS NOT ONLY IN THE FILE. Its ref is
     // the cheapest source, but when the file behind it is GONE — descriptor
     // and all, the one loss the rescue above cannot undo — the same bytes
@@ -1391,26 +1431,23 @@ class AnicelFileService {
     final missing = <String, bool>{};
     bool fileMissing(String path) =>
         missing[path] ??= !File(path).existsSync();
-    for (final key in allKeys) {
+    final works = await _celWorksTwoUnderWay(allKeys, (key) async {
       final ref = baked.fileRefs[key];
       if (ref != null &&
           !dirty.contains(key) &&
           !(baked.hot.containsKey(key) && fileMissing(ref.filePath))) {
         // Clean + file-backed: the cheapest source is the file itself
         // (no re-encode; the isolate streams the exact bytes through).
-        works.add(
-          _CelWork(
-            key: key,
-            name: anicelCelEntryName(key),
-            refPath: ref.filePath,
-            refOffset: ref.dataOffset,
-            refLength: ref.length,
-          ),
+        return _CelWork(
+          key: key,
+          name: anicelCelEntryName(key),
+          refPath: ref.filePath,
+          refOffset: ref.dataOffset,
+          refLength: ref.length,
         );
-      } else {
-        works.add((await _workForDirtyKey(key, baked))!);
       }
-    }
+      return (await _workForDirtyKey(key, baked))!;
+    });
 
     final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
     await temp.parent.create(recursive: true);
