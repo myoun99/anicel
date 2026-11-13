@@ -32,6 +32,12 @@ sealed class SelectionClip {
   ///
   /// ↩️Till 2026-11-14 each asking made a clip of its own — every stroke,
   /// fill and stamp under one selection had the engine make its mask again.
+  ///
+  /// ↩️And a selection with no softness asked of it was its own outline,
+  /// read past the [wall] — harmless while it only cut what lands on a
+  /// surface that stops there, but a lift takes the box it reads over, and a
+  /// colour verb walks a tile's window of it, and both read the wall's
+  /// (`selectionMaskOnPasteboard`). One reading for every softness now.
   factory SelectionClip.of(
     CanvasSelectionRegion region, {
     required PasteboardWall wall,
@@ -45,9 +51,7 @@ sealed class SelectionClip {
         kept.options.antiAlias == options.antiAlias) {
       return kept.clip;
     }
-    final clip = options.isHard
-        ? _OutlineClip(region, wall: wall)
-        : _SoftClip(region, wall: wall, options: options);
+    final clip = _ReadClip(region, wall: wall, options: options);
     _kept[region] = (wall: wall, options: options, clip: clip);
     return clip;
   }
@@ -98,13 +102,8 @@ sealed class SelectionClip {
   GpuMask _madeOnEngine();
 }
 
-/// ↩️A selection with no softness asked of it was read past the [wall] till
-/// 2026-11-14 — harmless while it only cut what lands on a surface that
-/// stops there, but a lift takes the box it is read over, and it took the
-/// wall's box (`selectionMaskOnPasteboard`) where this clip did not.
 final class _OutlineClip extends SelectionClip {
-  _OutlineClip(this._region, {PasteboardWall? wall})
-    : box = _region.pixelBoxWithin(wall?.region);
+  _OutlineClip(this._region) : box = _region.pixelBoxWithin(null);
 
   final CanvasSelectionRegion _region;
 
@@ -143,8 +142,8 @@ final class _OutlineClip extends SelectionClip {
 /// mask held for as long as the selection stands; this one pays for the
 /// tiles a stroke touches, once each ([BrushLiveStrokeRasterizer] keeps them
 /// for the stroke), and holds nothing.
-final class _SoftClip extends SelectionClip {
-  _SoftClip(
+final class _ReadClip extends SelectionClip {
+  _ReadClip(
     this._region, {
     required PasteboardWall wall,
     required SelectionMaskOptions options,
