@@ -126,7 +126,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
         ("gpu_engine_mask_free", |name| {
             // SAFETY: the engine is live, and the bytes hold the mask's one.
             let made = unsafe { gpu_engine_mask_new(first_engine(), [255].as_ptr(), 0, 0, 1, 1) };
-            gives_back(name, made, gpu_engine_mask_free)
+            gives_back_unwaited(name, made, gpu_engine_mask_free)
         }),
         ("gpu_engine_put_picture_free", |name| {
             // SAFETY: the bytes hold the picture's four.

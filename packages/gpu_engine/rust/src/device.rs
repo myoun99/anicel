@@ -2212,6 +2212,7 @@ mod tests {
     // of on that engine's thread all the same.
     #[test]
     fn what_outlives_its_engine_is_let_go_of_on_that_engines_thread_still() {
+        let _turn = a_device_of_its_own();
         let engine = opened(Engine::open_first);
         assert!(!engine.is_null(), "{}", last_error());
         let (told, let_go_on) = std::sync::mpsc::channel();

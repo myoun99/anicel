@@ -19,7 +19,7 @@ mod tests;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, on_thread_of};
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::fail;
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
@@ -523,7 +523,7 @@ pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
         MASK_BYTES.fetch_sub(mask.size.bytes(), Ordering::Relaxed);
     }
     // SAFETY: see the function's contract.
-    unsafe { let_go(mask) };
+    unsafe { let_go_unwaited(mask) };
 }
 
 /// Copies `mask`'s bytes — a byte a pixel, row after row, the app's
