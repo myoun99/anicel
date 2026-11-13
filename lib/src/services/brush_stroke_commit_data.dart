@@ -86,4 +86,34 @@ class BrushStrokeCommitData {
   /// (`clipStrokeCommitToSelection`): a mask and a copy of each stamp's
   /// picture, and of a stroke's buffer, at every commit under a selection.
   final SelectionClip? selection;
+
+  // 🚨THE TWO COPIES OF THIS STROKE ARE HERE, BESIDE ITS FIELDS — a field
+  // added above goes into both. ↩️The slot 확정 lays from copied it field
+  // by field where it held it and left [selection] behind: a stamp pressed
+  // through a feathered marquee was laid down whole (2026-11-14, 관제).
+
+  /// This stroke landing through [clip] (`clipStrokeCommitToSelection`).
+  BrushStrokeCommitData through(SelectionClip clip) => BrushStrokeCommitData(
+    sourceDabs: sourceDabs,
+    strokePixels: strokePixels,
+    strokeBounds: strokeBounds,
+    blendMode: blendMode,
+    strokeOpacity: strokeOpacity,
+    promotedBase: promotedBase,
+    promotedTiles: promotedTiles,
+    end: end,
+    selection: clip,
+  );
+
+  /// This stroke without its promotion — what 확정 holds (`LastStrokeSlot`):
+  /// those tiles were blended against the cel it landed on.
+  BrushStrokeCommitData withoutPromotion() => BrushStrokeCommitData(
+    sourceDabs: sourceDabs,
+    strokePixels: strokePixels,
+    strokeBounds: strokeBounds,
+    blendMode: blendMode,
+    strokeOpacity: strokeOpacity,
+    end: end,
+    selection: selection,
+  );
 }

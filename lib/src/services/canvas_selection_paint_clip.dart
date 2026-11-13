@@ -96,17 +96,7 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
   if (standing ? promoted.isEmpty : !_reaches(clip, data)) {
     return null;
   }
-  return BrushStrokeCommitData(
-    sourceDabs: data.sourceDabs,
-    strokePixels: data.strokePixels,
-    strokeBounds: data.strokeBounds,
-    blendMode: data.blendMode,
-    strokeOpacity: data.strokeOpacity,
-    promotedBase: data.promotedBase,
-    promotedTiles: promoted,
-    end: data.end,
-    selection: clip,
-  );
+  return data.through(clip);
 }
 
 /// Whether [clip] may select any pixel [data] lands on: its live buffer's

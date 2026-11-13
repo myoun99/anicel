@@ -52,15 +52,7 @@ class LastStrokeSlot extends ChangeNotifier {
   /// With its selection: what landed was cut there, where it landed, and is
   /// cut there again (2026-11-14 — ↩️the dabs came here cut on the CPU).
   void hold(BrushStrokeCommitData stroke) {
-    _stroke = BrushStrokeCommitData(
-      sourceDabs: stroke.sourceDabs,
-      strokePixels: stroke.strokePixels,
-      strokeBounds: stroke.strokeBounds,
-      blendMode: stroke.blendMode,
-      strokeOpacity: stroke.strokeOpacity,
-      end: stroke.end,
-      selection: stroke.selection,
-    );
+    _stroke = stroke.withoutPromotion();
     notifyListeners();
   }
 
