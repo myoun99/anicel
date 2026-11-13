@@ -54,9 +54,10 @@ class TimesheetInkController extends SheetInkController<Null> {
   /// ([TimesheetDocumentLayout.paperPixelSize]).
   CanvasSize? get pageSurfaceSize => _page.size;
 
-  /// Adopts the paper's size from [layout]. A size change rebuilds the ink
-  /// session from its durable commands with stroke coordinates preserved
-  /// (top-left anchored, like canvas resize).
+  /// Adopts the paper's size from [layout] — each cut's own (its sheet
+  /// kind; an XDTS sheet as wide as its columns). A size change rewrites
+  /// no page: each is laid on the paper as its window seeds from it,
+  /// top-left anchored ([inkCoordinatorSynced]).
   ///
   /// Never notifies: callers run this during build.
   void syncGeometry(TimesheetDocumentLayout layout) =>

@@ -59,9 +59,9 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
   /// one changed. The form's aspect ratio is the one thing all of them
   /// share, so that is what the ink is measured in.
   ///
-  /// A geometry change (the user picks another preset) rebuilds the ink
-  /// session from its durable commands with stroke coordinates preserved
-  /// — top-left anchored, like a canvas resize.
+  /// A geometry change (the user picks another preset) rewrites no box:
+  /// each is laid on the new form as its window seeds from it, top-left
+  /// anchored ([inkCoordinatorSynced]).
   ///
   /// Never notifies: callers run this during build.
   void syncGeometry({required double aspectRatio}) {
