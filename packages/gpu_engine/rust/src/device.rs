@@ -6,15 +6,15 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::kernels::shared::{built_here, put_built_here};
 use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_error};
 
-/// How long [`Engine::wait`] stays in the driver before it answers that the
-/// GPU did not finish: a failure with a name rather than a screen that
-/// stands still (관제 2026-11-08, after a pin stood 13 minutes in this wait:
-/// 「멈춘 화면보다 이름 있는 실패」).
+/// How long a wait for the GPU is waited out before it is answered that the
+/// GPU did not finish ([`Poll::within`]): a failure with a name rather than
+/// a screen that stands still (관제 2026-11-08, after a pin stood 13 minutes
+/// in this wait: 「멈춘 화면보다 이름 있는 실패」).
 // ⏳My number, not measured: far past a screen frame's milliseconds, and
 // long enough that a heavy export frame does not fail falsely. To be settled
 // from the Surface's slowest waits, as the reading watch's three seconds were.
@@ -33,9 +33,15 @@ pub struct Engine {
     /// are no thread's of the engine.
     device: wgpu::Device,
     pub(crate) queue: Queue,
-    /// Where a verb's body runs ([`Engine::on_thread`]), and what
-    /// [`Engine::wait`] polls on.
+    /// Where a verb's body runs ([`Engine::on_thread`]).
     thread: EngineThread,
+    /// Where the engine stays in the driver till the GPU has finished what
+    /// was submitted ([`Engine::poll`]) — a thread of its own, so that no
+    /// body stands behind the GPU ([`EngineThread`]).
+    polls: EngineThread,
+    /// Where a wait no caller stays for is waited out, outside the driver,
+    /// and its caller told ([`Engine::done_then`]).
+    tells: EngineThread,
     /// Where a kernel's compile enters the driver: threads of its own, so
     /// that seconds of one made ahead of its first use hold up no frame's
     /// submit behind them on `thread` (🔬the blur brush's ten pipelines,
@@ -396,6 +402,8 @@ impl Engine {
             Ok((device, queue)) => {
                 platform::keep_shaders(&device);
                 let thread = EngineThread::start()?;
+                let polls = EngineThread::start()?;
+                let tells = EngineThread::start()?;
                 let compiling = EngineThread::start_many(compiling_threads())?;
                 let refusals = Refusals::default();
                 let (lost, noting) = (refusals.clone(), refusals.clone());
@@ -411,6 +419,8 @@ impl Engine {
                         thread: thread.clone(),
                     },
                     thread,
+                    polls,
+                    tells,
                     compiling,
                     kernels: Kernels::default(),
                     apart: Apart::default(),
@@ -429,8 +439,8 @@ impl Engine {
     }
 
     /// Blocks until the GPU has finished everything submitted, or fails by
-    /// name at [`WAIT_LIMIT`] — polled on the engine's thread
-    /// ([`EngineThread`]), the caller waiting outside the driver — and
+    /// name at [`WAIT_LIMIT`] — polled on the engine's thread for polls
+    /// ([`Self::poll`]), the caller waiting outside the driver — and
     /// fails by what the device refused meanwhile ([`Refusals`]): the word
     /// that a device is lost comes inside a poll, so it is asked after one.
     pub(crate) fn wait(&self) -> Option<()> {
@@ -439,18 +449,16 @@ impl Engine {
 
     fn wait_within(&self, limit: Duration) -> Option<()> {
         WAITED_HERE.with(|waited| waited.set(waited.get() + 1));
+        self.poll().within(limit, &self.refusals)
+    }
+
+    /// Asks the engine's thread for polls to stay in the driver till the
+    /// GPU has finished everything submitted — as long as that takes — and
+    /// returns at once with what waits it out ([`Poll`]).
+    fn poll(&self) -> Poll {
         let device = self.device.clone();
-        let polled = self.thread.run(move || polled(&device, limit));
-        let Some(polled) = polled else {
-            // The thread ended under a panic of wgpu's own: a poll's error
-            // that is neither of the two above is fatal to it
-            // (wgpu's `Device::poll`), a device lost under the poll among
-            // them. No wait comes back from this engine again.
-            self.refusals.lose(last_error());
-            return None;
-        };
-        polled.map_or_else(fail, Some)?;
-        self.refusals.told()
+        let answer = self.polls.asked(move || polled(&device)).ok_or_else(last_error);
+        Poll { asked: Instant::now(), answer }
     }
 
     /// Whether the device is gone ([`Refusals`]): nothing made on this
@@ -651,9 +659,9 @@ impl Engine {
         answered(&mapping)
     }
 
-    /// [`Self::map`] with its wait on the engine's thread and none for the
-    /// caller, who goes on ([`Self::done_then`]): `then` is told there
-    /// `buffer`, mapped, or why it is not.
+    /// [`Self::map`] with no wait for the caller, who goes on
+    /// ([`Self::done_then`]): `then` is told `buffer`, mapped, or why it is
+    /// not.
     pub(crate) fn map_then(
         &self,
         buffer: wgpu::Buffer,
@@ -667,27 +675,32 @@ impl Engine {
         });
     }
 
-    /// [`Self::wait`] with the wait on the engine's thread and none for the
-    /// caller, who goes on: `then` is told there once the GPU is done with
-    /// all that was submitted, or why it is not, as a wait fails by it.
-    /// Told once, whatever becomes of the wait ([`Told`]).
+    /// [`Self::wait`] with none for the caller, who goes on: a thread of the
+    /// engine's waits in its stead (`tells`), and tells `then` there once
+    /// the GPU is done with all that was submitted, or why it is not, as a
+    /// wait fails by it — at [`WAIT_LIMIT`] among them. Told once, whatever
+    /// becomes of the wait ([`Told`]).
     ///
     /// 🗣️관제 2026-11-12 (a-lost-gpu-device-keeps-the-unsaved-tiles), of the
     /// copies the app keeps of the engine's tiles: 「UI(또는 래스터) 스레드를
     /// 붙잡는가? 붙잡으면 (B) 안에서 엔진 스레드 비동기로 옮긴 뒤 착지한다
     /// (구형 기기 방침 — 서피스는 더 느리다)」 — and a screen's frame, put up
     /// once the GPU has finished it (🗣️유저 2026-11-12,
-    /// a-float-in-hand-draws-the-frame-as-it-stands-Q2). ⚠️What the caller
-    /// submits while that thread polls goes behind the poll
-    /// ([`Queue::submit`]): as long as the GPU still takes over what was
-    /// submitted before it.
+    /// a-float-in-hand-draws-the-frame-as-it-stands-Q2).
+    ///
+    /// ↩️Till 2026-11-14 the poll was a job of the thread the submits
+    /// entered the driver on, and what the caller submitted meanwhile went
+    /// behind it, as long as the GPU still took over what was submitted
+    /// before ([`EngineThread`] has what stood there once the bodies did).
     pub(crate) fn done_then(&self, then: impl FnOnce(Result<(), String>) + Send + 'static) {
-        let device = self.device.clone();
+        self.done_within(WAIT_LIMIT, then);
+    }
+
+    fn done_within(&self, limit: Duration, then: impl FnOnce(Result<(), String>) + Send + 'static) {
         let told = Told { then: Some(then), refusals: self.refusals.clone() };
-        self.thread.post(move || {
-            let done = polled(&device, WAIT_LIMIT)
-                .map_or_else(fail, Some)
-                .and_then(|()| told.refusals.told());
+        let poll = self.poll();
+        self.tells.post(move || {
+            let done = poll.within(limit, &told.refusals);
             told.tell(done.ok_or_else(last_error));
         });
     }
@@ -782,15 +795,65 @@ impl Callers {
     }
 }
 
-/// Polls `device` till the GPU has finished everything submitted, or says
-/// why not: that it did not within `limit`, or wgpu's own word. ⚠️In the
-/// driver that long, so on the engine's thread ([`EngineThread`]).
-fn polled(device: &wgpu::Device, limit: Duration) -> Result<(), String> {
-    let polled = device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(limit) });
-    polled.map(|_| ()).map_err(|error| match error {
-        wgpu::PollError::Timeout => format!("the GPU did not finish within {limit:?}"),
-        error => format!("poll: {error}"),
-    })
+/// Polls `device` till the GPU has finished everything submitted — as long
+/// as that takes — or says wgpu's own word why not. ⚠️In the driver that
+/// long, so on the engine's thread for polls and no other
+/// ([`EngineThread`]).
+///
+/// 🚨⛔NO LIMIT OF wgpu's OWN — the limit is who waits it out's
+/// ([`Poll::within`]). A poll that gives up reads how far the GPU has got
+/// and then asks the queue what is left of it; a submit on the bodies'
+/// thread that sees the rest done between the two leaves the queue empty
+/// behind a number that says it is not, and wgpu panics there (wgpu-core
+/// 30.0.1, `Device::maintain`: 「If the queue is empty, the current
+/// submission index (0) should be at least the wait submission index
+/// (1)」). 🔬2026-11-14, the limit inside the poll and the crate's tests
+/// at once: the tests' engine lost its thread for polls under the waits
+/// of no time of `a_wait_past_its_limit_…`, and 620 of 919 failed behind
+/// it. A poll that comes back once the GPU is done reads a number at
+/// least the one it waited for. ⚠️No test goes red by a limit put back
+/// here but by that race — a submit between two reads inside wgpu.
+fn polled(device: &wgpu::Device) -> Result<(), String> {
+    let polled = device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
+    polled.map(|_| ()).map_err(|error| format!("poll: {error}"))
+}
+
+/// A poll under way on the engine's thread for polls ([`Engine::poll`]):
+/// what a wait waits out, outside the driver.
+struct Poll {
+    asked: Instant,
+    /// What answers how it ended — or why nothing will, that thread gone
+    /// before it was asked.
+    answer: Result<mpsc::Receiver<Result<(), String>>, String>,
+}
+
+impl Poll {
+    /// Waits for it till `limit` from when it was asked, and fails by name
+    /// past that — the poll in the driver still, and whoever asks next
+    /// behind it —, by wgpu's word where it ended on one, and by what the
+    /// device refused meanwhile (`refusals`).
+    fn within(self, limit: Duration, refusals: &Refusals) -> Option<()> {
+        let left = limit.saturating_sub(self.asked.elapsed());
+        let ended = match self.answer.map(|answer| answer.recv_timeout(left)) {
+            Ok(Ok(polled)) => {
+                polled.map_or_else(fail, Some)?;
+                return refusals.told();
+            }
+            Ok(Err(mpsc::RecvTimeoutError::Timeout)) => {
+                return fail(format!("the GPU did not finish within {limit:?}"));
+            }
+            Ok(Err(mpsc::RecvTimeoutError::Disconnected)) => {
+                format!("the engine's thread never answered: {}", mpsc::RecvError)
+            }
+            Err(gone) => gone,
+        };
+        // The thread ended under a panic of wgpu's own — a poll's error is
+        // fatal to it (wgpu's `Device::poll`), a device lost under the
+        // poll among them — or was gone before the poll was asked for. No
+        // wait comes back from this engine again.
+        refusals.lose(ended.clone());
+        fail(ended)
+    }
 }
 
 /// What answers whether a buffer asked to be mapped was ([`asked_to_map`]).
@@ -829,10 +892,9 @@ impl Ended {
 
 /// Who is told how a wait ended that its caller did not stay for
 /// ([`Engine::done_then`]) — once, whatever becomes of the wait. Dropped
-/// untold, the engine's thread ended under the wait — wgpu's poll panics
-/// where the device is lost under one — or was gone before it: the device
-/// is gone, as for a wait that never came back ([`Engine::wait`]), and
-/// that is what is told.
+/// untold, the thread that was to wait in its caller's stead ended under
+/// the wait or was gone before it: the device is gone, as for a wait whose
+/// poll never came back ([`Poll::within`]), and that is what is told.
 struct Told<Then: FnOnce(Result<(), String>)> {
     then: Option<Then>,
     refusals: Refusals,
@@ -1017,6 +1079,43 @@ type Job = Box<dyn FnOnce() + Send>;
 /// ⚠️ALL OF THEM AT ONCE: a body left on its caller's thread, holding a
 /// lock of the engine's as it hands its submit here, waits for a body here
 /// that waits for that lock.
+///
+/// 🚨★★NOR BEHIND THE GPU (the-ui-thread-never-enters-the-driver, 1c,
+/// 2026-11-14): a wait's poll is on a thread kept for polls
+/// (`Engine::polls`), not on the one the bodies run on. A screen asks to
+/// be told of every frame it draws (`ScreenTexture.present`,
+/// [`Engine::done_then`]), and that poll stays in the driver as long as
+/// the GPU takes over the frame: on the bodies' thread every verb asked
+/// meanwhile — the next sample of a stroke, a free — stood behind it that
+/// long, where its submit alone did till the bodies ran here. What lets a
+/// body go on beside a poll (wgpu-core 30.0.1, read 2026-11-14): the poll
+/// holds the device's snatch lock through its wait to read
+/// (`Device::poll_and_return_closures`), as a submit and the making of a
+/// thing take it; a `destroy` and a surface's `present` take it to write
+/// — ⚠️so Android's present (`platform/android.rs`), the one such call a
+/// body makes, stands behind a poll under way still: as it did while the
+/// poll was a job of this thread, and not measured (🗣️관제 2026-11-14
+/// 07:37: 「지금과 같다 · 재지 못했다」로 선언 옆에 적는다).
+/// 🔬A body asked while such a wait was on its way, an engine of its own,
+/// main PC (RTX 4080), a debug build beside the machine's test line,
+/// 2026-11-14: back in 3.9–4.0 ms where the GPU took 3.8–3.9 ms over
+/// sixteen copies of 64 MiB, and in 43–63 µs with the poll on the thread
+/// for polls, the GPU taking 4.1–4.4 ms. ⚠️Not measured in the app: no
+/// screen of a test without a window asks to be told (`_SurfaceTexture`
+/// is given no `done`), and six strokes there put no such poll on this
+/// thread at all.
+///
+/// ⏳Every poll on that one thread, a body's own wait among them
+/// (브러시/렌더링, 2026-11-14, the user asleep — theirs to overturn): the
+/// body waits either way, behind nothing it would not have waited for —
+/// the GPU finishes what was submitted in its order — and the engine
+/// waits in the driver in one place. ⛔Not a body's wait polled where the
+/// body is: two polls at once, for a hand-over of some 50 µs saved.
+/// And no poll gives up by a limit of wgpu's own (`polled` has what one
+/// did beside a submit): a wait is waited out outside the driver — by
+/// the body that asked, or, where no caller stays, by a thread kept to
+/// tell of it (`Engine::tells`) — and fails by name at its limit there
+/// (🗣️관제 2026-11-08: 「멈춘 화면보다 이름 있는 실패」).
 #[derive(Clone)]
 pub(crate) struct EngineThread {
     jobs: mpsc::Sender<Job>,
@@ -1131,9 +1230,23 @@ impl EngineThread {
     }
 
     /// What `work` answers, run on this thread while the caller waits —
-    /// where it is, on this thread already: a body's submit and its wait
-    /// ([`Self::run_lent`]), which handed over would wait for themselves.
+    /// where it is, on this thread already: a body's submit
+    /// ([`Self::run_lent`]), which handed over would wait for itself.
     fn run<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        match self.asked(work)?.recv() {
+            Ok(worked) => Some(worked),
+            Err(error) => fail(format!("the engine's thread never answered: {error}")),
+        }
+    }
+
+    /// What answers what `work` answers once this thread has run it — where
+    /// it is asked, on this thread already — for the caller to wait for as
+    /// long as it will: none where the thread is gone (the last error),
+    /// and no answer where it ended under `work`.
+    fn asked<T: Send + 'static>(
+        &self,
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> Option<mpsc::Receiver<T>> {
         if self.ended.load(Ordering::Acquire) {
             return fail("the engine's thread is gone");
         }
@@ -1146,10 +1259,7 @@ impl EngineThread {
         } else {
             let _ = self.jobs.send(Box::new(job));
         }
-        match answered.recv() {
-            Ok(worked) => Some(worked),
-            Err(error) => fail(format!("the engine's thread never answered: {error}")),
-        }
+        Some(answered)
     }
 
     /// Hands `work` to this thread and returns, the caller waiting for
@@ -1511,8 +1621,8 @@ pub unsafe extern "C" fn gpu_engine_noted(
     engine.refusals.taken().map_or(0, |error| copy_out(&error, buffer, capacity))
 }
 
-/// [`Engine::done_then`] across the boundary: the engine's thread calls
-/// `then` with `wait` — the number its caller knows this wait by: one
+/// [`Engine::done_then`] across the boundary: a thread of the engine's
+/// calls `then` with `wait` — the number its caller knows this wait by: one
 /// `then` serves every wait of a caller — and whether the GPU finished all
 /// that was submitted; where it did not, why is kept under that number for
 /// [`gpu_engine_done_failure`]. From that thread; from this one where that
@@ -1797,19 +1907,101 @@ mod tests {
         assert_ne!(compiled_on, std::thread::current().id());
     }
 
+    // A body's wait, as every verb's is: in the driver neither on its
+    // caller's thread nor on the one the body runs on.
     #[test]
-    fn a_wait_blocks_in_the_driver_on_a_thread_of_the_engines_not_the_callers() {
-        let engine = first_engine();
+    fn a_wait_blocks_in_the_driver_on_the_engines_thread_for_polls() {
+        // An engine of its own: a map answers inside the call that sees
+        // it done, a submit as a poll, and on the tests' engine another
+        // test's submit can be that call (🔬red so, 2026-11-14). Here
+        // nothing is submitted, so it is the wait's poll: on the thread
+        // that polled.
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
         let buffer = engine.readback(4);
         let (sender, answered) = std::sync::mpsc::channel();
-        // A map answers inside the poll that sees it done: on the thread
-        // that polled.
         buffer.map_async(wgpu::MapMode::Read, .., move |_| {
             let _ = sender.send(std::thread::current().id());
         });
-        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+        let body_on = engine.on_thread(|| {
+            assert_eq!(engine.wait(), Some(()), "{}", last_error());
+            std::thread::current().id()
+        });
         let polled_on = answered.try_recv().expect("the map answered inside the wait");
         assert_ne!(polled_on, std::thread::current().id());
+        assert_ne!(polled_on, body_on, "polled where the body runs");
+    }
+
+    // 🚨A wait no caller stays for holds up no body: a screen asks one of
+    // every frame it draws, and the GPU takes as long over it as it takes
+    // (`EngineThread` has what stood behind it). A map answers inside the
+    // poll that sees it done, and this one stays there — the poll in the
+    // driver's call still — till the test has seen a body through, its
+    // submit and all.
+    #[test]
+    fn a_wait_no_caller_stays_for_holds_up_no_body() {
+        use std::sync::mpsc;
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let (began, begun) = mpsc::channel();
+        let (tell, told) = mpsc::channel();
+        let buffer = engine.readback(4);
+        let got_through = std::thread::scope(|scope| {
+            let (let_go, released) = mpsc::channel::<()>();
+            buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+                let _ = began.send(());
+                let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+            });
+            engine.done_then(move |done| {
+                let _ = tell.send(done);
+            });
+            begun.recv_timeout(IN_TIME).expect("the poll saw the map done");
+            let (through, went) = mpsc::channel();
+            scope.spawn(move || {
+                engine.on_thread(|| engine.queue.submit([encoder(engine).finish()]));
+                let _ = through.send(());
+            });
+            let got_through = went.recv_timeout(IN_TIME).is_ok();
+            assert!(told.try_recv().is_err(), "told before its poll came back");
+            let _ = let_go.send(());
+            got_through
+        });
+        assert!(got_through, "a body stood behind a wait no caller stayed for");
+        assert_eq!(told.recv_timeout(IN_TIME), Ok(Ok(())));
+    }
+
+    // 🚨A wait no caller stays for is told at its limit that the GPU did
+    // not finish (🗣️관제 2026-11-08: 「멈춘 화면보다 이름 있는 실패」) —
+    // whatever its poll does, which has no limit of its own (`polled` has
+    // why): this one stays in the driver's call, inside a map's answer,
+    // till the test has been told. Each by its own limit, from when it
+    // was asked: two asked together are told together, not one limit
+    // after another. And the engine stands.
+    #[test]
+    fn a_wait_no_caller_stays_for_is_told_at_its_limit_whatever_its_poll_does() {
+        use std::sync::mpsc;
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let (let_go, released) = mpsc::channel::<()>();
+        let (tell, told) = mpsc::channel();
+        let buffer = engine.readback(4);
+        buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+            let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+        });
+        let limit = std::time::Duration::from_secs(1);
+        for _ in 0..2 {
+            let tell = tell.clone();
+            engine.done_within(limit, move |done| {
+                let _ = tell.send((done, std::time::Instant::now()));
+            });
+        }
+        let late = Err("the GPU did not finish within 1s".to_string());
+        let (first, at) = told.recv_timeout(IN_TIME).expect("the first was told");
+        let (second, after) = told.recv_timeout(IN_TIME).expect("the second was told");
+        assert_eq!((first, second), (late.clone(), late));
+        assert!(after - at < limit / 2, "the second was told {:?} after the first", after - at);
+        let _ = let_go.send(());
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
     }
 
     #[test]
@@ -1901,14 +2093,14 @@ mod tests {
         assert_eq!(engine.read_buffer(&source), Some(vec![1, 2, 3, 4]), "{}", last_error());
     }
 
-    // 🚨An engine whose thread ended — as it does under a poll wgpu cannot
-    // go on from — is gone: no wait comes back from it, and the app is told
-    // so as of a device lost.
+    // 🚨An engine whose thread for polls ended — as it does under a poll
+    // wgpu cannot go on from — is gone: no wait comes back from it, and the
+    // app is told so as of a device lost.
     #[test]
     fn an_engine_whose_thread_ended_is_gone() {
         let turn = a_device_of_its_own();
         let engine = turn.engine();
-        let ended = engine.thread.run(|| -> () { panic!("as wgpu's poll does") });
+        let ended = engine.polls.run(|| -> () { panic!("as wgpu's poll does") });
         assert_eq!(ended, None);
         // Ended by its own word, said before the run above is answered.
         // ↩️Till 2026-11-14 the thread itself ended with the panic, and a

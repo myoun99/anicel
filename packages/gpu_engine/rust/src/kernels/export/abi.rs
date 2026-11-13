@@ -701,8 +701,8 @@ pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: 
     })
 }
 
-/// [`gpu_engine_readout_map`] with no wait for its caller, who goes on:
-/// the engine's thread waits for the work behind `readout`, and calls
+/// [`gpu_engine_readout_map`] with no wait for its caller, who goes on: the
+/// engine's thread for waits waits for the work behind `readout`, and calls
 /// `then` once its bytes are mapped for [`gpu_engine_readout_rows`] — or
 /// are not, which the rows then fail by — with `wait`, the number its
 /// caller knows this wait by: one `then` serves every wait of a caller.

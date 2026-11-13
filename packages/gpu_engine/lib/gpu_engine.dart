@@ -337,7 +337,8 @@ class GpuEngine {
 
   /// Ends once the GPU has finished all that was submitted on this engine,
   /// with no wait on this isolate, which goes on meanwhile: the engine's
-  /// thread waits (rust/src/device.rs, `gpu_engine_done_then`). Fails by a
+  /// thread for waits does (rust/src/device.rs, `gpu_engine_done_then`) —
+  /// and no job of this or any isolate stands behind it. Fails by a
   /// [GpuRefused] naming why where it did not finish — past the engine's
   /// limit, or the device gone — as a wait does.
   ///
@@ -347,7 +348,7 @@ class GpuEngine {
   ///
   /// ⚠️[GpuReadout.mapping]'s twin — a number a wait, one listener for
   /// every wait — kept apart while there are two (the rule of three): that
-  /// one maps its bytes in the same turn of the engine's thread.
+  /// one maps its bytes in the same turn of the engine's thread for waits.
   Future<void> done() {
     final ended = Completer<void>();
     final wait = _asked++;
@@ -363,7 +364,7 @@ class GpuEngine {
   _ending = {};
   static int _asked = 0;
 
-  /// How the engine's thread tells this isolate that a wait has ended, by
+  /// How a thread of the engine's tells this isolate that a wait has ended, by
   /// its number and whether the GPU finished: one for every [done] of the
   /// isolate, kept alive while a wait is on its way and no longer.
   static final NativeCallable<Void Function(Uint64, Bool)> _ended =
@@ -2951,7 +2952,7 @@ class GpuReadout implements _OfAnEngine {
   static final Map<int, Completer<void>> _ending = {};
   static int _asked = 0;
 
-  /// How the engine's thread tells this isolate that a wait has ended, by
+  /// How a thread of the engine's tells this isolate that a wait has ended, by
   /// its number: one for every readout of the isolate, for as long as it
   /// lives. ⛔Not one a wait: nothing is made for a wait, so no wait leaves
   /// anything to close (↩️one each, closed as its wait ended — a close
@@ -2970,7 +2971,7 @@ class GpuReadout implements _OfAnEngine {
     ended.complete();
   }
 
-  /// Test seam: called before the engine's thread is handed the wait
+  /// Test seam: called before a thread of the engine's is handed the wait
   /// ([mapping]) — how a test has the device go between a copy's submit
   /// and the wait for it.
   @visibleForTesting
