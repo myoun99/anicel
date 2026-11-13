@@ -799,6 +799,57 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // What a picture tells again is what its steps told as it was made AND as
+  // each was composed in since (`EngineFramePicture._told`, 9106b7200): a
+  // step that drew over what the pen put tells that, not its making's.
+  testWidgets('a frame\'s picture shown again after a pen\'s step went in '
+      'tells what its plugin told of that step', (tester) async {
+    final tells = <bool>[];
+    final store = _WritesWhenLet()..letAllGo();
+    addTearDown(store.dispose);
+    final (:picture, :overlay, handAnew: _, store: _) = await standOn(
+      tester,
+      GlobalKey(),
+      [
+        CompositeLeaf(
+          CanvasActiveLayerRow(
+            opacity: 1,
+            frameKey: key,
+            effects: [
+              ResolvedLayerEffect(
+                kind: EffectKind.plugin,
+                plugin: shiftingFxPluginDescription,
+                values: const [],
+                run: fxPluginRunOf(
+                  _DrawsOverTheStroke(stroke),
+                  told: ({required failed}) => tells.add(failed),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      laidBy: store,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    expect(tells.last, isTrue, reason: '⛔premise: no stroke, it fails');
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    await lendBothClocks(tester, rounds: 4);
+    expect(store.went, contains(true), reason: 'LIVENESS: the step went in');
+    expect(tells.last, isFalse, reason: '⛔premise: over the stroke, draws');
+
+    tells.clear();
+    store.peek(store.lastTo!)!.hold().release();
+
+    expect(tells, [false]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// The columns [colour] shows in on [shot].
   Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
     for (var at = 0; at < shot.rgba.length; at += 4)
@@ -1631,6 +1682,44 @@ class _MadeAndTold = StoreTellingItsWrites with _ToldToSayItWaits;
 
 /// A plugin that moves every pixel right by one more than the frame it
 /// is run at: what it makes at one moment is not what it makes at another.
+/// Hands its input back where a pixel of it is [colour]; fails elsewhere.
+final class _DrawsOverTheStroke implements FxPluginRunner {
+  _DrawsOverTheStroke(this.colour);
+
+  final List<int> colour;
+
+  @override
+  Future<void>? get toCome => null;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) async {
+    final pixels = input.pixels;
+    for (var at = 0; at < pixels.length; at += 4) {
+      if (pixels[at] == colour[0] &&
+          pixels[at + 1] == colour[1] &&
+          pixels[at + 2] == colour[2] &&
+          pixels[at + 3] == colour[3]) {
+        return Uint8List.fromList(pixels);
+      }
+    }
+    return null;
+  }
+
+  @override
+  void close() {}
+
+  @override
+  bool get closed => false;
+}
+
 final class _ShiftsByItsFrame implements FxPluginRunner {
   int renders = 0;
 
@@ -1668,6 +1757,9 @@ class _WritesWhenLet extends EngineFramePictureStore<FramePictureKey> {
 
   final List<({Rect rect, Completer<void> go})> asked = [];
   final List<bool> went = [];
+
+  /// Where the last patch that went in left its picture.
+  FramePictureKey? lastTo;
   int _let = 0;
   bool _allGo = false;
 
@@ -1704,6 +1796,9 @@ class _WritesWhenLet extends EngineFramePictureStore<FramePictureKey> {
       holds: holds,
     );
     went.add(did);
+    if (did) {
+      lastTo = to;
+    }
     return did;
   }
 }
