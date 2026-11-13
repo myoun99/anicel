@@ -9,7 +9,6 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
-import 'package:anicel/src/services/import/clip_cel_raster.dart';
 import 'package:anicel/src/services/import/clip_vector_raster.dart';
 
 import 'clip_test_builder.dart';
@@ -32,12 +31,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // The app's grid: a 64 × 64 canvas is one tile of it.
-  const ClipCelTarget canvas = (
+  const canvas = (
     left: 0,
     top: 0,
     canvasWidth: 64,
     canvasHeight: 64,
-    alpha: 1,
+    alpha: 1.0,
     tileSize: 128,
   );
 
