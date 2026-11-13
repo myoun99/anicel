@@ -179,6 +179,10 @@ class TimelineGridHooks {
   /// playing). ONLY the cursor layer, the ruler and the lane labels
   /// subscribe — a tick never rebuilds the grid or its cells (the
   /// playback-performance architecture).
+  ///
+  /// ↩️F-587 (유저 2026-11-13): the lane labels hear it and keep what they
+  /// showed while a run plays — they are asked again as it ends
+  /// (`PlaybackStillness`).
   final ValueListenable<int> frameCursor;
 
   /// Repaints the ruler's cached-range green strip as frames warm; never

@@ -54,6 +54,12 @@ class PlayheadCursors {
   /// playhead, rulers and lane values follow, and the row the timeline folds
   /// into with them. Playback ticks and editing seeks land HERE — never as a
   /// panel rebuild; that is the whole playback-performance architecture.
+  ///
+  /// ↩️F-587 (유저 2026-11-13): 「재생중에는 바꾸지않고 재생전 마지막 상태
+  /// 유지」 — a lane's values follow it as a HAND moves it. A run's ticks
+  /// still land here for the playhead and the rulers; what a rail's row
+  /// shows of the frame is not asked until the run ends
+  /// (`PlaybackStillness`).
   ValueListenable<int> get cutFrame => _cutFrame;
 
   /// The track's frame the storyboard draws its playhead on; null when

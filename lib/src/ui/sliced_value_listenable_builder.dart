@@ -55,17 +55,25 @@ class SlicedValueListenableBuilder<T, S> extends StatelessWidget {
 ///
 /// A rebuild from ABOVE runs [builder] with the slice read afresh, so
 /// nothing the builder was handed by its widget is older than that widget.
+///
+/// While [stillWhile] reads true the subtree keeps the slice it shows —
+/// through news, through a rebuild from above and through a new
+/// [listenable] alike ([SlicedListenable]).
 class SlicedListenableBuilder<S> extends StatefulWidget {
   const SlicedListenableBuilder({
     super.key,
     required this.listenable,
     required this.slice,
     required this.builder,
+    this.stillWhile,
   });
 
   final Listenable listenable;
   final S Function() slice;
   final Widget Function(BuildContext context, S slice) builder;
+
+  /// What the subtree holds still for; with none it never does.
+  final ValueListenable<bool>? stillWhile;
 
   @override
   State<SlicedListenableBuilder<S>> createState() =>
@@ -76,18 +84,25 @@ class _SlicedListenableBuilderState<S>
     extends State<SlicedListenableBuilder<S>> {
   /// The gate the subtree rebuilds through — the slice it was last built
   /// from, asked of the CURRENT widget's [SlicedListenableBuilder.slice].
-  late SlicedListenable<S> _gate = _gateOn(widget.listenable);
+  late SlicedListenable<S> _gate = _gateOf();
 
-  SlicedListenable<S> _gateOn(Listenable listenable) =>
-      SlicedListenable<S>(listenable, () => widget.slice())
-        ..addListener(_rebuild);
+  /// A gate on the current widget's channels, standing where [after] stood.
+  SlicedListenable<S> _gateOf({SlicedListenable<S>? after}) =>
+      SlicedListenable<S>(
+        widget.listenable,
+        () => widget.slice(),
+        stillWhile: widget.stillWhile,
+        after: after,
+      )..addListener(_rebuild);
 
   @override
   void didUpdateWidget(SlicedListenableBuilder<S> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.listenable, widget.listenable)) {
-      _gate.dispose();
-      _gate = _gateOn(widget.listenable);
+    if (!identical(oldWidget.listenable, widget.listenable) ||
+        !identical(oldWidget.stillWhile, widget.stillWhile)) {
+      final left = _gate;
+      _gate = _gateOf(after: left);
+      left.dispose();
     }
   }
 
@@ -109,21 +124,41 @@ class _SlicedListenableBuilderState<S>
 /// a subtree: a painter's `repaint`, a stratum's live switch.
 ///
 /// Slices compare by value (primitives and records both do).
+///
+/// ★HELD STILL: while [stillWhile] reads true the slice is not asked at
+/// all. News stops here, [reread] and [recheck] answer with the slice as it
+/// was passed on last, and a gate made [after] another shows what that one
+/// showed — so a listener keeps what it had however the news reaches it: a
+/// notify, a rebuild from above, a channel swapped under it. The slice is
+/// asked once more as [stillWhile] turns false, and passed on if it moved
+/// meanwhile. With no [stillWhile] it is never still.
 class SlicedListenable<S> extends ChangeNotifier {
-  SlicedListenable(this._listenable, this._slice) : _shown = _slice() {
+  SlicedListenable(
+    this._listenable,
+    this._slice, {
+    ValueListenable<bool>? stillWhile,
+    SlicedListenable<S>? after,
+  }) : _stillWhile = stillWhile,
+       _shown = after != null && (stillWhile?.value ?? false)
+           ? after._shown
+           : _slice() {
     _listenable.addListener(_onChanged);
+    _stillWhile?.addListener(_onChanged);
   }
 
   final Listenable _listenable;
   final S Function() _slice;
+  final ValueListenable<bool>? _stillWhile;
   S _shown;
+
+  bool get _still => _stillWhile?.value ?? false;
 
   /// The slice as last passed on.
   S get slice => _shown;
 
   /// The slice read afresh — what a rebuild from ABOVE shows, so nothing it
-  /// was handed is older than that rebuild.
-  S reread() => _shown = _slice();
+  /// was handed is older than that rebuild. Held still, the slice as it was.
+  S reread() => _still ? _shown : _shown = _slice();
 
   /// The slice asked again by a holder whose answer can move WITHOUT
   /// [_listenable] saying so — passed on if it changed.
@@ -134,6 +169,9 @@ class SlicedListenable<S> extends ChangeNotifier {
   void recheck() => _onChanged();
 
   void _onChanged() {
+    if (_still) {
+      return;
+    }
     final next = _slice();
     if (next == _shown) {
       return;
@@ -145,6 +183,7 @@ class SlicedListenable<S> extends ChangeNotifier {
   @override
   void dispose() {
     _listenable.removeListener(_onChanged);
+    _stillWhile?.removeListener(_onChanged);
     super.dispose();
   }
 }

@@ -3955,6 +3955,14 @@ class EditorSessionManager extends ChangeNotifier
   /// ⛔Playback is deliberately not a channel here: none of these three
   /// move while it runs, so a bar cannot start re-deriving 24 times a
   /// second because the film is playing.
+  ///
+  /// ↩️F-587 (유저 2026-11-13): the first half stopped being true on
+  /// 2026-10-09 — a run of the cut plays on the editing canvas (F-296-Q6)
+  /// and takes [editingFrameCursor] with it, frame by frame (🔬sixteen
+  /// frames of it: this fired on all sixteen). The law of the second half
+  /// stands, and is kept by the ones who answer now: a bar's group or a
+  /// rail's row is not asked while a run plays (`PlaybackStillness`). This
+  /// channel still fires through it — the playhead it draws is the run's.
   late final Listenable playheadMoved = Listenable.merge([
     frameSeekCommitted,
     editingFrameCursor,
@@ -3984,6 +3992,10 @@ class EditorSessionManager extends ChangeNotifier
   // answer, rebuilding only when that answer differs. The user's efficiency
   // instruction is kept exactly where it belongs: a crossed frame costs one
   // derivation and zero rebuilds unless something actually changed.
+  //
+  // ↩️「never by playback」 held until 2026-10-09 (F-296-Q6: a run of the cut
+  // moves the cursor). A consumer is not asked while a run plays instead
+  // (F-587, [playheadMoved]).
 
   // The per-layer "empty cels" memo TOKEN that used to live here is gone
   // with [celContentRevision]. It was the weaker form of the same idea: a

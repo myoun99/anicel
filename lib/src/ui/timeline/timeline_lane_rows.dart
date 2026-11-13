@@ -10,6 +10,7 @@ import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
 import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
+import '../playback/playback_stillness.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
 import 'dart:ui' show ClipOp;
@@ -816,6 +817,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // that holds still builds nothing as the playhead runs, a moving one
     // its value alone, and the key buttons as a key is crossed.
     // ↩️The whole row was built again on every frame the cursor moved to.
+    // ↩️F-587 (유저 2026-11-13): that is the playhead moved by a HAND. While
+    // a run moves it, none of the three is asked — each keeps what it
+    // showed before the run ([PlaybackStillness]).
     return SizedBox(
       width: _cellWidth,
       height: _cellHeight,
@@ -843,7 +847,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   int get _frame => laneRowFrame(widget.frameCursor);
 
   /// [builder] over what the row shows of the frame the cursor stands on
-  /// ([slice] of it), built again only when that changes.
+  /// ([slice] of it), built again only when that changes — and kept as it
+  /// was while a run moves the cursor (F-587, [PlaybackStillness]). A press
+  /// reads [_frame] itself, as it lands.
   Widget _onTheFrame<S>(
     S Function(int frame) slice,
     Widget Function(BuildContext context, S shown) builder,
@@ -855,6 +861,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return SlicedListenableBuilder<S>(
       listenable: cursor,
       slice: () => slice(_frame),
+      stillWhile: PlaybackStillness.of(context),
       builder: builder,
     );
   }
@@ -1030,34 +1037,39 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// laid, clear while the plugin drew at the frame the row stands on: only
   /// its colour changes, as the record button's clip mark's does, so the
   /// name never narrows and widens with it.
+  ///
+  /// Whether it failed at that frame is one more thing the row shows of the
+  /// frame: built again where the answer turns, and kept through a run as
+  /// the rest of the row's are (F-587, [_onTheFrame]) — it is asked on the
+  /// failures' own news too ([PluginRunFailures]), which the cursor alone
+  /// does not carry.
   Widget _headerName(ColorScheme colorScheme) {
     final failures = lane.pluginFailures;
     if (failures == null) {
       return _headerLabel(colorScheme, failed: false);
     }
     final cursor = widget.frameCursor;
-    return ListenableBuilder(
+    return SlicedListenableBuilder<bool>(
       listenable: cursor == null
           ? failures.changes
           : Listenable.merge([failures.changes, cursor]),
-      builder: (context, _) {
-        final failed = failures.failedAt(laneRowFrame(cursor));
-        return Flex(
-          direction: widget.axis,
-          children: [
-            Expanded(child: _headerLabel(colorScheme, failed: failed)),
-            Icon(
-              Icons.warning_rounded,
-              key: ValueKey<String>(
-                '$_keyPrefix-lane-group-plugin-failed-'
-                '${layer.id}-${lane.laneId}',
-              ),
-              size: 12,
-              color: failed ? colorScheme.error : Colors.transparent,
+      slice: () => failures.failedAt(laneRowFrame(cursor)),
+      stillWhile: PlaybackStillness.of(context),
+      builder: (context, failed) => Flex(
+        direction: widget.axis,
+        children: [
+          Expanded(child: _headerLabel(colorScheme, failed: failed)),
+          Icon(
+            Icons.warning_rounded,
+            key: ValueKey<String>(
+              '$_keyPrefix-lane-group-plugin-failed-'
+              '${layer.id}-${lane.laneId}',
             ),
-          ],
-        );
-      },
+            size: 12,
+            color: failed ? colorScheme.error : Colors.transparent,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1124,6 +1136,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// while the playhead ran: 🔬2026-11-11, fourteen of the conte's headers
   /// redrawn through a growth of the runway
   /// (`a_conte_row_keeps_its_image_while_the_runway_grows_test`).
+  /// ↩️F-587 (유저 2026-11-13): and where the answer would turn under a run,
+  /// it is not asked — the button keeps what it showed before the run
+  /// ([PlaybackStillness]).
   Widget? _groupPress(
     LaneGroupPress? verb,
     Widget Function(VoidCallback? press) button, {
@@ -1147,6 +1162,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         : SlicedListenableBuilder(
             listenable: Listenable.merge(scope),
             slice: answer,
+            stillWhile: PlaybackStillness.of(context),
             builder: (_, answer) => asked(answer),
           );
   }

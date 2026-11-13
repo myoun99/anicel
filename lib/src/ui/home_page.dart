@@ -85,6 +85,7 @@ import 'menu/project_open_door.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/playback_actuation_gate.dart';
+import 'playback/playback_stillness.dart';
 import 'playback/playback_transport_controls.dart'
     show playOrStop, skipToStart, toggleLoop, toggleVoiceRecordingWithFeedback;
 import 'shortcuts/brush_actions.dart';
@@ -1653,8 +1654,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _canvasSelectionCommands.cancelTransform();
   }
 
+  /// The editor, under the one word every bar and rail row in it holds
+  /// still for (F-587, [PlaybackStillness]): the run of the project on
+  /// screen.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PlaybackStillness(
+    playing: _session.playbackRig.playback.isActiveListenable,
+    child: _editor(context),
+  );
+
+  Widget _editor(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     // PEN-11: the Android back button must never silently kill the
     // editor — back asks first and only an explicit Close exits (the
