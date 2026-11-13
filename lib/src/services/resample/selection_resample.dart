@@ -72,11 +72,22 @@ Future<Uint8List> resampleOnTheEngine({
   required ResampleMode mode,
   double radiusFloor = kSelectionResampleRadiusFloor,
 }) async {
-  final engine = await openAppGpuEngine();
+  // Opened off this isolate before its kernels are asked for: asked where
+  // no engine is open, they open one here.
+  await openAppGpuEngine();
   final landing = await appGpuStampLandingKernels.ready;
+  // 🚨ON THE ENGINE THE KERNELS ARE OF, not the one that was open before
+  // they were waited for: the app may have let that one go meanwhile, its
+  // device gone (`letTheGoneAppGpuEngineGo`), and these are the next
+  // one's. A picture of one engine carried by another's kernels is no
+  // error wgpu raises — it looks the one's buffer up among the other's and
+  // panics, which ends the process (🔬2026-11-13: `Cannot get
+  // BufferId(2,2), found other resource BufferId(2,1)`, a tip's thumbnail
+  // on its way as the app opened another engine; ↩️the picture was made on
+  // the engine first waited for).
   return _readOnAWorker(
     landing.carried(
-      GpuStampPicture(engine, src, srcWidth, srcHeight),
+      GpuStampPicture(landing.engine, src, srcWidth, srcHeight),
       inverse: resampleTransformElements(transform),
       radiusFloor: radiusFloor,
       sampling: resampleSampling(mode),

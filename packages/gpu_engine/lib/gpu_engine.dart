@@ -1265,6 +1265,9 @@ class GpuStampLanding {
   final GpuEngine _engine;
   final Pointer<rust.StampLanding> _landing;
 
+  /// The engine it lands and carries on.
+  GpuEngine get engine => _engine;
+
   /// [picture] carried through [inverse] — a point of the output to
   /// [picture]'s, the nine of the app's `ResampleTransform` row after row,
   /// the homogeneous row last — over an output [width] × [height], by R1
