@@ -376,6 +376,11 @@ enum AppStrings {
 
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
+
+  /// A block window's primary button (`InstanceEditDialogShell`, F-584);
+  /// the windows that write settings keep [commonSave].
+  String get commonOk => _s('commonOk');
+
   String get commonDelete => _s('commonDelete');
   String get commonAdd => _s('commonAdd');
   String get commonRename => _s('commonRename');
@@ -2473,6 +2478,7 @@ enum AppStrings {
     'selectionInvertInCanvas': 'Invert Selection in Canvas',
     'toolSelectionMode': 'Mode',
     'commonSave': 'Save',
+    'commonOk': 'OK',
     'commonDelete': 'Delete',
     'commonAdd': 'Add',
     'commonRename': 'Rename',
@@ -3967,6 +3973,7 @@ enum AppStrings {
     'selectionInvertInCanvas': 'カンバス内で選択範囲を反転',
     'toolSelectionMode': 'モード',
     'commonSave': '保存',
+    'commonOk': 'OK',
     'commonDelete': '削除',
     'commonAdd': '追加',
     'commonRename': '名前を変更',
@@ -5871,6 +5878,7 @@ enum AppStrings {
     'selectionInvertInCanvas': '캔버스 안 선택 반전',
     'toolSelectionMode': '모드',
     'commonSave': '저장',
+    'commonOk': '확인',
     'commonDelete': '삭제',
     'commonAdd': '추가',
     'commonRename': '이름 변경',
@@ -7787,6 +7795,7 @@ enum AppStrings {
     'selectionInvertInCanvas': 'Inverser la sélection dans le canevas',
     'toolSelectionMode': 'Mode',
     'commonSave': 'Enregistrer',
+    'commonOk': 'OK',
     'commonDelete': 'Supprimer',
     'commonAdd': 'Ajouter',
     'commonRename': 'Renommer',
@@ -9868,6 +9877,7 @@ enum AppStrings {
     'selectionInvertInCanvas': '在画布内反选',
     'toolSelectionMode': '模式',
     'commonSave': '保存',
+    'commonOk': '确定',
     'commonDelete': '删除',
     'commonAdd': '添加',
     'commonRename': '重命名',

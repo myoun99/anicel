@@ -111,6 +111,7 @@ void main() {
     'selectionInvertInCanvas': (s) => s.selectionInvertInCanvas,
     'toolSelectionMode': (s) => s.toolSelectionMode,
     'commonSave': (s) => s.commonSave,
+    'commonOk': (s) => s.commonOk,
     'commonDelete': (s) => s.commonDelete,
     'commonAdd': (s) => s.commonAdd,
     'commonRename': (s) => s.commonRename,
