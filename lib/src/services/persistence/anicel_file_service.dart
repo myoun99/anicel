@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../../core/progress_share.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart' show readTilesInPlace;
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart' show MediaCarry;
@@ -405,9 +406,9 @@ Future<R> _reportingProgress<R>(
 class AnicelFileService {
   const AnicelFileService();
 
-  /// Test hook: told after each cel a save serialised on the UI isolate,
-  /// once the screen has had its turn ([_workForDirtyKey]) — what lets a
-  /// pin see that the event loop really ran between two cels.
+  /// Test hook: told after each cel in RAM a save made ready, once the
+  /// screen has had its turn ([_workForDirtyKey]) — what lets a pin see
+  /// that the event loop really ran between two cels.
   @visibleForTesting
   static void Function()? debugAfterScreenTurn;
 
@@ -763,11 +764,22 @@ class AnicelFileService {
   /// Resolves a dirty key's current content to a [_CelWork], or null for
   /// a removed cel (its entry name must vanish from the archive).
   ///
-  /// 🚨A cel still in RAM is serialised HERE, on the UI isolate, and that
-  /// is the save's one stretch of work there — so after each one the
-  /// screen gets its turn (a frame, the save window's spinner its next
-  /// step) before the next cel is taken (F-304: 「멈추는게 아니라 뭔가
-  /// 하고있다라는걸 제대로 표시하기위해」).
+  /// 🚨A cel still in RAM is the save's one stretch of work on the UI
+  /// isolate — its tiles are the engine's, which only this isolate reads —
+  /// so after each one the screen gets its turn (a frame, the save window's
+  /// spinner its next step) before the next cel is taken (F-304: 「멈추는게
+  /// 아니라 뭔가 하고있다라는걸 제대로 표시하기위해」).
+  ///
+  /// ↩️It was serialised here, the whole cel in one stretch: its tiles read
+  /// back, written into the stream and the stream copied for the save's
+  /// isolate — 🧪30–43 ms a whole-canvas cel (315 tiles, 20.6 MB; the heavy
+  /// save benchmark under `flutter test`, Surface Pro 11, 2026-11-13: read
+  /// back 10–18 ms, the stream 12–23, its copy 6–11). A worker serialises it
+  /// now from a copy it is handed a batch of tiles at a time
+  /// ([onAWorkerWithCelCopy]), and the screen has its turns between the
+  /// batches; what stays here is the read (card
+  /// `a-save-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
+  /// 관제 2026-11-13).
   static Future<_CelWork?> _workForDirtyKey(
     BrushFrameKey key,
     ({
@@ -784,9 +796,11 @@ class AnicelFileService {
         key: key,
         name: name,
         hot: (
-          payload: TransferableTypedData.fromList([
-            encodeCelEntryFromSurface(key, surface),
-          ]),
+          payload: await onAWorkerWithCelCopy(
+            key.cel,
+            surface,
+            _streamOfTheCopy(key),
+          ),
           showsSomething: surface.showsSomething,
         ),
       );
@@ -826,6 +840,19 @@ class AnicelFileService {
     }
     return null;
   }
+
+  /// What a worker makes of a hot cel's copy for the save
+  /// ([_workForDirtyKey]): [key]'s stream, read off the copy's own tiles —
+  /// a worker has no engine — as one flat buffer that crosses into the
+  /// save's isolate without being written out again.
+  ///
+  /// ⚠️Made HERE, so the closure crosses with [key] alone
+  /// (`onAWorkerReporting`'s 🚨).
+  static TransferableTypedData Function(BitmapSurface copy) _streamOfTheCopy(
+    BrushFrameKey key,
+  ) => (copy) => TransferableTypedData.fromList([
+    encodeCelEntryFromSurface(key, copy, bytesOf: readTilesInPlace),
+  ]);
 
   /// Whether the archive at [filePath] is the one [projectIdValue] names.
   ///
