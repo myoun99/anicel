@@ -2166,11 +2166,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _brush.activeShapeKind ??
                   CanvasShapeKind
                       .rect,
-              // R17-U: Move = 이동+변형 통합 툴
-              // — 핸들 상시.
-              alwaysShowTransformBox:
-                  _brush.tool ==
-                  CanvasTool.move,
               onShapeCommitted:
                   _selectionSeat.recordSelectionChange,
               // I-14: a host whose content is not a cel cuts from what it

@@ -116,7 +116,6 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftConfirmed,
     this.onLiftReverted,
     this.confirmLandsOn,
-    this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
@@ -159,13 +158,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   Function()?
   contentBoundsProvider;
 
-  /// R17-U (이동+Ctrl+T 통합, 핸들 상시): with the MOVE tool a selection
-  /// shows its transform box immediately — grabbing a scale/rotate handle
-  /// opens the session on the spot (the lift happens at that first
-  /// interaction, never on mere display). Ctrl+T still works everywhere.
-  final bool alwaysShowTransformBox;
-
   /// What a finished drag DOES with its outline — select, move, or cut.
+  ///
+  /// R17-U (이동+Ctrl+T 통합, 핸들 상시): with [CanvasSelectionTool.move] a
+  /// selection shows its transform box immediately — grabbing a scale/rotate
+  /// handle opens the session on the spot (the lift happens at that first
+  /// interaction, never on mere display). Ctrl+T still works everywhere.
   final CanvasSelectionTool tool;
 
   /// Which outline a drag traces. Ignored by [CanvasSelectionTool.move],
@@ -2016,10 +2014,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// what is drawn of it and what a press takes of it are the open box's.
   /// ↩️The chrome drew a rect of its own for it and the press made a box of
   /// its own, neither with a warp.
+  ///
+  /// ↩️The Move tool was asked for twice — here, and by a flag the host set
+  /// to that very answer (`alwaysShowTransformBox: tool == move`, since
+  /// R17-U) — so either could be dropped and nothing told.
   ({CanvasSelectionRegion region, _OpenBox box})? _restingBox() {
-    if (_box != null ||
-        !widget.alwaysShowTransformBox ||
-        widget.tool != CanvasSelectionTool.move) {
+    if (_box != null || widget.tool != CanvasSelectionTool.move) {
       return null;
     }
     final region =

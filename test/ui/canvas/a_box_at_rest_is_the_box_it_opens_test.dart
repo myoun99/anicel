@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
@@ -155,6 +156,55 @@ void main() {
     expect(find.byKey(pill), findsOneWidget, reason: 'the pill does not go');
     expect(pressOf(tester, confirm), isNull);
     expect(pressOf(tester, cancel), isNull);
+  });
+
+  testWidgets('the box stands at rest under the Transform tool alone — the '
+      'same selection under the selection tool wears no box, and none of '
+      'its pill', (tester) async {
+    final (commands: _, options: _, :tool) = await pumpTransformTool(tester);
+    expect(transformChromeOnScreen(tester), isNotNull, reason: 'the premise');
+    expect(find.byKey(pill), findsOneWidget, reason: 'the premise');
+
+    tool.value = tool.value.copyWith(tool: CanvasTool.select);
+    await tester.pump();
+    await tester.pump();
+
+    expect(transformChromeOnScreen(tester), isNull);
+    expect(find.byKey(pill), findsNothing);
+  });
+
+  testWidgets('an outline still being drawn when the Transform tool is '
+      'picked wears no box until it is let go', (tester) async {
+    final (commands: _, options: _, :tool) = await pumpTransformTool(
+      tester,
+      selected: false,
+    );
+    tool.value = tool.value.copyWith(tool: CanvasTool.select);
+    await tester.pump();
+    await tester.pump();
+    final gesture = await pressOnTransformLayer(
+      tester,
+      const Offset(300, 200),
+    );
+    final origin = tester.getTopLeft(find.byKey(transformToolLayerKey));
+    await gesture.moveTo(origin + const Offset(360, 260));
+    await tester.pump();
+
+    tool.value = tool.value.copyWith(tool: CanvasTool.move);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      transformChromeOnScreen(tester),
+      isNull,
+      reason: 'the outline is still in hand',
+    );
+    expect(find.byKey(pill), findsNothing);
+
+    await gesture.up();
+    await tester.pump();
+    await tester.pump();
+    expect(transformChromeOnScreen(tester), isNotNull);
+    expect(find.byKey(pill), findsOneWidget);
   });
 
   testWidgets('over a cel with no picture the pill stands with every verb '

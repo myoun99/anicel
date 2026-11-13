@@ -78,7 +78,6 @@ void main() {
                 pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
                 frameToken: 'frame',
                 selectionCommands: commands,
-                alwaysShowTransformBox: true,
                 transformOptions: TransformToolOptions(mode: mode),
                 contentBoundsProvider: () => (
                   left: 40,
