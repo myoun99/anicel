@@ -35,9 +35,12 @@ void main() {
     write('$name/out/dxc/dxcompiler.dll', 'dxc');
   }
 
+  // As the hook's reads are: DXC beside its output among them, which it
+  // made and is no key.
   List<Uri> readIn(String name) => [
     checkout(name).resolve('rust/src/lib.rs'),
     checkout(name).resolve('rust/Cargo.toml'),
+    checkout(name).resolve('out/dxc/dxcompiler.dll'),
   ];
 
   void keepFrom(String name, {DateTime? started}) => copies.keep(
@@ -63,6 +66,7 @@ void main() {
     lay('a');
     lay('b');
     File('${root.path}/b/out/engine.dll').deleteSync();
+    File('${root.path}/b/out/dxc/dxcompiler.dll').deleteSync();
     keepFrom('a');
     final kept = copies.find(checkout('b'));
     expect(kept, isNotNull);
@@ -70,6 +74,10 @@ void main() {
     expect(
       File('${root.path}/b/out/engine.dll').readAsStringSync(),
       'built from fn main() {}',
+    );
+    expect(
+      File('${root.path}/b/out/dxc/dxcompiler.dll').readAsStringSync(),
+      'dxc',
     );
     expect(kept.library, 'engine.dll');
     expect(
