@@ -151,10 +151,12 @@ int resampleReach({
   if (taps <= 0) {
     return 0;
   }
-  // The filter runs at the rate both meet at, interpolation × the input's.
+  // The filter runs at the rate both meet at, interpolation × the input's,
+  // centred on the output's instant: half its length either side, which
+  // is the farthest any output reads (resample.rs, `Design::run`).
   final interpolation = outputRate ~/ outputRate.gcd(inputRate);
   final half = (taps - 1) ~/ 2;
-  return (half + interpolation - 1) ~/ interpolation + 1;
+  return (half + interpolation - 1) ~/ interpolation;
 }
 
 /// A conversion of [channels] from [inputRate] to [outputRate] fed a piece
