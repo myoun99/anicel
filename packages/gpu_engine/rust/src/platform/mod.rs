@@ -39,6 +39,8 @@ use self::windows as native;
 pub(crate) use native::{adapter_luid, device_went_by, video_memory};
 
 use std::ffi::c_void;
+use std::path::PathBuf;
+use std::sync::{Mutex, PoisonError};
 
 use crate::device::Engine;
 use crate::fail;
@@ -58,6 +60,38 @@ pub(crate) fn instance() -> wgpu::Instance {
 /// The adapters the engine may open on, through the platform's backend.
 pub(crate) fn adapters(instance: &wgpu::Instance) -> Vec<wgpu::Adapter> {
     pollster::block_on(instance.enumerate_adapters(native::BACKENDS))
+}
+
+/// The folder the app named for the shaders the engines it opens compile
+/// ([`gpu_engine_keep_shaders_in`]) — none till it names one.
+static SHADERS_KEPT_IN: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Keeps what `device`'s shader compiler makes in the app's folder for
+/// them ([`SHADERS_KEPT_IN`]), for the next launch to hand the driver
+/// instead of compiling it again: on Windows what DXC makes
+/// (vendor/wgpu-hal, dxil_cache.rs). 🗣️유저 2026-11-13,
+/// the-wait-window-stands-seven-seconds-on-the-surface-Q1 「디스크 캐시」.
+#[cfg_attr(not(windows), allow(unused_variables))]
+pub(crate) fn keep_shaders(device: &wgpu::Device) {
+    let folder = SHADERS_KEPT_IN.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    #[cfg(windows)]
+    windows::keep_dxil(device, folder);
+}
+
+/// Names the folder — `folder`'s `length` bytes of UTF-8 — where each
+/// engine opened from now on keeps the shaders it compiles
+/// ([`keep_shaders`]); none where `length` is 0.
+///
+/// # Safety
+/// `folder` holds `length` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_keep_shaders_in(folder: *const u8, length: usize) {
+    let named = (length > 0).then(|| {
+        // SAFETY: see the function's contract.
+        let bytes = unsafe { std::slice::from_raw_parts(folder, length) };
+        PathBuf::from(String::from_utf8_lossy(bytes).into_owned())
+    });
+    *SHADERS_KEPT_IN.lock().unwrap_or_else(PoisonError::into_inner) = named;
 }
 
 /// This process's use of the adapter's memory, in bytes, and the budget

@@ -10,11 +10,19 @@ import 'engine_frame_tools.dart';
 import 'engine_strokes.dart';
 
 /// Every set of kernels the app compiles ahead of its first use, off this
-/// isolate, one after another: the engine compiles one at a time
-/// (`Engine::compiling`), so a set asked for by what needs it now — a
-/// frame with an effect chain — waits behind the one compiling and no
-/// more; a grid's, which no row waits for, behind what a hand needs
-/// ([appGpuGridKernels]).
+/// isolate: what a hand needs all at once, the engine compiling on as many
+/// threads as the device has cores (`CompilerTurn`, rust/src/device.rs),
+/// then the rest one after another, so that a set asked for by what needs
+/// it now — a frame with an effect chain — finds the most of the engine's
+/// threads free; a grid's, which no row waits for, comes behind what a
+/// hand needs ([appGpuGridKernels]).
+///
+/// ↩️All one after another till 2026-11-13, the engine compiling one at a
+/// time. 🗣️유저 2026-11-13
+/// (the-wait-window-stands-seven-seconds-on-the-surface-Q1, 「고친 사본을
+/// 묶는다 — 디스크 캐시 + 나란히 컴파일」): the app's wait window stands as
+/// long as what a hand needs takes to compile, and nothing a hand needs
+/// waits for another of them.
 ///
 /// 🗣️관제 2026-11-10 18:14 (gpu-canonical-store ⑦): 「선 = UI 스레드가 직접
 /// 하는 커널 컴파일 0개(시작 · S5 열기)」 — 🔬eleven kernels were, 15.2–15.5 s
@@ -59,16 +67,19 @@ Future<void> compileAppKernelsAhead() async {
   try {
     final engine = await openAppGpuEngine();
     tools = await engine.whileCompilesApartWait(() async {
-      // The ledger's scan is its own; the engine keeps the kernel it is
-      // made of (`Kernels`, rust/src/device.rs), so one compiled here is
-      // every ledger's.
-      (await GpuInk.opening(engine)).free();
-      final opened = await appEngineFrameTools;
-      await EngineStrokes.warm();
-      await EngineCelPixels.warm();
-      await appGpuStampLandingKernels.warm();
-      await EngineFloods.warm();
-      await EngineStrokes.warmBlurs();
+      final opened = appEngineFrameTools;
+      await Future.wait<void>([
+        // The ledger's scan is its own; the engine keeps the kernel it is
+        // made of (`Kernels`, rust/src/device.rs), so one compiled here is
+        // every ledger's.
+        GpuInk.opening(engine).then((scan) => scan.free()),
+        opened,
+        EngineStrokes.warm(),
+        EngineCelPixels.warm(),
+        appGpuStampLandingKernels.warm(),
+        EngineFloods.warm(),
+        EngineStrokes.warmBlurs(),
+      ]);
       return opened;
     });
   } finally {

@@ -29,11 +29,12 @@ pub struct Engine {
     pub(crate) queue: Queue,
     /// What [`Engine::wait`] polls on.
     thread: EngineThread,
-    /// Where a kernel's compile enters the driver: a thread of its own, so
+    /// Where a kernel's compile enters the driver: threads of its own, so
     /// that seconds of one made ahead of its first use hold up no frame's
     /// submit behind them on `thread` (🔬the blur brush's ten pipelines,
     /// 10.2 s on the main PC's RTX 4080 with eighteen test files running,
-    /// 2026-11-10; 1.2 to 2.5 s each by strips).
+    /// 2026-11-10; 1.2 to 2.5 s each by strips) — as many as the device
+    /// has cores ([`CompilerTurn`]).
     compiling: EngineThread,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
@@ -264,17 +265,29 @@ impl Apart {
 
 /// A turn at the device's shader compiler: what [`Engine::compiling`] runs
 /// is handed one, and a compile asks for it (`kernels::shared`, `compiled`)
-/// — so no two are in the compiler at once, whatever threads ask.
+/// — so a compile runs on one of the engine's threads for compiling,
+/// whatever thread asks, as many at once as the device has cores
+/// ([`compiling_threads`]).
 ///
-/// ⛔One at a time: what DXC makes is not thread-safe — 「objects created by
-/// DxcCreateInstance aren't thread-safe」 (DXC wiki, "Using dxc.exe and
-/// dxcompiler.dll") — and wgpu-hal 30 compiles on the device's one
-/// `IDxcCompiler3` from whatever thread asks, with no lock
+/// ↩️⛔One at a time till 2026-11-13: what DXC makes is not thread-safe —
+/// 「objects created by DxcCreateInstance aren't thread-safe」 (DXC wiki,
+/// "Using dxc.exe and dxcompiler.dll") — and wgpu-hal 30 compiled on the
+/// device's one `IDxcCompiler3` from whatever thread asked, with no lock
 /// (dx12/shader_compilation.rs, `CompilerDynamicDxc`). ↩️A plugin's compile
 /// ran on its own thread beside the engine's till 2026-11-11, the one
 /// compiler under both whenever a plugin was compiled while a kernel of
-/// the engine's was; no fault has been traced to it.
+/// the engine's was; no fault has been traced to it. 🗣️유저 2026-11-13
+/// (the-wait-window-stands-seven-seconds-on-the-surface-Q1, 「고친 사본을
+/// 묶는다 — 디스크 캐시 + 나란히 컴파일」): wgpu-hal is ours to patch
+/// (Cargo.toml, `[patch.crates-io]`), and each compile under way takes a
+/// DXC compiler no other holds (vendor/wgpu-hal, `DxcCompilers`).
 pub(crate) struct CompilerTurn(());
+
+/// How many threads the engine compiles on ([`CompilerTurn`]): one to each
+/// of the device's cores, a tablet's few among them.
+fn compiling_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
 
 /// The queue the kernels submit to, whose submits enter the driver on the
 /// engine's thread ([`EngineThread`]) — ⛔the `wgpu::Queue` stays private
@@ -365,8 +378,9 @@ impl Engine {
         });
         match pollster::block_on(request) {
             Ok((device, queue)) => {
+                platform::keep_shaders(&device);
                 let thread = EngineThread::start()?;
-                let compiling = EngineThread::start()?;
+                let compiling = EngineThread::start_many(compiling_threads())?;
                 let refusals = Refusals::default();
                 let (lost, noting) = (refusals.clone(), refusals.clone());
                 device.set_device_lost_callback(move |reason, message| {
@@ -808,16 +822,28 @@ pub(crate) struct EngineThread(mpsc::Sender<Job>);
 
 impl EngineThread {
     fn start() -> Option<Self> {
+        Self::start_many(1)
+    }
+
+    /// `count` threads that take what is handed to them in turn, each the
+    /// next job once it is through with its own.
+    fn start_many(count: usize) -> Option<Self> {
         let (jobs, asked) = mpsc::channel::<Job>();
-        let working = move || {
-            for job in asked {
+        let asked = Arc::new(Mutex::new(asked));
+        for _ in 0..count {
+            let asked = Arc::clone(&asked);
+            let working = move || loop {
+                let next = asked.lock().unwrap_or_else(PoisonError::into_inner).recv();
+                let Ok(job) = next else {
+                    return;
+                };
                 job();
+            };
+            if let Err(error) = std::thread::Builder::new().name("gpu_engine".into()).spawn(working) {
+                return fail(format!("no thread for the engine: {error}"));
             }
-        };
-        match std::thread::Builder::new().name("gpu_engine".into()).spawn(working) {
-            Ok(_) => Some(Self(jobs)),
-            Err(error) => fail(format!("no thread for the engine: {error}")),
         }
+        Some(Self(jobs))
     }
 
     /// What `work` answers, run on this thread while the caller waits.
@@ -1144,6 +1170,31 @@ mod tests {
             let got_through = answered.recv_timeout(std::time::Duration::from_secs(20));
             let _ = release.send(());
             assert!(got_through.is_ok(), "the submit waited behind the compile");
+        });
+    }
+
+    // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    // 「나란히 컴파일」): a compile under way holds up no other — each on a
+    // thread of the engine's for compiling of its own (`CompilerTurn`).
+    #[test]
+    fn a_compile_under_way_holds_up_no_other() {
+        let engine = Engine::open_first().expect("an adapter");
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (compiled, answered) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                engine.compiling(move |_| {
+                    let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+                })
+            });
+            scope.spawn(|| {
+                let source = "@compute @workgroup_size(1)\nfn main() {}\n// held up by none";
+                let _ = crate::kernels::shared::pipeline(&engine, &[source], "main");
+                let _ = compiled.send(());
+            });
+            let got_through = answered.recv_timeout(std::time::Duration::from_secs(20));
+            let _ = release.send(());
+            assert!(got_through.is_ok(), "the compile waited behind the other");
         });
     }
 

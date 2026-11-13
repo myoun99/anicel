@@ -3,6 +3,7 @@ use core::ffi::CStr;
 use std::path::PathBuf;
 
 use crate::auxil::dxgi::result::HResult;
+use parking_lot::Mutex;
 use thiserror::Error;
 use windows::{
     core::{Interface, PCSTR, PCWSTR},
@@ -22,15 +23,33 @@ pub(super) struct CompilerFxc {
 
 pub(super) struct CompilerDynamicDxc {
     max_shader_model: wgt::DxcShaderModel,
-    compiler: Dxc::IDxcCompiler3,
+    compilers: DxcCompilers,
     // Has to be held onto for the lifetime of the device otherwise shaders will fail to compile.
     // Only needed when using dynamic linking.
-    _dxc: DxcLib,
+    dxc: DxcLib,
 }
 
 pub(super) struct CompilerStaticDxc {
     max_shader_model: wgt::DxcShaderModel,
-    compiler: Dxc::IDxcCompiler3,
+    compilers: DxcCompilers,
+}
+
+/// ANICEL — not wgpu's: the DXC compilers one device compiles with, one to
+/// each compile under way, and what DXC made kept on disk
+/// ([`super::dxil_cache`]).
+///
+/// ↩️wgpu-hal 30 made one compiler and compiled on it from whatever thread
+/// asked, with no lock — and 「objects created by DxcCreateInstance aren't
+/// thread-safe」 (DXC wiki, "Using dxc.exe and dxcompiler.dll") — so the
+/// app compiled one at a time (gpu_engine's `CompilerTurn`). 🗣️유저
+/// 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+/// 「디스크 캐시 + 나란히 컴파일」): a compile takes a compiler no other holds,
+/// made where none is spare, and gives it back.
+pub(super) struct DxcCompilers {
+    /// Which DXC these are, by version and commit — what the disk knows
+    /// what it holds by. None where DXC does not say, and nothing is kept.
+    identity: Option<String>,
+    spare: Mutex<Vec<Dxc::IDxcCompiler3>>,
 }
 
 #[derive(Debug, Error)]
@@ -62,34 +81,17 @@ impl CompilerContainer {
 
         Ok(Self::DynamicDxc(CompilerDynamicDxc {
             max_shader_model: wgt::DxcShaderModel::from_dxc_version(major, minor),
-            compiler,
-            _dxc: dxc,
+            compilers: DxcCompilers::new(compiler),
+            dxc,
         }))
     }
 
     /// Creates a [`CompilerContainer`] that delegates to the statically-linked version of DXC.
     pub(super) fn new_static_dxc() -> Result<CompilerContainer, crate::DeviceError> {
-        #[cfg(static_dxc)]
-        {
-            unsafe {
-                let compiler = dxc_create_instance::<Dxc::IDxcCompiler3>(|clsid, iid, ppv| {
-                    windows_core::HRESULT(mach_dxcompiler_rs::DxcCreateInstance(
-                        clsid.cast(),
-                        iid.cast(),
-                        ppv,
-                    ))
-                })?;
-
-                Ok(CompilerContainer::StaticDxc(CompilerStaticDxc {
-                    max_shader_model: wgt::DxcShaderModel::V6_7,
-                    compiler,
-                }))
-            }
-        }
-        #[cfg(not(static_dxc))]
-        {
-            panic!("Attempted to create a static DXC shader compiler, but the static-dxc feature was not enabled")
-        }
+        Ok(CompilerContainer::StaticDxc(CompilerStaticDxc {
+            max_shader_model: wgt::DxcShaderModel::V6_7,
+            compilers: DxcCompilers::new(static_compiler()?),
+        }))
     }
 
     pub(super) fn max_shader_model(&self) -> Option<wgt::DxcShaderModel> {
@@ -123,18 +125,130 @@ impl CompilerContainer {
                 full_stage,
                 fxc,
             ),
-            CompilerContainer::DynamicDxc(CompilerDynamicDxc { compiler, .. })
-            | CompilerContainer::StaticDxc(CompilerStaticDxc { compiler, .. }) => compile_dxc(
-                device,
-                source,
-                source_name,
-                raw_ep,
-                stage_bit,
-                full_stage,
-                compiler,
-            ),
+            CompilerContainer::DynamicDxc(CompilerDynamicDxc { compilers, dxc, .. }) => compilers
+                .compile(
+                    device,
+                    source,
+                    source_name,
+                    raw_ep,
+                    stage_bit,
+                    full_stage,
+                    || dxc.create_instance::<Dxc::IDxcCompiler3>(),
+                ),
+            CompilerContainer::StaticDxc(CompilerStaticDxc { compilers, .. }) => compilers
+                .compile(
+                    device,
+                    source,
+                    source_name,
+                    raw_ep,
+                    stage_bit,
+                    full_stage,
+                    static_compiler,
+                ),
         }
     }
+}
+
+/// ANICEL: what [`CompilerContainer::new_static_dxc`] made its one
+/// compiler with, now each of [`DxcCompilers`]'s.
+fn static_compiler() -> Result<Dxc::IDxcCompiler3, crate::DeviceError> {
+    #[cfg(static_dxc)]
+    {
+        unsafe {
+            dxc_create_instance::<Dxc::IDxcCompiler3>(|clsid, iid, ppv| {
+                windows_core::HRESULT(mach_dxcompiler_rs::DxcCreateInstance(
+                    clsid.cast(),
+                    iid.cast(),
+                    ppv,
+                ))
+            })
+        }
+    }
+    #[cfg(not(static_dxc))]
+    {
+        panic!("Attempted to create a static DXC shader compiler, but the static-dxc feature was not enabled")
+    }
+}
+
+impl DxcCompilers {
+    fn new(first: Dxc::IDxcCompiler3) -> Self {
+        Self {
+            identity: identity(&first),
+            spare: Mutex::new(alloc::vec![first]),
+        }
+    }
+
+    /// What DXC makes of `source`: what an earlier compile kept on disk
+    /// where all that is asked is the same, else compiled on a compiler no
+    /// other compile holds — one of [`Self::spare`], or `make`'s where none
+    /// is — and kept.
+    #[allow(clippy::too_many_arguments)]
+    fn compile(
+        &self,
+        device: &super::Device,
+        source: &str,
+        source_name: Option<&CStr>,
+        raw_ep: &str,
+        stage_bit: wgt::ShaderStages,
+        full_stage: &str,
+        make: impl FnOnce() -> Result<Dxc::IDxcCompiler3, crate::DeviceError>,
+    ) -> Result<super::CompiledShader, crate::PipelineError> {
+        let args = dxc_args(device, source_name, raw_ep, full_stage);
+        let asked = self.identity.as_ref().map(|identity| {
+            super::dxil_cache::asked(
+                [identity.as_bytes()]
+                    .into_iter()
+                    .chain(args.iter().map(|arg| arg.text.as_bytes()))
+                    .chain([source.as_bytes()]),
+            )
+        });
+        if let Some(dxil) = asked.as_ref().and_then(|asked| device.dxil_cache.read(asked)) {
+            return Ok(super::CompiledShader::Precompiled(dxil));
+        }
+        let compiler = {
+            let mut spare = self.spare.lock();
+            match spare.pop() {
+                Some(compiler) => compiler,
+                None => make()?,
+            }
+        };
+        let compiled = compile_dxc(source, &args, stage_bit, &compiler);
+        self.spare.lock().push(compiler);
+        let blob = compiled?;
+        if let Some(asked) = &asked {
+            let dxil = unsafe {
+                core::slice::from_raw_parts(
+                    blob.GetBufferPointer().cast::<u8>(),
+                    blob.GetBufferSize(),
+                )
+            };
+            device.dxil_cache.write(asked, dxil);
+        }
+        Ok(super::CompiledShader::Dxc(blob))
+    }
+}
+
+/// Which DXC `compiler` is — its version and the commit it was built from
+/// — or None where it does not say.
+fn identity(compiler: &Dxc::IDxcCompiler3) -> Option<String> {
+    let (mut major, mut minor) = (0, 0);
+    unsafe { compiler.cast::<Dxc::IDxcVersionInfo>().ok()?.GetVersion(&mut major, &mut minor) }
+        .ok()?;
+    let (mut commits, mut hash) = (0, core::ptr::null_mut());
+    unsafe {
+        compiler
+            .cast::<Dxc::IDxcVersionInfo2>()
+            .ok()?
+            .GetCommitInfo(&mut commits, &mut hash)
+    }
+    .ok()?;
+    if hash.is_null() {
+        return None;
+    }
+    // 「Must be CoTaskMemFree()'d」 (DXC 1.9.2609's dxcapi.h, GetCommitInfo).
+    let commit = unsafe { CStr::from_ptr(hash) }.to_string_lossy().into_owned();
+    unsafe { windows::Win32::System::Com::CoTaskMemFree(Some(hash.cast_const().cast())) };
+    Some(format!("DXC {major}.{minor} {commits} {commit}"))
 }
 
 type D3DCompileFn = unsafe extern "system" fn(
@@ -331,13 +445,24 @@ unsafe fn dxc_create_instance<T: DxcObj>(
 #[allow(clippy::upper_case_acronyms)]
 struct OPCWSTR {
     inner: Vec<u16>,
+    /// ANICEL: what it says, for what DXC was asked to be known by
+    /// ([`super::dxil_cache::asked`]).
+    text: String,
 }
 
 impl OPCWSTR {
     fn new(s: &str) -> Self {
         let mut inner: Vec<_> = s.encode_utf16().collect();
         inner.push(0);
-        Self { inner }
+        Self {
+            inner,
+            text: s.into(),
+        }
+    }
+
+    /// ANICEL: one of DXC's own argument words, owned.
+    fn of(arg: PCWSTR) -> Self {
+        Self::new(&unsafe { arg.to_string() }.unwrap_or_default())
     }
 
     fn ptr(&self) -> PCWSTR {
@@ -362,38 +487,32 @@ fn as_err_str(blob: &Dxc::IDxcBlobUtf8) -> Result<&str, crate::DeviceError> {
         .map_err(|_| crate::DeviceError::Unexpected)
 }
 
-fn compile_dxc(
+/// ANICEL: the arguments [`compile_dxc`] gives DXC — wgpu-hal 30's, each
+/// owned, so that what DXC is asked can be told whole
+/// ([`DxcCompilers::compile`]).
+fn dxc_args(
     device: &crate::dx12::Device,
-    source: &str,
     source_name: Option<&CStr>,
     raw_ep: &str,
-    stage_bit: wgt::ShaderStages,
     full_stage: &str,
-    compiler: &Dxc::IDxcCompiler3,
-) -> Result<crate::dx12::CompiledShader, crate::PipelineError> {
-    profiling::scope!("compile_dxc");
-
+) -> Vec<OPCWSTR> {
     let source_name = source_name.and_then(|cstr| cstr.to_str().ok());
 
-    let source_name = source_name.map(OPCWSTR::new);
-    let raw_ep = OPCWSTR::new(raw_ep);
-    let full_stage = OPCWSTR::new(full_stage);
+    let mut compile_args = Vec::with_capacity(13);
 
-    let mut compile_args = arrayvec::ArrayVec::<PCWSTR, 13>::new_const();
-
-    if let Some(source_name) = source_name.as_ref() {
-        compile_args.push(source_name.ptr())
+    if let Some(source_name) = source_name {
+        compile_args.push(OPCWSTR::new(source_name))
     }
 
     compile_args.extend([
-        windows::core::w!("-E"),
-        raw_ep.ptr(),
-        windows::core::w!("-T"),
-        full_stage.ptr(),
-        windows::core::w!("-HV"),
-        windows::core::w!("2018"), // Use HLSL 2018, Naga doesn't supported 2021 yet.
-        windows::core::w!("-no-warnings"),
-        Dxc::DXC_ARG_ENABLE_STRICTNESS,
+        OPCWSTR::new("-E"),
+        OPCWSTR::new(raw_ep),
+        OPCWSTR::new("-T"),
+        OPCWSTR::new(full_stage),
+        OPCWSTR::new("-HV"),
+        OPCWSTR::new("2018"), // Use HLSL 2018, Naga doesn't supported 2021 yet.
+        OPCWSTR::new("-no-warnings"),
+        OPCWSTR::of(Dxc::DXC_ARG_ENABLE_STRICTNESS),
     ]);
 
     if device
@@ -407,16 +526,29 @@ fn compile_dxc(
             .workarounds
             .avoid_shader_debug_info
     {
-        compile_args.push(Dxc::DXC_ARG_DEBUG);
-        compile_args.push(Dxc::DXC_ARG_SKIP_OPTIMIZATIONS);
+        compile_args.push(OPCWSTR::of(Dxc::DXC_ARG_DEBUG));
+        compile_args.push(OPCWSTR::of(Dxc::DXC_ARG_SKIP_OPTIMIZATIONS));
     }
 
     if device
         .features
         .intersects(wgt::Features::SHADER_F16 | wgt::Features::SHADER_I16)
     {
-        compile_args.push(windows::core::w!("-enable-16bit-types"));
+        compile_args.push(OPCWSTR::new("-enable-16bit-types"));
     }
+
+    compile_args
+}
+
+fn compile_dxc(
+    source: &str,
+    args: &[OPCWSTR],
+    stage_bit: wgt::ShaderStages,
+    compiler: &Dxc::IDxcCompiler3,
+) -> Result<Dxc::IDxcBlob, crate::PipelineError> {
+    profiling::scope!("compile_dxc");
+
+    let compile_args: Vec<PCWSTR> = args.iter().map(OPCWSTR::ptr).collect();
 
     let buffer = Dxc::DxcBuffer {
         Ptr: source.as_ptr().cast(),
@@ -429,9 +561,6 @@ fn compile_dxc(
             .into_device_result("Compile")?;
 
     drop(compile_args);
-    drop(source_name);
-    drop(raw_ep);
-    drop(full_stage);
 
     let err_blob = get_output::<Dxc::IDxcBlobUtf8>(&compile_res, Dxc::DXC_OUT_ERRORS)?;
 
@@ -446,5 +575,5 @@ fn compile_dxc(
 
     let blob = get_output::<Dxc::IDxcBlob>(&compile_res, Dxc::DXC_OUT_OBJECT)?;
 
-    Ok(crate::dx12::CompiledShader::Dxc(blob))
+    Ok(blob)
 }

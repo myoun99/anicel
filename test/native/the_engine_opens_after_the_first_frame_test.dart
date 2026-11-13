@@ -73,23 +73,41 @@ void main() {
   // brush's strips last (🔬six of its ten, nine tenths of their 7.1–7.4 s
   // of the Surface's compiler: a stroke goes a pass a dispatch meanwhile),
   // and what the engine compiles apart waits from before the canvas first
-  // shows till a hand's are in.
-  test('the list compiles what a hand needs before the grids\', the chains\' '
-      'and the blur brush\'s strips — what the engine compiles apart held '
-      'till then, and no longer', () {
+  // shows till a hand's are in. ↩️What a hand needs was compiled in turn
+  // till 2026-11-13; it is asked for all at once now (🗣️유저 2026-11-13,
+  // the-wait-window-stands-seven-seconds-on-the-surface-Q1 「나란히
+  // 컴파일」), the engine compiling on a thread a core.
+  test('the list compiles what a hand needs, all at once, before the grids\', '
+      'the chains\' and the blur brush\'s strips — what the engine compiles '
+      'apart held till then, and no longer', () {
     final list = File(
       'lib/src/native/app_kernels_ahead.dart',
     ).readAsStringSync();
+    final (atOnce, through) = (
+      list.indexOf('await Future.wait<void>(['),
+      list.indexOf(']);', list.indexOf('await Future.wait<void>([')),
+    );
+    final aHandNeeds = [
+      'GpuInk.opening(engine)',
+      'opened,',
+      'EngineStrokes.warm(),',
+      'EngineCelPixels.warm(),',
+      'appGpuStampLandingKernels.warm(),',
+      'EngineFloods.warm(),',
+      'EngineStrokes.warmBlurs(),',
+    ];
+    final asked = [for (final one in aHandNeeds) list.indexOf(one, atOnce)];
+    expect(atOnce, isNonNegative, reason: '⛔premise: asked all at once');
+    expect(
+      asked,
+      everyElement(allOf(greaterThan(atOnce), lessThan(through))),
+      reason: 'each of what a hand needs is asked for with the rest',
+    );
     final inTurn = <Pattern>[
       'await openAppGpuEngine();',
       'await engine.whileCompilesApartWait(() async {',
-      'await GpuInk.opening(engine)',
-      'await appEngineFrameTools;',
-      'await EngineStrokes.warm();',
-      'await EngineCelPixels.warm();',
-      'await appGpuStampLandingKernels.warm();',
-      'await EngineFloods.warm();',
-      'await EngineStrokes.warmBlurs();',
+      'final opened = appEngineFrameTools;',
+      'await Future.wait<void>([',
       // Where the hold ends.
       RegExp(r'return opened;\s*\}\);'),
       // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을

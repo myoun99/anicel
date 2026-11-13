@@ -227,6 +227,7 @@ impl super::Device {
             mem_allocator,
             compiler_container,
             shader_cache: Default::default(),
+            dxil_cache: Default::default(),
             counters: Default::default(),
             limits: limits.clone(),
         })
@@ -460,6 +461,20 @@ impl super::Device {
 
     pub fn raw_queue(&self) -> &Direct3D12::ID3D12CommandQueue {
         &self.present_queue
+    }
+
+    /// ANICEL — not wgpu's: keeps what DXC makes for this device in
+    /// `folder` from now on, and hands what an earlier compile kept there
+    /// to the driver instead of compiling it again — or nowhere where
+    /// `folder` is `None`, as wgpu-hal does (`super::dxil_cache`).
+    pub fn keep_dxil_in(&self, folder: Option<std::path::PathBuf>) {
+        self.dxil_cache.keep_in(folder);
+    }
+
+    /// ANICEL — not wgpu's: how many compiles of this device the folder
+    /// [`Self::keep_dxil_in`] names has answered, DXC asked for none of them.
+    pub fn dxil_found(&self) -> u64 {
+        self.dxil_cache.found()
     }
 
     pub unsafe fn texture_from_raw(

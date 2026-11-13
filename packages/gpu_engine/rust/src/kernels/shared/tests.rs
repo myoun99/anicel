@@ -1226,24 +1226,22 @@ fn a_kernel_of_other_sources_constants_or_memory_is_another() {
 
 // Asked for by two at once, a kernel is compiled by one and waited for by
 // the other: what a pen put down finds, where the list the app compiles
-// ahead is at the stroke's own kernels.
+// ahead is at the stroke's own kernels. ↩️The two were held behind the
+// engine's one thread for compiling till 2026-11-13; each asks on a thread
+// of its own now (`CompilerTurn`, in `device.rs`), at once.
 #[test]
 fn two_that_ask_for_a_kernel_at_once_have_the_one() {
     let engine = first_engine();
     let source = a_kernel_named("asked for by two at once");
-    let (begin, begun) = std::sync::mpsc::channel::<()>();
-    let (holding, held_now) = std::sync::mpsc::channel::<()>();
+    let at_once = std::sync::Barrier::new(2);
     let (first, second) = std::thread::scope(|scope| {
-        // The engine's thread for compiling is held till both have asked.
-        let held = scope.spawn(|| {
-            engine.compiling(move |_| holding.send(()).is_ok() && begun.recv().is_ok())
-        });
-        held_now.recv().expect("the engine's thread is held");
-        let ask = || scope.spawn(|| pipeline(engine, &[&source], "main"));
+        let ask = || {
+            scope.spawn(|| {
+                at_once.wait();
+                pipeline(engine, &[&source], "main")
+            })
+        };
         let (first, second) = (ask(), ask());
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        begin.send(()).expect("the engine's thread waits");
-        assert!(held.join().expect("the thread that held it"));
         (first.join().expect("the first"), second.join().expect("the second"))
     });
     assert!(first == second, "each compiled its own");

@@ -230,6 +230,15 @@ pub fn shader_compiler() -> wgpu::Dx12Compiler {
     }
 }
 
+/// What DXC makes for `device` kept in `folder`, or nowhere where it is
+/// `None` (vendor/wgpu-hal, dxil_cache.rs).
+pub fn keep_dxil(device: &wgpu::Device, folder: Option<PathBuf>) {
+    // SAFETY: names only where the hal device keeps what DXC made.
+    if let Some(hal_device) = unsafe { device.as_hal::<Dx12>() } {
+        hal_device.keep_dxil_in(folder);
+    }
+}
+
 /// cargo test's engine is the test binary, beside which nothing installs
 /// the DLL: it takes build.rs's checked copy.
 #[cfg(test)]
@@ -272,7 +281,7 @@ fn beside_engine() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::kernels::shared::pipeline_or_why;
+    use crate::kernels::shared::{pipeline, pipeline_or_why};
     use crate::testing::first_engine;
 
     // The shape R1's vote table was first written in (gpu-canonical-store,
@@ -390,5 +399,201 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             assert_eq!(super::removed_by(reason), named, "{reason:?}");
         }
         assert_eq!(super::device_went_by(&first_engine().device), WENT_UNSAID);
+    }
+
+    // ---- What DXC made, kept (vendor/wgpu-hal, dxil_cache.rs) ----
+
+    // Each test's engines are its own, so that no other test's compiles go
+    // into its folder, and the folder is its own.
+    const WRITES_SEVEN: &str = "
+@group(0) @binding(0) var<storage, read_write> out: array<u32>;
+@compute @workgroup_size(1)
+fn main() { out[0] = 7u; }
+";
+
+    fn kept_in(name: &str) -> std::path::PathBuf {
+        let folder = std::env::temp_dir().join(format!("gpu_engine_dxil_{}_{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        folder
+    }
+
+    fn keeping(folder: &std::path::Path) -> crate::device::Engine {
+        let engine = crate::device::Engine::open_first().expect("an adapter");
+        super::keep_dxil(&engine.device, Some(folder.to_path_buf()));
+        engine
+    }
+
+    fn found(engine: &crate::device::Engine) -> u64 {
+        // SAFETY: only reads a count.
+        unsafe { engine.device.as_hal::<super::Dx12>() }.expect("DX12").dxil_found()
+    }
+
+    fn kept_files(folder: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
+        let mut files: Vec<_> = std::fs::read_dir(folder)
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| {
+                        let entry = entry.ok()?;
+                        Some((entry.path(), entry.metadata().ok()?.len()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        files.sort();
+        files
+    }
+
+    /// What `pipeline` writes to the first word of the buffer at binding 0.
+    fn first_word(engine: &crate::device::Engine, pipeline: &wgpu::ComputePipeline) -> u32 {
+        use crate::kernels::shared::{Encoded, encode, whole};
+        let out = engine.filled(
+            "kept DXIL",
+            &[0; 4],
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        );
+        encode(engine, &[Encoded { pipeline, bound: whole(&[(0, &out)]), groups: (1, 1, 1) }]);
+        let bytes = crate::testing::read_buffer(engine, &out);
+        u32::from_le_bytes(bytes[..4].try_into().unwrap())
+    }
+
+    // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    // 「디스크 캐시」): what one engine's DXC made, the next is handed — and
+    // it is that kernel.
+    #[test]
+    fn what_dxc_made_is_handed_to_the_next_engine() {
+        let folder = kept_in("handed");
+        let first = keeping(&folder);
+        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
+        assert_eq!(found(&first), 0, "nothing was kept before");
+        assert_eq!(kept_files(&folder).len(), 1, "what DXC made is kept");
+        let next = keeping(&folder);
+        let handed = pipeline(&next, &[WRITES_SEVEN], "main");
+        assert_eq!(found(&next), 1, "the next engine is handed it");
+        assert_eq!(first_word(&next, &handed), 7);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // A file cut short — a crash as it was written, a disk — is compiled
+    // again, and kept whole.
+    #[test]
+    fn a_kept_file_cut_short_is_compiled_again() {
+        let folder = kept_in("cut");
+        let _ = pipeline(&keeping(&folder), &[WRITES_SEVEN], "main");
+        let Ok([(path, whole)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
+            panic!("one file is kept");
+        };
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .and_then(|file| file.set_len(whole - 1))
+            .expect("the file cut short");
+        let next = keeping(&folder);
+        let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
+        assert_eq!(found(&next), 0, "what was cut short is handed to no one");
+        assert_eq!(first_word(&next, &compiled), 7);
+        assert_eq!(kept_files(&folder), [(path, whole)], "kept whole again");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // A file whose DXIL changed on the disk, its length kept, is compiled
+    // again: the hash it holds says so.
+    #[test]
+    fn a_kept_file_changed_on_the_disk_is_compiled_again() {
+        let folder = kept_in("changed");
+        let _ = pipeline(&keeping(&folder), &[WRITES_SEVEN], "main");
+        let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
+            panic!("one file is kept");
+        };
+        let mut bytes = std::fs::read(&path).expect("the file");
+        *bytes.last_mut().expect("a byte of DXIL") ^= 1;
+        std::fs::write(&path, &bytes).expect("the file changed");
+        let next = keeping(&folder);
+        let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
+        assert_eq!(found(&next), 0, "what changed is handed to no one");
+        assert_eq!(first_word(&next, &compiled), 7);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // What one asking kept, under the name of another's — as two whose
+    // hashes are one would be — is not handed for that other: the whole of
+    // what was asked is in the file.
+    #[test]
+    fn a_file_under_another_s_name_is_not_handed() {
+        let folder = kept_in("renamed");
+        let first = keeping(&folder);
+        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
+        let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
+            panic!("one file is kept");
+        };
+        let _ = pipeline(&first, &[&WRITES_SEVEN.replace("7u", "8u")], "main");
+        let eight = kept_files(&folder).into_iter().map(|(path, _)| path).find(|path| *path != seven);
+        std::fs::rename(eight.expect("the second file"), &seven).expect("put under the first's name");
+        let next = keeping(&folder);
+        let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
+        assert_eq!(found(&next), 0, "what another asked is handed to no one");
+        assert_eq!(first_word(&next, &compiled), 7);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // The app names its folder before it opens its engine
+    // (`gpu_engine_keep_shaders_in`): each engine opened from then on keeps
+    // what DXC made there, and hands it to the next.
+    #[test]
+    fn engines_opened_once_the_app_names_a_folder_keep_their_shaders_there() {
+        let folder = kept_in("named");
+        let named = folder.to_string_lossy().into_owned();
+        // SAFETY: `named` holds its length.
+        unsafe { crate::platform::gpu_engine_keep_shaders_in(named.as_ptr(), named.len()) };
+        let opened = (crate::device::Engine::open_first(), crate::device::Engine::open_first());
+        // SAFETY: a length of 0 reads nothing.
+        unsafe { crate::platform::gpu_engine_keep_shaders_in(std::ptr::null(), 0) };
+        let (first, next) = (opened.0.expect("an adapter"), opened.1.expect("an adapter"));
+        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
+        let handed = pipeline(&next, &[WRITES_SEVEN], "main");
+        assert_eq!(found(&next), 1, "the next engine is handed it");
+        assert_eq!(first_word(&next, &handed), 7);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // What another source asked is not handed for this one: each is kept
+    // by all that was asked, and each handed its own. (⚠️By the HLSL naga
+    // makes of it: two sources that differ in a comment are one.)
+    #[test]
+    fn what_was_asked_otherwise_is_kept_apart() {
+        let folder = kept_in("apart");
+        let writes_eight = WRITES_SEVEN.replace("7u", "8u");
+        let first = keeping(&folder);
+        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
+        let _ = pipeline(&first, &[&writes_eight], "main");
+        assert_eq!(found(&first), 0);
+        assert_eq!(kept_files(&folder).len(), 2);
+        let next = keeping(&folder);
+        let (seven, eight) = (
+            pipeline(&next, &[WRITES_SEVEN], "main"),
+            pipeline(&next, &[&writes_eight], "main"),
+        );
+        assert_eq!(found(&next), 2, "each is handed");
+        assert_eq!((first_word(&next, &seven), first_word(&next, &eight)), (7, 8));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    // A folder past what it may hold lets go of what was used longest ago,
+    // as a device starts to keep its shaders there.
+    #[test]
+    fn a_folder_past_its_most_lets_its_oldest_go() {
+        let folder = kept_in("most");
+        std::fs::create_dir_all(&folder).expect("the folder");
+        let old = folder.join("old.dxil");
+        let new = folder.join("new.dxil");
+        for (path, mib, age) in [(&old, 40, 3600), (&new, 30, 0)] {
+            let file = std::fs::File::create(path).expect("a file");
+            file.set_len(mib << 20).expect("its length");
+            let then = std::time::SystemTime::now() - std::time::Duration::from_secs(age);
+            file.set_modified(then).expect("its age");
+        }
+        drop(keeping(&folder));
+        assert!(!old.exists(), "the one used longest ago went");
+        assert!(new.exists(), "what fits stayed");
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

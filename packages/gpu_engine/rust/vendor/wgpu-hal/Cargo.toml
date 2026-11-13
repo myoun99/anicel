@@ -79,6 +79,8 @@ dx12 = [
     "windows/Win32_System_Diagnostics_Debug",
     "windows/Win32_System_Kernel",
     "windows/Win32_System_Performance",
+    # ANICEL: CoTaskMemFree, for the DXC commit the DXIL cache knows its files by.
+    "windows/Win32_System_Com",
     "windows/Win32_System_Threading",
     "windows/Win32_UI_WindowsAndMessaging",
 ]

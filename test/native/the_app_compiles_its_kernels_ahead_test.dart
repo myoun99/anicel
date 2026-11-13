@@ -4,6 +4,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
@@ -72,8 +73,9 @@ void main() {
   final blur = fx(EffectKind.blur, {'blurriness': 24});
   late int builtByTheList;
   // Whether what the engine compiles apart was held, looked at between this
-  // isolate's turns while the list ran: with what a blur stroke needs — the
-  // last of a hand's — still to come, and once the grids' were in.
+  // isolate's turns while the list ran: with what a blur stroke needs — one
+  // of a hand's, all asked for at once — still to come, and once the grids'
+  // were in.
   final heldBeforeAHandsWereIn = <bool>[];
   final heldOnceTheGridsWereIn = <bool>[];
   // Whether the app was held for its engine ([appEngineGetsReady]), looked
@@ -179,6 +181,18 @@ void main() {
   test('the list builds none on this thread', () {
     expect(builtByTheList, 0);
   });
+
+  // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+  // 「디스크 캐시」): what the list compiled is kept for the next launch, in
+  // the app's folder for it (rust/vendor/wgpu-hal, dxil_cache.rs).
+  test(
+    'what the list compiled is kept for the next launch',
+    () {
+      final kept = Directory(appShaderFolder()).listSync().whereType<File>();
+      expect(kept, isNotEmpty);
+    },
+    skip: Platform.isWindows ? false : 'what is kept is what DXC made',
+  );
 
   // 🗣️관제 2026-11-11 06:00 · 06:07 (④): 「손이 쓰는 커널 → composite 전용
   // 패스」, 「잡은 것은 모든 길에서 놓여야 한다」.

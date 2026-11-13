@@ -24,6 +24,13 @@ import '../flutter_test_run.dart';
 /// • `launch-labels.txt` — the launch splash's stage names in the app's
 ///   language, written by a run and read by the next one's runner, which
 ///   speaks before Dart does. See `LaunchSplash.labelsFileName`.
+/// • `ShaderCache/` — what the GPU engine's shader compiler made, for the
+///   next launch to hand its driver instead of compiling it again
+///   (🗣️유저 2026-11-13, the-wait-window-stands-seven-seconds-on-the-surface-Q1
+///   「디스크 캐시」: 「캐시 파일이 앱 데이터 옆에 생긴다」). It lives till
+///   the engine lets it go, the oldest first past what the folder may hold;
+///   nothing in it is the user's, and a launch without it compiles again.
+///   See `appShaderFolder`.
 ///
 /// 🪦**TWO ROOMS FULL OF PROJECT DATA ARE GONE.** `Recovery/` held autosave
 /// sidecars until the tick started saving the project file itself, and

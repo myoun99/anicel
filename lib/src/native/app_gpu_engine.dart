@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
     show ChangeNotifier, ValueListenable, visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../services/persistence/app_support_path.dart';
 import 'gpu_adapter_choice.dart';
 import 'screen_texture.dart';
 
@@ -439,6 +440,11 @@ final class _Open extends ChangeNotifier
   }
 }
 
+/// Where the app's engines keep the shaders they compile, for the next
+/// launch ([GpuEngine.keepShadersIn]): `<container>/ShaderCache`.
+String appShaderFolder() =>
+    testRedirectedAppSupportPath('ShaderCache', sandbox: 'shaders');
+
 /// Opens [appGpuEngine] off this isolate ([GpuEngine.opening]) — at once
 /// where it is open already — and tells [appGpuEngineOpen]. The app asks
 /// after its first frame; a test that shows the engine's screens asks for
@@ -446,6 +452,7 @@ final class _Open extends ChangeNotifier
 Future<GpuEngine> openAppGpuEngine() {
   final its = _its;
   return its.opening ??= () async {
+    GpuEngine.keepShadersIn(appShaderFolder());
     final opened = its.engine ?? await GpuEngine.opening(_opener());
     // Asked the other way while this one opened: the app keeps one.
     final engine = its.engine ??= opened;

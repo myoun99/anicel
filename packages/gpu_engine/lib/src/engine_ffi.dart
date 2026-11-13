@@ -154,6 +154,11 @@ final class DabSpec extends Struct {
 /// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs).
 final class Plugin extends Opaque {}
 
+@Native<Void Function(Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_keep_shaders_in',
+)
+external void keepShadersIn(Pointer<Uint8> folder, int length);
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 

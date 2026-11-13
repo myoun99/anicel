@@ -84,6 +84,8 @@ mod dcomp;
 mod descriptor;
 mod device;
 mod device_creation;
+// ANICEL: what DXC made, kept on disk (dxil_cache.rs).
+mod dxil_cache;
 mod instance;
 mod pipeline_desc;
 mod sampler;
@@ -781,6 +783,8 @@ pub struct Device {
     mem_allocator: Allocator,
     compiler_container: Arc<shader_compilation::CompilerContainer>,
     shader_cache: Mutex<ShaderCache>,
+    /// ANICEL: where what DXC makes is kept ([`dxil_cache`]).
+    dxil_cache: dxil_cache::DxilCache,
     counters: Arc<wgt::HalCounters>,
     limits: wgt::Limits,
 }
