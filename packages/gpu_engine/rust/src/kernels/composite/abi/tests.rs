@@ -12,7 +12,7 @@ use crate::kernels::mask::tests::masked;
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
-use crate::testing::{last_error, read_buffer, stored};
+use crate::testing::{first_engine, last_error, read_buffer, stored};
 
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 /// Moved left by 37.25 px and down by 9.5: a pose R1 samples, not copies.
@@ -26,6 +26,12 @@ const OUTPUT: [(i32, i32); 3] = [(0, 0), (1, 0), (2, 0)];
 const BLEND: u32 = 0;
 const PICK: u32 = 1;
 const NEAREST: u32 = 3;
+
+/// A plan of no steps, the tests' engine's to let go of.
+fn planned() -> *mut Planned {
+    // SAFETY: the engine is live.
+    unsafe { gpu_engine_plan_new(first_engine()) }
+}
 
 /// A tile of words of its own, `n`, opaque where `opaque` — else a pixel
 /// of no alpha all 0, as a pass lays one.
@@ -95,7 +101,7 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
     let warm: [f64; MATRIX_WORDS] = [
         1.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.0, -10.0, 0.0, 0.0, 0.0, 1.0, 0.0,
     ];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr()), 0);
@@ -155,7 +161,7 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
 fn a_row_copied_over_nothing_lays_the_bytes_stored() {
     let tiles = [tile(4, false), tile(5, false), tile(6, false)];
     let (pool, at) = stored(&tiles);
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_set(plan, 0, 0, 3, 1, at.iter().map(|&at| at.word()).collect::<Vec<_>>().as_ptr());
@@ -174,7 +180,7 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
     let tiles = [tile(7, true), tile(8, true)];
     let (pool, at) = stored(&tiles);
     let engine = rig().engine;
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr());
@@ -221,7 +227,7 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
 #[test]
 fn a_row_whose_pose_lands_nothing_is_left_out() {
     let nowhere = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live and `nowhere` holds nine.
     let added = unsafe { gpu_engine_plan_row(plan, 0, -1, -1, -1, nowhere.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL) };
     assert_eq!(added, 0);
@@ -236,7 +242,7 @@ fn a_row_whose_pose_lands_nothing_is_left_out() {
 #[test]
 fn what_is_refused_says_why() {
     let (pool, _) = stored(&[tile(9, false)]);
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     let past = [1e12; MATRIX_WORDS];
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
@@ -337,7 +343,7 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
         0.0, 2.0, 120.0, 40.0, 1.0, 0.05, 0.0, 1.0, 1.0, 0.0, 0.0, 1.02,
     ];
     let picture = [0, 0, 2 * TILE as i32, TILE as i32];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr()), 0);
@@ -440,8 +446,8 @@ fn a_map_laid_from_a_run_is_read_as_its_tiles() {
     let lens = lens_words([5.0, 0.0, 0.0, 1.0, 0.0]);
     let picture = [0, 0, 3 * TILE as i32, TILE as i32];
     let words = [at[0].word(), at[1].word(), at[2].word()];
-    let laid = gpu_engine_plan_new();
-    let plan = gpu_engine_plan_new();
+    let laid = planned();
+    let plan = planned();
     // SAFETY: the plans are live; each array holds what its call reads.
     let out = unsafe {
         gpu_engine_plan_set(laid, 0, 0, 3, 1, words.as_ptr());
@@ -488,7 +494,7 @@ fn what_a_chain_s_call_refuses_says_why() {
     let picture = [0, 0, 1, 1];
     let (sides, _) = hexagon();
     let lens = lens_words([2.0, 0.0, 0.0, 1.0, 0.0]);
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         let run = |maps: &[u8], count| {
@@ -526,10 +532,11 @@ fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
     let contrast: [f64; MATRIX_WORDS] = [
         1.4, 0.0, 0.0, 0.0, -20.0, 0.0, 1.2, 0.1, 0.0, 5.0, 0.0, 0.0, 0.8, 0.0, 30.0, 0.0, 0.0, 0.0, 1.0, 0.0,
     ];
-    let held = gpu_engine_held_new();
+    // SAFETY: the engine is live.
+    let held = unsafe { gpu_engine_held_new(first_engine()) };
     let ran_from = |first: usize| {
         let words = [at[first].word(), at[first + 1].word(), at[first + 2].word()];
-        let plan = gpu_engine_plan_new();
+        let plan = planned();
         // SAFETY: `plan` and `held` are live; each array holds what its call
         // reads.
         unsafe {
@@ -554,7 +561,7 @@ fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
     // SAFETY: `held` is live.
     assert_eq!(unsafe { gpu_engine_held_bytes_of(held, 11) }, 0);
     assert_ne!(ran_from(3), first, "let go, it runs");
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` and `held` are live, each freed once.
     unsafe {
         assert_eq!(gpu_engine_plan_chain_held(plan, 0, held, 11), -1);
@@ -575,7 +582,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     let tiles = [tile(11, true), tile(12, false)];
     let (pool, at) = stored(&tiles);
     let (engine, composite) = (rig().engine, &rig().composite);
-    let (plan, again) = (gpu_engine_plan_new(), gpu_engine_plan_new());
+    let (plan, again) = (planned(), planned());
     // SAFETY: both plans are live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr());
@@ -589,8 +596,8 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     let (extent, changed) = ([25, 15, 50, 45], [30, 20, 40, 30]);
     let camera = [0.4, 0.3, 20.25, -0.3, 0.4, 30.5];
     let (size, rect) = ((64, 48), [3u32, 2, 60, 47]);
-    // SAFETY: the extent holds four words.
-    let screen = unsafe { gpu_engine_screen_new(extent.as_ptr(), 1.0) };
+    // SAFETY: the engine is live, and the extent holds four words.
+    let screen = unsafe { gpu_engine_screen_new(first_engine(), extent.as_ptr(), 1.0) };
     assert!(!screen.is_null(), "{}", last_error());
     let mut in_rust = Screen::new(extent, 1.0).expect("screen");
     let in_rust_camera = Camera { inverse: camera, scale: 2.0, mode: ResampleMode::Nearest };
@@ -642,7 +649,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
         1.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.0, -10.0, 0.0, 0.0, 0.0, 1.0, 0.0,
     ];
     let own = [0, 0, 2, 1];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr()), 0);
@@ -708,7 +715,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
 fn a_buffer_closed_as_a_row_whose_pose_lands_nothing_is_taken_out() {
     let nowhere = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
     let own = [0, 0, 1, 1];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_solid(plan, 0xff00_00ff, 0, 0, 10, 10);
@@ -730,7 +737,7 @@ fn a_buffer_closed_as_a_row_whose_pose_lands_nothing_is_taken_out() {
 #[test]
 fn what_a_row_s_close_refuses_says_why() {
     let (own, negative) = ([0, 0, 1, 1], [0, 0, -1, 1]);
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     let close = |chain, tiles: *const i32, sampling| {
         // SAFETY: `plan` is live; `tiles` is null or holds four words.
         unsafe {
@@ -777,7 +784,7 @@ fn a_mark_built_call_by_call_composites_as_one_built_in_rust() {
     let bytes: Vec<u8> =
         (0..height).flat_map(|y| (0..width).map(move |x| cover(left + x, top + y))).collect();
     let shift = [3 << 16 | 0x8000, -(2 << 16)];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: the engine is live and `bytes` holds `width × height`.
     let mask = unsafe { gpu_engine_mask_new(rig().engine, bytes.as_ptr(), left, top, width as u32, height as u32) };
     assert!(!mask.is_null(), "{}", last_error());
@@ -810,7 +817,7 @@ fn a_mark_built_call_by_call_composites_as_one_built_in_rust() {
 #[test]
 fn a_mark_whose_pose_lands_nothing_is_left_out() {
     let nowhere = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: `plan` is live and `nowhere` holds nine; then it is freed.
     unsafe {
         assert_eq!(gpu_engine_plan_mark(plan, nowhere.as_ptr(), 1.0, BLEND, TILE, TILE, 0, 0), 0);
@@ -837,7 +844,7 @@ fn what_a_mark_refuses_says_why() {
         )
     };
     assert!(!mask.is_null() && !other.is_null(), "{}", last_error());
-    let plan = gpu_engine_plan_new();
+    let plan = planned();
     // SAFETY: every pointer is live and `IDENTITY` holds nine; then each is
     // freed.
     unsafe {
@@ -872,7 +879,7 @@ fn a_picture_a_chain_puts_is_shared_with_each_plan_not_copied() {
     let bytes: Vec<u8> = (0..4 * 3 * 4).map(|i| (i * 7) as u8).collect();
     // SAFETY: `bytes` holds its length.
     let made = unsafe { gpu_engine_put_picture_new(bytes.as_ptr(), bytes.len()) };
-    let plans = [gpu_engine_plan_new(), gpu_engine_plan_new()];
+    let plans = [planned(), planned()];
     let picture = [0, 0, 4, 3];
     for plan in plans {
         // SAFETY: `plan` and `made` are live; `picture` holds four edges.

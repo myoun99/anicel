@@ -419,8 +419,10 @@ external void poolGiveBack(
 @Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_bytes')
 external int poolBytes(Pointer<Pool> pool);
 
-@Native<Pointer<Planned> Function()>(symbol: 'gpu_engine_plan_new')
-external Pointer<Planned> planNew();
+@Native<Pointer<Planned> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_plan_new',
+)
+external Pointer<Planned> planNew(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_free')
 external void planFree(Pointer<Planned> plan);
@@ -801,8 +803,10 @@ external int planChainPut(
   Pointer<PutPicture> made,
 );
 
-@Native<Pointer<ChainRead> Function()>(symbol: 'gpu_engine_chain_read_new')
-external Pointer<ChainRead> chainReadNew();
+@Native<Pointer<ChainRead> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_chain_read_new',
+)
+external Pointer<ChainRead> chainReadNew(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<ChainRead>)>(symbol: 'gpu_engine_chain_read_free')
 external void chainReadFree(Pointer<ChainRead> read);
@@ -824,8 +828,10 @@ external bool chainReadPixels(
   int length,
 );
 
-@Native<Pointer<HeldChains> Function()>(symbol: 'gpu_engine_held_new')
-external Pointer<HeldChains> heldNew();
+@Native<Pointer<HeldChains> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_held_new',
+)
+external Pointer<HeldChains> heldNew(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<HeldChains>)>(symbol: 'gpu_engine_held_free')
 external void heldFree(Pointer<HeldChains> held);
@@ -1010,10 +1016,14 @@ external int compositeShow(
   Pointer<Uint32> rect,
 );
 
-@Native<Pointer<Screen> Function(Pointer<Int32>, Double)>(
+@Native<Pointer<Screen> Function(Pointer<Engine>, Pointer<Int32>, Double)>(
   symbol: 'gpu_engine_screen_new',
 )
-external Pointer<Screen> screenNew(Pointer<Int32> extent, double floor);
+external Pointer<Screen> screenNew(
+  Pointer<Engine> engine,
+  Pointer<Int32> extent,
+  double floor,
+);
 
 @Native<Void Function(Pointer<Screen>)>(symbol: 'gpu_engine_screen_free')
 external void screenFree(Pointer<Screen> screen);
@@ -1097,8 +1107,10 @@ external int screenShow(
   Pointer<Uint32> rect,
 );
 
-@Native<Pointer<Export> Function()>(symbol: 'gpu_engine_export_new')
-external Pointer<Export> exportNew();
+@Native<Pointer<Export> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_export_new',
+)
+external Pointer<Export> exportNew(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<Export>)>(symbol: 'gpu_engine_export_free')
 external void exportFree(Pointer<Export> passes);
@@ -1226,10 +1238,13 @@ external bool exportLayColour(
   Pointer<Int32> within,
 );
 
-@Native<Pointer<Readout> Function(Pointer<Shown>)>(
+@Native<Pointer<Readout> Function(Pointer<Engine>, Pointer<Shown>)>(
   symbol: 'gpu_engine_export_read',
 )
-external Pointer<Readout> exportRead(Pointer<Shown> frame);
+external Pointer<Readout> exportRead(
+  Pointer<Engine> engine,
+  Pointer<Shown> frame,
+);
 
 @Native<
   Pointer<Readout> Function(
@@ -1903,8 +1918,10 @@ external bool gridDraw(
   int atlasHeight,
 );
 
-@Native<Pointer<GridLay> Function()>(symbol: 'gpu_engine_grid_lay_new')
-external Pointer<GridLay> gridLayNew();
+@Native<Pointer<GridLay> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_grid_lay_new',
+)
+external Pointer<GridLay> gridLayNew(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<GridLay>, Pointer<Engine>, Bool)>(
   symbol: 'gpu_engine_grid_lay_ready',

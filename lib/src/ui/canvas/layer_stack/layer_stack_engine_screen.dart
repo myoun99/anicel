@@ -306,7 +306,7 @@ T _planned<T>(
         hold: hold,
         paper: paper,
         letters: letters,
-        holding: _holding(holds, pass, origins, paper),
+        holding: _holding(holds, composite.engine, pass, origins, paper),
         plugins: stages == null
             ? null
             : (
@@ -326,18 +326,20 @@ T _planned<T>(
   });
 }
 
-/// The holding of the chains [pass] plans ([ChainHolding]): a node's, on
-/// [paper], under what the node it came from shows ([origins]) — none for
-/// one that shows a row drawn live ([_FrameReading._pictureOf]).
+/// The holding of the chains [pass] plans on [engine] ([ChainHolding]): a
+/// node's, on [paper], under what the node it came from shows ([origins])
+/// — none for one that shows a row drawn live
+/// ([_FrameReading._pictureOf]).
 ChainHolding? _holding(
   EngineChainHolds? holds,
+  GpuEngine engine,
   _FrameReading pass,
   Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>> origins,
   Rect paper,
 ) => switch (holds) {
   null => null,
   final holds => (
-    held: holds.held,
+    held: holds.heldOf(engine),
     idOf: (node) => switch (origins[node]) {
       final origin? => switch (pass._pictureOf(origin)) {
         final picture? => holds.idOf((picture: picture, paper: paper)),

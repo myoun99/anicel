@@ -161,7 +161,8 @@ fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
     let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), NO_ATLAS.0, 0, 0) };
     assert!(drew, "{}", last_error());
     let screen = crate::device::storage_texture(engine.device(), 3, 2, wgpu::TextureFormat::Rgba8Unorm);
-    let lay = gpu_engine_grid_lay_new();
+    // SAFETY: the engine is live.
+    let lay = unsafe { gpu_engine_grid_lay_new(engine) };
     let tiles = [tile.cast_const()];
     let laid = |rect: [u32; 4], boxes: [f64; 8]| {
         // SAFETY: as above.

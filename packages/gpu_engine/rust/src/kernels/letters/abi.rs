@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::Engine;
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes};
 use crate::fail;
 use crate::kernels::composite::Composite;
 
@@ -129,33 +129,29 @@ pub unsafe extern "C" fn gpu_engine_faces_of(handed: *mut FacesHanded) -> *mut F
         };
         set_in.push(faces);
     }
-    Faces::new(set_in).map_or(std::ptr::null_mut(), |faces| Box::into_raw(Box::new(faces)))
+    Faces::new(set_in).map_or(std::ptr::null_mut(), hands_bytes)
 }
 
 /// # Safety
 /// `faces` came from `gpu_engine_faces_of`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_faces_free(faces: *mut Faces) {
-    if !faces.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(faces) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(faces) };
 }
 
 /// A picture of letters of no pass.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_letters_new() -> *mut Lettering {
-    Box::into_raw(Box::default())
+    hands_bytes(Lettering::default())
 }
 
 /// # Safety
 /// `letters` came from `gpu_engine_letters_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_letters_free(letters: *mut Lettering) {
-    if !letters.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(letters) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(letters) };
 }
 
 /// Begins a pass over the ones before it: its shapes in `colour` —
@@ -348,7 +344,7 @@ pub unsafe extern "C" fn gpu_engine_letters_set(
         });
         // SAFETY: `rect` holds four words.
         unsafe { *rect.cast::<[i32; 4]>() = at };
-        lettered.map_or(std::ptr::null_mut(), |lettered| Box::into_raw(Box::new(lettered)))
+        lettered.map_or(std::ptr::null_mut(), |lettered| engine.hands(lettered))
     })
 }
 
@@ -382,8 +378,6 @@ pub unsafe extern "C" fn gpu_engine_lettered_read(
 /// `lettered` came from `gpu_engine_letters_set`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_lettered_free(lettered: *mut Lettered) {
-    if !lettered.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(lettered) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(lettered) };
 }

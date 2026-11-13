@@ -30,6 +30,8 @@ mod one_filler;
 #[cfg(test)]
 mod one_framing;
 #[cfg(test)]
+mod one_handing_out;
+#[cfg(test)]
 mod one_kept_or_made;
 #[cfg(test)]
 mod one_maths;

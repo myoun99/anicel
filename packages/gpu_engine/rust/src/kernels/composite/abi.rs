@@ -19,7 +19,7 @@ mod tests;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::device::Engine;
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, on_thread_of};
 use crate::fail;
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
@@ -66,12 +66,12 @@ pub(crate) struct MaskPlane {
 }
 
 impl MaskPlane {
-    /// `plane` — bytes over `size` whose top-left pixel is `at` — kept for
-    /// the app, counted among its masks until it lets it go
-    /// ([`gpu_engine_mask_free`]).
-    pub(crate) fn kept(plane: wgpu::Buffer, at: (i32, i32), size: MaskBox) -> *mut MaskPlane {
+    /// `plane` — bytes over `size` whose top-left pixel is `at`, of
+    /// `engine` — kept for the app, counted among its masks until it lets
+    /// it go ([`gpu_engine_mask_free`]).
+    pub(crate) fn kept(engine: &Engine, plane: wgpu::Buffer, at: (i32, i32), size: MaskBox) -> *mut MaskPlane {
         MASK_BYTES.fetch_add(size.bytes(), Ordering::Relaxed);
-        Box::into_raw(Box::new(MaskPlane { plane, at, size }))
+        engine.hands(MaskPlane { plane, at, size })
     }
 
     pub(crate) fn mask(&self) -> Mask<'_> {
@@ -237,20 +237,23 @@ fn named(index: i32) -> Option<usize> {
     usize::try_from(index).ok()
 }
 
-/// A plan of no steps.
+/// A plan of no steps, `engine`'s to let go of.
+///
+/// # Safety
+/// `engine` is live.
 #[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_plan_new() -> *mut Planned {
-    Box::into_raw(Box::default())
+pub unsafe extern "C" fn gpu_engine_plan_new(engine: *const Engine) -> *mut Planned {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.hands(Planned::default())
 }
 
 /// # Safety
 /// `plan` came from `gpu_engine_plan_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_plan_free(plan: *mut Planned) {
-    if !plan.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(plan) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(plan) };
 }
 
 /// Adds the tile set of `columns` × `rows` canvas tiles whose top-left is
@@ -506,7 +509,7 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
     engine.on_thread(|| {
         let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
         let plane = words_buffer(engine, "mask", &size.words_of(bytes), usage);
-        MaskPlane::kept(plane, (x, y), size)
+        MaskPlane::kept(engine, plane, (x, y), size)
     })
 }
 
@@ -515,11 +518,12 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
 /// `gpu_engine_selection_mask_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
-    if !mask.is_null() {
-        // SAFETY: see the function's contract.
-        let mask = unsafe { Box::from_raw(mask) };
+    // SAFETY: see the function's contract.
+    if let Some(mask) = unsafe { mask.as_ref() } {
         MASK_BYTES.fetch_sub(mask.size.bytes(), Ordering::Relaxed);
     }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(mask) };
 }
 
 /// Copies `mask`'s bytes — a byte a pixel, row after row, the app's
@@ -754,7 +758,7 @@ pub unsafe extern "C" fn gpu_engine_put_picture_new(pixels: *const u8, length: u
         _ => unsafe { std::slice::from_raw_parts(pixels, length) }.into(),
     };
     PUT_BYTES.fetch_add(length as u64, Ordering::Relaxed);
-    Box::into_raw(Box::new(PutPicture { pixels }))
+    hands_bytes(PutPicture { pixels })
 }
 
 /// Its first byte: the app's to read, never to write, while `picture`
@@ -773,11 +777,12 @@ pub unsafe extern "C" fn gpu_engine_put_picture_pixels(picture: *const PutPictur
 /// keeps its own hold.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_put_picture_free(picture: *mut PutPicture) {
-    if !picture.is_null() {
-        // SAFETY: see the function's contract.
-        let picture = unsafe { Box::from_raw(picture) };
+    // SAFETY: see the function's contract.
+    if let Some(picture) = unsafe { picture.as_ref() } {
         PUT_BYTES.fetch_sub(picture.pixels.len() as u64, Ordering::Relaxed);
     }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(picture) };
 }
 
 /// The bytes of every picture the app keeps for the chains that put it,
@@ -806,10 +811,16 @@ pub unsafe extern "C" fn gpu_engine_plan_chain_put(
     plan.op(chain, Op::Put { picture, pixels: Arc::clone(&made.pixels) }, None)
 }
 
-/// A read of a chain's picture for the host ([`ChainRead`]), empty.
+/// A read of a chain's picture for the host ([`ChainRead`]), empty,
+/// `engine`'s to let go of.
+///
+/// # Safety
+/// `engine` is live.
 #[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_chain_read_new() -> *mut ChainRead {
-    Box::into_raw(Box::default())
+pub unsafe extern "C" fn gpu_engine_chain_read_new(engine: *const Engine) -> *mut ChainRead {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.hands(ChainRead::default())
 }
 
 /// Lets go of what `read` keeps that no plan names.
@@ -818,10 +829,8 @@ pub extern "C" fn gpu_engine_chain_read_new() -> *mut ChainRead {
 /// `read` came from `gpu_engine_chain_read_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_chain_read_free(read: *mut ChainRead) {
-    if !read.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(read) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(read) };
 }
 
 /// Reads into `out`, `length` bytes, what `read` kept of the rectangle its
@@ -855,10 +864,15 @@ pub unsafe extern "C" fn gpu_engine_chain_read_pixels(
 }
 
 /// A hold for what the chains of the plans that name it put
-/// ([`gpu_engine_plan_chain_held`]), empty.
+/// ([`gpu_engine_plan_chain_held`]), empty, `engine`'s to let go of.
+///
+/// # Safety
+/// `engine` is live.
 #[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_held_new() -> *mut HeldChains {
-    Box::into_raw(Box::default())
+pub unsafe extern "C" fn gpu_engine_held_new(engine: *const Engine) -> *mut HeldChains {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.hands(HeldChains::default())
 }
 
 /// Lets go of everything `held` keeps that no plan names; what one does is
@@ -868,20 +882,19 @@ pub extern "C" fn gpu_engine_held_new() -> *mut HeldChains {
 /// `held` came from `gpu_engine_held_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_held_free(held: *mut HeldChains) {
-    if !held.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(held) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(held) };
 }
 
-/// Lets go of what `held` keeps under `id`, if anything.
+/// Lets go of what `held` keeps under `id`, if anything — buffers, so on
+/// its engine's thread ([`on_thread_of`]).
 ///
 /// # Safety
 /// `held` is live.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_held_let_go(held: *const HeldChains, id: u32) {
     // SAFETY: see the function's contract.
-    unsafe { &*held }.let_go(id);
+    unsafe { on_thread_of(held, || (*held).let_go(id)) };
 }
 
 /// The bytes `held` keeps under `id` — none where it keeps nothing.
@@ -1134,7 +1147,7 @@ pub unsafe extern "C" fn gpu_engine_composite_new(engine: *const Engine) -> *mut
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Composite::new(engine).map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+        Composite::new(engine).map_or(std::ptr::null_mut(), |composite| engine.hands(composite))
     })
 }
 
@@ -1153,7 +1166,7 @@ pub unsafe extern "C" fn gpu_engine_composite_showing(engine: *const Engine, bgr
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
         Composite::showing(engine, Some(surface_format(bgra)))
-            .map_or(std::ptr::null_mut(), |composite| Box::into_raw(Box::new(composite)))
+            .map_or(std::ptr::null_mut(), |composite| engine.hands(composite))
     })
 }
 
@@ -1177,10 +1190,8 @@ pub unsafe extern "C" fn gpu_engine_composite_chains(composite: *const Composite
 /// `composite` came from `gpu_engine_composite_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_composite_free(composite: *mut Composite) {
-    if !composite.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(composite) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(composite) };
 }
 
 /// Composites `plan` over the `count` output tiles at `tiles` — a canvas
@@ -1209,7 +1220,7 @@ pub unsafe extern "C" fn gpu_engine_composite_run(
         let tiles: Vec<(i32, i32)> = words.chunks_exact(2).map(|tile| (tile[0], tile[1])).collect();
         let widest = composite.widest();
         let ran = plan.laid(pool, |laid| composite.run(engine, laid, &tiles, extent, widest));
-        ran.map_or(std::ptr::null_mut(), |composited| Box::into_raw(Box::new(composited)))
+        ran.map_or(std::ptr::null_mut(), |composited| engine.hands(composited))
     })
 }
 
@@ -1249,10 +1260,8 @@ pub extern "C" fn gpu_engine_composited_bytes(count: usize) -> u64 {
 /// `composited` came from `gpu_engine_composite_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_composited_free(composited: *mut Composited) {
-    if !composited.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(composited) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(composited) };
 }
 
 /// Composites `plan` onto the pixels `rect` of `target` — [left, top,
@@ -1290,22 +1299,26 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
 /// see the last error.
 ///
 /// # Safety
-/// `extent` holds four words.
+/// `engine` is live, and `extent` holds four words.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_screen_new(extent: *const i32, floor: f64) -> *mut Screen {
+pub unsafe extern "C" fn gpu_engine_screen_new(
+    engine: *const Engine,
+    extent: *const i32,
+    floor: f64,
+) -> *mut Screen {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
     // SAFETY: see the function's contract.
     let extent = unsafe { *extent.cast::<[i32; 4]>() };
-    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| Box::into_raw(Box::new(screen)))
+    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| engine.hands(screen))
 }
 
 /// # Safety
 /// `screen` came from `gpu_engine_screen_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut Screen) {
-    if !screen.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(screen) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(screen) };
 }
 
 /// The bytes `screen` keeps — its canvas's tiles and its halvings': what

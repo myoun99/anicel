@@ -13,7 +13,7 @@
 #[path = "abi_tests.rs"]
 mod tests;
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::Composite;
 use crate::kernels::composite::abi::Planned;
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn gpu_engine_floods_new(engine: *const Engine) -> *mut Fl
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
         let (flood, masks) = (Flood::new(engine), MaskPasses::new(engine));
-        Box::into_raw(Box::new(Floods { flood, masks }))
+        engine.hands(Floods { flood, masks })
     })
 }
 
@@ -65,10 +65,8 @@ pub unsafe extern "C" fn gpu_engine_floods_new(engine: *const Engine) -> *mut Fl
 /// `floods` came from `gpu_engine_floods_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_floods_free(floods: *mut Floods) {
-    if !floods.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(floods) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(floods) };
 }
 
 /// The picture a fill reads: what `plan` shows over the pixels `extent` —
@@ -93,7 +91,7 @@ pub unsafe extern "C" fn gpu_engine_flood_picture_new(
         // SAFETY: see the function's contract.
         let extent = unsafe { *extent.cast::<[i32; 4]>() };
         let shown = plan.laid(pool, |laid| Shown::of(engine, composite, laid, extent));
-        shown.map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+        shown.map_or(std::ptr::null_mut(), |shown| engine.hands(shown))
     })
 }
 
@@ -129,7 +127,7 @@ pub unsafe extern "C" fn gpu_engine_flood_picture_posed(
         let shown = plan.laid(pool, |laid| {
             Shown::through(engine, composite, laid, to_canvas, extent, within)
         });
-        shown.map_or(std::ptr::null_mut(), |shown| Box::into_raw(Box::new(shown)))
+        shown.map_or(std::ptr::null_mut(), |shown| engine.hands(shown))
     })
 }
 
@@ -138,10 +136,8 @@ pub unsafe extern "C" fn gpu_engine_flood_picture_posed(
 /// `gpu_engine_flood_picture_posed`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_flood_picture_free(picture: *mut Shown) {
-    if !picture.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(picture) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(picture) };
 }
 
 /// The fill a press at (`x`, `y`) of `picture`'s space makes: what it
@@ -196,7 +192,7 @@ pub unsafe extern "C" fn gpu_engine_flood_run(
         let MaskBox { width, height } = filled.size;
         // SAFETY: see the function's contract.
         unsafe { *covers.cast::<[i32; 4]>() = [left, top, width as i32, height as i32] };
-        Box::into_raw(Box::new(filled))
+        engine.hands(filled)
     })
 }
 
@@ -227,10 +223,8 @@ pub unsafe extern "C" fn gpu_engine_flood_filled_read(
 /// `filled` came from `gpu_engine_flood_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_flood_filled_free(filled: *mut Filled) {
-    if !filled.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(filled) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(filled) };
 }
 
 /// The bytes of every picture a fill reads and every fill finished, made

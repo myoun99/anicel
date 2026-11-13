@@ -8,7 +8,7 @@ use super::landing::{Asked, Laid};
 use super::stamp::{Paint, Source, StampLanding};
 use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
-use crate::device::Engine;
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::fail;
 use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, TileAt};
@@ -179,17 +179,15 @@ unsafe fn paper_of<'a>(paper: *const Texture, scale: f64, height: bool) -> Optio
 pub unsafe extern "C" fn gpu_engine_dab_texture_new(texels: *const f64, side: u32) -> *mut Texture {
     // SAFETY: see the function's contract.
     let texels = unsafe { std::slice::from_raw_parts(texels, side as usize * side as usize) };
-    Texture::new(texels, side).map_or(std::ptr::null_mut(), |texture| Box::into_raw(Box::new(texture)))
+    Texture::new(texels, side).map_or(std::ptr::null_mut(), hands_bytes)
 }
 
 /// # Safety
 /// `texture` came from `gpu_engine_dab_texture_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_dab_texture_free(texture: *mut Texture) {
-    if !texture.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(texture) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(texture) };
 }
 
 /// A stroke of no tiles, its kernels compiled. Null on failure; see the last
@@ -202,7 +200,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_new(engine: *const Engine) -> *mut St
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Stroke::new(engine).map_or(std::ptr::null_mut(), |stroke| Box::into_raw(Box::new(stroke)))
+        Stroke::new(engine).map_or(std::ptr::null_mut(), |stroke| engine.hands(stroke))
     })
 }
 
@@ -210,10 +208,8 @@ pub unsafe extern "C" fn gpu_engine_stroke_new(engine: *const Engine) -> *mut St
 /// `stroke` came from `gpu_engine_stroke_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stroke_free(stroke: *mut Stroke) {
-    if !stroke.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(stroke) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(stroke) };
 }
 
 /// The bytes of `stroke`'s pages.
@@ -282,7 +278,7 @@ pub unsafe extern "C" fn gpu_engine_blurs_new(engine: *const Engine) -> *mut Blu
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| Box::into_raw(Box::new(blurs)))
+        Blurs::new(engine).map_or(std::ptr::null_mut(), |blurs| engine.hands(blurs))
     })
 }
 
@@ -314,10 +310,8 @@ pub unsafe extern "C" fn gpu_engine_blurs_by_strips(blurs: *const Blurs) -> bool
 /// `blurs` came from `gpu_engine_blurs_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_blurs_free(blurs: *mut Blurs) {
-    if !blurs.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(blurs) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(blurs) };
 }
 
 /// The bytes `blurs` keeps between its strokes.
@@ -330,14 +324,15 @@ pub unsafe extern "C" fn gpu_engine_blurs_bytes(blurs: *const Blurs) -> u64 {
     unsafe { &*blurs }.bytes()
 }
 
-/// Lets go of what `blurs` keeps between its strokes.
+/// Lets go of what `blurs` keeps between its strokes — buffers, so on
+/// its engine's thread ([`on_thread_of`]).
 ///
 /// # Safety
 /// `blurs` is live.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_blurs_let_go(blurs: *mut Blurs) {
     // SAFETY: see the function's contract.
-    unsafe { &mut *blurs }.let_go();
+    unsafe { on_thread_of(blurs, || (*blurs).let_go()) };
 }
 
 /// Gives a slot of `stroke`'s picture to every tile the blur of `dabs`, each
@@ -592,7 +587,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_new(
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         );
         STAMP_PICTURE_BYTES.fetch_add(bytes, Ordering::Relaxed);
-        Box::into_raw(Box::new(StampPicture { pixels, size: (width, height) }))
+        engine.hands(StampPicture { pixels, size: (width, height) })
     })
 }
 
@@ -645,7 +640,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_carried(
         let map = ResampleMap::new(inverse, radius_floor, sampled, columns, rows);
         let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
         let window = Window { at: (left as i32, top as i32), size: (width, height) };
-        kept(landing.carried(engine, &boxed, map.as_ref(), window), (width, height))
+        kept(engine, landing.carried(engine, &boxed, map.as_ref(), window), (width, height))
     })
 }
 
@@ -703,18 +698,18 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_meshed(
         let window = Window { at: (left, top), size: (width, height) };
         let at = (source_left, source_top);
         let made = landing.meshed(engine, &mesh, (&boxed, at), window, (radius_floor, sampled));
-        kept(made, (width, height))
+        kept(engine, made, (width, height))
     })
 }
 
-/// A picture of `pixels`, `size` across and down, counted — or null where
-/// none was made.
-fn kept(pixels: Option<wgpu::Buffer>, size: (u32, u32)) -> *mut StampPicture {
+/// A picture of `pixels`, `size` across and down and of `engine`, counted
+/// — or null where none was made.
+fn kept(engine: &Engine, pixels: Option<wgpu::Buffer>, size: (u32, u32)) -> *mut StampPicture {
     let Some(pixels) = pixels else {
         return std::ptr::null_mut();
     };
     STAMP_PICTURE_BYTES.fetch_add(pixels.size(), Ordering::Relaxed);
-    Box::into_raw(Box::new(StampPicture { pixels, size }))
+    engine.hands(StampPicture { pixels, size })
 }
 
 /// `picture`'s pixels at `into`, row after row, once the GPU has made them:
@@ -747,11 +742,12 @@ pub unsafe extern "C" fn gpu_engine_stamp_picture_read(
 /// `gpu_engine_stamp_picture_carried` or `gpu_engine_stamp_picture_meshed`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stamp_picture_free(picture: *mut StampPicture) {
-    if !picture.is_null() {
-        // SAFETY: see the function's contract.
-        let picture = unsafe { Box::from_raw(picture) };
+    // SAFETY: see the function's contract.
+    if let Some(picture) = unsafe { picture.as_ref() } {
         STAMP_PICTURE_BYTES.fetch_sub(picture.pixels.size(), Ordering::Relaxed);
     }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_unwaited(picture) };
 }
 
 /// The bytes of every stamp's picture the app keeps.
@@ -770,7 +766,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_landing_new(engine: *const Engine) -> 
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        StampLanding::new(engine).map_or(std::ptr::null_mut(), |landing| Box::into_raw(Box::new(landing)))
+        StampLanding::new(engine).map_or(std::ptr::null_mut(), |landing| engine.hands(landing))
     })
 }
 
@@ -778,10 +774,8 @@ pub unsafe extern "C" fn gpu_engine_stamp_landing_new(engine: *const Engine) -> 
 /// `landing` came from `gpu_engine_stamp_landing_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_stamp_landing_free(landing: *mut StampLanding) {
-    if !landing.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(landing) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(landing) };
 }
 
 /// Lays `picture`, its top-left pixel at (`left`, `top`), what of it lies

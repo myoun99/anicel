@@ -8,18 +8,21 @@ use super::*;
 use crate::kernels::export::tests::{Rig, frame, mixed, rig};
 use crate::kernels::fill::{gpu_engine_fill_free, gpu_engine_fill_new, gpu_engine_fill_run};
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
-use crate::testing::{last_error, read_buffer};
+use crate::testing::{first_engine, last_error, read_buffer};
 
 /// 37 x 21: no side a tile's or a word's, so a width put for a height, or
 /// a pixel's bytes for a row's, reads other pixels.
 const WIDTH: u32 = 37;
 const HEIGHT: u32 = 21;
 
-/// One export for every test here, as the app keeps one.
+/// One export for every test here, as the app keeps one — and as long:
+/// never let go of.
 fn export() -> &'static Export {
-    static EXPORT: OnceLock<Export> = OnceLock::new();
-    // SAFETY: a new export is boxed, and its box is let go of here.
-    EXPORT.get_or_init(|| *unsafe { Box::from_raw(gpu_engine_export_new()) })
+    static EXPORT: OnceLock<usize> = OnceLock::new();
+    // SAFETY: the engine is live.
+    let made = *EXPORT.get_or_init(|| unsafe { gpu_engine_export_new(first_engine()) } as usize);
+    // SAFETY: the export made above, live for the whole process.
+    unsafe { &*(made as *const Export) }
 }
 
 /// A run's output tiles for a picture of any colours and alphas.

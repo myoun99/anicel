@@ -8,6 +8,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import 'package:anicel/src/native/engine_chain_holds.dart';
+
 /// 🚨WHAT ONE ENGINE MADE IS NAMED TO NO OTHER'S JOB (gpu_engine.dart,
 /// `_OfAnEngine`): a job that names an object another engine made is
 /// refused by name ([GpuRefused]) where it is asked, before the engine
@@ -100,10 +102,9 @@ void main() {
     );
   });
 
-  test('a hold is the engine\'s whose plans named a number it has not let '
-      'go of — and, each one let go, the next engine\'s: one hold '
-      'outlives the engine an app lets go', () {
-    final held = GpuHeldChains();
+  test('a hold is its engine\'s for its life — named to no plan of '
+      'another while it holds no number, nor once each is let go', () {
+    final held = GpuHeldChains(one);
     addTearDown(held.free);
     final (first, next) = (GpuPlan(one), GpuPlan(other));
     addTearDown(first.free);
@@ -113,21 +114,38 @@ void main() {
       next.chain(0, 0, 1, 1),
     );
 
-    first
-      ..chainHeld(ofFirst, held, 7)
-      ..chainHeld(ofFirst, held, 8);
+    expect(
+      () => next.chainHeld(ofNext, held, 7),
+      refusedAsAnothers,
+      reason: 'it holds no number yet',
+    );
+    first.chainHeld(ofFirst, held, 7);
     expect(() => next.chainHeld(ofNext, held, 7), refusedAsAnothers);
-    expect(() => next.chainHeld(ofNext, held, 9), refusedAsAnothers);
-
     held.letGo(7);
     expect(
       () => next.chainHeld(ofNext, held, 9),
       refusedAsAnothers,
-      reason: 'it holds a number of the first\'s still',
+      reason: 'each number let go',
     );
-    held.letGo(8);
+  });
 
-    next.chainHeld(ofNext, held, 7);
-    expect(() => first.chainHeld(ofFirst, held, 8), refusedAsAnothers);
+  test('the app\'s holds hand each engine\'s plans a hold of that '
+      'engine: what they held went with the engine before', () {
+    final holds = EngineChainHolds(room: () => 1 << 30, ofThePensFrame: true);
+    addTearDown(holds.free);
+    final (first, next) = (GpuPlan(one), GpuPlan(other));
+    addTearDown(first.free);
+    addTearDown(next.free);
+    final (ofFirst, ofNext) = (
+      first.chain(0, 0, 1, 1),
+      next.chain(0, 0, 1, 1),
+    );
+
+    final ofOne = holds.heldOf(one);
+    first.chainHeld(ofFirst, ofOne, holds.idOf('shown'));
+    expect(holds.heldOf(one), same(ofOne), reason: 'one for an engine');
+
+    next.chainHeld(ofNext, holds.heldOf(other), holds.idOf('shown'));
+    first.chainHeld(ofFirst, holds.heldOf(one), holds.idOf('shown'));
   });
 }

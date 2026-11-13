@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart'
     show
         GpuComposite,
+        GpuEngine,
         GpuFloodPicture,
         GpuMask,
         GpuPlan,

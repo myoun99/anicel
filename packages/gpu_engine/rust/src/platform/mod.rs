@@ -42,7 +42,7 @@ use std::ffi::c_void;
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 
 /// The instance the engine's adapters come from. The engine keeps it:
@@ -184,7 +184,7 @@ pub unsafe extern "C" fn gpu_engine_surface_new(
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
         Surface::new(engine, width, height, surface_format(bgra))
-            .map_or(std::ptr::null_mut(), |surface| Box::into_raw(Box::new(surface)))
+            .map_or(std::ptr::null_mut(), |surface| engine.hands(surface))
     })
 }
 
@@ -193,10 +193,8 @@ pub unsafe extern "C" fn gpu_engine_surface_new(
 /// shows it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_surface_free(surface: *mut Surface) {
-    if !surface.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(surface) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(surface) };
 }
 
 /// The texture a kernel writes to fill `surface`.

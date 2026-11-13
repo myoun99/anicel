@@ -53,7 +53,7 @@ mod tests;
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
 use crate::kernels::export::abi::{Readout, readout};
@@ -693,7 +693,7 @@ pub unsafe extern "C" fn gpu_engine_pool_new(engine: *const Engine, most_bytes: 
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Pool::new(engine, most_bytes).map_or(std::ptr::null_mut(), |pool| Box::into_raw(Box::new(pool)))
+        Pool::new(engine, most_bytes).map_or(std::ptr::null_mut(), |pool| engine.hands(pool))
     })
 }
 
@@ -701,10 +701,8 @@ pub unsafe extern "C" fn gpu_engine_pool_new(engine: *const Engine, most_bytes: 
 /// `pool` came from `gpu_engine_pool_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_free(pool: *mut Pool) {
-    if !pool.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(pool) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(pool) };
 }
 
 /// The side of the tiles a pool stores, in texels: a tile is that square of
@@ -831,7 +829,7 @@ pub unsafe extern "C" fn gpu_engine_pool_readout(
         // SAFETY: `tiles` holds `count` words.
         let places = unsafe { named(tiles, count) };
         let out = places.and_then(|places| pool.read_out(engine, &places));
-        readout(out, count as u64 * TILE_BYTES)
+        readout(engine, out, count as u64 * TILE_BYTES)
     })
 }
 

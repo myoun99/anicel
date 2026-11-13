@@ -1574,7 +1574,7 @@ typedef GpuLens = ({
 class GpuPlan implements _OfAnEngine {
   /// A plan of nothing, for an executor of [engine]'s to run: what it
   /// names is that engine's ([_OfAnEngine]).
-  GpuPlan(this._engine) : _plan = rust.planNew();
+  GpuPlan(this._engine) : _plan = rust.planNew(_engine._engine);
 
   @override
   final GpuEngine _engine;
@@ -1676,7 +1676,7 @@ class GpuPlan implements _OfAnEngine {
   /// the app gives what the chain shows: a run whose hold under [id] keeps
   /// what it put over the chain's tiles lays that, and does not run it.
   void chainHeld(int chain, GpuHeldChains held, int id) => _checked(
-    rust.planChainHeld(_plan, chain, held._heldFor(_engine, id), id),
+    rust.planChainHeld(_plan, chain, _engine._its(held)._held, id),
   );
 
   /// Adds to effect chain [chain] a read of what the ops before it put:
@@ -1996,7 +1996,7 @@ class GpuPlan implements _OfAnEngine {
 /// The picture an effect chain had come to at a plug-in's step, for the
 /// host to read once the plan that names it ran ([GpuPlan.chainRead]).
 class GpuChainRead implements _OfAnEngine {
-  GpuChainRead(this._engine) : _read = rust.chainReadNew();
+  GpuChainRead(this._engine) : _read = rust.chainReadNew(_engine._engine);
 
   @override
   final GpuEngine _engine;
@@ -2044,45 +2044,38 @@ final class GpuChainReader {
 /// What effect chains put, held past the run that made them
 /// (rust/src/kernels/composite/held.rs), under the numbers the app gives
 /// them ([GpuPlan.chainHeld]) — for as long as it is not freed, or let go.
-class GpuHeldChains {
-  GpuHeldChains() : _held = rust.heldNew();
+class GpuHeldChains implements _OfAnEngine {
+  /// Holds of [engine]'s, for its plans to name ([_OfAnEngine]): what a
+  /// run put is that engine's, and a plan that finds it under its number
+  /// lays it — and that engine lets go of it, on its thread.
+  ///
+  /// ↩️⏳Till 2026-11-14 a hold was made with no engine, was of none
+  /// while it held no number, and outlived the engine an app let go
+  /// (1bd028848, the day before). What a hold keeps is let go of on the
+  /// thread of the engine it was made for (rust `device::Handed`), and
+  /// one kept past its engine had the next one's buffers let go of on
+  /// the first one's thread. So the app makes one for each engine
+  /// (`EngineChainHolds.heldOf`) — 브러시/렌더링, the user asleep; theirs
+  /// to overturn.
+  GpuHeldChains(this._engine) : _held = rust.heldNew(_engine._engine);
 
   /// The bytes every hold keeps, counted by the engine where a hold keeps
   /// and lets go.
   static int get liveBytes => rust.heldBytes();
 
+  @override
+  final GpuEngine _engine;
+
+  /// The engine whose plans name it.
+  GpuEngine get engine => _engine;
+
   final Pointer<rust.HeldChains> _held;
-
-  /// The numbers plans named that are not let go of yet ([letGo]), and
-  /// the engine those plans were of. ⚠️Of no engine while it holds no
-  /// number: one hold outlives the engine an app lets go, let go of whole
-  /// as that engine is (`EngineChainHolds`), and is the next's from the
-  /// first number a plan of that one names.
-  final Set<int> _named = {};
-  GpuEngine? _engine;
-
-  /// It, for a plan on [engine] to keep a chain's put in under [id] —
-  /// refused by name while it holds what another engine's plans named
-  /// ([_OfAnEngine]): what a run put is that engine's, and a plan that
-  /// finds it under its number lays it.
-  Pointer<rust.HeldChains> _heldFor(GpuEngine engine, int id) {
-    if (_named.isEmpty) {
-      _engine = engine;
-    } else if (!identical(_engine, engine)) {
-      throw GpuRefused('a plan of one engine named a hold of another engine');
-    }
-    _named.add(id);
-    return _held;
-  }
 
   /// The bytes it keeps under [id] — none where it keeps nothing.
   int bytesOf(int id) => rust.heldBytesOf(_held, id);
 
   /// Lets go of what it keeps under [id], if anything.
-  void letGo(int id) {
-    rust.heldLetGo(_held, id);
-    _named.remove(id);
-  }
+  void letGo(int id) => rust.heldLetGo(_held, id);
 
   /// Frees it; a plan that names it keeps its own hold.
   void free() => rust.heldFree(_held);
@@ -2380,7 +2373,11 @@ class GpuScreen implements _OfAnEngine {
     double radiusFloor = 1,
   }) {
     final screen = using(
-      (arena) => rust.screenNew(_rect(arena, extent), radiusFloor),
+      (arena) => rust.screenNew(
+        composite._engine._engine,
+        _rect(arena, extent),
+        radiusFloor,
+      ),
     );
     if (screen == nullptr) {
       throw GpuRefused(_lastError());
@@ -2523,7 +2520,7 @@ class GpuExport implements _OfAnEngine {
   /// The export's passes on [engine], none compiled yet.
   GpuExport(GpuEngine engine)
     : _engine = engine,
-      _export = rust.exportNew();
+      _export = rust.exportNew(engine._engine);
 
   /// The export's passes on [engine], its lay pass compiled off this
   /// isolate for the frames it makes and for frames shown on surfaces laid
@@ -2667,7 +2664,7 @@ class GpuExport implements _OfAnEngine {
   /// What [frame] — one [blank] made — holds, to read back: its
   /// premultiplied RGBA, red first, row after row with nothing between.
   GpuReadout read(GpuShown frame) =>
-      _readout(rust.exportRead(_engine._its(frame)._shown));
+      _readout(rust.exportRead(_engine._engine, _engine._its(frame)._shown));
 
   GpuShown _shownOrWhy(Pointer<rust.Shown> shown, int width, int height) {
     if (shown == nullptr) {
@@ -3879,7 +3876,8 @@ typedef GpuGridLaid = ({
 class GpuGridLay {
   /// The pass on [engine], compiled for a screen where it first lays onto
   /// one.
-  GpuGridLay(GpuEngine engine) : this._(engine, rust.gridLayNew());
+  GpuGridLay(GpuEngine engine)
+    : this._(engine, rust.gridLayNew(engine._engine));
 
   /// The pass compiled on [engine], off this isolate, which goes on
   /// meanwhile, for a screen of BGRA texels where [bgra], of RGBA else —
@@ -3894,7 +3892,7 @@ class GpuGridLay {
   static Pointer<rust.GridLay> Function(Pointer<rust.Engine>) _ready(
     bool bgra,
   ) => (on) {
-    final lay = rust.gridLayNew();
+    final lay = rust.gridLayNew(on);
     rust.gridLayReady(lay, on, bgra);
     return lay;
   };

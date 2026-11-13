@@ -9,7 +9,7 @@
 use fx_wgsl::{Cut, Frame};
 
 use super::Plugin;
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::shared::{q, sixteen_bit};
 
@@ -147,7 +147,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_open(
     // SAFETY: see the function's contract.
     let (engine, source) = unsafe { (&*engine, std::slice::from_raw_parts(source, length)) };
     engine.on_thread(|| {
-        opened(engine, source, cut).map_or(std::ptr::null_mut(), |plugin| Box::into_raw(Box::new(plugin)))
+        opened(engine, source, cut).map_or(std::ptr::null_mut(), |plugin| engine.hands(plugin))
     })
 }
 
@@ -166,10 +166,8 @@ fn opened(engine: &Engine, source: &[u8], cut: bool) -> Option<Plugin> {
 /// `plugin` came from `gpu_engine_plugin_open`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_plugin_free(plugin: *mut Plugin) {
-    if !plugin.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(plugin) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(plugin) };
 }
 
 /// How far past its input the plugin reaches, in output pixels, for its

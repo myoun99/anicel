@@ -14,7 +14,7 @@ use super::region::{Combine, Operand, RegionMask, Step};
 use super::runs::{MaskRuns, SelectionRuns};
 use super::within::MaskWithin;
 use super::{Finish, MaskBox, MaskPasses};
-use crate::device::Engine;
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_new(
     engine.on_thread(|| {
         let (region, passes) = (RegionMask::new(engine), MaskPasses::new(engine));
         let (within, runs) = (MaskWithin::new(engine), MaskRuns::new(engine));
-        Box::into_raw(Box::new(SelectionMasks { region, passes, within, runs }))
+        engine.hands(SelectionMasks { region, passes, within, runs })
     })
 }
 
@@ -48,10 +48,8 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_new(
 /// `masks` came from `gpu_engine_selection_masks_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_selection_masks_free(masks: *mut SelectionMasks) {
-    if !masks.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(masks) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(masks) };
 }
 
 /// The mask of the selection `program` spells over `points` ([`steps_of`])
@@ -93,7 +91,7 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_new(
     let size = MaskBox { width, height };
     let finish = Finish { grow, feather, anti_alias };
     engine.on_thread(|| match masked(masks, engine, program, points, (x, y), size, finish) {
-        Some(plane) => MaskPlane::kept(plane, (x, y), size),
+        Some(plane) => MaskPlane::kept(engine, plane, (x, y), size),
         None => std::ptr::null_mut(),
     })
 }
@@ -118,7 +116,7 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_cut(
     // SAFETY: see the function's contract.
     let (masks, engine, mask, by) = unsafe { (&*masks, &*engine, (*mask).mask(), (*by).mask()) };
     engine.on_thread(|| match masks.within.cut(engine, &mask, &by) {
-        Some(plane) => MaskPlane::kept(plane, mask.at, mask.size),
+        Some(plane) => MaskPlane::kept(engine, plane, mask.at, mask.size),
         None => std::ptr::null_mut(),
     })
 }
@@ -169,7 +167,7 @@ pub unsafe extern "C" fn gpu_engine_selection_runs(
         };
         // SAFETY: see the function's contract.
         unsafe { ends.write(runs.ends.len()) };
-        Box::into_raw(Box::new(runs))
+        hands_bytes(runs)
     })
 }
 
@@ -200,10 +198,8 @@ pub unsafe extern "C" fn gpu_engine_selection_runs_read(
 /// `runs` came from `gpu_engine_selection_runs`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_selection_runs_free(runs: *mut SelectionRuns) {
-    if !runs.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(runs) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go_bytes(runs) };
 }
 
 /// [`gpu_engine_selection_mask_new`]'s plane.

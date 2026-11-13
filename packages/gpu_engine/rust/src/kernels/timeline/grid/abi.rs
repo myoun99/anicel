@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::platform::surface_format;
 
 use super::lay::{GridLay, Laid};
@@ -25,7 +25,7 @@ pub unsafe extern "C" fn gpu_engine_grid_new(engine: *const Engine) -> *mut Grid
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Box::into_raw(Box::new(GridTile::for_pictures(engine)))
+        engine.hands(GridTile::for_pictures(engine))
     })
 }
 
@@ -33,10 +33,8 @@ pub unsafe extern "C" fn gpu_engine_grid_new(engine: *const Engine) -> *mut Grid
 /// `grid` came from `gpu_engine_grid_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_grid_free(grid: *mut GridTile) {
-    if !grid.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(grid) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(grid) };
 }
 
 /// A clear tile `width` × `height` pixels. Null on failure; see the last
@@ -49,7 +47,7 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_new(engine: *const Engine, widt
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        GridPicture::new(engine, width, height).map_or(std::ptr::null_mut(), |picture| Box::into_raw(Box::new(picture)))
+        GridPicture::new(engine, width, height).map_or(std::ptr::null_mut(), |picture| engine.hands(picture))
     })
 }
 
@@ -57,10 +55,8 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_new(engine: *const Engine, widt
 /// `picture` came from `gpu_engine_grid_picture_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_grid_picture_free(picture: *mut GridPicture) {
-    if !picture.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(picture) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(picture) };
 }
 
 /// Copies `picture`'s pixels — straight RGBA8, row by row — into `bytes`
@@ -134,9 +130,14 @@ pub unsafe extern "C" fn gpu_engine_grid_draw(
 /// The screen pass that lays tiles on a view's screen ([`GridLay`]),
 /// compiled for a format the first time it lays onto one, or ahead of it
 /// (`gpu_engine_grid_lay_ready`).
+///
+/// # Safety
+/// `engine` is live.
 #[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_grid_lay_new() -> *mut GridLay {
-    Box::into_raw(Box::new(GridLay::new()))
+pub unsafe extern "C" fn gpu_engine_grid_lay_new(engine: *const Engine) -> *mut GridLay {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.hands(GridLay::new())
 }
 
 /// Compiles the pass for a screen of BGRA or RGBA 8-bit unorm texels — as
@@ -160,10 +161,8 @@ pub unsafe extern "C" fn gpu_engine_grid_lay_ready(lay: *mut GridLay, engine: *c
 /// `lay` came from `gpu_engine_grid_lay_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_grid_lay_free(lay: *mut GridLay) {
-    if !lay.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(lay) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(lay) };
 }
 
 /// The pixels `rect` of `target` — [left, top, right, bottom) — clear, and

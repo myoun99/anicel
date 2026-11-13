@@ -5,9 +5,10 @@ import '../core/lru.dart';
 /// 🚨★WHAT A FRAME'S CHAINS PUT, HELD ON THE ENGINE (folder holding, 관제
 /// 2026-11-08 22:14 — what the canvas held under and over its pen and what
 /// the frames made ahead held, one kind of hold): the plans' chains keep
-/// what they put in one [GpuHeldChains] under a number for each picture a
-/// chain shows ([idOf]), so a step of a stroke above a blurred folder, or a
-/// frame made ahead of the same folder, runs none of its chain again.
+/// what they put in their engine's [GpuHeldChains] ([heldOf]) under a
+/// number for each picture a chain shows ([idOf]), so a step of a stroke
+/// above a blurred folder, or a frame made ahead of the same folder, runs
+/// none of its chain again.
 ///
 /// 🚨THE KEY IS WHAT THE CHAIN SHOWS, COMPARED WHOLE — never a hash, so no
 /// other picture's put is laid for it. The four cache questions (관제 11-08
@@ -41,15 +42,32 @@ final class EngineChainHolds {
   /// other holds takes none of its places (`FxPluginStages._keptSteps`).
   final bool ofThePensFrame;
 
-  /// The hold the plans name ([GpuPlan.chainHeld]).
-  final GpuHeldChains held = GpuHeldChains();
+  /// The hold the plans of [engine] name ([GpuPlan.chainHeld]): that
+  /// engine's own, made for the first of its plans to ask. What these
+  /// held of the engine before went with it (🗣️gpu-canonical-store-Q11,
+  /// `FramePictures.letGoWithTheirEngine`), and is let go of here if it
+  /// was not yet: no plan is handed another engine's hold.
+  ///
+  /// ↩️⏳Till 2026-11-14 these kept one hold for their life, of whichever
+  /// engine's plans had named a number in it ([GpuHeldChains] has why it
+  /// is one engine's now) — 브러시/렌더링, the user asleep; theirs to
+  /// overturn.
+  GpuHeldChains heldOf(GpuEngine engine) {
+    if (_held case final held? when identical(held.engine, engine)) {
+      return held;
+    }
+    free();
+    return _held = GpuHeldChains(engine);
+  }
+
+  GpuHeldChains? _held;
 
   final int Function() _room;
 
   late final Lru<Object, _Hold> _holds = Lru(
     limit: _room,
     costOf: (hold) => hold.bytes,
-    letGo: (_, hold) => held.letGo(hold.id),
+    letGo: (_, hold) => _held?.letGo(hold.id),
   );
 
   /// The keys asked for since the holds last settled, and their holds.
@@ -66,12 +84,14 @@ final class EngineChainHolds {
 
   /// Weighs each hold asked for since the last settling — what its run
   /// kept — as the newest, in the order asked, and lets go of the oldest
-  /// past the room; one that alone does not fit is let go of.
+  /// past the room; one that alone does not fit is let go of. One asked
+  /// for of a hold freed since ([free]) kept nothing.
   void settle() {
+    final held = _held;
     for (final MapEntry(:key, value: hold) in _asked.entries) {
-      hold.bytes = held.bytesOf(hold.id);
+      hold.bytes = held?.bytesOf(hold.id) ?? 0;
       if (hold.bytes > _room()) {
-        held.letGo(hold.id);
+        held?.letGo(hold.id);
       } else {
         _holds.keep(key, hold);
       }
@@ -88,15 +108,17 @@ final class EngineChainHolds {
   /// Lets go of every hold.
   void clear() {
     for (final hold in _holds.values) {
-      held.letGo(hold.id);
+      _held?.letGo(hold.id);
     }
     _holds.clear();
   }
 
-  /// Lets go of every hold and frees the engine's.
+  /// Lets go of every hold and frees the engine's. A plan that asks
+  /// after is given a hold made for its engine ([heldOf]).
   void free() {
     clear();
-    held.free();
+    _held?.free();
+    _held = null;
   }
 }
 

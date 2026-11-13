@@ -6,7 +6,7 @@ mod tests;
 
 use std::time::Instant;
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::shared::{Encoded, encode_on, flat, pipeline, storage_format, whole};
 
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn gpu_engine_fill_new(engine: *const Engine) -> *mut Fill
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Box::into_raw(Box::new(Fill::new(engine)))
+        engine.hands(Fill::new(engine))
     })
 }
 
@@ -94,10 +94,8 @@ pub unsafe extern "C" fn gpu_engine_fill_new(engine: *const Engine) -> *mut Fill
 /// `fill` came from `gpu_engine_fill_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_fill_free(fill: *mut Fill) {
-    if !fill.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(fill) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(fill) };
 }
 
 /// Fills `texture` with the pattern for `seed` and waits for the GPU.

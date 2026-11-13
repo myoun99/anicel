@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::Engine;
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::TileSet;
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mu
     engine.on_thread(|| {
         CelPixels::new(engine)
             .zip(Lift::new(engine))
-            .map_or(std::ptr::null_mut(), |(verbs, lift)| Box::into_raw(Box::new(CelKernels { verbs, lift })))
+            .map_or(std::ptr::null_mut(), |(verbs, lift)| engine.hands(CelKernels { verbs, lift }))
     })
 }
 
@@ -126,10 +126,8 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_new(engine: *const Engine) -> *mu
 /// `kernels` came from `gpu_engine_cel_pixels_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_cel_pixels_free(kernels: *mut CelKernels) {
-    if !kernels.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(kernels) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(kernels) };
 }
 
 /// Puts what `mask` takes off the cel of `columns` × `rows` tiles whose
@@ -224,7 +222,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
         kernels
             .verbs
             .run(engine, pool.pages(), &cel, mask.as_ref(), &verb)
-            .map_or(std::ptr::null_mut(), |passed| Box::into_raw(Box::new(passed)))
+            .map_or(std::ptr::null_mut(), |passed| engine.hands(passed))
     })
 }
 
@@ -232,10 +230,8 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
 /// `passed` came from `gpu_engine_cel_pixels_run`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_cel_passed_free(passed: *mut Passed) {
-    if !passed.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(passed) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(passed) };
 }
 
 /// How many tiles the pass walked.
@@ -329,7 +325,7 @@ pub unsafe extern "C" fn gpu_engine_ink_new(engine: *const Engine) -> *mut Ink {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
-        Ink::new(engine).map_or(std::ptr::null_mut(), |ink| Box::into_raw(Box::new(ink)))
+        Ink::new(engine).map_or(std::ptr::null_mut(), |ink| engine.hands(ink))
     })
 }
 
@@ -337,10 +333,8 @@ pub unsafe extern "C" fn gpu_engine_ink_new(engine: *const Engine) -> *mut Ink {
 /// `ink` came from `gpu_engine_ink_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_ink_free(ink: *mut Ink) {
-    if !ink.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(ink) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(ink) };
 }
 
 /// Scans the cel of `columns` × `rows` tiles whose top-left is column `x0`,

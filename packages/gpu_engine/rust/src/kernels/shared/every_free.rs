@@ -3,11 +3,19 @@
 //! so this one counts the heap (관제, connection-round-checklist 2026-11-08
 //! 00:06: a leak mutant is not an equivalent one). The table is every free
 //! the sources export: one more there, and the scan fails until it is here.
+//!
+//! A thing is let go of on the thread of the engine that made it
+//! (`device::Handed`), and what that thread gave back is counted here as
+//! a body's is, its caller's (`device::Callers`) — so a free that waits
+//! for its thing to be gone is called from the test's thread, as the app
+//! calls it. One the GC calls waits for nothing ([`gives_back_unwaited`]).
+//! What holds nothing of a device is no engine's (`device::hands_bytes`),
+//! and its free lets go of it where it is called, as every free did.
 
 use std::collections::BTreeSet;
 
-use super::source_scan::files_where;
-use crate::device::gpu_engine_close;
+use super::source_scan::verbs;
+use crate::device::{gpu_engine_close, hands_bytes};
 use crate::kernels::cel_pixel::abi::{
     gpu_engine_cel_passed_free, gpu_engine_cel_pixels_free, gpu_engine_cel_pixels_new,
     gpu_engine_ink_free, gpu_engine_ink_new,
@@ -69,6 +77,16 @@ fn gives_back<T>(name: &str, made: *mut T, free: unsafe extern "C" fn(*mut T)) {
     assert!(freed >= boxed, "{name} gave back {freed} bytes of a {boxed}-byte box");
 }
 
+/// The same of a free the GC calls, which hands its thing to the engine's
+/// thread and waits for none of it (`device::let_go_unwaited`): called
+/// from a body, where the thing is let go of as the free is called. From
+/// this thread such a free gives back nothing here, and [`gives_back`]
+/// says so of one that came to wait for nothing; that what it hands over
+/// is let go of there is the door's own test (`device::tests`).
+fn gives_back_unwaited<T>(name: &str, made: *mut T, free: unsafe extern "C" fn(*mut T)) {
+    first_engine().on_thread(|| gives_back(name, made, free));
+}
+
 /// A run's output tiles, one of them, as a box the app frees.
 fn composited() -> Composited {
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
@@ -85,20 +103,24 @@ fn composited() -> Composited {
 fn frees() -> [(&'static str, fn(&'static str)); 36] {
     [
         ("gpu_engine_close", |name| {
-            gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
+            gives_back(name, first_engine().clone().boxed(), gpu_engine_close)
         }),
-        ("gpu_engine_plan_free", |name| gives_back(name, gpu_engine_plan_new(), gpu_engine_plan_free)),
+        ("gpu_engine_plan_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_plan_new(first_engine()) };
+            gives_back(name, made, gpu_engine_plan_free)
+        }),
         ("gpu_engine_composite_free", |name| {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_composite_new(first_engine()) };
             gives_back(name, made, gpu_engine_composite_free)
         }),
         ("gpu_engine_composited_free", |name| {
-            gives_back(name, Box::into_raw(Box::new(composited())), gpu_engine_composited_free)
+            gives_back(name, first_engine().hands(composited()), gpu_engine_composited_free)
         }),
         ("gpu_engine_screen_free", |name| {
-            // SAFETY: the extent holds four words.
-            let made = unsafe { gpu_engine_screen_new([0, 0, 4, 4].as_ptr(), 1.0) };
+            // SAFETY: the engine is live, and the extent holds four words.
+            let made = unsafe { gpu_engine_screen_new(first_engine(), [0, 0, 4, 4].as_ptr(), 1.0) };
             gives_back(name, made, gpu_engine_screen_free)
         }),
         ("gpu_engine_mask_free", |name| {
@@ -111,7 +133,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
             let made = unsafe { gpu_engine_put_picture_new([255; 4].as_ptr(), 4) };
             gives_back(name, made, gpu_engine_put_picture_free)
         }),
-        ("gpu_engine_held_free", |name| gives_back(name, gpu_engine_held_new(), gpu_engine_held_free)),
+        ("gpu_engine_held_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_held_new(first_engine()) };
+            gives_back(name, made, gpu_engine_held_free)
+        }),
         ("gpu_engine_blurs_free", |name| {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_blurs_new(first_engine()) };
@@ -130,7 +156,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
         ("gpu_engine_stamp_picture_free", |name| {
             // SAFETY: the engine is live, and the bytes hold the picture's one pixel.
             let made = unsafe { gpu_engine_stamp_picture_new(first_engine(), [255; 4].as_ptr(), 1, 1) };
-            gives_back(name, made, gpu_engine_stamp_picture_free)
+            gives_back_unwaited(name, made, gpu_engine_stamp_picture_free)
         }),
         ("gpu_engine_dab_texture_free", |name| {
             let texels = [0.5f64; 4];
@@ -138,11 +164,18 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
             gives_back(name, unsafe { gpu_engine_dab_texture_new(texels.as_ptr(), 2) }, gpu_engine_dab_texture_free);
         }),
         ("gpu_engine_chain_read_free", |name| {
-            gives_back(name, gpu_engine_chain_read_new(), gpu_engine_chain_read_free)
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_chain_read_new(first_engine()) };
+            gives_back(name, made, gpu_engine_chain_read_free)
         }),
-        ("gpu_engine_export_free", |name| gives_back(name, gpu_engine_export_new(), gpu_engine_export_free)),
+        ("gpu_engine_export_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_export_new(first_engine()) };
+            gives_back(name, made, gpu_engine_export_free)
+        }),
         ("gpu_engine_readout_free", |name| {
-            let (export, frame) = (gpu_engine_export_new(), composited());
+            // SAFETY: the engine is live.
+            let (export, frame) = (unsafe { gpu_engine_export_new(first_engine()) }, composited());
             // SAFETY: all are live, made on the engine.
             let made = unsafe { gpu_engine_export_opaque(export, first_engine(), &frame, 1, 1) };
             gives_back(name, made, gpu_engine_readout_free);
@@ -187,13 +220,13 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
         }),
         ("gpu_engine_selection_runs_free", |name| {
             let runs = SelectionRuns { offsets: vec![0, 0], ends: Vec::new() };
-            gives_back(name, Box::into_raw(Box::new(runs)), gpu_engine_selection_runs_free)
+            gives_back(name, hands_bytes(runs), gpu_engine_selection_runs_free)
         }),
         ("gpu_engine_flood_picture_free", |name| {
             let rig = composite_rig();
             // SAFETY: the engine is live.
             let (pool, plan) =
-                unsafe { (gpu_engine_pool_new(rig.engine, 1 << 20), gpu_engine_plan_new()) };
+                unsafe { (gpu_engine_pool_new(rig.engine, 1 << 20), gpu_engine_plan_new(rig.engine)) };
             // SAFETY: all are live, made on the engine; the extent holds four words.
             let made = unsafe {
                 gpu_engine_flood_picture_new(
@@ -213,7 +246,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
         }),
         ("gpu_engine_flood_filled_free", |name| {
             let filled = Filled::new(composited().out, MaskBox { width: 1, height: 1 });
-            gives_back(name, Box::into_raw(Box::new(filled)), gpu_engine_flood_filled_free)
+            gives_back(name, first_engine().hands(filled), gpu_engine_flood_filled_free)
         }),
         ("gpu_engine_cel_pixels_free", |name| {
             // SAFETY: the engine is live.
@@ -223,7 +256,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
         ("gpu_engine_cel_passed_free", |name| {
             let Composited { out, .. } = composited();
             let passed = Passed { tiles: vec![], out, touched: vec![], runs: vec![] };
-            gives_back(name, Box::into_raw(Box::new(passed)), gpu_engine_cel_passed_free)
+            gives_back(name, first_engine().hands(passed), gpu_engine_cel_passed_free)
         }),
         ("gpu_engine_ink_free", |name| {
             // SAFETY: the engine is live.
@@ -244,7 +277,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
         ("gpu_engine_letters_free", |name| gives_back(name, gpu_engine_letters_new(), gpu_engine_letters_free)),
         ("gpu_engine_lettered_free", |name| {
             let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
-            let made = Box::into_raw(Box::new(Lettered { rect, tiles: composited().out }));
+            let made = first_engine().hands(Lettered { rect, tiles: composited().out });
             gives_back(name, made, gpu_engine_lettered_free)
         }),
         ("gpu_engine_plugin_free", |name| {
@@ -263,7 +296,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
             let made = unsafe { gpu_engine_grid_new(first_engine()) };
             gives_back(name, made, gpu_engine_grid_free)
         }),
-        ("gpu_engine_grid_lay_free", |name| gives_back(name, gpu_engine_grid_lay_new(), gpu_engine_grid_lay_free)),
+        ("gpu_engine_grid_lay_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_grid_lay_new(first_engine()) };
+            gives_back(name, made, gpu_engine_grid_lay_free)
+        }),
         ("gpu_engine_grid_picture_free", |name| {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_grid_picture_new(first_engine(), 4, 4) };
@@ -290,17 +327,11 @@ fn every_free_gives_back_its_box() {
     }
 }
 
-/// The frees `text` exports: each `extern "C"` function it defines named
-/// `gpu_engine_close` or `gpu_engine_…_free`.
-fn frees_in(text: &str) -> impl Iterator<Item = &str> {
-    const EXPORTED: &str = "extern \"C\" fn ";
-    text.match_indices(EXPORTED).filter_map(move |(at, _)| {
-        let after = &text[at + EXPORTED.len()..];
-        let end = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
-        let name = &after[..end];
-        let free = name == "gpu_engine_close" || name.ends_with("_free");
-        (name.starts_with("gpu_engine_") && free).then_some(name)
-    })
+/// The frees the sources export: each verb named `gpu_engine_close` or
+/// `gpu_engine_…_free`.
+fn exported() -> BTreeSet<String> {
+    let free = |name: &String| name == "gpu_engine_close" || name.ends_with("_free");
+    verbs().into_keys().filter(free).collect()
 }
 
 // ⛔`gpu_engine_window_free` alone is not in the table: a window is an
@@ -309,11 +340,10 @@ const UNMADE: [&str; 1] = ["gpu_engine_window_free"];
 
 #[test]
 fn every_free_the_sources_export_is_in_the_table() {
-    let named: BTreeSet<&str> = frees().iter().map(|(name, _)| *name).chain(UNMADE).collect();
-    let off = files_where("rs", |text| frees_in(text).any(|name| !named.contains(name)));
+    let named = frees().into_iter().map(|(name, _)| name).chain(UNMADE);
+    let (named, exported): (BTreeSet<String>, _) = (named.map(str::to_owned).collect(), exported());
+    let off: Vec<_> = exported.difference(&named).collect();
     assert!(off.is_empty(), "a free the table does not make and let go of: {off:?}");
-    for name in named {
-        let homes = files_where("rs", |text| frees_in(text).any(|free| free == name));
-        assert!(!homes.is_empty(), "{name} is no free the sources export");
-    }
+    let gone: Vec<_> = named.difference(&exported).collect();
+    assert!(gone.is_empty(), "no free the sources export: {gone:?}");
 }

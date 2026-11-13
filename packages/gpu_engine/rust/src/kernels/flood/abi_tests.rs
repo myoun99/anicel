@@ -14,7 +14,7 @@ use crate::kernels::composite::abi::{
 use crate::kernels::composite::tests::rig as composite_rig;
 use crate::kernels::composite::{TILE, WHOLE};
 use crate::kernels::shared::le_bytes;
-use crate::testing::{last_error, stored};
+use crate::testing::{first_engine, last_error, stored};
 
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 const BLEND: u32 = 0;
@@ -49,7 +49,8 @@ fn drawn(pixel: impl Fn(i32, i32) -> u32) -> (Pool, *mut Planned) {
         le_bytes(&(0..side).flat_map(across).map(|(x, y)| pixel(x, y)).collect::<Vec<_>>())
     };
     let (pool, at) = stored(&[tile(0), tile(1)]);
-    let plan = gpu_engine_plan_new();
+    // SAFETY: the engine is live.
+    let plan = unsafe { gpu_engine_plan_new(first_engine()) };
     // Its one tile set, and no matrix, keys or chain.
     let (set, none) = (0, -1);
     // SAFETY: `plan` is live; each array holds what its call reads.

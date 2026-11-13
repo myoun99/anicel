@@ -22,7 +22,7 @@ use std::ptr::NonNull;
 
 use wgpu::rwh::{AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle};
 
-use crate::device::{Engine, storage_texture};
+use crate::device::{Engine, let_go, on_thread_of, storage_texture};
 use crate::fail;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
@@ -212,7 +212,7 @@ pub unsafe extern "C" fn gpu_engine_window_new(
             .map(NativeWindow)
             .or_else(|| fail("no window"))
             .and_then(|native| Window::new(engine, native, width, height))
-            .map_or(std::ptr::null_mut(), |window| Box::into_raw(Box::new(window)))
+            .map_or(std::ptr::null_mut(), |window| engine.hands(window))
     })
 }
 
@@ -225,16 +225,20 @@ pub unsafe extern "C" fn gpu_engine_window_direct(window: *const Window) -> bool
 }
 
 /// The texture this frame's kernels write to `window` — the same one until
-/// it is presented. Null on failure; see the last error.
+/// it is presented. Null on failure; see the last error. The swapchain's
+/// next image is the driver's to give, so it is asked on the window's
+/// engine's thread ([`on_thread_of`]).
 ///
 /// # Safety
 /// `window` is live; the texture lives until `window` is presented.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_window_target(window: *mut Window) -> *const wgpu::Texture {
     // SAFETY: see the function's contract.
-    unsafe { &mut *window }
-        .target()
-        .map_or(std::ptr::null(), |texture| texture)
+    unsafe {
+        on_thread_of(window, || {
+            (*window).target().map_or(std::ptr::null(), |texture| std::ptr::from_ref(texture))
+        })
+    }
 }
 
 /// Shows what the kernels last wrote to `window`. False on failure; see
@@ -256,8 +260,6 @@ pub unsafe extern "C" fn gpu_engine_window_present(engine: *const Engine, window
 /// released after it, not before.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_window_free(window: *mut Window) {
-    if !window.is_null() {
-        // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(window) });
-    }
+    // SAFETY: see the function's contract.
+    unsafe { let_go(window) };
 }

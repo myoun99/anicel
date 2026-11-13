@@ -6,8 +6,63 @@
 //! is to replace. A file that stops being a copy leaves the ledger in the
 //! same change; a copy that is not on it is red.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+
+/// Every `.rs` file under the crate's `src/`: its text — line ends as `\n`
+/// — by its path there.
+pub(super) fn sources() -> BTreeMap<String, String> {
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let src = Path::new(&crate_dir).join("src");
+    let read = |file: String| {
+        let text = std::fs::read_to_string(src.join(&file)).unwrap_or_else(|error| panic!("{file}: {error}"));
+        (file, text.replace("\r\n", "\n"))
+    };
+    files_where("rs", |_| true).into_iter().map(read).collect()
+}
+
+/// A verb of the C ABI as a source defines it: an `extern "C"` function
+/// named `gpu_engine_…`. ⛔ONE reader of them: `every_free.rs` read their
+/// names, `every_verb.rs` their bodies, and `one_handing_out.rs` came for
+/// their signatures as a third (2026-11-14).
+pub(super) struct Verb {
+    pub(super) name: String,
+    /// From the `(` after its name to the brace that opens its body.
+    pub(super) signature: String,
+    /// From the line that opens it to the brace that closes it at the
+    /// line's start.
+    pub(super) body: String,
+}
+
+/// The verbs `text` defines.
+pub(super) fn verbs_in(text: &str) -> Vec<Verb> {
+    const EXPORTED: &str = "extern \"C\" fn ";
+    let text = text.replace("\r\n", "\n");
+    let verb = |at: usize| {
+        let after = &text[at + EXPORTED.len()..];
+        let name = &after[..after.find('(')?];
+        let opens = after.find(" {\n")?;
+        let closes = opens + after[opens..].find("\n}")?;
+        // None where the words are no definition's: named in a comment.
+        let signature = after.get(name.len()..opens)?.to_owned();
+        let body = after[opens..closes].to_owned();
+        name.starts_with("gpu_engine_").then(|| Verb { name: name.to_owned(), signature, body })
+    };
+    text.match_indices(EXPORTED).filter_map(|(at, _)| verb(at)).collect()
+}
+
+/// Every verb the crate's sources define, by its name.
+pub(super) fn verbs() -> BTreeMap<String, Verb> {
+    let defined = sources().into_values().flat_map(|text| verbs_in(&text));
+    defined.map(|verb| (verb.name.clone(), verb)).collect()
+}
+
+/// Whether `body` hands a thing out by the bytes' door
+/// (`device::hands_bytes`) — called, or handed on as the function it is
+/// (`map_or(null, hands_bytes)`).
+pub(super) fn hands_out_bytes(body: &str) -> bool {
+    body.contains("hands_bytes")
+}
 
 /// Every `.{extension}` file under the crate's `src/` whose text `holds`,
 /// as its path under `src/`.

@@ -497,6 +497,20 @@ impl Engine {
         self.thread.run_lent(work)
     }
 
+    /// `made`, handed to the caller over the ABI: a pointer to it, good
+    /// till it is let go of ([`let_go`], [`let_go_unwaited`]), on this
+    /// engine's thread ([`Handed`]).
+    pub(crate) fn hands<T>(&self, made: T) -> *mut T {
+        Box::into_raw(Box::new(Handed { kept: made, thread: self.thread.clone() })).cast()
+    }
+
+    /// This engine as the ABI hands one out, [`gpu_engine_close`]'s to let
+    /// go of: the one thing of the ABI's that is no [`Handed`] — it is what
+    /// keeps the thread.
+    pub(crate) fn boxed(self) -> *mut Self {
+        Box::into_raw(Box::new(self))
+    }
+
     /// What each of `works` answers, in their order, all under way at once
     /// — each on a thread made for it while the caller waits: for works
     /// that each wait for a compile ([`Self::compiling`]; 🗣️유저 2026-11-13,
@@ -890,7 +904,7 @@ fn opened(open: impl FnOnce() -> Option<Engine> + Send + 'static) -> *mut Engine
     let made = EngineThread::start()
         .and_then(|thread| thread.run(move || open().ok_or_else(last_error)))
         .and_then(|opened| opened.map_or_else(fail, Some));
-    made.map_or(std::ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
+    made.map_or(std::ptr::null_mut(), Engine::boxed)
 }
 
 /// Work for an [`EngineThread`].
@@ -1187,6 +1201,188 @@ impl EngineThread {
         callers.put();
         answer.unwrap_or_else(|panic| resume_unwind(panic))
     }
+
+    /// Hands `kept` to this thread to be let go of there and returns, the
+    /// caller waiting for none of it — on this thread already, let go of
+    /// where it is. Let go of even where the driver's own work has ended
+    /// the thread ([`Self::ended`]), as a body is run: it is let go of
+    /// nowhere else. A drop that panics there ends the thread as the
+    /// driver's own work does — no caller is left to take the panic.
+    fn lets_go<T: 'static>(&self, kept: T) {
+        if self.is_here() {
+            return drop(kept);
+        }
+        let (kept, ended) = (Sent(kept), Arc::clone(&self.ended));
+        let job = move || {
+            if catch_unwind(AssertUnwindSafe(move || drop(kept))).is_err() {
+                ended.store(true, Ordering::Release);
+            }
+        };
+        let _ = self.jobs.send(Box::new(job));
+    }
+}
+
+/// What is handed to the engine's thread to be let go of there
+/// ([`EngineThread::lets_go`]).
+struct Sent<T>(T);
+
+// SAFETY: what is let go of is in one thread's hands at a time — its
+// caller's till it is sent, which reads it no more, and the engine's from
+// there, as what a body is lent is ([`EngineThread::run_lent`]).
+unsafe impl<T> Send for Sent<T> {}
+
+/// What a maker of the C ABI hands its caller ([`Engine::hands`]): the
+/// thing made, and beside it the thread of the engine that made it, where
+/// it is let go of ([`let_go`], [`let_go_unwaited`]).
+///
+/// 🚨★★WHAT THE ABI HANDED OUT IS LET GO OF ON THE ENGINE'S THREAD
+/// (the-ui-thread-never-enters-the-driver 1b, 2026-11-14): letting go of a
+/// thing is a hand on the device as making it was — a buffer goes back to
+/// the allocator under the lock one is made under ([`EngineThread`] has
+/// what that lock cost the UI's thread). A free is handed a pointer and no
+/// engine, and the GC's finalizer has no more to hand it (🗣️관제 2026-11-14
+/// 02:19: 「파이널라이저는 포인터 하나만 넘기므로 1b 의 물건은 자기가 놓일
+/// 스레드를 스스로 쥐고 있어야 한다 … 엔진을 인자로 받는 free 는 길이
+/// 아니다」), so the thread is kept with the thing: here, once, and in no
+/// type of a kernel's.
+///
+/// So a maker whose thing holds, or comes to hold, anything of the device
+/// is handed the engine: of the eleven made with none till then, a plan
+/// came to hold a mask, a screen its pages, a grid lay its pipelines, the
+/// chains held and a chain's read their buffers and an export its passes,
+/// under verbs that are handed the engine — and a readout held a buffer
+/// from the first.
+///
+/// 🚨WHAT HOLDS NOTHING OF A DEVICE IS NO ENGINE'S ([`hands_bytes`]) — a
+/// dab's texels, what a plug-in made, the faces, a picture of letters:
+/// bytes in memory, which outlive a device that is lost and are named by
+/// whichever engine's job uploads them
+/// (`test/architecture/a_job_names_what_its_own_engine_made_test.dart`).
+/// ↩️⏳브러시/렌더링 2026-11-14 had every maker handed the engine, those
+/// too, so that nothing had to tell the two apart; 🗣️관제 2026-11-14 05:16,
+/// the-ui-thread-never-enters-the-driver, overturned it: 「생성자의 `engine`
+/// 이 어떤 타입에서는 「누구의 디바이스가 만들었나」이고 어떤 타입에서는
+/// 「어느 스레드에서 놓이나」가 된다 … 이 카드의 법은 「드라이버에 안
+/// 들어간다」이지 「메모리의 바이트도 엔진 스레드에서 놓는다」가 아니다」.
+/// What tells the two apart is read, not remembered
+/// (`kernels/shared/one_handing_out.rs`).
+///
+/// The thread stands for as long as a thing of its engine's does, past the
+/// engine's own close: what the GC lets go of comes when the GC comes.
+///
+/// `repr(C)`, the thing first: a pointer to the whole is a pointer to the
+/// thing, which every verb reads through.
+#[repr(C)]
+struct Handed<T> {
+    kept: T,
+    thread: EngineThread,
+}
+
+/// `handed`'s whole, and the thread it is let go of on; none of a null.
+///
+/// # Safety
+/// `handed` came from [`Engine::hands`], and is taken once.
+unsafe fn taken<T>(handed: *mut T) -> Option<(EngineThread, Box<Handed<T>>)> {
+    if handed.is_null() {
+        return None;
+    }
+    // SAFETY: by the contract, the pointer `Engine::hands` made of a
+    // `Handed<T>`'s box, whose first field it points to.
+    let whole = unsafe { Box::from_raw(handed.cast::<Handed<T>>()) };
+    Some((whole.thread.clone(), whole))
+}
+
+/// Lets go of what [`Engine::hands`] handed out — nothing of a null — on
+/// the thread of the engine that made it, the caller waiting till it is
+/// gone: what the thing counted is counted off as its free returns (the
+/// `*_BYTES` the app's tests read right after one), as when the caller's
+/// own thread let go of it.
+///
+/// # Safety
+/// `handed` came from [`Engine::hands`], and is let go of once.
+pub(crate) unsafe fn let_go<T>(handed: *mut T) {
+    // SAFETY: see the function's contract.
+    if let Some((thread, whole)) = unsafe { taken(handed) } {
+        thread.run_lent(move || drop(whole));
+    }
+}
+
+/// What `work` answers, run while the caller waits on the thread of the
+/// engine that made `handed`, as [`Engine::on_thread`] runs a verb's body:
+/// for a verb that is handed a thing and no engine, and takes a hand on the
+/// device by it all the same — lets go of what the thing keeps of the
+/// device, or asks the driver for its next image.
+///
+/// 🔬Three of the 71 verbs handed neither an engine nor a thing to free did
+/// (2026-11-14, each body read): `gpu_engine_held_let_go` and
+/// `gpu_engine_blurs_let_go` let buffers go on their caller's thread, and
+/// Android's `gpu_engine_window_target` took the swapchain's image there —
+/// past `every_verb.rs`, which read the verbs handed the engine alone till
+/// then.
+///
+/// # Safety
+/// `handed` came from [`Engine::hands`], and is live.
+pub(crate) unsafe fn on_thread_of<T, Made>(handed: *const T, work: impl FnOnce() -> Made) -> Made {
+    // SAFETY: by the contract, the first field of a live `Handed<T>`.
+    let thread = unsafe { &(*handed.cast::<Handed<T>>()).thread };
+    thread.run_lent(work)
+}
+
+/// `made`, handed to the caller over the ABI where it holds nothing of a
+/// device — bytes in memory ([`Handed`] has which, and why they are no
+/// engine's): a bare box, [`let_go_bytes`]'s to let go of on whatever
+/// thread frees it. ⚠️A type that comes to hold anything of the device
+/// leaves this door for [`Engine::hands`]: `one_handing_out.rs` reads
+/// each type's fields for it — till the device's things are told by a
+/// type of their own (stage 2 of the-ui-thread-never-enters-the-driver),
+/// where that scan goes.
+pub(crate) fn hands_bytes<T>(made: T) -> *mut T {
+    Box::into_raw(Box::new(made))
+}
+
+/// Lets go of what [`hands_bytes`] handed out — nothing of a null — where
+/// its caller is: no device is taken in hand for it.
+///
+/// # Safety
+/// `handed` came from [`hands_bytes`], and is let go of once.
+pub(crate) unsafe fn let_go_bytes<T>(handed: *mut T) {
+    if !handed.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(handed) });
+    }
+}
+
+/// Lets go of what [`Engine::hands`] handed out as [`let_go`] does, but
+/// the caller waiting for none of it: the frees the GC calls of an
+/// engine's things — the ones the app binds a native finalizer to, and no
+/// other (`test/architecture/a_free_the_gc_calls_waits_for_nothing_test.dart`
+/// reads both sides; a thing of bytes the GC lets go of is let go of where
+/// the GC is, [`let_go_bytes`]).
+///
+/// 🔬A native finalizer's callback holds every isolate of its group for as
+/// long as it takes (Dart 3.13.3, `dart run`, the main PC, 2026-11-14: a
+/// callback of 300 ms — kernel32's `Sleep` — and the main isolate and a
+/// worker each stood 315 ms, six times of six; 2.5 ms with none). Waiting
+/// here, the GC would hold the UI for every body ahead on the engine's
+/// thread, a save's read back among them, where it let go at once on its
+/// own thread till now.
+///
+/// ⏳So what the GC lets go of is not waited for, and the rest is
+/// (브러시/렌더링 2026-11-14, the user asleep — theirs to overturn). ⛔Not
+/// every free unwaited before stage 2 of
+/// the-ui-thread-never-enters-the-driver: four of the counts are counted
+/// off where the thing is dropped (`KEPT_BYTES`, `HELD_BYTES`,
+/// `READOUT_BYTES`, `FLOOD_BYTES`) and would read late, to the app's tests
+/// and the leak pins alike. ⚠️A verb that lets go here counts off what its
+/// thing counted before it does, on its caller's thread.
+///
+/// # Safety
+/// `handed` came from [`Engine::hands`], and is let go of once.
+pub(crate) unsafe fn let_go_unwaited<T: 'static>(handed: *mut T) {
+    // SAFETY: see the function's contract.
+    if let Some((thread, whole)) = unsafe { taken(handed) } {
+        thread.lets_go(whole);
+    }
 }
 
 /// Opens the engine on the adapter whose LUID is `luid` (high part in the
@@ -1213,7 +1409,8 @@ pub extern "C" fn gpu_engine_open_first() -> *mut Engine {
 
 /// # Safety
 /// `engine` came from `gpu_engine_open`, and every surface and kernel made
-/// on it has been freed.
+/// on it has been freed — but what the GC lets go of, which comes when the
+/// GC does ([`Handed`]).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_close(engine: *mut Engine) {
     if !engine.is_null() {
@@ -1943,6 +2140,88 @@ mod tests {
                 assert_eq!(last_error(), "another body's", "the other caller's is its own body's");
             });
         }
+    }
+
+    /// What a test hands out and watches let go of: it tells the engine
+    /// whose thread let go of it, by that thread's number — `NO_ENGINE` on
+    /// a thread that is none's.
+    struct Watched(std::sync::mpsc::Sender<u64>);
+
+    impl Drop for Watched {
+        fn drop(&mut self) {
+            let _ = self.0.send(super::WORKS_FOR.get());
+        }
+    }
+
+    // 🚨What the ABI handed out is let go of on the thread of the engine
+    // that made it (the-ui-thread-never-enters-the-driver 1b; `Handed` has
+    // why) — gone as its free returns, and read through meanwhile as the
+    // thing itself. A verb handed the thing and no engine reaches that
+    // thread by it too.
+    #[test]
+    fn what_is_handed_out_is_let_go_of_on_its_engines_thread_as_its_free_returns() {
+        let engine = first_engine();
+        let (told, let_go_on) = std::sync::mpsc::channel();
+        let handed = engine.hands((7u8, Watched(told)));
+        // SAFETY: handed out above, live.
+        assert_eq!(unsafe { (*handed).0 }, 7, "the pointer is to the thing");
+        // SAFETY: handed out above, live.
+        let on = unsafe { super::on_thread_of(handed, || super::WORKS_FOR.get()) };
+        assert_eq!(on, engine.thread.number, "a verb handed the thing runs on its engine's thread");
+        assert_ne!(super::WORKS_FOR.get(), on, "a test's thread is no engine's");
+        // SAFETY: handed out above, let go of once.
+        unsafe { super::let_go(handed) };
+        assert_eq!(let_go_on.try_recv(), Ok(on), "let go of off its engine's thread, or not yet");
+        // Nothing of a null.
+        // SAFETY: a null is let go of as nothing.
+        unsafe { super::let_go(std::ptr::null_mut::<Watched>()) };
+        // SAFETY: the same.
+        unsafe { super::let_go_unwaited(std::ptr::null_mut::<Watched>()) };
+    }
+
+    // 🚨What the GC lets go of waits for nothing (`let_go_unwaited` has the
+    // measure): its free is back while a body ahead still has the engine's
+    // thread, and the thing is let go of there once that body is through.
+    #[test]
+    fn what_the_gc_lets_go_of_waits_for_no_body_and_goes_on_its_engines_thread() {
+        let engine = first_engine();
+        let (told, let_go_on) = std::sync::mpsc::channel();
+        let handed = engine.hands(Watched(told));
+        let (lets, released) = std::sync::mpsc::channel::<()>();
+        let (began, begun) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                engine.on_thread(|| {
+                    let _ = began.send(());
+                    let _ = released.recv_timeout(IN_TIME);
+                })
+            });
+            begun.recv().expect("the body ahead began");
+            // SAFETY: handed out above, let go of once.
+            unsafe { super::let_go_unwaited(handed) };
+            let so_far = let_go_on.try_recv();
+            let _ = lets.send(());
+            assert_eq!(so_far, Err(std::sync::mpsc::TryRecvError::Empty), "waited for, or let go of here");
+        });
+        assert_eq!(let_go_on.recv_timeout(IN_TIME), Ok(engine.thread.number));
+    }
+
+    // 🚨The thread stands for as long as a thing of its engine's does: the
+    // GC comes when it comes, and what it lets go of after the engine was
+    // closed — a lost device's pictures, the app's at its end — is let go
+    // of on that engine's thread all the same.
+    #[test]
+    fn what_outlives_its_engine_is_let_go_of_on_that_engines_thread_still() {
+        let engine = opened(Engine::open_first);
+        assert!(!engine.is_null(), "{}", last_error());
+        let (told, let_go_on) = std::sync::mpsc::channel();
+        // SAFETY: opened above, live.
+        let (handed, its_thread) = unsafe { ((*engine).hands(Watched(told)), (*engine).thread.number) };
+        // SAFETY: opened above, closed once.
+        unsafe { gpu_engine_close(engine) };
+        // SAFETY: handed out above, let go of once.
+        unsafe { super::let_go_unwaited(handed) };
+        assert_eq!(let_go_on.recv_timeout(IN_TIME), Ok(its_thread));
     }
 
     // The tests' own engine keeps the alarm the process had: an error no
