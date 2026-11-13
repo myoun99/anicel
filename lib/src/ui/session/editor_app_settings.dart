@@ -208,6 +208,15 @@ class EditorAppSettings {
     _frameCountSettingsStore?.save,
   );
 
+  /// Keeps the way a count was just switched to be typed — what every
+  /// count window opens on next, across a restart too. 🗣️I-24-open-entry-Q1
+  /// (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」. One writer for every
+  /// window that holds a count field (the count windows, an SE block's, a
+  /// ruler marker's).
+  void rememberFrameCountEntry(FrameCountEntry entry) => setFrameCountSettings(
+    AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
+  );
+
   // --- Camera path (I-89 ④) -------------------------------------------------
 
   /// Injectable persistence; null (tests) keeps the in-memory defaults.

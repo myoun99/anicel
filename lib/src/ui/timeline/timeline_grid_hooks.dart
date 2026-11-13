@@ -30,6 +30,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
+import 'ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline_row_filter.dart';
 import 'frame_ruler_view.dart';
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
@@ -164,6 +165,7 @@ class TimelineGridHooks {
     this.spillInLeadFrames = const {},
     this.cutId,
     this.cutEndDrag,
+    this.rulerMarkers,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
@@ -648,6 +650,11 @@ class TimelineGridHooks {
   /// grip that end-trims the ACTIVE cut through the session's trim
   /// channel; the line follows the live preview. Null = display-only.
   final TimelineCutEndDragCallbacks? cutEndDrag;
+
+  /// The cut's ruler markers and their verbs (I-169): the ruler across and
+  /// the sheet's rail down show the one set. Null shows none (a grid in no
+  /// cut).
+  final RulerMarkerHooks? rulerMarkers;
 
   /// #29: the (project, cut) world the rows' resolvers answer from — see
   /// [TimelineRowCellsPainter.substrateGeneration]. Joins the row MEMO key

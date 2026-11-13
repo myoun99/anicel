@@ -75,6 +75,28 @@ extension TimelineGlyphPlacementPaint on TimelineGlyphPlacement {
       offset & Size(painter.width * fit.x, painter.height * fit.y);
 
   void paint(Canvas canvas) => paintFittedText(canvas, painter, offset, fit);
+
+  /// The same word in the same type at the same place, set in [ink] — for
+  /// a ground its own ink is not read on: a ruler's writing over a marker's
+  /// ribbon (I-169). The glyph cache holds it beside the first, as it holds
+  /// a word's black and its white. A glyph that is not one plain run keeps
+  /// its own ink.
+  TimelineGlyphPlacement inInk(Color ink) {
+    final span = painter.text;
+    if (span is! TextSpan || span.children != null) {
+      return this;
+    }
+    final text = span.text;
+    final style = span.style;
+    if (text == null || style == null) {
+      return this;
+    }
+    return (
+      painter: laidOutGlyph(text, style.copyWith(color: ink)),
+      offset: offset,
+      fit: fit,
+    );
+  }
 }
 
 /// The seconds index on a boundary cell's LEADING CORNER (UI-R10 #27):

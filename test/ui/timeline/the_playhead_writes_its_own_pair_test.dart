@@ -2,7 +2,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/ruler_marker.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
+import 'package:anicel/src/ui/theme/ruler_marker_palette.dart';
+import 'package:anicel/src/ui/timeline/ruler_marker_layer.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
@@ -445,6 +450,301 @@ void main() {
     });
   });
 
+  // 🗣️I-169-Q1 (유저 2026-11-13 took 「A · 룰러 안의 깃발」, whose own words
+  // were 「초가 서는 칸에서는 초 글자가 깃발 위에 그대로 보인다」) and Q4:
+  // 「마커랑 재생헤드쪽의 초/프레임 숫자 겹칠텐데 겹치는거 전혀문제없음.
+  // 재생헤드 숫자 텍스트가 마커보다 위 층이면 됨」.
+  group('over a marker\'s ribbon', () {
+    List<TimelineGlyphPlacement> over(
+      TimelineRulerScale scale,
+      List<RulerMarker> markers, {
+      List<Rect> pair = const [],
+    }) => timelineRulerWritingOverMarkers(
+      scale: scale,
+      layout: scale.axis == Axis.horizontal
+          ? TimelineFrameRulerPainter.glyphsAt
+          : XSheetFrameRailPainter.glyphsAt,
+      markers: markers,
+      pair: pair,
+    );
+
+    RulerMarkerHooks hooksOf(
+      RulerMarkers markers,
+      ValueNotifier<TimelineDragPreview?> preview,
+    ) => RulerMarkerHooks(
+      holder: const RulerMarkerHolder.timeline(),
+      markers: markers,
+      dragPreview: preview,
+      onBeginDrag: (_) => false,
+      onUpdateDrag: (_) {},
+      onEndDrag: () {},
+      onCancelDrag: () {},
+      onOpen: (_) {},
+    );
+
+    test('🚨the second a ribbon stands on is written again ON it — the '
+        'strip\'s own glyph where the strip set it, in the markers\' ink', () {
+      final scale = scaleOf();
+      final strip = TimelineFrameRulerPainter.glyphsAt(
+        scale,
+        24,
+        current: false,
+      ).singleWhere((glyph) => textOf(glyph) == '1');
+      final written = over(scale, const [RulerMarker(start: 24)]);
+
+      expect(written.map(textOf), ['1']);
+      expect(written.single.offset, strip.offset);
+      expect(written.single.rect, strip.rect);
+      expect(styleOf(written.single).color, rulerMarkerInk);
+      expect(styleOf(strip).color, isNot(rulerMarkerInk), reason: 'premise');
+      expect(
+        styleOf(written.single).copyWith(color: styleOf(strip).color),
+        styleOf(strip),
+        reason: 'the ink alone is another',
+      );
+    });
+
+    test('a ribbon that stands on none of the strip\'s writing has none '
+        'written on it — the numbers\' line is not the ribbons\'', () {
+      final scale = scaleOf();
+      expect(
+        TimelineFrameRulerPainter.glyphsAt(scale, 12, current: false),
+        isNotEmpty,
+        reason: 'premise: a number is written under it',
+      );
+      expect(over(scale, const [RulerMarker(start: 12, length: 2)]), isEmpty);
+      expect(over(scale, const []), isEmpty);
+    });
+
+    test('a second that reaches out of its cell into a ribbon is written '
+        'on that ribbon too, and no further', () {
+      final scale = scaleOf(cell: 8);
+      final second = rulerGlyph(scale, 24, '1');
+      expect(
+        second.right,
+        greaterThan(scale.cellRectFor(25).left),
+        reason: 'premise: it reaches into the next cell',
+      );
+      expect(
+        second.right,
+        lessThanOrEqualTo(scale.cellRectFor(26).left),
+        reason: 'premise: and not into the one after',
+      );
+      expect(over(scale, const [RulerMarker(start: 25)]).map(textOf), ['1']);
+      expect(over(scale, const [RulerMarker(start: 26)]), isEmpty);
+    });
+
+    test('what the playhead\'s pair covers stays down under it', () {
+      final scale = scaleOf();
+      final pair = [for (final mine in rulerWriting(scale, 24).pair) mine.rect];
+      expect(over(scale, const [RulerMarker(start: 24)], pair: pair), isEmpty);
+    });
+
+    test('a ribbon off the painted window is not walked', () {
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(bucket.dispose);
+      final windowed = TimelineRulerScale(
+        axis: Axis.horizontal,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 6000,
+        playbackFrameCount: 6000,
+        leadingFrameSpacer: 0,
+        crossExtent: 28,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 24),
+        colorScheme: scheme,
+        face: const TextStyle(),
+        numberType: TimelineFrameRulerPainter.numberType,
+        secondsFontSize: 9,
+        windowBucket: bucket,
+        viewportMainExtent: 480,
+      );
+      final window = windowed.visibleWindow();
+      expect(window.endIndexExclusive, lessThan(4800), reason: 'premise');
+      expect(
+        over(windowed, const [RulerMarker(start: 4800)]),
+        isEmpty,
+        reason: 'frame 4800 is a second\'s, off the window',
+      );
+      expect(over(windowed, const [RulerMarker(start: 24)]).map(textOf), [
+        '1',
+      ]);
+    });
+
+    test('🚨on the rail the frame\'s number stands across the whole '
+        'breadth: it is written on the ribbon with the second', () {
+      final scale = scaleOf(axis: Axis.vertical);
+      final written = over(scale, const [RulerMarker(start: 24)]);
+      expect(written.map(textOf).toSet(), {'1', '25'});
+      for (final glyph in written) {
+        expect(styleOf(glyph).color, rulerMarkerInk);
+      }
+    });
+
+    test('the painter writes them inside the ribbons\' outline, and the '
+        'pair after them — over everything', () {
+      final scale = scaleOf();
+      final playhead = ValueNotifier<int?>(3);
+      addTearDown(playhead.dispose);
+      final preview = ValueNotifier<TimelineDragPreview?>(null);
+      addTearDown(preview.dispose);
+      final spy = _Spy();
+      TimelineRulerPlayheadWritingPainter(
+        scale: scale,
+        playhead: playhead,
+        layout: TimelineFrameRulerPainter.glyphsAt,
+        markers: hooksOf(
+          RulerMarkers.settled(const [RulerMarker(start: 24)]),
+          preview,
+        ),
+      ).paint(spy, const Size(2880, 28));
+
+      final clip = spy.log.indexWhere((entry) => entry.$1 == 'clipPath');
+      expect(
+        spy.log[clip].$2,
+        rulerMarkerOutline(
+          Axis.horizontal,
+          rulerMarkerRect(scale, const RulerMarker(start: 24)),
+        ).getBounds(),
+      );
+      expect(spy.log.sublist(clip + 1, clip + 3), [
+        ('text', rulerGlyph(scale, 24, '1').topLeft),
+        ('restore', null),
+      ]);
+      expect(spy.log.sublist(clip + 3), [
+        for (final mine in rulerWriting(scale, 3).pair) ('text', mine.offset),
+      ]);
+    });
+
+    test('🚨no paper is laid back on a ribbon: the pair\'s uncovering is '
+        'cut clear of it', () {
+      final scale = scaleOf();
+      final second = rulerGlyph(scale, 24, '1');
+      final playhead = ValueNotifier<int?>(24);
+      addTearDown(playhead.dispose);
+      final preview = ValueNotifier<TimelineDragPreview?>(null);
+      addTearDown(preview.dispose);
+      expect(
+        rulerWriting(scale, 24).covered,
+        contains(second),
+        reason: 'premise: the pair covers the strip\'s second',
+      );
+
+      List<(String, Object?)> painted(RulerMarkers markers) {
+        final spy = _Spy();
+        TimelineRulerPlayheadWritingPainter(
+          scale: scale,
+          playhead: playhead,
+          layout: TimelineFrameRulerPainter.glyphsAt,
+          markers: hooksOf(markers, preview),
+        ).paint(spy, const Size(2880, 28));
+        return spy.log;
+      }
+
+      Iterable<Object?> clips(List<(String, Object?)> log) =>
+          log.where((entry) => entry.$1 == 'clip').map((entry) => entry.$2);
+
+      expect(
+        clips(painted(const RulerMarkers.none())),
+        contains(second),
+        reason: 'with no ribbon there, the paper comes back under the glyph',
+      );
+      final marked = painted(
+        RulerMarkers.settled(const [RulerMarker(start: 24)]),
+      );
+      expect(clips(marked), isNot(contains(second)));
+      Iterable<Object?> texts(List<(String, Object?)> log) =>
+          log.where((entry) => entry.$1 == 'text').map((entry) => entry.$2);
+      expect(
+        texts(marked),
+        texts(painted(const RulerMarkers.none())),
+        reason: 'nothing more is written: what the pair covers stays down',
+      );
+    });
+
+    test('the painter shows the markers a drag in flight shows, and is '
+        'painted again for each of its steps', () {
+      final markers = RulerMarkers.settled(const [RulerMarker(start: 24)]);
+      final playhead = ValueNotifier<int?>(3);
+      addTearDown(playhead.dispose);
+      final preview = ValueNotifier<TimelineDragPreview?>(null);
+      addTearDown(preview.dispose);
+      final painter = TimelineRulerPlayheadWritingPainter(
+        scale: scaleOf(),
+        playhead: playhead,
+        layout: TimelineFrameRulerPainter.glyphsAt,
+        markers: hooksOf(markers, preview),
+      );
+      var repaints = 0;
+      void heard() => repaints += 1;
+      painter.addListener(heard);
+      addTearDown(() => painter.removeListener(heard));
+
+      expect(painter.markersShown(), markers.inOrder);
+      expect(painter.writtenOverMarkers().map(textOf), ['1']);
+      preview.value = RulerMarkerDragPreview(
+        holder: const RulerMarkerHolder.timeline(),
+        markers: markers.moved(0, 5),
+      );
+      expect(repaints, 1);
+      expect(painter.markersShown(), markers.moved(0, 5).inOrder);
+      expect(painter.writtenOverMarkers(), isEmpty);
+
+      // Another ruler's drag is not this ruler's.
+      preview.value = RulerMarkerDragPreview(
+        holder: const RulerMarkerHolder.cut(CutId('other')),
+        markers: markers.moved(0, 9),
+      );
+      expect(painter.markersShown(), markers.inOrder);
+    });
+  });
+
+  testWidgets('a ruler with markers and no playhead still mounts the '
+      'writing: it is where the strip\'s own shows over a ribbon', (
+    tester,
+  ) async {
+    final preview = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(preview.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineFrameHeaderRow(
+            frameStartIndex: 0,
+            frameEndIndexExclusive: 30,
+            playbackFrameCount: 30,
+            leadingFrameSpacerWidth: 0,
+            trailingFrameSpacerWidth: 0,
+            metrics: TimelineGridMetrics.defaults,
+            onSelectFrame: (_) {},
+            markers: RulerMarkerHooks(
+              holder: const RulerMarkerHolder.timeline(),
+              markers: RulerMarkers.settled(const [RulerMarker(start: 24)]),
+              dragPreview: preview,
+              onBeginDrag: (_) => false,
+              onUpdateDrag: (_) {},
+              onEndDrag: () {},
+              onCancelDrag: () {},
+              onOpen: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    final painter =
+        tester
+                .widget<CustomPaint>(
+                  find.byKey(
+                    const ValueKey<String>('timeline-ruler-playhead-writing'),
+                  ),
+                )
+                .painter!
+            as TimelineRulerPlayheadWritingPainter;
+    expect(painter.writtenFrame(), isNull);
+    expect(
+      [for (final glyph in painter.writtenOverMarkers()) textOf(glyph)],
+      ['1'],
+    );
+  });
+
   testWidgets('the header row writes the pair on a layer of its own that '
       'follows the playhead; the strip under it is handed none', (
     tester,
@@ -545,6 +845,10 @@ class _Spy implements Canvas {
     ui.ClipOp clipOp = ui.ClipOp.intersect,
     bool doAntiAlias = true,
   }) => log.add(('clip', rect));
+
+  @override
+  void clipPath(Path path, {bool doAntiAlias = true}) =>
+      log.add(('clipPath', path.getBounds()));
 
   @override
   void drawRect(Rect rect, Paint paint) => log.add(('paper', rect));

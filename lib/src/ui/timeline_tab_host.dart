@@ -9,6 +9,7 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/sheet_sources.dart' show sheetPageFramesOf;
 import '../models/timeline_row_address.dart';
+import '../models/ruler_marker.dart' show RulerMarkerHolder;
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
@@ -43,6 +44,8 @@ import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart'
     show ReadyRunsOfTheDocument;
+import 'timeline/ruler_marker_commands.dart' show rulerMarkerHooksOf;
+import 'timeline/ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
@@ -426,6 +429,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
+  /// The ACTIVE cut's ruler markers and their verbs (I-169): the cut's own,
+  /// on the ruler across and the sheet's rail down. 🗣️I-169-Q2 (유저
+  /// 2026-11-13): 「컷(로컬)이랑 콘티(글로벌)이랑 마커 독립적으로」 — the
+  /// conte panel's ruler shows none of these. Null while no cut is active
+  /// (gap parking).
+  RulerMarkerHooks? _rulerMarkerHooks(BuildContext context) {
+    final cutId = _session.activeCutId;
+    return cutId == null
+        ? null
+        : rulerMarkerHooksOf(context, _session, RulerMarkerHolder.cut(cutId));
+  }
+
   /// The layer stack as the GRIDS should render it — display clones for
   /// the rows whose cells are not their own.
   ///
@@ -630,6 +645,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // end-trims the ACTIVE cut through the storyboard's trim
             // channel — live preview, ONE undo on release.
             cutEndDrag: _cutEndDragCallbacks(),
+            rulerMarkers: _rulerMarkerHooks(context),
             // Sparse-row memo identities (UI-R20 #4): camera/instruction
             // rows re-enter the row memo, invalidated exactly by these.
             memoAux: TimelineRowMemoAux(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../text/app_face.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
 import 'frame_ruler_view.dart';
+import 'ruler_marker_layer.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_grid_metrics.dart';
@@ -37,6 +38,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.playhead,
+    this.markers,
   });
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the painter
@@ -71,9 +73,14 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   /// one (null) never mounts the writing.
   final ValueListenable<int?>? playhead;
 
+  /// The ruler's markers and their verbs (I-169) — over the strip, under
+  /// the playhead's writing; null mounts none and takes no double click.
+  final RulerMarkerHooks? markers;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final markers = this.markers;
     final width =
         leadingFrameSpacerWidth +
         frameRangeVisibleWidth(
@@ -115,7 +122,15 @@ class TimelineFrameHeaderRow extends StatelessWidget {
           scale: scale,
           playhead: held,
           layout: TimelineFrameRulerPainter.glyphsAt,
+          markers: markers,
         ),
+        markers: markers == null
+            ? null
+            : RulerMarkerLayer(
+                key: const ValueKey<String>('timeline-ruler-markers'),
+                hooks: markers,
+                scale: scale,
+              ),
       ),
     );
   }

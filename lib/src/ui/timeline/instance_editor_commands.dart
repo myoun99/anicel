@@ -2,7 +2,6 @@ import 'dart:async' show FutureOr;
 
 import 'package:flutter/material.dart';
 
-import '../../models/app_frame_count_settings.dart';
 import '../../models/audio_clip.dart' show AudioClip;
 import '../../models/camera_instruction.dart';
 import '../../models/cut.dart' show Cut;
@@ -556,9 +555,7 @@ Future<void> _editSeEntryWithDialog(
       blockFrames: blockFrames,
       frameRate: session.projectSettings.projectFrameRate,
       // The count windows' entry, kept as theirs is (I-24-open-entry-Q1).
-      onCountEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
-        AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
-      ),
+      onCountEntryChanged: session.appSettings.rememberFrameCountEntry,
       cuts: cuts,
       initialCutId: initialCutId,
       previewAxis: previewAxis,

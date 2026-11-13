@@ -172,9 +172,7 @@ Future<int?> _askFrameCount(
     // — the entry last switched to, kept as an app setting so a restart
     // keeps it too.
     entry: AppFrameCountSettings.settings.value.lastEntry,
-    onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
-      AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
-    ),
+    onEntryChanged: session.appSettings.rememberFrameCountEntry,
     mark: mark,
   ),
 );

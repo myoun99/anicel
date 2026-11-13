@@ -101,6 +101,7 @@ import 'timeline/frame_panel_transport.dart' show panelTransportFor;
 import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
+import 'timeline/ruler_marker_commands.dart' show editRulerMarkerAtPlayhead;
 import 'timeline/merge_layer_rows.dart';
 import 'timeline/timeline_action_toolbar.dart'
     show showMarkEveryDialog, showTimelineCommaCountDialog;
@@ -1442,6 +1443,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workspaceBar.zoomStep(_session.workingPanel, zoomIn: false);
       case EditorActionIds.timelineZoomFit:
         _workspaceBar.zoomFit(_session.workingPanel);
+      case EditorActionIds.rulerMarkerEdit:
+        unawaited(editRulerMarkerAtPlayhead(context, _session));
       case EditorActionIds.timelineOrientationToggle:
         _workspaceBar.toggleOrientation(_session.workingPanel);
       case EditorActionIds.canvasRotateCcw:

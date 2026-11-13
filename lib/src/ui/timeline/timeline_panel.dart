@@ -34,6 +34,7 @@ import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline_current_row.dart';
+import 'ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -181,6 +182,7 @@ class TimelinePanel extends StatefulWidget {
     this.spillInLeadFrames = const {},
     this.cutId,
     this.cutEndDrag,
+    this.rulerMarkers,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
@@ -201,6 +203,9 @@ class TimelinePanel extends StatefulWidget {
   /// cut-end boundary grows a grip that end-trims the ACTIVE cut and the
   /// line follows the live trim preview. Null = display-only.
   final TimelineCutEndDragCallbacks? cutEndDrag;
+
+  /// The cut's ruler markers (I-169), threaded to both grids' rulers.
+  final RulerMarkerHooks? rulerMarkers;
 
   /// Sparse-row memo identity tokens (UI-R20 #4).
   final TimelineRowMemoAux memoAux;
@@ -824,6 +829,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       spillInLeadFrames: widget.spillInLeadFrames,
       cutId: widget.cutId,
       cutEndDrag: widget.cutEndDrag,
+      rulerMarkers: widget.rulerMarkers,
       substrateGeneration: widget.substrateGeneration,
       memoAux: widget.memoAux,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,

@@ -53,7 +53,6 @@ import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart' show TransformTrack;
 import '../models/track_transitions.dart' show transitionRowSpans;
 import 'dashed_path.dart' show DashPattern, dashesAlong;
-import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
@@ -72,7 +71,7 @@ import 'theme/app_theme.dart';
 import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/timeline_cut_end_handle.dart'
-    show EndLineGrip, timelineCutEndPreviewFrameCount;
+    show WholeFramesGrip, timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
 import 'timeline/rail_eyes.dart'
@@ -258,7 +257,9 @@ import 'timeline/timeline_instruction_row_visual.dart'
         timelineRowBlockWarnings,
         timelineRowInstructionEdgeGrips,
         timelineRowInstructionOverlays;
+import 'timeline/ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline/timeline_frame_ruler.dart';
+import 'timeline/timeline_frame_scrub.dart' show rulerPressScrubs;
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
@@ -704,6 +705,7 @@ class StoryboardPanel extends StatefulWidget {
     this.syncedCutIds = const {},
     this.onOpenCutLinks,
     this.movieEnd,
+    this.rulerMarkers,
     this.trackLaneHeight = defaultTrackLaneHeight,
     this.onResizeTrackLanes,
     this.pixelsPerFrame = 8,
@@ -1164,6 +1166,12 @@ class StoryboardPanel extends StatefulWidget {
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
   final StoryboardMovieEndCallbacks? movieEnd;
+
+  /// The OPEN TIMELINE's ruler markers and their verbs (I-169) — its own,
+  /// in the movie's frames. 🗣️I-169-Q2 (유저 2026-11-13): 「컷(로컬)이랑
+  /// 콘티(글로벌)이랑 마커 독립적으로 … 로컬에서 보이는거랑 글로벌에서
+  /// 보이는거랑 다름」. Null shows none.
+  final RulerMarkerHooks? rulerMarkers;
 
   /// Frame-axis zoom, owned by the host (the panel header's shared zoom
   /// slider drives it).
@@ -2847,6 +2855,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     contentFrames: frame.totalFrames,
                     movieEndUnder: _movieEndUnder,
                     dragPreview: widget.dragPreview,
+                    markers: widget.rulerMarkers,
                     playhead: frame.playheadListenable,
                     frameReadySignal: widget.frameReadySignal,
                     viewportOffset: _horizontalScrollOffset,
@@ -2891,6 +2900,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.contentFrames,
     required this.movieEndUnder,
     this.dragPreview,
+    this.markers,
     required this.playhead,
     required this.frameReadySignal,
     required this.viewportOffset,
@@ -2922,6 +2932,9 @@ class _StoryboardRuler extends StatefulWidget {
 
   /// The panel's drag channel; null keeps the ruler's end line committed.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// The open timeline's markers ([StoryboardPanel.rulerMarkers]).
+  final RulerMarkerHooks? markers;
 
   /// The playhead + cache-warm signals, consumed by the cursor overlay
   /// PAINTER only (R12-B): a playback tick or a warming frame repaints
@@ -3053,8 +3066,9 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
       key: const ValueKey<String>('storyboard-ruler'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
-        // R26 #34: a press that pans is the pan's, not a scrub.
-        if (canvasPressPans(canvasPressButtons(event))) {
+        // R26 #34: a press that pans is the pan's, not a scrub — and a
+        // marker's is the marker's (I-169).
+        if (!rulerPressScrubs(event)) {
           return;
         }
         _resetScrubTracking();
@@ -3094,6 +3108,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 // that moves the movie's end, not the end line's alone).
                 dragPreview: widget.dragPreview,
                 movieEndUnder: widget.movieEndUnder,
+                markers: widget.markers,
                 leadingFrameSpacerWidth: 0,
                 trailingFrameSpacerWidth: 0,
                 metrics: metrics,
@@ -5258,8 +5273,8 @@ class _StoryboardEndLineHandle extends StatelessWidget {
         width: 12,
         child: child!,
       ),
-      // F-445: the timeline's end line's grip ([EndLineGrip]).
-      child: EndLineGrip(
+      // F-445: the timeline's end line's grip ([WholeFramesGrip]).
+      child: WholeFramesGrip(
         axis: Axis.horizontal,
         cellExtent: pixelsPerFrame,
         onBegin: movieEnd.onBegin,

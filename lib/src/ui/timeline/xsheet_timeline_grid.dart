@@ -1,4 +1,3 @@
-import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/named.dart';
@@ -15,6 +14,7 @@ import '../theme/app_theme.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'rail_column_swipe.dart';
+import 'ruler_marker_layer.dart';
 import 'layer_rail_window.dart';
 
 import 'timeline_grid_range_gestures.dart';
@@ -820,8 +820,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
-        // R26 #34: a press that pans is the pan's, not a scrub.
-        if (canvasPressPans(canvasPressButtons(event))) {
+        // R26 #34: a press that pans is the pan's, not a scrub — and a
+        // marker's is the marker's (I-169).
+        if (!rulerPressScrubs(event)) {
           return;
         }
         _railScrub.resetTracking();
@@ -926,6 +927,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             pages: widget.hooks.sheetPages,
                             windowBucket: _frameWindowBucket,
                             viewportMainExtent: bodyViewportHeight,
+                            markers: widget.hooks.rulerMarkers,
                           ),
                         ),
                         Positioned.fill(
@@ -1338,6 +1340,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.playhead,
+    this.markers,
   });
 
   final int frameStartIndex;
@@ -1363,9 +1366,14 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   /// writes none; a rail without one (null) never mounts the writing.
   final ValueListenable<int?>? playhead;
 
+  /// The cut's markers and their verbs (I-169) — the ruler's, down the
+  /// rail's leading half.
+  final RulerMarkerHooks? markers;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final markers = this.markers;
     final height =
         leadingFrameSpacerHeight +
         frameRangeVisibleWidth(
@@ -1416,7 +1424,15 @@ class _XSheetFrameNumberRail extends StatelessWidget {
           scale: scale,
           playhead: held,
           layout: XSheetFrameRailPainter.glyphsAt,
+          markers: markers,
         ),
+        markers: markers == null
+            ? null
+            : RulerMarkerLayer(
+                key: const ValueKey<String>('xsheet-rail-markers'),
+                hooks: markers,
+                scale: scale,
+              ),
       ),
     );
   }

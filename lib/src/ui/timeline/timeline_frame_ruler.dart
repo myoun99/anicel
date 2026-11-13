@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/cut_id.dart';
 import '../widgets/tick_layer.dart';
 import 'frame_ruler_view.dart';
+import 'ruler_marker_layer.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_header_row.dart';
@@ -33,6 +34,7 @@ class TimelineFrameRuler extends StatelessWidget {
     this.noriShiro,
     this.axis = Axis.horizontal,
     this.playhead,
+    this.markers,
   });
 
   final int frameStartIndex;
@@ -78,6 +80,10 @@ class TimelineFrameRuler extends StatelessWidget {
   /// header row; null mounts no writing.
   final ValueListenable<int?>? playhead;
 
+  /// The ruler's markers and their verbs (I-169), handed to the header row;
+  /// null mounts none.
+  final RulerMarkerHooks? markers;
+
   /// The frame axis direction — horizontal for the timeline ruler, vertical
   /// for the X-sheet's frame-number rail.
   final Axis axis;
@@ -101,6 +107,7 @@ class TimelineFrameRuler extends StatelessWidget {
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
           playhead: playhead,
+          markers: markers,
         ),
         // 🚨F-244: the two marks a drag moves are asked on EVERY step of every
         // drag, so they lay out and paint on a layer of their own — rebuilt

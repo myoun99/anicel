@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../../models/layer.dart';
 import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
@@ -1179,6 +1178,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                         dragPreview: widget
                                                             .hooks
                                                             .dragPreview,
+                                                        markers: widget
+                                                            .hooks
+                                                            .rulerMarkers,
                                                         previewCutId:
                                                             widget
                                                                 .hooks
@@ -1223,11 +1225,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                         .translucent,
                                                 onPointerDown: (event) {
                                                   // R26 #34: a press that
-                                                  // pans is the pan's.
-                                                  if (canvasPressPans(
-                                                    canvasPressButtons(
-                                                      event,
-                                                    ),
+                                                  // pans is the pan's —
+                                                  // and a marker's is the
+                                                  // marker's (I-169).
+                                                  if (!rulerPressScrubs(
+                                                    event,
                                                   )) {
                                                     return;
                                                   }

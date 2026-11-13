@@ -769,6 +769,10 @@ abstract final class EditorActionIds {
 
   /// The zoom fit, right of the zoom's readout (I-111).
   static const timelineZoomFit = 'timeline-zoom-fit';
+
+  /// The ruler marker of the panel being worked in, at its playhead
+  /// (I-169): the one standing there opens, or a new one is made.
+  static const rulerMarkerEdit = 'ruler-marker-edit';
   static const timelineOrientationToggle = 'timeline-orientation-toggle';
 
   /// 🗣️I-19 (유저 2026-09-12): 「여러 단축키 기존 버튼에 연결. 우선
@@ -1894,6 +1898,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.timelineZoomFit,
     label: 'Timeline Zoom to Fit',
+    shelf: ShortcutShelf.timelineBar,
+    defaultActivators: [],
+  ),
+  // 🗣️I-169 (유저 2026-11-12): 「타임라인 룰러에 북마크? 메모 넣는기능」 —
+  // made by the ruler's double click (I-169-Q1) and by this, at the
+  // playhead of the panel worked in: the two ways the question offered and
+  // the answer took. No key was said for it, and it has no button — the
+  // ruler's cell is its button.
+  const EditorActionDefinition(
+    id: EditorActionIds.rulerMarkerEdit,
+    label: 'Add / Edit Marker',
     shelf: ShortcutShelf.timelineBar,
     defaultActivators: [],
   ),

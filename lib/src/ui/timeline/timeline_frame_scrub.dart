@@ -5,10 +5,25 @@ library;
 
 import 'package:flutter/widgets.dart';
 
+import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
+import '../input/value_control_pointers.dart' show valueControlOwnsPointer;
 import 'axis_turn.dart' show extentAlong, partAlong;
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_hooks.dart';
+
+/// Whether a press on a ruler strip is the strip's to scrub by — ONE answer
+/// for the ruler across, the X-sheet's rail down and the conte panel's
+/// ruler.
+///
+/// Not a press that pans (R26 #34: a press that pans is the pan's), and not
+/// one a control standing on the strip has taken — a marker, which holds
+/// the strong claim by the time the strip hears the press. 🗣️I-169-Q1 (유저
+/// 2026-11-13): 「룰러 한 칸에서 위쪽절반은 마크위젯, 아래는 기존처럼
+/// 룰러위젯으로 대응하도록」.
+bool rulerPressScrubs(PointerDownEvent event) =>
+    !canvasPressPans(canvasPressButtons(event)) &&
+    !valueControlOwnsPointer(event.pointer);
 
 /// The scrub on a strip whose frames run along [axis].
 ///

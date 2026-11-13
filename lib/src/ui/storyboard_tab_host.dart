@@ -10,6 +10,7 @@ import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
+import '../models/ruler_marker.dart' show RulerMarkerHolder;
 import '../models/working_panel.dart';
 import '../services/import/import_layer_spot.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
@@ -17,6 +18,7 @@ import 'conte/conte_sheet_builder.dart' show contePageHeadsOf;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
+import 'timeline/ruler_marker_commands.dart' show rulerMarkerHooksOf;
 import 'timeline/lane_group_reset.dart'
     show resetLaneGroupOf, resetTrackEffectGroupOf;
 import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
@@ -935,6 +937,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onUpdate: _session.movieEnd.updateMovieEndDrag,
                       onEnd: _session.movieEnd.endMovieEndDrag,
                       onCancel: _session.movieEnd.cancelMovieEndDrag,
+                    ),
+                    // The OPEN TIMELINE's markers, in the movie's frames
+                    // (I-169-Q2): its own, apart from every cut's.
+                    rulerMarkers: rulerMarkerHooksOf(
+                      context,
+                      _session,
+                      const RulerMarkerHolder.timeline(),
                     ),
                     playheadFrame: _session.playheadCursors.trackFrame,
                     cutUnderPlayhead: _session.cutUnderPlayhead.listenable,

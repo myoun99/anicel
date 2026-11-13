@@ -441,6 +441,17 @@ enum AppStrings {
       _s('frameNameConflictListHeading');
 
   // --- The instance editors ---
+  String get rulerMarkerNewTitle => _s('rulerMarkerNewTitle');
+  String get rulerMarkerEditTitle => _s('rulerMarkerEditTitle');
+  String get rulerMarkerTextLabel => _s('rulerMarkerTextLabel');
+  String get rulerMarkerColorLabel => _s('rulerMarkerColorLabel');
+  String get rulerMarkerLengthLabel => _s('rulerMarkerLengthLabel');
+  String get rulerMarkerColorYellow => _s('rulerMarkerColorYellow');
+  String get rulerMarkerColorOrange => _s('rulerMarkerColorOrange');
+  String get rulerMarkerColorPink => _s('rulerMarkerColorPink');
+  String get rulerMarkerColorSky => _s('rulerMarkerColorSky');
+  String get rulerMarkerColorViolet => _s('rulerMarkerColorViolet');
+  String get rulerMarkerColorWhite => _s('rulerMarkerColorWhite');
   String get seInstanceNewTitle => _s('seInstanceNewTitle');
   String get seInstanceEditTitle => _s('seInstanceEditTitle');
   String get seNameLabel => _s('seNameLabel');
@@ -2509,6 +2520,17 @@ enum AppStrings {
         'shares the same material: the pasted blocks show the listed '
         'frames, and the copied drawings are not brought.',
     'frameNameConflictListHeading': 'Frames to link',
+    'rulerMarkerNewTitle': 'New Marker',
+    'rulerMarkerEditTitle': 'Edit Marker',
+    'rulerMarkerTextLabel': 'Text',
+    'rulerMarkerColorLabel': 'Color',
+    'rulerMarkerLengthLabel': 'Length',
+    'rulerMarkerColorYellow': 'Yellow',
+    'rulerMarkerColorOrange': 'Orange',
+    'rulerMarkerColorPink': 'Pink',
+    'rulerMarkerColorSky': 'Sky',
+    'rulerMarkerColorViolet': 'Violet',
+    'rulerMarkerColorWhite': 'White',
     'seInstanceNewTitle': 'New SE',
     'seInstanceEditTitle': 'Edit SE',
     'seNameLabel': 'Name (speaker — blank hides the box)',
@@ -4003,6 +4025,17 @@ enum AppStrings {
         '同じ素材を共有し、貼り付けたブロックは一覧のフレームを表示します。'
         'コピーした絵は取り込まれません。',
     'frameNameConflictListHeading': 'リンクするフレーム',
+    'rulerMarkerNewTitle': 'マーカーの新規作成',
+    'rulerMarkerEditTitle': 'マーカーの編集',
+    'rulerMarkerTextLabel': 'テキスト',
+    'rulerMarkerColorLabel': '色',
+    'rulerMarkerLengthLabel': '長さ',
+    'rulerMarkerColorYellow': '黄',
+    'rulerMarkerColorOrange': 'オレンジ',
+    'rulerMarkerColorPink': 'ピンク',
+    'rulerMarkerColorSky': '水色',
+    'rulerMarkerColorViolet': '紫',
+    'rulerMarkerColorWhite': '白',
     'seInstanceNewTitle': 'SEの新規作成',
     'seInstanceEditTitle': 'SEの編集',
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
@@ -4532,6 +4565,7 @@ enum AppStrings {
     'shortcutAction.timeline-zoom-in': 'タイムラインを拡大',
     'shortcutAction.timeline-zoom-out': 'タイムラインを縮小',
     'shortcutAction.timeline-zoom-fit': 'タイムラインを全体表示',
+    'shortcutAction.ruler-marker-edit': 'マーカーを追加／編集',
     'shortcutAction.timeline-orientation-toggle': 'タイムライン / Xシート',
     'shortcutAction.edit-cut': '切り取り',
     'shortcutAction.edit-copy': 'コピー',
@@ -5908,6 +5942,17 @@ enum AppStrings {
         '같은 원화를 공유해서, 붙여넣은 블록은 목록의 프레임을 보여 '
         '주고 복사해 온 그림은 들어오지 않습니다.',
     'frameNameConflictListHeading': '링크할 프레임',
+    'rulerMarkerNewTitle': '새 마커',
+    'rulerMarkerEditTitle': '마커 편집',
+    'rulerMarkerTextLabel': '텍스트',
+    'rulerMarkerColorLabel': '색',
+    'rulerMarkerLengthLabel': '길이',
+    'rulerMarkerColorYellow': '노랑',
+    'rulerMarkerColorOrange': '주황',
+    'rulerMarkerColorPink': '분홍',
+    'rulerMarkerColorSky': '하늘',
+    'rulerMarkerColorViolet': '보라',
+    'rulerMarkerColorWhite': '흰색',
     'seInstanceNewTitle': '새 SE',
     'seInstanceEditTitle': 'SE 편집',
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
@@ -6443,6 +6488,7 @@ enum AppStrings {
     'shortcutAction.timeline-zoom-in': '타임라인 확대',
     'shortcutAction.timeline-zoom-out': '타임라인 축소',
     'shortcutAction.timeline-zoom-fit': '타임라인 줌 맞춤',
+    'shortcutAction.ruler-marker-edit': '마커 추가/편집',
     'shortcutAction.timeline-orientation-toggle': '타임라인 / X시트',
     'shortcutAction.edit-cut': '잘라내기',
     'shortcutAction.edit-copy': '복사',
@@ -7827,6 +7873,17 @@ enum AppStrings {
         'les images listées, et les dessins copiés ne seront pas '
         'apportés.',
     'frameNameConflictListHeading': 'Images à lier',
+    'rulerMarkerNewTitle': 'Nouveau marqueur',
+    'rulerMarkerEditTitle': 'Modifier le marqueur',
+    'rulerMarkerTextLabel': 'Texte',
+    'rulerMarkerColorLabel': 'Couleur',
+    'rulerMarkerLengthLabel': 'Durée',
+    'rulerMarkerColorYellow': 'Jaune',
+    'rulerMarkerColorOrange': 'Orange',
+    'rulerMarkerColorPink': 'Rose',
+    'rulerMarkerColorSky': 'Ciel',
+    'rulerMarkerColorViolet': 'Violet',
+    'rulerMarkerColorWhite': 'Blanc',
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
@@ -8400,6 +8457,7 @@ enum AppStrings {
     'shortcutAction.timeline-zoom-in': 'Zoom avant de la timeline',
     'shortcutAction.timeline-zoom-out': 'Zoom arrière de la timeline',
     'shortcutAction.timeline-zoom-fit': 'Ajuster la timeline à la vue',
+    'shortcutAction.ruler-marker-edit': 'Ajouter / modifier un marqueur',
     'shortcutAction.timeline-orientation-toggle':
         "Timeline / feuille d'exposition",
     'shortcutAction.edit-cut': 'Couper',
@@ -9904,6 +9962,17 @@ enum AppStrings {
         '列表中的帧已在使用要粘贴的帧所带的名称。是否将粘贴的块链接到这些帧？'
         '链接后相同名称共用同一张原画：粘贴的块显示列表中的帧，复制来的原画不会带入。',
     'frameNameConflictListHeading': '要链接的帧',
+    'rulerMarkerNewTitle': '新建标记',
+    'rulerMarkerEditTitle': '编辑标记',
+    'rulerMarkerTextLabel': '文本',
+    'rulerMarkerColorLabel': '颜色',
+    'rulerMarkerLengthLabel': '长度',
+    'rulerMarkerColorYellow': '黄',
+    'rulerMarkerColorOrange': '橙',
+    'rulerMarkerColorPink': '粉',
+    'rulerMarkerColorSky': '天蓝',
+    'rulerMarkerColorViolet': '紫',
+    'rulerMarkerColorWhite': '白',
     'seInstanceNewTitle': '新建 SE',
     'seInstanceEditTitle': '编辑 SE',
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
@@ -10380,6 +10449,7 @@ enum AppStrings {
     'shortcutAction.timeline-zoom-in': '放大时间轴',
     'shortcutAction.timeline-zoom-out': '缩小时间轴',
     'shortcutAction.timeline-zoom-fit': '时间轴适合窗口',
+    'shortcutAction.ruler-marker-edit': '添加/编辑标记',
     'shortcutAction.timeline-orientation-toggle': '时间轴 / 摄影表',
     'shortcutAction.edit-cut': '剪切',
     'shortcutAction.edit-copy': '复制',
