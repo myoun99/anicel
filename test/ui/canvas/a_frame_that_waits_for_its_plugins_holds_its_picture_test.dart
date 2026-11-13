@@ -758,6 +758,47 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a frame\'s picture its plugin failed on, shown again once '
+      'that plugin\'s runner is closed, tells nobody', (tester) async {
+    final tells = <bool>[];
+    final runner = ShiftingFxPlugin(by: 0, fails: true);
+    final store = _WritesWhenLet()..letAllGo();
+    addTearDown(store.dispose);
+    final (:picture, overlay: _, handAnew: _, store: _) = await standOn(
+      tester,
+      GlobalKey(),
+      beside([
+        aBlur,
+        ResolvedLayerEffect(
+          kind: EffectKind.plugin,
+          plugin: shiftingFxPluginDescription,
+          values: const [],
+          run: fxPluginRunOf(
+            runner,
+            told: ({required failed}) => tells.add(failed),
+          ),
+        ),
+      ]),
+      laidBy: store,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    void shownAgain() => store.peek(picture)!.hold().release();
+    final made = tells.length;
+    shownAgain();
+    expect(tells.length, made + 1, reason: '⛔premise: told again, shown');
+    expect(tells.last, isTrue);
+
+    runner.close();
+    shownAgain();
+
+    expect(tells.length, made + 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// The columns [colour] shows in on [shot].
   Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
     for (var at = 0; at < shot.rgba.length; at += 4)
