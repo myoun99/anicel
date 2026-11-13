@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuEngine, GpuRefused;
+
 import '../../core/on_a_worker.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
@@ -12,6 +14,7 @@ import '../../models/brush_shape.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../native/app_gpu_engine.dart' show appGpuEngine;
 import '../../native/engine_tile_ledger.dart';
 import '../brush_dab_interpolator.dart';
 import '../brush_stroke_landing.dart';
@@ -201,7 +204,19 @@ final _pen = const BrushShape().withCurve(
 /// [mask] as well — on a worker handed a copy of it
 /// ([onAWorkerWithCelCopy]).
 ///
-/// Throws [ClipFormatException] for strokes that would not read.
+/// Throws [ClipFormatException] for strokes that would not read, and the
+/// device's refusal ([GpuRefused]) where the engine the picture was drawn
+/// on lost its device before the cut had read it all.
+///
+/// 🚨A LAYER WHOSE DEVICE WENT AS IT WAS DRAWN FAILS THE IMPORT WHOLE, as
+/// one refused at its first stroke does, and is told as the device's (card
+/// `a-vector-layer-read-as-its-device-goes-opens-blank`, 관제 2026-11-13).
+/// ↩️브러시 measured it otherwise (main PC, 2026-11-13): a device gone as
+/// the picture was cut read back no tile — the layer opened empty and
+/// nothing said so — or, where a stroke had lain over a tile, threw a bare
+/// [StateError], which is no refusal. Whether it went is asked of the
+/// engine the first stroke landed on ([GpuEngine.isGone]) once the cut is
+/// done: the app's may be the next by then (`appGpuEngineIsGone`'s ⛔).
 Future<({List<ClipCelTile> tiles, int unread})> clipVectorTiles(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
@@ -216,18 +231,33 @@ Future<({List<ClipCelTile> tiles, int unread})> clipVectorTiles(
     pasteboardReach: PasteboardReach.none,
     tileSize: target.tileSize,
   );
+  GpuEngine? drawnOn;
   final unread = await onAWorkerAsking<BrushDabSequence, bool, int>((stroke) {
+    drawnOn ??= appGpuEngine;
     surface = _withStroke(surface, stroke);
     return true;
   }, _strokesLaid(bodies, offset));
-  return (
-    tiles: await onAWorkerWithCelCopy(
+  final List<ClipCelTile> tiles;
+  try {
+    tiles = await onAWorkerWithCelCopy(
       BrushFrameKey.noCel,
       surface,
       _cutOnto(target, mask),
-    ),
-    unread: unread,
-  );
+    );
+  } on StateError {
+    _refusedWhereGone(drawnOn);
+    rethrow;
+  }
+  _refusedWhereGone(drawnOn);
+  return (tiles: tiles, unread: unread);
+}
+
+/// The device's refusal, thrown where [drawnOn] — the engine a picture was
+/// drawn on, or none where no stroke landed — lost its device.
+void _refusedWhereGone(GpuEngine? drawnOn) {
+  if (drawnOn != null && drawnOn.isGone) {
+    throw GpuRefused('the graphics device went as a vector layer was drawn');
+  }
 }
 
 /// [picture] with [stroke] laid on it as the brush lays a stroke
@@ -244,9 +274,8 @@ Future<({List<ClipCelTile> tiles, int unread})> clipVectorTiles(
 /// 2340 × 1654).
 ///
 /// ⚠️What a tile let go was kept for goes with it: a device that goes while
-/// a layer is drawn leaves nothing for the picture's tiles to read as. An
-/// import that loses its device is not told apart yet, with or without
-/// this (card `a-lost-gpu-device-keeps-the-unsaved-tiles`).
+/// a layer is drawn leaves nothing for the picture's tiles to read as —
+/// which is why such a layer is refused whole ([clipVectorTiles]).
 BitmapSurface _withStroke(BitmapSurface picture, BrushDabSequence stroke) {
   final landed = strokeLandedOn(picture, stroke);
   for (final (:coord, tile: _) in landed) {
