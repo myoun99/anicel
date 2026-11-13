@@ -79,12 +79,13 @@ Future<Uint8List> resampleOnTheEngine({
   // 🚨ON THE ENGINE THE KERNELS ARE OF, not the one that was open before
   // they were waited for: the app may have let that one go meanwhile, its
   // device gone (`letTheGoneAppGpuEngineGo`), and these are the next
-  // one's. A picture of one engine carried by another's kernels is no
-  // error wgpu raises — it looks the one's buffer up among the other's and
-  // panics, which ends the process (🔬2026-11-13: `Cannot get
-  // BufferId(2,2), found other resource BufferId(2,1)`, a tip's thumbnail
-  // on its way as the app opened another engine; ↩️the picture was made on
-  // the engine first waited for).
+  // one's. A picture of one engine carried by another's kernels is
+  // refused by name (gpu_engine.dart, `_OfAnEngine`) — ↩️and before that
+  // was, wgpu looked the one's buffer up among the other's and panicked,
+  // which ended the process (🔬2026-11-13: `Cannot get BufferId(2,2),
+  // found other resource BufferId(2,1)`, a tip's thumbnail on its way as
+  // the app opened another engine; the picture was made on the engine
+  // first waited for).
   return _readOnAWorker(
     landing.carried(
       GpuStampPicture(landing.engine, src, srcWidth, srcHeight),

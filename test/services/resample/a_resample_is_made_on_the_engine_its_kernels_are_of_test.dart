@@ -16,8 +16,9 @@ import '../../helpers/the_apps_engine_let_go.dart';
 /// 🔬2026-11-13: made on the engine first waited for, it was carried by
 /// the next engine's kernels, and wgpu ended the process — `Cannot get
 /// BufferId(2,2), found other resource BufferId(2,1)` — a tip's thumbnail
-/// on its way as the app opened another engine. ⚠️So the pin is red by the
-/// test never ending: there is no error to catch.
+/// on its way as the app opened another engine. Since then such a job is
+/// refused by name (gpu_engine.dart, `_OfAnEngine`): made on the first, the
+/// resample fails of that refusal.
 ///
 /// On the app's own engine, which the test loses.
 void main() {
