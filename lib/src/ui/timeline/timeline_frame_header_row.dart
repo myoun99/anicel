@@ -70,7 +70,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
 
   /// The playhead the strip writes its own pair at (I-16), on a layer of
   /// its own above the strip — a null VALUE writes none; a strip without
-  /// one (null) never mounts the writing.
+  /// one (null) mounts the writing for its [markers] alone.
   final ValueListenable<int?>? playhead;
 
   /// The ruler's markers and their verbs (I-169) — over the strip, under
@@ -80,7 +80,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final markers = this.markers;
     final width =
         leadingFrameSpacerWidth +
         frameRangeVisibleWidth(
@@ -117,20 +116,13 @@ class TimelineFrameHeaderRow extends StatelessWidget {
           painter: TimelineFrameRulerPainter(scale: scale),
         ),
         writingKey: const ValueKey<String>('timeline-ruler-playhead-writing'),
-        playhead: playhead,
-        writing: (held) => TimelineRulerPlayheadWritingPainter(
+        markersKey: const ValueKey<String>('timeline-ruler-markers'),
+        writing: TimelineRulerPlayheadWritingPainter(
           scale: scale,
-          playhead: held,
+          playhead: playhead,
           layout: TimelineFrameRulerPainter.glyphsAt,
           markers: markers,
         ),
-        markers: markers == null
-            ? null
-            : RulerMarkerLayer(
-                key: const ValueKey<String>('timeline-ruler-markers'),
-                hooks: markers,
-                scale: scale,
-              ),
       ),
     );
   }

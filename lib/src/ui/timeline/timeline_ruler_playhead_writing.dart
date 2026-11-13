@@ -207,43 +207,46 @@ double _widestAlong(
   return widest;
 }
 
-/// The playhead that is never anywhere: what the writing over a ruler with
-/// markers and no playhead follows.
-const ValueListenable<int?> _noPlayhead = AlwaysStoppedAnimation<int?>(null);
-
 /// A ruler strip as mounted: [strip], its static paint, and — with a
-/// [playhead] — the playhead's pair over it, painted by [writing] on a
+/// playhead — the playhead's pair over it, painted by [writing] on a
 /// layer of its OWN (I-16). The ruler across and the X-sheet rail down both
 /// mount their strip here, so the two cannot disagree about where the
 /// writing sits or what its repaints touch.
 ///
-/// A ruler's [markers] stand BETWEEN the two (I-169) — 🗣️유저 2026-11-13
+/// A ruler's markers stand BETWEEN the two (I-169) — 🗣️유저 2026-11-13
 /// (I-169-Q4): 「마커랑 재생헤드쪽의 초/프레임 숫자 겹칠텐데 겹치는거
 /// 전혀문제없음. 재생헤드 숫자 텍스트가 마커보다 위 층이면 됨」. So the
 /// writing is mounted for a ruler that has markers too, playhead or none:
 /// it is where the strip's own writing shows over a ribbon. It takes no
 /// press — what is pressed there is the marker under it, or the strip.
+///
+/// The ribbons are mounted HERE, off [writing]'s own markers and scale: the
+/// writing clips what it writes again to the ribbons' outlines, so the two
+/// are of one ruler or the ink stands beside its ribbon.
 Widget timelineRulerStripWithWriting({
   required Widget strip,
   required Key writingKey,
-  required ValueListenable<int?>? playhead,
-  required TimelineRulerPlayheadWritingPainter Function(
-    ValueListenable<int?> playhead,
-  )
-  writing,
-  Widget? markers,
+  required Key markersKey,
+  required TimelineRulerPlayheadWritingPainter writing,
 }) {
-  final held = playhead ?? (markers == null ? null : _noPlayhead);
+  final markers = writing.markers;
   return Stack(
     children: [
       strip,
-      if (markers != null) Positioned.fill(child: markers),
-      if (held != null)
+      if (markers != null)
+        Positioned.fill(
+          child: RulerMarkerLayer(
+            key: markersKey,
+            hooks: markers,
+            scale: writing.scale,
+          ),
+        ),
+      if (writing.playhead != null || markers != null)
         Positioned.fill(
           child: IgnorePointer(
             // What a tick moves, on the one layer every tick rides (I-22 ③).
             child: TickLayer(
-              child: CustomPaint(key: writingKey, painter: writing(held)),
+              child: CustomPaint(key: writingKey, painter: writing),
             ),
           ),
         ),
@@ -277,7 +280,7 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
     this.markers,
   }) : super(
          repaint: Listenable.merge([
-           playhead,
+           ?playhead,
            ?scale.windowBucket,
            ?markers?.dragPreview,
          ]),
@@ -291,15 +294,16 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
   final RulerMarkerHooks? markers;
 
   /// The frame the pair follows; a null VALUE writes nothing (the
-  /// storyboard's "no playhead" state).
-  final ValueListenable<int?> playhead;
+  /// storyboard's "no playhead" state), and so does a ruler handed none —
+  /// one mounted for its markers alone.
+  final ValueListenable<int?>? playhead;
 
   final TimelineRulerGlyphLayout layout;
 
   /// The frame the pair is written at — null with no playhead, or with one
   /// off the painted window (the probe surface).
   int? writtenFrame() {
-    final frame = playhead.value;
+    final frame = playhead?.value;
     if (frame == null) {
       return null;
     }

@@ -1363,7 +1363,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final double viewportMainExtent;
 
   /// The playhead the rail writes its own pair at (I-16) — a null VALUE
-  /// writes none; a rail without one (null) never mounts the writing.
+  /// writes none; a rail without one (null) mounts the writing for its
+  /// [markers] alone.
   final ValueListenable<int?>? playhead;
 
   /// The cut's markers and their verbs (I-169) — the ruler's, down the
@@ -1373,7 +1374,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final markers = this.markers;
     final height =
         leadingFrameSpacerHeight +
         frameRangeVisibleWidth(
@@ -1419,20 +1419,13 @@ class _XSheetFrameNumberRail extends StatelessWidget {
           painter: XSheetFrameRailPainter(scale: scale),
         ),
         writingKey: const ValueKey<String>('xsheet-rail-playhead-writing'),
-        playhead: playhead,
-        writing: (held) => TimelineRulerPlayheadWritingPainter(
+        markersKey: const ValueKey<String>('xsheet-rail-markers'),
+        writing: TimelineRulerPlayheadWritingPainter(
           scale: scale,
-          playhead: held,
+          playhead: playhead,
           layout: XSheetFrameRailPainter.glyphsAt,
           markers: markers,
         ),
-        markers: markers == null
-            ? null
-            : RulerMarkerLayer(
-                key: const ValueKey<String>('xsheet-rail-markers'),
-                hooks: markers,
-                scale: scale,
-              ),
       ),
     );
   }
