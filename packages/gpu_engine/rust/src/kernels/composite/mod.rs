@@ -93,7 +93,8 @@ use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
-    ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, room, runs,
+    ResampleModes, WIDE_WGSL, encode_on, kept_or_made, le_bytes, page_table, pipeline_with, room,
+    runs,
     storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
 };
 use crate::platform::stores;
@@ -633,7 +634,7 @@ impl Composite {
     /// The effect chains' blurs, compiled where the caller is if they are
     /// not — or waited for, where another thread is at it.
     pub(crate) fn chains(&self, engine: &Engine) -> &Chain {
-        self.chain.get_or_init(|| Chain::new(engine))
+        kept_or_made(&self.chain, || Chain::new(engine))
     }
 
     /// All this device lets a pass take.

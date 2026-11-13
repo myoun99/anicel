@@ -51,8 +51,8 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, encode, fits, flat, pipeline_with, plane, whole,
-    words_buffer,
+    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, encode, fits, flat, kept_or_made, pipeline_with, plane,
+    whole, words_buffer,
 };
 
 /// The three reads on a run's output tiles.
@@ -215,7 +215,7 @@ impl Pipelines {
             Read::Shown { bgra: false } => (&self.rgba, FRAME_SHOWN_WGSL, false),
             Read::Shown { bgra: true } => (&self.bgra, FRAME_SHOWN_WGSL, true),
         };
-        compiled.get_or_init(|| {
+        kept_or_made(compiled, || {
             let sources = [&[TILE_WGSL, PREMULTIPLY_WGSL, reads], self.own].concat();
             let constants: &[(&str, f64)] = if bgra { &[("FRAME_BGRA", 1.0)] } else { &[] };
             pipeline_with(engine, &sources, self.entry, constants)

@@ -30,6 +30,8 @@ mod one_filler;
 #[cfg(test)]
 mod one_framing;
 #[cfg(test)]
+mod one_kept_or_made;
+#[cfg(test)]
 mod one_maths;
 #[cfg(test)]
 mod one_ndk_table;
@@ -174,6 +176,25 @@ fn build(
     zeroed: bool,
 ) -> wgpu::ComputePipeline {
     Kernel::kept(engine, sources, entry, constants, zeroed).pipeline(engine).clone()
+}
+
+/// What `kept` holds — what `make` makes, where it holds nothing yet.
+///
+/// ⛔NOT `OnceLock::get_or_init` where `make` compiles: that holds the cell
+/// against every other thread as long as `make` takes, and a verb's body
+/// that came for the cell meanwhile would wait on the engine's thread for
+/// the cell — not for a compile, which it leaves that thread for — and
+/// every body behind it with it (`EngineThread::stands_aside`, in
+/// `device.rs`; `one_kept_or_made.rs` reads the sources for one). Two that
+/// come at once each make theirs — the kernels under them are compiled
+/// once all the same ([`Kernel::pipeline`]) — and the first through is the
+/// one kept.
+pub(crate) fn kept_or_made<T>(kept: &OnceLock<T>, make: impl FnOnce() -> T) -> &T {
+    if let Some(made) = kept.get() {
+        return made;
+    }
+    let made = make();
+    kept.get_or_init(|| made)
 }
 
 /// One of the engine's own kernels, compiled or still to be: the one it

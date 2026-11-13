@@ -1246,3 +1246,27 @@ fn two_that_ask_for_a_kernel_at_once_have_the_one() {
     });
     assert!(first == second, "each compiled its own");
 }
+
+// 🚨A cell being made holds up no other that comes for it
+// (the-ui-thread-never-enters-the-driver, 2026-11-14; `kept_or_made` has
+// why): the other makes its own meanwhile, and the first through is the
+// one both have.
+#[test]
+fn a_cell_being_made_holds_up_no_other_that_comes_for_it() {
+    let kept = &OnceLock::new();
+    let (let_go, released) = std::sync::mpsc::channel::<()>();
+    let (began, begun) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        let slow = scope.spawn(move || {
+            *super::kept_or_made(kept, move || {
+                let _ = began.send(());
+                let _ = released.recv_timeout(std::time::Duration::from_secs(20));
+                "the slow one's"
+            })
+        });
+        begun.recv().expect("the slow one began");
+        assert_eq!(*super::kept_or_made(kept, || "the other's"), "the other's");
+        let _ = let_go.send(());
+        assert_eq!(slow.join().expect("the slow one made its own"), "the other's");
+    });
+}

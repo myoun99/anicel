@@ -988,9 +988,13 @@ type Job = Box<dyn FnOnce() + Send>;
 /// all the same, held off by nothing but a count every test had to read.
 ///
 /// ⚠️What this does not reach: a body that waits for a lock another holds
-/// across its compile — a cell both are to fill (`Composite::chains`) —
-/// waits here, and the bodies behind it with it, till that compile is
-/// through.
+/// across its compile waits here, and the bodies behind it with it, till
+/// that compile is through. So a cell a compile fills is made outside
+/// its lock (`kernels::shared`, `kept_or_made`). ⏳One such lock is left
+/// (브러시/렌더링, 2026-11-14): the composite's passes, held across the
+/// first full pass of an output the executor was not made with
+/// (`Composite::pass`; `Composite::showing` makes the tiles' and a named
+/// surface format's ahead) — no test could tell it let go.
 ///
 /// ⚠️ALL OF THEM AT ONCE: a body left on its caller's thread, holding a
 /// lock of the engine's as it hands its submit here, waits for a body here

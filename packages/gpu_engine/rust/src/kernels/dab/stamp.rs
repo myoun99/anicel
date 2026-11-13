@@ -40,8 +40,8 @@ use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::mesh::{MeshGrid, MeshOwners};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, ResampleMap, ResampleMode, TILE_WGSL, WIDE_WGSL, encode, pipeline,
-    plane, tiles_a_page, whole, words_buffer,
+    Encoded, PREMULTIPLY_WGSL, ResampleMap, ResampleMode, TILE_WGSL, WIDE_WGSL, encode,
+    kept_or_made, pipeline, plane, tiles_a_page, whole, words_buffer,
 };
 use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::kernels::write::{Change, Write};
@@ -322,7 +322,7 @@ impl StampLanding {
         window: Window,
         (radius_floor, mode): (f64, ResampleMode),
     ) -> Option<wgpu::Buffer> {
-        let owners = self.owners.get_or_init(|| MeshOwners::new(engine));
+        let owners = kept_or_made(&self.owners, || MeshOwners::new(engine));
         self.warp.mesh(engine, (owners, mesh), picture, source_at, window, radius_floor, mode)
     }
 

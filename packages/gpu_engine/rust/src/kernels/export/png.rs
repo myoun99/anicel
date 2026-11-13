@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use super::{Frame, Picture, Pipelines, out_plane, submit};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::shared::pipeline;
+use crate::kernels::shared::{kept_or_made, pipeline};
 
 impl Picture {
     /// Words a row of the filtered out takes, `pixel_bytes` a pixel: its
@@ -64,7 +64,7 @@ impl PngFilter {
         if rgb.size() < needed {
             return fail(format!("its RGB takes {needed} bytes; the buffer has {}", rgb.size()));
         }
-        let pipeline = self.rgb.get_or_init(|| {
+        let pipeline = kept_or_made(&self.rgb, || {
             pipeline(engine, &[include_str!("png_rgb.wgsl"), PNG_WGSL], "png_filter_pass")
         });
         Self::run(engine, pipeline, rgb, 0, picture, 3)
