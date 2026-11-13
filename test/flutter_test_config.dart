@@ -67,7 +67,14 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // project opened in a tab) and 62–64 s in four (two rows merged) — 5–6 s
   // alone — behind a wait of sixty (`waitPatience`): red six times of ten,
   // and 38 and 24 red logs of lanes since 11-10, each the first test of
-  // its file.
+  // its file. With the folder, the same day and the line as full (nine
+  // suites of the run beside nine of another's): the two windows stood
+  // 5.9 s and 2.8 s where they had stood 60.8 s and 35.2 s with it empty,
+  // and of 296 wait windows one stood past ten seconds, at 11.5, where
+  // twenty had — a rasterize's apart, which waits for no kernel (board
+  // the-attach-row-bake-test-waits-a-gpu-read-a-frame-under-load).
+  // ⚠️What the folder does not change: the whole app's first frame in a
+  // new process stood 12–48 s under that load, the folder empty or full.
   //
   // ⛔Not in the run's temp: the line empties it as each run ends
   // (tool/test_queue.dart, `RunTemp`). ⛔Never the app's own container
