@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
+import '../../core/on_a_worker.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../native/qa_image_encoder.dart';
@@ -29,7 +30,8 @@ import 'still_frame_bytes.dart';
 /// lays them out for [encodePsd] (I-117).
 ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) =>
     switch (format.stillFormat) {
-      ExportStillFormat.jpg => (frame) => _encodeJpg(frame, format),
+      ExportStillFormat.jpg =>
+        (frame) => _encodeStill(frame, format, _jpgAt(format.jpgQuality)),
       ExportStillFormat.png =>
         format.wantsAlpha
             ? null
@@ -49,17 +51,25 @@ ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) =>
       ),
     };
 
-/// [frame] through one of the writers the engine has no encoder for
-/// (`still_file_writing.dart`): its colour straight where the file keeps
-/// alpha ([straightOf]), and laid over the format's background where it
-/// does not ([rgbOverGroundOf]).
+/// [frame] through a writer of its file's bytes — one of
+/// `still_file_writing.dart`'s, or the engine's JPEG encoder ([_jpgAt]):
+/// its colour straight where the file keeps alpha ([straightOf]), and laid
+/// over the format's background where it does not ([rgbOverGroundOf]).
+/// Null where [write] refused the picture.
 ///
-/// In an isolate: a writer walks every byte, and a run of frames would
-/// stall the window's cancel.
+/// On a worker ([onAWorker]): a writer walks every byte, and a run of
+/// frames would stall the window's cancel.
+///
+/// ↩️A JPG was encoded on this isolate, the engine's encoder walking the
+/// whole frame here, while every other still went to a worker (card
+/// `a-jpeg-still-is-encoded-on-the-ui-isolate`, the CPU census — 관제
+/// 2026-11-13). It goes the one way now, and so the one switch tests turn
+/// ([debugWorkersRunHere]): a hook a test sets on this isolate, as
+/// [QaImageEncoder.debugForceRefusal] is, is not set on a worker's.
 Future<List<int>?> _encodeStill(
   GpuShown frame,
   ExportFormatSelection format,
-  Uint8List Function(StillPixels picture) write,
+  Uint8List? Function(StillPixels picture) write,
 ) {
   final (width, height) = (frame.width, frame.height);
   final picture = format.wantsAlpha
@@ -70,7 +80,7 @@ Future<List<int>?> _encodeStill(
           height: height,
           channels: 3,
         );
-  return Isolate.run(() => write(picture));
+  return onAWorker(() => write(picture));
 }
 
 /// What a layered still file (PSD — I-117) is laid up of, bottom-up: rows
@@ -235,15 +245,16 @@ final class LayeredPsd {
   );
 }
 
-/// [frame] over the format's background as RGB24 for the engine's JPEG
-/// encoder ([rgbOverGroundOf]). Null = the encoder refused — the file
+/// The engine's JPEG encoder at [quality], for a picture over its ground —
+/// RGB24, as a JPG keeps no alpha. Null = the encoder refused — the file
 /// skips rather than lying.
-Future<List<int>?> _encodeJpg(
-  GpuShown frame,
-  ExportFormatSelection format,
-) async => QaImageEncoder.encodeJpg(
-  rgb: rgbOverGroundOf(frame, format.backgroundArgb),
-  width: frame.width,
-  height: frame.height,
-  quality: format.jpgQuality,
-);
+///
+/// ⚠️Made out here, so the writer that crosses to the worker carries
+/// [quality] and nothing of its caller's scope (`onAWorkerReporting`'s 🚨).
+Uint8List? Function(StillPixels picture) _jpgAt(int quality) =>
+    (picture) => QaImageEncoder.encodeJpg(
+      rgb: picture.pixels,
+      width: picture.width,
+      height: picture.height,
+      quality: quality,
+    );
