@@ -7,7 +7,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
 
 import '../../tool/machine_cache.dart';
-import '../helpers/temp_dir.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// 🚨A TEST RUN'S ENGINE KEEPS ITS SHADERS WHERE THE NEXT RUN FINDS THEM:
 /// the config names one folder of the machine's for every run
@@ -53,7 +53,7 @@ void main() {
     'folder named',
     () {
       final own = Directory.systemTemp.createTempSync('qa_shaders_');
-      addTearDown(() => deleteTempQuietly(own));
+      deleteAfterSessionEnds(own);
       debugAppShaderFolder = own.path;
       addTearDown(() => debugAppShaderFolder = named);
 
