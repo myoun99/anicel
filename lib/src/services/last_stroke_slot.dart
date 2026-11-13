@@ -48,6 +48,9 @@ class LastStrokeSlot extends ChangeNotifier {
   /// stroke landed on, so they could never be laid down anywhere else — and
   /// holding them would keep that cel's pictures alive for as long as the
   /// app runs.
+  ///
+  /// With its selection: what landed was cut there, where it landed, and is
+  /// cut there again (2026-11-14 — ↩️the dabs came here cut on the CPU).
   void hold(BrushStrokeCommitData stroke) {
     _stroke = BrushStrokeCommitData(
       sourceDabs: stroke.sourceDabs,
@@ -56,6 +59,7 @@ class LastStrokeSlot extends ChangeNotifier {
       blendMode: stroke.blendMode,
       strokeOpacity: stroke.strokeOpacity,
       end: stroke.end,
+      selection: stroke.selection,
     );
     notifyListeners();
   }

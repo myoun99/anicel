@@ -608,6 +608,51 @@ void main() {
     expectSamePicture(stamped, celOf(session, 'c4'), '확정, on c4');
   });
 
+  // 2026-11-14 (board `a-selection-mask-is-built-on-the-cpu-at-every-move`,
+  // L1b-1b): the piece is no longer cut before it lands — it lands through
+  // the selection it took, and 확정 lays it down again through that one.
+  testWidgets('확정 lays the stamp down as it landed through the marquee — '
+      'cut at its feather — though the marquee is gone', (tester) async {
+    final session = await pump(tester);
+    await holdStamp(tester, squareOf(red, side: 40));
+    selectAcross(session, 0, 2);
+    await tester.pump();
+    // Where the press lands, read off a first press and taken back.
+    await press(tester);
+    final box = bitmapSurfaceContentBounds(celOf(session, 'c0'))!;
+    session.historyManager.undo();
+    await tester.pump();
+    final edge = box.left + 20;
+    marquee(
+      session,
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: (box.left - 60).toDouble(),
+          top: (box.top - 60).toDouble(),
+          right: edge.toDouble(),
+          bottom: (box.bottomExclusive + 60).toDouble(),
+        ),
+      ),
+      mask: const SelectionMaskOptions(featherPx: 4),
+    );
+    await press(tester);
+    final stamped = celOf(session, 'c0');
+    expect(
+      alphaOf(pixel(session, 'c0', edge - 1, box.top + 20)),
+      allOf(greaterThan(0), lessThan(255)),
+      reason: '⛔premise: it landed cut at the feather',
+    );
+
+    marquee(session, null);
+    session.frameRangeSelection.value = null;
+    session.selectFrameIndex(6);
+    await pumpFrames(tester);
+    workspaceOf(tester).lastStroke!.reinput();
+    await pumpFrames(tester);
+
+    expectSamePicture(stamped, celOf(session, 'c4'), '확정, on c4');
+  });
+
   testWidgets('확정 lays it down in the stamp\'s own blend — under what the '
       'cel holds, when the stamp landed under', (tester) async {
     final session = await pump(tester);

@@ -252,6 +252,29 @@ void main() {
             ],
     );
 
+    test('a stroke whose live buffer the selection cannot reach is not '
+        'committed at all — one it reaches is', () {
+      final bounds = DirtyRegion.fromLTBR(
+        left: 0,
+        top: 0,
+        rightExclusive: 4,
+        bottomExclusive: 4,
+      );
+      BrushStrokeCommitData? funneled(CanvasSelectionRegion region) =>
+          clipStrokeCommitToSelection(
+            BrushStrokeCommitData(
+              sourceDabs: [dab(2, 2)],
+              strokePixels: solidBlock(bounds),
+              strokeBounds: bounds,
+            ),
+            clip: SelectionClip.outline(region),
+            surface: BitmapSurface(canvasSize: canvas, tileSize: 32),
+          );
+
+      expect(funneled(regionRect(50, 50, 60, 60)), isNull);
+      expect(funneled(regionRect(2, 2, 10, 10)), isNotNull);
+    });
+
     test('promoted tiles pass straight through on the surface they were '
         'blended against — the kernel already masked them — and the '
         'stroke carries its selection all the same', () {
