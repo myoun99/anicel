@@ -76,6 +76,13 @@ void main() {
       count: 1,
       why: 'a scratch surface a stroke\'s coverage is laid on and read from',
     ),
+    'lib/src/services/bitmap_surface_brush_commit.dart': (
+      count: 1,
+      why:
+          'a scratch surface of the tiles a stamp is asked to land on, off '
+          'the engine (`stampLaidOver`) — landed, read for those tiles and '
+          'dropped; never shown or kept, so no text of it to carry',
+    ),
     'lib/src/services/commands/swap_layer_reference_command.dart': (
       count: 1,
       why: 'the 「nothing was here」 an undo puts back for a cel that had none',
@@ -211,7 +218,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 24);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 25);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '
