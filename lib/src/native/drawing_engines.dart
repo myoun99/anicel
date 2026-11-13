@@ -1,3 +1,4 @@
+import 'app_gpu_engine.dart';
 import 'engine_strokes.dart';
 import 'engine_tile_ledger.dart';
 import 'native_scratch.dart';
@@ -14,11 +15,14 @@ import 'tile_blocks.dart';
 abstract final class DrawingEngines {
   /// The OS says memory is tight, or a closed project was collected: the
   /// parked tile blocks, every scratch buffer (each regrows on its next
-  /// call), and the ledger's pages nobody holds (pool-pages-given-back).
+  /// call), the ledger's pages nobody holds (pool-pages-given-back), and
+  /// the pages of the engine's pictures nobody holds — theirs lie in a
+  /// pool as the cels' do (engine-pictures-keep-to-pool-pages).
   static void respondToMemoryPressure() {
     TileBlocks.trim();
     NativeScratch.releaseAll();
     EngineTileLedger.opened?.respondToMemoryPressure();
+    EnginePictures.giveBack();
     EngineStrokes.letGoIdle();
   }
 

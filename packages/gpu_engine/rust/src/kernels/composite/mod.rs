@@ -174,8 +174,27 @@ impl TileSet {
 
     /// The tiles a box `size` across and down from `at` meets, row after
     /// row, `per_page` to a page from page `first_page` on: a stamp's
-    /// (dab/stamp.rs) and a kept picture's (halvings.rs).
+    /// (dab/stamp.rs).
     pub(crate) fn paged(at: (i32, i32), size: (u32, u32), first_page: u16, per_page: usize) -> Option<Self> {
+        let mut set = Self::unplaced(at, size)?;
+        let tiles: Option<Vec<Option<TileAt>>> = (0..set.tiles.len())
+            .map(|tile| {
+                let page = u16::try_from(tile / per_page).ok()?.checked_add(first_page)?;
+                let slot = u16::try_from(tile % per_page).ok()?;
+                Some(Some(TileAt { page, slot }))
+            })
+            .collect();
+        let Some(tiles) = tiles else {
+            return fail("a box's pages are past what a plan names");
+        };
+        set.tiles = tiles;
+        Some(set)
+    }
+
+    /// The grid of the tiles a box `size` across and down from `at` meets,
+    /// none of them placed yet: a kept picture's, whose tiles the pool it
+    /// is kept in places ([`TileSet::place`]; halvings.rs).
+    pub(crate) fn unplaced(at: (i32, i32), size: (u32, u32)) -> Option<Self> {
         let side = i64::from(TILE);
         let (left, top) = (i64::from(at.0), i64::from(at.1));
         let (width, height) = (i64::from(size.0), i64::from(size.1));
@@ -192,17 +211,25 @@ impl TileSet {
             return fail("a box lies past the canvas's grid");
         };
         let count = columns as usize * rows as usize;
-        let tiles: Option<Vec<Option<TileAt>>> = (0..count)
-            .map(|tile| {
-                let page = u16::try_from(tile / per_page).ok()?.checked_add(first_page)?;
-                let slot = u16::try_from(tile % per_page).ok()?;
-                Some(Some(TileAt { page, slot }))
-            })
-            .collect();
-        let Some(tiles) = tiles else {
-            return fail("a box's pages are past what a plan names");
-        };
-        Some(Self { x0, y0, columns, rows, tiles })
+        Some(Self { x0, y0, columns, rows, tiles: vec![None; count] })
+    }
+
+    /// Every tile of the grid, placed or not, row after row, each row's
+    /// from the left.
+    fn grid(&self) -> Vec<(i32, i32)> {
+        let (columns, rows) = (self.columns as i32, self.rows as i32);
+        (self.y0..self.y0 + rows)
+            .flat_map(|row| (self.x0..self.x0 + columns).map(move |column| (column, row)))
+            .collect()
+    }
+
+    /// The grid's tile at `column`, `row` placed at `at`. Nothing for a
+    /// tile past the grid.
+    fn place(&mut self, (column, row): (i32, i32), at: TileAt) {
+        let (c, r) = (column - self.x0, row - self.y0);
+        if c >= 0 && r >= 0 && (c as u32) < self.columns && (r as u32) < self.rows {
+            self.tiles[(r as u32 * self.columns + c as u32) as usize] = Some(at);
+        }
     }
 
     fn at(&self, column: i32, row: i32) -> Option<TileAt> {
@@ -441,7 +468,64 @@ pub(crate) struct Plan<'a> {
 /// Where a run's last pass puts its pixels.
 enum Target<'a> {
     Tiles(&'a wgpu::Buffer),
+    Placed(Placed<'a>),
     Surface(wgpu::TextureView),
+}
+
+/// Where a run puts each of its output tiles, in the order asked: a place
+/// on `pages` each — fresh slots of the pool a picture is kept in
+/// ([`Composite::run_onto`]).
+#[derive(Clone, Copy)]
+pub(crate) struct Placed<'a> {
+    pub(crate) pages: &'a [wgpu::Buffer],
+    pub(crate) at: &'a [TileAt],
+}
+
+/// The composite's work buffer, kept from one run to the next on its
+/// engine: a run takes the one the last left where it holds what the run
+/// needs, else makes one that does and leaves that.
+///
+/// A pass reads of it only what its own run put there — the mask's rows a
+/// run copies in, the stack levels a pass saves for the next, the output
+/// tiles the last pass puts whole, nothing where a pixel lies outside
+/// (to_tiles.wgsl) — so what an earlier run left is nothing to the next.
+/// And a run is one submit, so two runs' uses of it never cross.
+///
+/// ↩️Made for each run and dropped with it till 2026-11-13: 15 to 22 MiB a
+/// picture of S5_BA cut 352, each through the device's allocator (🔬캔버스
+/// 베이스, H57 — what [`crate::kernels::pool::Pictures`] says of the stops).
+#[derive(Clone, Default)]
+pub(crate) struct Work(Arc<Mutex<Option<wgpu::Buffer>>>);
+
+impl Work {
+    /// A work buffer of `size` bytes at least.
+    fn of(&self, engine: &Engine, size: u64) -> wgpu::Buffer {
+        let mut kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(work) = kept.as_ref().filter(|work| work.size() >= size) {
+            return work.clone();
+        }
+        let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("composite work"),
+            size,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        *kept = Some(work.clone());
+        work
+    }
+
+    /// The buffer kept, let go: the next run makes its own.
+    pub(crate) fn let_go(&self) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
+
+    /// The bytes of the buffer kept.
+    pub(crate) fn bytes(&self) -> u64 {
+        let kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        kept.as_ref().map_or(0, wgpu::Buffer::size)
+    }
 }
 
 /// A step as the GPU reads it, the pages it lays a row from — one for a
@@ -590,6 +674,30 @@ impl Composite {
         let target = Target::Tiles(&out);
         let passes = self.walk(engine, plan, tiles, extent, None, &target, budget)?;
         Some(Composited { out, passes })
+    }
+
+    /// [`Composite::run`], each output tile's pixels put at its place in
+    /// `onto` — one a tile, in the order asked — and no buffer of the run's
+    /// own made for them: how a picture is kept in the pictures' pool
+    /// (halvings.rs, `Kept`). Submits the work; returns how many passes it
+    /// took.
+    ///
+    /// ⚠️A place is a FRESH slot: one no pass of this run reads, so the
+    /// pages `onto` names may be pages `plan` lays rows from — a halving
+    /// stage reads the stage above it off the pool it is kept in.
+    pub(crate) fn run_onto(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        extent: [i32; 4],
+        onto: Placed,
+        budget: Budget,
+    ) -> Option<usize> {
+        if onto.at.len() != tiles.len() {
+            return fail(format!("{} places for {} output tiles", onto.at.len(), tiles.len()));
+        }
+        self.walk(engine, plan, tiles, extent, None, &Target::Placed(onto), budget)
     }
 
     /// `tiles` of `set` — its tiles on `pages` — as a row copied whole over
@@ -1122,7 +1230,7 @@ impl Composite {
             .unwrap_or(0);
         // Output tiles wait in `work` past the stack until they are copied
         // out; a surface takes its pixels from the last pass itself.
-        let waiting = u64::from(matches!(target, Target::Tiles(_)));
+        let waiting = u64::from(!matches!(target, Target::Surface(_)));
         let held = (kept * 2 + waiting) * TILE_TEXELS * 4;
         let band = plan.mask.map_or(0, Mask::per_tile);
         let chunk =
@@ -1157,15 +1265,8 @@ impl Composite {
         if size > room(engine) {
             return fail(format!("a pass's masked steps read {banded} bytes of their mask"));
         }
-        let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite work"),
-            // A binding holds something, even where nothing waits.
-            size: size.max(16),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        // A binding holds something, even where nothing waits.
+        let work = engine.work.of(engine, size.max(16));
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -1234,14 +1335,23 @@ impl Composite {
                 .collect();
             encode_on(engine, &mut encoder, &dispatches);
             passes += dispatches.len();
-            if let Target::Tiles(out) = target {
-                encoder.copy_buffer_to_buffer(
+            match target {
+                Target::Tiles(out) => encoder.copy_buffer_to_buffer(
                     &work,
                     out_at * 4,
                     out,
-                    first_tile as u64 * TILE_TEXELS * 4,
-                    chunk_tiles as u64 * TILE_TEXELS * 4,
-                );
+                    first_tile as u64 * TILE_BYTES,
+                    chunk_tiles as u64 * TILE_BYTES,
+                ),
+                Target::Placed(onto) => {
+                    let places = &onto.at[first_tile..first_tile + chunk_tiles];
+                    for (from, at) in (out_at * 4..).step_by(TILE_BYTES as usize).zip(places) {
+                        let page = &onto.pages[usize::from(at.page)];
+                        let to = u64::from(at.slot) * TILE_BYTES;
+                        encoder.copy_buffer_to_buffer(&work, from, page, to, TILE_BYTES);
+                    }
+                }
+                Target::Surface(_) => {}
             }
         }
         engine.queue.submit([encoder.finish()]);

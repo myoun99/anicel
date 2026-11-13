@@ -9,6 +9,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/drawing_engines.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 
+import '../helpers/census_where_textures_are_ram.dart';
 import '../helpers/collect_garbage.dart';
 
 /// The ledger gives back the engine's pages nobody holds
@@ -17,6 +18,12 @@ import '../helpers/collect_garbage.dart';
 /// ([DrawingEngines]) —, and where its budget falls under the pages made.
 /// A page a tile is held on stays. Where a page lies, how it is made
 /// again, is the engine's own tests' (rust/src/kernels/pool/tests.rs).
+///
+/// And the engine's pictures, which lie in a pool of their own as the
+/// cels' tiles do (engine-pictures-keep-to-pool-pages): the same warning
+/// gives back its pages no picture is on, and till then the census
+/// counts them. Which page stays is the engine's own tests'
+/// (rust/src/kernels/composite/screen_tests.rs).
 void main() {
   const a = (1, 1);
 
@@ -97,6 +104,47 @@ void main() {
       isNot(ledger.slotOf(kept)),
       reason: "the slot handed out again is still the kept tile's",
     );
+  });
+
+  group("the engine's pictures", () {
+    /// A screen's canvas composed on the app's engine and let go: a
+    /// page of its pictures' pool made that no picture is on.
+    void aPictureLetGo() {
+      final pool = GpuPool(appGpuEngine, 1 << 30);
+      addTearDown(pool.free);
+      final plan = GpuPlan(appGpuEngine);
+      addTearDown(plan.free);
+      const whole = (0, 0, 1, 1);
+      plan.solid(0xFF0000FF, 0, 0, 1, 1);
+      GpuScreen(appGpuComposite, whole)
+        ..compose(pool, plan, whole)
+        ..free();
+      expect(
+        EnginePictures.idlePictureBytes,
+        isPositive,
+        reason: 'the premise: a page made that no picture is on',
+      );
+    }
+
+    test('the memory warning gives back what no picture holds', () {
+      aPictureLetGo();
+
+      DrawingEngines.respondToMemoryPressure();
+
+      expect(EnginePictures.idlePictureBytes, 0);
+    });
+
+    test("the census counts it with the frames' pictures", () {
+      addTearDown(DrawingEngines.respondToMemoryPressure);
+      int row() => collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.firstWhere((item) => item.id == 'framePictures').bytes;
+      expect(row(), 0, reason: 'the premise: no session, no picture');
+
+      aPictureLetGo();
+
+      expect(row(), EnginePictures.idlePictureBytes);
+    });
   });
 
   group("the app's ledger", () {

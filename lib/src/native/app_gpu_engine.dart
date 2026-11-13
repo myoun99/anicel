@@ -63,6 +63,19 @@ GpuDeviceWent get appGpuEngineWentBy =>
 /// (`EngineStrokes.giveBack`).
 bool isTheAppsEngine(GpuEngine engine) => identical(engine, _its.engine);
 
+/// What the app's engine keeps for pictures and no picture holds: the
+/// pages of the pool its pictures lie in stay made for the next one
+/// ([GpuEngine.idlePictureBytes]). Asked without opening an engine —
+/// none is opened for the memory census, nor to hear a warning
+/// (`DrawingEngines`).
+abstract final class EnginePictures {
+  /// Their bytes; none where the app has opened no engine.
+  static int get idlePictureBytes => _its.engine?.idlePictureBytes ?? 0;
+
+  /// Gives them back ([GpuEngine.givePicturesBack]).
+  static void giveBack() => _its.engine?.givePicturesBack();
+}
+
 /// Lets go of the app's engine, its device gone ([appGpuEngineIsGone]) —
 /// of nothing where it is not: the next ask opens another ([appGpuEngine],
 /// [openAppGpuEngine]), what was kept on this one is made again on that

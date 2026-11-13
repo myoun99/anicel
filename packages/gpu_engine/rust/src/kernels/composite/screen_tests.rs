@@ -5,12 +5,14 @@
 
 use super::{Screen, meets};
 use crate::device::gpu_engine_waits_here;
+use crate::kernels::composite::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
 use crate::kernels::composite::halvings::tests::{
     CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
 };
 use crate::kernels::composite::halvings::{Camera, Film, Halvings, Kept, Tiles, affine, plan, row};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on};
 use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
+use crate::kernels::pool::Pictures;
 use crate::kernels::shared::tests::{premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{a_device_of_its_own, last_error, read_buffer};
@@ -42,19 +44,75 @@ fn inside([left, top, right, bottom]: [i32; 4], x: i32, y: i32) -> bool {
     left <= x && x < right && top <= y && y < bottom
 }
 
-// A canvas of 5 × 3 tiles kept a tile a page, two, four — the last page
-// part full — and all on one is the canvas composited in one run.
+/// `plan` composited over the page and kept in `pictures`.
+fn kept_in(pictures: &Pictures, plan: &Plan) -> Kept {
+    let Rig { engine, composite } = rig();
+    Kept::made_in(engine, composite, plan, PAGE, None, pictures, composite.widest()).expect("kept")
+}
+
+// A canvas of 5 × 3 tiles kept in a pool of a tile a page, two, four — the
+// last page part full — and all on one is the canvas composited in one
+// run, on as many pages as its tiles take.
 #[test]
 fn a_canvas_kept_on_pages_of_any_size_is_the_canvas_composited() {
-    let Rig { engine, composite } = rig();
     let want = composited_whole(noise(31));
     let (pages, set, _) = composite_of(noise(31), CANVAS);
     for per_page in [1, 2, 4, 15] {
-        let plan = laid(&pages, &set);
-        let kept = Kept::made_by(engine, composite, &plan, PAGE, per_page, composite.widest()).expect("kept");
-        assert_eq!(kept.as_tiles().pages.len(), 15usize.div_ceil(per_page), "{per_page} a page");
+        let pictures = Pictures::sized(per_page).expect("a pool");
+        let kept = kept_in(&pictures, &laid(&pages, &set));
+        assert_eq!(pictures.pages().len(), 15usize.div_ceil(per_page), "{per_page} a page");
         assert!(kept_bytes(&kept) == want, "{per_page} a page");
     }
+}
+
+// A picture let go leaves its slots free and its pages made: the next is
+// kept on them — no page made for it — and is its own canvas composited,
+// whatever the last left there.
+#[test]
+fn a_picture_let_go_leaves_its_pages_to_the_next() {
+    let pictures = Pictures::sized(4).expect("a pool");
+    let (pages, set, _) = composite_of(noise(31), CANVAS);
+    let first = kept_in(&pictures, &laid(&pages, &set));
+    let made = pictures.pages();
+    assert_eq!(made.len(), 4);
+    assert_eq!(pictures.idle_bytes(), TILE_BYTES, "15 tiles on pages of 16");
+    drop(first);
+    assert_eq!(pictures.idle_bytes(), 16 * TILE_BYTES);
+    let (pages, set, _) = composite_of(noise(53), CANVAS);
+    let next = kept_in(&pictures, &laid(&pages, &set));
+    assert!(pictures.pages() == made, "a page is made for it");
+    assert!(kept_bytes(&next) == composited_whole(noise(53)));
+}
+
+// Given back, the pool keeps no page no picture is on, and no picture
+// keeps one made: a picture names the pages its tiles are on and no other,
+// so one on the second page is as it was with the first given back, the
+// next picture is kept in the place given back, and the last page, no
+// picture's, is cut off.
+#[test]
+fn a_page_no_picture_is_on_is_given_back_and_no_picture_keeps_it_made() {
+    let engine = rig().engine;
+    let pictures = Pictures::sized(15).expect("a pool");
+    let (pages, set, _) = composite_of(noise(31), CANVAS);
+    let plan = laid(&pages, &set);
+    let want = composited_whole(noise(31));
+    let (first, second) = (kept_in(&pictures, &plan), kept_in(&pictures, &plan));
+    let made = pictures.pages();
+    assert_eq!(made.len(), 2);
+    assert!(first.as_tiles().pages == &made[..1], "a picture names the pages up to its last");
+    assert!(second.as_tiles().pages.iter().all(|page| *page == made[1]), "and none it is not on");
+    drop(first);
+    pictures.give_back(engine, 0);
+    assert_eq!(pictures.idle_bytes(), TILE_BYTES, "the page given back's stand-in");
+    assert!(kept_bytes(&second) == want);
+    let third = kept_in(&pictures, &plan);
+    assert_eq!(pictures.pages().len(), 2, "made again in the place given back");
+    assert_eq!(pictures.idle_bytes(), 0);
+    assert!(kept_bytes(&third) == want && kept_bytes(&second) == want);
+    drop(second);
+    pictures.give_back(engine, 0);
+    assert_eq!(pictures.pages().len(), 1, "the last page, no picture's, is cut off");
+    assert!(kept_bytes(&third) == want);
 }
 
 // Kept two tiles a page, the canvas is made again on the tiles each change
@@ -67,7 +125,8 @@ fn a_kept_canvas_is_made_again_on_the_tiles_a_change_meets() {
     let Rig { engine, composite } = rig();
     let (pages, set, _) = composite_of(noise(53), CANVAS);
     let budget = composite.widest();
-    let kept = Kept::made_by(engine, composite, &laid(&pages, &set), PAGE, 2, budget).expect("kept");
+    let pictures = Pictures::sized(2).expect("a pool");
+    let mut kept = kept_in(&pictures, &laid(&pages, &set));
     let mut pixel: Box<dyn Fn(i32, i32) -> u32> = Box::new(noise(53));
     let rounds = [
         vec![[127, 40, 128, 90]],
@@ -101,11 +160,11 @@ fn tile_of(x: i32, y: i32) -> (i32, i32) {
     (x.div_euclid(side), y.div_euclid(side))
 }
 
-// Over a film kept two tiles a page, a canvas is made from its own plan on
-// the tiles fresh marks meet — a stripe on a tile's last column, a block
-// across four tiles of three pages — and is the film's as it is on every
-// other; over a film of fewer tiles, its own past them too. Kept a tile a
-// page, two, and all on one alike.
+// Over a film, a canvas is made from its own plan on the tiles fresh marks
+// meet — a stripe on a tile's last column, a block across four tiles of
+// three pages — and is the film's as it is on every other; over a film of
+// fewer tiles, its own past them too. Kept in a pool of a tile a page,
+// two, and fifteen alike — and the film is as it was under it.
 #[test]
 fn a_canvas_made_over_a_film_is_its_own_where_fresh_and_the_films_elsewhere() {
     let Rig { engine, composite } = rig();
@@ -114,22 +173,163 @@ fn a_canvas_made_over_a_film_is_its_own_where_fresh_and_the_films_elsewhere() {
     let fresh = |tile| marks.iter().any(|&mark| meets(tile, mark));
     let (pages, set, _) = composite_of(noise(53), CANVAS);
     let film = laid(&pages, &set);
-    let wide = Kept::made_by(engine, composite, &film, PAGE, 2, budget).expect("film");
-    let narrow = Kept::made_by(engine, composite, &film, [0, 0, 256, 256], 2, budget).expect("film");
     let (pages, set, _) = composite_of(noise(71), CANVAS);
     let frame = laid(&pages, &set);
-    for (under, (columns, rows)) in [(&wide, (5, 3)), (&narrow, (2, 2))] {
-        let want = composited_whole(|x, y| {
+    let wants = [(5, 3), (2, 2)].map(|(columns, rows)| {
+        composited_whole(|x, y| {
             let (column, row) = tile_of(x, y);
             let theirs = !fresh((column, row)) && column < columns && row < rows;
             if theirs { noise(53)(x, y) } else { noise(71)(x, y) }
-        });
-        for per_page in [1, 2, 15] {
+        })
+    });
+    for per_page in [1, 2, 15] {
+        let pictures = Pictures::sized(per_page).expect("a pool");
+        let wide = kept_in(&pictures, &film);
+        let narrow = Kept::made_in(engine, composite, &film, [0, 0, 256, 256], None, &pictures, budget).expect("film");
+        for (under, want) in [&wide, &narrow].into_iter().zip(&wants) {
+            let theirs = kept_bytes(under);
             let over: Film = (under, &fresh);
-            let kept = Kept::made_over_by(engine, composite, &frame, PAGE, Some(over), per_page, budget).expect("over");
-            assert!(kept_bytes(&kept) == want, "{columns} × {rows} under, {per_page} a page");
+            let kept = Kept::made_in(engine, composite, &frame, PAGE, Some(over), &pictures, budget).expect("over");
+            assert!(kept_bytes(&kept) == *want, "{per_page} a page");
+            assert!(kept_bytes(under) == theirs, "{per_page} a page: the film under it");
         }
     }
+}
+
+// A picture laid over a film holds the film's own slots where it is not
+// fresh — one slot more for its one fresh tile, nothing copied — and
+// neither writes over a slot the other holds: a tile made again on either
+// goes to a fresh slot, the other's bytes as they were. The film let go,
+// its tiles the picture shows stay the picture's, whatever the next
+// picture is kept on.
+#[test]
+fn a_picture_over_a_film_holds_the_films_slots_and_neither_writes_over_them() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let pictures = Pictures::sized(15).expect("a pool");
+    let (pages, set, _) = composite_of(noise(53), CANVAS);
+    let mut film = kept_in(&pictures, &laid(&pages, &set));
+    let (pages, set, _) = composite_of(noise(71), CANVAS);
+    let frame = laid(&pages, &set);
+    let fresh = |tile| tile == (0, 0);
+    let over: Film = (&film, &fresh);
+    let mut kept = Kept::made_in(engine, composite, &frame, PAGE, Some(over), &pictures, budget).expect("over");
+    let idle = || pictures.idle_bytes() / TILE_BYTES;
+    assert_eq!((pictures.pages().len(), idle()), (2, 14), "16 slots held of 30");
+    assert_eq!(kept.bytes(), 15 * TILE_BYTES, "a tile shared counts in both");
+    let (theirs, its) = (kept_bytes(&film), kept_bytes(&kept));
+    let (pages, set, _) = composite_of(noise(31), CANVAS);
+    let other = laid(&pages, &set);
+    film.made_again(engine, composite, &other, |tile| tile == (1, 0), budget).expect("made again");
+    assert!(kept_bytes(&film) != theirs, "the film's tile is made again");
+    assert!(kept_bytes(&kept) == its, "the film wrote over a tile the picture holds");
+    let theirs = kept_bytes(&film);
+    kept.made_again(engine, composite, &frame, |tile| tile == (2, 0), budget).expect("made again");
+    let want = composited_whole(|x, y| match tile_of(x, y) {
+        (0, 0) | (2, 0) => noise(71)(x, y),
+        _ => noise(53)(x, y),
+    });
+    assert!(kept_bytes(&kept) == want);
+    assert!(kept_bytes(&film) == theirs, "the picture wrote over a tile the film holds");
+    assert_eq!(idle(), 12, "each tile made again took a slot the other left held");
+    drop(film);
+    assert_eq!(idle(), 15, "the film's own three are free");
+    let next = kept_in(&pictures, &other);
+    assert_eq!((pictures.pages().len(), idle()), (2, 0));
+    assert!(kept_bytes(&next) == composited_whole(noise(31)));
+    assert!(kept_bytes(&kept) == want, "the next picture took a slot the picture holds");
+}
+
+// A picture is not laid over a film kept in another pool: a tile of one is
+// no tile of the other's pages.
+#[test]
+fn a_picture_is_not_laid_over_a_film_of_another_pool() {
+    let Rig { engine, composite } = rig();
+    let (pages, set, _) = composite_of(noise(53), CANVAS);
+    let plan = laid(&pages, &set);
+    let (one, other) = (Pictures::sized(15).expect("a pool"), Pictures::sized(15).expect("a pool"));
+    let film = kept_in(&one, &plan);
+    let over: Film = (&film, &|_| false);
+    let laid_over = Kept::made_in(engine, composite, &plan, PAGE, Some(over), &other, composite.widest());
+    assert!(laid_over.is_none());
+    assert!(last_error().contains("kept in another pool"), "{}", last_error());
+    assert!(other.pages().is_empty(), "and nothing is held for it");
+}
+
+// The work buffer is the engine's, kept from one run to the next: a run
+// that needs no more than the one kept makes none — a tile composited
+// after the whole canvas runs in the canvas's —, and what the wider run
+// left there is nothing to it: the tile as it was composited before. Let
+// go, the next run makes its own. On an engine of its own: the tests' one
+// runs every test's composites at once.
+#[test]
+fn a_run_takes_the_work_buffer_the_last_run_left() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let (pages, set, _) = composite_on(&engine, noise(31), CANVAS);
+    let plan = laid(&pages, &set);
+    let run = |tiles: &[(i32, i32)]| {
+        let done = composite.run(&engine, &plan, tiles, PAGE, composite.widest()).expect("run");
+        engine.read_buffer(&done.out).expect("read back")
+    };
+    assert_eq!(engine.work.bytes(), 0);
+    // The canvas's last tile, where the whole canvas's run leaves its
+    // first.
+    let last = [(4, 2)];
+    let alone = run(&last);
+    let narrow = engine.work.bytes();
+    assert!(narrow > 0);
+    let whole: Vec<(i32, i32)> = (0..3).flat_map(|row| (0..5).map(move |column| (column, row))).collect();
+    let all = run(&whole);
+    let wide = engine.work.bytes();
+    assert!(wide > narrow, "a wider run makes one that holds it");
+    assert!(all[..TILE_BYTES as usize] != alone[..], "the tiles are told apart");
+    assert!(run(&last) == alone, "what the wider run left is read");
+    assert_eq!(engine.work.bytes(), wide, "a buffer is made for a run the one kept holds");
+    engine.work.let_go();
+    assert_eq!(engine.work.bytes(), 0);
+    assert!(run(&last) == alone);
+    assert_eq!(engine.work.bytes(), narrow, "let go, the next run makes its own");
+}
+
+// What an engine keeps for pictures and no picture holds is counted and
+// given back: nothing before a picture is kept; under a screen's canvas,
+// the slots it leaves free on its pool's page and the work buffer its
+// composite ran in; the screen let go, that page whole; and given back,
+// nothing — the next screen shown as the first was. On an engine of its
+// own: the tests' one keeps every test's pictures.
+#[test]
+fn an_engine_counts_what_no_picture_holds_and_gives_it_back() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let (pages, set, _) = composite_on(&engine, noise(23), CANVAS);
+    let plan = laid(&pages, &set);
+    // SAFETY: the engine is live through every call.
+    let idle = || unsafe { gpu_engine_pictures_idle_bytes(&engine) };
+    let shown = || {
+        let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+        screen.compose(&engine, &composite, &plan, PAGE, composite.widest()).expect("compose");
+        let texture = surface_on(&engine, SCREEN, wgpu::TextureFormat::Rgba8Unorm);
+        let (camera, whole) = (camera(0.1, (1.0, 0.0), (3.0, 2.0)), [0, 0, SCREEN.0, SCREEN.1]);
+        screen.show(&engine, &composite, camera, &texture, whole, composite.widest()).expect("show");
+        (screen, engine.read_texture(&texture).expect("read the surface back"))
+    };
+    assert_eq!(idle(), 0);
+    let (screen, first) = shown();
+    let (page, work) = (engine.pictures.pages()[0].size(), engine.work.bytes());
+    assert!(work > 0);
+    assert_eq!(idle(), page - screen.bytes() + work);
+    drop(screen);
+    assert_eq!(idle(), page + work);
+    // SAFETY: as above.
+    unsafe { gpu_engine_pictures_give_back(&engine, 0) };
+    assert_eq!(idle(), 0);
+    assert!(engine.pictures.pages().is_empty());
+    let (screen, next) = shown();
+    assert!(next == first);
+    assert_eq!(idle(), page - screen.bytes() + work);
 }
 
 // A screen is composed over a film before anything is composed on it: the

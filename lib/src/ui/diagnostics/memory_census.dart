@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuMask, GpuStampPicture;
 
+import '../../native/app_gpu_engine.dart';
 import '../../native/engine_strokes.dart';
 import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
@@ -227,13 +228,19 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       // The frames' pictures every screen shows (one-picture-per-frame),
       // the ones on screen in its detail — and the pictures of the nodes
       // they are drawn of, held for a stroke's patches and a walk's next frame.
+      // And what the engine keeps made for the next one: its pictures lie
+      // in slots of a pool's pages, and the slots a picture let go stay
+      // on the GPU till the pages are given back
+      // (engine-pictures-keep-to-pool-pages) — the app's, so once.
       MemoryCensusItem(
         id: 'framePictures',
-        bytes: sum(
-          (session) =>
-              session.renderCaches.framePictureStore.estimatedBytes +
-              session.playbackRig.framePictures.heldBytes,
-        ),
+        bytes:
+            sum(
+              (session) =>
+                  session.renderCaches.framePictureStore.estimatedBytes +
+                  session.playbackRig.framePictures.heldBytes,
+            ) +
+            EnginePictures.idlePictureBytes,
         detail: sum(
           (session) => session.renderCaches.framePictureStore.pinnedBytes,
         ),

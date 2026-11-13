@@ -37,9 +37,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
-use crate::kernels::shared::{RESAMPLE_CEILING, ResampleMap, ResampleMode, tiles_a_page};
+use crate::kernels::pool::{Cel, Pictures};
+use crate::kernels::shared::{RESAMPLE_CEILING, ResampleMap, ResampleMode};
 
-use super::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
+use super::{Budget, Composite, Placed, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
 
 /// Tiles to lay as a row: the pages and the tile set on them.
 #[derive(Clone, Copy)]
@@ -107,18 +108,27 @@ pub(crate) fn kept_bytes() -> u64 {
     KEPT_BYTES.load(Ordering::Relaxed)
 }
 
-/// A picture kept on pages of its own: its tiles over the pixels `extent`,
-/// [left, top, right, bottom), row after row, as many to a page as one
-/// takes — a halving stage, and the canvas's composite the screen reads
-/// (screen.rs).
+/// A picture kept in the pictures' pool (`pool::Pictures`): its tiles over
+/// the pixels `extent`, [left, top, right, bottom), each in a slot held for
+/// it — a halving stage, and the canvas's composite the screen reads
+/// (screen.rs). Dropped, it lets its slots go; the pages stay made for the
+/// next picture.
+///
+/// ↩️On pages of its own till 2026-11-13, made with it and gone with it:
+/// `Pictures` says what that cost.
 pub(crate) struct Kept {
+    pictures: Pictures,
+    /// What names the pages its tiles go to first, as a cel's does.
+    cel: Cel,
+    /// The pool's pages its tiles are on, as a plan takes them
+    /// (`Pictures::pages_of`): as its tiles were last placed.
     pages: Vec<wgpu::Buffer>,
     set: TileSet,
     extent: [i32; 4],
 }
 
 /// A picture another is laid over, and which of its tiles are fresh on it:
-/// made, not copied ([`Kept::made_over`]).
+/// made, not shared ([`Kept::made_over`]).
 pub(crate) type Film<'a> = (&'a Kept, &'a dyn Fn((i32, i32)) -> bool);
 
 impl Kept {
@@ -131,27 +141,18 @@ impl Kept {
         extent: [i32; 4],
         budget: Budget,
     ) -> Option<Self> {
-        Self::made_by(engine, composite, plan, extent, tiles_a_page(engine)?, budget)
-    }
-
-    /// `made`, a page holding no more than `per_page` tiles — a test's
-    /// fewer than the device's, to see a picture go on to its next page.
-    pub(crate) fn made_by(
-        engine: &Engine,
-        composite: &Composite,
-        plan: &Plan,
-        extent: [i32; 4],
-        per_page: usize,
-        budget: Budget,
-    ) -> Option<Self> {
-        Self::made_over_by(engine, composite, plan, extent, None, per_page, budget)
+        Self::made_in(engine, composite, plan, extent, None, &engine.pictures, budget)
     }
 
     /// `made` on the tiles `fresh` names alone, every other tile `film`
-    /// keeps copied from it as it is — a frame laid over the frame its
+    /// keeps held with it as it is — a frame laid over the frame its
     /// ghosts lie on (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이
     /// 아닌 경우라도 최대한 극한으로 개선해보자」), where the tiles its ghosts
     /// do not reach are that frame's. A tile `film` does not keep is made.
+    ///
+    /// ↩️Copied from the film, tile by tile, till 2026-11-13: a slot held
+    /// twice is the same bytes with nothing copied, and neither picture
+    /// writes over it ([`Kept::made_again`]).
     pub(crate) fn made_over(
         engine: &Engine,
         composite: &Composite,
@@ -162,105 +163,116 @@ impl Kept {
         budget: Budget,
     ) -> Option<Self> {
         let over: Film = (film, &fresh);
-        Self::made_over_by(engine, composite, plan, extent, Some(over), tiles_a_page(engine)?, budget)
+        Self::made_in(engine, composite, plan, extent, Some(over), &engine.pictures, budget)
     }
 
-    /// `made_over` over `over` — `made` where none —, `per_page` tiles a
-    /// page: a page all of whose tiles are made is the run's own.
-    pub(crate) fn made_over_by(
+    /// `made_over` over `over` — `made` where none —, kept in `pictures`:
+    /// the engine's, or a test's of fewer tiles a page.
+    pub(crate) fn made_in(
         engine: &Engine,
         composite: &Composite,
         plan: &Plan,
         extent: [i32; 4],
         over: Option<Film>,
-        per_page: usize,
+        pictures: &Pictures,
         budget: Budget,
     ) -> Option<Self> {
         let [left, top, right, bottom] = extent;
         let size = (right.abs_diff(left), bottom.abs_diff(top));
-        let set = TileSet::paged((left, top), size, 0, per_page)?;
-        let tiles: Vec<(i32, i32)> = set.placed_under(None).map(|(place, _)| place).collect();
-        // The film's tile a tile is copied from, where it is not made.
-        let copied = |(column, row): (i32, i32)| {
+        let set = TileSet::unplaced((left, top), size)?;
+        if over.is_some_and(|(film, _)| !film.pictures.is(pictures)) {
+            return fail("a picture is laid over a film kept in another pool");
+        }
+        let cel = pictures.cel(engine)?;
+        // Dropped where it is not made after all, it lets go the slots it
+        // holds by then.
+        let mut kept = Self { pictures: pictures.clone(), cel, pages: Vec::new(), set, extent };
+        // The film's tile a tile is, where it is not made.
+        let shared = |(column, row): (i32, i32)| {
             let (film, fresh) = over?;
             if fresh((column, row)) {
                 return None;
             }
-            Some((film, film.set.at(column, row)?))
+            film.set.at(column, row)
         };
-        let mut pages = Vec::with_capacity(tiles.len().div_ceil(per_page));
-        for page in tiles.chunks(per_page) {
-            let made: Vec<(i32, i32)> = page.iter().copied().filter(|&tile| copied(tile).is_none()).collect();
-            let run = if made.is_empty() {
-                None
-            } else {
-                Some(composite.run(engine, plan, &made, extent, budget)?.out)
-            };
-            if made.len() == page.len() {
-                pages.push(run?);
-                continue;
+        let (mut theirs, mut made) = (Vec::new(), Vec::new());
+        for tile in kept.set.grid() {
+            match shared(tile) {
+                Some(at) => theirs.push((tile, at)),
+                None => made.push(tile),
             }
-            let kept = engine.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("kept over a film"),
-                size: page.len() as u64 * TILE_BYTES,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            });
-            let mut encoder = engine.device.create_command_encoder(&Default::default());
-            let mut next = 0;
-            for (slot, &tile) in page.iter().enumerate() {
-                let to = slot as u64 * TILE_BYTES;
-                let (from, at) = match copied(tile) {
-                    Some((film, at)) => (&film.pages[usize::from(at.page)], u64::from(at.slot) * TILE_BYTES),
-                    None => {
-                        next += 1;
-                        (run.as_ref()?, (next - 1) * TILE_BYTES)
-                    }
-                };
-                encoder.copy_buffer_to_buffer(from, at, &kept, to, TILE_BYTES);
-            }
-            engine.queue.submit([encoder.finish()]);
-            pages.push(kept);
         }
-        let kept = Self { pages, set, extent };
-        KEPT_BYTES.fetch_add(kept.bytes(), Ordering::Relaxed);
+        let held: Vec<TileAt> = theirs.iter().map(|&(_, at)| at).collect();
+        pictures.hold(engine, &held)?;
+        for (tile, at) in theirs {
+            kept.take(tile, at);
+        }
+        // A run puts no more than a page of the pool takes.
+        for some in made.chunks(pictures.slots(engine)?) {
+            let (places, pages) = pictures.fresh(engine, cel, some.len())?;
+            for (&tile, &at) in some.iter().zip(&places) {
+                kept.take(tile, at);
+            }
+            let onto = Placed { pages: &pages, at: &places };
+            composite.run_onto(engine, plan, some, extent, onto, budget)?;
+        }
+        kept.pages = pictures.pages_of(kept.places());
         Some(kept)
     }
 
-    /// `plan` composited again over the kept tiles `stale` names, the rest
-    /// kept as they are; those tiles' pixels, where it names any.
+    /// `tile`, placed nowhere yet, held at `at`.
+    fn take(&mut self, tile: (i32, i32), at: TileAt) {
+        self.set.place(tile, at);
+        KEPT_BYTES.fetch_add(TILE_BYTES, Ordering::Relaxed);
+    }
+
+    /// The slots its tiles are held in.
+    fn places(&self) -> impl Iterator<Item = TileAt> + '_ {
+        self.set.tiles.iter().flatten().copied()
+    }
+
+    /// `plan` composited again over the kept tiles `stale` names, each in a
+    /// fresh slot and the slot it had let go — a held tile is never written
+    /// over (pool/mod.rs): a picture laid over this one may hold it
+    /// ([`Kept::made_over`]) —, the rest kept as they are; those tiles'
+    /// pixels, where it names any.
     pub(crate) fn made_again(
-        &self,
+        &mut self,
         engine: &Engine,
         composite: &Composite,
         plan: &Plan,
         stale: impl Fn((i32, i32)) -> bool,
         budget: Budget,
     ) -> Option<Option<[i64; 4]>> {
-        let (places, slots): (Vec<(i32, i32)>, Vec<TileAt>) =
-            self.set.placed_under(None).filter(|&(place, _)| stale(place)).unzip();
-        // A run puts no more than a page takes.
-        let per_page = tiles_a_page(engine)?;
-        for (some, slots) in places.chunks(per_page).zip(slots.chunks(per_page)) {
-            let done = composite.run(engine, plan, some, self.extent, budget)?;
-            let mut encoder = engine.device.create_command_encoder(&Default::default());
-            for (from, at) in slots.iter().enumerate() {
-                let (from, to) = (from as u64 * TILE_BYTES, u64::from(at.slot) * TILE_BYTES);
-                let page = &self.pages[usize::from(at.page)];
-                encoder.copy_buffer_to_buffer(&done.out, from, page, to, TILE_BYTES);
+        let (tiles, had): (Vec<(i32, i32)>, Vec<TileAt>) =
+            self.set.placed_under(None).filter(|&(tile, _)| stale(tile)).unzip();
+        // A run puts no more than a page of the pool takes.
+        let per_run = self.pictures.slots(engine)?;
+        for (some, had) in tiles.chunks(per_run).zip(had.chunks(per_run)) {
+            let (fresh, pages) = self.pictures.fresh(engine, self.cel, some.len())?;
+            let onto = Placed { pages: &pages, at: &fresh };
+            if composite.run_onto(engine, plan, some, self.extent, onto, budget).is_none() {
+                self.pictures.release(fresh.into_iter());
+                return None;
             }
-            engine.queue.submit([encoder.finish()]);
+            for (&tile, &at) in some.iter().zip(&fresh) {
+                self.set.place(tile, at);
+            }
+            self.pictures.release(had.iter().copied());
+            self.pages = self.pictures.pages_of(self.places());
         }
         let side = i64::from(TILE);
-        Some(places.iter().fold(None, |sum, &(column, row)| {
+        Some(tiles.iter().fold(None, |sum, &(column, row)| {
             let (x, y) = (i64::from(column) * side, i64::from(row) * side);
             Some(joined(sum, [x, y, x + side, y + side]))
         }))
     }
 
-    /// The bytes its pages hold: what keeping it costs.
+    /// The bytes its tiles hold: what keeping it costs. ⚠️A tile it shares
+    /// with the film it was laid over ([`Kept::made_over`]) counts in both,
+    /// as it did while each kept a copy.
     pub(crate) fn bytes(&self) -> u64 {
-        self.pages.iter().map(wgpu::Buffer::size).sum()
+        self.places().count() as u64 * TILE_BYTES
     }
 
     pub(crate) fn as_tiles(&self) -> Tiles<'_> {
@@ -271,6 +283,7 @@ impl Kept {
 impl Drop for Kept {
     fn drop(&mut self) {
         KEPT_BYTES.fetch_sub(self.bytes(), Ordering::Relaxed);
+        self.pictures.release(self.places());
     }
 }
 
@@ -360,11 +373,11 @@ impl Halvings {
         budget: Budget,
     ) -> Option<()> {
         for at in 0..k {
-            let (above, extent) = match at {
-                0 => (canvas, self.extent),
-                _ => (self.stages[at - 1].kept.as_tiles(), self.stages[at - 1].kept.extent),
-            };
             if at == self.stages.len() {
+                let (above, extent) = match at {
+                    0 => (canvas, self.extent),
+                    _ => (self.stages[at - 1].kept.as_tiles(), self.stages[at - 1].kept.extent),
+                };
                 let made = self.made(engine, composite, above, extent, budget)?;
                 self.stages.push(made);
                 continue;
@@ -372,9 +385,15 @@ impl Halvings {
             let Some(behind) = self.stages[at].behind else {
                 continue;
             };
-            let remade = self.remade(engine, composite, above, &self.stages[at], behind, budget)?;
-            self.stages[at].behind = None;
-            if let (Some(remade), Some(next)) = (remade, self.stages.get_mut(at + 1)) {
+            let halving = self.halving();
+            // The stage above is read while this one's tiles take fresh
+            // slots ([`Kept::made_again`]).
+            let (before, from) = self.stages.split_at_mut(at);
+            let above = before.last().map_or(canvas, |stage| stage.kept.as_tiles());
+            let stage = &mut from[0];
+            let remade = remade(engine, composite, halving, above, stage, behind, budget)?;
+            stage.behind = None;
+            if let (Some(remade), Some(next)) = (remade, from.get_mut(1)) {
                 next.behind = Some(joined(next.behind, remade));
             }
         }
@@ -396,31 +415,6 @@ impl Halvings {
         Some(Stage { kept, behind: None })
     }
 
-    /// `stage` made again on its tiles that read `behind` of `above`, and
-    /// those tiles' pixels — what the stage under it reads that changed —
-    /// where there were any.
-    fn remade(
-        &self,
-        engine: &Engine,
-        composite: &Composite,
-        above: Tiles,
-        stage: &Stage,
-        behind: [i64; 4],
-        budget: Budget,
-    ) -> Option<Option<[i64; 4]>> {
-        let halving = self.halving();
-        let side = i64::from(TILE);
-        let [left, top, right, bottom] = behind;
-        let reads_behind = |(column, row): (i32, i32)| {
-            let (x, y) = (i64::from(column) * side, i64::from(row) * side);
-            halving
-                .reads(x, y, x + side, y + side)
-                .is_some_and(|[l, t, r, b]| l < right && left < r && t < bottom && top < b)
-        };
-        let steps = [row(halving)];
-        stage.kept.made_again(engine, composite, &plan(above, &steps), reads_behind, budget)
-    }
-
     /// ①'s map: stage k's pixel x about stage k − 1's 2x + 1, in Blend on
     /// the screen's floor.
     fn halving(&self) -> ResampleMap {
@@ -428,6 +422,30 @@ impl Halvings {
         ResampleMap::new(half, self.floor, ResampleMode::Blend, 1, 1)
             .expect("a half lands everywhere")
     }
+}
+
+/// `stage` made again through `halving` on its tiles that read `behind` of
+/// `above`, and those tiles' pixels — what the stage under it reads that
+/// changed — where there were any.
+fn remade(
+    engine: &Engine,
+    composite: &Composite,
+    halving: ResampleMap,
+    above: Tiles,
+    stage: &mut Stage,
+    behind: [i64; 4],
+    budget: Budget,
+) -> Option<Option<[i64; 4]>> {
+    let side = i64::from(TILE);
+    let [left, top, right, bottom] = behind;
+    let reads_behind = |(column, row): (i32, i32)| {
+        let (x, y) = (i64::from(column) * side, i64::from(row) * side);
+        halving
+            .reads(x, y, x + side, y + side)
+            .is_some_and(|[l, t, r, b]| l < right && left < r && t < bottom && top < b)
+    };
+    let steps = [row(halving)];
+    stage.kept.made_again(engine, composite, &plan(above, &steps), reads_behind, budget)
 }
 
 /// Tiles laid whole in normal over nothing through `map` — the screen's

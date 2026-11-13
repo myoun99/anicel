@@ -7,10 +7,11 @@
 use super::{Camera, Halvings, Kept, Tiles, affine, halved, onto_stage, stage_at};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, pixel_at, rig, surface, texel};
 use crate::device::Engine;
-use crate::kernels::composite::{TILE, TileSet};
+use crate::kernels::composite::{TILE, TILE_BYTES, TileAt, TileSet};
+use crate::kernels::pool::gather;
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
-use crate::testing::{assert_pinned, read_buffer};
+use crate::testing::assert_pinned;
 
 /// The canvas: odd both ways, so every stage's last column and row lie
 /// half past the one above it.
@@ -278,10 +279,16 @@ fn a_line_holds_its_alpha_where_the_screen_takes_stage_1() {
     }
 }
 
-/// A kept picture's pages, read back one after another: its tiles in
-/// order.
+/// A kept picture's tiles, read back off the pages it names one after
+/// another, row after row: each where the pool it is kept in placed it.
 pub(crate) fn kept_bytes(kept: &Kept) -> Vec<u8> {
-    kept.pages.iter().flat_map(|page| read_buffer(rig().engine, page)).collect()
+    let engine = rig().engine;
+    let places: Vec<TileAt> = kept.places().collect();
+    let mut bytes = vec![0; places.len() * TILE_BYTES as usize];
+    let out = engine.readback(bytes.len() as u64);
+    gather(engine, &kept.pages, &places, &out);
+    engine.mapped_into(&out, &mut bytes).expect("read the tiles back");
+    bytes
 }
 
 /// Every stage's pages, read back.

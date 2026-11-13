@@ -45,7 +45,7 @@ impl Screen {
         changed: [i32; 4],
         budget: Budget,
     ) -> Option<()> {
-        match &self.canvas {
+        match &mut self.canvas {
             None => self.canvas = Some(Kept::made(engine, composite, plan, self.extent, budget)?),
             Some(canvas) => {
                 let meets = |tile| meets(tile, changed);
@@ -82,7 +82,7 @@ impl Screen {
         Some(())
     }
 
-    /// The bytes it keeps: its canvas's pages and its halvings'.
+    /// The bytes it keeps: its canvas's tiles and its halvings'.
     pub(crate) fn bytes(&self) -> u64 {
         self.canvas.as_ref().map_or(0, Kept::bytes) + self.halvings.bytes()
     }

@@ -275,6 +275,20 @@ class GpuEngine {
   /// where the platform cannot say (Android, Linux).
   int get videoMemoryBytes => rust.engineVideoMemory(_engine);
 
+  /// The bytes the engine keeps for pictures that are no picture's. Every
+  /// [GpuScreen]'s canvas and halvings lie in slots of one pool of the
+  /// engine's, as a cel's tiles do in a [GpuPool]'s, and a page of it
+  /// stays made for the next picture: its slots nobody holds are these —
+  /// and the composite's work buffer, kept from one run to the next. Till
+  /// they are given back ([givePicturesBack]).
+  int get idlePictureBytes => rust.picturesIdleBytes(_engine);
+
+  /// Gives back what the engine keeps for pictures nobody holds: the pages
+  /// of their pool with every slot free, and the composite's work buffer —
+  /// what only makes the next picture cheaper, as a [GpuPool]'s free pages
+  /// are ([GpuPool.giveBackPast]).
+  void givePicturesBack() => rust.picturesGiveBack(_engine, 0);
+
   /// Whether the device is gone — the driver took it away (a reset, an
   /// update, a wake from sleep), or the engine's thread ended under it
   /// (rust/src/device.rs, `Refusals`): every job that waits for it is

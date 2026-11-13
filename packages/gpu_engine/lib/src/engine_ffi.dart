@@ -946,6 +946,16 @@ external int screenBytes(Pointer<Screen> screen);
 @Native<Uint64 Function()>(symbol: 'gpu_engine_kept_bytes')
 external int keptBytes();
 
+@Native<Uint64 Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_pictures_idle_bytes',
+)
+external int picturesIdleBytes(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Engine>, Uint64)>(
+  symbol: 'gpu_engine_pictures_give_back',
+)
+external void picturesGiveBack(Pointer<Engine> engine, int mostBytes);
+
 @Native<
   Bool Function(
     Pointer<Screen>,

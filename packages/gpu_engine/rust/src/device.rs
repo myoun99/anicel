@@ -43,6 +43,12 @@ pub struct Engine {
     /// How fast the device spends a plugin's share, once a plugin first
     /// ran (kernels/plugin's `Pace`).
     pub(crate) plugin_pace: OnceLock<crate::kernels::plugin::Pace>,
+    /// The pool every picture the engine keeps has its tiles in
+    /// (kernels/pool's `Pictures`).
+    pub(crate) pictures: crate::kernels::pool::Pictures,
+    /// The composite's work buffer, kept from one run to the next
+    /// (kernels/composite's `Work`).
+    pub(crate) work: crate::kernels::composite::Work,
     /// What the device refused that no wait has told yet, and whether it
     /// is gone ([`Refusals`]).
     refusals: Refusals,
@@ -399,6 +405,8 @@ impl Engine {
                     kernels: Kernels::default(),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
+                    pictures: Default::default(),
+                    work: Default::default(),
                     refusals,
                     ended: Ended::default(),
                     instance,

@@ -1268,7 +1268,7 @@ pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut Screen) {
     }
 }
 
-/// The bytes `screen` keeps — its canvas's pages and its halvings': what
+/// The bytes `screen` keeps — its canvas's tiles and its halvings': what
 /// the budgets and the memory census weigh it by.
 ///
 /// # Safety
@@ -1284,6 +1284,37 @@ pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const Screen) -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
     super::halvings::kept_bytes()
+}
+
+/// The bytes `engine` keeps for pictures that are no picture's: the slots
+/// nobody holds on the pages of their pool (kernels/pool's `Pictures`) —
+/// they stay made for the next picture — and the composite's work buffer
+/// ([`super::Work`]). For the memory census, which weighs each picture by
+/// its own tiles (`gpu_engine_screen_bytes`).
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_idle_bytes(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.pictures.idle_bytes() + engine.work.bytes()
+}
+
+/// Gives back what `engine` keeps for pictures nobody holds: the pages of
+/// their pool with every slot free, till its pages hold `most_bytes`
+/// (`Pool::give_back`), and the composite's work buffer ([`super::Work`])
+/// — the memory warning's, and a budget's falling under what is made, as
+/// the cels' pool is asked (`gpu_engine_pool_give_back`).
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, most_bytes: u64) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.pictures.give_back(engine, most_bytes);
+    engine.work.let_go();
 }
 
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the

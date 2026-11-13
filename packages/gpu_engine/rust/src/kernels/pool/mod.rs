@@ -51,6 +51,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
@@ -132,6 +134,14 @@ impl Pool {
         self.buffers.iter().map(wgpu::Buffer::size).sum()
     }
 
+    /// The bytes of the slots nobody holds on the pages made — a page given
+    /// back's stand-in among them: made, and no tile's.
+    pub(crate) fn idle_bytes(&self) -> u64 {
+        let held: usize =
+            self.pages.iter().flatten().map(|page| page.holds.len() - page.free.len()).sum();
+        self.bytes() - held as u64 * TILE_BYTES
+    }
+
     /// Makes no page more past `most_bytes`: the pages made stay (its store
     /// gives back what nobody holds, [`Pool::give_back`]), and the next is
     /// made only within it — the budget its store gives, again when the
@@ -184,7 +194,6 @@ impl Pool {
     }
 
     /// The tiles a page holds.
-    #[cfg(test)]
     pub(crate) fn slots(&self) -> usize {
         self.slots
     }
@@ -262,11 +271,12 @@ impl Pool {
     }
 
     /// One more hold of the tile at `at`. Nothing where none holds it: a
-    /// free slot is handed out by [`Pool::fresh`], not held.
+    /// free slot is handed out by [`Pool::fresh`], not held. A picture
+    /// laid over a film holds the film's tiles it shows as they are
+    /// (halvings.rs, `Kept::made_over`).
     // ⏳An undo record's or a stroke result's hold: the flip lane's
     // (connection-round-checklist B ⓓ) — while the CPU's tiles are the
     // canonical ones, the app's map holds each slot once.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn hold(&mut self, at: TileAt) -> Option<()> {
         let holds = &mut self.held(at)?.holds[usize::from(at.slot)];
         *holds += 1;
@@ -309,7 +319,7 @@ impl Pool {
             return Some(());
         }
         let readback = engine.readback(bytes);
-        self.gather(engine, places, &readback);
+        gather(engine, &self.buffers, places, &readback);
         engine.mapped_into(&readback, into)
     }
 
@@ -335,27 +345,13 @@ impl Pool {
             return fail("no tile to read out");
         }
         let out = engine.readback(places.len() as u64 * TILE_BYTES);
-        self.gather(engine, places, &out);
+        gather(engine, &self.buffers, places, &out);
         Some(out)
     }
 
     /// Whether a tile is held at each of `places` ([`Self::holding`]).
     fn all_held(&self, places: &[TileAt]) -> Option<()> {
         places.iter().try_for_each(|&at| self.holding(at))
-    }
-
-    /// Copies the tiles at `places`, each held, into `into` — a tile's
-    /// bytes each, in order — and submits.
-    fn gather(&self, engine: &Engine, places: &[TileAt], into: &wgpu::Buffer) {
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(places) {
-            let page = &self.buffers[usize::from(at.page)];
-            let from = u64::from(at.slot) * TILE_BYTES;
-            encoder.copy_buffer_to_buffer(page, from, into, to, TILE_BYTES);
-        }
-        engine.queue.submit([encoder.finish()]);
     }
 
     /// The page of the tile at `at`, held; nothing where the pool has no
@@ -443,6 +439,195 @@ impl Pool {
     fn page_bytes(&self) -> u64 {
         self.slots as u64 * TILE_BYTES
     }
+}
+
+/// The pool the engine keeps its pictures in — a screen's canvas, its
+/// halvings, a frame's picture kept for playback (`composite::halvings`,
+/// `Kept`): each a cel of it, its tiles in slots held as a cel's are and
+/// free once it is dropped, on pages that stay made till they are given
+/// back ([`Pictures::give_back`]) — the cels' law, by the cels' code.
+///
+/// 🗣️유저 2026-11-13 (H57-Q1 「C · 합성 전체를 엔진 스레드로 … 할수있는거
+/// 다하고싶음」, and in chat 「B도 하면 좋은건가? 통일적인 면에서도
+/// 좋아보이는데 … 근본/구조적 해결을 원해. 작업이 크더라도」 — B is this).
+/// ↩️Till then a picture was kept on buffers of its own, made with it and
+/// gone with it. 🔬Surface Pro 11, S5_BA cut 352 (캔버스 베이스, H57,
+/// 2026-11-13): a picture let go emptied a 256 MiB block of the device's
+/// allocator, which destroyed it, and the next picture made it again —
+/// 32 to 55 ms each on the thread that asked, five such stops (68 ms the
+/// longest) each time the playback's pictures were laid again.
+///
+/// ⛔Not the cels' pool: that one is [`Full`] at the budget its store
+/// gives, and its store cools a cel for it. A picture is let go by the
+/// budget of what keeps it — the app's picture stores — so this pool
+/// refuses at no budget of its own, only where the driver does, as a
+/// picture's own buffer was refused.
+#[derive(Clone, Default)]
+pub(crate) struct Pictures(Arc<Mutex<Option<Pool>>>);
+
+impl Pictures {
+    fn kept(&self) -> MutexGuard<'_, Option<Pool>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A pool of pages of `slots` tiles, for a test to see a picture go on
+    /// to its next page.
+    #[cfg(test)]
+    pub(crate) fn sized(slots: usize) -> Option<Self> {
+        let pool = Self::unbounded(Pool::sized(slots, MOST_NAMED, u64::MAX)?);
+        Some(Self(Arc::new(Mutex::new(Some(pool)))))
+    }
+
+    /// `pool` kept to no budget (⛔ above).
+    fn unbounded(mut pool: Pool) -> Pool {
+        pool.set_budget_instead(Some(u64::MAX));
+        pool
+    }
+
+    /// What `work` answers of the pool — made here where no picture has
+    /// asked yet. ⚠️The pool is held for as long as `work` runs, so no run
+    /// is made within it: a picture holds its slots first and is run onto
+    /// them after ([`Pictures::fresh`]) — a picture dropped on one thread
+    /// waits for no run of another's.
+    fn with<T>(&self, engine: &Engine, work: impl FnOnce(&mut Pool) -> Option<T>) -> Option<T> {
+        let mut kept = self.kept();
+        if kept.is_none() {
+            *kept = Some(Self::unbounded(Pool::new(engine, u64::MAX)?));
+        }
+        work(kept.as_mut().expect("made above"))
+    }
+
+    /// A picture's name in the pool ([`Pool::cel`]).
+    pub(crate) fn cel(&self, engine: &Engine) -> Option<Cel> {
+        self.with(engine, |pool| Some(pool.cel()))
+    }
+
+    /// The tiles a page of the pool takes.
+    pub(crate) fn slots(&self, engine: &Engine) -> Option<usize> {
+        self.with(engine, |pool| Some(pool.slots()))
+    }
+
+    /// One more hold of each of `places` ([`Pool::hold`]) — and none more
+    /// of any where one of them is not held.
+    pub(crate) fn hold(&self, engine: &Engine, places: &[TileAt]) -> Option<()> {
+        self.with(engine, |pool| {
+            let held = places.iter().take_while(|&&at| pool.hold(at).is_some()).count();
+            if held < places.len() {
+                for &at in &places[..held] {
+                    pool.release(at);
+                }
+                return None;
+            }
+            Some(())
+        })
+    }
+
+    /// `count` fresh slots of `cel`, each held once ([`Pool::fresh`]), and
+    /// the pool's pages as they then are: what a run is put onto. None
+    /// held where the pool makes no page more.
+    pub(crate) fn fresh(
+        &self,
+        engine: &Engine,
+        cel: Cel,
+        count: usize,
+    ) -> Option<(Vec<TileAt>, Vec<wgpu::Buffer>)> {
+        self.with(engine, |pool| {
+            let mut places = Vec::with_capacity(count);
+            while places.len() < count {
+                match pool.fresh(engine, cel) {
+                    Ok(at) => places.push(at),
+                    Err(Full) => {
+                        for &at in &places {
+                            pool.release(at);
+                        }
+                        return fail("the pictures' pool makes no page more");
+                    }
+                }
+            }
+            Some((places, pool.pages().to_vec()))
+        })
+    }
+
+    /// One hold fewer of each of `places`: a picture dropped, or its tile
+    /// made again in another slot.
+    pub(crate) fn release(&self, places: impl Iterator<Item = TileAt>) {
+        if let Some(pool) = self.kept().as_mut() {
+            for at in places {
+                pool.release(at);
+            }
+        }
+    }
+
+    /// Whether this is the pool `other` is: a tile of one is no tile of
+    /// another's pages.
+    pub(crate) fn is(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    /// The pages the tiles at `places` — each held — are on, each at its
+    /// own place, as a plan takes a picture's: up to the last of them, and
+    /// where none of them is on a page before it, the first that one is on
+    /// in its place.
+    ///
+    /// ⚠️NOT THE POOL'S PAGES WHOLE: a picture that kept every page would
+    /// keep made a page the pool gave back ([`Pictures::give_back`]) —
+    /// a page is its buffer for as long as anyone keeps it. No pass binds a
+    /// page none of its tiles is on (composite/mod.rs, `lay`), so what
+    /// stands in such a place is read by nothing.
+    pub(crate) fn pages_of(&self, places: impl Iterator<Item = TileAt>) -> Vec<wgpu::Buffer> {
+        let kept = self.kept();
+        let Some(pages) = kept.as_ref().map(Pool::pages) else {
+            return Vec::new();
+        };
+        let mut on = vec![false; pages.len()];
+        for at in places {
+            on[usize::from(at.page)] = true;
+        }
+        let (Some(first), Some(last)) = (on.iter().position(|&on| on), on.iter().rposition(|&on| on)) else {
+            return Vec::new();
+        };
+        (0..=last).map(|page| pages[if on[page] { page } else { first }].clone()).collect()
+    }
+
+    /// The pool's pages, for a test to count them.
+    #[cfg(test)]
+    pub(crate) fn pages(&self) -> Vec<wgpu::Buffer> {
+        self.kept().as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
+    }
+
+    /// Gives back the pages no picture is on till the pages hold
+    /// `most_bytes` ([`Pool::give_back`]).
+    pub(crate) fn give_back(&self, engine: &Engine, most_bytes: u64) {
+        if let Some(pool) = self.kept().as_mut() {
+            pool.give_back(engine, most_bytes);
+        }
+    }
+
+    /// The bytes of the slots no picture holds on the pages made
+    /// ([`Pool::idle_bytes`]).
+    pub(crate) fn idle_bytes(&self) -> u64 {
+        self.kept().as_ref().map_or(0, Pool::idle_bytes)
+    }
+}
+
+/// Copies the tiles at `places` on `pages`, each held, into `into` — a
+/// tile's bytes each, in order — and submits: a pool's off its pages,
+/// and a kept picture's off its own for a test to read.
+pub(crate) fn gather(
+    engine: &Engine,
+    pages: &[wgpu::Buffer],
+    places: &[TileAt],
+    into: &wgpu::Buffer,
+) {
+    let mut encoder = engine
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(places) {
+        let page = &pages[usize::from(at.page)];
+        let from = u64::from(at.slot) * TILE_BYTES;
+        encoder.copy_buffer_to_buffer(page, from, into, to, TILE_BYTES);
+    }
+    engine.queue.submit([encoder.finish()]);
 }
 
 /// Whether `page` is made and nobody's: every slot of it free.
