@@ -311,6 +311,28 @@ int framesOfSecondsAndFrames(int seconds, int frames, int framesPerSecond) {
   );
 }
 
+/// A sound played at its own speed — the pull nothing applies.
+const ({int numerator, int denominator}) noPull = (
+  numerator: 1,
+  denominator: 1,
+);
+
+/// [first] and then [then] — two pulls one on top of the other, as one
+/// exact rational: they accumulate, and cancel (23.976→24→23.976 lands back
+/// at 1/1).
+({int numerator, int denominator}) pullsTogether(
+  ({int numerator, int denominator}) first,
+  ({int numerator, int denominator}) then,
+) {
+  final numerator = first.numerator * then.numerator;
+  final denominator = first.denominator * then.denominator;
+  final divisor = numerator.gcd(denominator);
+  return (
+    numerator: numerator ~/ divisor,
+    denominator: denominator ~/ divisor,
+  );
+}
+
 /// The rate a movie running at [movie] frames per second runs at when it
 /// is [project]'s PULLDOWN PARTNER — 23.976 to a 24 project and 24 to a
 /// 23.976 one, 29.97↔30, 59.94↔60 — or null when it is not.

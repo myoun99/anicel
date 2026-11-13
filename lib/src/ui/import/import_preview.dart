@@ -71,7 +71,7 @@ class ImportPreview extends StatefulWidget {
     required this.soundPeaks,
     required this.holdBytes,
     required this.frameRate,
-    this.audioSpeed = (numerator: 1, denominator: 1),
+    this.audioSpeed = noPull,
     this.sound,
     this.opensAsSound = false,
     this.run,

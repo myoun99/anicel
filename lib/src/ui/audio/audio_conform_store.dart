@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../models/media_asset.dart' show MediaCarry;
+import '../../models/project_frame_rate.dart' show noPull;
 import '../../services/audio/audio_conform_pipeline.dart';
 import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -64,7 +65,7 @@ class AudioConformStore extends ChangeNotifier {
        _resolveProjectSampleRate =
            resolveProjectSampleRate ?? (() => projectSampleRate),
        _resolveAudioSpeed =
-           resolveAudioSpeed ?? (() => (numerator: 1, denominator: 1)),
+           resolveAudioSpeed ?? (() => noPull),
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
 
