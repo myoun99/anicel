@@ -7,7 +7,8 @@ import '../../models/app_gpu_settings.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/project.dart';
-import '../../native/app_gpu_engine.dart' show compiledHereOrOff;
+import '../../native/app_gpu_engine.dart'
+    show StandsOnTheAppsEngine, compiledHereOrOff;
 import '../../native/gpu_fx_plugin.dart';
 import '../project_lookup.dart' show projectLayersAnywhere;
 import 'fx_plugin_bundle.dart';
@@ -83,6 +84,7 @@ class InstalledFxPlugins extends ChangeNotifier {
        _check = check ?? checkFxPluginOnTheDevice,
        _open = open ?? openInstalledFxPlugin {
     AppGpu.settings.addListener(_onGpuSettings);
+    _onTheAppsEngine.start();
   }
 
   final FxPluginLibraryService _service;
@@ -98,6 +100,11 @@ class InstalledFxPlugins extends ChangeNotifier {
   /// Whether the plugins [_runners] holds were opened to be cut.
   bool _openedCutting = AppGpu.settings.value.pluginShare.cuts;
 
+  /// How many times every build was let go to be opened again
+  /// ([_openEachAgain]): one opened before the last is not one this list
+  /// opens now ([install]).
+  int _openedAgain = 0;
+
   /// 🗣️an-endless-plugin-stalls-the-app-Q18 「끊지 않음」: a plugin is
   /// compiled with its count or without it, so moving to or from that
   /// choice lets every opened one go — each opens again, the new way, the
@@ -108,10 +115,44 @@ class InstalledFxPlugins extends ChangeNotifier {
       return;
     }
     _openedCutting = cuts;
+    _openEachAgain();
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — a build is of the engine the
+  /// app had as it was opened, and goes with that engine: every one
+  /// [_runners] holds — opened, still opening, or found unable to open on
+  /// a device that was gone — is let go as the app lets its engine go, and
+  /// opens on the next the next time a frame asks it ([_openEachAgain]).
+  ///
+  /// 🚨THE SEAM EVERY HOLDER HEARS BY ([StandsOnTheAppsEngine], 관제
+  /// 2026-11-11 22:35: 「`appGpuEngineOpen` 을 듣는 이음매 하나를 두고 다섯이
+  /// 그것을 쓰게 하라」 — the fifth; 2026-11-12 22:3x: 「(C3) ④ 는 그 감싸개에
+  /// 놓기를 단다」). ⚠️Told, not asked as a cache is
+  /// (`KeptOnTheAppsEngine`): a frame laid holds the build it was bound
+  /// (`FxPluginRun.runner`), and is bound another only as this list says
+  /// it changed.
+  ///
+  /// What a build made is not let go here: a step kept past its recording
+  /// is bytes of this process (`FxPluginStages`), under a sample that names
+  /// its build — asked for by none once the build is another.
+  late final StandsOnTheAppsEngine _onTheAppsEngine = StandsOnTheAppsEngine(
+    letGo: _openEachAgain,
+  );
+
+  /// Lets every build go ([_letGo]) and says the list changed: each opens
+  /// again the next time a frame asks it ([runnerFor]) — as this list
+  /// opens one by then, on the engine the app has by then.
+  void _openEachAgain() {
+    _openedAgain += 1;
+    _letEachGo();
+    notifyListeners();
+  }
+
+  void _letEachGo() {
     for (final id in [..._runners.keys]) {
       _letGo(id);
     }
-    notifyListeners();
   }
 
   Future<void>? _loading;
@@ -207,7 +248,7 @@ class InstalledFxPlugins extends ChangeNotifier {
     if (bundle == null) {
       return const FxPluginUnreadable();
     }
-    final cutting = _cutting;
+    final asOf = _openedAgain;
     final (:opened, :refusal) = await _check(bundle);
     if (refusal != null) {
       return FxPluginUnopened(refusal);
@@ -233,11 +274,12 @@ class InstalledFxPlugins extends ChangeNotifier {
     // 🗣️관제 2026-11-12 22:25 (an-endless-plugin-stalls-the-app A5): 「A5 는
     // 설치 검사가 연 것을 러너로 쓴다」 — the build the check opened is the
     // one its frames run, so the device compiles it once. ↩️The check let
-    // it go, and the first frame compiled it again. Kept as the list opens
-    // now ([_openedCutting]) — one opened the other way is let go, and
-    // opens again as asked.
+    // it go, and the first frame compiled it again. Kept where the list
+    // let none of its builds go since the check began ([_openedAgain]) —
+    // one opened the other way of cutting, or on an engine the app has let
+    // go since, is let go, and opens again as asked.
     if (opened != null) {
-      if (cutting == _openedCutting && !_disposed) {
+      if (asOf == _openedAgain && !_disposed) {
         _runners[description.id] = opened;
       } else {
         opened.close();
@@ -278,9 +320,8 @@ class InstalledFxPlugins extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     AppGpu.settings.removeListener(_onGpuSettings);
-    for (final id in [..._runners.keys]) {
-      _letGo(id);
-    }
+    _onTheAppsEngine.stop();
+    _letEachGo();
     outcomes.dispose();
     super.dispose();
   }
@@ -313,10 +354,11 @@ final class _Unopened implements FxPluginRunner {
 /// that build — or one that would not open ([_Unopened]). What a frame
 /// bound meanwhile holds, so it is not bound again.
 ///
-/// ⏳LET GO OF WITH THE APP'S ENGINE BY (C3) ④ (🗣️관제 2026-11-12 22:25:
-/// 「놓기는 (C3) ④ 가 단다」, a-lost-gpu-device-keeps-the-unsaved-tiles):
-/// its build is that engine's, and this list holds it past a loss till
-/// then — as it holds one opened at once.
+/// Let go of with the app's engine as one opened at once is (🗣️관제
+/// 2026-11-12 22:25: 「놓기는 (C3) ④ 가 단다」,
+/// a-lost-gpu-device-keeps-the-unsaved-tiles —
+/// [InstalledFxPlugins._openEachAgain]): its build is that engine's, come
+/// or still to come.
 final class _Opening implements FxPluginRunner {
   _Opening(Future<FxPluginRunner?> opening) {
     _toCome = opening.then(

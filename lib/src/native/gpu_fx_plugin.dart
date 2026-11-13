@@ -42,7 +42,12 @@ final class GpuFxPlugin implements FxPluginRunner {
     }
   }
 
-  /// [open] off this isolate, which goes on meanwhile ([GpuPlugin.opening]).
+  /// [open] off this isolate, which goes on meanwhile ([GpuPlugin.opening])
+  /// — the engine too, where the app has none open ([openAppGpuEngine]):
+  /// one asked for between the app letting an engine go and the next
+  /// being open waits for that one, as the frames' tools do
+  /// (`appEngineFrameTools`). ⛔Not [appGpuEngine], which opens one where
+  /// it is asked — the isolate the app's frames are built on, 0.6–1.2 s.
   static Future<GpuFxPluginOpened> opening(
     String source,
     FxPluginDescription description, {
@@ -50,7 +55,7 @@ final class GpuFxPlugin implements FxPluginRunner {
   }) async {
     try {
       return _opened(
-        await GpuPlugin.opening(appGpuEngine, source, cut: cut),
+        await GpuPlugin.opening(await openAppGpuEngine(), source, cut: cut),
         description,
       );
     } on StateError catch (error) {
