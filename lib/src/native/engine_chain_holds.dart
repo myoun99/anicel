@@ -25,8 +25,21 @@ import '../core/lru.dart';
 // in what the line has free (`bytesLeftFree` — F-529-Q1, no picture gives
 // way to them). The census reads both there.
 final class EngineChainHolds {
-  /// Holds fitting what [room] answers, asked each time they fit.
-  EngineChainHolds({required int Function() room}) : _room = room;
+  /// Holds fitting what [room] answers, asked each time they fit — those
+  /// of the frame a canvas stands on to draw where [ofThePensFrame].
+  EngineChainHolds({
+    required int Function() room,
+    required this.ofThePensFrame,
+  }) : _room = room;
+
+  /// Whether these are of the frame a canvas stands on to draw
+  /// (`FramePictures.heldNodes`) — not of the frames made ahead, nor of a
+  /// screen that draws nothing live (`FramePictures.aheadNodes`).
+  ///
+  /// 🗣️유저 2026-10-27, Q3 = c: 「편집 중인 프레임의 위 폴더만」 — what is kept
+  /// one to a source is that frame's to keep, and a recording into any
+  /// other holds takes none of its places (`FxPluginStages._keptSteps`).
+  final bool ofThePensFrame;
 
   /// The hold the plans name ([GpuPlan.chainHeld]).
   final GpuHeldChains held = GpuHeldChains();

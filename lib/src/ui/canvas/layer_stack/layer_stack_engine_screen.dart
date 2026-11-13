@@ -265,7 +265,8 @@ GpuFloodPicture fillPictureOf(
 /// answer. The range a fill holds on a row is marked under the mask
 /// [maskOf] gives its cover, and each node's chain is held in [holds], if
 /// any, as what the node shows ([_FrameReading._pictureOf]) on this paper
-/// ([_holding]).
+/// ([_holding]) — and what its plug-ins' steps make kept past it where
+/// those are the pen's frame's ([EngineChainHolds.ofThePensFrame]).
 ///
 /// 🚨ONE PLANNING: what a screen keeps ([EngineStackScreen._laid]) and what
 /// a fill reads ([fillPictureOf]) are the same rows by the same law.
@@ -308,7 +309,11 @@ T _planned<T>(
         holding: _holding(holds, pass, origins, paper),
         plugins: stages == null
             ? null
-            : (steps: stages, engine: composite.engine),
+            : (
+                steps: stages,
+                engine: composite.engine,
+                ofThePensFrame: holds?.ofThePensFrame ?? false,
+              ),
       );
       // Not run while its chains' kernels are still to be compiled: the
       // run would compile them here, the app stopped meanwhile.

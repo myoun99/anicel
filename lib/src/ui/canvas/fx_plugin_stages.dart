@@ -48,7 +48,8 @@ import '../../services/cel_text_laying.dart';
 /// them go — what they hold is the working set of one picture, and no
 /// route holds them to let go of. What a step made is KEPT past it where
 /// the plan says what its input is made of ([PluginStepSource]) — on that
-/// source, the newest only ([_keptSteps]).
+/// source, the newest only, and by a plan of the frame a pen is on alone
+/// ([_keptSteps]).
 final class FxPluginStages implements PluginSteps {
   FxPluginStages._();
 
@@ -79,9 +80,32 @@ final class FxPluginStages implements PluginSteps {
   /// 묶인다)」): what a plug-in made of a cel's surface — or of what the
   /// plug-in before it made — under the effects run since, as the head of
   /// a chain keeps its plug-in's picture on the surface
-  /// (`celPluginSurfaces`). It goes when the source does, or when the same
-  /// source is asked under another sample — a value dragged makes a new
-  /// one each step. A picture a canvas's size, each ([keptBytes]).
+  /// (`celPluginSurfaces`). It goes when the source does, or when the
+  /// pen's frame asks the same source under another sample — a value
+  /// dragged makes a new one each step. A picture a canvas's size, each
+  /// ([keptBytes]).
+  ///
+  /// 🚨★THE PLACE IS THE PEN'S FRAME'S (card a-stroke-step-reads-back-and-
+  /// pictures-each-tile-it-moved, 관제 2026-11-13 09:05; 🗣️유저 2026-10-27,
+  /// Q3 = c: 「편집 중인 프레임의 위 폴더만」 — the frames made ahead give way
+  /// to what the canvas holds): a plan of the frame a canvas stands on to
+  /// draw alone keeps a step here ([stepOf]). Any other — a frame made
+  /// ahead, a render — reads the step kept under the very signature it
+  /// asks with, and under another runs its own, kept nowhere and the place
+  /// left as it was.
+  ///
+  /// ↩️Every recording took the place (11-11 → 11-13). A step's sample
+  /// holds its frame's moment, so the frame made ahead beside the one drawn
+  /// on asked the same cel under another, took the place, and the next
+  /// stroke's first write ran every plug-in of the frame again — 🔬main PC,
+  /// profile, S5_BA cut 352, three steps at 2436×1524: a stroke's first ink
+  /// 26–32 ms after the pen with no plug-in, 552–680 ms with them, at
+  /// every stroke.
+  ///
+  /// ⚠️NOT 「비키는 장치」 COME BACK: that word of 11-11 ⓒ was of MEMORY — a
+  /// kept step lives as long as its source and nothing lets it go to make
+  /// room. It still does, one a source still: this says only WHOSE the one
+  /// is.
   static final SignedMemo<
     ({_StepAsked step, List<ResolvedLayerEffect> before}),
     _KeptStep
@@ -226,6 +250,7 @@ final class FxPluginStages implements PluginSteps {
     required int width,
     required int height,
     required ui.Rect paper,
+    required bool ofThePensFrame,
     PluginStepSource? from,
   }) {
     final met = _taken(
@@ -236,13 +261,15 @@ final class FxPluginStages implements PluginSteps {
       scale: 1,
       paper: paper,
       from: from,
+      ofThePensFrame: ofThePensFrame,
     );
     return (ran: met != null, made: met?.output);
   }
 
   /// The stage that met this step and has run — run in a recording before
   /// where [from] is what it was run over then ([_keptSteps]); null,
-  /// [input] held for the run, where it is still to be.
+  /// [input] held for the run, where it is still to be. What it makes
+  /// takes [from]'s place where the plan is [ofThePensFrame].
   _Stage? _taken(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
@@ -251,6 +278,7 @@ final class FxPluginStages implements PluginSteps {
     required double scale,
     required ui.Rect paper,
     PluginStepSource? from,
+    bool ofThePensFrame = false,
   }) {
     if (effect.run?.runner.toCome case final toCome?) {
       // Not met while its plug-in's build is still to come: the recording
@@ -269,10 +297,15 @@ final class FxPluginStages implements PluginSteps {
     );
     final kept = switch (from) {
       null => null,
-      (:final source, :final before) => _keptSteps.resolve(source, (
+      (:final source, :final before) when ofThePensFrame =>
+        _keptSteps.resolve(source, (
+          step: step,
+          before: before,
+        ), _KeptStep.new),
+      (:final source, :final before) => _keptSteps.keptUnder(source, (
         step: step,
         before: before,
-      ), _KeptStep.new),
+      )),
     };
     final asked = _Stage(step, input, kept: kept);
     final there = at < _stages.length ? _stages[at] : null;

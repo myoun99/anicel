@@ -11,6 +11,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -575,18 +576,15 @@ void main() {
     return (store: store, overlay: overlay, handAnew: handAnew);
   }
 
-  /// The pen's steps over a few tiles, each let land.
+  /// The pen's steps over a few tiles — [tiles] where a test names them —
+  /// each let land.
   Future<void> stepsOf(
     WidgetTester tester,
-    ActiveStrokeOverlayModel overlay,
-  ) async {
-    for (final coord in [
-      TileCoord(x: 0, y: 0),
-      TileCoord(x: 1, y: 1),
-      TileCoord(x: 2, y: 2),
-      TileCoord(x: 1, y: 0),
-    ]) {
-      await aStep(tester, overlay, coord);
+    ActiveStrokeOverlayModel overlay, {
+    List<(int, int)> tiles = const [(0, 0), (1, 1), (2, 2), (1, 0)],
+  }) async {
+    for (final (x, y) in tiles) {
+      await aStep(tester, overlay, TileCoord(x: x, y: y));
       await lendBothClocks(tester, rounds: 4);
     }
   }
@@ -627,7 +625,7 @@ void main() {
   // ITS OWN SAMPLE (`FxPluginStages`): any of them another, it runs again.
   ResolvedLayerEffect brightened(double by) =>
       fx(EffectKind.brightnessContrast, {'brightness': by});
-  ResolvedLayerEffect aPluginAt(ShiftingFxPlugin runner, int frame) =>
+  ResolvedLayerEffect aPluginAt(FxPluginRunner runner, int frame) =>
       ResolvedLayerEffect(
         kind: EffectKind.plugin,
         plugin: shiftingFxPluginDescription,
@@ -732,6 +730,88 @@ void main() {
           shot.rgba[at + 3] == colour[3])
         at ~/ 4 % shot.width,
   };
+
+  // 🚨THE PLACE A STEP IS KEPT IN IS THE PEN'S FRAME'S (🗣️유저 2026-10-27,
+  // Q3 = c: 「편집 중인 프레임의 위 폴더만」; card a-stroke-step-reads-back-
+  // and-pictures-each-tile-it-moved, 관제 2026-11-13): the frame beside the
+  // one drawn on, made ahead between two strokes, asks the same cel under
+  // its own moment — it runs its own, and the place stays the pen's.
+  // ↩️It took the place, and each stroke's first write ran the frame's
+  // plug-ins again (🔬a stroke's first ink 26–32 ms → 552–680 ms, S5_BA cut
+  // 352, 11-13).
+  testWidgets('a frame made ahead between two strokes runs its plugin at '
+      'its own moment and takes no place: the next stroke runs none', (
+    tester,
+  ) async {
+    final runner = _ShiftsByItsFrame();
+    List<CompositeNode<CanvasStackRow>> at(int frame) =>
+        beside([aPluginAt(runner, frame)]);
+    final (:store, :overlay, :handAnew) = await standingBeside(tester, [
+      aPluginAt(runner, 0),
+    ]);
+    expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+    Future<void> written() async => expect(
+      await settleAsync(tester, () => store.went.length == store.asked.length),
+      isTrue,
+      reason: 'LIVENESS: every write asked went',
+    );
+    // The frame after it stood on and left: the cel's place holds that
+    // frame's moment now, and the first frame's picture is there still —
+    // nothing is laid as the canvas comes back to it.
+    await handAnew(at(1));
+    expect(
+      await settleAsync(tester, () => runner.renders == 2),
+      isTrue,
+      reason: '⛔premise: the frame after it, laid',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    await handAnew(at(0));
+    await lendBothClocks(tester, rounds: 4);
+    expect(runner.renders, 2, reason: '⛔premise: its picture is there');
+
+    await stepsOf(tester, overlay);
+    await written();
+    expect(store.went, contains(true), reason: 'LIVENESS: the steps went in');
+    expect(
+      runner.renders,
+      3,
+      reason: 'run for the stroke\'s first write, and kept by it for every '
+          'step after',
+    );
+
+    // The frame two on, made ahead as a walk makes it: the same cel, at
+    // its own moment.
+    final view = tester.widget<FramePictureView>(theFramesPicture());
+    final ahead = (await tester.runAsync(
+      () => view.run.pictures.pictureOf(at(2), (
+        cut: cut,
+        frameIndex: 2,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      ), shouldAbort: () => false),
+    ))!;
+    addTearDown(ahead.release);
+    expect(runner.renders, 4, reason: 'run at its own moment, for it');
+    // What the plugin makes at that moment — three to the right — is laid.
+    final row = pixelsOfPicture(
+      ahead,
+      const Rect.fromLTWH(0, tileSize * 5 / 4, tileSize * 1.0, 1),
+    );
+    expect(inkColumnsOf((rgba: row, width: tileSize), colour: other), {
+      for (var x = tileSize ~/ 4; x < tileSize ~/ 2; x += 1) x + 3,
+    });
+
+    final went = store.went.length;
+    await stepsOf(tester, overlay, tiles: const [(3, 1), (2, 1), (3, 2)]);
+    await written();
+    expect(
+      store.went.skip(went),
+      contains(true),
+      reason: 'LIVENESS: the next stroke\'s steps went in',
+    );
+    expect(runner.renders, 4);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   /// What [screen] shows once [nodes]' frame stands there, its picture
   /// made.
@@ -1470,6 +1550,35 @@ class _OnItsWayAndTold = StoreLayingNothing with _ToldToSayItWaits;
 
 /// A store whose pictures are made.
 class _MadeAndTold = StoreTellingItsWrites with _ToldToSayItWaits;
+
+/// A plugin that moves every pixel right by one more than the frame it
+/// is run at: what it makes at one moment is not what it makes at another.
+final class _ShiftsByItsFrame implements FxPluginRunner {
+  int renders = 0;
+
+  @override
+  Future<void>? get toCome => null;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      moment.frameIndex + 1;
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    renders += 1;
+    return ShiftingFxPlugin(
+      by: moment.frameIndex + 1,
+    ).render(input: input, values: values, layers: layers, moment: moment);
+  }
+
+  @override
+  void close() {}
+}
 
 /// A store whose writes through a frame's plugins go on when let
 /// ([letOneGo]), saying what each was asked and whether it went in.

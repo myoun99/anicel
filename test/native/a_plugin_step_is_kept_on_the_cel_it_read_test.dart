@@ -119,4 +119,34 @@ void main() {
     expect(runner.renders, 1, reason: '⛔premise: kept, not run again');
     expect(kept, made);
   });
+
+  // 🚨THE PLACE IS THE PEN'S FRAME'S, AND WHAT IS IN IT ANY RECORDING'S TO
+  // READ (`FxPluginStages._keptSteps`; card a-stroke-step-reads-back-and-
+  // pictures-each-tile-it-moved, 2026-11-13). One that asks under another
+  // sample runs its own and takes nothing — pinned where the routes are
+  // (`a_frame_that_waits_for_its_plugins_holds_its_picture_test`).
+  test('a recording that is not of the pen\'s frame reads the step kept '
+      'under the sample it asks with: it runs none', () async {
+    final cel = oneTile((3, 3), const [200, 10, 10, 255]);
+    final runner = ShiftingFxPlugin(by: 1);
+    final effects = [through(runner)];
+    final made = await aRowLaidThroughItsPlugins(
+      composite,
+      letters,
+      cel,
+      effects,
+    );
+    expect(runner.renders, 1, reason: '⛔premise: run, and kept');
+
+    final ahead = await aRowLaidThroughItsPlugins(
+      composite,
+      letters,
+      cel,
+      effects,
+      ofThePensFrame: false,
+    );
+
+    expect(runner.renders, 1);
+    expect(ahead, made);
+  });
 }

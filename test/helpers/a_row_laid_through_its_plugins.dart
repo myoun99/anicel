@@ -16,6 +16,10 @@ import 'package:gpu_engine/gpu_engine.dart';
 /// hand holds over it [held], over its canvas — laid by [composite] as a
 /// route that waits for its plug-ins lays it: a round of the plan each,
 /// till every step has run. [recorded] hears each round's end.
+///
+/// Laid as the frame a canvas stands on to draw is — what its steps make
+/// kept on the cel — or, [ofThePensFrame] false, as a frame made ahead is
+/// (`PlanPlugins`).
 Future<Uint8List> aRowLaidThroughItsPlugins(
   GpuComposite composite,
   EngineLetters letters,
@@ -23,6 +27,7 @@ Future<Uint8List> aRowLaidThroughItsPlugins(
   List<ResolvedLayerEffect> effects, {
   List<EngineHeld> held = const [],
   void Function()? recorded,
+  bool ofThePensFrame = true,
 }) async {
   final canvas = surface.canvasSize;
   final ledger = EngineTileLedger(appGpuEngine);
@@ -48,7 +53,11 @@ Future<Uint8List> aRowLaidThroughItsPlugins(
           hold: hold,
           paper: canvas.canvasRect,
           letters: letters,
-          plugins: (steps: stages, engine: appGpuEngine),
+          plugins: (
+            steps: stages,
+            engine: appGpuEngine,
+            ofThePensFrame: ofThePensFrame,
+          ),
         );
         final out = composite.run(
           ledger.pool,

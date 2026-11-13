@@ -765,6 +765,7 @@ class _TreePlan {
       width: right - left,
       height: bottom - top,
       paper: paper.shift(ui.Offset(-left.toDouble(), -top.toDouble())),
+      ofThePensFrame: plugins.ofThePensFrame,
       from: from,
     );
     if (!step.ran) {

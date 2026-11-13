@@ -45,17 +45,26 @@ abstract interface class PluginSteps {
   /// [paper] where the paper lies in its pixels, straight RGBA row after
   /// row, on the engine: `ran` false where it is still to be run, [input]
   /// kept until it is; `made` null where it ran and failed — drawn as if
-  /// off. [from] says what [input] is made of, where the plan can say.
+  /// off. [from] says what [input] is made of, where the plan can say —
+  /// and what the step makes is kept on that past the plan where the plan
+  /// is [ofThePensFrame] ([PlanPlugins]), by no other.
   ({bool ran, GpuPutPicture? made}) stepOf(
     ResolvedLayerEffect effect,
     PluginStepInput input, {
     required int width,
     required int height,
     required ui.Rect paper,
+    required bool ofThePensFrame,
     PluginStepSource? from,
   });
 }
 
-/// The steps a plan's plug-ins are run through, and the engine what they
-/// read is read back on.
-typedef PlanPlugins = ({PluginSteps steps, GpuEngine engine});
+/// The steps a plan's plug-ins are run through, the engine what they read
+/// is read back on, and whether the plan is of the frame a canvas stands
+/// on to draw — its chains laid into that frame's holds
+/// (`EngineChainHolds.ofThePensFrame`).
+typedef PlanPlugins = ({
+  PluginSteps steps,
+  GpuEngine engine,
+  bool ofThePensFrame,
+});

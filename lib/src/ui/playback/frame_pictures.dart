@@ -114,7 +114,9 @@ class FramePictures implements PlaybackPictures {
   /// ([EngineChainHolds]; card paint-walk-redoes-the-same-work-each-step,
   /// 실측 5): kept as the frame is laid for that canvas ([makeShown]) and as
   /// a stroke's steps are composed into it, so each folder a step or a value
-  /// of a drag does not touch runs none of its chain again.
+  /// of a drag does not touch runs none of its chain again. What is recorded
+  /// into these keeps its plug-ins' steps as well, and into no others
+  /// ([EngineChainHolds.ofThePensFrame]).
   ///
   /// ⚖️As many as the playback [line] has room for — the frames' pictures
   /// made ahead give way to them (🗣️유저 2026-10-27, Q3 = c: 「위 폴더는
@@ -123,6 +125,7 @@ class FramePictures implements PlaybackPictures {
   /// are let go of, and those run their chains as before.
   late final EngineChainHolds heldNodes = EngineChainHolds(
     room: () => line?.bytesForNodes ?? playbackCacheBudgetBytes,
+    ofThePensFrame: true,
   );
 
   /// 🚨★WHAT THE CHAINS OF THE FRAMES MADE AHEAD PUT (🗣️유저 2026-11-01,
@@ -141,6 +144,7 @@ class FramePictures implements PlaybackPictures {
   /// 8.0–8.5 s with the folder's picture held.
   late final EngineChainHolds aheadNodes = EngineChainHolds(
     room: () => line?.bytesLeftFree ?? playbackCacheBudgetBytes,
+    ofThePensFrame: false,
   );
 
   /// The line [heldNodes] stand on — null where none is told: the line's

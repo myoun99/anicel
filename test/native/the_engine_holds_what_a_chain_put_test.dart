@@ -196,7 +196,7 @@ void main() {
 
   /// Holds fitting [room], let go of at the test's end.
   EngineChainHolds holdsIn(int room) {
-    final holds = EngineChainHolds(room: () => room);
+    final holds = EngineChainHolds(room: () => room, ofThePensFrame: true);
     addTearDown(holds.free);
     return holds;
   }
