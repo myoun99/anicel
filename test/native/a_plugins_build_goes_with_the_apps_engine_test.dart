@@ -13,6 +13,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/gpu_fx_plugin.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/fx_plugin_file.dart';
@@ -174,6 +175,24 @@ void main() {
 
     expect((checked! as GpuFxPlugin).debugLetGo, isTrue);
     expect(await drawnBy(plugins.runnerFor(description)!), inverted);
+  });
+
+  test('a list that went has let its builds go, and hears no more of the '
+      'app\'s engine', () async {
+    final plugins = InstalledFxPlugins(service: library());
+    await install(plugins);
+    final build = plugins.runnerFor(description)! as GpuFxPlugin;
+    // What a notifier's listener throws is reported, not thrown on.
+    final reported = <Object>[];
+    final onError = FlutterError.onError;
+    FlutterError.onError = (details) => reported.add(details.exception);
+    addTearDown(() => FlutterError.onError = onError);
+
+    plugins.dispose();
+    expect(build.debugLetGo, isTrue);
+    theAppsEngineLostAndLetGo();
+
+    expect(reported, isEmpty, reason: 'one gone is told of nothing');
   });
 
   test('🚨one asked for once the app has let its engine go, before the next '
