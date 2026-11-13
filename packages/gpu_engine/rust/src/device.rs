@@ -1093,13 +1093,24 @@ impl EngineThread {
 
     /// `work`, as this thread runs it: not at all once the thread has
     /// ended, and the thread's end where it panics ([`Self::ended`]).
-    fn till_it_ends<Work: FnOnce() + Send + 'static>(&self, work: Work) -> impl FnOnce() + Send + 'static + use<Work> {
+    ///
+    /// 🚨`answers` — what tells who waits that `work` is through — is let
+    /// go of once the end is said, so who finds no answer finds the thread
+    /// ended. Held by `work` itself it went as the panic unwound, before
+    /// the word: a wait asked in between was handed to a thread that then
+    /// dropped it unrun, and was told it never answered (🔬2026-11-14,
+    /// `an_engine_whose_thread_ended_is_gone` red once, beside 18 suites).
+    fn till_it_ends<Answers: Send + 'static, Work: FnOnce(&Answers) + Send + 'static>(
+        &self,
+        answers: Answers,
+        work: Work,
+    ) -> impl FnOnce() + Send + 'static + use<Answers, Work> {
         let ended = Arc::clone(&self.ended);
         move || {
             if ended.load(Ordering::Acquire) {
                 return;
             }
-            if catch_unwind(AssertUnwindSafe(work)).is_err() {
+            if catch_unwind(AssertUnwindSafe(|| work(&answers))).is_err() {
                 ended.store(true, Ordering::Release);
             }
         }
@@ -1113,7 +1124,7 @@ impl EngineThread {
             return fail("the engine's thread is gone");
         }
         let (answer, answered) = mpsc::channel();
-        let job = self.till_it_ends(move || {
+        let job = self.till_it_ends(answer, move |answer| {
             let _ = answer.send(work());
         });
         if self.is_here() {
@@ -1131,7 +1142,7 @@ impl EngineThread {
     /// none of it. Dropped unrun where the thread is gone.
     fn post(&self, work: impl FnOnce() + Send + 'static) {
         if !self.ended.load(Ordering::Acquire) {
-            let _ = self.jobs.send(Box::new(self.till_it_ends(work)));
+            let _ = self.jobs.send(Box::new(self.till_it_ends((), move |()| work())));
         }
     }
 
@@ -1700,6 +1711,37 @@ mod tests {
         // else, and fails there by the device that is gone.
         assert_eq!(engine.on_thread(|| engine.wait()), None);
         assert_eq!(last_error(), "the engine's thread is gone");
+    }
+
+    // 🚨A run whose work panicked is answered once the thread has said it
+    // ended, and not before (`EngineThread::till_it_ends` has what a wait
+    // asked in between was told). What the panic carried is let go of
+    // between the two, and this one's stops there till the test has seen
+    // that no answer came.
+    #[test]
+    fn a_run_whose_work_panicked_is_answered_once_the_thread_said_it_ended() {
+        use std::sync::mpsc;
+        struct Stops(mpsc::Sender<()>, mpsc::Receiver<()>);
+        impl Drop for Stops {
+            fn drop(&mut self) {
+                let _ = self.0.send(());
+                let _ = self.1.recv_timeout(IN_TIME);
+            }
+        }
+        let thread = super::EngineThread::start().expect("a thread");
+        let ((stopped, stops), (goes, go), (answered, answer)) = (mpsc::channel(), mpsc::channel(), mpsc::channel());
+        std::thread::scope(|scope| {
+            let thread = &thread;
+            scope.spawn(move || {
+                let ran = thread.run(move || -> () { std::panic::panic_any(Stops(stopped, go)) });
+                let _ = answered.send((ran, thread.ended.load(std::sync::atomic::Ordering::Acquire)));
+            });
+            stops.recv_timeout(IN_TIME).expect("the panic unwound");
+            let early = answer.recv_timeout(std::time::Duration::from_millis(300));
+            let _ = goes.send(());
+            assert!(early.is_err(), "answered before the thread said it ended: {early:?}");
+        });
+        assert_eq!(answer.recv_timeout(IN_TIME), Ok((None, true)));
     }
 
     // 🚨A verb's body runs on the engine's thread, whatever thread calls the
