@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../services/command.dart';
 import '../canvas/text/cel_text_session.dart' show CelTextShown;
 import '../canvas/text/cel_text_tool.dart';
@@ -77,7 +76,6 @@ class CelTextCommands extends ChangeNotifier {
 
   void _relayShown() => _shownInHand.value = _tool?.shownInHand.value;
 
-  bool _tellingOfTheHand = false;
   bool _disposed = false;
 
   /// Tells that another hand is bound — or none — ONCE THIS TURN IS OVER,
@@ -94,19 +92,14 @@ class CelTextCommands extends ChangeNotifier {
   ///
   /// ⚠️Only the BINDING is told late. What the bound hand itself tells of
   /// is told at once ([bind]'s listener).
-  void _tellOfTheHand() {
-    if (_tellingOfTheHand) {
-      return;
+  void _tellOfTheHand() => _handTold.ask();
+
+  late final _handTold = OnceAMicrotask(() {
+    if (!_disposed) {
+      _relayShown();
+      notifyListeners();
     }
-    _tellingOfTheHand = true;
-    scheduleMicrotask(() {
-      _tellingOfTheHand = false;
-      if (!_disposed) {
-        _relayShown();
-        notifyListeners();
-      }
-    });
-  }
+  });
 
   /// Whether a text is in hand.
   bool get holdsText => _tool?.session != null;

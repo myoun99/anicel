@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show VoidCallback;
 
+import '../../core/once_a_microtask.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/straight_rgba_image.dart' show decodedImageStillWanted;
 import 'viewer_raster_budget.dart';
@@ -147,7 +148,6 @@ class ShownRasters<K extends Object, A extends Object> {
   /// What a surface asked for while it painted since the last ask ended, in
   /// the order it asked — each at the look it was asked at.
   final Map<K, (A, Future<ui.Image> Function())> _wanted = {};
-  bool _nextScheduled = false;
 
   /// Guards every landing against what was turned away since.
   int _generation = 0;
@@ -262,16 +262,15 @@ class ShownRasters<K extends Object, A extends Object> {
       return;
     }
     _wanted[key] = (at, render);
-    if (rendering || _nextScheduled) {
-      return;
+    if (!rendering) {
+      _next.ask();
     }
-    _nextScheduled = true;
-    scheduleMicrotask(_askNext);
   }
+
+  late final _next = OnceAMicrotask(_askNext);
 
   /// The first wanted that still has to be asked for, asked.
   void _askNext() {
-    _nextScheduled = false;
     while (_mounted() && !rendering && _wanted.isNotEmpty) {
       final key = _wanted.keys.first;
       final (at, render) = _wanted.remove(key)!;

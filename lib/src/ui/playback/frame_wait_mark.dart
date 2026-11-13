@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/widgets.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../native/app_kernels_ahead.dart';
 import '../media/viewer_page_loading.dart';
 
@@ -106,7 +105,6 @@ class FramesWaiting {
 
   final Set<Object> _views = Set.identity();
   final ValueNotifier<bool> _any = ValueNotifier(false);
-  bool _owesItsWord = false;
   bool _gone = false;
 
   /// [view] says whether its frame [waits].
@@ -116,17 +114,16 @@ class FramesWaiting {
   /// a moment the mark can be built in.
   void says(Object view, {required bool waits}) {
     final moved = waits ? _views.add(view) : _views.remove(view);
-    if (!moved || _owesItsWord) {
-      return;
+    if (moved) {
+      _word.ask();
     }
-    _owesItsWord = true;
-    scheduleMicrotask(() {
-      _owesItsWord = false;
-      if (!_gone) {
-        _any.value = _views.isNotEmpty;
-      }
-    });
   }
+
+  late final _word = OnceAMicrotask(() {
+    if (!_gone) {
+      _any.value = _views.isNotEmpty;
+    }
+  });
 
   void _dispose() {
     _gone = true;

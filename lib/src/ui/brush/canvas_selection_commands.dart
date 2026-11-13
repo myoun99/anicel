@@ -1,8 +1,8 @@
-import 'dart:async';
 import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_values.dart';
@@ -316,8 +316,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   bool Function()? _canEditTransform;
   Object? _owner;
 
-  bool _notifyScheduled = false;
-
   /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
   /// an unconditional `unbind()` produced (유저 #13, 2026-08-14).
   void bind(
@@ -399,18 +397,13 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Coalesced, microtask-deferred change ping — safe to call from any
   /// phase (the layer mutates state inside builds and gesture handlers,
   /// where a synchronous notifyListeners could re-enter the build).
-  void notifySessionChanged() {
-    if (_notifyScheduled) {
-      return;
+  void notifySessionChanged() => _sessionChanged.ask();
+
+  late final _sessionChanged = OnceAMicrotask(() {
+    if (!_disposed) {
+      notifyListeners();
     }
-    _notifyScheduled = true;
-    scheduleMicrotask(() {
-      _notifyScheduled = false;
-      if (!_disposed) {
-        notifyListeners();
-      }
-    });
-  }
+  });
 
   /// ⚠️A ping can be on its way when the channel goes: the layer unbinds as
   /// it is let go of, and a viewer handed no channel lets go of its own

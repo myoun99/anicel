@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/keyed_notices.dart';
+import '../../core/once_a_microtask.dart';
 import '../../core/signed_memo.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
@@ -171,8 +172,6 @@ class TimelineGridTileStore {
     letGo: (_, turnedAway) => _starved[turnedAway.row] = turnedAway,
   );
 
-  bool _drainScheduled = false;
-
   /// 🗣️THE SPANS A ZOOM LEFT STRETCHED WAIT FOR IT TO STOP (유저 2026-10-30,
   /// zoom-step-lays-out-five-times-the-07-25-count-Q1: 「줌이 멈출 때까지
   /// 늘린 옛 타일만 보여 준다」): shown, each its old tile scaled, and rastered
@@ -238,10 +237,6 @@ class TimelineGridTileStore {
   final LinkedHashMap<String, _TileRequest> _ahead =
       LinkedHashMap<String, _TileRequest>();
 
-  /// Whether a paint's [warmAhead] has a warm-up's start waiting for the
-  /// paint phase to end.
-  bool _warmScheduled = false;
-
   /// The keys a warm-up has in flight, and of those the ones a paint asked
   /// for meanwhile — whose landing tells the row, as a shown one's does.
   final Set<String> _warmInFlight = <String>{};
@@ -284,7 +279,7 @@ class TimelineGridTileStore {
   bool get debugBusy =>
       _drainsRunning > 0 ||
       _pending.isNotEmpty ||
-      _warmScheduled ||
+      _warmAsked.asked ||
       _stretched.isNotEmpty;
 
   /// How many rows [_keptByRow] holds tiles of — not one whose every tile
@@ -727,13 +722,12 @@ class TimelineGridTileStore {
 
   void _enqueue(String key, _TileRequest request) {
     _pending.keep(key, request);
-    if (!_drainScheduled) {
-      _drainScheduled = true;
-      // Off the paint phase; microtasks run before the next frame, so a
-      // tile can land within a frame or two.
-      scheduleMicrotask(_drain);
-    }
+    _drainAsked.ask();
   }
+
+  /// Off the paint phase; microtasks run before the next frame, so a tile
+  /// can land within a frame or two.
+  late final _drainAsked = OnceAMicrotask(() => unawaited(_drain()));
 
   /// How far a stale tile may be stretched before the classic pass is the
   /// better answer.
@@ -746,7 +740,6 @@ class TimelineGridTileStore {
   }
 
   Future<void> _drain() async {
-    _drainScheduled = false;
     final engine = appGpuEngineOpen.value;
     if (engine == null) {
       _pending.clear();
@@ -961,16 +954,13 @@ class TimelineGridTileStore {
         devicePixelRatio: devicePixelRatio,
       ),
     );
-    if (_ahead.isEmpty || _warmScheduled) {
-      return;
+    if (_ahead.isNotEmpty) {
+      _warmAsked.ask();
     }
-    _warmScheduled = true;
-    // Off the paint phase, as a shown span's drain is ([_enqueue]).
-    scheduleMicrotask(() {
-      _warmScheduled = false;
-      _startWarming();
-    });
   }
+
+  /// Off the paint phase, as a shown span's drain is ([_enqueue]).
+  late final _warmAsked = OnceAMicrotask(_startWarming);
 
   /// Queues [request] in [queue] unless a tile shows its span already or
   /// it is on its way. One the next page's warm-up holds moves to [_ahead]

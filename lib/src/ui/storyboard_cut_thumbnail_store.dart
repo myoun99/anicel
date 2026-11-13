@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
 import '../core/keyed_notices.dart';
+import '../core/once_a_microtask.dart';
 import '../core/signed_memo.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
@@ -333,20 +333,18 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     if (_disposed) {
       return;
     }
-    final scheduled = _drawnOn.isNotEmpty;
     _drawnOn.add(cutId);
-    if (scheduled) {
-      return;
-    }
-    scheduleMicrotask(() {
-      final drawnOn = {..._drawnOn};
-      _drawnOn.clear();
-      if (!_disposed) {
-        _shown.notice(drawnOn);
-        notifyListeners();
-      }
-    });
+    _drawnOnTold.ask();
   }
+
+  late final _drawnOnTold = OnceAMicrotask(() {
+    final drawnOn = {..._drawnOn};
+    _drawnOn.clear();
+    if (!_disposed) {
+      _shown.notice(drawnOn);
+      notifyListeners();
+    }
+  });
 
   /// [_signatureFor]'s answer per cut INSTANCE, with the edit generation it
   /// was spelled at. A cut is immutable — an edit is a new instance — so an

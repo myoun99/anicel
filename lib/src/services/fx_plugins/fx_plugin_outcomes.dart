@@ -1,8 +1,8 @@
-import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../models/cut_id.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/layer_effect.dart';
@@ -47,7 +47,6 @@ final class FxPluginOutcomes extends ChangeNotifier {
   /// chain is bound anew.
   final LinkedHashMap<_Teller, FxPluginTold> _tellers = LinkedHashMap();
   static const int _tellersKept = 256;
-  bool _announcing = false;
   bool _disposed = false;
 
   /// What [sample]'s run — worn as [worn] says, in [cut], at [frame] —
@@ -102,7 +101,7 @@ final class FxPluginOutcomes extends ChangeNotifier {
       }
     }
     if (failedGone) {
-      _announce();
+      _announced.ask();
     }
   }
 
@@ -111,24 +110,17 @@ final class FxPluginOutcomes extends ChangeNotifier {
       return;
     }
     worn.failed = failed;
-    _announce();
+    _announced.ask();
   }
 
   /// ⚠️A run is told while a picture is made — in a build, a paint, a
   /// recording — where a listener may not build: so listeners hear it once
   /// that work is done, in a microtask, once for every tell before it.
-  void _announce() {
-    if (_announcing) {
-      return;
+  late final _announced = OnceAMicrotask(() {
+    if (!_disposed) {
+      notifyListeners();
     }
-    _announcing = true;
-    scheduleMicrotask(() {
-      _announcing = false;
-      if (!_disposed) {
-        notifyListeners();
-      }
-    });
-  }
+  });
 
   @override
   void dispose() {
