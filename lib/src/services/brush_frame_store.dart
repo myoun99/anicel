@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
 import '../core/in_flight.dart';
+import '../core/one_pass_at_a_time.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
@@ -1126,9 +1128,9 @@ class BrushFrameStore {
   /// gone), so carrying on asks the same failing question once per cel
   /// while the user waits.
   ///
-  /// 🚨And the pass then DISARMS its own reschedule. `_scheduleCooling`
-  /// re-runs on completion for exactly the case where a pass could not
-  /// finish — which is this case, for ever: the budget is still exceeded,
+  /// 🚨And the pass then DISARMS the next. Another pass is begun once one
+  /// ends ([_cooling]) for exactly the case where a pass could not finish —
+  /// which is this case, for ever: the budget is still exceeded,
   /// so it fires again immediately, fails again, and spins the isolate for
   /// as long as the room stays unwritable. A test found that as a
   /// 30-second hang; a user would have found it as a hot device.
@@ -1615,49 +1617,44 @@ class BrushFrameStore {
 
   // --- Cooling (hot → cold) -------------------------------------------
 
-  Future<void>? _activeCooling;
+  /// The cooling passes: one at a time, and another once one ends while
+  /// the budget is still exceeded — work stored while it ran, or that it
+  /// could not cool yet.
+  late final _cooling = OnePassAtATime(
+    // The length guard both mirrors the loop's never-cool-the-last-hot rule
+    // and keeps the next pass from spinning when the one remaining cel alone
+    // exceeds the budget.
+    due: () =>
+        !_coolingStoodDown &&
+        _hotBytes > hotCelByteBudget &&
+        _bakedSurfaces.length > 1,
+    pass: _coolAPass,
+  );
 
   /// Completes when no cooling pass is running (tests).
-  Future<void> drainCooling() async {
-    while (_activeCooling != null) {
-      await _activeCooling;
-    }
-  }
+  Future<void> drainCooling() => _cooling.settled();
 
   /// Set when a pass could not park a cel — refused, or thrown — and
   /// cleared by anything that could plausibly change the answer — a new
   /// edit, a project swap.
   ///
-  /// ⛔Without it the completion re-schedule is an infinite loop: the pass
-  /// stands down BECAUSE the budget is still exceeded, which is the very
-  /// condition the re-schedule fires on. A pass that throws before its
-  /// first wait (a cel's read back from the engine, flip lane ⓓ) spun it
-  /// on microtasks and starved the screen.
+  /// ⛔Without it the next pass is an infinite loop: the pass stands down
+  /// BECAUSE the budget is still exceeded, which is the very condition the
+  /// next one is begun on. A pass that throws before its first wait (a
+  /// cel's read back from the engine, flip lane ⓓ) spun it on microtasks
+  /// and starved the screen.
   bool _coolingStoodDown = false;
 
-  void _scheduleCooling() {
-    if (_activeCooling != null ||
-        _coolingStoodDown ||
-        _hotBytes <= hotCelByteBudget ||
-        _bakedSurfaces.length <= 1) {
-      // The length guard both mirrors the loop's never-cool-the-last-hot
-      // rule and keeps the completion re-schedule from spinning when the
-      // one remaining cel alone exceeds the budget.
-      return;
+  void _scheduleCooling() => unawaited(_cooling.ask());
+
+  Future<bool> _coolAPass() async {
+    try {
+      await _coolLoop();
+    } on Object {
+      _coolingStoodDown = true;
+      rethrow;
     }
-    _activeCooling = _coolLoop()
-        .catchError((Object error, StackTrace stack) {
-          _coolingStoodDown = true;
-          Error.throwWithStackTrace(error, stack);
-        })
-        .whenComplete(() {
-          _activeCooling = null;
-          // Work stored while this pass ran (or that this pass could not
-          // cool yet — e.g. a lone hot cel that stopped the loop) gets a
-          // fresh pass; without this, a skipped schedule during an active
-          // pass would never retry.
-          _scheduleCooling();
-        });
+    return true;
   }
 
   /// [surface]'s stream to park, or null where the engine will not give it

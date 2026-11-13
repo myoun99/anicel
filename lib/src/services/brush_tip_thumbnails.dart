@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/one_pass_at_a_time.dart';
 import '../models/brush_tip_entry.dart' show brushTipThumbnailSide;
 import '../models/brush_tip_mask.dart';
 import '../native/app_gpu_engine.dart' show appGpuEngineOpen;
@@ -24,7 +25,7 @@ import 'brush_tip_image_codec.dart' show brushTipThumbnailAlpha;
 /// ([appGpuEngineOpen]); what is asked before waits for it.
 final class BrushTipThumbnails {
   BrushTipThumbnails._() {
-    appGpuEngineOpen.addListener(() => unawaited(_makeWhatIsAsked()));
+    appGpuEngineOpen.addListener(() => unawaited(_making.ask()));
   }
 
   /// The app's.
@@ -35,7 +36,12 @@ final class BrushTipThumbnails {
   /// What is asked for and not made yet, first asked first — held weakly:
   /// a mask nothing holds any more is no picture anyone will draw.
   final List<WeakReference<BrushTipMask>> _asked = [];
-  bool _making = false;
+
+  /// Once the engine is open, what is asked made one after another.
+  late final _making = OnePassAtATime(
+    due: () => _asked.isNotEmpty,
+    pass: _makeTheFirstAsked,
+  );
 
   /// [mask]'s picture: null till it lands. Asks for it.
   ValueListenable<Uint8List?> of(BrushTipMask mask) {
@@ -45,7 +51,7 @@ final class BrushTipThumbnails {
     }
     final asked = _of[mask] = ValueNotifier(null);
     _asked.add(WeakReference(mask));
-    unawaited(_makeWhatIsAsked());
+    unawaited(_making.ask());
     return asked;
   }
 
@@ -64,7 +70,8 @@ final class BrushTipThumbnails {
   static Future<Uint8List> _onTheEngine(BrushTipMask mask) =>
       brushTipThumbnailAlpha(mask, side: brushTipThumbnailSide);
 
-  /// Once the engine is open, makes what is asked, one after another.
+  /// Makes the first of what is asked — false where the app has no engine
+  /// open, or a gone one: the next it opens asks again.
   ///
   /// 🚨A PICTURE WHOSE DEVICE WENT AS IT WAS MADE IS ASKED AGAIN — and
   /// whether it went is asked of THE ENGINE THE MAKING BEGAN ON
@@ -77,45 +84,35 @@ final class BrushTipThumbnails {
   /// — found the app on no engine or on the next, was said as an error,
   /// and its cell stayed empty for the run (read from the code 2026-11-13,
   /// board `a-tip-thumbnail-read-as-its-device-went-stays-empty`).
-  Future<void> _makeWhatIsAsked() async {
-    if (_making) {
-      return;
+  Future<bool> _makeTheFirstAsked() async {
+    final engine = appGpuEngineOpen.value;
+    if (engine == null || engine.isGone) {
+      return false;
     }
-    _making = true;
+    final mask = _asked.removeAt(0).target;
+    if (mask == null) {
+      return true;
+    }
     try {
-      while (_asked.isNotEmpty) {
-        final engine = appGpuEngineOpen.value;
-        if (engine == null || engine.isGone) {
-          // None to ask: the next the app opens asks again.
-          break;
-        }
-        final mask = _asked.removeAt(0).target;
-        if (mask == null) {
-          continue;
-        }
-        try {
-          _of[mask]!.value = await (debugMake ?? _onTheEngine)(mask);
-        } on Object catch (error, stack) {
-          if (engine.isGone) {
-            // Asked again ahead of what waits behind it — of the engine
-            // the app has by now, or of the next it opens.
-            _asked.insert(0, WeakReference(mask));
-            continue;
-          }
-          // A picture the engine would not make leaves its cell empty —
-          // said, not swallowed.
-          FlutterError.reportError(
-            FlutterErrorDetails(
-              exception: error,
-              stack: stack,
-              library: 'brush tips',
-              context: ErrorDescription('making the picture of ${mask.id}'),
-            ),
-          );
-        }
+      _of[mask]!.value = await (debugMake ?? _onTheEngine)(mask);
+    } on Object catch (error, stack) {
+      if (engine.isGone) {
+        // Asked again ahead of what waits behind it — of the engine the app
+        // has by now, or of the next it opens.
+        _asked.insert(0, WeakReference(mask));
+        return true;
       }
-    } finally {
-      _making = false;
+      // A picture the engine would not make leaves its cell empty — said,
+      // not swallowed.
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'brush tips',
+          context: ErrorDescription('making the picture of ${mask.id}'),
+        ),
+      );
     }
+    return true;
   }
 }

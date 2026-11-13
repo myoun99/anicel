@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../../core/one_pass_at_a_time.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -264,7 +265,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       (_shown != null &&
           _showing == _pictures.keyOfStack(widget.nodes, widget.picture) &&
           !(_standing.whole && _movedSinceThrough) &&
-          !_writingThrough &&
+          !_writesThrough.onItsWay &&
           _owed == null);
 
   /// 🗣️I-132-Q34 a (유저 2026-10-30): 「결과가 올 때까지 그 프레임의 직전
@@ -946,7 +947,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       _patchIn(key, live);
     }
     if (_standing.whole && _waits) {
-      _throughWhole(key, live);
+      _throughWhole(live);
     }
   }
 
@@ -981,7 +982,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// picture without it (F-509).
   void _writeIn(FramePictureKey key, StackedFrame live, Rect dirty) {
     if (_waits) {
-      _writeThrough(key, live, dirty);
+      _writeThrough(dirty);
       return;
     }
     final to = _keptUnder(key, _held);
@@ -1072,8 +1073,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// plugins ([_writeThrough]).
   Rect? _owed;
 
-  /// Whether a write is on its way through them.
-  bool _writingThrough = false;
+  /// The writes through them, one at a time ([_writeThrough]).
+  late final _writesThrough = OnePassAtATime(
+    due: () => mounted && _owed != null && _live != null && _showing != null,
+    pass: _writeWhatIsOwed,
+  );
 
   /// 🗣️I-132-Q34 a with F-240 (유저 2026-09-29: 「변형중에도 필터 통일적용하도록」):
   /// a frame that waits for its plugins is never drawn as it stands
@@ -1091,61 +1095,50 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// too (float-warp-resamples-in-the-c-engine (2), 2026-11-11), when
   /// F-240's six tests on a plugin's row read 16,048 pixels apart — the
   /// sheet where it was lifted from, all the drag.
-  void _throughWhole(FramePictureKey key, StackedFrame live) {
+  void _throughWhole(StackedFrame live) {
     if (!_movedSinceThrough) {
       return;
     }
     _movedSinceThrough = false;
-    _writeThrough(key, live, live.extent);
+    _writeThrough(live.extent);
   }
 
   /// [_writeIn] of a frame that waits for its plugins: the screen stays on
   /// the picture as it is until they have run (🗣️I-132-Q34 a), one write at
   /// a time — the steps meanwhile go in together, in the next. A step whose
   /// frame stands no more by then does not go in.
-  void _writeThrough(FramePictureKey key, StackedFrame live, Rect dirty) {
-    final owed = _owed?.expandToInclude(dirty) ?? dirty;
-    if (_writingThrough) {
-      _owed = owed;
-      return;
-    }
+  void _writeThrough(Rect dirty) {
+    _owed = _owed?.expandToInclude(dirty) ?? dirty;
+    unawaited(_writesThrough.ask());
+  }
+
+  /// What is owed written through the plugins into the picture of the frame
+  /// shown — false where they threw, said.
+  Future<bool> _writeWhatIsOwed() async {
+    final (owed, live, key) = (_owed!, _live!, _showing!);
     _owed = null;
-    _writingThrough = true;
     // Whole, it holds what no patch could tell — this view's own
     // ([FramePictureKey.standingOn]), as what no cel stores.
     final to = _standing.whole ? key.standingOn(this) : _keptUnder(key, _held);
-    unawaited(
-      _store
-          .patchThrough(
-            from: _keptAs!,
-            to: to,
-            rect: owed,
-            frame: live,
-            holds: _pictures.heldNodes,
-            stands: () => mounted && identical(_live, live),
-          )
-          .then(
-            (went) {
-              _writingThrough = false;
-              if (went && mounted) {
-                _pictures.giveWayToSteps();
-                _keepAs(to);
-              }
-              _writeWhatIsOwed();
-            },
-            onError: (Object error, StackTrace stack) {
-              _writingThrough = false;
-              _report((error, stack), 'writing a step through its plugins');
-            },
-          ),
-    );
-  }
-
-  void _writeWhatIsOwed() {
-    final (owed, live, key) = (_owed, _live, _showing);
-    if (mounted && owed != null && live != null && key != null) {
-      _writeThrough(key, live, owed);
+    final bool went;
+    try {
+      went = await _store.patchThrough(
+        from: _keptAs!,
+        to: to,
+        rect: owed,
+        frame: live,
+        holds: _pictures.heldNodes,
+        stands: () => mounted && identical(_live, live),
+      );
+    } on Object catch (error, stack) {
+      _report((error, stack), 'writing a step through its plugins');
+      return false;
     }
+    if (went && mounted) {
+      _pictures.giveWayToSteps();
+      _keepAs(to);
+    }
+    return true;
   }
 
   /// The picture to show, where the frame is not drawn as it stands: a
