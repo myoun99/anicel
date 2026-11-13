@@ -12,6 +12,8 @@ import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportDestination;
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/import/import_file_settings.dart'
+    show MovieParts;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
@@ -643,6 +645,107 @@ void main() {
               'project frame would show the take\'s frame before',
         );
       }
+    });
+
+    // 🗣️I-171-Q1 (유저 2026-11-14: 「그 부분만 새 파일로 품는다」 — 「소리만 =
+    // WAV 로 떼어, 그림만 = 소리를 뺀 MP4, 자른 영상을 품는 길과 같은 코드」).
+    group('a movie\'s part is a piece of its own', () {
+      testWidgets('🎯its sound alone is a sound\'s piece — a WAV of the '
+          'sound its frames play, whole when nothing is trimmed', (
+        tester,
+      ) async {
+        final watch = await watched(tester, 'a movie\'s sound alone');
+        final s = session();
+        final source = inTemp('take.mp4');
+        watch.step('asking for the encoder and writing the take');
+        if (!writeMovie(source, (numerator: 12, denominator: 1))) {
+          return;
+        }
+
+        watch.step('cutting its sound');
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.video,
+            parts: MovieParts.sound,
+          ),
+        );
+
+        expect(cut?.kind, MediaAssetKind.audio, reason: 'placed as a sound');
+        final piece = cut!.path;
+        expect(mediaFileName(piece), 'take_1-${cut.frames}.wav');
+        final kept = decodeAudioFile(piece)!;
+        final all = decodeAudioFile(source)!;
+        expect(kept.sampleRate, all.sampleRate);
+        expect(kept.channels, all.channels);
+        final heard = all.samples.length;
+        expect(kept.samples.length, greaterThanOrEqualTo(heard));
+        var furthest = 0.0;
+        for (var i = 0; i < heard; i += 1) {
+          final apart = (kept.samples[i] - all.samples[i]).abs();
+          furthest = apart > furthest ? apart : furthest;
+        }
+        expect(
+          furthest,
+          lessThanOrEqualTo(1 / 32768),
+          reason: 'the movie\'s own sound, sample for sample, within the '
+              'one 16-bit step a WAV holds it to',
+        );
+        expect(
+          kept.samples.skip(heard).every((sample) => sample == 0),
+          isTrue,
+          reason: 'past the sound\'s end, the frames its window counts are '
+              'silence',
+        );
+        watch.step('settling');
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('🎯its picture alone is an MP4 of the frames the project '
+          'shows, and no sound', (tester) async {
+        final watch = await watched(tester, 'a movie\'s picture alone');
+        final s = session();
+        final source = inTemp('take.mp4');
+        watch.step('asking for the encoder and writing the take');
+        if (!writeMovie(source, (numerator: 24, denominator: 1))) {
+          return;
+        }
+
+        watch.step('cutting its picture');
+        final cut = await tester.runAsync(
+          () => s.trimmedPieces.cut(
+            source,
+            MediaAssetKind.video,
+            parts: MovieParts.picture,
+          ),
+        );
+
+        expect(cut?.kind, MediaAssetKind.video);
+        expect(mediaFileName(cut!.path), 'take_1-8.mp4');
+        final decoder = osVideoDecoderOrSkip();
+        if (decoder == null) {
+          return;
+        }
+        watch.step('opening the piece');
+        final piece = decoder.openDocument(cut.path)!;
+        try {
+          expect(piece.info.frameCount, 8);
+        } finally {
+          decoder.closeDocument(piece);
+        }
+        expect(
+          decodeAudioFile(source),
+          isNotNull,
+          reason: 'the premise: the take has a sound',
+        );
+        expect(
+          decodeAudioFile(cut.path),
+          isNull,
+          reason: 'the picture alone carries no sound',
+        );
+        watch.step('settling');
+        await tester.pumpAndSettle();
+      });
     });
   });
 }

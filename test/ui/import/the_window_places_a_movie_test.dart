@@ -115,21 +115,38 @@ void main() {
       );
     });
 
-    test('「소리」 is asked only of a placed movie that has a sound', () {
+    test('「소리」 is asked of a movie that has a sound — placed, or only put '
+        'in the pool (I-171-Q1), where a file pointed at is taken whole', () {
       bool asks({
         MediaAssetKind kind = MediaAssetKind.video,
-        bool placing = true,
         bool hasSound = true,
-      }) => importSoundAllowed(
-        kind: kind,
-        placing: placing,
-        hasSound: hasSound,
-      );
+      }) => importSoundAllowed(kind: kind, hasSound: hasSound);
 
       expect(asks(), isTrue);
       expect(asks(hasSound: false), isFalse);
-      expect(asks(placing: false), isFalse);
       expect(asks(kind: MediaAssetKind.audio), isFalse);
+
+      MovieParts inThePool(ImportFileMode mode, MovieParts parts) =>
+          resolvedImportSettings(
+            ImportFileSettings(mode: mode, movieParts: parts),
+            kind: MediaAssetKind.video,
+            isPsd: false,
+            placing: false,
+            hasActiveCut: true,
+            lasting: true,
+          ).movieParts;
+      for (final parts in MovieParts.values) {
+        expect(
+          inThePool(ImportFileMode.keepInside, parts),
+          parts,
+          reason: 'carried into the pool, $parts is what is carried',
+        );
+        expect(
+          inThePool(ImportFileMode.reference, parts),
+          MovieParts.pictureAndSound,
+          reason: 'pointed at, there is no file to cut $parts into',
+        );
+      }
     });
 
     test('the seed: a movie starts WITH its sound — without it on a picture '
@@ -470,29 +487,41 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('🎯set to its sound ALONE it lands only the sound — on the SE '
-      'rows, no picture row, and still ONE pool entry, the movie\'s', (
-    tester,
+  /// Answers [value] in [column] of [path]'s row, as a press on its cell
+  /// and then on the answer does.
+  Future<void> answer(
+    WidgetTester tester,
+    String column,
+    String path,
+    String value,
   ) async {
+    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+    await settleAsync(tester, () => tester.any(cell));
+    await tester.ensureVisible(cell);
+    await settleLoadedPages(tester);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>('import-option-$column-$value')),
+    );
+    // What the answer brings to the preview is read before it settles.
+    await settleLoadedPages(tester);
+  }
+
+  testWidgets('🎯set to its sound ALONE it lands only the sound — on the SE '
+      'rows, no picture row — and pointed at, the pool keeps the movie '
+      'whole', (tester) async {
     final movie = await writeMovie(tester, 'take.mp4');
     final s = await open(
       tester,
       [movie],
       backend: FakeVideoBackend(frameCount: 24),
     );
-    await settleAsync(
-      tester,
-      () => tester.any(find.byKey(ValueKey<String>('import-cell-option-$movie'))),
-    );
-    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
-    await tester.ensureVisible(cell);
-    await settleLoadedPages(tester);
-    await tester.tap(cell);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-option-sound')),
-    );
-    await tester.pumpAndSettle();
+    await answer(tester, 'option', movie, 'sound');
+    // ⚠️Pointed at: carried, the sound alone is cut out of the movie
+    // (I-171-Q1) — a stand-in movie has none to cut; that road is pinned
+    // with a real one below.
+    await answer(tester, 'file', movie, 'reference');
     expect(cellText(tester, 'option', movie), 'Sound only');
     expect(
       cellText(tester, 'fit', movie),
@@ -513,16 +542,10 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    final lines = watchTheLine(tester);
     await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
-    expect(
-      lines,
-      ['', AppText.strings.imStepCarrying, ''],
-      reason: '🗣️F-494: the movie its sound reads, carried',
-    );
     final key = normalizedMediaPath(movie);
     expect(
       s.requireActiveCut.layers.any(
@@ -538,11 +561,13 @@ void main() {
       isTrue,
       reason: 'the sound came, by a sound\'s own door',
     );
+    final entry = s.mediaPool.mediaAssets.single;
+    expect(entry.kind, MediaAssetKind.video);
     expect(
-      s.mediaPool.mediaAssets.single.kind,
-      MediaAssetKind.video,
-      reason: 'the pool keeps the MOVIE — one entry for the pair it can '
-          'still become',
+      entry.carried,
+      isFalse,
+      reason: 'the pool points at the MOVIE — a file pointed at is taken '
+          'whole, and the placement takes its sound',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -573,6 +598,8 @@ void main() {
       reason: 'the cell answered it — nothing to open',
     );
     expect(cellText(tester, 'bake', movie), '—', reason: 'no picture comes');
+    // Pointed at, as above: a stand-in movie has no sound to cut out.
+    await answer(tester, 'file', movie, 'reference');
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
@@ -706,6 +733,142 @@ void main() {
       // The cut the first of a placed file's three stretches.
       expectOneBar(counted, [1 / 9, 2 / 9, 1 / 3, 1]);
       s.playbackRig.prerenderScheduler.cancel();
+    });
+  });
+
+  // 🗣️I-171-Q1 (유저 2026-11-14: 「그 부분만 새 파일로 품는다」): what of a
+  // movie is not brought in is not carried — placed, or only put in the
+  // pool — and a file only pointed at from the pool is taken whole.
+  group('a movie\'s part is carried alone', () {
+    /// Six real frames over a real sound — the part is cut from the file
+    /// through the engine.
+    Future<String?> sixFrames(WidgetTester tester) =>
+        tester.runAsync<String?>(() async {
+          final path = '${tempDir.path}${Platform.pathSeparator}take.mp4';
+          return writeEncodedMovie(
+                path,
+                frames: 6,
+                sound: (sample) => (sample * 37) % 20000 - 10000,
+              )
+              ? path
+              : null;
+        });
+
+    /// The one entry the pool holds after the run [open] set up, once the
+    /// window has gone.
+    Future<MediaAsset> run(
+      WidgetTester tester,
+      EditorSessionManager s,
+    ) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+      await pumpPastTheWaitWindow(tester);
+      await tester.pumpAndSettle();
+      s.playbackRig.prerenderScheduler.cancel();
+      return s.mediaPool.mediaAssets.single;
+    }
+
+    void expectCutFrom(MediaAsset entry, String movie) {
+      expect(entry.carried, isTrue);
+      expect(
+        normalizedMediaPath(entry.sourcePath!),
+        normalizedMediaPath(movie),
+        reason: 'the movie is only where the piece came from',
+      );
+    }
+
+    testWidgets('🎯placed with its sound alone, the sound comes in as a WAV '
+        'cut from the movie — the SE clip and the pool name the piece', (
+      tester,
+    ) async {
+      final movie = await sixFrames(tester);
+      if (movie == null) {
+        return;
+      }
+      final s = await open(
+        tester,
+        [movie],
+        backend: FakeVideoBackend(frameCount: 6),
+      );
+      await answer(tester, 'option', movie, 'sound');
+
+      final entry = await run(tester, s);
+
+      expect(entry.kind, MediaAssetKind.audio);
+      expect(mediaFileName(entry.path), endsWith('.wav'));
+      expectCutFrom(entry, movie);
+      expect(
+        s.activeTrack.seLayers.any(
+          (layer) => layer.audioClips.any(
+            (clip) => clip.filePath == entry.path,
+          ),
+        ),
+        isTrue,
+        reason: 'the sound on the SE rows is the piece\'s',
+      );
+      expect(
+        s.requireActiveCut.layers.any(
+          (layer) => layer.mediaReference != null,
+        ),
+        isFalse,
+        reason: 'no picture came',
+      );
+    });
+
+    testWidgets('🎯put in the pool with its picture alone, it comes in as an '
+        'MP4 cut from the movie', (tester) async {
+      final movie = await sixFrames(tester);
+      if (movie == null) {
+        return;
+      }
+      final s = await open(
+        tester,
+        [movie],
+        backend: FakeVideoBackend(frameCount: 6),
+      );
+      await answer(tester, 'into', movie, 'pool');
+      await answer(tester, 'option', movie, 'picture');
+
+      final entry = await run(tester, s);
+
+      expect(entry.kind, MediaAssetKind.video);
+      expect(mediaFileName(entry.path), endsWith('.mp4'));
+      expectCutFrom(entry, movie);
+    });
+
+    testWidgets('put in the pool and pointed at, the movie is taken whole — '
+        'the row reads 「그림 + 소리」 and the parts cannot be pressed', (
+      tester,
+    ) async {
+      final movie = await writeMovie(tester, 'take.mp4');
+      await open(
+        tester,
+        [movie],
+        backend: FakeVideoBackend(frameCount: 24),
+      );
+      await answer(tester, 'into', movie, 'pool');
+      await answer(tester, 'option', movie, 'sound');
+      expect(
+        cellText(tester, 'option', movie),
+        'Sound only',
+        reason: 'CONTROL: carried, the pool takes the part it is answered',
+      );
+
+      await answer(tester, 'file', movie, 'reference');
+
+      expect(
+        cellText(tester, 'option', movie),
+        AppText.strings.imPictureAndSound,
+      );
+      final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
+      expect(
+        tester.widget<InkWell>(cell).onTap,
+        isNull,
+        reason: 'the whole file is the one answer left — nothing to open, as '
+            'an SE row\'s cell answers its sound alone',
+      );
     });
   });
 }

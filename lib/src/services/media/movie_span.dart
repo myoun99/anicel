@@ -34,6 +34,10 @@ import 'media_byte_source.dart';
 ///
 /// Uses the encoder's own budget, as the export does by default.
 ///
+/// Without [withSound] the piece holds the picture alone — a movie that
+/// brings its picture and not its sound (🗣️I-171-Q1, 유저 2026-11-14: 「그림만
+/// = 소리를 뺀 MP4」).
+///
 /// [onProgress] hears the frames written, as 0–1 — the work there is
 /// (🔬F-494, 2026-10-28: two minutes of a 3.4GB 1080p movie took 61 s here,
 /// 55 of them this loop, the decode and the encode half each; reading the
@@ -43,6 +47,7 @@ import 'media_byte_source.dart';
   String piecePath, {
   required ({int inFrame, int? outFrame}) trim,
   required ProjectClock clock,
+  bool withSound = true,
   void Function(double fraction)? onProgress,
 }) {
   final decoder = QaVideoDecoder.instance;
@@ -73,11 +78,13 @@ import 'media_byte_source.dart';
     final pace = clock.rate.inSourceTime(clock.speed);
     // Only the span's own samples: a minute cut from a two-hour reel holds
     // a minute (Q5).
-    final sound = decodeAudioOfFrames(
-      MediaFileBytes(sourcePath),
-      (first: kept.first, count: kept.count),
-      pace,
-    );
+    final sound = withSound
+        ? decodeAudioOfFrames(
+            MediaFileBytes(sourcePath),
+            (first: kept.first, count: kept.count),
+            pace,
+          )
+        : null;
     if (!encoder.open(
       path: piecePath,
       width: info.width,
