@@ -391,7 +391,14 @@ void main() {
       final plate = {a: plateTile, c: plateTile};
       final handedUp = EngineStampPictures.debugHandedUp;
 
-      for (final under in [drawingTile, tileFilledWith([1, 2, 3, 255])]) {
+      // Unders no other test laid a plate over: a pair laid before is not
+      // laid again ([celTilesWithPlatesLaid]'s memo), and asks for no
+      // stamp at all.
+      for (final rgba in [
+        [31, 41, 59, 255],
+        [26, 53, 58, 97],
+      ]) {
+        final under = tileFilledWith(rgba);
         celSurfaceWithTextsLaid(
           drawingOf({a: under, c: under}).withTexts([textOf(1, plate: plate)]),
         );
@@ -423,5 +430,36 @@ void main() {
       }
       expect(laid[a], isNot(same(drawingTile)), reason: 'the ink landed');
     });
+  });
+
+  test('on a grid of another side than the engine\'s, a plate is the stamp '
+      'the commit lands there', () {
+    const side = 64;
+    BitmapTile filled(List<int> rgba) => BitmapTile(
+      size: side,
+      pixels: Uint8List.fromList([
+        for (var at = 0; at < side * side; at += 1) ...rgba,
+      ]),
+    );
+    final grid = BitmapSurface(canvasSize: celTextTestCanvas, tileSize: side);
+    final under = filled([10, 20, 30, 255]);
+    final plate = filled([200, 100, 50, 128]);
+
+    final laid = celTilesWithPlatesLaid(grid, {a: under}, [
+      (plate: {a: plate}, dx: 0, dy: 0),
+    ]);
+
+    final committed = compositeStrokePixelsOntoBitmapSurface(
+      surface: grid.putTiles([(coord: a, tile: under)]),
+      strokePixels: Uint8List.fromList(plate.pixels),
+      bounds: DirtyRegion(
+        left: 0,
+        top: 0,
+        rightExclusive: side,
+        bottomExclusive: side,
+      ),
+    ).surface;
+    expect(laid[a]!.pixels, committed.tileAt(a)!.pixels);
+    expect(laid[a]!.pixels, isNot(under.pixels), reason: 'the plate landed');
   });
 }
