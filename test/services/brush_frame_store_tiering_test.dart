@@ -9,12 +9,14 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
+import 'package:anicel/src/services/persistence/scratch_cel_files.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
@@ -687,6 +689,36 @@ void main() {
       source.tiles[TileCoord(x: 0, y: 0)]!.pixels,
       reason: 'top-left anchored resize keeps the tile bytes',
     );
+  });
+
+  // 🗣️I-109-Q2 (유저 2026-10-20: 「페이스트보드쪽에 그림이 기록되는게
+  // 싫은것임」): a kept cel is laid to its new size behind its store's wall,
+  // or what the shrink put past the wall stays written in its bytes, unseen
+  // until a read walls it — and saved.
+  test('a kept cel a shrink lays smaller keeps no tile past the wall in '
+      'its bytes', () {
+    final store = BrushFrameStore();
+    final k = key();
+    final ink = inkSurface();
+    final tile = ink.tiles[TileCoord(x: 0, y: 0)]!;
+    keepInAFile(store, {
+      k: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: defaultCelTileSize,
+        tiles: {TileCoord(x: 0, y: 0): tile, TileCoord(x: 1, y: 1): tile},
+      ),
+    }, pasteboardReach: PasteboardReach.none);
+    const shrunk = CanvasSize(
+      width: defaultCelTileSize,
+      height: defaultCelTileSize,
+    );
+
+    store.resizeBakedSurfaces(shrunk, cutId: const CutId('c'));
+
+    final parked = store.bakedSnapshotForSave().cold[k]!;
+    expect(ScratchCelFiles.read(parked.filePath)!.toSurface().tiles.keys, [
+      TileCoord(x: 0, y: 0),
+    ]);
   });
 
   test('an empty donation kills the cel in EVERY tier — a cold blob or a '
