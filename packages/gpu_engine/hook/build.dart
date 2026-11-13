@@ -82,6 +82,15 @@ void main(List<String> args) async {
         final built = BuildOutputBuilder();
         await RustBuilder(
           assetName: _asset,
+          // ⛔NOT A LOCK OF CARGO'S CHOOSING (관제 2026-11-13, card
+          // the-engine-hook-builds-without-locked-and-rewrites-the-lock):
+          // the builder runs a plain `cargo build`, which mends a lock that
+          // is out of step with the manifests and builds what it chose — a
+          // mutant of the lock's names was rewritten before the test that
+          // read it ran. Every build of the app is the lock's, as the
+          // land's crate gate and gpu-engine.yml already build. Not
+          // `--offline`: a CI runner fetches the crates.
+          extraCargoBuildArgs: const ['--locked'],
           extraCargoEnvironmentVariables: {
             'QA_CHECKOUT': input.packageRoot.resolve('rust/').toFilePath(),
             if (windows) 'GPU_ENGINE_DXC_OUT': dxc.toFilePath(),
