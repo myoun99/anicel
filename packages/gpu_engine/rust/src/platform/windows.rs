@@ -465,11 +465,21 @@ fn main() { out[0] = 7u; }
         let first = keeping(&folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         assert_eq!(found(&first), 0, "nothing was kept before");
-        assert_eq!(kept_files(&folder).len(), 1, "what DXC made is kept");
+        let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder)) else {
+            panic!("what DXC made is kept, in one file");
+        };
+        // Used an hour ago — and used again now, so the last to go when the
+        // folder lets its oldest go.
+        let an_hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let file = std::fs::File::options().write(true).open(&path).expect("the file");
+        file.set_modified(an_hour_ago).expect("its age");
+        drop(file);
         let next = keeping(&folder);
         let handed = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 1, "the next engine is handed it");
         assert_eq!(first_word(&next, &handed), 7);
+        let used = std::fs::metadata(&path).and_then(|meta| meta.modified()).expect("its age");
+        assert!(used > an_hour_ago + std::time::Duration::from_secs(1800), "used now");
         let _ = std::fs::remove_dir_all(&folder);
     }
 
