@@ -36,7 +36,9 @@ const HEAD: usize = 32;
 /// How much the folder may hold, the files used longest ago going first
 /// once it holds more, as a device starts to keep its shaders there.
 ///
-/// XXX-MEASURE: the app's whole set, measured, before this lands.
+/// 🔬 What the app compiled from launch to the wait window's lifting was
+/// 50 files, 2,567,829 bytes (Surface Pro 11, 11-13): this holds some 25
+/// such sets, so the builds before an update are let go a few later.
 const MOST_BYTES: u64 = 64 << 20;
 
 /// A device's folder for what DXC made — none till one is named.
