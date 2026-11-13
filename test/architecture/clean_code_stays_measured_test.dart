@@ -1489,7 +1489,14 @@ void main() {
   /// (tip-coverage-is-a-second-r1): `resampleRgbaReferenceInto`, the Dart
   /// R1's body, went with it. 🔬`clean_code_diff` against master
   /// (`b2f068f57`) names it.
-  const longBodies = 394;
+  ///
+  /// ⚠️394 → 393 on 2026-11-14, one gone and nothing added (관제's ask on
+  /// F-588): `ImportDialogState._registerFiles` crossed sixty when a picked
+  /// file began coming in as its piece (`piece-part-pull`), into the one
+  /// place the trunk's count stood under the ceiling; what the pool is
+  /// handed is `_handedToThePool` now. 🔬`clean_code_diff` against master
+  /// (`efb502eea`) names it gone.
+  const longBodies = 393;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

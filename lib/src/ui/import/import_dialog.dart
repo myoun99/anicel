@@ -2290,7 +2290,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // The files the pool keeps, and those of them cut into a piece first.
     final keeping = [
       for (final path in paths)
-        if (_settingsFor(path).mode == ImportFileMode.keepInside) path,
+        if (_keepsInside(path)) path,
     ];
     final cutting = [
       for (final path in keeping)
@@ -2308,8 +2308,43 @@ class _ImportDialogState extends State<ImportDialog> {
       keptShare: doneShare(keeping.length, paths.length),
       cuts: cutting.length,
     );
-    // What the pool is handed — a piece in place of the file it was cut
-    // from — and the picked file each one stands for.
+    final (:carried, :referenced) = await _handedToThePool(
+      paths,
+      cutting: cutting,
+      told: told,
+      tally: tally,
+    );
+    await _holdInThePool(carried, told);
+    tally
+      ..imported += carried.length
+      ..done.addAll(carried.values);
+    told.kept();
+    await widget.session.mediaPool.importMediaFiles(
+      referenced,
+      copyIntoProject: false,
+    );
+    tally
+      ..imported += referenced.length
+      ..done.addAll(referenced);
+    report(1);
+  }
+
+  /// Whether the pool keeps the picked file [path] inside the project, as
+  /// its settings say.
+  bool _keepsInside(String path) =>
+      _settingsFor(path).mode == ImportFileMode.keepInside;
+
+  /// What the pool is handed of [paths] — a piece in place of each of
+  /// [cutting] it was cut from, the rest it keeps as they are, the others
+  /// referenced — the [carried] by the picked file each stands for. A piece
+  /// that will not cut is told in [tally], and handed nothing.
+  Future<({Map<String, String> carried, List<String> referenced})>
+  _handedToThePool(
+    List<String> paths, {
+    required List<String> cutting,
+    required _PoolReport told,
+    required _ImportTally tally,
+  }) async {
     final carried = <String, String>{};
     final referenced = <String>[];
     for (final path in paths) {
@@ -2328,25 +2363,13 @@ class _ImportDialogState extends State<ImportDialog> {
         } else {
           carried[piece] = path;
         }
-      } else if (keeping.contains(path)) {
+      } else if (_keepsInside(path)) {
         carried[path] = path;
       } else {
         referenced.add(path);
       }
     }
-    await _holdInThePool(carried, told);
-    tally
-      ..imported += carried.length
-      ..done.addAll(carried.values);
-    told.kept();
-    await widget.session.mediaPool.importMediaFiles(
-      referenced,
-      copyIntoProject: false,
-    );
-    tally
-      ..imported += referenced.length
-      ..done.addAll(referenced);
-    report(1);
+    return (carried: carried, referenced: referenced);
   }
 
   /// [carried] — what the pool is handed, by the picked file each stands
