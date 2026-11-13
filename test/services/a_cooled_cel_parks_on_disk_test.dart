@@ -18,6 +18,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
+import '../helpers/a_room_that_refuses.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// 🚨★★★**A COOLED CEL IS UNSAVED WORK, AND IT NOW LIVES ON DISK.**
@@ -155,22 +156,7 @@ void main() {
     store.storeBakedSurface(k1, s1);
     store.storeBakedSurface(key('f2'), inked(13));
 
-    // A FILE where the room's folder has to go: nothing can be created
-    // under it, which is the shape of a revoked scope or a full disk.
-    final room = Directory(SessionScratch.stagedFolder());
-    if (room.existsSync()) {
-      room.deleteSync(recursive: true);
-    }
-    File(SessionScratch.stagedFolder())
-      ..createSync(recursive: true)
-      ..writeAsBytesSync(const [0]);
-    addTearDown(() {
-      try {
-        File(SessionScratch.stagedFolder()).deleteSync();
-      } on Object {
-        // Best effort; the room goes with the run.
-      }
-    });
+    refuseTheRoom();
 
     await store.drainCooling();
 

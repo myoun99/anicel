@@ -208,17 +208,7 @@ class BrushFrameStore {
     // Kept bytes carry no reach: a wall that grows reaches them on their
     // next read, and only one that shrinks has anything of theirs to cut.
     if (shrinks) {
-      final kept = _rewriteKeptCels(
-        skips: (key, ref) => _wallPasses(key, ref, reach),
-        remake: cutBehind(reach),
-        wasBehind: from,
-        ahead: ahead?.reach == reach ? ahead?.answers : null,
-        stands: (ref) => _standsBehind[ref] = reach,
-      );
-      for (final key in kept.keys) {
-        _recordCelContent(key);
-      }
-      cut.addAll(kept);
+      cut.addAll(_cutKeptCels(reach, from: from, ahead: ahead));
     }
     _dropCutAhead(ahead);
     final named = <BrushFrameKey, WallCut>{};
@@ -236,6 +226,27 @@ class BrushFrameStore {
     _announceCrossings();
     _scheduleCooling();
     return named;
+  }
+
+  /// The kept cels a wall moved [from] one reach to [reach] cuts, cut —
+  /// what [ahead] worked out of them taken — each as it was, behind the
+  /// wall it was kept at.
+  Map<BrushFrameKey, BitmapSurface> _cutKeptCels(
+    PasteboardReach reach, {
+    required PasteboardReach from,
+    required _CutAhead? ahead,
+  }) {
+    final kept = _rewriteKeptCels(
+      skips: (key, ref) => _wallPasses(key, ref, reach),
+      remake: cutBehind(reach),
+      wasBehind: from,
+      ahead: ahead?.reach == reach ? ahead?.answers : null,
+      stands: (ref) => _standsBehind[ref] = reach,
+    );
+    for (final key in kept.keys) {
+      _recordCelContent(key);
+    }
+    return kept;
   }
 
   /// What [adoptPasteboardReach] to [reach] will make of the cels, worked

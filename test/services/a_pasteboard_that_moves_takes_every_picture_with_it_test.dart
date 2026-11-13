@@ -29,6 +29,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/a_room_that_refuses.dart';
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
 import '../helpers/files_written_under.dart';
@@ -864,20 +865,7 @@ void main() {
             '${ahead ? ' — worked out ahead too' : ''}', () async {
           final store = BrushFrameStore();
           keepInAFile(store, {cut: drawn()});
-          // A FILE where the room's folder has to go — a revoked scope or a
-          // full disk (`a_cooled_cel_parks_on_disk_test`).
-          final room = Directory(SessionScratch.stagedFolder());
-          if (room.existsSync()) {
-            room.deleteSync(recursive: true);
-          }
-          final blocker = File(SessionScratch.stagedFolder())
-            ..createSync(recursive: true)
-            ..writeAsBytesSync(const [0]);
-          addTearDown(() {
-            if (blocker.existsSync()) {
-              blocker.deleteSync();
-            }
-          });
+          final blocker = refuseTheRoom();
           if (ahead) {
             await store.cutCelsAhead(PasteboardReach.quarter);
           }

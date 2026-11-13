@@ -21,6 +21,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 
+import '../helpers/a_room_that_refuses.dart';
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
 import '../helpers/files_written_under.dart';
@@ -472,20 +473,7 @@ void main() {
       width: 4 * defaultCelTileSize,
       height: 4 * defaultCelTileSize,
     );
-    // A FILE where the room's folder has to go (`a_cooled_cel_parks_on_disk_
-    // test`).
-    final room = Directory(SessionScratch.stagedFolder());
-    if (room.existsSync()) {
-      room.deleteSync(recursive: true);
-    }
-    final blocker = File(SessionScratch.stagedFolder())
-      ..createSync(recursive: true)
-      ..writeAsBytesSync(const [0]);
-    addTearDown(() {
-      if (blocker.existsSync()) {
-        blocker.deleteSync();
-      }
-    });
+    refuseTheRoom();
 
     expect(store.copyCel(key('a'), key('b'), canvasSize: bigger), bigger);
 
