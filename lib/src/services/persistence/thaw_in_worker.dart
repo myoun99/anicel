@@ -22,7 +22,7 @@ import 'scratch_file.dart';
 /// copies ~40, zstd 20–27.
 ///
 /// The bytes cross as a [TransferableTypedData], the parking path's way
-/// (`compressAnicelPayloadInWorker` says why).
+/// (`compressCelOnAWorker` says why).
 Future<AnicelLaidCel> layCelInWorker(
   AnicelCelBlob blob, {
   required PasteboardReach reach,

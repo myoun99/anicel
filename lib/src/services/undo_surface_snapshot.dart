@@ -576,18 +576,18 @@ class UndoSurfaceSnapshot {
       _letGo = true;
       return true;
     }
-    // 🎯ONE copy of the payload, not four. The surface serialises
-    // straight into a flat buffer (no per-tile defensive copy), the
-    // buffer MOVES to the worker, and the compressed bytes move back
-    // — see [compressAnicelPayloadInWorker] for the measurement.
+    // 🎯ONE copy of the payload, not four — see [compressCelOnAWorker] for
+    // the measurement, and the road cooling takes. ↩️The surface
+    // serialised here, straight into a flat buffer (no per-tile defensive
+    // copy), and the buffer crossed to the worker; a worker serialises a
+    // copy of its own now, handed it a batch of tiles at a time.
     //
     // ⚠️The picture as it would be with these tiles alone: a cel's own
     // stream, so an owned plate tile goes out under its text and comes
     // back under it.
     _pinTextsAndPhotos();
     final picture = _pictureOf(owned);
-    final body = encodeCelEntryFromSurface(key, picture);
-    final compressed = await compressAnicelPayloadInWorker(body);
+    final compressed = await compressCelOnAWorker(key, picture);
     final blob = AnicelCelBlob.fromCompressedBody(
       key: key,
       canvasSize: _canvasSize,

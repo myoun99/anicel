@@ -1657,13 +1657,16 @@ class BrushFrameStore {
     return true;
   }
 
-  /// [surface]'s stream to park, or null where the engine will not give it
-  /// back: no one waits on a cooling pass to be told, so that ends the pass
-  /// as a refused park ends it, the cel still hot (저장's review of the
-  /// flip lane, 11-09).
-  Uint8List? _bytesToPark(BrushFrameKey key, BitmapSurface surface) {
+  /// [surface]'s stream compressed to park ([compressCelOnAWorker]), or null
+  /// where the engine will not give it back: no one waits on a cooling pass
+  /// to be told, so that ends the pass as a refused park ends it, the cel
+  /// still hot (저장's review of the flip lane, 11-09).
+  Future<({int codec, Uint8List bytes})?> _compressedToPark(
+    BrushFrameKey key,
+    BitmapSurface surface,
+  ) async {
     try {
-      return encodeCelEntryFromSurface(key, surface);
+      return await compressCelOnAWorker(key, surface);
     } on GpuReadFailed {
       return null;
     }
@@ -1711,13 +1714,12 @@ class BrushFrameStore {
       // 🎯The park path's shape, and DELIBERATELY the same one: these
       // two were matched on purpose (fixing one alone would make it a
       // copy of the other), so they moved together. One copy of the
-      // payload instead of four — see [compressAnicelPayloadInWorker].
-      final body = _bytesToPark(key, surface);
-      if (body == null) {
+      // payload instead of four — see [compressCelOnAWorker].
+      final compressed = await _compressedToPark(key, surface);
+      if (compressed == null) {
         _coolingStoodDown = true;
         return;
       }
-      final compressed = await compressAnicelPayloadInWorker(body);
       final blob = AnicelCelBlob.fromCompressedBody(
         key: key,
         canvasSize: surface.canvasSize,

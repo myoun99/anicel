@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../../core/progress_share.dart';
 import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart' show readTilesInPlace;
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart' show MediaCarry;
@@ -92,7 +92,7 @@ class _CelWork {
   /// A cel still in RAM: its payload serialised straight off the surface
   /// and handed over as one flat buffer that crosses into the isolate
   /// without being written out again — the park road's shape
-  /// ([compressAnicelPayloadInWorker]).
+  /// ([compressCelOnAWorker]).
   ///
   /// 🚨F-304 (유저 2026-10-06): 「무거운 상태에서 저장버튼누르면 화면이
   /// 멈추고」. ↩️It was an [AnicelCelEntry] — a defensive copy of every
@@ -820,7 +820,7 @@ class AnicelFileService {
   /// the heavy save benchmark under `flutter test`, Surface Pro 11,
   /// 2026-11-13: read back 10–18 ms, the stream 12–23, its copy 6–11). A
   /// worker serialises it now from a copy it is handed a batch of tiles at
-  /// a time ([onAWorkerWithCelCopy]), and the screen has its turns between
+  /// a time ([onAWorkerWithCelStream]), and the screen has its turns between
   /// the batches; what stays here is the read (card
   /// `a-save-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
   /// 관제 2026-11-13).
@@ -840,11 +840,7 @@ class AnicelFileService {
         key: key,
         name: name,
         hot: (
-          payload: await onAWorkerWithCelCopy(
-            key.cel,
-            surface,
-            _streamOfTheCopy(key),
-          ),
+          payload: await onAWorkerWithCelStream(key, surface, _toCross),
           showsSomething: surface.showsSomething,
         ),
       );
@@ -882,18 +878,11 @@ class AnicelFileService {
     return null;
   }
 
-  /// What a worker makes of a hot cel's copy for the save
-  /// ([_workForDirtyKey]): [key]'s stream, read off the copy's own tiles —
-  /// a worker has no engine — as one flat buffer that crosses into the
-  /// save's isolate without being written out again.
-  ///
-  /// ⚠️Made HERE, so the closure crosses with [key] alone
-  /// (`onAWorkerReporting`'s 🚨).
-  static TransferableTypedData Function(BitmapSurface copy) _streamOfTheCopy(
-    BrushFrameKey key,
-  ) => (copy) => TransferableTypedData.fromList([
-    encodeCelEntryFromSurface(key, copy, bytesOf: readTilesInPlace),
-  ]);
+  /// What a worker makes of a hot cel's stream for the save
+  /// ([_workForDirtyKey]): one flat buffer that crosses into the save's
+  /// isolate without being written out again.
+  static TransferableTypedData _toCross(Uint8List stream) =>
+      TransferableTypedData.fromList([stream]);
 
   /// Whether the archive at [filePath] is the one [projectIdValue] names.
   ///

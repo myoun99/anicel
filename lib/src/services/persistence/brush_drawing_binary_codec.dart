@@ -443,6 +443,34 @@ Uint8List encodeCelEntryFromSurface(
   return writer.takeBytes();
 }
 
+/// [then] of [key]'s stream ([encodeCelEntryFromSurface]), made on a worker
+/// of a copy of the hot cel [surface] — handed to it a batch of tiles at a
+/// time, the screen's turns between ([onAWorkerWithCelCopy]) — and read off
+/// the copy's own tiles, since a worker has no engine.
+///
+/// 🎯ONE road for every hot cel that leaves for bytes: a save's
+/// (`AnicelFileService._workForDirtyKey`), a cooling's
+/// (`BrushFrameStore._coolLoop`) and an undo snapshot's park
+/// (`UndoSurfaceSnapshot._park`) — the cooling and the park were matched on
+/// purpose and move together, and the save took the park's shape (F-304).
+/// ↩️The cooling and the park serialised the whole cel on the UI isolate in
+/// one stretch and compressed it on a worker (card
+/// `the-cooling-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
+/// 관제 2026-11-13).
+Future<T> onAWorkerWithCelStream<T>(
+  BrushFrameKey key,
+  BitmapSurface surface,
+  T Function(Uint8List stream) then,
+) => onAWorkerWithCelCopy(key.cel, surface, _streamOfTheCopy(key, then));
+
+/// ⚠️Made HERE, so the closure crosses with [key] and [then] alone
+/// (`onAWorkerReporting`'s 🚨).
+T Function(BitmapSurface copy) _streamOfTheCopy<T>(
+  BrushFrameKey key,
+  T Function(Uint8List stream) then,
+) => (copy) =>
+    then(encodeCelEntryFromSurface(key, copy, bytesOf: readTilesInPlace));
+
 /// What a cel stream says it is, up to its tiles: its version, its key,
 /// its canvas and its tile size, and the photos its picture carries — read
 /// in ONE place, for the reason [_ByteWriter.celStreamHeader] is written in
