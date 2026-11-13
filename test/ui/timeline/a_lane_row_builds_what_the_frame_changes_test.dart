@@ -5,9 +5,11 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/ui/playback/playback_stillness.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 /// T26 (2026-10-30, measured on the device with every lane open: play p95
 /// 22–29ms): a lane row shows its lane AT the cursor, and only what shows
@@ -23,27 +25,33 @@ void main() {
     WidgetTester tester,
     PropertyLaneRow lane, {
     required int at,
+    ValueNotifier<bool>? playing,
+    LaneGroupPress? onResetLaneGroup,
   }) async {
     final cursor = ValueNotifier<int?>(at);
     addTearDown(cursor.dispose);
+    final row = TimelineLaneControlsRow(
+      layer: layer,
+      lane: lane,
+      metrics: TimelineGridMetrics.defaults,
+      width: TimelineGridMetrics.defaults.layerControlsWidth,
+      height: TimelineGridMetrics.defaults.layerRowHeight,
+      frameCursor: cursor,
+      onSelectFrame: (_) {},
+      laneEdit: PropertyLaneEditCallbacks(
+        onToggleKeyAt: (_, _, _) {},
+        onSetValue: (_, _, _, _) {},
+      ),
+      onResetLaneGroup: onResetLaneGroup,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
-            child: TimelineLaneControlsRow(
-              layer: layer,
-              lane: lane,
-              metrics: TimelineGridMetrics.defaults,
-              width: TimelineGridMetrics.defaults.layerControlsWidth,
-              height: TimelineGridMetrics.defaults.layerRowHeight,
-              frameCursor: cursor,
-              onSelectFrame: (_) {},
-              laneEdit: PropertyLaneEditCallbacks(
-                onToggleKeyAt: (_, _, _) {},
-                onSetValue: (_, _, _, _) {},
-              ),
-            ),
+            child: playing == null
+                ? row
+                : PlaybackStillness(playing: playing, child: row),
           ),
         ),
       ),
@@ -256,6 +264,177 @@ void main() {
 
       await moveTo(tester, cursor, 3);
       expect(line, findsNothing);
+    });
+  });
+
+  /// F-587 (유저 2026-11-13): 「재생중에는 바꾸지않고 재생전 마지막 상태
+  /// 유지하도록」 — everything a row shows of the frame, each asked where it
+  /// stands: none is built while a run moves the cursor, and each reads
+  /// the frame the run left it on as the run ends.
+  group('while a run plays', () {
+    Future<void> turn(
+      WidgetTester tester,
+      ValueNotifier<bool> playing, {
+      required bool on,
+    }) async {
+      playing.value = on;
+      await tester.pump();
+    }
+
+    ValueNotifier<bool> aRun() {
+      final playing = ValueNotifier<bool>(false);
+      addTearDown(playing.dispose);
+      return playing;
+    }
+
+    testWidgets('a lane keeps its value and its key buttons', (tester) async {
+      // Keys at 2 and 6; the value reads 10 before frame 4 and 20 from it.
+      final lane = PropertyLaneRow(
+        laneId: 'spin',
+        label: 'Spin',
+        keyMarks: const {2: KeyMark.linear, 6: KeyMark.linear},
+        valueLabel: (frame) => frame < 4 ? '10.00%' : '20.00%',
+      );
+      final value = find.byKey(const ValueKey('timeline-lane-value-a-spin'));
+      final keyButton = find.byKey(
+        const ValueKey('timeline-lane-key-toggle-a-spin'),
+      );
+      final previous = find.byKey(
+        const ValueKey('timeline-lane-prev-key-a-spin'),
+      );
+      bool reads(String text) => find
+          .descendant(of: value, matching: find.text(text))
+          .evaluate()
+          .isNotEmpty;
+      bool goesBack() => tester.widget<InkWell>(previous).onTap != null;
+      final playing = aRun();
+      final cursor = await pumpRow(tester, lane, at: 1, playing: playing);
+
+      await turn(tester, playing, on: true);
+      final valueBefore = tester.widget(value);
+      final keyButtonBefore = tester.widget(keyButton);
+      await moveTo(tester, cursor, 3);
+      await moveTo(tester, cursor, 5);
+
+      expect(identical(tester.widget(value), valueBefore), isTrue);
+      expect(identical(tester.widget(keyButton), keyButtonBefore), isTrue);
+      expect(reads('10.00%'), isTrue);
+      expect(goesBack(), isFalse, reason: 'as at frame 1, before the run');
+
+      await turn(tester, playing, on: false);
+      expect(reads('20.00%'), isTrue);
+      expect(goesBack(), isTrue, reason: 'the key at 2 is behind frame 5');
+    });
+
+    testWidgets('a group header keeps its preview', (tester) async {
+      // The tag reads plain before frame 3 and bold from it.
+      final lane = PropertyLaneRow(
+        laneId: 'tag',
+        label: 'Tag',
+        keyMarks: const {},
+        isGroupHeader: true,
+        previewText: (
+          name: '名前',
+          line: 'セリフ',
+          tagAt: (frame) => SeNameTag(style: TextCelStyle(bold: frame >= 3)),
+        ),
+      );
+      final preview = find.byKey(
+        const ValueKey('timeline-lane-group-preview-a-tag'),
+      );
+      FontWeight? weight() => tester
+          .widget<Text>(
+            find.descendant(of: preview, matching: find.text('名前')),
+          )
+          .style!
+          .fontWeight;
+      final playing = aRun();
+      final cursor = await pumpRow(tester, lane, at: 0, playing: playing);
+
+      await turn(tester, playing, on: true);
+      final previewBefore = tester.widget(preview);
+      await moveTo(tester, cursor, 3);
+
+      expect(identical(tester.widget(preview), previewBefore), isTrue);
+      expect(weight(), FontWeight.w400);
+
+      await turn(tester, playing, on: false);
+      expect(weight(), FontWeight.w700);
+    });
+
+    testWidgets("a plugin's header keeps its ⚠ — as the cursor reaches a "
+        'frame it drew at, and as a failure is told', (tester) async {
+      final told = ValueNotifier<int>(0);
+      addTearDown(told.dispose);
+      var failsFrom = 3;
+      final lane = PropertyLaneRow(
+        laneId: 'fx',
+        label: 'Fx',
+        keyMarks: const {},
+        isGroupHeader: true,
+        pluginFailures: (
+          changes: told,
+          failedAt: (frame) => frame >= failsFrom,
+        ),
+      );
+      final mark = find.byKey(
+        const ValueKey('timeline-lane-group-plugin-failed-a-fx'),
+      );
+      bool marked() => tester.widget<Icon>(mark).color != Colors.transparent;
+      final playing = aRun();
+      final cursor = await pumpRow(tester, lane, at: 4, playing: playing);
+      expect(marked(), isTrue);
+
+      await turn(tester, playing, on: true);
+      final markBefore = tester.widget(mark);
+      await moveTo(tester, cursor, 1);
+      expect(identical(tester.widget(mark), markBefore), isTrue);
+      expect(marked(), isTrue, reason: 'frame 1 drew, and the run goes on');
+
+      await turn(tester, playing, on: false);
+      expect(marked(), isFalse);
+
+      await turn(tester, playing, on: true);
+      failsFrom = 0;
+      told.value += 1;
+      await tester.pump();
+      expect(marked(), isFalse, reason: 'told of a failure under the run');
+
+      await turn(tester, playing, on: false);
+      expect(marked(), isTrue);
+    });
+
+    testWidgets('a group header keeps its RESET lit or out', (tester) async {
+      const lane = PropertyLaneRow(
+        laneId: 'tag',
+        label: 'Tag',
+        keyMarks: {},
+        isGroupHeader: true,
+      );
+      // Out where the group stands on its defaults: before frame 3.
+      var frame = 0;
+      final playing = aRun();
+      final cursor = await pumpRow(
+        tester,
+        lane,
+        at: frame,
+        playing: playing,
+        onResetLaneGroup: (_, _) => (press: frame >= 3 ? () {} : null),
+      );
+      RailGlyphButton reset() => tester
+          .widgetList<RailGlyphButton>(find.byType(RailGlyphButton))
+          .singleWhere((it) => it.name == 'timeline-lane-group-reset-a-tag');
+      expect(reset().onPressed, isNull);
+
+      await turn(tester, playing, on: true);
+      final resetBefore = reset();
+      frame = 3;
+      await moveTo(tester, cursor, frame);
+      expect(identical(reset(), resetBefore), isTrue);
+      expect(reset().onPressed, isNull);
+
+      await turn(tester, playing, on: false);
+      expect(reset().onPressed, isNotNull);
     });
   });
 }
