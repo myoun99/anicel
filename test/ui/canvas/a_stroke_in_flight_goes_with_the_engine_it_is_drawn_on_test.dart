@@ -7,10 +7,12 @@ library;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/native/engine_strokes.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
@@ -34,20 +36,24 @@ void main() {
     commits = 0;
   });
 
-  /// The view on a blank cel: painting it and its stroke, or — where its
-  /// host does ([hostsOverlay]) — keeping the input alone, as the canvas
-  /// panel has it.
-  Widget view({ActiveStrokeOverlayModel? hostsOverlay}) => MaterialApp(
+  /// The view on a blank cel of [frame]'s, on the engine's grid — a
+  /// stroke piles on the engine's: painting it and its stroke, or — where
+  /// its host does ([hostsOverlay]) — keeping the input alone, as the
+  /// canvas panel has it.
+  Widget view({
+    ActiveStrokeOverlayModel? hostsOverlay,
+    FrameId frame = const FrameId('frame-a'),
+  }) => MaterialApp(
     home: Scaffold(
       body: Align(
         alignment: Alignment.topLeft,
         child: InteractiveBrushEditCanvasView(
           celNow: blankCel(
             const CanvasSize(width: 64, height: 64),
-            tileSize: 16,
+            tileSize: defaultCelTileSize,
           ),
           layerId: const LayerId('layer-a'),
-          frameId: const FrameId('frame-a'),
+          frameId: frame,
           editable: true,
           inputSettings: () => BrushEditCanvasInputSettings.defaults,
           overlayModel: hostsOverlay,
@@ -99,6 +105,25 @@ void main() {
     await tester.pump();
     expect(strokeLive, [true, false]);
     expect(commits, 1);
+  });
+
+  testWidgets('what the stroke was drawn with is let go of as the '
+      'stroke is: the engine\'s stroke it piled on goes back at once, not '
+      'at the next press — seen where its cel went from under the pen, '
+      'the stroke at rest for the next', (tester) async {
+    await tester.pumpWidget(view());
+    await beginStroke(tester);
+    final atRest = EngineStrokes.debugIdle;
+
+    // ⚠️By the cel, which lets go by the one act the engine's going does
+    // (`_letGoOfWhatIsInFlight`): a stroke given back from an engine let
+    // go is freed, kept by none, and nothing counts it
+    // (`the_app_opens_another_engine_once_its_device_is_gone_test.dart`
+    // pins that it is).
+    await tester.pumpWidget(view(frame: const FrameId('frame-b')));
+
+    expect(EngineStrokes.debugIdle, atRest + 1);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('the frame it is said after is the view\'s own to ask '

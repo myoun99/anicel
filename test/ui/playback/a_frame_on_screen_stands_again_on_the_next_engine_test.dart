@@ -171,6 +171,38 @@ void main() {
     expect(differences(before, await shotOf(tester, screen)), isEmpty);
   });
 
+  testWidgets('the screen shows nothing through a texture that went '
+      'with its engine, of itself — whoever lets go of its frames, and '
+      'before they do', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = aStoreOfPictures();
+    final run = runOn(store);
+    await standOn(tester, run);
+    final shown = run.pictures.keyOfStack(nodes(), frame);
+    expect(
+      await settleAsync(tester, () => store.peek(shown) != null),
+      isTrue,
+      reason: '⛔premise: the frame\'s picture is made',
+    );
+    await standOn(tester, run);
+    expect(
+      pixelAt(await shotOf(tester, screen), 20, 8),
+      red,
+      reason: '⛔premise: it is shown',
+    );
+
+    theAppsEngineLostAndLetGo();
+    await tester.pump();
+
+    expect(
+      pixelAt(await shotOf(tester, screen), 20, 8),
+      [0x00, 0x00, 0x00, 0xFF],
+      reason: 'what lies under it',
+    );
+    run.pictures.letGoWithTheirEngine();
+  });
+
   testWidgets('a frame drawn as it stands, its picture not there, stands '
       'again on a screen of the next engine\'s tools — which the view '
       'asks for, no lay coming to', (tester) async {
