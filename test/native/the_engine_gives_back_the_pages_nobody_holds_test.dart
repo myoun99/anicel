@@ -134,7 +134,10 @@ void main() {
       expect(EnginePictures.idlePictureBytes, 0);
     });
 
-    test("the census counts it with the frames' pictures", () {
+    // With a binding: the census reads the image cache's too.
+    testWidgets("the census counts it with the frames' pictures", (
+      tester,
+    ) async {
       addTearDown(DrawingEngines.respondToMemoryPressure);
       int row() => collectMemoryCensusWhereTexturesAreRam(
         const [],

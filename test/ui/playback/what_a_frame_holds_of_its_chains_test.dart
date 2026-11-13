@@ -18,6 +18,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
@@ -280,9 +281,14 @@ void main() {
       final picture = drawn(s);
       final budget = line.playbackCacheByteBudget;
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      int censused() => collectMemoryCensus([s]).items
-          .firstWhere((item) => item.id == 'framePictures')
-          .bytes;
+      // The row less what no picture holds: a picture goes into a slot the
+      // engine keeps made (engine-pictures-keep-to-pool-pages), and one
+      // that stood idle the row counted before it.
+      int censused() =>
+          collectMemoryCensus([s]).items
+              .firstWhere((item) => item.id == 'framePictures')
+              .bytes -
+          EnginePictures.idlePictureBytes;
       final before = censused();
       debugDefaultTargetPlatformOverride = null;
 
