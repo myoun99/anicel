@@ -13,6 +13,7 @@ import 'project_font_file.dart';
 import 'project_frame_rate.dart';
 import 'project_id.dart';
 import 'project_timeline.dart';
+import 'ruler_marker.dart';
 import 'timeline_id.dart';
 import 'timesheet_info.dart';
 import 'cut.dart';
@@ -146,6 +147,10 @@ class Project {
 
   /// The current timeline's trailing gap ([ProjectTimeline.trailingFrames]).
   int get trailingFrames => currentTimeline.trailingFrames;
+
+  /// The markers on the current timeline's ruler
+  /// ([ProjectTimeline.rulerMarkers]).
+  RulerMarkers get rulerMarkers => currentTimeline.rulerMarkers;
 
   /// The tracks of every timeline, the current one's among them.
   Iterable<Track> get tracksOfEveryTimeline =>
@@ -325,6 +330,7 @@ class Project {
     List<MediaAsset>? mediaAssets,
     MediaViewerBookmarks? mediaViewerBookmarks,
     int? trailingFrames,
+    RulerMarkers? rulerMarkers,
     List<ProjectTimeline>? timelines,
     TimelineId? currentTimelineId,
     LayerLinkRegistry? linkRegistry,
@@ -339,8 +345,10 @@ class Project {
     return Project(
       id: id ?? this.id,
       name: name ?? this.name,
-      // The tracks and the trailing gap given are the current timeline's.
-      timelines: tracks == null && trailingFrames == null
+      // The tracks, the trailing gap and the ruler's markers given are the
+      // current timeline's.
+      timelines:
+          tracks == null && trailingFrames == null && rulerMarkers == null
           ? standing
           : [
               for (final timeline in standing)
@@ -348,6 +356,7 @@ class Project {
                   timeline.copyWith(
                     tracks: tracks,
                     trailingFrames: trailingFrames,
+                    rulerMarkers: rulerMarkers,
                   )
                 else
                   timeline,

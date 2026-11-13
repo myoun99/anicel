@@ -66,6 +66,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v37 (2026-11-14, I-169 — 유저: 「타임라인 룰러에 북마크? 메모
+/// 넣는기능」 · 「마커로 명명할건데」): a ruler holds its MARKERS — a cut's
+/// own ruler (`CutMetadata.rulerMarkers`) and a timeline's
+/// (`ProjectTimeline.rulerMarkers`), each a list written only where there
+/// is one. A v36 build knows no such word: it drops the list on open, and
+/// its next save writes the cut and the timeline back with no marker —
+/// and nothing said. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a cut and a timeline that list none
+/// hold no marker at THIS version too, so a v36 file is such a document.
+///
 /// v36 (2026-11-14, F-589 — 유저 F-589-Q1: 「품을 때의 날짜를 적어 두고
 /// 그것을 띄운다」): a carried asset records when the file its bytes came
 /// from had last changed (`carriedModified`, written only where there is
@@ -560,7 +573,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 36;
+const int anicelFormatVersion = 37;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

@@ -34,6 +34,7 @@ import '../models/exposure_memo.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
+import '../models/ruler_marker.dart';
 import '../models/reordered_by_ids.dart';
 import '../models/project_background.dart';
 import '../models/project_font_file.dart';
@@ -624,6 +625,12 @@ class ProjectRepository {
     updateProject(
       (project) => project.copyWith(trailingFrames: trailingFrames),
     );
+  }
+
+  /// Writes the markers on the open timeline's ruler
+  /// (`ProjectTimeline.rulerMarkers`).
+  void updateTimelineRulerMarkers(RulerMarkers markers) {
+    updateProject((project) => project.copyWith(rulerMarkers: markers));
   }
 
   /// Moves the track at [fromIndex] so it sits at [toIndex] in the

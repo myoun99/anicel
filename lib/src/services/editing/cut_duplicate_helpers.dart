@@ -114,6 +114,7 @@ ProjectTimeline duplicateTimelineAsIndependentCopy({
     number: number,
     name: name,
     trailingFrames: source.trailingFrames,
+    rulerMarkers: source.rulerMarkers,
     tracks: [
       for (final track in source.tracks)
         track.copyWith(

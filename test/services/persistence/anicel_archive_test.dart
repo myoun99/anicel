@@ -377,6 +377,20 @@ void main() {
     );
   });
 
+  // I-169 (format 37): a ruler holds its markers — a cut's and a
+  // timeline's. A v36 build drops the lists and its next save writes the
+  // cut and the timeline back with no marker, nothing said — so a file this
+  // build writes says a number a v36 build refuses as newer. No older shape
+  // went for it: a v36 file's rulers open with no marker on them.
+  test('🚨a file that may hold a ruler marker says a format a v36 build '
+      'refuses as newer — and a v36 file still opens', () {
+    expect(anicelFormatVersion, greaterThan(36));
+    expect(
+      decodeAnicelProjectDocument(documentSaying(36)).project,
+      isNotNull,
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
