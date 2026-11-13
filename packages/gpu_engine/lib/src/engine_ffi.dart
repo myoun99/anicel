@@ -954,7 +954,7 @@ external int picturesIdleBytes(Pointer<Engine> engine);
 @Native<Void Function(Pointer<Engine>, Uint64)>(
   symbol: 'gpu_engine_pictures_give_back',
 )
-external void picturesGiveBack(Pointer<Engine> engine, int mostBytes);
+external void picturesGiveBack(Pointer<Engine> engine, int mostIdle);
 
 @Native<
   Bool Function(

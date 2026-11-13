@@ -17,6 +17,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -173,6 +174,42 @@ void main() {
         lessThanOrEqualTo(one),
         reason: 'the session handed the enforcer its budget',
       );
+    });
+  });
+
+  // The slots the pictures let go stay made on the engine for the next
+  // picture (engine-pictures-keep-to-pool-pages) — within the room the
+  // line has left, where the allowance moves it: ⛔before 2026-11-13 they
+  // went with each picture, and a line lowered would have left them made
+  // till the project closed.
+  testWidgets('🚨the allowance moving the line gives back the slots its '
+      'pictures let go, past the room the line has left', (tester) async {
+    await tester.runAsync(() async {
+      final s = session(budget: 1 << 30);
+      await twoPictures(s);
+      final line = s.playbackRig.playbackCache;
+      final pictures = s.renderCaches.framePictureStore;
+      final held = pictures.estimatedBytes;
+      final idle = EnginePictures.idlePictureBytes;
+      expect(idle, isPositive, reason: 'the premise: a page made');
+
+      // The line at what is held and what is idle: all of it stays.
+      line.debugSetPlaybackCacheBudgetBytes(held + idle);
+      s.cacheShare = 0.5;
+      expect(EnginePictures.idlePictureBytes, idle);
+
+      // A byte under: the pictures stay, their page with them, and of
+      // what is idle the rest goes.
+      line.debugSetPlaybackCacheBudgetBytes(held + idle - 1);
+      s.cacheShare = 0.25;
+      expect(pictures.estimatedBytes, held, reason: 'the premise');
+      expect(EnginePictures.idlePictureBytes, lessThan(idle));
+
+      // Under the pictures: they go, and the page no picture is on now.
+      line.debugSetPlaybackCacheBudgetBytes(0);
+      s.cacheShare = 0.125;
+      expect(pictures.estimatedBytes, 0, reason: 'the premise');
+      expect(EnginePictures.idlePictureBytes, 0);
     });
   });
 }

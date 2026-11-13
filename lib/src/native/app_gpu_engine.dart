@@ -72,8 +72,10 @@ abstract final class EnginePictures {
   /// Their bytes; none where the app has opened no engine.
   static int get idlePictureBytes => _its.engine?.idlePictureBytes ?? 0;
 
-  /// Gives them back ([GpuEngine.givePicturesBack]).
-  static void giveBack() => _its.engine?.givePicturesBack();
+  /// Gives them back till they are [mostIdle] bytes
+  /// ([GpuEngine.givePicturesBackPast]).
+  static void giveBackPast(int mostIdle) =>
+      _its.engine?.givePicturesBackPast(mostIdle);
 }
 
 /// Lets go of the app's engine, its device gone ([appGpuEngineIsGone]) —

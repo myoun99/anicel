@@ -615,11 +615,15 @@ impl Pictures {
         self.kept().as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
     }
 
-    /// Gives back the pages no picture is on till the pages hold
-    /// `most_bytes` ([`Pool::give_back`]).
-    pub(crate) fn give_back(&self, engine: &Engine, most_bytes: u64) {
+    /// Gives back the pages no picture is on, the last first, till the
+    /// slots no picture holds are `most_idle` bytes or no such page is left
+    /// ([`Pool::give_back`]). ⛔Not till the pages are that many: a page a
+    /// picture is on is none of what is idle, and a line that moved under
+    /// the pictures leaves them their pages (`gpu_engine_pictures_give_back`).
+    pub(crate) fn give_back(&self, engine: &Engine, most_idle: u64) {
         if let Some(pool) = self.kept().as_mut() {
-            pool.give_back(engine, most_bytes);
+            let held = pool.bytes() - pool.idle_bytes();
+            pool.give_back(engine, held.saturating_add(most_idle));
         }
     }
 

@@ -280,14 +280,16 @@ class GpuEngine {
   /// engine's, as a cel's tiles do in a [GpuPool]'s, and a page of it
   /// stays made for the next picture: its slots nobody holds are these —
   /// and the composite's work buffer, kept from one run to the next. Till
-  /// they are given back ([givePicturesBack]).
+  /// they are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
 
-  /// Gives back what the engine keeps for pictures nobody holds: the pages
-  /// of their pool with every slot free, and the composite's work buffer —
-  /// what only makes the next picture cheaper, as a [GpuPool]'s free pages
-  /// are ([GpuPool.giveBackPast]).
-  void givePicturesBack() => rust.picturesGiveBack(_engine, 0);
+  /// Gives back what the engine keeps for pictures nobody holds till it is
+  /// [mostIdle] bytes: the pages of their pool with every slot free, the
+  /// last first, and then the composite's work buffer — what only makes
+  /// the next picture cheaper, as a [GpuPool]'s free pages are
+  /// ([GpuPool.giveBackPast]). A page a picture is on stays.
+  void givePicturesBackPast(int mostIdle) =>
+      rust.picturesGiveBack(_engine, mostIdle);
 
   /// Whether the device is gone — the driver took it away (a reset, an
   /// update, a wake from sleep), or the engine's thread ended under it

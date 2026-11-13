@@ -22,7 +22,7 @@ abstract final class DrawingEngines {
     TileBlocks.trim();
     NativeScratch.releaseAll();
     EngineTileLedger.opened?.respondToMemoryPressure();
-    EnginePictures.giveBack();
+    EnginePictures.giveBackPast(0);
     EngineStrokes.letGoIdle();
   }
 

@@ -135,6 +135,27 @@ fn a_page_no_picture_is_on_is_given_back_and_no_picture_keeps_it_made() {
     assert!(kept_bytes(&third) == want);
 }
 
+// Given back past what may stay idle, the pool gives back its pages no
+// picture is on, the last first, till the slots no picture holds are that
+// many bytes — not till its pages are: the page a picture is on is none of
+// what is idle, so of two pages no picture's one stays where a page may.
+#[test]
+fn the_pictures_pool_gives_back_till_what_is_idle_is_what_may_stay() {
+    let engine = rig().engine;
+    let pictures = Pictures::sized(15).expect("a pool");
+    let (pages, set, _) = composite_of(noise(31), CANVAS);
+    let plan = laid(&pages, &set);
+    let kept = kept_in(&pictures, &plan);
+    drop((kept_in(&pictures, &plan), kept_in(&pictures, &plan)));
+    let page = 15 * TILE_BYTES;
+    assert_eq!(pictures.pages().len(), 3, "the premise: a page a picture");
+    assert_eq!(pictures.idle_bytes(), 2 * page);
+    pictures.give_back(engine, page);
+    assert_eq!(pictures.pages().len(), 2);
+    assert_eq!(pictures.idle_bytes(), page);
+    assert!(kept_bytes(&kept) == composited_whole(noise(31)));
+}
+
 // Kept two tiles a page, the canvas is made again on the tiles each change
 // meets — a stripe on a tile's last column, one on the next tile's first,
 // a dot in each far corner, a block across four tiles of three pages — and
@@ -316,7 +337,8 @@ fn a_run_takes_the_work_buffer_the_last_run_left() {
 // What an engine keeps for pictures and no picture holds is counted and
 // given back: nothing before a picture is kept; under a screen's canvas,
 // the slots it leaves free on its pool's page and the work buffer its
-// composite ran in; the screen let go, that page whole; and given back,
+// composite ran in; the screen let go, that page whole; given back past
+// the work buffer's bytes, that buffer alone; and given back whole,
 // nothing — the next screen shown as the first was. On an engine of its
 // own: the tests' one keeps every test's pictures.
 #[test]
@@ -339,10 +361,13 @@ fn an_engine_counts_what_no_picture_holds_and_gives_it_back() {
     assert_eq!(idle(), 0);
     let (screen, first) = shown();
     let (page, work) = (engine.pictures.pages()[0].size(), engine.work.bytes());
-    assert!(work > 0);
+    assert!(0 < work && work < page, "the premise");
     assert_eq!(idle(), page - screen.bytes() + work);
     drop(screen);
     assert_eq!(idle(), page + work);
+    // SAFETY: as above.
+    unsafe { gpu_engine_pictures_give_back(&engine, work) };
+    assert_eq!(idle(), work);
     // SAFETY: as above.
     unsafe { gpu_engine_pictures_give_back(&engine, 0) };
     assert_eq!(idle(), 0);

@@ -90,6 +90,7 @@ import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart'
     show conformingInto, resamplingInto, runConformHere;
+import '../native/app_gpu_engine.dart' show EnginePictures;
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
@@ -469,7 +470,22 @@ class EditorSessionManager extends ChangeNotifier
     // the same line: they are what the pictures become.
     EngineTileLedger.appByteBudget = budgets.tileImages;
     if (enforce) {
-      playbackRig.playbackCache.enforcePlaybackCacheBudget();
+      final line = playbackRig.playbackCache;
+      line.enforcePlaybackCacheBudget();
+      // The slots the pictures let go stay made on the GPU for the next
+      // picture (engine-pictures-keep-to-pool-pages), and are the frames'
+      // row's as the pictures are: where the allowance moved the line they
+      // keep within the room it has left past the pictures, as a cel's
+      // pages keep within theirs ([EngineTileLedger.byteBudget]).
+      // ⛔Here alone, not at every trim: a stroke's and a walk's would give
+      // back pages the next frame makes again, a block of the allocator's
+      // made each time (H57).
+      EnginePictures.giveBackPast(
+        math.max(
+          0,
+          line.bytes - renderCaches.framePictureStore.estimatedBytes,
+        ),
+      );
     }
     playbackLineMoved();
   }
