@@ -18,6 +18,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/placed_tile.dart';
 import '../models/tile_coord.dart';
 import '../native/app_gpu_engine.dart';
+import '../native/engine_stamp_masks.dart';
 import '../native/engine_stamp_pictures.dart';
 import '../native/engine_tile_ledger.dart';
 import '../core/dev_profile.dart';
@@ -176,16 +177,31 @@ BrushSurfaceMaterialization _materializedOnEngine(
     final stamp = first.stamp;
     if (stamp != null) {
       at += 1;
+      final landing = stamp.landingRect(first.center);
+      final opacity = (first.opacity * 65535).round();
+      final mode = engineBlendModeOf(BrushBlendMode.color, erase: first.erase);
+      final ofMask = EngineStampMasks.of(stamp);
       put(
-        _pictureOnEngine(
+        _stampOnEngine(
           landed,
-          () => EngineStampPictures.of(stamp),
-          stamp.landingRect(first.center),
-          (
-            opacity: first.opacity,
-            mode: engineBlendModeOf(BrushBlendMode.color, erase: first.erase),
-            within: selection,
-          ),
+          landing,
+          selection,
+          (clip, mask) => ofMask == null
+              ? _picture(
+                  EngineStampPictures.of(stamp),
+                  landing,
+                  clip,
+                  opacity: opacity,
+                  mode: mode,
+                  mask: mask,
+                )
+              : _ofMask(
+                  ofMask,
+                  colour: first.color,
+                  opacity: opacity,
+                  mode: mode,
+                  mask: mask,
+                ),
         ),
       );
       continue;
@@ -206,18 +222,17 @@ BrushSurfaceMaterialization _materializedOnEngine(
   );
 }
 
-/// [picture] over [landing], what the pasteboard's wall leaves of it — a
+/// A stamp over [landing], what the pasteboard's wall leaves of it — a
 /// selection dropped past the stage's edge keeps its pixels there —, laid
-/// on [surface] as [laid] says, under its `within`'s mask where it has one:
-/// the tiles it changes, a blank one where none is left. [picture] is
-/// asked for only where something of it can land.
-List<PlacedTile> _pictureOnEngine(
+/// on [surface] as [lays] says for that `clip`, under [within]'s mask where
+/// there is one: the tiles it changes, a blank one where none is left.
+/// [lays] is asked only where something of the stamp can land.
+List<PlacedTile> _stampOnEngine(
   BitmapSurface surface,
-  GpuStampPicture Function() picture,
   DirtyRegion landing,
-  ({double opacity, int mode, SelectionClip? within}) laid,
+  SelectionClip? within,
+  LandedBy Function(DirtyRegion clip, GpuMask? mask) lays,
 ) {
-  final (:opacity, :mode, :within) = laid;
   final clip = landing.intersection(surface.pasteboard.region);
   if (clip == null || !(within?.mayCover(clip) ?? true)) {
     return const [];
@@ -228,17 +243,14 @@ List<PlacedTile> _pictureOnEngine(
     for (var y = firstY; y <= lastY; y += 1)
       for (var x = firstX; x <= lastX; x += 1) TileCoord(x: x, y: y),
   ];
-  final landed = _landedOnEngine(
-    picture(),
-    landing,
-    clip,
+  final landed = EngineTileLedger.instance.land(
+    EngineTileLedger.landedCel,
     [
       for (final coord in coords)
         (column: coord.x, row: coord.y, under: surface.tileAt(coord)),
     ],
-    opacity: (opacity * 65535).round(),
-    mode: mode,
-    mask: within?.maskOnEngine(),
+    by: lays(clip, within?.maskOnEngine()),
+    compared: true,
   );
   return [
     for (var at = 0; at < landed.length; at += 1)
@@ -250,35 +262,54 @@ List<PlacedTile> _pictureOnEngine(
   ];
 }
 
-/// [picture], its top-left pixel at [landing]'s, laid by the engine on the
-/// tiles [asks] at [opacity] (65535 whole) in [mode], under [mask] if any —
-/// what of it lies within [clip]: each result as the stamp landing hands it.
-List<LandedTile> _landedOnEngine(
+/// [picture], its top-left pixel at [landing]'s, what of it lies within
+/// [clip], as the engine lays it at [opacity] (65535 whole) in [mode],
+/// under [mask] if any.
+LandedBy _picture(
   GpuStampPicture picture,
   DirtyRegion landing,
-  DirtyRegion clip,
-  List<TileAsk> asks, {
+  DirtyRegion clip, {
   required int opacity,
   required int mode,
   required GpuMask? mask,
-}) => EngineTileLedger.instance.land(
-  EngineTileLedger.landedCel,
-  asks,
-  by: (pool, cel, asked) => appGpuStampLanding.land(
+}) => (pool, cel, asked) => appGpuStampLanding.land(
+  appGpuComposite,
+  pool,
+  cel,
+  picture,
+  left: landing.left,
+  top: landing.top,
+  within: (clip.left, clip.top, clip.rightExclusive, clip.bottomExclusive),
+  asks: asked,
+  opacity: opacity,
+  mode: mode,
+  mask: mask,
+);
+
+/// A stamp [made] of a mask ([EngineStampMasks]) — its box made to the
+/// wall — as the engine lays it in [colour] at [opacity] (65535 whole) in
+/// [mode], under [mask] if any.
+LandedBy _ofMask(
+  ({GpuMask Function() coverage, bool whole}) made, {
+  required int colour,
+  required int opacity,
+  required int mode,
+  required GpuMask? mask,
+}) {
+  final coverage = made.coverage();
+  return (pool, cel, asked) => appGpuStampLanding.landMask(
     appGpuComposite,
     pool,
     cel,
-    picture,
-    left: landing.left,
-    top: landing.top,
-    within: (clip.left, clip.top, clip.rightExclusive, clip.bottomExclusive),
+    coverage,
+    colour: colour,
+    whole: made.whole,
     asks: asked,
     opacity: opacity,
     mode: mode,
     mask: mask,
-  ),
-  compared: true,
-);
+  );
+}
 
 /// [stamp], its top-left pixel at ([left], [top]), laid at full strength
 /// on [unders] — tiles of [grid]'s cel at their coordinates, null where it
@@ -329,17 +360,21 @@ Map<TileCoord, BitmapTile?> stampLaidOver(
     return {...unders};
   }
   final coords = unders.keys.toList();
-  final landed = _landedOnEngine(
-    EngineStampPictures.of(stamp),
-    landing,
-    clip,
+  final landed = EngineTileLedger.instance.land(
+    EngineTileLedger.landedCel,
     [
       for (final coord in coords)
         (column: coord.x, row: coord.y, under: unders[coord]),
     ],
-    opacity: 65535,
-    mode: engineBlendModeOf(BrushBlendMode.color, erase: false),
-    mask: null,
+    by: _picture(
+      EngineStampPictures.of(stamp),
+      landing,
+      clip,
+      opacity: 65535,
+      mode: engineBlendModeOf(BrushBlendMode.color, erase: false),
+      mask: null,
+    ),
+    compared: true,
   );
   return {
     for (final (at, coord) in coords.indexed)
@@ -496,14 +531,17 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   if (_landsOnEngine(surface)) {
     // One landing whatever the blend: the engine lays the stroke's picture
     // in its mode.
-    final tiles = _pictureOnEngine(
+    final tiles = _stampOnEngine(
       surface,
-      () => GpuStampPicture(appGpuEngine, strokePixels, width, height),
       bounds,
-      (
-        opacity: 1,
+      selection,
+      (clip, mask) => _picture(
+        GpuStampPicture(appGpuEngine, strokePixels, width, height),
+        bounds,
+        clip,
+        opacity: 65535,
         mode: engineBlendModeOf(blendMode, erase: erase),
-        within: selection,
+        mask: mask,
       ),
     );
     final coords = [for (final tile in tiles) tile.coord]

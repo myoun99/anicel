@@ -10,19 +10,32 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_cel_pixels.dart';
+import 'package:anicel/src/native/engine_selection_masks.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/selection_lift.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 import 'package:anicel/src/services/cel_pixel_region.dart';
 
+import '../helpers/surface_rgba_in_place.dart';
+
 /// A SELECTION'S LIFT ON THE ENGINE (flip lane ⓒ): on the app's grid what a
-/// selection takes off a cel is the kernel's (lift.wgsl), held byte for byte
-/// to the Dart gather, over boxes that straddle tile edges and whole pixels
-/// or a feather's.
+/// selection takes off a cel is the kernel's (lift.wgsl), under the mask the
+/// selection made there, held byte for byte to the Dart gather, over boxes
+/// that straddle tile edges and whole pixels or a feather's — and its erase
+/// is laid from that same mask, taking what the erase's picture takes, with
+/// the selection read on the CPU nowhere (board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move`, L1b-2).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const side = 128;
@@ -67,47 +80,145 @@ void main() {
       },
   ]);
 
-  final boxes = <String, ({int left, int top, int width, int height})>{
-    'inside a tile': (left: 5, top: 9, width: 40, height: 30),
-    'across a tile edge': (left: 100, top: 20, width: 60, height: 20),
-    'across four tiles, one of them none': (
-      left: 100,
-      top: 100,
-      width: 60,
-      height: 60,
-    ),
-    'off the top-left': (left: -30, top: -20, width: 50, height: 40),
-    'of a tile alone': (left: 128, top: 0, width: 128, height: 128),
-  };
+  CanvasSelectionRegion rect(int left, int top, int right, int bottom) =>
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: left.toDouble(),
+          top: top.toDouble(),
+          right: right.toDouble(),
+          bottom: bottom.toDouble(),
+        ),
+      );
 
-  for (final MapEntry(key: name, value: box) in boxes.entries) {
-    for (final whole in [true, false]) {
-      test('$name, ${whole ? 'whole pixels' : 'a feather'}: as the gather in '
-          'Dart', () {
+  final outlines = <String, CanvasSelectionRegion>{
+    'inside a tile': rect(5, 9, 45, 39),
+    'across a tile edge': rect(100, 20, 160, 40),
+    'across four tiles, one of them none': rect(100, 100, 160, 160),
+    'off the top-left': rect(-30, -20, 20, 20),
+    'of a tile alone': rect(128, 0, 256, 128),
+    'an ellipse across a tile edge': CanvasSelectionRegion.shape(
+      CanvasSelectionShape.ellipse(
+        left: 90.5,
+        top: 10.25,
+        right: 170.75,
+        bottom: 70.5,
+      ),
+    ),
+  };
+  const softnesses = [
+    SelectionMaskOptions.none,
+    SelectionMaskOptions(featherPx: 4),
+    SelectionMaskOptions(growPx: 2, antiAlias: true),
+  ];
+
+  String labelOf(String name, SelectionMaskOptions options) =>
+      '$name, grow ${options.growPx} feather ${options.featherPx} '
+      'aa ${options.antiAlias}';
+
+  for (final MapEntry(key: name, value: region) in outlines.entries) {
+    for (final options in softnesses) {
+      test('${labelOf(name, options)}: as the gather in Dart', () {
         final surface = artwork();
-        final (:left, :top, :width, :height) = box;
-        final mask = maskOf(width, height);
-        ({Uint8List rgba, bool liftedAnything}) gathered() =>
-            gatherMaskedSurfacePixels(
-              surface: surface,
-              mask: mask,
-              left: left,
-              top: top,
-              width: width,
-              height: height,
-              takeWholePixels: whole,
-            );
+        SelectionPixels? lifted() => liftSelectionPixels(
+          region: region,
+          surface: surface,
+          options: options,
+        );
         debugSelectionLiftInDart = true;
-        final inDart = gathered();
+        final inDart = lifted();
         debugSelectionLiftInDart = false;
         final reads = ledger.debugTileReads;
-        final onEngine = gathered();
+        final onEngine = lifted();
+        expect(inDart, isNotNull, reason: '⛔premise: it takes something');
+        expect(onEngine!.box, inDart!.box);
         expect(onEngine.rgba, inDart.rgba);
-        expect(onEngine.liftedAnything, inDart.liftedAnything);
         expect(ledger.debugTileReads, reads, reason: 'no tile read back');
       });
     }
   }
+
+  /// [region] lifted off [surface] at [options], its erase landed there —
+  /// on the engine, or as the picture of the erase's own bytes.
+  BitmapSurface erasedBy(
+    BitmapSurface surface,
+    CanvasSelectionRegion region,
+    SelectionMaskOptions options, {
+    required bool asPicture,
+  }) {
+    final lifted = liftSelectionPixels(
+      region: region,
+      surface: surface,
+      options: options,
+    )!;
+    final erase = selectionEraseDab(lifted, id: 'erase');
+    final stamp = erase.stamp!;
+    final laid = asPicture
+        ? erase.copyWith(
+            stamp: BrushStampImage(
+              id: 'erase-picture',
+              width: stamp.width,
+              height: stamp.height,
+              rgba: stamp.rgba,
+            ),
+          )
+        : erase;
+    return materializeBrushDabSequenceOnBitmapSurface(
+      surface: surface,
+      sequence: BrushDabSequence([laid]),
+    ).surface;
+  }
+
+  for (final MapEntry(key: name, value: region) in outlines.entries) {
+    for (final options in softnesses) {
+      test('${labelOf(name, options)}: the erase takes on the engine what '
+          'its picture takes', () {
+        final surface = artwork();
+        final handedUp = EngineStampPictures.debugHandedUp;
+        final onEngine = erasedBy(surface, region, options, asPicture: false);
+        expect(
+          EngineStampPictures.debugHandedUp,
+          handedUp,
+          reason: 'the erase is laid from the mask, no picture handed up',
+        );
+        final asPicture = erasedBy(surface, region, options, asPicture: true);
+        var erased = 0;
+        for (var y = -40; y < 260; y += 1) {
+          for (var x = -40; x < 260; x += 1) {
+            final got = surfaceRgbaInPlace(onEngine, x, y);
+            final want = surfaceRgbaInPlace(asPicture, x, y);
+            if (got != want) {
+              fail(
+                '$x,$y: the erase left ${got?.toRadixString(16)} where its '
+                'picture leaves ${want?.toRadixString(16)}',
+              );
+            }
+            if (got != surfaceRgbaInPlace(surface, x, y)) {
+              erased += 1;
+            }
+          }
+        }
+        expect(erased, isNonZero, reason: '⛔premise: it erases something');
+      });
+    }
+  }
+
+  test('a lift on the engine reads the selection nowhere but there', () {
+    for (final options in softnesses) {
+      final asked = <int>[];
+      final region = _ReadsSpied(rect(100, 20, 160, 40), asked);
+      final surface = artwork();
+      final lifted = liftSelectionPixels(
+        region: region,
+        surface: surface,
+        options: options,
+      )!;
+      materializeBrushDabSequenceOnBitmapSurface(
+        surface: surface,
+        sequence: BrushDabSequence([selectionEraseDab(lifted, id: 'erase')]),
+      );
+      expect(asked, isEmpty, reason: labelOf('the region', options));
+    }
+  });
 
   test('a lift refuses a box its room is not the size of', () {
     final plane = GpuMask(
@@ -139,32 +250,46 @@ void main() {
     );
   });
 
-  test('a box over no tile lifts nothing, and asks the engine nothing', () {
+  test('a selection over no tile lifts nothing, and asks the engine nothing',
+      () {
+    final surface = artwork();
+    final made = EngineSelectionMasks.debugMade;
+    expect(
+      liftSelectionPixels(
+        region: rect(300, 300, 310, 310),
+        surface: surface,
+        options: SelectionMaskOptions.none,
+      ),
+      isNull,
+    );
     final lifted = gatherMaskedSurfacePixels(
-      surface: artwork(),
-      mask: Uint8List(100)..fillRange(0, 100, 255),
-      left: 300,
-      top: 300,
-      width: 10,
-      height: 10,
+      surface: surface,
+      clip: SelectionClip.of(
+        rect(300, 300, 310, 310),
+        wall: surface.pasteboard,
+        options: SelectionMaskOptions.none,
+      ),
       takeWholePixels: true,
     );
     expect(lifted.liftedAnything, isFalse);
-    expect(lifted.rgba, Uint8List(400));
+    expect(lifted.rgba, everyElement(0));
+    expect(EngineSelectionMasks.debugMade, made, reason: 'no mask made');
   });
 
-  test('a mask over nothing painted lifts nothing', () {
+  test('a selection over nothing painted lifts nothing', () {
+    // tileOf(0) leaves every fifth pixel clear, its first among them.
+    final surface = artwork();
     final lifted = gatherMaskedSurfacePixels(
-      surface: artwork(),
-      mask: Uint8List(100),
-      left: 10,
-      top: 10,
-      width: 10,
-      height: 10,
+      surface: surface,
+      clip: SelectionClip.of(
+        rect(0, 0, 1, 1),
+        wall: surface.pasteboard,
+        options: SelectionMaskOptions.none,
+      ),
       takeWholePixels: true,
     );
     expect(lifted.liftedAnything, isFalse);
-    expect(lifted.rgba, Uint8List(400));
+    expect(lifted.rgba, everyElement(0));
   });
 
   test('the gather in Dart is the one those compare against: it reads the '
@@ -178,14 +303,10 @@ void main() {
     ).surface;
     debugSelectionLiftInDart = true;
     final reads = ledger.debugTileReads;
-    gatherMaskedSurfacePixels(
+    liftSelectionPixels(
+      region: rect(1, 0, 3, 2),
       surface: verbed,
-      mask: Uint8List(4)..fillRange(0, 4, 255),
-      left: 1,
-      top: 0,
-      width: 2,
-      height: 2,
-      takeWholePixels: true,
+      options: SelectionMaskOptions.none,
     );
     expect(ledger.debugTileReads, greaterThan(reads));
   });
@@ -199,17 +320,30 @@ void main() {
       value: Uint8List.fromList([1, 2, 3]),
     ).surface;
     final reads = ledger.debugTileReads;
-    final lifted = gatherMaskedSurfacePixels(
+    final lifted = liftSelectionPixels(
+      region: rect(1, 0, 3, 2),
       surface: verbed,
-      mask: Uint8List(4)..fillRange(0, 4, 255),
-      left: 1,
-      top: 0,
-      width: 2,
-      height: 2,
-      takeWholePixels: true,
-    );
+      options: SelectionMaskOptions.none,
+    )!;
     expect(ledger.debugTileReads, reads);
-    expect(lifted.liftedAnything, isTrue);
     expect(lifted.rgba.sublist(0, 3), [1, 2, 3]);
   });
+}
+
+/// A region that counts every read of its coverage on the CPU.
+class _ReadsSpied extends CanvasSelectionRegion {
+  _ReadsSpied(CanvasSelectionRegion region, this.asked) : super(region.steps);
+
+  final List<int> asked;
+
+  @override
+  Uint8List maskFor({
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) {
+    asked.add(width * height);
+    return super.maskFor(left: left, top: top, width: width, height: height);
+  }
 }

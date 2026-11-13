@@ -401,8 +401,11 @@ void main() {
       surface: before,
       options: const SelectionMaskOptions(antiAlias: true),
     )!;
+    final (:left, :top, :width, :height) = read.lifted.box;
     expect(
-      read.lifted.mask.any((coverage) => coverage > 0 && coverage < 255),
+      read.lifted.clip
+          .maskFor(left: left, top: top, width: width, height: height)
+          .any((coverage) => coverage > 0 && coverage < 255),
       isTrue,
       reason: '⛔premise: the outline covers some pixel in part',
     );

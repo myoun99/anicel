@@ -46,7 +46,7 @@ sealed class SelectionClip {
       return kept.clip;
     }
     final clip = options.isHard
-        ? _OutlineClip(region)
+        ? _OutlineClip(region, wall: wall)
         : _SoftClip(region, wall: wall, options: options);
     _kept[region] = (wall: wall, options: options, clip: clip);
     return clip;
@@ -63,8 +63,13 @@ sealed class SelectionClip {
       >();
 
   /// [region]'s own outline, every pixel in or out by its centre.
-  const factory SelectionClip.outline(CanvasSelectionRegion region) =
-      _OutlineClip;
+  factory SelectionClip.outline(CanvasSelectionRegion region) =>
+      _OutlineClip(region);
+
+  /// Every pixel this clip can select — the box of the whole reading, what
+  /// [maskOnEngine] is made over and a lift takes (`liftSelectionPixels`);
+  /// null where it can select none.
+  ({int left, int top, int width, int height})? get box;
 
   /// Whether any of [pixels] can be selected — false only when none can, so
   /// what answers false may be skipped without changing one byte the mask
@@ -93,18 +98,27 @@ sealed class SelectionClip {
   GpuMask _madeOnEngine();
 }
 
+/// ↩️A selection with no softness asked of it was read past the [wall] till
+/// 2026-11-14 — harmless while it only cut what lands on a surface that
+/// stops there, but a lift takes the box it is read over, and it took the
+/// wall's box (`selectionMaskOnPasteboard`) where this clip did not.
 final class _OutlineClip extends SelectionClip {
-  const _OutlineClip(this._region);
+  _OutlineClip(this._region, {PasteboardWall? wall})
+    : box = _region.pixelBoxWithin(wall?.region);
 
   final CanvasSelectionRegion _region;
 
   @override
-  bool mayCover(DirtyRegion pixels) => _region.mayCover(pixels);
+  final ({int left, int top, int width, int height})? box;
+
+  @override
+  bool mayCover(DirtyRegion pixels) =>
+      box != null && _region.mayCover(pixels);
 
   @override
   GpuMask _madeOnEngine() => EngineSelectionMasks.of(
     _region.spelled,
-    box: _region.pixelBoxWithin(null)!,
+    box: box!,
     grow: 0,
     feather: 0,
     antiAlias: false,
@@ -135,18 +149,17 @@ final class _SoftClip extends SelectionClip {
     required PasteboardWall wall,
     required SelectionMaskOptions options,
   }) : _options = options,
-       _box = _region.pixelBoxWithin(wall.region, pad: options.bboxPad);
+       box = _region.pixelBoxWithin(wall.region, pad: options.bboxPad);
 
   final CanvasSelectionRegion _region;
   final SelectionMaskOptions _options;
 
-  /// The box of the whole reading — null when the selection and the wall do
-  /// not meet.
-  final ({int left, int top, int width, int height})? _box;
+  @override
+  final ({int left, int top, int width, int height})? box;
 
   @override
   bool mayCover(DirtyRegion pixels) {
-    final box = _box;
+    final box = this.box;
     return box != null &&
         pixels.rightExclusive > box.left &&
         pixels.left < box.left + box.width &&
@@ -161,7 +174,7 @@ final class _SoftClip extends SelectionClip {
   /// where the CPU made a window's bytes and handed them up at every move.
   @override
   GpuMask _madeOnEngine() {
-    final box = _box;
+    final box = this.box;
     if (box == null) {
       throw StateError('a selection that meets no pixel of its wall');
     }
@@ -182,7 +195,7 @@ final class _SoftClip extends SelectionClip {
     required int height,
   }) {
     final mask = Uint8List(width * height);
-    final box = _box;
+    final box = this.box;
     if (box == null) {
       return mask;
     }

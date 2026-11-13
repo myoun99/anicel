@@ -1416,6 +1416,44 @@ class GpuStampLanding {
     },
   );
 
+  /// Lays [coverage] in [colour] — 0xRRGGBB, the alpha byte unread — on the
+  /// tiles [asks], as [land] lays a picture: a pixel it covers at all
+  /// wholly where [whole], else its byte for an alpha, at [opacity] in
+  /// [mode], under [mask] if any. A selection's erase: the selection's own
+  /// mask, laid by the eraser.
+  List<GpuLanded> landMask(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    GpuMask coverage, {
+    required int colour,
+    required bool whole,
+    required List<GpuTileAsk> asks,
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => _landed(
+    asks,
+    (arena, coordinates, under, places, changes) => rust.stampLandMask(
+      _landing,
+      _engine._engine,
+      _engine._its(composite)._composite,
+      _engine._its(pool)._pool,
+      cel,
+      _engine._its(coverage)._mask,
+      colour & 0xFFFFFF,
+      whole,
+      coordinates,
+      under,
+      asks.length,
+      opacity,
+      mode,
+      mask == null ? nullptr : _engine._its(mask)._mask,
+      places,
+      changes,
+    ),
+  );
+
   /// Frees it; before its engine is closed.
   void free() => rust.stampLandingFree(_landing);
 }

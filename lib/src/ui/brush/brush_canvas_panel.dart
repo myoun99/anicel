@@ -46,6 +46,7 @@ import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/selection_clip.dart';
+import '../../services/selection_lift.dart';
 import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
 import '../../services/selection_placement.dart';
 import '../../services/stamp_carry.dart';

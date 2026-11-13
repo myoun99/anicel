@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
 use super::landing::{Asked, Laid};
-use super::stamp::{Source, StampLanding};
+use super::stamp::{Paint, Source, StampLanding};
 use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::Engine;
@@ -797,6 +797,51 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     let laid = Laid { opacity, mode, mask: mask.as_ref() };
     let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
     let source = Source::Picture { picture: &boxed, at: (left, top), within };
+    let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
+    // SAFETY: see the function's contract.
+    unsafe { reported(landed, places, changes) }
+}
+
+/// Lays `coverage` in `colour` — red, green and blue its low three bytes —
+/// on the `count` tiles asked as [`gpu_engine_stroke_land`] says, compared:
+/// a pixel it covers at all wholly where `whole`, else its byte for an
+/// alpha, at `opacity` in `mode`, under `mask` if not null. A selection's
+/// erase (the app's `selectionEraseDab`): the selection's own mask on the
+/// engine, laid by the eraser, its colour never read. Returns as it does.
+///
+/// # Safety
+/// As [`gpu_engine_stroke_land`]'s, `coverage` live on `engine`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
+    landing: *const StampLanding,
+    engine: *const Engine,
+    composite: *const Composite,
+    pool: *mut Pool,
+    cel: u32,
+    coverage: *const MaskPlane,
+    colour: u32,
+    whole: bool,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mode: u32,
+    mask: *const MaskPlane,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (landing, engine, composite, pool, coverage) =
+        unsafe { (&*landing, &*engine, &*composite, &mut *pool, (*coverage).mask()) };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count) };
+    // SAFETY: see the function's contract.
+    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+    let laid = Laid { opacity, mode, mask: mask.as_ref() };
+    let [red, green, blue, _] = colour.to_le_bytes();
+    let paint = Paint::Colour([red, green, blue]);
+    let source = Source::Mask { mask: &coverage, paint: &paint, whole };
     let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
     // SAFETY: see the function's contract.
     unsafe { reported(landed, places, changes) }
