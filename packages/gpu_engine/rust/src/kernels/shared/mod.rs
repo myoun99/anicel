@@ -40,6 +40,8 @@ mod one_ndk_table;
 #[cfg(test)]
 mod one_pass;
 #[cfg(test)]
+mod one_poll;
+#[cfg(test)]
 mod one_premultiply;
 #[cfg(test)]
 mod one_side_by_side;

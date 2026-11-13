@@ -38,6 +38,18 @@ pub struct Engine {
     /// Where the engine stays in the driver till the GPU has finished what
     /// was submitted ([`Engine::poll`]) — a thread of its own, so that no
     /// body stands behind the GPU ([`EngineThread`]).
+    ///
+    /// ⚠️Letting the engine go waits for none of it (`gpu_engine_close`;
+    /// 🗣️관제 2026-11-14 08:14 asked which, of a poll that gave up and is
+    /// in the driver still). No thread of an engine's is joined: each ends
+    /// once it is through with its job and nothing is left to hand it one,
+    /// and a poll under way keeps the device by a hold of its own, which
+    /// goes where that poll ends — on this thread, not the bodies'. What a
+    /// let-go does wait for is the GPU, by wgpu's own doing: the queue,
+    /// let go of with the engine's hold the last on it, waits till the GPU
+    /// is idle (wgpu-core 30.0.1, `Queue::drop`: `wait_for_idle`, which
+    /// D3D12 gives no limit) — on the bodies' thread, as it did while a
+    /// poll was a job there. ⚠️Not measured: a GPU that never finishes.
     polls: EngineThread,
     /// Where a wait no caller stays for is waited out, outside the driver,
     /// and its caller told ([`Engine::done_then`]).
@@ -811,8 +823,10 @@ impl Callers {
 /// at once: the tests' engine lost its thread for polls under the waits
 /// of no time of `a_wait_past_its_limit_…`, and 620 of 919 failed behind
 /// it. A poll that comes back once the GPU is done reads a number at
-/// least the one it waited for. ⚠️No test goes red by a limit put back
-/// here but by that race — a submit between two reads inside wgpu.
+/// least the one it waited for. ⚠️No test of behaviour goes red by a
+/// limit put back here but by that race — a submit between two reads
+/// inside wgpu — so `kernels/shared/one_poll.rs` reads the sources for
+/// this line: the one poll of a device, and with no limit.
 fn polled(device: &wgpu::Device) -> Result<(), String> {
     let polled = device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
     polled.map(|_| ()).map_err(|error| format!("poll: {error}"))
@@ -1541,7 +1555,8 @@ pub unsafe extern "C" fn gpu_engine_close(engine: *mut Engine) {
         // SAFETY: see the function's contract.
         let engine = unsafe { Box::from_raw(engine) };
         // Let go on its own thread, as all it held of the device was taken
-        // there — this hold on the thread keeping it till then.
+        // there — this hold on the thread keeping it till then. ⛔And
+        // waited for no further: a poll under way is not (`Engine::polls`).
         let thread = engine.thread.clone();
         thread.run_lent(move || drop(engine));
     }
@@ -2002,6 +2017,53 @@ mod tests {
         assert!(after - at < limit / 2, "the second was told {:?} after the first", after - at);
         let _ = let_go.send(());
         assert_eq!(engine.wait(), Some(()), "{}", last_error());
+    }
+
+    // 🚨Letting an engine go waits for no poll under way (`Engine::polls`
+    // has what it does wait for): this one stays in the driver's call,
+    // inside a map's answer, till the test has seen the engine closed. The
+    // wait is told once its poll is back all the same, and the poll's own
+    // hold on the device is gone by then.
+    //
+    // ⚠️The buffer is the test's till the poll is back: dropped with its
+    // map unanswered it answers where it is dropped — on the test's
+    // thread, no poll in the driver at all, and the test green by nothing
+    // (🔬2026-11-14, so written first: a minute, the answer's own wait).
+    #[test]
+    fn an_engine_is_let_go_of_with_a_poll_still_in_the_driver() {
+        use std::sync::mpsc;
+        let _turn = a_device_of_its_own();
+        let engine = opened(Engine::open_first);
+        assert!(!engine.is_null(), "{}", last_error());
+        let (began, begun) = mpsc::channel();
+        let (let_go, released) = mpsc::channel::<()>();
+        let (tell, told) = mpsc::channel();
+        // SAFETY: opened above, live.
+        let buffer = unsafe { (*engine).readback(4) };
+        buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+            let _ = began.send(std::thread::current().id());
+            let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+        });
+        let tells = move |done| {
+            let _ = tell.send(done);
+        };
+        // SAFETY: opened above, live.
+        unsafe { (*engine).done_then(tells) };
+        let polled_on = begun.recv_timeout(IN_TIME).expect("the poll saw the map done");
+        assert_ne!(polled_on, std::thread::current().id(), "the map answered here, in no poll");
+        let (closed, went) = mpsc::channel();
+        let made = engine as usize;
+        std::thread::spawn(move || {
+            // SAFETY: opened above, closed once.
+            unsafe { gpu_engine_close(made as *mut Engine) };
+            let _ = closed.send(());
+        });
+        let let_go_of = went.recv_timeout(IN_TIME).is_ok();
+        let polling_still = told.try_recv().is_err();
+        let _ = let_go.send(());
+        assert!(let_go_of, "the engine's let-go stood behind a poll under way");
+        assert!(polling_still, "the poll was back before the engine was let go of");
+        assert_eq!(told.recv_timeout(IN_TIME), Ok(Ok(())));
     }
 
     #[test]
