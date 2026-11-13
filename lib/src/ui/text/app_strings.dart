@@ -1758,12 +1758,22 @@ enum AppStrings {
   String imRateTitle({required String movie, required String project}) => _s(
     'imRateTitleTemplate',
   ).replaceAll('{movie}', movie).replaceAll('{project}', project);
-  String imRateBody(String movie) =>
-      _s('imRateBodyTemplate').replaceAll('{movie}', movie);
+  String get imRateBody => _s('imRateBody');
   String imRateKeep(String project) =>
       _s('imRateKeepTemplate').replaceAll('{project}', project);
+  String imRateKeepTip(int seconds) =>
+      _s('imRateKeepTipTemplate').replaceAll('{seconds}', '$seconds');
+  String imRateFitMovie(String project) =>
+      _s('imRateFitMovieTemplate').replaceAll('{project}', project);
+  String imRateFitSound(String project) =>
+      _s('imRateFitSoundTemplate').replaceAll('{project}', project);
+  String get imRateFitTipPictureAndSound => _s('imRateFitTipPictureAndSound');
+  String get imRateFitTipPicture => _s('imRateFitTipPicture');
+  String get imRateFitTipSound => _s('imRateFitTipSound');
   String imRateTake(String movie) =>
       _s('imRateTakeTemplate').replaceAll('{movie}', movie);
+  String imRateTakeTip(String movie) =>
+      _s('imRateTakeTipTemplate').replaceAll('{movie}', movie);
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitOriginal => _s('imFitOriginal');
@@ -3299,10 +3309,27 @@ enum AppStrings {
     'imSoundOnly': 'Sound only',
     'imRunSpanTemplate': '{first}–{last} ({n})',
     'imRateTitleTemplate': 'Movie {movie} · project {project}',
-    'imRateBodyTemplate':
-        'Set the project to {movie}? The sound keeps its timing.',
+    'imRateBody':
+        'The movie and the project run at slightly different speeds. '
+        'Which should match?',
     'imRateKeepTemplate': 'Keep {project}',
-    'imRateTakeTemplate': 'Set to {movie}',
+    'imRateKeepTipTemplate':
+        'Picture and sound stay together, and drift from the movie\'s '
+        'frames by one frame every {seconds} seconds or so.',
+    'imRateFitMovieTemplate': 'Fit the movie to {project}',
+    'imRateFitSoundTemplate': 'Fit the sound to {project}',
+    'imRateFitTipPictureAndSound':
+        'Carries the movie\'s picture and sound rewritten at the '
+        'project\'s speed (0.1% apart) — frame for frame with the movie.',
+    'imRateFitTipPicture':
+        'Carries the movie\'s picture rewritten at the project\'s speed '
+        '(0.1% apart) — frame for frame with the movie.',
+    'imRateFitTipSound':
+        'Carries the movie\'s sound rewritten at the project\'s speed '
+        '(0.1% apart) — frame for frame with the movie.',
+    'imRateTakeTemplate': 'Set the project to {movie}',
+    'imRateTakeTipTemplate':
+        'Changes the project to {movie}. The sound keeps its timing.',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitOriginal': 'Original size',
@@ -5064,9 +5091,20 @@ enum AppStrings {
     'imSoundOnly': '音のみ',
     'imRunSpanTemplate': '{first}–{last}（{n}枚）',
     'imRateTitleTemplate': '動画 {movie}・プロジェクト {project}',
-    'imRateBodyTemplate': 'プロジェクトを {movie} に合わせますか？音のタイミングは維持されます。',
+    'imRateBody': '動画とプロジェクトの速度がわずかに違います。どちらに合わせますか？',
     'imRateKeepTemplate': '{project} のまま',
-    'imRateTakeTemplate': '{movie} に合わせる',
+    'imRateKeepTipTemplate':
+        '絵と音は合ったまま、動画のフレームとは約{seconds}秒ごとに1フレームずつずれます。',
+    'imRateFitMovieTemplate': '動画を {project} に合わせる',
+    'imRateFitSoundTemplate': '音を {project} に合わせる',
+    'imRateFitTipPictureAndSound':
+        '動画の絵と音をプロジェクトの速度（0.1%差）で書き直して取り込みます。動画のフレームと1つずつ合います。',
+    'imRateFitTipPicture':
+        '動画の絵をプロジェクトの速度（0.1%差）で書き直して取り込みます。動画のフレームと1つずつ合います。',
+    'imRateFitTipSound':
+        '動画の音をプロジェクトの速度（0.1%差）で書き直して取り込みます。動画のフレームと1つずつ合います。',
+    'imRateTakeTemplate': 'プロジェクトを {movie} に合わせる',
+    'imRateTakeTipTemplate': 'プロジェクトを {movie} に変えます。音のタイミングは維持されます。',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitOriginal': '原寸',
@@ -6961,9 +6999,20 @@ enum AppStrings {
     'imSoundOnly': '소리만',
     'imRunSpanTemplate': '{first}–{last} ({n}장)',
     'imRateTitleTemplate': '동영상 {movie} · 프로젝트 {project}',
-    'imRateBodyTemplate': '프로젝트를 {movie} 로 맞출까요? 소리는 타이밍을 유지합니다.',
+    'imRateBody': '동영상과 프로젝트의 속도가 조금 다릅니다. 무엇에 맞출까요?',
     'imRateKeepTemplate': '{project} 그대로',
-    'imRateTakeTemplate': '{movie} 로 맞춤',
+    'imRateKeepTipTemplate':
+        '그림과 소리는 서로 맞고, 영상의 프레임과는 약 {seconds}초마다 1프레임씩 어긋납니다.',
+    'imRateFitMovieTemplate': '영상을 {project} 에 맞춤',
+    'imRateFitSoundTemplate': '소리를 {project} 에 맞춤',
+    'imRateFitTipPictureAndSound':
+        '영상의 그림과 소리를 프로젝트의 속도(0.1% 차이)로 다시 써서 품습니다. 영상의 프레임과 하나씩 맞습니다.',
+    'imRateFitTipPicture':
+        '영상의 그림을 프로젝트의 속도(0.1% 차이)로 다시 써서 품습니다. 영상의 프레임과 하나씩 맞습니다.',
+    'imRateFitTipSound':
+        '영상의 소리를 프로젝트의 속도(0.1% 차이)로 다시 써서 품습니다. 영상의 프레임과 하나씩 맞습니다.',
+    'imRateTakeTemplate': '프로젝트를 {movie} 로 맞춤',
+    'imRateTakeTipTemplate': '프로젝트를 {movie} 로 바꿉니다. 소리는 타이밍을 유지합니다.',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitOriginal': '원본 크기',
@@ -8993,10 +9042,27 @@ enum AppStrings {
     'imSoundOnly': 'Son seul',
     'imRunSpanTemplate': '{first}–{last} ({n})',
     'imRateTitleTemplate': 'Vidéo {movie} · projet {project}',
-    'imRateBodyTemplate':
-        'Régler le projet à {movie} ? Le son garde son timing.',
+    'imRateBody':
+        'La vidéo et le projet ne tournent pas tout à fait à la même '
+        'vitesse. Que faut-il accorder ?',
     'imRateKeepTemplate': 'Garder {project}',
-    'imRateTakeTemplate': 'Régler à {movie}',
+    'imRateKeepTipTemplate':
+        'L\'image et le son restent ensemble, et s\'écartent des images de '
+        'la vidéo d\'une image toutes les {seconds} secondes environ.',
+    'imRateFitMovieTemplate': 'Accorder la vidéo à {project}',
+    'imRateFitSoundTemplate': 'Accorder le son à {project}',
+    'imRateFitTipPictureAndSound':
+        'Intègre l\'image et le son de la vidéo réécrits à la vitesse du '
+        'projet (0,1 % d\'écart) — image pour image avec la vidéo.',
+    'imRateFitTipPicture':
+        'Intègre l\'image de la vidéo réécrite à la vitesse du projet '
+        '(0,1 % d\'écart) — image pour image avec la vidéo.',
+    'imRateFitTipSound':
+        'Intègre le son de la vidéo réécrit à la vitesse du projet '
+        '(0,1 % d\'écart) — image pour image avec la vidéo.',
+    'imRateTakeTemplate': 'Régler le projet à {movie}',
+    'imRateTakeTipTemplate':
+        'Passe le projet à {movie}. Le son garde son timing.',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitOriginal': 'Taille d’origine',
@@ -10851,9 +10917,16 @@ enum AppStrings {
     'imSoundOnly': '仅声音',
     'imRunSpanTemplate': '{first}–{last}（{n}张）',
     'imRateTitleTemplate': '视频 {movie} · 项目 {project}',
-    'imRateBodyTemplate': '将项目设为 {movie}？声音保持其时间。',
+    'imRateBody': '视频与项目的速度略有不同。要对齐哪一方？',
     'imRateKeepTemplate': '保持 {project}',
-    'imRateTakeTemplate': '设为 {movie}',
+    'imRateKeepTipTemplate': '画面与声音保持一致，与视频的帧约每{seconds}秒错开1帧。',
+    'imRateFitMovieTemplate': '将视频对齐到 {project}',
+    'imRateFitSoundTemplate': '将声音对齐到 {project}',
+    'imRateFitTipPictureAndSound': '按项目速度（相差0.1%）重写视频的画面和声音后导入。与视频的帧逐一对齐。',
+    'imRateFitTipPicture': '按项目速度（相差0.1%）重写视频的画面后导入。与视频的帧逐一对齐。',
+    'imRateFitTipSound': '按项目速度（相差0.1%）重写视频的声音后导入。与视频的帧逐一对齐。',
+    'imRateTakeTemplate': '将项目设为 {movie}',
+    'imRateTakeTipTemplate': '将项目改为 {movie}。声音保持其时间。',
     'commonOn': '开',
     'commonOff': '关',
     'imFitOriginal': '原始尺寸',

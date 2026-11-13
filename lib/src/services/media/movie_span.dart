@@ -38,6 +38,10 @@ import 'media_byte_source.dart';
 /// brings its picture and not its sound (🗣️I-171-Q1, 유저 2026-11-14: 「그림만
 /// = 소리를 뺀 MP4」).
 ///
+/// With a [pull] the movie is read on [clockPulledBy] it and [trim] counts
+/// that clock's frames: the piece is the movie rewritten at the project's
+/// speed, its sound pulled with its pictures (🗣️F-588, [framePullOf]).
+///
 /// [onProgress] hears the frames written, as 0–1 — the work there is
 /// (🔬F-494, 2026-10-28: two minutes of a 3.4GB 1080p movie took 61 s here,
 /// 55 of them this loop, the decode and the encode half each; reading the
@@ -48,6 +52,7 @@ import 'media_byte_source.dart';
   required ({int inFrame, int? outFrame}) trim,
   required ProjectClock clock,
   bool withSound = true,
+  ({int numerator, int denominator}) pull = noPull,
   void Function(double fraction)? onProgress,
 }) {
   final decoder = QaVideoDecoder.instance;
@@ -64,9 +69,10 @@ import 'media_byte_source.dart';
   }
   try {
     final info = document.info;
+    final read = clockPulledBy(clock, pull);
     final movie = movieClockFor(
-      projectRate: clock.rate,
-      audioSpeed: clock.speed,
+      projectRate: read.rate,
+      audioSpeed: read.speed,
       movie: info,
     );
     // The same span the placement would have kept of the whole movie.
@@ -82,7 +88,8 @@ import 'media_byte_source.dart';
         ? decodeAudioOfFrames(
             MediaFileBytes(sourcePath),
             (first: kept.first, count: kept.count),
-            pace,
+            clock,
+            pull: pull,
           )
         : null;
     if (!encoder.open(
@@ -118,7 +125,10 @@ import 'media_byte_source.dart';
           !_fillTheLead(
             encoder,
             MediaFileBytes(sourcePath),
-            before: pace.frameToSample(kept.first, sound.sampleRate),
+            // Where the span begins in the movie's own sound.
+            before: read.rate
+                .inSourceTime(read.speed)
+                .frameToSample(kept.first, sound.sampleRate),
           )) {
         return (kept: null, failure: encoder.lastError);
       }

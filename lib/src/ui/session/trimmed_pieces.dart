@@ -89,12 +89,18 @@ class TrimmedPieces {
   /// piece, a WAV, cut as a sound file's is — the sound's clock measures a
   /// movie's span too — and its picture alone an MP4 with no sound. The
   /// piece's [kind] says which: what it is placed and registered as.
+  ///
+  /// [pull] rewrites a movie's piece at the project's speed, [inFrame] and
+  /// [outFrame] counted on the clock it is read on (🗣️F-588, [framePullOf]):
+  /// its pictures frame for frame, its sound pulled with them — a sound's
+  /// piece of it as well.
   Future<({String path, int frames, MediaAssetKind kind})?> cut(
     String source,
     MediaAssetKind kind, {
     int inFrame = 0,
     int? outFrame,
     MovieParts parts = MovieParts.pictureAndSound,
+    ({int numerator, int denominator}) pull = noPull,
     void Function(double fraction)? onProgress,
   }) async {
     final pieceKind = pieceKindOf(kind, parts);
@@ -113,8 +119,9 @@ class TrimmedPieces {
           trim,
           onProgress,
           withSound: parts == MovieParts.pictureAndSound,
+          pull: pull,
         ),
-        MediaAssetKind.audio => await _sound(source, work, trim),
+        MediaAssetKind.audio => await _sound(source, work, trim, pull),
         MediaAssetKind.pdf => await _pages(source, work, trim),
         MediaAssetKind.image => await _frames(source, work, trim),
       };
@@ -174,6 +181,7 @@ class TrimmedPieces {
     _Trim trim,
     void Function(double fraction)? onProgress, {
     required bool withSound,
+    required ({int numerator, int denominator}) pull,
   }) async {
     final clock = _clock();
     final written = await onAWorkerReporting(
@@ -184,25 +192,31 @@ class TrimmedPieces {
         trim: trim,
         clock: clock,
         withSound: withSound,
+        pull: pull,
         onProgress: report,
       ),
     );
     return written.kept;
   }
 
-  Future<KeptSpan?> _sound(String source, String work, _Trim trim) async {
+  Future<KeptSpan?> _sound(
+    String source,
+    String work,
+    _Trim trim,
+    ({int numerator, int denominator}) pull,
+  ) async {
     final peaks = await _soundPeaks(normalizedMediaPath(source));
     if (peaks == null) {
       return null;
     }
     final clock = _clock();
     final kept = KeptSpan(
-      length: peaks.durationFrames(clock.rate),
+      length: peaks.durationFrames(clock.rate, pull: pull),
       inFrame: trim.inFrame,
       outFrame: trim.outFrame,
     );
     final wav = await onAWorker(
-      () => soundSpanAsWav(MediaFileBytes(source), kept, clock),
+      () => soundSpanAsWav(MediaFileBytes(source), kept, clock, pull: pull),
     );
     if (wav == null) {
       return null;

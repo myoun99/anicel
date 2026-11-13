@@ -20,7 +20,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
-import '../../models/movie_clock.dart' show ProjectClock, movieClockFor;
+import '../../models/movie_clock.dart'
+    show ProjectClock, clockPulledBy, framePullOf, movieClockFor;
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
@@ -1470,32 +1471,83 @@ class _ImportDialogState extends State<ImportDialog> {
   /// is asked when it is placed, through this window — and a row bound for
   /// a new project places it in a project at its own rate (I-156-Q2). False
   /// when the person backed out of the import.
+  ///
+  /// 🗣️F-588 (유저 2026-11-14: 「이 영상만」): or the project keeps its rate
+  /// and each such movie is carried in rewritten at its speed ([_fitted]) —
+  /// offered where every one of them is carried in as a piece of its own
+  /// ([_carriesItsOwnPiece]), as no other bytes are the import's to
+  /// rewrite.
   Future<bool> _answerMovieRates() async {
+    _fitted.clear();
     final project = widget.session.projectSettings.projectFrameRate;
-    final movie = await _pulldownPartnerAmongPlaced(project);
-    if (movie == null) {
+    final clock = (rate: project, speed: _projectAudioSpeed);
+    final partners = await _pulldownPartnersAmongPlaced(project);
+    if (partners.isEmpty) {
       return true;
     }
     if (!mounted) {
       return false;
     }
+    final pulls = {
+      for (final row in partners) row.path: framePullOf(clock, row.movie),
+    };
     final answer = await showMovieRateDialog(
       context,
-      project: project,
-      movie: movie,
+      project: clock,
+      movie: partners.first.partner,
+      fit: (
+        can: pulls.entries.every(
+          (pull) =>
+              pull.value != null &&
+              _carriesItsOwnPiece(
+                pull.key,
+                _settingsFor(pull.key),
+                session: widget.session,
+              ),
+        ),
+        brings: _partsAllBring([
+          for (final row in partners)
+            if (_asksSound(row.path))
+              _settingsFor(row.path).movieParts
+            else
+              MovieParts.picture,
+        ]),
+      ),
     );
+    if (answer == MovieRateAnswer.fit) {
+      _fitted.addAll({
+        for (final pull in pulls.entries) pull.key: pull.value!,
+      });
+    }
     if (answer == MovieRateAnswer.take && mounted) {
+      final movie = partners.first.partner;
       await _respanFor(from: project, to: movie);
       widget.session.projectSettings.setProjectFrameRate(movie);
     }
     return answer != null && mounted;
   }
 
-  /// The rate of the first movie placed in THIS project that runs at
-  /// [project]'s pulldown partner, or null when none does.
-  Future<ProjectFrameRate?> _pulldownPartnerAmongPlaced(
-    ProjectFrameRate project,
-  ) async {
+  /// The pull each movie of this press is carried in at, rewritten at the
+  /// project's speed (🗣️F-588, [framePullOf]) — empty unless the rate
+  /// question was answered so. Asked anew at each press: its span stays the
+  /// one the person stood on, moved to that clock only as it is cut
+  /// ([_placeCarryingOnlyTheSpan]), so a press that did not land leaves
+  /// nothing to undo.
+  final Map<String, ({int numerator, int denominator})> _fitted = {};
+
+  /// What of their movies [parts] bring between them — the one part they
+  /// all bring, or both; a movie with no sound brings its picture.
+  static MovieParts _partsAllBring(List<MovieParts> parts) =>
+      parts.every((part) => part == parts.first)
+      ? parts.first
+      : MovieParts.pictureAndSound;
+
+  /// Every movie placed in THIS project that runs at [project]'s pulldown
+  /// partner, with what it says of itself and that partner.
+  Future<List<({String path, QaVideoInfo movie, ProjectFrameRate partner})>>
+  _pulldownPartnersAmongPlaced(ProjectFrameRate project) async {
+    final found =
+        <({String path, QaVideoInfo movie, ProjectFrameRate partner})>[];
     for (final path in _files.where(
       (path) => _placing(path) && !_landsInANewProject(path),
     )) {
@@ -1509,11 +1561,11 @@ class _ImportDialogState extends State<ImportDialog> {
               numerator: movie.fpsNumerator,
               denominator: movie.fpsDenominator,
             ));
-      if (partner != null) {
-        return partner;
+      if (movie != null && partner != null) {
+        found.add((path: path, movie: movie, partner: partner));
       }
     }
-    return null;
+    return found;
   }
 
   /// What [path]'s movie says of itself, read as its door will read it
@@ -1939,12 +1991,27 @@ class _ImportDialogState extends State<ImportDialog> {
   ///
   /// The pool is the one of the project [session] holds — the project the
   /// file comes into: a new project's holds nothing yet (I-156).
+  ///
+  /// A movie rewritten at the project's speed is a piece of it too
+  /// (🗣️F-588, [_fitted]): the bytes carried are no longer the file's.
   bool _comesInAsAPiece(
     String path,
     ImportFileSettings settings, {
     required EditorSessionManager session,
   }) =>
-      (settings.isTrimmed || _cutsAPart(path, settings)) &&
+      (settings.isTrimmed ||
+          _cutsAPart(path, settings) ||
+          _fitted.containsKey(path)) &&
+      _carriesItsOwnPiece(path, settings, session: session);
+
+  /// Whether [path] would come in as a piece of its own, were there one to
+  /// cut ([_comesInAsAPiece]): carried in, not held by [session]'s pool
+  /// already, and leaving an entry there.
+  bool _carriesItsOwnPiece(
+    String path,
+    ImportFileSettings settings, {
+    required EditorSessionManager session,
+  }) =>
       settings.mode == ImportFileMode.keepInside &&
       _poolEntryIn(session, path) == null &&
       _keepsAPoolEntry(path);
@@ -1986,12 +2053,15 @@ class _ImportDialogState extends State<ImportDialog> {
     // range's cut says nothing until it is done (F-494).
     final cut = TrimmedPieces.pieceKindOf(kind, settings.movieParts);
     fileReport.cutting(0, cut);
+    final pull = _fitted[path] ?? noPull;
+    final span = await _spanRewrittenAt(path, settings, pull);
     final piece = await pieces.cut(
       path,
       kind,
-      inFrame: settings.inFrame,
-      outFrame: settings.outFrame,
+      inFrame: span.inFrame,
+      outFrame: span.outFrame,
       parts: settings.movieParts,
+      pull: pull,
       onProgress: (fraction) => fileReport.cutting(fraction, cut),
     );
     if (piece == null) {
@@ -2020,6 +2090,30 @@ class _ImportDialogState extends State<ImportDialog> {
       }
     }
     return landed;
+  }
+
+  /// [settings]' span as the piece [pull] rewrites [path] into counts it —
+  /// the same pictures, on the clock it is read on ([clockPulledBy]); as it
+  /// stands without a pull, or for a movie that does not open.
+  Future<ImportFileSettings> _spanRewrittenAt(
+    String path,
+    ImportFileSettings settings,
+    ({int numerator, int denominator}) pull,
+  ) async {
+    if (pull == noPull) {
+      return settings;
+    }
+    final clock = (
+      rate: widget.session.projectSettings.projectFrameRate,
+      speed: _projectAudioSpeed,
+    );
+    return await _spanMoved(
+          path,
+          settings,
+          clock,
+          clockPulledBy(clock, pull),
+        ) ??
+        settings;
   }
 
   /// Which door this file goes through, as [into] says: an expanded PSD,

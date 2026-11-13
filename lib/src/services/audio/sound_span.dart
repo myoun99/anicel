@@ -2,8 +2,9 @@ import 'dart:typed_data';
 
 import '../../models/audio_pcm_scale.dart';
 import '../../models/kept_span.dart';
-import '../../models/movie_clock.dart' show ProjectClock;
+import '../../models/movie_clock.dart' show ProjectClock, clockPulledBy;
 import '../../models/project_frame_rate.dart';
+import '../../native/qa_audio_resampler.dart' show resampleAudio;
 import '../media/media_byte_source.dart';
 import 'audio_conform_runner.dart' show decodeAudioSource;
 import 'wav16_header.dart';
@@ -28,25 +29,33 @@ import 'wav16_header.dart';
 /// a bucket at a time — and the piece is placed at its own length; so it
 /// has to last the whole span, as a movie's, a PDF's and an animation's
 /// pieces do, or the door would keep a frame less than the window showed.
+///
+/// [pull]: the sound played that much faster again, as a movie laid frame
+/// for frame plays it ([decodeAudioOfFrames]).
 Uint8List? soundSpanAsWav(
   MediaByteSource source,
   KeptSpan kept,
-  ProjectClock clock,
-) {
+  ProjectClock clock, {
+  ({int numerator, int denominator}) pull = noPull,
+}) {
   final frames = (first: kept.first, count: kept.count);
-  final pace = clock.rate.inSourceTime(clock.speed);
-  final decoded = decodeAudioOfFrames(source, frames, pace);
+  final decoded = decodeAudioOfFrames(source, frames, clock, pull: pull);
   if (decoded == null) {
     return null;
   }
   return wav16Bytes(
-    int16PcmOfFrames(decoded, frames, pace, from: kept.first),
+    int16PcmOfFrames(
+      decoded,
+      frames,
+      clock.rate.inSourceTime(clock.speed),
+      from: kept.first,
+    ),
     sampleRate: decoded.sampleRate,
     channels: decoded.channels,
   );
 }
 
-/// [source]'s sound over project [frames] at [pace] — only those decoded
+/// [source]'s sound over project [frames] on [clock] — only those decoded
 /// samples held, the first of them [frames.first]'s first sample (user
 /// 2026-10-09, sound-lands-on-its-exact-sample-Q5: a piece cut from a long
 /// reel holds the piece, not the reel). Null when it cannot be decoded.
@@ -54,22 +63,43 @@ Uint8List? soundSpanAsWav(
 /// Which samples the frames are depends on the sound's rate, so the decoder
 /// is asked for nothing first — that answers the rate — and then for the
 /// samples [ProjectFrameRate.frameToSample] names.
+///
+/// With a [pull] the frames are read on [clockPulledBy] it, and the sound
+/// comes back that much faster at its own rate — fewer samples, through
+/// the conform's own resampler and as the conform reinterprets a rate
+/// (both sides scaled by the exact rational) — so [clock]'s frames count it
+/// as they count a sound of its own: what a movie rewritten at the
+/// project's speed hears (🗣️F-588, [framePullOf]).
 ({Float32List samples, int channels, int sampleRate})? decodeAudioOfFrames(
   MediaByteSource source,
   ({int first, int count}) frames,
-  ProjectFrameRate pace,
-) {
-  final probe = decodeAudioSource(source, window: (start: 0, count: 0));
-  if (probe == null || probe.channels <= 0) {
+  ProjectClock clock, {
+  ({int numerator, int denominator}) pull = noPull,
+}) {
+  final probe = _decodedBetween(source, 0, 0);
+  if (probe == null) {
     return null;
   }
-  final start = pace.frameToSample(frames.first, probe.sampleRate);
-  final end = pace.frameToSample(frames.first + frames.count, probe.sampleRate);
-  final decoded = decodeAudioSource(
+  final read = clockPulledBy(clock, pull);
+  final pace = read.rate.inSourceTime(read.speed);
+  final decoded = _decodedBetween(
     source,
-    window: (start: start, count: end - start),
+    pace.frameToSample(frames.first, probe.sampleRate),
+    pace.frameToSample(frames.first + frames.count, probe.sampleRate),
   );
-  return decoded == null || decoded.channels <= 0 ? null : decoded;
+  if (decoded == null) {
+    return null;
+  }
+  return (
+    samples: resampleAudio(
+      samples: decoded.samples,
+      channels: decoded.channels,
+      inputRate: decoded.sampleRate * pull.numerator,
+      outputRate: decoded.sampleRate * pull.denominator,
+    ),
+    channels: decoded.channels,
+    sampleRate: decoded.sampleRate,
+  );
 }
 
 /// What project [frames] play of [sound], as interleaved 16-bit PCM — what
@@ -124,11 +154,8 @@ Int16List? int16PcmBefore(
   if (sample <= start) {
     return null;
   }
-  final decoded = decodeAudioSource(
-    source,
-    window: (start: start, count: sample - start),
-  );
-  if (decoded == null || decoded.channels <= 0) {
+  final decoded = _decodedBetween(source, start, sample);
+  if (decoded == null) {
     return null;
   }
   final pcm = Int16List(count * decoded.channels);
@@ -139,4 +166,18 @@ Int16List? int16PcmBefore(
     into: Int16List.sublistView(pcm, at, at + held),
   );
   return pcm;
+}
+
+/// [source]'s own sound frames [start] up to [end], decoded — null when it
+/// cannot be, or decodes to no channel.
+({Float32List samples, int channels, int sampleRate})? _decodedBetween(
+  MediaByteSource source,
+  int start,
+  int end,
+) {
+  final decoded = decodeAudioSource(
+    source,
+    window: (start: start, count: end - start),
+  );
+  return decoded == null || decoded.channels <= 0 ? null : decoded;
 }
