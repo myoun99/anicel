@@ -164,20 +164,23 @@ Future<GpuShown> frameOnTheEngine(
     Future<void> showOn(GpuTarget onto) async {
       if (picture != null) {
         picture.show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
-        return;
+      } else {
+        final screen = EngineStackScreen(tools.composite, tools.letters);
+        try {
+          // Its plug-ins' steps run first, as a picture's are when it is
+          // laid (🗣️I-132-Q34 a).
+          await await FxPluginStages.recordedThrough<Future<void>>(
+            () => screen.compose(asItStands!.frame),
+            discard: (round) => round.ignore(),
+          );
+          screen.show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
+        } finally {
+          screen.free();
+        }
       }
-      final screen = EngineStackScreen(tools.composite, tools.letters);
-      try {
-        // Its plug-ins' steps run first, as a picture's are when it is
-        // laid (🗣️I-132-Q34 a).
-        await FxPluginStages.recordedThrough<void>(
-          () => screen.compose(asItStands!.frame),
-          discard: (_) {},
-        );
-        screen.show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
-      } finally {
-        screen.free();
-      }
+      // Why it did not show is the done's asked in the turn it is shown
+      // ([GpuScreen.show]).
+      await tools.composite.engine.done();
     }
 
     await showOn(raster);

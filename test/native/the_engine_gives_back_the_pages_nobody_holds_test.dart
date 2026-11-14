@@ -1,6 +1,8 @@
 @Tags(['gc'])
 library;
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -116,9 +118,9 @@ void main() {
       addTearDown(plan.free);
       const whole = (0, 0, 1, 1);
       plan.solid(0xFF0000FF, 0, 0, 1, 1);
-      GpuScreen(appGpuComposite, whole)
-        ..compose(pool, plan, whole)
-        ..free();
+      final screen = GpuScreen(appGpuComposite, whole);
+      unawaited(screen.compose(pool, plan, whole));
+      screen.free();
       expect(
         EnginePictures.idlePictureBytes,
         isPositive,

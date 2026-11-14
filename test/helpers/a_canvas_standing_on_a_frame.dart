@@ -418,7 +418,7 @@ Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world, {double zoom = 1}) {
   final (:composite, :letters) = appEngineFrameToolsOpen!;
   final screen = EngineStackScreen(composite, letters);
   try {
-    screen.compose(frame);
+    unawaited(screen.compose(frame));
     return _shownOver(
       world,
       (target, size, viewport) => screen.show(

@@ -340,7 +340,12 @@ class GpuEngine {
   /// thread for waits does (rust/src/device.rs, `gpu_engine_done_then`) —
   /// and no job of this or any isolate stands behind it. Fails by a
   /// [GpuRefused] naming why where it did not finish — past the engine's
-  /// limit, or the device gone — as a wait does.
+  /// limit, or the device gone — as a wait does; and where a body handed
+  /// over unwaited from this isolate's thread since its last done failed,
+  /// by the first of those ([GpuScreen.compose], [GpuScreen.show]) —
+  /// asked of the GPU behind each of them (rust/src/device.rs,
+  /// `Engine::done_then`). One asked in the turn a body is handed over is
+  /// told of that body.
   ///
   /// 🗣️유저 2026-11-12 (a-float-in-hand-draws-the-frame-as-it-stands-Q2):
   /// a screen's frame is put up as the GPU finishes it, the thread that
@@ -2396,11 +2401,24 @@ class GpuScreen implements _OfAnEngine {
 
   /// Composites [plan] of [pool]'s tiles onto the kept canvas over its
   /// tiles that meet the pixels [changed] — [left, top, right, bottom); the
-  /// whole canvas the first time — and submits the work. The tiles
-  /// [changed] meets none of are kept as they were: where the composite
-  /// changed is the caller's to say.
-  void compose(GpuPool pool, GpuPlan plan, (int, int, int, int) changed) {
-    final composed = using(
+  /// whole canvas the first time — and submits the work: on the engine's
+  /// thread, this isolate waiting for none of it. Ends once the GPU has
+  /// finished it, or fails by the [GpuRefused] that names why it did not
+  /// ([GpuEngine.done], asked as it is handed over). The tiles [changed]
+  /// meets none of are kept as they were: where the composite changed is
+  /// the caller's to say. Nothing is added to [plan] after.
+  ///
+  /// 🚨★★THE UI'S THREAD WAITS FOR NO COMPOSE (the-ui-thread-never-enters-
+  /// the-driver B1-a, 2026-11-15): 🔬S5_BA cut 352, main PC, the first fill
+  /// and a band baked meanwhile — 5 of 437 composes past 16 ms, 73 ms the
+  /// longest, a frame moved under a bake 79 ms; the screen's and the
+  /// bake's composes alike (rust/src/device.rs, `Engine::posted`).
+  Future<void> compose(
+    GpuPool pool,
+    GpuPlan plan,
+    (int, int, int, int) changed,
+  ) {
+    using(
       (arena) => rust.screenCompose(
         _screen,
         _engine._its(_composite)._composite,
@@ -2410,22 +2428,20 @@ class GpuScreen implements _OfAnEngine {
         _rect(arena, changed),
       ),
     );
-    if (!composed) {
-      throw GpuRefused(_lastError());
-    }
+    return _engine.done();
   }
 
   /// [compose] onto a canvas nothing is composed on yet, but over its tiles
   /// that meet the pixels [fresh] alone — [left, top, right, bottom) —:
   /// every other tile [film]'s canvas keeps is copied from it as it is.
   /// Over a film nothing is composed on, the whole canvas.
-  void composeOver(
+  Future<void> composeOver(
     GpuScreen film,
     GpuPool pool,
     GpuPlan plan,
     (int, int, int, int) fresh,
   ) {
-    final composed = using(
+    using(
       (arena) => rust.screenComposeOver(
         _screen,
         _engine._its(film)._screen,
@@ -2436,19 +2452,21 @@ class GpuScreen implements _OfAnEngine {
         _rect(arena, fresh),
       ),
     );
-    if (!composed) {
-      throw GpuRefused(_lastError());
-    }
+    return _engine.done();
   }
 
   /// Shows the kept canvas through the camera onto the pixels [rect] of
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
-  /// was, and submits the work, waiting for none of it ([GpuEngine.done]);
-  /// returns how many passes it took. The
-  /// camera is [inverse] — a screen pixel to the canvas's, the affine
-  /// `[a, b, c, d, e, f]` — at display [scale], device pixels a canvas
-  /// pixel, sampled by [sampling].
-  int show(
+  /// was, and submits the work as [compose] does. The camera is [inverse]
+  /// — a screen pixel to the canvas's, the affine `[a, b, c, d, e, f]` —
+  /// at display [scale], device pixels a canvas pixel, sampled by
+  /// [sampling].
+  ///
+  /// 🚨WHY IT DID NOT SHOW IS THE NEXT [GpuEngine.done]'S of this isolate
+  /// — the one its frame is put up by (`ScreenTexture.present`), asked in
+  /// the turn the frame is drawn: a done asked after another body handed
+  /// over in between would answer for that one's too.
+  void show(
     GpuTarget target, {
     required List<double> inverse,
     required double scale,
@@ -2458,25 +2476,24 @@ class GpuScreen implements _OfAnEngine {
     if (inverse.length != 6) {
       throw ArgumentError('an inverse of ${inverse.length}, not 6');
     }
-    return _checked(
-      using(
-        (arena) => rust.screenShow(
-          _screen,
-          _engine._its(_composite)._composite,
-          _engine._engine,
-          _doubles(arena, inverse),
-          scale,
-          sampling.id,
-          _engine._its(target)._texture,
-          _edges(arena, rect),
-        ),
+    using(
+      (arena) => rust.screenShow(
+        _screen,
+        _engine._its(_composite)._composite,
+        _engine._engine,
+        _doubles(arena, inverse),
+        scale,
+        sampling.id,
+        _engine._its(target)._texture,
+        _edges(arena, rect),
       ),
     );
   }
 
   /// The bytes the screen keeps on the GPU — its canvas's and the halvings
   /// it shows under 1/16 through: what a budget and the memory census weigh
-  /// it by.
+  /// it by. As of the last of its verbs the engine has run: one handed over
+  /// is counted by the time its done is told ([compose]).
   int get bytes => rust.screenBytes(_screen);
 
   /// The bytes of every screen's canvas and halvings the engine keeps, counted

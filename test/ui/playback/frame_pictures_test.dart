@@ -615,9 +615,9 @@ void main() {
       pictures.noteFailure(at(0));
       // A chain held: asked for again, it answers to the number it has.
       final held = pictures.heldNodes.idOf('a chain');
-      pictures.heldNodes.settle();
+      pictures.heldNodes.settleOnce(null);
       expect(pictures.heldNodes.idOf('a chain'), held, reason: '⛔premise');
-      pictures.heldNodes.settle();
+      pictures.heldNodes.settleOnce(null);
       var went = 0;
       pictures.store.wentWithItsTools.addListener(() => went += 1);
 
@@ -628,7 +628,7 @@ void main() {
       expect(pictures.standingOf(at(2)).state, PictureState.toCome);
       expect(pictures.standingOf(at(0)).state, PictureState.toCome);
       expect(pictures.heldNodes.idOf('a chain'), isNot(held));
-      pictures.heldNodes.settle();
+      pictures.heldNodes.settleOnce(null);
 
       expect(await pictures.make(at(0), shouldAbort: () => false), isTrue);
       expect(pictures.has(at(0)), isTrue, reason: 'laid with the next tools');

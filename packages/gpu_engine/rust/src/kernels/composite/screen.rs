@@ -36,7 +36,16 @@ impl Screen {
     /// first time — and the halvings told. Where the composite changed is
     /// the caller's to say: the kept tiles `changed` meets none of are kept
     /// as they were. An empty `changed` composites nothing on a canvas laid
-    /// already. Submits the work; [`Screen::show`] waits.
+    /// already. Submits the work, and waits for none of it.
+    ///
+    /// 🚨A CANVAS A COMPOSE FAILED ON IS NONE: made again in part, it would
+    /// show a frame that is no frame's — so it is let go of, a show fails
+    /// by name till a compose lays it whole again, and a screen's frame is
+    /// not put up meanwhile (`ScreenTexture.present`). ↩️Till 2026-11-15 a
+    /// compose's failure was thrown where it was asked, before the show
+    /// (the-ui-thread-never-enters-the-driver B1-a: a compose is handed
+    /// over unwaited now, and the show after it is handed over before its
+    /// failure is told).
     pub(crate) fn compose(
         &mut self,
         engine: &Engine,
@@ -49,7 +58,10 @@ impl Screen {
             None => self.canvas = Some(Kept::made(engine, composite, plan, self.extent, budget)?),
             Some(canvas) => {
                 let meets = |tile| meets(tile, changed);
-                canvas.made_again(engine, composite, plan, meets, budget)?;
+                if canvas.made_again(engine, composite, plan, meets, budget).is_none() {
+                    self.canvas = None;
+                    return None;
+                }
             }
         }
         self.halvings.changed(changed);
@@ -88,9 +100,9 @@ impl Screen {
     }
 
     /// The kept canvas through `camera` onto the pixels `rect` of `target`
-    /// — [left, top, right, bottom) —, the rest of it left as it was; waits
-    /// for the GPU ([`Composite::show`]) and returns how many passes it
-    /// took.
+    /// — [left, top, right, bottom) —, the rest of it left as it was;
+    /// submits the work and waits for none of it ([`Composite::show`]), and
+    /// returns how many passes it took.
     pub(crate) fn show(
         &mut self,
         engine: &Engine,

@@ -20,6 +20,9 @@ import '../helpers/engine_verbs.dart';
 /// ⏳브러시/렌더링 2026-11-14, the user asleep — theirs to overturn (관제
 /// 03:43, on the card: taken as it stands).
 ///
+/// Nor does one a verb handed over unwaited still reads and that counts
+/// nothing — a plan (B1-a, 2026-11-15; the test has why).
+///
 /// What holds nothing of a device is no engine's (`hands_bytes` — 🗣️관제
 /// 2026-11-14 05:16, the same card): its free lets go of its bytes where it
 /// is called, the GC's thread among them as before, and waits for nothing
@@ -65,8 +68,21 @@ void main() {
           'let go of their thing with `let_go_unwaited` (device.rs), and '
           'count off what it counted before that, in the verb',
     );
+    // 🚨BUT ONE A VERB HANDED OVER UNWAITED STILL READS, AND THAT COUNTS
+    // NOTHING (the-ui-thread-never-enters-the-driver B1-a, 2026-11-15): a
+    // plan, which a screen's compose reads on the engine's thread once it
+    // is handed over (`GpuScreen.compose`) — its free waiting there stood
+    // the UI behind every compose it had just handed over, and nothing it
+    // counted is to be counted off as it returns. ⏳브러시/렌더링, the user
+    // asleep; theirs to overturn.
+    const readByWhatWasHandedOver = {'gpu_engine_plan_free'};
     expect(
-      unwaited.difference(collected),
+      unwaited,
+      containsAll(readByWhatWasHandedOver),
+      reason: 'LIVENESS — a free handed over as a verb still reads its thing',
+    );
+    expect(
+      unwaited.difference(collected).difference(readByWhatWasHandedOver),
       isEmpty,
       reason: 'nothing collects these, and their thing is not gone as they '
           'return: let go of it with `let_go` (device.rs)',

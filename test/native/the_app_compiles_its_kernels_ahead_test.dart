@@ -139,8 +139,12 @@ void main() {
   }
 
   /// How many a screen built on this thread laying [nodes] — over a cel of
-  /// one inked tile — and showing them, which it does.
-  int builtHereShowing(List<CompositeNode<CanvasStackRow>> nodes) {
+  /// one inked tile — and showing them, which it does: its laying and its
+  /// show are handed to the engine unwaited, and what they build is this
+  /// thread's once they have run ([GpuEngine.done]).
+  Future<int> builtHereShowing(
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) async {
     final (:composite, :letters) = appEngineFrameToolsOpen!;
     final screen = EngineStackScreen(composite, letters);
     addTearDown(screen.free);
@@ -168,15 +172,13 @@ void main() {
       ),
       revisionOf: (_) => 1,
     );
-    final built = builtHereBy(() {
-      screen.compose(frame);
-      screen.show(
-        target,
-        view,
-        viewport: CanvasViewport(),
-        devicePixelRatio: 1,
-      );
-    });
+    final before = debugKernelsCompiledHere;
+    final composed = screen.compose(frame);
+    screen.show(target, view, viewport: CanvasViewport(), devicePixelRatio: 1);
+    final shown = appGpuEngine.done();
+    await composed;
+    await shown;
+    final built = debugKernelsCompiledHere - before;
     expect(target.fingerprint(), isNot(bare), reason: 'the frame is shown');
     return built;
   }
@@ -372,8 +374,8 @@ void main() {
     expect(screen.fingerprint(), isNot(bare), reason: 'the wave is laid');
   });
 
-  test('a frame shown on a screen builds none', () {
-    expect(builtHereShowing(const [row]), 0);
+  test('a frame shown on a screen builds none', () async {
+    expect(await builtHereShowing(const [row]), 0);
   });
 
   // As a file's frame is made (`frameOnTheEngine`): its ground laid, and a
@@ -450,9 +452,9 @@ void main() {
   }
 
   test('a frame whose folder is blurred waits for no kernel, and builds '
-      'none', () {
+      'none', () async {
     expect(
-      builtHereShowing([
+      await builtHereShowing([
         CompositeGroup(
           children: const [row],
           opacity: 1,

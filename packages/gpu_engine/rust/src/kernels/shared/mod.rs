@@ -296,10 +296,13 @@ pub(crate) fn put_built_here(built: u64) {
 /// compile is seconds on a slow device and the app stands still under it
 /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접
 /// 하는 커널 컴파일 0개」; 🔬Surface Pro 11, S5 opening: eleven of them,
-/// 15.2–15.5 s in all). The app's pin reads it there.
+/// 15.2–15.5 s in all). The app's pin reads it there — the kernels the
+/// bodies it handed over unwaited waited on among them, as far as they
+/// have run (`device::built_by_posted_here`): such a body keeps the
+/// engine's thread through a compile (`EngineThread::stands_aside`).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_kernels_built_here() -> u64 {
-    BUILT_HERE.with(Cell::get)
+    BUILT_HERE.with(Cell::get) + crate::device::built_by_posted_here()
 }
 
 /// The module and the pipeline of `source`, on the thread that asks — which

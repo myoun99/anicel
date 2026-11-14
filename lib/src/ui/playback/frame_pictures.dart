@@ -652,8 +652,11 @@ class FramePictures implements PlaybackPictures {
 
   /// The frames' pictures give way on the [line] to what a stroke's steps
   /// kept of their chains ([heldNodes]) — where they hold more than when
-  /// they last did.
-  void giveWayToSteps() {
+  /// they last did, once what the steps kept is weighed
+  /// ([EngineChainHolds.onceWeighed]).
+  void giveWayToSteps() => heldNodes.onceWeighed(_giveWayToSteps);
+
+  void _giveWayToSteps() {
     if (heldNodes.heldBytes > _gaveWayTo) {
       line?.giveWayToNodes();
       _gaveWayTo = heldNodes.heldBytes;

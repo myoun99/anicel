@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -53,7 +55,7 @@ final class EngineScreenPins {
     _watch.step('composing a frame on a screen');
     final screen = EngineStackScreen(composite, letters);
     addTearDown(screen.free);
-    screen.compose(frame);
+    unawaited(screen.compose(frame));
     final (columns, rows) = size;
     final target = shownSurfaceOf(columns, rows);
     addTearDown(target.free);

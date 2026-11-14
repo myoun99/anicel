@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -416,19 +417,18 @@ void main() {
     addTearDown(screen.free);
 
     overlay.showFillRange(FillRangeMark(range));
-    screen.compose(frame());
+    unawaited(screen.compose(frame()));
     overlay.showFillRange(FillRangeMark(range).shifted(const ui.Offset(2, 0)));
-    screen.compose(frame());
+    unawaited(screen.compose(frame()));
     expect(GpuMask.liveBytes - before, plane, reason: 'one mask, kept');
 
     overlay.showFillRange(null);
-    screen.compose(frame());
+    unawaited(screen.compose(frame()));
     expect(GpuMask.liveBytes, before, reason: 'a frame that marks none');
 
     overlay.showFillRange(FillRangeMark(range));
-    screen
-      ..compose(frame())
-      ..free();
+    unawaited(screen.compose(frame()));
+    screen.free();
     expect(GpuMask.liveBytes, before, reason: 'the screen freed');
   });
 }

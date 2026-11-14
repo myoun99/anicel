@@ -110,6 +110,18 @@ pub(crate) fn stored(tiles: &[Vec<u8>]) -> (Pool, Vec<TileAt>) {
     (pool, places)
 }
 
+/// What the calling thread's next done on `engine` is told
+/// (`Engine::done_then`): the bodies it handed over unwaited through, or
+/// the first that failed and why, and the GPU done with what they
+/// submitted.
+pub(crate) fn done_here(engine: &Engine) -> Result<(), String> {
+    let (tell, told) = std::sync::mpsc::channel();
+    engine.done_then(move |done| {
+        let _ = tell.send(done);
+    });
+    told.recv().expect("a done is told, once")
+}
+
 /// The last error a call of the C ABI left, as the app reads it.
 pub fn last_error() -> String {
     let mut buffer = [0u8; 256];

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +41,8 @@ import '../helpers/engine_screen_pins.dart';
 /// on another paper; a row a posed lens reads as its map lays what its
 /// chain put where it shows by itself. What is held fits the room
 /// it is given, the hold used longest ago let go first, and the engine
-/// counts what it keeps; a store's screens hold in the store's.
+/// counts what it keeps; a store's screens hold in the store's. Each is
+/// weighed once the runs naming it are done.
 void main() {
   // The letters read their faces from the bundle.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -211,15 +213,16 @@ void main() {
   }
 
   /// What a screen holding its chains' puts in [holds] shows of [frame], on
-  /// a page of [size].
-  int laidWith(
+  /// a page of [size] — once the GPU has laid it, and what it kept is
+  /// weighed ([EngineChainHolds.settleOnce]).
+  Future<int> laidWith(
     EngineChainHolds holds,
     StackedFrame frame, {
     CanvasSize size = canvas,
-  }) {
+  }) async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
-    screen.compose(frame, holds: holds);
+    await screen.compose(frame, holds: holds);
     return shownBy(
       (target) => screen.show(
         target,
@@ -237,39 +240,40 @@ void main() {
       engine.shown(frame, size: (size.width, size.height));
 
   for (final MapEntry(key: name, value: tree) in trees.entries) {
-    test('🚨$name laid again as what it shows lays what its chain put', () {
+    test('🚨$name laid again as what it shows lays what its chain '
+        'put', () async {
       final holds = holdsIn(1 << 30);
-      final first = laidWith(holds, frameOf(5, tree: tree));
+      final first = await laidWith(holds, frameOf(5, tree: tree));
       expect(first, laid(frameOf(5, tree: tree)), reason: 'a miss runs it');
 
       expect(
-        laidWith(holds, frameOf(9, tree: tree)),
+        await laidWith(holds, frameOf(9, tree: tree)),
         first,
         reason: 'what it put laid',
       );
       expect(laid(frameOf(9, tree: tree)), isNot(first), reason: 'it differs');
     });
 
-    test('$name that shows another picture runs its chain again', () {
+    test('$name that shows another picture runs its chain again', () async {
       final holds = holdsIn(1 << 30);
-      laidWith(holds, frameOf(5, tree: tree));
+      await laidWith(holds, frameOf(5, tree: tree));
 
       expect(
-        laidWith(holds, frameOf(9, revision: 2, tree: tree)),
+        await laidWith(holds, frameOf(9, revision: 2, tree: tree)),
         laid(frameOf(9, tree: tree)),
       );
     });
   }
 
-  test('🚨a folder a row is drawn live in runs its chain each time', () {
+  test('🚨a folder a row is drawn live in runs its chain each time', () async {
     final holds = holdsIn(1 << 30);
-    expect(laidWith(holds, liveFrameOf(5)), laid(liveFrameOf(5)));
+    expect(await laidWith(holds, liveFrameOf(5)), laid(liveFrameOf(5)));
 
-    expect(laidWith(holds, liveFrameOf(9)), laid(liveFrameOf(9)));
+    expect(await laidWith(holds, liveFrameOf(9)), laid(liveFrameOf(9)));
     expect(holds.heldBytes, 0);
   });
 
-  test('🚨a folder on another paper runs its chain there', () {
+  test('🚨a folder on another paper runs its chain there', () async {
     const narrow = CanvasSize(width: 192, height: 128);
     final tree = [
       CompositeGroup<CanvasStackRow>(
@@ -280,15 +284,16 @@ void main() {
       ),
     ];
     final holds = holdsIn(1 << 30);
-    laidWith(holds, frameOf(5, tree: tree));
+    await laidWith(holds, frameOf(5, tree: tree));
 
     expect(
-      laidWith(holds, frameOf(5, tree: tree, size: narrow), size: narrow),
+      await laidWith(holds, frameOf(5, tree: tree, size: narrow), size: narrow),
       laid(frameOf(5, tree: tree, size: narrow), size: narrow),
     );
   });
 
-  test('🚨a row a posed lens reads as its map lays what its chain put', () {
+  test('🚨a row a posed lens reads as its map lays what its chain '
+      'put', () async {
     // Its chain puts its own pixels, wherever it is laid: one hold, one run.
     final read = CompositeReadsRows<CanvasStackRow>(
       node: rowOf(
@@ -307,20 +312,20 @@ void main() {
       read,
     ];
     final weighed = holdsIn(1 << 30);
-    laidWith(weighed, frameOf(5, tree: [read]));
+    await laidWith(weighed, frameOf(5, tree: [read]));
     final holds = holdsIn(1 << 30);
 
     expect(
-      laidWith(holds, frameOf(5, tree: tree)),
+      await laidWith(holds, frameOf(5, tree: tree)),
       laid(frameOf(5, tree: tree)),
     );
     expect(holds.heldBytes, weighed.heldBytes, reason: 'its map held as it');
   });
 
-  test('🚨the engine counts what the holds keep, and gives it back', () {
+  test('🚨the engine counts what the holds keep, and gives it back', () async {
     final before = GpuHeldChains.liveBytes;
     final holds = holdsIn(1 << 30);
-    laidWith(holds, frameOf(5));
+    await laidWith(holds, frameOf(5));
 
     expect(holds.heldBytes, greaterThan(0));
     expect(GpuHeldChains.liveBytes - before, holds.heldBytes);
@@ -328,23 +333,23 @@ void main() {
     expect(GpuHeldChains.liveBytes - before, 0);
   });
 
-  test('what does not fit the room is not held', () {
+  test('what does not fit the room is not held', () async {
     final before = GpuHeldChains.liveBytes;
     final holds = holdsIn(0);
 
-    expect(laidWith(holds, frameOf(5)), laid(frameOf(5)));
+    expect(await laidWith(holds, frameOf(5)), laid(frameOf(5)));
     expect(holds.heldBytes, 0);
     expect(GpuHeldChains.liveBytes - before, 0);
-    expect(laidWith(holds, frameOf(9)), laid(frameOf(9)));
+    expect(await laidWith(holds, frameOf(9)), laid(frameOf(9)));
   });
 
-  test('past the room the hold used longest ago is let go of', () {
+  test('past the room the hold used longest ago is let go of', () async {
     final weighed = holdsIn(1 << 30);
-    laidWith(weighed, frameOf(5));
+    await laidWith(weighed, frameOf(5));
     final before = GpuHeldChains.liveBytes;
     final holds = holdsIn(weighed.heldBytes);
-    laidWith(holds, frameOf(5));
-    laidWith(holds, frameOf(7, revision: 2));
+    await laidWith(holds, frameOf(5));
+    await laidWith(holds, frameOf(7, revision: 2));
 
     expect(holds.heldBytes, weighed.heldBytes);
     expect(
@@ -353,25 +358,33 @@ void main() {
       reason: 'the engine let go of it too',
     );
     expect(
-      laidWith(holds, frameOf(11, revision: 2)),
+      await laidWith(holds, frameOf(11, revision: 2)),
       laid(frameOf(7)),
       reason: 'the newest kept',
     );
-    expect(laidWith(holds, frameOf(9)), laid(frameOf(9)), reason: 'let go');
+    expect(
+      await laidWith(holds, frameOf(9)),
+      laid(frameOf(9)),
+      reason: 'let go',
+    );
   });
 
-  test('a hold laid again is the one used last', () {
+  test('a hold laid again is the one used last', () async {
     final weighed = holdsIn(1 << 30);
-    laidWith(weighed, frameOf(5));
+    await laidWith(weighed, frameOf(5));
     final holds = holdsIn(2 * weighed.heldBytes);
-    final first = laidWith(holds, frameOf(5));
-    laidWith(holds, frameOf(7, revision: 2));
-    laidWith(holds, frameOf(9));
-    laidWith(holds, frameOf(11, revision: 3));
+    final first = await laidWith(holds, frameOf(5));
+    await laidWith(holds, frameOf(7, revision: 2));
+    await laidWith(holds, frameOf(9));
+    await laidWith(holds, frameOf(11, revision: 3));
 
-    expect(laidWith(holds, frameOf(13)), first, reason: 'used last, kept');
     expect(
-      laidWith(holds, frameOf(15, revision: 2)),
+      await laidWith(holds, frameOf(13)),
+      first,
+      reason: 'used last, kept',
+    );
+    expect(
+      await laidWith(holds, frameOf(15, revision: 2)),
       laid(frameOf(15)),
       reason: 'used longest ago, let go',
     );
@@ -401,5 +414,62 @@ void main() {
 
     expect(first, laid(frameOf(5)));
     expect(next, first);
+  });
+
+  // A screen's compose is handed to the engine unwaited
+  // (`GpuScreen.compose`): what its chains kept is there once it is done
+  // (the-ui-thread-never-enters-the-driver B1-a, 2026-11-15).
+  group('🚨weighed once their runs are done', () {
+    test('a hold named by runs still to come is weighed once the last is '
+        'done, and what waits for it runs then, once', () async {
+      final holds = holdsIn(1 << 30);
+      final id = holds.idOf('a');
+      final run = Completer<void>();
+      holds.settleOnce(run.future);
+      var weighed = 0;
+      void count() => weighed += 1;
+      holds
+        ..onceWeighed(count)
+        ..onceWeighed(count);
+
+      expect(holds.idOf('a'), id, reason: 'one number while it is to come');
+      holds.settleOnce(null);
+      expect(weighed, 0, reason: 'a run still to come');
+      run.complete();
+      await pumpEventQueue();
+
+      expect(weighed, 1);
+      expect(holds.idOf('a'), id, reason: 'kept');
+      holds.settleOnce(null);
+    });
+
+    test('a run that failed is weighed too', () async {
+      final holds = holdsIn(1 << 30);
+      holds.idOf('a');
+      final run = Completer<void>();
+      holds.settleOnce(run.future);
+      var weighed = false;
+      holds.onceWeighed(() => weighed = true);
+
+      run.completeError(StateError('refused'));
+      await pumpEventQueue();
+
+      expect(weighed, isTrue);
+    });
+
+    test('a hold let go of while its run is to come is not kept once it is '
+        'done', () async {
+      final holds = holdsIn(1 << 30);
+      final id = holds.idOf('a');
+      final run = Completer<void>();
+      holds.settleOnce(run.future);
+
+      holds.clear();
+      run.complete();
+      await pumpEventQueue();
+
+      expect(holds.idOf('a'), isNot(id));
+      holds.settleOnce(null);
+    });
   });
 }

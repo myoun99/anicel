@@ -501,6 +501,30 @@ fn a_screen_is_shown_once_its_canvas_is_composed() {
     assert_eq!(crate::last_error(), "a screen is shown before anything is composed on it");
 }
 
+// 🚨A canvas a compose failed on is none (`Screen::compose`'s 🚨): the
+// show after it fails by name, not with a canvas made again in part — the
+// frame a screen puts up stays what it was — and the next compose lays
+// it whole.
+#[test]
+fn a_compose_that_fails_leaves_no_canvas_to_show() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+    let (pages, set, _) = composite_of(noise(41), CANVAS);
+    screen.compose(engine, composite, &laid(&pages, &set), PAGE, budget).expect("compose");
+    let refused = Plan { sets: &[], ..laid(&pages, &set) };
+    assert!(screen.compose(engine, composite, &refused, [0, 0, 1, 1], budget).is_none());
+    assert_eq!(crate::last_error(), "step 0 lays tile set 0 of 0");
+    let texture = surface(SCREEN, wgpu::TextureFormat::Rgba8Unorm);
+    let to = camera(1.0, (1.0, 0.0), (0.0, 0.0));
+    let shown = screen.show(engine, composite, to, &texture, [0, 0, 1, 1], budget);
+    assert!(shown.is_none(), "a canvas a compose failed on was shown");
+    assert_eq!(crate::last_error(), "a screen is shown before anything is composed on it");
+    let (pages, set, _) = composite_of(noise(42), CANVAS);
+    screen.compose(engine, composite, &laid(&pages, &set), [0, 0, 1, 1], budget).expect("compose");
+    assert!(canvas_bytes(&screen) == composited_whole(noise(42)), "not laid whole again");
+}
+
 // A tile meets a rectangle holding one of its pixels: its first and last
 // column and row, and not the pixel just past either.
 #[test]

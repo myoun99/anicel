@@ -1059,7 +1059,7 @@ external int picturesIdleBytes(Pointer<Engine> engine);
 external void picturesGiveBack(Pointer<Engine> engine, int mostIdle);
 
 @Native<
-  Bool Function(
+  Void Function(
     Pointer<Screen>,
     Pointer<Composite>,
     Pointer<Engine>,
@@ -1068,7 +1068,7 @@ external void picturesGiveBack(Pointer<Engine> engine, int mostIdle);
     Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_screen_compose')
-external bool screenCompose(
+external void screenCompose(
   Pointer<Screen> screen,
   Pointer<Composite> composite,
   Pointer<Engine> engine,
@@ -1078,7 +1078,7 @@ external bool screenCompose(
 );
 
 @Native<
-  Bool Function(
+  Void Function(
     Pointer<Screen>,
     Pointer<Screen>,
     Pointer<Composite>,
@@ -1088,7 +1088,7 @@ external bool screenCompose(
     Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_screen_compose_over')
-external bool screenComposeOver(
+external void screenComposeOver(
   Pointer<Screen> screen,
   Pointer<Screen> film,
   Pointer<Composite> composite,
@@ -1099,7 +1099,7 @@ external bool screenComposeOver(
 );
 
 @Native<
-  IntPtr Function(
+  Void Function(
     Pointer<Screen>,
     Pointer<Composite>,
     Pointer<Engine>,
@@ -1110,7 +1110,7 @@ external bool screenComposeOver(
     Pointer<Uint32>,
   )
 >(symbol: 'gpu_engine_screen_show')
-external int screenShow(
+external void screenShow(
   Pointer<Screen> screen,
   Pointer<Composite> composite,
   Pointer<Engine> engine,

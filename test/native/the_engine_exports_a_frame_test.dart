@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
 
@@ -56,7 +57,7 @@ void main() {
     final whole = (0, 0, width, height);
     final screen = GpuScreen(composite, whole);
     addTearDown(screen.free);
-    screen.compose(pool, plan, whole);
+    unawaited(screen.compose(pool, plan, whole));
     final surface = ScreenTexture.surfaceOf(appGpuEngine, width, height);
     addTearDown(surface.free);
     screen.show(

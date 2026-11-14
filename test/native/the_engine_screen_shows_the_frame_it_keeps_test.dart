@@ -270,11 +270,12 @@ void main() {
     );
   }
 
-  test('the screen shows the frame the engine lays, through the view', () {
+  test('the screen shows the frame the engine lays, through the '
+      'view', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     final surface = cel(3);
-    screen.compose(frameOf(surface));
+    await screen.compose(frameOf(surface));
 
     showsThrough(screen, ranOver(surface), views);
   });
@@ -282,31 +283,32 @@ void main() {
   // A change composed where it lies shows, at rest and past the page alike:
   // a mark across the page's left edge, told where it changed; and a frame
   // told nothing of where is laid everywhere.
-  test('a change composed where it lies is the frame the engine lays', () {
+  test('a change composed where it lies is the frame the engine '
+      'lays', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
-    screen.compose(frameOf(cel(5)));
+    await screen.compose(frameOf(cel(5)));
     const marked = (-20, 10, 40, 50);
     final changed = cel(5, marked: marked);
-    screen.compose(frameOf(changed), changed: rectOf(marked));
+    await screen.compose(frameOf(changed), changed: rectOf(marked));
 
     showsThrough(screen, ranOver(changed), views.take(2));
 
     final another = cel(7);
-    screen.compose(frameOf(another));
+    await screen.compose(frameOf(another));
 
     showsThrough(screen, ranOver(another), views.take(2));
   });
 
   // A change the screen is not told of is kept as it was: the frame is
   // made again where it is told it changed, not everywhere.
-  test('a change not told of is not composed', () {
+  test('a change not told of is not composed', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     final before = cel(5);
-    screen.compose(frameOf(before));
+    await screen.compose(frameOf(before));
     final marked = cel(5, marked: (200, 60, 220, 80));
-    screen.compose(frameOf(marked), changed: rectOf((10, 10, 20, 20)));
+    await screen.compose(frameOf(marked), changed: rectOf((10, 10, 20, 20)));
 
     showsThrough(screen, ranOver(before), views.take(1));
     expect(
@@ -318,12 +320,12 @@ void main() {
 
   // A frame of another world — its pasteboard tile wiped — is laid on a
   // screen of that world, whole: nothing of the world kept before shows.
-  test('a frame of another world is laid whole', () {
+  test('a frame of another world is laid whole', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
-    screen.compose(frameOf(cel(5)));
+    await screen.compose(frameOf(cel(5)));
     final within = cel(5, over: const [0, 1]);
-    screen.compose(frameOf(within), changed: rectOf((10, 10, 20, 20)));
+    await screen.compose(frameOf(within), changed: rectOf((10, 10, 20, 20)));
 
     showsThrough(screen, ranOver(within), views.take(2));
   });
@@ -331,16 +333,20 @@ void main() {
   // A frame laid over a film is its own frame on the tile it is fresh on —
   // the page's first — and the film's as it is on the others, the
   // pasteboard's and the page's second, through every view.
-  test('a frame laid over a film is the film but where it is fresh', () {
+  test('a frame laid over a film is the film but where it is fresh', () async {
     final film = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(film.free);
     final under = cel(5);
-    film.compose(frameOf(under));
+    await film.compose(frameOf(under));
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     final frame = cel(7);
 
-    screen.composeOver(film, frameOf(frame), fresh: rectOf((10, 10, 20, 20)));
+    await screen.composeOver(
+      film,
+      frameOf(frame),
+      fresh: rectOf((10, 10, 20, 20)),
+    );
 
     final (mine, theirs) = (ranOver(frame), ranOver(under));
     showsThrough(
@@ -354,7 +360,7 @@ void main() {
   // laid on already, a frame over a film is refused with the engine's
   // reason.
   test('a frame over a film of nothing is laid whole, and over a film onto '
-      'a screen laid already refused', () {
+      'a screen laid already refused', () async {
     final film = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(film.free);
     final screen = EngineStackScreen(engine.composite, engine.letters);
@@ -362,12 +368,12 @@ void main() {
     final frame = cel(7);
     final fresh = rectOf((10, 10, 20, 20));
 
-    screen.composeOver(film, frameOf(frame), fresh: fresh);
+    await screen.composeOver(film, frameOf(frame), fresh: fresh);
 
     showsThrough(screen, ranOver(frame), views.take(1));
-    film.compose(frameOf(cel(5)));
-    expect(
-      () => screen.composeOver(film, frameOf(frame), fresh: fresh),
+    await film.compose(frameOf(cel(5)));
+    await expectLater(
+      screen.composeOver(film, frameOf(frame), fresh: fresh),
       throwsA(
         isA<StateError>().having(
           (error) => error.message,
@@ -382,12 +388,12 @@ void main() {
   // past it — and, once it shows under 1/16, the halvings it shows through;
   // a frame of another world is kept on that world's tiles alone.
   test('the screen keeps the bytes of the world it lays, and of its '
-      'halvings', () {
+      'halvings', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     expect(screen.bytes, 0, reason: 'nothing laid');
     const tile = side * side * 4;
-    screen.compose(frameOf(cel(5)));
+    await screen.compose(frameOf(cel(5)));
     expect(screen.bytes, 3 * tile);
 
     final target = shownSurfaceOf(64, 48);
@@ -398,9 +404,11 @@ void main() {
       viewport: CanvasViewport(zoom: 1 / 32),
       devicePixelRatio: 1,
     );
+    // Told by the show once it has run on the engine's thread.
+    await engine.composite.engine.done();
     expect(screen.bytes, greaterThan(3 * tile), reason: 'its halvings');
 
-    screen.compose(frameOf(cel(5, over: const [0, 1])));
+    await screen.compose(frameOf(cel(5, over: const [0, 1])));
     expect(screen.bytes, 2 * tile, reason: 'another world');
   });
 }

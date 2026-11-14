@@ -40,7 +40,11 @@ final class EngineStackScreen {
   /// the one kept: a stroke past the page grows it. Where it changed is
   /// the caller's to say ([StackedFrame.movedSince]); null is everywhere.
   /// Its chains' puts are held in [holds], if any.
-  void compose(
+  ///
+  /// Ends once the GPU has laid it, or fails by why it did not: the
+  /// engine lays it with this isolate waiting for none of it
+  /// ([GpuScreen.compose]).
+  Future<void> compose(
     StackedFrame frame, {
     Rect? changed,
     EngineChainHolds? holds,
@@ -56,8 +60,8 @@ final class EngineStackScreen {
   /// [film]'s kept frame, copied tile by tile as it is — a frame over the
   /// frame its ghosts lie on, which the tiles they do not reach show as it
   /// does. Over a film nothing is laid on, all of it; onto a screen laid
-  /// on already, refused with the engine's reason.
-  void composeOver(
+  /// on already, refused with the engine's reason. Ends as [compose] does.
+  Future<void> composeOver(
     EngineStackScreen film,
     StackedFrame frame, {
     required Rect fresh,
@@ -65,10 +69,9 @@ final class EngineStackScreen {
   }) {
     final under = film._screen;
     if (under == null) {
-      compose(frame, holds: holds);
-      return;
+      return compose(frame, holds: holds);
     }
-    _laid(
+    return _laid(
       frame,
       holds,
       (screen, pool, plan, _) =>
@@ -78,18 +81,24 @@ final class EngineStackScreen {
 
   /// [frame]'s rows planned ([_planned]) and handed to [lay] with the kept
   /// frame — made again over the world the frame holds where it is not the
-  /// one kept. Its chains' puts are held in [holds], if any.
+  /// one kept: what [lay] ends by. Its chains' puts are held in [holds], if
+  /// any.
   ///
   /// Throws [FrameKernelsToCome], nothing laid, where the frame has an
   /// effect chain and the chains' kernels are not compiled yet.
-  void _laid(
+  Future<void> _laid(
     StackedFrame frame,
     EngineChainHolds? holds,
-    void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
+    Future<void> Function(
+      GpuScreen screen,
+      GpuPool pool,
+      GpuPlan plan,
+      Rect world,
+    )
     lay,
   ) {
     final stages = FxPluginStages.recording;
-    _planned(
+    final laid = _planned(
       frame,
       _composite,
       _letters,
@@ -102,16 +111,17 @@ final class EngineStackScreen {
           // (🗣️I-132-Q34 a).
           final nowhere = GpuScreen(_composite, _edgesOf(world));
           try {
-            lay(nowhere, pool, plan, world);
+            return lay(nowhere, pool, plan, world);
           } finally {
             nowhere.free();
           }
-        } else {
-          lay(_screenOver(world), pool, plan, world);
         }
+        return lay(_screenOver(world), pool, plan, world);
       },
+      doneOf: (laid) => laid,
     );
     _range.settle();
+    return laid;
   }
 
   /// The screen kept, made again where it is not of [world].
@@ -266,7 +276,10 @@ GpuFloodPicture fillPictureOf(
 /// [maskOf] gives its cover, and each node's chain is held in [holds], if
 /// any, as what the node shows ([_FrameReading._pictureOf]) on this paper
 /// ([_holding]) — and what its plug-ins' steps make kept past it where
-/// those are the pen's frame's ([EngineChainHolds.ofThePensFrame]).
+/// those are the pen's frame's ([EngineChainHolds.ofThePensFrame]). Those
+/// are weighed once [run]'s work is done: when [doneOf] its answer ends,
+/// where the engine runs it with no one waiting ([GpuScreen.compose]) —
+/// as it is answered, with none.
 ///
 /// 🚨ONE PLANNING: what a screen keeps ([EngineStackScreen._laid]) and what
 /// a fill reads ([fillPictureOf]) are the same rows by the same law.
@@ -280,6 +293,7 @@ T _planned<T>(
   required GpuMask Function(FloodFillRegion cover) maskOf,
   required EngineChainHolds? holds,
   required T Function(GpuPool pool, GpuPlan plan, Rect world) run,
+  Future<void>? Function(T ran)? doneOf,
 }) {
   final pass = _FrameReading(frame._painter);
   // A frame of nothing keeps one pixel of nothing: shown through any
@@ -295,6 +309,7 @@ T _planned<T>(
       Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>>.identity();
   return ledger.held((hold) {
     final plan = GpuPlan(composite.engine);
+    Future<void>? done;
     try {
       planCompositeTree(
         plan,
@@ -318,10 +333,12 @@ T _planned<T>(
       // Not run while its chains' kernels are still to be compiled: the
       // run would compile them here, the app stopped meanwhile.
       FrameKernelsToCome.throwIfNamedBy(plan, composite);
-      return run(ledger.pool, plan, world);
+      final ran = run(ledger.pool, plan, world);
+      done = doneOf?.call(ran);
+      return ran;
     } finally {
       plan.free();
-      holds?.settle();
+      holds?.settleOnce(done);
     }
   });
 }

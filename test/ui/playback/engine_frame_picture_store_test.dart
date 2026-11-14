@@ -784,15 +784,16 @@ void main() {
       final before = GpuScreen.liveBytes;
       final store = storeCountingItsTools();
       final laying = store.lay('a', frameOf(cel(5)));
-      // Its turn comes with the tools, ahead of this.
+      // Its turn comes with the tools, ahead of this: handed to the engine,
+      // and answered once the GPU has laid it (`GpuScreen.compose`).
       await store.tools;
-      expect(keptSince(before), picture, reason: '⛔premise: it is laid');
-      expect(store.holds('a'), isFalse, reason: '⛔premise: and on its way');
+      expect(store.holds('a'), isFalse, reason: '⛔premise: on its way');
 
       store.letGoWithItsTools();
 
       expect(await laying, isNull);
-      await pumpEventQueue();
+      // Asked after its own: told once it is laid, and it has come.
+      await engine.composite.engine.done();
       expect(store.holds('a'), isFalse);
       expect(keptSince(before), 0);
     });

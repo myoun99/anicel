@@ -6,7 +6,8 @@
 //! a thread that matters, so this one reads the sources — every verb they
 //! export, by what it is handed:
 //!
-//! - the engine: its body goes through the door (`Engine::on_thread`), or
+//! - the engine: its body goes through the door (`Engine::on_thread`, or
+//!   `Engine::posted`, its caller waiting for none of it), or
 //!   it is handed the engine for nothing but to hand its thing out by it
 //!   ([`hands_out_alone`]), or it is on the ledger with why it stays on its
 //!   caller's ([`ON_THEIR_CALLERS`]);
@@ -185,11 +186,12 @@ fn handed_the_engine(verb: &Verb) -> bool {
     ["engine: *const Engine", "engine: *mut Engine"].iter().any(|engine| verb.signature.contains(engine))
 }
 
-/// Whether `body` hands itself to the engine's thread.
+/// Whether `body` hands itself to the engine's thread — waited for there,
+/// or not (`Engine::posted`).
 fn on_the_engines_thread(body: &str) -> bool {
     // `run_lent` is the thread's own hand, where the engine is let go on it
     // (`gpu_engine_close`).
-    body.contains(".on_thread(") || body.contains(".run_lent(")
+    [".on_thread(", ".run_lent(", ".posted("].iter().any(|door| body.contains(door))
 }
 
 /// Whether `body` names the engine for nothing but to hand out by it the

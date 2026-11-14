@@ -639,7 +639,16 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// a store that was not asked at a paint: shown again. A write made in a
   /// frame's own phases is another view's paint's, and this one's paint
   /// comes after that frame.
+  ///
+  /// A step that did not go in, the engine says once it is through
+  /// ([EngineFramePicture.failed]): the frame is drawn as it stands from
+  /// here on, never as the picture without it (F-509), as [_writeIn] does
+  /// with a step refused where it is asked.
   void _written() {
+    if (_shown?.failed case final failed? when !_standing.whole) {
+      _standing.whole = true;
+      _report(failed, 'writing a step into the picture shown');
+    }
     if (_writing) {
       return;
     }
@@ -1152,12 +1161,25 @@ class _FramePictureViewState extends State<FramePictureView> {
     final (:composite, :letters) = _store.toolsOpen!;
     final screen = _standingOn ??= EngineStackScreen(composite, letters);
     if (!identical(_composedOn, frame) || _standingMoved) {
-      screen.compose(
+      final composed = screen.compose(
         frame,
         holds: widget.live == null ? null : _pictures.heldNodes,
       );
       _composedOn = frame;
       _standingMoved = false;
+      unawaited(
+        composed.then<void>(
+          (_) {},
+          onError: (Object error, StackTrace stack) {
+            // Composed again at the next paint, as one refused where it was
+            // asked was: the screen keeps no canvas it failed on.
+            if (identical(_composedOn, frame)) {
+              _composedOn = null;
+            }
+            _report((error, stack), 'drawing a frame as it stands');
+          },
+        ),
+      );
     }
     return screen;
   }

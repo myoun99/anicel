@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
+use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
 use crate::kernels::shared::{built_here, put_built_here};
@@ -80,6 +81,33 @@ pub struct Engine {
     /// Why each wait no caller stayed for failed, till the caller asks
     /// ([`gpu_engine_done_failure`]).
     ended: Ended,
+    /// What the bodies handed over unwaited refused, till a done tells it
+    /// ([`Engine::posted`]).
+    posted_refused: PostedRefused,
+}
+
+/// What the bodies handed to the engine's thread unwaited refused
+/// ([`Engine::posted`]) that no done has told yet: the first of each
+/// calling thread's since one was told, by that thread — so a worker's
+/// fails no done of the UI's.
+#[derive(Clone, Default)]
+struct PostedRefused(Arc<Mutex<HashMap<ThreadId, String>>>);
+
+impl PostedRefused {
+    fn kept(&self) -> std::sync::MutexGuard<'_, HashMap<ThreadId, String>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// `error`, a body of `by`'s, kept where it is the first since one of
+    /// `by`'s was told.
+    fn note(&self, by: ThreadId, error: String) {
+        self.kept().entry(by).or_insert(error);
+    }
+
+    /// What a body of `by`'s refused, taken: no done tells it after.
+    fn taken(&self, by: ThreadId) -> Option<String> {
+        self.kept().remove(&by)
+    }
 }
 
 /// What the engine's device refused that no wait has told yet, and whether
@@ -441,6 +469,7 @@ impl Engine {
                     work: Default::default(),
                     refusals,
                     ended: Ended::default(),
+                    posted_refused: PostedRefused::default(),
                     instance,
                     adapter,
                     device,
@@ -468,9 +497,7 @@ impl Engine {
     /// GPU has finished everything submitted — as long as that takes — and
     /// returns at once with what waits it out ([`Poll`]).
     fn poll(&self) -> Poll {
-        let device = self.device.clone();
-        let answer = self.polls.asked(move || polled(&device)).ok_or_else(last_error);
-        Poll { asked: Instant::now(), answer }
+        Poll::asked_of(&self.polls, &self.device)
     }
 
     /// Whether the device is gone ([`Refusals`]): nothing made on this
@@ -512,9 +539,50 @@ impl Engine {
     /// put off to stage 2 of the-ui-thread-never-enters-the-driver, not
     /// thrown out (관제 2026-11-14 01:21): the stage where a verb hands its
     /// body here and waits for none of it, each family's bodies written
-    /// again as it goes.
+    /// again as it goes — through [`Self::posted`].
     pub(crate) fn on_thread<T>(&self, work: impl FnOnce() -> T) -> T {
         self.thread.run_lent(work)
+    }
+
+    /// `body`, run on the engine's thread in its turn, its caller waiting
+    /// for none of it ([`EngineThread::posts`]) — stage 2's door
+    /// (the-ui-thread-never-enters-the-driver B1-a): for a verb whose
+    /// caller takes nothing back from its body but whether it worked. That
+    /// a done tells: where the body fails, its failure is kept for the
+    /// thread that handed it over — the first since one was told
+    /// ([`PostedRefused`]) — and that thread's next done fails by it
+    /// ([`Self::done_then`]). So a caller that asks for a done in the turn
+    /// it hands a body over is told of that body: none of its others comes
+    /// between. What the body counts on its thread — its waits, the
+    /// compiles it waited for — is counted on its caller's once it has
+    /// run ([`POSTED_HERE`]), as a lent body's is ([`Callers`]).
+    ///
+    /// 🗣️관제 2026-11-15 05:09: 「메모리가 없을 때는 드물지 않다 — 구형 · 약한
+    /// 기기 방침상 그 기기가 바로 메모리가 모자란 기기다」 — a body that fails
+    /// is a frame's picture baked wrong and kept, where nothing tells it.
+    /// ⏳(브러시/렌더링 2026-11-15, the user asleep — theirs to overturn)
+    /// ⛔Not noted as an error no scope caught ([`Refusals`]): that one is
+    /// told by the first wait to end, and a done asked before the body can
+    /// end after it, and take it. ⛔Nor a done of its own for each body: a
+    /// screen's frame is put up by the done its screen asks
+    /// (`ScreenTexture.present`), in the turn it is shown — 🗣️관제
+    /// 2026-11-15 05:20 asked that turn pinned.
+    pub(crate) fn posted(&self, body: impl FnOnce() -> Option<()> + Send + 'static) {
+        let (caller, refused) = (std::thread::current().id(), self.posted_refused.clone());
+        let counted = POSTED_HERE.with(Arc::clone);
+        self.thread.posts(move || {
+            let (waited, built) = (WAITED_HERE.get(), built_here());
+            let worked = catch_unwind(AssertUnwindSafe(body));
+            counted.add(WAITED_HERE.get() - waited, built_here() - built);
+            match worked {
+                Ok(Some(())) => {}
+                Ok(None) => refused.note(caller, take_last_error()),
+                Err(panic) => {
+                    refused.note(caller, "it panicked".to_owned());
+                    resume_unwind(panic);
+                }
+            }
+        });
     }
 
     /// `made`, handed to the caller over the ABI: a pointer to it, good
@@ -671,20 +739,27 @@ impl Engine {
         answered(&mapping)
     }
 
-    /// [`Self::map`] with no wait for the caller, who goes on
-    /// ([`Self::done_then`]): `then` is told `buffer`, mapped, or why it is
-    /// not.
+    /// [`Self::map`] with no wait for the caller, who goes on, as
+    /// [`Self::done_then`] waits — polled where it is asked, a body's own
+    /// work: `then` is told `buffer`, mapped, or why it is not.
     pub(crate) fn map_then(
         &self,
         buffer: wgpu::Buffer,
         then: impl FnOnce(Result<wgpu::Buffer, String>) + Send + 'static,
     ) {
         let mapping = asked_to_map(&buffer);
-        self.done_then(move |done| {
+        let mapped = move |done: Result<(), String>| {
             then(done.and_then(|()| {
                 answered(&mapping).map(|()| buffer).ok_or_else(last_error)
             }));
-        });
+        };
+        // Polled from here, the body that asks: what a body handed over
+        // unwaited refused is no word on this one's map ([`Self::posted`]).
+        Told { then: Some(mapped), refusals: self.refusals.clone() }.once_polled(
+            &self.tells,
+            self.poll(),
+            WAIT_LIMIT,
+        );
     }
 
     /// [`Self::wait`] with none for the caller, who goes on: a thread of the
@@ -704,16 +779,25 @@ impl Engine {
     /// entered the driver on, and what the caller submitted meanwhile went
     /// behind it, as long as the GPU still took over what was submitted
     /// before ([`EngineThread`] has what stood there once the bodies did).
+    ///
+    /// 🚨THE POLL IS ASKED FROM THE BODIES' THREAD, IN TURN BEHIND EVERY
+    /// BODY HANDED THERE BEFORE IT (the-ui-thread-never-enters-the-driver
+    /// B1-a, 2026-11-15): a body handed over unwaited ([`Self::posted`])
+    /// may not have submitted yet as its caller asks, and a poll asked
+    /// before that submit answers without it — a screen's frame put up
+    /// before the GPU had drawn it. There, too, it takes what such a body
+    /// of the caller's refused ([`PostedRefused`]), and fails by it.
     pub(crate) fn done_then(&self, then: impl FnOnce(Result<(), String>) + Send + 'static) {
         self.done_within(WAIT_LIMIT, then);
     }
 
     fn done_within(&self, limit: Duration, then: impl FnOnce(Result<(), String>) + Send + 'static) {
         let told = Told { then: Some(then), refusals: self.refusals.clone() };
-        let poll = self.poll();
-        self.tells.post(move || {
-            let done = poll.within(limit, &told.refusals);
-            told.tell(done.ok_or_else(last_error));
+        let (asker, refused) = (std::thread::current().id(), self.posted_refused.clone());
+        let (polls, device, tells) = (self.polls.clone(), self.device.clone(), self.tells.clone());
+        self.thread.posts(move || match refused.taken(asker) {
+            Some(why) => told.tell(Err(format!("a body handed over unwaited failed: {why}"))),
+            None => told.once_polled(&tells, Poll::asked_of(&polls, &device), limit),
         });
     }
 
@@ -754,6 +838,38 @@ thread_local! {
     /// one made in its place ([`EngineThread::stands_aside`]): it ends with
     /// the job it is in.
     static STOOD_ASIDE: Cell<bool> = const { Cell::new(false) };
+    /// Whether the job this thread, an engine's, is in was handed it
+    /// unwaited ([`EngineThread::posts`]): it keeps its turn through a
+    /// compile ([`EngineThread::stands_aside`]).
+    static POSTED: Cell<bool> = const { Cell::new(false) };
+    /// What the bodies this thread handed over unwaited counted as they
+    /// ran ([`Engine::posted`]), added as each ends — its own counts' share
+    /// of theirs, which [`gpu_engine_waits_here`] and
+    /// `gpu_engine_kernels_built_here` answer with.
+    static POSTED_HERE: Arc<PostedCounts> = Arc::default();
+}
+
+/// What a caller's bodies handed over unwaited counted on the engine's
+/// thread ([`POSTED_HERE`]): the waits for the GPU they made
+/// ([`WAITED_HERE`]) and the kernels whose compile they waited for
+/// (`BUILT_HERE`).
+#[derive(Default)]
+struct PostedCounts {
+    waited: AtomicU64,
+    built: AtomicU64,
+}
+
+impl PostedCounts {
+    fn add(&self, waited: u64, built: u64) {
+        self.waited.fetch_add(waited, Ordering::Relaxed);
+        self.built.fetch_add(built, Ordering::Relaxed);
+    }
+}
+
+/// How many kernels the bodies the calling thread handed over unwaited
+/// waited on a compile of, as far as they have run ([`POSTED_HERE`]).
+pub(crate) fn built_by_posted_here() -> u64 {
+    POSTED_HERE.with(|counted| counted.built.load(Ordering::Relaxed))
 }
 
 /// What [`WORKS_FOR`] holds on a thread that is none of an engine's.
@@ -842,6 +958,15 @@ struct Poll {
 }
 
 impl Poll {
+    /// Asks `polls` — an engine's thread for polls — to stay in the driver
+    /// till the GPU has finished everything submitted on `device`
+    /// ([`Engine::poll`]).
+    fn asked_of(polls: &EngineThread, device: &wgpu::Device) -> Self {
+        let device = device.clone();
+        let answer = polls.asked(move || polled(&device)).ok_or_else(last_error);
+        Self { asked: Instant::now(), answer }
+    }
+
     /// Waits for it till `limit` from when it was asked, and fails by name
     /// past that — the poll in the driver still, and whoever asks next
     /// behind it —, by wgpu's word where it ended on one, and by what the
@@ -919,6 +1044,19 @@ impl<Then: FnOnce(Result<(), String>)> Told<Then> {
         if let Some(then) = self.then.take() {
             then(ended);
         }
+    }
+
+    /// Told on `tells` — an engine's thread for waits no caller stays for
+    /// — once `poll` ends, as a wait fails by it, at `limit` among them
+    /// ([`Poll::within`]).
+    fn once_polled(self, tells: &EngineThread, poll: Poll, limit: Duration)
+    where
+        Then: Send + 'static,
+    {
+        tells.post(move || {
+            let done = poll.within(limit, &self.refusals);
+            self.tell(done.ok_or_else(last_error));
+        });
     }
 }
 
@@ -1202,12 +1340,18 @@ impl EngineThread {
     /// With no thread to be had the job goes on where it is and those
     /// behind it wait, as they did: nothing fails that worked.
     ///
-    /// ⚠️Under way beside the jobs after it, not before them: a verb that
-    /// hands its body here and waits for none of it (stage 2 of
-    /// the-ui-thread-never-enters-the-driver) keeps its caller's order only
-    /// where that body waits for no compile.
+    /// ⚠️Under way beside the jobs after it, not before them — so ⛔NOT IN
+    /// A JOB HANDED HERE UNWAITED ([`Self::posts`]): no caller waits there
+    /// for the job's end, and the jobs behind it are what its caller handed
+    /// after — a done of the job's own work among them
+    /// ([`Engine::done_then`]), and the free of what it reads. Such a job
+    /// keeps its turn through a compile, the jobs behind it waiting, as its
+    /// caller's order is (the-ui-thread-never-enters-the-driver B1-a,
+    /// 2026-11-15); what it compiles is counted on its caller's thread
+    /// ([`Engine::posted`]), where the app's pin holds it at none — the
+    /// app compiles ahead what such a body runs.
     fn stands_aside(&self) {
-        if self.is_here() && !STOOD_ASIDE.get() {
+        if self.is_here() && !STOOD_ASIDE.get() && !POSTED.get() {
             STOOD_ASIDE.set(self.works().is_ok());
         }
     }
@@ -1274,6 +1418,30 @@ impl EngineThread {
             let _ = self.jobs.send(Box::new(job));
         }
         Some(answered)
+    }
+
+    /// Hands `work` to this thread and returns, the caller waiting for
+    /// none of it, as a job in the bodies' turn: run behind every one
+    /// handed before it, and keeping its turn through a compile
+    /// ([`Self::stands_aside`]) — on this thread already, run where it is.
+    /// Run even where the driver's own work has ended the thread
+    /// ([`Self::ended`]), as a body is: it is run nowhere else. A panic of
+    /// it ends the thread as the driver's own work does — no caller is
+    /// left to take the panic ([`Self::lets_go`]).
+    fn posts(&self, work: impl FnOnce() + Send + 'static) {
+        if self.is_here() {
+            return work();
+        }
+        let ended = Arc::clone(&self.ended);
+        let job = move || {
+            POSTED.set(true);
+            let panicked = catch_unwind(AssertUnwindSafe(work)).is_err();
+            POSTED.set(false);
+            if panicked {
+                ended.store(true, Ordering::Release);
+            }
+        };
+        let _ = self.jobs.send(Box::new(job));
     }
 
     /// Hands `work` to this thread and returns, the caller waiting for
@@ -1347,12 +1515,24 @@ impl EngineThread {
 }
 
 /// What is handed to the engine's thread to be let go of there
-/// ([`EngineThread::lets_go`]).
-struct Sent<T>(T);
+/// ([`EngineThread::lets_go`]), or read there by a body handed over
+/// unwaited ([`Engine::posted`]): the things a verb was handed.
+pub(crate) struct Sent<T>(pub(crate) T);
+
+impl<T> Sent<T> {
+    /// What was sent, where it was sent to.
+    pub(crate) fn taken(self) -> T {
+        self.0
+    }
+}
 
 // SAFETY: what is let go of is in one thread's hands at a time — its
 // caller's till it is sent, which reads it no more, and the engine's from
-// there, as what a body is lent is ([`EngineThread::run_lent`]).
+// there, as what a body is lent is ([`EngineThread::run_lent`]). What a
+// body handed over unwaited reads is the engine's thread's as long as it
+// runs: its caller hands it on to no other body but through the engine's
+// thread, in turn behind it, and what any thread reads of it meanwhile is
+// kept for that apart (`kernels/composite/abi.rs`, `ScreenAndBytes`).
 unsafe impl<T> Send for Sent<T> {}
 
 /// What a maker of the C ABI hands its caller ([`Engine::hands`]): the
@@ -1681,12 +1861,14 @@ pub unsafe extern "C" fn gpu_engine_done_failure(
 }
 
 /// How many waits for the GPU the thread that asks has made
-/// ([`Engine::wait`]): what a test holds at none on the thread an app's
-/// frames are built on, over work that is to wait there for nothing
-/// ([`Engine::map_then`]).
+/// ([`Engine::wait`]) — its bodies handed over unwaited among them, as far
+/// as they have run ([`POSTED_HERE`]): what a test holds at none on the
+/// thread an app's frames are built on, over work that is to wait there for
+/// nothing ([`Engine::map_then`]).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_waits_here() -> u64 {
-    WAITED_HERE.with(Cell::get)
+    let posted = POSTED_HERE.with(|counted| counted.waited.load(Ordering::Relaxed));
+    WAITED_HERE.with(Cell::get) + posted
 }
 
 /// How many times the thread that asks has taken a device in hand
@@ -1785,7 +1967,7 @@ pub unsafe extern "C" fn gpu_engine_apart_held(engine: *const Engine) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{Apart, Engine, gpu_engine_close, opened};
-    use crate::testing::{a_device_of_its_own, first_engine};
+    use crate::testing::{a_device_of_its_own, done_here, first_engine};
     use crate::{fail, last_error};
 
     #[test]
@@ -2419,6 +2601,152 @@ mod tests {
         fn drop(&mut self) {
             let _ = self.0.send(super::WORKS_FOR.get());
         }
+    }
+
+    // 🚨A body handed over unwaited (the-ui-thread-never-enters-the-driver
+    // B1-a; `Engine::posted` has why): its caller is back before it has
+    // run, and it keeps its turn through a compile — no body handed after
+    // it overtakes it, as one that waits for a compile lent is overtaken.
+    #[test]
+    fn a_body_handed_over_unwaited_keeps_its_turn_through_a_compile() {
+        use std::sync::mpsc;
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let (let_go, released) = mpsc::channel::<()>();
+        let (ran, order) = mpsc::channel();
+        let (its, first) = (engine.clone(), ran.clone());
+        engine.posted(move || {
+            its.compiling(move |_| {
+                let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+            });
+            let _ = first.send("the body handed over");
+            Some(())
+        });
+        let _ = ran.send("its caller, back");
+        drop(ran);
+        std::thread::scope(|scope| {
+            let (through, went) = mpsc::channel();
+            scope.spawn(move || {
+                engine.on_thread(|| ());
+                let _ = through.send(());
+            });
+            let a_moment = std::time::Duration::from_millis(300);
+            assert!(went.recv_timeout(a_moment).is_err(), "a body overtook one handed over unwaited");
+            let _ = let_go.send(());
+            assert!(went.recv_timeout(IN_TIME).is_ok(), "the body behind it never got through");
+        });
+        assert_eq!(order.iter().collect::<Vec<_>>(), ["its caller, back", "the body handed over"]);
+        assert_eq!(done_here(engine), Ok(()));
+    }
+
+    // 🚨What a body handed over unwaited refused is told by the next done
+    // of the thread that handed it over — the first since one was told,
+    // once — and by no done asked before it, as an error no scope caught
+    // would be by the first wait to end (`Refusals`): a done answers for
+    // the bodies its thread handed over before it, in their order. So a
+    // caller that asks in the turn it hands one over is told of that one
+    // (`ScreenTexture.present` asks in the turn it shows — 🗣️관제
+    // 2026-11-15 05:20 asked that pinned, in the app's tests); one that
+    // hands another over and asks between is told of the one before.
+    #[test]
+    fn a_done_is_told_what_the_bodies_its_thread_handed_over_before_it_refused() {
+        let engine = first_engine();
+        let refuses = |why: &'static str| move || fail::<()>(why);
+        let failed = |why: &str| Err(format!("a body handed over unwaited failed: {why}"));
+        let (tell, told) = std::sync::mpsc::channel();
+        engine.done_then(move |done| {
+            let _ = tell.send(done);
+        });
+        engine.posted(refuses("the first refused"));
+        engine.posted(refuses("the second refused"));
+        assert_eq!(told.recv(), Ok(Ok(())), "a done asked before took what came after it");
+        assert_eq!(done_here(engine), failed("the first refused"));
+        assert_eq!(done_here(engine), Ok(()), "told twice");
+        engine.posted(refuses("the one before"));
+        engine.posted(|| Some(()));
+        assert_eq!(done_here(engine), failed("the one before"));
+    }
+
+    // What a body handed over unwaited refused is no word to another
+    // thread's done — a worker's body to the UI's frame.
+    #[test]
+    fn what_a_body_refused_is_told_to_the_thread_that_handed_it_over_alone() {
+        use std::sync::mpsc;
+        let engine = first_engine();
+        std::thread::scope(|scope| {
+            let (handed, over) = mpsc::channel();
+            let (asked, ask) = mpsc::channel::<()>();
+            let other = scope.spawn(move || {
+                engine.posted(|| fail("the other thread's"));
+                let _ = handed.send(());
+                let _ = ask.recv();
+                done_here(engine)
+            });
+            over.recv().expect("handed over");
+            assert_eq!(done_here(engine), Ok(()), "told of another thread's body");
+            let _ = asked.send(());
+            let theirs = other.join().expect("its done");
+            assert_eq!(theirs, Err("a body handed over unwaited failed: the other thread's".to_owned()));
+        });
+    }
+
+    // What a body handed over unwaited counts on the engine's thread — a
+    // wait, a compile waited for — is counted on the thread that handed it
+    // over once it has run, as a lent body's is (`Callers`): the app's pins
+    // read those on the thread its frames are built on.
+    #[test]
+    fn what_a_body_handed_over_unwaited_counts_is_its_callers() {
+        use crate::kernels::shared::{Kernel, gpu_engine_kernels_built_here};
+        let engine = first_engine();
+        let (waits, built) = (super::gpu_engine_waits_here(), gpu_engine_kernels_built_here());
+        engine.posted(move || {
+            let source = "@compute @workgroup_size(1)\nfn main() {}\n// device.rs, a body handed over unwaited";
+            Kernel::of(engine, &[source], "main").pipeline(engine);
+            engine.wait()
+        });
+        assert_eq!(done_here(engine), Ok(()), "{}", last_error());
+        assert_eq!(super::gpu_engine_waits_here() - waits, 1, "its wait");
+        assert_eq!(gpu_engine_kernels_built_here() - built, 1, "its compile");
+    }
+
+    // 🚨A done is asked of the GPU behind every body handed over before it
+    // (`Engine::done_then`'s 🚨): one asked while such a body is still to
+    // submit is told once that body's work is done, not before.
+    #[test]
+    fn a_done_is_told_once_the_work_of_a_body_handed_over_before_it_is_done() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, mpsc};
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let (let_go, released) = mpsc::channel::<()>();
+        let seen = Arc::new(AtomicBool::new(false));
+        let (its, flag) = (engine.clone(), Arc::clone(&seen));
+        engine.posted(move || {
+            let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+            its.queue.submit([encoder(&its).finish()]);
+            its.queue.on_submitted_work_done(move || flag.store(true, Ordering::SeqCst));
+            Some(())
+        });
+        let (tell, told) = mpsc::channel();
+        engine.done_then(move |done| {
+            let _ = tell.send(done);
+        });
+        let a_moment = std::time::Duration::from_millis(300);
+        assert!(told.recv_timeout(a_moment).is_err(), "told before the body handed over before it ran");
+        let _ = let_go.send(());
+        assert_eq!(told.recv_timeout(IN_TIME), Ok(Ok(())));
+        assert!(seen.load(Ordering::SeqCst), "told before that body's work was done");
+    }
+
+    // A body handed over unwaited that panics has no caller to take the
+    // panic: the next done of its thread fails by it, and the bodies go on.
+    #[test]
+    fn a_body_handed_over_unwaited_that_panics_fails_the_next_done() {
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        engine.posted(|| panic!("a body handed over unwaited, panicking"));
+        assert_eq!(done_here(engine), Err("a body handed over unwaited failed: it panicked".to_owned()));
+        assert_eq!(engine.on_thread(|| 7), 7, "the bodies went on");
     }
 
     // 🚨What the ABI handed out is let go of on the thread of the engine

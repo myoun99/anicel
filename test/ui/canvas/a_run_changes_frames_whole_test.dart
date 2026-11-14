@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/settle_async.dart';
 
 /// playback-plays-the-screen-material ③ (10-09): a RUN the canvas plays
 /// changes frames WHOLE — a frame that is not there yet leaves the last
@@ -219,12 +220,14 @@ void main() {
     return argb!;
   }
 
-  Future<void> aWhile(WidgetTester tester) async {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 200)),
-    );
-    await tester.pump();
-  }
+  /// 200 ms of real time, pumped as it passes: a lay ends once the GPU has
+  /// laid it (`GpuScreen.compose`), and what is told of it under the test's
+  /// clock goes on at a pump.
+  Future<void> aWhile(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 8,
+    beat: const Duration(milliseconds: 25),
+  );
 
   ({StackRun run, ValueNotifier<int> landings}) runOver(
     FramePictures pictures,

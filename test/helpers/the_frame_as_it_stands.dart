@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -114,14 +116,13 @@ class _OnScreen extends CustomPainter {
     final target = shownSurfaceOf(columns, rows);
     final screen = EngineStackScreen(composite, letters);
     try {
-      screen
-        ..compose(frame)
-        ..show(
-          target,
-          (columns, rows),
-          viewport: viewport,
-          devicePixelRatio: devicePixelRatio,
-        );
+      unawaited(screen.compose(frame));
+      screen.show(
+        target,
+        (columns, rows),
+        viewport: viewport,
+        devicePixelRatio: devicePixelRatio,
+      );
       final image = pictureOf(PremultipliedRows(target.read(), columns, rows));
       canvas
         ..save()

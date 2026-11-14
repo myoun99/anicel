@@ -20,6 +20,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -175,6 +176,42 @@ void main() {
 
       expect(told, isEmpty);
       expect(reported.map((details) => details.exception), [failure]);
+    });
+
+    // A show is handed to the engine unwaited (`GpuScreen.show`), and what
+    // refused it is told to the first done its thread asks after it: the
+    // screen asks its own in the turn it drew (the-ui-thread-never-enters-
+    // the-driver B1-a, 2026-11-15).
+    test('🚨a frame whose show the engine refused is reported by the '
+        'screen that drew it — not by who asks the engine next', () async {
+      final screen = ScreenTexture.debugOnSurface(
+        surface,
+        done: appGpuEngine.done,
+      );
+      // Shown before anything is composed on it: refused by name.
+      final shown = GpuScreen(appGpuComposite, (0, 0, 4, 4));
+      addTearDown(shown.free);
+      Future<void>? next;
+
+      screen.present((target) {
+        shown.show(
+          target,
+          inverse: const [1, 0, 0, 1, 0, 0],
+          scale: 1,
+          sampling: GpuSampling.nearest,
+          rect: (0, 0, 4, 4),
+        );
+        // Who asks the engine next: in this turn, once the screen's is.
+        scheduleMicrotask(() => next = appGpuEngine.done());
+      });
+      await pumpEventQueue();
+
+      await expectLater(next, completes);
+      expect(
+        reported.map((details) => '${details.exception}'),
+        [contains('shown before anything is composed')],
+      );
+      expect(screen.showsAFrame, isFalse, reason: 'nothing put up');
     });
   });
 

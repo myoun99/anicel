@@ -83,7 +83,25 @@ class EngineFramePicture extends ChangeNotifier {
   /// a picture shows it.
   bool get _shownByAnother => _holds > 1;
 
-  void _composed(
+  /// Why a step composed into it did not go in — null while every one has:
+  /// the store let go of it then, and it holds no frame (F-509 — who shows
+  /// it shows the frame as it stands, never the picture without the step;
+  /// [EngineFramePictureStore.patch]). Its listeners are told.
+  (Object, StackTrace)? get failed => _failed;
+  (Object, StackTrace)? _failed;
+
+  /// ⛔Not of one freed already: let go of and held by none, it has no
+  /// listener left to tell ([_freedIfUnheld]).
+  void _failedBy(Object error, StackTrace stack) {
+    if (_failed != null || (_gone && _holds == 0)) {
+      return;
+    }
+    _failed = (error, stack);
+    notifyListeners();
+  }
+
+  /// Ends once the GPU has laid [frame] into it ([EngineStackScreen.compose]).
+  Future<void> _composed(
     StackedFrame frame, {
     ui.Rect? changed,
     EngineChainHolds? holds,
@@ -92,7 +110,7 @@ class EngineFramePicture extends ChangeNotifier {
   void _written() => notifyListeners();
 
   /// Laid before it is handed to anyone: no one to tell.
-  void _composedOver(
+  Future<void> _composedOver(
     EngineFramePicture film,
     StackedFrame frame, {
     required ui.Rect fresh,
@@ -330,17 +348,43 @@ class EngineFramePictureStore<K extends Object> {
     EngineChainHolds? holds,
   ) {
     if (from == to || !picture._shownByAnother) {
-      picture._composed(frame, changed: rect, holds: holds);
+      _watched(picture, picture._composed(frame, changed: rect, holds: holds));
       return picture;
     }
     final copy = _aPicture().._told = picture._told;
     try {
-      copy._composedOver(picture, frame, fresh: rect, holds: holds);
+      _watched(
+        copy,
+        copy._composedOver(picture, frame, fresh: rect, holds: holds),
+      );
     } on Object {
       copy._letGo();
       rethrow;
     }
     return copy;
+  }
+
+  /// [composed], a step of [picture]'s: where it did not go in, [picture]
+  /// is let go of under every key that answers with it — none answers
+  /// with a picture a step is missing from — and it says why to who shows
+  /// it ([EngineFramePicture.failed]). The step was handed to the engine,
+  /// which says so once the GPU is through ([GpuScreen.compose]).
+  void _watched(EngineFramePicture picture, Future<void> composed) {
+    unawaited(
+      composed.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stack) {
+          // Told before it is let go of: let go of and held by none, it is
+          // freed there.
+          picture._failedBy(error, stack);
+          final under = [
+            for (final MapEntry(:key, :value) in _entries.entries)
+              if (identical(value.picture, picture)) key,
+          ];
+          under.forEach(letGo);
+        },
+      ),
+    );
   }
 
   /// [made], the picture a step of [entry]'s is in, answers to [to].
@@ -583,15 +627,26 @@ class EngineFramePictureStore<K extends Object> {
     final its = _its;
     final picture = _aPicture();
     try {
-      await FxPluginStages.recordedThrough<void>(
+      final composed = await FxPluginStages.recordedThrough<Future<void>>(
         () => _composedAs(lay, picture),
-        discard: (_) {},
+        discard: (round) => round.ignore(),
         told: (told) => picture._told = told,
         waitsForKernels: (waits) {
           its.waitsForKernels = waits;
           _waits.changed();
         },
       );
+      // 🚨ANSWERED ONCE THE GPU HAS LAID IT (the-ui-thread-never-enters-
+      // the-driver B1-a, 2026-11-15): the engine lays it with this isolate
+      // waiting for none of it, and a picture it did not lay is let go of
+      // here and its askers hear why — as from a lay that threw where it
+      // was asked, which each notes not to ask again at that content
+      // (`FramePictures.noteFailureAt`). 🗣️관제 2026-11-15 05:09: 「메모리가
+      // 없을 때는 드물지 않다」 — kept as laid, it was a wrong picture no one
+      // would bake again. ⚠️The next lay waits for this one's GPU with it
+      // (🔬main PC, S5_BA cut 352: a compose's submit to its done 0.75 ms
+      // at the median, 3.7 ms at p90).
+      await composed;
       if (lay.done.isCompleted) {
         picture._letGo();
       } else {
@@ -618,19 +673,18 @@ class EngineFramePictureStore<K extends Object> {
     return EngineFramePicture._(EngineStackScreen(composite, letters));
   }
 
-  void _composedAs(_Lay<K> lay, EngineFramePicture picture) {
+  Future<void> _composedAs(_Lay<K> lay, EngineFramePicture picture) {
     final over = lay.over;
     final film = over == null ? null : _entries[over.film]?.picture;
     if (over != null && film != null) {
-      picture._composedOver(
+      return picture._composedOver(
         film,
         lay.frame,
         fresh: over.fresh,
         holds: lay.holds,
       );
-    } else {
-      picture._composed(lay.frame, holds: lay.holds);
     }
+    return picture._composed(lay.frame, holds: lay.holds);
   }
 }
 

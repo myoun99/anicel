@@ -111,7 +111,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 38] {
         ("gpu_engine_plan_free", |name| {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_plan_new(first_engine()) };
-            gives_back(name, made, gpu_engine_plan_free)
+            gives_back_unwaited(name, made, gpu_engine_plan_free)
         }),
         ("gpu_engine_composite_free", |name| {
             // SAFETY: the engine is live.

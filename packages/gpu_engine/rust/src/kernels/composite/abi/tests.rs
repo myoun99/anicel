@@ -12,7 +12,7 @@ use crate::kernels::mask::tests::masked;
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
-use crate::testing::{first_engine, last_error, read_buffer, stored};
+use crate::testing::{done_here, first_engine, last_error, read_buffer, stored};
 
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 /// Moved left by 37.25 px and down by 9.5: a pose R1 samples, not copies.
@@ -575,8 +575,8 @@ fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
 // the same plan: a posed row laid on the canvas at its own pixels over an
 // extent the camera's view cuts, then the camera magnifying it 2× and
 // turned past a quarter pixel — and so again after another plan composed
-// where it changed. A sampling no mode has is refused, saying why, and the
-// screen frees.
+// where it changed. A sampling no mode has is refused, the done after it
+// saying why, and the screen frees.
 #[test]
 fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     let tiles = [tile(11, true), tile(12, false)];
@@ -606,11 +606,11 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     for (laid, over) in [(plan, extent), (again, changed)] {
         // SAFETY: every pointer is live and made on `engine`; each array
         // holds what its call reads.
-        let passes = unsafe {
-            assert!(gpu_engine_screen_compose(screen, composite, engine, &pool, laid, over.as_ptr()), "{}", last_error());
-            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, &shown, rect.as_ptr())
-        };
-        assert!(passes >= 1, "{}", last_error());
+        unsafe {
+            gpu_engine_screen_compose(screen, composite, engine, &pool, laid, over.as_ptr());
+            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, &shown, rect.as_ptr());
+        }
+        done_here(engine).expect("composed and shown");
         // SAFETY: `laid` is live.
         let planned = unsafe { &*laid };
         let chains = planned.chained();
@@ -623,9 +623,9 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     }
     assert!(screens[0] != screens[1], "the plan composed again shows a canvas of its own");
     // SAFETY: as above.
-    let refused =
-        unsafe { gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 1.0, 2, &shown, rect.as_ptr()) };
-    assert_eq!((refused, last_error()), (-1, "no sampling has id 2".to_string()));
+    unsafe { gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 1.0, 2, &shown, rect.as_ptr()) };
+    let refused = "a body handed over unwaited failed: no sampling has id 2";
+    assert_eq!(done_here(engine), Err(refused.to_string()));
     // SAFETY: none is used again.
     unsafe {
         gpu_engine_screen_free(screen);

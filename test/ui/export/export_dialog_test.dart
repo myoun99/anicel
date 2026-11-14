@@ -388,6 +388,11 @@ void main() {
 
     testWidgets('🎯a frame that is the picture before it is written as the '
         'bytes before it — encoded once', (tester) async {
+      // Out still, the tests' before it that were asked under their faked
+      // clocks: what is done on the GPU goes on in those clocks' turns
+      // (`GpuEngine.done`), and they are over. 🔬11-15, this file run whole:
+      // 5 out through 400 turns, and 0 run alone.
+      final outBefore = HeldPictures.debugOut;
       const cutId = CutId('cut');
       final session = EditorSessionManager(
         initialProject: Project(
@@ -442,13 +447,18 @@ void main() {
       // So does a render the preview asked for under the faked clock before
       // the format was picked, laid on the engine a step at a time: let land
       // too, or it lands while the run is counted.
-      for (var turn = 0; HeldPictures.debugOut > 0 && turn < 200; turn++) {
+      for (var turn = 0; HeldPictures.debugOut > outBefore && turn < 200;
+          turn++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 5)),
         );
         await tester.pump();
       }
-      expect(HeldPictures.debugOut, 0, reason: 'the preview has nothing out');
+      expect(
+        HeldPictures.debugOut,
+        outBefore,
+        reason: 'the preview has nothing out',
+      );
       final before = PngSequenceExportService.debugEncodes;
       final heldBefore = HeldPictures.debugHeld;
       await tester.runAsync(state.export);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/lru.dart';
@@ -18,7 +20,7 @@ import '../core/lru.dart';
 /// [room] it is given, and one that does not fit is not kept; ④the bytes
 /// are the engine's, counted where it keeps and lets go
 /// ([GpuHeldChains.liveBytes]), each weighed here once its run is done
-/// ([settle]).
+/// ([settleOnce]).
 // ⏳Two of these where the frames' pictures move onto the engine (flip lane
 // ⓑ), each in the room the playback line gives what it stands for: the
 // canvas's in the nodes' (`HeldNodesLine.bytesForNodes` — 🗣️유저 2026-10-27
@@ -70,25 +72,69 @@ final class EngineChainHolds {
     letGo: (_, hold) => _held?.letGo(hold.id),
   );
 
-  /// The keys asked for since the holds last settled, and their holds.
+  /// The holds asked for and not yet weighed ([settleOnce]), each with the
+  /// runs still to be done of the plans that named it.
   final Map<Object, _Hold> _asked = {};
+
+  /// The keys the plan being planned names ([idOf]).
+  final Set<Object> _naming = {};
+
+  /// The runs whose holds are still to be weighed ([settleOnce]).
+  int _runsToCome = 0;
+
+  /// What waits for them to be weighed ([onceWeighed]).
+  final Set<void Function()> _onceWeighed = {};
 
   int _next = 0;
 
   /// The number what [key] shows is held under: the one it has, or one of
   /// its own from now on. Nothing is let go of until the run is done
-  /// ([settle]): its plan names the number.
-  int idOf(Object key) => _asked
-      .putIfAbsent(key, () => _holds.take(key) ?? _Hold(_next++))
-      .id;
+  /// ([settleOnce]): its plan names the number.
+  int idOf(Object key) {
+    _naming.add(key);
+    return _asked
+        .putIfAbsent(key, () => _holds.take(key) ?? _Hold(_next++))
+        .id;
+  }
 
-  /// Weighs each hold asked for since the last settling — what its run
-  /// kept — as the newest, in the order asked, and lets go of the oldest
-  /// past the room; one that alone does not fit is let go of. One asked
-  /// for of a hold freed since ([free]) kept nothing.
-  void settle() {
+  /// Weighs each hold the plan just planned named ([idOf]) — what its run
+  /// kept — once that run is [done], at once where it is null: as the
+  /// newest, in the order named, letting go of the oldest past the room;
+  /// one that alone does not fit is let go of. A hold another plan named
+  /// too is weighed once that one's run is done as well, and one let go of
+  /// meanwhile ([clear]) is not. One of a hold freed since ([free]) kept
+  /// nothing.
+  ///
+  /// 🚨WEIGHED ONCE THE GPU HAS RUN IT (the-ui-thread-never-enters-the-
+  /// driver B1-a, 2026-11-15): a screen's compose is handed to the engine
+  /// with no one waiting for it ([GpuScreen.compose]), and what its chains
+  /// kept is there once its done is told. ↩️Weighed as its plan was freed,
+  /// each would weigh nothing then and be kept past the room. ⏳브러시/
+  /// 렌더링, the user asleep; theirs to overturn.
+  void settleOnce(Future<void>? done) {
+    final named = [
+      for (final key in _naming) (key: key, hold: _asked[key]!..runs += 1),
+    ];
+    _naming.clear();
+    _runsToCome += 1;
+    if (done == null) {
+      _weigh(named);
+      return;
+    }
+    // Why it failed is its asker's to hear ([GpuScreen.compose]).
+    unawaited(
+      done.then((_) => _weigh(named), onError: (Object _) => _weigh(named)),
+    );
+  }
+
+  void _weigh(List<({Object key, _Hold hold})> named) {
     final held = _held;
-    for (final MapEntry(:key, value: hold) in _asked.entries) {
+    for (final (:key, :hold) in named) {
+      hold.runs -= 1;
+      if (hold.runs > 0 || !identical(_asked[key], hold)) {
+        continue;
+      }
+      _asked.remove(key);
       hold.bytes = held?.bytesOf(hold.id) ?? 0;
       if (hold.bytes > _room()) {
         held?.letGo(hold.id);
@@ -96,21 +142,42 @@ final class EngineChainHolds {
         _holds.keep(key, hold);
       }
     }
-    _asked.clear();
+    _runsToCome -= 1;
+    if (_runsToCome == 0) {
+      final waiting = [..._onceWeighed];
+      _onceWeighed.clear();
+      for (final then in waiting) {
+        then();
+      }
+    }
   }
 
-  /// The bytes the holds keep.
-  int get heldBytes => _holds.held;
+  /// Runs [then] once every run named so far is weighed ([settleOnce]) —
+  /// now, where none is to come. Asked again meanwhile, it runs once.
+  void onceWeighed(void Function() then) {
+    if (_runsToCome == 0) {
+      then();
+    } else {
+      _onceWeighed.add(then);
+    }
+  }
+
+  /// The bytes the holds keep — one whose run is still to be weighed as it
+  /// weighed last.
+  int get heldBytes =>
+      _asked.values.fold(_holds.held, (bytes, hold) => bytes + hold.bytes);
 
   /// Lets go of the oldest past the room, where the room moved under them.
   void fit() => _holds.fit();
 
-  /// Lets go of every hold.
+  /// Lets go of every hold — one whose run is still to come after it, on
+  /// the engine's thread in turn.
   void clear() {
-    for (final hold in _holds.values) {
+    for (final hold in [..._holds.values, ..._asked.values]) {
       _held?.letGo(hold.id);
     }
     _holds.clear();
+    _asked.clear();
   }
 
   /// Lets go of every hold and frees the engine's. A plan that asks
@@ -122,11 +189,12 @@ final class EngineChainHolds {
   }
 }
 
-/// A number the engine holds a chain's put under, and what it weighed
-/// when last settled.
+/// A number the engine holds a chain's put under, what it weighed when
+/// last settled, and the runs naming it still to be done.
 final class _Hold {
   _Hold(this.id);
 
   final int id;
   int bytes = 0;
+  int runs = 0;
 }

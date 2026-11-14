@@ -16,10 +16,10 @@
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
+use crate::device::{Engine, Sent, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::fail;
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
@@ -109,8 +109,15 @@ impl Planned {
     /// the run, the show and the screen's two composes each spelled it,
     /// and the fill's picture came as a fifth (11-12).
     pub(crate) fn laid<T>(&self, pool: &Pool, run: impl FnOnce(&Plan) -> T) -> T {
+        self.laid_on(pool.pages(), run)
+    }
+
+    /// [`Self::laid`] on `pages`, a pool's as they were taken: what a body
+    /// handed over unwaited lays it on, the pool's books its caller's to
+    /// keep meanwhile ([`gpu_engine_screen_compose`]).
+    fn laid_on<T>(&self, pages: &[wgpu::Buffer], run: impl FnOnce(&Plan) -> T) -> T {
         let (chains, mask) = (self.chained(), self.masked());
-        run(&self.plan(pool.pages(), &chains, mask.as_ref()))
+        run(&self.plan(pages, &chains, mask.as_ref()))
     }
 
     /// The plan of `pages`, `chains` — [`Self::chained`]'s — and `mask` —
@@ -248,12 +255,19 @@ pub unsafe extern "C" fn gpu_engine_plan_new(engine: *const Engine) -> *mut Plan
     engine.hands(Planned::default())
 }
 
+/// Lets go of `plan` on the engine's thread, its caller waiting for none of
+/// it: a plan is let go of as a compose handed over unwaited is through
+/// with it — behind it in turn (`gpu_engine_screen_compose`) — and a plan
+/// counts nothing to read as its free returns (`device::let_go_unwaited`
+/// has which do). 🚨Waited for, the UI's thread stood behind the compose
+/// it had just handed over, every frame.
+///
 /// # Safety
 /// `plan` came from `gpu_engine_plan_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_plan_free(plan: *mut Planned) {
     // SAFETY: see the function's contract.
-    unsafe { let_go(plan) };
+    unsafe { let_go_unwaited(plan) };
 }
 
 /// Adds the tile set of `columns` × `rows` canvas tiles whose top-left is
@@ -1305,31 +1319,62 @@ pub unsafe extern "C" fn gpu_engine_screen_new(
     engine: *const Engine,
     extent: *const i32,
     floor: f64,
-) -> *mut Screen {
+) -> *mut ScreenAndBytes {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     // SAFETY: see the function's contract.
     let extent = unsafe { *extent.cast::<[i32; 4]>() };
-    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| engine.hands(screen))
+    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| engine.hands(ScreenAndBytes::new(screen)))
 }
 
 /// # Safety
 /// `screen` came from `gpu_engine_screen_new`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut Screen) {
+pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut ScreenAndBytes) {
     // SAFETY: see the function's contract.
     unsafe { let_go(screen) };
 }
 
 /// The bytes `screen` keeps — its canvas's tiles and its halvings': what
-/// the budgets and the memory census weigh it by.
+/// the budgets and the memory census weigh it by, as its last body handed
+/// over left them ([`ScreenAndBytes`]).
 ///
 /// # Safety
 /// `screen` came from `gpu_engine_screen_new`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const Screen) -> u64 {
+pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const ScreenAndBytes) -> u64 {
     // SAFETY: see the function's contract.
-    unsafe { &*screen }.bytes()
+    unsafe { &*screen }.bytes.load(Ordering::Relaxed)
+}
+
+/// A screen as the ABI hands it out: the screen, in the hands of its
+/// verbs' bodies alone — each handed to the engine's thread unwaited
+/// ([`Engine::posted`]) — and the bytes it keeps, told there as they
+/// change: what the budgets and the census read on their own thread
+/// ([`gpu_engine_screen_bytes`]) while such a body is under way.
+pub(crate) struct ScreenAndBytes {
+    screen: Mutex<Screen>,
+    bytes: AtomicU64,
+}
+
+impl ScreenAndBytes {
+    fn new(screen: Screen) -> Self {
+        let bytes = AtomicU64::new(screen.bytes());
+        Self { screen: Mutex::new(screen), bytes }
+    }
+
+    fn kept(&self) -> MutexGuard<'_, Screen> {
+        self.screen.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// What `work` makes of the screen, in its hands — and the bytes it
+    /// keeps told after.
+    fn with<T>(&self, work: impl FnOnce(&mut Screen) -> T) -> T {
+        let mut screen = self.kept();
+        let worked = work(&mut screen);
+        self.bytes.store(screen.bytes(), Ordering::Relaxed);
+        worked
+    }
 }
 
 /// The bytes of every picture the engine keeps — every screen's canvas and
@@ -1379,77 +1424,92 @@ pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, mo
 
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the
 /// pixels `changed` — [left, top, right, bottom); the whole canvas the
-/// first time — and submits the work. False on failure; see the last error.
+/// first time — and submits the work: on the engine's thread, its caller
+/// waiting for none of it ([`Engine::posted`]). Its failure is the calling
+/// thread's next done's (`gpu_engine_done_then`). `changed` and the pool's
+/// pages are taken as it is called; `plan` is read as it runs.
 ///
 /// # Safety
 /// Every pointer is live, the pool and the executor were made on `engine`;
-/// `changed` holds four words.
+/// `changed` holds four words. Nothing adds to `plan` from here on, and
+/// what is handed is let go of on the engine's thread ([`let_go`]), behind
+/// this in turn.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_screen_compose(
-    screen: *mut Screen,
+    screen: *const ScreenAndBytes,
     composite: *const Composite,
     engine: *const Engine,
     pool: *const Pool,
     plan: *const Planned,
     changed: *const i32,
-) -> bool {
+) {
     // SAFETY: see the function's contract.
-    let (screen, composite, engine, pool, plan) = unsafe { (&mut *screen, &*composite, &*engine, &*pool, &*plan) };
-    engine.on_thread(|| {
-        // SAFETY: see the function's contract.
-        let changed = unsafe { *changed.cast::<[i32; 4]>() };
-        plan.laid(pool, |plan| {
-            screen.compose(engine, composite, plan, changed, composite.widest()).is_some()
+    let (changed, pages) = unsafe { (*changed.cast::<[i32; 4]>(), (*pool).pages().to_vec()) };
+    let handed = Sent((screen, composite, engine, plan));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (screen, composite, engine, plan) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (screen, composite, engine, plan) = unsafe { (&*screen, &*composite, &*engine, &*plan) };
+        plan.laid_on(&pages, |plan| {
+            screen.with(|screen| screen.compose(engine, composite, plan, changed, composite.widest()))
         })
-    })
+    });
 }
 
 /// Composites `plan` onto `screen`'s canvas, nothing composed on it yet,
 /// over its tiles that meet the pixels `fresh` — [left, top, right,
 /// bottom) — and copies every other tile `film`'s canvas keeps from it as
-/// it is; submits the work. False on failure; see the last error.
+/// it is; submits the work, as [`gpu_engine_screen_compose`] does.
 ///
 /// # Safety
-/// Every pointer is live, the pool and the executor were made on `engine`,
-/// `film` is not `screen`; `fresh` holds four words.
+/// As [`gpu_engine_screen_compose`]'s, and `film` is not `screen`; `fresh`
+/// holds four words.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_screen_compose_over(
-    screen: *mut Screen,
-    film: *const Screen,
+    screen: *const ScreenAndBytes,
+    film: *const ScreenAndBytes,
     composite: *const Composite,
     engine: *const Engine,
     pool: *const Pool,
     plan: *const Planned,
     fresh: *const i32,
-) -> bool {
+) {
     // SAFETY: see the function's contract.
-    let (screen, film, composite, engine, pool, plan) =
-        unsafe { (&mut *screen, &*film, &*composite, &*engine, &*pool, &*plan) };
-    engine.on_thread(|| {
-        // SAFETY: see the function's contract.
-        let fresh = unsafe { *fresh.cast::<[i32; 4]>() };
-        plan.laid(pool, |plan| {
-            screen.compose_over(engine, composite, plan, film, fresh, composite.widest()).is_some()
+    let (fresh, pages) = unsafe { (*fresh.cast::<[i32; 4]>(), (*pool).pages().to_vec()) };
+    let handed = Sent((screen, film, composite, engine, plan));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (screen, film, composite, engine, plan) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (screen, film, composite, engine, plan) =
+            unsafe { (&*screen, &*film, &*composite, &*engine, &*plan) };
+        let film = film.kept();
+        plan.laid_on(&pages, |plan| {
+            screen.with(|screen| screen.compose_over(engine, composite, plan, &film, fresh, composite.widest()))
         })
-    })
+    });
 }
 
 /// Shows `screen`'s canvas through the camera onto the pixels `rect` of
 /// `target` — [left, top, right, bottom) — leaving the rest of it as it
-/// was, and waits for the GPU; returns how many passes it took, -1 on
-/// failure (see the last error). The camera is `inverse` — a screen pixel
-/// to the canvas's, the affine `[a, b, c, d, e, f]` — at display `scale`,
-/// device pixels a canvas pixel, sampled by `sampling` (0 blend, 1 pick,
-/// 3 nearest). `target` is a surface's texture or a window's next image,
-/// as `gpu_engine_composite_show`'s is.
+/// was, and submits the work, as [`gpu_engine_screen_compose`] does. The
+/// camera is `inverse` — a screen pixel to the canvas's, the affine
+/// `[a, b, c, d, e, f]` — at display `scale`, device pixels a canvas
+/// pixel, sampled by `sampling` (0 blend, 1 pick, 3 nearest). `target` is
+/// a surface's texture or a window's next image, as
+/// `gpu_engine_composite_show`'s is.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `inverse` holds six doubles
-/// and `rect` four words.
+/// and `rect` four words. What is handed is let go of on the engine's
+/// thread ([`let_go`]), behind this in turn.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_screen_show(
-    screen: *mut Screen,
+    screen: *const ScreenAndBytes,
     composite: *const Composite,
     engine: *const Engine,
     inverse: *const f64,
@@ -1457,17 +1517,18 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
     sampling_id: u32,
     target: *const wgpu::Texture,
     rect: *const u32,
-) -> isize {
+) {
     // SAFETY: see the function's contract.
-    let (screen, composite, engine, target) = unsafe { (&mut *screen, &*composite, &*engine, &*target) };
-    engine.on_thread(|| {
-        // SAFETY: see the function's contract.
-        let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 6]>(), *rect.cast::<[u32; 4]>()) };
-        let Some(mode) = sampling(sampling_id) else {
-            return -1;
-        };
-        let camera = Camera { inverse, scale, mode };
-        let shown = screen.show(engine, composite, camera, target, rect, composite.widest());
-        shown.map_or(-1, |passes| passes as isize)
-    })
+    let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 6]>(), *rect.cast::<[u32; 4]>()) };
+    let handed = Sent((screen, composite, engine, target));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (screen, composite, engine, target) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (screen, composite, engine, target) = unsafe { (&*screen, &*composite, &*engine, &*target) };
+        let camera = Camera { inverse, scale, mode: sampling(sampling_id)? };
+        let shown = screen.with(|screen| screen.show(engine, composite, camera, target, rect, composite.widest()));
+        shown.map(drop)
+    });
 }
