@@ -14,7 +14,7 @@ use super::region::{Combine, Operand, RegionMask, Step};
 use super::runs::{MaskRuns, SelectionRuns};
 use super::within::MaskWithin;
 use super::{Finish, MaskBox, MaskPasses};
-use crate::device::{Engine, hands_bytes, let_go, let_go_bytes};
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, on_thread_of};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 
@@ -70,7 +70,7 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_bytes(masks: *const Selectio
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_selection_masks_let_go(masks: *const SelectionMasks) {
     // SAFETY: see the function's contract.
-    unsafe { &*masks }.region.let_go();
+    unsafe { on_thread_of(masks, || (*masks).region.let_go()) };
 }
 
 /// The mask of the selection `program` spells over `points` ([`steps_of`])
