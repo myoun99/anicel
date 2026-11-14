@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
+import 'package:anicel/src/services/media/animated_png_writer.dart';
 import 'package:anicel/src/services/media/png_writing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -450,6 +451,30 @@ void main() {
         final (picture, _) = await held(file);
 
         expect(picture, isA<EnginePicture>());
+      });
+    });
+
+    testWidgets('an animated PNG is no still: the engine\'s, every '
+        'frame', (tester) async {
+      final file = encodeAnimatedPng(
+        width: pixels.length,
+        height: 1,
+        frames: [
+          for (final ms in [40, 80])
+            (rgba: rgbaOf(pixels), duration: Duration(milliseconds: ms)),
+        ],
+      );
+      await tester.runAsync(() async {
+        final frames = await decodeImageFrames(file);
+
+        expect([for (final frame in frames) frame.duration.inMilliseconds], [
+          40,
+          80,
+        ]);
+        for (final frame in frames) {
+          expect(frame.picture, isA<EnginePicture>());
+          frame.picture.dispose();
+        }
       });
     });
   });
