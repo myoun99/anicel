@@ -224,4 +224,49 @@ void main() {
       expectKeptBesides(before, after);
     });
   });
+
+  group('the page a window seeds stands on the paper it shows', () {
+    final page = timesheetInkPageKey(_narrowCut, 0);
+
+    test('a cut\'s page written on its old paper is laid on its new one, '
+        'every tile kept', () {
+      final store = BrushFrameStore();
+      final before = _inkedToTheCorner(wide);
+      store.storeBakedSurface(page, before);
+      final controller = TimesheetInkController(store: store);
+      addTearDown(controller.dispose);
+      controller.syncGeometry(_layout(_narrowCut, _narrowKind));
+      controller.sessionStateFor(null, page);
+      final laid = controller.surfaceFor(null, page)!;
+      expect(laid.canvasSize, narrow);
+      expect(laid.tiles.keys.toSet(), before.tiles.keys.toSet());
+      for (final MapEntry(:key, value: tile) in before.tiles.entries) {
+        expect(laid.tiles[key]!.pixels, tile.pixels, reason: '$key');
+      }
+    });
+
+    test('🚨what another coordinator over the store wrote at another paper '
+        'is what this one stands on next', () {
+      final store = BrushFrameStore();
+      final here = TimesheetInkController(store: store);
+      final there = TimesheetInkController(store: store);
+      addTearDown(here.dispose);
+      addTearDown(there.dispose);
+      here.syncGeometry(_layout(_narrowCut, _narrowKind));
+      here.sessionStateFor(null, page);
+      there.syncGeometry(_layout(_narrowCut, _wideKind));
+      there.commitStroke(
+        plane: null,
+        key: page,
+        strokeData: _dabAt(40, 40),
+        historyManager: HistoryManager(),
+      );
+      final shown = here.sessionStateFor(null, page).canvasState;
+      expect(
+        shown.currentSurface.tiles.containsKey(TileCoord(x: 0, y: 0)),
+        isTrue,
+        reason: 'a session left on the old pixels paints over the stroke',
+      );
+    });
+  });
 }
