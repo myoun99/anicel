@@ -315,7 +315,7 @@ void main() {
     expect(
       builtHereBy(() {
         final (:batch, :lay) = appGpuGridKernels.kept;
-        final picture = batch.picture(1, 1);
+        final picture = batch.picture(1, 1)!;
         addTearDown(picture.free);
         batch.draw(
           picture,
@@ -348,7 +348,7 @@ void main() {
     expect(
       builtHereBy(() {
         final (:batch, :lay) = appGpuGridKernels.kept;
-        final picture = batch.picture(4, 8);
+        final picture = batch.picture(4, 8)!;
         addTearDown(picture.free);
         batch.wave(picture, peaks, (
           along0: 0,

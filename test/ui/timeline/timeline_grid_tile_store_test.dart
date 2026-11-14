@@ -327,7 +327,55 @@ void main() {
     );
   });
 
-  test('a cold span rasters off-frame, lands as a physical-resolution '
+  // 🗣️관제 2026-11-15 07:0x (a-grid-row-paints-its-cells-on-a-canvas-beside-
+  // its-tiles): a word is narrowed only to its block, so a long name over a
+  // long block bakes past the batch's atlas. Data reaches that, so the span
+  // is the row's own to draw, as a span with no tile is — not a frame's
+  // batch refused.
+  test('a span whose word is past the atlas has no tile', () async {
+    final store = TimelineGridTileStore.instance;
+    final layer = Layer(
+      id: const LayerId('layer-a'),
+      name: 'A',
+      frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
+      timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 40)},
+    );
+    var drawn = 0;
+    store.debugBeforeDrawing = () async => drawn += 1;
+    addTearDown(() => store.debugBeforeDrawing = null);
+    Future<TimelineGridTilePicture?> tileAt(double dpr) async {
+      TimelineGridTilePicture? asked() => store.tileFor(
+        painter: TimelineRowCellsPainter(
+          layer: layer,
+          geometry: testFrameGeometry(
+            frameCellExtent: 24,
+            frameEndIndexExclusive: 40,
+          ),
+          crossAxisExtent: 28,
+          exposureStateForLayer: stateFor,
+          colorScheme: const ColorScheme.dark(),
+          baseTextStyle: const TextStyle(fontSize: 11),
+          frameNameForLayer: (_, frame) => frame == 0 ? 'W' * 400 : null,
+          tileStore: store,
+        ),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: dpr,
+      );
+      expect(asked(), isNull, reason: 'a cold span at $dpr');
+      await pollUntil(() => !store.debugBusy);
+      return asked();
+    }
+
+    // Narrowed to its block, 960 px: on the atlas at 1, past it at 3.
+    expect(await tileAt(1), isNotNull, reason: 'premise: the word is set');
+    final before = drawn;
+
+    expect(await tileAt(3), isNull);
+    expect(drawn, greaterThan(before), reason: 'it was baked, and refused');
+  });
+
+    test('a cold span rasters off-frame, lands as a physical-resolution '
       'image, and a changed LOOK invalidates it', () async {
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
@@ -580,11 +628,13 @@ void main() {
       store.tileImageBytes,
       [first, third].fold(0, (sum, image) => sum + image.width * image.height * 4),
     );
+    // And what the batch that drew them keeps — its words' atlas, its
+    // planes — under the same row.
     expect(
       collectMemoryCensusWhereTexturesAreRam(
         const [],
       ).items.singleWhere((item) => item.id == 'timelineTiles').bytes,
-      store.tileImageBytes,
+      store.tileImageBytes + AppGpuGridBatch.keptGridBytes,
     );
   });
 

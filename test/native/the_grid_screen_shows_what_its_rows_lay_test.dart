@@ -55,7 +55,7 @@ void main() {
     final ops = TimelineGridTileOpWriter()
       ..fillRect(0, 0, 60, 20, timelineGridPackRgba(const Color(0xFFFF0000)))
       ..fillRect(60, 0, 60, 20, timelineGridPackRgba(const Color(0xFF00FF00)));
-    final picture = batch.picture(120, 20);
+    final picture = batch.picture(120, 20)!;
     batch
       ..draw(picture, ops.build())
       ..flush()

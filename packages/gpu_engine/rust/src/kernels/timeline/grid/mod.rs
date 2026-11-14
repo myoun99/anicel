@@ -119,6 +119,9 @@ pub(crate) struct Drawn<'a> {
 /// where the pass first runs on one, or ahead of it for a tile's picture
 /// ([`GridTile::for_pictures`]).
 pub(crate) struct GridTile {
+    /// The longest side of a picture the device makes, read as the pass is
+    /// made: what a batch asks its pictures within, where it asks them.
+    most_side: u32,
     /// What the atlas binding holds where no letters were put yet.
     no_atlas: wgpu::Texture,
     atlas: Option<wgpu::Texture>,
@@ -216,6 +219,7 @@ impl GridTile {
             view_formats: &[],
         });
         Self {
+            most_side: engine.device().limits().max_texture_dimension_2d,
             no_atlas,
             atlas: None,
             work: Work::default(),
@@ -309,6 +313,11 @@ impl GridTile {
             );
         }
         Some(())
+    }
+
+    /// The longest side of a picture its device makes ([`GridPicture`]).
+    pub(crate) fn most_side(&self) -> u32 {
+        self.most_side
     }
 
     /// The bytes it keeps between its batches: the atlas, and the plane.

@@ -59,7 +59,7 @@ void main() {
     int width,
     int height,
   ) {
-    final picture = batch.picture(width, height);
+    final picture = batch.picture(width, height)!;
     addTearDown(picture.free);
     final peaks = GpuWavePeaks(appGpuEngine, [
       for (final lane in lanes) Uint16List.fromList(lane),

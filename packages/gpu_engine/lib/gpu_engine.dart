@@ -3888,6 +3888,14 @@ final class GpuGridShelves {
 /// ([GpuGridLay.lay]) or read ([GpuGridPicture.read]), or its atlas is full
 /// ([lettersAt]), or [flush] is called.
 ///
+/// ⛔WHAT DATA CAN REACH IS ANSWERED WHERE IT IS ASKED, a tile at a time: a
+/// picture past the device's side ([picture]) and words past the atlas
+/// ([lettersAt]) are answered with none, so a flush refuses its batch only
+/// for a stream or a view the writer got wrong, or where the device fails
+/// (🗣️관제 2026-11-15 07:0x, a-grid-row-paints-its-cells-on-a-canvas-
+/// beside-its-tiles: 「묶음 통째 거절이 남는 길은 작성기 버그뿐」 — a whole
+/// frame's grid stood where one tile had).
+///
 /// ↩️A tile and a sound each were a trip and a submit of their own
 /// (`GpuGrid.draw`, `GpuWave.draw`), a picture made on a trip of its own
 /// and a tile's letters on an atlas made for it alone
@@ -3921,6 +3929,9 @@ class GpuGridBatch {
   final Pointer<rust.Wave> _sounds;
   final _shelves = GpuGridShelves();
 
+  /// The longest side of a picture the device makes.
+  late final int mostSide = rust.gridMostSide(_tiles);
+
   /// What the next flush makes, puts, draws and lays, in order.
   final _pending = <GpuGridPicture>[];
   final _puts = <({int x, int y, GpuGridLetters letters})>[];
@@ -3931,11 +3942,15 @@ class GpuGridBatch {
   int get debugFlushes => _flushes;
   var _flushes = 0;
 
-  /// A clear picture [width] × [height], made at the next flush. Throws for
-  /// a side of none.
-  GpuGridPicture picture(int width, int height) {
+  /// A clear picture [width] × [height], made at the next flush — or null,
+  /// nothing held, for a side past [mostSide]: the caller answers for that
+  /// tile. Throws for a side of none.
+  GpuGridPicture? picture(int width, int height) {
     if (width < 1 || height < 1) {
       throw ArgumentError('a grid tile $width × $height');
+    }
+    if (width > mostSide || height > mostSide) {
+      return null;
     }
     final picture = GpuGridPicture._(this, width, height);
     _pending.add(picture);
@@ -3945,9 +3960,11 @@ class GpuGridBatch {
   /// Where each of [words] lies on the atlas, by its key, for a GLYPH op
   /// to read it — put there at the next flush the first time it is asked
   /// for. Where the atlas has no room for them all, what the batch holds is
-  /// flushed and the atlas starts over. Throws for letters whose bytes are
-  /// not their box's, or more than an empty atlas holds.
-  Map<K, ({int x, int y})> lettersAt<K extends Object>(
+  /// flushed and the atlas starts over; null, nothing put or flushed, for
+  /// more than an empty atlas holds ([gpuGridAtlasSide]): the caller
+  /// answers for that tile. Throws for letters whose bytes are not their
+  /// box's.
+  Map<K, ({int x, int y})>? lettersAt<K extends Object>(
     Map<K, GpuGridLetters> words,
   ) {
     for (final (:alpha, :width, :height) in words.values) {
@@ -3964,12 +3981,13 @@ class GpuGridBatch {
     ];
     var placed = _shelves.place(words);
     if (placed == null) {
+      if (GpuGridShelves().place(words) == null) {
+        return null;
+      }
       flush();
       _shelves.clear();
       fresh = [...words.keys];
-      placed =
-          _shelves.place(words) ??
-          (throw ArgumentError('words past an atlas $gpuGridAtlasSide wide'));
+      placed = _shelves.place(words)!;
     }
     for (final key in fresh) {
       final (:x, :y) = placed[key]!;
@@ -3992,7 +4010,7 @@ class GpuGridBatch {
   /// Makes, puts, draws and lays what it holds: one trip to the engine for
   /// the pictures, one for the rest, and one submit — not waited for: what
   /// reads a picture after comes after it on the GPU. Throws for a stream
-  /// or a view the passes refuse, or a picture the device cannot make:
+  /// or a view the passes refuse, or a picture the device fails to make:
   /// nothing of the batch is drawn then, it holds nothing after, and the
   /// words it is asked for next are put again.
   void flush() {
@@ -4023,7 +4041,7 @@ class GpuGridBatch {
           rust.gridPicturesNew(_engine._engine, sizes, pending.length, made),
         );
         for (final (index, picture) in pending.indexed) {
-          picture._made = made[index];
+          _engine._its(picture)._made = made[index];
         }
         final boxes = arena<Uint32>(_held(4 * puts.length));
         final length = puts.fold(
@@ -4045,7 +4063,7 @@ class GpuGridBatch {
         final stream = arena<Int32>(_held(words));
         end = 0;
         for (final (index, (picture, ops)) in drawn.indexed) {
-          tiles[index] = picture._picture;
+          tiles[index] = _engine._its(picture)._picture;
           stream.asTypedList(words).setAll(end, ops);
           end += ops.length;
           ends[index] = end;
@@ -4054,8 +4072,8 @@ class GpuGridBatch {
         final peaks = arena<Pointer<rust.WavePeaks>>(_held(waved.length));
         final views = arena<Int32>(_held(11 * waved.length));
         for (final (index, (picture, sound, view)) in waved.indexed) {
-          under[index] = picture._picture;
-          peaks[index] = sound._peaks;
+          under[index] = _engine._its(picture)._picture;
+          peaks[index] = _engine._its(sound)._peaks;
           views.asTypedList(11 * waved.length).setAll(11 * index, [
             view.along0,
             view.length,

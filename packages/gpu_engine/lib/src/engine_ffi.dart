@@ -1888,6 +1888,9 @@ external void gridFree(Pointer<Grid> grid);
 @Native<Uint32 Function()>(symbol: 'gpu_engine_grid_atlas_side')
 external int gridAtlasSide();
 
+@Native<Uint32 Function(Pointer<Grid>)>(symbol: 'gpu_engine_grid_most_side')
+external int gridMostSide(Pointer<Grid> grid);
+
 @Native<
   Bool Function(
     Pointer<Engine>,

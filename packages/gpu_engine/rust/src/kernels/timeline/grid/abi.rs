@@ -38,6 +38,18 @@ pub extern "C" fn gpu_engine_grid_atlas_side() -> u32 {
     ATLAS_SIDE
 }
 
+/// The longest side of a picture `grid`'s device makes
+/// (`gpu_engine_grid_pictures_new`): read as the pass was made, so a
+/// caller asks its pictures within it where it asks them, and no trip.
+///
+/// # Safety
+/// `grid` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_most_side(grid: *const GridTile) -> u32 {
+    // SAFETY: see the function's contract.
+    unsafe { &*grid }.most_side()
+}
+
 /// # Safety
 /// `grid` came from `gpu_engine_grid_new`.
 #[unsafe(no_mangle)]

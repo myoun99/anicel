@@ -178,7 +178,7 @@ void main() {
 
       final width = (span * cell * dpr).ceil();
       final height = (28 * dpr).ceil();
-      final picture = batch.picture(width, height);
+      final picture = batch.picture(width, height)!;
       final results = <String>[];
       for (final entry in model.entries) {
         final words = entry.value.fold<int>(0, (sum, ops) => sum + ops.length);

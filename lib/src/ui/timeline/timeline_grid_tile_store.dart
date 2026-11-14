@@ -1198,7 +1198,8 @@ class TimelineGridTileStore {
     if (!identical(engine, appGpuEngineOpen.value)) {
       return null;
     }
-    return (picture: _drawn(request, emitted, words), emitted: emitted);
+    final picture = _drawn(request, emitted, words);
+    return picture == null ? null : (picture: picture, emitted: emitted);
   }
 
   /// What a raster off the paint waits on before it draws: a test counts
@@ -1219,7 +1220,8 @@ class TimelineGridTileStore {
     if (words == null) {
       return null;
     }
-    return (picture: _drawn(request, emitted, words), emitted: emitted);
+    final picture = _drawn(request, emitted, words);
+    return picture == null ? null : (picture: picture, emitted: emitted);
   }
 
   /// The request's span laid as ops up to its words ([_setWords]) — its
@@ -1291,29 +1293,36 @@ class TimelineGridTileStore {
 
   /// [emitted]'s span with [words] set over it ([_setWords]) and its
   /// sounds' waves over them, a tile of the frame's batch: drawn as the
-  /// batch is flushed ([GpuGridBatch]). A pass that refuses it refuses
-  /// the batch, there.
+  /// batch is flushed ([GpuGridBatch]) — or null where the engine holds no
+  /// such tile, a side past its device or a word past its atlas: the row
+  /// draws that span itself, as it draws one with no tile yet. A pass that
+  /// refuses its stream refuses the batch, there: the writer's fault.
   ///
   /// ↩️A tile was drawn on a trip and a submit of its own, a pass's refusal
   /// asserted here and the tile let go of
   /// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q2, 유저
   /// 2026-11-15 「(라)」).
-  TimelineGridTilePicture _drawn(
+  TimelineGridTilePicture? _drawn(
     _TileRequest request,
     _Emitted emitted,
     Map<String, BakedWordCoverage> words,
   ) {
     final writer = emitted.writer;
     final batch = appGpuGridKernels.kept.batch;
-    _setWords(
-      writer,
+    final lettered = _setWords(
       emitted.ink.glyphs,
       words,
       devicePixelRatio: request.devicePixelRatio,
       placed: batch.lettersAt,
     );
+    if (lettered == null) {
+      return null;
+    }
     final picture = batch.picture(emitted.tileWidth, emitted.tileHeight);
-    batch.draw(picture, writer.build());
+    if (picture == null) {
+      return null;
+    }
+    batch.draw(picture, (writer..append(lettered)).build());
     for (final (:peaks, :view) in emitted.waves) {
       batch.wave(picture, EngineWavePeaks.of(peaks), view);
     }
@@ -1355,7 +1364,8 @@ class TimelineGridTileStore {
 
   /// The op stream [_emitForeground] writes for a span — what a tile bakes
   /// over its substrate, its words where a fresh atlas places them
-  /// ([GpuGridShelves]) — readable without a native engine.
+  /// ([GpuGridShelves]), none where it has no room for them — readable
+  /// without a native engine.
   @visibleForTesting
   Future<Int32List> debugForegroundOps({
     required TimelineTileRasterSource painter,
@@ -1370,14 +1380,13 @@ class TimelineGridTileStore {
       devicePixelRatio: devicePixelRatio,
     );
     final writer = TimelineGridTileOpWriter()..append(ink.ops);
-    _setWords(
-      writer,
+    final lettered = _setWords(
       ink.glyphs,
       await _bakedWords(ink.glyphs),
       devicePixelRatio: devicePixelRatio,
-      placed: (words) => GpuGridShelves().place(words)!,
+      placed: (words) => GpuGridShelves().place(words),
     );
-    return writer.build();
+    return (writer..append(lettered ?? Int32List(0))).build();
   }
 
   /// Emits the span's FOREGROUND ink (T3), a ghost's aside (F-446) — the
@@ -1493,31 +1502,35 @@ class TimelineGridTileStore {
     return baked;
   }
 
-  /// Writes the GLYPH ops of the [glyphs] [baked] holds, each word read
-  /// where [placed] says it lies on the atlas — a word's key is its bake's
-  /// ([_glyphKey]), the same bytes wherever it is set.
+  /// The GLYPH ops of the [glyphs] [baked] holds, each word read where
+  /// [placed] says it lies on the atlas — a word's key is its bake's
+  /// ([_glyphKey]), the same bytes wherever it is set — or null where
+  /// [placed] has no room for them.
   ///
   /// ↩️A tile's words were stacked on an atlas of its own, handed in with
   /// its stream (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-
   /// Q2, 유저 2026-11-15 「(라)」).
-  static void _setWords(
-    TimelineGridTileOpWriter writer,
+  static Int32List? _setWords(
     List<_TileGlyph> glyphs,
     Map<String, BakedWordCoverage> baked, {
     required double devicePixelRatio,
-    required Map<String, ({int x, int y})> Function(
+    required Map<String, ({int x, int y})>? Function(
       Map<String, GpuGridLetters> words,
     )
     placed,
   }) {
     final dpr = devicePixelRatio;
+    final writer = TimelineGridTileOpWriter();
     if (baked.isEmpty) {
-      return;
+      return writer.build();
     }
     final at = placed({
       for (final MapEntry(:key, value: glyph) in baked.entries)
         key: (alpha: glyph.alpha, width: glyph.width, height: glyph.height),
     });
+    if (at == null) {
+      return null;
+    }
     for (final cell in glyphs) {
       final glyph = baked[cell.key];
       if (glyph == null) {
@@ -1529,6 +1542,7 @@ class TimelineGridTileStore {
       final (:x, :y) = at[cell.key]!;
       writer.glyph(destX, destY, x, y, glyph.width, glyph.height, cell.rgba);
     }
+    return writer.build();
   }
 }
 

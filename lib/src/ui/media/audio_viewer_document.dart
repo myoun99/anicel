@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
 import '../../native/app_gpu_engine.dart';
 import '../../native/engine_wave_peaks.dart';
@@ -111,7 +112,12 @@ class AudioViewerDocument implements ViewerDocument {
     required int height,
   }) async {
     final batch = (await appGpuGridKernels.ready).batch;
-    final picture = batch.picture(width, height);
+    final picture =
+        batch.picture(width, height) ??
+        (throw GpuRefused(
+          'a grid tile $width × $height: a side is 1 to '
+          '${batch.mostSide} pixels',
+        ));
     try {
       if (peaks.durationSeconds > 0) {
         batch.wave(picture, EngineWavePeaks.of(peaks), (

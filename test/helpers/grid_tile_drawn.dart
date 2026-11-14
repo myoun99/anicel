@@ -8,7 +8,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 /// over clear into a tile [width] × [height]: the tile's pixels, straight
 /// RGBA8, as the store's tiles keep theirs ([GpuGridPicture.read]).
 Uint8List gridTileDrawn(int width, int height, Int32List ops) {
-  final picture = _batch.picture(width, height);
+  final picture = _batch.picture(width, height)!;
   try {
     _batch.draw(picture, ops);
     return picture.read();

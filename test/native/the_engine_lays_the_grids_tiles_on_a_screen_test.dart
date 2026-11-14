@@ -40,7 +40,7 @@ void main() {
     int height,
     List<(int, int, int, int, Color)> fills,
   ) {
-    final picture = batch.picture(width, height);
+    final picture = batch.picture(width, height)!;
     addTearDown(picture.free);
     final ops = TimelineGridTileOpWriter();
     for (final (x, y, w, h, colour) in fills) {
@@ -53,7 +53,7 @@ void main() {
   /// A tile [width] × [height] whose one letter, [width] × [height], is
   /// read at [at] on the atlas.
   GpuGridPicture lettered(({int x, int y}) at, int width, int height) {
-    final picture = batch.picture(width, height);
+    final picture = batch.picture(width, height)!;
     addTearDown(picture.free);
     batch.draw(
       picture,
@@ -139,7 +139,7 @@ void main() {
     final at = batch.lettersAt({
       'before': (alpha: Uint8List.fromList([9, 9]), width: 2, height: 1),
       'word': (alpha: Uint8List.fromList([255, 128]), width: 1, height: 2),
-    });
+    })!;
     final tile = lettered(at['word']!, 1, 2);
 
     // White at 255 and at 128, as the tile keeps it: straight.
@@ -199,17 +199,17 @@ void main() {
       width: side,
       height: tall,
     );
-    final first = batch.lettersAt({'first': word(255)});
+    final first = batch.lettersAt({'first': word(255)})!;
     final before = lettered(first['first']!, 1, 1);
     final flushed = batch.debugFlushes;
 
-    final second = batch.lettersAt({'second': word(128)});
+    final second = batch.lettersAt({'second': word(128)})!;
 
     expect(batch.debugFlushes, flushed + 1, reason: 'what it held is drawn');
     expect(second['second'], (x: 0, y: 0), reason: 'over the first');
     expect(before.read(), [255, 255, 255, 255]);
     expect(lettered(second['second']!, 1, 1).read(), [255, 255, 255, 128]);
-    final again = batch.lettersAt({'first': word(64)});
+    final again = batch.lettersAt({'first': word(64)})!;
     expect(
       lettered(again['first']!, 1, 1).read(),
       [255, 255, 255, 64],
@@ -234,7 +234,7 @@ void main() {
   });
 
   test('a tile let go of before its batch is flushed is never made', () {
-    final tile = batch.picture(1, 1);
+    final tile = batch.picture(1, 1)!;
     batch.draw(tile, Int32List(0));
     tile.free();
     final flushed = batch.debugFlushes;
@@ -246,7 +246,7 @@ void main() {
 
   test('a stream the pass refuses refuses its batch as it is flushed', () {
     final tile = aTile(1, 1, [(0, 0, 1, 1, const Color(0xFFFF0000))]);
-    final refused = batch.picture(1, 1);
+    final refused = batch.picture(1, 1)!;
     addTearDown(refused.free);
     batch.draw(refused, Int32List.fromList([99]));
 
@@ -263,27 +263,49 @@ void main() {
     expect(tile.read(), [0, 0, 0, 0], reason: 'none of the batch is drawn');
   });
 
-  test('a batch the device refuses puts its words again after', () {
-    final words = {
-      'lost': (alpha: Uint8List.fromList([77]), width: 1, height: 1),
-    };
-    batch.lettersAt(words);
-    final huge = batch.picture(1 << 20, 1);
-    addTearDown(huge.free);
+  // What data can reach is answered where it is asked, a tile at a time:
+  // the batch holds nothing of it, so no flush refuses a frame for it.
+  test('a tile past the device\'s side is answered with none', () {
+    final most = batch.mostSide;
+    final held = aTile(1, 1, [(0, 0, 1, 1, const Color(0xFFFF0000))]);
 
+    expect(batch.picture(most + 1, 1), isNull);
+    expect(batch.picture(1, most + 1), isNull);
+
+    expect(held.read(), red, reason: 'what the batch held is drawn');
+    final largest = batch.picture(most, most)!;
+    addTearDown(largest.free);
+    expect((largest.width, largest.height), (most, most));
+  });
+
+  test('words past the atlas are answered with none', () {
+    final side = gpuGridAtlasSide;
+    final held = aTile(1, 1, [(0, 0, 1, 1, const Color(0xFFFF0000))]);
+    final flushed = batch.debugFlushes;
+
+    for (final (width, height) in [(side + 1, 1), (1, side + 1)]) {
+      expect(
+        batch.lettersAt({
+          'past': (
+            alpha: Uint8List(width * height),
+            width: width,
+            height: height,
+          ),
+        }),
+        isNull,
+        reason: '$width × $height',
+      );
+    }
+
+    expect(batch.debugFlushes, flushed, reason: 'nothing is flushed for them');
+    expect(held.read(), red);
     expect(
-      batch.flush,
-      throwsA(
-        isA<GpuRefused>().having(
-          (refused) => refused.message,
-          'why',
-          contains('a grid tile 1048576 × 1'),
-        ),
-      ),
+      batch.lettersAt({
+        'whole': (alpha: Uint8List(side), width: side, height: 1),
+      }),
+      isNotNull,
+      reason: 'a word as wide as the atlas is on it',
     );
-
-    final again = batch.lettersAt(words);
-    expect(lettered(again['lost']!, 1, 1).read(), [255, 255, 255, 77]);
   });
 
   test('a lay past its screen is refused with why', () {

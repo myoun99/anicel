@@ -141,6 +141,10 @@ fn a_tile_of_no_side_or_past_the_device_is_refused_with_why() {
         assert!(last_error().contains(&format!("a grid tile {width} × {height}")), "{}", last_error());
         assert!(pictures(&[(4, 4), (width, height)]).is_none(), "none made of a trip with {width} × {height}");
     }
+    let passes = passes();
+    // SAFETY: the pass is live.
+    assert_eq!(unsafe { gpu_engine_grid_most_side(passes.0) }, most, "what a caller asks within");
+    let_go_of(passes);
     let largest = pictures(&[(most, 1), (1, most)]).expect("as large as the device makes");
     // SAFETY: each came from its new.
     unsafe { largest.into_iter().for_each(|picture| gpu_engine_grid_picture_free(picture)) };
