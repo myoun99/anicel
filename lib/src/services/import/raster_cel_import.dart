@@ -1,12 +1,14 @@
+import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuBlend, GpuPlan, gpuTileBytes, gpuTileSide;
+    show GpuBlend, GpuCompositedReader, GpuPlan, gpuTileBytes, gpuTileSide;
 
 import '../../core/floor_math.dart';
+import '../../core/on_a_worker.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -16,13 +18,13 @@ import '../../models/dirty_region.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/media_reference.dart';
 import '../../models/pasteboard_bounds.dart';
-import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../models/tiles_covering.dart';
 import '../../models/transform_pose.dart';
 import '../../native/app_gpu_engine.dart' show appGpuComposite;
 import '../../native/engine_row_pose.dart';
 import '../../native/engine_tile_ledger.dart';
+import '../../native/tile_blocks.dart';
 import '../brush_frame_store.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
@@ -518,13 +520,6 @@ CelLayout? _layoutOf(
 PictureCut _cutAt(LayerPlacement placement, CelLayout layout) =>
     (left: placement.tx.toInt(), top: placement.ty.toInt(), layout: layout);
 
-BitmapSurface _surfaceOf(CelLayout layout, List<PlacedTile> tiles) =>
-    BitmapSurface(
-      canvasSize: layout.canvas,
-      tileSize: layout.tileSize,
-      laidBounds: layout.laid,
-    ).putTiles(tiles);
-
 /// [source] laid by [placement] over [layout]'s tiles on the engine, by
 /// the law the canvas lays a row by — its pose's inverse as the row's
 /// ([gpuRowInverse]), sampled at the canvas's own resolution
@@ -554,29 +549,28 @@ Future<BitmapSurface> _laidOnEngine(
   }
   final back = canvasToArtwork(placement);
   if (back == null) {
-    return _surfaceOf(layout, const []);
+    return laidCelSurface(laidCelOf(layout, const []));
   }
-  final tiles = <PlacedTile>[];
-  for (final block in _layBlocks(layout.tiles, layout.tileSize)) {
-    for (final part in _partsFitting(block, source.size, back, layout)) {
-      final laid = await _laidArea(
-        source,
-        back,
-        part,
-        _areaOf(part, layout.tileSize),
-        layout.canvas,
-      );
-      for (final MapEntry(key: coord, value: rgba) in laid.entries) {
-        if (_anyInk(rgba)) {
-          tiles.add((
-            coord: coord,
-            tile: BitmapTile(size: layout.tileSize, pixels: rgba),
-          ));
-        }
+  final tiles = <({int x, int y, int pixels})>[];
+  try {
+    for (final block in _layBlocks(layout.tiles, layout.tileSize)) {
+      for (final part in _partsFitting(block, source.size, back, layout)) {
+        tiles.addAll(
+          await _laidArea(
+            source,
+            back,
+            part,
+            _areaOf(part, layout.tileSize),
+            layout.canvas,
+          ),
+        );
       }
     }
+  } on Object {
+    giveBackCut(tiles);
+    rethrow;
   }
-  return _surfaceOf(layout, tiles);
+  return laidCelSurface(laidCelOf(layout, tiles));
 }
 
 /// [area]'s pixels — all of [part]'s tiles, or a piece of its one tile —
@@ -589,7 +583,10 @@ Future<BitmapSurface> _laidOnEngine(
 /// halves are the whole to the byte. 🔬2026-11-08 (I-120-Q28): read from
 /// what it reached decoded smaller, such a tile came out with 6,630 grey
 /// pixels of black-and-white line art laid at 0.15.
-Future<Map<TileCoord, Uint8List>> _laidArea(
+///
+/// Its tiles come as [CutTiles]: only those with ink, each a block of its
+/// own ([_ran]).
+Future<CutTiles> _laidArea(
   _Source source,
   GuideTransform back,
   TileRange part,
@@ -598,18 +595,24 @@ Future<Map<TileCoord, Uint8List>> _laidArea(
 ) async {
   final reached = _reachedBy(area, source.size, back);
   if (reached == null) {
-    return const {};
+    return const [];
   }
   final oneTile = part.firstX == part.lastX && part.firstY == part.lastY;
   if (oneTile && !_fitsOneRaster(reached) && area.width + area.height > 2) {
     final (first, second) = _halvesOf(area);
     final one = await _laidArea(source, back, part, first, canvas);
-    final other = await _laidArea(source, back, part, second, canvas);
+    final CutTiles other;
+    try {
+      other = await _laidArea(source, back, part, second, canvas);
+    } on Object {
+      giveBackCut(one);
+      rethrow;
+    }
     return _together(one, other);
   }
   final held = await source.tilesOver(reached);
   if (held.tiles.isEmpty) {
-    return const {};
+    return const [];
   }
   return _ran(held, back, part, area, canvas);
 }
@@ -651,23 +654,26 @@ Future<Map<TileCoord, Uint8List>> _laidArea(
 }
 
 /// The tiles two runs over apart areas of them laid, as one: each byte is
-/// one run's, the other's nothing there.
-Map<TileCoord, Uint8List> _together(
-  Map<TileCoord, Uint8List> one,
-  Map<TileCoord, Uint8List> other,
-) {
-  final together = {...one};
-  for (final MapEntry(key: coord, value: rgba) in other.entries) {
-    final laid = together[coord];
+/// one run's, the other's nothing there — a tile both laid is [one]'s
+/// block, the [other]'s bytes put into it and its own block given back.
+CutTiles _together(CutTiles one, CutTiles other) {
+  final together = {for (final tile in one) (tile.x, tile.y): tile};
+  for (final tile in other) {
+    final laid = together[(tile.x, tile.y)];
     if (laid == null) {
-      together[coord] = rgba;
+      together[(tile.x, tile.y)] = tile;
       continue;
     }
-    for (var at = 0; at < laid.length; at += 1) {
-      laid[at] |= rgba[at];
+    final into = Pointer<Uint8>.fromAddress(laid.pixels);
+    final from = Pointer<Uint8>.fromAddress(tile.pixels);
+    final bytes = into.asTypedList(gpuTileBytes);
+    final rgba = from.asTypedList(gpuTileBytes);
+    for (var at = 0; at < bytes.length; at += 1) {
+      bytes[at] |= rgba[at];
     }
+    TileBlocks.free(from);
   }
-  return together;
+  return [...together.values];
 }
 
 /// The pixels [part]'s tiles cover.
@@ -680,20 +686,25 @@ DirtyRegion _areaOf(TileRange part, int tileSize) => DirtyRegion.fromXYWH(
 
 /// [held] laid by [back] — a canvas pixel to the picture's — over [part]'s
 /// tiles of a [canvas]-sized cel, nothing outside [area]: ONE run of the
-/// composite, its one row the canvas's own ([_laidOnEngine]), read back.
-Map<TileCoord, Uint8List> _ran(
+/// composite, its one row the canvas's own ([_laidOnEngine]), submitted
+/// here and read where a worker waits for the GPU ([_inkedTilesOf]).
+///
+/// ↩️(2026-11-14, card a-raster-import-goes-gpu-cpu-gpu-cpu) the run was
+/// read here: the isolate that paints waited for the GPU, then searched
+/// every tile for ink and copied each into a tile of its own.
+Future<CutTiles> _ran(
   _HeldTiles held,
   GuideTransform back,
   TileRange part,
   DirtyRegion area,
   CanvasSize canvas,
-) {
+) async {
   final coords = [
     for (var y = part.firstY; y <= part.lastY; y += 1)
-      for (var x = part.firstX; x <= part.lastX; x += 1) TileCoord(x: x, y: y),
+      for (var x = part.firstX; x <= part.lastX; x += 1) (x: x, y: y),
   ];
   final ledger = EngineTileLedger.instance;
-  return ledger.held((hold) {
+  final run = ledger.held((hold) {
     final plan = GpuPlan(appGpuComposite.engine);
     try {
       final grid = hold.gridOf(BrushFrameKey.noCel, held.tiles);
@@ -709,42 +720,77 @@ Map<TileCoord, Uint8List> _ran(
         mode: GpuBlend.normal,
       );
       if (!laid) {
-        return const {};
+        return null;
       }
       debugLayRuns += 1;
-      final run = appGpuComposite.run(
+      return appGpuComposite.run(
         ledger.pool,
         plan,
-        [for (final coord in coords) (coord.x, coord.y)],
+        [for (final (:x, :y) in coords) (x, y)],
         (area.left, area.top, area.rightExclusive, area.bottomExclusive),
       );
-      try {
-        final bytes = run.read();
-        return {
-          for (final (at, coord) in coords.indexed)
-            coord: Uint8List.sublistView(
-              bytes,
-              at * gpuTileBytes,
-              (at + 1) * gpuTileBytes,
-            ),
-        };
-      } finally {
-        run.free();
-      }
     } finally {
+      // Submitted, the run keeps what it reads of the plan — as a frame's
+      // composite lets its plan go once it has run (`layer_stack_engine_
+      // screen.dart`).
       plan.free();
     }
   });
+  if (run == null) {
+    return const [];
+  }
+  try {
+    return await _inkedTilesOf(run.reader, coords);
+  } finally {
+    run.free();
+  }
 }
 
-/// Whether straight RGBA [rgba] holds a pixel that is not clear.
-bool _anyInk(Uint8List rgba) {
-  for (var at = 3; at < rgba.length; at += 4) {
-    if (rgba[at] != 0) {
-      return true;
+/// The tiles [reader]'s run put — at [coords], in the order asked — read
+/// on a worker, whose the wait for the GPU then is
+/// ([GpuCompositedReader]): each one with ink cut into a block of its own
+/// there ([_cutInked]), so the isolate that paints is handed the blocks
+/// and none of their bytes. ⚠️Its own function, so all the worker is sent
+/// is [reader] and [coords]: a closure in [_ran] would carry what that
+/// one's other closure holds — the tile ledger.
+Future<CutTiles> _inkedTilesOf(
+  GpuCompositedReader reader,
+  List<({int x, int y})> coords,
+) => onAWorker(() => _cutInked(reader, coords));
+
+/// [_inkedTilesOf]'s tiles, cut where they are read.
+CutTiles _cutInked(
+  GpuCompositedReader reader,
+  List<({int x, int y})> coords,
+) {
+  final bytes = reader.read();
+  final side = gpuTileSide;
+  final tiles = <({int x, int y, int pixels})>[];
+  try {
+    for (final (at, (:x, :y)) in coords.indexed) {
+      tiles.addAll(
+        cutRgbaRows(
+          Uint8List.sublistView(
+            bytes,
+            at * gpuTileBytes,
+            (at + 1) * gpuTileBytes,
+          ),
+          width: side,
+          height: side,
+          cut: (
+            left: x * side,
+            top: y * side,
+            tileSize: side,
+            tiles: (firstX: x, lastX: x, firstY: y, lastY: y),
+          ),
+        ),
+      );
     }
+  } on Object {
+    giveBackCut(tiles);
+    rethrow;
   }
-  return false;
+  return tiles;
 }
 
 /// What a lay reads its picture from: tiles of it, a part at a time

@@ -2500,18 +2500,52 @@ class GpuComposited implements _OfAnEngine {
 
   /// Its pixels once the GPU is done — straight RGBA8, tile after tile in
   /// the order asked, each [gpuTileSide] rows of [gpuTileSide].
-  Uint8List read() => using((arena) {
-    final count = rust.compositedBytes(tiles);
-    final bytes = arena<Uint8>(_held(count));
-    // ⚠️No test reaches the throw: a read fails only where the device does.
-    if (!rust.compositedRead(_engine._engine, _composited, bytes, count)) {
-      throw GpuRefused(_lastError());
-    }
-    return Uint8List.fromList(bytes.asTypedList(count));
-  });
+  Uint8List read() => _compositedPixels(_engine._engine, _composited, tiles);
+
+  /// This run as any isolate reads it — till it is freed.
+  GpuCompositedReader get reader => GpuCompositedReader._(
+    _engine._engine.address,
+    _composited.address,
+    tiles,
+  );
 
   void free() => rust.compositedFree(_composited);
 }
+
+/// A [GpuComposited] as any isolate reads it: plain numbers, the engine's
+/// address and the run's, so it crosses to a worker — where the wait for
+/// the GPU is that worker's, not the asker's ([debugWaitsHere]), as a
+/// [GpuChainReader]'s is.
+final class GpuCompositedReader {
+  const GpuCompositedReader._(this._engine, this._composited, this._tiles);
+
+  final int _engine;
+  final int _composited;
+  final int _tiles;
+
+  /// [GpuComposited.read], asked here. ⚠️Waits for the GPU.
+  Uint8List read() => _compositedPixels(
+    Pointer.fromAddress(_engine),
+    Pointer.fromAddress(_composited),
+    _tiles,
+  );
+}
+
+/// The pixels [composited] put over its [tiles] on [engine], once the GPU
+/// has made them.
+Uint8List _compositedPixels(
+  Pointer<rust.Engine> engine,
+  Pointer<rust.Composited> composited,
+  int tiles,
+) => using((arena) {
+  final count = rust.compositedBytes(tiles);
+  final bytes = arena<Uint8>(_held(count));
+  // ⚠️No test reaches the throw: a read fails only where the device does.
+  if (!rust.compositedRead(engine, composited, bytes, count)) {
+    throw GpuRefused(_lastError());
+  }
+  return Uint8List.fromList(bytes.asTypedList(count));
+});
 
 /// The export's conversions of a frame as the screen shows it, on the GPU
 /// before its readback (gpu-export-path ①), each pass compiled where it
