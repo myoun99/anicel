@@ -1331,7 +1331,8 @@ pub(crate) unsafe fn on_thread_of<T, Made>(handed: *const T, work: impl FnOnce()
 /// `made`, handed to the caller over the ABI where it holds nothing of a
 /// device — bytes in memory ([`Handed`] has which, and why they are no
 /// engine's): a bare box, [`let_go_bytes`]'s to let go of on whatever
-/// thread frees it. ⚠️A type that comes to hold anything of the device
+/// thread frees it, or [`taken_bytes`]'s to take back where a verb uses
+/// it up. ⚠️A type that comes to hold anything of the device
 /// leaves this door for [`Engine::hands`]: `one_handing_out.rs` reads
 /// each type's fields for it — till the device's things are told by a
 /// type of their own (stage 2 of the-ui-thread-never-enters-the-driver),
@@ -1348,8 +1349,21 @@ pub(crate) fn hands_bytes<T>(made: T) -> *mut T {
 pub(crate) unsafe fn let_go_bytes<T>(handed: *mut T) {
     if !handed.is_null() {
         // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(handed) });
+        drop(unsafe { taken_bytes(handed) });
     }
+}
+
+/// What [`hands_bytes`] handed out, taken back whole where its caller is
+/// — by a verb handed its thing to use up, which no free lets go of
+/// after it (`gpu_engine_faces_of` sets up the faces it was handed a
+/// file at a time).
+///
+/// # Safety
+/// `handed` came from [`hands_bytes`], is not null, and is taken back
+/// once.
+pub(crate) unsafe fn taken_bytes<T>(handed: *mut T) -> T {
+    // SAFETY: see the function's contract.
+    *unsafe { Box::from_raw(handed) }
 }
 
 /// Lets go of what [`Engine::hands`] handed out as [`let_go`] does, but

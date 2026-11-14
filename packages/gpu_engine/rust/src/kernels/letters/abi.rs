@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, hands_bytes, let_go, let_go_bytes};
+use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, taken_bytes};
 use crate::fail;
 use crate::kernels::composite::Composite;
 
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn gpu_engine_faces_file(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_faces_of(handed: *mut FacesHanded) -> *mut Faces {
     // SAFETY: see the function's contract.
-    let FacesHanded { families, refused } = *unsafe { Box::from_raw(handed) };
+    let FacesHanded { families, refused } = unsafe { taken_bytes(handed) };
     if let Some(why) = refused {
         return none(why);
     }

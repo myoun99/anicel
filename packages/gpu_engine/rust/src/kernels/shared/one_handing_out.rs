@@ -6,8 +6,9 @@
 //!   which let go of a thing on the thread of the engine that made it
 //!   (`Handed` has why) — for what holds, or comes to hold, anything of the
 //!   device;
-//! - the bytes' — `hands_bytes` and `let_go_bytes` — for what holds nothing
-//!   of one: no engine's, let go of where its free is called.
+//! - the bytes' — `hands_bytes`, and `let_go_bytes` or `taken_bytes` — for
+//!   what holds nothing of one: no engine's, let go of where its free is
+//!   called, or taken back whole by the verb that uses it up.
 //!
 //! A thing boxed past the doors is let go of by them as a box of another
 //! shape; one that goes out by one door and comes back by the other, the
@@ -58,10 +59,15 @@ fn hands_out_by(body: &str) -> Option<Door> {
     }
 }
 
-/// The door `body` lets its thing go by.
+/// Whether `body` takes its thing back whole to use it up.
+fn takes_back(body: &str) -> bool {
+    body.contains(" taken_bytes(")
+}
+
+/// The door `body` lets its thing go by, or takes it back by.
 fn lets_go_by(body: &str) -> Option<Door> {
     let engines = body.contains(" let_go(") || body.contains(" let_go_unwaited(");
-    match (engines, body.contains(" let_go_bytes(")) {
+    match (engines, body.contains(" let_go_bytes(") || takes_back(body)) {
         (true, false) => Some(Door::Engines),
         (false, true) => Some(Door::Bytes),
         _ => None,
@@ -88,14 +94,16 @@ fn handed_out<'a>(verbs: &'a BTreeMap<String, Verb>) -> Vec<(&'a str, Door, &'a 
 #[test]
 fn a_thing_comes_back_by_the_door_it_went_out_by() {
     let verbs = verbs();
-    // Each type's free, and its door: the first thing a free is handed.
+    // Each type's way back, and its door: the first thing a free is
+    // handed, or a verb that takes it back to use it up.
     let frees: BTreeMap<&str, (Door, &str)> = verbs
         .values()
-        .filter(|verb| verb.name.ends_with("_free"))
+        .filter(|verb| verb.name.ends_with("_free") || takes_back(&verb.body))
         .filter_map(|verb| Some((named_after(&verb.signature, ": *mut ")?, (lets_go_by(&verb.body)?, &*verb.name))))
         .collect();
     assert_eq!(frees.get("Texture"), Some(&(Door::Bytes, "gpu_engine_dab_texture_free")), "LIVENESS");
     assert_eq!(frees.get("Planned"), Some(&(Door::Engines, "gpu_engine_plan_free")), "LIVENESS");
+    assert_eq!(frees.get("FacesHanded"), Some(&(Door::Bytes, "gpu_engine_faces_of")), "LIVENESS");
     let handed_out = handed_out(&verbs);
     assert!(handed_out.contains(&("Texture", Door::Bytes, "gpu_engine_dab_texture_new")), "LIVENESS");
     let other_way = |(thing, door, maker): &(&str, Door, &str)| {
