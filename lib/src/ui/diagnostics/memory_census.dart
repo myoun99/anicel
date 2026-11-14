@@ -278,7 +278,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             EngineStrokes.idleBytes +
             GpuStampPicture.liveBytes +
             GpuMask.liveBytes +
-            EngineSelectionMasks.idleBytes,
+            EngineSelectionMasks.keptPlaneBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest

@@ -16,8 +16,8 @@ void main() {
       CanvasSelectionShape.rect(left: 0, top: 0, right: 40, bottom: 10),
     );
     region.pixelRunsFor(left: 0, top: 0, width: 40, height: 10);
-    expect(EngineSelectionMasks.idleBytes, greaterThan(0));
+    expect(EngineSelectionMasks.keptPlaneBytes, greaterThan(0));
     DrawingEngines.respondToMemoryPressure();
-    expect(EngineSelectionMasks.idleBytes, 0);
+    expect(EngineSelectionMasks.keptPlaneBytes, 0);
   });
 }
