@@ -107,7 +107,9 @@
 #    Surface on C:, neither on the default PATH — and a land that cannot
 #    find cargo refuses rather than skipping. `bash tool/lane.sh crate
 #    <name>` runs the same thing without landing.
-#    🆕AND NOT TWICE (2026-11-14): a profile green on this machine with the
+#    🆕AND WHAT ITS TESTS READ (2026-11-14): a lane that changed a file the
+#    crate's tests read from outside its tree pays too (CRATE_INPUTS).
+#    🆕AND NOT TWICE (same day): a profile green on this machine with the
 #    same input is not run again — by `crate`, or by a land after it
 #    (cmd_crate says what the same input is).
 #
@@ -808,18 +810,22 @@ host_triple() {
   rustc -vV | tr -d '\r' | sed -n 's/^host: //p'
 }
 
-# What changing makes a lane pay refusal 8: the crate, its ledger and the
-# fx SDK (crate_gate; the header says why each).
-CRATE_SOURCES=(packages/gpu_engine/rust test/fixtures/fingerprints.json sdk/fx)
-# What the crate's tests read besides, from outside its tree: the movies and
-# the letters' clusters in test/fixtures, the fonts the app ships, and two
-# Dart files a pin holds the Rust to. A green was measured on them too, so
-# they are in its key (crate_input) — and only there: what makes a lane pay
-# is the header's law, not this list's.
+# What the crate's tests answer to: the crate, the fx SDK its fx tests build
+# (sdk/fx — the spec crate and the example), and what they read from
+# outside the crate's tree — the ledger, the movies and the letters'
+# clusters in test/fixtures, the fonts the app ships, and two Dart files a
+# pin holds the Rust to. A lane that changed any of it pays refusal 8
+# (crate_gate), and a green is kept for all of it (crate_input).
+# 🗣️ONE LIST FOR BOTH (관제 2026-11-14, a-land-runs-the-crate-tests-the-
+# lane-already-passed-here): both answer 「what do the crate's tests answer
+# to」. ↩️Refusal 8 asked of the crate, the ledger and the fx SDK alone, so a
+# lane that changed qa_tablet_bridge.dart — which native/pen's tests read —
+# landed with no crate test run; two lists would part the same way again.
 # ⛔A Rust test that reads one more file outside its tree is refused until
 # it is here (a_land_takes_only_what_its_gates_measured_test.dart walks
 # them).
-CRATE_READS=(test/fixtures assets/fonts lib/src/native/qa_tablet_bridge.dart
+CRATE_INPUTS=(packages/gpu_engine/rust sdk/fx test/fixtures assets/fonts
+  lib/src/native/qa_tablet_bridge.dart
   lib/src/services/audio/audio_resample_stream.dart)
 
 # What the crate's tests in the lane at $1 answer to, as one word: this
@@ -828,12 +834,11 @@ CRATE_READS=(test/fixtures assets/fonts lib/src/native/qa_tablet_bridge.dart
 # committed, for then the commit is not what ran.
 crate_input() {
   local p="$1" path
-  [ -z "$(git -C "$p" status --porcelain -- "${CRATE_SOURCES[@]}" "${CRATE_READS[@]}")" ] \
-    || return 0
+  [ -z "$(git -C "$p" status --porcelain -- "${CRATE_INPUTS[@]}")" ] || return 0
   {
     echo "${MACHINE:-trunk}"
     rustc -vV
-    for path in "${CRATE_SOURCES[@]}" "${CRATE_READS[@]}"; do
+    for path in "${CRATE_INPUTS[@]}"; do
       echo "$path $(git -C "$p" rev-parse -q --verify "HEAD:$path" 2>/dev/null)"
     done
   } | git hash-object --stdin
@@ -865,7 +870,7 @@ cmd_crate() {
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
   command -v cargo >/dev/null 2>&1 || die "cargo is not on PATH — this is refusal 8
-  The lane changed the GPU engine crate, its ledger or the fx SDK. Put this
+  The lane changed what the GPU engine crate's tests answer to. Put this
   machine's Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
   local log="$p/build/lane-crate.log" profile flag from passed red=
   mkdir -p "$p/build"
@@ -882,7 +887,7 @@ cmd_crate() {
   # answers for nothing here (the header: A STAMP DOES NOT STAND FOR IT).
   # ⚖️What the input leaves out: the GPU's driver. A driver Windows updated
   # under a green is not asked until the input changes.
-  local input todo= green
+  local input todo= green kept
   input="$(crate_input "$p")"
   for profile in debug release; do
     green="$(crate_green "$input" "$profile")"
@@ -950,7 +955,13 @@ cmd_crate() {
           "$(cargo_home)/registry/cache" \
           "(cd $p/packages/gpu_engine/rust && cargo fetch --locked --target $(host_triple))" "$log"
       tail -n +$((from + 1)) "$log" | grep -aE '^test .*FAILED|panicked|^error' | head -15 >&2
-      echo "lane: crate — $profile red" >&2
+      # 🗣️A RED KEEPS ITS EVIDENCE (관제 2026-11-14, same card): the next
+      # run empties the log, and a red seen under load and run again green
+      # left nothing to read — canvas base's posed-row mask test, that day.
+      # Its part of the log stays under a name no run reuses.
+      kept="$p/build/lane-crate-$profile-red-$(date +%Y%m%d-%H%M%S).log"
+      tail -n +$((from + 1)) "$log" >"$kept"
+      echo "lane: crate — $profile red (kept: $kept)" >&2
       red="$red $profile"
       continue
     }
@@ -1121,15 +1132,15 @@ lane_touched() {
   [ -n "$(git -C "$p" diff --name-only "$TRUNK"...HEAD -- "$@")" ]
 }
 
-# Refusal 8, for a lane that touched the crate or its ledger. `gates` asks
-# it, and so does a stamped land: the header says why a stamp does not
-# stand for it.
+# Refusal 8, for a lane that touched what the crate's tests answer to
+# (CRATE_INPUTS). `gates` asks it, and so does a stamped land: the header
+# says why a stamp does not stand for it.
 crate_gate() {
   local name="$1" p="$2"
   # sdk/fx: the fx SDK's spec crate and example are the fx tests' source
   # as well (native/fx_plugin and native/fx_sdk_example build them), and a
   # lane that changed them alone ran none (2026-11-07).
-  if lane_touched "$p" "${CRATE_SOURCES[@]}"; then
+  if lane_touched "$p" "${CRATE_INPUTS[@]}"; then
     cmd_crate "$name"
   fi
 }

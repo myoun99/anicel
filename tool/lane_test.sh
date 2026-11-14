@@ -666,6 +666,8 @@ O=$(out "$E/home" crate half)
 has "asked again, the debug green answers for itself" "$O" "debug green here with the same input ("
 check "and the release red is asked again" "$(grep -c 'lane-half cargo test .*--release' "$LANE_TEST_LOG")" 1
 check "alone" "$(cargo_runs lane-half)" 1
+check "and what the red said is still there, under a name no run reuses" \
+  "$(cat "$HW"/lane-half/build/lane-crate-release-red-*.log 2>/dev/null | grep -c FAILED)" 1
 commit "$HW/lane-half" packages/gpu_engine/rust/h2.wgsl "one more line of Rust"
 : > "$LANE_TEST_LOG"
 O=$(out "$E/home" crate half)
@@ -683,6 +685,13 @@ git -C "$HW/lane-half" checkout -q -- packages/gpu_engine/rust/h3.wgsl
 O=$(out "$E/home" crate half)
 check "a run of an edit nobody committed answers for no commit" "$(cargo_runs lane-half)" 2
 quiet "$E/home" drop half
+quiet "$E/home" open reads; mkdir -p "$HW/lane-reads/lib/src/native"
+commit "$HW/lane-reads" lib/src/native/qa_tablet_bridge.dart "a Dart file the crate's tests read"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land reads)
+has "a lane that changed only a file the crate's tests read lands" "$O" "merged work/reads"
+check "and pays for them, debug and release — one list says what they answer to" \
+  "$(cargo_runs lane-reads)" 2
 # A lock of seven crates from the registry and the workspace's own, and a
 # machine that downloaded one of them. Of the six not here, four are built
 # for this machine's platform — cpal; windows-only, which the member

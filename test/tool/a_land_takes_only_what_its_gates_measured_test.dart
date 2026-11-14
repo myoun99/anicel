@@ -59,13 +59,18 @@ void main() {
       );
       expect(all, contains(r'crate_gate "$name" "$p"'));
       final crate = codeOf('crate_gate').join('\n');
-      expect(crate, contains(r'lane_touched "$p" "${CRATE_SOURCES[@]}"; then'));
+      expect(crate, contains(r'lane_touched "$p" "${CRATE_INPUTS[@]}"; then'));
       expect(
         File('tool/lane.sh').readAsStringSync(),
-        contains(
-          'CRATE_SOURCES=(packages/gpu_engine/rust '
-          'test/fixtures/fingerprints.json sdk/fx)',
-        ),
+        contains('CRATE_INPUTS=(packages/gpu_engine/rust sdk/fx test/fixtures'),
+        reason: 'the crate, the fx SDK, and the ledger with what else the '
+            'tests read from outside the crate',
+      );
+      expect(
+        codeOf('crate_input').join('\n'),
+        contains(r'for path in "${CRATE_INPUTS[@]}"; do'),
+        reason: 'what makes a lane pay is what a green is kept for — one '
+            'list (관제 2026-11-14)',
       );
       expect(crate, contains(r'cmd_crate "$name"'));
     });
@@ -597,16 +602,15 @@ void main() {
   // 관제 2026-11-14, a-land-runs-the-crate-tests-the-lane-already-passed-here:
   // a profile green here with the same input is not run again, so the input
   // has to be all the crate's tests read — they read a movie, the fonts and
-  // two Dart files from outside the crate's tree.
-  test('⛔what the crate\'s tests read outside its tree is all in what a '
-      'green is kept for, and nothing else is', () {
-    final script = File('tool/lane.sh').readAsStringSync();
-    List<String> words(String name) => RegExp('^$name=\\(([^)]*)\\)', multiLine: true)
-        .firstMatch(script)![1]!
+  // two Dart files from outside the crate's tree — and a lane that changed
+  // one pays refusal 8: one list for both.
+  test('⛔what the crate\'s tests read outside its tree is all in what they '
+      'answer to, and nothing else is', () {
+    final kept = RegExp(r'^CRATE_INPUTS=\(([^)]*)\)', multiLine: true)
+        .firstMatch(File('tool/lane.sh').readAsStringSync())![1]!
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
-    final kept = [...words('CRATE_SOURCES'), ...words('CRATE_READS')];
     final read = <String>{};
     for (final file in _rustSources('packages/gpu_engine/rust')) {
       final crate = _crateOf(file.parent);
@@ -640,8 +644,10 @@ void main() {
     );
     expect(
       [
-        for (final k in words('CRATE_READS'))
-          if (!read.any((path) => path == k || path.startsWith('$k/'))) k,
+        for (final k in kept)
+          if (k != 'packages/gpu_engine/rust' &&
+              !read.any((path) => path == k || path.startsWith('$k/')))
+            k,
       ],
       isEmpty,
       reason: 'a file no test reads any more is no input',
@@ -656,13 +662,14 @@ final _climbingLiteral = RegExp(
   r'(include(?:_str|_bytes)?!\(\s*|#\[path\s*=\s*)?"([^"\n]*\.\./[^"\n]*)"',
 );
 
-/// The Rust sources under [root], past the build folders.
+/// The Rust sources and manifests under [root], past the build folders.
 Iterable<File> _rustSources(String root) sync* {
   for (final entity in Directory(root).listSync()) {
     final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
     if (entity is Directory && !name.startsWith('target')) {
       yield* _rustSources(entity.path);
-    } else if (entity is File && name.endsWith('.rs')) {
+    } else if (entity is File &&
+        (name.endsWith('.rs') || name == 'Cargo.toml')) {
       yield entity;
     }
   }
