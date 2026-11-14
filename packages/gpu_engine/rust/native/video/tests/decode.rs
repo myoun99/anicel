@@ -22,9 +22,10 @@ use video::decode::{
     qa_video_decode_close, qa_video_decode_close_all, qa_video_decode_frame, qa_video_decode_info,
     qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_span, qa_video_decode_supported,
 };
+use video::colour::{self, Picture, Planes};
 use video::export::{
-    qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_probe,
-    qa_video_export_write_audio, qa_video_export_write_frame,
+    qa_video_export_error, qa_video_export_finish, qa_video_export_nv12_shape, qa_video_export_open,
+    qa_video_export_probe, qa_video_export_write_audio, qa_video_export_write_frame, qa_video_export_write_nv12,
 };
 
 /// What `info` answers: the shown size, the frame count and the rate.
@@ -124,14 +125,58 @@ const SILENT: Asked =
 /// export — None where it has none — and the file it is in.
 fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
     static MOVIE: OnceLock<Option<(PathBuf, Vec<u8>)>> = OnceLock::new();
-    MOVIE.get_or_init(|| write_movie("silent", SILENT, FRAMES, 0)).as_ref()
+    MOVIE.get_or_init(|| write_movie("silent", SILENT, FRAMES, 0, Feed::Rgba, picture)).as_ref()
 }
 
-/// `frames` such pictures as the movie `asked` this build's export writes,
-/// and the file — None where it does not write it. Under silence of the
-/// sound's rate, if it has one, that runs `sound_past` samples past the
-/// last picture.
-fn write_movie(name: &str, asked: Asked, frames: usize, sound_past: usize) -> Option<(PathBuf, Vec<u8>)> {
+/// How a frame is handed to the export: as the RGBA a trimmed movie's
+/// frames are, or as the NV12 the GPU engine makes of an export's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Feed {
+    Rgba,
+    Nv12,
+}
+
+/// The H.26x codecs, which every writer takes the engine's NV12 for —
+/// ProRes takes RGBA alone.
+fn takes_nv12(codec: i32) -> bool {
+    codec == 0 || codec == 1
+}
+
+/// `rgba`, `width` × `height`, handed to the open job as `feed` says: as it
+/// is, or as the engine's NV12 of it — the colour law's bytes
+/// (`colour::from_rgba`), padded to the writer's frame, on rows longer than
+/// the frame as the engine's readback rows are. What the export answers.
+fn hand(feed: Feed, rgba: &[u8], width: usize, height: usize) -> i32 {
+    if feed == Feed::Rgba {
+        // SAFETY: a whole frame of the size opened.
+        return unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
+    }
+    let mut shape = [0i32; 2];
+    // SAFETY: room for the two it says.
+    assert_eq!(unsafe { qa_video_export_nv12_shape(shape.as_mut_ptr()) }, 1, "the writer takes NV12");
+    let (frame_width, frame_height) = (shape[0] as usize, shape[1] as usize);
+    let stride = frame_width + 64;
+    let mut nv12 = vec![0u8; stride * frame_height * 3 / 2];
+    let (y, chroma) = nv12.split_at_mut(stride * frame_height);
+    let mut planes = Planes { y, y_stride: stride, chroma, cb: 0, cr: 1, chroma_stride: stride, chroma_step: 2 };
+    colour::from_rgba(&Picture { rgba, width, height }, frame_width, frame_height, &mut planes);
+    // SAFETY: the frame it says, rows `stride` apart.
+    unsafe { qa_video_export_write_nv12(nv12.as_ptr(), stride as i64) }
+}
+
+/// `frames` pictures `paint` makes (`width`, `height`, frame) as the movie
+/// `asked` this build's export writes, each handed as `feed` says, and the
+/// file — None where it does not write it. Under silence of the sound's
+/// rate, if it has one, that runs `sound_past` samples past the last
+/// picture.
+fn write_movie(
+    name: &str,
+    asked: Asked,
+    frames: usize,
+    sound_past: usize,
+    feed: Feed,
+    paint: impl Fn(usize, usize, usize) -> Vec<u8>,
+) -> Option<(PathBuf, Vec<u8>)> {
     let extension = if asked.container == 1 { "mov" } else { "mp4" };
     let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.{extension}", std::process::id()));
     let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
@@ -163,8 +208,8 @@ fn write_movie(name: &str, asked: Asked, frames: usize, sound_past: usize) -> Op
     };
     let per_frame = (rate * fps.1 / fps.0) as usize;
     for k in 0..frames {
-        let rgba = picture(width, height, k);
-        assert_eq!(unsafe { qa_video_export_write_frame(rgba.as_ptr()) }, 1, "frame {k}: {}", export_error());
+        let rgba = paint(width, height, k);
+        assert_eq!(hand(feed, &rgba, width, height), 1, "frame {k}: {}", export_error());
         if channels > 0 {
             sound(per_frame);
         }
@@ -246,7 +291,8 @@ fn a_movie_on_disk_refuses_only_past_its_end_and_too_small_a_buffer() {
 
 // Every movie the export writes reads back through this crate's reader as
 // it was asked: its picture made even, its rate, every frame written, and
-// each frame the picture for its index, read in order and out of it. Its
+// each frame the picture for its index, read in order and out of it —
+// handed as RGBA, and an H.26x's as the engine's NV12 too. Its
 // bytes are the OS encoder's and are not held (유저
 // connection-round-checklist-Q14, 2026-11-07: what the OS decides is not
 // frozen) — the shapes are the ones the export's C comparison wrote (↩️until
@@ -281,27 +327,57 @@ fn what_the_export_writes_reads_back_as_it_was_asked() {
         if qa_video_export_probe(asked.container, asked.codec) == 0 {
             continue;
         }
-        let (path, _) = write_movie(&format!("asked-{name}"), asked, frames, 0)
-            .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
-        let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
-        let even = |side: usize| (side + (side & 1)) as i32;
-        let shape = (even(asked.width), even(asked.height), frames as i64);
-        assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
-        // The rate as the reader hands it: Media Foundation's, in the 100 ns
-        // it keeps a frame's time in (24000/1001 came back 10000000/417083,
-        // 2026-11-07) — so a frame lasts as asked, to that tick.
-        let lasts = |(num, den): (i32, i32)| 1e7 * f64::from(den) / f64::from(num);
-        assert!((lasts(info.3) - lasts(asked.fps)).abs() <= 1.0, "{name}: a frame lasts as asked: {:?}", info.3);
-        // -5 and then -4 are each asked as the first: an index before it is
-        // clamped BEFORE 「already positioned」 is asked, or -4 would read as
-        // the frame after -5's.
-        let order = (0..frames).chain([frames - 1, 0, frames / 2, 3, 4, frames / 2, 0, 0]);
-        for (index, frame) in order.zip(&read) {
-            let frame = frame.as_ref().unwrap_or_else(|why| panic!("{name}: frame {index}: {why}"));
-            let shown = shows(frame, info.0 as usize, info.1 as usize);
-            assert_eq!(shown, (index, true, true), "{name}: frame {index} — its picture, the right way up, opaque");
+        let feeds: &[Feed] = if takes_nv12(asked.codec) { &[Feed::Rgba, Feed::Nv12] } else { &[Feed::Rgba] };
+        for &feed in feeds {
+            let name = &format!("{name} as {feed:?}");
+            let (path, _) = write_movie(&format!("asked-{}", name.replace(' ', "-")), asked, frames, 0, feed, picture)
+                .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
+            let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
+            let even = |side: usize| (side + (side & 1)) as i32;
+            let shape = (even(asked.width), even(asked.height), frames as i64);
+            assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
+            // The rate as the reader hands it: Media Foundation's, in the 100 ns
+            // it keeps a frame's time in (24000/1001 came back 10000000/417083,
+            // 2026-11-07) — so a frame lasts as asked, to that tick.
+            let lasts = |(num, den): (i32, i32)| 1e7 * f64::from(den) / f64::from(num);
+            assert!((lasts(info.3) - lasts(asked.fps)).abs() <= 1.0, "{name}: a frame lasts as asked: {:?}", info.3);
+            // -5 and then -4 are each asked as the first: an index before it is
+            // clamped BEFORE 「already positioned」 is asked, or -4 would read as
+            // the frame after -5's.
+            let order = (0..frames).chain([frames - 1, 0, frames / 2, 3, 4, frames / 2, 0, 0]);
+            for (index, frame) in order.zip(&read) {
+                let frame = frame.as_ref().unwrap_or_else(|why| panic!("{name}: frame {index}: {why}"));
+                let shown = shows(frame, info.0 as usize, info.1 as usize);
+                assert_eq!(shown, (index, true, true), "{name}: frame {index} — its picture, the right way up, opaque");
+            }
+            std::fs::remove_file(path).ok();
         }
-        std::fs::remove_file(path).ok();
+    }
+}
+
+// 🚨A flat colour comes back through the reader within 3 a channel, HD and
+// SD, handed either way — the writer's pictures and the names it gives
+// them agreeing with what the reader makes of them. ⚠️Measured on Windows
+// alone (2026-11-14, `export/windows.rs` says what each name kept off).
+#[cfg(windows)]
+#[test]
+fn a_flat_colour_comes_back_within_three() {
+    let _turn = one_at_a_time();
+    for (width, height) in [(1920, 1080), (256, 144)] {
+        for feed in [Feed::Rgba, Feed::Nv12] {
+            for rgb in [[110u8, 60, 200], [30, 200, 30], [30, 30, 200], [128, 128, 128]] {
+                let asked = Asked { width, height, ..SILENT };
+                let flat = |width: usize, height: usize, _| [rgb[0], rgb[1], rgb[2], 255].repeat(width * height);
+                let name = format!("flat-{width}-{feed:?}-{}", rgb[0]);
+                let (path, _) = write_movie(&name, asked, 3, 0, feed, flat).expect("it writes an MP4 of H.264");
+                let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
+                std::fs::remove_file(path).ok();
+                let frame = read[1].as_ref().expect("the second frame");
+                let middle = &frame[((info.1 as usize / 2) * info.0 as usize + info.0 as usize / 2) * 4..][..3];
+                let off = middle.iter().zip(rgb).map(|(back, was)| back.abs_diff(was)).max();
+                assert!(off <= Some(3), "{width}×{height} as {feed:?}: {rgb:?} came back {middle:?}");
+            }
+        }
     }
 }
 
@@ -378,7 +454,8 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // runs past its twelve by less. ↩️Each was also counted as the C counted
     // it until the connection round deleted the C (H, 2026-11-08).
     let _turn = one_at_a_time();
-    let Some((longer, _)) = write_movie("sound-past", Asked { sound: Some((48_000, 2)), ..SILENT }, 12, 12_000) else {
+    let sounding = Asked { sound: Some((48_000, 2)), ..SILENT };
+    let Some((longer, _)) = write_movie("sound-past", sounding, 12, 12_000, Feed::Rgba, picture) else {
         return;
     };
     // This checkout's, read when the test runs (gpu_engine's

@@ -642,9 +642,8 @@ class _OsEncoderFeed implements _FrameSink {
 
   /// Exactly what the encoder takes, and how it is handed over: the GPU
   /// engine's NV12 where the writer takes it ([QaVideoEncoder.nv12Frame] —
-  /// Android's and Apple's H.26x, gpu-export-path ⑶), and otherwise the
-  /// frame's own premultiplied rows, which the writer converts itself
-  /// (Media Foundation, ProRes).
+  /// every H.26x writer, gpu-export-path ⑶), and otherwise the frame's own
+  /// premultiplied rows, which the writer converts itself (ProRes).
   late final _EncoderFeed _feed = switch (encoder.nv12Frame) {
     null => (
       pixels: _FramePixels((frame) => appGpuExport.read(frame).take()),

@@ -13,8 +13,10 @@
 //! writer's colour properties moved none of those numbers, so the matrix is
 //! not the writer's to choose that way — it is chosen by handing the encoder
 //! YCbCr made HERE. The Android writer always converted by hand; this is now
-//! that conversion, for both. (Media Foundation's writer and reader agree
-//! with each other within 3, and keep their own.)
+//! that conversion, for every writer. ↩️Media Foundation's writer kept its
+//! own until 2026-11-14 — its writer and reader agreed with each other
+//! within 3 — and takes this law's NV12 since, which its reader reads as
+//! closely (`export/windows.rs`).
 
 /// A straight-RGBA picture, rows top-down and packed.
 pub struct Picture<'a> {

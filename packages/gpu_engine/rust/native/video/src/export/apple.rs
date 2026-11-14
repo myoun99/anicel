@@ -650,11 +650,8 @@ pub unsafe fn write_nv12(bytes: *const u8, stride: i64) -> bool {
     let Some(writer) = held.as_mut().filter(|writer| writer.ycbcr && !bytes.is_null() && stride > 0) else {
         return false;
     };
-    let (stride, width, height) = (stride as usize, writer.width, writer.height);
     // SAFETY: the caller's contract.
-    let bytes = unsafe { std::slice::from_raw_parts(bytes, Nv12::bytes_of(stride, height)) };
-    let Some(frame) = Nv12::over(bytes, stride, width, height) else {
-        set_error("video export: an NV12 frame of another shape");
+    let Some(frame) = (unsafe { nv12::handed(bytes, stride as usize, writer.width, writer.height) }) else {
         return false;
     };
     autoreleasepool(|_| writer.frame(|writer, pixels| fill_nv12(writer, pixels, &frame)))

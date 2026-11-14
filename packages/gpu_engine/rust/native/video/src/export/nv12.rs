@@ -4,6 +4,7 @@
 //! byte for byte by the kernel's tests — so all that is left here is where
 //! they lie: no sum (gpu-export-path ⑶, 2026-11-12).
 
+use super::set_error;
 use crate::colour::Planes;
 
 /// An NV12 frame as the engine reads it back: `height` Y rows, then
@@ -29,6 +30,25 @@ impl<'a> Nv12<'a> {
     pub fn bytes_of(stride: usize, height: usize) -> usize {
         stride * height * 3 / 2
     }
+}
+
+/// The frame of the open writer's `width` × `height` that a caller handed
+/// at `bytes`, rows `stride` apart — or none, and the error says so, where
+/// it cannot hold one ([`Nv12::over`]). Every writer that takes NV12 reads
+/// what it was handed here.
+///
+/// # Safety
+/// `bytes` holds `Nv12::bytes_of(stride, height)` bytes, for as long as
+/// the frame is read.
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+pub unsafe fn handed<'a>(bytes: *const u8, stride: usize, width: usize, height: usize) -> Option<Nv12<'a>> {
+    // SAFETY: the caller's contract.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, Nv12::bytes_of(stride, height)) };
+    let frame = Nv12::over(bytes, stride, width, height);
+    if frame.is_none() {
+        set_error("video export: an NV12 frame of another shape");
+    }
+    frame
 }
 
 /// `frame` laid into `planes`, the frame's own size: its Y rows as they

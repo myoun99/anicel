@@ -1,8 +1,19 @@
 //! Windows: Media Foundation's Sink Writer. The writer owns the H.264 and
-//! AAC encoder MFTs AND the MP4 muxing; RGB32 input is converted to the
-//! encoder's YUV by MF's own color converter. Our only pixel job is
-//! RGBA → BGRA (MFVideoFormat_RGB32 is BGRA in memory) plus the even-size
-//! pad H.264 requires.
+//! AAC encoder MFTs AND the MP4 muxing. Its pictures go in as NV12 in the
+//! app's colour law (`colour`, BT.601 studio range), and its types say so:
+//! an export's as the GPU engine made them (`write_nv12`), a trimmed
+//! movie's made here of its RGBA (`write_frame`), each padded even as
+//! H.264 requires.
+//!
+//! ↩️Till 2026-11-14 the RGBA of both went in as RGB32 — made BGRA here,
+//! then YUV by Media Foundation's own converter: two passes on the CPU a
+//! frame, after a readback of four bytes a pixel where NV12 is one and a
+//! half (board the-video-export-converts-colour-on-the-cpu-off-android-and-
+//! apple-h26x). It kept its own conversion because its writer and reader
+//! agreed (`colour`); they agree as closely in the app's, once the types
+//! name all of it ([`video_type`]) — a flat colour back within 3 a channel
+//! at 1920×1080 and 256×144, where its own came back within 2 (measured
+//! on Surface that day).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -11,7 +22,9 @@ use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{GUID, PCWSTR, Result};
 
+use super::nv12::{self, Nv12};
 use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, edit_list, lock, set_error};
+use crate::colour::{self, Picture, Planes};
 use crate::hardware_law;
 
 pub const SUPPORTED: bool = true;
@@ -180,8 +193,9 @@ unsafe fn sink_writer(path: PCWSTR, hardware: bool) -> Result<IMFSinkWriter> {
     unsafe { MFCreateSinkWriterFromURL(path, None, attributes.as_ref()) }
 }
 
-/// A video type of this job's frame size, rate and square pixels — and its
-/// bitrate, for the encoded one. The attributes go in the C's order.
+/// A video type of this job's frame size, rate and square pixels, in the
+/// app's colour law — and its bitrate, for the encoded one. The attributes
+/// go in the C's order, the law's after them.
 fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job: &Job) -> Result<IMFMediaType> {
     // SAFETY: setting attributes on a type of our own.
     unsafe {
@@ -197,6 +211,20 @@ fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job
         let _ = media_type.SetUINT64(&MF_MT_FRAME_RATE, (u64::from(job.fps_num as u32) << 32) | u64::from(job.fps_den as u32));
         let _ = media_type.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, (1 << 32) | 1);
         let _ = media_type.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32);
+        // 🚨WHAT THE PICTURES ARE (`colour`), ALL FOUR NAMED, OR A READER
+        // GUESSES: BT.601's matrix in studio range, SMPTE C's primaries —
+        // and sRGB's transfer, for the bytes are the canvas's own sRGB
+        // values, bent by no camera's curve. 🔬Measured on Surface
+        // (2026-11-14), the app's reader asking Media Foundation for RGB32:
+        // with BT.709's transfer named (Apple's writer names that one) the
+        // darks came back 16 brighter, the reader bending the curve to
+        // sRGB's; with no transfer named the matrix did not reach the
+        // movie, and a 1920×1080 one read as BT.709 — green 200 came back
+        // 173. With these four, within 3 (`tests/decode.rs`).
+        let _ = media_type.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601.0 as u32);
+        let _ = media_type.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32);
+        let _ = media_type.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE_C.0 as u32);
+        let _ = media_type.SetUINT32(&MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_sRGB.0 as u32);
         Ok(media_type)
     }
 }
@@ -208,11 +236,9 @@ fn video_stream(writer: &IMFSinkWriter, job: &Job, width: i32, height: i32) -> R
     // SAFETY: setting attributes on types of our own, offered to the writer.
     unsafe {
         let stream = writer.AddStream(&out)?;
-        let input = video_type(&MFVideoFormat_RGB32, None, width, height, job)?;
-        // Positive default stride = top-down rows, which is what the
-        // renderer produces; MF's converter handles the flip to whatever
-        // the encoder wants.
-        let _ = input.SetUINT32(&MF_MT_DEFAULT_STRIDE, (width * 4) as u32);
+        let input = video_type(&MFVideoFormat_NV12, None, width, height, job)?;
+        // Top-down rows, the frame's width apart ([`planes_of`]).
+        let _ = input.SetUINT32(&MF_MT_DEFAULT_STRIDE, width as u32);
         writer.SetInputMediaType(stream, &input, None)?;
         Ok(stream)
     }
@@ -289,42 +315,29 @@ fn write_sample(
     }
 }
 
-/// RGBA (renderer) → BGRA (MF RGB32), top-down; padding pixels white so an
-/// odd canvas gains a hairline of paper, not garbage.
-fn bgra(rgba: &[u8], writer: &Writer, target: &mut [u8]) {
-    for (y, out_row) in target.chunks_exact_mut(writer.width * 4).enumerate() {
-        if y >= writer.src_height {
-            out_row.fill(0xFF);
-            continue;
-        }
-        let in_row = &rgba[y * writer.src_width * 4..][..writer.src_width * 4];
-        let (picture, pad) = out_row.split_at_mut(writer.src_width * 4);
-        for (out, pixel) in picture.chunks_exact_mut(4).zip(in_row.chunks_exact(4)) {
-            out.copy_from_slice(&[pixel[2], pixel[1], pixel[0], 0xFF]);
-        }
-        pad.fill(0xFF);
-    }
-}
-
 /// The frame's timestamp in 100 ns units — integer arithmetic on the exact
 /// fps fraction, the same discipline as every frame/sample conversion.
 fn frame_time(writer: &Writer, frame: i64) -> i64 {
     frame * TICKS * writer.fps_den / writer.fps_num
 }
 
-/// # Safety
-/// `rgba` is null or holds the frame `open` was given.
-pub unsafe fn write_frame(rgba: *const u8) -> bool {
-    let mut held = lock(&WRITER);
-    let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
-        return false;
-    };
-    // SAFETY: the caller's contract.
-    let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
+/// An NV12 buffer of `width` × `height` as `colour` lays a frame: the Y
+/// rows, then the CbCr pairs side by side, every row `width` apart.
+fn planes_of(width: usize, height: usize, target: &mut [u8]) -> Planes<'_> {
+    let (y, chroma) = target.split_at_mut(width * height);
+    Planes { y, y_stride: width, chroma, cb: 0, cr: 1, chroma_stride: width, chroma_step: 2 }
+}
+
+/// The writer's next frame, its NV12 laid by `fill` into the frame's
+/// planes ([`planes_of`]).
+fn picture(writer: &mut Writer, fill: impl FnOnce(&mut Planes)) -> bool {
     let time = frame_time(writer, writer.frame_index);
     let next = frame_time(writer, writer.frame_index + 1);
-    let bytes = (writer.width * writer.height * 4) as u32;
-    match write_sample(writer, writer.video_stream, bytes, (time, next - time), |target| bgra(rgba, writer, target)) {
+    let (width, height) = (writer.width, writer.height);
+    let bytes = Nv12::bytes_of(width, height) as u32;
+    match write_sample(writer, writer.video_stream, bytes, (time, next - time), |target| {
+        fill(&mut planes_of(width, height, target));
+    }) {
         Written::NoBuffer => set_error("video export: out of memory for a frame"),
         Written::NotLocked => {}
         Written::Refused => set_error("video export: a frame failed to encode"),
@@ -334,6 +347,45 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
         }
     }
     false
+}
+
+/// A trimmed movie's frame, made NV12 here in the app's colour law — the
+/// padding white, so an odd canvas gains a hairline of paper, not garbage.
+///
+/// # Safety
+/// `rgba` is null or holds the frame `open` was given.
+pub unsafe fn write_frame(rgba: *const u8) -> bool {
+    let mut held = lock(&WRITER);
+    let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
+        return false;
+    };
+    // SAFETY: the caller's contract.
+    let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
+    let picture_of = Picture { rgba, width: writer.src_width, height: writer.src_height };
+    let (width, height) = (writer.width, writer.height);
+    picture(writer, |planes| colour::from_rgba(&picture_of, width, height, planes))
+}
+
+/// The frame the open writer takes as NV12: the encoder's, padded even.
+pub fn nv12_shape() -> Option<(usize, usize)> {
+    lock(&WRITER).as_ref().map(|writer| (writer.width, writer.height))
+}
+
+/// An export's frame as the GPU engine made it NV12, laid as it is.
+///
+/// # Safety
+/// `bytes` is null or holds the frame `nv12_shape` says, rows `stride`
+/// bytes apart.
+pub unsafe fn write_nv12(bytes: *const u8, stride: i64) -> bool {
+    let mut held = lock(&WRITER);
+    let Some(writer) = held.as_mut().filter(|_| !bytes.is_null() && stride > 0) else {
+        return false;
+    };
+    // SAFETY: the caller's contract.
+    let Some(frame) = (unsafe { nv12::handed(bytes, stride as usize, writer.width, writer.height) }) else {
+        return false;
+    };
+    picture(writer, |planes| nv12::lay(&frame, planes))
 }
 
 /// The frames this writer puts before the mix: one AAC frame.

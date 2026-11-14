@@ -150,9 +150,9 @@ final class QaVideoEncoder {
       withNativeBytes(rgba, (buffer) => _writeFrame(buffer) != 0);
 
   /// The frame the open writer takes as NV12 ([writeNv12]) — the encoder's,
-  /// padded even — or none where it takes RGBA ([writeFrame]). Android's
-  /// and Apple's H.26x take the GPU engine's NV12 (gpu-export-path ⑶);
-  /// Media Foundation and ProRes convert for themselves.
+  /// padded even — or none where it takes RGBA ([writeFrame]). Every
+  /// H.26x writer takes the GPU engine's NV12 (gpu-export-path ⑶; Media
+  /// Foundation's since 2026-11-14); ProRes converts for itself.
   ({int width, int height})? get nv12Frame => using((arena) {
     final shape = arena<Int32>(2);
     if (_nv12Shape(shape) == 0) {
