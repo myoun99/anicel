@@ -39,15 +39,21 @@ void main() {
     expect(settings.tipOrder, BrushTipOrder.random);
   });
 
-  test('a tip written over with what it already held is not read, and only '
-      'its button is left out', () async {
+  test('a tip not read as TVPaint wrote it — written over with what it '
+      'already held, or not 8-bit BGRA — is refused, and only its button is '
+      'left out', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'H',
-        buttons: [_button('8', 'pencil'), _button('9', 'stale')],
+        buttons: [
+          _button('8', 'pencil'),
+          _button('9', 'stale'),
+          _button('10', 'rgba'),
+        ],
         tools: {
           'pencil': (tool: _tool(), dip: _pencilDip),
           'stale': (tool: _tool(), dip: _staleDip),
+          'rgba': (tool: _tool(), dip: _rgbaDip),
         },
       ),
       sourceName: 'BRUSH',
@@ -57,6 +63,7 @@ void main() {
     expect(result.warnings, [
       'Button "H 9": its tip was not read '
           '(A frame wrote over pixels what they already held.).',
+      'Button "H 10": its tip was not read (The tip is not 8-bit BGRA.).',
     ]);
   });
 
@@ -188,15 +195,32 @@ List<int> _chunk(String id, List<int> body) => [
   if (body.length.isOdd) 0,
 ];
 
+/// The pencil's tip with its pixels laid out red first, as TVPaint's are
+/// not.
+final Uint8List _rgbaDip = _dip(
+  [
+    [
+      ..._literal([10, 20, 30]),
+      ..._literal([40, 50, 60]),
+      ..._literal([70, 80, 90]),
+    ],
+  ],
+  channels: const [1, 2, 3, 17],
+);
+
 /// A 3 × 3 DEEP animation of [frames]' rows: the first a DBOD, the rest
-/// DBANs.
-Uint8List _dip(List<List<int>> frames) {
+/// DBANs — its pixels' [channels] in the order DPEL names them, 8 bits
+/// each.
+Uint8List _dip(
+  List<List<int>> frames, {
+  List<int> channels = const [3, 2, 1, 17],
+}) {
   final chunks = [
     ..._chunk('DGBL', [..._u16(3), ..._u16(3), ...List.filled(12, 0)]),
     ..._chunk('NIMA', _u32(frames.length)),
     ..._chunk('DPEL', [
-      ..._u32(4),
-      for (final type in [3, 2, 1, 17]) ...[..._u16(type), ..._u16(8)],
+      ..._u32(channels.length),
+      for (final type in channels) ...[..._u16(type), ..._u16(8)],
     ]),
     ..._chunk('DLOC', [..._u16(3), ..._u16(3), ..._u32(0)]),
     ..._chunk('DBOD', frames.first),
