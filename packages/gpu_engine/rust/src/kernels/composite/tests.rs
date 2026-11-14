@@ -291,6 +291,24 @@ pub(crate) fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u
     bytes[texel * 4..texel * 4 + 4].try_into().unwrap()
 }
 
+/// Where `got` is not `want`, two pictures of the output `tiles`, tile
+/// after tile: how many pixels, and the first of them — its place on the
+/// canvas and both its bytes. None where they are the same.
+fn where_they_part(got: &[u8], want: &[u8], tiles: &[(i32, i32)]) -> Option<String> {
+    if got.len() != want.len() {
+        return Some(format!("{} bytes, not {}", got.len(), want.len()));
+    }
+    let pixel = |bytes: &[u8], texel: usize| -> [u8; 4] { bytes[texel * 4..texel * 4 + 4].try_into().unwrap() };
+    let parted: Vec<usize> = (0..want.len() / 4).filter(|&texel| pixel(got, texel) != pixel(want, texel)).collect();
+    let &first = parted.first()?;
+    let side = TILE as i32;
+    let (tile, within) = (first / TILE_TEXELS as usize, (first % TILE_TEXELS as usize) as i32);
+    let (column, row) = tiles[tile];
+    let (x, y) = (column * side + within % side, row * side + within / side);
+    let (holds, should) = (pixel(got, first), pixel(want, first));
+    Some(format!("{} pixels part, the first at ({x}, {y}): {holds:?}, not {should:?}", parted.len()))
+}
+
 // ---- Keys ----
 
 pub(crate) const KEY_RED: [u32; 3] = [200, 30, 40];
@@ -2560,7 +2578,9 @@ fn a_posed_row_reads_its_mask_as_it_reads_its_pixels() {
         let want = widest(&over_blue(alpha, pose_row(1, name, WHOLE, NORMAL)));
         for budget in [rig().composite.widest(), within(1, 1), within(1, 3)] {
             let got = under(&white, Some(&mask.mask()), budget).expect("composite");
-            assert!(got == want, "{name} at {budget:?}");
+            if let Some(parted) = where_they_part(&got, &want, &white.tiles) {
+                panic!("{name} at {budget:?}: {parted}");
+            }
         }
     }
 }
