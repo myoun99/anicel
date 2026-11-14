@@ -1765,6 +1765,8 @@ class EditorSessionManager extends ChangeNotifier
     editingSession.dispose,
     frameRangeSelection.dispose,
     brushInputActive.dispose,
+    // The rulers' slice of the drag channel comes off before the channel.
+    rulerMarkers.dispose,
     dragPreview.dispose,
     canvasAdjust.dispose,
     sheetPhotoHold.dispose,

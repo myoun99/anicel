@@ -765,6 +765,11 @@ void main() {
       [for (final glyph in painter.writtenOverMarkers()) textOf(glyph)],
       ['1'],
     );
+    expect(
+      find.byKey(const ValueKey<String>('timeline-ruler-markers')),
+      findsOneWidget,
+      reason: 'and the ribbons it writes over are mounted too',
+    );
   });
 
   testWidgets('the header row writes the pair on a layer of its own that '

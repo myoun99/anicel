@@ -479,6 +479,34 @@ void main() {
       await gesture.up();
       await rest(tester);
     });
+
+    // 🔬2026-11-14: it heard the session's drag channel whole, so a frame's
+    // drag on the sheet painted it at every step — and a dock's image cut
+    // at it (`a_drag_keeps_the_docks_image_the_docks_size_test`).
+    testWidgets('🚨the writing hears a marker\'s drag alone — a drag of '
+        'anything else leaves it as it was painted', (tester) async {
+      final session = await pumpTimelineHost(tester, project());
+      final cut = cutOf(session);
+      session.rulerMarkers.setMarkers(cut, two);
+      await tester.pump();
+      RenderObject writing() => tester.renderObject(
+        find.byKey(const ValueKey<String>('timeline-ruler-playhead-writing')),
+      );
+      expect(writing().debugNeedsPaint, isFalse, reason: 'premise');
+
+      session.dragPreview.value = const MovieEndDragPreview(trailingFrames: 3);
+      expect(writing().debugNeedsPaint, isFalse, reason: 'not a marker\'s');
+      session.dragPreview.value = null;
+      expect(writing().debugNeedsPaint, isFalse);
+
+      session.dragPreview.value = RulerMarkerDragPreview(
+        holder: cut,
+        markers: two,
+      );
+      expect(writing().debugNeedsPaint, isTrue);
+      session.dragPreview.value = null;
+      await rest(tester);
+    });
   });
 
   group('the X-sheet\'s rail', () {

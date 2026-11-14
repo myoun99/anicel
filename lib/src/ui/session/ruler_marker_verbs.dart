@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/ruler_marker.dart';
 import '../../services/commands/update_ruler_markers_command.dart';
-import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
+import '../sliced_value_listenable_builder.dart' show SlicedValueListenable;
+import '../timeline/timeline_drag_preview.dart'
+    show RulerMarkerDragPreview, TimelineDragPreview;
 import 'drags/ruler_marker_drag.dart';
 import 'session_roles.dart';
 
@@ -23,6 +25,26 @@ class RulerMarkerVerbs {
   final ProjectAccess _project;
   final ChangeSink _changes;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
+
+  /// The drag channel as a ruler hears it: told only where a MARKER's drag
+  /// moves ([RulerMarkerDragPreview]) — what it reads is the channel's.
+  ///
+  /// 🔬2026-11-14 (I-169): a ruler's writing heard the session's channel
+  /// whole, so every step of a frame's drag on the sheet painted it again —
+  /// and a dock's image cut at a ruler that moved while the rest stood
+  /// still: 27,657,504 bytes over the 26,436,168 the dock test allows (the
+  /// sheet-prints-only-its-drags precedent, `SlicedValueListenableScope`).
+  /// ONE slice a session, as there is one channel: every ruler's hooks
+  /// share it ([dispose]).
+  late final dragPreview =
+      SlicedValueListenable<TimelineDragPreview?, RulerMarkerDragPreview?>(
+        _dragPreview,
+        (preview) => preview is RulerMarkerDragPreview ? preview : null,
+      );
+
+  /// Lets [dragPreview] off the session's channel — before the channel
+  /// itself goes.
+  void dispose() => dragPreview.dispose();
 
   /// The in-flight marker drag ([RulerMarkerDrag]), or null.
   RulerMarkerDrag? _drag;

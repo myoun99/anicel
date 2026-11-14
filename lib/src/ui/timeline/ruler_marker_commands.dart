@@ -18,7 +18,7 @@ RulerMarkerHooks rulerMarkerHooksOf(
 ) => RulerMarkerHooks(
   holder: holder,
   markers: session.rulerMarkers.markersOn(holder),
-  dragPreview: session.dragPreview,
+  dragPreview: session.rulerMarkers.dragPreview,
   onBeginDrag: (index) => session.rulerMarkers.beginDrag(holder, index),
   onUpdateDrag: session.rulerMarkers.updateDrag,
   onEndDrag: session.rulerMarkers.endDrag,
