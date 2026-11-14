@@ -1125,6 +1125,20 @@ void main() {
     }
   });
 
+  test('a fit asked as the scene is built is none where the whole way '
+      'finds no root, as there', () {
+    final owner = PipelineOwner()
+      ..rootNode = RenderConstrainedBox(
+        additionalConstraints: const BoxConstraints(),
+      );
+    final box = RenderConstrainedBox(
+      additionalConstraints: const BoxConstraints(),
+    );
+    RenderPadding(padding: const EdgeInsets.all(1), child: box).attach(owner);
+    expect(RasterGridFit.of(box, 1), isNull);
+    expect(RasterGridFit.ofPainted(box, 1, frame: -1), isNull);
+  });
+
   testWidgets('a region under a scale moves when an ancestor and a '
       'descendant of the scale move by opposite amounts', (tester) async {
     // Every offset summed stays put; under the scale, the region still

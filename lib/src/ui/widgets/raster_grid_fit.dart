@@ -152,12 +152,8 @@ class RasterGridFit {
     double devicePixelRatio, {
     required int frame,
   }) {
-    final ratio = devicePixelRatio;
-    if (!ratio.isFinite || ratio <= 0) {
-      return null;
-    }
     final toGlobal = _toRootIn(box, frame);
-    return toGlobal == null ? null : _fitOf(toGlobal, ratio);
+    return toGlobal == null ? null : _fitOf(toGlobal, devicePixelRatio);
   }
 
   /// Each render object's transform to the root ([ofPainted]), and the
