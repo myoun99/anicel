@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/grid_tile_drawn.dart';
 import '../../helpers/poll_until.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// UI-R18 O7 T2: the substrate tile store — engine-gated stand-down,
@@ -355,7 +356,7 @@ void main() {
           exposureStateForLayer: stateFor,
           colorScheme: const ColorScheme.dark(),
           baseTextStyle: const TextStyle(fontSize: 11),
-          frameNameForLayer: (_, frame) => frame == 0 ? 'W' * 400 : null,
+          frameNameForLayer: (_, frame) => frame == 0 ? 'W' * 80 : null,
           tileStore: store,
         ),
         spanStartIndex: 0,
@@ -363,11 +364,13 @@ void main() {
         devicePixelRatio: dpr,
       );
       expect(asked(), isNull, reason: 'a cold span at $dpr');
-      await pollUntil(() => !store.debugBusy);
+      await tileStoreIdle(store);
       return asked();
     }
 
-    // Narrowed to its block, 960 px: on the atlas at 1, past it at 3.
+    // Some 800 px, inside its block: on the atlas at 1, past it at 3. Its
+    // raster is the word un-narrowed and bigger still (recordWord), so the
+    // word is no longer than the test's raster takes.
     expect(await tileAt(1), isNotNull, reason: 'premise: the word is set');
     final before = drawn;
 

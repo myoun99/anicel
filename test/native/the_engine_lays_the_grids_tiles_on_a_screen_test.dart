@@ -233,6 +233,20 @@ void main() {
     expect(batch.keptBytes, 0);
   });
 
+  // A word put on an earlier flush is read by a tile still held: memory
+  // running short lets go of the atlas only once that tile is drawn.
+  test('what a batch holds is drawn before it lets go of its atlas', () {
+    final at = batch.lettersAt({
+      'early': (alpha: Uint8List.fromList([200]), width: 1, height: 1),
+    })!;
+    batch.flush();
+    final tile = lettered(at['early']!, 1, 1);
+
+    batch.letGoKept();
+
+    expect(tile.read(), [255, 255, 255, 200]);
+  });
+
   test('a tile let go of before its batch is flushed is never made', () {
     final tile = batch.picture(1, 1)!;
     batch.draw(tile, Int32List(0));

@@ -115,7 +115,7 @@ class AudioViewerDocument implements ViewerDocument {
     final picture =
         batch.picture(width, height) ??
         (throw GpuRefused(
-          'a grid tile $width × $height: a side is 1 to '
+          'a page past the side the device makes, '
           '${batch.mostSide} pixels',
         ));
     try {
