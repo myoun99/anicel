@@ -621,26 +621,29 @@ class EditorSessionManager extends ChangeNotifier
       ),
     },
     // What those trees read past their cut, page and cels: the project
-    // (a new one at every write), the cut stood in and the track chosen
-    // (the track's SE rows join the open cut's frames alone —
-    // [TrackSeDisplay.trackSeDisplayLayers]), every other word a screen
-    // is told of ([newsRevision] — a stand moves none of it), and what
-    // moves under the hand with no word to a screen: a drag in flight
-    // (the open cut's camera, and the name tags that ride it, follow it —
+    // (a new one at every write), the cut stood in, every other word a
+    // screen is told of ([newsRevision] — a stand moves none of it; a
+    // plugin installed under a chain that names it is one), and what moves
+    // under the hand with no word to a screen: a drag in flight (the open
+    // cut's camera, and the name tags that ride it, follow it —
     // [Camera.activeCutCameraTrack]; ghosts laid over their frame alone
-    // walk it), a take that rolls (its lane's preview), the onion's rows
-    // and pegs (the ghosts' plan, [OnionSkin.ghostsAt]). A frame without
-    // ghosts reads no onion: an onion changed costs it one stacking.
+    // walk it), the onion's rows and pegs (the ghosts' plan,
+    // [OnionSkin.ghostsAt]). A frame without ghosts reads no onion: an
+    // onion changed costs it one stacking.
+    // ⛔Not the track chosen, nor a rolling take's preview, though the
+    // track's SE rows read both ([TrackSeDisplay.trackSeDisplayLayers]):
+    // while a cut is open the track chosen is its own, and an SE row takes
+    // no pen ([LayerKind.se]) — its cels sign no key, and its name tags
+    // read the rows as stored. Stamped, a take let go of every frame read
+    // at each frame it grew by (11-15: both mutants lived).
     // 🚨The suite stacks every tree anew as it is handed back and throws
     // where an input moved past this (`debugCheckFrameStanding`): the
-    // onion, the drag and the take were each found that way (11-15).
+    // onion and the drag were each found that way (11-15).
     treeStamp: () => (
       ByIdentity(repository.currentProject),
       newsRevision,
       editingSession.activeCutId,
-      selectedTrackId,
       ByIdentity(dragPreview.value),
-      ByIdentity(voiceRecording.voiceRecordPreviewLane.value),
       ByIdentity(onionSkin.layerIds.value),
       onionSkin.settings.value,
     ),

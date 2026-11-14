@@ -21,8 +21,10 @@ import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_fill_on_a_session.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/fx_plugin_file.dart';
 
 /// 🔬H57 (11-14, S5_BA cut 352 · 68 rows, windowless): the walk, the
 /// ruler's bar and the weighing asked every frame's standing, and each
@@ -181,6 +183,19 @@ void main() {
     expect(after, isNot(before), reason: 'the cel\'s revision signs it');
   });
 
+  test('a cel that will not read is read anew — its revision stands, and '
+      'the key leaves it out', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+    final before = pictures.keyOf(at(cut, 0));
+
+    images.unreadable.note(keyOf('a'));
+    final after = pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+    expect(after, isNot(before), reason: 'the picture is made without it');
+  });
+
   test('a cut written anew is read anew — the same id, another cut', () {
     final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
 
@@ -235,5 +250,47 @@ void main() {
     plugin = true;
 
     expect(() => pictures.keyOf(at(cut, 0)), throwsStateError);
+  });
+
+  testWidgets('a plugin installed under a frame that names it reads the '
+      'frame anew — a word to every screen, which no write to the project '
+      'carries', (tester) async {
+    final plugins = await installedShiftingFxPlugin(tester);
+    await tester.runAsync(
+      () => plugins.uninstall(shiftingFxPluginDescription.id),
+    );
+    const row = LayerId('a');
+    final session = sessionOfRows(
+      [
+        drawingRow('a').copyWith(effects: [shiftingFxPluginLayerEffect()]),
+      ],
+      canvasSize: canvasSize,
+      cels: const {},
+      standOn: row,
+      fxPlugins: plugins,
+    );
+    final cut = session.requireActiveCut;
+    inkCel(
+      session,
+      session.brushFrameKeyForCut(cut, row, theCel),
+      canvasSize: canvasSize,
+      at: CanvasPoint(x: 1, y: 1),
+      size: 2,
+    );
+    final pictures = session.playbackRig.framePictures;
+    final before = pictures.keyOf(at(cut, 0));
+
+    await tester.runAsync(
+      () => plugins.install(
+        fxPluginFileOf(shiftingFxPluginDescription),
+        confirm: (_, {required replacing}) async => true,
+      ),
+    );
+
+    expect(
+      pictures.keyOf(at(cut, 0)),
+      isNot(before),
+      reason: 'the device\'s build of it signs the key',
+    );
   });
 }

@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/fill_picture_over.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,7 +31,8 @@ Layer drawingRow(String id) => Layer(
 /// beside the rows every cut is born with, standing on its first
 /// frame and on the row [standOn]: each cel named in [cels] storing those
 /// pixels — on a project that uses a pasteboard, or none where
-/// [pasteboardInUse] is off. A file using it opens the engine first
+/// [pasteboardInUse] is off, on a device whose plugins are [fxPlugins]. A
+/// file using it opens the engine first
 /// (`opensTheEnginesScreens`).
 EditorSessionManager sessionOfRows(
   List<Layer> rows, {
@@ -38,6 +40,7 @@ EditorSessionManager sessionOfRows(
   required Map<(LayerId, FrameId), BitmapSurface> cels,
   required LayerId standOn,
   bool pasteboardInUse = true,
+  InstalledFxPlugins? fxPlugins,
 }) {
   final cut = importedCut(
     defaultCut: createDefaultTrack().cuts.single.copyWith(
@@ -47,6 +50,7 @@ EditorSessionManager sessionOfRows(
     duration: 24,
   );
   final session = EditorSessionManager(
+    fxPlugins: fxPlugins,
     initialProject: createDefaultProject().copyWith(
       tracks: [createDefaultTrack(firstCut: cut)],
       pasteboardInUse: pasteboardInUse,
