@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/core/on_a_worker.dart';
@@ -23,8 +24,11 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 import '../../helpers/tiles_on_the_engine.dart';
 
 /// A worker has no engine, so it asks the main isolate for a hot cel's
-/// tiles, a batch at a time through one block — never the cel whole (저장's
+/// tiles, a batch at a time, a block a batch — never the cel whole (저장's
 /// review of the flip lane, 11-09: 132 MiB for a cel of 5800² inked whole).
+/// The block is the worker's once it has its address: the batch is copied
+/// there, not here (card `a-save-serialises-each-hot-cel-on-the-ui-isolate`
+/// ⓑ, 2026-11-14).
 void main() {
   final bytes = BitmapTile.bytesFor(defaultCelTileSize);
   const key = BrushFrameKey(
@@ -71,8 +75,8 @@ void main() {
     debugWorkersRunHere = true;
   });
 
-  test('the copy holds each tile\'s bytes at its place, and the one block '
-      'goes when the work is done', () async {
+  test('the copy holds each tile\'s bytes at its place, and its block goes '
+      'back', () async {
     final (a, b) = (tile(3), tile(5));
     final counted = _Counted();
 
@@ -88,8 +92,8 @@ void main() {
     expect(counted.givenBack, 1);
   });
 
-  test('🚨 a cel past a batch is read a batch at a time through a block of '
-      'one batch', () async {
+  test('🚨 a cel past a batch is read a batch at a time, a block a batch, '
+      'each given back before the next is asked for', () async {
     final counted = _Counted();
     final tiles = seeded(130);
 
@@ -101,7 +105,9 @@ void main() {
     );
 
     expect(reads, [64, 64, 2]);
-    expect(counted.asked, [64 * bytes]);
+    expect(counted.asked, [64 * bytes, 64 * bytes, 2 * bytes]);
+    expect(counted.mostHeld, 1);
+    expect(counted.givenBack, 3);
     expect(read.map((pixels) => pixels.first), tiles.map((t) => t.pixels[0]));
   });
 
@@ -139,8 +145,7 @@ void main() {
     expect(reads, [2]);
   });
 
-  test('a picture of no tiles asks for none, and has a block to free',
-      () async {
+  test('a picture of no tiles asks for none, and takes no block', () async {
     final counted = _Counted();
 
     final read = await onAWorkerWithCelCopy(
@@ -152,8 +157,8 @@ void main() {
 
     expect(read, isEmpty);
     expect(reads, isEmpty);
-    expect(counted.asked, [bytes]);
-    expect(counted.givenBack, 1);
+    expect(counted.asked, isEmpty);
+    expect(counted.givenBack, 0);
   });
 
   test('the copy stands behind the wall the picture stands behind', () async {
@@ -217,6 +222,22 @@ void main() {
 
       expect(reads, [64, 64, 2]);
       expect(read.map((pixels) => pixels.first), tiles.map((t) => t.pixels[0]));
+    });
+
+    test('🚨 each block this isolate read a batch into, the worker gives '
+        'back', () async {
+      final across = _HeldAcross();
+      addTearDown(across.dispose);
+
+      await onAWorkerWithCelCopy(
+        key.cel,
+        surfaceOf(seeded(130)),
+        _pixelsAcross,
+        blocks: across,
+      );
+
+      expect(reads, [64, 64, 2]);
+      expect(across.held, 0);
     });
 
     test('🚨 a move and a cut do their work without asking for the ledger — '
@@ -315,15 +336,48 @@ final class _Counted implements Allocator {
   final asked = <int>[];
   int givenBack = 0;
 
+  /// The most blocks held at once.
+  int mostHeld = 0;
+
   @override
   Pointer<T> allocate<T extends NativeType>(int byteCount, {int? alignment}) {
     asked.add(byteCount);
+    mostHeld = math.max(mostHeld, asked.length - givenBack);
     return malloc.allocate<T>(byteCount, alignment: alignment);
   }
 
   @override
   void free(Pointer pointer) {
     givenBack += 1;
+    malloc.free(pointer);
+  }
+}
+
+/// [malloc]'s blocks held, counted where every isolate of the process
+/// reads the same count: a worker frees what this isolate took, with its
+/// own copy of this allocator.
+final class _HeldAcross implements Allocator {
+  _HeldAcross() : _cell = malloc<Int64>().address {
+    _count.value = 0;
+  }
+
+  final int _cell;
+
+  Pointer<Int64> get _count => Pointer<Int64>.fromAddress(_cell);
+
+  int get held => _count.value;
+
+  void dispose() => malloc.free(_count);
+
+  @override
+  Pointer<T> allocate<T extends NativeType>(int byteCount, {int? alignment}) {
+    _count.value += 1;
+    return malloc.allocate<T>(byteCount, alignment: alignment);
+  }
+
+  @override
+  void free(Pointer pointer) {
+    _count.value -= 1;
     malloc.free(pointer);
   }
 }

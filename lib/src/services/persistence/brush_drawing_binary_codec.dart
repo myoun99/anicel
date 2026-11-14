@@ -8,7 +8,6 @@ library;
 import 'dart:async' show FutureOr;
 import 'dart:convert';
 import 'dart:ffi';
-import 'dart:isolate' show TransferableTypedData;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -167,10 +166,17 @@ List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
 /// [BrushFrameKey.noCel] for a picture that is nobody's yet: a vector
 /// layer an import has drawn (`clipVectorTiles`).
 ///
-/// 🚨A BATCH AT A TIME, THROUGH ONE BLOCK [blocks] GIVES, NEVER THE CEL
+/// 🚨A BATCH AT A TIME, A BLOCK [blocks] GIVES A BATCH, NEVER THE CEL
 /// WHOLE: a block of every tile was 132 MiB on this isolate for a cel of
 /// 5800² inked whole (저장's review of the flip lane, 11-09), what
 /// [EngineTileLedger.readEach] was written not to ask for.
+///
+/// 🚨THE BLOCK IS THE WORKER'S ONCE IT HAS ITS ADDRESS: it makes its tiles
+/// of the bytes there and frees it, so a batch is read here and copied
+/// THERE. ↩️Till 2026-11-14 one block was read into again and again, each
+/// batch copied out of it here for the crossing (`TransferableTypedData`)
+/// — 125–229 ms of a heavy save's UI isolate on Surface for twenty cels
+/// (card `a-save-serialises-each-hot-cel-on-the-ui-isolate`, ⓑ).
 Future<T> onAWorkerWithCelCopy<T>(
   Object cel,
   BitmapSurface surface,
@@ -184,55 +190,60 @@ Future<T> onAWorkerWithCelCopy<T>(
     (tile) => indices.putIfAbsent(tile, () => indices.length),
   );
   final tiles = [...indices.keys];
-  const batch = EngineTileLedger.readBatch;
   final bytes = BitmapTile.bytesFor(surface.tileSize);
-  // One tile's at the least: C may answer a malloc of 0 with null, which
-  // package:ffi throws for.
-  final capacity = math.max(1, math.min(tiles.length, batch)) * bytes;
-  final block = blocks<Uint8>(capacity);
-  try {
-    return await onAWorkerAsking<int, TransferableTypedData, T>(
-      (first) {
-        final asked = tiles.sublist(
-          first,
-          math.min(first + batch, tiles.length),
-        );
+  return onAWorkerAsking<int, int, T>(
+    (first) {
+      final asked = tiles.sublist(first, _batchEnd(first, tiles.length));
+      final block = blocks<Uint8>(asked.length * bytes);
+      try {
         EngineTileLedger.instance.read(cel, asked, block);
-        return TransferableTypedData.fromList([
-          block.asTypedList(asked.length * bytes),
-        ]);
-      },
-      _onACopyOf(parts, tiles.length, surface.pasteboardReach, job),
-    );
-  } finally {
-    blocks.free(block);
-  }
+      } on Object {
+        blocks.free(block);
+        rethrow;
+      }
+      return block.address;
+    },
+    _onACopyOf(parts, tiles.length, surface.pasteboardReach, job, blocks),
+  );
 }
 
+/// Where the batch a worker asks for at [first] of [tileCount] ends — read
+/// by the isolate that answers and the one that asks alike.
+int _batchEnd(int first, int tileCount) =>
+    math.min(first + EngineTileLedger.readBatch, tileCount);
+
 /// [job] on a copy of [parts] — each tile named by its place among the
-/// [tileCount] it asks for, a tile at two places one tile there too.
+/// [tileCount] it asks for, a tile at two places one tile there too. Each
+/// answer is the address of a block of [blocks] holding the batch asked
+/// for, given back here once its tiles are made.
 ///
 /// ⚠️Made HERE: the closure crosses, and one made beside the answer would
 /// carry the surface's tiles, which no isolate message carries
 /// (`_reportingInto`).
-FutureOr<T> Function(Future<TransferableTypedData> Function(int first) ask)
-_onACopyOf<T>(
+FutureOr<T> Function(Future<int> Function(int first) ask) _onACopyOf<T>(
   CelParts<int> parts,
   int tileCount,
   PasteboardReach standsBehind,
   FutureOr<T> Function(BitmapSurface copy) job,
+  Allocator blocks,
 ) => (ask) async {
   final bytes = BitmapTile.bytesFor(parts.tileSize);
   final tiles = <BitmapTile>[];
   while (tiles.length < tileCount) {
-    final read = (await ask(tiles.length)).materialize().asUint8List();
-    for (var at = 0; at < read.length; at += bytes) {
-      tiles.add(
-        BitmapTile(
-          size: parts.tileSize,
-          pixels: Uint8List.sublistView(read, at, at + bytes),
-        ),
-      );
+    final count = _batchEnd(tiles.length, tileCount) - tiles.length;
+    final block = Pointer<Uint8>.fromAddress(await ask(tiles.length));
+    try {
+      final read = block.asTypedList(count * bytes);
+      for (var at = 0; at < read.length; at += bytes) {
+        tiles.add(
+          BitmapTile(
+            size: parts.tileSize,
+            pixels: Uint8List.sublistView(read, at, at + bytes),
+          ),
+        );
+      }
+    } finally {
+      blocks.free(block);
     }
   }
   return job(
