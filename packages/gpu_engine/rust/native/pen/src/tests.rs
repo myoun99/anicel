@@ -11,6 +11,7 @@
 mod apple;
 mod hid_axis;
 mod ledger;
+mod points;
 #[cfg(windows)]
 mod raw;
 mod report;

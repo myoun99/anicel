@@ -27,6 +27,11 @@ mod apple;
 mod hid_axis;
 #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
 mod ledger;
+// And so has the book of the points the OS saw (H56): every platform's
+// reader writes it.
+mod points;
+#[cfg(windows)]
+mod points_win;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod report;
 #[cfg(windows)]
@@ -182,4 +187,89 @@ pub unsafe extern "C" fn qa_pen_ledger_tilt(micros: i64, xy: *mut f64) -> i32 {
         xy.add(1).write(y);
     }
     1
+}
+
+/// Starts the platform's reader of the points the OS saw (points.rs): the
+/// Flutter view's subclass on Windows; AppKit's every event its own on
+/// macOS (`apple::hand_every_point`). 1 once nothing is left to start —
+/// and at once where a Runner writes the book (iOS, Android) or turns the
+/// merging off itself (Linux); 0 on Windows till there is a window shown.
+/// Safe to call again.
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_pen_points_start() -> i32 {
+    #[cfg(windows)]
+    let started = points_win::start();
+    #[cfg(not(windows))]
+    let started = {
+        #[cfg(target_vendor = "apple")]
+        apple::hand_every_point();
+        true
+    };
+    i32::from(started)
+}
+
+/// A point of the message Android's Runner is handing over
+/// (`com.myoun.gpu_engine.PenPoints`) — in a datum's units
+/// (`points::Point`); NaN where it gives none.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_myoun_gpu_1engine_PenPoints_point(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    x: f64,
+    y: f64,
+    micros: i64,
+    pressure: f64,
+    tilt: f64,
+    orientation: f64,
+) {
+    let point = points::Point { pressure, tilt, orientation, ..points::Point::at(x, y, micros) };
+    points::book().point(point);
+}
+
+/// The end of that message: its points as the batch of `contact`, handed
+/// at (`x`, `y`).
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_myoun_gpu_1engine_PenPoints_end(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    contact: i64,
+    x: f64,
+    y: f64,
+) {
+    points::book().end(contact as u64, (x, y));
+}
+
+/// The points of the datum Flutter was handed at (`x`, `y`), in the shape
+/// the embedder hands it (`points::Batch::handed`), into `out` — the oldest
+/// first, `points::POINT_WORDS` numbers each (`points::Point::words`), the
+/// newest `cap` where there are more. Their count; -1 where no batch ends
+/// there.
+///
+/// # Safety
+/// `out` is null or `POINT_WORDS * cap` writable `f64`s.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_pen_points_take(x: f64, y: f64, out: *mut f64, cap: i32) -> i32 {
+    let Some(points) = points::book().take((x, y)) else {
+        return -1;
+    };
+    if out.is_null() || cap <= 0 {
+        return 0;
+    }
+    let kept = &points[points.len().saturating_sub(cap as usize)..];
+    // SAFETY: see the function's contract.
+    let out = unsafe { std::slice::from_raw_parts_mut(out, points::POINT_WORDS * kept.len()) };
+    for (words, point) in out.chunks_exact_mut(points::POINT_WORDS).zip(kept) {
+        words.copy_from_slice(&point.words());
+    }
+    kept.len() as i32
+}
+
+/// How many messages' batches no datum was paired with
+/// (`points::Book::passed`): each a message whose points no stroke got.
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_pen_points_passed() -> u64 {
+    points::book().passed()
 }

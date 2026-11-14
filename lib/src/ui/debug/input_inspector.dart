@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
+import '../../native/qa_pen_points.dart';
 import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
 import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_sidecars.dart';
@@ -620,7 +621,10 @@ class _InspectorCard extends StatelessWidget {
                     // while it was the thing being diagnosed.
                     ' seen=${InputInspector.arrivals}'
                     // F-400: and what the binding kept out ahead of it.
-                    ' echo=${InputInspector.echoes}',
+                    ' echo=${InputInspector.echoes}'
+                    // H56: and the messages whose points the OS saw
+                    // no datum took — each a stretch of a line lost.
+                    ' passed=${QaPenPoints.passed}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),

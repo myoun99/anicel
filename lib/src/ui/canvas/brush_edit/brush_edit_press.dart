@@ -341,12 +341,26 @@ class _BrushEditPress {
       _state._touchStrokeCommitted = true;
     }
 
-    final read = _state._pressure.noteSample(
-      event,
-      opening: _state._opening.pressureUnread,
-    );
-    final penPosition = _state._canvasPositionFromLocal(event.localPosition);
-    _state._stroke.takeSample(penPosition, at: event.timeStamp, read: read);
+    _takeSamples(PenPath.eventsOf(event));
+  }
+
+  /// Each point the OS saw, at its own time, into the line ([PenPath]):
+  /// what it reads, then where it is.
+  void _takeSamples(Iterable<PointerEvent> points) {
+    for (final point in points) {
+      final read = _state._pressure.noteSample(
+        point,
+        opening: _state._opening.pressureUnread,
+      );
+      final penPosition = _state._canvasPositionFromLocal(
+        point.localPosition,
+      );
+      _state._stroke.takeSample(
+        penPosition,
+        at: point.timeStamp,
+        read: read,
+      );
+    }
   }
 
   void pointerUp(PointerUpEvent event) {
@@ -374,6 +388,10 @@ class _BrushEditPress {
     if (event.pointer != _state._activeDrawingPointer) {
       return;
     }
+    // The points the OS merged into the lift are the line's last
+    // stretch; the lift's own point is where the pen left, as it was.
+    final lift = PenPath.eventsOf(event);
+    _takeSamples(lift.take(lift.length - 1));
 
     landActiveStroke();
   }

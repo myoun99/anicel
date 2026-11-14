@@ -1,5 +1,5 @@
 import 'dart:collection' show Queue;
-import 'dart:ui' as ui show PointerDataPacket;
+import 'dart:ui' as ui show PointerData, PointerDataPacket;
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/app_input_settings.dart';
+import '../services/input/pen_path.dart';
 import 'debug/input_inspector.dart';
 import 'input/ignored_fingers.dart';
 import 'input/pen_echoes.dart';
@@ -166,13 +167,25 @@ mixin UiScaleViewConfiguration on RendererBinding {
     event,
   ].where(_letIn);
 
+  /// The events [datum] makes, each paired with the points the OS saw of
+  /// its message (H56, [PenPath]) — every datum, ahead of every gate.
+  Iterable<PointerEvent> _madeOf(ui.PointerData datum) {
+    final events = PointerEventConverter.expand([
+      datum,
+    ], _effectiveRatioOfView).toList();
+    final ratio = _effectiveRatioOfView(datum.viewId);
+    if (ratio != null) {
+      for (final event in events) {
+        PenPath.arrived(event, datum, ratio);
+      }
+    }
+    return events;
+  }
+
   void _handleScaledPointerDataPacket(ui.PointerDataPacket packet) {
     try {
       _pendingScaledPointerEvents.addAll(
-        PointerEventConverter.expand(
-          packet.data,
-          _effectiveRatioOfView,
-        ).expand(_comesInWith),
+        packet.data.expand(_madeOf).expand(_comesInWith),
       );
       if (!locked) {
         _flushScaledPointerEvents();

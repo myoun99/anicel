@@ -23,6 +23,9 @@ class _BrushEditStroke {
     required bool mappedErase,
   }) {
     _state._activeDrawingPointer = event.pointer;
+    // The press at the time the OS saw it ([PenPath]): every point of
+    // the line is on the clock its moves are, and its first too.
+    final press = PenPath.eventsOf(event).last;
     final canvasPosition = _onTheShiftLine(pressed);
     final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
     // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
@@ -36,7 +39,7 @@ class _BrushEditStroke {
     final strokeSettings = _settingsOfAPress(mappedErase: mappedErase);
     _state._activeStrokeInputSettings = strokeSettings;
     _state._opening.startContact(
-      _state._pressure.noteSample(event, opening: true),
+      _state._pressure.noteSample(press, opening: true),
     );
     _arm(
       strokeSettings,
@@ -59,14 +62,14 @@ class _BrushEditStroke {
         _startSteadying(
           strokeSettings,
           at: canvasPosition,
-          startedAt: event.timeStamp,
+          startedAt: press.timeStamp,
         );
         _state._drawn = [(position: canvasPosition, readings: _readings)];
         if (startsInsidePasteboard) {
           _paintPress(canvasPosition);
         }
       },
-      at: event.timeStamp,
+      at: press.timeStamp,
       position: canvasPosition,
     );
   }

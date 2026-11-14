@@ -25,6 +25,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/guide_stroke_input.dart' show ShiftLine;
 import '../../services/input/modifier_keys.dart';
+import '../../services/input/pen_path.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/stamp_carry.dart';
 import '../../services/transform_box_law.dart';
@@ -2869,15 +2870,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // down and only the release decides whether it lands.
         return;
       case MarqueeDrag():
-        setState(
-          () => drag
-            ..screenTravel += event.delta.distance
-            ..update(
-              _toCanvas(event.localPosition),
-              keepsRatio: _shapeKeepsRatioNow,
-              shift: _shiftHeld,
-            ),
-        );
+        // A lasso traces every point the OS saw ([PenPath]), each its
+        // own step; a box and a line end where the newest is.
+        setState(() {
+          for (final point in PenPath.eventsOf(event)) {
+            drag
+              ..screenTravel += point.delta.distance
+              ..update(
+                _toCanvas(point.localPosition),
+                keepsRatio: _shapeKeepsRatioNow,
+                shift: _shiftHeld,
+              );
+          }
+        });
         if (widget.tool == CanvasSelectionTool.drawShape) {
           widget.onDrawShapeDragged?.call(
             drawnCopiesOf(drag.path(), _guideCarries),
