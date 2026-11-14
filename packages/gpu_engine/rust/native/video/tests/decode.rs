@@ -564,12 +564,15 @@ fn read_nv12(path: &std::path::Path) -> ([i32; 4], Vec<Vec<u8>>) {
     (colours, frames)
 }
 
-/// The Y, Cb and Cr in the middle of an NV12 frame `width` wide and
-/// `height` tall.
-fn middle_of(nv12: &[u8], width: usize, height: usize) -> [u8; 3] {
-    let (x, y) = (width / 2, height / 2);
-    let chroma = width * height + (y / 2) * width + (x / 2) * 2;
-    [nv12[y * width + x], nv12[chroma], nv12[chroma + 1]]
+/// The Y, Cb and Cr of an NV12 frame `width` wide and `height` tall, in
+/// its middle and at its top-left — where its chroma begins, so a chroma
+/// read from the wrong row is seen in a flat frame too (a 1080-row movie's
+/// decoder lays 1088 rows before it: `decode/windows.rs`, `Layout`).
+fn points_of(nv12: &[u8], width: usize, height: usize) -> [[u8; 3]; 2] {
+    [(width / 2, height / 2), (0, 0)].map(|(x, y)| {
+        let chroma = width * height + (y / 2) * width + (x / 2) * 2;
+        [nv12[y * width + x], nv12[chroma], nv12[chroma + 1]]
+    })
 }
 
 fn near(a: [u8; 3], b: [u8; 3], within: u8) -> bool {
@@ -613,15 +616,17 @@ fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
     assert_eq!(named, bt709, "the movie says what it was named");
     assert_eq!(decoded.len(), written.len(), "every frame");
     for (k, frame) in decoded.iter().enumerate() {
-        let middle = middle_of(frame, size.0, size.1);
-        assert!(near(middle, written[k], 2), "frame {k}: {:?} came back {middle:?}", written[k]);
+        for point in points_of(frame, size.0, size.1) {
+            assert!(near(point, written[k], 2), "frame {k}: {:?} came back {point:?}", written[k]);
+        }
     }
     let piece = write_named("bt709-piece", size, named, &decoded);
     let (piece_named, pieced) = read_nv12(&piece);
     assert_eq!(piece_named, bt709, "the piece says what its movie says");
     for (k, (frame, was)) in pieced.iter().zip(&decoded).enumerate() {
-        let (middle, was) = (middle_of(frame, size.0, size.1), middle_of(was, size.0, size.1));
-        assert!(near(middle, was, 2), "piece frame {k}: {was:?} came back {middle:?}");
+        for (point, was) in points_of(frame, size.0, size.1).into_iter().zip(points_of(was, size.0, size.1)) {
+            assert!(near(point, was, 2), "piece frame {k}: {was:?} came back {point:?}");
+        }
     }
     let (movie_shown, piece_shown) = (shown(&movie, size, written.len()), shown(&piece, size, written.len()));
     for (k, (piece, movie)) in piece_shown.into_iter().zip(movie_shown).enumerate() {

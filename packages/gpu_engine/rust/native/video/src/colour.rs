@@ -126,14 +126,16 @@ pub struct Planes<'a> {
 /// 🚨★★★TWO SPELLINGS OF ONE CONVERSION, ON PURPOSE (관제 2026-11-12,
 /// gpu-export-path ⑶-3 ①). The GPU engine's NV12 pass
 /// (`gpu_engine` `kernels/export/nv12.wgsl`) makes these same bytes for an
-/// export's frames, and the writers only lay them (`export/nv12.rs`). This
-/// one stays for a trimmed movie, re-encoded on a worker that has no GPU
-/// engine (`lib/src/services/media/movie_span.dart` `writeMovieSpan`). The
+/// export's frames, and the writers only lay them (`export/nv12.rs`). The
 /// pass's tests hold it to this byte for byte (`kernels/export/tests.rs`,
-/// this their oracle) — ⛔change one and the other goes with it, or the
-/// export and the trimmed movie part colours. It goes when the decoder
-/// hands NV12 itself and nothing comes here as RGBA (board
-/// `trimmed-movie-decodes-to-nv12`).
+/// this their oracle) — ⛔change one and the other goes with it.
+/// ↩️It stayed for a trimmed movie, re-encoded on a worker that has no GPU
+/// engine — till that movie's piece was cut of its own YCbCr (board
+/// `trimmed-movie-decodes-to-nv12`, 2026-11-15). No frame the app makes
+/// comes here since: what still does is the tests' movies, written of
+/// RGBA (`test/helpers/encoded_movie.dart`, the encoder's own tests), and
+/// the pass's oracle — whether it goes with them is board
+/// `trimmed-movie-decodes-to-nv12-Q2`.
 pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Planes) {
     for y in 0..height {
         for x in 0..width {
