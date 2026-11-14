@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 
 import '../../core/collection_equality.dart' show listEquals;
+import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/brush_preset.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
@@ -272,7 +273,7 @@ _Paper? _paperOf(
   if (words['Active'] != '1') {
     return null;
   }
-  final paper = (words['Name'] ?? '').split('/').last;
+  final paper = fileNameOfPath(words['Name'] ?? '');
   final nearest = _nearestPaperTo(paper);
   if (nearest == null) {
     warnings.add(
