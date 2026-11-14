@@ -141,35 +141,44 @@ class CanvasSelectionShape {
 
   final List<CanvasPoint> points;
 
-  /// Whether the edge a–b crosses the horizontal line at [y].
+  /// Whether [point] is inside: the even-odd cast by the engine's own
+  /// integer inequality (gpu-int-spec-canvas 1b S1, region.wgsl's
+  /// `region_first_right`). Every point in Q.8 — 1/256 px, rounded as the
+  /// engine rounds them —; an edge crosses the point's line when one end is
+  /// above it and the other not, half-open, so a vertex on the line
+  /// toggles once; and it counts when it crosses right of the point:
+  /// sign(D)·(A.x·D + (B.x − A.x)·(Y − A.y) − X·D) > 0, D = B.y − A.y. No
+  /// division and no rounding but the points': a pixel centre is in here
+  /// exactly when the engine's mask holds it — the spec's ⚠️「히트 테스트도
+  /// 같은 정수 부등식으로」, the one reading of a selection the CPU keeps.
   ///
-  /// Strict `>` on both ends, so the convention is half-open: a vertex ON
-  /// the line belongs to exactly one of the two edges that meet there and
-  /// toggles the parity once. The ONE rule behind membership (the even-odd
-  /// cast in [containsPoint]) and the lift mask's scanline fill — both
-  /// walkers spelled it (the audit's clone scan, 2026-09-06). A static leaf
-  /// so the per-edge loops keep no callback.
-  static bool edgeStraddles(CanvasPoint a, CanvasPoint b, double y) =>
-      (a.y > y) != (b.y > y);
-
-  /// The x where the edge a–b meets the horizontal line at [y]. Only
-  /// meaningful when [edgeStraddles] — the division is by the edge's rise.
-  static double edgeCrossingX(CanvasPoint a, CanvasPoint b, double y) =>
-      (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x;
-
-  /// Even-odd ray cast (the polygon closes implicitly).
+  /// ↩️Till 2026-11-14 it cast in f64 (`edgeStraddles` · `edgeCrossingX`,
+  /// shared with the lift mask's CPU scanline — the audit's clone scan,
+  /// 2026-09-06) while the engine's mask rounded the vertices: a right
+  /// edge at x = 7.501 put the centre 7.5 in for the hit test and out for
+  /// what a lift moved.
   bool containsPoint(CanvasPoint point) {
+    final x = _q8(point.x);
+    final y = _q8(point.y);
     var inside = false;
     for (var i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
-      final a = points[i];
-      final b = points[j];
-      if (edgeStraddles(a, b, point.y) &&
-          point.x < edgeCrossingX(a, b, point.y)) {
+      final (ax, ay) = (_q8(points[i].x), _q8(points[i].y));
+      final (bx, by) = (_q8(points[j].x), _q8(points[j].y));
+      if ((ay > y) == (by > y)) {
+        continue;
+      }
+      final rise = by - ay;
+      final right = ax * rise + (bx - ax) * (y - ay) - x * rise;
+      if (rise > 0 ? right > 0 : right < 0) {
         inside = !inside;
       }
     }
     return inside;
   }
+
+  /// [value] in Q.8, as the engine holds a point (`quantized` in
+  /// rust/src/kernels/mask/region.rs — nearest, ties away from zero).
+  static int _q8(double value) => (value * 256).round();
 
   CanvasSelectionShape translated({required double dx, required double dy}) {
     return CanvasSelectionShape([
