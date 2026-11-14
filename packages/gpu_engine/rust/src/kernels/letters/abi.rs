@@ -55,42 +55,75 @@ unsafe fn affine(at: *const f32) -> Option<Affine> {
     Some(Affine { a, b, c, d, e, f })
 }
 
-/// The faces letters are set in: `count` files — each `lengths[i]` bytes
-/// at `files[i]`, alive for the call — of the families `families[i]`
-/// names, 0 first and each one the last's or the next, so a family's files
-/// lie together in the order its family is handed over. Null on failure;
-/// see the last error.
+/// The faces being handed to the engine a file at a time
+/// ([`gpu_engine_faces_file`]), each family's files together, till
+/// [`gpu_engine_faces_of`] sets them up — and the first thing it refused.
+#[derive(Default)]
+pub struct FacesHanded {
+    families: Vec<Vec<Vec<u8>>>,
+    refused: Option<String>,
+}
+
+/// Nothing handed yet: what [`gpu_engine_faces_file`] is handed each file
+/// into, and [`gpu_engine_faces_of`] takes.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_faces_handed() -> *mut FacesHanded {
+    Box::into_raw(Box::default())
+}
+
+/// Copies a file — `length` bytes at `bytes`, alive for the call — into
+/// `handed` as one of family `family`'s: 0 first and each one the last's
+/// or the next, so a family's files lie together in the order its family
+/// is handed over. What it refuses, [`gpu_engine_faces_of`] says.
+///
+/// ⛔ONE COPY: the app calls this as a leaf, handing the bytes its bundle
+/// read where they lie, and this copy is the only one made — the app held
+/// them in a block it zeroed and filled first, and the engine copied that
+/// (🔬저장 11-14, the surface's AOT profiler: 35 MB three times over, a
+/// 50–120 ms stop of the UI the first time letters were set). ⚠️Nothing
+/// here may call back into the app's runtime, as no leaf may.
 ///
 /// # Safety
-/// `files`, `lengths` and `families` each hold `count`.
+/// `handed` came from [`gpu_engine_faces_handed`] and is not yet set up;
+/// `bytes` holds `length`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_faces_new(
-    files: *const *const u8,
-    lengths: *const usize,
-    families: *const u32,
-    count: usize,
-) -> *mut Faces {
+pub unsafe extern "C" fn gpu_engine_faces_file(
+    handed: *mut FacesHanded,
+    family: u32,
+    bytes: *const u8,
+    length: usize,
+) {
     // SAFETY: see the function's contract.
-    let (files, lengths, named) = unsafe {
-        (
-            std::slice::from_raw_parts(files, count),
-            std::slice::from_raw_parts(lengths, count),
-            std::slice::from_raw_parts(families, count),
-        )
-    };
-    let mut grouped: Vec<Vec<Vec<u8>>> = Vec::new();
-    for ((&file, &length), &family) in files.iter().zip(lengths).zip(named) {
-        if family as usize == grouped.len() {
-            grouped.push(Vec::new());
-        } else if family as usize + 1 != grouped.len() {
-            return none(format!("family {family} is not the last one's nor the next"));
-        }
-        // SAFETY: each file holds its length, alive for the call.
-        let bytes = unsafe { std::slice::from_raw_parts(file, length) };
-        grouped.last_mut().expect("pushed above").push(bytes.to_vec());
+    let handed = unsafe { &mut *handed };
+    if handed.refused.is_some() {
+        return;
     }
-    let mut set_in = Vec::with_capacity(grouped.len());
-    for (family, files) in grouped.into_iter().enumerate() {
+    let families = &mut handed.families;
+    if family as usize == families.len() {
+        families.push(Vec::new());
+    } else if family as usize + 1 != families.len() {
+        handed.refused = Some(format!("family {family} is not the last one's nor the next"));
+        return;
+    }
+    // SAFETY: see the function's contract.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
+    families.last_mut().expect("pushed above").push(bytes.to_vec());
+}
+
+/// The faces letters are set in, of the files `handed` was handed — which
+/// it takes and lets go of. Null on failure; see the last error.
+///
+/// # Safety
+/// `handed` came from [`gpu_engine_faces_handed`] and is set up once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_of(handed: *mut FacesHanded) -> *mut Faces {
+    // SAFETY: see the function's contract.
+    let FacesHanded { families, refused } = *unsafe { Box::from_raw(handed) };
+    if let Some(why) = refused {
+        return none(why);
+    }
+    let mut set_in = Vec::with_capacity(families.len());
+    for (family, files) in families.into_iter().enumerate() {
         let Some(faces) = Family::of_files(files) else {
             return none(format!("family {family} holds no face"));
         };
@@ -100,7 +133,7 @@ pub unsafe extern "C" fn gpu_engine_faces_new(
 }
 
 /// # Safety
-/// `faces` came from `gpu_engine_faces_new`.
+/// `faces` came from `gpu_engine_faces_of`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_faces_free(faces: *mut Faces) {
     if !faces.is_null() {

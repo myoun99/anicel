@@ -27,11 +27,13 @@ fn handed() -> *mut Faces {
 }
 
 fn faces_of(files: &[(Vec<u8>, u32)]) -> *mut Faces {
-    let at: Vec<*const u8> = files.iter().map(|(bytes, _)| bytes.as_ptr()).collect();
-    let lengths: Vec<usize> = files.iter().map(|(bytes, _)| bytes.len()).collect();
-    let families: Vec<u32> = files.iter().map(|&(_, family)| family).collect();
-    // SAFETY: the three hold one each of `files`, alive for the call.
-    unsafe { gpu_engine_faces_new(at.as_ptr(), lengths.as_ptr(), families.as_ptr(), files.len()) }
+    let handed = gpu_engine_faces_handed();
+    for (bytes, family) in files {
+        // SAFETY: `handed` is not yet set up; `bytes` holds its length.
+        unsafe { gpu_engine_faces_file(handed, *family, bytes.as_ptr(), bytes.len()) };
+    }
+    // SAFETY: `handed` is set up once, here.
+    unsafe { gpu_engine_faces_of(handed) }
 }
 
 /// `text` — one cluster a letter, Latin, Hangul and a simplified

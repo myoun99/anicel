@@ -47,6 +47,8 @@ final class CelPassed extends Opaque {}
 
 final class Faces extends Opaque {}
 
+final class FacesHanded extends Opaque {}
+
 final class Lettering extends Opaque {}
 
 final class Lettered extends Opaque {}
@@ -1607,20 +1609,26 @@ external void floodFilledFree(Pointer<FloodFilled> filled);
 @Native<Uint64 Function()>(symbol: 'gpu_engine_flood_bytes')
 external int floodBytes();
 
-@Native<
-  Pointer<Faces> Function(
-    Pointer<Pointer<Uint8>>,
-    Pointer<UintPtr>,
-    Pointer<Uint32>,
-    Size,
-  )
->(symbol: 'gpu_engine_faces_new')
-external Pointer<Faces> facesNew(
-  Pointer<Pointer<Uint8>> files,
-  Pointer<UintPtr> lengths,
-  Pointer<Uint32> families,
-  int count,
+@Native<Pointer<FacesHanded> Function()>(symbol: 'gpu_engine_faces_handed')
+external Pointer<FacesHanded> facesHanded();
+
+/// A leaf: [bytes] is a file's own bytes where the Dart heap holds them
+/// (`Uint8List.address`), copied once on the engine's side.
+@Native<Void Function(Pointer<FacesHanded>, Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_faces_file',
+  isLeaf: true,
+)
+external void facesFile(
+  Pointer<FacesHanded> handed,
+  int family,
+  Pointer<Uint8> bytes,
+  int length,
 );
+
+@Native<Pointer<Faces> Function(Pointer<FacesHanded>)>(
+  symbol: 'gpu_engine_faces_of',
+)
+external Pointer<Faces> facesOf(Pointer<FacesHanded> handed);
 
 @Native<Void Function(Pointer<Faces>)>(symbol: 'gpu_engine_faces_free')
 external void facesFree(Pointer<Faces> faces);

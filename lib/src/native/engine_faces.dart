@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -21,15 +22,22 @@ abstract final class EngineFaces {
   /// widget test runs in one of its own, and a second test awaiting the
   /// first one's future never woke (11-08).
   static Future<GpuFaces> bundled() async =>
-      _bundled ??= await (_reading ??= _read());
+      _bundled ??= await (_reading ??= read());
   static GpuFaces? _bundled;
   static Future<GpuFaces>? _reading;
 
-  static Future<GpuFaces> _read() async => GpuFaces([
-    for (final face in AppTypography.canvasLetterFaces)
-      [
-        for (final file in face.files)
-          Uint8List.sublistView(await rootBundle.load(file)),
-      ],
-  ]);
+  /// The bundled families read anew — what [bundled] keeps; a test's own
+  /// read is kept by no one. Each file handed to the engine as soon as the
+  /// bundle has read it, so the copy it costs falls in the turn its read
+  /// ends and not all six in one ([GpuFacesHanding]).
+  @visibleForTesting
+  static Future<GpuFaces> read() async {
+    final handing = GpuFacesHanding();
+    for (final (family, face) in AppTypography.canvasLetterFaces.indexed) {
+      for (final file in face.files) {
+        handing.add(family, Uint8List.sublistView(await rootBundle.load(file)));
+      }
+    }
+    return handing.done();
+  }
 }

@@ -3558,39 +3558,54 @@ final class GpuSelectionMasks {
 }
 
 /// The faces letters are set in (rust/src/kernels/letters/glyphs.rs): each
-/// family's files, the families in the order a letter goes down them.
+/// family's files, the families in the order a letter goes down them —
+/// handed over a file at a time ([GpuFacesHanding]).
 class GpuFaces {
-  /// [families], each one's files read whole — copied for the engine,
-  /// which keeps them.
-  factory GpuFaces(List<List<Uint8List>> families) {
-    final files = [
-      for (final (family, files) in families.indexed)
-        for (final file in files) (family: family, bytes: file),
-    ];
-    final faces = using((arena) {
-      final count = _held(files.length);
-      final at = arena<Pointer<Uint8>>(count);
-      final lengths = arena<UintPtr>(count);
-      final named = arena<Uint32>(count);
-      for (final (index, file) in files.indexed) {
-        final bytes = file.bytes;
-        at[index] = _bytes(arena, bytes);
-        lengths[index] = bytes.length;
-        named[index] = file.family;
-      }
-      return rust.facesNew(at, lengths, named, files.length);
-    });
-    if (faces == nullptr) {
-      throw GpuRefused(_lastError());
-    }
-    return GpuFaces._(faces);
-  }
-
   GpuFaces._(this._faces);
 
   final Pointer<rust.Faces> _faces;
 
   void free() => rust.facesFree(_faces);
+}
+
+/// [GpuFaces] being handed to the engine a file at a time: each file
+/// copied by the engine as it is [add]ed — once, from where its bytes lie
+/// (`gpu_engine_faces_file`) — and the faces set up when all are
+/// ([done]).
+///
+/// ⛔A FILE AT A TIME, so the one copy each file costs can fall where it
+/// is read rather than all of them in one stop (35 MB: ~12 ms on the
+/// surface, a Noto Sans SC file ~11 MB of it).
+///
+/// ↩️Till 2026-11-14 every file was copied into a block zeroed for it
+/// first, all at once, and the engine copied that: 35 MB three times over,
+/// the UI stopped 50–120 ms the first time letters were set (🔬저장, the
+/// surface's AOT profiler — board engine-faces-load-35-mb-on-the-ui-thread).
+class GpuFacesHanding {
+  GpuFacesHanding() : _handed = rust.facesHanded();
+
+  final Pointer<rust.FacesHanded> _handed;
+
+  /// [file], read whole, as one of family [family]'s: 0 first and each one
+  /// the last's or the next, so a family's files are added together in the
+  /// order its family is.
+  void add(int family, Uint8List file) {
+    rust.facesFile(_handed, family, file.address, file.length);
+    debugFilesHanded += 1;
+  }
+
+  /// Test seam: how many files have been [add]ed, every handing's.
+  @visibleForTesting
+  static int debugFilesHanded = 0;
+
+  /// The faces of every file [add]ed — after which this hands nothing more.
+  GpuFaces done() {
+    final faces = rust.facesOf(_handed);
+    if (faces == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return GpuFaces._(faces);
+  }
 }
 
 /// A cluster of letters as the app's layout set it: its text, its box's

@@ -39,7 +39,8 @@ use crate::kernels::flood::abi::{
 };
 use crate::kernels::letters::Lettered;
 use crate::kernels::letters::abi::{
-    gpu_engine_faces_free, gpu_engine_faces_new, gpu_engine_lettered_free, gpu_engine_letters_free,
+    gpu_engine_faces_file, gpu_engine_faces_free, gpu_engine_faces_handed, gpu_engine_faces_of,
+    gpu_engine_lettered_free, gpu_engine_letters_free,
     gpu_engine_letters_new,
 };
 use crate::kernels::letters::glyphs_tests::file;
@@ -224,8 +225,13 @@ fn frees() -> [(&'static str, fn(&'static str)); 35] {
         }),
         ("gpu_engine_faces_free", |name| {
             let face = file("BIZUDPGothic-Regular.ttf");
-            // SAFETY: each pointer holds one, alive for the call.
-            let made = unsafe { gpu_engine_faces_new(&face.as_ptr(), &face.len(), &0, 1) };
+            let handed = gpu_engine_faces_handed();
+            // SAFETY: `handed` is set up once, after its one file; `face`
+            // holds its length.
+            let made = unsafe {
+                gpu_engine_faces_file(handed, 0, face.as_ptr(), face.len());
+                gpu_engine_faces_of(handed)
+            };
             gives_back(name, made, gpu_engine_faces_free)
         }),
         ("gpu_engine_letters_free", |name| gives_back(name, gpu_engine_letters_new(), gpu_engine_letters_free)),
