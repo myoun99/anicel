@@ -988,18 +988,22 @@ void main() {
     testWidgets('🚨the pool asks nothing about placement — the questions a '
         'placement asks are not there at all (유저 2026-09-11: 「플레이스가 '
         '풀이면 넣을곳 맞춤 PSD 열 삭제」)', (tester) async {
-      final png = await tester.runAsync(() => writePng('a.png'));
-      await pump(tester, [png!], poolOnly: true);
+      final psd = await tester.runAsync(() => writePsd('BG.psd'));
+      await pump(tester, [psd!], poolOnly: true);
 
-      for (final id in ['bake', 'fit', 'option']) {
+      for (final id in ['bake', 'fit']) {
         expect(
           find.byKey(ValueKey<String>('import-column-$id')),
           findsNothing,
           reason: id,
         );
       }
+      // The 「옵션」 column stands for a movie's parts (I-171-Q2, 유저
+      // 2026-11-14: 「넣는다 — 옵션 열만」), and asks a Photoshop document
+      // nothing here: its layers kept or merged is a placement's question.
+      expect(cellText(tester, 'option', psd), '—');
       expect(
-        cellText(tester, 'file', png),
+        cellText(tester, 'file', psd),
         'Keep',
         reason: 'what the project holds is still a question here',
       );
