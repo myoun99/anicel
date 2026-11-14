@@ -17,6 +17,7 @@ import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import com.myoun.gpu_engine.PenPoints
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -48,6 +49,14 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // H56 (user 2026-11-14: 「플랫폼 구분없이 통합해결」): every
+        // sample Android batched into a touch event goes into the line,
+        // each at its own time - written before Flutter's view hears the
+        // event, which goes on to it untouched (PenPoints).
+        findViewById<View>(FlutterActivity.FLUTTER_VIEW_ID)?.setOnTouchListener { _, event ->
+            PenPoints.write(event)
+            false
+        }
         preferTheFastestDisplayMode()
         // The file that started the app (hand) - on a FRESH start only: an
         // activity brought back, restored or reopened from Recents, is handed

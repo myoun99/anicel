@@ -863,6 +863,13 @@ class AnicelViewController: FlutterViewController {
   //
   // UNVERIFIED-ON-DEVICE like the rest of this file: the input inspector's
   // `ledger` line says whether the brush heard it.
+  //
+  // THE POINTS THE OS SAW (H56, 2026-11-14): a touch's callback is one
+  // datum to Flutter, and the samples UIKit merged into it
+  // (`coalescedTouches(for:)`) the engine never asks for. With the event
+  // and Flutter's view in hand the ledger writes each touch's samples as
+  // its message's points (native/pen points.rs) and keeps each in the
+  // ledger by its own time; the brush reads them as it reads the touch.
 
   private static var penLedgerFound: AnyObject?
 
@@ -873,27 +880,34 @@ class AnicelViewController: FlutterViewController {
     return penLedgerFound
   }
 
-  private static func noteToPenLedger(_ touches: Set<UITouch>) {
-    _ = penLedger?.perform(NSSelectorFromString("noteTouches:"), with: touches)
+  private func noteToPenLedger(_ touches: Set<UITouch>, _ event: UIEvent?) {
+    guard let ledger = Self.penLedger else { return }
+    if let event = event, let view = viewIfLoaded {
+      _ = ledger.perform(
+        NSSelectorFromString("notePoints:"),
+        with: [touches as NSSet, event, view] as NSArray)
+    } else {
+      _ = ledger.perform(NSSelectorFromString("noteTouches:"), with: touches)
+    }
   }
 
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-    Self.noteToPenLedger(touches)
+    noteToPenLedger(touches, event)
     super.touchesBegan(touches, with: event)
   }
 
   override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-    Self.noteToPenLedger(touches)
+    noteToPenLedger(touches, event)
     super.touchesMoved(touches, with: event)
   }
 
   override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-    Self.noteToPenLedger(touches)
+    noteToPenLedger(touches, event)
     super.touchesEnded(touches, with: event)
   }
 
   override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-    Self.noteToPenLedger(touches)
+    noteToPenLedger(touches, event)
     super.touchesCancelled(touches, with: event)
   }
 
