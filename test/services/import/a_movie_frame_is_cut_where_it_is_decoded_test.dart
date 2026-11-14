@@ -170,9 +170,7 @@ void main() {
   group('the decoder\'s side', () {
     const movie = 'test/fixtures/tone_with_video.mp4';
 
-    tearDown(() {
-      QaVideoDecoder.instance.close();
-    });
+    tearDown(QaVideoDecoder.instance.close);
 
     /// The cut of a [info]-sized frame laid 1:1 at (5, 3) on a cel of its
     /// own size and more.

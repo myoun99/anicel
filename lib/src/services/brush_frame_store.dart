@@ -637,6 +637,28 @@ class BrushFrameStore {
     }
     _movieCelHolders[surface] = holders + 1;
     _fitMovieCels();
+    _movieCelChanged(key);
+  }
+
+  /// Lets go of [key]'s movie picture because it is no longer the row's —
+  /// its movie no longer opens, or the frame no longer decodes — where
+  /// [installMovieCel] put one. The revision moves as an install moves it,
+  /// so nothing made with the picture stays shown; a key with none moves
+  /// nothing.
+  ///
+  /// ⛔Not the budget's letting go ([_fitMovieCels]), which keeps the
+  /// revision because what was drawn with the picture is still right.
+  void forgetMovieCel(BrushFrameKey key) {
+    key = _canonicalize(key);
+    if (!_movieCels.containsKey(key)) {
+      return;
+    }
+    _releaseMovieCel(key);
+    _movieCelChanged(key);
+  }
+
+  /// [key]'s movie picture changed: its caches go and its revision moves.
+  void _movieCelChanged(BrushFrameKey key) {
     _displayCaches.remove(key);
     final state = getOrCreateFrame(key);
     _leave(state.sourceRevision);

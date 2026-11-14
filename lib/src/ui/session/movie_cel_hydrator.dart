@@ -211,7 +211,11 @@ class MovieCelHydrator {
   ) async {
     final at = _movieAt(reference.assetPath);
     final movie = await _movieFor(at);
-    if (movie == null || _disposed) {
+    if (_disposed) {
+      return;
+    }
+    if (movie == null) {
+      _forget(key);
       return;
     }
     final movieFrame = movieClockFor(
@@ -225,11 +229,31 @@ class MovieCelHydrator {
       cut.canvasSize,
       reference.laid,
     ));
-    if (picture == null || _disposed) {
+    if (_disposed) {
+      return;
+    }
+    if (picture == null) {
+      _forget(key);
       return;
     }
     _renderCaches.brushFrameStore.installMovieCel(key, picture);
     _shown[key] = (at, reference.laid);
+  }
+
+  /// [key] shows no movie picture: the one its row names cannot be had —
+  /// the movie does not open, or the frame does not decode — and what it
+  /// showed was another movie's, or laid at another pose ([hydrate] fills
+  /// only a key whose picture is not the row's).
+  ///
+  /// 🚨Measured 2026-11-14 (`a_reference_movie_shows_its_picture_test`, 「a
+  /// movie that will not open leaves its span empty」): a row pointed at a
+  /// file that does not open kept showing the frame of the movie it had
+  /// named. The test passed while no frame got laid inside its clock — a
+  /// frame uploaded to the engine never came back there — and failed the
+  /// day a frame was cut on the decoder's side, which does.
+  void _forget(BrushFrameKey key) {
+    _renderCaches.brushFrameStore.forgetMovieCel(key);
+    _shown.remove(key);
   }
 
   Future<BitmapSurface?> _pictureOf(_OpenMovie movie, _MoviePicture at) {

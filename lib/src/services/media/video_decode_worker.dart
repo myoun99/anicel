@@ -531,25 +531,9 @@ void _serve(
         fpsDenominator: document.info.fpsDenominator,
       ));
     case _opFrame:
-      final args =
-          request.args! as ({int token, int index, bool premultiplied});
-      final document = documentAt(args.token);
-      final rgba = document == null
-          ? null
-          : _frameInTheRoom(decoder, document, args.index);
-      request.reply.send(
-        rgba == null
-            ? null
-            : transferOfFrame(rgba, premultiplied: args.premultiplied),
-      );
+      request.reply.send(_frameAsked(decoder, documentAt, request.args!));
     case _opCutFrame:
-      final args = request.args! as ({int token, int index, TileCut cut});
-      final document = documentAt(args.token);
-      request.reply.send(
-        document == null
-            ? null
-            : _cutOfFrame(decoder, document, args.index, args.cut),
-      );
+      request.reply.send(_cutAsked(decoder, documentAt, request.args!));
     case _opLastError:
       request.reply.send(decoder.lastError);
     case _opClose:
@@ -628,6 +612,36 @@ Uint8List? _frameInTheRoom(
       ? kept
       : (_frameRoom = Uint8List(bytes));
   return decoder.frameOf(document, index, into: room);
+}
+
+/// What the frame arm sends for [args]: the frame in the form asked
+/// ([transferOfFrame]), or null where its document or frame is not there.
+TransferableTypedData? _frameAsked(
+  QaVideoDecoder decoder,
+  QaVideoDocument? Function(int token) documentAt,
+  Object args,
+) {
+  final (:token, :index, :premultiplied) =
+      args as ({int token, int index, bool premultiplied});
+  final document = documentAt(token);
+  final rgba = document == null
+      ? null
+      : _frameInTheRoom(decoder, document, index);
+  return rgba == null
+      ? null
+      : transferOfFrame(rgba, premultiplied: premultiplied);
+}
+
+/// What the cut arm sends for [args]: the frame's tiles ([_cutOfFrame]), or
+/// null where its document or frame is not there.
+CutTiles? _cutAsked(
+  QaVideoDecoder decoder,
+  QaVideoDocument? Function(int token) documentAt,
+  Object args,
+) {
+  final (:token, :index, :cut) = args as ({int token, int index, TileCut cut});
+  final document = documentAt(token);
+  return document == null ? null : _cutOfFrame(decoder, document, index, cut);
 }
 
 /// Frame [index] of [document] cut into [cut]'s tile blocks out of

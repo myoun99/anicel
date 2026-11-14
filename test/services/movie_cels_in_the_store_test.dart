@@ -100,6 +100,38 @@ void main() {
     );
   });
 
+  test('forgotten — its movie no longer the row\'s — it is gone, and the '
+      'revision moves as an install moves it', () {
+    final store = BrushFrameStore();
+    store.installMovieCel(key(5), picture(1));
+    final revision = store.frameOrNull(key(5))!.sourceRevision;
+    final pixels = store.celPixelRevision.value;
+
+    store.forgetMovieCel(key(5));
+
+    expect(store.hasMovieCel(key(5), canvas), isFalse);
+    expect(
+      store.currentSurfaceWithoutReplay(key(5), canvasSize: canvas),
+      isNull,
+    );
+    expect(store.movieCelBytes, 0);
+    expect(store.frameOrNull(key(5))!.sourceRevision, greaterThan(revision));
+    expect(store.celPixelRevision.value, pixels + 1);
+  });
+
+  test('a key with no movie picture forgets nothing and moves nothing', () {
+    final store = BrushFrameStore();
+    store.installMovieCel(key(5), picture(1));
+    final revision = store.frameOrNull(key(6))!.sourceRevision;
+    final pixels = store.celPixelRevision.value;
+
+    store.forgetMovieCel(key(6));
+
+    expect(store.hasMovieCel(key(5), canvas), isTrue);
+    expect(store.frameOrNull(key(6))!.sourceRevision, revision);
+    expect(store.celPixelRevision.value, pixels);
+  });
+
   test('the same picture again moves nothing', () {
     final store = BrushFrameStore();
     final surface = picture(1);
