@@ -500,5 +500,36 @@ void main() {
       ]);
       expect(asked, isEmpty, reason: 'the selection is the engine\'s to read');
     });
+
+    test('a selection that meets none of the range covers none of it — one '
+        'past its wall too, which has nothing made on the engine to cut by',
+        () {
+      final wall = const CanvasSize(
+        width: 64,
+        height: 64,
+      ).pasteboardAt(PasteboardReach.none);
+      SelectionClip clipOf(double left, double top) => SelectionClip.of(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: left,
+            top: top,
+            right: left + 4,
+            bottom: top + 4,
+          ),
+        ),
+        wall: wall,
+        options: SelectionMaskOptions.none,
+      );
+      final beside = clipOf(30, 30);
+      final beyond = clipOf(200, 200);
+      expect(beyond.box, isNull, reason: '⛔premise: past the wall');
+      for (final clip in [beside, beyond]) {
+        final covered = FillRange.over(
+          square(0, 0, 6),
+        ).coveredWithin(clip)!;
+        expect(covered.cover.mask, everyElement(0));
+        expect(covered.outline, isEmpty);
+      }
+    });
   });
 }
