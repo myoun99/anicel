@@ -105,22 +105,7 @@ PsdExpandPlan planPsdExpansion({
 }) {
   final warnings = <ImportWarning>[...document.warnings];
   final held = duration < 1 ? 1 : duration;
-
-  // The document's own fit carries every layer: each sits inside it at its
-  // stored offset, on the same scales. Fitting each layer to the canvas on
-  // its own would scatter a stack that lines up.
-  // ↩️The layers took the document's WIDTH ratio along both axes, which a
-  // stretch to another aspect is not: they stood off the composite by the
-  // difference, down the page. Each axis has its own scale now (I-68 — the
-  // fit is a pose).
-  final documentSize = CanvasSize(
-    width: document.width,
-    height: document.height,
-  );
-  final onCanvas = picturePlacement(
-    fitPose(picture: documentSize, canvas: canvas, fit: fit),
-    documentSize,
-  );
+  final laid = psdLayersLaid(document: document, canvas: canvas, fit: fit);
 
   final rootId = newCut ? null : mint.nextLayerId();
   final layers = <Layer>[];
@@ -189,15 +174,14 @@ PsdExpandPlan planPsdExpansion({
             folderId: enclosing(),
           ),
         );
-        final crop = _insideTheDocument(source, document);
-        if (source.hasPixels && crop != null) {
+        if (laid[index] case final at?) {
           placements.add(
             PsdLayerPlacement(
               sourceIndex: index,
               layerId: layerId,
               frameId: frameId,
-              rect: _onTheCanvas(onCanvas, source, crop),
-              crop: crop,
+              rect: at.rect,
+              crop: at.crop,
             ),
           );
         }
@@ -237,6 +221,44 @@ PsdExpandPlan planPsdExpansion({
     placements: placements,
     warnings: warnings,
   );
+}
+
+/// Where an expanded layer's pixels go: the part of it Photoshop shows
+/// ([crop]) and the canvas rect that part is laid over ([rect]).
+typedef PsdLayerAt = ({ui.Rect rect, PsdLayerCrop crop});
+
+/// The layers of [document] whose pixels an expansion onto [canvas] by
+/// [fit] lays, by their index in [PsdDocument.layers] — what the plan
+/// places ([planPsdExpansion]) and what the isolate that read the document
+/// cuts (`readPsdExpansion`), from this one reading.
+///
+/// The document's own fit carries every layer: each sits inside it at its
+/// stored offset, on the same scales. Fitting each layer to the canvas on
+/// its own would scatter a stack that lines up. ↩️The layers took the
+/// document's WIDTH ratio along both axes, which a stretch to another
+/// aspect is not: they stood off the composite by the difference, down the
+/// page. Each axis has its own scale now (I-68 — the fit is a pose).
+Map<int, PsdLayerAt> psdLayersLaid({
+  required PsdDocument document,
+  required CanvasSize canvas,
+  required MediaFitMode fit,
+}) {
+  final documentSize = CanvasSize(
+    width: document.width,
+    height: document.height,
+  );
+  final onCanvas = picturePlacement(
+    fitPose(picture: documentSize, canvas: canvas, fit: fit),
+    documentSize,
+  );
+  return {
+    for (final (index, source) in document.layers.indexed)
+      if (source.role == PsdLayerRole.raster &&
+          source.adjustmentKey == null &&
+          source.hasPixels)
+        if (_insideTheDocument(source, document) case final crop?)
+          index: (rect: _onTheCanvas(onCanvas, source, crop), crop: crop),
+  };
 }
 
 /// Names [source] where Photoshop keeps something of it that no row here

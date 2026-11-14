@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Every frame the engine's decoder hands back for [bytes] — what the app's
@@ -39,6 +40,25 @@ _straight(ui.FrameInfo frame) async {
 /// What the engine's decoder hands back for [png], as straight RGBA.
 Future<Uint8List> engineRgba(Uint8List png) async =>
     (await engineFrames(png)).first.rgba;
+
+/// [ours] against [theirs] tile for tile: the same tiles, where the same
+/// picture says it lies, each the same pixels ([expectSamePixels]) —
+/// [colourSlack] apart where a raster resamples.
+void expectSameCel(
+  BitmapSurface ours,
+  BitmapSurface theirs, {
+  int colourSlack = 0,
+}) {
+  expect(ours.laidBounds, theirs.laidBounds);
+  expect(ours.tiles.keys, unorderedEquals(theirs.tiles.keys));
+  for (final MapEntry(key: coord, value: tile) in theirs.tiles.entries) {
+    expectSamePixels(
+      Uint8List.fromList(ours.tiles[coord]!.pixels),
+      Uint8List.fromList(tile.pixels),
+      colourSlack: colourSlack,
+    );
+  }
+}
 
 /// [ours] against the engine's [theirs], pixel by pixel: the alpha exactly,
 /// and the colour exactly where the pixel is opaque or clear. Where the

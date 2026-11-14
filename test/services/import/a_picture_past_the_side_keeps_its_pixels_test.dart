@@ -125,25 +125,6 @@ void main() {
         ),
       );
 
-  /// [ours] against [theirs] tile for tile: the same tiles, where the same
-  /// picture says it lies, each the same pixels ([expectSamePixels]) —
-  /// [colourSlack] apart where a raster resamples.
-  void expectSameCel(
-    BitmapSurface ours,
-    BitmapSurface theirs, {
-    int colourSlack = 0,
-  }) {
-    expect(ours.laidBounds, theirs.laidBounds);
-    expect(ours.tiles.keys, unorderedEquals(theirs.tiles.keys));
-    for (final MapEntry(key: coord, value: tile) in theirs.tiles.entries) {
-      expectSamePixels(
-        Uint8List.fromList(ours.tiles[coord]!.pixels),
-        Uint8List.fromList(tile.pixels),
-        colourSlack: colourSlack,
-      );
-    }
-  }
-
   group('held off the engine', () {
     testWidgets('🎯a picture longer than the side is held at its own size; '
         'one at the side is the engine\'s', (tester) async {

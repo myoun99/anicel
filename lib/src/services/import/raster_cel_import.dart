@@ -274,18 +274,126 @@ Future<BitmapSurface> layCelPicture({
   int tileSize = defaultCelTileSize,
   bool whole = false,
 }) async {
-  final layout = _layoutOf(picture.size, canvas, placement, tileSize, whole);
-  if (layout == null) {
-    return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
+  final lay = celLayOf(
+    picture: picture.size,
+    canvas: canvas,
+    placement: placement,
+    tileSize: tileSize,
+    whole: whole,
+  );
+  if (lay == null) {
+    return nothingLaid(canvas, tileSize: tileSize);
   }
-  if (_copiesPixels(placement)) {
-    return laidCelSurface(await _copied(picture, _cutAt(placement, layout)));
+  if (picture case EnginePicture(:final image) when !lay.copies) {
+    return _laidOnEngine(_EngineSource(image), placement, lay.layout);
   }
-  return _laidOnEngine(await _sourceOf(picture), placement, layout);
+  return layCut(lay, await _copied(picture, lay.cut));
 }
 
-/// [picture] laid 1:1 on whole pixels by [cut]: its rows cut into the
-/// cel's tiles where they are — a file's on a worker ([cutFileInWorker]),
+/// The cel a lay that puts nothing on a [canvas]-sized cel of [tileSize]
+/// tiles makes ([celLayOf] is null).
+BitmapSurface nothingLaid(
+  CanvasSize canvas, {
+  int tileSize = defaultCelTileSize,
+}) => BitmapSurface(canvasSize: canvas, tileSize: tileSize);
+
+/// A lay of a picture on a cel ([layCelPicture]) before any of its pixels:
+/// where it goes and the cut its pixels are taken by. Records and plain
+/// values only — the isolate that holds a picture's pixels works it out
+/// and cuts them there (an expanded Photoshop layer's).
+final class CelLay {
+  const CelLay._({
+    required this.placement,
+    required this.picture,
+    required this.layout,
+    required this.cut,
+    required this.copies,
+  });
+
+  /// The picture's own pixels → the canvas.
+  final LayerPlacement placement;
+
+  /// The picture's own size.
+  final CanvasSize picture;
+
+  /// What the lay puts on the cel.
+  final CelLayout layout;
+
+  /// What is cut of the picture: the cel's own tiles where the lay
+  /// [copies]; else tiles of the picture's own, at its origin, which the
+  /// engine reads where they lie ([layCut]).
+  final PictureCut cut;
+
+  /// Whether the lay is 1:1 on whole pixels — a copy.
+  final bool copies;
+}
+
+/// How a [picture]-sized picture is laid by [placement] on a
+/// [canvas]-sized cel of [tileSize] tiles ([layCelPicture]) — null where it
+/// puts nothing there.
+CelLay? celLayOf({
+  required CanvasSize picture,
+  required CanvasSize canvas,
+  required LayerPlacement placement,
+  int tileSize = defaultCelTileSize,
+  bool whole = false,
+}) {
+  final layout = _layoutOf(picture, canvas, placement, tileSize, whole);
+  if (layout == null) {
+    return null;
+  }
+  final copies = _copiesPixels(placement);
+  return CelLay._(
+    placement: placement,
+    picture: picture,
+    layout: layout,
+    cut: copies ? _cutAt(placement, layout) : _ownCut(picture),
+    copies: copies,
+  );
+}
+
+/// [lay]'s cel, of [tiles] — the cut it asked of its picture: those tiles
+/// themselves where it [CelLay.copies]; else read where they lie and laid
+/// on the engine ([_RegionSource]), never composed into one picture here.
+///
+/// ↩️(2026-11-14, card a-raster-import-goes-gpu-cpu-gpu-cpu) a file was
+/// read whole on a worker and handed here, a movie's frame read here, and
+/// either cut a part at a time on the isolate that paints.
+Future<BitmapSurface> layCut(CelLay lay, AnicelLaidCel tiles) async {
+  final cut = laidCelSurface(tiles);
+  if (lay.copies) {
+    return cut;
+  }
+  return _laidOnEngine(
+    _RegionSource(cut, _ownRegion(lay.picture)),
+    lay.placement,
+    lay.layout,
+  );
+}
+
+/// All of a [picture]-sized picture, at its own origin.
+DirtyRegion _ownRegion(CanvasSize picture) => DirtyRegion.fromXYWH(
+  x: 0,
+  y: 0,
+  width: picture.width,
+  height: picture.height,
+);
+
+/// A [picture]-sized picture cut into tiles of its own, at its origin —
+/// what a lay that resamples it reads ([layCut]).
+PictureCut _ownCut(CanvasSize picture) => (
+  left: 0,
+  top: 0,
+  layout: (
+    canvas: picture,
+    tileSize: gpuTileSide,
+    tiles: _ownRegion(picture).tileRange(tileSize: gpuTileSide),
+    laid: null,
+  ),
+);
+
+/// [picture] cut by [cut] — a [CelLay]'s: its rows cut into the tiles
+/// where they are — a file's on a worker ([cutFileInWorker]),
 /// pixels in hand here ([cutPixels]), a movie's frame where it is decoded
 /// ([MovieFramePicture.cut]), the engine's a block at a time
 /// ([_cutEngineImage]).
@@ -296,38 +404,6 @@ Future<AnicelLaidCel> _copied(CelPicture picture, PictureCut cut) async =>
       final MovieFramePicture frame => await frame.cut(cut),
       EnginePicture(:final image) => await _cutEngineImage(image, cut),
     };
-
-/// What a lay that resamples [picture] reads it from. One the engine holds
-/// is rastered a part at a time where a part reaches it ([_EngineSource]);
-/// any other is cut whole into tiles of its own where its pixels are — the
-/// copy a 1:1 lay makes ([_copied]), at the picture's own origin — and read
-/// from those ([_RegionSource]).
-///
-/// ↩️(2026-11-14, card a-raster-import-goes-gpu-cpu-gpu-cpu) a file was
-/// read whole on a worker and handed here, a movie's frame read here, and
-/// either cut a part at a time on the isolate that paints.
-Future<_Source> _sourceOf(CelPicture picture) async {
-  if (picture case EnginePicture(:final image)) {
-    return _EngineSource(image);
-  }
-  final own = DirtyRegion.fromXYWH(
-    x: 0,
-    y: 0,
-    width: picture.width,
-    height: picture.height,
-  );
-  final tiles = await _copied(picture, (
-    left: 0,
-    top: 0,
-    layout: (
-      canvas: picture.size,
-      tileSize: gpuTileSide,
-      tiles: own.tileRange(tileSize: gpuTileSide),
-      laid: null,
-    ),
-  ));
-  return _RegionSource(laidCelSurface(tiles), own);
-}
 
 /// [image] — a picture the engine holds — laid 1:1 on whole pixels by
 /// [cut], a block of the cel's tiles at a time ([_layBlocks], so no raster
