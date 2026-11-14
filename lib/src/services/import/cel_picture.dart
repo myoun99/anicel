@@ -173,10 +173,10 @@ final class PixelsPicture extends CelPicture {
 }
 
 /// Frame [index] of the movie [token] names on [backend] — [info] its
-/// facts — read where the movie is decoded: a lay that copies it has it cut
-/// into the cel's tiles there ([cut], [VideoDecodeBackend.cutFrame]), so
-/// the frame never comes to this isolate; one that resamples it reads it
-/// here, straight ([pixels]).
+/// facts — read where the movie is decoded: a lay has it cut into tiles
+/// there ([cut], [VideoDecodeBackend.cutFrame]) — the cel's own where it
+/// copies the frame, the frame's own where it resamples them — so the frame
+/// never comes to this isolate to be laid.
 ///
 /// ONE read of a movie frame as a picture: a movie row's cel on the canvas
 /// (`movie_cel_hydrator`) and the door that bakes a movie's frames
@@ -216,17 +216,14 @@ final class MovieFramePicture extends CelPicture {
     return laidCelOf(cut.layout, tiles);
   }
 
-  /// The frame, straight, on this isolate — for a lay that resamples it.
-  Future<PixelsPicture> pixels() async {
+  @override
+  Future<Uint8List> straightRgba() async {
     final rgba = await backend.frame(token, index);
     if (rgba == null) {
       throw MovieFrameUnread(index);
     }
-    return PixelsPicture(rgba, width: width, height: height);
+    return rgba;
   }
-
-  @override
-  Future<Uint8List> straightRgba() async => (await pixels()).rgba;
 
   @override
   void dispose() {}

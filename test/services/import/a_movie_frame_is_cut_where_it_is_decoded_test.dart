@@ -1,9 +1,10 @@
 // A movie's frame laid on a cel is read where the movie is decoded
 // (card a-raster-import-goes-gpu-cpu-gpu-cpu): laid 1:1 — a movie row's
 // cel — it is cut into the cel's tiles there and only the tiles' blocks
-// come back; laid otherwise it is read here, straight. ↩️A frame within the
-// engine's side was uploaded premultiplied and laid from the engine's
-// image: rastered, read back, cut, laid on the engine and read back again.
+// come back; laid otherwise it is cut into tiles of its own there, which
+// the lay reads. ↩️A frame within the engine's side was uploaded
+// premultiplied and laid from the engine's image: rastered, read back, cut,
+// laid on the engine and read back again.
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -135,14 +136,16 @@ void main() {
     });
   });
 
-  testWidgets('laid otherwise, the frame is read straight here and laid as '
-      'a picture in hand is', (tester) async {
+  testWidgets('🎯laid otherwise, the frame is cut into its own tiles where '
+      'it is decoded, and laid from them as a picture in hand is', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final frame = frameOf(partial: true);
       final backend = _Asked(frame);
       final ours = await laid(backend.picture(2), halved);
 
-      expect(backend.forms, ['straight 2']);
+      expect(backend.forms, ['cut 2']);
       expectSameCel(
         ours,
         await laid(PixelsPicture(frame, width: width, height: height), halved),

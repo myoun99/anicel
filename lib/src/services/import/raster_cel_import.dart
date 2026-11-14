@@ -281,11 +281,7 @@ Future<BitmapSurface> layCelPicture({
   if (_copiesPixels(placement)) {
     return laidCelSurface(await _copied(picture, _cutAt(placement, layout)));
   }
-  return _laidOnEngine(
-    _PictureSource(await _toResample(picture)),
-    placement,
-    layout,
-  );
+  return _laidOnEngine(await _sourceOf(picture), placement, layout);
 }
 
 /// [picture] laid 1:1 on whole pixels by [cut]: its rows cut into the
@@ -301,13 +297,37 @@ Future<AnicelLaidCel> _copied(CelPicture picture, PictureCut cut) async =>
       EnginePicture(:final image) => await _cutEngineImage(image, cut),
     };
 
-/// [picture] as a lay that resamples it reads it: the engine's picture and
-/// pixels in hand as they are, a file or a movie's frame read first.
-Future<CelPicture> _toResample(CelPicture picture) async => switch (picture) {
-  final FilePicture file => await readFileInWorker(file),
-  final MovieFramePicture frame => await frame.pixels(),
-  EnginePicture() || PixelsPicture() => picture,
-};
+/// What a lay that resamples [picture] reads it from. One the engine holds
+/// is rastered a part at a time where a part reaches it ([_EngineSource]);
+/// any other is cut whole into tiles of its own where its pixels are — the
+/// copy a 1:1 lay makes ([_copied]), at the picture's own origin — and read
+/// from those ([_RegionSource]).
+///
+/// ↩️(2026-11-14, card a-raster-import-goes-gpu-cpu-gpu-cpu) a file was
+/// read whole on a worker and handed here, a movie's frame read here, and
+/// either cut a part at a time on the isolate that paints.
+Future<_Source> _sourceOf(CelPicture picture) async {
+  if (picture case EnginePicture(:final image)) {
+    return _EngineSource(image);
+  }
+  final own = DirtyRegion.fromXYWH(
+    x: 0,
+    y: 0,
+    width: picture.width,
+    height: picture.height,
+  );
+  final tiles = await _copied(picture, (
+    left: 0,
+    top: 0,
+    layout: (
+      canvas: picture.size,
+      tileSize: gpuTileSide,
+      tiles: own.tileRange(tileSize: gpuTileSide),
+      laid: null,
+    ),
+  ));
+  return _RegionSource(laidCelSurface(tiles), own);
+}
 
 /// [image] — a picture the engine holds — laid 1:1 on whole pixels by
 /// [cut], a block of the cel's tiles at a time ([_layBlocks], so no raster
@@ -668,47 +688,32 @@ sealed class _Source {
 /// [dx] across and [dy] down — keyed where they lie in that space.
 typedef _HeldTiles = ({Map<TileCoord, BitmapTile> tiles, int dx, int dy});
 
-/// A picture as an import hands it, cut into tiles where a part reaches
-/// it: its pixels in hand cut as they are; one the engine holds rastered
-/// 1:1 over that part first — at no more than a lay's raster a side
-/// ([layRasterSide]), which every engine holds.
-final class _PictureSource extends _Source {
-  const _PictureSource(this.picture);
+/// A picture the engine holds, cut into tiles where a part reaches it:
+/// rastered 1:1 over that part first — at no more than a lay's raster a
+/// side ([layRasterSide]), which every engine holds.
+final class _EngineSource extends _Source {
+  const _EngineSource(this.image);
 
-  final CelPicture picture;
+  final ui.Image image;
 
   @override
-  CanvasSize get size => picture.size;
+  CanvasSize get size => CanvasSize(width: image.width, height: image.height);
 
   @override
   Future<_HeldTiles> tilesOver(_Reached reached) async {
-    final over = _onTheGrid(reached, picture.size);
-    final cut = switch (picture) {
-      final PixelsPicture pixels => cutPixels(pixels, _cutOver(over, 0, 0)),
-      EnginePicture(:final image) => cutPixels(
-        await _rasterOver(image, over),
-        _cutOver(over, over.left, over.top),
+    final over = _onTheGrid(reached, size);
+    final cut = cutPixels(await _rasterOver(image, over), (
+      left: over.left,
+      top: over.top,
+      layout: (
+        canvas: size,
+        tileSize: gpuTileSide,
+        tiles: over.tileRange(tileSize: gpuTileSide),
+        laid: null,
       ),
-      FilePicture() => throw StateError('A file is read before it is laid.'),
-      MovieFramePicture() => throw StateError(
-        'A movie frame is read before it is laid.',
-      ),
-    };
+    ));
     return (tiles: laidCelSurface(cut).tiles, dx: 0, dy: 0);
   }
-
-  /// The cut of [over]'s tiles of a picture whose top-left pixel is
-  /// ([left], [top]) in the picture's own.
-  PictureCut _cutOver(DirtyRegion over, int left, int top) => (
-    left: left,
-    top: top,
-    layout: (
-      canvas: picture.size,
-      tileSize: gpuTileSide,
-      tiles: over.tileRange(tileSize: gpuTileSide),
-      laid: null,
-    ),
-  );
 }
 
 /// [image]'s pixels over [over], straight, row after row — drawn 1:1 on
