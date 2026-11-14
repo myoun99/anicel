@@ -8,31 +8,26 @@
 /// Surface (Impeller): the engine's decoder hands a picture past 16384 a
 /// side back with each side past it cut to 16384 on its own — 20000×1080
 /// came back 16384×1080, squashed — while the file's header says its own
-/// size. A picture within the side keeps the engine's road.
+/// size. A picture within the side keeps the engine's road. A movie's frame
+/// is read where the movie is decoded, at every size ([MovieFramePicture]).
 library;
 
-import 'dart:ffi';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:image/image.dart' as img;
 
-import '../../core/floor_math.dart';
 import '../../core/on_a_worker.dart';
 import '../../core/rgba_premultiply.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
-import '../../models/dirty_region.dart';
-import '../../models/tile_coord.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
-import '../../native/tile_blocks.dart';
 import '../media/png_reading.dart';
 import '../media/video_decode_worker.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import '../straight_rgba_image.dart';
+import 'tile_cutter.dart';
 
 /// The longest side this device's engine hands a decoded picture back at:
 /// a picture longer on either side is held off it ([FilePicture],
@@ -91,37 +86,6 @@ Future<int> _measureSide() async {
 /// engine.
 bool isPastTheSide(int width, int height, int side) =>
     width > side || height > side;
-
-/// Frame [index] of the movie [token] names on [backend] — [info] its
-/// facts — as a picture an import lays, or null when the
-/// frame does not decode. Within the engine's side the frame is asked for
-/// premultiplied, so its premultiply is the decoder's side's and this
-/// isolate only uploads it ([VideoDecodeBackend.premultipliedFrame]).
-///
-/// ONE read of a movie frame as a picture: a movie row's cel on the canvas
-/// (`movie_cel_hydrator`) and the door that bakes a movie's frames
-/// (`project_import_doors`) each asked for the straight frame and made
-/// their picture of it here, premultiplying it on the isolate that paints.
-Future<CelPicture?> pictureOfMovieFrame(
-  VideoDecodeBackend backend,
-  int token,
-  int index,
-  QaVideoInfo info,
-) async {
-  final QaVideoInfo(:width, :height) = info;
-  if (isPastTheSide(width, height, await pictureSideLimit())) {
-    final rgba = await backend.frame(token, index);
-    return rgba == null
-        ? null
-        : PixelsPicture(rgba, width: width, height: height);
-  }
-  final premultiplied = await backend.premultipliedFrame(token, index);
-  return premultiplied == null
-      ? null
-      : EnginePicture(
-          await uploadRawRgba(premultiplied, width: width, height: height),
-        );
-}
 
 /// A picture an import lays on cels ([layCelPicture]): its own size, its
 /// pixels as straight RGBA ([straightRgba]) and the letting go of what it
@@ -205,29 +169,78 @@ final class PixelsPicture extends CelPicture {
   void dispose() {}
 
   /// Each row, top to bottom, handed to [row] where it lies.
-  void rows(void Function(int y, Uint8List rgba) row) {
-    final stride = width * 4;
-    for (var y = 0; y < height; y += 1) {
-      row(y, Uint8List.sublistView(rgba, y * stride, (y + 1) * stride));
-    }
-  }
+  void rows(RowSink row) => eachRgbaRow(rgba, width, height, row);
 }
 
-/// Where a lay puts a picture on a [canvas]-sized cel of [tileSize] tiles:
-/// over the [tiles] the placed picture covers inside the pasteboard wall
-/// (tiles beyond it are refused by the surface) — or, laid whole, over the
-/// picture's own rect on whole pixels, which the surface keeps tiles over
-/// and is told of ([laid], `BitmapSurface.laidBounds`).
-typedef CelLayout = ({
-  CanvasSize canvas,
-  int tileSize,
-  TileRange tiles,
-  DirtyRegion? laid,
-});
+/// Frame [index] of the movie [token] names on [backend] — [info] its
+/// facts — read where the movie is decoded: a lay that copies it has it cut
+/// into the cel's tiles there ([cut], [VideoDecodeBackend.cutFrame]), so
+/// the frame never comes to this isolate; one that resamples it reads it
+/// here, straight ([pixels]).
+///
+/// ONE read of a movie frame as a picture: a movie row's cel on the canvas
+/// (`movie_cel_hydrator`) and the door that bakes a movie's frames
+/// (`project_import_doors`) each asked for the straight frame and made
+/// their picture of it here, premultiplying it on the isolate that paints.
+///
+/// 🚨★★★ONE ROAD AT EVERY SIZE (2026-11-14, card a-raster-import-goes-gpu-
+/// cpu-gpu-cpu — 관제: 「가져오기에서 UI 가 그림 바이트를 만지는 일이 0」).
+/// ↩️A frame within the engine's side was asked for premultiplied, uploaded
+/// as an engine image and laid from it — a raster of it read back, cut
+/// here, laid on the engine and read back again — every frame a movie row
+/// shows; past the side it was read straight and cut here. Its bytes are
+/// the decoder's either way: straight, the app's storage convention.
+///
+/// A frame the decoder does not give is said when it is laid
+/// ([MovieFrameUnread]).
+final class MovieFramePicture extends CelPicture {
+  const MovieFramePicture(this.backend, this.token, this.index, this.info);
 
-/// Where a picture laid 1:1 is cut into a cel's tiles: its top-left on the
-/// canvas, on whole pixels, and the [layout] its lay makes.
-typedef PictureCut = ({int left, int top, CelLayout layout});
+  final VideoDecodeBackend backend;
+  final int token;
+  final int index;
+  final QaVideoInfo info;
+
+  @override
+  int get width => info.width;
+
+  @override
+  int get height => info.height;
+
+  /// The frame cut into [cut]'s tiles where it is decoded.
+  Future<AnicelLaidCel> cut(PictureCut cut) async {
+    final tiles = await backend.cutFrame(token, index, tileCutOf(cut));
+    if (tiles == null) {
+      throw MovieFrameUnread(index);
+    }
+    return laidCelOf(cut.layout, tiles);
+  }
+
+  /// The frame, straight, on this isolate — for a lay that resamples it.
+  Future<PixelsPicture> pixels() async {
+    final rgba = await backend.frame(token, index);
+    if (rgba == null) {
+      throw MovieFrameUnread(index);
+    }
+    return PixelsPicture(rgba, width: width, height: height);
+  }
+
+  @override
+  Future<Uint8List> straightRgba() async => (await pixels()).rgba;
+
+  @override
+  void dispose() {}
+}
+
+/// A movie frame its decoder did not give ([MovieFramePicture]).
+final class MovieFrameUnread implements Exception {
+  const MovieFrameUnread(this.index);
+
+  final int index;
+
+  @override
+  String toString() => 'Movie frame $index did not decode.';
+}
 
 /// [picture]'s file read on a worker and cut into tile blocks there — the
 /// cel-thaw's road (`layCelInWorker`): the main isolate copies nothing and
@@ -237,21 +250,22 @@ Future<AnicelLaidCel> cutFileInWorker(FilePicture picture, PictureCut cut) {
   final sent = TransferableTypedData.fromList([picture.bytes]);
   final width = picture.width;
   final height = picture.height;
-  return onAWorker(() {
-    final cutter = TileCutter(cut, width);
-    try {
-      readFileRows(
-        sent.materialize().asUint8List(),
-        width: width,
-        height: height,
-        row: cutter.row,
-      );
-      return cutter.finish();
-    } on Object {
-      cutter.giveBack();
-      rethrow;
-    }
-  });
+  final where = tileCutOf(cut);
+  return onAWorker(
+    () => laidCelOf(
+      cut.layout,
+      TileCutter.cutting(
+        where,
+        width,
+        (row) => readFileRows(
+          sent.materialize().asUint8List(),
+          width: width,
+          height: height,
+          row: row,
+        ),
+      ),
+    ),
+  );
 }
 
 /// [picture]'s file read whole on a worker — every pixel of it, for a lay
@@ -275,16 +289,15 @@ Future<PixelsPicture> readFileInWorker(FilePicture picture) {
 
 /// [picture]'s pixels cut into tile blocks here — for pixels already in
 /// hand ([cutFileInWorker]'s cut, by the same [TileCutter]).
-AnicelLaidCel cutPixels(PixelsPicture picture, PictureCut cut) {
-  final cutter = TileCutter(cut, picture.width);
-  try {
-    picture.rows(cutter.row);
-    return cutter.finish();
-  } on Object {
-    cutter.giveBack();
-    rethrow;
-  }
-}
+AnicelLaidCel cutPixels(PixelsPicture picture, PictureCut cut) => laidCelOf(
+  cut.layout,
+  cutRgbaRows(
+    picture.rgba,
+    width: picture.width,
+    height: picture.height,
+    cut: tileCutOf(cut),
+  ),
+);
 
 /// Every row of the picture file [bytes] — [width] × [height], as its
 /// header said — as straight RGBA8, top to bottom: a PNG's as they are
@@ -407,103 +420,4 @@ readFramesInWorker(Uint8List bytes) {
         ),
     ],
   );
-}
-
-/// Rows of a picture laid 1:1 ([PictureCut]) written into tile blocks
-/// ([TileBlocks]) as they arrive: the tiles of one tile row are open at a
-/// time, and a tile the picture left clear goes back as it closes.
-final class TileCutter {
-  TileCutter(this.cut, this.width);
-
-  final PictureCut cut;
-  final int width;
-
-  final _done = <({int x, int y, int pixels})>[];
-  final _open = <int, ({Pointer<Uint8> block, Uint8List view})>{};
-  int? _openRow;
-
-  int get _side => cut.layout.tileSize;
-
-  TileRange get _tiles => cut.layout.tiles;
-
-  void row(int y, Uint8List rgba) {
-    final canvasY = cut.top + y;
-    final tileY = floorDiv(canvasY, _side);
-    if (tileY < _tiles.firstY || tileY > _tiles.lastY) {
-      return;
-    }
-    if (_openRow != tileY) {
-      _close();
-      _openRow = tileY;
-    }
-    final inTile = canvasY - tileY * _side;
-    final first = math.max(_tiles.firstX, floorDiv(cut.left, _side));
-    final last = math.min(_tiles.lastX, floorDiv(cut.left + width - 1, _side));
-    for (var tileX = first; tileX <= last; tileX += 1) {
-      final from = math.max(tileX * _side, cut.left);
-      final to = math.min(tileX * _side + _side, cut.left + width);
-      final at = (inTile * _side + from - tileX * _side) * 4;
-      _blockAt(tileX).view.setRange(
-        at,
-        at + (to - from) * 4,
-        rgba,
-        (from - cut.left) * 4,
-      );
-    }
-  }
-
-  ({Pointer<Uint8> block, Uint8List view}) _blockAt(int tileX) =>
-      _open.putIfAbsent(tileX, () {
-        final length = BitmapTile.bytesFor(_side);
-        final block = TileBlocks.alloc(length);
-        final view = block.asTypedList(length)..fillRange(0, length, 0);
-        return (block: block, view: view);
-      });
-
-  void _close() {
-    final tileY = _openRow;
-    for (final MapEntry(key: tileX, value: open) in _open.entries) {
-      if (tileY != null && _anyInk(open.view)) {
-        _done.add((x: tileX, y: tileY, pixels: open.block.address));
-      } else {
-        TileBlocks.free(open.block);
-      }
-    }
-    _open.clear();
-  }
-
-  static bool _anyInk(Uint8List pixels) {
-    for (var i = 3; i < pixels.length; i += 4) {
-      if (pixels[i] != 0) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// The cel the rows made: its tiles' blocks, to adopt
-  /// (`laidCelSurface`).
-  AnicelLaidCel finish() {
-    _close();
-    return (
-      canvasSize: cut.layout.canvas,
-      tileSize: _side,
-      tiles: _done,
-      texts: const [],
-      photos: const [],
-      laidBounds: cut.layout.laid,
-    );
-  }
-
-  /// Every block taken, given back — a cut that failed part-way.
-  void giveBack() {
-    for (final open in _open.values) {
-      TileBlocks.free(open.block);
-    }
-    _open.clear();
-    for (final tile in _done) {
-      TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
-    }
-    _done.clear();
-  }
 }

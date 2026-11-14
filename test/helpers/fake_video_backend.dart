@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
+import 'package:anicel/src/services/import/tile_cutter.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
 /// A movie, without a movie — what makes the viewer's VIDEO arm reachable
@@ -111,6 +112,15 @@ class FakeVideoBackend implements VideoDecodeBackend {
   Future<Uint8List?> premultipliedFrame(int token, int index) async {
     final straight = await frame(token, index);
     return straight == null ? null : premultipliedRgbaCopy(straight);
+  }
+
+  /// [frame] cut where it is "decoded" — here, as the direct path does.
+  @override
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut) async {
+    final straight = await frame(token, index);
+    return straight == null
+        ? null
+        : cutRgbaRows(straight, width: width, height: height, cut: cut);
   }
 
   @override

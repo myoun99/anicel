@@ -31,6 +31,7 @@ import '../photoshop/psd_image.dart';
 import '../photoshop/psd_reader.dart';
 import '../straight_rgba_image.dart';
 import 'cel_picture.dart';
+import 'tile_cutter.dart';
 
 /// Decode-and-bake for the import system: an image FILE becomes a cel's
 /// [BitmapSurface] — the same store shape a drawn cel has, so every
@@ -263,9 +264,10 @@ LayerPlacement rectPlacement(
 ///
 /// Laid 1:1 on whole pixels — a reference's file always is (F-374-Q1) — a
 /// picture whose pixels are the app's to read ([FilePicture],
-/// [PixelsPicture]) has its rows cut into the cel's tiles byte for byte
-/// ([cutFileInWorker], [cutPixels]), never held whole. Every other lay is
-/// the engine's, by the law the canvas lays a row by ([_laidOnEngine]).
+/// [PixelsPicture], [MovieFramePicture]) has its rows cut into the cel's
+/// tiles byte for byte where they are ([cutFileInWorker], [cutPixels],
+/// [MovieFramePicture.cut]), never held whole. Every other lay is the
+/// engine's, by the law the canvas lays a row by ([_laidOnEngine]).
 Future<BitmapSurface> layCelPicture({
   required CelPicture picture,
   required CanvasSize canvas,
@@ -283,8 +285,15 @@ Future<BitmapSurface> layCelPicture({
     ),
     final PixelsPicture pixels when _copiesPixels(placement) =>
       laidCelSurface(cutPixels(pixels, _cutAt(placement, layout))),
+    final MovieFramePicture frame when _copiesPixels(placement) =>
+      laidCelSurface(await frame.cut(_cutAt(placement, layout))),
     final FilePicture file => await _laidOnEngine(
       _PictureSource(await readFileInWorker(file)),
+      placement,
+      layout,
+    ),
+    final MovieFramePicture frame => await _laidOnEngine(
+      _PictureSource(await frame.pixels()),
       placement,
       layout,
     ),
@@ -622,6 +631,9 @@ final class _PictureSource extends _Source {
         _cutOver(over, over.left, over.top),
       ),
       FilePicture() => throw StateError('A file is read before it is laid.'),
+      MovieFramePicture() => throw StateError(
+        'A movie frame is read before it is laid.',
+      ),
     };
     return (tiles: laidCelSurface(cut).tiles, dx: 0, dy: 0);
   }

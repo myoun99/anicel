@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/rgba_premultiply.dart';
 import '../flutter_test_run.dart';
+import '../import/tile_cutter.dart';
 import '../../native/qa_video_decoder.dart';
 
 /// Where a movie is decoded, and — the whole point — WHICH THREAD pays.
@@ -88,6 +89,17 @@ abstract interface class VideoDecodeBackend {
   /// reads the colours as the movie holds them.
   Future<Uint8List?> premultipliedFrame(int token, int index);
 
+  /// [frame] cut into [cut]'s tile blocks where it is decoded — what a cel
+  /// laid 1:1 from it adopts — or null.
+  ///
+  /// 🚨★★★**THE FRAME STAYS WHERE IT IS DECODED** (2026-11-14, card
+  /// a-raster-import-goes-gpu-cpu-gpu-cpu). A movie row's cel is the frame
+  /// laid 1:1, and the cut is a copy into tiles: done here, out of the
+  /// worker's own room, the frame never crosses the port — only its tiles'
+  /// blocks, which every isolate's tiles adopt (`TileBlocks`) — and the
+  /// isolate that paints neither receives it nor cuts it.
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut);
+
   /// Why the last open or frame failed, for the sentence a window shows.
   Future<String> lastError();
 
@@ -152,6 +164,14 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
     return rgba;
   }
 
+  @override
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut) async {
+    final document = _documentAt(token);
+    return document == null
+        ? null
+        : _cutOfFrame(QaVideoDecoder.instance, document, index, cut);
+  }
+
   /// Frame [index] of the document [token] names, in a buffer of the
   /// caller's own — the decoder copies it out of its scratch into a fresh
   /// one when it is given none to fill ([QaVideoDecoder.frameOf]).
@@ -197,6 +217,7 @@ const int _opOpen = 0;
 const int _opFrame = 1;
 const int _opLastError = 2;
 const int _opClose = 3;
+const int _opCutFrame = 4;
 
 final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   IsolateVideoDecodeBackend();
@@ -381,6 +402,11 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   Future<Uint8List?> premultipliedFrame(int token, int index) =>
       _frame(token, index, premultiplied: true);
 
+  @override
+  Future<CutTiles?> cutFrame(int token, int index, TileCut cut) async =>
+      await _ask(_opCutFrame, (token: token, index: index, cut: cut))
+          as CutTiles?;
+
   Future<Uint8List?> _frame(
     int token,
     int index, {
@@ -516,6 +542,14 @@ void _serve(
             ? null
             : transferOfFrame(rgba, premultiplied: args.premultiplied),
       );
+    case _opCutFrame:
+      final args = request.args! as ({int token, int index, TileCut cut});
+      final document = documentAt(args.token);
+      request.reply.send(
+        document == null
+            ? null
+            : _cutOfFrame(decoder, document, args.index, args.cut),
+      );
     case _opLastError:
       request.reply.send(decoder.lastError);
     case _opClose:
@@ -594,4 +628,20 @@ Uint8List? _frameInTheRoom(
       ? kept
       : (_frameRoom = Uint8List(bytes));
   return decoder.frameOf(document, index, into: room);
+}
+
+/// Frame [index] of [document] cut into [cut]'s tile blocks out of
+/// [_frameRoom] ([VideoDecodeBackend.cutFrame]) — or null where it does not
+/// decode. The room is free again the moment it returns.
+CutTiles? _cutOfFrame(
+  QaVideoDecoder decoder,
+  QaVideoDocument document,
+  int index,
+  TileCut cut,
+) {
+  final rgba = _frameInTheRoom(decoder, document, index);
+  final QaVideoInfo(:width, :height) = document.info;
+  return rgba == null
+      ? null
+      : cutRgbaRows(rgba, width: width, height: height, cut: cut);
 }

@@ -5,8 +5,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/media/video_viewer_document.dart';
@@ -21,9 +19,10 @@ import '../../helpers/os_video_codec.dart';
 /// isolate, C or Dart, a frame of the viewer's play — a third of 24fps.
 ///
 /// What is pinned: the worker's frame arm hands the form asked, by the
-/// app's one law, through the buffer it keeps; the viewer and the picture
-/// a movie row or a bake makes ask for that form and upload it as it comes;
-/// a picture past the engine's side keeps the straight frame.
+/// app's one law, through the buffer it keeps; the viewer asks for that
+/// form and uploads it as it comes. ↩️A movie row's or a bake's picture
+/// asked for it too, till it was cut where it is decoded
+/// (`a_movie_frame_is_cut_where_it_is_decoded_test`).
 void main() {
   const width = 4;
   const height = 2;
@@ -127,7 +126,6 @@ void main() {
   group('what shows a frame asks for it premultiplied', () {
     late _Asked backend;
     late List<Uint8List> uploaded;
-    final previousSide = debugPictureSideLimit;
 
     setUp(() {
       backend = _Asked(straight(3));
@@ -143,7 +141,6 @@ void main() {
     tearDown(() {
       debugVideoDecodeBackend = null;
       debugRawRgbaUploader = null;
-      debugPictureSideLimit = previousSide;
     });
 
     test('the viewer uploads the frame as its decoder\'s side '
@@ -157,26 +154,6 @@ void main() {
       );
       expect(backend.forms, ['premultiplied 2']);
       expect(uploaded, [premultipliedRgbaCopy(straight(3))]);
-    });
-
-    test('a movie row\'s or a bake\'s picture of a frame does too', () async {
-      debugPictureSideLimit = 16;
-      await expectLater(
-        pictureOfMovieFrame(backend, 1, 2, backend.info),
-        throwsA(isA<_Uploaded>()),
-      );
-      expect(backend.forms, ['premultiplied 2']);
-      expect(uploaded, [premultipliedRgbaCopy(straight(3))]);
-    });
-
-    test('past the engine\'s side the picture keeps the straight '
-        'frame', () async {
-      debugPictureSideLimit = width - 1;
-      final picture = await pictureOfMovieFrame(backend, 1, 2, backend.info);
-      expect(backend.forms, ['straight 2']);
-      expect(picture, isA<PixelsPicture>());
-      expect(await picture!.straightRgba(), straight(3));
-      expect(uploaded, isEmpty);
     });
   });
 }
@@ -192,14 +169,6 @@ final class _Asked extends FakeVideoBackend {
   final Uint8List painted;
 
   final List<String> forms = [];
-
-  QaVideoInfo get info => QaVideoInfo(
-    width: width,
-    height: height,
-    frameCount: frameCount,
-    fpsNumerator: fpsNumerator,
-    fpsDenominator: fpsDenominator,
-  );
 
   @override
   Future<Uint8List?> frame(int token, int index) async {

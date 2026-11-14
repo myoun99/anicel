@@ -1804,22 +1804,16 @@ class ProjectImportDoors {
 
   /// One movie frame as a picture — the same read for the door that PLACES
   /// a movie baked and the verb that RASTERIZES one placed as a reference.
+  /// A frame the decoder does not give throws as it is laid
+  /// ([MovieFrameUnread]).
   Future<_BakePicture> _moviePicture(
     int token,
     QaVideoInfo info,
     PlannedCelBake bake,
-  ) async {
-    final picture = await pictureOfMovieFrame(
-      videoDecodeBackend,
-      token,
-      bake.sourceFrameIndex,
-      info,
-    );
-    if (picture == null) {
-      throw StateError('Movie frame ${bake.sourceFrameIndex} did not decode.');
-    }
-    return _pictureOf(picture, owned: true);
-  }
+  ) async => _pictureOf(
+    MovieFramePicture(videoDecodeBackend, token, bake.sourceFrameIndex, info),
+    owned: true,
+  );
 
   /// The row a [spot] names, when it names one — frames let go of on a
   /// row are that row's cels.
