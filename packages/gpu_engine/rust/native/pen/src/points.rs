@@ -50,6 +50,7 @@ pub(crate) const POINT_WORDS: usize = 6;
 
 impl Point {
     /// A point the OS says nothing of but where and when.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) fn at(x: f64, y: f64, micros: i64) -> Self {
         Self { x, y, micros, pressure: f64::NAN, tilt: f64::NAN, orientation: f64::NAN }
     }
