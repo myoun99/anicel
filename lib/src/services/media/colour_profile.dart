@@ -104,7 +104,12 @@ ToSrgb? _ofPng(PngColour png) {
       : _Curve.parametric([100000 / gamma, 1, 0, 0, 0, 0, 0]);
   if (png.chromaticities case final c?) {
     final [wx, wy, rx, ry, gx, gy, bx, by] = [for (final v in c) v / 100000];
-    final primaries = _primariesToXyzD50(rx, ry, gx, gy, bx, by, wx, wy);
+    final primaries = _primariesToXyzD50(
+      (x: rx, y: ry),
+      (x: gx, y: gy),
+      (x: bx, y: by),
+      (x: wx, y: wy),
+    );
     if (primaries != null) {
       return _built((curves: [curve, curve, curve], toXyzD50: primaries));
     }
@@ -495,53 +500,48 @@ final _bradford = Float64List.fromList([
   0.0389, -0.0685, 1.0296,
 ]);
 
-/// Linear RGB of the primaries [rx], [ry] … under the white [wx], [wy] —
-/// CIE xy each — to XYZ under D50, the white carried there by Bradford's
-/// cones: null where the primaries make no space.
-Float64List? _primariesToXyzD50(
-  double rx,
-  double ry,
-  double gx,
-  double gy,
-  double bx,
-  double by,
-  double wx,
-  double wy,
-) {
-  if (ry == 0 || gy == 0 || by == 0 || wy == 0) {
+/// A colour's place in CIE xy.
+typedef _Xy = ({double x, double y});
+
+/// Linear RGB of the primaries [red], [green] and [blue] under [white] to
+/// XYZ under D50, the white carried there by Bradford's cones: null where
+/// the primaries make no space.
+Float64List? _primariesToXyzD50(_Xy red, _Xy green, _Xy blue, _Xy white) {
+  if (red.y == 0 || green.y == 0 || blue.y == 0 || white.y == 0) {
     return null;
   }
+  // Each at a luminance of one.
+  List<double> xyzOf(_Xy p) => [p.x / p.y, 1, (1 - p.x - p.y) / p.y];
+  final [r, g, b] = [xyzOf(red), xyzOf(green), xyzOf(blue)];
   final primaries = Float64List.fromList([
-    rx / ry, gx / gy, bx / by, //
-    1, 1, 1, //
-    (1 - rx - ry) / ry, (1 - gx - gy) / gy, (1 - bx - by) / by,
+    r[0], g[0], b[0], //
+    r[1], g[1], b[1], //
+    r[2], g[2], b[2],
   ]);
-  final white = Float64List.fromList([wx / wy, 1, (1 - wx - wy) / wy]);
+  final whiteXyz = Float64List.fromList(xyzOf(white));
   final inverse = _inverse(primaries);
   if (inverse == null) {
     return null;
   }
-  final scale = _applied(inverse, white);
-  final toXyz = Float64List.fromList([
-    for (var row = 0; row < 3; row += 1)
-      for (var column = 0; column < 3; column += 1)
-        primaries[row * 3 + column] * scale[column],
-  ]);
-  final cones = _applied(_bradford, white);
+  final toXyz = _multiplied(primaries, _diagonal(_applied(inverse, whiteXyz)));
+  final cones = _applied(_bradford, whiteXyz);
   final toCones = _applied(_bradford, _d50);
   final adapt = _multiplied(
     _inverse(_bradford)!,
     _multiplied(
-      Float64List.fromList([
-        toCones[0] / cones[0], 0, 0, //
-        0, toCones[1] / cones[1], 0, //
-        0, 0, toCones[2] / cones[2],
-      ]),
+      _diagonal([for (var i = 0; i < 3; i += 1) toCones[i] / cones[i]]),
       _bradford,
     ),
   );
   return _multiplied(adapt, toXyz);
 }
+
+/// The matrix that scales each channel by its own of [d].
+Float64List _diagonal(List<double> d) => Float64List.fromList([
+  d[0], 0, 0, //
+  0, d[1], 0, //
+  0, 0, d[2],
+]);
 
 Float64List _multiplied(Float64List a, Float64List b) => Float64List.fromList([
   for (var row = 0; row < 3; row += 1)
