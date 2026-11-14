@@ -114,6 +114,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
             "gpu_engine_blurs_by_strips",
             "gpu_engine_blurs_bytes",
             "gpu_engine_readout_bytes",
+            "gpu_engine_selection_runs_read",
             "gpu_engine_pool_bytes",
             "gpu_engine_window_direct",
             "gpu_engine_surface_texture",
