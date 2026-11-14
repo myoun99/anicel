@@ -45,7 +45,10 @@ use crate::kernels::letters::abi::{
 };
 use crate::kernels::letters::glyphs_tests::file;
 use crate::kernels::mask::MaskBox;
-use crate::kernels::mask::abi::{gpu_engine_selection_masks_free, gpu_engine_selection_masks_new};
+use crate::kernels::mask::abi::{
+    gpu_engine_selection_masks_free, gpu_engine_selection_masks_new, gpu_engine_selection_runs_free,
+};
+use crate::kernels::mask::runs::SelectionRuns;
 use crate::kernels::plugin::abi::{gpu_engine_plugin_free, gpu_engine_plugin_open};
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::kernels::timeline::grid::abi::{
@@ -79,7 +82,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 35] {
+fn frees() -> [(&'static str, fn(&'static str)); 36] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -181,6 +184,10 @@ fn frees() -> [(&'static str, fn(&'static str)); 35] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_selection_masks_new(first_engine()) };
             gives_back(name, made, gpu_engine_selection_masks_free)
+        }),
+        ("gpu_engine_selection_runs_free", |name| {
+            let runs = SelectionRuns { offsets: vec![0, 0], ends: Vec::new() };
+            gives_back(name, Box::into_raw(Box::new(runs)), gpu_engine_selection_runs_free)
         }),
         ("gpu_engine_flood_picture_free", |name| {
             let rig = composite_rig();
