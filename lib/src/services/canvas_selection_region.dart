@@ -859,7 +859,7 @@ class CanvasSelectionRegion {
     required int width,
     required int height,
   }) {
-    final mask = Uint8List(math.max(width, 0) * math.max(height, 0));
+    final mask = Uint8List(width * height);
     final rows = pixelRunsFor(
       left: left,
       top: top,
@@ -896,15 +896,10 @@ class CanvasSelectionRegion {
     required int top,
     required int width,
     required int height,
-  }) {
-    if (width <= 0 || height <= 0) {
-      return [for (var row = 0; row < height; row += 1) const <int>[]];
-    }
-    return EngineSelectionMasks.runs(
-      spelled,
-      box: (left: left, top: top, width: width, height: height),
-    );
-  }
+  }) => EngineSelectionMasks.runs(
+    spelled,
+    box: (left: left, top: top, width: width, height: height),
+  );
 
   @override
   bool operator ==(Object other) {

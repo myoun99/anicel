@@ -80,6 +80,25 @@ void main() {
     );
   });
 
+  test('…and to the NEAREST 1/256 px: a right edge at 7.503 is past 7.5, '
+      'and the centre on 7.5 is in — for the hit test as for the mask', () {
+    final shape = CanvasSelectionShape.rect(
+      left: 3,
+      top: 0,
+      right: 7.503,
+      bottom: 1,
+    );
+    expect(shape.containsPoint(at(7.5, 0.5)), isTrue);
+    expect(
+      CanvasSelectionRegion.shape(
+        shape,
+      ).pixelRunsFor(left: 0, top: 0, width: 10, height: 1),
+      [
+        [3, 8],
+      ],
+    );
+  });
+
   test('🚨every pixel centre of a lasso off the pixel grid is in for the hit '
       'test exactly when the engine\'s mask holds it', () {
     final lasso = CanvasSelectionShape([
