@@ -8,11 +8,11 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::sync::mpsc;
+use std::sync::{Mutex, mpsc};
 use std::time::Duration;
 
 use super::source_scan::files_where;
-use crate::testing::a_device_of_its_own;
+use crate::testing::turn_of;
 
 /// How a function's body names the opening of a device: the engine's own
 /// ways (`open`, `open_sole`, `open_first`, `on`) and the C ABI's.
@@ -74,11 +74,19 @@ fn openers() -> Vec<(String, bool)> {
 
 #[test]
 fn the_turn_is_one_tests_at_a_time_and_outlives_a_test_that_failed_with_it() {
-    let turn = a_device_of_its_own();
+    // A turn of its own, taken as the tests' is (`turn_of`). On the tests'
+    // own, each test that opens a device waits as well, and one of them
+    // may take it where it is let go, again and again — a `Mutex` is no
+    // queue: once the door's tests came to take it (21 in device.rs),
+    // the land gate's release run went red so, the second thread taking
+    // it past the minute this waits (11-14, the-ui-thread-never-enters-
+    // the-driver 1a).
+    static TURN: Mutex<()> = Mutex::new(());
+    let turn = turn_of(&TURN);
     let (took, taken) = mpsc::channel();
     std::thread::scope(|scope| {
         let failing = scope.spawn(move || {
-            let _turn = a_device_of_its_own();
+            let _turn = turn_of(&TURN);
             let _ = took.send(());
             panic!("a test that fails with the turn in hand");
         });
@@ -88,7 +96,7 @@ fn the_turn_is_one_tests_at_a_time_and_outlives_a_test_that_failed_with_it() {
         assert!(taken.recv_timeout(Duration::from_secs(60)).is_ok(), "the turn let go of is taken");
         assert!(failing.join().is_err(), "LIVENESS — the test that took it failed");
     });
-    drop(a_device_of_its_own());
+    drop(turn_of(&TURN));
 }
 
 #[test]

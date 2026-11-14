@@ -81,7 +81,13 @@ impl DeviceTurn {
 /// another test has one up. A test that failed with it in hand left it
 /// behind in good order: the lock guards nothing but the turn.
 pub(crate) fn a_device_of_its_own() -> DeviceTurn {
-    DeviceTurn(A_DEVICE_OF_ITS_OWN.lock().unwrap_or_else(PoisonError::into_inner))
+    turn_of(&A_DEVICE_OF_ITS_OWN)
+}
+
+/// A hold on `turn` — the tests' ([`a_device_of_its_own`]), or one a
+/// test of the turn keeps for itself, where no other test waits.
+pub(crate) fn turn_of(turn: &'static Mutex<()>) -> DeviceTurn {
+    DeviceTurn(turn.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 /// `buffer`'s bytes once the GPU is done with all that was submitted — the
