@@ -7,8 +7,10 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/services/brush_import_result.dart';
+import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
 import 'package:anicel/src/services/tvpx/tvpx_decoder.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,6 +71,61 @@ void main() {
     );
   });
 
+  test('🎯TVPaint\'s Cement Hard is laid as the nearest of the app\'s papers, '
+      'its hardness the density, its size and turn as said; a paper off is '
+      'no paper, and said nothing of', () async {
+    final result = await decodeTvpxBrushFile(
+      _panelFile(
+        heading: 'H',
+        buttons: [
+          _button('a', 'pencil', paper: _paper()),
+          _button(
+            'b',
+            'pencil',
+            paper: _paper(
+              hardness: '40',
+              size: '2.000000',
+              invert: '1',
+              angle: '15.000000',
+              blending: 'Screen',
+            ),
+          ),
+          _button('c', 'pencil', paper: 'Active 0'),
+        ],
+        tools: {'pencil': (tool: _tool(), dip: _pencilDip)},
+      ),
+      sourceName: 'BRUSH',
+    );
+
+    final [a, b, c] = [for (final p in result.presets) p.settings];
+    expect(a.textureMaskSource, same(graphiteToothTextureMask));
+    expect(
+      [
+        a.textureScale,
+        a.textureDensity,
+        a.textureContrast,
+        a.textureBrightness,
+      ],
+      [3.5, 0.7, -0.54, 0.2],
+    );
+    expect(a.textureInvert, isFalse);
+    expect(a.textureMode, BrushTextureMode.multiply);
+    expect(a.tips, hasLength(2), reason: 'the tip is kept beside the paper');
+    expect(a.size, 3 * 8 / 100);
+    expect([b.textureScale, b.textureDensity], [7.0, 0.4]);
+    expect(b.textureInvert, isTrue);
+    expect(c.textureMaskSource, isNull);
+    const laid =
+        'is TVPaint\'s own and not in the file; the nearest of the app\'s '
+        'papers is laid instead.';
+    expect(result.warnings, [
+      'Button "H a": paper "Cement Hard" $laid',
+      'Button "H b": paper "Cement Hard" $laid',
+      'Button "H b": paper Angle 15.000000 is not carried.',
+      'Button "H b": paper blending Screen is not carried.',
+    ]);
+  });
+
   test('a tip not read as TVPaint wrote it — written over with what it '
       'already held, or not 8-bit BGRA — is refused, and only its button is '
       'left out', () async {
@@ -103,7 +160,7 @@ void main() {
       _panelFile(
         heading: 'H',
         buttons: [
-          _button('8', 'pencil', paper: true),
+          _button('8', 'pencil', paper: _paper(name: '/Rough')),
           '1_cmd0=Tool:tv_wetbrush mode "color" size 20.000000',
           _button('origin', 'origin'),
         ],
@@ -119,11 +176,12 @@ void main() {
     );
 
     expect([for (final preset in result.presets) preset.name], ['H 8']);
+    expect(result.presets.single.settings.textureMaskSource, isNull);
     expect(result.warnings, [
-      'Button "H 8": paper "/Cement Hard" is TVPaint\'s own and not in the '
-          'file; imported without it.',
       'Button "H" is not a custom brush; not imported.',
       'Button "H origin": stamp mode 0 is not Alpha; not imported.',
+      'Button "H 8": paper "Rough" is TVPaint\'s own and not in the file; '
+          'imported without it.',
       'Brush "H 8": angle 10.000000 is not carried.',
       'Brush "H 8": curve c_size2 is not carried.',
     ]);
@@ -291,15 +349,27 @@ String _tool({
 ].join('\r\n');
 
 /// A button's keys, numbered in place by [_panelFile], picking the custom
-/// brush [guid] — with TVPaint's paper command after it when [paper].
-String _button(String text, String guid, {bool paper = false}) => [
+/// brush [guid] — with TVPaint's paper command after it when [paper]
+/// ([_paper]).
+String _button(String text, String guid, {String? paper}) => [
   '1_cmd0=CBTool:$guid',
-  if (paper)
-    '1_cmd1=cmd: tv_paper Hardness 70 Size 1.000000 Active 1 '
-        'Name "/Cement Hard" Name2 "/" BlendingMode 乗算',
+  if (paper != null) '1_cmd1=cmd: tv_paper $paper',
   '1_text=$text',
   '1_type=1',
 ].join('\n');
+
+/// A paper command's words in the order the user's BRUSH.tvpx writes them.
+String _paper({
+  String name = '/Cement Hard',
+  String hardness = '70',
+  String size = '1.000000',
+  String invert = '0',
+  String angle = '0.000000',
+  String blending = '乗算',
+}) =>
+    'Hardness $hardness Invert $invert Size $size Angle $angle '
+    'OffsetX 0.000000 OffsetY 0.000000 FlipX 0 FlipY 0 Active 1 '
+    'Name "$name" Name2 "/" BlendingMode $blending';
 
 /// The tar of a panel: a heading over [buttons] (each item's keys numbered
 /// in order after it), and each of [tools] as an INI and a tip.

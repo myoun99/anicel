@@ -15,6 +15,7 @@ import '../../models/import/import_warning.dart';
 import '../brush_import_result.dart';
 import '../brush_preset_id_mint.dart';
 import '../brush_tip_coverage.dart';
+import '../brush_tip_mask_defaults.dart' show graphiteToothTextureMask;
 import '../import/tvpp_raster_decoder.dart';
 
 /// Thrown when the file cannot be read as a TVPaint panel export at all.
@@ -57,6 +58,7 @@ Future<BrushImportResult> decodeTvpxBrushFile(
           button.tool,
           tips: tips,
           tipSide: math.max(button.tip.width, button.tip.height),
+          paper: button.paper,
           name: name,
           warnings: warnings,
         ),
@@ -75,12 +77,15 @@ Future<BrushImportResult> decodeTvpxBrushFile(
 /// its masks.
 typedef _Tip = ({int key, int width, int height, List<Uint8List> frames});
 
-/// A button whose custom brush came out of the file whole.
+/// A button whose custom brush came out of the file whole — and its paper
+/// command's words ([_paperWordsOf]), laid as the app's paper where the
+/// brush is made ([_paperOf]): the app's papers are this isolate's.
 typedef _ButtonRead = ({
   String name,
   String guid,
   Map<String, String> tool,
   _Tip tip,
+  Map<String, String>? paper,
 });
 
 /// A panel's button: its label (under its heading) and its commands.
@@ -90,7 +95,9 @@ const _customBrush = 'CBTool:';
 
 final RegExp _itemLine = RegExp(r'^(\d+)_(\w+)=(.*)$');
 
-final RegExp _paperName = RegExp('tv_paper .*Name "([^"]*)"');
+const _paperCommand = 'tv_paper ';
+
+final RegExp _paperWord = RegExp(r'(\w+) ("[^"]*"|\S+)');
 
 final RegExp _spaces = RegExp(r'\s+');
 
@@ -213,17 +220,122 @@ _ButtonRead? _readButton(
     warnings.add('Button "$name": its tip was not read (${error.message}).');
     return null;
   }
+  Map<String, String>? paper;
   for (final extra in button.commands.skip(1)) {
-    final paper = _paperName.firstMatch(extra)?.group(1);
-    warnings.add(
-      paper == null
-          ? 'Button "$name": "$extra" is not carried.'
-          : 'Button "$name": paper "$paper" is TVPaint\'s own and not in '
-                'the file; imported without it.',
-    );
+    if (_paperWordsOf(extra) case final words?) {
+      paper = words;
+    } else {
+      warnings.add('Button "$name": "$extra" is not carried.');
+    }
   }
-  return (name: name, guid: guid, tool: tool, tip: tip);
+  return (name: name, guid: guid, tool: tool, tip: tip, paper: paper);
 }
+
+/// A button's paper command (`tv_paper`) as its words, each name and
+/// value — the quotes of `Name "/Cement Hard"` taken off — or null where
+/// [command] is no paper's.
+Map<String, String>? _paperWordsOf(String command) {
+  final at = command.indexOf(_paperCommand);
+  if (at < 0) {
+    return null;
+  }
+  return {
+    for (final word in _paperWord.allMatches(
+      command.substring(at + _paperCommand.length),
+    ))
+      word[1]!: word[2]!.replaceAll('"', ''),
+  };
+}
+
+/// The app's paper laid for a TVPaint one, and how: TVPaint's own [size]
+/// and hardness ([density]), and whether it is turned over ([invert]).
+typedef _Paper = ({
+  _NearestPaper nearest,
+  double size,
+  double density,
+  bool invert,
+});
+
+/// The paper [words] say, as the app's nearest — null where it is off, or
+/// is one the app has no nearest for; a warning says what is not carried.
+///
+/// 🗣️유저 2026-11-15 (I-86-Q3): 「우리 질감 중 가장 가까운 것을 대서
+/// 넣는다」 — TVPaint's paper is its own, not in the file, and may not ship
+/// with the app (`ip-review-clean`). Hardness is the paper's opacity, its
+/// page says, so it is the texture's density; its blending, 乗算, is the
+/// texture's multiply, the default.
+_Paper? _paperOf(
+  Map<String, String> words, {
+  required String name,
+  required List<String> warnings,
+}) {
+  if (words['Active'] != '1') {
+    return null;
+  }
+  final paper = (words['Name'] ?? '').split('/').last;
+  final nearest = _nearestPaperTo(paper);
+  if (nearest == null) {
+    warnings.add(
+      'Button "$name": paper "$paper" is TVPaint\'s own and not in the '
+      'file; imported without it.',
+    );
+    return null;
+  }
+  warnings.add(
+    'Button "$name": paper "$paper" is TVPaint\'s own and not in the file; '
+    'the nearest of the app\'s papers is laid instead.',
+  );
+  for (final key in const ['Angle', 'OffsetX', 'OffsetY', 'FlipX', 'FlipY']) {
+    if ((double.tryParse(words[key] ?? '') ?? 0) != 0) {
+      warnings.add('Button "$name": paper $key ${words[key]} is not carried.');
+    }
+  }
+  if (words['BlendingMode'] case final blend? when blend != '乗算') {
+    warnings.add('Button "$name": paper blending $blend is not carried.');
+  }
+  return (
+    nearest: nearest,
+    size: double.tryParse(words['Size'] ?? '') ?? 1,
+    density: ((double.tryParse(words['Hardness'] ?? '') ?? 100) / 100).clamp(
+      0.0,
+      1.0,
+    ),
+    invert: words['Invert'] == '1',
+  );
+}
+
+/// One of the app's papers made to stand for a TVPaint one: its [mask],
+/// [scale] canvas pixels a texel, and the levels ([contrast], [brightness])
+/// that bring its values where the TVPaint paper's are.
+typedef _NearestPaper = ({
+  BrushTipMask mask,
+  double scale,
+  double contrast,
+  double brightness,
+});
+
+/// The app's paper nearest TVPaint's [paper] — null for one not measured.
+///
+/// 🔬Cement Hard (the Surface's TVPaint 12, 2026-11-15, numbers only): its
+/// grain falls to half its likeness at 2.3 pixels across and 1.6 down and
+/// fades on with no repeat; its values average 0.57, spread 0.11. Of the
+/// app's four papers, [graphiteToothTextureMask] at 3.5 pixels a texel
+/// follows that fall closest — 0.034 apart over twelve pixels, where cold
+/// press is 0.098, paper grain 0.168 and canvas weave 0.183 (a weave's
+/// threads repeat) — and repeats only every 900 pixels. Its own values
+/// spread 0.30, so they are drawn in to the paper's: 0.11 about 0.43.
+/// ⏳Which way round a TVPaint paper lays ink is not on its page: read
+/// as the paint it resists, its rare darkest texels are pits a lead
+/// skips, as the tooth's bare share is — so the tooth stands unturned.
+_NearestPaper? _nearestPaperTo(String paper) => switch (paper) {
+  'Cement Hard' => (
+    mask: graphiteToothTextureMask,
+    scale: 3.5,
+    contrast: -0.54,
+    brightness: 0.2,
+  ),
+  _ => null,
+};
 
 /// The `[tvp tool]` section of a brush's INI, key by key.
 Map<String, String> _toolOf(String ini) {
@@ -365,9 +477,13 @@ BrushSettings _settingsOf(
   Map<String, String> tool, {
   required List<BrushTipMask> tips,
   required int tipSide,
+  required Map<String, String>? paper,
   required String name,
   required List<String> warnings,
 }) {
+  final laid = paper == null
+      ? null
+      : _paperOf(paper, name: name, warnings: warnings);
   for (final key in _notCarried) {
     if ((double.tryParse(tool[key] ?? '') ?? 0) != 0) {
       warnings.add('Brush "$name": $key ${tool[key]} is not carried.');
@@ -380,7 +496,7 @@ BrushSettings _settingsOf(
   }
   final percent = double.tryParse(tool['size'] ?? '') ?? 0;
   final opacity = double.tryParse(tool['opacity'] ?? '') ?? 100;
-  return BrushSettings(
+  final settings = BrushSettings(
     size: tipSide * (percent > 0 ? percent : 100) / 100,
     opacity: (opacity / 100).clamp(0.0, 1.0),
     spacing: BrushShape.generalSpacing,
@@ -391,6 +507,18 @@ BrushSettings _settingsOf(
       name: name,
       warnings: warnings,
     ),
+  );
+  if (laid == null) {
+    return settings;
+  }
+  final nearest = laid.nearest;
+  return settings.copyWith(
+    textureMaskSource: nearest.mask,
+    textureInvert: laid.invert,
+    textureContrast: nearest.contrast,
+    textureBrightness: nearest.brightness,
+    textureScale: nearest.scale * laid.size,
+    textureDensity: laid.density,
   );
 }
 
