@@ -13,6 +13,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
@@ -104,6 +105,12 @@ void main() {
         right: 170.75,
         bottom: 70.5,
       ),
+    ),
+    'a lasso folded in on itself over tile edges': CanvasSelectionRegion.shape(
+      CanvasSelectionShape([
+        for (final (x, y) in [(-100, -90), (220, 30), (100, 70), (70, 230)])
+          CanvasPoint(x: x.toDouble(), y: y.toDouble()),
+      ]),
     ),
   };
   const softnesses = [
