@@ -1,4 +1,5 @@
 import 'app_gpu_engine.dart';
+import 'engine_selection_masks.dart';
 import 'engine_strokes.dart';
 import 'engine_tile_ledger.dart';
 import 'native_scratch.dart';
@@ -17,13 +18,15 @@ abstract final class DrawingEngines {
   /// parked tile blocks, every scratch buffer (each regrows on its next
   /// call), the ledger's pages nobody holds (pool-pages-given-back), and
   /// the pages of the engine's pictures nobody holds — theirs lie in a
-  /// pool as the cels' do (engine-pictures-keep-to-pool-pages).
+  /// pool as the cels' do (engine-pictures-keep-to-pool-pages) — and what
+  /// the strokes and a selection's kernels keep for their next.
   static void respondToMemoryPressure() {
     TileBlocks.trim();
     NativeScratch.releaseAll();
     EngineTileLedger.opened?.respondToMemoryPressure();
     EnginePictures.giveBackPast(0);
     EngineStrokes.letGoIdle();
+    EngineSelectionMasks.letGoIdle();
   }
 
   /// Gives back what [respondToMemoryPressure] gives back once [holder] has

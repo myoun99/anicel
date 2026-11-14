@@ -3607,6 +3607,13 @@ final class GpuSelectionMasks {
     }
   }, malloc);
 
+  /// The bytes it keeps between its folds: the bit planes a selection is
+  /// folded in, kept for the next.
+  int get bytes => rust.selectionMasksBytes(_masks);
+
+  /// Lets go of what it keeps between its folds.
+  void letGo() => rust.selectionMasksLetGo(_masks);
+
   void free() => rust.selectionMasksFree(_masks);
 }
 

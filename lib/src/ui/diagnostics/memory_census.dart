@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuMask, GpuStampPicture;
 
 import '../../native/app_gpu_engine.dart';
+import '../../native/engine_selection_masks.dart';
 import '../../native/engine_strokes.dart';
 import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
@@ -266,7 +267,8 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // The engine's slots of the same tiles ride it (screen-on-the-engine
     // c4): its pool's pages, each whole — what the pictures become, under
     // the same line. So do the masks a canvas verb keeps there — a
-    // selection's, which its clip holds (2026-11-14), a held fill's.
+    // selection's, which its clip holds (2026-11-14), a held fill's — and
+    // the bit planes a selection is folded in, kept for the next fold.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
@@ -275,7 +277,8 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             EngineTileLedger.appPoolBytes +
             EngineStrokes.idleBytes +
             GpuStampPicture.liveBytes +
-            GpuMask.liveBytes,
+            GpuMask.liveBytes +
+            EngineSelectionMasks.idleBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest

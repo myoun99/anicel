@@ -52,6 +52,27 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_free(masks: *mut SelectionMa
     unsafe { let_go(masks) };
 }
 
+/// The bytes `masks` keeps between its folds: the bit planes a selection
+/// is folded in (`RegionMask`).
+///
+/// # Safety
+/// `masks` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_selection_masks_bytes(masks: *const SelectionMasks) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*masks }.region.kept_bytes()
+}
+
+/// Lets go of what `masks` keeps between its folds.
+///
+/// # Safety
+/// `masks` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_selection_masks_let_go(masks: *const SelectionMasks) {
+    // SAFETY: see the function's contract.
+    unsafe { &*masks }.region.let_go();
+}
+
 /// The mask of the selection `program` spells over `points` ([`steps_of`])
 /// on the pixel box `width` × `height` whose top-left pixel is (`x`, `y`),
 /// finished by the knobs `grow`, `feather` and `anti_alias`, kept as a

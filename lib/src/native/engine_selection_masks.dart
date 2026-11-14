@@ -20,6 +20,13 @@ abstract final class EngineSelectionMasks {
   /// Ahead of the first stroke under a selection.
   static Future<void> warm() => _kernels.warm();
 
+  /// The bytes the kernels keep between their folds — the bit planes a
+  /// selection is folded in, kept for the next — for the memory census.
+  static int get idleBytes => _kernels.compiled?.bytes ?? 0;
+
+  /// The OS says memory is tight: what the kernels keep goes.
+  static void letGoIdle() => _kernels.compiled?.letGo();
+
   /// Test seam: how many masks have been made.
   @visibleForTesting
   static int debugMade = 0;

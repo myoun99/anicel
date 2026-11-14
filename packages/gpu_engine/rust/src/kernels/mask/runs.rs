@@ -16,7 +16,7 @@ use super::MaskBox;
 use super::region::Folded;
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::shared::{Encoded, encode, fits, le_words, pipeline, plane, whole, words_buffer};
+use crate::kernels::shared::{Encoded, encode_on, fits, le_words, pipeline, plane, whole, words_buffer};
 
 /// runs.wgsl's rows a workgroup, for the passes a thread a row.
 const ROWS: u32 = 64;
@@ -47,7 +47,10 @@ impl MaskRuns {
         }
     }
 
-    /// `folded`'s runs over `size`, read back. Waits for the GPU.
+    /// `folded`'s runs over `size`, read back. Waits for the GPU once: the
+    /// offsets and the room for the ends come back in one copy, the room
+    /// read whole however few of it the runs fill. ↩️The offsets were read
+    /// first and then as many ends as they said, a wait each (L2e).
     pub(crate) fn read(&self, engine: &Engine, folded: &Folded, size: MaskBox) -> Option<SelectionRuns> {
         let rows = size.height;
         // A binding holds a word at least: a box no edge crosses still has
@@ -66,23 +69,31 @@ impl MaskRuns {
         let counted = whole(&[(0, words), (1, &folded.plane), (2, &offsets)]);
         let laid = whole(&[(0, words), (2, &offsets)]);
         let put = whole(&[(0, words), (1, &folded.plane), (2, &offsets), (3, &ends)]);
-        encode(
+        let readback = engine.readback(offset_bytes + room * 4);
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encode_on(
             engine,
+            &mut encoder,
             &[
                 Encoded { pipeline: &self.count, bound: counted, groups: a_row },
                 Encoded { pipeline: &self.offsets, bound: laid, groups: (1, 1, 1) },
                 Encoded { pipeline: &self.put, bound: put, groups: a_row },
             ],
         );
-        let offsets = le_words(&engine.read_buffer(&offsets)?);
+        encoder.copy_buffer_to_buffer(&offsets, 0, &readback, 0, offset_bytes);
+        encoder.copy_buffer_to_buffer(&ends, 0, &readback, offset_bytes, room * 4);
+        engine.queue.submit([encoder.finish()]);
+        let mut read = vec![0; (offset_bytes + room * 4) as usize];
+        engine.mapped_into(&readback, &mut read)?;
+        let mut offsets = le_words(&read);
         let total = offsets[rows as usize];
         if total > room_words {
             return fail(format!("{total} runs' ends past the room of {room}"));
         }
-        let mut read = vec![0; total as usize * 4];
-        if total > 0 {
-            engine.mapped_into(&engine.staged(&ends, u64::from(total) * 4), &mut read)?;
-        }
-        Some(SelectionRuns { offsets, ends: le_words(&read) })
+        let mut ends = offsets.split_off(rows as usize + 1);
+        ends.truncate(total as usize);
+        Some(SelectionRuns { offsets, ends })
     }
 }

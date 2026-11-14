@@ -9,6 +9,8 @@
 #[path = "region_tests.rs"]
 mod tests;
 
+use std::sync::{Mutex, PoisonError};
+
 use super::MaskBox;
 use crate::device::Engine;
 use crate::fail;
@@ -55,17 +57,105 @@ pub(crate) struct Step {
 enum Pass {
     Clear { plane: usize },
     Toggle { first: u32, count: u32 },
-    Scan { plane: usize },
+    Scan { plane: usize, combine: Combine },
     Fold { combine: Combine, into: usize, operand: usize },
 }
 
-/// The passes, compiled once.
+impl Pass {
+    /// Whether the pass reads or writes plane `UNION`.
+    fn joins(&self) -> bool {
+        match *self {
+            Pass::Clear { plane } | Pass::Scan { plane, .. } => plane == UNION,
+            Pass::Fold { operand, .. } => operand == UNION,
+            Pass::Toggle { .. } => false,
+        }
+    }
+}
+
+/// The passes, compiled once, and the bit planes they work in ([`Kept`]).
 pub(crate) struct RegionMask {
     toggle: wgpu::ComputePipeline,
     scan: wgpu::ComputePipeline,
     clear: wgpu::ComputePipeline,
     fold: wgpu::ComputePipeline,
     bytes: wgpu::ComputePipeline,
+    kept: Kept,
+}
+
+/// The bit planes a fold works in, kept from one fold to the next: a fold
+/// takes the kept ones that hold what it needs, makes the rest, and gives
+/// them back once the last of its passes that reads them is submitted —
+/// whatever takes them next is submitted after, so the GPU runs it after.
+/// At most [`KEPT`] planes and the toggles stay.
+///
+/// ⚠️What a fold reads of a plane is only what it put there: a plane is
+/// cleared or replaced whole before anything folds into it ([`laid`]) —
+/// but the toggles are read as they were left, so they are kept apart, and
+/// every scan leaves the words it read at nothing (region.wgsl).
+///
+/// ↩️Made for each fold and dropped with it till 2026-11-14 — and a new
+/// plane is zeroed by wgpu before it is first used: a simple selection's
+/// runs came slower than the CPU's fold (L2e, board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+#[derive(Default)]
+struct Kept {
+    planes: Mutex<Vec<wgpu::Buffer>>,
+    toggles: Mutex<Option<wgpu::Buffer>>,
+}
+
+/// How many planes [`Kept`] holds between folds: what a selection with no
+/// nesting but what replaces folds in, and its act of many polygons that
+/// intersects, needs.
+const KEPT: usize = 2;
+
+impl Kept {
+    /// A plane of `bits` bytes at least.
+    fn plane(&self, engine: &Engine, bits: u64) -> wgpu::Buffer {
+        let mut kept = self.planes.lock().unwrap_or_else(PoisonError::into_inner);
+        match kept.iter().position(|plane| plane.size() >= bits) {
+            Some(at) => kept.swap_remove(at),
+            None => plane(engine, "region", bits),
+        }
+    }
+
+    /// Toggles of `bits` bytes at least, every word nothing.
+    fn toggles(&self, engine: &Engine, bits: u64) -> wgpu::Buffer {
+        let mut kept = self.toggles.lock().unwrap_or_else(PoisonError::into_inner);
+        match kept.take().filter(|toggles| toggles.size() >= bits) {
+            Some(toggles) => toggles,
+            None => plane(engine, "region toggles", bits),
+        }
+    }
+
+    /// `planes` given back: the biggest [`KEPT`] of them and the kept stay.
+    fn give_back(&self, planes: impl IntoIterator<Item = wgpu::Buffer>) {
+        let mut kept = self.planes.lock().unwrap_or_else(PoisonError::into_inner);
+        kept.extend(planes);
+        kept.sort_by_key(|plane| std::cmp::Reverse(plane.size()));
+        kept.truncate(KEPT);
+    }
+
+    /// `toggles` given back, every word nothing again: the bigger of them
+    /// and the kept stays.
+    fn give_back_toggles(&self, toggles: wgpu::Buffer) {
+        let mut kept = self.toggles.lock().unwrap_or_else(PoisonError::into_inner);
+        if kept.as_ref().is_none_or(|kept| kept.size() < toggles.size()) {
+            *kept = Some(toggles);
+        }
+    }
+
+    /// The bytes kept between folds.
+    fn bytes(&self) -> u64 {
+        let planes = self.planes.lock().unwrap_or_else(PoisonError::into_inner);
+        let toggles = self.toggles.lock().unwrap_or_else(PoisonError::into_inner);
+        planes.iter().chain(toggles.as_ref()).map(wgpu::Buffer::size).sum()
+    }
+
+    /// What is kept, let go: the next fold makes its own.
+    fn let_go(&self) {
+        self.planes.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        *self.toggles.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
 }
 
 impl RegionMask {
@@ -78,7 +168,18 @@ impl RegionMask {
             clear: compile("region_clear"),
             fold: compile("region_fold"),
             bytes: compile("region_bytes"),
+            kept: Kept::default(),
         }
+    }
+
+    /// The bytes of the bit planes kept between folds ([`Kept`]).
+    pub(crate) fn kept_bytes(&self) -> u64 {
+        self.kept.bytes()
+    }
+
+    /// The bit planes kept between folds, let go.
+    pub(crate) fn let_go(&self) {
+        self.kept.let_go();
     }
 
     /// The hard mask of the selection `steps` over the pixel box `size`
@@ -112,7 +213,7 @@ impl RegionMask {
         steps: &[Step],
         (left, top): (i32, i32),
         size: MaskBox,
-    ) -> Option<Folded> {
+    ) -> Option<Folded<'_>> {
         let spans = |from: i32, length: u32| {
             length > 0
                 && -REACH <= i64::from(from)
@@ -126,7 +227,7 @@ impl RegionMask {
         let deepest = laid(steps, 1, &mut vertices, &mut passes)?;
         let crossings = crossings(&vertices, &passes, top, size.height);
         let plane = self.run(engine, (left, top), size, &vertices, &passes, deepest + 1)?;
-        Some(Folded { plane, stride: stride_of(size), crossings })
+        Some(Folded { plane, stride: stride_of(size), crossings, kept: &self.kept })
     }
 
     /// Runs `passes` over `planes` bit planes: the selection is plane 1.
@@ -150,9 +251,12 @@ impl RegionMask {
         };
         let vertex_bytes = vertices.len() as u64 * 4;
         fits(engine, &[bits, vertex_bytes], passes.iter().map(groups))?;
-        let mut planes: Vec<wgpu::Buffer> =
-            (0..planes).map(|_| plane(engine, "region", bits)).collect();
-        let toggles = plane(engine, "region toggles", bits);
+        // Plane `UNION` only where a pass joins in it.
+        let joins = passes.iter().any(Pass::joins);
+        let mut planes: Vec<Option<wgpu::Buffer>> = (0..planes)
+            .map(|at| (at != UNION || joins).then(|| self.kept.plane(engine, bits)))
+            .collect();
+        let toggles = self.kept.toggles(engine, bits);
         // A pass binds a whole buffer: a selection of no polygon still has
         // a vertex.
         let storage = wgpu::BufferUsages::STORAGE;
@@ -165,13 +269,16 @@ impl RegionMask {
             .map(|pass| {
                 let pass_words = match *pass {
                     Pass::Toggle { first, count } => (first, count, 0),
-                    Pass::Fold { combine, .. } => (0, 0, combine as u32),
-                    Pass::Clear { .. } | Pass::Scan { .. } => (0, 0, 0),
+                    Pass::Scan { combine, .. } | Pass::Fold { combine, .. } => {
+                        (0, 0, combine as u32)
+                    }
+                    Pass::Clear { .. } => (0, 0, 0),
                 };
                 region_words(engine, at, size, stride, pass_words)
             })
             .collect();
-        let encoded: Vec<Encoded> = passes
+        let plane = |at: usize| planes[at].as_ref();
+        let encoded: Option<Vec<Encoded>> = passes
             .iter()
             .zip(&words)
             .map(|(pass, words)| {
@@ -179,35 +286,52 @@ impl RegionMask {
                     Pass::Toggle { .. } => {
                         (&self.toggle, vec![(0, words), (1, &vertices), (2, &toggles)])
                     }
-                    Pass::Scan { plane } => {
-                        (&self.scan, vec![(0, words), (2, &toggles), (3, &planes[plane])])
+                    Pass::Scan { plane: into, .. } => {
+                        (&self.scan, vec![(0, words), (2, &toggles), (3, plane(into)?)])
                     }
-                    Pass::Clear { plane } => (&self.clear, vec![(0, words), (3, &planes[plane])]),
+                    Pass::Clear { plane: into } => {
+                        (&self.clear, vec![(0, words), (3, plane(into)?)])
+                    }
                     Pass::Fold { into, operand, .. } => {
-                        let bound = vec![(0, words), (3, &planes[into]), (4, &planes[operand])];
+                        let bound = vec![(0, words), (3, plane(into)?), (4, plane(operand)?)];
                         (&self.fold, bound)
                     }
                 };
-                Encoded {
+                Some(Encoded {
                     pipeline,
                     bound: whole(&bound),
                     groups: flat(groups(pass)),
-                }
+                })
             })
             .collect();
+        let Some(encoded) = encoded else {
+            return fail("a pass of a selection's fold reads a plane it was not given");
+        };
         encode(engine, &encoded);
         drop(encoded);
-        Some(planes.swap_remove(1))
+        let folded = planes[1].take();
+        self.kept.give_back(planes.into_iter().flatten());
+        self.kept.give_back_toggles(toggles);
+        folded
     }
 }
 
 /// A selection folded into a bit plane: region.wgsl's, a bit a pixel of
 /// its box, `stride` words a row and the leftmost pixel the low bit — and
-/// as many crossings as its rows can have ([`crossings`]).
-pub(crate) struct Folded {
+/// as many crossings as its rows can have ([`crossings`]). Its plane goes
+/// back to the planes `kept` once it is dropped: after the last pass that
+/// reads it is submitted.
+pub(crate) struct Folded<'a> {
     pub(crate) plane: wgpu::Buffer,
     pub(crate) stride: u32,
     pub(crate) crossings: u64,
+    kept: &'a Kept,
+}
+
+impl Drop for Folded<'_> {
+    fn drop(&mut self) {
+        self.kept.give_back([self.plane.clone()]);
+    }
 }
 
 /// A bit plane's words a row over `size`: room for a bit past the box,
@@ -257,10 +381,19 @@ fn crossings(vertices: &[u32], passes: &[Pass], top: i32, height: u32) -> u64 {
 }
 
 /// The passes that fold `steps` into bit plane `into`, from nothing — as
-/// `containsPoint` folds from outside —, each act's polygons joined in
-/// plane `UNION` and a nested selection folded first in the plane after
-/// `into`; each point joins `vertices` as Q.8 x and y. The deepest plane
-/// they use, or none for a point past the reach.
+/// `containsPoint` folds from outside; a first step that replaces needs no
+/// nothing under it —, each act's polygons folded in as [`copies_laid`]
+/// says and a nested selection ([`bare`]) folded first in the plane after
+/// `into`, or laid in `into` itself where it replaces it; each point joins
+/// `vertices` as Q.8 x and y. The deepest plane they use, or none for a
+/// point past the reach.
+///
+/// ↩️Till 2026-11-14 every act was joined in plane `UNION` and folded in
+/// after, and every nested selection in a plane of its own: an inverse of
+/// one rectangle was 17 passes over four planes, a lasso five over two —
+/// where a simple selection's runs came slower than the CPU's fold
+/// (board `a-selection-mask-is-built-on-the-cpu-at-every-move`, L2e).
+/// Now they are six over one, and two over one.
 fn laid(
     steps: &[Step],
     into: usize,
@@ -268,36 +401,87 @@ fn laid(
     passes: &mut Vec<Pass>,
 ) -> Option<usize> {
     let mut deepest = into;
-    passes.push(Pass::Clear { plane: into });
+    if !matches!(steps.first(), Some(Step { combine: Combine::Replace, .. })) {
+        passes.push(Pass::Clear { plane: into });
+    }
     for step in steps {
-        let operand = match &step.operand {
+        match bare(&step.operand) {
             Operand::Copies(polygons) => {
-                passes.push(Pass::Clear { plane: UNION });
-                for polygon in polygons {
-                    let first = (vertices.len() / 2) as u32;
-                    for &point in polygon {
-                        for value in point {
-                            vertices.push(quantized(value)? as u32);
-                        }
-                    }
-                    let count = polygon.len() as u32;
-                    passes.push(Pass::Toggle { first, count });
-                    passes.push(Pass::Scan { plane: UNION });
-                }
-                UNION
+                copies_laid(step.combine, polygons, into, vertices, passes)?;
+            }
+            Operand::Region(inner) if matches!(step.combine, Combine::Replace) => {
+                deepest = deepest.max(laid(inner, into, vertices, passes)?);
             }
             Operand::Region(inner) => {
                 deepest = deepest.max(laid(inner, into + 1, vertices, passes)?);
-                into + 1
+                passes.push(Pass::Fold {
+                    combine: step.combine,
+                    into,
+                    operand: into + 1,
+                });
             }
-        };
-        passes.push(Pass::Fold {
-            combine: step.combine,
-            into,
-            operand,
-        });
+        }
     }
     Some(deepest)
+}
+
+/// What `operand` holds, a nested selection of one step that replaces read
+/// as that step's operand: folded from nothing, it is nothing but that —
+/// an inverse's selection is nested so (`invertedWithin`).
+fn bare(operand: &Operand) -> &Operand {
+    let mut bare = operand;
+    while let Operand::Region(inner) = bare
+        && let [Step { combine: Combine::Replace, operand }] = inner.as_slice()
+    {
+        bare = operand;
+    }
+    bare
+}
+
+/// The passes that fold an act's `polygons` — their union — into plane
+/// `into` by `combine`: each polygon scanned straight into it, the first by
+/// `combine` and the rest by what the union makes of it — a replace adds
+/// them after the first, an add adds and a subtract subtracts each. An
+/// intersect of more than one, or an act of none, is joined in plane
+/// `UNION` first and folded in after: a pixel is the act's when ANY of its
+/// polygons holds it, and an intersect with each in turn would keep only
+/// what all hold. None for a point past the reach.
+fn copies_laid(
+    combine: Combine,
+    polygons: &[Vec<[f64; 2]>],
+    into: usize,
+    vertices: &mut Vec<u32>,
+    passes: &mut Vec<Pass>,
+) -> Option<()> {
+    let joined = match (combine, polygons.len()) {
+        (_, 1) | (Combine::Add | Combine::Subtract, _) => false,
+        (Combine::Replace, count) => count == 0,
+        (Combine::Intersect, _) => true,
+    };
+    let plane = if joined { UNION } else { into };
+    if joined {
+        passes.push(Pass::Clear { plane: UNION });
+    }
+    for (at, polygon) in polygons.iter().enumerate() {
+        let first = (vertices.len() / 2) as u32;
+        for &point in polygon {
+            for value in point {
+                vertices.push(quantized(value)? as u32);
+            }
+        }
+        let count = polygon.len() as u32;
+        let combine = match combine {
+            _ if joined => Combine::Add,
+            Combine::Replace if at > 0 => Combine::Add,
+            other => other,
+        };
+        passes.push(Pass::Toggle { first, count });
+        passes.push(Pass::Scan { plane, combine });
+    }
+    if joined {
+        passes.push(Pass::Fold { combine, into, operand: UNION });
+    }
+    Some(())
 }
 
 /// A canvas coordinate in Q.8, or none past the reach.

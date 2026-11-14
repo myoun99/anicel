@@ -590,6 +590,16 @@ external Pointer<SelectionMasks> selectionMasksNew(Pointer<Engine> engine);
 )
 external void selectionMasksFree(Pointer<SelectionMasks> masks);
 
+@Native<Uint64 Function(Pointer<SelectionMasks>)>(
+  symbol: 'gpu_engine_selection_masks_bytes',
+)
+external int selectionMasksBytes(Pointer<SelectionMasks> masks);
+
+@Native<Void Function(Pointer<SelectionMasks>)>(
+  symbol: 'gpu_engine_selection_masks_let_go',
+)
+external void selectionMasksLetGo(Pointer<SelectionMasks> masks);
+
 @Native<
   Pointer<MaskPlane> Function(
     Pointer<SelectionMasks>,

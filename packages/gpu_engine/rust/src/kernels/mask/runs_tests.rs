@@ -166,3 +166,66 @@ fn a_box_past_the_reach_is_refused() {
     let refused = runs_of(&[(REPLACE, rect(0.0, 0.0, 1.0, 1.0))], (1 << 15, 0), (4, 4));
     assert!(refused.unwrap_err().contains("within the canvas's reach"));
 }
+
+/// 🚨The runs come back after ONE wait for the GPU: the offsets and the
+/// room for the ends in one copy. ↩️The offsets were read first and as many
+/// ends as they said after, a wait each (L2e).
+#[test]
+fn the_runs_come_back_after_one_wait() {
+    use crate::device::gpu_engine_waits_here;
+    let waits = gpu_engine_waits_here();
+    let runs = runs_of(&[(REPLACE, rect(1.0, 1.0, 5.0, 3.0))], (0, 0), (8, 4));
+    assert_eq!(runs.unwrap(), [vec![], vec![1, 5], vec![1, 5], vec![]]);
+    assert_eq!(gpu_engine_waits_here(), waits + 1);
+}
+
+/// What the kernels keep between folds is counted, stays as much from one
+/// fold to the next of the same box, and is let go of: a plane a box of
+/// 65 × 3 pixels takes is 3 words a row (`stride_of`) — the selection's and
+/// the toggles'.
+#[test]
+fn what_the_kernels_keep_is_counted_and_let_go() {
+    use super::super::abi::{
+        gpu_engine_selection_masks_bytes, gpu_engine_selection_masks_free,
+        gpu_engine_selection_masks_let_go,
+    };
+    let engine = rig().engine;
+    // SAFETY: the engine lives for the process; these kernels are freed at
+    // the end and asked nothing after.
+    let masks = unsafe { gpu_engine_selection_masks_new(engine) };
+    let read = || {
+        let (words, points) = spelled(&[(REPLACE, rect(1.0, 0.0, 60.0, 2.0))]);
+        let mut count = 0;
+        // SAFETY: as `runs_of`.
+        let runs = unsafe {
+            gpu_engine_selection_runs(
+                masks,
+                engine,
+                words.as_ptr(),
+                words.len(),
+                points.as_ptr(),
+                points.len(),
+                0,
+                0,
+                65,
+                3,
+                &mut count,
+            )
+        };
+        assert!(!runs.is_null(), "{}", last_error());
+        // SAFETY: the runs are freed once.
+        unsafe { gpu_engine_selection_runs_free(runs) };
+    };
+    // SAFETY: `masks` is live till it is freed below.
+    let kept = || unsafe { gpu_engine_selection_masks_bytes(masks) };
+    assert_eq!(kept(), 0, "nothing is kept before a fold");
+    read();
+    assert_eq!(kept(), 2 * 3 * 3 * 4);
+    read();
+    assert_eq!(kept(), 2 * 3 * 3 * 4, "a fold of the same box takes what was kept");
+    // SAFETY: as above.
+    unsafe { gpu_engine_selection_masks_let_go(masks) };
+    assert_eq!(kept(), 0);
+    // SAFETY: freed once.
+    unsafe { gpu_engine_selection_masks_free(masks) };
+}
