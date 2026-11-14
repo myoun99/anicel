@@ -19,6 +19,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -94,6 +95,13 @@ void main() {
           (identical(peaks, _peaks), view.along0, view.length),
       ],
       [(true, 0, 12 * 48)],
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is WaveformPainter,
+      ),
+      findsNothing,
+      reason: 'the wave is the cells\' — a strip over them draws it twice',
     );
 
     // The row is wider than the viewport — press a visible spot near its

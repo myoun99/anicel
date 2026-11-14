@@ -18,6 +18,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart'
+    show timelineGridPackRgba;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -204,6 +206,66 @@ void main() {
       ),
       isTrue,
       reason: 'equal sounds in a new list bake the same pixels',
+    );
+  });
+
+  test('each span\'s tile reckons a sound from its own first frame, or from '
+      'the sound\'s where it starts inside the span', () {
+    // 10px frames at a ratio of 2: 20 device pixels a frame. A sound heard
+    // from frame 1 for six frames, already 5 frames into its file, at half
+    // gain, down a column 7 across.
+    TimelineRowCellsPainter column(Axis axis) => TimelineRowCellsPainter(
+      layer: seLayer('se-spans'),
+      geometry: testFrameGeometry(
+        frameCellExtent: 10,
+        frameEndIndexExclusive: 12,
+      ),
+      crossAxisExtent: 7,
+      exposureStateForLayer: exposureOf,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      axis: axis,
+      sounds: (
+        sounds: [
+          (
+            startFrame: 1,
+            audibleFrames: 6,
+            keyName: 'se-0-b1',
+            peaks: peaks,
+            leadingFrames: 5,
+            gain: 0.5,
+          ),
+        ],
+        frameRate: const ProjectFrameRate.ntsc(24),
+        ink: timelineSeWaveformInk,
+      ),
+    );
+    final down = column(Axis.vertical);
+    final [first] = down.wavesIn(0, 4, 2);
+    expect(identical(first.peaks, peaks), isTrue);
+    expect(first.view, (
+      along0: -20,
+      length: 120,
+      vertical: true,
+      frameQ8: 20 * 256,
+      fpsNumerator: 24000,
+      fpsDenominator: 1001,
+      bucketsPerSecond: 80,
+      leadingFrames: 5,
+      acrossQ8: 14 * 256,
+      gainQ16: 32768,
+      rgba: timelineGridPackRgba(timelineSeWaveformInk),
+    ));
+    final [second] = down.wavesIn(4, 8, 2);
+    expect(
+      (second.view.along0, second.view.length, second.view.leadingFrames),
+      (0, 60, 8),
+      reason: 'three frames on, at the span\'s first frame',
+    );
+    expect(down.wavesIn(8, 12, 2), isEmpty, reason: 'it ends at frame 7');
+    expect(
+      column(Axis.horizontal).wavesIn(0, 4, 2).single.view.vertical,
+      isFalse,
     );
   });
 
