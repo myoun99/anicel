@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -16,6 +17,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -89,7 +91,7 @@ void main() {
       frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
@@ -175,80 +177,39 @@ void main() {
     });
   });
 
-  /// 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」 — a
-  /// video run's rows are held on this line, and the caches give way to
-  /// them the moment they are lent, and stay out of their way for as long
-  /// as they are.
-  testWidgets('🎯what a run holds comes off the line at once, and every '
-      'enforce after counts it until it is handed back', (tester) async {
+  // The slots the pictures let go stay made on the engine for the next
+  // picture (engine-pictures-keep-to-pool-pages) — within the room the
+  // line has left, where the allowance moves it: ⛔before 2026-11-13 they
+  // went with each picture, and a line lowered would have left them made
+  // till the project closed.
+  testWidgets('🚨the allowance moving the line gives back the slots its '
+      'pictures let go, past the room the line has left', (tester) async {
     await tester.runAsync(() async {
-      final one = await onePicture();
-      final budget = 4 * one;
-      final lent = 2 * one + one ~/ 2;
-      final s = session(budget: budget);
-      final line = s.playbackRig.playbackCache;
-      int held() => s.renderCaches.framePictureStore.estimatedBytes;
+      final s = session(budget: 1 << 30);
       await twoPictures(s);
-      line.enforcePlaybackCacheBudget();
-      expect(held(), 2 * one, reason: 'premise: all of it fits');
-      expect(line.bytes, budget, reason: '⛔premise: nothing lent yet');
-
-      line.lend(lent);
-      expect(line.lentBytes, lent);
-      expect(
-        line.bytes,
-        budget - lent,
-        reason: 'the warm\'s room is the line less what is lent',
-      );
-      expect(held(), lessThanOrEqualTo(budget - lent), reason: 'at once');
-
-      // The warm builds the evicted frame again and enforces, as it does
-      // after every frame it bakes.
-      await make(s, s.cutById(const CutId('cut-2'))!);
-      await make(s, s.cutById(const CutId('cut-3'))!);
-      line.enforcePlaybackCacheBudget();
-      expect(
-        held(),
-        lessThanOrEqualTo(budget - lent),
-        reason: 'the lent bytes are still the run\'s',
-      );
-
-      line.lend(0);
-      expect(line.lentBytes, 0);
-    });
-  });
-
-  /// 「저장」 10-08: 「천장은 지키는 범위에도 걸린다 — 지키는 것만으로 넘치면
-  /// 화면 핀이 아닌 것부터 놓는다」. ↩️The open cut's warm frames came off
-  /// what a run might hold, as frames no trim gave back; they give way like
-  /// any other now, and what is left that does not is on a screen.
-  testWidgets('🚨what a run may hold is the line less what a screen shows — '
-      'a warm frame gives way like any other', (tester) async {
-    await tester.runAsync(() async {
-      const budget = 1 << 20;
-      final s = session(budget: budget);
       final line = s.playbackRig.playbackCache;
       final pictures = s.renderCaches.framePictureStore;
-      expect(line.lendableBytes, budget, reason: 'LIVENESS: nothing shown');
+      final held = pictures.estimatedBytes;
+      final idle = EnginePictures.idlePictureBytes;
+      expect(idle, isPositive, reason: 'the premise: a page made');
 
-      final open = s.activeCutOrNull!;
-      draw(s, open, 'cut-1-layer', 'frame-a');
-      await make(s, open);
-      expect(pictures.estimatedBytes, greaterThan(0), reason: 'premise');
-      expect(
-        line.lendableBytes,
-        budget,
-        reason: 'the open cut\'s warm frame is not kept from the run',
-      );
+      // The line at what is held and what is idle: all of it stays.
+      line.debugSetPlaybackCacheBudgetBytes(held + idle);
+      s.cacheShare = 0.5;
+      expect(EnginePictures.idlePictureBytes, idle);
 
-      final shown = keyOf(s, open);
-      pictures.retainPin(shown);
-      addTearDown(() => pictures.releasePin(shown));
-      expect(
-        line.lendableBytes,
-        budget - pictures.bytesOf(shown)!,
-        reason: 'the frame a screen shows is the session\'s, not the run\'s',
-      );
+      // A byte under: the pictures stay, their page with them, and of
+      // what is idle the rest goes.
+      line.debugSetPlaybackCacheBudgetBytes(held + idle - 1);
+      s.cacheShare = 0.25;
+      expect(pictures.estimatedBytes, held, reason: 'the premise');
+      expect(EnginePictures.idlePictureBytes, lessThan(idle));
+
+      // Under the pictures: they go, and the page no picture is on now.
+      line.debugSetPlaybackCacheBudgetBytes(0);
+      s.cacheShare = 0.125;
+      expect(pictures.estimatedBytes, 0, reason: 'the premise');
+      expect(EnginePictures.idlePictureBytes, 0);
     });
   });
 }

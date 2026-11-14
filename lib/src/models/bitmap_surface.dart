@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:ui' as ui;
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
 import 'cel_photo.dart';
@@ -79,9 +80,9 @@ class BitmapSurface {
     List<CelText> texts = const [],
     List<CelPhoto> photos = const [],
     this.laidBounds,
-  }) : _tiles = Map<TileCoord, BitmapTile>.unmodifiable(tiles),
-       texts = List<CelText>.unmodifiable(texts),
-       photos = List<CelPhoto>.unmodifiable(photos) {
+  }) : _tiles = frozenMap<TileCoord, BitmapTile>(tiles),
+       texts = frozenList<CelText>(texts),
+       photos = frozenList<CelPhoto>(photos) {
     _validateTileSize(tileSize);
     _validateCanvasSize(canvasSize);
     for (final entry in _tiles.entries) {
@@ -143,7 +144,7 @@ class BitmapSurface {
       pasteboardReach = from.pasteboardReach,
       tileSize = from.tileSize,
       _tiles = from._tiles,
-      texts = List<CelText>.unmodifiable(texts),
+      texts = frozenList<CelText>(texts),
       photos = from.photos,
       laidBounds = from.laidBounds {
     for (final text in this.texts) {
@@ -162,7 +163,7 @@ class BitmapSurface {
       tileSize = from.tileSize,
       _tiles = from._tiles,
       texts = from.texts,
-      photos = List<CelPhoto>.unmodifiable(photos),
+      photos = frozenList<CelPhoto>(photos),
       laidBounds = from.laidBounds;
 
   final CanvasSize canvasSize;

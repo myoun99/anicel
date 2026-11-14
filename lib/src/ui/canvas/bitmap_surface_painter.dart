@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../core/display_filter.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/tile_coord.dart';
 
@@ -31,6 +32,10 @@ part 'surface_paint/surface_paint_pass.dart';
 /// and the matrix that carries canvas space into the row's own — null while
 /// the row stands where the canvas does, the posed row's inverse otherwise.
 typedef RowFloat = ({LandingPreview preview, Matrix4? canvasToRow});
+
+/// [float] where it draws anything, else null.
+RowFloat? drawnFloat(RowFloat? float) =>
+    float == null || float.preview.drawnWorldRect.isEmpty ? null : float;
 
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
 /// with the viewport transform applied INSIDE the picture.
@@ -73,12 +78,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// the constructor, so no host that mounts this painter can be the one
   /// that forgot — the same placement, for the same reason, as the colour
   /// keys in `CutFrameCompositeLayer`'s constructor. A surface that carries
-  /// none (every sheet's ink, a selection's float, a cel already shown
-  /// through `celSurfaceAsShown`) comes back as the object it was.
+  /// none (every sheet's ink, a selection's float, a cel whose texts are
+  /// laid already) comes back as the object it was.
   ///
-  /// ⚠️It does not replace `celSurfaceAsShown` at the routes that key: the
-  /// keys filter the picture the texts are part of, so they have to be laid
-  /// BEFORE the keys run, and only that seam knows the row's chain.
+  /// ↩️The routes that ran a plugin at a chain's head laid them before it,
+  /// at a seam of their own (`celSurfaceAsShown`) — it read the picture the
+  /// texts are part of — until that plugin was a step of the chain the
+  /// engine runs over the row (float-warp-resamples-in-the-c-engine (2),
+  /// 2026-11-11).
   final BitmapSurface surface;
 
   /// Zoom/pan applied inside the picture; `null` paints at identity.
@@ -118,12 +125,19 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   final ValueListenable<LandingPreview?>? landingPreview;
 
   /// [landingPreview] as the paint draws it — null while it draws nothing.
-  RowFloat? get _ownFloat {
-    final preview = landingPreview?.value;
-    return preview == null || preview.drawnWorldRect.isEmpty
-        ? null
-        : (preview: preview, canvasToRow: null);
-  }
+  RowFloat? get _ownFloat => drawnFloat(switch (landingPreview?.value) {
+    null => null,
+    final preview => (preview: preview, canvasToRow: null),
+  });
+
+  /// Every float a paint draws over this surface, in the order drawn: a
+  /// selection's [float], from the row's slot, and this painter's own
+  /// [landingPreview] — each that draws anything. What the walk draws
+  /// ([paintContentInto]) and the engine lays (flip lane ⓐ-2), one list.
+  List<RowFloat> floatsOver(RowFloat? float) => [
+    ?drawnFloat(float),
+    ?_ownFloat,
+  ];
 
   final bool showTransparentBackground;
 
@@ -134,7 +148,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   ///
   /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` passes
   /// one; a painter of a surface that is nobody's cel (the selection
-  /// float) passes [TilePictureBudget.noLineage].
+  /// float) passes `BrushFrameKey.noCel`.
   final Object? lineage;
 
   final BitmapTileImageCache tileImageCache;
@@ -175,17 +189,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// this painter's only when it paints its own paper there
   /// ([showTransparentBackground]); the merged stack seeds the page itself.
   /// Empty ([Rect.zero]) when it draws nothing.
-  ///
-  /// ⛔And its CLIP when it draws from state it does not publish
-  /// ([drawsOnlyFromPublishedState] is exactly the question 「can what this
-  /// draws be located from what it publishes」). Measured by its published
-  /// state alone, a test double drawing a mutable colour claimed nothing, a
-  /// folder around it sized its buffer without it, and the stroke vanished
-  /// from the canvas (`static_bake_render_parity_test`, 2026-09-15).
   Rect get drawnWorldRect {
-    if (!drawsOnlyFromPublishedState) {
-      return storableRect;
-    }
     Rect? drawn;
     void add(Rect? rect) {
       if (rect != null) {
@@ -251,21 +255,28 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     canvas.restore();
   }
 
-  /// Whether everything this painter draws can be LOCATED from the state it
-  /// publishes — [surface]'s tiles, their pictures, and the overlay's.
+  /// 🚨THE SURFACE AS THIS PAINTER SHOWS IT, AS TILES: [surface], with the
+  /// tile each coordinate a live stroke replaces shows in its place
+  /// ([ActiveStrokeOverlayModel.shownTiles]) — what a screen that lays tiles
+  /// lays for this row (`EngineStackScreen`). Not what is drawn over the
+  /// tiles: a float, a fill's range — rows of their own there.
   ///
-  /// 🚨★★★This exists so a cache can ask before trusting itself. (v)'s
-  /// composite buffer holds the live surface inside it, which is only sound
-  /// while it can tell WHEN the live surface changed. It works that out
-  /// from published state — and a subclass drawing from anything else (a
-  /// test double with a mutable colour, most obviously) would be kept and
-  /// would then freeze mid-stroke.
-  ///
-  /// ⛔The honest default is not "true", it is "true for what THIS class
-  /// draws". An override of [paintContentInto] that reads state this class
-  /// does not publish MUST override this to false, and false is never a
-  /// bug: it costs a re-raster and keeps the picture right.
-  bool get drawsOnlyFromPublishedState => true;
+  /// ⚠️On the overlay's other roads — a grid of its own, a stroke not
+  /// pre-blended — the stroke is drawn over the tiles, and no tile shows
+  /// it: a host's and a test's, not the app's, where every stroke pre-blends
+  /// on its cel's grid (R27 #4). ⏳They are what tests on a grid of their
+  /// own ask (card `the-cpu-brush-is-asked-by-tests-alone`).
+  BitmapSurface get shownSurface {
+    final overlay = overlayModel;
+    if (overlay == null || !_overlayReplacesCoords) {
+      return surface;
+    }
+    return surface.putTiles([
+      for (final MapEntry(key: coord, value: tile)
+          in overlay.shownTiles.entries)
+        (coord: coord, tile: tile),
+    ]);
+  }
 
   /// A PRE-BLENDED overlay on the SAME grid: the base pass skips the
   /// committed tile where an overlay image exists and the overlay pass lays

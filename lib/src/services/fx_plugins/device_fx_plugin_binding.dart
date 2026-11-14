@@ -8,6 +8,7 @@ import '../../models/layer_effect.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_frame_composite_plan.dart'
     show LayerFrameSurfaceResolver, layerDrawingAt;
+import 'fx_plugin_outcomes.dart';
 
 /// The binding a route that knows the device and the project runs plugins
 /// by: each plugin of a chain through [runnerFor] — this device's build of
@@ -16,17 +17,25 @@ import '../cut_frame_composite_plan.dart'
 ///
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — every plugin of
 /// the chain, not the head's alone, and every chain: a row's, a folder's,
-/// an adjustment's and the V row's. The head's of a cel runs over the
-/// cel's own pixels (`splitSourceEffects`), every other over what its
-/// chain made before it (`PluginEffect`).
+/// an adjustment's and the V row's. Each runs over what its chain made
+/// before it (`PluginEffect`) — the head's of a cel over the cel, its keys
+/// run. ↩️The head's of a cel ran over the cel's own pixels on the CPU
+/// until it was a step of the chain
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 ///
 /// A plugin is told the frame its sample is of ([ResolvedLayerEffect.frame])
 /// — the V row's chain is sampled on the track's axis — and reads the rows
 /// it names at the cut's [FxPluginBinding] frame.
+///
+/// Each run tells [outcomes] how it went at that same frame, the one its
+/// header reads its lanes at, where it is worn ([FxPluginRun.told],
+/// [ResolvedLayerEffect.worn]) — and is told as it is bound how its sample
+/// went there before ([FxPluginOutcomes.toldFor]); null tells nobody.
 FxPluginBinding deviceFxPluginBinding({
   required FxPluginRunner? Function(FxPluginDescription plugin) runnerFor,
   required ProjectFrameRate frameRate,
   required LayerFrameSurfaceResolver surfaceOf,
+  FxPluginOutcomes? outcomes,
 }) => (effects, {required cut, required frameIndex}) {
   if (!effects.any((effect) => effect.kind == EffectKind.plugin)) {
     return effects;
@@ -37,8 +46,12 @@ FxPluginBinding deviceFxPluginBinding({
       return plugin;
     }
     final told = plugin.frame ?? frameIndex;
+    final worn = plugin.worn;
     return plugin.withRun(
       FxPluginRun(
+        told: outcomes == null || worn == null
+            ? null
+            : outcomes.toldFor(worn, plugin, cut: cut.id, frame: told),
         runner: runner,
         moment: (
           frameIndex: told,

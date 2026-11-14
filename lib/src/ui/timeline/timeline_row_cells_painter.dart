@@ -7,6 +7,7 @@ import 'frame_window_semantics.dart';
 
 import '../../models/frame.dart'
     show InbetweenMark, defaultUnnamedDrawingMark, drawingHeadOf;
+import '../../models/folder_band_rows.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -32,7 +33,7 @@ import 'axis_turn.dart'
 import 'berth_row.dart';
 import 'rail_eyes.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
-import 'property_lane_model.dart' show folderBandRowsOf, timelineBlockEdgesOf;
+import 'property_lane_model.dart' show timelineBlockEdgesOf;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -53,6 +54,7 @@ import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
+import 'timeline_grid_screen.dart';
 import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
@@ -152,7 +154,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.shown = true,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?windowBucket,
            // Its OWN row's landings — never every row's (I-22 ③).
            ?tileStore?.noticesFor(
@@ -344,16 +346,10 @@ class TimelineRowCellsPainter extends CustomPainter
   final double devicePixelRatio;
 
   /// The frame window paint() actually draws: the full bounds under the
-  /// classic contract, the bucket-derived span (shared policy) under the
-  /// self-windowing one. THE probe surface for visibility tests.
+  /// classic contract, the bucket-derived span (shared policy), whole, under
+  /// the self-windowing one (Q8). THE probe surface for visibility tests.
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
-      visibleFrameWindowFor(
-        bucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: frameCellExtent,
-        frameStartIndex: frameStartIndex,
-        frameEndIndexExclusive: frameEndIndexExclusive,
-      );
+      geometry.value.rowDrawnFrames(windowBucket);
 
   /// What this row's BAND shows at [frameIndex] — the union for a row that
   /// has both spans and cels, the layer's own cels for everything else.
@@ -791,13 +787,16 @@ class TimelineRowCellsPainter extends CustomPainter
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleFrameWindow();
     final store = tileStore;
+    // Where the row's grid has no screen open to lay on, its store is not
+    // asked: a tile is nowhere to be shown.
+    final laying = TimelineGridScreenSlot.laying;
     // Spans whose FRESH tile already carries the foreground ink (T3):
     // the Dart glyph/dash pass skips them.
     final tiledSpans = <(int, int)>[];
-    if (store == null || frameCellExtent <= 0) {
+    if (store == null || laying == null || frameCellExtent <= 0) {
       _paintSubstrate(canvas, window.startIndex, window.endIndexExclusive);
     } else {
-      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store));
+      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store, laying));
     }
     _paintForegrounds(canvas, window, tiledSpans);
     _paintGhostInk(canvas, window);
@@ -810,41 +809,47 @@ class TimelineRowCellsPainter extends CustomPainter
     // user's switch shows them ([substrateIn]).
   }
 
-  /// The substrate through the tile store: a tile is one drawImageRect —
+  /// The substrate through the tile store: a tile is one lay on [laying] —
   /// baked in this paint where an edit moved the span
-  /// ([TimelineGridTileStore.tileFor]) — a cold span keeps the classic
-  /// paint underneath while its raster lands off-frame, and the two spans
-  /// past the window are asked for so a scroll finds them warm. Answers the
-  /// spans whose tile already carries the foreground ink.
+  /// ([TimelineGridTileStore.tileFor]) — a cold span the tiles kept over its
+  /// frames stand in for, scaled, while it is rastered
+  /// ([TimelineGridTileStore.standInFor]), and one they do not cover keeps
+  /// the classic paint underneath while its raster lands off-frame; the two
+  /// spans past the window are asked for so a scroll finds them warm.
+  /// Answers the spans whose tiles already carry the foreground ink.
   List<(int, int)> _paintTiledSubstrate(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
     TimelineGridTileStore store,
+    TimelineGridScreenLaying laying,
   ) {
     final tiledSpans = <(int, int)>[];
     final grid = _tileGridIn(window, frameEndIndexExclusive);
-    final tilePaint = Paint()..filterQuality = FilterQuality.low;
     for (final (spanStart, spanEnd) in grid.shown) {
-      final image = store.tileFor(
+      final picture = store.tileFor(
         painter: this,
         spanStartIndex: spanStart,
         spanEndIndexExclusive: spanEnd,
         devicePixelRatio: devicePixelRatio,
       );
-      if (image != null) {
-        final origin = startAlong(axis, cellRectFor(spanStart));
-        final mainExtent = endAlong(axis, cellRectFor(spanEnd - 1)) - origin;
-        final dst = rectAlong(
-          axis,
-          along: (from: origin, to: origin + mainExtent),
-          across: (from: 0, to: crossAxisExtent),
-        );
-        canvas.drawImageRect(
-          image,
-          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-          dst,
-          tilePaint,
-        );
+      final tiles = picture != null
+          ? [
+              (
+                picture: picture,
+                spanStartIndex: spanStart,
+                spanEndIndexExclusive: spanEnd,
+              ),
+            ]
+          : store.standInFor(
+              painter: this,
+              spanStartIndex: spanStart,
+              spanEndIndexExclusive: spanEnd,
+              devicePixelRatio: devicePixelRatio,
+            );
+      if (tiles != null) {
+        for (final tile in tiles) {
+          _layTile(laying, tile, spanStart, spanEnd);
+        }
         tiledSpans.add((spanStart, spanEnd));
         continue;
       }
@@ -876,19 +881,70 @@ class TimelineRowCellsPainter extends CustomPainter
     return tiledSpans;
   }
 
+  /// [tile] laid over the cells of the frames it holds from [from] to [to]
+  /// — the whole of it for its own span, or the part of it a span cut
+  /// otherwise stands on ([TimelineGridTileStore.standInFor]).
+  void _layTile(
+    TimelineGridScreenLaying laying,
+    TileStandIn tile,
+    int from,
+    int to,
+  ) {
+    final first = math.max(from, tile.spanStartIndex);
+    final last = math.min(to, tile.spanEndIndexExclusive);
+    final frames = tile.spanEndIndexExclusive - tile.spanStartIndex;
+    final size = Size(
+      tile.picture.width.toDouble(),
+      tile.picture.height.toDouble(),
+    );
+    final main = extentAlong(axis, size);
+    final src = rectAlong(
+      axis,
+      along: (
+        from: main * (first - tile.spanStartIndex) / frames,
+        to: main * (last - tile.spanStartIndex) / frames,
+      ),
+      across: (from: 0, to: extentAcross(axis, size)),
+    );
+    final dst = rectAlong(
+      axis,
+      along: (
+        from: startAlong(axis, cellRectFor(first)),
+        to: endAlong(axis, cellRectFor(last - 1)),
+      ),
+      across: (from: 0, to: crossAxisExtent),
+    );
+    laying.lay((picture: tile.picture, from: src, onto: dst));
+  }
+
   /// The tile grid's spans under [window], in order (`shown`), and the one
-  /// past each edge a paint keeps warm (`ahead`), the last cut at the
-  /// [builtFrames] the axis ends at — the grid rides the SHARED window
+  /// past each edge a paint keeps warm (`ahead`) — none from the
+  /// [builtFrames] the axis ends at on — the grid rides the SHARED window
   /// policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8: a row with a window draws
+  /// it whole ([TimelineFrameGeometry.rowDrawnFrames]), so its last tile is
+  /// a span like every other, not one cut where the axis ends; and a span
+  /// the axis ends before holds nothing a row draws, so it is asked for
+  /// nothing.
+  /// What a runway's growth reaches past the end is blank either way, and
+  /// no row is painted again for it. ↩️The last tile was cut at the axis'
+  /// end — a growth asked for it again. A row with no window still cuts it
+  /// there: it draws every frame up to the end.
   ({List<(int, int)> shown, List<(int, int)> ahead}) _tileGridIn(
     ({int startIndex, int endIndexExclusive}) window,
     int builtFrames,
   ) {
     final span = timelineFrameWindowSpanFor(frameCellExtent);
+    final cut = geometry.value.rowDrawsItsWindow(windowBucket)
+        ? null
+        : builtFrames;
     (int, int)? spanAt(int tile) {
       final start = tile * span;
-      final end = math.min(start + span, builtFrames);
-      return start < 0 || end <= start ? null : (start, end);
+      final end = math.min(start + span, cut ?? start + span);
+      return start < 0 || start >= builtFrames || end <= start
+          ? null
+          : (start, end);
     }
 
     final first = window.startIndex < 0 ? 0 : window.startIndex ~/ span;
@@ -1792,19 +1848,23 @@ class _RowCellsPicture extends StatelessWidget {
       // rail's own plate and name hear it.
       shown: RailEyes.of(context, layer).shown,
     );
-    // Named, not keyed (I-57, 10-13): the row shows one layer and then
-    // another in the same elements.
-    return Named(
-      '$keyPrefix-row-cells-${layer.id}',
-      child: CustomPaint(
-        painter: painter,
-        // The block duration labels ride HERE rather than as their own
-        // Positioned.fill CustomPaint: same geometry, same repaint trigger,
-        // two fewer render objects per row to lay out on a zoom step. A
-        // foreground painter that does not implement `hitTest` never absorbs
-        // a pointer, which is what the IgnorePointer around it used to
-        // guarantee.
-        foregroundPainter: foregroundPainterFor?.call(context, layer),
+    // The row lays its tiles on its grid's screen, where there is one
+    // ([TimelineGridScreenHost]); outside the name, which is the picture's.
+    return TimelineGridScreenSlot(
+      // Named, not keyed (I-57, 10-13): the row shows one layer and then
+      // another in the same elements.
+      child: Named(
+        '$keyPrefix-row-cells-${layer.id}',
+        child: CustomPaint(
+          painter: painter,
+          // The block duration labels ride HERE rather than as their own
+          // Positioned.fill CustomPaint: same geometry, same repaint trigger,
+          // two fewer render objects per row to lay out on a zoom step. A
+          // foreground painter that does not implement `hitTest` never
+          // absorbs a pointer, which is what the IgnorePointer around it
+          // used to guarantee.
+          foregroundPainter: foregroundPainterFor?.call(context, layer),
+        ),
       ),
     );
   }

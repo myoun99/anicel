@@ -22,7 +22,6 @@ void main() {
       budgets.viewerPages,
       reason: 'the sheets\' media images take one viewer\'s share (I-97)',
     );
-    expect(budgets.nativeUploads, 640 * mb);
     expect(budgets.tileImages, 512 * mb);
   });
 
@@ -75,7 +74,6 @@ void main() {
       budgets.playback ~/ 2,
       reason: 'a fixed 600MB that ignored the allowance would make it a lie',
     );
-    expect(half.nativeUploads, budgets.nativeUploads ~/ 2);
     // 유저 2026-09-16 (memory-allowance-Q2): 「천장을 걸 수 있는 것은 전부
     // 허용치 안으로」 — the two that sat outside until then.
     expect(half.imageCache, budgets.imageCache ~/ 2);
@@ -112,7 +110,7 @@ void main() {
     // 낡지않을구조로」 — the tab asks this, so a cache that gains a ceiling
     // moves inside without a word of UI changing.
     expect(CacheBudgetLine.covers('drawings'), isTrue);
-    expect(CacheBudgetLine.covers('layerImages'), isTrue, reason: 'playback');
+    expect(CacheBudgetLine.covers('framePictures'), isTrue, reason: 'playback');
     expect(CacheBudgetLine.covers('enginePool'), isTrue);
     expect(CacheBudgetLine.covers('imageCache'), isTrue);
     expect(CacheBudgetLine.covers('engineScratch'), isFalse);

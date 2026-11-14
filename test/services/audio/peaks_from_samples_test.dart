@@ -142,6 +142,20 @@ void main() {
       expect(peaks.peaks, hasLength(80));
       expect(peaks.durationFrames(ProjectFrameRate.fps24), 48);
     });
+
+    test('🎯pulled with a movie\'s pictures, it lasts that much less — '
+        '12.5125 s cover 301 frames of 24, and pulled by 1001/1000 exactly '
+        '300 (F-588)', () {
+      final peaks = AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(1001));
+      expect(peaks.durationFrames(ProjectFrameRate.fps24), 301);
+      expect(
+        peaks.durationFrames(
+          ProjectFrameRate.fps24,
+          pull: (numerator: 1001, denominator: 1000),
+        ),
+        300,
+      );
+    });
   });
 
   test('🎯folded a window at a time, the envelope is the whole buffer\'s — a '

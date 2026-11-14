@@ -11,18 +11,14 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// PROMOTION round: pen-up ADOPTS the tiles the live overlay already
 /// blended, instead of blending the whole stroke a second time. That is
 /// only allowed to be a performance change — the pixels the surface ends
 /// up holding must be the SAME BYTES the re-blending commit produces, in
-/// every blend mode, on both engines.
+/// every blend mode.
 ///
 /// The cases that could break it, each pinned below:
 ///  * a stroke that crosses its OWN ink (loop-back) — the one shape that
@@ -37,12 +33,7 @@ void main() {
   const canvasSize = CanvasSize(width: 192, height: 128);
   const tileSize = 64;
 
-  final dllPath = nativeEngineLibraryPathOrNull();
-
   tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
     BrushLiveStrokeRasterizer.residentResultByteBudget = 96 * 1024 * 1024;
   });
 
@@ -174,15 +165,13 @@ void main() {
         continue;
       }
       for (final coord in region.toTileCoords(tileSize: tileSize)) {
-        rasterizer
-            .preBlendedOverlayTile(
-              tileX: coord.x,
-              tileY: coord.y,
-              base: base,
-              mode: mode,
-              erase: erase,
-            )
-            ?.free();
+        rasterizer.preBlendedOverlayTile(
+          tileX: coord.x,
+          tileY: coord.y,
+          base: base,
+          mode: mode,
+          erase: erase,
+        );
       }
     }
     return rasterizer;
@@ -203,7 +192,8 @@ void main() {
     ).surface;
   }
 
-  void runPromotionParity({required String label}) {
+  test('promoted tiles == the re-blending commit, every mode, loop-back '
+      'stroke', () {
     for (final mode in BrushBlendMode.values) {
       final base = paintedBase();
       final erase = mode == BrushBlendMode.erase;
@@ -242,44 +232,15 @@ void main() {
       expectSameArtwork(
         promotedSurface,
         referenceSurface,
-        '$label ${mode.name}: promoted tiles == re-blending commit',
+        '${mode.name}: promoted tiles == re-blending commit',
       );
     }
-  }
-
-  test(
-    'promoted tiles == the re-blending commit, every mode, loop-back '
-    'stroke, Dart engine',
-    () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      expect(QaNativeEngine.instance, isNull);
-      runPromotionParity(label: 'dart');
-    },
-  );
-
-  test(
-    'promoted tiles == the re-blending commit, every mode, loop-back '
-    'stroke, NATIVE engine',
-    () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      runPromotionParity(label: 'native');
-    },
-  );
+  });
 
   test(
     'a starved resident budget still promotes the right pixels — dropped '
     'results simply re-blend at pen-up',
     () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
       // Room for ONE tile: every coordinate the brush leaves behind is
       // dropped, so pen-up re-blends nearly the whole stroke.
       BrushLiveStrokeRasterizer.residentResultByteBudget =
@@ -336,8 +297,6 @@ void main() {
     'a coordinate promoted after being painted over again ships the NEW '
     'pixels, not the stale resident result',
     () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
       final base = paintedBase();
       const mode = BrushBlendMode.color;
 
@@ -348,15 +307,13 @@ void main() {
       final first = [dab(x: 40.5, y: 40.5, sequence: 0)];
       rasterizer.blendFrom(first, from: 0);
       // Displayed: the coordinate's result is now resident at revision R.
-      rasterizer
-          .preBlendedOverlayTile(
-            tileX: 0,
-            tileY: 0,
-            base: base,
-            mode: mode,
-            erase: false,
-          )
-          ?.free();
+      rasterizer.preBlendedOverlayTile(
+        tileX: 0,
+        tileY: 0,
+        base: base,
+        mode: mode,
+        erase: false,
+      );
 
       // A second dab lands on the SAME coordinate without being displayed
       // (the decode had not come back yet) — the resident result is now a
@@ -392,8 +349,6 @@ void main() {
     'a touched-but-unchanged coordinate is never promoted — its tile keeps '
     'its identity (and its decoded image)',
     () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
       final base = paintedBase();
 
       // A fully transparent stroke: it touches tiles but changes nothing.
@@ -417,8 +372,6 @@ void main() {
   );
 
   test('an empty-base coordinate promotes a brand new tile', () {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = true;
     final base = BitmapSurface(canvasSize: canvasSize, tileSize: tileSize);
 
     final rasterizer = BrushLiveStrokeRasterizer(
@@ -455,83 +408,47 @@ void main() {
     }
   });
 
-  group('the budget lets the least recently SHOWN result go — one shown '
+  test('the budget lets the least recently SHOWN result go — one shown '
       'again is the newest', () {
-    /// Room for two results. One dab a coordinate along the top row, each
-    /// shown as it lands, and the first shown again before the third — so
-    /// the third lets the second go. [released] is what the third's showing
-    /// handed back to the engine.
-    ({BrushLiveStrokeRasterizer rasterizer, int released}) frontierOfTwo() {
-      BrushLiveStrokeRasterizer.residentResultByteBudget =
-          2 * tileSize * tileSize * 4;
-      final base = paintedBase();
-      final rasterizer = BrushLiveStrokeRasterizer(
-        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-        tileSize: tileSize,
-      );
-      final dabs = <BrushDab>[];
-      void land(int tileX) {
-        dabs.add(dab(x: tileX * 64 + 32.5, y: 32.5, sequence: dabs.length));
-        rasterizer.blendFrom(dabs, from: dabs.length - 1);
-      }
-
-      void show(int tileX) => rasterizer
-          .preBlendedOverlayTile(
-            tileX: tileX,
-            tileY: 0,
-            base: base,
-            mode: BrushBlendMode.color,
-            erase: false,
-          )
-          ?.free();
-
-      land(0);
-      show(0);
-      land(1);
-      show(1);
-      show(0);
-      land(2);
-      final before = QaNativeEngine.debugReleasedTileBuffers;
-      show(2);
-      return (
-        rasterizer: rasterizer,
-        released: QaNativeEngine.debugReleasedTileBuffers - before,
-      );
+    // Room for two results. One dab a coordinate along the top row, each
+    // shown as it lands, and the first shown again before the third — so
+    // the third lets the second go.
+    BrushLiveStrokeRasterizer.residentResultByteBudget =
+        2 * tileSize * tileSize * 4;
+    final base = paintedBase();
+    final rasterizer = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+      tileSize: tileSize,
+    );
+    final dabs = <BrushDab>[];
+    void land(int tileX) {
+      dabs.add(dab(x: tileX * 64 + 32.5, y: 32.5, sequence: dabs.length));
+      rasterizer.blendFrom(dabs, from: dabs.length - 1);
     }
 
-    void expectTheSecondWent(BrushLiveStrokeRasterizer rasterizer) {
-      expect(rasterizer.holdsResultAt(0, 0), isTrue, reason: 'shown again');
-      expect(
-        rasterizer.holdsResultAt(1, 0),
-        isFalse,
-        reason: 'the least recently shown',
-      );
-      expect(rasterizer.holdsResultAt(2, 0), isTrue, reason: 'the newest');
-    }
+    void show(int tileX) => rasterizer.preBlendedOverlayTile(
+      tileX: tileX,
+      tileY: 0,
+      base: base,
+      mode: BrushBlendMode.color,
+      erase: false,
+    );
 
-    test('Dart engine', () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      final (:rasterizer, released: _) = frontierOfTwo();
+    land(0);
+    show(0);
+    land(1);
+    show(1);
+    show(0);
+    land(2);
+    show(2);
 
-      expectTheSecondWent(rasterizer);
-      rasterizer.clear();
-    });
-
-    test('NATIVE engine — and the result let go of hands its block back', () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      final (:rasterizer, :released) = frontierOfTwo();
-
-      expectTheSecondWent(rasterizer);
-      expect(released, 1, reason: 'the second result\'s buffer');
-      rasterizer.clear();
-    });
+    expect(rasterizer.holdsResultAt(0, 0), isTrue, reason: 'shown again');
+    expect(
+      rasterizer.holdsResultAt(1, 0),
+      isFalse,
+      reason: 'the least recently shown',
+    );
+    expect(rasterizer.holdsResultAt(2, 0), isTrue, reason: 'the newest');
+    rasterizer.clear();
   });
 }

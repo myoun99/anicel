@@ -1,5 +1,6 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
-import 'dart:ui' show ImageByteFormat, PictureRecorder;
+import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -28,10 +29,12 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../helpers/a_resample_shown.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/the_frame_as_it_stands.dart';
 
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   BrushFrameKey key(String layerId) => BrushFrameKey(
@@ -49,7 +52,7 @@ void main() {
       frameStore: store,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
@@ -142,16 +145,12 @@ void main() {
       final cache = cacheWithStroke();
       final float = SelectionFloatOverlay(null);
       addTearDown(float.dispose);
-      final image = await tester.runAsync(() async {
-        final recorder = PictureRecorder();
-        Canvas(recorder, const Rect.fromLTWH(0, 0, 6, 2)).drawRect(
+      float.value = SelectionFloatPaint(
+        resampled: resampleShownOver(
           const Rect.fromLTWH(0, 0, 6, 2),
-          Paint()..color = const Color(0xFFFF0000),
-        );
-        return recorder.endRecording().toImage(6, 2);
-      });
-      addTearDown(image!.dispose);
-      float.value = SelectionFloatPaint(image: image, imageLeft: 0, imageTop: 0);
+          const [255, 0, 0, 255],
+        ),
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -173,7 +172,7 @@ void main() {
                     ),
                   ],
                   activeSurfacePainter: BitmapSurfacePainter(
-                    surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
+                    surface: BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
                     viewport: CanvasViewport(),
                     showTransparentBackground: false,
                   ),
@@ -220,17 +219,13 @@ void main() {
       final cache = cacheWithStroke();
       final float = SelectionFloatOverlay(null);
       addTearDown(float.dispose);
-      final image = await tester.runAsync(() async {
-        final recorder = PictureRecorder();
-        Canvas(recorder, const Rect.fromLTWH(0, 0, 2, 2)).drawRect(
-          const Rect.fromLTWH(0, 0, 2, 2),
-          Paint()..color = const Color(0xFFFF0000),
-        );
-        return recorder.endRecording().toImage(2, 2);
-      });
-      addTearDown(image!.dispose);
       // The box put the float at canvas (2,0)-(4,2).
-      float.value = SelectionFloatPaint(image: image, imageLeft: 2, imageTop: 0);
+      float.value = SelectionFloatPaint(
+        resampled: resampleShownOver(
+          const Rect.fromLTWH(2, 0, 2, 2),
+          const [255, 0, 0, 255],
+        ),
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -254,7 +249,7 @@ void main() {
                     ),
                   ],
                   activeSurfacePainter: BitmapSurfacePainter(
-                    surface: BitmapSurface(canvasSize: canvasSize, tileSize: 4),
+                    surface: BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
                     viewport: CanvasViewport(),
                     showTransparentBackground: false,
                   ),

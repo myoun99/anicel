@@ -35,14 +35,9 @@ class AudioScrubber {
     required this.resolveProject,
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
-    this.resolveSoloedLayerIds,
     this.resolveRecordingMutedLayerIds,
     this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance);
-
-  /// The session's solo set — a scrub monitors exactly what playback
-  /// would.
-  final Set<LayerId> Function()? resolveSoloedLayerIds;
 
   /// The armed lane while a take rolls (REC1-B) — a scrub mid-take
   /// monitors what playback does: everything but the armed lane.
@@ -168,7 +163,6 @@ class AudioScrubber {
       project: resolveProject(),
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
-      soloedLayerIds: resolveSoloedLayerIds?.call(),
       mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
     );
     if (schedule.isEmpty) {

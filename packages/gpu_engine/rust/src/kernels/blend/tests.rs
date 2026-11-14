@@ -4,7 +4,6 @@
 
 use std::sync::OnceLock;
 
-use wgpu::util::DeviceExt;
 
 use super::BLEND_WGSL;
 use super::mode::NORMAL;
@@ -91,13 +90,7 @@ fn run(cases: &[(u32, Rgba, Rgba)]) -> Vec<Rgba> {
         .flat_map(|(run, src, dst)| std::iter::once(run).chain(src).chain(dst))
         .flat_map(|word| word.to_le_bytes())
         .collect();
-    let input = engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("blend cases"),
-            contents: &words,
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+    let input = engine.filled("blend cases", &words, wgpu::BufferUsages::STORAGE);
     let size = (cases.len() * 16) as u64;
     let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("blend results"),

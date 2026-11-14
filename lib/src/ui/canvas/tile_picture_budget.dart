@@ -2,7 +2,6 @@ import '../../models/bitmap_tile.dart';
 import '../../services/memory_pressure_budget.dart';
 import 'after_frame_once.dart';
 import 'bitmap_tile_image_cache.dart';
-import 'pictured_tiles.dart';
 
 /// Lets the pictures nobody is showing go when the ones held add up to more
 /// than the device allows — least recently shown first, and never the ones
@@ -33,18 +32,12 @@ import 'pictured_tiles.dart';
 /// A 4K view of 128px tiles is 32MB of pictures, so the ceiling is a dozen
 /// screens of warm pictures beside the visible ones.
 class TilePictureBudget {
-  TilePictureBudget({BitmapTileImageCache? cache, PicturedTiles? pictured})
-    : _cache = cache ?? BitmapTileImageCache.instance,
-      _pictured = pictured ?? PicturedTiles.instance;
+  TilePictureBudget({BitmapTileImageCache? cache})
+    : _cache = cache ?? BitmapTileImageCache.instance;
 
   static final TilePictureBudget instance = TilePictureBudget();
 
-  /// The scope of a painter whose surface is nobody's cel — the selection
-  /// float: every float's paints are counted under it.
-  static final Object noLineage = Object();
-
   final BitmapTileImageCache _cache;
-  final PicturedTiles _pictured;
 
   /// This device's ceiling on tile pictures ([CacheBudgetLine.tileImages]);
   /// null RAM (no engine: tests, host runs) keeps the desktop-class ceiling,
@@ -123,7 +116,7 @@ class TilePictureBudget {
       return 0;
     }
     final candidates = <({int serial, BitmapTile tile})>[];
-    for (final tile in _pictured.alive()) {
+    for (final tile in _cache.pictured.alive()) {
       if (_cache.heldFor(tile) == null || _current(tile)) {
         continue;
       }

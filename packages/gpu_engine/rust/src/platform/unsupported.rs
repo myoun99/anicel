@@ -26,6 +26,11 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
     None
 }
 
-pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<u64> {
+pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     None
+}
+
+/// Why the device went — unsaid: there is none here to go.
+pub fn device_went_by(_device: &wgpu::Device) -> u32 {
+    super::WENT_UNSAID
 }

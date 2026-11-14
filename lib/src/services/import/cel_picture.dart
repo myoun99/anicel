@@ -27,7 +27,10 @@ import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
+import '../../native/qa_video_decoder.dart' show QaVideoInfo;
+import '../../native/tile_blocks.dart';
 import '../media/png_reading.dart';
+import '../media/video_decode_worker.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import '../straight_rgba_image.dart';
 
@@ -41,20 +44,20 @@ import '../straight_rgba_image.dart';
 /// 10-20), so a test names the side ([debugPictureSideLimit]); every test
 /// stands at that one (`flutter_test_config.dart`), as a `testWidgets`
 /// clock never waits the measurement out.
+///
+/// ↩️A compose past it was held in pieces inside it too (`piecesOver`,
+/// 🗣️유저 2026-10-21, a-cel-past-the-device-side-composes-smaller-Q1 「나눠
+/// 든다」 — playback and export show the file's pixels as they are), the
+/// side read once after the first frame for a compose inside a build, till
+/// every row stood on the engine's tiles and the Flutter chain went
+/// (the-flutter-fx-chain-is-a-second-chain).
 Future<int> pictureSideLimit() {
   final named = debugPictureSideLimit;
   if (named != null) {
     return Future<int>.value(named);
   }
-  return _measuredSide ??= _measureSide().then((side) => _sideRead = side);
+  return _measuredSide ??= _measureSide();
 }
-
-/// [pictureSideLimit]'s answer once it has been read — or the side a test
-/// names — and null before: for a compose made inside a build, which
-/// cannot wait for it (`piecesOver`).
-int? get pictureSideLimitIfMeasured => debugPictureSideLimit ?? _sideRead;
-
-int? _sideRead;
 
 /// The side a test stands this device's engine at, in place of
 /// [pictureSideLimit]'s measurement — or null.
@@ -89,20 +92,35 @@ Future<int> _measureSide() async {
 bool isPastTheSide(int width, int height, int side) =>
     width > side || height > side;
 
-/// Straight-RGBA [rgba] — a Photoshop document's composite or a layer of
-/// it — as a picture an import lays: uploaded, or, longer on a side than
-/// the engine hands back, its pixels as they are ([PixelsPicture]).
-Future<CelPicture> pictureOfPixels(
-  Uint8List rgba, {
-  required int width,
-  required int height,
-}) async {
+/// Frame [index] of the movie [token] names on [backend] — [info] its
+/// facts — as a picture an import lays, or null when the
+/// frame does not decode. Within the engine's side the frame is asked for
+/// premultiplied, so its premultiply is the decoder's side's and this
+/// isolate only uploads it ([VideoDecodeBackend.premultipliedFrame]).
+///
+/// ONE read of a movie frame as a picture: a movie row's cel on the canvas
+/// (`movie_cel_hydrator`) and the door that bakes a movie's frames
+/// (`project_import_doors`) each asked for the straight frame and made
+/// their picture of it here, premultiplying it on the isolate that paints.
+Future<CelPicture?> pictureOfMovieFrame(
+  VideoDecodeBackend backend,
+  int token,
+  int index,
+  QaVideoInfo info,
+) async {
+  final QaVideoInfo(:width, :height) = info;
   if (isPastTheSide(width, height, await pictureSideLimit())) {
-    return PixelsPicture(rgba, width: width, height: height);
+    final rgba = await backend.frame(token, index);
+    return rgba == null
+        ? null
+        : PixelsPicture(rgba, width: width, height: height);
   }
-  return EnginePicture(
-    await decodeStraightRgbaImage(rgba: rgba, width: width, height: height),
-  );
+  final premultiplied = await backend.premultipliedFrame(token, index);
+  return premultiplied == null
+      ? null
+      : EnginePicture(
+          await uploadRawRgba(premultiplied, width: width, height: height),
+        );
 }
 
 /// A picture an import lays on cels ([layCelPicture]): its own size, its
@@ -166,9 +184,9 @@ final class FilePicture extends CelPicture {
   void dispose() {}
 }
 
-/// A picture past the engine's side whose pixels are in hand — a Photoshop
-/// document's, an animation's frame, a file read whole to be resampled:
-/// straight RGBA, row after row.
+/// A picture whose pixels are in hand — a Photoshop document's or a layer
+/// of it, an animation's frame past the engine's side, a file read whole
+/// to be resampled: straight RGBA, row after row.
 final class PixelsPicture extends CelPicture {
   const PixelsPicture(this.rgba, {required this.width, required this.height});
 
@@ -211,18 +229,16 @@ typedef CelLayout = ({
 /// canvas, on whole pixels, and the [layout] its lay makes.
 typedef PictureCut = ({int left, int top, CelLayout layout});
 
-/// [picture]'s file read on a worker and cut into tile blocks there, from
-/// the allocator of the isolate that adopts them ([BitmapTile.blocks]) —
-/// the cel-thaw's road (`layCelInWorker`): the main isolate copies nothing
-/// and the picture is never held whole, only its tiles and the row of them
+/// [picture]'s file read on a worker and cut into tile blocks there — the
+/// cel-thaw's road (`layCelInWorker`): the main isolate copies nothing and
+/// the picture is never held whole, only its tiles and the row of them
 /// under way.
 Future<AnicelLaidCel> cutFileInWorker(FilePicture picture, PictureCut cut) {
   final sent = TransferableTypedData.fromList([picture.bytes]);
-  final blocks = BitmapTile.blocks;
   final width = picture.width;
   final height = picture.height;
   return onAWorker(() {
-    final cutter = TileCutter(cut, width, tileBlocksHere(blocks));
+    final cutter = TileCutter(cut, width);
     try {
       readFileRows(
         sent.materialize().asUint8List(),
@@ -257,15 +273,10 @@ Future<PixelsPicture> readFileInWorker(FilePicture picture) {
   });
 }
 
-/// [picture]'s pixels cut into tile blocks here, from this isolate's own
-/// allocator — for pixels already in hand ([cutFileInWorker]'s cut, by the
-/// same [TileCutter]).
+/// [picture]'s pixels cut into tile blocks here — for pixels already in
+/// hand ([cutFileInWorker]'s cut, by the same [TileCutter]).
 AnicelLaidCel cutPixels(PixelsPicture picture, PictureCut cut) {
-  final cutter = TileCutter(
-    cut,
-    picture.width,
-    tileBlocksHere(BitmapTile.blocks),
-  );
+  final cutter = TileCutter(cut, picture.width);
   try {
     picture.rows(cutter.row);
     return cutter.finish();
@@ -398,15 +409,14 @@ readFramesInWorker(Uint8List bytes) {
   );
 }
 
-/// Rows of a picture laid 1:1 ([PictureCut]) written into tile blocks from
-/// [hands] as they arrive: the tiles of one tile row are open at a time,
-/// and a tile the picture left clear goes back as it closes.
+/// Rows of a picture laid 1:1 ([PictureCut]) written into tile blocks
+/// ([TileBlocks]) as they arrive: the tiles of one tile row are open at a
+/// time, and a tile the picture left clear goes back as it closes.
 final class TileCutter {
-  TileCutter(this.cut, this.width, this.hands);
+  TileCutter(this.cut, this.width);
 
   final PictureCut cut;
   final int width;
-  final TileBlockHands hands;
 
   final _done = <({int x, int y, int pixels})>[];
   final _open = <int, ({Pointer<Uint8> block, Uint8List view})>{};
@@ -445,7 +455,7 @@ final class TileCutter {
   ({Pointer<Uint8> block, Uint8List view}) _blockAt(int tileX) =>
       _open.putIfAbsent(tileX, () {
         final length = BitmapTile.bytesFor(_side);
-        final block = hands.allocate(length);
+        final block = TileBlocks.alloc(length);
         final view = block.asTypedList(length)..fillRange(0, length, 0);
         return (block: block, view: view);
       });
@@ -456,7 +466,7 @@ final class TileCutter {
       if (tileY != null && _anyInk(open.view)) {
         _done.add((x: tileX, y: tileY, pixels: open.block.address));
       } else {
-        hands.free(open.block);
+        TileBlocks.free(open.block);
       }
     }
     _open.clear();
@@ -471,8 +481,8 @@ final class TileCutter {
     return false;
   }
 
-  /// The cel the rows made: its tiles' blocks, for the isolate whose
-  /// allocator they came from to adopt (`laidCelSurface`).
+  /// The cel the rows made: its tiles' blocks, to adopt
+  /// (`laidCelSurface`).
   AnicelLaidCel finish() {
     _close();
     return (
@@ -488,11 +498,11 @@ final class TileCutter {
   /// Every block taken, given back — a cut that failed part-way.
   void giveBack() {
     for (final open in _open.values) {
-      hands.free(open.block);
+      TileBlocks.free(open.block);
     }
     _open.clear();
     for (final tile in _done) {
-      hands.free(Pointer<Uint8>.fromAddress(tile.pixels));
+      TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
     }
     _done.clear();
   }

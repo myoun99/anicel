@@ -4,8 +4,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
@@ -15,60 +13,32 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import '../../helpers/adts_from_m4a.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/pcm_movie.dart';
 import '../../helpers/project_scratch_folder.dart';
 
-/// The OS decoder (AAC/m4a), driven for real against the platform codec
-/// stack: Media Foundation here on Windows, AudioToolbox when this suite
-/// runs on the macOS CI runner. The fixture is a generated 440 Hz sine at
-/// -6 dB, 0.5 s, 44.1k stereo — so the assertions are physics, not
-/// hand-waving: the rate and channel count must come back exactly, the
-/// length within AAC's priming/padding slack, the mid-file peak near the
-/// encoded amplitude.
+/// A movie's AAC (m4a), driven for real through the engine's decoder — the
+/// bundled one on every platform since the connection round
+/// (connection-round-checklist H, 2026-11-08; native-to-rust-Q6). The
+/// fixture is a generated 440 Hz sine at -6 dB, 0.5 s, 44.1k stereo — so the
+/// assertions are physics, not hand-waving: the rate and channel count must
+/// come back exactly, the length within AAC's priming/padding slack, the
+/// mid-file peak near the encoded amplitude. ↩️It was the OS decoder's
+/// (Media Foundation here on Windows, AudioToolbox on the macOS CI runner)
+/// until then, and undecodable on Linux, which has none: what only the OS
+/// reads now — HE-AAC, WMA — is held in native/audio's `tests/os.rs`.
 ///
 /// Beside it, a movie's uncompressed sound, which the engine reads itself on
 /// every platform (board mac-reads-no-movie-pcm): where a movie's sound
-/// starts is one law whichever of the two read it.
+/// starts is one law whichever decoder read it.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaAudioDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
-  tearDown(() {
-    QaAudioDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
-
   const fixturePath = 'test/fixtures/tone.m4a';
   Uint8List fixtureBytes() => File(fixturePath).readAsBytesSync();
 
-  test('m4a decodes through the OS codec stack where one exists — and is '
-      'honestly undecodable where none does', () {
-    final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull, reason: 'the binary did not bind');
+  test('an m4a decodes through the bundled decoder on every platform', () {
     final decoded = decodeAudioFile(fixturePath);
 
-    if (Platform.isLinux) {
-      // Not a shipping platform and no OS codec to lean on: undecodable,
-      // which is the definitive answer that leaves the waveform blank.
-      expect(decoded, isNull);
-      return;
-    }
-
-    expect(
-      decoded,
-      isNotNull,
-      reason: 'the OS decoder should have carried this m4a',
-    );
-    expect(decoded!.format, QaAudioFormat.os);
+    expect(decoded, isNotNull, reason: 'the bundled decoder reads this m4a');
+    expect(decoded!.format, QaAudioFormat.aac);
     expect(decoded.sampleRate, 44100);
     expect(decoded.channels, 2);
     // 0.5 s at 44.1k = 22050 frames; AAC priming/padding moves the edges
@@ -89,28 +59,16 @@ void main() {
       inInclusiveRange(0.35, 0.65),
       reason: 'expected roughly the encoded -6 dB amplitude, got $peak',
     );
-  }, skip: skip);
+  });
 
-  test('an m4a conforms END-TO-END: OS decode, resample to the project '
-      'rate, peaks — the whole import chain in one call', () {
+  test('an m4a conforms END-TO-END: decode, resample to the project rate, '
+      'peaks — the whole import chain in one call', () {
     final result = runConformHere(
-      ConformRequest(
+      const ConformRequest(
         sourcePath: 'test/fixtures/tone.m4a',
         conformPath: null, // memory-only, like an unsaved project
-        libraryPathOverride: libraryPath,
       ),
     );
-
-    if (Platform.isLinux) {
-      expect(
-        result.outcome,
-        ConformOutcome.undecodable,
-        reason:
-            'no OS codec stack on the Linux runner — the definitive '
-            'answer that routes m4a to the fallback there',
-      );
-      return;
-    }
 
     expect(result.outcome, ConformOutcome.built);
     expect(
@@ -129,17 +87,15 @@ void main() {
       peak = math.max(peak, value);
     }
     expect(peak, inInclusiveRange(0.35, 0.65));
-  }, skip: skip);
+  });
 
-  test('ogg decodes through the BUNDLED stb_vorbis on every platform — '
-      'the last format that used to lean on ffmpeg', () {
-    final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
+  test('ogg decodes through the BUNDLED decoder on every platform — the last '
+      'format that used to lean on ffmpeg', () {
     final decoded = decodeAudioFile('test/fixtures/tone.ogg');
     expect(
       decoded,
       isNotNull,
-      reason: 'stb_vorbis is vendored — no platform stack involved',
+      reason: 'the decoder is bundled — no platform stack involved',
     );
     expect(decoded!.format, QaAudioFormat.vorbis);
     expect(decoded.sampleRate, 44100);
@@ -152,12 +108,10 @@ void main() {
       peak = math.max(peak, decoded.samples[index].abs());
     }
     expect(peak, inInclusiveRange(0.35, 0.65));
-  }, skip: skip);
+  });
 
-  test('dr_libs formats never route to the OS path (wav stays byte-pinned '
-      'on its single decoder)', () {
-    final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
+  test('the bundled formats never route to the OS path (wav stays '
+      'byte-pinned on its single decoder)', () {
     // A tiny valid WAV — a FOREIGN format now, built by the writer the
     // export uses.
     final wav = wav16(
@@ -170,41 +124,41 @@ void main() {
     expect(
       decoded!.format,
       QaAudioFormat.wav,
-      reason: 'WAV must stay on dr_wav on every platform',
+      reason: 'WAV must stay on the bundled WAV reader on every platform',
     );
-  }, skip: skip);
+  });
 
-  test('a movie\'s uncompressed sound is never dr_mp3\'s — the engine reads '
-      'it itself, on every platform', () {
+  test('a movie\'s uncompressed sound is never the MP3 decoder\'s — the '
+      'engine reads it itself, on every platform', () {
     // 🚨The head decides who may try (user 10-09, board
     // sound-lands-on-its-exact-sample-Q2). This movie's quiet half is what
-    // dr_mp3 synced on before it did: 1,920 frames of noise at 44.1 kHz.
+    // an MP3 decoder syncs on when it may try: dr_mp3, the C's until the
+    // connection round, made 1,920 frames of noise at 44.1 kHz of it.
     // 🚨And no OS stack is asked (board mac-reads-no-movie-pcm): AudioToolbox
     // read nothing of this movie on the macOS CI runner (10-15), where Media
-    // Foundation read it exactly — the C range test pins each way a writer
-    // stores such a sound, and the control below what this one holds.
-    final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
+    // Foundation read it exactly — native/audio's `tests/movies.rs` pins each
+    // way a writer stores such a sound, and the control below what this one
+    // holds.
     final decoded = decodeAudioBytes(pcmMovie(_roomToneThenTone()));
 
     expect(
       decoded?.format,
       isNot(QaAudioFormat.mp3),
-      reason: 'a QuickTime head must keep dr_mp3 away from the movie',
+      reason: 'a QuickTime head must keep the MP3 decoder away',
     );
     expect(decoded, isNotNull, reason: 'the engine reads it on every platform');
     expect(decoded!.format, QaAudioFormat.moviePcm);
     expect(decoded.sampleRate, 48000);
     expect(decoded.channels, 2);
-  }, skip: skip);
+  });
 
   // -------------------------------------------------------------------------
   // 🚨★★★WHERE A SOUND STARTS (user 10-09, board
   // sound-lands-on-its-exact-sample-Q3 · Q4). An encoder puts frames of its
   // own before the sound; the file says how many, and the engine takes
-  // exactly those off — whichever decoder read it, an OS stack or the
-  // engine's own movie reader. The C range test pins the MP3 half (a LAME
-  // tag, and the standard 1,105 without one).
+  // exactly those off — whichever decoder read it, a codec or the engine's
+  // own movie reader. native/audio's `tests/wavs.rs` pins the MP3 half (a
+  // LAME tag, and the standard 1,105 without one).
 
   test('a movie\'s edit list says where its sound starts — taken to the '
       'frame, uncompressed so nothing smears, however the movie is laid '
@@ -245,15 +199,11 @@ void main() {
         }
       }
     }
-  }, skip: skip);
+  });
 
   test('an m4a starts on its sound — the sine on frame 0, not 1,024 frames '
       'of its encoder\'s later — and runs as long as its edit list says', () {
     final decoded = decodeAudioFile(fixturePath);
-    if (Platform.isLinux) {
-      expect(decoded, isNull);
-      return;
-    }
     expect(decoded, isNotNull);
     expect(
       _sineLag(decoded!),
@@ -261,7 +211,7 @@ void main() {
       reason: 'the edit list says the sound starts 1,024 frames in',
     );
     expect(decoded.length, 22050, reason: 'and plays half a second');
-  }, skip: skip);
+  });
 
   test('a bare .aac has no box to say it in — the standard 1,024 comes off',
       () {
@@ -275,15 +225,11 @@ void main() {
       ('behind an ID3 tag', Uint8List.fromList([...id3, ...adts])),
     ]) {
       final decoded = decodeAudioBytes(bytes);
-      if (Platform.isLinux) {
-        expect(decoded, isNull, reason: shape);
-        continue;
-      }
-      expect(decoded, isNotNull, reason: '$shape: the OS stack reads ADTS');
-      expect(decoded!.format, QaAudioFormat.os, reason: shape);
+      expect(decoded, isNotNull, reason: '$shape: the decoder reads ADTS');
+      expect(decoded!.format, QaAudioFormat.aac, reason: shape);
       expect(_sineLag(decoded), 0, reason: shape);
     }
-  }, skip: skip);
+  });
 
   test('🎯a movie that says nothing takes AAC\'s standard 1,024 off — the m4a '
       'without its edit list starts on the same frame as with it (user '
@@ -292,10 +238,6 @@ void main() {
     final silent = decodeAudioBytes(
       _renamed(fixtureBytes(), ['moov', 'trak', 'edts'], 'free'),
     );
-    if (Platform.isLinux) {
-      expect((said, silent), (null, null));
-      return;
-    }
     expect(said, isNotNull);
     expect(silent, isNotNull, reason: 'a skipped box is no reason to refuse');
     for (var index = 0; index < said!.length * said.channels; index += 1) {
@@ -304,7 +246,7 @@ void main() {
             'list, ${said.samples[index]} with it');
       }
     }
-  }, skip: skip);
+  });
 
   test('🎯a movie that says it only in the note iTunes leaves starts where '
       'the note says — Apple\'s 2,112, not the standard, and for as long as '
@@ -331,10 +273,6 @@ void main() {
       ),
     ]) {
       final told = decodeAudioBytes(bytes);
-      if (Platform.isLinux) {
-        expect((standard, told), (null, null), reason: shape);
-        continue;
-      }
       expect(standard, isNotNull);
       expect(told, isNotNull, reason: '$shape: a note is no reason to refuse');
       expect(
@@ -350,16 +288,12 @@ void main() {
         }
       }
     }
-  }, skip: skip);
+  });
 
   test('⚠️where the sound track has an edit list, the edit list says it — a '
       'note beside it is not read', () {
     final said = decodeAudioFile(fixturePath);
     final both = decodeAudioBytes(_withITunesNote(fixtureBytes(), _appleNote));
-    if (Platform.isLinux) {
-      expect((said, both), (null, null));
-      return;
-    }
     expect(said, isNotNull);
     expect(both, isNotNull);
     expect(both!.length, said!.length);
@@ -368,7 +302,7 @@ void main() {
         fail('sample $index is not the edit list\'s');
       }
     }
-  }, skip: skip);
+  });
 
   test('🎯unless Media Foundation wrote it: the mark its writer leaves keeps '
       'the standard off — the same movie without the mark starts one AAC '
@@ -377,10 +311,6 @@ void main() {
     final bytes = File('test/fixtures/tone_with_video.mp4').readAsBytesSync();
     final marked = decodeAudioBytes(bytes);
     final unmarked = decodeAudioBytes(_renamed(bytes, ['uuid'], 'free'));
-    if (Platform.isLinux) {
-      expect((marked, unmarked), (null, null));
-      return;
-    }
     expect(marked, isNotNull);
     expect(unmarked, isNotNull);
     expect(unmarked!.length, marked!.length - 1024);
@@ -391,7 +321,7 @@ void main() {
             '${index + 1024 * channels}');
       }
     }
-  }, skip: skip);
+  });
 
   test('⛔CONTROL: a movie of uncompressed sound that says nothing loses '
       'nothing — its format has no delay to take', () {
@@ -406,40 +336,39 @@ void main() {
         fail('sample $index is $got, written ${samples[index]}');
       }
     }
-  }, skip: skip);
+  });
 
-  test('🔬AAC in a QuickTime movie decodes as the m4a does — or says this '
-      'stack does not read a QuickTime movie\'s AAC either (board '
-      'mac-reads-no-movie-pcm: whether a Mac refuses a movie\'s PCM for the '
-      'sound or for the movie)', () {
+  // ↩️🔬It asked, while the OS stack read a movie's AAC, whether a Mac
+  // refused a movie's PCM for the sound or for the movie (board
+  // mac-reads-no-movie-pcm), and skipped where the stack read no QuickTime
+  // AAC. The bundled decoder reads both, on every platform, since the
+  // connection round (connection-round-checklist H, 2026-11-08).
+  test('AAC in a QuickTime movie decodes as the m4a does', () {
     final m4a = decodeAudioFile(fixturePath);
     final movie = decodeAudioBytes(_quickTimeBranded(fixtureBytes()));
-    if (Platform.isLinux) {
-      expect((m4a, movie), (null, null));
-      return;
-    }
     expect(m4a, isNotNull);
-    if (movie == null && !Platform.isWindows) {
-      markTestSkipped('this OS stack does not read a QuickTime movie\'s AAC');
-      return;
-    }
-    expect(movie, isNotNull, reason: 'Media Foundation reads a QuickTime one');
+    expect(movie, isNotNull, reason: 'the decoder reads a QuickTime one');
     expect(movie!.length, m4a!.length);
     for (var index = 0; index < m4a.length * m4a.channels; index += 1) {
       if (movie.samples[index] != m4a.samples[index]) {
         fail('sample $index is not the m4a\'s');
       }
     }
-  }, skip: skip);
+  });
 
   test('a movie this app exported comes back with its sound where it was '
       'written — whichever OS wrote it', () {
-    // Media Foundation's encoder writes no edit list, and its sound is
-    // already in place (measured 10-09) — its mark keeps the standard delay
-    // off (Q7). Wherever else this runs (the Mac's AVAssetWriter in CI), the
-    // export must say where its sound starts some way the decode reads, or
-    // the standard comes off a sound that had none: this is the pin that
-    // asks.
+    // Windows' export puts a frame of its own before the sound and writes
+    // the edit list that takes it off (유저 2026-11-10, board
+    // an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2), and the decode
+    // follows a movie's list before it asks for Media Foundation's mark.
+    // Wherever else this runs (the Mac's AVAssetWriter in CI), the export
+    // must say where its sound starts some way the decode reads, or the
+    // standard comes off a sound that had none: this is the pin that asks.
+    //
+    // ↩️Until then Media Foundation's movie held no edit list, and its mark
+    // alone kept the standard delay off (Q7, measured 10-09): its sound was
+    // in place, and faded in over its first 576 samples (the test below).
     final directory = Directory.systemTemp.createTempSync('qa_export_click');
     deleteAfterSessionEnds(directory);
     final path = '${directory.path}${Platform.pathSeparator}click.mp4';
@@ -476,7 +405,56 @@ void main() {
       inInclusiveRange(clickAt - 2, clickAt + 2),
       reason: 'the click came back at $peakAt, written at $clickAt',
     );
-  }, skip: skip);
+  });
+
+  test('🚨a sound that starts on the movie\'s first sample comes back whole '
+      'from that sample — whichever OS wrote it (유저 11-10: 「ffmpeg처럼 '
+      '하는게 맘에들긴해. 더 좋기만 한거니까」)', () {
+    // An AAC encoder hands back its first block faded in — nothing came
+    // before it to overlap. Media Foundation writes no block before the
+    // sound, so a movie this app exported came back silent for its first
+    // 448 samples and rising until 576 (48 kHz, measured 2026-11-10, board
+    // an-mp4-reopened-loses-its-first-9-ms-of-sound). Windows' writer puts
+    // one there now and says so in the movie (-Q2; native/video
+    // `export/windows.rs`, `AUDIO_LEAD`).
+    final directory = Directory.systemTemp.createTempSync('qa_export_head');
+    deleteAfterSessionEnds(directory);
+    final path = '${directory.path}${Platform.pathSeparator}head.mp4';
+    const rate = 48000;
+    if (!writeEncodedMovie(
+      path,
+      frames: 24,
+      sampleRate: rate,
+      sound: (sample) =>
+          (12000 * math.sin(2 * math.pi * 1000 * sample / rate)).round(),
+    )) {
+      return;
+    }
+
+    final decoded = decodeAudioFile(path);
+    expect(decoded, isNotNull);
+    double loudness(int from, int to) {
+      var squares = 0.0;
+      for (var index = from; index < to; index += 1) {
+        final value = decoded!.samples[index * decoded.channels];
+        squares += value * value;
+      }
+      return math.sqrt(squares / (to - from));
+    }
+
+    final head = loudness(0, 448);
+    final body = loudness(2048, 4096);
+    expect(
+      head,
+      greaterThan(body / 2),
+      reason: 'its first 448 samples sound $head where the tone sounds $body',
+    );
+    if (Platform.isWindows) {
+      // What this app's writer says of its own movie: as much sound as was
+      // written, not a block more. The Mac's muxer says its own.
+      expect(decoded!.length, rate, reason: 'a second of sound was written');
+    }
+  });
 
   test('a window of a sound is the whole decode\'s own frames, and only '
       'those are held — a movie\'s PCM, an m4a, an ogg', () {
@@ -485,7 +463,6 @@ void main() {
     // be the whole decode's frames exactly — through the edit list's lead,
     // the m4a's 1,024, whichever stack decoded it.
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final directory = Directory.systemTemp.createTempSync('qa_window');
     deleteAfterSessionEnds(directory);
     final movie = pcmMovie(
@@ -500,16 +477,13 @@ void main() {
       final path = '${directory.path}${Platform.pathSeparator}sound';
       File(path).writeAsBytesSync(bytes);
       QaDecodedAudio? decode([({int start, int count})? window]) =>
-          decoder!.decodeSpan(
+          decoder.decodeSpan(
             (path: path, offset: 0, length: bytes.length, framed: false),
             window: window,
           );
       final whole = decode();
-      if (whole == null) {
-        expect(Platform.isLinux, isTrue, reason: '$what: nothing decoded it');
-        continue;
-      }
-      final channels = whole.channels;
+      expect(whole, isNotNull, reason: '$what: the decoder reads it');
+      final channels = whole!.channels;
 
       final probe = decode((start: 0, count: 0));
       expect(probe, isNotNull, reason: '$what: the probe answers');
@@ -530,15 +504,16 @@ void main() {
       expect(past, isNotNull, reason: '$what: past the end is silence');
       expect(past!.length, 0, reason: what);
     }
-  }, skip: skip);
+  });
 
   // -------------------------------------------------------------------------
   // A container that is a RANGE of a file.
   //
-  // 🚨★★★What the C test next door CANNOT reach: it builds a WAV, so it never
-  // gets past dr_wav and the OS stack's own range plumbing — an
-  // `IMFByteStream` on Windows, resource-loader callbacks on Apple — is never
-  // asked anything. These fixtures are real encoded files, so they are.
+  // 🚨★★★What a test that builds a WAV CANNOT reach: it never gets past the
+  // WAV reader, and a codec's own range plumbing is never asked anything.
+  // These fixtures are real encoded files, so it is. ↩️(The C range test
+  // next door was that test, and the plumbing Media Foundation's
+  // `IMFByteStream` and Apple's resource loader, until the connection round.)
 
   /// Writes [bytes] into a file with junk on both sides, and says where they
   /// landed. The junk is the point: an offset that is ignored reads it.
@@ -565,11 +540,10 @@ void main() {
   test('an ogg inside a bigger file decodes from its RANGE, identically to '
       'the same file read whole', () {
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final bytes = File('test/fixtures/tone.ogg').readAsBytesSync();
     final at = buried(bytes, 'carried.ogg');
 
-    final ranged = decoder!.decodeSpan((
+    final ranged = decoder.decodeSpan((
       path: at.path,
       offset: at.offset,
       length: at.length,
@@ -578,8 +552,8 @@ void main() {
     expect(
       ranged,
       isNotNull,
-      reason: 'stb_vorbis reads a FILE section — no platform stack involved, '
-          'so this must hold on every runner including Linux',
+      reason: 'the bundled decoder reads a FILE section — no platform stack '
+          'involved, so this must hold on every runner including Linux',
     );
     expect(ranged!.format, QaAudioFormat.vorbis);
 
@@ -590,34 +564,25 @@ void main() {
     expect(ranged.sampleRate, assembled.sampleRate);
     expect(ranged.samples.length, assembled.samples.length);
     expect(ranged.samples, orderedEquals(assembled.samples));
-  }, skip: skip);
+  });
 
-  test('an m4a inside a bigger file decodes from its RANGE through the OS '
-      'codec stack', () {
+  test('an m4a inside a bigger file decodes from its RANGE', () {
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final at = buried(fixtureBytes(), 'carried.m4a');
-    final ranged = decoder!.decodeSpan((
+    final ranged = decoder.decodeSpan((
       path: at.path,
       offset: at.offset,
       length: at.length,
       framed: false,
     ));
 
-    if (Platform.isLinux) {
-      // No OS codec to lean on — undecodable, the same honest answer the
-      // whole file gives there.
-      expect(ranged, isNull);
-      return;
-    }
-
     expect(
       ranged,
       isNotNull,
-      reason: 'the OS decoder must reach a container that starts at an '
+      reason: 'the decoder must reach a container that starts at an '
           'offset — this is the whole carried-media case',
     );
-    expect(ranged!.format, QaAudioFormat.os);
+    expect(ranged!.format, QaAudioFormat.aac);
     expect(ranged.sampleRate, 44100);
     expect(ranged.channels, 2);
     expect(ranged.length, inInclusiveRange(19000, 25000));
@@ -632,7 +597,7 @@ void main() {
       inInclusiveRange(0.35, 0.65),
       reason: 'the range must carry the same sine, not the junk around it',
     );
-  }, skip: skip);
+  });
 
   test('a sound INSIDE the project file conforms end to end — source range, '
       'streamed fingerprint, decode in place', () {
@@ -650,14 +615,8 @@ void main() {
           dataOffset: at.offset,
           length: at.length,
         ),
-        libraryPathOverride: libraryPath,
       ),
     );
-
-    if (Platform.isLinux) {
-      expect(result.outcome, ConformOutcome.undecodable);
-      return;
-    }
 
     expect(
       result.outcome,
@@ -677,43 +636,35 @@ void main() {
       reason: 'the -6 dB sine has to survive being read out of the middle '
           'of a bigger file',
     );
-  }, skip: skip);
+  });
 
   test('a movie WITH A VIDEO TRACK gives up its soundtrack — whole file and '
       'from a range', () {
     // 🚨★★★**THE ONE THING THE m4a FIXTURE COULD NOT PROVE.** Every other
-    // test here uses audio-only containers, so 「the OS reader picks the
+    // test here uses audio-only containers, so 「the reader picks the
     // AUDIO stream out of a file that also has video」 was standard
     // behaviour this repo had never run — and it is the entire point of
     // letting the conform see a movie. `tone_with_video.mp4` is 0.5 s of
     // 64x48 H.264 with the same 440 Hz sine at -6 dB, written by this app's
     // OWN encoder so the fixture needs no outside tool to regenerate.
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final bytes = File('test/fixtures/tone_with_video.mp4').readAsBytesSync();
     final at = buried(bytes, 'carried.mp4');
 
     final whole = decodeAudioFile('test/fixtures/tone_with_video.mp4');
-    final ranged = decoder!.decodeSpan((
+    final ranged = decoder.decodeSpan((
       path: at.path,
       offset: at.offset,
       length: at.length,
       framed: false,
     ));
 
-    if (Platform.isLinux) {
-      // No OS codec stack — the same honest answer as every other AAC here.
-      expect(whole, isNull);
-      expect(ranged, isNull);
-      return;
-    }
-
     for (final (what, decoded) in [
       ('the whole file', whole),
       ('a range inside a bigger file', ranged),
     ]) {
       expect(decoded, isNotNull, reason: '$what: nothing came back');
-      expect(decoded!.format, QaAudioFormat.os, reason: what);
+      expect(decoded!.format, QaAudioFormat.aac, reason: what);
       expect(decoded.sampleRate, 44100, reason: what);
       expect(decoded.channels, 2, reason: what);
       expect(decoded.length, inInclusiveRange(19000, 25000), reason: what);
@@ -730,7 +681,7 @@ void main() {
             'handed back the VIDEO stream, or silence, fails here',
       );
     }
-  }, skip: skip);
+  });
 
   test('a movie conforms like any other sound — the round\'s whole claim, '
       'end to end', () {
@@ -747,14 +698,8 @@ void main() {
           dataOffset: at.offset,
           length: at.length,
         ),
-        libraryPathOverride: libraryPath,
       ),
     );
-
-    if (Platform.isLinux) {
-      expect(result.outcome, ConformOutcome.undecodable);
-      return;
-    }
 
     expect(
       result.outcome,
@@ -768,17 +713,16 @@ void main() {
       peak = math.max(peak, value);
     }
     expect(peak, inInclusiveRange(0.35, 0.65));
-  }, skip: skip);
+  });
 
   test('a range that is not inside the file is refused, and the junk around '
       'a container is not audio', () {
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final bytes = File('test/fixtures/tone.ogg').readAsBytesSync();
     final at = buried(bytes, 'carried.ogg');
 
     expect(
-      decoder!.decodeSpan((
+      decoder.decodeSpan((
         path: at.path,
         offset: at.offset,
         length: at.length + 4096,
@@ -796,16 +740,18 @@ void main() {
       ),
       isNull,
     );
-  }, skip: skip);
+  });
 
   // -------------------------------------------------------------------------
   // A container kept FRAMED — compressed in blocks, the shape a carried
   // movie takes when it shrinks (board `carried-movie-compressed`).
   //
-  // 🚨★★★The OS stack is fed the blocks DECODED, through the engine's span
-  // reader: an `IMFByteStream` on Windows, the resource loader on Apple. The
-  // fixture is a real movie, so that plumbing is asked everything a real
-  // movie asks of it.
+  // 🚨★★★The decoder is fed the blocks DECODED, through the engine's span
+  // reader. The fixture is a real movie, so that plumbing is asked
+  // everything a real movie asks of it. ↩️It fed the OS stack until the
+  // connection round — an `IMFByteStream` on Windows, the resource loader on
+  // Apple — and still does, for what the bundled decoders leave to it
+  // (native/audio's `os` tests).
 
   /// The real movie at [fixture] with a `free` box of zeros after it — so it
   /// shrinks, and the writer that ships keeps it FRAMED — written where a
@@ -835,29 +781,24 @@ void main() {
     return written.path;
   }
 
-  test('🚨a movie kept FRAMED gives up its soundtrack through the OS stack — '
-      'the carried movie that shrank', () {
+  test('🚨a movie kept FRAMED gives up its soundtrack — the carried movie '
+      'that shrank', () {
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final path = framedMovie('test/fixtures/tone_with_video.mp4');
 
-    final decoded = decoder!.decodeSpan((
+    final decoded = decoder.decodeSpan((
       path: path,
       offset: 0,
       length: File(path).lengthSync(),
       framed: true,
     ));
 
-    if (Platform.isLinux) {
-      expect(decoded, isNull);
-      return;
-    }
     expect(
       decoded,
       isNotNull,
-      reason: 'the OS reader must be fed the blocks decoded, not the blocks',
+      reason: 'the decoder must be fed the blocks decoded, not the blocks',
     );
-    expect(decoded!.format, QaAudioFormat.os);
+    expect(decoded!.format, QaAudioFormat.aac);
     expect(decoded.sampleRate, 44100);
     expect(decoded.channels, 2);
     expect(decoded.length, inInclusiveRange(19000, 25000));
@@ -868,7 +809,7 @@ void main() {
       peak = math.max(peak, decoded.samples[index].abs());
     }
     expect(peak, inInclusiveRange(0.35, 0.65));
-  }, skip: skip);
+  });
 
   test('and it conforms end to end from where the project keeps it', () {
     final result = runConformHere(
@@ -878,14 +819,9 @@ void main() {
         source: mediaAppFileSource(
           framedMovie('test/fixtures/tone_with_video.mp4'),
         ),
-        libraryPathOverride: libraryPath,
       ),
     );
 
-    if (Platform.isLinux) {
-      expect(result.outcome, ConformOutcome.undecodable);
-      return;
-    }
     expect(
       result.outcome,
       ConformOutcome.built,
@@ -898,17 +834,16 @@ void main() {
       peak = math.max(peak, value);
     }
     expect(peak, inInclusiveRange(0.35, 0.65));
-  }, skip: skip);
+  });
 
   test('🎯a sound opened as a stream and read a piece at a time is the whole '
-      'decode — a movie\'s PCM through its edit list, an m4a through the OS '
-      'stack, an ogg, a movie kept framed', () {
+      'decode — a movie\'s PCM through its edit list, an m4a, an ogg, a '
+      'movie kept framed', () {
     // A conform is made from the stream (user 10-10, board
     // long-sound-conform-memory-Q1), so its pieces — of any size, across the
     // decoders' own blocks — must be the whole decode's frames exactly, the
     // lead the file says counted once.
     final decoder = QaAudioDecoder.instance;
-    expect(decoder, isNotNull);
     final directory = Directory.systemTemp.createTempSync('qa_stream');
     deleteAfterSessionEnds(directory);
     MediaSpan written(String name, Uint8List bytes) {
@@ -939,16 +874,13 @@ void main() {
         ),
       ),
     ]) {
-      final whole = decoder!.decodeSpan(span);
+      final whole = decoder.decodeSpan(span);
       final stream = decoder.openSpan(span);
-      if (whole == null) {
-        expect(Platform.isLinux, isTrue, reason: '$what: nothing decoded it');
-        expect(stream, isNull, reason: '$what: nor opened it');
-        continue;
-      }
+      expect(whole, isNotNull, reason: '$what: the decoder reads it');
+      expect(stream, isNotNull, reason: '$what: and opens it');
       expect(
         (stream!.format, stream.channels, stream.sampleRate),
-        (whole.format, whole.channels, whole.sampleRate),
+        (whole!.format, whole.channels, whole.sampleRate),
         reason: what,
       );
       final read = <double>[];
@@ -968,7 +900,7 @@ void main() {
         reason: '$what: the whole decode\'s own frames',
       );
     }
-  }, skip: skip);
+  });
 }
 
 /// A real 16-bit PCM WAV — a FOREIGN format to this app now.

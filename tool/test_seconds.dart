@@ -11,26 +11,16 @@
 // the time, and a run leaves it in a JSON report beside its console
 // (`--file-reporter`), so the console a session reads is unchanged.
 //
-// WHERE: the machine's own cache, beside `tool/run.sh`'s exes —
-// `%LOCALAPPDATA%\anicel` on Windows, `~/.cache/anicel` elsewhere. ⛔The
-// same place spelled twice (here and in run.sh): change both or neither.
-// Per machine on purpose: a file's time is this machine's, and every
-// worktree on it shares the one record.
+// WHERE: the machine's own cache (machine_cache.dart, which says where
+// that is and why it is a file of its own). Per machine on purpose: a
+// file's time is this machine's, and every worktree on it shares the one
+// record.
 import 'dart:convert';
 import 'dart:io';
 
-/// This machine's folder for what the tools keep between runs, or null if
-/// the environment names none.
-String? machineCacheFolder(Map<String, String> environment) {
-  final local = environment['LOCALAPPDATA'];
-  if (local != null && local.isNotEmpty) {
-    return '${local.replaceAll('\\', '/')}/anicel';
-  }
-  final xdg = environment['XDG_CACHE_HOME'];
-  if (xdg != null && xdg.isNotEmpty) return '$xdg/anicel';
-  final home = environment['HOME'];
-  return home == null || home.isEmpty ? null : '$home/.cache/anicel';
-}
+import 'machine_cache.dart';
+
+export 'machine_cache.dart';
 
 /// `<path>\t<value>` per line — every record the tools keep in
 /// [machineCacheFolder]. A line that is not one is skipped: two runs that

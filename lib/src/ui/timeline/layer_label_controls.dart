@@ -296,7 +296,14 @@ const double layerOpacitySlotWidth = 44;
 ///
 /// 58 → 62 (F-409): the chip keeps its 58 and the slot pays its
 /// chip gap (`layerRailTrailingCells`).
-const double layerBlendSlotWidth = 62;
+///
+/// 62 → 66 (F-577, 유저 2026-11-10: 「s행은 블렌드행이 비어있으니 그 행
+/// 왼쪽에 사운드버튼두고, 그 오른쪽에 총 볼륨 막대 둠 … 불투명도막대랑 완전
+/// 동일한 디자인/크기」): an S row stands its speaker — in the box the eye
+/// stands in (F-409) — and its Total, the opacity bar at that bar's own
+/// length, in this column, so the column is an opacity column and a button
+/// wide. The chip takes the 4 it gains.
+const double layerBlendSlotWidth = layerOpacitySlotWidth + layerGraphSlotWidth;
 
 /// The rail's columns that hold WORDS — the opacity bar's digits, the
 /// blend chip's mode and a lane's value boxes ([layerLaneValueSlotWidth])
@@ -341,6 +348,11 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
     opacity:
         layerOpacitySlotWidth +
         FieldSlider.widthGrowthIn(context, const ['100']),
+    // As much wider as its widest word — and so never narrower than an S
+    // row's speaker and Total ([layerBlendSlotWidth]): its widest word is
+    // wider than the bar's 「100」, so it grows more than the bar does.
+    // 🔬2026-11-11, en · ja · ko · fr · zh-Hans at 1–3×: never less, equal
+    // at 1×. ↩️A floor of the bar's growth stood here and never bound.
     blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
     // Two boxes, each as much wider as its name and its widest number.
     laneValue:
@@ -600,7 +612,7 @@ class RailChoiceChip<T extends Enum> extends StatelessWidget {
         child: RailFlyoutTrigger(
           name: name,
           tooltip: tooltip,
-          hoverShape: PanelFlyoutChip.shape,
+          shape: PanelFlyoutChip.faceOf(),
           entriesBuilder: () => options().asFlyoutChoices(
             current: value,
             keyPrefix: optionKeyPrefix,
@@ -1304,35 +1316,24 @@ List<PanelFlyoutEntry> layerMarkFlyoutEntries({
       // `…-stage-…`; a row that PICKS is `…-option-…`. They used to share a
       // key and the submenu's 소재 collided with the parent it hung off — two
       // widgets, one key, and every finder that touched either one broke.
-      keyValue: revisesFor(process).isEmpty
-          ? 'layer-mark-option-${process.jsonValue}'
-          : 'layer-mark-stage-${process.jsonValue}',
-      label: layerProcessLabel(process),
-      swatch: layerMarkColor(LayerMark(process: process)),
-      // 용지 carries no corrections, so it is a plain choice — no chevron,
-      // no second level, and picking it labels the row.
-      onSelected: revisesFor(process).isEmpty
-          ? () => onSelected(LayerMark(process: process))
-          : null,
-      submenuBuilder: revisesFor(process).isEmpty
-          ? null
-          : () => [
-              // 소재(上がり) first — 그 공정의 작업본이다. 이것이 「수정 없음」
-              // 자리를 대신한다.
-              for (final option in [
-                LayerMark(process: process),
-                for (final revise in revisesFor(process))
-                  LayerMark(process: process, revise: revise),
-              ])
-                PanelFlyoutItem(
-                  keyValue: 'layer-mark-option-${option.keySlug}',
-                  label: option.revise == null
-                      ? AppText.strings.tlLayerMarkSource
-                      : layerReviseLabel(option.revise!),
-                  swatch: layerMarkColor(option),
-                  onSelected: () => onSelected(option),
-                ),
-            ],
+      keyValue: 'layer-mark-stage-${process.jsonValue}',
+      label: layerStepLabel(process),
+      swatch: layerMarkColor(labelsOf(process).first),
+      // 소재(上がり) first — 그 공정의 작업본이다. 이것이 「수정 없음」 자리를
+      // 대신한다. 용지는 소재 대신 용지-LO 가 그 자리에 선다([labelsOf]).
+      // ↩️용지는 하위 없이 고르는 항목 하나였다(F-578 까지).
+      submenuBuilder: () => [
+        for (final option in labelsOf(process))
+          PanelFlyoutItem(
+            keyValue: 'layer-mark-option-${option.keySlug}',
+            label: switch (option.step) {
+              null => AppText.strings.tlLayerMarkSource,
+              final step => layerStepLabel(step),
+            },
+            swatch: layerMarkColor(option),
+            onSelected: () => onSelected(option),
+          ),
+      ],
     ),
 ];
 
@@ -1456,9 +1457,9 @@ class LayerMarkPlate extends LeafRenderObjectWidget {
       height: SectionBandZone.lineHeight,
       color: timelineTextOnColor(_fill),
     );
-    final (:process, :revise) = layerMarkChipText(mark);
+    final (:process, :step) = layerMarkChipText(mark);
     return [
-      for (final text in [process, revise])
+      for (final text in [process, step])
         if (text.isNotEmpty)
           plateWordsIn(context, text: text, axis: axis, style: style),
     ];
@@ -1867,27 +1868,21 @@ class LayerTakeText extends LeafRenderObjectWidget {
 /// UI stops showing 「용지」 beside 「ラベルなし」.
 ///
 /// ⛔ONE pair of accessors, called by the plate, the flyout and the tooltip
-/// alike. A surface that read `process.displayName` directly would be the
-/// one place that never translates.
-String layerProcessLabel(LayerProcess process) =>
-    AppText.strings.layerProcessName(process.jsonValue, process.displayName);
+/// alike — for a stage and a correction both ([LabelStep], through
+/// `LabelStepWords`). A surface that read `process.displayName` directly
+/// would be the one place that never translates.
+String layerStepLabel(LabelStep step) => step.labelFor(AppText.language);
 
-String layerProcessAbbrev(LayerProcess process) =>
-    AppText.strings.layerProcessAbbrev(process.jsonValue, process.abbreviation);
-
-String layerReviseLabel(LayerRevise revise) =>
-    AppText.strings.layerReviseName(revise.jsonValue, revise.displayName);
-
-String layerReviseAbbrev(LayerRevise revise) =>
-    AppText.strings.layerReviseAbbrev(revise.jsonValue, revise.abbreviation);
+String layerStepAbbrev(LabelStep step) =>
+    step.abbreviationFor(AppText.language);
 
 /// What the chip writes, translated — the pair the plate stacks.
 ///
 /// ⚠️It lives beside the accessors rather than on [LayerMark] for the same
 /// reason they do: the model cannot see the string tables.
-({String process, String revise}) layerMarkChipText(LayerMark mark) => (
-  process: mark.process == null ? '' : layerProcessAbbrev(mark.process!),
-  revise: mark.revise == null ? '' : layerReviseAbbrev(mark.revise!),
+({String process, String step}) layerMarkChipText(LayerMark mark) => (
+  process: mark.process == null ? '' : layerStepAbbrev(mark.process!),
+  step: mark.step == null ? '' : layerStepAbbrev(mark.step!),
 );
 
 /// The unabbreviated reading — tooltips and the flyout.

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import '../core/unit_direction.dart';
 import 'canvas_point.dart';
 import 'string_id.dart';
@@ -534,7 +535,7 @@ final class PerspectiveShape extends GuideShape {
     this.eyeLevelVisible = true,
     this.constrainToEyeLevel = true,
     this.eyeLevelColor,
-  }) : vanishingPoints = List.unmodifiable(vanishingPoints) {
+  }) : vanishingPoints = frozenList(vanishingPoints) {
     // 🗣️유저 2026-09-17 (vanishing-point-types): 「소실점 몇개든
     // 추가할수있게」. ↩️A guide held one to three until 2026-10-16.
     if (vanishingPoints.isEmpty) {
@@ -579,7 +580,7 @@ final class PerspectiveShape extends GuideShape {
     bool? constrainToEyeLevel,
     int? eyeLevelColor,
   }) => PerspectiveShape(
-    vanishingPoints: vanishingPoints ?? this.vanishingPoints,
+    vanishingPoints: vanishingPoints ?? ownFrozen(this.vanishingPoints),
     eyeLevel: eyeLevel ?? this.eyeLevel,
     snapEnabled: snapEnabled ?? this.snapEnabled,
     eyeLevelVisible: eyeLevelVisible ?? this.eyeLevelVisible,
@@ -772,7 +773,7 @@ class DrawingGuide {
 /// its guides switch on and off independently, inside each shape.
 class CutGuides {
   CutGuides({List<DrawingGuide> guides = const [], this.activeSymmetryId})
-    : guides = List.unmodifiable(guides) {
+    : guides = frozenList(guides) {
     if (activeSymmetryId != null) {
       final active = guides.where((guide) => guide.id == activeSymmetryId);
       if (active.isEmpty) {
@@ -858,7 +859,7 @@ class CutGuides {
     GuideId? activeSymmetryId,
     bool clearActiveSymmetry = false,
   }) {
-    final nextGuides = guides ?? this.guides;
+    final nextGuides = guides ?? ownFrozen(this.guides);
     final nextActive = clearActiveSymmetry
         ? null
         : (activeSymmetryId ?? this.activeSymmetryId);

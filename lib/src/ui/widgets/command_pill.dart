@@ -124,19 +124,30 @@ class CommandPill extends StatelessWidget {
   /// have stood.
   static const double _headlessBreath = 2;
 
+  /// The pill's face: its edge, on the ground it stands on.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q11 (유저 2026-11-08): 「안쪽을 그
+  /// 테두리가 놓인 바탕색으로 칠해 『채우기 둘』로 그린다」 — its edge drawn by
+  /// fills, so a toolbar's image and the screen agree there. Every pill
+  /// stands on [AppColors.surface] (census 11-08: the timeline's and the
+  /// storyboard's toolbars, and the timeline's with no cut) with nothing
+  /// painted behind it — its verbs' hovers are its children's, over the
+  /// fill.
+  static SuperellipseFace _faceIn(BuildContext context) => SuperellipseFace(
+    color: AppColors.surface,
+    // The app's control shape at this height — never a hand-typed radius:
+    // `app_shapes_coverage_test` polices exactly that, and the corner ratio
+    // is a token so a future control-shape change lands here too.
+    edge: AppShapes.control(
+      heightIn(context),
+      side: BorderSide(color: AppColors.hairline),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final pill = DecoratedBox(
-      decoration: ShapeDecoration(
-        // The app's control shape at this height — never a hand-typed
-        // radius: `app_shapes_coverage_test` polices exactly that, and the
-        // corner ratio is a token so a future control-shape change lands
-        // here too.
-        shape: AppShapes.control(
-          heightIn(context),
-          side: BorderSide(color: AppColors.hairline),
-        ),
-      ),
+      decoration: _faceIn(context),
       child: SizedBox(
         height: heightIn(context),
         child: Row(
@@ -315,7 +326,7 @@ class _PillNameCellState extends State<PillNameCell> with KeyboardPress {
           focus: keyboardFocus,
           // The app's control shape, as the [InkWell]'s `customBorder` wore
           // it — never a hand-typed radius (`app_shapes_coverage_test`).
-          hoverShape: AppShapes.control(height),
+          shape: AppShapes.control(height),
           // The [Material] the cell stood on SET the words' style — the
           // theme's body text — rather than leaving the bar's.
           child: DefaultTextStyle(

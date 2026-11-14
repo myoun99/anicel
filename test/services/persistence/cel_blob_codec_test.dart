@@ -37,18 +37,21 @@ const key = BrushFrameKey(
 );
 
 BitmapSurface surfaceWith(Uint8List pixels) => BitmapSurface(
-  canvasSize: const CanvasSize(width: 16, height: 16),
-  tileSize: 8,
+  canvasSize: const CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  ),
+  tileSize: defaultCelTileSize,
   tiles: {
     TileCoord(x: 1, y: 0): BitmapTile(
-      size: 8,
+      size: defaultCelTileSize,
       pixels: pixels,
     ),
   },
 );
 
 Uint8List patterned(int seed) {
-  final pixels = Uint8List(8 * 8 * 4);
+  final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
   for (var i = 0; i < pixels.length; i += 1) {
     pixels[i] = (i * seed) & 0xFF;
   }
@@ -72,7 +75,7 @@ void main() {
 
   test('every byte value survives — 0x00 and 0xFF are '
       'where an off-by-one would show', () {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = i % 3 == 0 ? 0x00 : (i % 3 == 1 ? 0xFF : 0x80);
     }
@@ -82,16 +85,18 @@ void main() {
 
   group('🚨the head says whether the picture shows anything — read back '
       'without the stream', () {
-    final ink = tileOf({
-      (2, 3): [9, 9, 9, 255],
-    });
+    final ink = Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
+      ..setAll(0, [9, 9, 9, 255]);
     // Colour in every pixel and no alpha in any: kept, and nothing seen.
-    final clear = tileFilledWith([9, 9, 9, 0]);
+    final clear = Uint8List.fromList([
+      for (var at = 0; at < ink.length; at += 1)
+        if (at % 4 == 3) 0 else 9,
+    ]);
     for (final (name, picture, shows) in [
-      ('ink in a tile', drawingOf({TileCoord(x: 0, y: 0): ink}), true),
+      ('ink in a tile', surfaceWith(ink), true),
       ('a text alone', drawingOf(const {}).withTexts([textOf(1)]), true),
       ('a photo alone', drawingOf(const {}).withPhotos([photoOf(1)]), true),
-      ('tiles with no ink', drawingOf({TileCoord(x: 0, y: 0): clear}), false),
+      ('tiles with no ink', surfaceWith(clear), false),
       ('nothing at all', drawingOf(const {}), false),
     ]) {
       test(name, () {
@@ -114,7 +119,7 @@ void main() {
     );
     for (final picture in [
       surfaceWith(patterned(11)),
-      surfaceWith(Uint8List(8 * 8 * 4)),
+      surfaceWith(Uint8List(defaultCelTileSize * defaultCelTileSize * 4)),
     ]) {
       final blob = AnicelCelBlob.ofSurface(key, picture);
       final rekeyed = AnicelCelBlob(AnicelCelBlob.reKeyed(blob, other).bytes);
@@ -166,36 +171,30 @@ void main() {
     }
   });
 
-  test('🚨with NO engine it writes deflate, and that blob reads anywhere', () {
-    // ⛔The absence is FORCED, not assumed. The first version of this test
+  test('🚨where zstd refuses it writes deflate, and that blob reads '
+      'anywhere', () {
+    // ⛔The refusal is FORCED, not assumed. The first version of this test
     // asserted「flutter_tester loads no engine」— which is true of the
     // ordinary suite and false of the two CI jobs that run WITH the engine
     // on PATH, so it went red there and nowhere else. A test that asserts a
-    // property of its RUNNER is not testing the code.
-    // The seam, not the path: a bogus path falls THROUGH to the default
-    // search by design, so it cannot say「no engine」on a machine that has
-    // one — which is exactly the two CI jobs this test used to fail in.
-    QaCelCompressor.debugInstanceOverride = () => null;
-
-    addTearDown(() {
-      QaCelCompressor.debugInstanceOverride = null;
-    });
+    // property of its RUNNER is not testing the code. ↩️It forced「no
+    // engine」until the connection round (connection-round-checklist H)
+    // put the compressor in the engine the app ships with.
+    QaCelCompressor.debugForceRefusal = true;
+    addTearDown(() => QaCelCompressor.debugForceRefusal = false);
 
     final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(7)));
     expect(
       blob.codec,
       anicelCodecDeflate,
-      reason: 'no engine means the floor, and the floor is dart:io zlib',
+      reason: 'a refusal means the floor, and the floor is dart:io zlib',
     );
     blob.decoded((back) => expect(back.tiles.single.pixels, patterned(7)));
   });
 
-  test('and whatever codec the ambient build picked, the blob round-trips '
-      'and says which one it used', () {
-    // The invariant that holds in BOTH worlds — the one the runner cannot
-    // make false.
+  test('and otherwise the blob is zstd, round-trips, and says so', () {
     final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(13)));
-    expect(blob.codec, anyOf(anicelCodecDeflate, anicelCodecZstd));
+    expect(blob.codec, anicelCodecZstd);
     blob.decoded((back) => expect(back.tiles.single.pixels, patterned(13)));
   });
 
@@ -204,8 +203,8 @@ void main() {
     // Deflate, so the view kept past the reader is Dart memory a test can
     // read: a zstd one's is freed under it. The spoiling is the same for
     // both ([readAnicelPayload]).
-    setUp(() => QaCelCompressor.debugInstanceOverride = () => null);
-    tearDown(() => QaCelCompressor.debugInstanceOverride = null);
+    setUp(() => QaCelCompressor.debugForceRefusal = true);
+    tearDown(() => QaCelCompressor.debugForceRefusal = false);
 
     test('a view kept past the reader reads spoiled bytes, not the picture '
         '— so a reader that keeps one fails here, on either codec', () {

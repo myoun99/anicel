@@ -1,4 +1,5 @@
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 
 /// [nodes] as the plan hands a stack to the editing view
@@ -16,6 +17,7 @@ List<CompositeNode<CanvasStackRow>> stackAsThePlanHandsIt(
   blendOf: (row) => switch (row) {
     CanvasLayerImageRequest(:final blendMode) => blendMode,
     CanvasActiveLayerRow(:final blendMode) => blendMode,
+    CanvasNameTagRow() => LayerBlendMode.normal,
   },
   paintedNormal: (row) => switch (row) {
     final CanvasLayerImageRequest image => CanvasLayerImageRequest(
@@ -31,5 +33,6 @@ List<CompositeNode<CanvasStackRow>> stackAsThePlanHandsIt(
       placement: live.placement,
       effects: live.effects,
     ),
+    final CanvasNameTagRow tag => tag,
   },
 );

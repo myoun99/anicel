@@ -3,6 +3,7 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_placement.dart';
 import '../../models/conte_group.dart' show ridesTheConte;
+import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -16,6 +17,7 @@ import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'rail_view.dart' show StandingLaw;
 import 'layer_id_mint.dart';
+import 'layer_verbs.dart';
 import 'session_roles.dart';
 
 /// FOLDERS AND ATTACHMENTS — grouping the active layer or attach into a
@@ -36,6 +38,7 @@ class FoldersAndAttachments {
     required ActiveCutEdits activeCut,
     required void Function(LayerId folderId) handOffOnFolderFold,
     required StandingLaw keepStandingShown,
+    required LayerVerbs layerVerbs,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -43,7 +46,8 @@ class FoldersAndAttachments {
        _layerIds = layerIds,
        _activeCut = activeCut,
        _handOffOnFolderFold = handOffOnFolderFold,
-       _keepStandingShown = keepStandingShown;
+       _keepStandingShown = keepStandingShown,
+       _layerVerbs = layerVerbs;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -52,6 +56,10 @@ class FoldersAndAttachments {
   final LayerIdMint _layerIds;
   final ActiveCutEdits _activeCut;
   final void Function(LayerId folderId) _handOffOnFolderFold;
+
+  /// The selection's walk ([LayerVerbs.selectedLayerIdsWhere]) — the rows
+  /// 어태치 해제 lets go.
+  final LayerVerbs _layerVerbs;
 
   /// The standing law with its reveal — a new attach row is where you went
   /// (`Standing.keepStandingShown`).
@@ -155,37 +163,78 @@ class FoldersAndAttachments {
   //
   // The release keeps its menu entry: the drag must not be a one-way door.
 
-  /// …except a row riding the conte, which is never let go
+  /// Whether 어태치 해제 has a row to let go ([detachRows]).
+  bool get canDetachRows => _rowsToDetach().isNotEmpty;
+
+  /// The rows 어태치 해제 lets go: the selected rows it can, else the one
+  /// stood on — an attach row, but never one riding the conte
   /// ([ridesTheConte], I-73-one-head-Q1).
-  bool get canDetachActiveLayer {
-    final active = _selection.activeLayer;
+  ///
+  /// 🗣️F-574 (유저 2026-11-08): 「레이어 복수선택후 어태치해제 버튼하면 복수
+  /// 레이어 어태치해제되도록. 이런 로직은 모두 복수선택이면 복수선택에
+  /// 적용이 기본임. 물론 선택한 레이어중 가능한레이어만」 — the rename's
+  /// rows (`renameActiveLayerWithDialog`). ↩️The active row alone.
+  List<LayerId> _rowsToDetach() {
     final cut = _project.activeCutOrNull;
-    return active != null &&
-        isAttachedLayer(active) &&
-        !(cut != null && ridesTheConte(active, cut.layers));
+    if (cut == null) {
+      return const [];
+    }
+    bool canGo(Layer layer) =>
+        isAttachedLayer(layer) && !ridesTheConte(layer, cut.layers);
+    final selected = _layerVerbs.selectedLayerIdsWhere(canGo);
+    if (selected.isNotEmpty) {
+      return selected;
+    }
+    final active = _selection.activeLayer;
+    return active != null && canGo(active) ? [active.id] : const [];
   }
 
-  /// 어태치 해제: the active row stops riding its base.
+  /// 어태치 해제: each of [_rowsToDetach] stops riding its base, as ONE undo
+  /// step — the menu named one intent — standing where you stood.
   ///
-  /// The row also STEPS OUT of the group when it has to
-  /// ([detachLandingIndex]) — a detached row left inside the run would cut
-  /// the group in two. The move and the detach are one undo step: the menu
-  /// named one intent.
-  void detachActiveLayer() {
+  /// The rows go from their base's far side in: a row also STEPS OUT of
+  /// its group when it has to ([detachLandingIndex]), just past the
+  /// group's outer edge, so a row nearer the base that left first would
+  /// land beyond one farther out and the two would trade places.
+  void detachRows() {
     final cut = _project.activeCutOrNull;
-    final row = _selection.activeLayer;
-    if (cut == null || row == null || !canDetachActiveLayer) {
+    final ids = _rowsToDetach();
+    if (cut == null || ids.isEmpty) {
       return;
     }
-    final attach = LayerAttachDrop(detachIds: {row.id});
+    final stack = sectionedLayerOrder(cut.layers);
+    int fromBase(LayerId id) {
+      final at = stack.indexWhere((layer) => layer.id == id);
+      final baseId = stack[at].attachedToLayerId;
+      return (at - stack.indexWhere((layer) => layer.id == baseId)).abs();
+    }
+
+    final farSideIn = [...ids]
+      ..sort((a, b) => fromBase(b).compareTo(fromBase(a)));
+    _project.historyManager.runAsOneStep('Detach rows', () {
+      for (final id in farSideIn) {
+        _detach(_project.requireActiveCut, id);
+      }
+    });
+    _changes.refreshAfterCutCommand(
+      preferredActiveLayerId: _selection.activeLayerId,
+    );
+    _changes.notifyChanged();
+  }
+
+  /// Row [id] of [cut] stops riding its base, stepping out of its group
+  /// where it has to ([detachLandingIndex]) — a detached row left inside
+  /// the run would cut the group in two.
+  void _detach(Cut cut, LayerId id) {
+    final attach = LayerAttachDrop(detachIds: {id});
     // As the drag reads it ([RowOrderDrag]'s landings, F-538).
     final stack = sectionedLayerOrder(cut.layers);
-    final landing = detachLandingIndex(stack, row.id);
+    final landing = detachLandingIndex(stack, id);
     final plan = landing == null
         ? null
         : resolveLayerDrop(
             stack: stack,
-            movingId: row.id,
+            movingId: id,
             insertAt: landing,
           );
     if (plan == null) {
@@ -204,13 +253,11 @@ class FoldersAndAttachments {
         cutId: cut.id,
         order: plan.order,
         folderIds: plan.folderIds,
-        movedIds: {row.id},
+        movedIds: {id},
         attach: attach,
         description: 'Detach layer',
       );
     }
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: row.id);
-    _changes.notifyChanged();
   }
 
   /// The row's twirl. R27 #24: FOLDING a folder that holds the active

@@ -22,7 +22,6 @@ import '../../tool/affected_tests.dart'
         partitionByTag,
         ranNowhere,
         runInBatches;
-import '../../tool/native_engine_provenance.dart' show engineStampPath;
 import '../helpers/dart_sources.dart' show filesUnder;
 
 /// 🖥️**A FILE THAT NEEDS IMPELLER RUNS ON IT, APART.**
@@ -259,7 +258,7 @@ void main() {
         shard,
         contains('        half=\$(( cores / 2 ))\n'
             '        [ "\$half" -ge 1 ] || half=1\n'
-            '        dart run tool/affected_tests.dart \\\n'
+            '        dart tool/affected_tests.dart \\\n'
             '          --files-from "\$RUNNER_TEMP/shard_tests.txt" \\\n'
             '          --outside-the-line --concurrency "\$half"\n'),
       );
@@ -280,22 +279,6 @@ void main() {
         }
       }
       expect(runs, isEmpty);
-    });
-
-    test("the engine it builds says which C it came from — as lane.sh's "
-        'do', () {
-      // Without the stamp every run of the plan there said it could not
-      // tell, and told the reader to rebuild with lane.sh.
-      final engine = _read('.github/actions/native-engine/action.yml');
-      expect(
-        engine,
-        contains(r'named=$(dart tool/native_engine_provenance.dart check . '
-            '|| true)'),
-      );
-      expect(
-        engine,
-        contains(r'''printf '%s\n' "$id" > ''' '$engineStampPath'),
-      );
     });
   });
 }

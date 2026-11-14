@@ -460,10 +460,11 @@ void main() {
       // Every shelf stands shut (menu-rows-and-panels-are-shortcut-rows,
       // the brush bundles' own law): these cases are about what stands
       // INSIDE the two brush shelves, so they open them first — their
-      // place and 세부 도구 (F-560), then each — as a person would.
+      // place and 도구 (F-580; 세부 도구 from F-560 until then), then each
+      // — as a person would.
       for (final shelf in [
         ShortcutShelf.canvas,
-        ShortcutShelf.toolTiles,
+        ShortcutShelf.tools,
         ...brushActionShelves.values,
       ]) {
         final twirl = find.named('shortcut-bundle-shelf-${shelf.name}');
@@ -493,7 +494,8 @@ void main() {
     /// The rows of [tool]'s brushes the list holds, in order — built or not:
     /// the list is lazy and these stand at its far end, so they are read off
     /// the children it was handed. A root section's title reads
-    /// `<tool>-root`.
+    /// `<tool>-root`. ⚠️Only the library's rows: 도구 stands open too, and
+    /// its 「brush-size-up」 starts as the brush's rows do (F-580).
     List<String> brushRows(WidgetTester tester, [CanvasTool tool = brushTool]) {
       final children =
           (tester.widget<ListView>(list).childrenDelegate
@@ -503,7 +505,9 @@ void main() {
         for (final child in children)
           if (child.key case ValueKey<String>(:final value)
               when value.startsWith('shortcut-row-${tool.name}-'))
-            value.substring('shortcut-row-'.length),
+            if (value.substring('shortcut-row-'.length) case final id
+                when isBrushActionId(id) || id == '${tool.name}-root')
+              id,
       ];
     }
 
@@ -537,6 +541,54 @@ void main() {
       }
       await wheelUntilVisible(tester, finder);
     }
+
+    // 🗣️F-580 (유저 2026-11-10): 「브러시 도구 밑에 브러시 도구의 브러시 항목
+    // … 그 다음 아래에 지우개 도구, 그 밑에 지우개 도구의 브러시 항목」.
+    testWidgets('a tool\'s brushes stand right under that tool\'s row, and '
+        'the next tool\'s row after them', (tester) async {
+      await pump(tester);
+      final keys = [
+        for (final child
+            in (tester.widget<ListView>(list).childrenDelegate
+                    as SliverChildListDelegate)
+                .children)
+          if (child.key case ValueKey<String>(:final value)) value,
+      ];
+      final brush = keys.indexOf('shortcut-row-${EditorActionIds.toolBrush}');
+      final eraserAt = keys.indexOf(
+        'shortcut-row-${EditorActionIds.toolEraser}',
+      );
+      expect(
+        keys[brush + 1],
+        'shortcut-shelf-${ShortcutShelf.brushToolBrushes.name}',
+      );
+      final brushes = keys.sublist(brush + 2, eraserAt);
+      expect(brushes, isNotEmpty, reason: '⛔premise: its shelf stands open');
+      expect(brushes, everyElement(startsWith('shortcut-row-brush-')));
+      expect(
+        keys[eraserAt + 1],
+        'shortcut-shelf-${ShortcutShelf.eraserToolBrushes.name}',
+      );
+    });
+
+    // 🗣️I-168: a title found by its words shows every brush it holds — by
+    // a key, the ones that hold the key.
+    testWidgets('searched by a key, an open bundle shows only the brushes '
+        'that hold it', (tester) async {
+      final bindings = await pump(tester);
+      final maru = presetId('maru');
+      bindings.setActivators(maru, const [
+        SingleActivator(LogicalKeyboardKey.f9),
+      ]);
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('shortcut-search-by-key')),
+      );
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pump();
+      expect(brushRows(tester), [groupId(inks), maru]);
+    });
 
     testWidgets('holds a bundle per group, shut — once under each tool\'s '
         'heading: the titles, and no brush', (tester) async {

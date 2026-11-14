@@ -1,10 +1,15 @@
 //! A bucket fill's reach on the GPU (gpu-canonical-store stage 5): the
-//! pixels the app's `floodFillRegion` fills — 4-joined to the seed through
-//! pixels within the tolerance of the seed's colour — as a plane of bits,
-//! and their box; then that finished as the app finishes it, a mask of
-//! bytes over a box of its own (`kernels/mask`'s grow and soften). A fill
-//! that closes gaps (`_gapCloseFloodRegion`) floods the same way over what
-//! lies past its gap from every barrier, by `kernels/mask`'s distances.
+//! pixels a bucket fills — 4-joined to the seed through pixels within the
+//! tolerance of the seed's colour — as a plane of bits, and their box;
+//! then that finished as the app finishes an area, a mask of bytes over a
+//! box of its own (`kernels/mask`'s grow and soften — the app's
+//! `test/native/an_area_is_finished_as_the_bucket_is_test.dart` holds the
+//! two to one another). A fill that closes gaps floods the same way over
+//! what lies past its gap from every barrier, by `kernels/mask`'s
+//! distances. ↩️Till 2026-11-12 the app flooded on the CPU as well
+//! (`floodFillRegion` · `_gapCloseFloodRegion` · `_cropAndFinishFloodRegion`
+//! in lib/src/services/canvas_flood_fill.dart, and qa_engine.c's wave);
+//! where a comment here says 「the app's bytes」 it is those it means.
 //! flood.wgsl has the planes and why any order of spreading gives the
 //! app's bytes. What a fill finished is laid in its colour, or its
 //! gradient's, as a stroke row on the stamp path (`dab::stamp`).
@@ -15,19 +20,18 @@
 //! effects as they show, where the app summed the layers by a rule of its
 //! own. `picture` makes it, and picks the eyedropper's pixel of it.
 
-// ⏳Nothing outside the tests floods until the fill comes to the engine
-// (gpu-canonical-store, stage 5's connection).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
 pub(crate) mod picture;
 #[cfg(test)]
 mod tests;
+
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES};
 use crate::kernels::mask::{MaskBox, MaskPasses};
-use crate::kernels::shared::{Encoded, PREMULTIPLY_WGSL, encode, encode_on, fits};
+use crate::kernels::shared::{Counted, Encoded, PREMULTIPLY_WGSL, encode, encode_on, fits};
 use crate::kernels::shared::{flat, pipeline, plane, range, whole, words_buffer};
 
 /// The rounds encoded between two looks at whether one moved nothing.
@@ -36,6 +40,24 @@ const ROUNDS: usize = 8;
 const FLAG_STEP: u64 = 256;
 /// The widest gap a fill closes: 3 × it, its threshold, is a word.
 const MOST_GAP: u32 = u32::MAX / 3;
+
+/// The bytes of every picture a fill reads ([`picture::Shown`]) and every
+/// fill finished for the app ([`abi::Filled`]) that is alive, counted where
+/// each is made and dropped ([`counted`]). Each is one press's: what is
+/// still counted once the press is over was never freed
+/// ([`abi::gpu_engine_flood_bytes`]).
+static FLOOD_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// The bytes the fill's pictures and finished fills hold alive.
+pub(crate) fn flood_bytes() -> u64 {
+    FLOOD_BYTES.load(Ordering::Relaxed)
+}
+
+/// `buffer`'s bytes among the fill's ([`FLOOD_BYTES`]), for as long as
+/// what this gives lives beside it.
+pub(crate) fn counted(buffer: &wgpu::Buffer) -> Counted {
+    Counted::among(&FLOOD_BYTES, buffer.size())
+}
 
 /// The picture a fill reads: the composite's output tiles over a grid of
 /// `across` × `down` tiles, row after row, and the box in the grid's pixels
@@ -147,7 +169,7 @@ impl Flood {
     }
 
     /// What a fill seeded at `(x, y)` that closes gaps of `gap` pixels
-    /// reaches in `picture` (`_gapCloseFloodRegion`): it floods, as
+    /// reaches in `picture`: it floods, as
     /// [`Flood::region`] does, only what lies farther than 3 × gap chamfer
     /// units from every pixel off the tolerance — the gap halved until the
     /// seed does —, so it leaks through no gap narrower than about twice
@@ -347,8 +369,7 @@ impl Flood {
         filled.into_iter().nth(at)
     }
 
-    /// `flooded` finished as the app finishes a fill
-    /// (`_cropAndFinishFloodRegion`): cropped to its box grown by what the
+    /// `flooded` finished as a fill is: cropped to its box grown by what the
     /// finish reaches (`fillFinishReach` — the expand, and a pixel more
     /// where it anti-aliases: its ramp spreads a pixel past its own edge),
     /// cut at the picture's box, then grown `expand` generations and

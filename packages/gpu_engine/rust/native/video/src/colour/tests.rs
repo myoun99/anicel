@@ -1,7 +1,9 @@
-//! The colour law, by hand: no export of the engine reaches `qa_yuv601.h` on
-//! Windows (only the Android and Apple writers call it), so its answers are
-//! pinned here — the C test's cases (qa_video_decode_law_test.c) and the
-//! values the BT.601 integer formula gives, worked out on paper.
+//! The colour law, by hand: no export reaches it on Windows (only the
+//! Android and Apple writers call it), so its answers are pinned here — the
+//! C test's cases and the values the BT.601 integer formula gives, worked
+//! out on paper. ↩️The law was the engine's `qa_yuv601.h` and the cases
+//! `qa_video_decode_law_test.c`'s, until the connection round deleted them
+//! (connection-round-checklist H, 2026-11-08).
 
 use super::{Picture, Planes, from_rgba, to_rgba};
 
@@ -97,13 +99,34 @@ fn red_over_grey(semi: bool) -> Vec<u8> {
 #[test]
 fn a_frame_reads_back_through_both_strides() {
     let mut planar = [0u8; 4 * 4 * 4];
-    to_rgba(&red_over_grey(false), 4, 4, 8, 6, false, &mut planar);
+    assert!(to_rgba(&red_over_grey(false), 4, 4, 8, 6, false, &mut planar));
     assert_eq!(planar[..4], [255, 0, 0, 255], "red is red, and opaque");
     let last = (3 * 4 + 3) * 4;
     assert_eq!(planar[last..last + 4], [76, 76, 76, 255], "the bottom half is grey, not red");
     let mut semi = [0u8; 4 * 4 * 4];
-    to_rgba(&red_over_grey(true), 4, 4, 8, 6, true, &mut semi);
+    assert!(to_rgba(&red_over_grey(true), 4, 4, 8, 6, true, &mut semi));
     assert_eq!(semi, planar, "NV12 and I420 are the same picture");
+}
+
+// ⚠️Short of its own planes, refused — not read past, which here is a panic
+// and across the FFI the app gone. A byte short at the chroma's end in each
+// layout; at the luma's, where a slice short of the picture puts the
+// chroma first; and an output short of the picture.
+#[test]
+fn a_frame_short_of_its_own_planes_is_refused() {
+    for (semi, needed) in [(false, 66), (true, 60)] {
+        let frame = red_over_grey(semi);
+        let mut rgba = [0u8; 4 * 4 * 4];
+        assert!(to_rgba(&frame[..needed], 4, 4, 8, 6, semi, &mut rgba), "semi {semi}: to its last byte read");
+        let mut untouched = [7u8; 4 * 4 * 4];
+        assert!(!to_rgba(&frame[..needed - 1], 4, 4, 8, 6, semi, &mut untouched), "semi {semi}: a byte short");
+        assert!(untouched.iter().all(|&byte| byte == 7), "semi {semi}: and nothing written");
+    }
+    let luma = [16u8; 4];
+    let mut rgba = [0u8; 2 * 2 * 4];
+    assert!(to_rgba(&luma, 2, 2, 2, 0, true, &mut rgba), "the luma's last byte is the last read");
+    assert!(!to_rgba(&luma[..3], 2, 2, 2, 0, true, &mut rgba), "a byte short of the luma");
+    assert!(!to_rgba(&luma, 2, 2, 2, 0, true, &mut rgba[..15]), "an output short of the picture");
 }
 
 // Limited range: 16 is black and 235 white — a converter written for full
@@ -120,7 +143,7 @@ fn studio_values_become_their_colour() {
     ] {
         let frame = [luma, luma, luma, luma, cb, cr];
         let mut rgba = [0u8; 2 * 2 * 4];
-        to_rgba(&frame, 2, 2, 2, 2, true, &mut rgba);
+        assert!(to_rgba(&frame, 2, 2, 2, 2, true, &mut rgba), "six bytes are the whole of it");
         assert_eq!(rgba[..3], want, "Y {luma} Cb {cb} Cr {cr}");
         assert!(rgba.chunks(4).all(|pixel| pixel == &rgba[..4]), "a flat frame is flat");
     }
@@ -144,7 +167,7 @@ fn a_colour_comes_back_where_it_was_written() {
             };
             from_rgba(&picture, 4, 4, &mut planes);
             let mut back = [0u8; 4 * 4 * 4];
-            to_rgba(&frame, 4, 4, 4, 4, semi, &mut back);
+            assert!(to_rgba(&frame, 4, 4, 4, 4, semi, &mut back));
             for k in 0..3 {
                 assert!(back[k].abs_diff(rgb[k]) <= 2, "{rgb:?} semi {semi}: {} came back {}", rgb[k], back[k]);
                 assert_eq!(back[(3 * 4 + 3) * 4 + k], 255, "and the padding is white");

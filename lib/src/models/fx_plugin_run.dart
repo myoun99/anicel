@@ -1,11 +1,18 @@
 import 'dart:typed_data';
 
+import '../core/frozen_collections.dart';
 import 'bitmap_surface.dart';
 import 'layer_id.dart';
 
-/// A picture a plugin is handed or gives back: premultiplied RGBA8, rows
+/// A picture a plugin is handed or gives back: straight RGBA8, rows
 /// [width] × 4 bytes apart, its first pixel at ([left], [top]) on the
 /// canvas.
+///
+/// Straight, as the engine's pool holds a pixel and a GPU plugin reads one
+/// (fx spec 2, an-endless-plugin-stalls-the-app 19:27): ↩️spec 1's host
+/// took them premultiplied, so a cel's straight pixels were premultiplied
+/// on the way in and undone on the way out — a rounding each way, which at
+/// a low alpha would have told the seam's picture from the engine chain's.
 typedef FxPluginPicture = ({
   Uint8List pixels,
   int width,
@@ -24,10 +31,17 @@ typedef FxPluginMoment = ({
   double scale,
 });
 
-/// What a plugin's effect is run through (anicel_fx_plugin.h): how far it
-/// reaches, and the picture it makes — the engine's host for a plugin this
-/// device has opened (`QaFxPlugin`), whatever its build.
+/// What a plugin's effect is run through (fx spec 2): how far it reaches,
+/// and the picture it makes — the engine's device for a plugin this device
+/// has opened (`GpuFxPlugin`).
 abstract interface class FxPluginRunner {
+  /// The open of its build under way off the isolate that asks — null once
+  /// it is open, or would not open. Its reach and its picture are not
+  /// asked meanwhile: a step of it is not run till then, as a chain whose
+  /// kernels are still to be compiled is not (`FrameKernelsToCome`), and
+  /// how far it reaches is not known (`resolveCompositeEffectPlan`).
+  Future<void>? get toCome;
+
   /// How far past its input the effect reaches for [values] (four doubles
   /// a parameter, anicel_fx_value) at [moment], in output pixels — or null
   /// where the plugin failed to say.
@@ -36,8 +50,9 @@ abstract interface class FxPluginRunner {
   /// [input] as the effect draws it, its size and place — or null where the
   /// plugin failed (the row is then drawn as if the effect were off).
   /// [layers] are the rows its layer parameters name, in the places the
-  /// values give them.
-  Uint8List? render({
+  /// values give them. A future: a device's run is a worker's wait for the
+  /// GPU, not the asker's (`GpuFxPlugin.render`).
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
@@ -47,7 +62,21 @@ abstract interface class FxPluginRunner {
   /// Lets the build go; asked after, it answers nothing — null, the effect
   /// off — as a picture still holding it may ask.
   void close();
+
+  /// Whether it has been let go ([close]) — a run of it on its way then
+  /// still to end: what a run of it comes to from here tells nobody
+  /// ([FxPluginRun.tell]).
+  bool get closed;
 }
+
+/// Who hears how a plugin's run went — failed or drew ([FxPluginRun.told]).
+typedef FxPluginTold = void Function({required bool failed});
+
+/// What the runs a picture's plug-in steps were told — the last run of each
+/// teller, and whether it failed — kept to be told again, by that run
+/// ([FxPluginRun.tell]), each time the picture is shown
+/// (`EngineFramePicture.hold`).
+typedef FxPluginRunsTold = Map<FxPluginTold, ({FxPluginRun run, bool failed})>;
 
 /// What a plugin's effect is RUN WITH at one frame of one cut: this
 /// device's build of it, the moment, and the picture of each row its layer
@@ -64,7 +93,8 @@ final class FxPluginRun {
     required this.runner,
     required this.moment,
     required Map<LayerId, BitmapSurface?> rows,
-  }) : rows = Map.unmodifiable(rows);
+    this.told,
+  }) : rows = frozenMap(rows);
 
   final FxPluginRunner runner;
   final FxPluginMoment moment;
@@ -72,9 +102,50 @@ final class FxPluginRun {
   /// The rows the effect's layer parameters name that are in its cut.
   final Map<LayerId, BitmapSurface?> rows;
 
+  /// Where every route that runs this tells how it went — failed or drew —
+  /// each time it shows the picture, kept or made: the device's record
+  /// its fx row's header reads (`FxPluginOutcomes`). Null tells nobody.
+  /// ⛔Told through [tell] alone.
+  ///
+  /// 🚨A picture nobody is shown tells nothing — card
+  /// a-cached-failed-picture-loses-its-mark (2026-11-08): the redo's cel,
+  /// made ahead after an undo, had told last that it drew. ↩️The history's
+  /// read-ahead (`ShownCels.warm`) and the cel as it stood beside a live
+  /// stroke ran a cel's head plugin telling nobody (`effectsTellingNobody`)
+  /// while that plugin ran on the cel; they run none since it is a step of
+  /// the chain the engine runs over what is shown
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+  final FxPluginTold? told;
+
+  /// Tells [told] how this run went — [failed], or drew — where its runner
+  /// is still open: every route that shows a plug-in's picture tells it
+  /// here — a step run or kept (`FxPluginStages`), a picture shown again
+  /// (`EngineFramePicture.hold`), a reach the plugin failed to say
+  /// (`resolveCompositeEffectPlan`).
+  ///
+  /// 🚨★A CLOSED RUNNER'S RUN TELLS NOBODY (card a-closed-plugin-runners-
+  /// run-tells-no-one, 관제 2026-11-13 10:38): a list of plug-ins lets a
+  /// build go as the app lets its engine go — its device lost —, as one is
+  /// replaced or taken off, and as the choice to cut its runs changes; a run
+  /// on its way then ends after, failed, and its effect's header showed ⚠
+  /// till the frame was made again on the next build (⛔없다가 생기는 UI).
+  /// ⛔NOT STOPPED IN THE RECORD (`FxPluginOutcomes.forget`): a plug-in that
+  /// would not open is one const runner, the same before it is let go and
+  /// after, so a record deaf to the old one is deaf to the next — and its
+  /// ⚠ never shows (브러시 10:37). The runner says it is closed; one that
+  /// never opened is never closed, and fails as it did.
+  void tell({required bool failed}) {
+    if (!runner.closed) {
+      told?.call(failed: failed);
+    }
+  }
+
   /// ⛔A row's picture is the SAME OBJECT, not an equal one: a picture is
   /// immutable, so an edited row is another object — and a deep compare of
   /// every tile per frame is what the identity is there to spare.
+  /// ⛔[told] is not compared: it is who hears the outcome, not what the
+  /// plugin runs with — two runs equal in that make one picture and fail
+  /// alike, so a picture kept from either is told to the one that asks.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

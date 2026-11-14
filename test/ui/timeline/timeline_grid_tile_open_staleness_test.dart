@@ -14,27 +14,23 @@
 @Timeout(Duration(minutes: 3))
 library;
 
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show ValueNotifier, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/awaited_uploads.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_drawn_off_the_paint.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// The OPEN-STALENESS residency law (device report 2026-08-17: old-format
@@ -67,9 +63,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// storm, and a cut trip serves it back with no repair needed.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
+  setUpAll(openAppGpuEngine);
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -91,30 +85,16 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 8)},
   );
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  setUp(TimelineGridTileStore.instance.clear);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  tearDown(TimelineGridTileStore.instance.clear);
 
   test('a crossing that lands inside the raster window stamps the SAMPLED '
       'revision: the straddled tile is baked again once, in the ask that '
       'finds it stale, against live answers, and never resident-poisoned '
       '(a cut trip needs no repair)', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
-    final uploaded = keepAwaitedUploads();
+    final drawnOff = countTilesDrawnOffThePaint(store);
     var landings = 0;
     store.revision.addListener(() => landings += 1);
     Future<void> waitForLandings(int n) async {
@@ -187,8 +167,19 @@ void main() {
       reason: 'sanity: the crossing really landed inside the raster',
     );
 
-    expect(uploaded, hasLength(1), reason: 'premise: the drain uploaded it');
-    final staleBytes = uploaded.single;
+    expect(drawnOff(), 1, reason: 'premise: the drain drew it');
+    // The straddled tile as an ask from the world its stamp names sees it:
+    // a fresh hit, which reads no answer.
+    revision.value = 0;
+    final straddled = store.tileFor(
+      painter: painterA,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
+    revision.value = 1;
+    expect(landings, 1, reason: 'premise: served, not baked');
+    final staleBytes = straddled!.picture.read();
 
     // The tile's pixels describe revision 0 (cells 0..2 baked with the
     // empty-cel tint) and — the fix — its stamp says so too: `_raster`
@@ -211,10 +202,8 @@ void main() {
       reason: 'the ask found the straddled tile stale and baked it again',
     );
     expect(healed, isNotNull);
-    expect(uploaded, hasLength(1), reason: 'through the door, unawaited');
-    final healedBytes = (await healed!.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!.buffer.asUint8List();
+    expect(drawnOff(), 1, reason: 'drawn in the ask, none off the paint');
+    final healedBytes = healed!.picture.read();
     // The pixels really were different worlds: the straddled tile
     // carried the empty block (its hollow look, I-129) over cells
     // 0..2, the healed one carries the full paper. This is the assertion

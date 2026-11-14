@@ -7,6 +7,8 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
+import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -33,6 +35,12 @@ import '../../helpers/project_scratch_folder.dart';
 /// still, the spinner with it — beside when the first report arrived and
 /// when the save ended.
 void main() {
+  // The session warms playback's rows in the quiet the save leaves it, and
+  // a row asks the binding for the quiet it takes its turn in.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  // The road production takes: a cel in RAM is serialised on a worker.
+  setUp(() => debugWorkersRunHere = false);
+  tearDown(() => debugWorkersRunHere = true);
   test('READING: how long a heavy save holds the main isolate', () async {
     final cels = int.parse(Platform.environment['F304_CELS'] ?? '20');
     final append = (Platform.environment['F304_MODE'] ?? 'append') == 'append';
@@ -103,7 +111,10 @@ void _inkTheWholeCel(
   BrushFrameEditingCoordinator(
     initialFrameKey: key,
     frameStore: s.renderCaches.brushFrameStore,
-    sessionStore: BrushFrameEditSessionStore(canvasSize: size, tileSize: 256),
+    sessionStore: BrushFrameEditSessionStore(
+      canvasSize: size,
+      tileSize: defaultCelTileSize,
+    ),
     historyPolicy: const BrushHistoryPolicy(),
   ).commitSourceStroke(
     sourceDabs: [

@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_pen_ledger.dart';
 
-/// H43: the native pen ledger (`qa_pen_ledger_apple.m`) answers with codes.
+/// H43: the native pen ledger (native/pen's ledger.rs) answers with codes.
 /// This is the Dart half of that contract — the half this host can run; the
-/// C half keeps its codes beside its own answers.
+/// Rust half keeps its codes beside its own answers.
 void main() {
   test('the ledger\'s codes read as what they mean', () {
     expect(QaPenLedger.decode(null), isNull, reason: 'no ledger on this run');

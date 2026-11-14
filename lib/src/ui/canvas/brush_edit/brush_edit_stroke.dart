@@ -781,39 +781,36 @@ class _BrushEditStroke {
   ///
   /// The handoff is revision-gated (only an image at the promoted tile's
   /// own revision qualifies; a stale one would be pinned to that tile
-  /// forever). The pen-up pictures every tile before the promotion
-  /// ([ActiveStrokeOverlayModel.pictureOwed]), so every promoted tile has
-  /// one; a tile whose image is somehow not there — a
-  /// coordinate the flush never touched at this revision — is pictured
-  /// from its own bytes on the spot, through the same door. Either way the
-  /// committed tile has its picture before the commit is announced, and
-  /// the overlay is dropped in the same call.
+  /// forever), and it hands over what a screen that draws pictures asked
+  /// the overlay for. A tile no picture was made of gets none here: the
+  /// screen that lays tiles asks for none (`EngineStackScreen`), and one
+  /// that draws them makes it in the paint that shows the tile
+  /// ([BitmapTileImageCache.pictureFor]). ↩️It was pictured on the spot,
+  /// from its own bytes, till 2026-11-12: of a tile the engine landed, a
+  /// wait for the GPU apiece, inside the pointer's handler
+  /// ([ActiveStrokeOverlayModel]). The overlay is dropped in the same
+  /// call.
   void landPromoted(
     List<PromotedStrokeTile> promoted,
     BrushStrokeCommitData data,
   ) {
     final overlay = _state._overlay._overlayModel;
-    // On a row that runs a plugin the landed cel is pictured whole, as it
-    // is shown ([ActiveStrokeOverlayModel.handsTilesOver]).
-    final handed = overlay.handsTilesOver
-        ? promoted
-        : const <PromotedStrokeTile>[];
-    for (final entry in handed) {
-      // ★The tile the coordinate SHOWS once this lands — the committed tile,
-      // or it with the cel's texts laid over (R9-rest): the overlay has
-      // been showing exactly that tile's pixels, so that is the tile its
-      // picture belongs to. Handed to the committed tile instead, a picture
-      // holding letters would stand for the bare drawing — and go on
-      // showing them after the text was moved or deleted.
-      final shown = overlay.tileShownFor(entry.coord, entry.tile);
+    for (final entry in promoted) {
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
       );
       if (image != null) {
-        BitmapTileImageCache.instance.adoptDecoded(shown, image);
-      } else {
-        BitmapTileImageCache.instance.pictureFor(shown);
+        // ★The tile the coordinate SHOWS once this lands — the committed
+        // tile, or it with the cel's texts laid over (R9-rest): the overlay
+        // has been showing exactly that tile's pixels, so that is the tile
+        // its picture belongs to. Handed to the committed tile instead, a
+        // picture holding letters would stand for the bare drawing — and go
+        // on showing them after the text was moved or deleted.
+        BitmapTileImageCache.instance.adoptDecoded(
+          overlay.tileShownFor(entry.coord, entry.tile),
+          image,
+        );
       }
     }
     _state.widget.onSourceStrokeCommitted(data);

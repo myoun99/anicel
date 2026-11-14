@@ -77,6 +77,16 @@ class AppLanguageSettings {
     this.notationLanguage = AppLanguage.ja,
   });
 
+  /// What an app whose user has saved no language speaks on a device that
+  /// prefers [languageCodes] (F-157): the program in the device's
+  /// ([AppLanguage.forDevice]), the notation at its default. One answer
+  /// for the launch, before its first frame, and for the session's restore
+  /// after it.
+  factory AppLanguageSettings.ofDevice(Iterable<String> languageCodes) =>
+      AppLanguageSettings(
+        programLanguage: AppLanguage.forDevice(languageCodes),
+      );
+
   /// What the APP UI reads in (coverage rolls out incrementally — strings
   /// not yet tabled stay English).
   final AppLanguage programLanguage;

@@ -11,9 +11,9 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// BB-1 (R26 #9): the stroke-level brush blend — kernel math, byte-exact
 /// pass-through, region extraction, and the commit round trip.
@@ -88,6 +88,31 @@ void main() {
     expect(region[3], 0);
   });
 
+  test('a region across two tiles takes each one\'s bytes at its own place',
+      () {
+    const tileSize = 4;
+    BitmapTile solid(int red) => BitmapTile(
+      size: tileSize,
+      pixels: Uint8List(tileSize * tileSize * 4)
+        ..fillRange(0, tileSize * tileSize * 4, red),
+    );
+    final surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      tileSize: tileSize,
+      tiles: {
+        TileCoord(x: 0, y: 0): solid(10),
+        TileCoord(x: 1, y: 0): solid(20),
+      },
+    );
+
+    final region = bitmapSurfaceRegionPixels(
+      surface,
+      DirtyRegion(left: 3, top: 0, rightExclusive: 5, bottomExclusive: 1),
+    );
+
+    expect(region, [10, 10, 10, 10, 20, 20, 20, 20]);
+  });
+
   test('the commit round trip: a multiply stroke lands the product over '
       'existing ink, unbolended pixels survive byte-exact, one undo '
       'restores everything', () {
@@ -109,7 +134,7 @@ void main() {
 
     // Base: an opaque RED square at (30,30). The sampler packs RGBA.
     coordinator.commitSourceStroke(sourceDabs: [dab(30, 30, 0xFFFF0000)]);
-    final red = surfacePixelRgba(
+    final red = surfaceRgbaInPlace(
       coordinator.currentSurfaceOf(coordinator.activeFrameKey),
       30,
       30,
@@ -126,17 +151,17 @@ void main() {
     expect(outcome, isNotNull);
     final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     expect(
-      surfacePixelRgba(surface, 31, 30),
+      surfaceRgbaInPlace(surface, 31, 30),
       0x000000FF,
       reason: 'green × red = black where the stroke covers ink',
     );
     expect(
-      surfacePixelRgba(surface, 33, 30),
+      surfaceRgbaInPlace(surface, 33, 30),
       0x00FF00FF,
       reason: 'green over emptiness stays green',
     );
     expect(
-      surfacePixelRgba(surface, 29, 30),
+      surfaceRgbaInPlace(surface, 29, 30),
       0xFF0000FF,
       reason: 'red outside the stroke bounds-roundtrip stays byte-exact',
     );

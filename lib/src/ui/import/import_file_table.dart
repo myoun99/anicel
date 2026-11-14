@@ -48,6 +48,7 @@ class ImportColumn<T> {
     required this.onPick,
     this.style = ImportColumnStyle.choice,
     this.wordOf,
+    this.keepsRoomFor,
     this.valuesFor,
     this.help,
   });
@@ -102,6 +103,28 @@ class ImportColumn<T> {
   /// answer is that word. F-429-Q5: a cut folder's correction names the
   /// symbol it rides, 「A에 어태치 (싱크)」.
   final String? Function(String path, T value)? wordOf;
+
+  /// The words this column keeps room for, where its rows say words of
+  /// their own ([wordOf], or an answer's label that carries a name): the
+  /// column is laid out for the widest of THESE and of its answers' labels,
+  /// never for what a row says, and a row's longer word is cut and says its
+  /// whole on hover ([EllipsisText]). One of each shape a row's word takes,
+  /// since which is the widest is the language's to say. Null where the
+  /// column is as wide as the widest word a row says.
+  ///
+  /// 🗣️F-582, 유저 2026-11-10: 「미디어 임포트시 옵션행이 길이에 따라 커져서
+  /// 임포트창이 커지는데, 해당 옵션행은 고정길이로 둬서 길어지면 앱 규칙에
+  /// 따라(ex: 파일이름 -> 파일이... 이런식으로 앱 규칙 따라서.) 생략. 풀네임은
+  /// 호버해서 툴팁으로 알도록. 터치가 호버못하는건 받아들임」. ↩️Every column
+  /// was measured by what its rows said (I-76, `6f2017e72` — nobody had
+  /// asked for that), so a run of long file names widened the list, and
+  /// again each time its span was picked on the preview.
+  ///
+  /// 🗣️F-582-Q1 (유저 2026-11-10: 「넣을 곳도 같은 법으로 — 고정 길이 ·
+  /// 넘치면 생략 · 호버로 전체」): the place column keeps one too — a long
+  /// layer's name no longer widens the window — and its rows' words take
+  /// more than one shape, so the room is of several words.
+  final List<String>? keepsRoomFor;
 
   /// The word [path]'s row says for [value].
   String wordFor(String path, T value) =>
@@ -268,8 +291,13 @@ class _ImportTableMetrics {
         for (final column in columns)
           if (text.widest([
                 ...column.values.map(column.labelOf),
-                for (final row in rows)
-                  if (column.appliesTo(row.path)) column.cellWordOf(row.path),
+                // A room the column keeps is its width whatever its rows
+                // say ([ImportColumn.keepsRoomFor]), as the resolution's is.
+                if (column.keepsRoomFor case final kept?)
+                  ...kept
+                else
+                  for (final row in rows)
+                    if (column.appliesTo(row.path)) column.cellWordOf(row.path),
               ])
               case final word)
             math.max(
@@ -686,7 +714,7 @@ class _OptionCell extends StatelessWidget {
     final wordStyle = theme.textTheme.labelSmall?.copyWith(
       color: locked ? theme.disabledColor : null,
     );
-    return Center(
+    final cell = Center(
       child: ControlPressClaim(
         onPressed: press,
         child: InkWell(
@@ -727,7 +755,10 @@ class _OptionCell extends StatelessWidget {
                       ),
                     ),
                   ),
-                  child: Text(
+                  // Cut where the column keeps a room and the row says more
+                  // than it holds — the app's one cut, which says its whole
+                  // on hover (F-582).
+                  child: EllipsisText(
                     column.cellWordOf(path),
                     maxLines: 1,
                     style: wordStyle,
@@ -735,6 +766,22 @@ class _OptionCell extends StatelessWidget {
                 ),
         ),
       ),
+    );
+    // A column that keeps a room ([ImportColumn.keepsRoomFor]) holds its
+    // chip to it: a word cut to the room wears the chip the room's own word
+    // would, the column's gap left around it — unheld, the cut chip would
+    // run from one edge of the column to the other. ⛔Only that column: one
+    // measured from its rows' words has nothing longer to hold, and a hold
+    // there could only cut a word the measure came a hair short of
+    // ([TextMeasure] does not carry the OS's bold-text setting, which a
+    // `Text` merges in).
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: column.keepsRoomFor == null
+            ? 0
+            : _ImportTableMetrics.gap / 2,
+      ),
+      child: cell,
     );
   }
 }

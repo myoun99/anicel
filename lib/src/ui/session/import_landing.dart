@@ -12,6 +12,7 @@ import '../../models/cel_bank_lanes.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/drawing_block_move.dart' show planDrawingRangeMove;
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -122,6 +123,12 @@ class ImportArrival {
     spot: spot,
   ).._cutId = _cutId;
 }
+
+/// An import that landed ([ImportLanding.land]): the panels each of its
+/// rows' 겸용 copies were born showing its pictures in, by row
+/// ([ImportMediaCommand.picturedPanels]) — which the door gives those
+/// pictures once it has laid them (🗣️I-120-Q29).
+typedef ImportLanded = ({Map<LayerId, Map<FrameId, FrameId>> picturedPanels});
 
 /// The gate every media-file import passes, the id mint it passes it
 /// with, and the one landing both destinations go through.
@@ -283,9 +290,9 @@ class ImportLanding {
   /// arms have to agree about the description the undo stack shows, which
   /// is the only thing the user sees of either.
   ///
-  /// Answers false only when frames bound for a row could not be planned
+  /// Answers null only when frames bound for a row could not be planned
   /// onto it.
-  bool land(
+  ImportLanded? land(
     List<Layer> layers, {
     required ImportArrival arrival,
     required int duration,
@@ -293,12 +300,15 @@ class ImportLanding {
   }) {
     final description = arrival.undoDescription;
     if (arrival.spot case final RowFramesSpot rowSpot) {
+      // Frames put on a row make no row, nor a copy of one.
       return _landIntoRow(
-        layers.single,
-        spot: rowSpot,
-        arrival: arrival,
-        assets: assets,
-      );
+            layers.single,
+            spot: rowSpot,
+            arrival: arrival,
+            assets: assets,
+          )
+          ? (picturedPanels: const {})
+          : null;
     }
     if (arrival.targetCut != null) {
       // A drop's spot aims the new rows — above the active row (inside it,
@@ -331,23 +341,22 @@ class ImportLanding {
                 else
                   layer,
             ];
-      _project.historyManager.execute(
-        ImportMediaCommand(
-          repository: _project.repository,
-          editingSession: _timeline.editingSession,
-          targetCutId: arrival.cutId,
-          newLayers: rows,
-          layerPlans: planAddLayersCommandInput(
-            project: _project.repository.requireProject(),
-            cutId: arrival.cutId,
-            layers: rows,
-          ),
-          layerInsertionIndex: placement?.index,
-          assetAdditions: assets,
-          description: description,
+      final command = ImportMediaCommand(
+        repository: _project.repository,
+        editingSession: _timeline.editingSession,
+        targetCutId: arrival.cutId,
+        newLayers: rows,
+        layerPlans: planAddLayersCommandInput(
+          project: _project.repository.requireProject(),
+          cutId: arrival.cutId,
+          layers: rows,
         ),
+        layerInsertionIndex: placement?.index,
+        assetAdditions: assets,
+        description: description,
       );
-      return true;
+      _project.historyManager.execute(command);
+      return (picturedPanels: command.picturedPanels);
     }
     final cut = importedCut(
       defaultCut: createDefaultCut(
@@ -379,7 +388,8 @@ class ImportLanding {
         description: description,
       ),
     );
-    return true;
+    // A new cut is no cut's 겸용 yet.
+    return (picturedPanels: const {});
   }
 
   /// A drop on a picture row's frame area: [planned]'s cels land on that

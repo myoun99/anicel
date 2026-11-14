@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
@@ -10,7 +11,7 @@ import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
-import '../native/qa_native_engine.dart';
+import '../native/engine_tile_ledger.dart';
 
 /// Raster geometry ops for baked surfaces (R19 bake-only): canvas resize
 /// and anchored-content translation operate on PIXELS now — the raster
@@ -52,15 +53,11 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
   }
   if (unscanned.isNotEmpty) {
-    // BB-N1 (ABI 22): with the engine loaded, the word scan runs in C,
-    // fanned across the worker pool — the Dart loop stays as the
-    // reference and the fallback (integer logic, so parity is
-    // structural; the parity test pins it anyway).
-    final native = QaNativeEngine.instance;
-    if (native != null) {
-      _scanNativeInto(box, unscanned, tileSize, native);
-    } else {
-      _scanDartInto(box, unscanned, tileSize);
+    EngineTileLedger.instance.rememberInk(BrushFrameKey.noCel, [
+      for (final entry in unscanned) entry.value,
+    ]);
+    for (final entry in unscanned) {
+      _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
     }
   }
   if (box.maxX < box.minX) {
@@ -114,68 +111,6 @@ class _InkBox {
     if (top < minY) minY = top;
     if (right > maxX) maxX = right;
     if (bottom > maxY) maxY = bottom;
-  }
-}
-
-/// Stages the tiles that still owe a box for ONE batched C scan, folds
-/// the answers onto the canvas axis, and MEMOIZES each on its tile.
-void _scanNativeInto(
-  _InkBox box,
-  List<MapEntry<TileCoord, BitmapTile>> entries,
-  int tileSize,
-  QaNativeEngine native,
-) {
-  native.ensureTileSpanBatch(entries.length);
-  for (var i = 0; i < entries.length; i += 1) {
-    // Only tilePixels is consumed — the scan is whole-tile. The staged
-    // pointers outlive this loop (the batch call below reads them), so
-    // what keeps the buffers alive is `entries` holding every tile —
-    // and it is used again after the call.
-    entries[i].value.readPixels(
-      (pointer, _) => native.setTileSpan(
-        i,
-        tilePixels: pointer,
-        tileLeft: 0,
-        tileTop: 0,
-        spanLeft: 0,
-        spanRightExclusive: tileSize,
-        spanTop: 0,
-        spanBottomExclusive: tileSize,
-      ),
-    );
-  }
-  final bounds = native.alphaBoundsTiles(
-    count: entries.length,
-    tileSize: tileSize,
-  );
-  for (var i = 0; i < entries.length; i += 1) {
-    final localMinX = bounds[i * 4];
-    if (localMinX == 0x7fffffff) {
-      // Ink-free tile. Nothing to remember: `inkBounds` answers null off
-      // `hasInk`, which this tile will have computed for itself.
-      continue;
-    }
-    final local = (
-      left: localMinX,
-      top: bounds[i * 4 + 1],
-      rightExclusive: bounds[i * 4 + 2] + 1,
-      bottomExclusive: bounds[i * 4 + 3] + 1,
-    );
-    entries[i].value.rememberInkBounds(local);
-    _includeTileBox(box, entries[i].key, local, tileSize);
-  }
-}
-
-/// The reference route: each tile scans its own words and memoizes the
-/// answer ([BitmapTile.inkBounds]) — the twin the native parity test
-/// measures the C path against.
-void _scanDartInto(
-  _InkBox box,
-  List<MapEntry<TileCoord, BitmapTile>> entries,
-  int tileSize,
-) {
-  for (final entry in entries) {
-    _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
   }
 }
 
@@ -292,7 +227,7 @@ BitmapSurface wallCrossingsOf(BitmapSurface surface, BitmapSurface behind) {
 /// [surface] behind the wall of [reach] when the wall takes anything of its
 /// picture ([_BehindWall.took]) — null when every pixel stays as it was.
 /// What a kept cel's rewrite asks, on the main isolate and on a worker alike
-/// (`cutCelInWorker`), and a hot cel's move of the wall.
+/// (`remakeKeptCelInWorker`), and a hot cel's move of the wall.
 BitmapSurface? cutBehindReach(BitmapSurface surface, PasteboardReach reach) {
   final (:behind, :took) = _behindReach(surface, reach);
   return took ? behind : null;
@@ -888,3 +823,48 @@ class _MovedBlit {
 /// tile, the canvas row [worldY] it lands on, and the [width] pixels kept
 /// of it from the x it lands at, [from].
 typedef _SourceRow = ({int row, int worldY, int from, int width});
+
+/// [straight] — rgba of [region], a row its width — as tiles of [tileSize]
+/// by their coordinates: every tile [region] reaches, holding its bytes
+/// where it lies and nothing past it.
+Map<TileCoord, BitmapTile> tilesOfRegion(
+  DirtyRegion region,
+  Uint8List straight, {
+  int tileSize = defaultCelTileSize,
+}) {
+  const bytes = BitmapTile.bytesPerPixel;
+  final DirtyRegion(:left, :top, :rightExclusive, :bottomExclusive) = region;
+  BitmapTile tileAt(int x, int y) => BitmapTile.written(
+    size: tileSize,
+    write: (pixels) {
+      pixels.fillRange(0, pixels.length, 0);
+      final (x0, y0) = (x * tileSize, y * tileSize);
+      final from = left < x0 ? x0 : left;
+      final to = rightExclusive < x0 + tileSize
+          ? rightExclusive
+          : x0 + tileSize;
+      final rowsFrom = top < y0 ? y0 : top;
+      final rowsTo = bottomExclusive < y0 + tileSize
+          ? bottomExclusive
+          : y0 + tileSize;
+      for (var row = rowsFrom; row < rowsTo; row += 1) {
+        final source = ((row - top) * region.width + from - left) * bytes;
+        final target = ((row - y0) * tileSize + from - x0) * bytes;
+        pixels.setRange(target, target + (to - from) * bytes, straight, source);
+      }
+    },
+  );
+  return {
+    for (
+      var y = floorDiv(top, tileSize);
+      y < ceilDiv(bottomExclusive, tileSize);
+      y += 1
+    )
+      for (
+        var x = floorDiv(left, tileSize);
+        x < ceilDiv(rightExclusive, tileSize);
+        x += 1
+      )
+        TileCoord(x: x, y: y): tileAt(x, y),
+  };
+}

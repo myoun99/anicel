@@ -2,27 +2,32 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart'
+    show AppKernels, debugAppShaderFolder, debugTakeAppGpuEngineNoted;
+import 'package:anicel/src/native/gpu_adapter_choice.dart';
+import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
     show debugPictureSideLimit;
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
-    show debugTilePictureClock;
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/engine_screen_texture.dart';
+import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
-import 'helpers/native_engine_path.dart';
+import '../tool/machine_cache.dart';
+import 'helpers/a_shown_surface.dart';
 import 'helpers/temp_dir.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
@@ -38,24 +43,53 @@ import 'helpers/temp_dir.dart';
 /// baseline (`AppInputSettings.testCorpusBaseline`), not to the
 /// product default `AppInputSettings()`.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
-  // 🚨★★★**THE ENGINE THE PARITY PINS NEED, POINTED AT FROM ONE PLACE.**
+  // The GPU engine opens on the first adapter: no Flutter names one here.
+  // ⛔Nothing opens it now — a file that never asks for the engine opens no
+  // device (app_gpu_engine.dart) — and nothing stands in for it: a test that
+  // needs it and gets none fails. Named, not imported: it was to keep the
+  // config from the engine, which it reaches all the same since Q24
+  // (gpu_adapter_choice.dart says why, and why that is the law).
+  debugGpuAdapterChoice = GpuAdapterChoice.first;
+  // 🚨EVERY TEST RUN OF A MACHINE KEEPS ITS SHADERS IN ONE FOLDER OF THE
+  // MACHINE'S — `<machine cache>/test_shaders`, beside the line's own
+  // (tool/machine_cache.dart) — so what one run's engine compiled, the
+  // next run's is handed: a file there is used only where all that was
+  // asked of the compiler is the same, and is written beside its name and
+  // renamed to it, so runs side by side share the folder
+  // (rust/vendor/wgpu-hal, dxil_cache.rs).
   //
-  // 「Where is the engine」 had two answers and they disagreed.
-  // `nativeEngineLibraryPathOrNull` looks under `build/native_standalone`,
-  // so the suites that use it ran; `openQaEngineLibrary` — which is what
-  // PRODUCTION calls, and therefore what `QaCelCompressor.instance` calls —
-  // tries `QA_ENGINE_PATH` and then the bare library name beside the
-  // executable, and `flutter test` has neither. So every suite gated on the
-  // compressor skipped SILENTLY with the DLL sitting right there: 27 pins
-  // over the zstd block frames, the carried conform and the staged blob
-  // (2026-09-08).
+  // A run is a launch, and the container it stands in is new and its own
+  // (`testContainerFolder`), so each run compiled every kernel it drew
+  // with — on the test's thread, where a pumped clock has them compiled
+  // (`AppKernels.debugCompileHere`). 🔬2026-11-13, main PC, eighteen suites
+  // on the line (board two-tests-spend-the-wait-windows-minute-under-load):
+  // the first drawing of a file stood 39–65 s in five kernels (a Drive
+  // project opened in a tab) and 62–64 s in four (two rows merged) — 5–6 s
+  // alone — behind a wait of sixty (`waitPatience`): red six times of ten,
+  // and 38 and 24 red logs of lanes since 11-10, each the first test of
+  // its file. With the folder, the same day and the line as full (nine
+  // suites of the run beside nine of another's): the two windows stood
+  // 5.9 s and 2.8 s where they had stood 60.8 s and 35.2 s with it empty,
+  // and of 296 wait windows one stood past ten seconds, at 11.5, where
+  // twenty had — a rasterize's apart, which waits for no kernel (board
+  // the-attach-row-bake-test-waits-a-gpu-read-a-frame-under-load).
+  // ⚠️What the folder does not change is Dart's own start in a new
+  // process. 🔬By thread CPU (보드/인프라 and this lane, 2026-11-13, board
+  // a-fresh-test-process-waits-long-for-its-first-frame-at-a-batch-start),
+  // the brush library test alone, the folder the run's own and empty and
+  // then the machine's and full: its first `pumpWidget` 6.6 s and 5.6 s,
+  // 9.0 s and 8.2 s of CPU and none of it an engine thread's; its first
+  // round 13.2 s and 1.7 s, 15.8 s and 0.2 s of CPU on the engine's
+  // threads. Under eighteen suites the first frame stood 12–48 s, the
+  // folder full as well.
   //
-  // ⛔The env var cannot be set from Dart, and that is the whole reason
-  // this seam exists. Setting it here makes the two answers one.
-  //
-  // ⚠️`??=`, so `QA_ENGINE_PATH` still wins: CI sets it, and a run that
-  // wants to measure the NO-engine world can too.
-  debugQaEngineLibraryPathOverride ??= nativeEngineLibraryPathOrNull();
+  // ⛔Not in the run's temp: the line empties it as each run ends
+  // (tool/test_queue.dart, `RunTemp`). ⛔Never the app's own container
+  // (`appSupportFilePath`): a test writes nothing among the user's files.
+  // A machine that names no cache folder keeps each run's shaders in the
+  // run's own container, as all did.
+  final machine = machineCacheFolder(Platform.environment);
+  debugAppShaderFolder = machine == null ? null : '$machine/test_shaders';
   // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
   // (2026-10-08). FIRST, before anything below asks for a temp path: from
   // here on `Directory.systemTemp` answers a folder of this file's own —
@@ -156,16 +190,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // named: what the test engine measures, 65536 — it cuts no picture a test
   // makes. A test that stands at another side puts this one back.
   debugPictureSideLimit = 1 << 16;
-  // The same fake clock again: a compose that makes tile pictures in turn
-  // gives way through a turn of the REAL event queue (a port message),
-  // which a `testWidgets` clock never waits — a test that settles a cold
-  // cel looks before the cel lands. Read off the wall, a run is two
-  // milliseconds a loaded machine can spend before a compose's first
-  // picture (🔬a first call's compile alone took 0.56 ms on an idle one,
-  // 2026-10-15), and `static_bake_render_parity_test` failed only inside a
-  // full run. Held, no run ends; the group that studies the run holds a
-  // clock of its own.
-  debugTilePictureClock = () => 0;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;
@@ -191,12 +215,53 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // in the same callback: `deleteAfterSessionEnds` in
   // `test/helpers/project_scratch_folder.dart`.
   setUp(() => addTearDown(OpenProjectFile.instance.releaseAll));
+  // 🚨**AN ERROR THE DEVICE RAISED THAT NO JOB WAS REFUSED BY IS THE
+  // TEST'S** (🗣️관제 2026-11-11: 「기록된 오류가 남아 있으면 시험이 끝날 때
+  // 빨개지는 장치를 같이 둬라」). ↩️Till the device-loss lane such an error
+  // ended the process where it was raised — wgpu's own handler panics —
+  // and that was the alarm. The engine notes it now and fails the next job
+  // that waits (rust/src/device.rs, `Refusals`), so a test on a way that
+  // never waits would end green with it noted. Asked as each test ends,
+  // and TAKEN: the test that raised it is the red one, and the next test's
+  // first wait is not failed by it.
+  //
+  // ⚠️The first `tearDown` here, so the last one run — package:test runs
+  // them in reverse — and what the two below let go of is asked for too.
+  tearDown(() {
+    expect(
+      debugTakeAppGpuEngineNoted(),
+      isNull,
+      reason:
+          'the GPU device raised an error that no job of this test was '
+          'refused by: the way that raised it never waits for the device, '
+          'and the app would go on as if it had worked',
+    );
+  });
   // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test
   // queued drained inside the NEXT test — against the earlier test's
   // painter and resolvers, in the next test's zone (2026-09-26: a rows test
   // failed on a raster the test before it had queued). A test ends with
   // the store empty; the drain it scheduled then finds nothing.
   tearDown(TimelineGridTileStore.instance.clear);
+  // `flutter test` registers no texture a frame grid's screen could be
+  // shown by ([ScreenTexture.debugOnSurface]): where a file opens the GPU
+  // engine, each grid's screen opens on a surface of its own, freed as the
+  // test ends.
+  debugOpenEngineScreen = _screenOnASurface;
+  // Kernels compile on this isolate here, as they always did: a widget
+  // test's pumped clock lends a compile on another isolate no real time to
+  // finish in. The pins of the app's own route ask for it back.
+  AppKernels.debugCompileHere = true;
+  // The same clock once more: it opens no engine either, so a canvas a test
+  // stands would mark its place for as long as the test settles
+  // (`pumpAndSettle`) — the mark turns. The pins of the mark stand it.
+  FrameWaitMark.debugStands = false;
+  debugLayerOfScreen = screenDrawnAsAPicture;
+  // A zoom's stop rasters what it stretched, on the engine a session's
+  // pictures open: no test but the one that fires it by hand is about that,
+  // and one left armed outlives the tree.
+  TimelineGridTileStore.instance.debugZoomTimer = (_, _) => const _NoStop();
+  tearDown(_freeScreenSurfaces);
   // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
   // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
   // single test, so it is the root group's LAST `tearDownAll` — package:test
@@ -230,4 +295,38 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
     );
   });
   await testMain();
+}
+
+/// A zoom's stop that does not come.
+final class _NoStop implements Timer {
+  const _NoStop();
+
+  @override
+  void cancel() {}
+
+  @override
+  bool get isActive => false;
+
+  @override
+  int get tick => 0;
+}
+
+/// The surfaces the grids' screens opened on in this test.
+
+Future<ScreenTexture> _screenOnASurface(
+  GpuEngine engine,
+  int width,
+  int height,
+) async {
+  final surface = shownSurfaceOf(width, height);
+  final id = shownScreens.length + 1;
+  shownScreens[id] = surface;
+  return ScreenTexture.debugOnSurface(surface, id: id);
+}
+
+void _freeScreenSurfaces() {
+  for (final surface in shownScreens.values) {
+    surface.free();
+  }
+  shownScreens.clear();
 }

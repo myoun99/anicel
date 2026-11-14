@@ -1,26 +1,20 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
 import '../../core/lru.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/pasteboard_bounds.dart';
-import '../../models/rgba_image_bytes.dart';
+import '../../native/engine_chain_holds.dart';
 import '../../services/cel_content_notes.dart';
-import '../../services/playback/cut_composite_structure.dart';
+import '../../services/cel_looks.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
-import '../canvas/composite_tree_paint.dart' show BelowThePen;
-import '../canvas/display_resample.dart' show rectOutwardOnGrid;
-import '../canvas/subtree_image_composite.dart'
-    show HeldSubtreeRasters, blurReductionCell;
 import '../quiet_turns.dart';
-import 'frame_picture_store.dart';
+import 'engine_frame_picture_store.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_cache_budget.dart' show playbackCacheBudgetBytes;
 import 'playback_pictures.dart';
@@ -73,7 +67,7 @@ class FramePictures implements PlaybackPictures {
     QuietTurns? quietTurns,
   }) : quietTurns = quietTurns ?? QuietTurns.instance;
 
-  final FramePictureStore<FramePictureKey> store;
+  final EngineFramePictureStore<FramePictureKey> store;
 
   /// Where a row's cel is read from: thawed ahead off the UI thread
   /// ([LayerFrameImageCache.readIn]), its stored pixels
@@ -101,9 +95,6 @@ class FramePictures implements PlaybackPictures {
   /// late.
   final QuietSpan _frameSpan = QuietSpan();
 
-  /// How long holding a frame's nodes has taken ([holdNodesOf]), likewise.
-  final QuietSpan _holdSpan = QuietSpan();
-
   /// Cels with pixels recorded at ANOTHER canvas size: the picture is made
   /// without them. Noted as well at the store's whole-content generation,
   /// as a resize heals such a cel with no revision of its own — a picture
@@ -119,91 +110,78 @@ class FramePictures implements PlaybackPictures {
   /// content is a new key.
   final Lru<FramePictureKey, bool> _gaveNothing = Lru(entryCap: () => 256);
 
-  /// 🚨★THE PICTURES THE NODES OF A FRAME A CANVAS STANDS ON WERE DRAWN INTO
-  /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
-  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), as
-  /// that canvas's screen draws it as it stands ([frameAsItStands]), or
-  /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
-  /// stroke's steps are patched into it and as a screen draws it as it
-  /// stands — what lies below the row a pen draws on, as
-  /// one picture or in the cells a step landed in ([BelowThePen]), and each
-  /// folder over it drawn whole are not drawn again for each step, or each
-  /// value of a drag, that does not touch them.
+  /// 🚨★WHAT THE CHAINS OF A FRAME A CANVAS STANDS ON PUT
+  /// ([EngineChainHolds]; card paint-walk-redoes-the-same-work-each-step,
+  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]) and as
+  /// a stroke's steps are composed into it, so each folder a step or a value
+  /// of a drag does not touch runs none of its chain again. What is recorded
+  /// into these keeps its plug-ins' steps as well, and into no others
+  /// ([EngineChainHolds.ofThePensFrame]).
   ///
-  /// ⚖️Below the pen, two pages at the most — the page of the frame last
-  /// drawn with them ([estimatedImageBytes]): the frame's own list and the
-  /// folder the pen is in — the option 유저 picked 2026-10-27 (Q2 = c):
-  /// 「폴더가 몇 개든 2~3장」. Over it, as many as the playback [line] has
-  /// room for — the frames' pictures made ahead give way to them (🗣️유저
-  /// 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」).
-  /// The screen is fed by the frame's picture, and these only make what
-  /// comes before it cheaper. Past it they are let go of, and those draw them
-  /// as they did before; and they are only ever the nodes of the frame last
-  /// drawn to hold them ([HeldSubtreeRasters.holdOnly]).
-  ///
-  /// ↩️One page held the nodes over the pen together until Q3: 🔬nine
-  /// folders at 50% over the row drawn on, one of them fitted and a step
-  /// drew the rest — a step on the screen p50 14.8–27.5ms against
-  /// 6.5–12.6ms at 100% (10-27, the whole app, Windows, profile).
-  ///
-  /// ↩️Each node a page at the most until 2026-11-01 — a guess that a folder
-  /// is never bigger than the page, in that option's cost: one whose ink
-  /// reaches the pasteboard, 2720 x 1696 on a page of 2436 x 1524 in S5_BA
-  /// cut 353, was never held, though Q3 said 「전부」.
-  late final HeldSubtreeRasters heldNodes = HeldSubtreeRasters(
-    bytes: () => line?.bytesForNodes ?? playbackCacheBudgetBytes,
-    bytesBelow: () => 2 * _heldPageBytes,
+  /// ⚖️As many as the playback [line] has room for — the frames' pictures
+  /// made ahead give way to them (🗣️유저 2026-10-27, Q3 = c: 「위 폴더는
+  /// 하나씩, 재생 메모리 몫 안에서 전부」). The screen is fed by the frame's
+  /// picture, and these only make what comes before it cheaper. Past it they
+  /// are let go of, and those run their chains as before.
+  late final EngineChainHolds heldNodes = EngineChainHolds(
+    room: () => line?.bytesForNodes ?? playbackCacheBudgetBytes,
+    ofThePensFrame: true,
   );
-  int _heldPageBytes = 0;
 
-  /// 🚨★THE PICTURES THE NODES OF THE FRAME LAST MADE AHEAD WERE DRAWN INTO
-  /// (🗣️유저 2026-11-01, F-529-Q1: 「거기서 굽는시간 최대한 단축하고싶음」):
-  /// what the next frame made ahead finds, so a folder that draws the same
-  /// on both is not rastered again nor its chain run again — a frame's
-  /// [heldNodes] are what a canvas stands on, these what a walk goes through.
-  /// One frame's: each frame made ahead lets go of what it neither found
-  /// nor kept ([HeldSubtreeRasters.holdOnly]).
+  /// 🚨★WHAT THE CHAINS OF THE FRAMES MADE AHEAD PUT (🗣️유저 2026-11-01,
+  /// F-529-Q1: 「거기서 굽는시간 최대한 단축하고싶음」): what the next frame
+  /// made ahead finds, so a folder that draws the same on both does not run
+  /// its chain again — [heldNodes] are what a canvas stands on, these what a
+  /// walk goes through.
   ///
   /// ⚖️In what the [line] has free ([HeldNodesLine.bytesLeftFree]) — the
   /// frames' pictures feed the screen and these only make them cheaper, so
-  /// no picture gives way to them, nor does a walk end a picture short. A
-  /// picture laid takes it back as it lands, all but the newest ([Lru.fit]);
-  /// on a full line none is kept, and the walk draws each as it did before.
-  ///
-  /// A frame laid in pieces draws each of them whole once ([_heldFirst]),
-  /// where every piece ran the chain on what it cut of the folder — and only
-  /// for the picture after it ([_holdsAhead]).
+  /// no picture gives way to them, nor does a walk end a picture short.
   ///
   /// 🔬Surface Pro 11, profile, S5_BA cut 353 (38 rows, one folder under a
   /// camera lens blur at 2720 x 1696 whose rows change at 2 of 47 frames),
-  /// the bar's 114 frames from nothing, in turn: 29.9–30.8 s → 8.0–8.5 s;
-  /// with the cut's moving rows moved into that folder, which then changes at
-  /// every picture and is not held, 28.8–29.2 s → 24.1–24.4 s. Two thirds of
-  /// a bar was that chain: laid at once, 20 s → 7 s with it off.
-  late final HeldSubtreeRasters aheadNodes = HeldSubtreeRasters(
-    bytes: () => _roomAhead,
+  /// the bar's 114 frames from nothing, in turn, on the walk: 29.9–30.8 s →
+  /// 8.0–8.5 s with the folder's picture held.
+  late final EngineChainHolds aheadNodes = EngineChainHolds(
+    room: () => line?.bytesLeftFree ?? playbackCacheBudgetBytes,
+    ofThePensFrame: false,
   );
-
-  int get _roomAhead => line?.bytesLeftFree ?? playbackCacheBudgetBytes;
 
   /// The line [heldNodes] stand on — null where none is told: the line's
   /// own size, which nothing else holds then.
   final HeldNodesLine? line;
 
-  /// What the pictures of the nodes held weigh, on the [line] beside the
-  /// frames' ([heldNodes], [aheadNodes]).
+  /// What the chains held weigh, on the [line] beside the frames' pictures
+  /// ([heldNodes], [aheadNodes]).
   int get heldBytes => heldNodes.heldBytes + aheadNodes.heldBytes;
 
-  /// The nodes held past what the [line] has room for are let go of.
+  /// The chains held past what the [line] has room for are let go of.
   void fitNodes() {
     heldNodes.fit();
     aheadNodes.fit();
   }
 
-  /// Lets go of the pictures the frames' nodes are held in.
+  /// Lets go of every chain held.
   void letGoOfNodes() {
     heldNodes.clear();
     aheadNodes.clear();
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — what the frames stand on went
+  /// with the engine that made it: the chains held, every frame's picture
+  /// ([EngineFramePictureStore.letGoWithItsTools]), and the word that a
+  /// frame's making threw ([gaveUpAt]) — a device going refuses what the
+  /// next one makes, and a frame is asked of the next as if for the first
+  /// time.
+  ///
+  /// ⚠️The pictures last: who shows one asks for its frame again as it
+  /// hears ([EngineFramePictureStore.wentWithItsTools]), and finds none of
+  /// the rest.
+  void letGoWithTheirEngine() {
+    letGoOfNodes();
+    _gaveNothing.clear();
+    store.letGoWithItsTools();
   }
 
   /// Lets go of every frame's picture made of a revision the cels' store
@@ -223,25 +201,21 @@ class FramePictures implements PlaybackPictures {
     }
     store.letGoUnpinnedWhere(
       (key) => preorderNodes(key.signature.nodes).any(
-        (node) =>
-            node is CompositeLeafSignature &&
-            left.contains(node.layer.sourceRevision),
+        (node) => switch (node) {
+          CompositeLeafSignature(
+            row: CompositeLayerSignature(:final sourceRevision),
+          ) =>
+            left.contains(sourceRevision),
+          _ => false,
+        },
       ),
     );
   }
 
-  /// A frame drawn on [page] as [pictures] say, its rows signed as its key
-  /// signs them.
-  ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})
-  _holding(FramePage page, HeldNodePictures pictures) {
-    _heldPageBytes = estimatedImageBytes(
-      page.canvasSize.width,
-      page.canvasSize.height,
-    );
-    return (pictures: pictures, revisionOf: _revisionOf);
+  void dispose() {
+    heldNodes.free();
+    aheadNodes.free();
   }
-
-  void dispose() => letGoOfNodes();
 
   /// Whether the frame's picture is made of [cel]: one with something to
   /// draw — a cel with nothing in it draws nothing, and N frames of blank
@@ -273,14 +247,19 @@ class FramePictures implements PlaybackPictures {
   /// [asOf] asks the key the stack had with one cel as it was then
   /// ([celNow]): a frame whose key that is changed in that cel alone — what
   /// a stroke's landing moves (`FramePictureView`).
+  ///
+  /// [page] is the page the picture is drawn on where it is not the one
+  /// [picture] is ([pageOf]) — a file's rows on the ground it is made on
+  /// (`frameOnTheEngine`).
   FramePictureKey keyOfStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     CelAsOf? asOf,
+    FramePage? page,
   }) => framePictureKeyOf(
     _drawnOf(nodes, asOf: asOf),
     cutId: picture.cut.id,
-    page: pageOf(picture),
+    page: page ?? pageOf(picture),
     revisionOf: (cel) => cel == asOf?.cel ? asOf!.revision : _revisionOf(cel),
   );
 
@@ -369,26 +348,28 @@ class FramePictures implements PlaybackPictures {
   /// ⚠️Not where the frame is there: a cel's throw is handed on once the
   /// frame is laid without it ([make]), and the picture laid is no failure.
   @override
-  void noteFailure(DemandedPicture picture) {
-    final key = keyOf(picture);
+  void noteFailure(DemandedPicture picture) => noteFailureAt(keyOf(picture));
+
+  /// [noteFailure] of the frame under [key]: as a screen stacks it
+  /// ([makeShown]), which is not always as the warmer does.
+  void noteFailureAt(FramePictureKey key) {
     if (!_isThere(key)) {
       _gaveNothing.keep(key, true);
     }
   }
 
-  /// What the picture will weigh: the picture the store lays of its
-  /// drawing's extent ([pictureExtentOf]), where every cel it draws is in
+  /// What the picture will weigh: the tiles the engine keeps of its
+  /// world ([EngineStackScreen.bytesOver]), where every cel it draws is in
   /// hand ([readIn]) — and else of the page's. ⛔Reads nothing: a walk
   /// weighs the frames it asks for ahead before it reads them.
   @override
   int bytesToMake(DemandedPicture picture) {
     final nodes = stackOf(picture);
-    final extent = pictureExtentOf(
+    return EngineStackScreen.bytesOver(
       allInHand(nodes, picture)
-          ? drawingNow(nodes, picture).frame.drawing.extent
+          ? drawingNow(nodes, picture).frame.extent
           : pageOf(picture).canvasSize.canvasRect,
     );
-    return estimatedImageBytes(extent.width.round(), extent.height.round());
   }
 
   /// Whether every cel [nodes] draw for [picture] is in hand — its stored
@@ -398,10 +379,14 @@ class FramePictures implements PlaybackPictures {
     DemandedPicture picture,
   ) => stackedCelsOf(_drawnOf(nodes)).every((cel) => inHand(cel, picture));
 
-  /// Whether [cel]'s stored pixels on [picture]'s page are read and laid
-  /// out already — drawn without a reading ([frameAsItStands]).
-  bool inHand(BrushFrameKey cel, DemandedPicture picture) => layerImages
-      .storedSurfaceIsInHand(cel, canvasSize: pageOf(picture).canvasSize);
+  /// Whether [cel]'s stored pixels on [picture]'s page — or [page] — are
+  /// read and laid out already — drawn without a reading
+  /// ([frameAsItStands]).
+  bool inHand(BrushFrameKey cel, DemandedPicture picture, {FramePage? page}) =>
+      layerImages.storedSurfaceIsInHand(
+        cel,
+        canvasSize: (page ?? pageOf(picture)).canvasSize,
+      );
 
   /// Thaws every cel [picture] draws that is not in hand already, at once,
   /// off the UI thread ([LayerFrameImageCache.readIn]) — none another frame
@@ -410,15 +395,24 @@ class FramePictures implements PlaybackPictures {
   Future<void> readIn(DemandedPicture picture) =>
       readInStack(stackOf(picture), picture);
 
-  /// [readIn] for the cels [nodes] — a screen's own stack — draw.
+  /// [readIn] for the cels [nodes] — a screen's own stack — draw, on
+  /// [picture]'s page or [page] ([keyOfStack]).
+  ///
+  /// A render's [looks] read nothing ahead: a look thaws nothing, and its
+  /// cels are read as the frame is drawn ([drawingNow]).
   Future<void> readInStack(
     List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) {
-    final canvasSize = pageOf(picture).canvasSize;
+    DemandedPicture picture, {
+    FramePage? page,
+    CelLooks? looks,
+  }) {
+    if (looks != null) {
+      return Future<void>.value();
+    }
+    final canvasSize = (page ?? pageOf(picture)).canvasSize;
     return Future.wait([
       for (final cel in stackedCelsOf(_drawnOf(nodes)))
-        if (!inHand(cel, picture))
+        if (!inHand(cel, picture, page: page))
           layerImages.readIn(cel, canvasSize: canvasSize),
     ]);
   }
@@ -485,23 +479,34 @@ class FramePictures implements PlaybackPictures {
   /// 그림에서 잘라 쓴다」 · 「최대한 하나로 통합」): the frame [nodes] stack for
   /// [picture], under its key ([keyOfStack]) — the canvas's and the warmer's
   /// own wherever they stack the frame alike — and made in the store's line
-  /// as one made ahead is ([make]) where none is there — whole at every
-  /// level ([FramePictureStore.leveled]): a panel draws it reduced. Null
-  /// where there is none to cut from: the frame draws its page alone
-  /// ([drawsOnlyItsPage]), a canvas holds it as its own over what no cel
-  /// stores ([_isThere] — a panel is of what the cels store), or the making
-  /// was given up.
+  /// as one made ahead is ([make]) where none is there. Null where there is
+  /// none to cut from: the frame draws its page alone ([drawsOnlyItsPage]),
+  /// a canvas holds it as its own over what no cel stores ([_isThere] — a
+  /// panel is of what the cels store), or the making was given up.
   ///
   /// ↩️A panel composed the frame again for itself, every row at the
   /// canvas's size (`ExportFrameRenderer.renderPicture`) — 🔬S5_BA cut 352,
   /// 68 rows: about 180 Mpx a picture, seconds of a Surface Pro 11's GPU
   /// each time the pen came up.
-  Future<FramePicture?> pictureOf(
+  ///
+  /// On [picture]'s page, or [page] ([keyOfStack]); its cels read as
+  /// [looks] says where a render makes it ([drawingNow]).
+  ///
+  /// 🚨HELD FOR THE ONE IT IS HANDED TO, WHO RELEASES IT
+  /// ([EngineFramePicture.hold] — the store's law 「HELD BY WHOEVER SHOWS
+  /// IT」; 관제 11-10 08:48): the store may let it go while the asker is
+  /// still on its way to showing it. ↩️It was handed unheld, and a shot
+  /// (`frameOnTheEngine`) waits for the engine's tools between this and its
+  /// show — a picture the budget let go in that wait was freed, and its
+  /// show threw.
+  Future<EngineFramePicture?> pictureOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     required bool Function() shouldAbort,
+    FramePage? page,
+    CelLooks? looks,
   }) async {
-    var key = keyOfStack(nodes, picture);
+    var key = keyOfStack(nodes, picture, page: page);
     if (!store.holds(key)) {
       if (_isThere(key) ||
           !await _make(
@@ -511,98 +516,47 @@ class FramePictures implements PlaybackPictures {
             due: notDue,
             shownNow: false,
             keepsNodes: false,
+            page: page,
+            looks: looks,
           )) {
         return null;
       }
       // Asked once it is made: a cel it was made without is noted then.
-      key = keyOfStack(nodes, picture);
+      key = keyOfStack(nodes, picture, page: page);
     }
-    await store.leveled(key);
-    return store.peek(key);
-  }
-
-  /// 🚨Holds the nodes of the frame [nodes] stack for [picture] — one a
-  /// screen stands on to draw on, its picture laid ahead of it ([make]),
-  /// which keeps none ([heldNodes]): the frame drawn as it is laid, in its
-  /// turn ([QuietTurns]), into nothing but them. A node held already is cut
-  /// from and costs no raster; one over the pen that is not is drawn whole
-  /// once, as the lay would have drawn it.
-  ///
-  /// 🚨★★★NOT WHAT LIES BELOW THE PEN ([BelowThePen.asHeld]): what is held
-  /// of it stays, and a step draws the cells of it it lands in
-  /// ([frameAsItStands]) — ↩️it was drawn whole here, a picture the
-  /// frame's size at each frame a canvas came to, until 2026-10-28 (card
-  /// a-scrub-prepares-every-frame-it-crosses, 유저 「최대한 근본적인
-  /// 해결쪽으로」 — 🔬Surface Pro 11, S5_BA cut 352: a ruler scrub's step on
-  /// the screen p50 200–267 ms with it, 49–50 ms without).
-  ///
-  /// ⛔Not on a step's way: a stroke begun before its turn draws each node
-  /// as it did before, until the turn comes. And not the frame's picture
-  /// again — that is there, and stays as it is.
-  ///
-  /// The frame laid for the screen keeps them as it is laid ([makeShown]);
-  /// one laid ahead keeps none of them, its own being the walk's
-  /// ([aheadNodes]) — the warmer lays every frame but the one a cut opens
-  /// on, and asks for the one a screen stands on as the screen does, so
-  /// either may lay it.
-  ///
-  /// Held, the frames' pictures made ahead give way to them on the [line]
-  /// — here, where the screen holds the frame's own picture already: a
-  /// picture laid for it and not yet held would be let go of first.
-  Future<void> holdNodesOf(
-    List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture, {
-    required bool Function() shouldAbort,
-  }) async {
-    await readInStack(nodes, picture);
-    // 🔬Drawn again where the canvas's own lay held them ([makeShown]), it
-    // was a third composite of the frame after one show-all on S5_BA cut
-    // 352 — 65–114ms of the raster thread (공통, 10-28, Windows, profile).
-    if (heldNodes.holdsAllOf(keyOfStack(nodes, picture))) {
-      _giveWayToNodes();
-      return;
-    }
-    final turn = await quietTurns.inAQuiet(_holdSpan, gone: shouldAbort);
-    if (turn == null) {
-      return;
-    }
-    // A cel that cannot be read is noted and drawn without, as the frame's
-    // own making noted it and handed its throw on ([make]).
-    final recorder = ui.PictureRecorder();
-    drawingNow(
-      nodes,
-      picture,
-      held: (
-        rasters: heldNodes,
-        keeps: NodesKept.onlyDrawn,
-        below: BelowThePen.asHeld,
-      ),
-    ).frame.drawing.draw(ui.Canvas(recorder));
-    recorder.endRecording().dispose();
-    heldNodes.heldAllOf(keyOfStack(nodes, picture));
-    _giveWayToNodes();
-    await turn.landed();
+    return store.peek(key)?.hold();
   }
 
   /// What [heldNodes] weighed when the frames' pictures last gave way to
   /// them on the [line].
   int _gaveWayTo = 0;
 
-  /// The frames' pictures give way on the [line] to what [heldNodes] hold.
-  void _giveWayToNodes() {
-    line?.giveWayToNodes();
-    _gaveWayTo = heldNodes.heldBytes;
-  }
-
-  /// The frames' pictures give way on the [line] to the cells of what lies
-  /// below a pen that a stroke's steps kept ([frameAsItStands]) — where
-  /// they hold more than when they last did.
+  /// The frames' pictures give way on the [line] to what a stroke's steps
+  /// kept of their chains ([heldNodes]) — where they hold more than when
+  /// they last did.
   void giveWayToSteps() {
     if (heldNodes.heldBytes > _gaveWayTo) {
-      _giveWayToNodes();
+      line?.giveWayToNodes();
+      _gaveWayTo = heldNodes.heldBytes;
     }
   }
 
+  /// 🚨A FRAME WITH ITS GHOSTS IN PLACE IS LAID OVER ITS FILM
+  /// (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이 아닌 경우라도
+  /// 최대한 극한으로 개선해보자」): the same tree without its ghosts, on the
+  /// same page, held when its turn comes — composited where the ghosts show
+  /// ([StackedFrame.whereTheGhostsShow]) alone, the film's elsewhere as it is
+  /// ([EngineFramePictureStore.lay]), so any blend, adjustment, folder or
+  /// clip over the ghosts alike. Laid whole where the film is gone by then,
+  /// or the ghosts cannot be told.
+  ///
+  /// 🔬Laid whole, S5_BA cut 352 (67 rows, 2436×1524, 10-28, Windows,
+  /// profile): the standing order warmed in 444–523 ms against 132–166 ms
+  /// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
+  /// 691–816 ms.
+  ///
+  /// On [picture]'s page, or [page] ([keyOfStack]); its cels read as
+  /// [looks] says ([drawingNow]).
   Future<bool> _make(
     List<CompositeNode<CanvasStackRow>> Function() nodesOf,
     DemandedPicture picture, {
@@ -610,53 +564,34 @@ class FramePictures implements PlaybackPictures {
     required bool Function() due,
     required bool shownNow,
     required bool keepsNodes,
+    FramePage? page,
+    CelLooks? looks,
   }) async {
     if (shouldAbort()) {
       return false;
     }
-    await readInStack(nodesOf(), picture);
+    await readInStack(nodesOf(), picture, page: page, looks: looks);
     if (shouldAbort()) {
       return false;
     }
     final nodes = nodesOf();
-    // Laid over its film — the same tree without its ghosts, on the same
-    // page — a frame draws its nodes only where they show, and keeps none:
-    // a canvas that shows it holds them then ([holdNodesOf]).
     final film = picture.ghosts == FrameGhosts.inPlace
-        ? keyOfStack(stackWithoutGhosts(nodes), picture)
+        ? keyOfStack(stackWithoutGhosts(nodes), picture, page: page)
         : null;
-    final heldFilm = film != null && store.holds(film) ? film : null;
-    final rasters = shownNow ? heldNodes : aheadNodes;
-    final made = drawingNow(nodes, picture, held: _findsIn(rasters));
+    final made = drawingNow(nodes, picture, page: page, looks: looks);
     // Asked once the drawing is: a cel it was made without is noted now.
-    final key = keyOfStack(nodes, picture);
-    final drawing = heldFilm == null
-        ? made.frame.drawing
-        : _overTheFilm(made.frame, () => store.peek(heldFilm));
-    final keeps =
-        heldFilm == null &&
-        (shownNow ? keepsNodes : _holdsAhead(key, picture, drawing.extent));
+    final key = keyOfStack(nodes, picture, page: page);
+    final ghosts = film != null && store.holds(film)
+        ? made.frame.whereTheGhostsShow
+        : null;
     if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
-          keeps
-              ? _heldFirst(
-                  rasters,
-                  key,
-                  () => drawingNow(
-                    nodes,
-                    picture,
-                    held: (
-                      rasters: rasters,
-                      keeps: NodesKept.onlyDrawn,
-                      below: BelowThePen.whole,
-                    ),
-                  ).frame.drawing,
-                  drawing,
-                )
-              : drawing,
+          made.frame,
           shouldAbort,
           due,
+          over: ghosts == null ? null : (film: film!, fresh: ghosts),
+          holds: shownNow && keepsNodes ? heldNodes : aheadNodes,
           shownNow: shownNow,
         )) {
       return false;
@@ -669,78 +604,16 @@ class FramePictures implements PlaybackPictures {
     return true;
   }
 
-  /// 🚨WHETHER THE FRAME OF [key], OVER [extent], DRAWS ITS NODES WHOLE AS IT
-  /// IS MADE AHEAD ([aheadNodes]): where the next picture of its cut draws
-  /// one of them too, and none holds it. Drawn whole, a folder is one raster
-  /// holding the raster thread through its chain — what 🗣️F-529-Q1 chose
-  /// pieces against — so it is drawn so only to be found: where a folder
-  /// changes at every picture, the frame goes piece by piece as it did.
-  ///
-  /// ⛔Not past [FramePictureStore.fitsARaster]: such a frame goes in pieces
-  /// because no raster that size may hold that thread at all. ⛔Nor where
-  /// the [line] has no room for it: not kept, it would be drawn whole for
-  /// nothing, and again in every piece.
-  bool _holdsAhead(
-    FramePictureKey key,
-    DemandedPicture picture,
-    ui.Rect extent,
-  ) {
-    if (!store.fitsARaster(extent) ||
-        estimatedImageBytes(extent.width.ceil(), extent.height.ceil()) >
-            _roomAhead) {
-      return false;
-    }
-    final spans = compositeStructureSpansIn(
-      picture.cut,
-      start: picture.frameIndex,
-      end: picture.cut.duration,
-    );
-    if (spans.length < 2) {
-      return false;
-    }
-    final next = keyOf((
-      cut: picture.cut,
-      frameIndex: spans[1].start,
-      paintPaper: picture.paintPaper,
-      ghosts: picture.ghosts,
-    ));
-    return _hasOneToHold(key.signature.nodes, {
-      for (final node in preorderNodes(next.signature.nodes)) node.asItsPicture,
-    });
-  }
-
-  /// Whether, of [nodes] from the top down, one whose picture [next] has too
-  /// and a walk holds is not held yet.
-  bool _hasOneToHold(
-    List<CompositeNodeSignature> nodes,
-    Set<CompositeNodeSignature> next,
-  ) => nodes.any((node) {
-    final picture = node.asItsPicture;
-    return next.contains(picture) && _isHeldByAWalk(node)
-        ? !aheadNodes.holds(picture)
-        : _hasOneToHold(node.children, next);
-  });
-
-  /// Whether a walk holds [node]'s picture (`_CompositeTreeWalk._holdOf`).
-  static bool _isHeldByAWalk(CompositeNodeSignature node) => switch (node) {
-    CompositeGroupSignature() ||
-    CompositeAdjustmentSignature() ||
-    CompositeClipSignature() => true,
-    CompositeReadsRowsSignature(:final node) => _isHeldByAWalk(node),
-    CompositeLeafSignature() ||
-    CompositeBackdropBlendSignature() ||
-    CompositeOpaqueSignature() ||
-    CompositeCelNumberSignature() => false,
-  };
-
-  /// Lays [key]'s picture of [drawing] in its turn ([make]); false where
-  /// the turn did not come, or [shouldAbort] left the store's line before
-  /// its lay was made.
+  /// Lays [key]'s picture of [frame] in its turn ([make]), over the film
+  /// [over] says, its chains held in [holds]; false where the turn did not
+  /// come, or [shouldAbort] left the store's line before its lay was made.
   Future<bool> _lay(
     FramePictureKey key,
-    FrameDrawing drawing,
+    StackedFrame frame,
     bool Function() shouldAbort,
     bool Function() due, {
+    required ({FramePictureKey film, ui.Rect fresh})? over,
+    required EngineChainHolds holds,
     required bool shownNow,
   }) async {
     final turn = await quietTurns.inAQuiet(
@@ -751,7 +624,7 @@ class FramePictures implements PlaybackPictures {
     if (turn == null) {
       return false;
     }
-    final FramePicture? laid;
+    final EngineFramePicture? laid;
     try {
       // ⛔Not `shownNow: due()`: [due] says the run's next frame is missing,
       // not that this is it — every picture a walk asks for ahead while it
@@ -761,9 +634,11 @@ class FramePictures implements PlaybackPictures {
       // on a frame that is not there asks for it to go first ([makeShown]).
       laid = await store.lay(
         key,
-        drawing,
+        frame,
         shownNow: shownNow,
         gone: shouldAbort,
+        over: over,
+        holds: holds,
       );
     } on Object {
       unawaited(turn.gaveUp());
@@ -784,34 +659,38 @@ class FramePictures implements PlaybackPictures {
   /// held at another canvas size, is noted and drawn without — so the key
   /// asked after this ([keyOfStack]) is of the picture it gave.
   ///
-  /// [held] says where the pictures its nodes are drawn into are found, and
-  /// kept: by default found among [heldNodes], and none kept.
-  ///
   /// ⚠️Reads a cel not in hand on this thread ([readIn] first).
+  ///
+  /// 🚨★★★A RENDER'S CELS ARE LOOKS (`gpu-canonical-store-Q10`, 유저
+  /// 2026-11-10 「추천대로 법 지키도록」): a picture made for a file or a panel
+  /// reads each cel through its [looks] ([CelLooks]) — the store left as it
+  /// stood — and the app's own screens read them as a use, in hand from
+  /// then on ([LayerFrameImageCache.storedSurfaceOrNull]).
+  ///
+  /// On [picture]'s page, or [page] ([keyOfStack]).
   FrameDrawingNow drawingNow(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
-    HeldNodePictures? held,
+    FramePage? page,
+    CelLooks? looks,
   }) {
-    final page = pageOf(picture);
+    final on = page ?? pageOf(picture);
     (Object, StackTrace)? thrown;
     final frame = stackedFrameOf(
       nodes,
-      page: page,
+      page: on,
       surfaceOf: (cel) => _drawn(cel)
-          ? _readNow(cel, page, (error, stack) => thrown ??= (error, stack))
+          ? _readNow(
+              cel,
+              on,
+              (error, stack) => thrown ??= (error, stack),
+              looks: looks,
+            )
           : null,
-      held: _holding(page, held ?? _findsIn(heldNodes)),
+      revisionOf: _revisionOf,
     );
     return (frame: frame, thrown: thrown);
   }
-
-  /// A frame that finds its nodes' pictures in [rasters] and keeps none.
-  static HeldNodePictures _findsIn(HeldSubtreeRasters rasters) => (
-    rasters: rasters,
-    keeps: NodesKept.none,
-    below: BelowThePen.whole,
-  );
 
   /// [readInStack] on this thread for the cels [onScreen] says are on screen
   /// already — a screen whose first frame may not go without them
@@ -834,20 +713,25 @@ class FramePictures implements PlaybackPictures {
     return thrown;
   }
 
-  /// [cel]'s stored pixels on [page], read on this thread — or null, the
-  /// cel noted, where they are held at another canvas size or [thrown]
-  /// says why they cannot be read.
+  /// [cel]'s stored pixels on [page], read on this thread — through
+  /// [looks] where a render reads them ([drawingNow]) — or null, the cel
+  /// noted, where they are held at another canvas size or [thrown] says why
+  /// they cannot be read.
   BitmapSurface? _readNow(
     BrushFrameKey cel,
     FramePage page,
-    void Function(Object error, StackTrace stack) thrown,
-  ) {
+    void Function(Object error, StackTrace stack) thrown, {
+    CelLooks? looks,
+  }) {
+    final canvasSize = page.canvasSize;
     final BitmapSurface? stored;
     try {
-      stored = layerImages.storedSurfaceOrNull(
-        cel,
-        canvasSize: page.canvasSize,
-      );
+      stored = looks == null
+          ? layerImages.storedSurfaceOrNull(cel, canvasSize: canvasSize)
+          : layerImages.unreadable.notingNow(
+              cel,
+              () => looks.surfaceOf(cel, canvasSize: canvasSize),
+            );
     } on Object catch (error, stack) {
       thrown(error, stack);
       return null;
@@ -862,19 +746,10 @@ class FramePictures implements PlaybackPictures {
   /// alone — none is read here, and one not in hand is left out until it
   /// is — and, under [live], the rows a canvas that stands holds live: the
   /// frame a still screen shows while its picture is not there
-  /// ([makeShown]), and the body its strokes are patched in by.
+  /// ([makeShown]), and the body its strokes are composed in by.
   ///
   /// ⛔Not [_drawnOf]: the row a pen is on draws what it holds live, a cel
   /// with nothing stored in it included — the first stroke on it.
-  ///
-  /// 🚨WHAT A CANVAS'S SCREEN DRAWS WHOLE, THE PICTURE LAID BESIDE IT FINDS
-  /// (card a-dragged-opacity-slider-lags-at-rest): each value of a drag is
-  /// drawn here and laid at once ([makeShown]), and a folder the value lies
-  /// in ran its chain in both. So it keeps what that lay would for that
-  /// canvas (`keepsNodes`): whichever draws first spares the other, and a
-  /// value costs one chain. ⛔It lets go of none ([NodesKept.drawnWhole]): a
-  /// stroke's step is patched in by it, cut to the step, and what the step
-  /// does not reach is held all the same (F-533).
   StackedFrame frameAsItStands(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -888,11 +763,7 @@ class FramePictures implements PlaybackPictures {
           ? layerImages.storedSurfaceOrNull(cel, canvasSize: page.canvasSize)
           : null,
       live: live,
-      held: _holding(page, (
-        rasters: heldNodes,
-        keeps: live == null ? NodesKept.none : NodesKept.drawnWhole,
-        below: BelowThePen.inCells,
-      )),
+      revisionOf: _revisionOf,
     );
   }
 
@@ -921,159 +792,3 @@ class FramePictures implements PlaybackPictures {
     return soonest;
   }
 }
-
-/// How many pictures of the ghosts' place frames laid over their film have
-/// rastered ([_overTheFilm]) since a test zeroed it — what tells a place
-/// rastered where a piece meets it from one rastered whole at every piece.
-///
-/// ⚠️Written under `assert`, so a release build pays nothing.
-@visibleForTesting
-int debugGhostPlaceRasters = 0;
-
-/// 🚨A FRAME WITH ITS GHOSTS IN PLACE IS LAID OVER ITS FILM
-/// (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이 아닌 경우라도
-/// 최대한 극한으로 개선해보자」): [frame]'s picture made of the picture of
-/// its [film] — the frame as a run plays it (`FramePictures._make`), held
-/// when its turn comes — those texels as they are, and where the ghosts
-/// show ([StackedFrame.whereTheGhostsShow]) a picture of that place alone,
-/// drawn on nothing by the frame's own body, in their stead: what a
-/// stroke's step writes into the picture it patches
-/// ([FramePictureStore.patch]). So any blend, adjustment, folder or clip
-/// over the ghosts alike — nothing is laid over a texel. Drawn whole where
-/// the film is gone by then, or the ghosts cannot be told.
-///
-/// Past the film's picture the frame holds nothing but its ghosts: a frame
-/// covers its page and every row's buffer, spread and all
-/// (`_LayerStackPaintPass._compositeExtent`), and the ghosts' place covers
-/// theirs.
-///
-/// 🔬Laid whole, S5_BA cut 352 (67 rows, 2436×1524, 10-28, Windows,
-/// profile): the standing order warmed in 444–523 ms against 132–166 ms
-/// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
-/// 691–816 ms.
-FrameDrawing _overTheFilm(StackedFrame frame, FramePicture? Function() film) {
-  final whole = frame.drawing;
-  return (
-    extent: whole.extent,
-    draw: (canvas) {
-      final under = film();
-      final ghosts = frame.whereTheGhostsShow;
-      if (under == null || ghosts == null) {
-        whole.draw(canvas);
-        return;
-      }
-      _inStead(canvas, under.image, under.extent.topLeft);
-      // 🚨The place where it is drawn: the store lays the picture a piece
-      // at a time ([FramePictureStore.lay]), and the ghosts' place rastered
-      // whole at each piece was the frame's whole raster again a piece.
-      final place = _onTheCells(
-        ghosts.intersect(canvas.getLocalClipBounds()),
-        pictureExtentOf(whole.extent),
-      );
-      if (place.isEmpty) {
-        return;
-      }
-      assert(() {
-        debugGhostPlaceRasters += 1;
-        return true;
-      }());
-      final alone = recordedOver(place, whole.draw);
-      final image = alone.toImageSync(
-        place.width.toInt(),
-        place.height.toInt(),
-      );
-      alone.dispose();
-      _inStead(canvas, image, place.topLeft);
-      image.dispose();
-    },
-  );
-}
-
-/// [image]'s texels laid at [at] as they are, one to a pixel, in place of
-/// what [canvas] holds there — as a patch's take the place of the
-/// picture's ([_overTheFilm]).
-void _inStead(ui.Canvas canvas, ui.Image image, ui.Offset at) =>
-    canvas.drawImage(
-      image,
-      at,
-      ui.Paint()
-        ..blendMode = ui.BlendMode.src
-        ..filterQuality = ui.FilterQuality.none,
-    );
-
-/// [place] out to the cells a blur reduces what it reads by
-/// ([blurReductionCell]), counted from [extent]'s corner — so a chain that
-/// spreads reads the place's raster as it reads the picture laid whole —
-/// inside [extent]; empty where nothing of it is.
-///
-/// 🔬On whole pixels alone, a blurred folder over the ghosts came out 1/255
-/// apart from the frame laid whole at 17 pixels (Impeller tester, 10-28).
-ui.Rect _onTheCells(ui.Rect place, ui.Rect extent) {
-  if (place.intersect(extent).isEmpty) {
-    return ui.Rect.zero;
-  }
-  return rectOutwardOnGrid(
-    place,
-    1 / blurReductionCell,
-    origin: extent.topLeft,
-  ).intersect(extent);
-}
-
-/// [keeping] — [key]'s frame, drawn to keep its nodes — and noted so
-/// ([HeldSubtreeRasters.heldAllOf]) where its lay draws it, not where the
-/// store hands back a picture there already.
-///
-/// 🚨ONCE A LAY, NOT A PIECE: laid a piece at a time ([FramePictureStore.lay]),
-/// a frame drawn to keep at each piece let go of every node the pieces
-/// before it held ([HeldSubtreeRasters.holdOnly]), then drew it whole again.
-/// So where its lay first draws a piece, [keeping] is drawn whole into
-/// nothing, and every piece is drawn by [cutting] — the same frame keeping
-/// nothing, cut from what was kept. Laid at once, it is [keeping], drawn as
-/// it was before pieces: once.
-FrameDrawing _heldFirst(
-  HeldSubtreeRasters held,
-  FramePictureKey key,
-  FrameDrawing Function() keeping,
-  FrameDrawing cutting,
-) {
-  var cuts = false;
-  return (
-    extent: cutting.extent,
-    draw: (canvas) {
-      if (cuts) {
-        _drawnInALay(cutting, canvas);
-        return;
-      }
-      final extent = cutting.extent;
-      if (canvas.getLocalClipBounds().intersect(extent) == extent) {
-        _drawnInALay(keeping(), canvas);
-        held.heldAllOf(key);
-        return;
-      }
-      final recorder = ui.PictureRecorder();
-      _drawnInALay(keeping(), ui.Canvas(recorder));
-      recorder.endRecording().dispose();
-      held.heldAllOf(key);
-      cuts = true;
-      _drawnInALay(cutting, canvas);
-    },
-  );
-}
-
-/// [drawing] drawn onto [canvas] by a lay that keeps its frame's nodes,
-/// counted ([debugKeptFrameDraws]).
-void _drawnInALay(FrameDrawing drawing, ui.Canvas canvas) {
-  assert(() {
-    debugKeptFrameDraws += 1;
-    return true;
-  }());
-  drawing.draw(canvas);
-}
-
-/// How many times a frame laid to keep its nodes was drawn ([_heldFirst])
-/// since a test zeroed it: once where it is laid at once, and once more
-/// than its pieces where it is laid a piece at a time.
-///
-/// ⚠️Written under `assert`, so a release build pays nothing.
-@visibleForTesting
-int debugKeptFrameDraws = 0;

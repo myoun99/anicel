@@ -129,6 +129,15 @@ void main() {
       greaterThanOrEqualTo((frame + 1) * cell),
       reason: 'the cells the view stands on were built',
     );
+    // 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q5, a:
+    // 「재생 · 화살표 걷기는 지금처럼 필요한 만큼만」): only a strip held past
+    // the end builds a screen ahead (`a_drag_past_the_end_builds_a_screen_at_a
+    // _time_test.dart`).
+    expect(
+      position.maxScrollExtent - position.pixels,
+      lessThan(position.viewportDimension / 2),
+      reason: 'a walk built a screen ahead of the view',
+    );
   });
 
   testWidgets('🚨opened after the folded row walked past the end, the grid '

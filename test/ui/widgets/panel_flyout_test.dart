@@ -136,14 +136,36 @@ void main() {
         reason: 'a coloured plate draws no hairline around itself',
       );
     }
-    await tester.pumpWidget(
-      harness(PanelFlyoutButton(label: 'Key', entriesBuilder: () => const [])),
-    );
-    expect(plateOf(tester).color, isNull);
-    expect(
-      (plateOf(tester).shape as OutlinedBorder).side.color,
-      AppColors.hairline,
-    );
+    // A clear chip has no plate: its edge is the press's face, which fills
+    // its inside with the ground it stands on (Q12).
+    for (final enabled in [true, false]) {
+      await tester.pumpWidget(
+        harness(
+          PanelFlyoutButton(
+            label: 'Key',
+            enabled: enabled,
+            entriesBuilder: () => const [],
+          ),
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(PanelFlyoutButton),
+          matching: find.byType(DecoratedBox),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<RailFlyoutTrigger>(find.byType(RailFlyoutTrigger))
+            .shape
+            ?.side
+            .color,
+        enabled
+            ? AppColors.hairline
+            : AppColors.hairline.withValues(alpha: 0.5),
+      );
+    }
   });
 
   testWidgets('a label alone ellipsises in a slot narrower than itself '

@@ -1,7 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show isSyncedAttachedLayer;
 import 'package:anicel/src/models/attached_placement.dart';
@@ -42,12 +45,15 @@ import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show timelineHoldGlyph;
 
 import '../timeline/timeline_frame_geometry_probe.dart';
 import '../../helpers/a_folder_made_by_hand.dart';
+import '../timeline/tile_store_idle.dart';
 
 /// F-311 (유저 2026-10-06): 「일반 폴더의 블록, 왜 이 경우 일부만 회색인지?
 /// 폴더 블록이 그림 없는구간 회색하는건 아이디어 좋다고 하니 개선해서 채용.
@@ -151,6 +157,28 @@ EditorSessionManager _session(
 
 Layer _layer(EditorSessionManager s, String id) => s.layerById(LayerId(id))!;
 
+/// [rows] put in the cut, in one edit, each in place of the row of its id.
+void _put(EditorSessionManager s, List<Layer> rows) {
+  final byId = {for (final row in rows) row.id: row};
+  s.repository.updateProject(
+    (project) => project.copyWith(
+      tracks: [
+        for (final track in project.tracks)
+          track.copyWith(
+            cuts: [
+              for (final cut in track.cuts)
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers) byId[layer.id] ?? layer,
+                  ],
+                ),
+            ],
+          ),
+      ],
+    ),
+  );
+}
+
 /// The folder's row as the grids are handed it.
 Layer _band(EditorSessionManager s, [LayerId id = _folder]) =>
     bandsOf(s).folderBandLayerFor(s.layerById(id)!);
@@ -210,14 +238,21 @@ void _setEdge(
 );
 
 /// The shared cells painter over [layer], asking the session what the
-/// grids ask it.
-TimelineRowCellsPainter _painter(EditorSessionManager s, Layer layer) =>
+/// grids ask it — baking its spans in [store] where one is given.
+TimelineRowCellsPainter _painter(
+  EditorSessionManager s,
+  Layer layer, {
+  TimelineGridTileStore? store,
+  int frames = 40,
+}) =>
     TimelineRowCellsPainter(
       layer: layer,
       geometry: testFrameGeometry(
         frameCellExtent: 24,
-        frameEndIndexExclusive: 40,
+        frameEndIndexExclusive: frames,
       ),
+      tileStore: store,
+      substrateGeneration: 'p:cut',
       crossAxisExtent: 28,
       exposureStateForLayer: s.exposureStateForLayer,
       celContent: TimelineCelContentSource(
@@ -238,6 +273,7 @@ void _selectFolderBlockAt(EditorSessionManager s, int frame, [LayerId? id]) =>
     );
 
 void main() {
+  setUpAll(openAppGpuEngine);
   group('the band is the blocks its rows stand', () {
     test('a ghost is no block of the union: the runs are the blocks, and '
         'the ghosts stand beside them — a hold\'s before a repeat\'s, and '
@@ -1081,6 +1117,41 @@ void main() {
         s.rangeMove.cancelFrameRangeMoveDrag();
       });
 
+      // A band kept across an edit stands for its rows as they are now: let
+      // go of its base, the mirror stands where it stood as it did, and the
+      // band is the one it was — so it must not read the mirror as before.
+      test('a mirror let go of its base stays where it stands while the base '
+          'is carried', () {
+        final s = _session([
+          _row('a', const {0: 4}, inside: 'F'),
+          _folderRow('F'),
+        ]);
+        s.selectLayer(const LayerId('a'));
+        s.folders.addAttachedLayer(AttachedPlacement.below);
+        final mirror = s.activeLayer!.id;
+        final band = _band(s);
+
+        s.folders.detachRows();
+
+        final let = _layer(s, mirror.value);
+        expect(
+          [isSyncedAttachedLayer(let), let.folderId, _blocks(let)],
+          [false, _folder, {0: 4}],
+          reason: '⛔전제: let go, in F, standing where it stood',
+        );
+        expect(identical(_band(s), band), isTrue, reason: '⛔전제: kept');
+        _selectFolderBlockAt(s, 1, const LayerId('a'));
+        s.rangeMove.beginFrameRangeMoveDrag(const LayerId('a'));
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        expect(
+          _blocks(timelineRowPreviewLayer(s.dragPreview.value, _band(s))!),
+          {0: 4, 6: 4},
+          reason: 'read as the mirror it was, it went with its old base',
+        );
+        s.rangeMove.cancelFrameRangeMoveDrag();
+      });
+
       test('an organizer holding the mirrors of a row outside it follows that '
           'row\'s drag', () {
         final s = _session([_row('a', const {0: 4})]);
@@ -1266,6 +1337,176 @@ void main() {
       expect(_blocks(_layer(s, 'over')), isEmpty);
       expect(_blocks(_layer(s, 'a')), {4: 4, 8: 2});
       expect(_blocks(_layer(s, 'b')), {6: 4});
+    });
+  });
+
+  // 🐛F-561 ② (서피스 실기 2026-11-07): a row's block end dragged 3 → 7
+  // under a folder of 1..10, and the folder's row stayed white to 3 — its
+  // tiles were kept, for the folder's own blocks had not moved.
+  group('a tile of the folder\'s block shows its rows as they are', () {
+    final store = TimelineGridTileStore.instance;
+
+    setUp(store.clear);
+
+    tearDown(store.clear);
+
+    // 24px cells: the spans are [0, span) and [span, 2 * span).
+    final span = timelineFrameWindowSpanFor(24);
+
+    /// a, a row of [kind]: 0..4 on a0, and [length] cells from `span + 2` on
+    /// [cel] — a1 holds the picture, a2 none; b: `span` to `span + 8`, bare.
+    /// The folder's blocks are 0..4 and `span` to `span + 8` either way.
+    Layer a({
+      int length = 4,
+      String cel = 'a1',
+      LayerKind kind = LayerKind.animation,
+    }) => Layer(
+      id: const LayerId('a'),
+      name: 'a',
+      kind: kind,
+      folderId: _folder,
+      frames: [
+        for (final id in ['a0', 'a1', 'a2'])
+          Frame(id: FrameId(id), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('a0'), length: 4),
+        span + 2: TimelineExposure.drawing(FrameId(cel), length: length),
+      },
+    );
+
+    EditorSessionManager session({List<Layer> beside = const []}) {
+      final s = _session([
+        a(),
+        _row('b', {span: 8}, inside: 'F'),
+        ...beside,
+        _folderRow('F'),
+      ]);
+      _draw(s, 'a', 'a1');
+      return s;
+    }
+
+    /// The folder's tiles of the two spans, as its row asks them now.
+    List<TimelineGridTilePicture?> tiles(EditorSessionManager s) {
+      final painter = _painter(s, _band(s), store: store, frames: 2 * span);
+      return [
+        for (final from in [0, span])
+          store.tileFor(
+            painter: painter,
+            spanStartIndex: from,
+            spanEndIndexExclusive: from + span,
+            devicePixelRatio: 1,
+          ),
+      ];
+    }
+
+    /// The folder's tiles once both have landed.
+    Future<List<TimelineGridTilePicture?>> landed(
+      EditorSessionManager s,
+    ) async {
+      tiles(s);
+      await tileStoreIdle(store);
+      final both = tiles(s);
+      expect(both, everyElement(isNotNull), reason: '⛔전제: baked');
+      return both;
+    }
+
+    List<Uint8List> pixelsOf(List<TimelineGridTilePicture?> tiles) => [
+      for (final tile in tiles)
+        tile!.picture.read(),
+    ];
+
+    /// Puts the rows [edited] in at once, and holds the folder's tiles to what
+    /// a bake from nothing paints of its rows as they are now — the span
+    /// before the edit keeping its tile where [keepsTheSpanBefore] (F-244).
+    Future<void> expectTheTilesShowTheRowsAsTheyAre(
+      EditorSessionManager s,
+      List<Layer> edited, {
+      bool keepsTheSpanBefore = true,
+    }) async {
+      final before = await landed(s);
+      final paintedBefore = pixelsOf(before);
+      final blocks = _blocks(_band(s));
+
+      _put(s, edited);
+
+      expect(_blocks(_band(s)), blocks, reason: '⛔전제: its blocks stayed');
+      final after = tiles(s);
+      expect(after, everyElement(isNotNull), reason: '⛔전제: shown');
+      final shown = pixelsOf(after);
+      store.clear();
+      final painted = pixelsOf(await landed(s));
+      expect(
+        listEquals(paintedBefore.last, painted.last),
+        isFalse,
+        reason: '⛔전제: the grey moved in the paint',
+      );
+      if (keepsTheSpanBefore) {
+        expect(
+          identical(after.first, before.first),
+          isTrue,
+          reason: 'CONTROL: the span before the edit keeps its tile',
+        );
+      }
+      for (final i in [0, 1]) {
+        expect(
+          listEquals(shown[i], painted[i]),
+          isTrue,
+          reason: 'the tile of span $i shows the rows as they were',
+        );
+      }
+    }
+
+    test('🚨a row\'s block that ends elsewhere inside the folder\'s', () async {
+      await expectTheTilesShowTheRowsAsTheyAre(session(), [a(length: 5)]);
+    });
+
+    test('🚨a row\'s block that shows another cel, its edges where they '
+        'were', () async {
+      await expectTheTilesShowTheRowsAsTheyAre(session(), [a(cel: 'a2')]);
+    });
+
+    // A row more is asked from frame 0: the band's rows are paired in order.
+    test('🚨a row put in the folder, its block inside the folder\'s', () async {
+      final s = session(beside: [_row('c', {span + 6: 2})]);
+      _draw(s, 'c', 'c${span + 6}');
+      await expectTheTilesShowTheRowsAsTheyAre(
+        s,
+        [_row('c', {span + 6: 2}, inside: 'F')],
+        keepsTheSpanBefore: false,
+      );
+    });
+
+    // A row of no cels holds no picture, whatever it stands; its kind is
+    // asked before its blocks, so the band is asked anew from frame 0.
+    test('🚨a row turned to a kind that holds no cels', () async {
+      await expectTheTilesShowTheRowsAsTheyAre(
+        session(),
+        [a(kind: LayerKind.se)],
+        keepsTheSpanBefore: false,
+      );
+    });
+
+    // One row of the folder's taken out and another put in standing as it
+    // stood, on cels of the same names: what they hold is the other row's.
+    test('🚨a row put in the folder in place of one taken out, standing as '
+        'it stood', () async {
+      final cel = 'b$span';
+      Layer c({String? inside}) => Layer(
+        id: const LayerId('c'),
+        name: 'c',
+        kind: LayerKind.animation,
+        folderId: inside == null ? null : LayerId(inside),
+        frames: [Frame(id: FrameId(cel), duration: 1, strokes: const [])],
+        timeline: {span: TimelineExposure.drawing(FrameId(cel), length: 8)},
+      );
+      final s = session(beside: [c()]);
+      _draw(s, 'c', cel);
+      await expectTheTilesShowTheRowsAsTheyAre(
+        s,
+        [_row('b', {span: 8}), c(inside: 'F')],
+        keepsTheSpanBefore: false,
+      );
     });
   });
 }

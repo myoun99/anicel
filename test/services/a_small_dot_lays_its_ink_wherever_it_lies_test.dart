@@ -13,7 +13,7 @@ import 'package:anicel/src/services/brush_dab_dirty_region.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
 import 'package:anicel/src/services/brush_dab_tip_geometry.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// A SMALL CIRCLE LAYS ITS AREA (board a-one-pixel-dab-drops-out-by-where-
 /// it-lies Q6, 유저 2026-10-25 「클튜 점 표본을 보고 정한다」 → b): up to a
@@ -128,7 +128,7 @@ void main() {
       var sum = 0.0;
       for (var y = 0; y < 16; y += 1) {
         for (var x = 0; x < 16; x += 1) {
-          sum += ((surfacePixelRgba(surface, x, y) ?? 0) & 0xFF) / 255.0;
+          sum += ((surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF) / 255.0;
         }
       }
       return sum;
@@ -175,7 +175,7 @@ void main() {
             ),
           ).surface;
           expect(
-            (surfacePixelRgba(surface, 8, 8) ?? 0) & 0xFF,
+            (surfaceRgbaInPlace(surface, 8, 8) ?? 0) & 0xFF,
             greaterThan(0),
             reason: 'size $size, hardness $hardness at ($fx, $fy)',
           );
@@ -278,7 +278,7 @@ void main() {
         ).surface;
         for (var x = 50; x < width - 50; x += 1) {
           for (var y = 0; y < height; y += 1) {
-            sum += ((surfacePixelRgba(surface, x, y) ?? 0) & 0xFF) / 255.0;
+            sum += ((surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF) / 255.0;
           }
           columns += 1;
         }

@@ -15,8 +15,10 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
+import 'package:anicel/src/ui/widgets/face_ink_well.dart';
 
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/drawn_shapes.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/settings_flyout.dart';
 import '../helpers/rail_group_button.dart';
@@ -639,9 +641,26 @@ void main() {
       );
       expect(tester.getRect(swatch).center.dx, closeTo(strip.center.dx, 6));
 
+      // Open, the button's face is filled the way a lit glyph button's is
+      // (a-live-dock-frame-costs-a-whole-draw-Q12).
+      final face = find
+          .ancestor(of: swatch, matching: find.byType(FaceInkWell))
+          .first;
+      final open = Theme.of(tester.element(swatch)).colorScheme;
+      expect(
+        face,
+        isNot(paintsShape(color: open.surfaceContainerHigh)),
+        reason: 'shut',
+      );
+
       await tester.tap(swatch);
       await tester.pumpAndSettle();
 
+      expect(
+        face,
+        paintsShape(color: open.surfaceContainerHigh),
+        reason: 'open',
+      );
       final panel = find.byType(ColorWheelPanel);
       expect(panel, findsOneWidget);
       // SIDEWAYS: beside the strip, not hanging off it downward the way the

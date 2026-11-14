@@ -11,21 +11,23 @@
 // pixel is straight on the 16-bit scale between ops, as every engine
 // pixel is (blend.wgsl, 1a ①).
 //
-// ⚠️Mine (11-05, 관제 20:29 asked it settled before the app is wired): it
-// is STORED premultiplied, by the app's one premultiply (premultiply.wgsl)
-// — the tile is no engine pixel another pass reads, it is a surface
-// Flutter shows, and Flutter reads one premultiplied. The tiles are clear
-// (timeline_grid_tile_ops.dart, background 0), so a translucent run or an
-// edge's coverage stored straight would show brighter than it is. The
-// wave tile is stored the same way, for the same reason. ↩️Stored
-// straight; no pixel had reached a screen yet.
+// It is STORED straight, as every engine pixel is: the view's screen reads
+// it through R1, which takes straight words, and premultiplies once as it
+// lays it (lay.wgsl) — Flutter reads the screen, not the tile
+// (grid-on-the-engine ⓑ, 관제 2026-11-08 16:42).
+// ↩️⚠️Mine (11-05, 관제 20:29 asked it settled before the app is wired):
+// stored premultiplied, by the app's one premultiply — the tile was to be
+// no engine pixel another pass reads but a surface Flutter shows, and
+// Flutter reads one premultiplied; a translucent run or an edge's coverage
+// stored straight over the clear tile would show brighter than it is. The
+// wave tile is stored so still, for that reason. ↩️Stored straight before
+// that; no pixel had reached a screen yet.
 //
 // Integers only, as fill.wgsl has why. A rounded rect's field is taken in
 // q9 — a pixel is 512 — so a q8 box's half is a whole word and a pixel's
 // centre is too; its one square root is isqrt_round.
 //
-// Needs shared/isqrt.wgsl, blend/blend.wgsl, laid.wgsl and
-// shared/premultiply.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl and laid.wgsl before it.
 
 struct Params {
   width: u32,
@@ -96,7 +98,7 @@ fn field_at(at: u32) -> Field {
 // corners `line` tighter, never below square. Every edge is even in q9,
 // so its halves are whole.
 //
-// No hold to what the hole can hold, though the C rasterizer has one: the
+// No hold to what the hole can hold, though the C rasterizer had one: the
 // outer corner is held to the outer box's shorter half and each half of
 // the hole is that half less `line` or more, so a corner `line` tighter
 // always fits.
@@ -222,7 +224,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
       }
     }
   }
-  let packed = premultiply8(blend_pack8(pixel));
+  let packed = blend_pack8(pixel);
   // The one float step, as fill.wgsl's: k/255 stored to an 8-bit unorm
   // texel comes back k on every device.
   textureStore(tile, id.xy, unpack4x8unorm(packed));

@@ -94,7 +94,8 @@ const DAB_SIDE: u32 = 27u;
 // takes none.
 const DAB_DENSITY: u32 = 28u;
 
-// The C engine's flags (QA_DAB_FLAG_*), the ones this kernel reads.
+// A dab's flags, the ones this kernel reads (mod.rs's, beside `Dab`; the
+// numbers were the C dab kernel's QA_DAB_FLAG_* and outlived it).
 const DAB_ERASE: u32 = 1u;
 const DAB_ROUND: u32 = 2u;
 const DAB_THRESHOLD: u32 = 32u;
@@ -146,7 +147,7 @@ fn dab_square(table: u32, row: u32, across: vec2<u32>, down: vec2<u32>) -> u32 {
 }
 
 // (dx, dy) in the tip's own frame: turned, its minor axis stretched to the
-// major — or nothing past the tip, as qa_dab_blend_tile culls it: either
+// major — or nothing past the tip, as `blendDabTilesDart` culls it: either
 // axis past the major's reach. The minor is first held to its own reach,
 // which keeps the stretch's product in u32. |dx|, |dy| are under the guard,
 // under 2^15, so each product of the turn stays under 2^30. A circle turns
@@ -189,7 +190,7 @@ fn dab_tip_texel(tip: u32, side: u32, column: u32, row: u32) -> u32 {
 }
 
 // What a bitmap tip lays at (u, v), between its four nearest texels: along
-// the row, then down (qa_sample_tip_scalar).
+// the row, then down (`sampleBrushTipMaskCoverage`).
 fn dab_tip(at: u32, tip: u32, u: i32, v: i32) -> u32 {
   let radius = plan[at + DAB_MAJOR];
   let side = plan[at + DAB_SIDE];
@@ -281,7 +282,7 @@ fn dab_round(at: u32, flags: u32, u: i32, v: i32) -> vec2<u32> {
   return vec2<u32>(dab_between(plan[at + DAB_COVERAGE] + entry.x, entry.y), pile);
 }
 
-// The brush's edge on a coverage (qa_dab_edge): a cut at half, or a
+// The brush's edge on a coverage (`blendDabTilesDart`'s): a cut at half, or a
 // contrast about half — 256, a contrast of 1, gives the coverage back.
 fn dab_edge(at: u32, flags: u32, cover: u32) -> u32 {
   if ((flags & DAB_THRESHOLD) != 0u) {
@@ -291,7 +292,7 @@ fn dab_edge(at: u32, flags: u32, cover: u32) -> u32 {
   return u32(clamp(((spread + 128) >> 8u) + 32768, 0, i32(W_ONE)));
 }
 
-// What a dab would lay whole, through its share (qa_dab_even): the table's
+// What a dab would lay whole, through its share (`evenedLaid`): the table's
 // 1025 entries span 0..=1, and a 1026th repeats the last, so `whole` at 1
 // reads its pair like any other.
 fn dab_even(at: u32, whole: u32) -> u32 {
@@ -306,7 +307,7 @@ fn dab_even(at: u32, whole: u32) -> u32 {
 }
 
 // Whether the dab erases: a second tip's dab piles over, never erases
-// (qa_dab_blend_tile).
+// (`blendDabTilesDart`).
 fn dab_erases(flags: u32) -> bool {
   return (flags & (DAB_ERASE | DAB_SECOND)) == DAB_ERASE;
 }
@@ -353,13 +354,13 @@ fn dab_source(at: u32, x: i32, y: i32, under: u32, paper: u32) -> u32 {
   if (cover == 0u) {
     return NOTHING;
   }
-  // 🚨THE EDGE DOES NOT PILE (qa_dab_blend_tile's `ceiling`): the share of
+  // 🚨THE EDGE DOES NOT PILE (`edgeCeiling`, the app's): the share of
   // the dab's opacity the stroke may come up to here.
   var ceiling = W_ONE;
   if ((flags & DAB_EDGE_HELD) != 0u && pile > cover) {
     ceiling = blend_div(cover, pile);
   }
-  // The paper, after the edge and its ceiling (qa_dab_blend_spans): it
+  // The paper, after the edge and its ceiling (`blendDabTilesDart`): it
   // takes from what the dab covers, not from how high the stroke may come.
   let density = plan[at + DAB_DENSITY];
   if (plan[HEAD_PAPER] != NO_TABLE && density != NO_TABLE) {
@@ -382,7 +383,7 @@ fn dab_source(at: u32, x: i32, y: i32, under: u32, paper: u32) -> u32 {
   if (dab_erases(flags) || (opacity == W_ONE && ceiling == W_ONE)) {
     return dab_even(at, blend_mul(blend_mul(norm, effective), flow));
   }
-  // 🚨A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (qa_dab_source_alpha): it
+  // 🚨A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (`settledDabAlpha`): it
   // raises the stroke towards it, never past.
   let settle = blend_mul(opacity, ceiling);
   if (under >= settle) {

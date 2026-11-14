@@ -5,6 +5,7 @@ import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/face_ink_well.dart';
 import 'package:anicel/src/ui/widgets/setting_source_button.dart';
 import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 
@@ -173,7 +174,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester
-          .widget<InkWell>(
+          .widget<FaceInkWell>(
             find.byKey(const ValueKey<String>('dead-source-button')),
           )
           .onTap,

@@ -1,61 +1,8 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../../core/display_filter.dart';
 import '../../models/canvas_viewport.dart';
-
-/// 🚨★★★ SAMPLING IS A PROPERTY OF THE DISPLAY, NOT OF THE LAYER.
-///
-/// 유저 확정 (T21, 2026-08-13): 「**줌이 정한다** — 확대는 `none`, 축소는
-/// 필터, **액티브인지는 안 묻는다**」.
-///
-/// ⛔What this replaces asked the wrong question. The editing stack drew the
-/// ACTIVE layer's tiles at [ui.FilterQuality.none] and every other layer at
-/// [ui.FilterQuality.low], so *becoming* the active layer changed how a
-/// layer was sampled: the artwork visibly changed every time the user
-/// switched rows, and at a reduced zoom exactly one layer on screen was
-/// aliased. 유저 2026-08-15: 「왜 비액티브레이어는 aa걸려있고 액티브레이어는
-/// aa없어서 전환할때마다 그림 바뀌지?」
-///
-/// The law is one line because the answer never depended on the layer:
-///
-///  * **Magnified** (scale > 1) — the artist is looking at pixels, so show
-///    pixels. Interpolating here invents detail the drawing does not have
-///    and makes a hard 2치 edge mushy.
-///  * **Reduced** (scale < 1) — more artwork pixels than screen pixels, so
-///    point-sampling throws most of them away and the line work crawls and
-///    shimmers. Filtering is what makes a reduced view honest.
-///  * **1:1** — no resampling happens at all; `none` avoids a pointless
-///    filter pass.
-///
-/// [scale] is the scale of the resample in question: [displayScaleOf] for
-/// a canvas-resolution image — every image the display is handed.
-/// ↩️Below 100% the display buffer's blit handed the screen a level, read
-/// by the residual it was reduced by, until one-picture-per-frame ②-5b.
-///
-/// ⚠️This only MEANS anything if there is one resample to apply it to.
-/// Applied per layer it would still be N resamples that merely agree with
-/// each other; the composite buffer is what turns it into the law
-/// ([[editing-canvas-composite-cache-program]] stage 2).
-///
-/// 🔁AT OR UNDER HALF, THE IMAGE'S OWN MIP CHAIN — `medium` (D7-2,
-/// one-picture-per-frame; 유저 10-24 「항상 원본 한장으로」): a frame's one
-/// picture is at canvas resolution at every zoom, and the engine gives every
-/// `toImage` picture a whole chain (`mipLevelCount` 11 at 3840², measured).
-/// Measured on the Surface Pro 11 against the display's own levels (each a
-/// 2×2 box, then the residual at `low`): 0 bytes apart at 1/2, 1/4 and 1/8,
-/// at most 2 between them — the engine's chain IS the halvings — at the
-/// cost of any image draw. Over half a bilinear window still holds every
-/// texel, and `medium` would only blend in the level under it. An image
-/// with no chain samples `medium` as `low` does — 🔬not a `toImageSync`
-/// render, which carries one (2026-10-25), but a door's upload: a tile's
-/// picture drawn reduced is drawn from one remade with its chain
-/// (`chained_picture.dart`).
-ui.FilterQuality filterQualityForDisplayScale(double scale) => scale <= 0.5
-    ? ui.FilterQuality.medium
-    : scale < 1
-    ? ui.FilterQuality.low
-    : ui.FilterQuality.none;
 
 /// The scale a canvas-space image is actually resampled by on screen:
 /// DEVICE pixels per artwork pixel, `|zoom| × devicePixelRatio`.
@@ -104,107 +51,31 @@ ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
     rectOutwardOnGrid(bounds, 1.0 / (1 << level));
 
 /// [bounds] grown out to the grid of [scale] cells per canvas unit counted
-/// from [origin] — the smallest rect on that grid that holds [bounds].
+/// from the origin — the smallest rect on that grid that holds [bounds].
 ///
 /// 🚨ONE snap for every raster grid: a mip level's
-/// ([wholeLevelPixelsOutward]), a sub-tree image's at its device scale, a
-/// tile's — copies of it once (↩️a display level's and the pyramid's from a
-/// surface's content origin among them, until one-picture-per-frame ②-5b).
-/// It multiplies by the scale and divides back, which is exact whenever the
+/// ([wholeLevelPixelsOutward]), a camera shot's device pixels, a tile's —
+/// copies of it once (↩️a display level's and the pyramid's from a
+/// surface's content origin among them, until one-picture-per-frame ②-5b;
+/// a sub-tree image's from where a canvas's pixels cross, and a picture's
+/// pieces' from their corner, counted from an `origin` of their own, till
+/// the Flutter chain went — the-flutter-fx-chain-is-a-second-chain). It
+/// multiplies by the scale and divides back, which is exact whenever the
 /// scale is a power of two, so every level grid lands to the bit where the
 /// copy that divided by the level's step put it.
-ui.Rect rectOutwardOnGrid(
-  ui.Rect bounds,
-  double scale, {
-  ui.Offset origin = ui.Offset.zero,
-}) {
-  double down(double value, double start) =>
-      start + ((value - start) * scale).floorToDouble() / scale;
-  double up(double value, double start) =>
-      start + ((value - start) * scale).ceilToDouble() / scale;
+///
+/// [noise] is how far, in cells, a side may lie past a grid line and still
+/// be on it: a line reached through other operands — a box's logical
+/// pixels, a raster's device ones — lands a few ulps off it. Zero: a side
+/// is on a line only to the bit.
+ui.Rect rectOutwardOnGrid(ui.Rect bounds, double scale, {double noise = 0}) {
+  double down(double value) => (value * scale + noise).floorToDouble() / scale;
+  double up(double value) => (value * scale - noise).ceilToDouble() / scale;
   return ui.Rect.fromLTRB(
-    down(bounds.left, origin.dx),
-    down(bounds.top, origin.dy),
-    up(bounds.right, origin.dx),
-    up(bounds.bottom, origin.dy),
-  );
-}
-
-/// How many levels of a picture's mip chain a draw at [displayScale] —
-/// device pixels per canvas pixel ([displayScaleOf]) — reads: none where it
-/// is not reduced, and otherwise down to the one past the level its
-/// reduction lands at, the two a sampler blends between.
-///
-/// ⚠️Down to one level at any reduction, `low` included, though `low`
-/// reads none (`FramePicture.readAt`): what is laid by this comes out wider
-/// than `low` needs, and a bilinear read does reach past a rect. ↩️It said
-/// Impeller on Vulkan reads a picture's chain under `low` too
-/// (one-picture-per-frame ②-5b-2 착지 줄의 🔬): the engine does not, nor did
-/// the tester's Vulkan measured 2026-10-31.
-int levelsReadAt(double displayScale) => displayScale >= 1
-    ? 0
-    : (math.log(1 / displayScale) / math.ln2).floor() + 1;
-
-/// The deepest level of a frame's picture's chain a canvas reads: at its
-/// least zoom on a screen of one device pixel a canvas pixel
-/// ([levelsReadAt]).
-final int deepestLevelACanvasReads = levelsReadAt(CanvasViewport.minZoom);
-
-/// [extent] out to whole texels of [deepestLevelACanvasReads] — the grid a
-/// frame's picture lies on (`FramePictureStore`), and the display buffer
-/// that draws the frame as it stands in its place.
-///
-/// 🔬Still so with nothing drawn beside the picture (F-465, 2026-10-26):
-/// the screen draws a frame as it stands until its picture is there, and
-/// wherever no patch can follow a change, and goes back and forth between
-/// the two — off this grid they were apart by up to 15/255 at 25%, 20%,
-/// 15% and 10% where the view cuts the page or shows its corner, and
-/// turned at 33% (Impeller tester).
-///
-/// 🚨★ONE GRID FOR EVERY IMAGE OF A FRAME THE DISPLAY READS A CHAIN OF
-/// (F-465 again, 유저 실기 Windows 2026-10-25: 「10%에서 발생하는거 확인 …
-/// 소수점배율에서 발생할거같아서 저번 고칠때랑 데자뷰」): a level is the
-/// canvas's grid halved, exactly, only where the image holds whole texels
-/// of it — one of fewer texels stretches over the image — and two images
-/// of one frame show alike past where their content ends only where they
-/// end at one edge: each samples its own edge again past it. ↩️The picture
-/// lay on the grid of the levels its patches write, as deep as a 1920 page
-/// is read above 12.5% — its 1080 rows were 67.5 texels of the level 10%
-/// reads — and the buffer beside it on the grid of the level the display
-/// read: 🔬a page of 270 rows apart from its picture down its edge at 6%,
-/// and at 10% once the picture alone was widened (Impeller tester).
-///
-/// 🔬What it costs: a picture is at most 2^[deepestLevelACanvasReads] − 1
-/// texels a side larger — a 1920×1080 page's 1920×1152.
-ui.Rect frameGridOutward(ui.Rect extent) =>
-    wholeLevelPixelsOutward(extent, deepestLevelACanvasReads);
-
-/// [rect] grown by what a display at [displayScale] reads past it — a
-/// texel of the deepest level it reads ([levelsReadAt]) — out to whole
-/// texels of that level ([wholeLevelPixelsOutward]): a picture of the
-/// frame over it holds, at every level the display reads, the texels the
-/// frame's one picture holds there, and a device pixel inside [rect] reads
-/// nothing past it.
-///
-/// 🚨What lets a frame drawn as it stands show, at the view's edge, what
-/// its one picture shows — the screen goes back and forth between the two
-/// ([frameGridOutward]). ↩️It grew a stroke's step drawn as it stood under
-/// its patch's clip (F-465, 유저 2026-10-25: 「줌 75%에서는 발생
-/// 안하는거같고, 50%에서는 매번」 — a stroke's step at 50% framed in a grey
-/// line for a frame), until the step was written into the picture: cut at
-/// the clip, the buffer's edge was a texel boundary the picture does not
-/// have, its pixel half covered over what lies under the view, and the
-/// pixels inside it sampled off a chain laid on another grid.
-///
-/// ⛔Not grown where the display reads no level (100% and up): nothing
-/// past [rect] is read there, and 🔬a canvas pixel more laid a line of
-/// what lies under the view along a stroke's patch at 150% on the
-/// Impeller tester, where there was none (2026-10-25).
-ui.Rect rectTheDisplayReads(ui.Rect rect, double displayScale) {
-  final levels = levelsReadAt(displayScale);
-  return wholeLevelPixelsOutward(
-    levels == 0 ? rect : rect.inflate((1 << levels).toDouble()),
-    levels,
+    down(bounds.left),
+    down(bounds.top),
+    up(bounds.right),
+    up(bounds.bottom),
   );
 }
 
@@ -225,8 +96,8 @@ ui.Rect rectTheDisplayReads(ui.Rect rect, double displayScale) {
 ///
 /// So on an axis-aligned view under `none` the edge is NOT anti-aliased:
 /// it lands where the pixel centres say, the same rule the texels inside
-/// follow, and every route that draws the boundary — cached or live,
-/// buffer or walk, editing or playback — cuts it on the same pixel, and
+/// follow, and every route that draws the boundary cuts it on the same
+/// pixel, and
 /// the leftmost texel keeps its column (an edge ROUNDED inward would have
 /// dropped it). Bilinear (reduced) blends the boundaries inside too, and a
 /// rotated view's edges are diagonals, so anti-aliasing stays there. A
@@ -301,27 +172,6 @@ bool cellsFallOffThePixelGrid(
   return off(tx) || off(ty) || off(sx * cell) || off(sy * cell);
 }
 
-/// The point of [canvas]'s space nearest its origin where the edges of its
-/// pixels cross, for a raster of [scale] pixels to a unit of the space laid
-/// on it 1:1 — the scale that says how many of the canvas's pixels a unit
-/// covers past its transform, the screen's ratio on the screen and 1 in a
-/// raster. A grid counted from here ([rectOutwardOnGrid]'s `origin`) is the
-/// canvas's pixels; a turned or projected space has no edge on the grid,
-/// and its grid is counted from the origin.
-ui.Offset pixelGridOriginAt(ui.Canvas canvas, double scale) {
-  final space = _pixelGridOf(canvas, 1);
-  if (space == null) {
-    return ui.Offset.zero;
-  }
-  final (:sx, :sy, :tx, :ty) = space;
-  double from(double translation, double unit) {
-    final pixels = translation * scale / unit.abs();
-    return (pixels.roundToDouble() - pixels) / (unit.sign * scale);
-  }
-
-  return ui.Offset(from(tx, sx), from(ty, sy));
-}
-
 /// [canvas]'s space on its pixels — each axis's scale and origin, carried
 /// past the canvas's own transform by [pixelRatio] — or null where the space
 /// is turned, projected or flat and has no edge on the grid.
@@ -363,49 +213,6 @@ void clipToTheDisplayEdge(
   displayEdgeRect(canvas, rect, antiAlias: antiAlias, pixelRatio: pixelRatio),
   doAntiAlias: antiAlias,
 );
-
-/// [image]'s [src] laid over [dst] as the display lays an image it is
-/// handed: one at canvas resolution of the world [viewport] shows on a
-/// screen of [devicePixelRatio], under the canvas's transform. It samples
-/// by the scale the draw resamples it by ([filterQualityForDisplayScale])
-/// and cuts its edge by the same law ([displayEdgeAntiAliased]).
-///
-/// 🚨ONE BLIT for every image the display lays over the view — the
-/// canvas's display buffer, and a frame's one picture (`FramePictureView`):
-/// two spellings of it would be two answers to how a frame is shown.
-void drawOnTheDisplay(
-  ui.Canvas canvas,
-  ui.Image image,
-  ui.Rect src,
-  ui.Rect dst, {
-  required CanvasViewport viewport,
-  required double devicePixelRatio,
-}) {
-  final filterQuality = filterQualityForDisplayScale(
-    displayScaleOf(viewport.zoom, devicePixelRatio),
-  );
-  // The image's edge IS the canvas's edge on screen, cut by the same law
-  // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
-  // view it is one more texel boundary, decided by pixel centres, not a
-  // blended line.
-  if (displayEdgeAntiAliased(viewport, devicePixelRatio)) {
-    canvas.drawImageRect(
-      image,
-      src,
-      dst,
-      ui.Paint()..filterQuality = filterQuality,
-    );
-  } else {
-    drawImageRectOnThePixelGrid(
-      canvas,
-      image,
-      src,
-      dst,
-      filterQuality: filterQuality,
-      pixelRatio: devicePixelRatio,
-    );
-  }
-}
 
 /// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel
 /// shows what its centre falls on — with the edge cut on the grid

@@ -25,7 +25,11 @@ import '../../helpers/cels_parked_cold.dart';
 void main() {
   // The census reads the image cache, and that needs a binding.
   TestWidgetsFlutterBinding.ensureInitialized();
-  const canvasSize = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const canvasSize = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -36,14 +40,19 @@ void main() {
   );
 
   BitmapSurface inked() {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 31 + 7) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: defaultCelTileSize,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: defaultCelTileSize,
+          pixels: pixels,
+        ),
+      },
     );
   }
 

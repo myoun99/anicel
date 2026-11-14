@@ -30,7 +30,6 @@ import 'package:anicel/src/services/audio/audio_conform_runner.dart'
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
@@ -248,7 +247,7 @@ void main() {
     expect(asset.sourcePath, path, reason: 'the original, as provenance');
     await tester.pumpAndSettle();
     s.playbackRig.prerenderScheduler.cancel();
-  }, skip: nativeEngineLibraryPathOrNull() == null);
+  });
 
   testWidgets('🚨a sound the POOL already holds is placed from as it is — its '
       'IN/OUT picks a stretch of the pooled file, and no piece is cut', (

@@ -6,8 +6,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../core/laid_whole.dart';
 import '../../core/neighbour_pairs.dart';
 import '../../models/bitmap_surface.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_pose.dart';
@@ -100,19 +102,20 @@ Duration shapeShowFrameShare = const Duration(microseconds: 4000);
 /// afresh — under [blend]. [shape] is what the pieces are OF, compared by
 /// value: the same shape asked for again asks for nothing new.
 ///
-/// 🚨A piece is cut ONCE. [selection] is what the view lays the pieces
-/// through, and null for a held picture's ghost (brush-fidelity-Q9: the
-/// ghost is what lands), whose pieces come through the door cut already.
-/// ↩️The maker cut a shape's too, so the dabs a shape landed with were cut
-/// ones: harmless at a hard outline, but under a soft one the commit
-/// re-deriving them on a cel that had moved, or 확정 laying them again,
-/// took the selection's ramp a second time (brush-fidelity-Q11). A fill's
-/// dabs have always stayed whole.
+/// 🚨A piece is cut ONCE, where it lands: [selection] is what the view lays
+/// the pieces through, asked when it lays them — a held picture's ghost
+/// answers with the selection the door reads for the cel on screen
+/// (brush-fidelity-Q9: the ghost is what lands). ↩️The maker cut a shape's
+/// too, so the dabs a shape landed with were cut ones: harmless at a hard
+/// outline, but under a soft one the commit re-deriving them on a cel that
+/// had moved, or 확정 laying them again, took the selection's ramp a second
+/// time (brush-fidelity-Q11). ↩️Till 2026-11-14 the ghost's pieces came
+/// through the door cut on the CPU, and laid through no selection.
 typedef ShapeArea = ({
   Object shape,
   Iterable<BrushDab> Function() pieces,
   BrushBlendMode blend,
-  SelectionClip? selection,
+  SelectionClip? Function() selection,
 });
 
 /// The fill's gradient knobs and the sub colour — the rail swatch's back
@@ -629,6 +632,7 @@ class _InteractiveBrushEditCanvasViewState
     _shapeKeeper?.up(_shapeShow);
     _holdKeeper?.up(_fill);
     _toolHolds.handOver = _door;
+    _onTheEngine.start();
   }
 
   /// This view's door for a press it could not hear
@@ -666,20 +670,39 @@ class _InteractiveBrushEditCanvasViewState
     }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
-      _endStrokeAfterTheFrame();
-      _fill.letGo();
-      // A shape laid on the cel that went is no shape of this one's.
-      _shapeShow.drop();
-      _overlay.resetOverlay();
-      // clear() before dropping: the live tiles are native-backed (R21)
-      // and return to the engine's free list through it.
-      _liveRasterizer?.clear();
-      _liveRasterizer = null;
+      _letGoOfWhatIsInFlight();
     }
   }
 
+  /// Lets go of what is in flight on the cel, landing none of it — the
+  /// stroke, what the fill holds, a shape laid, and the overlay they show
+  /// on: the cel went from under them ([didUpdateWidget]), or the engine
+  /// they are drawn on did ([_onTheEngine]).
+  void _letGoOfWhatIsInFlight() {
+    _endStrokeAfterTheFrame();
+    _fill.letGo();
+    // A shape laid on the cel that went is no shape of this one's.
+    _shapeShow.drop();
+    _overlay.resetOverlay();
+    // clear() before dropping: the live tiles are native-backed (R21)
+    // and return to the engine's free list through it.
+    _liveRasterizer?.clear();
+    _liveRasterizer = null;
+  }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다. 잃는 것은 그리던 획 정도다」 —
+  /// what is in flight is drawn on the engine's stroke, which goes with its
+  /// device: let go of as it is where its cel goes, and the next press
+  /// draws on the next engine's.
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: _letGoOfWhatIsInFlight,
+  );
+
   /// Ends a stroke in flight from OUTSIDE a pointer event — its cel changed
-  /// under the pen, or the view is going — and says so after the frame.
+  /// under the pen, the engine it is drawn on went, or the view is going —
+  /// and says so after the frame: one it asks for, where none is on its
+  /// way.
   ///
   /// R13-4: this runs inside the build/update phase. The stroke-end
   /// callback reached ancestor setState (the panel's _strokeActive then;
@@ -701,6 +724,9 @@ class _InteractiveBrushEditCanvasViewState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         notify?.call(StrokeInFlight.none);
       });
+      // An engine goes between two frames, and a view that keeps the
+      // input alone has no painter of its own to ask for the next.
+      SchedulerBinding.instance.ensureVisualUpdate();
     }
   }
 
@@ -716,6 +742,7 @@ class _InteractiveBrushEditCanvasViewState
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
+    _onTheEngine.stop();
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.
@@ -741,7 +768,11 @@ class _InteractiveBrushEditCanvasViewState
     // The canvas says which cel it draws — only while it draws one; the
     // merged stack draws it otherwise, and says so itself.
     if (widget.paintsContent && widget.editable) {
-      ShownCels.instance.show(this, (widget.layerId, widget.frameId));
+      ShownCels.instance.show(
+        this,
+        (widget.layerId, widget.frameId),
+        pictured: ShownCels.asItIs,
+      );
     } else {
       ShownCels.instance.hide(this);
     }
@@ -860,7 +891,7 @@ class _InteractiveBrushEditCanvasViewState
       // the jitter multiply this). The tool's opacity is the accumulated
       // stroke's ceiling and rides `BrushDabSequence.opacity` instead.
       // F-205 (유저 2026-09-28): the variation is a ceiling too — a dab
-      // settles at its opacity where dabs pile up (`qa_dab_source_alpha`).
+      // settles at its opacity where dabs pile up (`settledDabAlpha`).
       // ↩️Per dab it multiplied like flow, and a light press piled up to the
       // full slider wherever the stroke crossed itself.
       opacity: 1,

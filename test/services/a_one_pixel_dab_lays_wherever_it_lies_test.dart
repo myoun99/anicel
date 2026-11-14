@@ -18,12 +18,11 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_dab_coverage.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 BrushDab _dab(
   double x,
@@ -57,16 +56,11 @@ List<int> _alpha(List<BrushDab> dabs) {
   return [
     for (var y = 0; y < _side; y += 1)
       for (var x = 0; x < _side; x += 1)
-        (surfacePixelRgba(surface, x, y) ?? 0) & 0xFF,
+        (surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF,
   ];
 }
 
 void main() {
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = true;
-  });
-
   test('🚨a one-pixel dab never drops out — between pixel centres it lays '
       'most of what it lays on one', () {
     // ⚠️Not all of it: the square is read along the radius, which a line's

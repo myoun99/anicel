@@ -28,8 +28,9 @@ import '../helpers/cels_kept_in_a_file.dart';
 /// `brush_frame_store_tiering_test.dart`, a wall moving then in
 /// `a_pasteboard_that_moves_takes_every_picture_with_it_test.dart`.)
 void main() {
-  const canvas = CanvasSize(width: 16, height: 16);
-  const grown = CanvasSize(width: 32, height: 32);
+  const tileSide = defaultCelTileSize;
+  const canvas = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
+  const grown = CanvasSize(width: 4 * tileSide, height: 4 * tileSide);
   const cutId = CutId('c');
 
   BrushFrameKey key(String frame) => BrushFrameKey(
@@ -42,16 +43,18 @@ void main() {
 
   BitmapSurface ink() => BitmapSurface(
     canvasSize: canvas,
-    tileSize: 8,
+    tileSize: tileSide,
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
-        size: 8,
-        pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 7),
+        size: tileSide,
+        pixels: Uint8List(BitmapTile.bytesFor(tileSide))
+          ..fillRange(0, BitmapTile.bytesFor(tileSide), 7),
       ),
     },
   );
 
-  BitmapSurface nothing() => BitmapSurface(canvasSize: canvas, tileSize: 8);
+  BitmapSurface nothing() =>
+      BitmapSurface(canvasSize: canvas, tileSize: tileSide);
 
   /// A save around [during]: its snapshot first, its adoption last, with a
   /// ref for every cel the snapshot held — or [written] when the save wrote
@@ -76,7 +79,7 @@ void main() {
                 dataOffset: 0,
                 length: 1,
                 canvasSize: canvas,
-                tileSize: 8,
+                tileSize: tileSide,
                 photoPaths: [],
                 showsSomething: true,
               ),
@@ -142,7 +145,7 @@ void main() {
         () => store.adoptCutCanvasSize(
           cutId: cutId,
           canvasSize: grown,
-          dx: 8,
+          dx: tileSide.toDouble(),
         ),
       );
       expectLeftForTheNextSave(store, cel, size: grown);

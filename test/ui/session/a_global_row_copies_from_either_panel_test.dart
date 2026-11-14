@@ -59,6 +59,8 @@ List<bool> fourOf(ToolbarPanelContext panel) => [
 ];
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('inside a cut past the first', () {
     late EditorSessionManager session;
     late LayerId s1;

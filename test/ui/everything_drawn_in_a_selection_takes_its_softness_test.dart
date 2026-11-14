@@ -12,7 +12,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -24,6 +23,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/device_viewport.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★brush-fidelity-Q11 · Q12 (유저 2026-10-18), through the real panel:
 /// 브러시 · 지우개 · 채우기 · 도형 — the tool settings' 확장 · 페더 · AA reach
@@ -111,7 +111,7 @@ void main() {
   }
 
   int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      (surfacePixelRgba(
+      (surfaceRgbaInPlace(
             coordinator.currentSurfaceOf(coordinator.activeFrameKey),
             x,
             y,

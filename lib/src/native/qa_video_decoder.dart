@@ -1,99 +1,94 @@
+// The engine's Rust library carries the decoder (rust/src/lib.rs), and its
+// names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import 'qa_engine_abi.dart';
+import 'gpu_engine_asset.dart';
+
+@Native<Int32 Function()>(symbol: 'qa_video_decode_supported')
+external int _supported();
+
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'qa_video_decode_open')
+external int _open(Pointer<Utf8> utf8Path);
+
+@Native<Int32 Function(Pointer<Utf8>, Int64, Int64, Int32)>(
+  symbol: 'qa_video_decode_open_span',
+)
+external int _openSpan(
+  Pointer<Utf8> utf8Path,
+  int offset,
+  int length,
+  int framed,
+);
+
+@Native<
+  Int32 Function(
+    Int32,
+    Pointer<Int32>,
+    Pointer<Int32>,
+    Pointer<Int64>,
+    Pointer<Int32>,
+    Pointer<Int32>,
+  )
+>(symbol: 'qa_video_decode_info')
+external int _info(
+  int handle,
+  Pointer<Int32> width,
+  Pointer<Int32> height,
+  Pointer<Int64> frames,
+  Pointer<Int32> fpsNumerator,
+  Pointer<Int32> fpsDenominator,
+);
+
+@Native<Int32 Function(Int32, Int64, Pointer<Uint8>, Int32)>(
+  symbol: 'qa_video_decode_frame',
+)
+external int _frame(int handle, int index, Pointer<Uint8> rgba, int capacity);
+
+@Native<Void Function(Int32)>(symbol: 'qa_video_decode_close')
+external void _close(int handle);
+
+@Native<Void Function()>(symbol: 'qa_video_decode_close_all')
+external void _closeAll();
+
+@Native<Pointer<Utf8> Function()>(symbol: 'qa_video_decode_last_error')
+external Pointer<Utf8> _lastError();
 
 /// The OS video DECODER — a movie in, one RGBA frame out.
 ///
 /// The export path's mirror ([QaVideoEncoder]): both go through the
 /// operating system's own codec stack rather than an ffmpeg binary a
 /// tablet does not have. Windows reads through Media Foundation's Source
-/// Reader, Apple through AVAssetImageGenerator, Android through the NDK
-/// media codecs; anything else answers [isSupported] false, and the app
-/// says "no decoder in this build" instead of failing as a corrupt file.
+/// Reader, Apple through AVAssetReader, Android through the NDK media
+/// codecs; anything else answers [isSupported] false, and the app says "no
+/// decoder in this build" instead of failing as a corrupt file.
 ///
 /// 2026-08-25: this paragraph used to say the non-Windows readers were not
 /// written yet. They were, and the stale note had readers believing in a
 /// limit that no longer existed. Decision comments are never deleted here,
 /// which only works if a wrong one is CORRECTED.
 ///
+/// Wherever the app runs it is there — the engine's library ships with the
+/// app, and `flutter test` builds it too — so [instance] is always one.
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// it was the C engine's (`qa_video_decode.c`), which a machine could be
+/// without, and the instance was null there.
+///
 /// MANY documents at once, each a HANDLE the caller keeps. It held one at a
 /// time while scrubbing a preview was the only caller; a movie kept as a
 /// reference put three more in the room — the canvas, the playback warmer
 /// and export — and one document means a re-open per switch (~111ms).
 final class QaVideoDecoder {
-  QaVideoDecoder._(this._library);
+  QaVideoDecoder._();
 
-  final DynamicLibrary _library;
-
-  static QaVideoDecoder? _instance;
-  static bool _tried = false;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  static QaVideoDecoder? get instance {
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      _instance = library == null ? null : QaVideoDecoder._(library);
-    }
-    return _instance;
-  }
-
-  late final _supported = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_video_decode_supported',
-      );
-  late final _open = _library
-      .lookupFunction<Int32 Function(Pointer<Utf8>), int Function(Pointer<Utf8>)>(
-        'qa_video_decode_open',
-      );
-  late final _openSpan = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Utf8>, Int64, Int64, Int32),
-        int Function(Pointer<Utf8>, int, int, int)
-      >('qa_video_decode_open_span');
-  late final _info = _library
-      .lookupFunction<
-        Int32 Function(
-          Int32,
-          Pointer<Int32>,
-          Pointer<Int32>,
-          Pointer<Int64>,
-          Pointer<Int32>,
-          Pointer<Int32>,
-        ),
-        int Function(
-          int,
-          Pointer<Int32>,
-          Pointer<Int32>,
-          Pointer<Int64>,
-          Pointer<Int32>,
-          Pointer<Int32>,
-        )
-      >('qa_video_decode_info');
-  late final _frame = _library
-      .lookupFunction<
-        Int32 Function(Int32, Int64, Pointer<Uint8>, Int32),
-        int Function(int, int, Pointer<Uint8>, int)
-      >('qa_video_decode_frame');
-  late final _close = _library
-      .lookupFunction<Void Function(Int32), void Function(int)>(
-        'qa_video_decode_close',
-      );
-  late final _closeAll = _library
-      .lookupFunction<Void Function(), void Function()>(
-        'qa_video_decode_close_all',
-      );
-  late final _lastError = _library
-      .lookupFunction<Pointer<Utf8> Function(), Pointer<Utf8> Function()>(
-        'qa_video_decode_last_error',
-      );
+  /// The isolate's decoder: its documents are the engine's, its scratch
+  /// its own.
+  static final QaVideoDecoder instance = QaVideoDecoder._();
 
   /// Whether THIS build can decode at all. False is an answer the caller
   /// shows, never a crash it recovers from.
@@ -229,9 +224,12 @@ final class QaVideoDecoder {
   /// frees in [close].
   ///
   /// ⚠️Reusing `into` is safe because every consumer copies it
-  /// SYNCHRONOUSLY — `decodeStraightRgbaImage` premultiplies into its own
-  /// scratch (or a fresh list) before the async decode begins. A consumer
-  /// that held this buffer across an await would read the NEXT frame.
+  /// SYNCHRONOUSLY — the two that pass it write each frame out before they
+  /// read the next: `movie_span` to its encoder, the decode worker's frame
+  /// arm into its transfer (`_frameInTheRoom`). ↩️So did
+  /// `decodeStraightRgbaImage`, premultiplying into its own scratch before
+  /// its async decode began. A consumer that held this buffer across an
+  /// await would read the NEXT frame.
   Pointer<Uint8> _scratch = nullptr;
   int _scratchBytes = 0;
 

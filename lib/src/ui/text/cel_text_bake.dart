@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
+import '../../native/engine_tile_ledger.dart';
 import '../../services/import/cel_picture.dart' show EnginePicture;
 import '../../services/import/raster_cel_import.dart';
-import '../canvas/raster_picture.dart';
+import 'canvas_letter_plate.dart';
 import 'cel_text_layout.dart';
 
 /// How a set text is turned into its plate — [bakeCelTextPlate]'s shape.
@@ -77,16 +79,10 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   if (window.isEmpty) {
     return const {};
   }
-  final recorder = ui.PictureRecorder();
-  layout.paint(ui.Canvas(recorder)..translate(-window.left, -window.top));
-  // A DEFERRED raster ([rasterPicture]): it is rastered by the pass that
+  // A DEFERRED raster ([letterPlateOver]): it is rastered by the pass that
   // draws it, so the bake waits on the engine for the tiles' pixels and not
   // once more for this. It is drawn 1:1 on whole pixels, which copies.
-  final set = rasterPicture(
-    recorder,
-    window.width.round(),
-    window.height.round(),
-  );
+  final set = letterPlateOver(window, layout.paint);
   final BitmapSurface cut;
   try {
     cut = await layCelPicture(
@@ -98,10 +94,7 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   } finally {
     set.dispose();
   }
-  return {
-    for (final entry in cut.tiles.entries)
-      entry.key: _keptIfUnchanged(previous[entry.key], entry.value),
-  };
+  return _keptWhereUnchanged(previous, cut.tiles);
 }
 
 /// The part of the canvas a bake of [layout] rasters: everything the text
@@ -116,6 +109,27 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
 ui.Rect celTextBakeWindow(CelTextLayout layout, PasteboardWall wall) =>
     layout.inkBounds.intersect(wall.rect);
 
-/// [before] where it already holds [now]'s pixels, else [now].
-BitmapTile _keptIfUnchanged(BitmapTile? before, BitmapTile now) =>
-    before != null && before == now ? before : now;
+/// [now], each tile holding the pixels [before] holds at its place being
+/// [before]'s own, the very object — [before]'s read back from the engine,
+/// [now]'s still where the bake left them (flip lane ⓓ-6).
+Map<TileCoord, BitmapTile> _keptWhereUnchanged(
+  Map<TileCoord, BitmapTile> before,
+  Map<TileCoord, BitmapTile> now,
+) {
+  final asked = [
+    for (final coord in now.keys)
+      if (before.containsKey(coord)) coord,
+  ];
+  final kept = {...now};
+  var next = 0;
+  EngineTileLedger.instance.readEach(BrushFrameKey.noCel, [
+    for (final coord in asked) before[coord]!,
+  ], (bytes) {
+    final coord = asked[next];
+    next += 1;
+    if (now[coord]!.holdsBytes(bytes)) {
+      kept[coord] = before[coord]!;
+    }
+  });
+  return kept;
+}

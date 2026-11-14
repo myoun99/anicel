@@ -48,7 +48,11 @@ class LayerCopyPayload {
     this.mark = LayerMark.none,
     this.onTimesheet = true,
     this.clipsToBelow = false,
+    this.collapsed = false,
+    this.lanesExpanded = false,
+    Set<String> expandedLaneGroups = const {},
   }) : frames = List.unmodifiable(frames),
+       expandedLaneGroups = Set.unmodifiable(expandedLaneGroups),
        timeline = UnmodifiableMapView(
          SplayTreeMap<int, TimelineExposure>.of(timeline),
        ),
@@ -107,6 +111,18 @@ class LayerCopyPayload {
   /// Clips to the layer below (I-92).
   final bool clipsToBelow;
 
+  /// How the rail is laid out around the row ([Layer.foldsLike]): its group
+  /// fold, its twirl-down and the lane groups open in it — the row's own
+  /// since F-360, so its copy's too.
+  ///
+  /// 🗣️F-579 (유저 2026-11-10): 「폴더 복사해서 붙여넣을때, 접어둔 폴더
+  /// 복사한건데 펼친채로 붙여넣어지니까 제대로 상태 기억해서 복사하도록」.
+  /// ↩️A pasted row came out open: the duplicated cut's rows kept all three
+  /// (`duplicateLayerAsIndependentCopy`), and the payload carried none.
+  final bool collapsed;
+  final bool lanesExpanded;
+  final Set<String> expandedLaneGroups;
+
   /// This payload with these replaced — how a paste from another project
   /// re-spells the terms the row names (I-7), and how an attach row lands
   /// with no base under it (`LayerClipboard`).
@@ -132,6 +148,9 @@ class LayerCopyPayload {
     mark: mark,
     onTimesheet: onTimesheet,
     clipsToBelow: clipsToBelow,
+    collapsed: collapsed,
+    lanesExpanded: lanesExpanded,
+    expandedLaneGroups: expandedLaneGroups,
   );
 }
 
@@ -154,5 +173,8 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     mark: source.mark,
     onTimesheet: source.onTimesheet,
     clipsToBelow: source.clipsToBelow,
+    collapsed: source.collapsed,
+    lanesExpanded: source.lanesExpanded,
+    expandedLaneGroups: source.expandedLaneGroups,
   );
 }

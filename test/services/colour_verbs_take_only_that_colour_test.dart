@@ -42,9 +42,8 @@ void main() {
         .readPixels((_, view) => List<int>.from(view.sublist(offset, offset + 4)));
   }
 
-  /// The whole tile, no mask — the "범위는 전체" case.
-  void wholeTile(void Function(TileCoord coord, Uint8List? mask) visit) =>
-      visit(origin, null);
+  /// The whole tile, no selection — the "범위는 전체" case.
+  final CelPixelWalk wholeTile = (tiles: [origin], clip: null);
 
   ({BitmapSurface surface, CelPixelRestore? restore}) run(
     BitmapSurface surface,

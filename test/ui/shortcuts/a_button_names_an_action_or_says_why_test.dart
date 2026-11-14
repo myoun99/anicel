@@ -181,11 +181,13 @@ const ledger = <String, Why>{
       Why.inAWindow,
   "dialogs/memory_settings_section.dart | 'memory-allowance-automatic'":
       Why.inAWindow,
-  'shortcuts/shortcut_settings_dialog.dart | '
-          "'shortcut-record-\${definition.id}'":
-      Why.inAWindow,
+  // The ⌨ of a row and of the search by key (I-168): one button, built by
+  // `_recordButton`.
+  'shortcuts/shortcut_settings_dialog.dart | keyValue': Why.inAWindow,
   'shortcuts/shortcut_settings_dialog.dart | '
           "'shortcut-reset-\${definition.id}'":
+      Why.inAWindow,
+  "shortcuts/shortcut_settings_dialog.dart | 'shortcut-search-by-key-clear'":
       Why.inAWindow,
   'shortcuts/shortcut_settings_dialog.dart | '
           "'shortcut-unassign-\${definition.id}'":
@@ -227,6 +229,23 @@ const ledger = <String, Why>{
   "widgets/page_turn_bar.dart | '\$keyPrefix-next-page-button'":
       Why.declined,
   "widgets/page_turn_bar.dart | '\$keyPrefix-previous-page-button'":
+      Why.declined,
+  // 🗣️F-580 (유저 2026-11-10): 「브러시 가져오기 버튼등이 있는 브러시
+  // 라이브러리, 단축키로 있을 필요없어보이니 해당 항목 깔끔하게 삭제 …
+  // 패널 안의 미디어-임포트 이런식으로 패널 안 항목도 깔끔하게 삭제」 — the
+  // shelves 「브러시 라이브러리」 and 「패널 안」 with every button they held
+  // (I-148's reset beside the wrench was the library's too).
+  "brush/brush_preset_panel.dart | 'brush-preset-import-button'":
+      Why.declined,
+  "brush/brush_preset_panel.dart | 'brush-preset-save-button'": Why.declined,
+  "brush/brush_settings_panel.dart | 'brush-reset-button'": Why.declined,
+  "color/color_palettes.dart | 'palette-new'": Why.declined,
+  "conte/conte_tab_host.dart | 'conte-format-button'": Why.declined,
+  "envelope/cut_envelope_tab_host.dart | 'envelope-format-button'":
+      Why.declined,
+  "media/media_pool_panel.dart | 'media-import-button'": Why.declined,
+  "timesheet_tab_host.dart | 'timesheet-format-button'": Why.declined,
+  "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'":
       Why.declined,
 };
 

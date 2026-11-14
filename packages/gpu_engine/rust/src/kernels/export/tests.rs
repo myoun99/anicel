@@ -4,35 +4,39 @@
 
 use std::sync::OnceLock;
 
-use wgpu::util::DeviceExt;
+use video::colour;
 
-use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
+use super::{Clear, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Straight};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
-struct Rig {
-    engine: &'static Engine,
-    nv12: Nv12,
-    over_ground: OverGround,
-    opaque: Opaque,
-    clear: Clear,
-    png: PngFilter,
+pub(super) struct Rig {
+    pub(super) engine: &'static Engine,
+    pub(super) nv12: Nv12,
+    pub(super) over_ground: OverGround,
+    pub(super) opaque: Opaque,
+    pub(super) clear: Clear,
+    pub(super) png: PngFilter,
+    pub(super) straight: Straight,
+    pub(super) lay: Lay,
 }
 
 /// One device and one compiled pass each for every test here, as the app
 /// opens one device (blend's tests have why).
-fn rig() -> &'static Rig {
+pub(super) fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
         Rig {
             engine,
-            nv12: Nv12::new(engine),
-            over_ground: OverGround::new(engine),
-            opaque: Opaque::new(engine),
-            clear: Clear::new(engine),
-            png: PngFilter::new(engine),
+            nv12: Nv12::new(),
+            over_ground: OverGround::new(),
+            opaque: Opaque::new(),
+            clear: Clear::new(),
+            png: PngFilter::new(),
+            straight: Straight::new(),
+            lay: Lay::new(),
         }
     })
 }
@@ -58,7 +62,7 @@ fn mix(mut h: u32) -> u32 {
 
 /// The composite's output tiles for a `width` x `height` picture, asked
 /// row by row from its top-left tile; [`PAST`] where a tile runs past it.
-fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
+pub(super) fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
     frame_past(width, height, PAST, pixel)
 }
 
@@ -78,14 +82,11 @@ fn frame_past(
             words[at as usize] = pixel(x, y);
         }
     }
-    rig()
-        .engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("test frame"),
-            contents: &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-            usage: wgpu::BufferUsages::STORAGE,
-        })
+    rig().engine.filled(
+        "test frame",
+        &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
+        wgpu::BufferUsages::STORAGE,
+    )
 }
 
 /// The picture in its smallest encoder frame: even sides, rows of whole
@@ -103,7 +104,7 @@ fn shape(src_width: u32, src_height: u32) -> Nv12Shape {
 
 fn nv12(frame: &wgpu::Buffer, shape: Nv12Shape) -> Vec<u8> {
     let Rig { engine, nv12, .. } = rig();
-    let out = nv12.run(engine, frame, shape).expect("nv12");
+    let out = nv12.run(engine, Frame::Tiles(frame), shape).expect("nv12");
     read_buffer(engine, &out)
 }
 
@@ -114,7 +115,7 @@ fn sample(bytes: &[u8], shape: Nv12Shape, x: u32, y: u32) -> (u8, u8, u8) {
     (bytes[y as usize * stride + x as usize], bytes[chroma], bytes[chroma + 1])
 }
 
-// ---- By hand, from the law (qa_yuv601.h) ----
+// ---- By hand, from the law (video's colour.rs) ----
 
 // White: Y = ((220·255 + 128) >> 8) + 16 = (56228 >> 8) + 16 = 219 + 16;
 // both differences are 0·255 + 128 >> 8 = 0, + 128.
@@ -138,7 +139,7 @@ fn black_is_16_and_no_colour() {
 
 // Red: Y = ((66·255 + 128) >> 8) + 16 = (16958 >> 8) + 16 = 82;
 // Cb = ((−38·255 + 128) >> 8) + 128 = (−9562 >> 8) + 128 = −38 + 128 = 90,
-// the shift flooring −37.35 as C's does; Cr = (28688 >> 8) + 128 = 240.
+// the shift flooring −37.35 as the law's does; Cr = (28688 >> 8) + 128 = 240.
 // Blue: Y = (6503 >> 8) + 16 = 41; Cb = 240; Cr = (−4462 >> 8) + 128 = 110.
 #[test]
 fn red_and_blue_floor_their_negative_differences_as_the_law_does() {
@@ -208,7 +209,7 @@ fn the_frame_is_read_across_its_tiles() {
 // ---- The ledger ----
 
 /// A picture of any colours and alphas.
-fn mixed(seed: u32) -> impl Fn(u32, u32) -> u32 {
+pub(super) fn mixed(seed: u32) -> impl Fn(u32, u32) -> u32 {
     move |x, y| mix(seed ^ mix(x ^ mix(y)))
 }
 
@@ -226,6 +227,53 @@ fn every_device_writes_the_pinned_nv12() {
     }
 }
 
+// ---- The writers' own law, while they run it ----
+
+// Not an oracle written for these tests: `from_rgba` is the law the app's
+// movie writers run on the CPU today, and two copies of one law give one
+// frame until 7′ deletes it — this test goes with it (공통, gpu-export-path
+// 2026-11-07 23:20 ④). A row is compared over the frame's width: past it
+// the pass lays white and the writer leaves its buffer as it was.
+#[test]
+fn nv12_is_the_movie_writers_own_byte_for_byte() {
+    for (width, height, y_stride) in [(197, 131, 200), (256, 128, 256), (3, 3, 8)] {
+        let shape = Nv12Shape {
+            y_stride,
+            ..shape(width, height)
+        };
+        let pixel = mixed(7);
+        let gpu = nv12(&frame(width, height, &pixel), shape);
+        let mut rgba = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                rgba.extend(pixel(x, y).to_le_bytes());
+            }
+        }
+        let (stride, rows) = (y_stride as usize, shape.height as usize);
+        let mut cpu = vec![0; stride * rows * 3 / 2];
+        let (y, chroma) = cpu.split_at_mut(stride * rows);
+        let picture = colour::Picture {
+            rgba: &rgba,
+            width: width as usize,
+            height: height as usize,
+        };
+        let mut planes = colour::Planes {
+            y,
+            y_stride: stride,
+            chroma,
+            cb: 0,
+            cr: 1,
+            chroma_stride: stride,
+            chroma_step: 2,
+        };
+        colour::from_rgba(&picture, shape.width as usize, rows, &mut planes);
+        let within = |bytes: &[u8]| -> Vec<Vec<u8>> {
+            bytes.chunks(stride).map(|row| row[..shape.width as usize].to_vec()).collect()
+        };
+        assert!(within(&gpu) == within(&cpu), "{width}x{height}, rows of {y_stride}");
+    }
+}
+
 // ---- The shape ----
 
 #[test]
@@ -238,7 +286,7 @@ fn a_frame_the_encoder_cannot_take_is_refused() {
         Nv12Shape { y_stride: 6, ..shape(4, 4) },
         Nv12Shape { width: 6, y_stride: 4, ..shape(4, 4) },
     ] {
-        assert!(nv12.run(engine, &frame, bad).is_none(), "{bad:?}");
+        assert!(nv12.run(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
     }
 }
 
@@ -264,7 +312,7 @@ fn cut_over_ground(
         ..
     } = rig();
     let out = over_ground
-        .run(engine, frame, Picture { width, height }, ground, cut)
+        .run(engine, Frame::Tiles(frame), Picture { width, height }, ground, cut)
         .expect("over ground");
     read_buffer(engine, &out)
 }
@@ -387,7 +435,7 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(over_ground.run(engine, &frame, bad, [0, 0, 0], None).is_none(), "{bad:?}");
+        assert!(over_ground.run(engine, Frame::Tiles(&frame), bad, [0, 0, 0], None).is_none(), "{bad:?}");
     }
 }
 
@@ -397,7 +445,7 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
 fn opaque(frame: &wgpu::Buffer, width: u32, height: u32) -> u32 {
     let Rig { engine, opaque, .. } = rig();
     let out = opaque
-        .run(engine, frame, Picture { width, height })
+        .run(engine, Frame::Tiles(frame), Picture { width, height })
         .expect("opaque");
     let bytes = read_buffer(engine, &out);
     u32::from_le_bytes(bytes[..4].try_into().unwrap())
@@ -442,7 +490,7 @@ fn an_empty_picture_or_a_short_frame_is_not_asked() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(opaque.run(engine, &frame, bad).is_none(), "{bad:?}");
+        assert!(opaque.run(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
     }
 }
 
@@ -474,7 +522,7 @@ fn cut_at_nothing_every_pixel_is_its_own_colour() {
 fn clear_bits(frame: &wgpu::Buffer, width: u32, height: u32, cut: u8) -> Vec<u32> {
     let Rig { engine, clear, .. } = rig();
     let out = clear
-        .run(engine, frame, Picture { width, height }, cut)
+        .run(engine, Frame::Tiles(frame), Picture { width, height }, cut)
         .expect("clear");
     read_buffer(engine, &out)
         .chunks_exact(4)
@@ -548,7 +596,7 @@ fn clear_refuses_an_empty_picture_or_a_short_frame() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(clear.run(engine, &frame, bad, 128).is_none(), "{bad:?}");
+        assert!(clear.run(engine, Frame::Tiles(&frame), bad, 128).is_none(), "{bad:?}");
     }
 }
 
@@ -571,7 +619,7 @@ fn png_rows(out: &[u8], picture: Picture, pixel_bytes: u32) -> Vec<Vec<u8>> {
 fn png_rgba(frame: &wgpu::Buffer, width: u32, height: u32) -> Vec<u8> {
     let Rig { engine, png, .. } = rig();
     let out = png
-        .rgba(engine, frame, Picture { width, height })
+        .rgba(engine, Frame::Tiles(frame), Picture { width, height })
         .expect("png rgba");
     read_buffer(engine, &out)
 }
@@ -592,7 +640,7 @@ fn png_rgb(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Ve
     } = rig();
     let picture = Picture { width, height };
     let rgb = over_ground
-        .run(engine, frame, picture, ground, None)
+        .run(engine, Frame::Tiles(frame), picture, ground, None)
         .expect("over ground");
     let out = png.rgb(engine, &rgb, picture).expect("png rgb");
     read_buffer(engine, &out)
@@ -744,10 +792,10 @@ fn png_refuses_an_empty_picture_or_a_short_source() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(png.rgba(engine, &frame, bad).is_none(), "{bad:?}");
+        assert!(png.rgba(engine, Frame::Tiles(&frame), bad).is_none(), "{bad:?}");
     }
     let rgb = over_ground
-        .run(engine, &frame, Picture { width: 4, height: 4 }, [0, 0, 0], None)
+        .run(engine, Frame::Tiles(&frame), Picture { width: 4, height: 4 }, [0, 0, 0], None)
         .expect("over ground");
     for bad in [
         Picture { width: 0, height: 4 },
@@ -774,7 +822,7 @@ fn a_picture_taller_than_a_dispatch_reaches_is_refused() {
     let height = engine.device.limits().max_compute_workgroups_per_dimension + 1;
     let tall = Picture { width: 1, height };
     let frame = frame(1, height, |_, _| WHITE);
-    assert!(over_ground.run(engine, &frame, tall, [0, 0, 0], None).is_none());
-    assert!(clear.run(engine, &frame, tall, 128).is_none());
-    assert!(png.rgba(engine, &frame, tall).is_none());
+    assert!(over_ground.run(engine, Frame::Tiles(&frame), tall, [0, 0, 0], None).is_none());
+    assert!(clear.run(engine, Frame::Tiles(&frame), tall, 128).is_none());
+    assert!(png.rgba(engine, Frame::Tiles(&frame), tall).is_none());
 }

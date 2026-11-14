@@ -41,12 +41,12 @@ void main() {
   tearDown(() => deleteTempQuietly(room));
 
   String describing(String id) => jsonEncode({
-    'spec': 1,
+    'spec': 2,
     'id': id,
     'name': 'Plugin $id',
     'vendor': 'Example',
     'version': '1',
-    'can': ['cpu'],
+    'can': ['gpu'],
     'params': [
       {
         'id': 'amount',
@@ -59,20 +59,21 @@ void main() {
     ],
   });
 
-  // The device's plugins, its module asked through a stand-in: the
-  // module is its description's text.
+  // The device's plugins, each checked by no device: the stand-in's file
+  // holds no WGSL.
   Future<InstalledFxPlugins> deviceWith(List<String> ids) async {
     final plugins = InstalledFxPlugins(
       service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-      describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+      check: (_) async => (opened: null, refusal: null),
     );
     addTearDown(plugins.dispose);
     for (final id in ids) {
       final archive = Archive()
-        ..add(ArchiveFile.bytes('plugin.wasm', utf8.encode(describing(id))));
+        ..add(ArchiveFile.bytes('plugin.wgsl', const <int>[]))
+        ..add(ArchiveFile.bytes('plugin.json', utf8.encode(describing(id))));
       await plugins.install(
         ZipEncoder().encodeBytes(archive),
-        confirm: (_, {required native, required replacing}) async => true,
+        confirm: (_, {required replacing}) async => true,
       );
     }
     return plugins;

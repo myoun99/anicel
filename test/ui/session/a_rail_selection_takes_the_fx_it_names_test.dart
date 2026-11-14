@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -27,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import '../../helpers/fx_plugin_file.dart';
 import '../flyout_test_helpers.dart' show readCommandEnabled;
 
 /// 🗣️F-476 (유저 2026-10-26): 「레이어쪽에서 fx를 선택범위로 선택하고
@@ -315,15 +315,7 @@ void main() {
     final session = _session();
     session.effectsAndFx.addEffectToActiveLayer(
       EffectKind.plugin,
-      plugin: FxPluginDescription.fromJson({
-        'spec': 1,
-        'id': 'com.example.glow',
-        'name': 'Glow',
-        'vendor': 'Example',
-        'version': '1',
-        'can': ['cpu'],
-        'params': [],
-      }),
+      plugin: fxPluginDescriptionOf('com.example.glow', name: 'Glow'),
     );
     _select(session, [
       const LayerRowAddress(LayerId('x')),

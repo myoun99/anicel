@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../../models/canvas_point.dart';
+import '../../services/canvas_flood_fill.dart'
+    show FillRangeCover, FloodFillRegion;
 import 'display_resample.dart';
 import 'raster_picture.dart';
 
@@ -24,12 +26,17 @@ import 'raster_picture.dart';
 /// tile by tile when reduced (F-240). This marks where a fill reaches and
 /// is none of the row's pixels — drawn after the row, at its own 50%.
 final class FillRangeMark {
-  /// The mark of [contours], closed outlines on the pixel grid in the space
-  /// of the row the fill lands on (`FillRange.contoursWithin`).
-  FillRangeMark(List<List<CanvasPoint>> contours)
-    : this._(_outlineOf(contours), _boundsOf(contours), Offset.zero);
+  /// The mark of [covered], the pixels a fill would write into in the space
+  /// of the row it lands on (`FillRange.coveredWithin`).
+  FillRangeMark(FillRangeCover covered)
+    : this._(
+        _outlineOf(covered.outline),
+        _boundsOf(covered.outline),
+        covered.cover,
+        Offset.zero,
+      );
 
-  FillRangeMark._(this.outline, this.bounds, this.shift);
+  FillRangeMark._(this.outline, this.bounds, this.cover, this.shift);
 
   /// Every contour as one path: the fill carves the holes out, the walk
   /// winding a hole against its component.
@@ -37,6 +44,11 @@ final class FillRangeMark {
 
   /// Everything [paint] draws, in the row's space — [Rect.zero] for none.
   final Rect bounds;
+
+  /// The range as the engine marks it (`GpuPlan.mark`): 255 on each pixel
+  /// [outline] holds and 0 elsewhere, over the range's box in the row's
+  /// space — the mask the checker is laid under (flip lane ⓐ-3).
+  final FloodFillRegion cover;
 
   /// How far the checker is pushed from the row's origin, in the row's
   /// space: the press's move since it came down.
@@ -53,7 +65,9 @@ final class FillRangeMark {
   /// This mark with its checker pushed [shift] from the row's origin — the
   /// outline as it is, walked once ([FillRangeMark.new]).
   FillRangeMark shifted(Offset shift) =>
-      shift == this.shift ? this : FillRangeMark._(outline, bounds, shift);
+      shift == this.shift
+      ? this
+      : FillRangeMark._(outline, bounds, cover, shift);
 
   /// The checker over [outline]: one shader in one path — the vector the
   /// user asked for, as the ants are, with no picture of the range made.

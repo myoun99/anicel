@@ -50,6 +50,7 @@ void main() {
         effects: [effect],
         frameIndex: frame,
         blocks: hasBlocks ? blocks : null,
+        worn: null,
       ).firstOrNull?.parameter('blurriness');
 
   group('where a bundle reads its keys', () {

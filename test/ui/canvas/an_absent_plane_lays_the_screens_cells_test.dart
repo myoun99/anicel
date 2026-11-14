@@ -28,11 +28,10 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨AN ABSENT PLANE IS ONE CHECKERBOARD ON THE SCREEN, and it lies where
 /// the stack lies (F-114 — 유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당
@@ -53,6 +52,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// 100% and at 150% where the paper's own edge was crisp, so turning the
 /// paper off and on moved its edge.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 96, height: 64);
   const box = Size(200, 140);
   const backdrop = Color(0xFF2040C0);
@@ -97,17 +97,21 @@ void main() {
 
   final screen = GlobalKey();
 
-  Future<void> pump(WidgetTester tester, Widget picture) => tester.pumpWidget(
-    MaterialApp(
-      home: Align(
-        alignment: Alignment.topLeft,
-        child: RepaintBoundary(
-          key: screen,
-          child: SizedBox.fromSize(size: box, child: picture),
+  Future<void> pump(WidgetTester tester, Widget picture) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: screen,
+            child: SizedBox.fromSize(size: box, child: picture),
+          ),
         ),
       ),
-    ),
-  );
+    );
+    // A screen's first frame opens its texture.
+    await tester.pump();
+  }
 
   /// What the last pump put on the screen, in device pixels.
   Future<Shot> onScreen(WidgetTester tester) async {
@@ -138,7 +142,7 @@ void main() {
   StackRun picturesOn(ProjectBackground background) {
     final cache = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(cache.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final landings = ValueNotifier<int>(0);
     addTearDown(landings.dispose);

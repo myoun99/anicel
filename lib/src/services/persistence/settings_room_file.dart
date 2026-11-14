@@ -21,8 +21,8 @@ import 'versioned_settings_file.dart';
 /// the events it still has to send).
 ///
 /// ⚖️And the fx plugins (I-132, 2026-10-30), by Q2's word for the fonts —
-/// installed here: each is kept as the native build of THIS device beside
-/// its module, and installed only once a person here has said yes to it.
+/// installed here: each is kept as its WGSL, opened on THIS device's GPU,
+/// and installed only once a person here has said yes to it.
 ///
 /// ⚖️And the GPU choice (connection-round-checklist-Q4, 2026-11-06), by
 /// Q2's word for the memory budget — this machine's GPUs: an energy-saving

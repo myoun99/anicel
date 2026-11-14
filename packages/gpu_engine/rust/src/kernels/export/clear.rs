@@ -1,7 +1,7 @@
 //! Which pixels of a GIF are its clear colour (gpu-export-path ①c) —
 //! `clear.wgsl` has the law.
 
-use super::{Picture, compile, holds, out_plane, submit};
+use super::{Frame, Picture, Pipelines, out_plane, submit};
 use crate::device::Engine;
 
 impl Picture {
@@ -14,32 +14,31 @@ impl Picture {
 
 /// The clear pass.
 pub(crate) struct Clear {
-    pipeline: wgpu::ComputePipeline,
+    pipelines: Pipelines,
 }
 
 impl Clear {
-    pub(crate) fn new(engine: &Engine) -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            pipeline: compile(engine, &[include_str!("clear.wgsl")], "clear_pass"),
+            pipelines: Pipelines::new(&[include_str!("clear.wgsl")], "clear_pass"),
         }
     }
 
-    /// Marks the pixels of the picture in `frame` — the composite's output
-    /// tiles for it, asked row by row from its top-left tile — whose alpha
-    /// is under `cut`, and submits the work; the caller waits. Returns the
-    /// buffer of the bits ([`Picture::clear_bytes`] of them).
+    /// Marks the pixels of the picture in `frame` whose alpha is under
+    /// `cut`, and submits the work; the caller waits. Returns the buffer of
+    /// the bits ([`Picture::clear_bytes`] of them).
     pub(crate) fn run(
         &self,
         engine: &Engine,
-        frame: &wgpu::Buffer,
+        frame: Frame,
         picture: Picture,
         cut: u8,
     ) -> Option<wgpu::Buffer> {
         picture.check()?;
-        holds(frame, picture.tiles())?;
+        frame.holds(picture)?;
         let row_words = picture.width.div_ceil(32);
         let params = [
-            picture.tiles().0,
+            frame.stride(picture),
             picture.width,
             picture.height,
             row_words,
@@ -50,7 +49,8 @@ impl Clear {
         ];
         let groups = (row_words.div_ceil(64), picture.height);
         let out = out_plane(engine, "clear out", picture.clear_bytes(), groups)?;
-        submit(engine, &self.pipeline, &params, frame, &out, groups);
+        let pipeline = self.pipelines.of(engine, frame);
+        submit(engine, pipeline, &params, frame.buffer(), &out, groups);
         Some(out)
     }
 }

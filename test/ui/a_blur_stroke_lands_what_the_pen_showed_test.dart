@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_mixing_method.dart';
 import 'package:anicel/src/models/brush_shape.dart';
@@ -12,7 +13,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/services/brush_blur_stroke_landing.dart';
+import 'package:anicel/src/services/brush_stroke_landing.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -110,10 +111,9 @@ void main() {
     final shown = landed.promotedTiles!;
     expect(shown, isNotEmpty, reason: 'premise: the edge was smeared');
 
-    final rederived = blurStrokeLandedOn(
+    final rederived = strokeLandedOn(
       cel,
-      landed.sourceDabs,
-      opacity: landed.strokeOpacity,
+      BrushDabSequence(landed.sourceDabs, landed.strokeOpacity),
     );
     expect(
       [for (final placed in shown) placed.coord],

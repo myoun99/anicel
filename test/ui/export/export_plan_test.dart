@@ -754,5 +754,139 @@ void main() {
         ),
       ]);
     });
+
+    /// 🗣️유저 2026-11-10 (board an-mp4-reopened-loses-its-first-9-ms-of-
+    /// sound-Q2): 「무음, 범위 앞에 소리가 있으면 그 소리」 — what sounds before
+    /// a range is what the timeline holds there, whichever cut it is in.
+    group('the frames before a plan, whose mix leads its sound', () {
+      String placeOf(ExportFrameTask task) =>
+          '${task.cut.id.value}${task.frameIndex}';
+
+      test('a range written alone is led by its cut\'s earlier frames — '
+          'their sound ends where the range\'s own goes on from', () {
+        final proj = project([
+          Track(id: const TrackId('track'), name: 'Track', cuts: [cutA()]),
+        ]);
+        final plan = buildExportFramePlan(
+          project: proj,
+          activeCutId: const CutId('a'),
+          range: ExportRange.frameRange,
+          rangeStartFrame: 4,
+          rangeEndFrame: 5,
+        );
+
+        final before = exportFramesBefore(plan, 2, project: proj);
+
+        expect(before.map(placeOf), ['a2', 'a3']);
+        // The range's own a.wav seeks 4 frames in: 2 + these 2.
+        expect(buildExportAudioPlan(plan: before, project: proj), const [
+          ScheduledAudioClip(
+            filePath: 'a.wav',
+            startFrame: 0,
+            endFrameExclusive: 2,
+            offsetFrames: 2,
+          ),
+        ]);
+      });
+
+      test('🎯a cut written alone is led by the cut BEFORE it — that cut\'s '
+          'own sounds, and the track row that runs across the seam', () {
+        final proj = project([
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            seLayers: [seLayer('se-g', file: 'g.wav', start: 8, length: 10)],
+            cuts: [cutA(), cutB()],
+          ),
+        ]);
+        final plan = buildExportFramePlan(
+          project: proj,
+          activeCutId: const CutId('b'),
+          range: ExportRange.activeCut,
+        );
+
+        final before = exportFramesBefore(plan, 3, project: proj);
+
+        expect(before.map(placeOf), ['a7', 'a8', 'a9']);
+        expect(buildExportAudioPlan(plan: before, project: proj), const [
+          ScheduledAudioClip(
+            filePath: 'a.wav',
+            startFrame: 0,
+            endFrameExclusive: 3,
+            offsetFrames: 7,
+          ),
+          ScheduledAudioClip(
+            filePath: 'b.wav',
+            startFrame: 0,
+            endFrameExclusive: 3,
+            offsetFrames: 1,
+          ),
+          // The row begins on the second of the three and plays its first
+          // two frames — the two the cut's own plan seeks past.
+          ScheduledAudioClip(
+            filePath: 'g.wav',
+            startFrame: 1,
+            endFrameExclusive: 3,
+          ),
+        ]);
+        expect(
+          buildExportAudioPlan(plan: plan, project: proj),
+          contains(
+            const ScheduledAudioClip(
+              filePath: 'g.wav',
+              startFrame: 0,
+              endFrameExclusive: 8,
+              offsetFrames: 2,
+            ),
+          ),
+        );
+      });
+
+      test('the gap before a cut lies before it — the timeline has one even '
+          'where the cut\'s own plan does not', () {
+        final proj = project([
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [
+              cut('a', duration: 10),
+              cut('b', duration: 20).copyWith(leadingGapFrames: 2),
+            ],
+          ),
+        ]);
+        final plan = buildExportFramePlan(
+          project: proj,
+          activeCutId: const CutId('b'),
+          range: ExportRange.activeCut,
+          includeGaps: true,
+        );
+        expect(plan.first.frameIndex, 0);
+
+        expect(exportFramesBefore(plan, 3, project: proj).map(placeOf), [
+          'a9', 'b-2', 'b-1', //
+        ]);
+      });
+
+      test('there are fewer where the track begins sooner, and none at its '
+          'start', () {
+        final proj = project([
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [cut('a', duration: 10)],
+          ),
+        ]);
+        final a = proj.tracks.first.cuts.first;
+        List<String> before(List<ExportFrameTask> plan) => [
+          ...exportFramesBefore(plan, 3, project: proj).map(placeOf),
+        ];
+
+        expect(before([ExportFrameTask(cut: a, frameIndex: 1)]), ['a0']);
+        expect(before([ExportFrameTask(cut: a, frameIndex: 0)]), isEmpty);
+        expect(before(const []), isEmpty);
+        // A cut the project does not hold has no place on any track.
+        expect(before([ExportFrameTask(cut: cut('z'), frameIndex: 2)]), isEmpty);
+      });
+    });
   });
 }

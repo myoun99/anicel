@@ -165,6 +165,53 @@ List<ExportFrameTask> buildExportFramePlan({
   return plan;
 }
 
+/// The [count] frames [project]'s timeline holds just before [plan]'s first,
+/// on its track's axis ([cutSpansOf]): the cut's own earlier frames, its
+/// leading gap, the cuts before it — fewer where the track begins sooner,
+/// none for a plan that starts at the track's start.
+///
+/// What a movie whose writer puts a frame of sound before the mix fills it
+/// from (`SoundBefore`, video_export_service.dart; 유저 2026-11-10, board
+/// an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2: 「범위 앞에 소리가 있으면
+/// 그 소리」): these frames' mix is what the timeline sounds like up to the
+/// plan's first frame, so a range written alone is handed the past it has
+/// inside the whole film.
+///
+/// ⚠️A cut written alone has no leading gap in its plan
+/// ([buildExportFramePlan]); it has one here, because the timeline does.
+List<ExportFrameTask> exportFramesBefore(
+  List<ExportFrameTask> plan,
+  int count, {
+  required Project project,
+}) {
+  final first = plan.firstOrNull;
+  if (first == null) {
+    return const [];
+  }
+  // Where the plan begins, on the track's axis.
+  final begins = _onTheTrack(
+    trackAxisOf(project),
+    first.cut,
+    first.frameIndex,
+  );
+  if (begins == null) {
+    return const [];
+  }
+  final end = begins.frame;
+  return [
+    for (final placed in cutSpansOf(begins.track))
+      for (
+        var frame = math.max(
+          end - count,
+          placed.startFrame - placed.cut.leadingGapFrames,
+        );
+        frame < math.min(end, placed.endFrame);
+        frame += 1
+      )
+        ExportFrameTask(cut: placed.cut, frameIndex: frame - placed.startFrame),
+  ];
+}
+
 /// Lays every SE layer's audio clips onto the exported video's timeline,
 /// in FRAMES on the export plan's own axis (frame 0 = the first exported
 /// frame).
@@ -286,15 +333,33 @@ bool _blocksContiguous(
   }
   final prevTask = plan[endIndex - 1];
   final nextTask = plan[endIndex];
-  final prevTrackStart = axis.startByCutId[prevTask.cut.id];
-  final nextTrackStart = axis.startByCutId[nextTask.cut.id];
-  return prevTrackStart != null &&
-      nextTrackStart != null &&
-      identical(axis.trackByCutId[prevTask.cut.id], track) &&
-      identical(axis.trackByCutId[nextTask.cut.id], track) &&
+  // Where the previous cut ends, and where the next block begins.
+  final prevEnd = _onTheTrack(axis, prevTask.cut, prevTask.cut.duration);
+  final nextStart = _onTheTrack(axis, nextTask.cut, nextTask.frameIndex);
+  return prevEnd != null &&
+      nextStart != null &&
+      identical(prevEnd.track, track) &&
+      identical(nextStart.track, track) &&
       prevTask.frameIndex == prevTask.cut.duration - 1 &&
-      nextTrackStart + nextTask.frameIndex ==
-          prevTrackStart + prevTask.cut.duration;
+      nextStart.frame == prevEnd.frame;
+}
+
+/// Where [cut]'s frame [frameIndex] stands on its track's axis
+/// ([trackAxisOf]): the track that holds the cut, and the frame there —
+/// null for a cut no track holds. ONE answer for each route that lays the
+/// plan on the track: the frames before it ([exportFramesBefore]), a
+/// block's sounds ([_trackOwnedSpans]) and where two blocks meet
+/// ([_blocksContiguous]).
+({Track track, int frame})? _onTheTrack(
+  TrackAxis axis,
+  Cut cut,
+  int frameIndex,
+) {
+  final track = axis.trackByCutId[cut.id];
+  final start = axis.startByCutId[cut.id];
+  return track == null || start == null
+      ? null
+      : (track: track, frame: start + frameIndex);
 }
 
 /// Where the contiguous run starting at [block] ends in the plan: block
@@ -346,12 +411,12 @@ Iterable<ScheduledAudioClip> _trackOwnedSpans(
   required List<ExportFrameTask> plan,
   required TrackAxis axis,
 }) sync* {
-  final track = axis.trackByCutId[block.cut.id];
-  final cutTrackStart = axis.startByCutId[block.cut.id];
-  if (track == null || cutTrackStart == null) {
+  final window = _onTheTrack(axis, block.cut, block.firstFrameIndex);
+  if (window == null) {
     return;
   }
-  final windowTrackStart = cutTrackStart + block.firstFrameIndex;
+  final track = window.track;
+  final windowTrackStart = window.frame;
   final runEnd = _runEndFrom(block, plan: plan, track: track, axis: axis);
   // A run STARTS here unless the block before it ran straight into this
   // one — the same contiguity, asked backwards. ⛔No `block.start == 0`

@@ -68,6 +68,32 @@ void main() {
       expect(unknownKind.kind, MediaAssetKind.audio);
     });
 
+    // 🗣️유저 2026-11-10 (card `the-fit-stored-on-an-asset-is-read-by-nobody`
+    // -Q1): 「지금은 지운다 — 프리셋은 고치는 화면을 만들 때 같이 만든다」.
+    // ↩️An entry kept `offset` · `length` · `fit` (07-30), read by nobody.
+    test('🚨an entry keeps no placement default: a file that wrote one '
+        'opens, and the word is not written back — so the format\'s number '
+        'did not move for it', () {
+      final written = {
+        'path': '/a/bg.png',
+        'name': 'bg',
+        'kind': 'image',
+        'offset': 3,
+        'length': 24,
+        'fit': 'none',
+      };
+      final opened = MediaAsset.fromJson(written);
+
+      expect(
+        opened,
+        MediaAsset(path: '/a/bg.png', name: 'bg', kind: MediaAssetKind.image),
+        reason: 'the entry a file without the words reads as',
+      );
+      expect(opened.toJson().keys, isNot(contains('offset')));
+      expect(opened.toJson().keys, isNot(contains('length')));
+      expect(opened.toJson().keys, isNot(contains('fit')));
+    });
+
     test('🚨the default name is the file name WITHOUT its extension — the '
         'name a placement gives its rows (유저 2026-09-12)', () {
       expect(mediaAssetDefaultName(r'C:\proj\snd\foot.wav'), 'foot');
@@ -196,7 +222,7 @@ void main() {
       final asset = MediaAsset(
         path: path,
         name: 'take 1',
-        carriedAs: mintMediaCarry(path),
+        carriedAs: (token: mintMediaCarry(path), modified: null),
       );
       final relinked = asset.copyWith(path: 'D:/moved/other.wav');
 
@@ -237,6 +263,56 @@ void main() {
       expect(
         mediaCarryNamed('C:/media/take 1.wav', 'c0ffee01'),
         mediaCarryNamed(path, 'c0ffee01'),
+      );
+    });
+  });
+
+  /// 🗣️F-589-Q1 (유저 2026-11-14): 「품을 때의 날짜를 적어 두고 그것을
+  /// 띄운다」.
+  group('a carry\'s date', () {
+    const path = r'C:\media\take 1.wav';
+    final token = mediaCarryNamed(path, 'c0ffee01');
+
+    test('🎯the project file keeps the instant the carried file had last '
+        'changed, as one instant wherever it is opened', () {
+      final at = DateTime.utc(2026, 11, 13, 10, 41, 7);
+      final asset = MediaAsset(
+        path: path,
+        name: 'take 1',
+        carriedAs: (token: token, modified: at.toLocal()),
+      );
+
+      final json = asset.toJson();
+      expect(json['carriedModified'], '2026-11-13T10:41:07.000Z');
+      final read = MediaAsset.fromJson(json);
+      expect(read.carriedAs!.token, token);
+      expect(read.carriedAs!.modified, at.toLocal());
+      expect(read.carriedAs!.modified!.isUtc, isFalse, reason: 'shown here');
+    });
+
+    test('a carry that could read no date writes none, and a link carries '
+        'neither', () {
+      final undated = MediaAsset(
+        path: path,
+        name: 'take 1',
+        carriedAs: (token: token, modified: null),
+      ).toJson();
+      expect(undated.containsKey('carriedModified'), isFalse);
+      expect(MediaAsset.fromJson(undated).carriedAs, (
+        token: token,
+        modified: null,
+      ));
+
+      final linked = MediaAsset(path: path, name: 'take 1').toJson();
+      expect(linked.containsKey('carriedAs'), isFalse);
+      expect(linked.containsKey('carriedModified'), isFalse);
+      expect(
+        MediaAsset.fromJson({
+          ...linked,
+          'carriedModified': '2026-11-13T10:41:07.000Z',
+        }).carriedAs,
+        isNull,
+        reason: 'a date read without a carry names nothing carried',
       );
     });
   });

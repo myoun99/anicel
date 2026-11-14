@@ -70,18 +70,25 @@ double stampShareOf(BrushDab dab) {
 /// Entries past the first in an evening table: a laid alpha `a` in [0, 1]
 /// reads entry `a * eveningTableSteps`, linearly between two. One more
 /// entry repeats `a = 1`, so a laid alpha of 1 reads its pair like any
-/// other — the C kernel's pair path reads both lanes' pairs without a
-/// branch (`qa_d2_even`).
+/// other, and no pixel branches ([evenedLaid]).
 const int eveningTableSteps = 1024;
 
-/// The tables built so far — a stroke lays a few shares, and a table is
-/// 8 KB. ⚠️Not an LRU: this is asked once per dab, and a recency shuffle a
-/// dab (remove, re-insert) was most of what the share cost a stroke of small
-/// dabs in a debug build (2026-10-01: a 301-dab size-30 commit, 2.0 ms →
-/// 2.8 ms). A full cache starts over instead; [_lastShare] answers the run
-/// of dabs one move lays, which share one step.
-final BoundedMemo<double, Float64List> _tables = BoundedMemo(_tableCap);
-const int _tableCap = 64;
+/// The tables built so far, as many as there are shares to lay
+/// ([shareSteps] — 8 KB a table, 8 MB were every one laid). ⚠️Not an LRU:
+/// this is asked once per dab, and a recency shuffle a dab (remove,
+/// re-insert) was most of what the share cost a stroke of small dabs in a
+/// debug build (2026-10-01: a 301-dab size-30 commit, 2.0 ms → 2.8 ms).
+/// [_lastShare] answers the run of dabs one move lays, which share one
+/// step.
+///
+/// ↩️64 till 2026-11-12, on 「a stroke lays a few shares」: it lays one a
+/// move, each move at its own pace (`BrushDabInterpolator`'s `pathStep`),
+/// and a line whose points lie a pixel apart — a vector layer an import
+/// draws (`clipVectorTiles`) — lays 50–130 in 300 px. 🔬Such a stroke of
+/// 117 shares built 134 tables, the memo started over under it, and every
+/// stroke after built its own again: 1.8–3.2 ms of a stroke's plan against
+/// 0.8 with its tables built (main PC, a test's VM, 700 dabs).
+final BoundedMemo<double, Float64List> _tables = BoundedMemo(shareSteps);
 double _lastShare = -1;
 Float64List? _lastTable;
 
@@ -93,9 +100,10 @@ Float64List? eveningTableOf(BrushDab dab) {
 }
 
 /// `1 − (1 − a)^share` at `a = i / eveningTableSteps` — built once per
-/// share, and the ONE place `pow` is called: the Dart and C kernels, the
+/// share, and the ONE place `pow` is called: the Dart kernel, the
 /// reference and the swatch all read these numbers through [evenedLaid], so
-/// they agree to the byte, and no pixel pays a power.
+/// they agree to the byte, the engine's kernel is handed the same table
+/// (`dab_even`, dab.wgsl), and no pixel pays a power.
 Float64List eveningTableFor(double share) {
   final last = _lastTable;
   if (last != null && share == _lastShare) {
@@ -114,8 +122,8 @@ Float64List eveningTableFor(double share) {
   return table;
 }
 
-/// What a dab laying [laid] whole lays at the share [table] was built for —
-/// `qa_dab_even`'s arithmetic, operation by operation.
+/// What a dab laying [laid] whole lays at the share [table] was built for:
+/// read linearly between the table's two nearest entries.
 double evenedLaid(Float64List table, double laid) {
   final scaled = laid * eveningTableSteps;
   final x = scaled < eveningTableSteps ? scaled : eveningTableSteps.toDouble();

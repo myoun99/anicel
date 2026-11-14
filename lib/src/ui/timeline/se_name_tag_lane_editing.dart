@@ -6,8 +6,11 @@
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
 import '../../models/text_cel_style.dart' show TextCelStyle;
+import '../../models/transform_track.dart'
+    show argbKeySpace, boolHoldKeySpace, doubleKeySpace;
 import '../text/readout_text.dart' show columnValueOf;
 import 'se_name_tag_lane_policy.dart';
+import 'transform_lane_editing.dart' show laneResetAt;
 
 /// Adds a key at [frameIndex] holding the member's RESOLVED value there
 /// (AE: keying a property freezes what it currently shows), or removes the
@@ -292,19 +295,29 @@ SeNameTag? seNameTagWithGroupReset(
   }
   const fresh = SeNameTag();
   final keys = tag.track ?? SeNameTagTrack.empty();
-  PropertyTrack<T> keyed<T>(PropertyTrack<T> lane, T value, {KeyExit? out}) {
+  PropertyTrack<T> keyed<T>(
+    PropertyTrack<T> lane,
+    T value,
+    KeyValueSpace<T> space, {
+    KeyExit? out,
+  }) {
     var track = lane;
     for (final frame in frames) {
       if (lane.isNotEmpty && (!keyedFramesOnly || lane.keyAt(frame) != null)) {
-        track = track.withKey(frame, value, outgoing: out);
+        track = laneResetAt(track, frame, value, space: space, outgoing: out);
       }
     }
     return track;
   }
 
+  PropertyTrack<double> number(PropertyTrack<double> lane, double value) =>
+      keyed(lane, value, doubleKeySpace);
+  PropertyTrack<int> inked(PropertyTrack<int> lane, int value) =>
+      keyed(lane, value, argbKeySpace);
+
   // Booleans hold by nature, as the toggle keys them.
   PropertyTrack<bool> held(PropertyTrack<bool> lane, bool value) =>
-      keyed(lane, value, out: KeyExit.hold);
+      keyed(lane, value, boolHoldKeySpace, out: KeyExit.hold);
 
   // A member both runs share goes back to what each run of a new tag has.
   TextCelStyle shared(TextCelStyle run, TextCelStyle fresh) => run.copyWith(
@@ -329,15 +342,18 @@ SeNameTag? seNameTagWithGroupReset(
     track: tag.track == null
         ? null
         : keys.copyWith(
-            fontSize: keyed(keys.fontSize, fresh.style.fontSize),
-            letterSpacing: keyed(keys.letterSpacing, fresh.style.letterSpacing),
+            fontSize: number(keys.fontSize, fresh.style.fontSize),
+            letterSpacing: number(
+              keys.letterSpacing,
+              fresh.style.letterSpacing,
+            ),
             bold: held(keys.bold, fresh.style.bold),
             italic: held(keys.italic, fresh.style.italic),
             underline: held(keys.underline, fresh.style.underline),
             strikethrough: held(keys.strikethrough, fresh.style.strikethrough),
-            nameInk: keyed(keys.nameInk, fresh.style.color),
-            boxColor: ink == null ? null : keyed(keys.boxColor, ink),
-            lineInk: keyed(keys.lineInk, fresh.lineStyle.color),
+            nameInk: inked(keys.nameInk, fresh.style.color),
+            boxColor: ink == null ? null : inked(keys.boxColor, ink),
+            lineInk: inked(keys.lineInk, fresh.lineStyle.color),
             showLine: held(keys.showLine, fresh.showLine),
           ),
   );

@@ -1,6 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
@@ -11,6 +11,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
@@ -47,7 +48,6 @@ void main() {
     debugPictureSideLimit = engineSide;
     debugLayRasterSide = null;
     debugWorkersRunHere = true;
-    debugLayFilterQuality = null;
   });
 
   /// [width] × [height] of straight RGBA that shows a slip anywhere: each
@@ -118,7 +118,11 @@ void main() {
   /// [rgba] as the engine holds it.
   Future<EnginePicture> engineOf(Uint8List rgba, int width, int height) async =>
       EnginePicture(
-        await decodeStraightRgbaImage(rgba: rgba, width: width, height: height),
+        await decodeStraightRgbaImageOnAWorker(
+          rgba: rgba,
+          width: width,
+          height: height,
+        ),
       );
 
   /// [ours] against [theirs] tile for tile: the same tiles, where the same
@@ -344,7 +348,6 @@ void main() {
               picture: picture,
               canvas: canvas,
               placement: placement,
-              tileSize: 64,
               whole: whole,
             );
             final engine = await engineOf(rgba, 150, 90);
@@ -374,7 +377,6 @@ void main() {
           picture: engine,
           canvas: canvas,
           placement: placement,
-          tileSize: 64,
           whole: true,
         );
         engine.dispose();
@@ -389,7 +391,6 @@ void main() {
             ),
             canvas: canvas,
             placement: placement,
-            tileSize: 64,
             whole: true,
           ),
           theirs,
@@ -406,84 +407,167 @@ void main() {
           picture: picture,
           canvas: canvas,
           placement: placement,
-          tileSize: 64,
           whole: true,
         );
 
+    /// [rgba] laid by [placement] in one run, then a part at a time at
+    /// [side] — held in hand, read from a file, and held by the engine —
+    /// each the cel the one run laid.
+    Future<void> expectLaidInParts(
+      Uint8List rgba,
+      (int, int) size,
+      int side,
+      GuideTransform placement,
+    ) async {
+      final (width, height) = size;
+      final pixels = PixelsPicture(rgba, width: width, height: height);
+      debugLayRuns = 0;
+      final once = await laid(pixels, placement);
+      final runs = debugLayRuns;
+      expect(once.tiles, isNotEmpty, reason: 'premise: laid');
+
+      debugLayRasterSide = side;
+      final engine = await engineOf(rgba, width, height);
+      try {
+        for (final held in [
+          pixels,
+          FilePicture(pngOf(rgba, width, height), width: width, height: height),
+          engine,
+        ]) {
+          debugLayRuns = 0;
+          expectSameCel(await laid(held, placement), once);
+          expect(debugLayRuns, greaterThan(runs), reason: 'in parts');
+        }
+      } finally {
+        engine.dispose();
+      }
+    }
+
     // A part's reach is what one raster takes: at the side named, a block of
-    // tiles is laid from parts of the picture, never the picture whole. A
-    // part is drawn where it lies in the picture, and a pixel resampled from
-    // it can round a step apart — as one laid in a block of tiles of its own
-    // does (`raster_identity_test`).
-    for (final (how, width, side, placement) in [
-      ('shrunk by 0.6', 300, 256, const GuideTransform(0.6, 0, 0, 0.6, 10, 5)),
+    // tiles is laid from parts of the picture, never the picture whole — and
+    // a part is laid by the one law the whole is, each pixel the texel its
+    // centre lands on by the engine's Nearest, which maps in integers
+    // (`kernels/shared/resample.rs`, Q.20): the same pixels, a centre on a
+    // texel's edge as well. ↩️Each stood off an edge, and a turn was left
+    // out, while a part was drawn into a raster of its own by Flutter's
+    // sampler: 🔬2026-11-08, 0.3 at (3, 7) put x = 64, a part's first
+    // column, on texel 205's left edge and the part read 204; turned, the
+    // edge was softened otherwise where it crossed a part's — up to 19/255
+    // apart at 45° and 0.6, 50/255 at 0.04 halved (card
+    // `a-cel-past-the-side-resamples-a-hair-apart`).
+    for (final (how, size, side, placement) in [
+      (
+        'shrunk by 0.6',
+        (300, 200),
+        256,
+        const GuideTransform(0.6, 0, 0, 0.6, 10, 5),
+      ),
       (
         '🎯shrunk past half, read whole as the engine reads it — not halved',
-        300,
+        (300, 200),
+        256,
+        const GuideTransform(0.3, 0, 0, 0.3, 3.25, 7.25),
+      ),
+      (
+        '🎯shrunk past half, a centre on a texel\'s edge where a half begins',
+        (300, 200),
         256,
         const GuideTransform(0.3, 0, 0, 0.3, 3, 7),
       ),
       (
         'shrunk past half across alone',
-        1200,
+        (1200, 200),
         512,
-        const GuideTransform(0.2, 0, 0, 0.9, 3, 7),
+        const GuideTransform(0.2, 0, 0, 0.9, 3.25, 7.25),
+      ),
+      (
+        '🎯shrunk past what one raster holds a tile at — the tile laid in '
+            'halves, never decoded smaller',
+        (1200, 200),
+        256,
+        const GuideTransform(0.15, 0, 0, 0.15, 3.26, 7.26),
+      ),
+      (
+        '🎯shrunk past what one raster holds a tile at, down alone',
+        (200, 1200),
+        256,
+        const GuideTransform(0.15, 0, 0, 0.15, 7.26, 3.26),
+      ),
+      (
+        '🎯shrunk so far a tile is halved three times',
+        (1200, 200),
+        256,
+        const GuideTransform(0.04, 0, 0, 0.04, 3.27, 7.27),
+      ),
+      (
+        '🎯shrunk so far, past the wall — its halves laid whole there too',
+        (1200, 200),
+        256,
+        const GuideTransform(0.04, 0, 0, 0.04, -2996.73, 7.27),
+      ),
+      (
+        '🎯turned 45° and shrunk by 0.6, its edge across the parts\'',
+        (300, 200),
+        256,
+        GuideTransform(
+          0.6 * math.cos(math.pi / 4),
+          0.6 * math.sin(math.pi / 4),
+          -0.6 * math.sin(math.pi / 4),
+          0.6 * math.cos(math.pi / 4),
+          130,
+          5,
+        ),
       ),
     ]) {
       testWidgets('$how, a part at a time', (tester) async {
         await tester.runAsync(() async {
-          final rgba = patterned(width, 200);
-          debugLayRasterSide = side;
-          final engine = await engineOf(rgba, width, 200);
-          debugLayRasters = 0;
-          final theirs = await laid(engine, placement);
-          final blocks = debugLayRasters;
-          engine.dispose();
-
-          for (final held in [
-            PixelsPicture(rgba, width: width, height: 200),
-            FilePicture(pngOf(rgba, width, 200), width: width, height: 200),
-          ]) {
-            debugLayRasters = 0;
-            expectSameCel(await laid(held, placement), theirs, colourSlack: 1);
-            expect(debugLayRasters, greaterThan(blocks), reason: 'in parts');
-          }
+          final (width, height) = size;
+          await expectLaidInParts(
+            patterned(width, height),
+            size,
+            side,
+            placement,
+          );
         });
       });
     }
 
-    testWidgets('🎯on an engine that mips, each part is read on the grid the '
-        'picture whole is mipped on — 🔬up to 95/255 apart on the Surface '
-        'where it was not', (tester) async {
+    testWidgets('🎯shrunk past one raster over the clear of a picture — a '
+        'tile halved to no ink is no tile', (tester) async {
       await tester.runAsync(() async {
-        debugLayRasterSide = 1024;
-        debugLayFilterQuality = ui.FilterQuality.medium;
-        // Wide, it is cut in parts across; tall, down.
-        for (final (width, height) in [(2048, 256), (256, 2048)]) {
-          final rgba = patterned(width, height);
-          final engine = await engineOf(rgba, width, height);
-          for (final shrink in [0.096, 0.24, 0.3, 0.6]) {
-            final placement = GuideTransform(shrink, 0, 0, shrink, 13, 7);
-            debugLayRasters = 0;
-            final theirs = await laid(engine, placement);
-            final blocks = debugLayRasters;
-            debugLayRasters = 0;
-            expectSameCel(
-              await laid(
-                PixelsPicture(rgba, width: width, height: height),
-                placement,
-              ),
-              theirs,
-              colourSlack: 1,
-            );
-            expect(
-              debugLayRasters,
-              greaterThan(blocks),
-              reason: 'in parts at $shrink, ${width}x$height',
-            );
-          }
-          engine.dispose();
+        const side = 1200;
+        final rgba = Uint8List(side * side * 4);
+        final ink = patterned(side, side);
+        for (var y = 900; y < side; y += 1) {
+          final row = (y * side + 900) * 4;
+          rgba.setRange(row, (y + 1) * side * 4, ink, row);
         }
+        const placement = GuideTransform(0.15, 0, 0, 0.15, 3.26, 3.26);
+        debugLayRasterSide = 256;
+
+        expect(
+          (await laid(
+            PixelsPicture(rgba, width: side, height: side),
+            placement,
+          )).tiles.keys,
+          [TileCoord(x: 1, y: 1)],
+        );
+        debugLayRasterSide = null;
+        await expectLaidInParts(rgba, (side, side), 256, placement);
+      });
+    });
+
+    // ↩️Laid from what it reached decoded smaller, its colour the
+    // decoder's, while a part was a raster of its own (🔬2026-11-08).
+    testWidgets('🎯shrunk so far a pixel reaches past one raster — laid '
+        'from all it reaches, the texel its centre lands on', (tester) async {
+      await tester.runAsync(() async {
+        await expectLaidInParts(
+          patterned(2000, 2000),
+          (2000, 2000),
+          256,
+          const GuideTransform(0.0035, 0, 0, 0.0035, 3.27, 7.27),
+        );
       });
     });
   });

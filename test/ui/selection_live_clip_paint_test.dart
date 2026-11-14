@@ -1,8 +1,14 @@
+// The first stroke on the engine compiles the executor and the stroke's
+// kernels: 40 s on a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -34,8 +40,11 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 ///    boundary cannot disagree — there is no second clipping rule left to
 ///    keep in sync.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 40, height: 40);
-  const tileSize = 64; // one tile covers the canvas: the aligned grid.
+  // One tile covers the canvas: the aligned grid — the engine's, where a
+  // selection cuts (`cutOnTheEngineOnly`).
+  final tileSize = gpuTileSide;
 
   BrushDab dab(double x, double y) => BrushDab(
     center: CanvasPoint(x: x, y: y),

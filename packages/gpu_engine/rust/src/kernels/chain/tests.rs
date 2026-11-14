@@ -5,14 +5,14 @@
 
 use std::sync::OnceLock;
 
-use super::{Chain, Op, laid_as, reaching, tiles_of};
+use super::{Chain, ChainRead, MapTiles, Op, laid_as, reaching, tiles_of};
 use crate::kernels::composite::tests::{
     KEY_GREEN, KEY_RED, Pool, contrast, half, key_run, keyed_by_hand, pixel_at, rig as composite_rig,
     spotted, texel,
 };
 use crate::kernels::composite::{KeyChain, TILE, TileAt};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::effects::blur::gaussian::Edge;
+use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::{Focus, Iris};
 use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
@@ -91,7 +91,7 @@ fn square() -> Iris {
 
 /// A lens blur 3 pixels out, nothing past its picture — so the picture an op
 /// names is the one it blurs over (a paper repeated hid it, mutant c08).
-fn lens() -> Lens {
+pub(crate) fn lens() -> Lens {
     Lens {
         iris: square(),
         radius: 3.0,
@@ -103,6 +103,18 @@ fn lens() -> Lens {
 
 /// The pixels of [`RECT`], [left, top, right, bottom).
 const PICTURE: [i32; 4] = [-128, 0, 256, 256];
+
+/// A Gaussian of sigma `across` reaching 3 and `down` reaching 2, reading
+/// the picture inside [`RECT`]'s by `edge` and putting past it.
+pub(crate) fn blur(across: f64, down: f64, edge: Edge) -> Blur {
+    Blur {
+        across: Way { sigma: across, reach: 3 },
+        down: Way { sigma: down, reach: 2 },
+        picture: [-90, 20, 180, 230],
+        edge,
+        puts: [-100, 10, 200, 240],
+    }
+}
 
 /// Tile k of a chain's rectangle is slot k of its page, the rectangle's
 /// tiles taken row by row — as a blur lays them, and the store a row's.
@@ -146,7 +158,7 @@ fn a_key_run_keys_what_it_reads() {
 }
 
 /// Each blur of a chain is its kernel's, run on the chain's rectangle with
-/// the op's own settings — a Gaussian's two radii each its way, a lens
+/// the op's own settings — a Gaussian's two sigmas each its way, a lens
 /// through its map. Each case is told from a near one, so a setting lost on
 /// the way could not pass.
 #[test]
@@ -155,18 +167,14 @@ fn each_blur_of_a_chain_is_its_kernel_s() {
     let picture = |x, y| texel(93, x, y);
     let blurred = |op: Op| held(&chained(tiles(picture), &[op]).expect("chain"));
 
-    let edge = Edge::Repeat([-90, 20, 180, 230]);
-    let gaussian = |radius| {
-        let out = chain().gaussian.run(engine, &tiles(picture), RECT, radius, edge);
+    let gaussian = |blur: Blur| {
+        let out = chain().gaussian.run(engine, &tiles(picture), RECT, &blur);
         held(&out.expect("blur"))
     };
-    assert_same(&blurred(Op::Gaussian { radius: (3, 2), edge }), &gaussian((3, 2)));
-    assert_ne!(gaussian((3, 2)), gaussian((2, 3)));
-    let unrepeated = Op::Gaussian {
-        radius: (3, 2),
-        edge: Edge::Nothing,
-    };
-    assert_ne!(blurred(unrepeated), gaussian((3, 2)));
+    let repeated = blur(1.0, 0.7, Edge::Repeat);
+    assert_same(&blurred(Op::Gaussian(repeated)), &gaussian(repeated));
+    assert_ne!(gaussian(repeated), gaussian(blur(0.7, 1.0, Edge::Repeat)));
+    assert_ne!(blurred(Op::Gaussian(blur(1.0, 0.7, Edge::Nothing))), gaussian(repeated));
 
     let plate = [-100, 10, 200, 240];
     let passes = vec![LinePass::along([1.5, 0.5], 7)];
@@ -189,7 +197,11 @@ fn each_blur_of_a_chain_is_its_kernel_s() {
     let mapped = Op::Lens {
         picture: PICTURE,
         lens: lens(),
-        map: Some(map),
+        map: Some(BlurMap {
+            tiles: MapTiles::Laid(map.tiles),
+            channel: map.channel,
+            focus: map.focus,
+        }),
     };
     assert_same(&blurred(mapped), &by_lens(Some(map)));
     assert_ne!(by_lens(Some(map)), by_lens(None));
@@ -209,10 +221,7 @@ fn a_chain_runs_its_ops_one_after_another() {
                 runs: vec![key_run(KEY_RED, false, half)],
             }),
             Op::Matrix(matrix_words(&contrast()).expect("a matrix in range")),
-            Op::Gaussian {
-                radius: (3, 2),
-                edge: Edge::Nothing,
-            },
+            Op::Gaussian(blur(1.0, 0.7, Edge::Nothing)),
             Op::Line {
                 plate: [-100, 10, 200, 240],
                 passes: vec![LinePass::along([1.5, 0.5], 7)],
@@ -221,7 +230,7 @@ fn a_chain_runs_its_ops_one_after_another() {
                 picture: PICTURE,
                 lens: lens(),
                 map: Some(BlurMap {
-                    tiles: &map_tiles,
+                    tiles: MapTiles::Laid(&map_tiles),
                     channel: MapChannel::Luminance,
                     focus: Focus {
                         focal: 128.0,
@@ -249,6 +258,84 @@ fn a_chain_runs_its_ops_one_after_another() {
 #[test]
 fn a_chain_of_no_op_is_refused() {
     assert!(chained(tiles(|_, _| 0), &[]).is_none());
+}
+
+/// A map drawn from rows is the executor's to draw before the chain runs
+/// (`Composite::chained`): a chain handed one refuses it, and reads it as
+/// no map nowhere.
+#[test]
+fn a_chain_refuses_a_map_still_to_be_drawn() {
+    let map = BlurMap {
+        tiles: MapTiles::Drawn(&[]),
+        channel: MapChannel::Red,
+        focus: Focus {
+            focal: 0.0,
+            inverts: false,
+        },
+    };
+    let op = Op::Lens {
+        picture: PICTURE,
+        lens: lens(),
+        map: Some(map),
+    };
+    assert!(chained(tiles(|x, y| texel(95, x, y)), &[op]).is_none());
+}
+
+/// A plug-in's step reads what the chain had come to: what the op before
+/// it put is handed on as it is, and what the host is given of it is those
+/// pixels, clear past the tiles the chain ran over.
+#[test]
+fn a_read_keeps_what_the_chain_came_to_and_hands_it_on() {
+    let side = TILE as i32;
+    let came_to = |x, y| texel(96, x, y);
+    let read = ChainRead::default();
+    let out = chained(tiles(came_to), &[Op::Read(read.clone())]).expect("chain");
+    assert_same(&held(&out), &pixels().map(|(x, y)| came_to(x, y)).collect::<Vec<_>>());
+
+    // A pixel left of the chain's rectangle, then pixels of its first two
+    // tiles either side of their seam, one row a tile up.
+    let (left, right, y) = (-side - 1, -side + 2, side - 1);
+    let bytes = read
+        .pixels(composite_rig().engine, [left, y, right, y + 1])
+        .expect("kept");
+    let want: Vec<u8> = (left..right)
+        .flat_map(|x| if x < -side { 0 } else { came_to(x, y) }.to_le_bytes())
+        .collect();
+    assert_eq!(bytes, want);
+}
+
+/// A plug-in's picture replaces what the op before it put: its pixels at
+/// its place, across a seam of tiles, and nothing outside it.
+#[test]
+fn a_put_lays_its_pixels_at_its_picture_and_nothing_else() {
+    let side = TILE as i32;
+    let [left, top, right, bottom] = [side - 2, side - 1, side + 3, side + 1];
+    let made = |x, y| texel(97, x, y);
+    let inside = |x, y| (left..right).contains(&x) && (top..bottom).contains(&y);
+    let pixels_of_it: Vec<u8> = (top..bottom)
+        .flat_map(|y| (left..right).flat_map(move |x| made(x, y).to_le_bytes()))
+        .collect();
+    let put = Op::Put {
+        picture: [left, top, right, bottom],
+        pixels: pixels_of_it.into(),
+    };
+    let out = chained(tiles(|x, y| texel(98, x, y)), &[put]).expect("chain");
+    let want: Vec<u32> = pixels()
+        .map(|(x, y)| if inside(x, y) { made(x, y) } else { 0 })
+        .collect();
+    assert_same(&held(&out), &want);
+}
+
+/// A picture of the wrong size is refused, by what it was: laid anyway, its
+/// rows would land sheared.
+#[test]
+fn a_put_of_the_wrong_size_is_refused() {
+    let put = Op::Put {
+        picture: [0, 0, 2, 2],
+        pixels: vec![0u8; 15].into(),
+    };
+    assert!(chained(tiles(|x, y| texel(99, x, y)), &[put]).is_none());
+    assert_eq!(crate::last_error(), "15 bytes put over [0, 0, 2, 2]");
 }
 
 /// A chain runs over its output's tiles grown by whole tiles, as many each

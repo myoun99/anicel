@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 import '../../helpers/exposure_of.dart';
@@ -64,18 +65,33 @@ void main() {
     expect(painter.runLabels(), hasLength(300), reason: 'premise: every block');
     final atStart = printedBlocks();
     expect(atStart, isNotEmpty, reason: 'premise: the window has labels');
-    // Bucket 0 of a 20-cell viewport reaches frame 26
-    // ([timelineFrameWindowFor]).
-    expect(atStart.where((block) => block.left >= 26 * 24.0), isEmpty);
+    // A 20-cell viewport's window: its cells and overscan, on to the edge of
+    // the span they end in ([timelineFrameWindowFor]).
+    ({int startIndex, int endIndexExclusive}) windowAt(int bucket) =>
+        timelineFrameWindowFor(
+          bucket: bucket,
+          cellExtent: 24,
+          viewportExtent: 480,
+        );
+    expect(
+      atStart.where(
+        (block) => block.left >= windowAt(0).endIndexExclusive * 24.0,
+      ),
+      isEmpty,
+    );
 
     var repaints = 0;
     painter.addListener(() => repaints += 1);
-    window.value = 200;
+    // A bucket halfway along the row's 1,200 frames.
+    final halfway = 600 ~/ timelineFrameWindowSpanFor(24);
+    window.value = halfway;
     expect(repaints, 1, reason: 'the window moved, so the labels repaint');
     final later = printedBlocks();
     expect(later, isNotEmpty);
     expect(
-      later.where((block) => block.right <= (200 * 4 - 2) * 24.0),
+      later.where(
+        (block) => block.right <= windowAt(halfway).startIndex * 24.0,
+      ),
       isEmpty,
       reason: 'the labels behind the window are not printed',
     );

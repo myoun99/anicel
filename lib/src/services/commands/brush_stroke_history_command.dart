@@ -77,6 +77,7 @@ class BrushStrokeHistoryCommand with CelSnapshotStep implements Command {
       strokeOpacity: strokeData.strokeOpacity,
       promotedBase: strokeData.promotedBase,
       promotedTiles: strokeData.promotedTiles,
+      selection: strokeData.selection,
     );
     _hasCommitted = true;
     _strokeData = null;

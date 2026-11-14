@@ -48,6 +48,8 @@ LayerClipboard layerBoardOf(EditorSessionManager session) =>
 KeyClipboard keyBoardOf(EditorSessionManager session) => session.keyClipboard;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late AppClipboard clipboard;
   setUp(() => clipboard = AppClipboard());
 
@@ -342,7 +344,9 @@ void main() {
       final folder = Directory.systemTemp.createTempSync('anicel-clip-media');
       deleteAfterSessionEnds(folder);
       final path = '${folder.path.replaceAll(r'\', '/')}/still.bin';
-      File(path).writeAsBytesSync(List<int>.generate(64, (i) => i));
+      File(path)
+        ..writeAsBytesSync(List<int>.generate(64, (i) => i))
+        ..setLastModifiedSync(DateTime(2026, 9, 2, 8, 15));
       final a = EditorSessionManager(
         initialProject: withAReferenceRow(path),
         appClipboard: clipboard,
@@ -373,6 +377,15 @@ void main() {
       final mine = carryIn(b, path);
       expect(mine, isNotNull, reason: 'the pool lists it, carried');
       expect(mine, isNot(carryIn(a, path)), reason: 'a carry of its own');
+      final carried = b.repository
+          .requireProject()
+          .mediaAssetByPath(path)!
+          .carriedAs!;
+      expect(
+        carried.modified,
+        DateTime(2026, 9, 2, 8, 15),
+        reason: 'from the same file, as old as it was (F-589)',
+      );
       expect(stagedCopyIn(b, path), isNotNull, reason: 'its bytes are held');
       expect(
         b.projectFile.mediaByteSourceFor(path).readSync(),

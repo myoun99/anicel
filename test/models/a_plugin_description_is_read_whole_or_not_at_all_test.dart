@@ -4,13 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 
-/// An fx plugin's description (anicel_fx_plugin.h) read as the app's own
+/// An fx plugin's description (sdk/fx/anicel-fx) read as the app's own
 /// parameters — each of the seven kinds the app's effects have — and kept
 /// in a project as it was given; and every description that leaves out
 /// what its kind says refused, never made whole.
 void main() {
   Map<String, Object?> plugin(List<Map<String, Object?>> params) => {
-    'spec': 1,
+    'spec': FxPluginDescription.specVersion,
     'id': 'com.example.every-kind',
     'name': 'Every Kind',
     'vendor': 'Example',
@@ -123,14 +123,14 @@ void main() {
 
     final refused = <String, Object?>{
       'not JSON': '{"spec":',
-      'another spec': {...plugin([]), 'spec': 2},
-      'no cpu among what it can do': {
+      'another spec': {...plugin([]), 'spec': 1},
+      'no gpu among what it can do': {
         ...plugin([]),
-        'can': ['gpu'],
+        'can': ['cpu'],
       },
       'what it can do not said in words': {
         ...plugin([]),
-        'can': ['cpu', 3],
+        'can': ['gpu', 3],
       },
       'an id a lane would misread': {...plugin([]), 'id': 'com:example'},
       'a parameter of an id a lane would misread': plugin([
@@ -138,6 +138,7 @@ void main() {
       ]),
       'a number with no range': plugin([amount({'max': null})]),
       'a default past its range': plugin([amount({'default': 101})]),
+      'a range past what Q.16 holds': plugin([amount({'max': 32768})]),
       'a kind the app has not': plugin([amount({'kind': 'curve'})]),
       'two parameters of one id': plugin([amount({}), amount({})]),
       'a colour past 1': plugin([

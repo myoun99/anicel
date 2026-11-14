@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -18,16 +17,9 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 /// this file exists to catch), and fallback states must render as
 /// visible states, not vanish.
 void main() {
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = false;
-  });
-
   test('the report covers every switchable subsystem', () {
     final entries = collectRuntimePathReport();
     expect(entries.map((entry) => entry.subsystem), [
-      'Raster engine',
-      'Audio engine',
       'Audio import decoder',
       'Video export encoder',
       'PDF renderer',
@@ -67,16 +59,6 @@ void main() {
     expect(upload.detail, contains('Impeller'));
   });
 
-  test('a missing raster engine reports the Dart fallback honestly', () {
-    QaNativeEngine.debugResetForTests();
-    QaNativeEngine.debugForceDartFallback = true;
-    final raster = collectRuntimePathReport().singleWhere(
-      (entry) => entry.subsystem == 'Raster engine',
-    );
-    expect(raster.isPrimary, isFalse);
-    expect(raster.active, contains('Dart fallback'));
-  });
-
   testWidgets('the section renders one row per subsystem', (tester) async {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
@@ -107,6 +89,25 @@ void main() {
     }
   });
 
+  Future<void> pump(WidgetTester tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SystemStatusSection(
+              openSessions: [session],
+              appSettings: session.appSettings,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // 🗣️connection-round-checklist-Q4 (유저 2026-11-06): 「환경설정에 GPU 고르기를
   // 넣는다 — 자동 · 절전 · 고성능」 — where the platform's Flutter takes one.
   group('the GPU choice', () {
@@ -118,25 +119,6 @@ void main() {
     final warning = find.byKey(GpuPreferenceRow.nextLaunchKey);
 
     tearDown(AppGpu.debugReset);
-
-    Future<void> pump(WidgetTester tester) async {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      addTearDown(session.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: SystemStatusSection(
-                openSessions: [session],
-                appSettings: session.appSettings,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
 
     bool warns(WidgetTester tester) {
       final said = tester.widget<Text>(warning).data!;
@@ -229,5 +211,54 @@ void main() {
       );
       expect(AppGpu.settings.value, const AppGpuSettings());
     }, variant: elsewhere);
+  });
+
+  // 🗣️an-endless-plugin-stalls-the-app-Q13 「열 배씩 … 고른다」 · -Q19 「화소
+  // 하나의 몫으로 고정」 · -Q18 「끊지 않음」.
+  testWidgets('what each pixel of a GPU fx plugin may spend is picked from '
+      'its five shares and never cutting, the GPU choice kept', (
+    tester,
+  ) async {
+    addTearDown(AppGpu.debugReset);
+    AppGpu.settings.value = const AppGpuSettings(
+      preference: AppGpuPreference.lowPower,
+    );
+    final picker = find.byKey(
+      const ValueKey<String>(FxPluginShareRow.pickerKey),
+    );
+    String row(FxPluginShare share) =>
+        '${FxPluginShareRow.pickerKey}-${share.name}';
+    final strings = AppText.strings;
+    final labels = {
+      FxPluginShare.tenThousand: strings.fxPluginShareTenThousand,
+      FxPluginShare.hundredThousand: strings.fxPluginShareHundredThousand,
+      FxPluginShare.million: strings.fxPluginShareMillion,
+      FxPluginShare.tenMillion: strings.fxPluginShareTenMillion,
+      FxPluginShare.hundredMillion: strings.fxPluginShareHundredMillion,
+      FxPluginShare.uncut: strings.fxPluginShareUncut,
+    };
+    await pump(tester);
+    expect(
+      [
+        for (final entry
+            in tester.widget<PanelFlyoutButton>(picker).entriesBuilder())
+          if (entry is PanelFlyoutItem) (entry.keyValue, entry.label),
+      ],
+      [for (final MapEntry(:key, :value) in labels.entries) (row(key), value)],
+    );
+
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>(row(FxPluginShare.tenThousand))),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      AppGpu.settings.value,
+      const AppGpuSettings(
+        preference: AppGpuPreference.lowPower,
+        pluginShare: FxPluginShare.tenThousand,
+      ),
+    );
   });
 }

@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
+import 'dialogs/app_progress_dialog.dart' show runWithAppProgress;
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import 'dialogs/first_run_settings_window.dart' show showFirstRunSettings;
 import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
@@ -17,9 +18,11 @@ import '../controllers/default_project_helpers.dart';
 import '../models/frame.dart' show InbetweenMark;
 import '../models/project.dart';
 import '../models/working_panel.dart';
+import '../native/app_kernels_ahead.dart';
 import '../native/device_battery.dart';
+import '../native/drawing_engines.dart';
+import '../native/engine_refusals.dart';
 import '../native/handed_files.dart';
-import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
@@ -76,11 +79,13 @@ import 'brush/canvas_view_commands.dart';
 import 'cut_command_group.dart' show landCanvasAdjust, newCutPress;
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
+import 'gpu_started_again_message.dart';
 import 'menu/editor_top_strip.dart';
 import 'menu/project_open_door.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/playback_actuation_gate.dart';
+import 'playback/playback_stillness.dart';
 import 'playback/playback_transport_controls.dart'
     show playOrStop, skipToStart, toggleLoop, toggleVoiceRecordingWithFeedback;
 import 'shortcuts/brush_actions.dart';
@@ -617,6 +622,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // instead ([SessionScratch.ensureThisRunsFolder]).
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
+    EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
+    EngineRefusals.openedAnother.addListener(_sayTheDeviceStartedAgain);
+    appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
+    // A launch is held from before its first frame. `runApp` builds the
+    // tree, then draws it: asked between the two — a microtask of that
+    // build — the window is in the first frame. ⛔A post-frame callback
+    // opens it a frame late, over an editor shown one frame without it.
+    scheduleMicrotask(_waitForTheEngineBehindTheWindow);
     _cursorOwner.listen();
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
@@ -670,25 +683,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // too (2026-09-16).
   }
 
-  /// [handed] through the one door once the saved language is back
-  /// ([EditorAppSettings.languageRestored]) — the door says what it did in
-  /// notices whose words are written as they open, and the launch knocks in
-  /// the first frame, before the language the app was left in has been
-  /// read (F-170). ↩️It knocked at once: a file nothing opens was refused
-  /// in English under a Japanese list of it (서피스 AI 실기 2026-10-23,
-  /// card open-door-windows-open-with).
+  /// When a window may open over the editor that no hand on it asked for —
+  /// a launch's own, a handed file's door — ONE answer for both:
+  ///
+  /// - the saved language is back ([EditorAppSettings.languageRestored]):
+  ///   each is written in the program language as it opens, and the launch
+  ///   knocks in the first frame, before the language the app was left in
+  ///   has been read (F-170). ↩️A handed file knocked at once: a file
+  ///   nothing opens was refused in English under a Japanese list of it
+  ///   (서피스 AI 실기 2026-10-23, card open-door-windows-open-with);
+  /// - the app is let go ([onceTheAppIsLetGo]): none stands over the window
+  ///   it waits for its engine behind
+  ///   ([_waitForTheEngineBehindTheWindow]), each after it, in its order.
+  ///   🗣️유저 2026-11-11, gpu-canonical-store-Q17 「시작할 때
+  ///   뜨는 창도 준비가 끝난 뒤에 띄운다」 · Q18 「열기도 준비가 끝난 뒤에
+  ///   시작한다」.
+  Future<void> _windowsMayOpen() =>
+      Future.wait([_appSettings.languageRestored, onceTheAppIsLetGo()]);
+
+  /// [handed] through the one door, once its windows may open
+  /// ([_windowsMayOpen]): the door says what it did in notices, and opens
+  /// a project behind a window of its own.
   void _openHanded(List<FolderGrant> handed) => unawaited(
-    _appSettings.languageRestored.then(
-      (_) => _workspaceDoor.openHanded(handed),
-    ),
+    _windowsMayOpen().then((_) => _workspaceDoor.openHanded(handed)),
   );
 
   /// What a launch opens, one window after the other: on the machine's
   /// first launch its settings ([HomePage.firstLaunch]), then the usage
   /// statistics' question if it was never answered, then this build's
-  /// [notice] if it is due — after the first frame, and once the saved
-  /// language is back, for the reason [_openHanded] waits: each window is
-  /// written in the program language as it opens.
+  /// [notice] if it is due — after the first frame, and once they may
+  /// ([_windowsMayOpen]).
   ///
   /// 🗣️유저 2026-10-29 (I-144): 「순서를 첫설정창, 사용통계창, 안내창으로
   /// 하자, 안내창이 텍스트가 많아서 지치니까 지치기전에 … 수락하게하려고」.
@@ -699,7 +723,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// test that hands neither in sees neither, and one that measures the
   /// launch hands its own in.
   void _showLaunchWindows(LaunchNotice? notice) => unawaited(
-    _appSettings.languageRestored.then((_) async {
+    _windowsMayOpen().then((_) async {
       if (widget.firstLaunch && mounted) {
         await showFirstRunSettings(context, _session);
       }
@@ -968,9 +992,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     for (final session in _projects.sessions) {
       session.respondToMemoryPressure();
     }
-    // The drawing engine is the process's, not a project's: its parked
-    // tile blocks and scratch buffers hear the warning here too.
-    QaNativeEngine.respondToMemoryPressure();
+    // The drawing engines are the process's, not a project's: the C
+    // engine's parked tile blocks and scratch buffers, and the GPU ledger's
+    // pages nobody holds, hear the warning here too.
+    DrawingEngines.respondToMemoryPressure();
   }
 
   /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**
@@ -1058,6 +1083,71 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  /// A job the graphics device refused, said in the common window — once a
+  /// cause ([EngineRefusals]), over whichever project is on screen: the
+  /// device is every project's.
+  ///
+  /// 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
+  /// 알린다」 · 「획이 사라진 경우와 캔버스가 멈춘 경우 둘 다 같은 창이다」.
+  void _sayWhatTheEngineRefused() => unawaited(
+    showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('gpu-refused-notice'),
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.gpuRefusedNotice,
+    ),
+  );
+
+  /// The graphics device started again and the app stands on another
+  /// engine: said in the common window, with why the device went as far as
+  /// anything says ([EngineRefusals.openedAnother], told once the wait
+  /// window is down — [gpuStartedAgainMessage]).
+  ///
+  /// 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1):
+  /// 「그래픽 장치가 다시 시작되었다고 알린다」 · 「그래픽장치가 왜
+  /// 다시시작되었는지는 알수있게」.
+  void _sayTheDeviceStartedAgain() => unawaited(
+    showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('gpu-started-again-notice'),
+      title: AppText.strings.commonNotice,
+      message: gpuStartedAgainMessage(
+        AppText.strings,
+        EngineRefusals.wentBy,
+      ),
+    ),
+  );
+
+  /// The app behind its one wait window while it gets its engine ready
+  /// ([appEngineGetsReady]), as it is behind it for an open or a save: the
+  /// window takes every pointer and key of the editor under it, and goes
+  /// the moment the app is let go.
+  ///
+  /// 🗣️유저 2026-11-11 (채팅, 관제 13:49 전달): 「준비안된화면, 캔버스든
+  /// 타임라인이든 구분안두고 그냥 여는중? 뭐 그런 로딩 안내창있잖아. 그거
+  /// 공용창 띄워서 입력 막게하는게 베스트라고생각해」 — the window says what
+  /// gpu-canonical-store-Q15 asked a ring to (「그때까지 고리」 · 「모든 조작
+  /// 막음」). ↩️For the hours between, a ring of the editor's own stood at
+  /// the window's middle (gpu-canonical-store-Q16: 「창 한가운데 하나」) over
+  /// an editor that turned its keys and pointers back itself.
+  ///
+  /// ⛔What no window takes — the pencil's double tap, which comes by no
+  /// route — is turned back at the funnel ([_invokeAction]).
+  void _waitForTheEngineBehindTheWindow() {
+    if (!appEngineGetsReady.value) {
+      return;
+    }
+    unawaited(
+      runWithAppProgress<void>(
+        context: context,
+        title: AppText.strings.launchStageApp,
+        runningLabel: AppText.strings.launchProgressRunning,
+        windowKey: const ValueKey<String>('launch-progress-dialog'),
+        task: (_) => onceTheAppIsLetGo(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1067,6 +1157,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
+    EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
+    EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
+    appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();
     _lifecycle?.dispose();
@@ -1123,6 +1216,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _invokeAction(String actionId) {
+    // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「모든 조작 막음」 — what
+    // runs into the funnel past the window the app waits behind
+    // ([_waitForTheEngineBehindTheWindow]), which takes the editor's keys
+    // and pointers — the pencil's double tap comes by no route — is turned
+    // back while the app gets its engine ready, by the fact the window is
+    // up for.
+    if (appEngineGetsReady.value) {
+      return;
+    }
     // 🚨T28-c — 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」.
     //
     // This funnel is where every BOUND actuation arrives: key bindings and
@@ -1174,10 +1276,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 타임라인 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」 —
     // a row of a menu is pressed AS the row: built the way its menu builds
     // it, and pressed only where the menu would let it be. The rows are the
-    // top strip's, the timeline bar's, the rail legend's and the panels' —
-    // the bar's and the legend's those of the panel being worked in, as
-    // every key on them speaks to it, and the panels' those a key reaches
-    // (PanelKeys: the tool in hand's, and the panels of no tool).
+    // top strip's, the timeline bar's and the rail legend's — the bar's and
+    // the legend's those of the panel being worked in, as every key on them
+    // speaks to it. ↩️And a panel's own menu, the brush library's ⋯, until
+    // F-580 took its rows off the shortcut list.
     if (definition?.menuRow ?? false) {
       pressFlyoutRow([
         ..._topStrip().menuRows(context),
@@ -1188,8 +1290,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         // The rail legend's, as that panel's header opens them — counted
         // on the rows it shows (RailLegends).
         ..._session.railLegends.rowsOf(_session.workingPanel),
-        // A panel's own menu — the brush library's ⋯ — as it opens it.
-        ..._panelKeys.menuRows(_brushTool.value.tool),
       ], actionId);
       return;
     }
@@ -1554,8 +1654,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _canvasSelectionCommands.cancelTransform();
   }
 
+  /// The editor, under the one word every bar and rail row in it holds
+  /// still for (F-587, [PlaybackStillness]): the run of the project on
+  /// screen.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PlaybackStillness(
+    playing: _session.playbackRig.playback.isActiveListenable,
+    child: _editor(context),
+  );
+
+  Widget _editor(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     // PEN-11: the Android back button must never silently kill the
     // editor — back asks first and only an explicit Close exits (the

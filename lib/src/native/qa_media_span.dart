@@ -1,15 +1,55 @@
+// The engine's Rust library carries the span reader (rust/src/lib.rs), and
+// its names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'gpu_engine_asset.dart';
 import 'native_scratch.dart';
-import 'qa_engine_abi.dart';
+
+@Native<Pointer<Void> Function(Pointer<Utf8>, Int64, Int64, Int32)>(
+  symbol: 'qa_media_span_open',
+)
+external Pointer<Void> _open(
+  Pointer<Utf8> utf8Path,
+  int offset,
+  int length,
+  int framed,
+);
+
+@Native<Int64 Function(Pointer<Void>)>(symbol: 'qa_media_span_size')
+external int _size(Pointer<Void> span);
+
+@Native<Int64 Function(Pointer<Void>, Int64, Pointer<Void>, Int64)>(
+  symbol: 'qa_media_span_read',
+)
+external int _read(
+  Pointer<Void> span,
+  int position,
+  Pointer<Void> out,
+  int want,
+);
+
+@Native<Void Function(Pointer<Void>)>(symbol: 'qa_media_span_close')
+external void _close(Pointer<Void> span);
+
+@Native<Void Function(Pointer<Void>, Pointer<Int64>, Pointer<Int64>)>(
+  symbol: 'qa_media_span_stats',
+)
+external void _stats(
+  Pointer<Void> span,
+  Pointer<Int64> blocksDecoded,
+  Pointer<Int64> storedBytesRead,
+);
 
 /// A medium stored in a span of a file — its own bytes, or FRAMED in
 /// compressed blocks — read a window at a time by the engine's one reader of
-/// both (`qa_media_span.c`).
+/// both (native/media `span.rs`).
 ///
 /// 🚨★★★**THE READER THE DECODERS USE, AND NOW DART'S TOO.** A framed medium
 /// was read by a Dart copy of the block walk for everything Dart reads (a
@@ -20,47 +60,46 @@ import 'qa_engine_abi.dart';
 /// 통일해줘」). Both sides read through this one now, so a Dart read and a
 /// decoder's read of one span cannot come to disagree.
 ///
+/// Wherever the app runs it is there: the engine's library ships with the
+/// app, and `flutter test` builds it too. ↩️Until the connection round
+/// (connection-round-checklist H, 2026-11-08) it was the C engine's
+/// (`qa_media_span.c`), which a machine could be without, and a framed
+/// medium said so instead of reading — and then the C's audio decoder's
+/// alone, until that decoder's move deleted it (관제 03:59).
+///
 /// ⛔A PLAIN span is read through here only by native code. Dart reads a
-/// plain file with `RandomAccessFile` (`MediaByteSource`), because a build
-/// without the engine still has to read one; a framed medium has no such
-/// floor — its blocks are zstd, which only the engine carries.
+/// plain file with `RandomAccessFile` (`MediaByteSource`), which needs no
+/// reader of ours; a framed medium has its blocks in zstd, which only the
+/// engine reads.
 final class QaMediaSpan {
-  QaMediaSpan._(this._api, this._handle, this.size);
+  QaMediaSpan._(this._handle, this.size);
 
-  final _QaMediaSpanApi _api;
   Pointer<Void> _handle;
 
   /// How many bytes the MEDIUM has — for a framed span, decoded.
   final int size;
 
-  /// Whether this build can read a span at all.
-  static bool get available => _QaMediaSpanApi.instance != null;
-
   /// The medium stored in `[offset, offset + length)` of [path] — its own
-  /// bytes, or a framed blob of them when [framed]. Null when there is no
-  /// engine, or when the span does not hold together: not inside the file,
-  /// or a framed header that disagrees with the span it sits in.
+  /// bytes, or a framed blob of them when [framed]. Null when the span does
+  /// not hold together: not inside the file, or a framed header that
+  /// disagrees with the span it sits in.
   static QaMediaSpan? open(
     String path, {
     required int offset,
     required int length,
     required bool framed,
   }) {
-    final api = _QaMediaSpanApi.instance;
-    if (api == null) {
-      return null;
-    }
     final utf8Path = path.toNativeUtf8(allocator: malloc);
     final Pointer<Void> handle;
     try {
-      handle = api.open(utf8Path, offset, length, framed ? 1 : 0);
+      handle = _open(utf8Path, offset, length, framed ? 1 : 0);
     } finally {
       malloc.free(utf8Path);
     }
     if (handle == nullptr) {
       return null;
     }
-    return QaMediaSpan._(api, handle, api.size(handle));
+    return QaMediaSpan._(handle, _size(handle));
   }
 
   /// Up to [count] bytes of the medium from [position] into [buffer]: how
@@ -78,7 +117,7 @@ final class QaMediaSpan {
     while (wrote < count) {
       final want = count - wrote < _windowBytes ? count - wrote : _windowBytes;
       final scratch = _window.ensure(want);
-      final got = _api.read(_handle, position + wrote, scratch.cast(), want);
+      final got = _read(_handle, position + wrote, scratch.cast(), want);
       if (got < 0) {
         throw const FormatException('the stored medium would not read back');
       }
@@ -101,7 +140,7 @@ final class QaMediaSpan {
     final decoded = calloc<Int64>();
     final read = calloc<Int64>();
     try {
-      _api.stats(_handle, decoded, read);
+      _stats(_handle, decoded, read);
       return (blocksDecoded: decoded.value, storedBytesRead: read.value);
     } finally {
       calloc
@@ -113,7 +152,7 @@ final class QaMediaSpan {
   void close() {
     if (_handle != nullptr) {
       debugOnClose?.call(stats);
-      _api.close(_handle);
+      _close(_handle);
       _handle = nullptr;
     }
   }
@@ -134,56 +173,4 @@ final class QaMediaSpan {
   static final NativeScratch<Uint8> _window = NativeScratch<Uint8>(
     (count) => calloc<Uint8>(count),
   );
-}
-
-/// The span reader's exports, resolved once per isolate.
-final class _QaMediaSpanApi {
-  _QaMediaSpanApi._(DynamicLibrary library)
-    : open = library
-          .lookupFunction<
-            Pointer<Void> Function(Pointer<Utf8>, Int64, Int64, Int32),
-            Pointer<Void> Function(Pointer<Utf8>, int, int, int)
-          >('qa_media_span_open'),
-      size = library
-          .lookupFunction<
-            Int64 Function(Pointer<Void>),
-            int Function(Pointer<Void>)
-          >('qa_media_span_size'),
-      read = library
-          .lookupFunction<
-            Int64 Function(Pointer<Void>, Int64, Pointer<Void>, Int64),
-            int Function(Pointer<Void>, int, Pointer<Void>, int)
-          >('qa_media_span_read'),
-      close = library
-          .lookupFunction<
-            Void Function(Pointer<Void>),
-            void Function(Pointer<Void>)
-          >('qa_media_span_close'),
-      stats = library
-          .lookupFunction<
-            Void Function(Pointer<Void>, Pointer<Int64>, Pointer<Int64>),
-            void Function(Pointer<Void>, Pointer<Int64>, Pointer<Int64>)
-          >('qa_media_span_stats');
-
-  final Pointer<Void> Function(Pointer<Utf8>, int, int, int) open;
-  final int Function(Pointer<Void>) size;
-  final int Function(Pointer<Void>, int, Pointer<Void>, int) read;
-  final void Function(Pointer<Void>) close;
-  final void Function(Pointer<Void>, Pointer<Int64>, Pointer<Int64>) stats;
-
-  static _QaMediaSpanApi? _instance;
-  static bool _tried = false;
-
-  static _QaMediaSpanApi? get instance {
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      try {
-        _instance = library == null ? null : _QaMediaSpanApi._(library);
-      } on ArgumentError {
-        _instance = null;
-      }
-    }
-    return _instance;
-  }
 }

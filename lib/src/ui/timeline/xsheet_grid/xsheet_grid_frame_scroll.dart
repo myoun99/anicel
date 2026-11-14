@@ -20,21 +20,8 @@ class _XSheetGridFrameScroll {
     viewExtentPx: _state._frameViewportExtent,
   );
 
-  TimelineFrameGeometry _windowedFrameGeometryValue() {
-    final base = _baseFrameGeometry();
-    final cellExtent = base.frameCellExtent;
-    if (_state._frameViewportExtent <= 0 || cellExtent <= 0) {
-      return base;
-    }
-    final spanPx = timelineFrameWindowSpanFor(cellExtent) * cellExtent;
-    return base.windowed(
-      originPx: math.max(
-        0.0,
-        _state._frameWindowBucket.value * spanPx - timelineFrameWindowMarginPx,
-      ),
-      extentPx: _state._frameViewportExtent + 2 * timelineFrameWindowMarginPx,
-    );
-  }
+  TimelineFrameGeometry _windowedFrameGeometryValue() =>
+      _baseFrameGeometry().windowedAt(_state._frameWindowBucket.value);
 
   void handleFrameWindowBucket() {
     _state._windowedFrameGeometry.value = _windowedFrameGeometryValue();

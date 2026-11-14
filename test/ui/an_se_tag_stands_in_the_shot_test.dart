@@ -7,7 +7,6 @@
 // The SE row's transform is the shot's, and every tag carries where its
 // shot lies on the canvas at its frame: the camera moves, zooms and turns,
 // and the tag stays where it stands in the frame.
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
@@ -26,6 +25,8 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement;
 import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/services/camera_projection_matrix.dart';
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart'
+    show SeNameTagRowSignature;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -95,36 +96,6 @@ void main() {
     }
   });
 
-  test('the painter lays each tag through its shot before it draws', () async {
-    const size = CanvasSize(width: 600, height: 200);
-    const tag = ResolvedSeNameTag(
-      layerId: 's1',
-      widthBudget: 400,
-      shot: LayerPlacement(1, 0, 0, 1, 300, 0),
-      content: TextCelContent(
-        text: 'A',
-        style: SeNameTag.defaultStyle,
-        position: Offset(100, 100),
-      ),
-    );
-    final recorder = ui.PictureRecorder();
-    paintSeNameTags(
-      ui.Canvas(recorder),
-      tags: [tag],
-      canvasSize: size,
-      rasterScale: 1,
-    );
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(size.width, size.height);
-    picture.dispose();
-    final rgba = (await image.toByteData())!;
-    image.dispose();
-    int alphaAt(int x, int y) => rgba.getUint8((y * size.width + x) * 4 + 3);
-
-    expect(alphaAt(400, 100), 255, reason: 'the box, 300 along — the shot');
-    expect(alphaAt(100, 100), 0, reason: 'nothing where the shot\'s point is');
-  });
-
   test('a camera move alone is a repaint — the tags\' signature reads their '
       'shot', () {
     ResolvedSeNameTag at(double x) => ResolvedSeNameTag(
@@ -137,8 +108,8 @@ void main() {
         position: Offset(100, 100),
       ),
     );
-    expect(seNameTagSignature([at(0)]), seNameTagSignature([at(0)]));
-    expect(seNameTagSignature([at(0)]), isNot(seNameTagSignature([at(300)])));
+    expect(SeNameTagRowSignature(at(0)), SeNameTagRowSignature(at(0)));
+    expect(SeNameTagRowSignature(at(0)), isNot(SeNameTagRowSignature(at(300))));
   });
 
   /// A session on the default project, its first SE row speaking at frame

@@ -1,3 +1,5 @@
+import 'dart:ui' show Canvas, PictureRecorder;
+
 import 'package:flutter/rendering.dart' show Matrix4, MatrixUtils;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -6,6 +8,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show placementUnderFolders;
+import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/layer_pose_paint.dart';
 
 import '../helpers/placement_reading.dart';
@@ -81,24 +84,6 @@ void main() {
         _expectClose(_map(matrix, _map(inverse, point)), point);
       }
     });
-
-    test(
-      'rasterScale adapts the same canvas-space placement to a scaled '
-      'raster',
-      () {
-        const rasterScale = 0.25;
-        final full = layerPoseMatrix(_pose(), _canvasSize);
-        final scaled = placementMatrix(
-          placedBy(_pose(), _canvasSize),
-          rasterScale: rasterScale,
-        );
-
-        const artworkPoint = Offset(200, 500);
-        final fullMapped = _map(full, artworkPoint);
-        final scaledMapped = _map(scaled, artworkPoint * rasterScale);
-        _expectClose(scaledMapped, fullMapped * rasterScale);
-      },
-    );
   });
 
   group('placementViewportWrapMatrix', () {
@@ -260,6 +245,44 @@ void main() {
         folded.a * folded.c + folded.b * folded.d,
         closeTo(-1.5, 1e-9),
       );
+    });
+  });
+
+  // ↩️Pinned through the pieces a posed picture past the side drew in
+  // (a_picture_past_the_side_is_held_in_pieces_test) till the Flutter chain
+  // went (the-flutter-fx-chain-is-a-second-chain): a photo's draw is the
+  // one left that poses an image (drawPosedLayerImage).
+  group('applyLayerPlacement', () {
+    List<double> drawnBy(LayerPlacement placement) {
+      final canvas = Canvas(PictureRecorder());
+      applyLayerPlacement(canvas, placement);
+      return canvas.getTransform().toList();
+    }
+
+    test('lays the texels of a pose that moves them by whole pixels where '
+        'it lays them, and every other a hair off their edges', () {
+      for (final whole in const [
+        GuideTransform(1, 0, 0, 1, 0, 0),
+        GuideTransform(2, 0, 0, 2, 3, -4),
+        GuideTransform(0, 1, -1, 0, -7, 5),
+      ]) {
+        expect(
+          drawnBy(whole),
+          placementMatrix(whole).storage.toList(),
+          reason: '$whole',
+        );
+      }
+      for (final off in const [
+        GuideTransform(1, 0, 0, 1, 3.5, 0),
+        GuideTransform(1, 0, 0, 1, 0, -0.25),
+        GuideTransform(1.5, 0, 0, 1.5, 0, 0),
+      ]) {
+        expect(
+          drawnBy(off),
+          isNot(placementMatrix(off).storage.toList()),
+          reason: '$off',
+        );
+      }
     });
   });
 }

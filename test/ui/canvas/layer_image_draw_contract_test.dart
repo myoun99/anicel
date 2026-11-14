@@ -101,7 +101,7 @@ void main() {
     // the ones that mean "and here is how I sample", which is the
     // question this file no longer gets to answer.
     final source = File(
-      'lib/src/ui/canvas/layer_stack/layer_stack_paint_pass.dart',
+      'lib/src/ui/canvas/layer_stack/layer_stack_engine_screen.dart',
     ).readAsLinesSync();
     final found = <String>[];
     for (var i = 0; i < source.length; i += 1) {
@@ -118,7 +118,7 @@ void main() {
     expect(
       found,
       isEmpty,
-      reason: 'the walk must read _displayQuality, not name a quality — a '
+      reason: 'the screen must read its zoom, not name a quality — a '
           'route that samples differently from the buffered one is T21 '
           'wearing a different hat',
     );
@@ -361,7 +361,34 @@ void main() {
 /// tile paint, and the composes' `FilterQuality.none`). ±0 in
 /// canvas/chained_picture: its 1:1 copy is one `drawImageRect` of the
 /// picture's part, a slot's or the whole.
-const int _knownRawDraws = 30;
+/// **29** on 2026-11-08 (grid-on-the-engine ⑤): −1 in
+/// timeline/timeline_row_cells_painter — a row's grid tile is laid on its
+/// grid's screen (`TimelineGridScreenSlot`), the GPU engine's picture onto
+/// the engine's texture, not drawn on the row's canvas (`_layTile`).
+/// **27** on 2026-11-09 (flip lane ⓑ): a frame's picture is the engine's,
+/// shown and not drawn — gone from canvas/display_resample,
+/// playback/frame_picture_store and playback/frame_pictures; a panel's shot
+/// is laid 1:1 over its ground in panel_pictures, read back from the engine.
+/// **26** on 2026-11-11 (gpu-export-path 1b ①): −1 in frame_shots — a
+/// shot's picture is laid over its ground on the engine (`GpuExport.lay`),
+/// not drawn over it on a Flutter canvas.
+/// **24** on 2026-11-12 (gpu-export-path 1b ①⑵): −2 in
+/// export/export_frame_renderer — a video frame's stack unit and a cut in a
+/// canvas-size frame are laid on the engine (`GpuExport.lay`), over a frame
+/// the export makes, not drawn into a layer on a Flutter canvas.
+/// **23** on 2026-11-12 (gpu-export-path 1b ①⑶-2b): −1 in
+/// canvas/tiled_surface_compose — the tiles' compose left the app with its
+/// last caller, an export's sheet ink, which uploads the surface's pixels
+/// (`sheetInkPictureOf`) rather than laying its tiles' pictures.
+/// **19** on 2026-11-13 (the-flutter-fx-chain-is-a-second-chain): −4 in
+/// canvas/subtree_image_composite — a chain's steps, its pictures and its
+/// buffers went with the Flutter chain; the engine runs a row's chain.
+/// **18** on 2026-11-14 (the-attach-row-bake-test-waits-a-gpu-read-a-
+/// frame-under-load): −1 in timeline/merge_layer_rows — a block merge's
+/// cels are stacked on the engine as the canvas stacks rows
+/// (`ExportFrameRenderer.frameOfCels`), not drawn one over another on a
+/// Flutter canvas.
+const int _knownRawDraws = 18;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'

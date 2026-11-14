@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-import '../../native/qa_native_engine.dart';
+import '../../native/qa_memory.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../models/media_asset.dart' show MediaCarry;
@@ -161,7 +161,7 @@ class SheetImageCache extends ChangeNotifier {
     rebuild: (change) => change(),
     mounted: () => !_disposed,
     report: (bytes) => onHeldBytesChanged?.call(bytes),
-    ended: notifyListeners,
+    ended: (_) => notifyListeners(),
   );
 
   /// Pictures that could not be read, by path and carry — never asked for
@@ -172,11 +172,15 @@ class SheetImageCache extends ChangeNotifier {
 
   /// One viewer's share of this device, halved by the memory warning.
   final ViewerRasterBudget _budget = ViewerRasterBudget(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
   );
 
   /// What the held images cost resident, 4 bytes a pixel.
   int get decodedBytes => _images.heldBytes;
+
+  /// What may be held now — the pin that the budget is this device's.
+  @visibleForTesting
+  int get debugByteBudget => _budget.byteBudget;
 
   /// [assetPath]'s picture [width] pixels wide (its own size where null):
   /// held, or the sharpest held of it at another width while that one is

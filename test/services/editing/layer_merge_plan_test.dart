@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
-    show attachedMirrorCelId;
+    show attachedMirrorCelId, attachedRowAsShown, isSyncedAttachedLayer;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -23,6 +23,8 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show exposedFrameIdAt;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
@@ -875,6 +877,69 @@ void main() {
       expect(plan.pictures, hasLength(2), reason: 'each cel drawn once');
     });
 
+    test('🗣️F-572 — images showing one picture in each cut stay an image, '
+        'however many pictures the bank holds; one cut showing two makes '
+        'the layer a drawing row in every cut', () {
+      /// Image [id] holding the pictures `P1` and `P2`, showing `P1`.
+      Layer image(String id) {
+        final shows = row(id, {0: 'P1'}, kind: LayerKind.image);
+        return shows.copyWith(
+          frames: [
+            ...shows.frames,
+            Frame(
+              id: FrameId('$id-P2'),
+              duration: 1,
+              name: 'P2',
+              strokes: const [],
+            ),
+          ],
+        );
+      }
+
+      /// [row]'s self `<id>2` in the cut `d`, showing `P2` [length] long.
+      Layer showingP2(Layer row, {int length = 2}) => self(
+        row,
+        '${row.id.value}2',
+        timeline: {
+          0: TimelineExposure.drawing(
+            FrameId('${row.id.value}-P2'),
+            length: length,
+          ),
+        },
+      );
+
+      LayerMergePlan mergedWith({required int aLength}) {
+        final (a, b) = (image('a'), image('b'));
+        return merge(
+          cutOf([b, a]),
+          ['a', 'b'],
+          elsewhere: [
+            cutOf(id: 'd', [showingP2(b), showingP2(a, length: aLength)]),
+          ],
+          links: [
+            ['c/a', 'd/a2'],
+            ['c/b', 'd/b2'],
+          ],
+        )!;
+      }
+
+      List<LayerKind> kindsOf(LayerMergePlan plan) => [
+        plan.result.kind,
+        rowOf(plan.others.single.layers, 'a2').kind,
+      ];
+
+      final one = mergedWith(aLength: 2);
+      final two = mergedWith(aLength: 1);
+      expect(one.result.frames, hasLength(2), reason: '⛔전제: a picture a cut');
+      expect(
+        rowOf(two.others.single.layers, 'a2').timeline,
+        hasLength(2),
+        reason: '⛔전제: the cut d shows two pictures',
+      );
+      expect(kindsOf(one), [LayerKind.image, LayerKind.image]);
+      expect(kindsOf(two), [LayerKind.animation, LayerKind.animation]);
+    });
+
     test('a cut stands its result where its own topmost row stood, and the '
         'results keep their cels where the link table keeps them now', () {
       final a = row('a', {0: 'A1'});
@@ -1480,6 +1545,75 @@ void main() {
       ], ['c/k2', 'c/k2', 'e/m2', 'e/m2']);
     });
 
+    test("🗣️F-572 — images on a 겸용 pair's conte, each cut showing one "
+        'picture of them, stay an image on it', () {
+      /// The conte `s` holding the panels `1` and `2`, showing `1`.
+      final conte = row('s', {0: '1'}, kind: LayerKind.storyboard);
+      final s = conte.copyWith(
+        frames: [
+          ...conte.frames,
+          Frame(id: const FrameId('s-2'), duration: 1, name: '2', strokes: []),
+        ],
+      );
+
+      /// Image [id] on [s] as the track's row [key]: `R1` over the panel
+      /// `1`, `R2` over the panel `2`.
+      Layer image(String id, String key) {
+        final on = onIt(id, s, key);
+        return on.copyWith(
+          kind: LayerKind.image,
+          frames: [
+            ...on.frames,
+            Frame(id: FrameId('$id-2'), duration: 1, name: 'R2', strokes: []),
+          ],
+          baseFrameLinks: {
+            ...on.baseFrameLinks,
+            const FrameId('s-2'): FrameId('$id-2'),
+          },
+        );
+      }
+
+      /// [row]'s self `<id>d` in the cut `d`, on `s2`.
+      Layer selfInD(Layer row) => row.copyWith(
+        id: LayerId('${row.id.value}d'),
+        attachedToLayerId: const LayerId('s2'),
+      );
+
+      final (k1, k2) = (image('k1', 'K1'), image('k2', 'K2'));
+      final plan = merge(
+        cutOf([s, k1, k2]),
+        ['k1', 'k2'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            s.copyWith(
+              id: const LayerId('s2'),
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('s-2'), length: 2),
+              },
+            ),
+            selfInD(k1),
+            selfInD(k2),
+          ]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['c/k2', 'd/k2d'],
+        ],
+      )!;
+
+      expect(
+        {for (final cel in plan.result.frames) cel.id},
+        hasLength(2),
+        reason: '⛔전제: a picture of its own a cut',
+      );
+      expect(plan.result.attachedToLayerId, s.id, reason: '⛔전제: on it');
+      expect([
+        plan.result.kind,
+        rowOf(plan.others.single.layers, 'k2d').kind,
+      ], [LayerKind.image, LayerKind.image]);
+    });
+
     test('a panel shown as two pictures leaves the result a timing of its '
         'own — a cel of the conte has one mirror', () {
       final s = conte('s');
@@ -1523,6 +1657,90 @@ void main() {
 
       expect(plan.result.attachedMode, AttachedMode.free);
       expect(blocksOf(plan.result), {0: (4, 'R1')});
+    });
+
+    test("🚨a 겸용 pair's cuts showing other pictures over one panel: each "
+        'cut shows what it showed, a cel apiece — never two cels of one id '
+        '(conte-pair-merge-mints-one-cel-id-for-two-pictures)', () {
+      final s = conte('s');
+
+      /// [id] on [s] as the track's row [key], holding `R1` · `R2` · `R3`.
+      Layer onS(String id, String key) {
+        final on = onIt(id, s, key);
+        return on.copyWith(
+          frames: [
+            ...on.frames,
+            Frame(id: FrameId('$id-3'), duration: 1, name: 'R3', strokes: []),
+          ],
+        );
+      }
+
+      /// [row]'s self `<id>d` in the cut `d`, on `s2`, showing `R3` over the
+      /// panel `1`.
+      Layer selfInD(Layer row) => row.copyWith(
+        id: LayerId('${row.id.value}d'),
+        attachedToLayerId: const LayerId('s2'),
+        baseFrameLinks: {
+          ...row.baseFrameLinks,
+          const FrameId('s-1'): FrameId('${row.id.value}-3'),
+        },
+      );
+
+      final (k1, k2) = (onS('k1', 'K1'), onS('k2', 'K2'));
+      final s2 = s.copyWith(id: const LayerId('s2'));
+      final plan = merge(
+        cutOf([s, k1, k2]),
+        ['k1', 'k2'],
+        elsewhere: [
+          cutOf(id: 'd', [s2, selfInD(k1), selfInD(k2)]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['c/k2', 'd/k2d'],
+        ],
+      )!;
+
+      /// The cel [row] shows at [frame], riding [base] or on its own timing.
+      FrameId? shownAt(Layer row, Layer base, int frame) => exposedFrameIdAt(
+        attachedRowAsShown(row, [base, row]).timeline,
+        frame,
+      );
+      final there = rowOf(plan.others.single.layers, 'k2d');
+      final ids = [for (final cel in plan.result.frames) cel.id];
+
+      expect(ids.toSet(), hasLength(ids.length), reason: 'one id a cel');
+      expect(there.frames, plan.result.frames, reason: 'one bank');
+      expect(
+        shownAt(plan.result, s, 0),
+        isNot(shownAt(there, s2, 0)),
+        reason: 'the panel 1 shows R1 here and R3 there',
+      );
+      expect(shownAt(plan.result, s, 2), shownAt(there, s2, 2));
+      expect(
+        {
+          for (final picture in plan.pictures)
+            if (picture.rowId == plan.result.id)
+              picture.frameId: picture.from.id,
+        }[shownAt(there, s2, 0)],
+        const CutId('d'),
+        reason: 'the cel the cut d shows is drawn of what the cut d showed',
+      );
+      // 🗣️-Q1 own-cel (유저 11-11): 「컷마다 제 셀로 — 두 컷 다 계속
+      // 따라간다」.
+      expect(
+        [
+          for (final row in [plan.result, there])
+            (isSyncedAttachedLayer(row), row.attachedToLayerId),
+        ],
+        [(true, s.id), (true, s2.id)],
+        reason: 'both cuts still follow their conte',
+      );
+      expect(
+        plan.result.baseFrameLinks[const FrameId('s-1')],
+        isNot(there.baseFrameLinks[const FrameId('s-1')]),
+        reason: 'each cut links the panel 1 to a cel of its own',
+      );
     });
   });
 
@@ -1737,10 +1955,9 @@ void main() {
             );
     }
 
-    /// The cel each of [picture]'s layers holds, bottom → top.
+    /// The cels [picture] is laid of, bottom → top.
     List<String> laidOf(BlockMergePicture picture) => [
-      for (final layer in picture.layers)
-        layer.layers.single.frames.single.id.value,
+      for (final cel in picture.cels) cel.value,
     ];
 
     /// [id]'s blocks `start: (length, cel name)`, each [marks] as given.

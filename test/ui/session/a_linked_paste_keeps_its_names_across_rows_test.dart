@@ -42,6 +42,8 @@ import '../../helpers/an_empty_drawing_row.dart';
 /// The window that asks is pinned where it is pressed
 /// (`timeline/the_linked_paste_asks_before_it_joins_test`).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   FrameClipboard clipboardOf(EditorSessionManager s) => s.clipboard;
 
   /// A picture at the cut's canvas size, its first bytes [shade].

@@ -4,18 +4,17 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/temp_dir.dart';
 import '../../ui/export/fake_ffmpeg_process.dart';
@@ -26,10 +25,6 @@ import '../../ui/export/fake_ffmpeg_process.dart';
 /// On a platform with no OS encoder (Linux CI) the capability answer is
 /// pinned false and the ffmpeg fallback keeps the export alive.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
-
   late Directory directory;
   late NativeCallWatch watch;
 
@@ -39,19 +34,13 @@ void main() {
   // card's ninth sighting), its clock stopped inside the call.
   setUp(() async {
     watch = await NativeCallWatch.start('the OS video encoder');
-    QaVideoEncoder.debugResetForTests();
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-video-enc-test');
   });
 
   tearDown(() async {
     watch.step('letting the encoder go');
-    QaVideoEncoder.instance?.abort();
+    QaVideoEncoder.instance.abort();
     watch.stop();
-    QaVideoEncoder.debugResetForTests();
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
   });
 
@@ -89,18 +78,22 @@ void main() {
     return ftyp && moov;
   }
 
+  /// One flat 64x48 frame on the engine, for the movies whose subject is not
+  /// the picture.
+  Future<GpuShown> flatFrame() =>
+      filmFrameIn(const ui.Color(0xFF336699), width: 64, height: 48);
+
   test('the capability answer matches the OS', () {
     watch.step('the capability: asking for the encoder');
     final encoder = QaVideoEncoder.instance;
-    expect(encoder, isNotNull, reason: 'the binary did not bind');
     expect(
-      encoder!.isSupported,
+      encoder.isSupported,
       osHasVideoEncoder,
       reason:
           'Windows/Apple encode natively; elsewhere the ffmpeg '
           'fallback carries the export',
     );
-  }, skip: skip);
+  });
 
   test('a real MP4 comes out: video + AAC audio, finalized and playable-'
       'shaped', () {
@@ -153,7 +146,7 @@ void main() {
       reason: 'the file is not a finalized MP4',
     );
     expect(File(path).lengthSync(), greaterThan(2000));
-  }, skip: skip);
+  });
 
   test('an ODD canvas encodes — H.264 needs even, the pad supplies it', () {
     watch.step('an odd canvas: asking for the encoder');
@@ -181,7 +174,7 @@ void main() {
     watch.step('an odd canvas: finishing the movie');
     expect(encoder.finish(), isTrue, reason: encoder.lastError);
     expect(looksLikeMp4(path), isTrue);
-  }, skip: skip);
+  });
 
   test('a second open while one is running refuses; abort cleans up', () {
     watch.step('a second open: asking for the encoder');
@@ -233,7 +226,7 @@ void main() {
     );
     watch.step('a second open: aborting the third');
     encoder.abort();
-  }, skip: skip);
+  });
 
   test('the SERVICE takes the OS path end to end: rendered images and the '
       'mixed WAV land in one MP4', () async {
@@ -257,15 +250,11 @@ void main() {
       wav16Bytes(int16PcmOf(mixSamples), sampleRate: 48000, channels: 2),
     );
 
-    Future<ui.Image?> render(int index) async {
-      final recorder = ui.PictureRecorder();
-      final canvas = ui.Canvas(recorder);
-      canvas.drawRect(
-        const ui.Rect.fromLTWH(0, 0, 64, 48),
-        ui.Paint()..color = ui.Color.fromARGB(255, index * 10, 128, 200),
-      );
-      return recorder.endRecording().toImage(64, 48);
-    }
+    Future<GpuShown?> render(int index) => filmFrameIn(
+      ui.Color.fromARGB(255, index * 10, 128, 200),
+      width: 64,
+      height: 48,
+    );
 
     final service = VideoExportService(
       encoderResolver: () => QaVideoEncoder.instance,
@@ -274,7 +263,7 @@ void main() {
     watch.step('the service: exporting the movie');
     final summary = await service.exportVideo(
       count: 12,
-      renderImage: render,
+      renderFrame: render,
       outputFilePath: outputPath,
       frameRate: ProjectFrameRate.fps24,
       audioMixPath: mixPath,
@@ -290,7 +279,87 @@ void main() {
       isTrue,
       reason: 'the mix\'s tone, not silence',
     );
-  }, skip: skip);
+  });
+
+  test('🚨a movie\'s sound is led by what the caller says sounded before it — '
+      'its first samples come back closer than behind silence', () async {
+    final encoder = osVideoEncoderOrSkip();
+    if (encoder == null) {
+      return;
+    }
+    TestWidgetsFlutterBinding.ensureInitialized();
+    // 🗣️유저 2026-11-10 (board an-mp4-reopened-loses-its-first-9-ms-of-
+    // sound-Q2): 「무음, 범위 앞에 소리가 있으면 그 소리」. A tone that was
+    // already sounding and is on its peak where the movie begins: behind
+    // silence that is the hardest first sample there is, behind its own
+    // past an ordinary one.
+    const rate = 48000;
+    int toneAt(int sample) =>
+        (12000 * math.cos(2 * math.pi * 750 * sample / rate)).round();
+    Int16List toneFrom(int first, int count) {
+      final pcm = Int16List(count * 2);
+      for (var index = 0; index < count; index += 1) {
+        pcm[index * 2] = pcm[index * 2 + 1] = toneAt(first + index);
+      }
+      return pcm;
+    }
+
+    final mixPath = '${directory.path}/mix.wav';
+    File(mixPath).writeAsBytesSync(
+      wav16Bytes(toneFrom(0, rate ~/ 2), sampleRate: rate, channels: 2),
+    );
+    final service = VideoExportService(
+      encoderResolver: () => QaVideoEncoder.instance,
+    );
+
+    /// How far the first 128 samples of the movie written as [name] came
+    /// back from the tone's.
+    Future<double> headErrorOf(String name, SoundBefore? soundBefore) async {
+      final outputPath = '${directory.path}/$name.mp4';
+      watch.step('a led movie: exporting $name');
+      final summary = await service.exportVideo(
+        count: 12,
+        renderFrame: (_) => flatFrame(),
+        outputFilePath: outputPath,
+        frameRate: ProjectFrameRate.fps24,
+        audioMixPath: mixPath,
+        soundBefore: soundBefore,
+      );
+      expect(summary, (written: 12, processed: 12));
+      watch.step('a led movie: reading the sound of $name back');
+      final sound = decodeAudioFile(outputPath)!;
+      var squares = 0.0;
+      for (var index = 0; index < 128; index += 1) {
+        final error =
+            sound.samples[index * sound.channels] - toneAt(index) / 32768;
+        squares += error * error;
+      }
+      return math.sqrt(squares / 128);
+    }
+
+    final asked = <int>[];
+    final led = await headErrorOf('led', (samples) async {
+      asked.add(samples);
+      return toneFrom(-samples, samples);
+    });
+    expect(
+      asked,
+      encoder.audioLead == 0 ? isEmpty : [encoder.audioLead],
+      reason: 'asked once, for exactly the frame the writer puts there',
+    );
+    if (encoder.audioLead == 0) {
+      // A writer that leads a movie's sound itself is handed nothing, so
+      // there are no two movies to tell apart.
+      return;
+    }
+    final unled = await headErrorOf('unled', null);
+    expect(
+      led,
+      lessThan(unled / 2),
+      reason: '🔬2026-11-10, this tone through Media Foundation\'s AAC: '
+          '0.0009 behind its own past, 0.0045 behind silence',
+    );
+  });
 
 
   test('🚨a job the OS refuses goes to ffmpeg with the frame the movie was '
@@ -301,13 +370,9 @@ void main() {
     }
     final ffmpeg = FakeFfmpegProcess();
     final rendered = <int>[];
-    Future<ui.Image?> render(int index) {
+    Future<GpuShown?> render(int index) {
       rendered.add(index);
-      final recorder = ui.PictureRecorder();
-      ui.Canvas(
-        recorder,
-      ).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
-      return recorder.endRecording().toImage(64, 48);
+      return flatFrame();
     }
 
     final service = VideoExportService(
@@ -317,7 +382,7 @@ void main() {
     watch.step('a refused job: exporting the movie');
     final summary = await service.exportVideo(
       count: 3,
-      renderImage: render,
+      renderFrame: render,
       outputFilePath: '${directory.path}/refused.mov',
       frameRate: ProjectFrameRate.fps24,
       container: ExportVideoContainer.mov,
@@ -327,32 +392,24 @@ void main() {
     expect(summary, (written: 3, processed: 3));
     expect(ffmpeg.receivedFrameCount, 3);
     expect(ffmpeg.collectedStdin.length, 3 * 64 * 48 * 4);
-  }, skip: skip);
+  });
 
   test('🚨the OS encoder is handed a held frame again without its being '
       'read back — twelve frames of one picture are one readback', () async {
     if (osVideoEncoderOrSkip() == null) {
       return;
     }
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
-    final held = await recorder.endRecording().toImage(64, 48);
-    addTearDown(held.dispose);
+    final held = await flatFrame();
     final service = VideoExportService(
       encoderResolver: () => QaVideoEncoder.instance,
     );
     final outputPath = '${directory.path}/held.mp4';
     final readBefore = VideoExportService.debugReadbacks;
-    final handed = <ui.Image>[];
 
     watch.step('a held frame: exporting the movie');
     final summary = await service.exportVideo(
       count: 12,
-      renderImage: (_) async {
-        final again = held.clone();
-        handed.add(again);
-        return again;
-      },
+      renderFrame: (_) async => held,
       outputFilePath: outputPath,
       frameRate: ProjectFrameRate.fps24,
     );
@@ -360,11 +417,5 @@ void main() {
     expect(summary, (written: 12, processed: 12));
     expect(VideoExportService.debugReadbacks - readBefore, 1);
     expect(looksLikeMp4(outputPath), isTrue);
-    expect(
-      handed.every((image) => image.debugDisposed),
-      isTrue,
-      reason: 'each picture handed is let go of — the one kept to tell the '
-          'next by, when the movie is finished',
-    );
-  }, skip: skip);
+  });
 }

@@ -62,13 +62,6 @@ void main() {
       count: 2,
       why: 'a blank stand-in for a cel with nothing to show',
     ),
-    'lib/src/services/cut_frame_composite_plan.dart': (
-      count: 1,
-      why:
-          'the row a cel number is written on, standing bare where its '
-          'cel has nothing drawn (F-481) — nothing of it paints; the '
-          'letters ask it where the row lies',
-    ),
     'lib/src/ui/playback/stacked_frame_picture.dart': (
       count: 1,
       why:
@@ -82,6 +75,13 @@ void main() {
     'lib/src/services/canvas_selection_paint_clip.dart': (
       count: 1,
       why: 'a scratch surface a stroke\'s coverage is laid on and read from',
+    ),
+    'lib/src/services/bitmap_surface_brush_commit.dart': (
+      count: 1,
+      why:
+          'a scratch surface of the tiles a stamp is asked to land on, off '
+          'the engine (`stampLaidOver`) — landed, read for those tiles and '
+          'dropped; never shown or kept, so no text of it to carry',
     ),
     'lib/src/services/commands/swap_layer_reference_command.dart': (
       count: 1,
@@ -102,12 +102,14 @@ void main() {
           'on and read from — its pixels go on as a decoded picture\'s do',
     ),
     'lib/src/services/import/raster_cel_import.dart': (
-      count: 3,
+      count: 4,
       why:
           'a picture imported from an image — it begins here, laid whole '
-          'where a door asks (`laidBounds: laid`, F-374-Q8); and the cel '
-          'a decoding door\'s tiles begin as (`bakeCelTiles` — a .tvpp\'s, '
-          'a .clip\'s)',
+          'where a door asks (`laidBounds: laid`, F-374-Q8); a reference\'s '
+          'cel a door moves where none of it lands (`layCelRegion`) — no '
+          'brush reaches a reference row, so it holds no texts or photos; '
+          'and the cel a decoding door\'s tiles begin as (`bakeCelTiles` — '
+          'a .tvpp\'s, a .clip\'s)',
     ),
     'lib/src/ui/canvas/canvas_selection_layer.dart': (
       count: 1,
@@ -131,6 +133,20 @@ void main() {
       why:
           'a block the copy found blank hangs in a synced row\'s cel as a '
           'picture with nothing on it — no text to lose (F-545)',
+    ),
+    'lib/src/ui/timeline/merge_layer_rows.dart': (
+      count: 1,
+      why:
+          'a bake whose frame holds no ink lays a cel with nothing on it, '
+          'as `layCelPicture` does of a picture that lands nowhere — the '
+          'texts it was drawn of are pixels of that frame, and none show',
+    ),
+    'lib/src/native/engine_letters.dart': (
+      count: 1,
+      why:
+          'a cel number\'s plate begins as the engine\'s raster of its '
+          'letters on the row\'s paper — no text of a cel, and laid whole '
+          'where its letters stand (`laidBounds: laid`)',
     ),
   };
 
@@ -209,7 +225,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 23);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 26);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '

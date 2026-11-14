@@ -24,6 +24,23 @@
 #
 # So: assert on the clock, or only print? Only print AND assert nothing
 # else -> tag it. Assert a contract -> leave it in the suite.
+#
+# A TEST'S LIMIT IS THREE TIMES package:test's 30 s, for one fixed cost: the
+# first drawing of a test process compiles the engine's kernels. 🔬8.3 s for
+# the composite pass, 11 s all told, with half the machine's line busy; 24 s
+# for the first test of a file beside a full line, and past 30 beside more,
+# always in the first `test()` of a file (`testWidgets` has ten minutes of
+# its own). Thirteen files of saves and undos read as broken for it in three
+# wide runs (브러시/렌더링 11-10, flip lane). A test that hangs still ends.
+#
+# ⚠️Since 2026-11-13 a run is handed what an earlier run of the machine
+# compiled (test/flutter_test_config.dart, `debugAppShaderFolder`), so the
+# cost is paid where the machine's folder holds none of a kernel — a new
+# machine, a changed shader — and on every run where nothing a compiler
+# made is kept: what is kept is DXC's, and CI's engine suites run on Linux.
+# The limit stays for those.
+timeout: 3x
+
 tags:
   benchmark:
     skip: "performance benchmark — run with: flutter test --run-skipped --tags benchmark"

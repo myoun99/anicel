@@ -1,7 +1,8 @@
 // A pill's name cell wears the plate face (card frame-panels-build-in-one-
 // frame, 2026-10-25), where it was a claim, a Material, an InkWell and a
 // tooltip. ⛔Nothing on the screen was to change: these hold the face
-// against the cell it replaced, driven by real input, pixel for pixel.
+// against the cell it replaced, driven by real input, pixel for pixel —
+// but at the hover's rim, which is the shape's fill and not a clip (Q10).
 import 'dart:async';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -167,13 +168,53 @@ Future<void> _pump(WidgetTester tester, Widget cell, {double scale = 1}) async {
   await _settle(tester);
 }
 
+/// The capture's pixels to a logical pixel.
+const _ratio = 3.0;
+
+/// The outline the cell's face wears, where the capture has it.
+Path _rimOf(WidgetTester tester) {
+  final face = tester
+      .getRect(find.byKey(const ValueKey<String>('cell')))
+      .shift(-tester.getTopLeft(find.byKey(_boundary)));
+  return AppShapes.control(face.height).getOuterPath(face);
+}
+
+/// Each pixel at which captures [a] and [b] part, but those [rim] runs
+/// through — within half a pixel of it.
+List<(int, int)> _partedOffRim(
+  WidgetTester tester,
+  Uint8List a,
+  Uint8List b,
+  Path rim,
+) {
+  expect(a.length, b.length, reason: 'two captures of one size');
+  final width = (tester.getSize(find.byKey(_boundary)).width * _ratio).round();
+  bool onRim(int x, int y) {
+    final inside = [
+      for (final dx in const [-0.5, 1.5])
+        for (final dy in const [-0.5, 1.5])
+          Offset((x + dx) / _ratio, (y + dy) / _ratio),
+    ].where(rim.contains).length;
+    return inside > 0 && inside < 4;
+  }
+
+  return [
+    for (var i = 0; i < a.length; i += 4)
+      if ([for (var c = 0; c < 4; c += 1) a[i + c] - b[i + c]].any(
+            (apart) => apart != 0,
+          ) &&
+          !onRim(i ~/ 4 % width, i ~/ 4 ~/ width))
+        (i ~/ 4 % width, i ~/ 4 ~/ width),
+  ];
+}
+
 Future<Uint8List> _pixels(WidgetTester tester) async {
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(_boundary),
   );
   late Uint8List pixels;
   await tester.runAsync(() async {
-    final image = await boundary.toImage(pixelRatio: 3);
+    final image = await boundary.toImage(pixelRatio: _ratio);
     pixels = (await image.toByteData())!.buffer.asUint8List();
     image.dispose();
   });
@@ -297,8 +338,16 @@ void main() {
       expect(old.cursor, SystemMouseCursors.basic);
       expect(now.cursor, SystemMouseCursors.click);
       expect(now.pixels.keys, old.pixels.keys);
+      // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10: the face's hover is the
+      // cell's shape FILLED, the InkWell's the box clipped to it — the two
+      // part on the rim the outline runs through, and nowhere else.
+      final rim = _rimOf(tester);
       for (final state in old.pixels.keys) {
-        expect(now.pixels[state], old.pixels[state], reason: state);
+        expect(
+          _partedOffRim(tester, now.pixels[state]!, old.pixels[state]!, rim),
+          isEmpty,
+          reason: state,
+        );
       }
       expect(
         now.pixels['hovered'],

@@ -142,8 +142,8 @@ double edgePiledShare(double coverage, double ceiling) {
   return share < 1.0 ? share : 1.0;
 }
 
-/// [coverage] through [law] — the definition the tile and native kernels
-/// inline against hoisted values.
+/// [coverage] through [law] — the definition the tile kernel inlines
+/// against hoisted values.
 double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
   if (law.threshold) {
     return coverage >= 0.5 ? 1.0 : 0.0;

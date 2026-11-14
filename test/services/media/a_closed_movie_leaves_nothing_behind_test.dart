@@ -4,11 +4,9 @@ import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 
 import '../../helpers/mpeg4_visual_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -45,23 +43,11 @@ import '../../helpers/project_scratch_folder.dart';
 /// backend frees its own and nothing counts them yet — its reader would be
 /// `malloc_zone_statistics`, and a bound set where it never ran is a guess.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = !Platform.isWindows
-      ? 'the heaps are read with HeapSummary — Windows only'
-      : libraryPath != null
+  final skip = Platform.isWindows
       ? false
-      : nativeEngineMissingSkipReason;
+      : 'the heaps are read with HeapSummary — Windows only';
 
-  setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
-  tearDown(() {
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   test('🚨two hundred more opens of the same movie leave the heaps where two '
       'hundred left them', () {

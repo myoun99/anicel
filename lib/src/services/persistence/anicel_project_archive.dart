@@ -66,6 +66,41 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v36 (2026-11-14, F-589 — 유저 F-589-Q1: 「품을 때의 날짜를 적어 두고
+/// 그것을 띄운다」): a carried asset records when the file its bytes came
+/// from had last changed (`carriedModified`, written only where there is
+/// one — [MediaCarriedAs]). A v35 build knows no such word: it drops it on
+/// open, and its next save writes the carry back with no date, and nothing
+/// said. The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️Nothing to carry over, and the floor did not move
+/// ([anicelOldestReadFormatVersion]): a carry with no date is one at THIS
+/// version too, so a v35 file opens as it is and its carries show none. Its
+/// `sourceStamp` is not read any more — nothing had written one since
+/// 08-13 (`a34926a79`), so no file at the floor holds one.
+///
+/// v35 (2026-11-10, F-578 — 유저: 「색라벨의 미술이란 공정 없앨까
+/// 생각중 … 공정을 나눌 필요가 없음」): a colour label has no 美術 —
+/// `LayerProcess` lost `art`. An older file's `"process": "art"` names no
+/// process here, and its label would open as no label at all — a 美術+作監
+/// row quietly unlabelled, its revise gone with it, and the next save
+/// making that the truth. The bump is what lets the floor turn such a
+/// file away instead ([decodeAnicelProjectDocument]).
+///
+/// ⛔The older word is not read (the save law), and the floor rose with it
+/// ([anicelOldestReadFormatVersion]). One that has to open is carried over
+/// by hand: in every `mark` — a row's and a cut's own — `"process": "art"`
+/// becomes `"process": "layout"`, its `revise` and `take` kept (유저
+/// F-578: 美術 rows go to LO with the same revise), and the file's
+/// `formatVersion` says 35.
+///
+/// And a 用紙 label names what it is the paper of (F-578 — 유저: 「용지는
+/// 용지-소재가 아니라 용지-LO 이런식으로」): a stage under `paperOf`, or a
+/// correction under `revise`. An older file's bare `{"process": "paper"}`
+/// names neither and opens as no label, so it is carried by the same hand:
+/// it gains `"paperOf": "layout"` (용지-LO — 유저: every paper row there
+/// is moves to 용지-LO).
+///
 /// v34 (2026-11-04, I-150 ⑤ — 유저 I-150-Q3: 「다른 타임라인끼리는 단순
 /// 겸용컷 작동안하게 … 타임라인 링크컷?으로 작동하게」): the link registry
 /// keeps its 동기컷 (`LayerLinkRegistry.syncs`, written only where there
@@ -525,7 +560,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 34;
+const int anicelFormatVersion = 36;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -554,7 +589,8 @@ const int anicelFormatVersion = 34;
 /// read (v29 above).
 /// 33: a project's tracks and trailing gap right under it, in no timeline,
 /// are no longer read (v33 above).
-const int anicelOldestReadFormatVersion = 33;
+/// 35: a label of 美術 is no longer read (v35 above).
+const int anicelOldestReadFormatVersion = 35;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the
@@ -1211,20 +1247,27 @@ Project projectWithEveryCarryNamed(Project project) {
   final worn = <String>{};
   final shared = {
     for (final asset in project.mediaAssets)
-      if (asset.carriedAs case final name? when !worn.add(name)) name,
+      if (asset.carriedAs?.token case final name? when !worn.add(name)) name,
   };
   bool holdsNoneOfItsOwn(String? name) =>
       name != null && (!isOneStoredName(name) || shared.contains(name));
   if (!project.mediaAssets.any(
-    (asset) => holdsNoneOfItsOwn(asset.carriedAs),
+    (asset) => holdsNoneOfItsOwn(asset.carriedAs?.token),
   )) {
     return project;
   }
   return project.copyWith(
     mediaAssets: [
       for (final asset in project.mediaAssets)
-        if (holdsNoneOfItsOwn(asset.carriedAs))
-          asset.copyWith(carriedAs: mintMediaCarry(asset.path))
+        if (asset.carriedAs case final carried?
+            when holdsNoneOfItsOwn(carried.token))
+          // A new name; the file it was carried from is as old as it was.
+          asset.copyWith(
+            carriedAs: (
+              token: mintMediaCarry(asset.path),
+              modified: carried.modified,
+            ),
+          )
         else
           asset,
     ],

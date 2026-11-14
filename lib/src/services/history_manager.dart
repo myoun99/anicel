@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
+import '../core/one_pass_at_a_time.dart';
 import '../models/brush_frame_key.dart';
 import '../models/standing_place.dart';
 import 'history_places.dart';
@@ -325,27 +328,22 @@ class HistoryManager extends ChangeNotifier {
     _scheduleSpill();
   }
 
-  /// Runs one spill pass at a time and re-runs when it finishes with the
+  /// The spill passes: one at a time, and another once one ends with the
   /// budget still exceeded.
   ///
-  /// ⚠️`BrushFrameStore._scheduleCooling` is this same shape and they are
-  /// deliberately NOT one thing yet: two occurrences merge on the third
-  /// (3의 규칙 — 중복 제거는 의도 다음이다). When a third background pass
-  /// appears, these two are what it joins.
-  void _scheduleSpill() {
-    if (_disposed ||
-        _activeSpill != null ||
-        _spillStoodDown ||
-        retainedBytes <= _budget.bytes) {
-      return;
-    }
-    _activeSpill = _spillLoop().whenComplete(() {
-      _activeSpill = null;
-      _scheduleSpill();
-    });
-  }
+  /// ↩️`BrushFrameStore`'s cooling is this same shape, and the two were kept
+  /// apart on purpose till a third background pass appeared: two
+  /// occurrences merge on the third (3의 규칙 — 중복 제거는 의도 다음이다).
+  /// Four more were found already written (card
+  /// one-in-flight-the-rest-in-the-next, 2026-11-13); all six are
+  /// [OnePassAtATime] now.
+  late final _spilling = OnePassAtATime(
+    due: () =>
+        !_disposed && !_spillStoodDown && retainedBytes > _budget.bytes,
+    pass: _spillAPass,
+  );
 
-  Future<void>? _activeSpill;
+  void _scheduleSpill() => unawaited(_spilling.ask());
 
   /// 🚨★★★**A SPILL PASS OUTLIVES THE OBJECT THAT STARTED IT.** It awaits
   /// a background isolate, and the editor can be torn down in between —
@@ -369,19 +367,15 @@ class HistoryManager extends ChangeNotifier {
 
   /// ⛔Set when a pass could not move the bytes — either the room refused
   /// or nothing left on the stacks can move — and cleared by a new entry.
-  /// Without it the completion re-schedule is an infinite loop: the pass
-  /// gives up BECAUSE the budget is still exceeded, which is the very
-  /// condition the re-schedule fires on.
+  /// Without it the next pass is an infinite loop: the pass gives up
+  /// BECAUSE the budget is still exceeded, which is the very condition the
+  /// next one is begun on.
   bool _spillStoodDown = false;
 
   /// Completes when no spill pass is running (tests).
-  Future<void> drainSpilling() async {
-    while (_activeSpill != null) {
-      await _activeSpill;
-    }
-  }
+  Future<void> drainSpilling() => _spilling.settled();
 
-  Future<void> _spillLoop() async {
+  Future<bool> _spillAPass() async {
     final before = retainedBytes;
     // REDO PARKS FIRST. A redo entry is work the user already stepped
     // back from, and the next execute() throws the whole stack away in
@@ -390,10 +384,11 @@ class HistoryManager extends ChangeNotifier {
     final moved =
         await _parkDeepEnd(_redoStack) && await _parkDeepEnd(_undoStack);
     if (moved && retainedBytes < before) {
-      return; // Progress; the reschedule decides whether more is needed.
+      return true; // Progress; whether more is needed is the next pass's.
     }
     _spillStoodDown = true;
     _shedOverBudget();
+    return false;
   }
 
   /// Parks [stack] from its DEEP end while the budget is exceeded,

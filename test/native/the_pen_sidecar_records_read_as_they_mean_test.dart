@@ -6,52 +6,34 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 
-import '../helpers/native_engine_path.dart';
-
-/// desktop-pen-tilt: the pen DLL (`qa_tablet_win.c`, `qa_penraw_win.c`)
-/// hands its readings over as floats. This is the Dart half of that
-/// contract — the half a host with no tablet can run; the C half keeps its
-/// layout beside its own `qat_poll` and `qpr_poll`.
+/// desktop-pen-tilt: the engine's pen ([_pen]) hands its readings over as
+/// floats. This is the Dart half of that contract — the half a host with no
+/// tablet can run; the Rust half keeps its layout beside its own `qat_poll`
+/// and `qpr_poll`.
+///
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// the pen was a DLL of its own, qa_tablet.dll, which these opened beside
+/// the C engine.
 void main() {
-  // The pen DLL lives beside the engine; it is Windows-only.
-  final engine = Platform.isWindows ? nativeEngineLibraryPathOrNull() : null;
-  final dllSkip = !Platform.isWindows
-      ? 'the pen DLL is Windows-only'
-      : engine == null
-      ? nativeEngineMissingSkipReason
-      : false;
+  final windowsOnly = Platform.isWindows ? false : 'the pen is Windows-only';
 
-  test('🚨the pen DLL built from this C speaks the Raw Input ABI this Dart '
-      'reads — v2, the one that hands over the tilt', () {
-    final dll = '${File(engine!).parent.path}${Platform.pathSeparator}'
-        'qa_tablet.dll';
-    final rawAbi = DynamicLibrary.open(dll)
-        .lookupFunction<Int32 Function(), int Function()>('qpr_abi_version')();
-    expect(rawAbi, QaTabletBridge.rawAbiVersion);
-
-    QaTabletBridge.debugLibraryPathOverride = dll;
-    QaTabletBridge.debugResetInstance();
-    addTearDown(() {
-      QaTabletBridge.debugLibraryPathOverride = null;
-      QaTabletBridge.debugResetInstance();
-    });
-    expect(QaTabletBridge.instanceOrNull?.rawInputSupported, isTrue);
-  }, skip: dllSkip);
+  test('🚨the engine\'s pen speaks the ABI this Dart reads — both halves — '
+      'on Windows, and nowhere else', () {
+    expect(
+      QaTabletBridge.instanceOrNull,
+      Platform.isWindows ? isNotNull : isNull,
+      reason: 'qat_abi_version ${QaTabletBridge.abiVersion} and '
+          'qpr_abi_version ${QaTabletBridge.rawAbiVersion}, as $_pen says '
+          'them',
+    );
+  });
 
   test('the Raw Input reader listens where a pen reports: the Pen '
       'collection and the Digitizer one both (F-176-Q8 — a Cintiq sends '
       'every report through the Digitizer one alone)', () {
-    final pen = DynamicLibrary.open(
-      '${File(engine!).parent.path}${Platform.pathSeparator}qa_tablet.dll',
-    );
-    final start = pen.lookupFunction<Int32 Function(), int Function()>(
-      'qpr_start',
-    );
-    final stop = pen.lookupFunction<Void Function(), void Function()>(
-      'qpr_stop',
-    );
-    expect(start(), 1);
-    addTearDown(stop);
+    final pen = QaTabletBridge.instanceOrNull!;
+    expect(pen.startRawInput(), isTrue);
+    addTearDown(pen.stopRawInput);
 
     final registered = DynamicLibrary.open('user32.dll')
         .lookupFunction<
@@ -77,7 +59,7 @@ void main() {
       collections,
       containsAll([(page: 0x0D, usage: 0x02), (page: 0x0D, usage: 0x01)]),
     );
-  }, skip: dllSkip);
+  }, skip: windowsOnly);
 
   test('a Wintab record says how the pen leans only when the device is '
       'oriented, and how it is turned only when it declares a twist', () {
@@ -117,8 +99,8 @@ void main() {
     expect(second.twistDegrees, 270);
   });
 
-  test('a Raw Input record says the tilt only from a v2 observer and the '
-      'twist only from a v3 one, each only when the report carried it', () {
+  test('a Raw Input record says the tilt and the twist only when the '
+      'report carried them', () {
     final posed = Float32List.fromList([1, 7, 12.5, -30, 1, 135, 1]);
     final state = QaTabletBridge.rawStateFrom(posed);
     expect(state.flags, 1);
@@ -126,16 +108,6 @@ void main() {
     expect(state.tilt, (x: 12.5, y: -30.0));
     expect(state.twistDegrees, 135);
 
-    expect(
-      QaTabletBridge.rawStateFrom(Float32List.sublistView(posed, 0, 2)).tilt,
-      isNull,
-      reason: 'a v1 observer never wrote one',
-    );
-    final v2 = QaTabletBridge.rawStateFrom(
-      Float32List.sublistView(posed, 0, 5),
-    );
-    expect(v2.tilt, (x: 12.5, y: -30.0));
-    expect(v2.twistDegrees, isNull, reason: 'a v2 observer never wrote one');
     final bare = QaTabletBridge.rawStateFrom(
       Float32List.fromList([1, 8, 0, 0, 0, 0, 0]),
     );
@@ -150,25 +122,9 @@ void main() {
       reason: 'a report with no twist is not a pen turned to 0°',
     );
   });
-
-  test('each observer\'s report is read as long as its ABI writes it — '
-      'long enough for what that ABI carries, and no longer', () {
-    Float32List posedAt(int rawAbi) {
-      final floats = Float32List(QaTabletBridge.rawFloatsAt(rawAbi));
-      for (var i = 2; i < floats.length; i += 1) {
-        floats[i] = 1;
-      }
-      return floats;
-    }
-
-    final newest = QaTabletBridge.rawStateFrom(
-      posedAt(QaTabletBridge.rawAbiVersion),
-    );
-    expect(newest.tilt, isNotNull);
-    expect(newest.twistDegrees, isNotNull);
-    final v2 = QaTabletBridge.rawStateFrom(posedAt(2));
-    expect(v2.tilt, isNotNull);
-    expect(v2.twistDegrees, isNull);
-    expect(QaTabletBridge.rawStateFrom(posedAt(1)).tilt, isNull);
-  });
 }
+
+/// The pen these read — named as a path, so a lane that changed only the
+/// engine's pen runs this file (`affected_tests` picks a test by the paths
+/// it writes out, 보드/인프라 2026-11-08 05:35).
+const _pen = 'packages/gpu_engine/rust/native/pen';

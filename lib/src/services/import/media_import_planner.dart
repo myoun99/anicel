@@ -23,6 +23,7 @@ import '../../models/media_asset.dart';
 import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/import/import_warning.dart';
+import 'media_identity_reader.dart' show readMediaModified;
 
 export '../../models/import/import_destination.dart';
 
@@ -130,11 +131,9 @@ ImageLayerImportPlan planStillImageLayer({
   required String displayName,
   required CutId cutId,
   required int duration,
-  required MediaFitMode fit,
   required MediaReference? reference,
   required ImportIdMint mint,
   String? sourcePath,
-  String? sourceStamp,
   MediaIdentity? identity,
   bool carried = false,
   MediaAssetKind assetKind = MediaAssetKind.image,
@@ -177,9 +176,7 @@ ImageLayerImportPlan planStillImageLayer({
         importedMediaAsset(
           path: sourceFile,
           kind: assetKind,
-          fit: fit,
           sourcePath: sourcePath,
-          sourceStamp: sourceStamp,
           identity: identity,
           carried: carried,
           pageCount: pageCount,
@@ -196,13 +193,19 @@ ImageLayerImportPlan planStillImageLayer({
 /// third.
 ///
 /// A [carried] one is a NEW carry ([mintMediaCarry]): an import is the
-/// moment a carry is made, even of a path the project carried before.
+/// moment a carry is made, even of a path the project carried before. Its
+/// date is read here, as it is carried, off the file its bytes come from —
+/// a piece's [sourcePath], the file the piece was cut from (🗣️F-589-Q1,
+/// [MediaCarriedAs]): one place, so no door that imports forgets it.
+///
+/// ↩️It took the FIT the import placed its picture with and stamped it on
+/// the entry, and the planners took one only to hand it here. Nothing read
+/// it back (유저 2026-11-10, [MediaAsset]): where a picture stands is the
+/// placement's — the reference's pose, or the bake's fit.
 MediaAsset importedMediaAsset({
   required String path,
   required MediaAssetKind kind,
-  required MediaFitMode fit,
   String? sourcePath,
-  String? sourceStamp,
   MediaIdentity? identity,
   bool carried = false,
   double? sourceFps,
@@ -212,11 +215,14 @@ MediaAsset importedMediaAsset({
   path: path,
   name: mediaAssetDefaultName(path),
   kind: kind,
-  fitMode: fit,
   sourcePath: sourcePath,
-  sourceStamp: sourceStamp,
   identity: identity,
-  carriedAs: carried ? mintMediaCarry(path) : null,
+  carriedAs: carried
+      ? (
+          token: mintMediaCarry(path),
+          modified: readMediaModified(sourcePath ?? path),
+        )
+      : null,
   sourceFps: sourceFps,
   frameCount: frameCount,
   pageCount: pageCount,
@@ -246,13 +252,10 @@ SequenceLayerImportPlan planSequenceLayer({
   required ImportIdMint mint,
 
   /// The file the layer SHOWS, when it shows one: stamped as
-  /// [Layer.mediaReference], and its asset registers — with [fit] as the
-  /// pool entry's placement default. Null bakes the pictures, and nothing
-  /// is stamped or registered ([placementRegisters]).
+  /// [Layer.mediaReference], and its asset registers. Null bakes the
+  /// pictures, and nothing is stamped or registered ([placementRegisters]).
   MediaReference? reference,
-  MediaFitMode fit = MediaFitMode.contain,
   String? sourcePath,
-  String? sourceStamp,
   MediaIdentity? identity,
   bool carried = false,
   double? sourceFps,
@@ -357,9 +360,7 @@ SequenceLayerImportPlan planSequenceLayer({
             importedMediaAsset(
               path: reference.assetPath,
               kind: assetKind,
-              fit: fit,
               sourcePath: sourcePath,
-              sourceStamp: sourceStamp,
               identity: identity,
               carried: carried,
               sourceFps: sourceFps,

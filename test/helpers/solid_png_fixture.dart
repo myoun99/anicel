@@ -44,8 +44,24 @@ Future<String> writeSolidPng(
     completer.complete,
   );
   final image = await completer.future;
+  try {
+    return await writeImagePng(directory, name, image);
+  } finally {
+    image.dispose();
+  }
+}
+
+/// Writes [image] as a PNG named [name] into [directory] and returns its
+/// path — [writeSolidPng]'s encode, for a picture that is not one colour
+/// (a checker that shows how it was sampled, `checker_sampling.dart`).
+///
+/// ⚠️Call it inside `tester.runAsync`. The image stays the caller's.
+Future<String> writeImagePng(
+  Directory directory,
+  String name,
+  ui.Image image,
+) async {
   final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-  image.dispose();
   final file = File('${directory.path}${Platform.pathSeparator}$name');
   // Some callers name a nested path; creating an existing directory is a
   // no-op, so this costs the others nothing.

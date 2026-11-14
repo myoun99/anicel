@@ -4,12 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/rendering.dart';
 
+import '../../core/display_filter.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../services/layer_pose_matrix.dart' show picturePlacement;
 import '../canvas/display_resample.dart'
-    show displayScaleOf, filterQualityForDisplayScale;
+    show displayScaleOf;
 import '../canvas/layer_image_draw.dart' show drawPosedLayerImage;
 import '../canvas/viewport_canvas_transform.dart' show applyViewportTransform;
 import '../media/viewer_render_tier.dart' show pictureRenderWidthFor;
@@ -67,14 +68,11 @@ void paintSheetPhotos(
     );
     drawPosedLayerImage(
       canvas,
-      pieces: [(image: image, worldRect: own)],
-      extent: own,
-      // A photo wears no chain: its own picture is all the paper it has.
-      paper: own,
+      image: image,
+      worldRect: own,
       placement: picturePlacement(pose, picture),
       opacity: 1,
       blendMode: LayerBlendMode.normal,
-      texelScale: null,
       filterQuality: filterQualityForDisplayScale(displayScale * perTexel),
     );
   }

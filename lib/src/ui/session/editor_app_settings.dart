@@ -81,7 +81,8 @@ class EditorAppSettings {
     AptabaseClient? usageStatsClient,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
-       _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
+       _deviceLanguageCodes =
+           deviceLanguageCodes ?? AppText.deviceLanguageCodes,
        _accentSettingsStore = accentSettingsStore,
        _workspaceColorsStore = workspaceColorsStore,
        _inputSettingsStore = inputSettingsStore,
@@ -416,14 +417,6 @@ class EditorAppSettings {
   /// the machine it ran on.
   final Iterable<String> Function() _deviceLanguageCodes;
 
-  /// What the running app reads. ⛔MUTANT SURVIVES: every test injects the
-  /// device, so emptying this list stays green — it is the one line only
-  /// the real app exercises.
-  static Iterable<String> _platformLanguageCodes() => [
-    for (final locale in PlatformDispatcher.instance.locales)
-      locale.languageCode,
-  ];
-
   Future<void> _restoreLanguageSettings() async {
     final store = _languageSettingsStore;
     if (store == null) {
@@ -440,8 +433,8 @@ class EditorAppSettings {
       _restored(languageSettings, loaded);
       return;
     }
-    languageSettings.value = AppLanguageSettings(
-      programLanguage: AppLanguage.forDevice(_deviceLanguageCodes()),
+    languageSettings.value = AppLanguageSettings.ofDevice(
+      _deviceLanguageCodes(),
     );
   }
 

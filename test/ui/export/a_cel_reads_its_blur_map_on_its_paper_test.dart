@@ -24,7 +24,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
@@ -43,26 +42,26 @@ import '../../helpers/no_guides_laid.dart';
 /// black, the cel comes out sharp left of the seam and blurred whole right
 /// of it — the seam where the map is drawn, not where the screen shows it.
 void main() {
-  setUpAll(IrisBlurShader.load);
 
   const width = 64;
   const height = 32;
   const canvas = CanvasSize(width: width, height: height);
   const seam = 32;
+  const tile = defaultCelTileSize;
   const shift = 8.0;
 
   BitmapSurface surfaceOf(List<int> Function(int x, int y) rgbaAt) {
-    final pixels = Uint8List(width * width * 4);
+    final pixels = Uint8List(tile * tile * 4);
     for (var y = 0; y < height; y += 1) {
       for (var x = 0; x < width; x += 1) {
-        pixels.setAll((y * width + x) * 4, rgbaAt(x, y));
+        pixels.setAll((y * tile + x) * 4, rgbaAt(x, y));
       }
     }
     return BitmapSurface(
       canvasSize: canvas,
-      tileSize: width,
+      tileSize: tile,
       tiles: {
-        TileCoord(x: 0, y: 0): BitmapTile(size: width, pixels: pixels),
+        TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels),
       },
     );
   }
@@ -144,7 +143,7 @@ void main() {
     });
     final renderer = ExportFrameRenderer(
       session: s,
-      background: const ui.Color(0x00000000),
+      ground: const ui.Color(0x00000000),
     );
     addTearDown(renderer.dispose);
     final cel = cut.layers.last;

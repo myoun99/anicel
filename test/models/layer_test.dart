@@ -100,15 +100,15 @@ void main() {
     });
 
     test('JSON round-trip preserves both flags', () {
-      final layer = _layer(mark: const LayerMark(process: LayerProcess.art)).copyWith(onTimesheet: false);
+      final layer = _layer(mark: const LayerMark(process: LayerProcess.layout)).copyWith(onTimesheet: false);
 
       final restoredLayer = Layer.fromJson(layer.toJson());
 
       expect(restoredLayer, layer);
       expect(restoredLayer.onTimesheet, isFalse);
-      expect(restoredLayer.mark, const LayerMark(process: LayerProcess.art));
+      expect(restoredLayer.mark, const LayerMark(process: LayerProcess.layout));
       expect(layer.toJson()['onTimesheet'], false);
-      expect(layer.toJson()['mark'], {'process': 'art'});
+      expect(layer.toJson()['mark'], {'process': 'layout'});
     });
 
     test('old JSON without the keys defaults to on-timesheet, no mark', () {

@@ -24,7 +24,6 @@ import 'timeline/timeline_frame_coordinate_policy.dart'
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
-import 'timeline/timeline_frame_window.dart';
 import 'text/laid_out_glyph.dart';
 import 'timeline/timeline_glyph_cache.dart';
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -291,12 +290,15 @@ class StoryboardCutBlocksPainter extends CustomPainter
     this.windowBucket,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?selectedRange,
            hoveredCutId,
            ?standingCutId,
            ?windowBucket,
-           ?thumbnails?.landed,
+           // Its own cuts' pictures, never another track's.
+           ?thumbnails?.noticesFor([
+             for (final entry in entries) entry.cut.id,
+           ]),
          ]),
        );
 
@@ -438,20 +440,12 @@ class StoryboardCutBlocksPainter extends CustomPainter
       entry.cutId: next.startFrame,
   };
 
-  /// The frame span worth drawing — the full track under the classic
-  /// contract, the bucket-derived window (shared policy) when the row is
-  /// self-windowing.
-  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
-    final bucket = windowBucket;
-    if (bucket == null || viewportMainExtent <= 0 || _cellExtent <= 0) {
-      return (startIndex: 0, endIndexExclusive: 1 << 30);
-    }
-    return timelineFrameWindowFor(
-      bucket: bucket.value,
-      cellExtent: _cellExtent,
-      viewportExtent: viewportMainExtent,
-    );
-  }
+  /// The frame span worth drawing — the axis's frames under the classic
+  /// contract, the bucket's whole window when the row is self-windowing:
+  /// what every row on a frame axis draws
+  /// ([TimelineFrameGeometry.rowDrawnFrames]), not cut where the axis ends.
+  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
+      geometry.value.rowDrawnFrames(windowBucket);
 
   /// The thin bands' height — at every row height: they never fold
   /// ([StoryboardCutBlockVisual.topBand]).

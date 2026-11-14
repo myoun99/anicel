@@ -5,8 +5,10 @@
 
 import '../../models/property_track.dart' show KeyTypePick;
 import '../../models/se_sound.dart';
+import '../../models/transform_track.dart' show doubleKeySpace;
 import '../text/readout_text.dart' show columnValueOf;
 import 'se_sound_lane_policy.dart';
+import 'transform_lane_editing.dart' show laneResetAt;
 
 /// Adds a Volume key at [frameIndex] holding what the row plays there
 /// (AE: keying a property freezes what it currently shows), or removes the
@@ -108,7 +110,7 @@ SeSound? seSoundWithGroupReset(
   for (final frame in frames) {
     if (sound.isKeyed &&
         (!keyedFramesOnly || sound.volume.keyAt(frame) != null)) {
-      volume = volume.withKey(frame, 1.0);
+      volume = laneResetAt(volume, frame, 1.0, space: doubleKeySpace);
     }
   }
   final next = sound.copyWith(pan: 0.0, totalVolume: 1.0, volume: volume);

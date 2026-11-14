@@ -60,6 +60,7 @@ void main() {
       valueSourceAt: (frame) => (layer: layer, frame: frame),
       poseCentre: const CanvasSize(width: 400, height: 300),
       hasPlugin: null,
+      pluginOutcomes: null,
     );
     return (
       layer: layer,
@@ -166,7 +167,7 @@ void main() {
           laneGraphAcross(
             speed,
             fitOf(painter, line).ranges.single,
-            size.height,
+            painter.depthIn(size),
             Axis.horizontal,
           ),
         ),

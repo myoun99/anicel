@@ -1,16 +1,16 @@
-//! The blur brush's dab on the GPU (I-75 흐리기 — `BrushBlurPicture.blurDab`,
-//! C's `qa_blur_dab`; gpu-canonical-store D5, 01:13): the stroke's picture
+//! The blur brush's dab on the GPU (I-75 흐리기 — `BrushBlurPicture.blurDab`;
+//! gpu-canonical-store D5, 01:13): the stroke's picture
 //! under each dab moved toward its blur by what the dab lays as paint onto
 //! nothing. `blur.wgsl` has what a dab reads and moves; the passes are the
-//! fx Gaussian's box law and its two schedules (`effects/blur/box.wgsl`,
-//! `three.wgsl`, `pass.wgsl`; the ranges and the cut gaussian.rs's
-//! `within`), the coverage the dab kernel's own (`dab_source`) — no second
-//! copy of any. A dab goes by strips, a way's three passes a dispatch
-//! (`blur_three.wgsl`), up to MOST_STRIPS_RADIUS; past it a pass a dispatch
-//! (`blur_pass.wgsl`, 01:13 ③).
+//! box law and its two schedules (`effects/blur/box.wgsl`, `three.wgsl`,
+//! `pass.wgsl`; the ranges and the cut boxes.rs's `within`), the coverage
+//! the dab kernel's own (`dab_source`) — no second copy of any. A dab goes
+//! by strips, a way's three passes a dispatch (`blur_three.wgsl`), up to
+//! MOST_STRIPS_RADIUS; past it a pass a dispatch (`blur_pass.wgsl`, 01:13
+//! ③).
 //!
 //! The picture is made from the cel — every tile a dab's window meets — and
-//! finished back as the cel stores it (`qa_blur_result_tile`) by
+//! finished back as the cel stores it (`BrushBlurPicture.resultTile`) by
 //! `blur_cel.wgsl`, the cel read as the executor copies a row whole and
 //! the finished tiles going out as its output does (캔버스 베이스 11-06
 //! 02:29) — no read of the pool of the blur's own.
@@ -33,13 +33,13 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::{Composite, Composited, TILE_TEXELS, TileSet};
-use crate::kernels::effects::blur::gaussian::{
+use crate::kernels::effects::blur::boxes::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, encode_on, fits, flat,
-    given, page_table, pipeline, plane, range, runs, tiles_a_pass, whole,
+    Encoded, ISQRT_WGSL, Kernel, Own, Pages, TILE_WGSL, encode, encode_on, fits,
+    flat, given, page_table, pipeline, plane, range, runs, tiles_a_pass, whole,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -79,9 +79,9 @@ pub(crate) struct Cover<'a> {
 /// so it reads the same line over again (11-06, the main PC's GPU, a dab,
 /// µs by strips against a pass a dispatch — r 75: 248, 497; r 90: 517,
 /// 637; r 100: 705, 642; r 120: 1,121, 730; r 150: 4,255, 1,016; r 167:
-/// 25,374, 1,328). The Gaussian's crossing on a whole picture is lower
-/// (gaussian.rs's 56): a dab's six dispatches cost more against its
-/// small window.
+/// 25,374, 1,328). The fx Gaussian's boxes crossed lower on a whole
+/// picture, at 56, while it went by them: a dab's six dispatches cost more
+/// against its small window.
 ///
 /// The Surface (Arc 140V) crosses sooner, between 67 and 82 (캔버스 베이스
 /// 11-06 04:35 — µs, a dab of 128 px, strips against a pass a dispatch:
@@ -91,26 +91,34 @@ pub(crate) struct Cover<'a> {
 /// them, both keep clear of the strips' cliff, and choosing it by device
 /// would be a rule of its own.
 ///
-/// The second of two such choices — the other is the fx Gaussian's
-/// (effects/blur/gaussian.rs's MOST_STRIPS_RADIUS and Route): they stay
-/// apart, each threshold measured for its own use, until a third comes and
-/// one function beside `strips` takes the threshold (rule of three, 캔버스
-/// 베이스 11-06 03:05).
+/// ↩️It was the second of two such choices, the fx Gaussian's the other
+/// (rule of three, 캔버스 베이스 11-06 03:05), till that went by the
+/// Gaussian itself (🗣️유저 gpu-canonical-store-Q2): the boxes are the
+/// dab's alone.
 const MOST_STRIPS_RADIUS: u32 = 90;
 
 /// The most workgroups — its rows' and its columns' together — a dab goes in
 /// turn with: one after another with the dabs about it in one workgroup
 /// (blur_three.wgsl's `blur_dabs_in_turn`) instead of its two dispatches.
 /// A small dab's two dispatches were its floor: two thirds of its time was
-/// theirs on the GPU, the rest the CPU making them (11-06, the main PC, 64
-/// dabs warm, µs a dab apart against in turn, by its workgroups — size 12 ·
-/// 15, 2: 27, 15; 18 · 21, 3: 29, 18.5 to 21.5; 24 · 27, 5: 30, 27.6 to
-/// 30.3; 30, 6: 30 to 34, 37 to 42). One workgroup puts a way's strips and
-/// bands one after another, so in turn loses as they grow; 4 keeps clear of
-/// the 5 where the two were even. Size 12 went 22.5 µs a dab in C
+/// theirs on the GPU, the rest the CPU making them. One workgroup puts a
+/// way's strips and bands one after another, so in turn loses as they grow.
+/// µs a dab apart against in turn, 64 dabs warm, by its workgroups (and
+/// radius):
+/// - the main PC's RTX 4080 (11-06): 2 (r 2): 27, 15; 3 (r 3): 29, 18.5 to
+///   21.5; 5 (r 4): 30, 27.6 to 30.3; 6 (r 5): 30 to 34, 37 to 42;
+/// - the Surface's Arc 140V (11-07): 2 (r 2): 30, 22; 3 (r 3): 35 to 37, 32
+///   to 35; 4 (r 4): 40, 49; 5 (r 4): 40, 57; 6 (r 5): 41, 76 to 79.
+/// At 3 no device goes slower than by its two dispatches — the Arc still
+/// gains at 3 and loses a quarter at 4 —, where 4 would set the weaker
+/// device back on that step (the old-device policy, 유저 11-05: 「구형 =
+/// 성능 약한 기기」). The main PC gives up only what it gained at 4, not
+/// measured: no number there turns a stronger device's gain against a
+/// weaker one's loss. One threshold for every device, as
+/// MOST_STRIPS_RADIUS: a device's own would be a rule more (브러시/렌더링,
+/// gpu-canonical-store 11-07 13:24). Size 12 went 22.5 µs a dab in C
 /// (gpu-canonical-store 03:40).
-/// ⏳The Surface's crossing is not measured: it was out of reach that night.
-const MOST_IN_TURN: u32 = 4;
+const MOST_IN_TURN: u32 = 3;
 /// blur_three.wgsl's BLUR_TURN_WORDS: a dab's block, and its rows' and its
 /// columns' workgroups across and down.
 const TURN_WORDS: usize = 5;
@@ -150,8 +158,32 @@ pub(crate) struct Blurs {
     second: Option<wgpu::Buffer>,
 }
 
+/// The pixels the blur of `region` at box radius `radius` reads, [left, top,
+/// right, bottom) — three radii past it each side — or nothing, for no
+/// radius: every tile they are on is the caller's to have ([`Blurs::blur`]).
+pub(crate) fn window_of(region: [i32; 4], radius: u32) -> Option<[i32; 4]> {
+    within(region, radius).map(|within| read_by(&within.words, radius))
+}
+
+/// Whether `dab` blurs anything: a second tip's dab lays nothing on a stroke
+/// with no second plane (`blendDabTilesDart`), so it blurs nothing; nor does a
+/// dab of no region.
+pub(crate) fn blurs_anything(dab: &Dab) -> bool {
+    let [left, top, right, bottom] = dab.region;
+    !dab.second && left < right && top < bottom
+}
+
+/// What the passes `words` at box radius `radius` read: the rows' first pass
+/// reads one radius past what it puts — that is the window —, and its lines
+/// are the window's rows.
+fn read_by(words: &[u32], radius: u32) -> [i32; 4] {
+    let r = radius as i32;
+    let pass = |index, field| word(words, index, field);
+    [pass(0, 2) - r, pass(0, 4), pass(0, 3) + r, pass(0, 5)]
+}
+
 /// The `index`-th pass's word `word` among `passes` (box.wgsl's `BoxPass`:
-/// down, radius, first, end, line_first, line_end, …).
+/// down, radius, first, end, line_first, line_end).
 fn word(passes: &[u32], index: usize, word: usize) -> i32 {
     passes[index * PASS_WORDS + word] as i32
 }
@@ -190,12 +222,8 @@ impl Window {
         let Some(within) = within(dab.region, radius) else {
             return fail("a blur of no radius changes no pixel");
         };
-        let r = radius as i32;
         let pass = |index, field| word(&within.words, index, field);
-        // The rows' first pass reads one radius past what it puts: that is
-        // the window; its lines are the window's rows.
-        let (left, right) = (pass(0, 2) - r, pass(0, 3) + r);
-        let (top, bottom) = (pass(0, 4), pass(0, 5));
+        let [left, top, right, bottom] = read_by(&within.words, radius);
         let lines = u64::from((bottom - top) as u32);
         let ways = match (route, within.rows, within.columns) {
             (Route::Strips, Some(rows), Some(columns)) if radius <= MOST_STRIPS_RADIUS => {
@@ -319,12 +347,21 @@ enum Planned<'a> {
     Apart(usize, &'a Step),
 }
 
-/// A dab's pipelines, compiled for the pages a pass of them binds.
+/// A dab's pipelines for the pages a pass of them binds: a pass a
+/// dispatch's compiled with them, the strips' three — rows, columns, in
+/// turn — where the engine has them or once it does
+/// ([`Blurs::compile_strips`]).
+///
+/// 🗣️관제 2026-11-11 06:42 (gpu-canonical-store ④): 「목록이 끝나기 전에
+/// 블러 브러시로 그으면 UI 가 블러 커널 열 개를 직접 컴파일해 7.0–10.1 s
+/// 멈춘다 — 같은 선이 걸린다」. 🔬The strips' six were nine tenths of the
+/// ten: 4.1 s, 3.9 s and 6.1 s a set against a pass a dispatch's 0.6 s, the
+/// cel's two 0.2 s (main PC beside a test line, 2026-11-11); the ten 7.2 s
+/// on the Surface Pro 11. A pass a dispatch moves the same pixels, slower
+/// ([`Route`]), so a first stroke waits for it alone.
 struct Dispatches {
     pages: Pages,
-    rows: wgpu::ComputePipeline,
-    columns: wgpu::ComputePipeline,
-    in_turn: wgpu::ComputePipeline,
+    strips: [Kernel; 3],
     pass: wgpu::ComputePipeline,
 }
 
@@ -335,28 +372,33 @@ impl Dispatches {
         let (dab, blur) = (include_str!("dab.wgsl"), include_str!("blur.wgsl"));
         let paged = pages.source();
         let way = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, paged.as_str()];
-        let strips = [&way[..], &[THREE_WGSL, blur, include_str!("blur_three.wgsl")]].concat();
+        let three = [&way[..], &[THREE_WGSL, blur, include_str!("blur_three.wgsl")]].concat();
         let passes = [&way[..], &[PASS_WGSL, blur, include_str!("blur_pass.wgsl")]].concat();
+        let entries = ["blur_rows_pass", "blur_columns_pass", "blur_dabs_in_turn"];
         Some(Self {
-            rows: pipeline(engine, &strips, "blur_rows_pass"),
-            columns: pipeline(engine, &strips, "blur_columns_pass"),
-            in_turn: pipeline(engine, &strips, "blur_dabs_in_turn"),
+            strips: entries.map(|entry| Kernel::of(engine, &three, entry)),
             pass: pipeline(engine, &passes, "blur_pass_one"),
             pages,
         })
     }
 
-    fn of(&self, entry: Entry) -> &wgpu::ComputePipeline {
+    /// `entry`'s pipeline: a strip's compiled here where the engine has
+    /// not got it — a test's dab sent by strips; the app sends one once
+    /// they are compiled ([`Blurs::blur`]).
+    fn of(&self, engine: &Engine, entry: Entry) -> &wgpu::ComputePipeline {
+        let [rows, columns, in_turn] = &self.strips;
         match entry {
-            Entry::Rows => &self.rows,
-            Entry::Columns => &self.columns,
-            Entry::InTurn => &self.in_turn,
+            Entry::Rows => rows.pipeline(engine),
+            Entry::Columns => columns.pipeline(engine),
+            Entry::InTurn => in_turn.pipeline(engine),
             Entry::Pass => &self.pass,
         }
     }
 }
 
 impl Blurs {
+    /// A pass a dispatch's kernels and the cel's two compiled: what a
+    /// stroke cannot go without. The strips' are [`Blurs::compile_strips`]'s.
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN.storage, usize::MAX)?;
         let cel_paged = cel_pages.source();
@@ -381,6 +423,9 @@ impl Blurs {
     /// caller waits. Every tile a dab's window meets — what its blur reads,
     /// three radii past it each side — is the caller's to have among
     /// `tiles`.
+    ///
+    /// By strips once the engine has their kernels, a pass a dispatch till
+    /// then: no stroke waits for the strips' compile ([`Dispatches`]).
     pub(crate) fn blur(
         &mut self,
         engine: &Engine,
@@ -390,7 +435,43 @@ impl Blurs {
         picture: &[wgpu::Buffer],
     ) -> Option<()> {
         let pages_per_pass = self.widest.pages.per_pass();
-        self.blur_by(engine, tiles, dabs, paper, picture, (Route::Strips, pages_per_pass))
+        let route = if self.by_strips() { Route::Strips } else { Route::Passes };
+        self.blur_by(engine, tiles, dabs, paper, picture, (route, pages_per_pass))
+    }
+
+    /// Whether the engine has the strips' kernels, each of them: a stroke
+    /// goes by them.
+    pub(crate) fn by_strips(&self) -> bool {
+        let mut strips = [&self.one, &self.widest].into_iter().flat_map(|way| &way.strips);
+        strips.all(|strip| strip.compiled().is_some())
+    }
+
+    /// The strips' kernels compiled, the engine's to keep: every set of
+    /// blurs on it goes by them from its next stroke. On any thread — the
+    /// app's, ahead and off the one its frames are built on.
+    pub(crate) fn compile_strips(engine: &Engine) -> Option<()> {
+        for most in [1, usize::MAX] {
+            for strip in &Dispatches::new(engine, most)?.strips {
+                strip.pipeline(engine);
+            }
+        }
+        Some(())
+    }
+
+    /// The bytes it keeps between its strokes (`between`, `second`).
+    pub(crate) fn bytes(&self) -> u64 {
+        [&self.between, &self.second]
+            .into_iter()
+            .flatten()
+            .map(wgpu::Buffer::size)
+            .sum()
+    }
+
+    /// Lets go of what it keeps between its strokes: the OS says memory is
+    /// tight.
+    pub(crate) fn let_go(&mut self) {
+        self.between = None;
+        self.second = None;
     }
 
     /// `blur`, the passes going by `route` and a dab binding no more than
@@ -407,15 +488,9 @@ impl Blurs {
     ) -> Option<()> {
         // The colour is not the dab's to lay: white and opaque, it measures
         // its coverage alone; and it lays, never erases (BrushBlurPicture).
-        // A second tip's dab lays nothing on a stroke with no second plane
-        // (qa_dab_blend_tile), so it blurs nothing; nor does a dab of no
-        // region.
         let dabs: Vec<(Dab, u32)> = dabs
             .iter()
-            .filter(|(dab, _)| {
-                let [left, top, right, bottom] = dab.region;
-                !dab.second && left < right && top < bottom
-            })
+            .filter(|(dab, _)| blurs_anything(dab))
             .map(|&(dab, radius)| (Dab { colour: [255; 4], erase: false, ..dab }, radius))
             .collect();
         if dabs.is_empty() {
@@ -552,7 +627,7 @@ impl Blurs {
                     bound.extend(whole(&[(3, second)]));
                 }
                 bound.extend(way.pages.entries(of_pages(picture, &window.pages)));
-                Encoded { pipeline: way.of(entry), bound, groups: flat(groups) }
+                Encoded { pipeline: way.of(engine, entry), bound, groups: flat(groups) }
             })
             .collect();
         encode(engine, &dispatches);

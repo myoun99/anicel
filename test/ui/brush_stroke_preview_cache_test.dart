@@ -212,8 +212,9 @@ void main() {
     test('the fan-out cap is a ceiling on LIVE workers, not on requests', () {
       // ⚠️Not a speed claim. The pool exists because a fresh isolate per
       // raster starts with every per-isolate static cold — the tip-stamp
-      // cache, and (this is the point) `QaNativeEngine.instance`, which
-      // would mean opening the engine library once per preset.
+      // cache, and ↩️(this was the point, while the brush was the C's — till
+      // C ABI 80) the C engine's binding, which would have meant opening the
+      // engine library once per preset.
       expect(BrushStrokePreviewCache.rasterWorkersFor(1), 1);
       expect(BrushStrokePreviewCache.rasterWorkersFor(20), 4);
     });

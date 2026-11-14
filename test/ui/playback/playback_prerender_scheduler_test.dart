@@ -31,10 +31,8 @@ import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
-    show CanvasLayerImageRequest, CanvasStackRow;
-import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
-import 'package:anicel/src/models/rgba_image_bytes.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+    show CanvasLayerImageRequest, CanvasStackRow, EngineStackScreen, StackedFrame;
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -43,9 +41,15 @@ import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import 'package:anicel/src/native/engine_chain_holds.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
 
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  opensTheEnginesScreens();
+  // Two tiles across and two down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
 
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
       BrushFrameKey(
@@ -89,9 +93,9 @@ void main() {
   /// its rows, on its paper — and nothing ghosting over it.
   FramePictures picturesOver(
     LayerFrameImageCache layerImages, {
-    FramePictureGpu? gpu,
+    EngineFramePictureStore<FramePictureKey>? laidBy,
   }) {
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = laidBy ?? aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
@@ -112,7 +116,7 @@ void main() {
 
   /// The picture frame [frameIndex] of [cut] shows, or null while it is not
   /// made.
-  ui.Image? shownAt(FramePictures pictures, Cut cut, int frameIndex) =>
+  EngineFramePicture? shownAt(FramePictures pictures, Cut cut, int frameIndex) =>
       pictures.store
           .peek(
             pictures.keyOf((
@@ -121,22 +125,21 @@ void main() {
               paintPaper: true,
               ghosts: FrameGhosts.none,
             )),
-          )
-          ?.image;
+          );
 
   /// A cel's pixels as an open donates them — baked, under a key no
   /// coordinator drew on.
   BitmapSurface inkedSurface() {
-    final pixels = Uint8List(4 * 4 * 4);
+    final pixels = Uint8List(tileSide * tileSide * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 31 + 7) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: tileSide,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
-          size: 4,
+          size: tileSide,
           pixels: pixels,
         ),
       },
@@ -160,7 +163,7 @@ void main() {
       frameStore: store,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: tileSide,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     );
@@ -577,7 +580,7 @@ void main() {
       f.coordinator.commitSourceStroke(
         sourceDabs: [
           BrushDab(
-            center: CanvasPoint(x: 5, y: 5),
+            center: CanvasPoint(x: tileSide + 1.0, y: tileSide + 1.0),
             color: 0xFF000000,
             size: 2,
             opacity: 1,
@@ -748,11 +751,8 @@ void main() {
   /// followed from the frame under its playhead, at once, and only as far as
   /// the allowance holds.
   group('a run that plays', () {
-    // A frame of the page as its picture lies ([pictureExtentOf]).
-    final pictureBytes = estimatedImageBytes(
-      pictureExtentOf(canvasSize.canvasRect).width.round(),
-      pictureExtentOf(canvasSize.canvasRect).height.round(),
-    );
+    // A frame of the page as its picture lies.
+    final pictureBytes = EngineStackScreen.bytesOver(canvasSize.canvasRect);
 
     // Four frames, four pictures: each frame its own cel, so no two share a
     // picture and what was made says which frame was asked.
@@ -808,14 +808,15 @@ void main() {
     /// A cel inked across [four]'s canvas, and [past] tiles past every edge.
     BitmapSurface inkedOut(int past) => BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: tileSide,
       tiles: {
         for (var y = -past; y <= 1 + past; y += 1)
           for (var x = -past; x <= 1 + past; x += 1)
             TileCoord(x: x, y: y): BitmapTile(
-              size: 4,
+              size: tileSide,
               pixels: Uint8List.fromList([
-                for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+                for (var i = 0; i < tileSide * tileSide; i += 1)
+                  ...[0, 0, 0, 255],
               ]),
             ),
       },
@@ -851,15 +852,15 @@ void main() {
           frameStore: store,
           sessionStore: BrushFrameEditSessionStore(
             canvasSize: canvasSize,
-            tileSize: 4,
+            tileSize: tileSide,
           ),
           historyPolicy: const BrushHistoryPolicy(),
         ).commitSourceStroke(
           sourceDabs: [
             BrushDab(
-              center: CanvasPoint(x: 4, y: 4),
+              center: CanvasPoint(x: tileSide * 1.0, y: tileSide * 1.0),
               color: 0xFF000000,
-              size: 6,
+              size: tileSide * 1.5,
               opacity: 1,
               flow: 1,
               hardness: 1,
@@ -909,10 +910,10 @@ void main() {
         'it waits for comes back', (tester) async {
       await tester.runAsync(() async {
         final f = inked();
-        final gpu = _RastersInTurn();
+        final gpu = _LaysInTurn();
         final asked = <FrameId>{};
         final scheduler = PlaybackPrerenderScheduler(
-          pictures: picturesOver(f.layerImages, gpu: gpu),
+          pictures: picturesOver(f.layerImages, laidBy: gpu),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
           beforeCompose: (_, frameIndex) async =>
@@ -972,13 +973,13 @@ void main() {
             store,
             frameKey(six(), const LayerId('layer'), FrameId('f$index')),
             canvasSize: canvasSize,
-            at: CanvasPoint(x: 4, y: 4),
-            size: 6,
-            tileSize: 4,
+            at: CanvasPoint(x: tileSide * 1.0, y: tileSide * 1.0),
+            size: tileSide * 1.5,
+            tileSize: tileSide,
           );
         }
         final images = LayerFrameImageCache(frameStore: store);
-        final gpu = _RastersInTurn();
+        final gpu = _LaysInTurn();
         final asked = <FrameId>{};
         // What the walk asks, and the picture a raster let through brings
         // back, COME — and are waited for as anything that comes is: by
@@ -995,7 +996,7 @@ void main() {
         }
 
         final scheduler = PlaybackPrerenderScheduler(
-          pictures: picturesOver(images, gpu: gpu),
+          pictures: picturesOver(images, laidBy: gpu),
           resolveCut: (_) => six(),
           idleDelay: Duration.zero,
           beforeCompose: (_, frameIndex) async =>
@@ -1670,43 +1671,44 @@ class _Room implements PictureRoom {
       );
 }
 
-/// A GPU whose rasters come back each when it is let through, by the order
-/// they were asked in ([letThrough]) — the store lays one at a time, so the
-/// first waits and the rest queue behind it. It holds no texture: no patch
-/// is written here.
-class _RastersInTurn implements FramePictureGpu {
+/// A store whose lays go on each when it is let through, by the order they
+/// were asked in ([letThrough]) — a walk lays one at a time, so the first
+/// waits and the rest queue behind it.
+class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
+  _LaysInTurn() : super(tools: () => appEngineFrameTools);
+
   final _turns = <int, Completer<void>>{};
   int _asked = 0;
 
-  /// How many rasters came back.
+  /// How many lays went on.
   int rastered = 0;
 
-  /// Lets the [turn]th raster asked for come back — now, or once asked.
+  /// Lets the [turn]th lay asked for go on — now, or once asked.
   void letThrough(int turn) =>
       _turns.putIfAbsent(turn, Completer<void>.new).complete();
 
   @override
-  Future<ui.Image> render(ui.Picture picture, int width, int height) async {
+  Future<EngineFramePicture?> lay(
+    FramePictureKey key,
+    StackedFrame frame, {
+    bool shownNow = false,
+    bool Function() gone = _stays,
+    ({FramePictureKey film, ui.Rect fresh})? over,
+    EngineChainHolds? holds,
+  }) async {
     await _turns.putIfAbsent(_asked++, Completer<void>.new).future;
     rastered += 1;
-    return picture.toImage(width, height);
+    return super.lay(
+      key,
+      frame,
+      shownNow: shownNow,
+      gone: gone,
+      over: over,
+      holds: holds,
+    );
   }
 
-  @override
-  Object? hold(ui.Image image) => null;
-
-  @override
-  Object? allocate(int width, int height) => null;
-
-  @override
-  int levelsOf(Object held) => 1;
-
-  @override
-  ui.Image imageOf(Object held) => throw UnsupportedError('holds no texture');
-
-  @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
-      throw UnsupportedError('holds no texture');
+  static bool _stays() => false;
 }
 
 /// An image cache that counts the readings of the cel [frameId]'s stored

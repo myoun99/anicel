@@ -1,5 +1,5 @@
 /// How a `HistoryManager`'s steps are run against the project behind it —
-/// the hook its session gives it (`ConteStepScope`, F-343).
+/// the hook its session gives it (`RepositoryStepScope`, F-343).
 ///
 /// A step's writes can make what its own undo does not take back: a write
 /// is laid by the repository's invariants as well, and those answer the

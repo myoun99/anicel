@@ -1,4 +1,3 @@
-import 'dart:ffi' show Pointer, Uint16, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -9,14 +8,11 @@ import '../models/brush_tip_mask.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
-import '../models/tile_coord.dart';
-import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_share.dart';
 import 'brush_dab_tip_geometry.dart';
 import 'brush_stroke_blend.dart';
 import 'brush_tip_mask_sampling.dart';
-import 'native_tile_span_batch.dart';
 
 /// THE geometric dab kernel — the one both raster routes run.
 ///
@@ -48,31 +44,27 @@ import 'native_tile_span_batch.dart';
 /// the pixel loop, so this costs nothing per pixel even in a debug build,
 /// where nothing inlines.
 ///
-/// The C kernel (`qa_dab_blend_tile`) is a THIRD transcription and stays
-/// one: it is a different language, gated behind the ABI version, and
-/// pinned byte-exact by its own parity suite.
+/// The engine's kernel (`dab.wgsl`) is another transcription and stays one:
+/// it is a different language and rounds apart — in integers, where this
+/// one rounds doubles (`a_dab_reaches_the_engine_whole_test` holds the two
+/// within that). ↩️Till 2026-11-12 the C engine held a third
+/// (`qa_dab_blend_tile`), pinned to this one byte for byte; it went with
+/// the C, and its laws' texts came to the Dart they were transcribed from.
 
-/// One stroke tile as the Dart route holds it: the RGBA [bytes] everything
+/// One stroke tile as this kernel holds it: the RGBA [bytes] everything
 /// downstream reads, and the [wide] plane — RGBA at 16 bits, alpha * 65535
 /// and a channel * 257 — that its dabs pile up in.
 ///
-/// 🚨The law and its reasons are written once, beside `qa_dab_store` in
-/// qa_engine.c (ABI 40, 유저 2026-10-01 「a는 제안한대로 16비트?」): a dab
-/// reads what is under it from [wide] and writes both planes from the same
-/// double, so [bytes] is [wide]'s view and nothing downstream changes. A
-/// stroke with a second tip carries its [second] plane too, alpha * 65535,
-/// and [bytes] is then the view of the two (`qa_dual_view_rows`, ABI 60).
+/// 🚨The law and its reasons are written once, beside `StrokePixel` (ABI
+/// 40, 유저 2026-10-01 「a는 제안한대로 16비트?」): a dab reads what is under
+/// it from [wide] and writes both planes from the same double, so [bytes]
+/// is [wide]'s view and nothing downstream changes. A stroke with a second
+/// tip carries its [second] plane too, alpha * 65535, and [bytes] is then
+/// the view of the two (`dualViewAlpha`, ABI 60).
 typedef BrushDabTileBuffers = ({
   Uint8List bytes,
   Uint16List wide,
   Uint16List? second,
-});
-
-/// The same planes as the C route holds them.
-typedef BrushDabTilePointers = ({
-  Pointer<Uint8> pixels,
-  Pointer<Uint16> wide,
-  Pointer<Uint16>? second,
 });
 
 /// Everything one dab needs, resolved once: the clipped bounds, the tip
@@ -114,6 +106,7 @@ class BrushDabPlan {
     required this.textureDensity,
     required this.textureOneMinusDensity,
     required this.textureMode,
+    required this.textureScale,
     required this.tipULattice,
     required this.tipVLattice,
     required this.textureULattice,
@@ -145,7 +138,8 @@ class BrushDabPlan {
   final double centerY;
 
   /// The tip, as the coverage law reads it ([tipCoverageAt]) — the Dart
-  /// loop hands it over whole, the native spec copies its numbers out.
+  /// loop hands it over whole, the engine's dab copies its numbers out
+  /// (`GpuDab`).
   final BrushDabTipGeometry tip;
 
   /// The edge step, hoisted out of the pixel loop ([brushDabEdgeLaw]).
@@ -193,6 +187,9 @@ class BrushDabPlan {
 
   /// How the paper meets the coverage — see [BrushDab.textureMode].
   final BrushTextureMode textureMode;
+
+  /// Canvas pixels a texel of the paper — see [BrushDab.textureScale].
+  final double textureScale;
 
   final BrushTipMaskAxisLattice? tipULattice;
   final BrushTipMaskAxisLattice? tipVLattice;
@@ -288,6 +285,7 @@ class BrushDabPlan {
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
       textureMode: dab.textureMode,
+      textureScale: dab.textureScale,
       tipULattice: unrotatedTip
           ? BrushTipMaskAxisLattice.compute(
               mask: tipMask,
@@ -332,244 +330,13 @@ class BrushDabPlan {
   }
 }
 
-/// Collects the dabs a route blends and hands them to the C kernel a batch
-/// at a time — the one way both routes reach it.
+/// The Dart tile blend: the per-pixel reference's pixel visits and float
+/// math, straight into each tile's byte buffer.
 ///
-/// 🚨A CALL IS A BATCH, NOT A DAB (ABI 38, 2026-09-24, board
-/// `preset-spacing-minimum`). At the 1% spacing the presets moved to, a
-/// stroke lays a dab about every pixel, and one pooled call per dab woke
-/// the workers once a dab — ~0.2 ms each on a 20-thread desktop, as long
-/// as a 100 px dab takes alone, so the pool bought nothing below 200 px
-/// (`qa_dab_blend_batch` has the numbers). A batch is woken for once.
-///
-/// A batch ends where its masks would outgrow what the native mask cache
-/// holds at once ([QaNativeEngine.batchMaskAllowance]) — every spec in the
-/// batch points at an upload, and the cache only promises its newest — and
-/// at [maxDabs], which bounds the lattice arena one call holds. ⛔NOT at
-/// every change of mask: a pen stroke's dabs carry a tip resolved per
-/// quantized size (`BrushTipStampCache`), so pressure changes the mask
-/// every few dabs, and a cut there would bring back the call a dab. Either
-/// cut leaves the bytes alone — the dabs still land in their order.
-class NativeDabBatcher {
-  NativeDabBatcher(
-    this.native, {
-    required this.tileSize,
-    required this.planesFor,
-    this.onTileChanged,
-  });
-
-  final QaNativeEngine native;
-  final int tileSize;
-
-  /// The tile's native planes, CREATED if this batch is the first to touch
-  /// the tile.
-  final BrushDabTilePointers Function(TileCoord coord) planesFor;
-
-  /// Each tile a batch changed — the commit adopts exactly those; the live
-  /// overlay passes null.
-  final void Function(TileCoord coord)? onTileChanged;
-
-  static const int maxDabs = 64;
-
-  final List<BrushDabPlan> _pending = [];
-
-  /// The distinct masks the pending batch uploads, and their bytes.
-  final Set<BrushTipMask> _masks = Set<BrushTipMask>.identity();
-  int _maskBytes = 0;
-
-  /// Queues [plan] behind the dabs before it, first flushing the batch it
-  /// cannot join.
-  void add(BrushDabPlan plan) {
-    var fresh = _freshMasks(plan);
-    if (_pending.isNotEmpty && !_fits(fresh)) {
-      flush();
-      fresh = _freshMasks(plan);
-    }
-    _pending.add(plan);
-    for (final mask in fresh) {
-      _masks.add(mask);
-      _maskBytes += _uploadBytes(mask);
-    }
-  }
-
-  bool _fits(Set<BrushTipMask> fresh) {
-    if (_pending.length == maxDabs) {
-      return false;
-    }
-    final allowance = native.batchMaskAllowance;
-    var bytes = _maskBytes;
-    for (final mask in fresh) {
-      bytes += _uploadBytes(mask);
-    }
-    return _masks.length + fresh.length <= allowance.count &&
-        bytes <= allowance.bytes;
-  }
-
-  Set<BrushTipMask> _freshMasks(BrushDabPlan plan) => {
-    for (final mask in [plan.tipMask, plan.textureMask])
-      if (mask != null && !_masks.contains(mask)) mask,
-  };
-
-  /// The bytes the engine uploads for [mask] — its normalized alpha, a
-  /// double a texel.
-  static int _uploadBytes(BrushTipMask mask) => mask.size * mask.size * 8;
-
-  /// Blends every queued dab — before anything reads the tiles, and before
-  /// a dab of another kind (a stamp) lands on them.
-  void flush() {
-    if (_pending.isEmpty) {
-      return;
-    }
-    final blended = blendDabBatchNative(
-      _pending,
-      native,
-      tileSize: tileSize,
-      planesFor: planesFor,
-    );
-    _pending.clear();
-    _masks.clear();
-    _maskBytes = 0;
-    final sink = onTileChanged;
-    if (sink == null) {
-      return;
-    }
-    for (final coord in changedTileCoords(blended.changed, blended.coords)) {
-      sink(coord);
-    }
-  }
-}
-
-/// Hands [plans] to the C kernel in ONE call: each dab staged at its index,
-/// one span per tile the batch covers ([stageTileSpansCovering]), one
-/// pooled call that applies them in order.
-///
-/// Returns the per-tile changed flags the kernel wrote (valid until the
-/// next batch) beside the coordinates they index, in span order.
-({Uint8List changed, List<TileCoord> coords}) blendDabBatchNative(
-  List<BrushDabPlan> plans,
-  QaNativeEngine native, {
-  required int tileSize,
-  required BrushDabTilePointers Function(TileCoord coord) planesFor,
-}) {
-  native.beginDabBatch(plans.length);
-  for (var index = 0; index < plans.length; index += 1) {
-    _prepareDab(native, index, plans[index]);
-  }
-  final coords = stageTileSpansCovering(
-    native,
-    clips: [for (final plan in plans) plan.clip],
-    tileSize: tileSize,
-    planesFor: planesFor,
-  );
-  // A stroke's view is one for all its dabs ([BrushDab.dual]).
-  final dual = plans.first.dual;
-  assert(
-    plans.every((plan) => plan.dual == dual),
-    'a batch is one stroke\'s, and a stroke has one view',
-  );
-  return (
-    changed: native.dabBlendBatch(
-      tileCount: coords.length,
-      dabCount: plans.length,
-      tileSize: tileSize,
-      view: dual == null
-          ? null
-          : (
-              mode: separableBlendModeNativeId(dual.compositeMode),
-              density: dual.density,
-            ),
-    ),
-    coords: coords,
-  );
-}
-
-/// Stages [plan] alone as the engine's dab batch and returns its spec — how
-/// a kernel other than the dab blend reads a dab (the blur's coverage,
-/// I-75): the same fields, staged by the same call.
-Pointer<QaDabSpecStruct> stageDabAlone(
-  QaNativeEngine native,
-  BrushDabPlan plan,
-) {
-  native.beginDabBatch(1);
-  _prepareDab(native, 0, plan);
-  return native.stagedDabSpecs;
-}
-
-void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
-  native.prepareDabAt(
-    index,
-    clipLeft: plan.left,
-    clipTop: plan.top,
-    clipRightExclusive: plan.rightExclusive,
-    clipBottomExclusive: plan.bottomExclusive,
-    centerX: plan.centerX,
-    centerY: plan.centerY,
-    radius: plan.tip.radius,
-    roundScale: plan.tip.profile?.scale ?? 0.0,
-    roundReach: plan.tip.reach,
-    roundInner: plan.tip.profile?.inner ?? 0.0,
-    roundRowLength: (plan.tip.profile?.rowLength ?? 0).toDouble(),
-    minorRadius: plan.tip.minorRadius,
-    tipCos: plan.tip.tipCos,
-    tipSin: plan.tip.tipSin,
-    inverseRoundness: plan.tip.inverseRoundness,
-    dabOpacity: plan.dabOpacity,
-    dabFlow: plan.dabFlow,
-    sourceAlphaNorm: plan.sourceAlphaNorm,
-    radiusSqSkip: plan.radiusSqSkip,
-    textureDensity: plan.textureDensity,
-    textureOneMinusDensity: plan.textureOneMinusDensity,
-    aaContrast: plan.aaContrast,
-    sourceR: plan.sourceR,
-    sourceG: plan.sourceG,
-    sourceB: plan.sourceB,
-    flags:
-        (plan.erase ? QaNativeEngine.dabFlagErase : 0) |
-        (plan.tip.isRound ? QaNativeEngine.dabFlagRound : 0) |
-        (plan.tip.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
-        (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
-        (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0) |
-        (plan.edgeHeld ? QaNativeEngine.dabFlagEdgeHeld : 0) |
-        (plan.second ? QaNativeEngine.dabFlagSecond : 0) |
-        (plan.textureMode == BrushTextureMode.height
-            ? QaNativeEngine.dabFlagTextureHeight
-            : 0),
-    regionLeft: plan.left,
-    regionTop: plan.top,
-    tipAlpha: plan.tipMask?.alphaNormalized,
-    tipSize: plan.tipMask?.size ?? 0,
-    tipUTexel0: plan.tipULattice?.texel0,
-    tipUFraction: plan.tipULattice?.fraction,
-    tipUOneMinus: plan.tipULattice?.oneMinusFraction,
-    tipUInRange: plan.tipULattice?.inRange,
-    tipVTexel0: plan.tipVLattice?.texel0,
-    tipVFraction: plan.tipVLattice?.fraction,
-    tipVOneMinus: plan.tipVLattice?.oneMinusFraction,
-    tipVInRange: plan.tipVLattice?.inRange,
-    texAlpha: plan.textureMask?.alphaNormalized,
-    texSize: plan.textureMask?.size ?? 0,
-    texUTexel0: plan.textureULattice?.texel0,
-    texUTexel1: plan.textureULattice?.texel1,
-    texUFraction: plan.textureULattice?.fraction,
-    texUOneMinus: plan.textureULattice?.oneMinusFraction,
-    texVTexel0: plan.textureVLattice?.texel0,
-    texVTexel1: plan.textureVLattice?.texel1,
-    texVFraction: plan.textureVLattice?.fraction,
-    texVOneMinus: plan.textureVLattice?.oneMinusFraction,
-    // Only the lattice path narrows its rows by the ink (ABI 39).
-    tipRowInk: plan.unrotatedTip ? plan.tipMask!.inkedColumns : null,
-    evening: plan.evening,
-    roundCoverage: plan.tip.profile?.coverage,
-    roundPile: plan.edgeHeld ? plan.tip.profile?.pile : null,
-  );
-}
-
-/// The Dart reference blend: the same pixel visits and the same float
-/// math the C kernel runs, straight into each tile's byte buffer.
-///
-/// This is the oracle AND the no-engine fallback, so every expression
-/// below keeps its exact grouping — the parity suites pin commit == live
-/// == native == the per-pixel reference pipeline.
+/// This is what a stroke runs on any grid but the engine's, and the oracle
+/// the engine's kernel is held to, so every expression below keeps its
+/// exact grouping — the parity suites pin commit == live == the per-pixel
+/// reference pipeline.
 ///
 /// [bufferFor] returns the tile's two planes, creating them if needed;
 /// it is called once per (row, tile), never per pixel. [onTileChanged]
@@ -620,11 +387,12 @@ void blendDabTilesDart(
   final bottomExclusive = plan.bottomExclusive;
   final tileXStart = plan.tileXStart;
   final tileXEnd = plan.tileXEnd;
-  // A second tip's dab piles over, never erases (`qa_dab_blend_tile`).
+  // A second tip's dab piles on the second plane as any dab piles over its
+  // alpha — over, never an erase — and the view shows it.
   final erase = plan.erase && !second;
   final evening = plan.evening;
   final edgeHeld = plan.edgeHeld;
-  // The dab's colour on the 16-bit plane (`qa_dab_over_own_colour`).
+  // The dab's colour on the 16-bit plane (`strokeSourceOverAt` has why).
   final ownR = sourceR * 257;
   final ownG = sourceG * 257;
   final ownB = sourceB * 257;
@@ -738,8 +506,8 @@ void blendDabTilesDart(
             ? levels![pixel] / 65535.0
             : wide[offset + 3] / 65535.0;
         // 🚨★★★A DAB SETTLES AT ITS OPACITY (F-205) — the law and its
-        // reasons are written once, beside `qa_dab_source_alpha` in
-        // qa_engine.c; this is its arithmetic, operation by operation.
+        // reasons are written once, beside `settledDabAlpha`
+        // (brush_pixel_blend.dart); this is its arithmetic, written inline.
         // Opacity 1 (or an erase) is the old grouping,
         // ((a/255) * (dab.opacity * coverage)) * flow. What the dab would
         // lay whole goes through its share first (`stampShareOf`).
@@ -769,7 +537,7 @@ void blendDabTilesDart(
         var outA = 0;
         if (second) {
           // The second plane piles as any dab piles over its alpha —
-          // `qa_dab_store`'s alpha, the same grouping.
+          // `StrokePixel.rounded`'s alpha, the same grouping.
           final piled = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
           final stored = (piled * 65535.0).round().clamp(0, 65535);
           if (stored != levels![pixel]) {
@@ -790,7 +558,7 @@ void blendDabTilesDart(
           } else {
             outAlpha = sourceAlpha + destinationAlpha * inverseSourceAlpha;
             // Over nothing or over its own colour the dab lands its own
-            // colour exactly (`qa_dab_over_own_colour`).
+            // colour exactly (`strokeSourceOverAt` has the law).
             if (outAlpha != 0.0 &&
                 (wide[offset + 3] == 0 ||
                     (wide[offset] == ownR &&
@@ -821,9 +589,9 @@ void blendDabTilesDart(
             }
           }
           // Both planes from the same doubles, each written only where it
-          // moves — `qa_dab_store`'s arithmetic, operation by operation: the
-          // view rounded from the double, never from the plane, and the
-          // change set the view's.
+          // moves — `StrokePixel.rounded`'s arithmetic, as the tile holds
+          // it: the view rounded from the double, never from the plane, and
+          // the change set the view's.
           var wideR = 0;
           var wideG = 0;
           var wideB = 0;
@@ -866,8 +634,8 @@ void blendDabTilesDart(
         }
         if (levels != null) {
           // A tile with a second plane shows its view of the two planes as
-          // they stand after the dab (`qa_dual_view_rows`, which has the
-          // law: [dualViewAlpha]). Every tile of such a stroke has had its
+          // they stand after the dab ([dualViewAlpha] has the law). Every
+          // tile of such a stroke has had its
           // second plane from the first, so only a pixel whose planes the
           // dab moved can show anything new: the view is rebuilt here, the
           // reference's own road, pixel by pixel.

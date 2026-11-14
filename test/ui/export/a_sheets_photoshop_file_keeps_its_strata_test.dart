@@ -337,16 +337,16 @@ void main() {
     return session;
   }
 
-  testWidgets('a still this machine cannot write is off in every document\'s '
-      'list, saying why, and the PSD beside it on — the Format module\'s law',
-      (tester) async {
-    // A binary with no JPG encoder.
-    final noJpg = ExportFormatAvailability(
+  // ↩️A still this machine could not write stood off here, saying why — JPG
+  // on a binary without the C engine's encoder — until the connection round
+  // (connection-round-checklist H): the engine's ships with the app.
+  testWidgets('every document\'s list offers every still on, the PSD among '
+      'them — the Format module\'s law', (tester) async {
+    final machine = ExportFormatAvailability(
       encoderResolver: () => null,
       ffmpegCheck: () async => true,
-      jpgSupported: false,
     );
-    addTearDown(noJpg.dispose);
+    addTearDown(machine.dispose);
     AppExport.settings.value = AppExportSettings(
       lastSpecs: const ExportTabSpecs(
         cels: CelsExportSpec(
@@ -354,7 +354,7 @@ void main() {
         ),
       ),
     );
-    await pumpDialog(tester, sheetFilm(), tab: 'cels', availability: noJpg);
+    await pumpDialog(tester, sheetFilm(), tab: 'cels', availability: machine);
 
     /// The pictures [prefix]'s list offers, each as whether it takes a pick
     /// and what it says.
@@ -377,9 +377,7 @@ void main() {
 
     Map<String, (bool, String?)> offered(String prefix) => {
       for (final format in ExportStillFormat.values)
-        '$prefix-${format.jsonValue}': format == ExportStillFormat.jpg
-            ? (false, strings.exNotInThisBuild)
-            : (true, null),
+        '$prefix-${format.jsonValue}': (true, null),
     };
 
     for (final prefix in ['export-tsformat', 'export-envelope-format']) {

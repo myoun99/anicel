@@ -187,26 +187,11 @@ void main() {
       expect(next.videoCodec, ExportVideoCodec.h264);
     });
 
-    testWidgets('a format this build cannot write is passed over for the '
+    // ↩️A still this build could not write was passed over too, until every
+    // still was written wherever the app runs (connection-round-checklist H,
+    // 관제 2026-11-08 08:23).
+    testWidgets('a container this build cannot write is passed over for the '
         'first one it can', (tester) async {
-      final stillOff = await pick(
-        tester,
-        'export-format-kind-still',
-        button: 'export-format-kind',
-        selection: const ExportFormatSelection(
-          kind: ExportMediaKind.video,
-          stillFormat: ExportStillFormat.jpg,
-        ),
-        caps: ExportFormatCapabilities(
-          stills: ExportStillFormat.values,
-          video: const {
-            ExportVideoContainer.mp4: [ExportVideoCodec.h264],
-          },
-          stillEnabled: (format) => format != ExportStillFormat.jpg,
-        ),
-      );
-      expect(stillOff!.stillFormat, ExportStillFormat.png);
-
       final movOff = await pick(
         tester,
         'export-format-kind-video',

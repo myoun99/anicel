@@ -6,19 +6,16 @@
 //! outline (S2c, `softenMaskBoundary`), in `buildSelectionMask`'s order.
 //! The hard mask itself is `region`'s (S1, the app's `maskFor`). A bucket
 //! fill finishes what it flooded with the same grow and soften
-//! (`_cropAndFinishFloodRegion`, gpu-canonical-store stage 5), its soften
-//! past the outline as well, and its gap close measures by the feather's
-//! distances (`_gapCloseFloodRegion`).
+//! (gpu-canonical-store stage 5), its soften past the outline as well, and
+//! its gap close measures by the feather's distances.
 //!
 //! A mask is a plane of bytes over its box (`MaskBox`) — the app's
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
 //! layout.
 
-// ⏳Nothing outside the tests reads a mask until the canvas's verbs come to
-// the engine (gpu-canonical-store, stage 4).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
 pub(crate) mod region;
+pub(crate) mod within;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -63,6 +60,46 @@ impl MaskBox {
     /// The plane's bytes: its rows of words.
     pub(crate) fn bytes(&self) -> u64 {
         u64::from(self.stride()) * u64::from(self.height) * 4
+    }
+
+    /// `bytes` — a byte a pixel, row after row, the app's `Uint8List` as it
+    /// is — as the plane holds them: each row padded to whole words with 0.
+    pub(crate) fn words_of(&self, bytes: &[u8]) -> Vec<u32> {
+        let word = |four: &[u8]| {
+            let mut word = [0; 4];
+            word[..four.len()].copy_from_slice(four);
+            u32::from_le_bytes(word)
+        };
+        bytes.chunks_exact(self.width as usize).flat_map(|row| row.chunks(4).map(word)).collect()
+    }
+
+    /// `plane` — the plane's bytes as a pass put them — row after row
+    /// without the padding: the app's `Uint8List` again
+    /// ([`Self::words_of`], back).
+    pub(crate) fn rows_of<'a>(&self, plane: &'a [u8]) -> impl Iterator<Item = &'a [u8]> {
+        let (stride, width) = (self.stride() as usize * 4, self.width as usize);
+        plane.chunks_exact(stride).take(self.height as usize).map(move |row| &row[..width])
+    }
+
+    /// `plane` — its bytes on the GPU — copied into `into` once the GPU is
+    /// done: a byte a pixel, row after row, the app's `Uint8List` as it is.
+    /// False where `into` is not the box's width × height, or on failure;
+    /// see the last error. ⛔ONE READ: the fill's finished mask was read so
+    /// on its own, and the app's masks came as a second (11-14, the same
+    /// lines).
+    pub(crate) fn read_into(&self, engine: &Engine, plane: &wgpu::Buffer, into: &mut [u8]) -> bool {
+        let width = self.width as usize;
+        if into.len() != width * self.height as usize {
+            fail::<()>(format!("{} bytes are not a mask of {self:?}", into.len()));
+            return false;
+        }
+        let Some(read) = engine.read_buffer(plane) else {
+            return false;
+        };
+        for (into, row) in into.chunks_exact_mut(width).zip(self.rows_of(&read)) {
+            into.copy_from_slice(row);
+        }
+        true
     }
 
     /// A distance plane's bytes: two distances to a word.
@@ -276,7 +313,7 @@ impl MaskPasses {
     }
 
     /// `mask` — bytes over `size`, 255 where a fill flooded — finished as
-    /// the fill finishes it (`_cropAndFinishFloodRegion`): grown `expand`
+    /// the fill finishes it: grown `expand`
     /// generations, then, where it anti-aliases, softened past its outline
     /// as well as in. A new plane — or none where neither runs, whose mask
     /// is finished as it is. Submits the work; the caller waits.
@@ -307,8 +344,8 @@ impl MaskPasses {
 
     /// The 3-4 chamfer distance (`chamferDistance34`, in mask.wgsl's layout)
     /// from every pixel of `mask` — bytes over `size` — to the nearest whose
-    /// byte is `zero_when`, as the fill's gap close measures it
-    /// (`_gapCloseFloodRegion`): the box's edge is no barrier. Relaxed
+    /// byte is `zero_when`, as the fill's gap close measures it: the box's
+    /// edge is no barrier. Relaxed
     /// `generations` times: a distance a path of no more steps reaches —
     /// every one up to 3 × `generations`, a step being 3 or 4 — is the
     /// app's, and the rest lie no nearer than theirs. Submits the work; the

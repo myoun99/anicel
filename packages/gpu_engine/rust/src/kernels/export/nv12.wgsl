@@ -1,7 +1,8 @@
 // A frame as a movie encoder takes it: NV12 — 4:2:0 BT.601 studio range,
-// the app's colour law for movies (packages/qa_native/src/qa_yuv601.h,
-// `qa_yuv601_from_rgba`) — converted before the readback, so 1.5 bytes a
-// pixel cross to the CPU instead of 4 (gpu-export-path ①a).
+// the app's colour law for movies (video's `colour::from_rgba`,
+// packages/gpu_engine/rust/native/video/src/colour.rs) — converted before
+// the readback, so 1.5 bytes a pixel cross to the CPU instead of 4
+// (gpu-export-path ①a).
 //
 // The law's numbers, all of them:
 //   Y  = ((66R + 129G + 25B + 128) >> 8) + 16
@@ -9,17 +10,19 @@
 //   Cr = ((112R - 94G - 18B + 128) >> 8) + 128
 // a 2x2 block's chroma from its top-left pixel, and white past the picture
 // — the encoder's even size. WGSL's `>>` on an i32 is arithmetic (§8.10),
-// as the law's C compilers do it, so a negative sum floors the same way.
+// as the law's Rust `>>` on an i32 is, so a negative sum floors alike.
 // Integers only: a float step may be fused or reassociated on one device
 // and not another (fill.wgsl).
 //
 // The picture's alpha is not read, as the law reads none.
 //
-// Needs tile.wgsl and frame.wgsl before it.
+// Needs tile.wgsl and its picture's reads (frame.wgsl or
+// frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame.wgsl,
+  // frame_shown.wgsl).
+  stride: u32,
   // The picture.
   src_width: u32,
   src_height: u32,
@@ -34,7 +37,6 @@ struct Params {
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 @group(0) @binding(2) var<storage, read_write> nv12: array<u32>;
 
 // Pixel (x, y)'s red, green and blue; white past the picture — the
@@ -45,7 +47,7 @@ fn rgb_at(x: u32, y: u32) -> vec3<i32> {
   if (x >= params.src_width || y >= params.src_height) {
     return vec3<i32>(255);
   }
-  let word = frame[frame_word(params.columns, x, y)];
+  let word = frame_straight(x, y);
   return vec3<i32>(
     i32(word & 0xffu),
     i32((word >> 8u) & 0xffu),

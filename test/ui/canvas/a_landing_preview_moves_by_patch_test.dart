@@ -67,7 +67,6 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -77,7 +76,10 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
 void main() {
-  const side = 32;
+  opensTheEnginesScreens();
+  // Two tiles across at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const side = 2 * tileSide;
   const canvasSize = CanvasSize(width: side, height: side);
   const viewSize = Size(side * 1.0, side * 1.0);
   final screen = GlobalKey();
@@ -104,19 +106,23 @@ void main() {
 
   /// One tile of [colour] at the pixels [inked] says, clear elsewhere.
   BitmapTile tileOf(List<int> colour, bool Function(int x, int y) inked) {
-    final pixels = Uint8List(16 * 16 * 4);
-    for (var y = 0; y < 16; y += 1) {
-      for (var x = 0; x < 16; x += 1) {
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    for (var y = 0; y < tileSide; y += 1) {
+      for (var x = 0; x < tileSide; x += 1) {
         if (inked(x, y)) {
-          pixels.setRange((y * 16 + x) * 4, (y * 16 + x) * 4 + 4, colour);
+          pixels.setRange(
+            (y * tileSide + x) * 4,
+            (y * tileSide + x) * 4 + 4,
+            colour,
+          );
         }
       }
     }
-    return BitmapTile(size: 16, pixels: pixels);
+    return BitmapTile(size: tileSide, pixels: pixels);
   }
 
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: tiles);
+      BitmapSurface(canvasSize: canvasSize, tileSize: tileSide, tiles: tiles);
 
   /// What the text tool floats over a text's hole, as it carries the text:
   /// a 4×4 square of red ink at the far corner of a tile of its own, moved
@@ -125,7 +131,7 @@ void main() {
     surface: surfaceOf({
       TileCoord(x: 0, y: 0): tileOf(
         [0xFF, 0, 0, 0xFF],
-        (x, y) => x >= 12 && y >= 12,
+        (x, y) => x >= tileSide - 4 && y >= tileSide - 4,
       ),
     }),
     showTransparentBackground: false,
@@ -141,7 +147,7 @@ void main() {
   Future<StackRun> standOn(
     WidgetTester tester,
     LayerFrameImageCache images,
-    FramePictureStore<FramePictureKey> store, {
+    StoreTellingItsWrites store, {
     required List<CompositeNode<CanvasStackRow>> nodes,
     required BitmapSurfacePainter live,
     required Key view,
@@ -182,27 +188,23 @@ void main() {
   }
 
   /// [change] made, then the paint after it: what moved is patched into
-  /// [shown]'s picture — held on its way until that is seen — and lands.
+  /// [shown]'s picture.
   Future<void> patchedIn(
     WidgetTester tester,
-    WritesLand gpu,
-    FramePictureStore<FramePictureKey> store,
+    StoreTellingItsWrites store,
     FramePictureKey shown,
     Future<void> Function() change, {
     required String what,
   }) async {
-    gpu.holdsRenders = true;
     await change();
     await tester.pump();
-    final landing = store.landingOf(keptByTheCanvas(tester, shown));
     expect(
-      landing,
-      isNotNull,
+      store.landedAt(keptByTheCanvas(tester, shown)),
+      isTrue,
       reason: 'LIVENESS: $what is patched into the picture — not the frame '
           'drawn as it stands',
     );
-    gpu.letAllThrough();
-    await inThePicture(tester, landing);
+    await inThePicture(tester);
   }
 
   testWidgets('🚨F-344: a LANDING PREVIEW that moves is where it was and '
@@ -222,7 +224,7 @@ void main() {
         rows: (
           activeSurfacePainter: BitmapSurfacePainter(
             surface: surfaceOf({
-              TileCoord(x: 0, y: 0): BitmapTile.blank(size: 16),
+              TileCoord(x: 0, y: 0): BitmapTile.blank(size: tileSide),
             }),
             showTransparentBackground: false,
             landingPreview: preview,
@@ -233,7 +235,7 @@ void main() {
         painters: LiftedRowPainters(),
       ),
     );
-    final before = frame.tokens!;
+    final before = frame.tokens;
     final was = preview.value!.drawnWorldRect;
 
     // THE CARRY: the float moves, nothing else does — out past the live
@@ -261,7 +263,7 @@ void main() {
     BitmapSurface theCel() => surfaceOf({
       TileCoord(x: 1, y: 1): tileOf(
         [0, 0, 0xFF, 0xFF],
-        (x, y) => x == 15 && y == 15,
+        (x, y) => x == tileSide - 1 && y == tileSide - 1,
       ),
     });
     final cels = BrushFrameStore();
@@ -280,9 +282,7 @@ void main() {
         CanvasActiveLayerRow(opacity: 1, frameKey: cel),
       ),
     ];
-    final gpu = WritesLand();
-    addTearDown(gpu.letAllThrough);
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = StoreTellingItsWrites();
     addTearDown(store.dispose);
     final run = await standOn(
       tester,
@@ -297,23 +297,31 @@ void main() {
         shot.rgba[(y * shot.width + x) * 4] > 200 &&
         shot.rgba[(y * shot.width + x) * 4 + 1] < 60;
 
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       preview.value = floatAt(2, 2);
     }, what: 'the preview as it comes');
     expect(
-      isRed(await shotOf(tester, screen), 15, 15),
+      isRed(await shotOf(tester, screen), tileSide - 1, tileSide - 1),
       isTrue,
       reason: 'it is drawn where it is',
     );
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       preview.value = floatAt(10, 8);
     }, what: 'the preview as it moves');
     final patched = await shotOf(tester, screen);
-    expect(isRed(patched, 15, 15), isFalse, reason: 'the old place is cleared');
-    expect(isRed(patched, 23, 21), isTrue, reason: 'the new place is inked');
+    expect(
+      isRed(patched, tileSide - 1, tileSide - 1),
+      isFalse,
+      reason: 'the old place is cleared',
+    );
+    expect(
+      isRed(patched, tileSide + 7, tileSide + 5),
+      isTrue,
+      reason: 'the new place is inked',
+    );
 
     // A view of its own, the preview in hand: the frame as it stands.
-    final standing = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    final standing = StoreTellingItsWrites();
     addTearDown(standing.dispose);
     await standOn(
       tester,
@@ -328,7 +336,7 @@ void main() {
       isEmpty,
       reason: 'the patched picture is the frame as it stands',
     );
-  }, skip: noFlutterGpu != null);
+  });
 
   // ↩️A preview that crossed the edge of the live row's extent moved the
   // display buffer's rect, and the carry had to repaint both its places
@@ -352,13 +360,13 @@ void main() {
       under: surfaceOf({
         TileCoord(x: 1, y: 1): tileOf(
           [0, 0, 0xFF, 0xFF],
-          (x, y) => x == 15 && y == 15,
+          (x, y) => x == tileSide - 1 && y == tileSide - 1,
         ),
       }),
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: 16);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSide);
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
@@ -382,9 +390,7 @@ void main() {
       pressure: 1,
       sequence: sequence,
     );
-    final gpu = WritesLand();
-    addTearDown(gpu.letAllThrough);
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = StoreTellingItsWrites();
     addTearDown(store.dispose);
     final run = await standOn(
       tester,
@@ -400,7 +406,7 @@ void main() {
     );
     final shown = run.pictures.keyOfStack(nodes, picture);
 
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       await tester.runAsync(() async {
         rasterizer.blendFrom([dabAt(4)], from: 0);
         overlay.updateRegion(
@@ -409,7 +415,7 @@ void main() {
         );
       });
     }, what: 'the first step');
-    await patchedIn(tester, gpu, store, shown, () async {
+    await patchedIn(tester, store, shown, () async {
       await tester.runAsync(() async {
         rasterizer.blendFrom([dabAt(4), dabAt(8, sequence: 1)], from: 1);
         overlay.updateRegion(
@@ -418,7 +424,7 @@ void main() {
         );
       });
     }, what: 'the second step');
-  }, skip: noFlutterGpu != null);
+  });
 
   testWidgets('on the activation frame the tiles draw themselves', (
     tester,
@@ -427,7 +433,7 @@ void main() {
     // cache that knows none of its fresh tile objects — the frame the
     // first-activation stand-in used to exist for; every tile pictures
     // itself inside this paint now (2026-09-17).
-    const tileSize = 16;
+    const tileSize = defaultCelTileSize;
     const tileCount = 4;
     final key = keyOf('l');
     const celSize = CanvasSize(width: tileCount * tileSize, height: tileSize);

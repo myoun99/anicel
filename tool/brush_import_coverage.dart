@@ -19,7 +19,7 @@
 //
 // Read-only: never modifies the input files.
 //
-// Usage: dart run tool/brush_import_coverage.dart <file.sut|file.abr ...>
+// Usage: dart tool/brush_import_coverage.dart <file.sut|file.abr ...>
 import 'dart:io';
 import 'dart:typed_data';
 

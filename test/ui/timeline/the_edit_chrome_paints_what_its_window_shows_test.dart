@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 
 import '../../helpers/exposure_of.dart';
@@ -83,18 +84,29 @@ void main() {
     expect(painter.targets, hasLength(600), reason: 'premise: every edge');
     final atStart = drawnGrips();
     expect(atStart, isNotEmpty, reason: 'premise: the window has grips');
-    // Bucket 0 of a 20-cell viewport reaches frame 26, and on to the edge of
-    // its four-cell span: 28 ([timelineFrameWindowFor]).
-    expect(atStart.where((grip) => grip.left > 28 * 24.0), isEmpty);
+    // A 20-cell viewport's window: its cells and overscan, on to the edge of
+    // the span they end in ([timelineFrameWindowFor]).
+    ({int startIndex, int endIndexExclusive}) windowAt(int bucket) =>
+        timelineFrameWindowFor(
+          bucket: bucket,
+          cellExtent: 24,
+          viewportExtent: 480,
+        );
+    expect(
+      atStart.where((grip) => grip.left > windowAt(0).endIndexExclusive * 24.0),
+      isEmpty,
+    );
 
     var repaints = 0;
     painter.addListener(() => repaints += 1);
-    window.value = 200;
+    // A bucket halfway along the row's 1,200 frames.
+    final halfway = 600 ~/ timelineFrameWindowSpanFor(24);
+    window.value = halfway;
     expect(repaints, 1, reason: 'the window moved, so the chrome repaints');
     final later = drawnGrips();
     expect(later, isNotEmpty);
     expect(
-      later.where((grip) => grip.right < 200 * 4 * 24.0 - 2 * 24),
+      later.where((grip) => grip.right < windowAt(halfway).startIndex * 24.0),
       isEmpty,
       reason: 'the grips behind the window are not drawn',
     );
@@ -137,9 +149,15 @@ void main() {
 
     final painter = timelineRowChromePainter(tester, 'long')!;
     expect(painter.targets, hasLength(600), reason: 'premise: every edge');
+    // Two edges a block of four, for the blocks the window reaches.
+    final reached = timelineFrameWindowFor(
+      bucket: 0,
+      cellExtent: 24,
+      viewportExtent: 480,
+    ).endIndexExclusive;
     expect(
       painter.targetsInWindow.length,
-      lessThan(20),
+      lessThanOrEqualTo(2 * (reached / 4).ceil()),
       reason: 'a 480px view of a 28,800px row reaches a handful of blocks',
     );
   });

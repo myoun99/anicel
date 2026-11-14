@@ -121,6 +121,8 @@ Project _project() => Project(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   EditorSessionManager sessionFor() {
     final session = EditorSessionManager(initialProject: _project());
     addTearDown(session.dispose);

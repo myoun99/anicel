@@ -635,18 +635,15 @@ final Map<String, ProgramRow> _clipStudioRows = {
     [],
   ),
   // Edit > Change canvas size — a similar command: the cut's. File >
-  // Export animation > Image sequence · Movie, and File > Import > Image ·
-  // Movie · Audio — similar ones: the export, and the media pool's import.
+  // Export animation > Image sequence · Movie — a similar one: the export.
+  // ↩️File > Import > Image · Movie · Audio stood for the media pool's
+  // import until F-580 took 「패널 안」 off the shortcut list.
   EditorActionIds.cutCanvasSize: const ProgramRow(
     ['pagechangecanvassize'],
     [],
   ),
   EditorActionIds.fileExport: const ProgramRow(
     ['exportimageseries', 'exportmovie'],
-    [],
-  ),
-  EditorActionIds.mediaPoolImport: const ProgramRow(
-    ['fileimportimage', 'animationimportmovie', 'fileimportaudio'],
     [],
   ),
   EditorActionIds.about: const ProgramRow(['applicationabout'], []),

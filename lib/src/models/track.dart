@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_effect.dart';
@@ -21,14 +22,14 @@ class Track {
     TrackConte? conte,
     this.lanesExpanded = false,
     Set<String> expandedLaneGroups = const {},
-  }) : cuts = List.unmodifiable(cuts),
-       seLayers = List.unmodifiable(seLayers),
+  }) : cuts = frozenList(cuts),
+       seLayers = frozenList(seLayers),
        // ⛔NOT NORMALIZED, the same as a row — order is free and it means
        // what it says.
-       effects = List.unmodifiable(effects),
+       effects = frozenList(effects),
        transitionLayer = transitionLayer ?? createTrackTransitionLayer(id),
        conte = conte ?? TrackConte.none,
-       expandedLaneGroups = Set.unmodifiable(expandedLaneGroups);
+       expandedLaneGroups = frozenSet(expandedLaneGroups);
 
   final TrackId id;
   final String name;
@@ -137,15 +138,16 @@ class Track {
     return Track(
       id: id ?? this.id,
       name: name ?? this.name,
-      cuts: cuts ?? this.cuts,
-      seLayers: seLayers ?? this.seLayers,
+      cuts: cuts ?? ownFrozen(this.cuts),
+      seLayers: seLayers ?? ownFrozen(this.seLayers),
       transitionLayer: transitionLayer ?? this.transitionLayer,
-      effects: effects ?? this.effects,
+      effects: effects ?? ownFrozen(this.effects),
       type: type ?? this.type,
       fxEnabled: fxEnabled ?? this.fxEnabled,
       conte: conte ?? this.conte,
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
-      expandedLaneGroups: expandedLaneGroups ?? this.expandedLaneGroups,
+      expandedLaneGroups:
+          expandedLaneGroups ?? ownFrozen(this.expandedLaneGroups),
     );
   }
 

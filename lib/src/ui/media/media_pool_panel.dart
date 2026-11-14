@@ -35,8 +35,6 @@ import 'media_asset_kind_icon.dart';
 import 'media_asset_pool_state.dart';
 import 'media_drop_verdict.dart';
 import '../input/control_press_claim.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../shortcuts/panel_keys.dart';
 
 /// The dockable MEDIA POOL: every file the project knows, importable
 /// ahead of use, draggable onto SE blocks to link (footsteps reuse),
@@ -153,8 +151,9 @@ class MediaPoolPanel extends StatelessWidget {
   /// counts ghosts is worse than one that is a beat late.
   final Set<String> missingPaths;
 
-  /// When each pool file was last written — the session's sweep fills it,
-  /// so a row never stats the disk to draw itself.
+  /// When each pool file the project points at was last written — the
+  /// session's sweep fills it, so a row never stats the disk to draw
+  /// itself. A carried row shows its carry's date instead ([_dateOf]).
   final Map<String, DateTime> modifiedTimes;
 
   /// What each carried asset ACTUALLY occupies — compressed, in the
@@ -249,14 +248,9 @@ class MediaPoolPanel extends StatelessWidget {
     } else if (conform != null && conform > 0) {
       parts.add('+ ${byteSizeLabel(conform)}');
     }
-    final modified = modifiedTimes[asset.path];
-    if (modified != null) {
-      parts.add(
-        '${modified.month.toString().padLeft(2, '0')}-'
-        '${modified.day.toString().padLeft(2, '0')} '
-        '${modified.hour.toString().padLeft(2, '0')}:'
-        '${modified.minute.toString().padLeft(2, '0')}',
-      );
+    final date = _dateOf(asset);
+    if (date != null) {
+      parts.add(date);
     }
     // Nothing known yet (a fresh pool before the first sweep): the path is
     // better than an empty line.
@@ -264,12 +258,47 @@ class MediaPoolPanel extends StatelessWidget {
     // ⚠️Counted against ONE, not zero. The carried/linked word above always
     // lands, so「empty」stopped being reachable the moment it was added —
     // and a row that said only「Linked」would have dropped the path a fresh
-    // pool has nothing else to show.
-    if (parts.length == 1) {
+    // pool has nothing else to show. Never a carried row's ([_placeOnHover]).
+    if (parts.length == 1 && !asset.carried) {
       parts.add(asset.path);
     }
     return parts.join(' · ');
   }
+
+  /// The date [asset]'s row shows, `MM-DD hh:mm` — null where none is known.
+  ///
+  /// 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
+  /// 띄운다」): a carried file's date is the one its carry recorded — the
+  /// bytes the project holds do not change when the original does.
+  /// ↩️It read the original's date now, edited or gone.
+  String? _dateOf(MediaAsset asset) {
+    final modified = switch (asset.carriedAs) {
+      final carried? => carried.modified,
+      null => modifiedTimes[asset.path],
+    };
+    if (modified == null) {
+      return null;
+    }
+    return '${modified.month.toString().padLeft(2, '0')}-'
+        '${modified.day.toString().padLeft(2, '0')} '
+        '${modified.hour.toString().padLeft(2, '0')}:'
+        '${modified.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// [subtitle], with where the file lies on hover — on a row whose file
+  /// lives outside the project.
+  ///
+  /// 🗣️F-589 (유저 11-13: 「품었는데 이거 필요한지?」): a carried file's
+  /// bytes are the project's, and nothing the person does with it goes to
+  /// its first place again — relink is never offered for it (its original
+  /// leaving is not「missing」, `MediaPool.refreshMediaExistence`) and the
+  /// pool has no verb that opens or refreshes from it. The path stays the
+  /// asset's key, which nothing shows. ↩️The hover named the path on every
+  /// row since 2c5176b0f (08-30), when size and date took its place on the
+  /// line — nobody asked for it on a carried row.
+  Widget _placeOnHover(MediaAsset asset, Widget subtitle) => asset.carried
+      ? subtitle
+      : AppTooltip(message: asset.path, child: subtitle);
 
   Future<void> _rename(BuildContext context, MediaAsset asset) async {
     final name = await showDialog<String>(
@@ -407,16 +436,13 @@ class MediaPoolPanel extends StatelessWidget {
   // (a narrowing past the floor keeps the list where it was), and a
   // viewport is a repaint boundary — so the dock's bake around this panel
   // yields to this one, the placement `EditorPanelBody` explains.
+  // ↩️A key pressed the ＋ (I-40) until F-580 (유저 2026-11-10: 「패널 안의
+  // 미디어-임포트 이런식으로 패널 안 항목도 깔끔하게 삭제」).
   @override
-  Widget build(BuildContext context) => PanelKeysBinding(
-    // A key presses the ＋ — the pool is one panel, whatever is in hand
-    // (I-40).
-    buttons: {EditorActionIds.mediaPoolImport: onImportRequested},
-    child: OverflowScrollers(
-      minWidth: _minBodyWidth + _extensionRoom(context),
-      minHeight: _minBodyHeight,
-      child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
-    ),
+  Widget build(BuildContext context) => OverflowScrollers(
+    minWidth: _minBodyWidth + _extensionRoom(context),
+    minHeight: _minBodyHeight,
+    child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
   );
 
   /// RELINK-2: the loss banner — one line, above the list, INSIDE this
@@ -496,7 +522,6 @@ class MediaPoolPanel extends StatelessWidget {
                 // once held sound only, and 「오디오 불러오기」 outlived it
                 // (유저 10-09).
                 tooltip: AppText.strings.imImport,
-                shortcuts: const [EditorActionIds.mediaPoolImport],
                 // 「＋가 있는 모든 곳, 공통적으로」.
                 icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
                 onPressed: onImportRequested,
@@ -595,9 +620,9 @@ class MediaPoolPanel extends StatelessWidget {
                   // pool actually asks is how big a file is and whether it
                   // is the one they exported an hour ago. The path is one
                   // hover away and no longer the only thing on offer.
-                  AppTooltip(
-                    message: asset.path,
-                    child: EllipsisText(
+                  _placeOnHover(
+                    asset,
+                    EllipsisText(
                       _subtitleFor(asset),
                       maxLines: 1,
                       style: TextStyle(

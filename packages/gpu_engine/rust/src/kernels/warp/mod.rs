@@ -9,9 +9,10 @@
 //! The window is a new stamp: laying it on a cel is the stamp's path
 //! (`dab::stamp`'s picture), not here.
 
-// ⏳Nothing outside the tests runs it until the app's bridge round
-// (gpu-canonical-store ⑧).
-#![cfg_attr(not(test), allow(dead_code))]
+// A stamp's landing carries a picture by them (`dab::stamp`'s `carried` and
+// `meshed`): one map's for a posed row (gpu-canonical-store ⑪ 2026-11-11)
+// and a box's affine or quad, a mesh's for its mesh (float-warp-resamples-
+// in-the-c-engine, 2026-11-11).
 
 #[cfg(test)]
 mod tests;
@@ -58,19 +59,17 @@ pub(crate) struct Window {
     pub(crate) size: (u32, u32),
 }
 
-/// The warp, and the mesh's owners it reads, compiled once.
+/// The warp, compiled once. ⛔Not a mesh's owners with it: what carries a
+/// picture by one map — a stamp's landing, compiled as the app launches —
+/// compiles no pass it never runs, so a mesh's warp is handed them.
 pub(crate) struct Warp {
     window: wgpu::ComputePipeline,
-    owners: MeshOwners,
 }
 
 impl Warp {
     pub(crate) fn new(engine: &Engine) -> Self {
         let sources = [WIDE_WGSL, RESAMPLE_WGSL, include_str!("warp.wgsl")];
-        Self {
-            window: pipeline(engine, &sources, "warp_window"),
-            owners: MeshOwners::new(engine),
-        }
+        Self { window: pipeline(engine, &sources, "warp_window") }
     }
 
     /// `window` of `picture` through `map`: every pixel by it, and nothing
@@ -88,13 +87,13 @@ impl Warp {
 
     /// `window` of the canvas from `mesh`'s warp of `picture`, whose top-left
     /// pixel is at `source_at` on the canvas: each pixel by the map of the
-    /// triangle that paints it ([`MeshOwners`], [`affines`]), with
-    /// `radius_floor` and `mode`, and nothing where none does. Submits the
-    /// work; the caller waits.
+    /// triangle that paints it (`owners`', [`affines`]), with `radius_floor`
+    /// and `mode`, and nothing where none does. Submits the work; the caller
+    /// waits.
     pub(crate) fn mesh(
         &self,
         engine: &Engine,
-        mesh: &MeshGrid,
+        (owners, mesh): (&MeshOwners, &MeshGrid),
         picture: &Boxed,
         source_at: (f64, f64),
         window: Window,
@@ -102,7 +101,7 @@ impl Warp {
         mode: ResampleMode,
     ) -> Option<wgpu::Buffer> {
         let maps = affines(mesh, source_at, radius_floor, mode)?;
-        let owners = self.owners.owners(engine, mesh, window.at, window.size)?;
+        let owners = owners.owners(engine, mesh, window.at, window.size)?;
         self.run(engine, picture, &maps, Some(&owners), window)
     }
 

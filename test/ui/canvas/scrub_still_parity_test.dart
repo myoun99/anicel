@@ -1,4 +1,4 @@
-import 'dart:ui' as ui;
+import 'package:anicel/src/models/bitmap_surface.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -33,16 +33,15 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/settle_async.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨★★★ SCRUB ↔ STILL PARITY (device report B2, 2026-08-17).
 ///
@@ -61,6 +60,7 @@ import '../../helpers/settle_async.dart';
 /// (#1101's pan-phase snap — a painter snapping at 1.0 while the picture
 /// snaps at 1.25 is exactly a whole-picture 1px disagreement).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   const background = ProjectBackground.defaultBackground;
   const projectId = ProjectId('project');
@@ -105,7 +105,7 @@ void main() {
       frameStore: store,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
@@ -124,40 +124,6 @@ void main() {
       ],
     );
     return store;
-  }
-
-  /// Rasterizes [painter] the way the compositor does: DPR as the root
-  /// scale, bytes at DEVICE resolution — the grid the device report's 1px
-  /// disagreements live on. Rasterizing at logical resolution would erase
-  /// exactly the fractional phase under test.
-  Future<Uint8List> rasterize(
-    WidgetTester tester,
-    CustomPainter painter, {
-    required Size logicalSize,
-    required double dpr,
-  }) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(
-      recorder,
-      Offset.zero & (logicalSize * dpr),
-    );
-    canvas.scale(dpr);
-    painter.paint(canvas, logicalSize);
-    final picture = recorder.endRecording();
-    try {
-      final image = await tester.runAsync(
-        () => picture.toImage(
-          (logicalSize.width * dpr).round(),
-          (logicalSize.height * dpr).round(),
-        ),
-      );
-      final bytes = await tester.runAsync(
-        () => image!.toByteData(format: ui.ImageByteFormat.rawRgba),
-      );
-      return bytes!.buffer.asUint8List();
-    } finally {
-      picture.dispose();
-    }
   }
 
   /// Whether any pixel is the dab's opaque black — the "did the code under
@@ -192,7 +158,7 @@ void main() {
   StackRun picturesOf(BrushFrameStore store) {
     final images = LayerFrameImageCache(frameStore: store);
     addTearDown(images.dispose);
-    final pictures = FramePictureStore<FramePictureKey>();
+    final pictures = aStoreOfPictures();
     addTearDown(pictures.dispose);
     final landings = ValueNotifier<int>(0);
     addTearDown(landings.dispose);
@@ -220,7 +186,7 @@ void main() {
   /// across real async (a raster), which never lands under the fake clock —
   /// a paper-only render would pass any law about how the ink is sampled,
   /// which is why each use asks [hasInk].
-  Future<CustomPainter> editingPainter(
+  Future<void> editingPainter(
     WidgetTester tester, {
     required BrushFrameStore store,
     required CanvasViewport viewport,
@@ -270,17 +236,6 @@ void main() {
       reason: 'LIVENESS: the frame\'s picture is made',
     );
     await lendBothClocks(tester, rounds: 2);
-    final painted = tester
-        .widgetList<CustomPaint>(
-          find.descendant(
-            of: find.byType(FramePictureView),
-            matching: find.byType(CustomPaint),
-          ),
-        )
-        .where((paint) => paint.painter != null)
-        .toList();
-    expect(painted, isNotEmpty);
-    return painted.first.painter!;
   }
 
   testWidgets(
@@ -300,18 +255,19 @@ void main() {
       final viewport = CanvasViewport(zoom: 0.7);
 
       final store = storeWithInk();
-      final editing = await editingPainter(
+      await editingPainter(
         tester,
         store: store,
         viewport: viewport,
         logicalSize: logicalSize,
       );
-      final editingBytes = await rasterize(
+      await tester.pump();
+      final editingBytes = (await shotOfBox(
         tester,
-        editing,
-        logicalSize: logicalSize,
-        dpr: dpr,
-      );
+        tester.renderObject<RenderBox>(
+          theFrameScreenIn(find.byType(FramePictureView)),
+        ),
+      )).rgba;
       expect(hasInk(editingBytes), isTrue);
       expect(
         blendedPixels(editingBytes),

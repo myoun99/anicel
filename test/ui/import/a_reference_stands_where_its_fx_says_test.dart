@@ -15,20 +15,27 @@
 // ②③만 굽는다」). ↩️The file was laid at the fit, and again where the fx
 // stood still — a GIF's frames and a PDF's pages too (10-10 「가」).
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_mount.dart';
+import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
@@ -40,6 +47,8 @@ import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/services/commands/link_mirror.dart'
+    show linkCounterpartIn, linkedCutSiblings;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
@@ -49,17 +58,23 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
     show picturePlacement;
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/project_lookup.dart'
+    show layerAnywhereOrNull, requireCut, requireCutPosition, requireLayer;
 import 'package:anicel/src/services/reference_move_carried.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
-    show debugComposesFromBytes;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/export_plan.dart' show ExportFrameTask;
 import 'package:anicel/src/ui/import/import_file_settings.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show PropertyLaneRow, laneGroupKey;
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
 
 import '../../helpers/cel_text_fixture.dart' show pixelOf;
+import '../../helpers/checker_sampling.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/pill_row_clipboard.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -206,11 +221,12 @@ void main() {
 
     /// A session with a red [width]×[height] paper placed 1:1 as a
     /// reference on the default 2340×1654 canvas — its middle at
-    /// (1170, 827).
+    /// (1170, 827). [paper] writes another picture to place instead.
     Future<(EditorSessionManager, Layer)> placed(
       WidgetTester tester, {
       int width = 100,
       int height = 60,
+      Future<String> Function()? paper,
     }) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
@@ -239,7 +255,7 @@ void main() {
         );
         expect(
           await s.importDoors.importImageFile(
-            path: red,
+            path: await paper?.call() ?? red,
             destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
             fit: MediaFitMode.none,
@@ -443,6 +459,22 @@ void main() {
       );
     }
 
+    /// [row] riding a row the cut no longer holds, on a timing of its own:
+    /// an attach row whose base is gone, which stands where its own
+    /// transform and its own reference fx put it while its lanes are its
+    /// base's — a move no key of its own can carry, so its cels take it.
+    /// ↩️It rode the cut's drawing, until a row riding a base it has wore
+    /// none of its own reference fx (🗣️attach-rows-lose-the-base-move-when-
+    /// it-bakes-Q4).
+    void rideAGoneRow(EditorSessionManager s, Layer row) =>
+        s.cutCommandCoordinator.repository.updateLayer(
+          layerId: row.id,
+          update: (layer) => layer.copyWith(
+            attachedToLayerId: const LayerId('gone'),
+            attachedMode: AttachedMode.free,
+          ),
+        );
+
     testWidgets('a key the fx named keeps its name on the row — the row\'s '
         'own key of that name is one the move replaces', (tester) async {
       final (s, row) = await placed(tester);
@@ -582,29 +614,360 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('② an attach row stands where its base puts it: its cel '
-        'takes the picture where it shows, half its size', (tester) async {
+    testWidgets('② an attach row wears none of its own reference fx: it '
+        'stands where its file is laid, and lets go of it so — its cel as '
+        'it was (🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 「어태치줄의 '
+        '참조fx는없앰」 · ↩️its cel took the picture where its fx stood it)', (
+      tester,
+    ) async {
       final (s, row) = await placed(tester);
       attachToTheDrawing(s, row);
       posed(s, row, fx: halved);
-      expect(wayOf(s, row), bakes);
-
-      await tester.runAsync(
-        () => s.importDoors.bakeReferenceAsSeen(
-          cutId: s.requireActiveCut.id,
-          layerId: row.id,
-        ),
+      expect(isAttachedLayer(rowOf(s, row)), isTrue, reason: '⛔premise');
+      expect(
+        shown(s, rowOf(s, row)),
+        const ui.Rect.fromLTRB(1120, 797, 1220, 857),
+        reason: 'where the file is laid, whole',
       );
+      final way = wayOf(s, row);
+      expect([way.bakes, way.framed], [false, false]);
+
+      s.editingCanvas.rasterizeLayerReferences([row.id]);
 
       final baked = rowOf(s, row);
       expect(baked.mediaReference, isNull);
       expect(isAttachedLayer(baked), isTrue);
-      expect(
-        inkOf(celOf(s, baked, 0)),
-        const ui.Rect.fromLTRB(1145, 812, 1195, 842),
-      );
+      expect(shown(s, baked), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯an attach row twirls down its reference fx\'s header '
+        'alone, keyless — its transform, its fx and where its file stands '
+        'its base\'s (🗣️I-120-Q25 「어태치된 참조 행도 「参照」 묶음 하나만 '
+        '보인다」 · 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 '
+        '「어태치줄의 참조fx는없앰」)', (tester) async {
+      final (s, row) = await placed(tester);
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: turnedOnce);
+      final attached = rowOf(s, row);
+      expect(isAttachedLayer(attached), isTrue, reason: '⛔premise');
+      expect(
+        attached.mediaReference!.fx.isNotEmpty,
+        isTrue,
+        reason: '⛔CONTROL: the row holds keys of its own',
+      );
+
+      List<PropertyLaneRow> lanesOf({required bool open}) => [
+        ...timelineLanesForLayer(
+          layer: attached,
+          session: s,
+          expandedGroupKeys: {
+            if (open) laneGroupKey(attached.id, referenceGroupLaneId),
+          },
+        ),
+      ];
+      for (final open in [false, true]) {
+        final lanes = lanesOf(open: open);
+        expect([for (final lane in lanes) lane.laneId], [
+          referenceGroupLaneId,
+        ], reason: open ? 'open' : 'shut');
+        expect(lanes.single.keyMarks, isEmpty);
+      }
+      await stopTheWarmer(tester, s);
+    });
+
+    group('🗣️I-120-Q24 「참조 행의 겸용 복사본은 같은 파일 그림의 셀로 '
+        '태어난다」', () {
+      BitmapSurface? celIn(
+        EditorSessionManager s,
+        Cut cut,
+        LayerId row,
+        FrameId frame,
+      ) => s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(cut, row, frame),
+      );
+
+      /// [s]'s copy of [row] in [linked], born with the picture of the file
+      /// [row] shows in [source] — a cel of its own, whose pixels are its —
+      /// and the row's 参照 group standing in both cuts: the panel it was
+      /// born with.
+      Frame expectBornWithThePicture(
+        EditorSessionManager s, {
+        required Cut source,
+        required Layer row,
+        required CutId linked,
+      }) {
+        final project = s.cutCommandCoordinator.repository.requireProject();
+        final into = requireCut(project, linked);
+        final copy = requireLayer(
+          project,
+          cutId: linked,
+          layerId: linkCounterpartIn(
+            project,
+            cutId: source.id,
+            layerId: row.id,
+            targetCutId: linked,
+          )!,
+        );
+        Frame shownBy(Layer layer) => layer.frames.firstWhere(
+          (frame) => frame.id == exposedFrameIdAt(layer.timeline, 0),
+        );
+        final picture = shownBy(row);
+        final panel = shownBy(copy);
+        expect(panel.id, isNot(picture.id), reason: 'a cel of its own');
+        expect([panel.name, panel.filePicture], [null, picture.filePicture]);
+        final ink = inkOf(celIn(s, source, row.id, picture.id));
+        expect(ink, isNotNull, reason: '⛔premise: the file is laid');
+        expect(inkOf(celIn(s, into, copy.id, panel.id)), ink);
+        expect(
+          colourAt(celIn(s, into, copy.id, panel.id), 1170, 827),
+          colourAt(celIn(s, source, row.id, picture.id), 1170, 827),
+        );
+        for (final shown in [
+          requireLayer(project, cutId: source.id, layerId: row.id),
+          copy,
+        ]) {
+          expect(referenceRedrawFor(shown), ReferenceSwap.pictures);
+        }
+        return panel;
+      }
+
+      /// ONE undo hands [source] back as it was, and empties [panel] — the
+      /// panel [row]'s copy was born with — that linking copied the picture
+      /// to.
+      void expectOneUndoEmpties(
+        EditorSessionManager s, {
+        required Cut source,
+        required Layer row,
+        required Frame panel,
+      }) {
+        s.undo();
+        expect(
+          requireCut(
+            s.cutCommandCoordinator.repository.requireProject(),
+            source.id,
+          ),
+          source,
+        );
+        expect(inkOf(celIn(s, source, row.id, panel.id)), isNull);
+      }
+
+      testWidgets('🎯a 겸용 cut made of its cut', (tester) async {
+        final (s, row) = await placed(tester);
+        final source = s.requireActiveCut;
+
+        s.cutCommandCoordinator.createLinkedCut(sourceCutId: source.id);
+        final linked = s.requireActiveCut.id;
+        expect(linked, isNot(source.id), reason: '⛔premise: a new cut');
+        final panel = expectBornWithThePicture(
+          s,
+          source: source,
+          row: row,
+          linked: linked,
+        );
+        expectOneUndoEmpties(s, source: source, row: row, panel: panel);
+        await stopTheWarmer(tester, s);
+      });
+
+      testWidgets('🎯a cut linked to its cut as a 겸용 — the row only one '
+          'side held', (tester) async {
+        final (s, row) = await placed(tester);
+        final source = s.requireActiveCut;
+        const target = CutId('target');
+        s.cutCommandCoordinator
+          ..createCut(
+            trackId: requireCutPosition(
+              s.cutCommandCoordinator.repository.requireProject(),
+              source.id,
+            ).track.id,
+            cutId: target,
+          )
+          ..convertCutToLinked(originCutId: source.id, targetCutId: target);
+        final panel = expectBornWithThePicture(
+          s,
+          source: source,
+          row: row,
+          linked: target,
+        );
+        expectOneUndoEmpties(s, source: source, row: row, panel: panel);
+        await stopTheWarmer(tester, s);
+      });
+
+      // 🗣️I-120-Q29 (유저 2026-11-07 「서피스 저장 레인에 넘긴다」): a row
+      // that comes into a cut with a 겸용 is born in its sibling too (F-398),
+      // and its copy there is born with the picture as well — a placed file,
+      // or a row pasted or duplicated there. The pictures come AFTER the
+      // row is in (the import's bake, the paste's copy), and the panel takes
+      // them then. ↩️It was born blank, which took the 参照 header off the
+      // row in both cuts.
+
+      /// The cut the active cut was made a 겸용 of, and that 겸용, active.
+      CutId besideAPair(EditorSessionManager s) {
+        final pairedWith = s.requireActiveCut.id;
+        s.cutVerbs.createLinkedCutFromActiveCut();
+        expect(
+          linkedCutSiblings(
+            s.cutCommandCoordinator.repository.requireProject(),
+            cutId: s.requireActiveCut.id,
+          ),
+          [pairedWith],
+          reason: '⛔premise: a pair',
+        );
+        return pairedWith;
+      }
+
+      /// ONE undo takes [row] out of [cuts], each as it was before it came.
+      void expectOneUndoTakesItOut(
+        EditorSessionManager s,
+        List<Cut> cuts, {
+        required Layer row,
+      }) {
+        s.undo();
+        final project = s.cutCommandCoordinator.repository.requireProject();
+        for (final cut in cuts) {
+          expect(requireCut(project, cut.id), cut, reason: '${cut.id}');
+        }
+        expect(layerAnywhereOrNull(project, row.id), isNull);
+      }
+
+      testWidgets('🎯a file placed in a cut that has a 겸용 — the row its '
+          'sibling takes', (tester) async {
+        final s = EditorSessionManager(initialProject: createDefaultProject());
+        addTearDown(s.dispose);
+        s.playbackRig.prerenderScheduler.beginInputHold();
+        final sibling = besideAPair(s);
+        final project = s.cutCommandCoordinator.repository.requireProject();
+        final before = [
+          s.requireActiveCut,
+          requireCut(project, sibling),
+        ];
+        await tester.runAsync(() async {
+          expect(
+            await s.importDoors.importImageFile(
+              path: await writeSolidPng(
+                tempDir,
+                'red.png',
+                width: 100,
+                height: 60,
+                rgba: 0xFF0000FF,
+              ),
+              destination: ImportDestination.activeCutLayer,
+              copyIntoProject: false,
+              fit: MediaFitMode.none,
+            ),
+            isTrue,
+          );
+        });
+        final row = s.requireActiveCut.layers.firstWhere(
+          (layer) => layer.mediaReference != null,
+        );
+
+        expectBornWithThePicture(
+          s,
+          source: s.requireActiveCut,
+          row: row,
+          linked: sibling,
+        );
+        // I-41: the file was placed from the row stood on, and the landing
+        // stands on the row it made — so the first press walks back there.
+        s.undo();
+        expect(
+          layerAnywhereOrNull(
+            s.cutCommandCoordinator.repository.requireProject(),
+            row.id,
+          ),
+          isNotNull,
+          reason: 'a walk, not a step',
+        );
+        expectOneUndoTakesItOut(s, before, row: row);
+        await stopTheWarmer(tester, s);
+      });
+
+      testWidgets('🎯a PDF placed in a cut that has a 겸용 — its page, the '
+          'row its sibling takes', (tester) async {
+        PdfRenderService.debugOpenerOverride = (_) async =>
+            FakePdfDocument(pageSizes: const [ui.Size(100, 50)]);
+        addTearDown(PdfRenderService.debugResetForTests);
+        final s = EditorSessionManager(initialProject: createDefaultProject());
+        addTearDown(s.dispose);
+        s.playbackRig.prerenderScheduler.beginInputHold();
+        final sibling = besideAPair(s);
+        await tester.runAsync(() async {
+          final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+          await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+          expect(
+            await s.importDoors.importPdfFile(
+              path: path,
+              destination: ImportDestination.activeCutLayer,
+              copyIntoProject: false,
+            ),
+            isTrue,
+          );
+        });
+        final row = s.requireActiveCut.layers.firstWhere(
+          (layer) => layer.mediaReference != null,
+        );
+
+        expectBornWithThePicture(
+          s,
+          source: s.requireActiveCut,
+          row: row,
+          linked: sibling,
+        );
+        await stopTheWarmer(tester, s);
+      });
+
+      for (final (how, copied) in [
+        (
+          'duplicated',
+          (EditorSessionManager s) => s.layerVerbs.duplicateActiveLayer(),
+        ),
+        (
+          'pasted',
+          (EditorSessionManager s) {
+            copyRowsWithThePill(s);
+            pasteWithThePill(s);
+          },
+        ),
+      ]) {
+        testWidgets('🎯a reference row $how in a cut that has a 겸용 — the '
+            'row its sibling takes', (tester) async {
+          final (s, placedRow) = await placed(tester);
+          final sibling = besideAPair(s);
+          final project = s.cutCommandCoordinator.repository.requireProject();
+          // The placed row's own copy in the 겸용, made with it.
+          final shown = requireLayer(
+            project,
+            cutId: s.requireActiveCut.id,
+            layerId: linkCounterpartIn(
+              project,
+              cutId: sibling,
+              layerId: placedRow.id,
+              targetCutId: s.requireActiveCut.id,
+            )!,
+          );
+          s.selectLayer(shown.id);
+          final before = [
+            s.requireActiveCut,
+            requireCut(project, sibling),
+          ];
+
+          copied(s);
+          final row = s.activeLayer!;
+          expect(row.id, isNot(shown.id), reason: '⛔premise: a new row');
+          expect(row.mediaReference, isNotNull, reason: '⛔premise');
+
+          expectBornWithThePicture(
+            s,
+            source: s.requireActiveCut,
+            row: row,
+            linked: sibling,
+          );
+          expectOneUndoTakesItOut(s, before, row: row);
+          await stopTheWarmer(tester, s);
+        });
+      }
     });
 
     testWidgets('a paper bigger than the canvas bakes where it shows — the '
@@ -615,7 +978,7 @@ void main() {
         const ui.Offset(-30, -23),
         reason: 'the premise: laid 1:1, its overflow on the pasteboard',
       );
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
 
       await tester.runAsync(
@@ -649,7 +1012,7 @@ void main() {
       tester,
     ) async {
       final (s, row) = await placed(tester, width: 7200, height: 60);
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
 
       await tester.runAsync(
@@ -670,9 +1033,9 @@ void main() {
     // 🗣️유저 2026-10-18 (a-picture-past-the-texture-limit-is-decoded
     // -squashed-Q1): 「원본 해상도 그대로」. A compose past the side this
     // device's engine hands a picture back at comes back smaller (20480×1024
-    // asked, 16384×819 made — `composePositionedSurfaceImage`); the test
-    // engine cuts nothing, so the side is named, and what is pinned is that
-    // no compose is asked.
+    // asked, 16384×819 made — the tiles' compose, which left the app with
+    // export-on-engine ⑶-2b); the test engine cuts nothing, so the side is
+    // named, and what is pinned is where the paper lands and what it keeps.
     testWidgets('🚨past the side the engine hands a picture back at, a paper '
         'is baked as it shows from the bytes its cel holds — never composed '
         'by the engine', (tester) async {
@@ -680,9 +1043,8 @@ void main() {
       debugPictureSideLimit = 64;
       addTearDown(() => debugPictureSideLimit = side);
       final (s, row) = await placed(tester, width: 7200, height: 60);
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
-      debugComposesFromBytes = 0;
 
       await tester.runAsync(
         () => s.importDoors.bakeReferenceAsSeen(
@@ -691,7 +1053,6 @@ void main() {
         ),
       );
 
-      expect(debugComposesFromBytes, 0);
       expect(
         shown(s, rowOf(s, row)),
         const ui.Rect.fromLTRB(-630, 812, 2970, 842),
@@ -713,7 +1074,7 @@ void main() {
       tester,
     ) async {
       final (s, row) = await placed(tester, width: 8, height: 8);
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(
         s,
         row,
@@ -742,6 +1103,212 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    // 🗣️I-120-Q26 · Q28 (유저 2026-11-07): 「굽기를 화면에 맞춘다 — 확대된
+    // 그림은 계단 그대로 굽는다」 · 「축소도 같은 법 — 화면처럼 최근접으로
+    // 굽는다」. The canvas lays a row's picture where its fx stands it into
+    // a picture at the canvas's resolution, so baking it where it shows is
+    // that picture: the frame after the bake is the frame before it, every
+    // byte of it — the picture's edge too —, however the fx grows, shrinks
+    // or turns it. The bake lays it on the engine as the canvas lays the row
+    // (`raster_cel_import.dart`).
+    group('🎯baked as it shows, a paper is the frame it was', () {
+      /// The frame the canvas shows, every byte of it.
+      Future<Uint8List> frame(EditorSessionManager s) async {
+        final renderer = ExportFrameRenderer(session: s);
+        try {
+          final image = await renderer.renderComposite(
+            ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+            ExportSizeMode.canvas,
+          );
+          try {
+            final data = await image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            );
+            return data!.buffer.asUint8List();
+          } finally {
+            image.dispose();
+          }
+        } finally {
+          renderer.dispose();
+        }
+      }
+
+      /// [row] made the cut's conte, its transform off, whose head another
+      /// cut's conte wears with keys of its own: a row the frame shows whose
+      /// move no key of its own can carry (`othersKeepKeys`), so its cels
+      /// take it where it shows.
+      /// ↩️It rode a row the cut no longer held ([rideAGoneRow]) from 11-11
+      /// — a row the frame draws none of, so both frames were the paper
+      /// alone and every pose passed (🔬2026-11-11).
+      void keptByAnotherConte(EditorSessionManager s, Layer row) {
+        final mine = s.requireActiveCut.id;
+        s.selectLayer(row.id);
+        s.layerSwitches.toggleTargetLayerKind();
+        s.effectsAndFx.toggleLayerTransformFx(row.id);
+        s.cutVerbs.createCut();
+        s.layerStack.addLayerOfKind(LayerKind.storyboard);
+        final other = s.requireActiveCut;
+        s.cutCommandCoordinator.updateLayerTransformTrack(
+          cutId: other.id,
+          layerId: other.layers
+              .firstWhere((layer) => layer.kind == LayerKind.storyboard)
+              .id,
+          transformTrack: TransformTrack.empty().copyWith(
+            rotation: PropertyTrack<double>().withKey(0, 45),
+          ),
+        );
+        s.selectCut(mine);
+        expect(
+          [rowOf(s, row).kind, rowOf(s, row).transformEnabled],
+          [LayerKind.storyboard, false],
+          reason: 'premise: the cut\'s conte, its switch off',
+        );
+      }
+
+      final poses = {
+        'grown 3.9 times': TransformTrack.empty().copyWith(
+          scale: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 3.9, y: 3.9),
+          ),
+        ),
+        'halved': halved,
+        'turned 30°': turnedOnce,
+        // ↩️Turned 30° alone from 11-10 till the bake laid its picture on
+        // the engine's kernel: at 45° the checker's diagonal falls on a
+        // texel's edge, where Flutter's sampler and the engine's each took
+        // the other texel (13 of 169 apart, 🔬2026-11-10).
+        'turned 45°': TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>().withKey(0, 45),
+        ),
+      };
+      /// A conte of a 64-pixel checker [keptByAnotherConte], its reference
+      /// fx [fx] and its chain [key] when one is given: baked in place, the
+      /// frame is the frame it was. [shades] are the reds the frame shows,
+      /// hard-edged.
+      Future<void> bakedAsItShows(
+        WidgetTester tester,
+        TransformTrack fx, {
+        LayerEffect? key,
+        Set<int> shades = const {0, 255},
+      }) async {
+        final (s, row) = await placed(
+          tester,
+          paper: () async {
+            final checker = await checkerImage(64);
+            try {
+              return await writeImagePng(tempDir, 'checker.png', checker);
+            } finally {
+              checker.dispose();
+            }
+          },
+        );
+        keptByAnotherConte(s, row);
+        posed(s, row, fx: fx);
+        if (key != null) {
+          final bare = await tester.runAsync(() => frame(s));
+          s.effectsAndFx.updateLayerEffects(row.id, [key]);
+          expect(
+            await tester.runAsync(() => frame(s)),
+            isNot(bare),
+            reason: 'premise: the key keys the frame',
+          );
+        }
+        final before = (await tester.runAsync(() => frame(s)))!;
+
+        final baked = await tester.runAsync(
+          () => s.importDoors.bakeReferenceAsSeen(
+            cutId: s.requireActiveCut.id,
+            layerId: row.id,
+          ),
+        );
+
+        expect(baked, isTrue, reason: 'LIVENESS: the conte bakes in place');
+        expect(
+          {for (var at = 0; at < before.length; at += 4) before[at]},
+          shades,
+          reason: 'premise: the frame shows the checker, hard-edged',
+        );
+        expect(await tester.runAsync(() => frame(s)), before);
+        await tester.pump(const Duration(minutes: 1));
+        await stopTheWarmer(tester, s);
+      }
+
+      for (final MapEntry(key: how, value: fx) in poses.entries) {
+        testWidgets(how, (tester) => bakedAsItShows(tester, fx));
+      }
+
+      // 🧭관제 2026-11-11 21:44: 「키 걸린 행을 제자리 굽기 = 그 프레임」. At
+      // half its amount, so a key laid twice — baked into the cels and still
+      // worn by the row — shows: the black halved twice.
+      testWidgets(
+        'turned 30° and keyed at half its amount',
+        (tester) => bakedAsItShows(
+          tester,
+          turnedOnce,
+          key: LayerEffect(
+            id: const EffectId('the-checker-key'),
+            kind: EffectKind.colorKey,
+            colors: {
+              'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFF000000),
+            },
+            parameters: {'amount': EffectParameter(value: 50)},
+          ),
+          // The black halved, over the white the frame stands on.
+          shades: {127, 255},
+        ),
+      );
+
+      // The placement window's bake lays the file where the window stood
+      // it — a file baked as it lands is the picture placed and then baked
+      // (`_celLaid`): grown 25.8 times by its fit, in blocks as the canvas
+      // shows the same file placed.
+      testWidgets('baked as it lands, fitted to the canvas', (tester) async {
+        Future<Uint8List> landed({required bool rasterize}) async {
+          final s = EditorSessionManager(
+            initialProject: createDefaultProject(),
+          );
+          addTearDown(s.dispose);
+          s.playbackRig.prerenderScheduler.beginInputHold();
+          final shows = await tester.runAsync(() async {
+            final checker = await checkerImage(64);
+            final String path;
+            try {
+              path = await writeImagePng(
+                tempDir,
+                'checker-${rasterize ? 'baked' : 'placed'}.png',
+                checker,
+              );
+            } finally {
+              checker.dispose();
+            }
+            expect(
+              await s.importDoors.importImageFile(
+                path: path,
+                destination: ImportDestination.activeCutLayer,
+                copyIntoProject: false,
+                rasterize: rasterize,
+                fit: MediaFitMode.contain,
+              ),
+              isTrue,
+            );
+            return frame(s);
+          });
+          await tester.pump(const Duration(minutes: 1));
+          await stopTheWarmer(tester, s);
+          return shows!;
+        }
+
+        final asPlaced = await landed(rasterize: false);
+        expect(
+          {for (var at = 0; at < asPlaced.length; at += 4) asPlaced[at]},
+          {0, 255},
+          reason: 'premise: the frame shows the checker, hard-edged',
+        );
+        expect(await landed(rasterize: true), asPlaced);
+      });
+    });
+
     testWidgets('a cel that does not know where its file lies — an older '
         'build laid it, cut at the wall — is baked as the picture it is, '
         'still cut there', (tester) async {
@@ -765,7 +1332,7 @@ void main() {
           },
         ),
       );
-      attachToTheDrawing(s, row);
+      rideAGoneRow(s, row);
       posed(s, row, fx: halved);
 
       await tester.runAsync(
@@ -1136,9 +1703,12 @@ void main() {
 
     testWidgets('🎯a 겸용 copy that shows the still apart from the row: each '
         'use takes the picture where IT shows it — the one bank a cel '
-        'apiece, the first with the cel\'s name and a tail after, an '
-        'animation layer — and ONE undo gives both back (🗣️I-120-Q22 '
-        '「링크를 둔 채 셀을 나눠 굽는다」 — ↩️F-374-Q10 waited)', (tester) async {
+        'apiece, the first with the cel\'s name and a tail after, still '
+        'an image layer, each use showing one — and ONE undo gives both '
+        'back (🗣️I-120-Q22 「링크를 둔 채 셀을 나눠 굽는다」 · F-572-Q2 「셋 다 '
+        '행마다 센다」 — ↩️I-120-Q22\'s option, more than one cel an '
+        'animation, changed by F-572-Q2 (유저 11-11) · ↩️F-374-Q10 '
+        'waited)', (tester) async {
       final (s, row) = await placed(tester);
       named(s, row, '3');
       final copy = s.cutCommandCoordinator.linkDuplicateLayer(
@@ -1156,8 +1726,8 @@ void main() {
       final bakedCopy = s.layerById(copy)!;
       expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
       expect([baked.kind, bakedCopy.kind], [
-        LayerKind.animation,
-        LayerKind.animation,
+        LayerKind.image,
+        LayerKind.image,
       ]);
       expect([for (final cel in baked.frames) cel.name], ['3', '3-2']);
       expect(bakedCopy.frames, baked.frames, reason: 'one bank');
@@ -1179,6 +1749,91 @@ void main() {
 
       s.undo();
       expect([rowOf(s, row), s.layerById(copy)!], before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯a 겸용 copy riding a drawing wears none of its own '
+        'reference fx: beside a use its transform cannot carry, each use '
+        'takes the picture where IT shows it — the rider where its file is '
+        'laid, though its own fx turns the file as the other use\'s does '
+        '(🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4)', (
+      tester,
+    ) async {
+      final (s, row) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, s.layerById(copy)!, track: squashed, fx: turnedOnce);
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: turnedOnce);
+      expect(isAttachedLayer(rowOf(s, row)), isTrue, reason: '⛔premise');
+      expect(
+        isAttachedLayer(s.layerById(copy)!),
+        isFalse,
+        reason: '⛔premise',
+      );
+      expect(
+        shown(s, rowOf(s, row)),
+        const ui.Rect.fromLTRB(1120, 797, 1220, 857),
+        reason: '⛔premise: the rider stands where its file is laid',
+      );
+      expect(wayOf(s, row), framed, reason: 'the two show it apart');
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      final bakedCopy = s.layerById(copy)!;
+      expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
+      expect(shown(s, baked), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+      // 100×60 turned 30° about (1170, 827): 116.6 × 102 across.
+      final turned = shown(s, bakedCopy)!;
+      expect(turned.left, closeTo(1111.7, 1.5));
+      expect(turned.bottom, closeTo(878, 1.5));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🗣️F-572-Q2 — a 겸용 copy whose move takes the still a '
+        'position apiece, its row showing it still: both come back animation '
+        'layers, as a merge makes them — the kind is the row\'s, read off '
+        'every use', (tester) async {
+      final (s, row) = await placed(tester);
+      named(s, row, '3');
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, s.layerById(copy)!, track: squashed, fx: quarterOverTwo);
+      final length = drawingBlocks(
+        rowOf(s, row).timeline,
+      ).fold(0, (sum, block) => sum + block.length);
+      expect(wayOf(s, row), framed);
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final uses = [rowOf(s, row), s.layerById(copy)!];
+      Set<FrameId?> celsShownBy(Layer use) => {
+        for (var frame = 0; frame < length; frame += 1)
+          exposedFrameIdAt(use.timeline, frame),
+      };
+      expect(
+        celsShownBy(uses.first),
+        hasLength(1),
+        reason: '⛔전제: the row shows one picture',
+      );
+      expect(
+        celsShownBy(uses.last),
+        hasLength(greaterThan(1)),
+        reason: '⛔전제: the copy shows more',
+      );
+      expect([for (final use in uses) use.kind], [
+        LayerKind.animation,
+        LayerKind.animation,
+      ]);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
@@ -1758,6 +2413,7 @@ void main() {
             path: path,
             destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
+            fit: MediaFitMode.contain,
             inFrame: inFrame,
             outFrame: outFrame,
           ),
@@ -1902,6 +2558,7 @@ void main() {
             path: await writeThreeFrameGif(tempDir, 'walk.gif'),
             destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
+            fit: MediaFitMode.contain,
             inFrame: 1,
             outFrame: outFrame,
           ),

@@ -5,16 +5,19 @@ import 'package:flutter/foundation.dart';
 
 import '../../services/flutter_test_run.dart';
 import '../../models/export_format_selection.dart';
-import '../../native/qa_image_encoder.dart';
 import '../../native/qa_video_encoder.dart';
 import '../text/app_strings.dart';
 import 'video_export_service.dart'
     show ExportVideoCodecAbi, ExportVideoContainerAbi, writtenByTheApp;
 
-/// What THIS machine can write (EX4): the OS encoder's probe per
-/// container/codec pair, ffmpeg's presence as the fallback answer, and
-/// the native JPG encoder for stills. The format picker grays what
-/// cannot run and says why — nothing in the lineup fails only at Export.
+/// What movies THIS machine can write (EX4): the OS encoder's probe per
+/// container/codec pair, ffmpeg's presence as the fallback answer. The
+/// format picker grays what cannot run and says why — nothing in the
+/// lineup fails only at Export. Every still is written wherever the app
+/// runs: the engine's PNG and JPG (`QaImageEncoder`), the rest in Dart
+/// (`still_file_writing.dart`, `psd_writer.dart`). ↩️A still could stand off
+/// — JPG on a machine without the C engine's encoder — until the
+/// connection round (connection-round-checklist H, 관제 2026-11-08 08:23).
 ///
 /// The ffmpeg check is one `-version` run, async; until it lands the
 /// pairs the OS cannot take stay pessimistically off (they pop in when
@@ -23,8 +26,7 @@ class ExportFormatAvailability extends ChangeNotifier {
   ExportFormatAvailability({
     QaVideoEncoder? Function()? encoderResolver,
     Future<bool> Function()? ffmpegCheck,
-    bool? jpgSupported,
-  }) : _jpgSupported = jpgSupported ?? (QaImageEncoder.instance != null) {
+  }) {
     final resolve =
         encoderResolver ??
         () => underFlutterTest
@@ -50,9 +52,7 @@ class ExportFormatAvailability extends ChangeNotifier {
 
   /// Every pair allowed, immediately — the widget-test default (the fake
   /// ffmpeg carries the actual run there).
-  ExportFormatAvailability.permissive()
-    : _jpgSupported = true,
-      _ffmpegPresent = true {
+  ExportFormatAvailability.permissive() : _ffmpegPresent = true {
     for (final container in ExportVideoContainer.values) {
       for (final codec in ExportVideoCodec.codecsFor(container)) {
         _osPairs[(container, codec)] = true;
@@ -62,7 +62,6 @@ class ExportFormatAvailability extends ChangeNotifier {
 
   final Map<(ExportVideoContainer, ExportVideoCodec), bool> _osPairs = {};
   bool? _ffmpegPresent;
-  final bool _jpgSupported;
   bool _disposed = false;
 
   static Future<bool> _defaultFfmpegCheck() async {
@@ -104,31 +103,9 @@ class ExportFormatAvailability extends ChangeNotifier {
         : AppText.strings.exCheckingEncoders;
   }
 
-  bool stillAllowed(ExportStillFormat format) =>
-      stillFormatWritable(format, jpgSupported: _jpgSupported);
-
   @override
   void dispose() {
     _disposed = true;
     super.dispose();
   }
 }
-
-/// Whether this machine writes a still in [format] — the rule
-/// [ExportFormatAvailability.stillAllowed] grays the picker by, for a row
-/// with no window to keep the answer in (「다른 이름으로 저장」's pictures):
-/// nothing in a lineup fails only once it is pressed. [jpgSupported] is the
-/// window's own answer, when it holds one.
-bool stillFormatWritable(ExportStillFormat format, {bool? jpgSupported}) =>
-    switch (format) {
-      // Written wherever the app runs: the engine's PNG, the rest in Dart
-      // (`still_file_writing.dart`, `psd_writer.dart`). Whether a tab lays
-      // its picture out as a PSD's rows is the tab's to say.
-      ExportStillFormat.png ||
-      ExportStillFormat.psd ||
-      ExportStillFormat.bmp ||
-      ExportStillFormat.tga ||
-      ExportStillFormat.tiff ||
-      ExportStillFormat.webp => true,
-      ExportStillFormat.jpg => jpgSupported ?? QaImageEncoder.instance != null,
-    };

@@ -206,17 +206,14 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   required Project? project,
   required ProjectFrameRate rate,
   required double? Function(String filePath) durationSecondsFor,
-  Set<LayerId>? soloedLayerIds,
   Set<LayerId>? mutedLayerIds,
   List<ScheduledAudioClip>? extraClips,
 }) {
-  // Solo is a MONITORING state (AUDIO-PRO R1): a non-empty set narrows
-  // the audible layers to it. Export never passes one — soloing while
-  // rendering would bake a monitoring choice into the file.
-  final soloed = soloedLayerIds ?? const <LayerId>{};
   // A transient monitoring mute on top of the layers' own flags (REC1-B:
   // the armed lane yields to the microphone while a take rolls). Export
-  // never passes one either — same reasoning as solo.
+  // never passes one — muting while rendering would bake a monitoring
+  // choice into the file. ↩️A solo set narrowed the rows here too until
+  // F-577 took its door, the S row's mixer, away.
   final muted = mutedLayerIds ?? const <LayerId>{};
   final schedule = <ScheduledAudioClip>[];
 
@@ -235,10 +232,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   if (window != null && track != null) {
     final fileFramesOf = _fileFramesAt(rate, durationSecondsFor);
     for (final layer in track.seLayers) {
-      final audible =
-          !layer.muted &&
-          !muted.contains(layer.id) &&
-          (soloed.isEmpty || soloed.contains(layer.id));
+      final audible = !layer.muted && !muted.contains(layer.id);
       if (!audible) {
         continue;
       }

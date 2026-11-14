@@ -37,17 +37,13 @@ jobs:
     # Measured 7-12 minutes including the parity check; 30 bounded a hang.
     # A build that stalls must not sit for six hours holding the
     # `testflight` concurrency group and blocking the nightly behind it.
-    # 50 since the iPad's fx engine is built from source when its cache is
-    # cold (apple.yml says why) — guessed at 10-20 minutes, not yet measured.
+    # 50 since the fx plugins' engine is built here: the Rust engine's build
+    # hook builds Wasmtime with it, for the Mac the parity runs on and for
+    # the iPad, from cold (apple.yml says how long). ↩️It was C's prebuilt
+    # engine and an iPad build from source until 2026-11-08.
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
-
-      # The fx plugins' engine, kept between runs as apple.yml keeps it.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/anicel/third_party
-          key: wasmtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/qa_native/src/wasmtime.cmake') }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -55,6 +51,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # The Apple-side correctness check lives HERE, before anything
       # expensive, rather than in a separate workflow somebody has to
@@ -68,42 +65,42 @@ jobs:
       # second look to notice. A check the release path cannot skip is
       # worth more than a check that is thorough somewhere else.
       #
-      # Only the tests that touch the native engine run here, chosen by
-      # tool/native_parity_tests.sh from what they import rather than from a
-      # list that would rot; the step prints how many. The rest have already
-      # run on Linux and Windows for this commit, and running them a third
-      # time is what makes apple.yml take 26 minutes.
-      - name: Native core (Apple clang)
-        run: |
-          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/ci-apple --config Release
-      - name: Parity against the Apple-built engine
-        env:
-          QA_ENGINE_PATH: ${{ github.workspace }}/build/ci-apple/libqa_engine.dylib
-          # A missing engine must FAIL rather than skip: a skipped parity
-          # suite and a passing one look identical in a summary, which is
-          # exactly how #614 hid for five rounds.
-          QA_REQUIRE_NATIVE: '1'
+      # Only the tests that call into the engine's library run here, chosen
+      # by tool/native_parity_tests.sh from what they import rather than from
+      # a list that would rot; the step prints how many. The rest have
+      # already run on Linux and Windows for this commit, and running them a
+      # third time is what makes apple.yml take 26 minutes.
+      #
+      # The engine they open is the Rust library this run's build hook
+      # builds on this Mac — Apple silicon, where its NEON steps are run and
+      # no desk of ours runs them.
+      # ↩️Till 2026-11-13 a step before this one built the C core with Apple
+      # clang and the tests ran against that dylib (QA_ENGINE_PATH), with
+      # QA_REQUIRE_NATIVE so a missing engine FAILED rather than skipped — a
+      # skipped parity suite and a passing one look identical in a summary,
+      # which is exactly how #614 hid for five rounds. The C went; nothing
+      # here can skip for want of an engine.
+      - name: Tests on the Apple-built engine
         run: |
           set -euo pipefail
           # The selector is ONE script: this build, the Mac build, the Linux
-          # build and `lane.sh land` ask the same question and must get one
-          # answer. It exits 1 when it selects nothing, which fails this step
-          # under -e.
+          # build and the Windows ARM64 build ask the same question and must
+          # get one answer. It exits 1 when it selects nothing, which fails
+          # this step under -e.
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
-          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          echo "engine subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # A native crash is one line here; its stack is in the crash report
           # macOS writes beside it, which `print_mac_crash_reports.py` prints.
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
-          dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {
+          dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {
             status=$?
             python3 tool/print_mac_crash_reports.py
             exit $status
           }
 
       # Flutter's own artifacts first (the Dart AOT snapshot, the engine,
-      # the qa_native pod). fastlane's build_app then archives and signs
+      # the pods). fastlane's build_app then archives and signs
       # what this produced — signing here would be thrown away.
       #
       # --build-number is how the version reaches the bundle at all:

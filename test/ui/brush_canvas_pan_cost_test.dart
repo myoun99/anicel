@@ -90,8 +90,8 @@ void main() {
     final capsule = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey<String>('canvas-view-pill')),
     );
-    final clip = capsule.child! as SuperellipseClip;
-    return (clip.child! as SizedBox).child;
+    final hit = capsule.child! as SuperellipseHit;
+    return (hit.child! as SizedBox).child;
   }
 
   /// A middle-button drag across the canvas, mapped to the pan above.

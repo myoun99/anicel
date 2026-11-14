@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// 🚨★★★**THE ONE THING THAT MAKES THE PARK ROUTE WORTH HAVING IS
 /// INVISIBLE TO EVERY BEHAVIOURAL TEST.** `encodeCelEntryFromSurface`
-/// writes a tile's bytes through `readPixels`, which hands the native
-/// view straight to the writer. Writing `tile.pixels` instead produces
-/// BYTE-FOR-BYTE the same stream — and a defensive 64KB copy per tile,
-/// at the moment the byte budget said there was no room.
+/// writes a tile's bytes as its reader hands them over — read back from
+/// the engine a batch at a time through one block (flip lane ⓓ,
+/// `EngineTileLedger.readEach`), or on a worker through `readPixels` —
+/// each a view straight to the writer. Writing `tile.pixels` instead
+/// produces BYTE-FOR-BYTE the same stream — and a defensive 64KB copy per
+/// tile, at the moment the byte budget said there was no room.
 ///
 /// ⚠️Verified by mutation: swapping `readPixels` for the getter left the
 /// whole suite green. So the contract is enforced on the source, the way
@@ -45,7 +47,30 @@ void main() {
     expect(walkStart, greaterThan(-1), reason: 'setup: the walk is there');
     expect(walkEnd, greaterThan(walkStart), reason: 'setup: and the next');
     final walk = source.substring(walkStart, walkEnd);
-    expect(walk.contains('readPixels'), isTrue, reason: 'setup: it reads');
+    expect(walk.contains('read(['), isTrue, reason: 'setup: it reads');
     expect(walk.contains('.pixels'), isFalse, reason: copies);
+
+    // And each reader the route is handed hands views: the engine's, the
+    // default, and the worker's.
+    expect(
+      body.contains('EngineTileLedger.instance.readEach'),
+      isTrue,
+      reason: 'setup: the engine reads by default',
+    );
+    final ledger = File(
+      'lib/src/native/engine_tile_ledger.dart',
+    ).readAsStringSync();
+    final eachStart = ledger.indexOf('void readEach(');
+    final eachEnd = ledger.indexOf('static const int readBatch');
+    expect(eachEnd, greaterThan(eachStart), reason: 'setup: the read is there');
+    final each = ledger.substring(eachStart, eachEnd);
+    expect(each.contains('Uint8List.sublistView'), isTrue, reason: copies);
+    expect(each.contains('.pixels'), isFalse, reason: copies);
+    final worker = File(
+      'lib/src/models/bitmap_tile.dart',
+    ).readAsStringSync();
+    final inPlace = worker.substring(worker.indexOf('void readTilesInPlace('));
+    expect(inPlace.contains('readPixels'), isTrue, reason: 'setup: it reads');
+    expect(inPlace.contains('.pixels'), isFalse, reason: copies);
   });
 }

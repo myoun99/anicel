@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,7 @@ import '../../helpers/wait_window.dart';
 /// the table in the timeline's order, wearing the rail's own cells; its
 /// scans and movie files of their own; what it leaves out a row of its own.
 void main() {
+  opensTheEnginesScreens();
   late Directory tempDir;
 
   setUp(() async {
@@ -211,7 +213,7 @@ void main() {
 
     final fit = column(tester, 'fit');
     expect(fit.answersFor(a), MediaFitMode.values);
-    expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.contain));
+    expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.none));
     expect(fit.appliesTo(scan), isFalse, reason: 'registered, not placed');
     final fitCell = find.byKey(const ValueKey<String>('import-cell-fit-$a'));
     await tester.ensureVisible(fitCell);
@@ -219,12 +221,12 @@ void main() {
     await tester.tap(fitCell);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-fit-none')),
+      find.byKey(const ValueKey<String>('import-option-fit-stretch')),
     );
     await tester.pumpAndSettle();
     expect(
       column(tester, 'fit').cellWordOf(a),
-      importFitLabel(MediaFitMode.none),
+      importFitLabel(MediaFitMode.stretch),
     );
 
     final option = column(tester, 'option');

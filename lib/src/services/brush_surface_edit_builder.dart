@@ -9,6 +9,7 @@ import '../models/brush_surface_edit.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'brush_commit_builder.dart';
+import 'selection_clip.dart';
 
 BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
@@ -20,6 +21,7 @@ BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
   List<PlacedTile>? promotedTiles,
+  SelectionClip? selection,
 }) {
   final commitResult = brushCommitResultForBrushDabSequenceOnBitmapSurface(
     surface: surface,
@@ -31,6 +33,7 @@ BrushSurfaceEdit brushSurfaceEditForBrushDabSequenceOnBitmapSurface({
     blendMode: blendMode,
     promotedBase: promotedBase,
     promotedTiles: promotedTiles,
+    selection: selection,
   );
 
   return BrushSurfaceEdit(

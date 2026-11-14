@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -24,8 +25,10 @@ import '../../models/key_side.dart' show KeySideKind;
 ///
 /// ONE outline round both halves — down the left from the top of the
 /// middle, back up the right — so there is no edge down the middle where
-/// the halves meet: the fill has no seam, and the selection's ring is a
-/// thin stroke of the SILHOUETTE (UI-R23 #4), not a bar between the halves.
+/// the halves meet: the fill has no seam, and the selection's ring lies
+/// round the SILHOUETTE (UI-R23 #4), not a bar between the halves — a thin
+/// stroke of it, or fills where the mark is filled exactly
+/// ([_exactlyFilled]).
 Path keyMarkPath(KeyMark mark, Size box) {
   final unit = box / 12;
   switch (mark) {
@@ -116,8 +119,25 @@ void paintKeyMark(
   required Color color,
   ({Color color, double width})? ring,
 }) {
-  final laid = keyMarkPath(mark, box);
   final stood = standing ? box.flipped : box;
+  final exact = _exactlyFilled(mark);
+  if (exact != null && (ring == null || color.a == 1)) {
+    _paintExactly(
+      canvas,
+      _ExactMark(
+        exact,
+        Rect.fromCenter(
+          center: center,
+          width: stood.width,
+          height: stood.height,
+        ),
+      ),
+      color: color,
+      ring: ring,
+    );
+    return;
+  }
+  final laid = keyMarkPath(mark, box);
   final path = (standing ? laid.transform(_quarterTurn(box)) : laid).shift(
     center - stood.center(Offset.zero),
   );
@@ -178,5 +198,106 @@ void _walkHalf(
       );
     case KeySideKind.hold:
       through([at(0, 0), at(0, 12)]);
+  }
+}
+
+/// The marks the engine fills by an exact formula, drawn so rather than as
+/// a [Path] — a diamond, and the box itself.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 2026-11-08, 2: 「가장자리를
+/// 정확한 식으로 칠하게 바꿔 그려 본다」): a path's edge is multisampled, and
+/// the image a still row takes of it parts from the screen by up to 51/255;
+/// the same diamond as a turned rectangle parts by 0~1 (🔬the Surface's edge
+/// probe, 11-08 04:40: `path` 51, `diamond-rect` 0, `diamond-sq` 0~1).
+/// ⛔The halves of two kinds, the hourglass, the star's point, the arcs, the
+/// ◉ and the roving pill stay paths: they are no rectangle, and an oval —
+/// which the arcs and the ◉ are, and a pill as narrow as it is low — was
+/// not probed.
+enum _Exact { diamond, box }
+
+_Exact? _exactlyFilled(KeyMark mark) => switch (mark) {
+  SidesKeyMark(incoming: KeySideKind.linear, outgoing: KeySideKind.linear) =>
+    _Exact.diamond,
+  SidesKeyMark(incoming: KeySideKind.hold, outgoing: KeySideKind.hold) =>
+    _Exact.box,
+  _ => null,
+};
+
+/// [mark] filled with [color], rung inside its edge with [ring] by fills as
+/// well: the ring's colour over the whole mark, [color] over the mark the
+/// ring's width in — the edge `SuperellipseFace` draws a corner's side by,
+/// and as it, [color] under a translucent ring.
+void _paintExactly(
+  Canvas canvas,
+  _ExactMark mark, {
+  required Color color,
+  required ({Color color, double width})? ring,
+}) {
+  if (ring == null) {
+    mark.fill(canvas, color);
+    return;
+  }
+  if (ring.color.a < 1) {
+    mark.fill(canvas, color);
+  }
+  mark.fill(canvas, ring.color);
+  mark.insetBy(ring.width)?.fill(canvas, color);
+}
+
+/// A mark filled exactly ([_exactlyFilled]): its [shape], touching the
+/// edges of [box].
+class _ExactMark {
+  const _ExactMark(this.shape, this.box);
+
+  final _Exact shape;
+  final Rect box;
+
+  void fill(Canvas canvas, Color color) {
+    final paint = Paint()..color = color;
+    switch (shape) {
+      case _Exact.box:
+        canvas.drawRect(box, paint);
+      // The square √2 a side turned a quarter has its corners one out on
+      // each axis; stretched by the box's half-sides they touch its edges'
+      // middles.
+      case _Exact.diamond:
+        canvas
+          ..save()
+          ..translate(box.center.dx, box.center.dy)
+          ..scale(box.width / 2, box.height / 2)
+          ..rotate(math.pi / 4)
+          ..drawRect(
+            Rect.fromCenter(
+              center: Offset.zero,
+              width: math.sqrt2,
+              height: math.sqrt2,
+            ),
+            paint,
+          )
+          ..restore();
+    }
+  }
+
+  /// The same shape with its edges [width] inside these — null when nothing
+  /// is left inside. A diamond's sides lean, so its points come in further
+  /// than [width]: by [width] over the sine of the side's lean.
+  _ExactMark? insetBy(double width) {
+    final a = box.width / 2;
+    final b = box.height / 2;
+    final side = math.sqrt(a * a + b * b);
+    final (across, down) = switch (shape) {
+      _Exact.box => (a - width, b - width),
+      _Exact.diamond => (a - width * side / b, b - width * side / a),
+    };
+    return across > 0 && down > 0
+        ? _ExactMark(
+            shape,
+            Rect.fromCenter(
+              center: box.center,
+              width: across * 2,
+              height: down * 2,
+            ),
+          )
+        : null;
   }
 }

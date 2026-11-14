@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
     show commitStoryboardScrub;
 
+import '../../helpers/name_tags_laid.dart';
+
 /// 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
 /// 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
 /// 비디오트랙이나 se트랙이나 법 하나로 통일」.
@@ -71,16 +73,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Whether the EDITING canvas paints name tags — its own overlay, not the
-  /// track stack's, which draws the parked frame's through its own painter.
-  bool editingCanvasShowsTags(WidgetTester tester) => find
-      .byWidgetPredicate(
-        (widget) =>
-            widget is CustomPaint &&
-            widget.painter.runtimeType.toString() == '_SeNameTagOverlayPainter',
-      )
-      .evaluate()
-      .isNotEmpty;
+  /// Whether the EDITING canvas's picture lays name tags — its own, not the
+  /// track stack's, which lays the parked frame's in its own pictures.
+  bool editingCanvasShowsTags(WidgetTester tester) =>
+      nameTagsLaidBy(tester, theCanvasOwnPictures()).isNotEmpty;
 
   testWidgets('a scrub past the cut takes the line off the editing canvas with '
       'the picture — over a gap and over the next cut — and back on the cut '

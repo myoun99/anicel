@@ -4,8 +4,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart'
     show decodeAudioSource;
@@ -17,7 +15,6 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A TAKE IS A CARRIED ASSET, AND CARRIED ASSETS LIVE IN THE RUN'S
@@ -105,6 +102,7 @@ void main() {
     addTearDown(manager.dispose);
     final lane = manager.activeTrack.seLayers.first;
     final before = stagedNames().length;
+    final recording = DateTime.now();
 
     expect(
       await manager.voiceRecording.placeVoiceRecording(
@@ -115,6 +113,14 @@ void main() {
       isTrue,
     );
 
+    final dated = manager.mediaPool.mediaAssets.single.carriedAs!.modified;
+    expect(
+      dated != null &&
+          !dated.isBefore(recording) &&
+          !dated.isAfter(DateTime.now()),
+      isTrue,
+      reason: 'a take is from the moment it was recorded (F-589): $dated',
+    );
     final clip = manager.activeTrack.seLayers.first.audioClips.single;
     expect(
       clip.filePath,
@@ -213,47 +219,33 @@ void main() {
   /// decoder reads a conform — so the block had no waveform and no sound.
   /// ⚠️The session here stubs the conform runner, which is why nothing
   /// else in this file could see that: this asks the decoder itself.
-  group('with the decoder', () {
-    final libraryPath = nativeEngineLibraryPathOrNull();
+  test('🚨the take reads back as the samples that were recorded', () async {
+    final manager = session();
+    addTearDown(manager.dispose);
+    final lane = manager.activeTrack.seLayers.first;
+    expect(
+      await manager.voiceRecording.placeVoiceRecording(
+        takeOfSeconds(1.0),
+        laneId: lane.id,
+        anchorFrame: 0,
+      ),
+      isTrue,
+    );
+    final path = manager.mediaPool.mediaAssets.single.path;
 
-    setUp(() {
-      QaAudioDecoder.debugResetForTests();
-      debugQaEngineLibraryPathOverride = libraryPath;
-    });
+    final decoded = decodeAudioSource(
+      manager.projectFile.mediaByteSourceFor(path),
+    );
 
-    tearDown(() {
-      QaAudioDecoder.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-    });
-
-    test('🚨the take reads back as the samples that were recorded', () async {
-      final manager = session();
-      addTearDown(manager.dispose);
-      final lane = manager.activeTrack.seLayers.first;
-      expect(
-        await manager.voiceRecording.placeVoiceRecording(
-          takeOfSeconds(1.0),
-          laneId: lane.id,
-          anchorFrame: 0,
-        ),
-        isTrue,
-      );
-      final path = manager.mediaPool.mediaAssets.single.path;
-
-      final decoded = decodeAudioSource(
-        manager.projectFile.mediaByteSourceFor(path),
-      );
-
-      expect(decoded, isNotNull, reason: 'no decoder read what was written');
-      expect(decoded!.channels, 1);
-      expect(decoded.sampleRate, 48000);
-      expect(decoded.samples, hasLength(48000));
-      expect(
-        decoded.samples.every((sample) => sample == 0.25),
-        isTrue,
-        reason: 'at the level the meter showed',
-      );
-    }, skip: libraryPath == null ? nativeEngineMissingSkipReason : false);
+    expect(decoded, isNotNull, reason: 'no decoder read what was written');
+    expect(decoded!.channels, 1);
+    expect(decoded.sampleRate, 48000);
+    expect(decoded.samples, hasLength(48000));
+    expect(
+      decoded.samples.every((sample) => sample == 0.25),
+      isTrue,
+      reason: 'at the level the meter showed',
+    );
   });
 
   test('the take number walks past what the PROJECT already holds', () async {

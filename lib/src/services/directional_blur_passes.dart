@@ -2,7 +2,8 @@ import 'dart:math' as math;
 
 import 'shaded_passes.dart';
 
-/// The most taps one pass takes — the shader's loop bound.
+/// The most taps one pass takes — the engine's line blur's bound (line.rs's
+/// `MOST_TAPS`).
 const int lineBoxTapsAPass = 32;
 
 /// How a box [length] raster pixels long is laid in passes: how many, and
@@ -14,21 +15,19 @@ const int lineBoxTapsAPass = 32;
 /// sample every pixel, so no length leaves a gap between two: a blur of
 /// 500 pixels is two passes of 23, one of 2000 (a zoomed raster's) three
 /// of 13. [most] passes at most where given — a draft's one, its taps
-/// further apart than a pixel. [tapsAPass] is N at most, the loop bound of
-/// the shader the passes run — a row sum's (`rowSumPasses`) takes more.
-({int passes, int taps}) lineBoxPlan(
-  double length, {
-  int? most,
-  int tapsAPass = lineBoxTapsAPass,
-}) {
+/// further apart than a pixel. N is [lineBoxTapsAPass] at most.
+/// ↩️A row sum's passes took more, 64 (`rowSumPasses`), till the engine
+/// summed a row itself and the Flutter chain went
+/// (the-flutter-fx-chain-is-a-second-chain).
+({int passes, int taps}) lineBoxPlan(double length, {int? most}) {
   var passes = 1;
-  while (math.pow(tapsAPass, passes) < length &&
+  while (math.pow(lineBoxTapsAPass, passes) < length &&
       (most == null || passes < most)) {
     passes += 1;
   }
   final taps = (math.pow(length, 1 / passes) as double).ceil().clamp(
     1,
-    tapsAPass,
+    lineBoxTapsAPass,
   );
   return (passes: passes, taps: taps);
 }

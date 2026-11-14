@@ -16,7 +16,6 @@ import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -30,6 +29,7 @@ import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-119 (유저 2026-10-21): 「브러시 도구(브러시,지우개) 전용기능, …
 /// 누르고있으면 저번에 찍은 마지막 dab? 점 부터 현재 호버중인 커서까지
@@ -275,7 +275,7 @@ void main() {
       coordinator.currentSurfaceOf(coordinator.activeFrameKey);
 
   int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      (surfacePixelRgba(celOf(coordinator), x, y) ?? 0) & 0xFF;
+      (surfaceRgbaInPlace(celOf(coordinator), x, y) ?? 0) & 0xFF;
 
   /// The alpha [overlay] SHOWS over each tile it pictures, off its pictures.
   Future<Map<TileCoord, List<int>>> shownAlphas(

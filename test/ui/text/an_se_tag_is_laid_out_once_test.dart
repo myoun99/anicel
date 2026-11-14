@@ -2,14 +2,17 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
-import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/app_faces.dart';
 import '../../helpers/dart_sources.dart';
 
 /// 🔬card paint-walk-redoes-the-same-work-each-step (2026-10-27): every
@@ -18,66 +21,50 @@ import '../../helpers/dart_sources.dart';
 /// goes, and let them go, though the tag had not changed
 /// (`textCelLaidOut`).
 ///
-/// The oracle is the paragraph a paint DRAWS: blocks laid out once are the
-/// same paragraph at every paint, and still alive to be drawn.
-class _Paragraphs implements ui.Canvas {
-  final drawn = <ui.Paragraph>[];
-
-  @override
-  void drawParagraph(ui.Paragraph paragraph, ui.Offset offset) =>
-      drawn.add(paragraph);
-
-  @override
-  int getSaveCount() => 1;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
-}
-
+/// The oracle is the plate a frame lays: the tag's blocks are one plate
+/// the engine's letters make and keep (`EngineLetters.seNameTagPlate`,
+/// card the-flutter-fx-chain-is-a-second-chain) — so a tag laid again is
+/// the same plate, made once.
 const _canvas = CanvasSize(width: 1920, height: 1080);
 
-ResolvedSeNameTag _tag(String name) => ResolvedSeNameTag(
+ResolvedSeNameTag _tag(
+  String name, {
+  double along = 0,
+  String line = 'おはよう',
+  String delivery = 'OFF',
+}) => ResolvedSeNameTag(
   layerId: 's1',
   widthBudget: 1920,
-  shot: const LayerPlacement.identity(),
+  shot: LayerPlacement(1, 0, 0, 1, along, 0),
   content: TextCelContent(
     text: name,
     style: SeNameTag.defaultStyle,
     position: const ui.Offset(960, 900),
   ),
-  line: const TextCelContent(
-    text: 'おはよう',
-    style: SeNameTag.defaultLineStyle,
-  ),
-  delivery: const TextCelContent(text: 'OFF', style: SeNameTag.defaultStyle),
+  line: TextCelContent(text: line, style: SeNameTag.defaultLineStyle),
+  delivery: TextCelContent(text: delivery, style: SeNameTag.defaultStyle),
 );
 
-List<ui.Paragraph> _painted(ResolvedSeNameTag tag) {
-  final canvas = _Paragraphs();
-  paintSeNameTags(canvas, tags: [tag], canvasSize: _canvas, rasterScale: 1);
-  return canvas.drawn;
-}
+BitmapSurface _plate(ResolvedSeNameTag tag) =>
+    appEngineFrameToolsOpen!.letters.seNameTagPlate(tag, _canvas);
 
 void main() {
-  testWidgets('a tag painted again draws the blocks it laid out, still '
-      'held', (tester) async {
-    final first = _painted(_tag('タモツ'));
-    expect(first, isNotEmpty, reason: 'LIVENESS: the tag painted');
+  opensTheEnginesScreens();
+  setUpAll(loadTheAppFaces);
 
-    final again = _painted(_tag('タモツ'));
-    expect(again, hasLength(first.length));
-    for (var i = 0; i < first.length; i += 1) {
-      expect(
-        identical(again[i], first[i]),
-        isTrue,
-        reason: '🚨a second paint laid paragraph $i out again',
-      );
-      expect(
-        again[i].debugDisposed,
-        isFalse,
-        reason: '🚨a kept block was let go of by the paint that drew it',
-      );
-    }
+  test('a tag laid again lays the plate it made — wherever it is laid', () {
+    final first = _plate(_tag('タモツ'));
+    expect(first.tiles, isNotEmpty, reason: 'LIVENESS: the tag lettered');
+    expect(
+      identical(_plate(_tag('タモツ')), first),
+      isTrue,
+      reason: '🚨a second frame laid the blocks out, or lettered them, again',
+    );
+    expect(
+      identical(_plate(_tag('タモツ', along: 300)), first),
+      isTrue,
+      reason: '🚨where a tag is laid is its row\'s, not its plate\'s',
+    );
   });
 
   test('nothing in the app lays a text block out but the one that keeps '
@@ -101,14 +88,20 @@ void main() {
     );
   });
 
-  testWidgets('another name is another layout', (tester) async {
-    final here = _painted(_tag('ヒロシ'));
-    final there = _painted(_tag('ヒロミ'));
-    expect(there, isNotEmpty, reason: 'LIVENESS: the tag painted');
-    expect(
-      identical(there.first, here.first),
-      isFalse,
-      reason: '🚨another name answered with these letters',
-    );
-  });
+  for (final (what, other) in [
+    ('name', _tag('ヒロミ')),
+    ('line', _tag('ヒロシ', line: 'こんばんは')),
+    ('delivery', _tag('ヒロシ', delivery: 'MONO')),
+  ]) {
+    test('another $what is another plate', () {
+      final here = _plate(_tag('ヒロシ'));
+      final there = _plate(other);
+      expect(there.tiles, isNotEmpty, reason: 'LIVENESS: the tag lettered');
+      expect(
+        identical(there, here),
+        isFalse,
+        reason: '🚨another $what answered with these letters',
+      );
+    });
+  }
 }

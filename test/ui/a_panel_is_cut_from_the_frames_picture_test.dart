@@ -1,3 +1,4 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -18,9 +20,11 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/panel_pictures.dart';
 
+import '../helpers/a_plugin_that_shifts.dart';
 import '../helpers/poll_until.dart';
 
 /// 🗣️F-533-Q8 (유저 2026-11-05): 「프레임 그림에서 잘라 쓴다」 · 「재료가 둘?
@@ -29,11 +33,17 @@ import '../helpers/poll_until.dart';
 /// frame's one picture, the one the canvas and a run show: a frame the
 /// warmer has made is no work for a panel.
 void main() {
+  opensTheEnginesScreens();
   const canvas = CanvasSize(width: 64, height: 64);
 
-  /// A cut of one row whose cel is black on its left half.
-  EditorSessionManager halfInked() {
+  /// A cut of one row whose cel is black on its left half, wearing
+  /// [effects], on a device whose installed plugins are [plugins].
+  EditorSessionManager halfInked({
+    InstalledFxPlugins? plugins,
+    List<LayerEffect> effects = const [],
+  }) {
     final session = EditorSessionManager(
+      fxPlugins: plugins,
       initialProject: Project(
         id: const ProjectId('panels'),
         name: 'Panels',
@@ -54,6 +64,7 @@ void main() {
                     id: const LayerId('a'),
                     name: 'A',
                     kind: LayerKind.animation,
+                    effects: effects,
                     frames: [
                       Frame(
                         id: const FrameId('f'),
@@ -72,10 +83,10 @@ void main() {
         ],
       ),
     );
-    final pixels = Uint8List(64 * 64 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var y = 0; y < 64; y += 1) {
       for (var x = 0; x < 32; x += 1) {
-        pixels[(y * 64 + x) * 4 + 3] = 255;
+        pixels[(y * defaultCelTileSize + x) * 4 + 3] = 255;
       }
     }
     session.renderCaches.brushFrameStore.storeBakedSurface(
@@ -84,10 +95,10 @@ void main() {
         const LayerId('a'),
         const FrameId('f'),
       ),
-      BitmapSurface(canvasSize: canvas, tileSize: 64).putTiles([
+      BitmapSurface(canvasSize: canvas).putTiles([
         (
           coord: TileCoord(x: 0, y: 0),
-          tile: BitmapTile(size: 64, pixels: pixels),
+          tile: BitmapTile(size: defaultCelTileSize, pixels: pixels),
         ),
       ]),
     );
@@ -158,6 +169,48 @@ void main() {
       addTearDown(session.dispose);
       expect(await drawn(session, session.requireActiveCut), isTrue);
       expect(session.playbackRig.framePictures.store.estimatedBytes, 0);
+    });
+  });
+
+  testWidgets('🚨a frame a canvas holds as its own is drawn as its cels '
+      'stand, its plug-ins run', (tester) async {
+    final plugins = await installedShiftingFxPlugin(tester, by: 8);
+    await tester.runAsync(() async {
+      final session = halfInked(
+        plugins: plugins,
+        // A plugin past the cel's own pixels: a step of the chain.
+        effects: [
+          LayerEffect(
+            id: const EffectId('bright'),
+            kind: EffectKind.brightnessContrast,
+            parameters: {'brightness': EffectParameter(value: 0.5)},
+          ),
+          shiftingFxPluginLayerEffect(),
+        ],
+      );
+      addTearDown(session.dispose);
+      final cut = session.requireActiveCut;
+      final pictures = session.playbackRig.framePictures;
+      final frame = panelFrame(cut, 0);
+      expect(await pictures.make(frame, shouldAbort: () => false), isTrue);
+      final key = pictures.keyOf(frame);
+      expect(
+        pictures.store.move(from: key, to: key.standingOn(Object())),
+        isTrue,
+        reason: 'LIVENESS: lent to a canvas, no picture to cut from',
+      );
+
+      final image = await PanelPictures(
+        session: session,
+      ).render(cut, 0, width: 16);
+      final bytes = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!;
+      image.dispose();
+      // The ink ended at the panel's middle, 8; the plug-in took it 8 of
+      // the canvas's pixels on, 4 of the panel's.
+      expect(bytes.getUint8((8 * 16 + 10) * 4), lessThan(255));
+      expect(bytes.getUint8((8 * 16 + 13) * 4), 255);
     });
   });
 

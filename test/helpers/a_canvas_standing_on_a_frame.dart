@@ -1,31 +1,56 @@
-import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter_gpu/gpu.dart' as gpu;
+import 'package:flutter/rendering.dart'
+    show
+        OffsetLayer,
+        RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuTarget;
+import 'package:anicel/src/core/floor_math.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_chain_holds.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
-import 'settle_async.dart';
+import 'a_shown_surface.dart';
 
 /// What a screen shows, row by row.
 typedef Shot = ({Uint8List rgba, int width});
+
+/// Opens the engine and what a frame is laid with before the file's first
+/// test, off the test's clock: what it waits for comes in real time.
+void opensTheEnginesScreens() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() => appEngineFrameTools);
+}
+
+/// The store of a file's frames' pictures, on the app's engine
+/// ([opensTheEnginesScreens]).
+EngineFramePictureStore<FramePictureKey> aStoreOfPictures() =>
+    EngineFramePictureStore(
+      tools: () => appEngineFrameTools,
+      openAlready: () => appEngineFrameToolsOpen,
+    );
 
 /// The pictures of the frames [stackOf] stacks, of [images]' cels, kept by
 /// [store] — on a page of [canvasSize] with no wall — their background work
@@ -33,7 +58,7 @@ typedef Shot = ({Uint8List rgba, int width});
 /// holds on [line] where one is named.
 StackRun runOver(
   LayerFrameImageCache images,
-  FramePictureStore<FramePictureKey> store, {
+  EngineFramePictureStore<FramePictureKey> store, {
   required CanvasSize canvasSize,
   required List<CompositeNode<CanvasStackRow>> Function(DemandedPicture)
   stackOf,
@@ -108,25 +133,35 @@ FramePictureKey keptByTheCanvas(
 }) => frame.standingOn(tester.state(view ?? theFramesPicture()));
 
 /// [view] on a screen of its own, [size] logical pixels at the window's
-/// top left over [under] — what [screen] shows ([shotOf]).
+/// top left over [under] — what [screen] shows ([shotOf]) — in a place
+/// that marks its frames' waits as the canvas's panel does
+/// ([FrameWaitPlace], where a test stands the mark): the mark at the
+/// window's middle, past what [screen] shows.
 Widget onAScreen(
   GlobalKey screen, {
   required Size size,
   required Color under,
   required Widget view,
 }) => MaterialApp(
-  home: Align(
-    alignment: Alignment.topLeft,
-    child: RepaintBoundary(
-      key: screen,
-      child: ClipRect(
-        child: Container(
-          width: size.width,
-          height: size.height,
-          color: under,
-          child: view,
+  home: FrameWaitPlace(
+    child: Stack(
+      children: [
+        Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: screen,
+            child: ClipRect(
+              child: Container(
+                width: size.width,
+                height: size.height,
+                color: under,
+                child: view,
+              ),
+            ),
+          ),
         ),
-      ),
+        const Positioned.fill(child: FrameWaitMark()),
+      ],
     ),
   ),
 );
@@ -135,10 +170,9 @@ Widget onAScreen(
 Future<Shot> shotOf(WidgetTester tester, GlobalKey screen) async {
   final render = screen.currentContext!.findRenderObject()!
       as RenderRepaintBoundary;
+  final ratio = tester.view.devicePixelRatio;
   final shot = await tester.runAsync(() async {
-    final image = await render.toImage(
-      pixelRatio: tester.view.devicePixelRatio,
-    );
+    final image = await render.toImage(pixelRatio: ratio);
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final width = image.width;
     image.dispose();
@@ -159,201 +193,268 @@ List<String> differences(Shot a, Shot b, {int by = 0}) => [
           '${a.rgba.sublist(at, at + 4)} → ${b.rgba.sublist(at, at + 4)}',
 ];
 
-/// A GPU whose renders wait their turn where asked ([holdsRenders]) — what
-/// it does with a write is its kind's: [WritesNeverLand], [WritesLand].
-abstract class RendersHeld implements FramePictureGpu {
-  /// Whether every render waits its turn ([letOneThrough]): a step stays on
-  /// its way into the picture, none of its texels there. ⛔Not left to the
-  /// test's raster: it renders a patch before the next paint, and the
-  /// screen while a step lands was never drawn.
-  bool holdsRenders = false;
+/// The paint after a step went into its picture, which is the paint that
+/// showed it: a step is composed in at the paint that shows it, and there
+/// is nothing to wait for. A frame is asked for all the same, or the screen
+/// would not be read as it now is.
+Future<void> inThePicture(WidgetTester tester) => tester.pump();
 
-  final List<Completer<void>> _waiting = [];
+/// A store that says which keys were laid, which a step was written into
+/// and which a landing moved a picture to — on the app's tools, or on
+/// [tools] where a test opens its own.
+class StoreTellingItsWrites extends EngineFramePictureStore<FramePictureKey> {
+  StoreTellingItsWrites({Future<EngineFrameTools> Function()? tools})
+    : super(tools: tools ?? () => appEngineFrameTools);
 
-  /// How many renders wait their turn.
-  int get rendersWaiting => _waiting.length;
+  final List<FramePictureKey> laid = [];
+  final List<FramePictureKey> patched = [];
+  final List<FramePictureKey> moved = [];
 
-  /// How many renders were asked for.
-  int rendersAsked = 0;
+  /// The widest a step written in was said to reach, in world pixels.
+  double widestPatch = 0;
 
-  /// Lets the render that has waited longest through.
-  void letOneThrough() => _waiting.removeAt(0).complete();
-
-  /// Holds no render from here on, and lets every waiting one through.
-  void letAllThrough() {
-    holdsRenders = false;
-    for (final turn in _waiting) {
-      turn.complete();
-    }
-    _waiting.clear();
-  }
+  /// Whether a step was written into the picture under [key], or a picture
+  /// moved there.
+  bool landedAt(FramePictureKey key) =>
+      patched.contains(key) || moved.contains(key);
 
   @override
-  Future<ui.Image> render(ui.Picture picture, int width, int height) async {
-    rendersAsked += 1;
-    if (holdsRenders) {
-      final turn = Completer<void>();
-      _waiting.add(turn);
-      await turn.future;
-    }
-    return picture.toImage(width, height);
-  }
-}
-
-/// A GPU whose writes never come back: every patch stays on its way into
-/// its picture, and the picture shows what it was.
-class WritesNeverLand extends RendersHeld {
-  @override
-  Object? hold(ui.Image image) => image;
-
-  /// None: a picture written a piece at a time would never be whole.
-  @override
-  Object? allocate(int width, int height) => null;
-
-  @override
-  int levelsOf(Object held) {
-    final image = held as ui.Image;
-    return math.max(image.width, image.height).bitLength;
-  }
-
-  @override
-  ui.Image imageOf(Object held) =>
-      throw StateError('a write that never lands gives no image');
-
-  @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
-      Completer<bool>().future;
-}
-
-/// A GPU whose every write throws as it is asked — as `flutter_gpu`'s did
-/// into an iPhone's or iPad's picture (F-509): no patch goes in.
-class WritesThrow extends WritesNeverLand {
-  @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
-      throw StateError('a texel of no size');
-}
-
-/// The app's own writes into a frame's picture ([FlutterGpuFramePictures]):
-/// a step seen on its way into the picture, then in it.
-///
-/// Flutter GPU's, so Impeller's alone: a pin on it carries the `gpu` tag
-/// and skips where there is none to write with ([noFlutterGpu]).
-class WritesLand extends RendersHeld {
-  final FlutterGpuFramePictures _gpu = FlutterGpuFramePictures();
-
-  @override
-  Object? hold(ui.Image image) => _gpu.hold(image);
-
-  @override
-  Object? allocate(int width, int height) =>
-      _gpu.allocate(width, height);
-
-  @override
-  int levelsOf(Object held) => _gpu.levelsOf(held);
-
-  @override
-  ui.Image imageOf(Object held) => _gpu.imageOf(held);
-
-  /// Runs once, as the next write has gone to the GPU and before the store
-  /// goes on: what comes to the screen meanwhile.
-  void Function()? beforeTheNextLands;
-
-  /// How many patches went into a picture, each write's together.
-  int patchesWritten = 0;
-
-  /// How wide the widest of them was, in texels.
-  int widestPatch = 0;
-
-  @override
-  Future<bool> write(
-    Object held,
-    List<BaseWrite> base,
-    LevelWrites? levels,
-  ) async {
-    patchesWritten += base.length;
-    for (final write in base) {
-      widestPatch = math.max(widestPatch, write.source.width);
-    }
-    final written = _gpu.write(held, base, levels);
-    final meanwhile = beforeTheNextLands;
-    beforeTheNextLands = null;
-    meanwhile?.call();
-    return written;
-  }
-}
-
-/// Long enough for what the steps of a stroke owe the levels to be laid: a
-/// step that went in leaves a store's timer running past its view.
-const Duration theLevelsPause = Duration(milliseconds: 250);
-
-/// Why this runner cannot write into a frame's picture, or null when it can.
-final String? noFlutterGpu = () {
-  try {
-    gpu.gpuContext;
-    return null;
-  } on Exception catch (error) {
-    return 'needs Impeller with Flutter GPU — run with '
-        '`flutter test --enable-impeller --enable-flutter-gpu`: $error';
-  }
-}();
-
-/// Waits for [landing] — a patch or a move a store answers for
-/// (`FramePictureStore.landingOf`) — to be in its picture, and pumps the
-/// paint after it.
-///
-/// ⚠️Both clocks ([settleAsync]), not `runAsync` alone: the store's chain
-/// runs in the test's pumped zone, and a write in it comes back from the
-/// GPU in real time — awaited inside `runAsync`, the chain never moved on.
-///
-/// 🚨Asks that the view wanted a frame the moment it landed: the texels go
-/// into the picture's texture in place, so a capture here shows them
-/// whether or not the view painted again — only the frame says the screen
-/// will (🔬its repaint taken out, every pixel pin still passed).
-///
-/// 🚨★★★And that every frame view draws its picture's image AS IT IS NOW
-/// ([FramePicture.image]) — a frame is not enough on an iPhone or iPad,
-/// whose screen is drawn again only where its drawing changed, an image
-/// told apart by its identity: a view drawing the image it drew before the
-/// write showed the write nowhere there (F-509), and every capture here
-/// would still show it.
-///
-/// A [landing] null is a step already in: a write with no copy out is not
-/// waited for (F-533), and may be in before the paint of the frame that
-/// sent it — that frame shows it, and there is nothing to wait for. The
-/// frame such a step asks when it is in later is pinned by holding its
-/// render ([RendersHeld.holdsRenders]).
-Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
-  if (landing != null) {
-    var landed = false;
-    var framed = false;
-    unawaited(
-      landing.then((_) {
-        landed = true;
-        framed = tester.binding.hasScheduledFrame;
-      }),
+  Future<EngineFramePicture?> lay(
+    FramePictureKey key,
+    StackedFrame frame, {
+    bool shownNow = false,
+    bool Function() gone = _stays,
+    ({FramePictureKey film, ui.Rect fresh})? over,
+    EngineChainHolds? holds,
+  }) {
+    laid.add(key);
+    return super.lay(
+      key,
+      frame,
+      shownNow: shownNow,
+      gone: gone,
+      over: over,
+      holds: holds,
     );
-    expect(
-      await settleAsync(tester, () => landed),
-      isTrue,
-      reason: 'LIVENESS: it is in the picture',
-    );
-    expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
   }
-  await tester.pump();
-  final views = find.descendant(
-    of: find.byType(FramePictureView),
-    matching: find.byType(CustomPaint),
+
+  @override
+  bool patch({
+    required FramePictureKey from,
+    required FramePictureKey to,
+    required ui.Rect rect,
+    required StackedFrame frame,
+    EngineChainHolds? holds,
+  }) {
+    patched.add(to);
+    widestPatch = math.max(widestPatch, rect.width);
+    return super.patch(
+      from: from,
+      to: to,
+      rect: rect,
+      frame: frame,
+      holds: holds,
+    );
+  }
+
+  @override
+  bool move({required FramePictureKey from, required FramePictureKey to}) {
+    moved.add(to);
+    return super.move(from: from, to: to);
+  }
+
+  static bool _stays() => false;
+}
+
+/// A store whose lays stay on their way: a frame's picture never comes —
+/// on the app's tools, or on [tools] where a test opens its own.
+class StoreLayingNothing extends EngineFramePictureStore<FramePictureKey> {
+  StoreLayingNothing({Future<EngineFrameTools> Function()? tools})
+    : super(tools: tools ?? () => appEngineFrameTools);
+
+  @override
+  Future<EngineFramePicture?> lay(
+    FramePictureKey key,
+    StackedFrame frame, {
+    bool shownNow = false,
+    bool Function() gone = _stays,
+    ({FramePictureKey film, ui.Rect fresh})? over,
+    EngineChainHolds? holds,
+  }) => Completer<EngineFramePicture?>().future;
+
+  static bool _stays() => false;
+}
+
+/// A store no picture comes of: every lay asked of it throws [why], and
+/// [laid] says each that was asked.
+class StoreWhoseLaysThrow extends EngineFramePictureStore<FramePictureKey> {
+  StoreWhoseLaysThrow(this.why) : super(tools: () => appEngineFrameTools);
+
+  final Object why;
+  final List<FramePictureKey> laid = [];
+
+  @override
+  Future<EngineFramePicture?> lay(
+    FramePictureKey key,
+    StackedFrame frame, {
+    bool shownNow = false,
+    bool Function() gone = _stays,
+    ({FramePictureKey film, ui.Rect fresh})? over,
+    EngineChainHolds? holds,
+  }) {
+    laid.add(key);
+    return Future.error(why);
+  }
+
+  static bool _stays() => false;
+}
+
+/// What [box] — a repaint boundary — shows at the window's ratio, as
+/// [shotOf] reads a screen.
+Future<Shot> shotOfBox(WidgetTester tester, RenderBox box) async {
+  final ratio = tester.view.devicePixelRatio;
+  final shot = await tester.runAsync(() async {
+    final layer = box.debugLayer! as OffsetLayer;
+    final image = await layer.toImage(Offset.zero & box.size, pixelRatio: ratio);
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final width = image.width;
+    image.dispose();
+    return (rgba: data!.buffer.asUint8List(), width: width);
+  });
+  return shot!;
+}
+
+/// The box a frame's screen paints in, inside [view].
+Finder theFrameScreenIn(Finder view) => find.descendant(
+  of: view,
+  matching: find.byWidgetPredicate(
+    (widget) => widget is LeafRenderObjectWidget,
+  ),
+);
+
+/// Lets [store]'s tools open before a paint needs them, where no picture
+/// laid will come to paint again.
+Future<void> itsToolsOpen(
+  WidgetTester tester,
+  EngineFramePictureStore<FramePictureKey> store,
+) => tester.runAsync(() => store.tools);
+
+/// [picture]'s pixels over [world] at 100%, read back from the GPU:
+/// premultiplied RGBA, row after row.
+Uint8List pixelsOfPicture(EngineFramePicture picture, ui.Rect world) =>
+    _shownOver(
+      world,
+      (target, size, viewport) => picture.show(
+        target,
+        size,
+        viewport: viewport,
+        devicePixelRatio: 1,
+      ),
+    );
+
+/// [surface]'s pixels laid out again on the tiles the engine stores: a
+/// fixture's tile size is how it counts its pixels, and a frame is laid from
+/// these.
+BitmapSurface onTheEnginesTiles(BitmapSurface surface) {
+  const side = defaultCelTileSize;
+  final laid = <TileCoord, Uint8List>{};
+  for (final MapEntry(key: at, value: tile) in surface.tiles.entries) {
+    final pixels = tile.pixels;
+    for (var y = 0; y < tile.size; y += 1) {
+      for (var x = 0; x < tile.size; x += 1) {
+        final worldX = at.x * surface.tileSize + x;
+        final worldY = at.y * surface.tileSize + y;
+        final from = (y * tile.size + x) * 4;
+        final to = ((worldY % side) * side + worldX % side) * 4;
+        laid.putIfAbsent(
+            TileCoord(x: floorDiv(worldX, side), y: floorDiv(worldY, side)),
+            () => Uint8List(side * side * 4),
+          )
+          .setRange(to, to + 4, pixels, from);
+      }
+    }
+  }
+  return BitmapSurface(
+    canvasSize: surface.canvasSize,
+    pasteboardReach: surface.pasteboardReach,
+    tiles: {
+      for (final MapEntry(:key, :value) in laid.entries)
+        key: BitmapTile(size: side, pixels: value),
+    },
+    texts: surface.texts,
+    photos: surface.photos,
+    laidBounds: surface.laidBounds,
   );
-  for (final paint in tester.widgetList<CustomPaint>(views)) {
-    final shown =
-        (paint.painter as dynamic).shown
-            as ({FramePicture picture, ui.Image image})?;
-    if (shown case (:final picture, :final image)) {
-      expect(
-        image.isCloneOf(picture.image),
-        isTrue,
-        reason: 'a view draws its picture as it is now, not as it was drawn',
-      );
+}
+
+/// What a float showing [rgba] over the whole pixels of [where] holds where
+/// it lands, on the tiles the engine stores.
+Map<TileCoord, BitmapTile> tilesOfColorOver(
+  ui.Rect where,
+  List<int> rgba,
+) {
+  const side = defaultCelTileSize;
+  final laid = <TileCoord, Uint8List>{};
+  for (var y = where.top.floor(); y < where.bottom.ceil(); y += 1) {
+    for (var x = where.left.floor(); x < where.right.ceil(); x += 1) {
+      final to = ((y % side) * side + x % side) * 4;
+      laid
+          .putIfAbsent(
+            TileCoord(x: floorDiv(x, side), y: floorDiv(y, side)),
+            () => Uint8List(side * side * 4),
+          )
+          .setRange(to, to + 4, rgba);
     }
+  }
+  return {
+    for (final MapEntry(:key, :value) in laid.entries)
+      key: BitmapTile(size: side, pixels: value),
+  };
+}
+
+/// The premultiplied RGBA [frame] lays over [world], a canvas pixel [zoom]
+/// to a side, on the engine ([opensTheEnginesScreens]).
+Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world, {double zoom = 1}) {
+  final (:composite, :letters) = appEngineFrameToolsOpen!;
+  final screen = EngineStackScreen(composite, letters);
+  try {
+    screen.compose(frame);
+    return _shownOver(
+      world,
+      (target, size, viewport) => screen.show(
+        target,
+        size,
+        viewport: viewport,
+        devicePixelRatio: 1,
+      ),
+      zoom: zoom,
+    );
+  } finally {
+    screen.free();
+  }
+}
+
+Uint8List _shownOver(
+  ui.Rect world,
+  void Function(GpuTarget target, (int, int) size, CanvasViewport viewport)
+  show, {
+  double zoom = 1,
+}) {
+  final width = (world.width * zoom).round();
+  final height = (world.height * zoom).round();
+  final target = shownSurfaceOf(width, height);
+  try {
+    show(
+      target,
+      (width, height),
+      CanvasViewport(
+        zoom: zoom,
+        panX: -world.left * zoom,
+        panY: -world.top * zoom,
+      ),
+    );
+    return target.read();
+  } finally {
+    target.free();
   }
 }

@@ -3,38 +3,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../native/qa_native_engine.dart';
+import '../core/on_a_worker.dart';
+import '../core/rgba_premultiply.dart';
 
-/// Straight-alpha [rgba] premultiplied for the display upload, with the
-/// native scratch that owns those bytes when the engine took the pass —
-/// release it once the decode is done, and never before.
-///
-/// ⛔THE NATIVE PASS AND THE DART FALLBACK ARE ONE DECISION, not two. The
-/// second site to want premultiplied pixels wrote both branches out again,
-/// which is how a rounding rule (`+127`, round-to-nearest, matching the C)
-/// came to live in two places where only one of them said why.
-({Uint8List pixels, QaStampScratch? scratch}) premultipliedStraightRgba(
-  Uint8List rgba,
-) {
-  final native = QaNativeEngine.instance;
-  if (native != null) {
-    final scratch = native.premultipliedStampCopy(rgba);
-    return (pixels: scratch.view, scratch: scratch);
-  }
-  final premultiplied = Uint8List.fromList(rgba);
-  for (var i = 0; i < premultiplied.length; i += 4) {
-    final alpha = premultiplied[i + 3];
-    if (alpha == 255) {
-      continue;
-    }
-    premultiplied[i] = (premultiplied[i] * alpha + 127) ~/ 255;
-    premultiplied[i + 1] = (premultiplied[i + 1] * alpha + 127) ~/ 255;
-    premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
-  }
-  return (pixels: premultiplied, scratch: null);
-}
-
-/// Uploads STRAIGHT-alpha [rgba] as a display image.
+/// Uploads STRAIGHT-alpha [rgba] as a display image, premultiplied by the
+/// app's one premultiply in Dart ([premultipliedRgbaCopy] — the engine's
+/// `premultiply8`, one ledger row pinning both) on a worker isolate
+/// ([onAWorker]): a page or a piece the size of a document is never
+/// multiplied on this isolate, and no C is asked.
 ///
 /// Straight alpha is the app's storage convention and stays that way:
 /// premultiplying a stored buffer would round the very colours the
@@ -42,12 +18,14 @@ import '../native/qa_native_engine.dart';
 /// happens on a COPY, for display only, and the caller's bytes are not
 /// touched.
 ///
-/// The copy and the multiply are ONE native pass into native memory — the
-/// same fused kernel the fill overlay uses. As Dart (`Uint8List.fromList`
-/// plus a per-pixel loop) it costs a second full-size allocation and a
-/// second full traversal, which on a whole-picture buffer is tens of
-/// megabytes; the Dart branch here is the no-engine fallback, not the
-/// normal route.
+/// 🧭관제 2026-11-11 18:47 (gpu-export-path 1b ②): 「뷰어 · 컷 조각 미리보기 ·
+/// 브러시 팁은 … 작업자 아이솔레이트의 Dart 로 간다」 · 「플로트는 캔버스
+/// 베이스 패널 몫이다」. ↩️Beside it stood `decodeStraightRgbaImage`, the
+/// same picture through the C's fused copy-and-multiply into native memory
+/// (`premultipliedStraightRgba`, its scratch freed in a `finally` — a decode
+/// that failed had never let it go), until the last of its own (the float a
+/// warp lands, a-float-premultiplies-in-the-c-each-step) was pictured by
+/// the door every tile takes and none asked it.
 ///
 /// 🚨★★★**IT ANSWERS. `ui.decodeImageFromPixels` DOES NOT.**
 ///
@@ -81,7 +59,7 @@ import '../native/qa_native_engine.dart';
 /// throw away a frame that was going to arrive.
 ///
 /// The returned image is the caller's to dispose, mounted or not.
-Future<ui.Image> decodeStraightRgbaImage({
+Future<ui.Image> decodeStraightRgbaImageOnAWorker({
   required Uint8List rgba,
   required int width,
   required int height,
@@ -95,25 +73,13 @@ Future<ui.Image> decodeStraightRgbaImage({
   /// that came before.
   int? targetWidth,
   int? targetHeight,
-}) async {
-  final premultipliedCopy = premultipliedStraightRgba(rgba);
-  try {
-    return await uploadRawRgba(
-      premultipliedCopy.pixels,
-      width: width,
-      height: height,
-      targetWidth: targetWidth,
-      targetHeight: targetHeight,
-    );
-  } finally {
-    // 🚨THE `finally` IS THE FIX, not decoration. This lived inside the
-    // decode callback, so a decode that failed never released the native
-    // premultiply scratch — the one path where the bytes are native memory
-    // rather than Dart heap, and therefore the one path where nothing else
-    // ever reclaims them.
-    premultipliedCopy.scratch?.free();
-  }
-}
+}) async => uploadRawRgba(
+  await onAWorker(() => premultipliedRgbaCopy(rgba)),
+  width: width,
+  height: height,
+  targetWidth: targetWidth,
+  targetHeight: targetHeight,
+);
 
 /// The image [decode] produced, or null when it must not be used.
 ///
@@ -164,7 +130,7 @@ Future<ui.Image?> decodedImageStillWanted(
 /// timeline tile store — each had to remember all four. One of them
 /// forgetting is a leak that only shows up as growth.
 ///
-/// ⚠️STRAIGHT alpha goes through [premultipliedStraightRgba] first: this
+/// ⚠️STRAIGHT alpha goes through [premultipliedRgbaCopy] first: this
 /// takes what the engine will draw, not what the app stores.
 ///
 /// 🚨★★★**THIS IS `ui.decodeImageFromPixels`, WRITTEN SO IT CAN SAY NO.**
@@ -172,9 +138,9 @@ Future<ui.Image?> decodedImageStillWanted(
 /// first frame, dispose all three — which under this repo's connascence
 /// rule makes the two COPIES, not lookalikes. The difference that matters
 /// is that this one `await`s each step, so every failure the SDK drops
-/// (see [decodeStraightRgbaImage]) arrives here as a rejection the caller
-/// can act on. That is why the callers moved here in 2026-09-08 rather
-/// than the other way round.
+/// (see [decodeStraightRgbaImageOnAWorker]) arrives here as a rejection
+/// the caller can act on. That is why the callers moved here in 2026-09-08
+/// rather than the other way round.
 Future<ui.Image> uploadRawRgba(
   Uint8List rgba, {
   required int width,
@@ -245,10 +211,10 @@ Future<ui.Image> uploadRawRgba(
 /// pinned through here. Neither can do the other's job, and a seam that
 /// became the only reason anything ever failed would be measuring itself.
 ///
-/// ⚠️It sits UNDER [decodeStraightRgbaImage], so a test that installs it
-/// still runs the real premultiply and its native scratch — only the engine
-/// handoff is stood in for. That is what keeps the scratch-release
-/// assertions honest.
+/// ⚠️It sits UNDER [decodeStraightRgbaImageOnAWorker], so a test that
+/// installs it still runs the real premultiply — only the engine handoff
+/// is stood in for. ↩️That kept the native scratch's release assertions
+/// honest, while the C made one (`decodeStraightRgbaImage`).
 @visibleForTesting
 set debugRawRgbaUploader(
   Future<ui.Image> Function(

@@ -1,6 +1,12 @@
+// The first stamp on the engine compiles the executor and the landing's
+// kernels: 40 s on a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -11,8 +17,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
@@ -21,7 +25,7 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 
-import '../helpers/native_engine_path.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★board `a-stamp-rounds-twice-inside-a-selection` (2026-09-28): a
 /// stamp — a fill, a pasted or stamped piece — under 100% landed a level
@@ -29,19 +33,14 @@ import '../helpers/native_engine_path.dart';
 /// an empty surface first (its alpha rounded there at the dab's opacity),
 /// then clipped and composited: a second rounding. It clips in its own
 /// picture now and lands 1:1 either way (절대명령 2: 선택이 있든 없든 같은
-/// 코드가 답한다).
+/// 코드가 답한다) — on the engine's grid, where a selection cuts
+/// (`cutOnTheEngineOnly`, 2026-11-14).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 192, height: 128);
-  const tileSize = 64;
+  final tileSize = gpuTileSide;
   const layerId = LayerId('l');
   const frameId = FrameId('f');
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
 
   /// Paint under the stamp, where the two roundings part.
   BitmapSurface paintedBase() => materializeBrushDabSequenceOnBitmapSurface(
@@ -97,8 +96,9 @@ void main() {
         CanvasSelectionShape.rect(left: left, top: 0, right: right, bottom: 128),
       );
 
-  /// The stamp as the canvas panel lands it: through the commit funnel's
-  /// clip when a selection is live, then the commit.
+  /// The stamp as the canvas panel lands it: the commit funnel names the
+  /// selection it lands through when one is live, and the commit cuts it
+  /// there.
   BitmapSurface landed(
     BrushDab dab,
     BitmapSurface base,
@@ -108,7 +108,11 @@ void main() {
     final raw = BrushStrokeCommitData(sourceDabs: [dab], blendMode: mode);
     final data = selection == null
         ? raw
-        : clipStrokeCommitToSelection(raw, clip: SelectionClip.outline(selection), surface: base)!;
+        : clipStrokeCommitToSelection(
+            raw,
+            clip: SelectionClip.outline(selection),
+            surface: base,
+          )!;
     return brushCommitResultForBrushDabSequenceOnBitmapSurface(
       surface: base,
       sequence: BrushDabSequence(data.sourceDabs),
@@ -117,11 +121,12 @@ void main() {
       prerasterizedStrokePixels: data.strokePixels,
       prerasterizedStrokeBounds: data.strokeBounds,
       blendMode: mode,
+      selection: data.selection,
     ).afterSurface;
   }
 
-  /// The first channel where [a] and [b] disagree over the canvas at
-  /// x in [fromX, toX), or null.
+  /// The first pixel where [a] and [b] disagree over the canvas at x in
+  /// [fromX, toX), or null.
   String? firstDifference(
     BitmapSurface a,
     BitmapSurface b, {
@@ -130,49 +135,18 @@ void main() {
   }) {
     for (var y = 0; y < canvasSize.height; y += 1) {
       for (var x = fromX; x < toX; x += 1) {
-        final coord = (x: x ~/ tileSize, y: y ~/ tileSize);
-        final ta = a.tiles.entries
-            .where((e) => e.key.x == coord.x && e.key.y == coord.y)
-            .firstOrNull
-            ?.value;
-        final tb = b.tiles.entries
-            .where((e) => e.key.x == coord.x && e.key.y == coord.y)
-            .firstOrNull
-            ?.value;
-        final at = ((y % tileSize) * tileSize + x % tileSize) * 4;
-        for (var c = 0; c < 4; c += 1) {
-          final va = ta == null ? 0 : ta.pixels[at + c];
-          final vb = tb == null ? 0 : tb.pixels[at + c];
-          if (va != vb) {
-            return '($x, $y) channel $c: $va vs $vb';
-          }
+        final va = surfaceRgbaInPlace(a, x, y) ?? 0;
+        final vb = surfaceRgbaInPlace(b, x, y) ?? 0;
+        if (va != vb) {
+          return '($x, $y): ${va.toRadixString(16)} vs '
+              '${vb.toRadixString(16)}';
         }
       }
     }
     return null;
   }
 
-  void onEachEngine(String name, void Function() body) {
-    test('$name — Dart engine', () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      expect(QaNativeEngine.instance, isNull);
-      body();
-    });
-    test('$name — native engine', () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      body();
-    });
-  }
-
-  onEachEngine('a stamp at 40% lands the same bytes inside a selection that '
+  test('a stamp at 40% lands the same bytes inside a selection that '
       'covers it as with none — painting, erasing, multiplying', () {
     for (final (erase, mode) in [
       (false, BrushBlendMode.color),
@@ -192,7 +166,7 @@ void main() {
     }
   });
 
-  onEachEngine('half a selection: inside, the stamp lands as it does with no '
+  test('half a selection: inside, the stamp lands as it does with no '
       'selection; outside, the paint stands untouched', () {
     final base = paintedBase();
     final dab = stamp(opacity: 0.4);
@@ -220,7 +194,11 @@ void main() {
 
   test('a stamp the selection cannot reach lands nothing at all', () {
     expect(
-      clipStampDabToSelection(stamp(opacity: 0.4), clip: SelectionClip.outline(box(150, 192))),
+      clipStrokeCommitToSelection(
+        BrushStrokeCommitData(sourceDabs: [stamp(opacity: 0.4)]),
+        clip: SelectionClip.outline(box(150, 192)),
+        surface: paintedBase(),
+      ),
       isNull,
     );
   });

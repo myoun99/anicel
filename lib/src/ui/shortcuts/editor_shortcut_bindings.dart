@@ -402,6 +402,17 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether [actionId] holds [key] — the same key as a clash counts it
+  /// ([activatorKey]): what the shortcut window asks to find the actions of
+  /// a key (I-168), to name who still holds a clashed one (I-158), and to
+  /// give a key to one action alone.
+  bool holds(String actionId, SingleActivator key) {
+    final at = activatorKey(key);
+    return activatorsFor(
+      actionId,
+    ).any((activator) => activatorKey(activator) == at);
+  }
+
   /// [key] on [actionId] alone: taken off every other action that holds it,
   /// and put on [actionId] where it was not. Persists and notifies once.
   ///
@@ -412,7 +423,7 @@ class EditorShortcutBindings extends ChangeNotifier {
     final at = activatorKey(key);
     for (final definition in definitions) {
       final keys = activatorsFor(definition.id);
-      final held = keys.any((activator) => activatorKey(activator) == at);
+      final held = holds(definition.id, key);
       if (definition.id == actionId) {
         if (!held) {
           _record(actionId, [...keys, key]);

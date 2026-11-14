@@ -91,7 +91,8 @@ void main() {
     // so a fixture that only declared frames measures the empty answer and
     // calls it the ladder.
     final cut = session.requireActiveCut;
-    final pixels = Uint8List(16 * 16 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 3; i < pixels.length; i += 4) {
       pixels[i] = 0xFF;
     }
@@ -101,10 +102,10 @@ void main() {
           session.brushFrameKeyForCut(cut, layer.id, frame.id),
           BitmapSurface(
             canvasSize: cut.canvasSize,
-            tileSize: 16,
+            tileSize: side,
             tiles: {
               TileCoord(x: 0, y: 0): BitmapTile(
-                size: 16,
+                size: side,
                 pixels: pixels,
               ),
             },

@@ -33,6 +33,8 @@ class TimelineFrameScrub {
     required this.frameCellExtent,
     required this.renderedFrameCount,
     required this.scrolledFrameOffset,
+    required this.hold,
+    required this.letGo,
   });
 
   /// The axis the FRAMES run along: horizontal on the timeline's ruler,
@@ -53,6 +55,15 @@ class TimelineFrameScrub {
 
   /// The effective frame-axis offset the last layout resolved.
   final double Function() scrolledFrameOffset;
+
+  /// The axis's own [TimelineFrameAxisFollower.hold]: a drag holds the axis
+  /// by this strip, and pushed past the end it grows a runway ahead.
+  final VoidCallback hold;
+
+  /// The axis's own [TimelineFrameAxisFollower.letGo]: a scrub that let go
+  /// has carried the axis as far as it goes, and a runway it grew past the
+  /// end shrinks as a settled scroll's does.
+  final VoidCallback letGo;
 
   /// A scrub's per-gesture frame dedupe — see [FrameScrubDedupe] for why a
   /// scrub cannot report the same frame twice.
@@ -85,6 +96,7 @@ class TimelineFrameScrub {
   /// AND drags, wherever the pointer ends up). Tracking is NOT reset here
   /// so a strip's trailing onTap stays deduplicated.
   void endScrub() {
+    letGo();
     hooks().onScrubEnd?.call();
   }
 
@@ -117,6 +129,7 @@ class TimelineFrameScrub {
     if (viewport == null) {
       return;
     }
+    hold();
     _autoPanEdge(viewport, _alongLocal(viewport, globalPosition));
     _selectFrameAt(viewport, globalPosition);
   }

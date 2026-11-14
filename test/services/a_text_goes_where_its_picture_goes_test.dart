@@ -292,7 +292,7 @@ void main() {
 
     test('a crop or an extension leaves a text where it stands, on the new '
         'canvas', () {
-      const wider = CanvasSize(width: 64, height: 32);
+      const wider = CanvasSize(width: 1024, height: 512);
 
       final resized = resizeBitmapSurfaceCanvas(picture(), wider);
 
@@ -306,7 +306,7 @@ void main() {
         'drawing: the plate by the pixels\' own pass, the anchor by the '
         'same offset', () {
       // A whole tile and a part of one, so both roads of the pass run.
-      for (final (dx, dy) in [(8, 16), (3, -5)]) {
+      for (final (dx, dy) in [(128, 256), (3, -5)]) {
         final moved = translateBitmapSurface(
           picture(),
           dx: dx,
@@ -349,13 +349,13 @@ void main() {
       final gone = translateBitmapSurface(
         picture(),
         dx: 0,
-        dy: 1000,
+        dy: 16000,
         canvasSize: celTextTestCanvas,
       );
 
       expect(gone.tiles, isEmpty, reason: 'fixture: the drawing left too');
       expect(gone.texts.single.plate, isEmpty);
-      expect(gone.texts.single.content.anchor, CanvasPoint(x: 10, y: 1006));
+      expect(gone.texts.single.content.anchor, CanvasPoint(x: 10, y: 16006));
     });
   });
 }

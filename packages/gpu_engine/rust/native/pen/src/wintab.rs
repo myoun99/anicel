@@ -15,12 +15,8 @@
 use std::ffi::c_void;
 use std::sync::{Mutex, PoisonError};
 
-use windows::Win32::Foundation::{FreeLibrary, HMODULE, HWND, LPARAM};
+use windows::Win32::Foundation::{FreeLibrary, HMODULE, HWND};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-use windows::Win32::System::Threading::GetCurrentProcessId;
-use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsWindowVisible,
-};
 use windows::core::{BOOL, PCSTR, s, w};
 
 const WTI_DEFSYSCTX: u32 = 4;
@@ -264,31 +260,6 @@ impl Tablet {
     }
 }
 
-/// The top-level window of THIS process (the Flutter runner window): Wintab
-/// wants a window to scope the context to.
-fn app_window() -> Option<HWND> {
-    unsafe extern "system" fn visit(window: HWND, found: LPARAM) -> BOOL {
-        let mut process = 0;
-        // SAFETY: a window the system enumerates; `found` is app_window's.
-        unsafe {
-            GetWindowThreadProcessId(window, Some(&mut process));
-            if process == GetCurrentProcessId()
-                && IsWindowVisible(window).as_bool()
-                && GetWindow(window, GW_OWNER).is_err()
-            {
-                *(found.0 as *mut Option<HWND>) = Some(window);
-                return false.into();
-            }
-        }
-        true.into()
-    }
-    let mut found: Option<HWND> = None;
-    // SAFETY: `visit` writes to `found` alone, before this returns. It ends
-    // the walk early, which EnumWindows reports as a failure.
-    let _ = unsafe { EnumWindows(Some(visit), LPARAM(&raw mut found as isize)) };
-    found
-}
-
 pub(crate) fn available() -> bool {
     tablet().available().is_some()
 }
@@ -323,7 +294,8 @@ pub(crate) fn open() -> bool {
     let Some(driver) = tablet.available() else {
         return false;
     };
-    let Some(window) = app_window() else {
+    // Wintab wants a window to scope the context to: the app's.
+    let Some(window) = display::app_window() else {
         return false;
     };
     // A SYSTEM context is what "observe alongside the OS" actually MEANS in

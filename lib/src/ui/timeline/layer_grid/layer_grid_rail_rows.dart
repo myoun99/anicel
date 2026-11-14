@@ -77,16 +77,25 @@ class _LayerGridRailRows {
   /// The memo gate for the rail's rows (UI-R7 #1): a controls row whose
   /// facts match hands back the CACHED widget instance — a zoom step (or any
   /// rebuild that didn't touch the row) skips its whole Material subtree.
-  /// Lane label rows stay unmemoized: they subscribe to the frame cursor
-  /// themselves and their lane models churn identity per build.
+  /// A lane's row too, kept while its lane is the same object
+  /// ([TimelineLaneControlsRow.facts] has why it stood unkept).
   ///
   /// The memo is the x-sheet header's too ([KeptLayerControlsRows]) — one
   /// reading of a controls row, one keeping of it, for both grids (F-244).
   Widget _railRowMemoized(TimelineDisplayRow row, RowBerthMap berths) {
-    if (row.isLane) {
-      return _state._rowDrags.draggable(row, _laneRow(row));
-    }
     final grid = _controlsRowGrid;
+    if (row.isLane) {
+      return _state._railRowMemo.keepLane(
+        berths,
+        row,
+        (
+          committed: _laneControls(row, row.layer),
+          dragPreview: grid.hooks.dragPreview,
+          drag: _state._rowDrags.inputsFor(row),
+        ),
+        () => _laneRow(row),
+      );
+    }
     final fold = _groupFoldFor(row);
     final facts = layerControlsRowFacts(
       row,
@@ -168,36 +177,43 @@ class _LayerGridRailRows {
       dragPreview: _state.widget.hooks.dragPreview,
       layer: row.layer,
       slice: (layer) => laneRowSlice(layer, row.lane!.laneId),
-      rowBuilder: (context, layer) => TimelineLaneControlsRow(
-        layer: layer,
-        lane: previewedLaneRow(
-          row: row,
-          previewLayer: layer,
-          lanesForLayer: _state.widget.hooks.lanesOf,
-        ),
-        metrics: _state._metrics,
-        frameCursor: _state.widget.hooks.frameCursor,
-        onSelectFrame: _state.widget.hooks.onSelectFrame,
-        laneEdit: _state.widget.hooks.laneEdit,
-        onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-        onToggleLaneGroupEnabled:
-            _state.widget.hooks.onToggleLaneGroupEnabled,
-        onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
-        onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
-        onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-        currentRowHooks: _state.widget.hooks.currentRowHooks,
-        leadingInset: layerSectionLabelSlotWidth,
-        // The SAME answer the layer row reads, so a group
-        // header's fx lands in the layer rows' fx column (R5 #7).
-        optionalColumns: _state.widget.hooks.optionalRailColumns,
-        laneGraphs: _state.widget.hooks.laneGraphs,
-        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
-        seat: row.graph,
-        height: timelineDisplayRowExtent(row, _state._metrics),
-        folded: row.folded,
-      ),
+      rowBuilder: (context, layer) => _laneControls(row, layer),
     );
   }
+
+  /// [row]'s controls as [layer] shows it: the committed layer's are what
+  /// the row is kept by, a preview's what the gate builds mid-drag.
+  TimelineLaneControlsRow _laneControls(
+    TimelineDisplayRow row,
+    Layer layer,
+  ) => TimelineLaneControlsRow(
+    layer: layer,
+    lane: previewedLaneRow(
+      row: row,
+      previewLayer: layer,
+      lanesForLayer: _state.widget.hooks.lanesOf,
+    ),
+    metrics: _state._metrics,
+    frameCursor: _state.widget.hooks.frameCursor,
+    onSelectFrame: _state.widget.hooks.onSelectFrame,
+    laneEdit: _state.widget.hooks.laneEdit,
+    onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+    onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
+    onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
+    onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
+    onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+    laneSpan: _state.widget.hooks.laneRange?.selection,
+    currentRowHooks: _state.widget.hooks.currentRowHooks,
+    leadingInset: layerSectionLabelSlotWidth,
+    // The SAME answer the layer row reads, so a group
+    // header's fx lands in the layer rows' fx column (R5 #7).
+    optionalColumns: _state.widget.hooks.optionalRailColumns,
+    laneGraphs: _state.widget.hooks.laneGraphs,
+    laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
+    seat: row.graph,
+    height: timelineDisplayRowExtent(row, _state._metrics),
+    folded: row.folded,
+  );
 
   /// The row's fold twirl — [timelineGroupFoldFor] bound to this grid's hooks.
   TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>

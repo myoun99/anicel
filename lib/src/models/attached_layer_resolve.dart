@@ -14,6 +14,7 @@ import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'conte_group.dart' show ridesTheConte;
 import 'cut.dart';
+import 'cut_id.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -24,6 +25,7 @@ export 'layer_folder.dart'
 import 'layer_id.dart';
 import 'layer_section_defaults.dart' show firstUnusedName;
 import 'layer_stack_order.dart';
+import 'project.dart' show Project, cutsOfEveryTimelineById;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
@@ -279,6 +281,16 @@ typedef AttachedMirrorGroup = ({LayerId mintedUnder, List<Layer> others});
 /// base cel). Identity-preserving: an already-complete cut returns the SAME
 /// instance (no-op writes stay no-ops for dirty tracking).
 ///
+/// ↩️Untouched HERE, not for good (2026-11-12, 관제 — card
+/// `undo-leaves-empty-mirror-cels-on-a-synced-attach-row`): a link this pass
+/// GAVE in a history step goes with that step's undo
+/// ([attachedMirrorsGiven]). Kept, every base cel made and undone left its
+/// empty cel and link on the row for good — 🔬three rounds left four cels to
+/// the base's one, the saved JSON 278 B longer a round, and a bake undone
+/// left thirteen. The orphan above is a link a DELETE leaves, which no step
+/// gave, and it stays. The cel still comes back with the base cel: its id
+/// is the base cel's, so the redo's pass gives it again.
+///
 /// [mirrorGroupOf] answers null for a row no other row is linked to. It is
 /// asked only of a row that lacks a link.
 Cut cutWithReconciledAttachedMirrors(
@@ -368,6 +380,119 @@ Frame? _mirrorCelOfGroup(AttachedMirrorGroup? group, FrameId baseFrameId) {
     }
   }
   return null;
+}
+
+/// A cell link a write gave a synced attach row ([attachedMirrorsGiven]):
+/// the row and its cut, the base cel it mirrors, the row's own cel for it,
+/// and whether that cel came onto the row with the link.
+typedef AttachedMirrorGiven = ({
+  CutId cutId,
+  LayerId rowId,
+  FrameId baseCel,
+  FrameId cel,
+  bool celCame,
+});
+
+/// The cell links the synced attach rows of [after] hold that the same row
+/// of [before] did not — what the always-mirror pass
+/// ([cutWithReconciledAttachedMirrors]) gave them in a write, or the write
+/// itself. A row [before] did not hold is the write's whole, and goes with
+/// its undo whole.
+///
+/// The undo of the step that gave them takes them back
+/// ([cutWithoutAttachedMirrors], `RepositoryStepScope`): the step's own undo
+/// puts back what it wrote — the base cel it made — and the pass only ever
+/// adds, so the link and the empty cel it minted stayed on the row.
+List<AttachedMirrorGiven> attachedMirrorsGiven(
+  Project? before,
+  Project? after,
+) {
+  if (after == null || identical(before, after)) {
+    return const [];
+  }
+  final was = cutsOfEveryTimelineById(before);
+  return [
+    for (final track in after.tracks)
+      for (final cut in track.cuts)
+        if (was[cut.id] case final old? when !identical(old, cut))
+          ..._mirrorsGivenIn(old, cut),
+  ];
+}
+
+/// [attachedMirrorsGiven] of one cut: [cut]'s links its synced attach rows
+/// hold that the same row of [old] did not.
+Iterable<AttachedMirrorGiven> _mirrorsGivenIn(Cut old, Cut cut) sync* {
+  final had = {for (final row in old.layers) row.id: row};
+  for (final row in cut.layers) {
+    final before = had[row.id];
+    if (before == null ||
+        identical(before.baseFrameLinks, row.baseFrameLinks) ||
+        !isSyncedAttachedLayer(row)) {
+      continue;
+    }
+    for (final MapEntry(key: baseCel, value: cel)
+        in row.baseFrameLinks.entries) {
+      if (before.baseFrameLinks[baseCel] != cel) {
+        yield (
+          cutId: cut.id,
+          rowId: row.id,
+          baseCel: baseCel,
+          cel: cel,
+          celCame: before.frameById(cel) == null,
+        );
+      }
+    }
+  }
+}
+
+/// [cut] with each link of [given] its row still holds taken off it, and
+/// each cel that came with one where no link of the row is left on it —
+/// what the undo of the step that gave them owes ([attachedMirrorsGiven]).
+///
+/// A link the base still shows a cel through is given again by the pass
+/// that lays the undo's write, under the same id ([attachedMirrorCelId]),
+/// so nothing here asks what the base shows.
+Cut cutWithoutAttachedMirrors(Cut cut, List<AttachedMirrorGiven> given) {
+  final mine = [
+    for (final link in given)
+      if (link.cutId == cut.id) link,
+  ];
+  if (mine.isEmpty) {
+    return cut;
+  }
+  final layers = mappedOrSame(
+    cut.layers,
+    (row) => _withoutLinksGiven(row, mine),
+  );
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+}
+
+/// [row] without the links of [given] it still holds, and without the cels
+/// that came with them that no link of its own is left on.
+Layer _withoutLinksGiven(Layer row, List<AttachedMirrorGiven> given) {
+  final links = {...row.baseFrameLinks};
+  final came = <FrameId>{};
+  for (final link in given) {
+    if (link.rowId == row.id && links[link.baseCel] == link.cel) {
+      links.remove(link.baseCel);
+      if (link.celCame) {
+        came.add(link.cel);
+      }
+    }
+  }
+  if (links.length == row.baseFrameLinks.length) {
+    return row;
+  }
+  final gone = came.difference(links.values.toSet());
+  return row.copyWith(
+    baseFrameLinks: links,
+    frames: gone.isEmpty
+        ? null
+        : [
+            for (final frame in row.frames)
+              if (!gone.contains(frame.id)) frame,
+          ],
+  );
 }
 
 /// The index of [baseId]'s attach group's FIRST row — the below-placement
@@ -687,10 +812,11 @@ List<Layer> _seatsOf(
 /// attach group. That is why it lives here rather than beside the
 /// `layerKind*` predicates: the kind cannot answer it.
 ///
-/// What it gates: the fx switch, the Transform group and the Effects
-/// groups. What it does NOT gate: the eye, the static opacity, the blend
-/// and the fold, which stay the organizer's whole reason to exist (user,
-/// 2026-07-31: "그냥 블렌드 두는게 나을수도있단생각 들기시작했어").
+/// What it gates: the fx switch, the Transform group, the Effects groups
+/// and the reference fx ([layerHasFxToLose]). What it does NOT gate: the
+/// eye, the static opacity, the blend and the fold, which stay the
+/// organizer's whole reason to exist (user, 2026-07-31: "그냥 블렌드
+/// 두는게 나을수도있단생각 들기시작했어").
 ///
 /// An attach ROW is asked through [fxCarrierOf], so the rows the panels
 /// draw without fx are exactly the rows the composite lays without their
@@ -723,13 +849,18 @@ Layer? fxCarrierOf(Layer layer, List<Layer> layers) =>
 ///
 /// 🚨★★★「fx」 IS EVERYTHING THE FX PANEL SHOWS. 유저 2026-08-29: 「fx펼쳐서
 /// 있는건 모두 fx취급하고싶어. **통일**이야. 즉 se행의 네임태그든 트랜스폼이든
-/// 추가fx든 싹다」 — so this asks all three in ONE place. Asking them at three
+/// 추가fx든 싹다」 — so this asks all four in ONE place. Asking them at four
 /// call sites is how they drift, and the notice would then be right about
 /// one of them and silent about the others.
 ///
-/// The three match exactly what [attachRowWearsBaseComposite] gates: the fx
-/// switch, the Transform group and the Effects groups. A row that wears its
-/// base's composite authors none of them.
+/// The four match exactly what [attachRowWearsBaseComposite] gates: the fx
+/// switch, the Transform group, the Effects groups and the reference fx. A
+/// row that wears its base's composite authors none of them.
+///
+/// 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 (유저 2026-11-11
+/// 「참조라고 법 다른거 두지않고 법 통일. 어태치줄의 참조fx는없앰.」): the
+/// reference fx is the fourth — a file that moved by it stands where it is
+/// laid once the row wears its base's. ↩️It was not lost, and not asked.
 ///
 /// ⚠️Untouched fx is not a loss — a default transform and an empty chain
 /// have nothing to warn about, and a dialog nobody needed is a dialog people
@@ -737,7 +868,8 @@ Layer? fxCarrierOf(Layer layer, List<Layer> layers) =>
 bool layerHasFxToLose(Layer layer) =>
     layer.effects.isNotEmpty ||
     layer.transformTrack.isNotEmpty ||
-    layer.seNameTag != null;
+    layer.seNameTag != null ||
+    !(layer.mediaReference?.standsWhereLaid ?? true);
 
 /// The direction the row's ATTACH ARROW points, or null when the row is
 /// not part of an attach group (R10 R3, the arrow's move into the sheet

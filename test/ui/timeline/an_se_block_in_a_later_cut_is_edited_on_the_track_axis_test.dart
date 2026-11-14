@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// each asker — the range move, the delete, the shove, the bulk comma drag
 /// — survived every suite, because every suite worked in the first cut.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const seRow = LayerId('se-row');
   const cel = LayerId('cut-2-cel');
 

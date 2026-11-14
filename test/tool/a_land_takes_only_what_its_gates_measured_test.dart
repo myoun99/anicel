@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
 import '../helpers/lane_script.dart';
 
 /// 🚨lane-land-edited-under-its-gates (2026-09-30): while a land sat in
@@ -32,11 +33,10 @@ void main() {
       code.indexWhere((line) => line.contains(text));
 
   /// The lines of [code] that run something IN the lane: flutter from
-  /// inside it, the native build and tests, and the GPU engine crate's.
+  /// inside it, and the GPU engine crate's tests.
   List<int> runsIn(List<String> code) => [
     for (var i = 0; i < code.length; i++)
       if (code[i].contains(r'(cd "$p" &&') ||
-          code[i].contains('cmd_native') ||
           code[i].contains('cmd_crate') ||
           code[i].contains('crate_gate'))
         i,
@@ -47,8 +47,8 @@ void main() {
     late final gates = codeOf('gates');
 
     test('LIVENESS — analyze with no arguments, the architecture tests, '
-        'the native build of a lane that touched the C, and the crate\'s '
-        'tests of a lane that touched the crate or its ledger', () {
+        'and the crate\'s tests of a lane that touched the crate, its '
+        'ledger or the fx SDK', () {
       final all = gates.join('\n');
       // Offline (관제 2026-11-06): what the lane resolved from this
       // machine's pub cache, and neither gate resolves it again.
@@ -58,30 +58,59 @@ void main() {
         all,
         contains(r'(cd "$p" && flutter test --no-pub test/architecture)'),
       );
-      expect(all, contains(r'lane_touched "$p" packages/qa_native/src'));
-      expect(all, contains(r'cmd_native "$name"'));
       expect(all, contains(r'crate_gate "$name" "$p"'));
       final crate = codeOf('crate_gate').join('\n');
+      expect(crate, contains(r'lane_touched "$p" "${CRATE_INPUTS[@]}"; then'));
       expect(
-        crate,
-        contains(
-          r'lane_touched "$p" packages/gpu_engine/rust '
-          'test/fixtures/fingerprints.json',
-        ),
+        File('tool/lane.sh').readAsStringSync(),
+        contains('CRATE_INPUTS=(packages/gpu_engine/rust sdk/fx test/fixtures'),
+        reason: 'the crate, the fx SDK, and the ledger with what else the '
+            'tests read from outside the crate',
       );
-      expect(crate, contains('    packages/qa_native/src; then'));
+      expect(
+        codeOf('crate_input').join('\n'),
+        contains(r'for path in "${CRATE_INPUTS[@]}"; do'),
+        reason: 'what makes a lane pay is what a green is kept for — one '
+            'list (관제 2026-11-14)',
+      );
       expect(crate, contains(r'cmd_crate "$name"'));
     });
 
-    // native-to-rust (관제 2026-11-06): the native crates are held to the
-    // engine the C builds — a key built from other C holds them to the
-    // wrong answers.
-    test('🚨the crate\'s tests are held to this lane\'s C: its engine is '
-        'built from it before cargo runs', () {
-      final crate = codeOf('cmd_crate');
-      final ensured = at(crate, r'ensure_engine "$p" || die');
-      expect(ensured, isNot(-1));
-      expect(ensured, lessThan(at(crate, r'"$ROOT/tool/cargo_turn.sh"')));
+    // 관제 2026-11-13 (what-still-runs-on-the-cpu): the C engine went, and
+    // refusals 5 and 6 with it — once the lane that deleted it had landed,
+    // the script was to say nothing of a C engine.
+    // ↩️It built one for every lane that touched the C and ran the parity
+    // list against it (refusal 5), asked of every engine it handed out
+    // whether it was built from the C beside it (refusal 6), and held the
+    // crates' tests to the lane's own (native-to-rust, 관제 2026-11-06 — a
+    // key built from other C held them to the wrong answers).
+    test('⛔nothing in the script builds a C engine, copies one or asks of '
+        'one', () {
+      final code = [
+        for (final line
+            in File('tool/lane.sh')
+                .readAsStringSync()
+                .replaceAll('\r\n', '\n')
+                .split('\n'))
+          if (!line.trimLeft().startsWith('#')) line,
+      ].join('\n');
+      expect(
+        code,
+        contains(r'crate) shift; cmd_crate "$@" ;;'),
+        reason: 'LIVENESS — the code is read, its dispatch too',
+      );
+      for (final gone in [
+        'qa_native',
+        'cmake',
+        'native_standalone',
+        'native_engine_provenance',
+        'native_parity_tests',
+        'QA_REQUIRE_NATIVE',
+        'cmd_native',
+        'cmd_engine',
+      ]) {
+        expect(code, isNot(contains(gone)), reason: gone);
+      }
     });
 
     // 저장 2026-11-05: four Dart files, opened before the trunk took crate
@@ -124,15 +153,50 @@ void main() {
       final crate = codeOf('cmd_crate');
       expect(at(crate, 'for profile in debug release; do'), isNot(-1));
       expect(
+        at(crate, r'for profile in $todo; do'),
+        greaterThan(at(crate, 'for profile in debug release; do')),
+        reason: 'each is asked, and whichever this machine has not seen '
+            'green with the same input runs',
+      );
+      expect(
         at(crate, r'[ "$profile" = release ] && flag=--release'),
         isNot(-1),
       );
       expect(
-        at(crate, r'test --locked --offline --workspace ${flag:+"$flag"}'),
+        at(
+          crate,
+          'test --locked --offline --no-fail-fast --workspace '
+          r'${flag:+"$flag"}',
+        ),
         isNot(-1),
         reason: 'every crate of the workspace, not its default members — '
-            'and offline: a download is the user\'s to allow (관제 '
-            '2026-11-06)',
+            'offline: a download is the user\'s to allow (관제 2026-11-06) '
+            '— and past a red one, as the CI runs them (관제 2026-11-07)',
+      );
+      expect(
+        at(crate, r'red="$red $profile"'),
+        lessThan(at(crate, 'tests are red in')),
+        reason: 'release runs after a red debug, and the refusal names both',
+      );
+    });
+
+    // 관제 2026-11-07: told `cargo fetch --locked`, the Surface fetched 29
+    // crates for Linux, the Mac and Android that nobody had allowed.
+    test('🚨a crate not downloaded is named, and fetched, for this '
+        'machine\'s platform alone', () {
+      expect(
+        at(
+          codeOf('cmd_crate'),
+          r'cargo fetch --locked --target $(host_triple))',
+        ),
+        isNot(-1),
+      );
+      final list = codeOf('crates_not_here');
+      expect(at(list, r'bash "$ROOT/tool/run.sh" crates_for_host'), isNot(-1));
+      expect(
+        at(list, 'cargo metadata --locked --offline --no-deps'),
+        isNot(-1),
+        reason: 'the members\' manifests, read without opening a crate',
       );
     });
 
@@ -190,11 +254,92 @@ void main() {
       expect(at(room, 'sleep 20'), greaterThan(refused));
     });
 
-    test('a land that waits for room keeps its turn its own', () {
-      final room = codeOf('room_first');
+    test('a land keeps its turn its own while it moves on and while it '
+        'waits — a turn taken for its age is a hung land\'s, never a long '
+        'one\'s', () {
+      // ↩️관제 2026-11-11 (a-long-land-loses-its-turn-at-45-minutes): the
+      // turn was stamped once, when it was taken. A land that touched the
+      // crate ran its gates for 48 minutes, the next land took its turn at
+      // 45, and that land's fast-forward was refused.
+      final alive = codeOf('still_landing');
+      final touched = at(alive, r'touch -c "$HELD_TURN"');
+      expect(
+        touched,
+        isNot(-1),
+        reason: '-c: a turn that is gone is not made again, as a file',
+      );
+      // 🚨관제 2026-11-12, same card: a land whose turn was taken over ran its
+      // gates on beside the land that took it, to be refused at the
+      // fast-forward — it stops at its next step instead.
+      final ownsIt = at(
+        alive,
+        r'[ "$(cat "$HELD_TURN/pid" 2>/dev/null)" = "$$" ] || die',
+      );
+      expect(
+        ownsIt,
+        isNot(-1),
+        reason: 'a land asks whether the turn is still its own',
+      );
+      expect(touched, greaterThan(ownsIt), reason: 'before it stamps it');
+      final taking = codeOf('land_turn');
+      expect(at(taking, r'HELD_TURN="$turn"'), isNot(-1));
+      expect(at(taking, r'export LANE_LAND_TURN="$turn"'), isNot(-1));
 
-      expect(at(room, r'[ -z "$HELD_TURN" ] || touch "$HELD_TURN"'), isNot(-1));
-      expect(at(codeOf('land_turn'), r'HELD_TURN="$turn"'), isNot(-1));
+      List<int> refreshes(List<String> code) => [
+        for (var i = 0; i < code.length; i++)
+          if (code[i].trim() == 'still_landing') i,
+      ];
+      bool between(List<String> code, int after, int before) =>
+          refreshes(code).any((i) => i > after && i < before);
+
+      final room = codeOf('room_first');
+      expect(
+        between(room, at(room, 'until seen='), at(room, 'sleep 20')),
+        isTrue,
+        reason: 'waiting for room',
+      );
+
+      final gates = codeOf('gates');
+      final crate = at(gates, 'crate_gate');
+      expect(crate, isNot(-1));
+      expect(
+        between(gates, at(gates, r'wait "$architecture"'), crate),
+        isTrue,
+        reason: 'before the crate',
+      );
+
+      // ↩️관제 2026-11-12, same card: `tile-blocks-on-rust`'s native gate
+      // alone ran 61 minutes, stamped before and after it only — so it
+      // stamped between its steps, and its parity run wrote a beat inside
+      // the turn at every batch, till the gate went with the C engine
+      // (2026-11-13).
+      final crateRun = codeOf('cmd_crate');
+      expect(
+        between(
+          crateRun,
+          at(crateRun, r'for profile in $todo; do'),
+          at(crateRun, 'test --locked --offline --no-fail-fast'),
+        ),
+        isTrue,
+        reason: 'before each of debug and release that runs',
+      );
+
+      // While the crate's run waits for the shared target, in the script
+      // the land runs.
+      final cargo = File('tool/cargo_turn.sh')
+          .readAsStringSync()
+          .replaceAll('\r\n', '\n')
+          .split('\n');
+      final waits = cargo.indexWhere(
+        (l) => l.startsWith('until ') && l.contains(r'mkdir "$TURN"'),
+      );
+      final kept = cargo.indexWhere(
+        (l) => l.contains(r'[ -z "$LANE_LAND_TURN" ] || touch -c'),
+      );
+      final sleeps = cargo.indexWhere((l) => l.trim() == 'sleep 5');
+      expect(waits, isNot(-1));
+      expect(kept, greaterThan(waits));
+      expect(sleeps, greaterThan(kept));
     });
   });
 
@@ -317,11 +462,31 @@ void main() {
       expect(turn, lessThan(at(land, r'lane_is_clean "$p" || die')));
 
       final taking = codeOf('land_turn');
-      final taken = at(taking, r'until mkdir "$turn"');
-      final handedBack = at(taking, 'trap ');
+      // 🚨관제 2026-11-14 (a-land-takes-its-turn-before-one-that-waited): a
+      // land that came later took the turn before one that had waited for
+      // sixteen minutes — only the oldest ticket in the line tries it.
+      final taken = taking.indexWhere(
+        (l) =>
+            l.trimLeft().startsWith('until ') &&
+            l.contains(r'first_in_line "$line"') &&
+            l.contains(r'mkdir "$turn"'),
+      );
+      // The ticket's own trap comes first; the turn's replaces it.
+      final handedBack = taking.lastIndexWhere((l) => l.contains('trap '));
       expect(taken, isNot(-1));
       expect(handedBack, greaterThan(taken));
       expect(taking[handedBack], contains('EXIT'));
+      // ↩️관제 2026-11-12 (브러시/렌더링's reading, then seen at 21:13): it
+      // was `rm -rf` whoever held it — a land that had lost its turn,
+      // ending, removed the turn of the land that held it then.
+      expect(taking[handedBack], contains('give_turn_back'));
+      final giving = codeOf('give_turn_back');
+      final asked = at(
+        giving,
+        r'if [ "$(cat "$1/pid" 2>/dev/null)" = "$$" ]; then',
+      );
+      expect(asked, isNot(-1), reason: 'only while it is still this land\'s');
+      expect(at(giving, r'rm -rf "$1"'), greaterThan(asked));
       final all = taking.join('\n');
       expect(
         all,
@@ -334,7 +499,26 @@ void main() {
         contains(r'! kill -0 "$holder"'),
         reason: 'a killed lander\'s turn is taken over',
       );
-      expect(all, contains('-mmin +45'), reason: 'and so is a hung one\'s');
+      // ↩️It was the turn's own age (`-maxdepth 0 -mmin +45`); a test run
+      // under the land beats inside it, so its age is its newest sign of life
+      // (관제 2026-11-12).
+      expect(
+        all,
+        contains(r'[ -z "$(find "$turn" -mmin -45 2>/dev/null)" ]'),
+        reason: 'and so is a hung one\'s: nothing in it moved for 45 minutes',
+      );
+      expect(
+        all,
+        contains(r'if [ -d "$turn" ] && '),
+        reason: 'a turn nobody holds has no age — a land behind another in '
+            'the line waits for it, and does not spin',
+      );
+    });
+
+    test('⚠️keeps the same line as the shared target\'s turn — two places, '
+        'not three', () {
+      final cargo = LaneScript(File('tool/cargo_turn.sh').readAsStringSync());
+      expect(codeOf('first_in_line'), cargo.codeOf('first_in_line'));
     });
   });
 
@@ -415,4 +599,98 @@ void main() {
     expect(at(check, 'checkout -- linux macos windows'), before);
     expect(at(check, 'update-index -q --really-refresh'), before);
   });
+
+  // 관제 2026-11-14, a-land-runs-the-crate-tests-the-lane-already-passed-here:
+  // a profile green here with the same input is not run again, so the input
+  // has to be all the crate's tests read — they read a movie, the fonts and
+  // two Dart files from outside the crate's tree — and a lane that changed
+  // one pays refusal 8: one list for both.
+  test('⛔what the crate\'s tests read outside its tree is all in what they '
+      'answer to, and nothing else is', () {
+    final kept = RegExp(r'^CRATE_INPUTS=\(([^)]*)\)', multiLine: true)
+        .firstMatch(File('tool/lane.sh').readAsStringSync())![1]!
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final read = <String>{};
+    for (final file in _rustSources('packages/gpu_engine/rust')) {
+      final crate = _crateOf(file.parent);
+      for (final line in file.readAsLinesSync()) {
+        if (line.trimLeft().startsWith('//')) continue;
+        for (final literal in _climbingLiteral.allMatches(line)) {
+          final placeholder = RegExp(r'^\{([^}]*)\}/').firstMatch(literal[2]!);
+          // `{checkout}` is .cargo/config.toml's QA_CHECKOUT: the workspace's
+          // folder, which the ledger reads from at any crate's depth.
+          final base = literal[1] != null
+              ? file.parent.path
+              : placeholder?[1] == 'checkout'
+              ? 'packages/gpu_engine/rust'
+              : crate.path;
+          final path = _resolved(
+            base,
+            literal[2]!.substring(placeholder?.end ?? 0),
+          );
+          if (!path.startsWith('packages/gpu_engine/rust/')) read.add(path);
+        }
+      }
+    }
+    expect(read, contains('lib/src/native/qa_tablet_bridge.dart'));
+    expect(
+      [
+        for (final path in read)
+          if (!kept.any((k) => path == k || path.startsWith('$k/'))) path,
+      ],
+      isEmpty,
+      reason: 'a green would answer for a file it was not measured on',
+    );
+    expect(
+      [
+        for (final k in kept)
+          if (k != 'packages/gpu_engine/rust' &&
+              !read.any((path) => path == k || path.startsWith('$k/')))
+            k,
+      ],
+      isEmpty,
+      reason: 'a file no test reads any more is no input',
+    );
+  });
+}
+
+/// A string literal that climbs a folder — an `include!`'s or a module's
+/// `#[path]` (group 1) from the source file's own folder, any other from its
+/// crate's.
+final _climbingLiteral = RegExp(
+  r'(include(?:_str|_bytes)?!\(\s*|#\[path\s*=\s*)?"([^"\n]*\.\./[^"\n]*)"',
+);
+
+/// The Rust sources and manifests of the workspace at [root], past the
+/// build folders at its top (`target`, `target-hook`) — millions of files
+/// no source is among.
+Iterable<File> _rustSources(String root) => [
+  for (final entity in Directory(root).listSync())
+    if (entity is File)
+      entity
+    else if (!entity.uri.pathSegments
+        .lastWhere((s) => s.isNotEmpty)
+        .startsWith('target'))
+      ...filesUnder(entity.path),
+].where((file) => file.path.endsWith('.rs') || file.path.endsWith('Cargo.toml'));
+
+/// The folder of the crate [folder] is in: the nearest with a manifest.
+Directory _crateOf(Directory folder) =>
+    File('${folder.path}/Cargo.toml').existsSync()
+    ? folder
+    : _crateOf(folder.parent);
+
+/// [relative] from [base], as a path from the repository's root.
+String _resolved(String base, String relative) {
+  final parts = <String>[];
+  for (final part in '$base/$relative'.replaceAll(r'\', '/').split('/')) {
+    if (part == '..') {
+      parts.removeLast();
+    } else if (part.isNotEmpty && part != '.') {
+      parts.add(part);
+    }
+  }
+  return parts.join('/');
 }

@@ -35,6 +35,7 @@ class ToolSettingsSection extends StatelessWidget {
     required this.tool,
     this.title,
     this.scrolls = true,
+    this.controller,
     required this.children,
   });
 
@@ -50,6 +51,12 @@ class ToolSettingsSection extends StatelessWidget {
 
   /// See the class comment: a content question, not a style one.
   final bool scrolls;
+
+  /// A controller the section's host keeps — one that brings a row into
+  /// view from code (the transform tool's point in hand, F-586) — or null
+  /// for the scrollbar's own ([ContentScrollbar.controller]). A section
+  /// that does not scroll reads none.
+  final ScrollController? controller;
 
   final List<Widget> children;
 
@@ -86,6 +93,7 @@ class ToolSettingsSection extends StatelessWidget {
     if (scrolls) {
       // H35: the tool settings panel's content keeps its bar in view.
       return ContentScrollbar(
+        controller: controller,
         builder: (context, controller) => ListView(
           key: keyFor(tool),
           controller: controller,

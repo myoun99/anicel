@@ -74,7 +74,12 @@ void main() {
 ///    selected is the only border there is, and nothing thickens.
 ///  * `app_window` — a window TAB's label goes w400 → w500.
 ///
+/// ↩️2026-11-08 (a-live-dock-frame-costs-a-whole-draw-Q12): the chosen
+/// cells' outline that goes 1 → 1.5 — the brush group tab, the group icon
+/// cell and the tip picker's cells, each writing it out — is ONE line now
+/// (`face_ink_well`'s `chosenCellFace`): the thickening stands, counted once.
+///
 /// ⛔NOT FIXED HERE ON PURPOSE. Which of these the user wants flattened is
 /// a look decision, and the audit's job was to make them countable so the
 /// question can be asked once instead of drifting.
-const int _knownNonColourSelection = 4;
+const int _knownNonColourSelection = 2;

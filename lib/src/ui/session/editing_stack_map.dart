@@ -77,14 +77,16 @@ class EditingStackMap {
 
   double activeLayerOpacity = 1.0;
 
-  /// 🚨THE ACTIVE ROW'S CPU HALF, CARRIED OUT WITH THE OPACITY.
+  /// The active row's leading colour keys ([celSourceKeys]), carried out
+  /// with the opacity: what a float or a text a hand carries over the row
+  /// asks after — whether the landing it shows is keyed.
   ///
-  /// The row you are DRAWING on is painted tile by tile by the brush
-  /// panel's own painter, which never sees a CutFrameCompositeLayer and
-  /// never asks the image cache — the two places the colour keys are
-  /// applied. Without this the keyed colour comes back the moment you
-  /// stand on the row, and goes again when you step off: exactly the
-  /// "발신자에 따라 길이 갈렸다" shape #1280 was about.
+  /// ↩️It was the active row's CPU half, which the brush panel's own
+  /// painter ran on the row you are DRAWING on — it never sees a
+  /// CutFrameCompositeLayer — lest the keyed colour come back the moment
+  /// you stood on the row ("발신자에 따라 길이 갈렸다", #1280): the keys
+  /// until the engine keyed a row, a plugin at the head until it was a step
+  /// of the chain (float-warp-resamples-in-the-c-engine (1)(2), 2026-11-11).
   List<ResolvedLayerEffect> activeSourceEffects = const <ResolvedLayerEffect>[];
 
   /// The tree the plan resolved, with each ROW turned into the stack node
@@ -143,7 +145,7 @@ class EditingStackMap {
       frameIndex,
     );
     final effects = _bound(node.render.effects, frameIndex);
-    activeSourceEffects = splitSourceEffects(effects).source;
+    activeSourceEffects = celSourceKeys(effects);
     if (_heldCel != null) {
       return null;
     }
@@ -219,7 +221,7 @@ class EditingStackMap {
               stackCut.layers,
               frameIndex,
             );
-      activeSourceEffects = splitSourceEffects(effects).source;
+      activeSourceEffects = celSourceKeys(effects);
     }
     final pixels = celPixelsOf(dragPreview, entry.layer.id, entry.frame.id);
     final key = _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel);

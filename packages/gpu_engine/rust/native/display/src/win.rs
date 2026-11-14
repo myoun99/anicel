@@ -1,10 +1,11 @@
 //! Windows' answers: the compositor's timing (DWM), the screens under the
 //! app's window, the wait, and the compositor kept composing.
 //!
-//! dwmapi and dcomp are loaded the first time they are asked for, as the C
-//! loaded them: the compositor's per-target statistics are Windows 11's
-//! alone, and a function imported at load time that the system lacks would
-//! keep the whole library from loading on Windows 10.
+//! dwmapi and dcomp are loaded the first time they are asked for: the
+//! compositor's per-target statistics are Windows 11's alone, and a
+//! function imported at load time that the system lacks would keep the whole
+//! library — the GPU engine's, which carries this — from loading on Windows
+//! 10.
 
 use std::ffi::c_void;
 use std::mem::transmute;
@@ -170,7 +171,14 @@ unsafe extern "system" fn find_app_window(window: HWND, found: LPARAM) -> BOOL {
 }
 
 /// The app's window, or None where this process shows none.
-pub(crate) fn app_window() -> Option<HWND> {
+///
+/// ⛔ONE FINDER FOR EVERY CRATE THAT ASKS (관제 2026-11-08 03:50,
+/// connection-round-checklist H): the pen's Wintab context asks it too. The
+/// pen had a finder of its own — this process's first shown window with no
+/// owner, carried over from its C on 2026-07-20 with no word of who chose it
+/// — which bound the context to another top-level window where one came
+/// first; the runner's class is the question itself.
+pub fn app_window() -> Option<HWND> {
     let mut window = HWND::default();
     // SAFETY: the callback writes `window` alone, before this returns.
     let _ = unsafe { EnumWindows(Some(find_app_window), LPARAM(&mut window as *mut HWND as isize)) };
@@ -420,8 +428,8 @@ struct Composing {
     device: IDCompositionDesktopDevice,
 }
 
-// SAFETY: one process-wide set, as the C kept it, asked from one thread at
-// a time behind COMPOSING's lock.
+// SAFETY: one process-wide set, asked from one thread at a time behind
+// COMPOSING's lock.
 unsafe impl Send for Composing {}
 
 static COMPOSING: Mutex<Option<Composing>> = Mutex::new(None);

@@ -9,7 +9,6 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 
-import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 
 /// card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed — A STROKE DRAWN
@@ -21,7 +20,9 @@ import '../../helpers/cel_text_tool_harness.dart';
 /// drew the paper bare in every tile the stroke had touched until the pen
 /// came up — 2,868 pixels apart from the landing, 0 on a bare row. This
 /// draws with the pen and reads what the canvas draws for the cel under it
-/// while the stroke is live and once it has landed, over the same sheet.
+/// while the stroke is live and once it has landed, over the same sheet —
+/// what the row lays, which the engine runs the row's keys over, the same
+/// bytes in the same keyed out (`celSourceKeys`).
 void main() {
   const paper = [64, 192, 96, 255];
   const rule = [30, 30, 30, 255];
@@ -122,30 +123,23 @@ void main() {
       expect(before.sublist(0, 4), rule, reason: '⛔fixture: the page shows');
       expect(
         before.sublist(4 * 192, 4 * 192 + 4),
-        keyed ? isNot(paper) : paper,
-        reason: '⛔fixture: the row keys its paper away, or does not',
+        paper,
+        reason: '⛔fixture: the row lays its paper',
+      );
+      expect(
+        [for (final key in canvasRowKeys(tester)) key.kind],
+        [if (keyed) EffectKind.colorKey],
+        reason: '⛔fixture: the row keys it away, or does not',
       );
       expect(drawing, landed, reason: 'what is drawn is what lands');
     });
   }
 
-  testWidgets('🚨a stroke on a row whose chain runs a PLUGIN shows what it '
-      'lands as while the pen is down — the whole cel the plugin makes, from '
-      'the plugin this device has installed (🗣️I-132-Q32 b)', (tester) async {
-    await pumpTextToolApp(
-      tester,
-      project: textToolProject(effects: [shiftingFxPluginLayerEffect()]),
-      fxPlugins: await installedShiftingFxPlugin(tester),
-    );
-
-    final (:before, :drawing, :landed) = await strokeOverPage(tester);
-
-    expect(
-      [before.sublist(0, 4), before.sublist(4, 8)],
-      [isNot(rule), rule],
-      reason: '⛔fixture: the plugin runs on the canvas — the page shows one '
-          'pixel to the right',
-    );
-    expect(drawing, landed, reason: 'what is drawn is what lands');
-  });
+  // ↩️A row whose chain runs a PLUGIN was drawn here too — the whole cel
+  // the plugin made, laid as the row (🗣️I-132-Q32 b) — until the plugin at
+  // a chain's head was a step of the chain (float-warp-resamples-in-the-c-
+  // engine (2), 2026-11-11): what the pen holds is laid on the row before
+  // the chain runs, and the raster read here is the row's alone. That the
+  // plugin reads what a hand holds is
+  // `a_plugin_step_is_kept_on_the_cel_it_read_test`'s.
 }

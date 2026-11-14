@@ -61,13 +61,19 @@ class AudioPeaks {
   /// a ratio of two integers — so the frame count is computed from that
   /// ratio directly. Going through [durationSeconds] as a double was how
   /// an exactly-2-second file at 24fps used to measure 49 frames.
-  int durationFrames(ProjectFrameRate rate) {
+  ///
+  /// [pull]: played that much faster again, the clip lasts that much less
+  /// — a movie's sound laid frame for frame with its pictures (🗣️F-588).
+  int durationFrames(
+    ProjectFrameRate rate, {
+    ({int numerator, int denominator}) pull = noPull,
+  }) {
     if (bucketsPerSecond <= 0) {
       return 1;
     }
     final frames = rate.framesCoveringExactSeconds(
-      peaks.length,
-      bucketsPerSecond,
+      peaks.length * pull.denominator,
+      bucketsPerSecond * pull.numerator,
     );
     return frames < 1 ? 1 : frames;
   }

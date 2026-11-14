@@ -3,82 +3,28 @@ import 'dart:typed_data';
 import '../models/bitmap_surface.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_dab_sequence.dart';
-import '../models/brush_stamp_image.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import 'bitmap_surface_brush_commit.dart';
-import 'brush_blur_stroke_landing.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_stroke_blend.dart';
 import 'brush_stroke_commit_data.dart';
 import 'selection_clip.dart';
 
-/// A stroke rasterized and CLIPPED to the live selection (R26 #18: "선택
-/// 하고 그리면 선택 내부만 그려진다"), ready to ride the ordinary
-/// prerasterized-commit route.
-class ClippedStrokePixels {
-  const ClippedStrokePixels({required this.pixels, required this.bounds});
+/// A stroke's coverage rasterized on an empty surface — bounds-local
+/// straight-alpha RGBA and the bounds it covers — ready to ride the
+/// ordinary prerasterized-commit route.
+class StrokeCoveragePixels {
+  const StrokeCoveragePixels({required this.pixels, required this.bounds});
 
   final Uint8List pixels;
   final DirtyRegion bounds;
 }
 
-/// Confines a stroke buffer to [clip] — [applySelectionMaskToStrokeAlpha]
-/// over its coverage, which is the ONE selection rule the live pre-blend
-/// kernel also runs.
-///
-/// This is the FALLBACK half of R26 #18 now. A stroke drawn with a live
-/// raster carries the selection through the pre-blend kernel instead
-/// (`BrushLiveStrokeRasterizer.selectionClip`), so its promoted tiles
-/// arrive already masked and the panel passes them straight through.
-/// What still comes here: programmatic strokes and history redos, which
-/// had no live raster to be masked in. Same mask bytes, same rounding,
-/// same rule — so a redo cannot land a different edge than the stroke it
-/// replays, at any mask softness.
-///
-/// Straight-alpha buffers make this exact for every brush blend mode at
-/// once: alpha 0 is the documented "destination survives untouched" input
-/// of the commit kernels — plain srcOver contributes nothing, the erase
-/// stamp removes nothing, and the separable/behind kernels return the
-/// destination bytes verbatim. So ONE mask on the stroke buffer clips
-/// drawing, erasing and filling alike, with no per-mode special cases.
-///
-/// Returns null when nothing survives — the caller then skips the commit
-/// entirely rather than landing an empty edit.
-ClippedStrokePixels? clipStrokePixelsToSelection({
-  required Uint8List pixels,
-  required DirtyRegion bounds,
-  required SelectionClip clip,
-}) {
-  final width = bounds.width;
-  final height = bounds.height;
-  if (width <= 0 || height <= 0) {
-    return null;
-  }
-  final mask = clip.maskFor(
-    left: bounds.left,
-    top: bounds.top,
-    width: width,
-    height: height,
-  );
-  final clipped = Uint8List.fromList(pixels);
-  applySelectionMaskToStrokeAlpha(
-    pixels: clipped,
-    mask: mask,
-    pixelCount: width * height,
-  );
-  for (var index = 0; index < mask.length; index += 1) {
-    if (clipped[index * 4 + 3] != 0) {
-      return ClippedStrokePixels(pixels: clipped, bounds: bounds);
-    }
-  }
-  return null;
-}
-
 /// Rasterizes [dabs] into a bounds-local straight-alpha buffer — the
 /// buffer the live overlay would have piled up — so a stroke that arrives
 /// WITHOUT live pixels (re-derived from its dabs, or a stamp) can still be
-/// clipped and composited once.
+/// composited once.
 ///
 /// Erase dabs rasterize with the flag flipped OFF: what is wanted here is
 /// the stroke's COVERAGE, which the commit then re-applies as one erase
@@ -87,7 +33,7 @@ ClippedStrokePixels? clipStrokePixelsToSelection({
 /// overlapping erase dabs compound where this does not; both leave
 /// b·Π(1−s), and what differs is only where the rounding falls
 /// (erase-live-and-dab-route-round-apart).
-ClippedStrokePixels? rasterizeStrokeForClipping({
+StrokeCoveragePixels? rasterizeStrokeCoverage({
   required List<BrushDab> dabs,
   required CanvasSize canvasSize,
   required int tileSize,
@@ -108,118 +54,34 @@ ClippedStrokePixels? rasterizeStrokeForClipping({
     surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
     sequence: sequence,
   );
-  return ClippedStrokePixels(
+  return StrokeCoveragePixels(
     pixels: bitmapSurfaceRegionPixels(scratch.surface, bounds),
     bounds: bounds,
   );
 }
 
-/// 🚨★★★A STAMP CLIPS IN ITS OWN PICTURE (board
-/// `a-stamp-rounds-twice-inside-a-selection`, 2026-09-28). A stamp — a fill,
-/// a shape fill, a pasted or stamped piece — lands 1:1: its picture's alpha
-/// times the dab's opacity, rounded once where it falls. A selection over it
-/// is folded into that PICTURE by the one selection rule
-/// ([applySelectionMaskToStrokeAlpha]), and the stamp then lands 1:1 as it
-/// would anyway — so wherever the selection covers it wholly it lands the
-/// bytes it lands with no selection at all (절대명령 2: 선택이 있든 없든 같은
-/// 코드가 답한다).
-///
-/// ↩️It was rasterized onto an empty surface like a brush stroke first —
-/// its alpha rounded there, at the dab's opacity — then clipped and
-/// composited: a second rounding, and a stamp under 100% landed a level
-/// apart inside a selection and out of one.
-///
-/// Null when nothing of it survives: out of the selection's reach, or
-/// masked away entirely.
-BrushDab? clipStampDabToSelection(
-  BrushDab dab, {
-  required SelectionClip clip,
-}) {
-  final stamp = dab.stamp!;
-  final landing = stamp.landingRect(dab.center);
-  if (!clip.mayCover(landing)) {
-    return null;
-  }
-  final window = clip.maskFor(
-    left: landing.left,
-    top: landing.top,
-    width: stamp.width,
-    height: stamp.height,
-  );
-  final rgba = Uint8List.fromList(stamp.rgba);
-  applySelectionMaskToStrokeAlpha(
-    pixels: rgba,
-    mask: window,
-    pixelCount: stamp.width * stamp.height,
-  );
-  for (var alpha = 3; alpha < rgba.length; alpha += 4) {
-    if (rgba[alpha] != 0) {
-      return dab.copyWith(
-        stamp: BrushStampImage(
-          id: '${stamp.id}-in-selection',
-          width: stamp.width,
-          height: stamp.height,
-          rgba: rgba,
-        ),
-      );
-    }
-  }
-  return null;
-}
-
-/// [dabs] rasterized ([rasterizeStrokeForClipping]) and clipped to
-/// [clip] ([clipStrokePixelsToSelection]) — the whole of what a stroke
-/// of brush dabs that arrives without live pixels goes through before the
-/// commit: the canvas panel's commit funnel runs it for programmatic
-/// strokes and history redos. A stamp takes [clipStampDabToSelection]
-/// instead.
-///
-/// Null when the stroke draws nothing, or nothing of it survives the
-/// selection.
-///
-/// Dabs the selection cannot reach are left out before anything is
-/// rasterized — the live rasterizer's rule ([SelectionClip.mayCover]),
-/// for the same reason: the mask would zero every pixel they add.
-ClippedStrokePixels? clipDabsToSelection({
-  required List<BrushDab> dabs,
-  required CanvasSize canvasSize,
-  required int tileSize,
-  required SelectionClip clip,
-}) {
-  final reaching = [
-    for (final dab in dabs)
-      if (dirtyRegionForBrushDab(dab) case final reach?)
-        if (clip.mayCover(reach)) dab,
-  ];
-  final rasterized = rasterizeStrokeForClipping(
-    dabs: reaching,
-    canvasSize: canvasSize,
-    tileSize: tileSize,
-  );
-  return rasterized == null
-      ? null
-      : clipStrokePixelsToSelection(
-          pixels: rasterized.pixels,
-          bounds: rasterized.bounds,
-          clip: clip,
-        );
-}
-
-/// A finished stroke's commit payload confined to [clip], for landing on
-/// [surface] — the cel as it stands at the commit. Null when nothing of
-/// the stroke survives, and the caller then commits nothing at all.
+/// A finished stroke's commit payload confined to [clip]: the payload with
+/// the selection the commit cuts it by where it lands
+/// ([BrushStrokeCommitData.selection]) — on [surface], the cel as it stands
+/// at the commit, or on whichever cel lays it down again. Null when the
+/// selection reaches none of it, and the caller then commits nothing at
+/// all.
 ///
 /// 🚨★★★PROMOTED TILES ARE THE ANSWER ONLY WHILE [surface] IS THE ONE THEY
 /// WERE BLENDED AGAINST. They were masked in the pre-blend kernel, so on
-/// that surface they are already clipped and pass straight through. Once
-/// anything has landed on the cel in between, the commit ignores them and
-/// re-derives the stroke from its dabs (`BrushStrokeCommitData`) — and
-/// until this function it re-derived the WHOLE stroke there, the selection
-/// forgotten: the clip had passed promoted payloads through unconditionally.
-/// So a moved surface takes the same route as a stroke with no live pixels:
-/// the dabs, rasterized and clipped here, and the commit composites what
-/// is left — or, for stamps, each stamp clipped in its own picture
-/// ([clipStampDabToSelection]) and landed 1:1.
+/// that surface they are already cut, and the commit installs them as they
+/// are. Once anything has landed on the cel in between, the commit ignores
+/// them and re-derives the stroke from its dabs — and until the funnel
+/// existed it re-derived the WHOLE stroke there, the selection forgotten.
+/// So the payload carries its selection whichever way it lands.
+///
+/// ↩️Till 2026-11-14 the stroke was cut HERE, on the CPU: its dabs
+/// rasterized and folded under the mask (`clipDabsToSelection`), each stamp
+/// folded in its own picture (`clipStampDabToSelection`), a blur laid again
+/// through the clip as tiles of [surface]. The commit cuts every one of them
+/// on the engine now, under the clip's mask, where it lands
+/// (`brushCommitResultForBrushDabSequenceOnBitmapSurface`) — the mask a live
+/// stroke under the same clip lands under.
 ///
 /// ⛔ONE funnel for the canvas's selection (R26 #18, 「선택하고 그리면 선택
 /// 내부만 그려진다」) and what a sheet window keeps of its stroke — the same
@@ -230,75 +92,25 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
   required BitmapSurface surface,
 }) {
   final promoted = data.promotedTiles;
-  if (promoted != null && identical(data.promotedBase, surface)) {
-    return promoted.isEmpty ? null : data;
-  }
-  if (data.sourceDabs.firstOrNull?.blurs ?? false) {
-    return _blurLandedThrough(clip, data, surface);
-  }
-  final pixels = data.strokePixels;
-  final bounds = data.strokeBounds;
-  if ((pixels == null || bounds == null) &&
-      data.sourceDabs.every((dab) => dab.stamp != null)) {
-    final stamps = [
-      for (final dab in data.sourceDabs)
-        ?clipStampDabToSelection(dab, clip: clip),
-    ];
-    return stamps.isEmpty
-        ? null
-        : BrushStrokeCommitData(
-            sourceDabs: stamps,
-            blendMode: data.blendMode,
-            strokeOpacity: data.strokeOpacity,
-          );
-  }
-  final clipped = pixels == null || bounds == null
-      ? clipDabsToSelection(
-          dabs: data.sourceDabs,
-          canvasSize: surface.canvasSize,
-          tileSize: surface.tileSize,
-          clip: clip,
-        )
-      : clipStrokePixelsToSelection(
-          pixels: pixels,
-          bounds: bounds,
-          clip: clip,
-        );
-  if (clipped == null) {
+  final standing = promoted != null && identical(data.promotedBase, surface);
+  if (standing ? promoted.isEmpty : !_reaches(clip, data)) {
     return null;
   }
-  return BrushStrokeCommitData(
-    sourceDabs: data.sourceDabs,
-    strokePixels: clipped.pixels,
-    strokeBounds: clipped.bounds,
-    blendMode: data.blendMode,
-    strokeOpacity: data.strokeOpacity,
-    end: data.end,
-  );
+  return data.through(clip);
 }
 
-/// I-75: a blur has no stroke buffer to cut — it is laid again here,
-/// through [clip], as tiles of this very [surface], which the commit
-/// then installs as it installs a promotion.
-BrushStrokeCommitData? _blurLandedThrough(
-  SelectionClip clip,
-  BrushStrokeCommitData data,
-  BitmapSurface surface,
-) {
-  final tiles = blurStrokeLandedOn(
-    surface,
-    data.sourceDabs,
-    opacity: data.strokeOpacity,
-    selection: clip,
-  );
-  return tiles.isEmpty
-      ? null
-      : BrushStrokeCommitData(
-          sourceDabs: data.sourceDabs,
-          blendMode: data.blendMode,
-          strokeOpacity: data.strokeOpacity,
-          promotedBase: surface,
-          promotedTiles: tiles,
-          end: data.end,
-        );
+/// Whether [clip] may select any pixel [data] lands on: its live buffer's
+/// bounds, or the reach of any of its dabs ([SelectionClip.mayCover]).
+bool _reaches(SelectionClip clip, BrushStrokeCommitData data) {
+  final bounds = data.strokeBounds;
+  if (bounds != null) {
+    return clip.mayCover(bounds);
+  }
+  for (final dab in data.sourceDabs) {
+    if (dirtyRegionForBrushDab(dab) case final reach?
+        when clip.mayCover(reach)) {
+      return true;
+    }
+  }
+  return false;
 }

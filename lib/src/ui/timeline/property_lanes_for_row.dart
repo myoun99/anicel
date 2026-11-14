@@ -9,10 +9,11 @@ import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
+import '../../services/fx_plugins/fx_plugin_outcomes.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
-    show referenceGroupLaneId, referencePropertyLanes;
+    show referenceGroupHeader, referenceGroupLaneId, referencePropertyLanes;
 import 'scale_lane_form.dart';
 import 'se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagPropertyLanes;
@@ -55,7 +56,8 @@ import 'transform_lane_policy.dart'
 /// reason [hasPlugin] comes in — whether this device has the plugin an
 /// effect is of, the app's one list that every rail reads alike
 /// (I-132-Q28). Null on a rail that is not told it: its effect headers read
-/// as the app's own.
+/// as the app's own. [pluginOutcomes] comes in the same way: how this
+/// device's plugin runs went, which a plugin's header shows.
 ///
 /// The camera row is not read here: its lanes are the cut's camera track,
 /// which only a cut's rail stands on (`timelineLanesForLayer`).
@@ -66,6 +68,7 @@ List<PropertyLaneRow> propertyLanesForRow({
   required ({Layer layer, int frame}) Function(int frameIndex)? valueSourceAt,
   required CanvasSize? poseCentre,
   required bool Function(FxPluginDescription plugin)? hasPlugin,
+  required FxPluginOutcomes? pluginOutcomes,
 }) {
   final source = valueSourceAt;
 
@@ -82,6 +85,30 @@ List<PropertyLaneRow> propertyLanesForRow({
     return frame - at.frame + fxReadFrame(basis, at.layer.fxBlocks, at.frame);
   }
 
+  /// I-68: a row that SHOWS a file has its reference fx — where the file
+  /// stands, laid when its pixels are made, before any effect or transform
+  /// reads them.
+  final reference = referenceRedrawFor(layer) == null
+      ? null
+      : layer.mediaReference;
+  final referenceExpanded = expandedGroupKeys.contains(
+    laneGroupKey(layer.id, referenceGroupLaneId),
+  );
+  List<PropertyLaneRow> referenceLanes() => reference == null
+      ? const []
+      : referencePropertyLanes(
+          reference,
+          expanded: referenceExpanded,
+          poseAt: source == null
+              ? null
+              : (time) {
+                  final at = _sourceAtTime(source, time);
+                  return (at.layer.mediaReference ?? reference).poseAtTime(
+                    at.time,
+                  );
+                },
+        );
+
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
   // — no lanes of their own; a row riding the conte authors its own fx and
   // has them (I-99). R9: the 공정 ORGANIZER folder joins
@@ -89,8 +116,26 @@ List<PropertyLaneRow> propertyLanesForRow({
   // effect chain here would be a second answer competing with the base's;
   // leaving the lanes up while the label has no fx switch would also let a
   // chain be added that nothing could bypass.
+  //
+  // 🗣️I-120-Q25 (유저 2026-11-07 「어태치된 참조 행도 「参照」 묶음 하나만
+  // 보인다」): that group alone stands, and its header's RASTERIZE is the
+  // row's door. ↩️It stood nowhere: keys inside it had no place to be seen
+  // or set.
+  //
+  // 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q4 (유저 2026-11-11
+  // 「기준만 따른다 — 어태치 줄의 참조 fx 이동은 없앤다」 · 「참조라고 법
+  // 다른거 두지않고 법 통일.」): where its file stands is its base's, as its
+  // transform is — the header alone, keyless, its RASTERIZE still the
+  // row's door. ↩️Q25 read it as the row's own, and the group's lanes keyed
+  // the row's file over its base's move.
   if (attachRowWearsBaseComposite(layer, rows)) {
-    return const [];
+    return [
+      if (reference != null)
+        referenceGroupHeader(
+          TransformTrack.empty(),
+          expanded: referenceExpanded,
+        ),
+    ];
   }
 
   /// AE group collapse: the Transform group header always shows; its member
@@ -210,6 +255,10 @@ List<PropertyLaneRow> propertyLanesForRow({
               );
             },
       hasPlugin: hasPlugin,
+      pluginOutcomes: switch (pluginOutcomes) {
+        final outcomes? => (outcomes: outcomes, owner: layer.id),
+        null => null,
+      },
       rowHasBlocks: layer.fxBlocks != null,
       shownFrame: shownFrame,
     );
@@ -283,26 +332,9 @@ List<PropertyLaneRow> propertyLanesForRow({
       // sit inside it, so the transform is genuinely last. Only the reading
       // order was upside down.
       //
-      // I-68: a row that SHOWS a file has its reference fx before them all
-      // — where the file stands is laid when its pixels are made, before
-      // any effect or transform reads them.
-      final reference = layer.mediaReference;
+      // A row that shows a file has its reference fx before them all.
       return [
-        if (reference != null && referenceRedrawFor(layer) != null)
-          ...referencePropertyLanes(
-            reference,
-            expanded: expandedGroupKeys.contains(
-              laneGroupKey(layer.id, referenceGroupLaneId),
-            ),
-            poseAt: source == null
-                ? null
-                : (time) {
-                    final at = _sourceAtTime(source, time);
-                    return (at.layer.mediaReference ?? reference).poseAtTime(
-                      at.time,
-                    );
-                  },
-          ),
+        ...referenceLanes(),
         ...layerEffectLanes(),
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];

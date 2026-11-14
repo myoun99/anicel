@@ -53,15 +53,11 @@ class AudioDeviceTransport {
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
     int Function(int sampleRate)? resolveUserOffsetSamples,
-    this.resolveSoloedLayerIds,
     this.resolveRecordingMutedLayerIds,
     this.resolveCueClips,
     this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance),
        _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
-
-  /// The session's solo set (monitoring state, AUDIO-PRO R1).
-  final Set<LayerId> Function()? resolveSoloedLayerIds;
 
   /// The armed lane while a take rolls (REC1-B) — muted on top of the
   /// layers' own flags, never written into them.
@@ -290,7 +286,6 @@ class AudioDeviceTransport {
     project: resolveProject(),
     rate: _rate,
     durationSecondsFor: conformStore.durationSecondsFor,
-    soloedLayerIds: resolveSoloedLayerIds?.call(),
     mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
     extraClips: resolveCueClips?.call(),
   );

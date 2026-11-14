@@ -17,8 +17,10 @@ import 'layer_row_drag.dart' show LayerRowDragInputs;
 import 'memo_token.dart';
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'row_berths.dart';
+import 'timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_lane_rows.dart' show TimelineLaneControlsRow;
 import 'timeline_layer_controls_row.dart';
 
 /// What a layer's CONTROLS ROW is built from — every fact it SHOWS, read off
@@ -64,12 +66,6 @@ typedef LayerControlsRowFacts = ({
   // The cut the row's cut is in the other timelines, when the row is one
   // they share (a 동기컷, I-150-Q3) — compared like [linkPartners].
   ByList<String> syncPartners,
-  // Solo is SESSION state, not a Layer field, so the layer comparison
-  // cannot see it: the speaker's accent tint went stale the moment
-  // solo moved anywhere but this row. It has always been shown here —
-  // R10 R3 only made it settable from every rail, which is what turned
-  // a latent staleness into one a user would hit.
-  bool soloed,
   // The arrow reads the STACK (a folder's direction is its position
   // against its base), so the Layer comparison cannot see it change.
   AttachedPlacement? attachArrow,
@@ -142,7 +138,6 @@ LayerControlsRowFacts layerControlsRowFacts(
     onionSkinEnabled: hooks.layerOnionSkinEnabledOf?.call(id) ?? false,
     linkPartners: ByList(hooks.layerLinkPartnersOf?.call(id) ?? const []),
     syncPartners: ByList(hooks.layerSyncPartnersOf?.call(id) ?? const []),
-    soloed: hooks.isLayerSoloed?.call(id) ?? false,
     attachArrow: hooks.attachArrowPlacementOf?.call(id),
     isReferenceSourceShort: hooks.layerSourceIsShortOf?.call(id) ?? false,
     wearsBaseComposite: attachRowWearsBaseComposite(row.layer, grid.layers),
@@ -190,12 +185,12 @@ Widget layerControlsRowFrom(
     onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
     onLayerMarkSelected: hooks.onLayerMarkSelected,
     onToggleLayerClip: hooks.onToggleLayerClip,
-    onOpenLayerMixer: hooks.onOpenLayerMixer,
+    onToggleLayerMute: hooks.onToggleLayerMute,
+    onLayerTotalVolumeChangeEnd: hooks.onLayerTotalVolumeChangeEnd,
     onOpenLayerReference: hooks.onOpenLayerReference,
     onOpenLayerLinks: hooks.onOpenLayerLinks,
     onOpenCameraPath: hooks.onOpenCameraPath,
     isReferenceSourceShort: facts.isReferenceSourceShort,
-    isLayerSoloed: facts.soloed,
     attachArrowPlacement: facts.attachArrow,
     hasLanes: facts.hasLanes,
     lanesExpanded: facts.lanesExpanded,
@@ -215,6 +210,24 @@ Widget layerControlsRowFrom(
     graphOpen: facts.graphOpen,
   );
 }
+
+/// What a kept lane controls row was built from: the row its drag gate
+/// builds for the committed layer — kept by that row's own facts
+/// ([TimelineLaneControlsRow.facts]) — the preview the gate follows, and
+/// what its drag wrapper was built from.
+typedef LaneControlsRowInputs = ({
+  TimelineLaneControlsRow committed,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
+  LayerRowDragInputs drag,
+});
+
+/// What a kept lane controls row is kept by: the row its drag gate builds
+/// for the committed layer, by that row's own facts
+/// ([TimelineLaneControlsRow.facts]), and the preview the gate follows.
+Object? laneControlsRowKeptBy(
+  TimelineLaneControlsRow committed,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
+) => (ByIdentity(dragPreview), committed.facts);
 
 /// What a kept controls row was built from: its facts and what its drag
 /// wrapper was built from.
@@ -241,12 +254,14 @@ typedef LayerControlsRowInputs = ({
 ///
 /// ONE memo for the rail's rows and the x-sheet's headers — a grid says
 /// how its rows drag once, when it makes its keep ([drags]: the wrapper
-/// it puts on a row), and of each row only the wrapper's inputs.
+/// it puts on a row), and of each row only the wrapper's inputs. A lane's
+/// row is kept here too ([keepLane]).
 final class KeptLayerControlsRows {
   KeptLayerControlsRows(this.drags);
 
   final Widget Function(TimelineDisplayRow row, Widget built) drags;
   final KeptByBerth<LayerControlsRowFacts> _rows = KeptByBerth();
+  final KeptByBerth<Object?> _lanes = KeptByBerth();
   final KeptByBerth<_LayerControlsRowWrap> _wrapped = KeptByBerth();
 
   /// [row]'s controls row in its berth of [berths] (F-244): the row
@@ -259,18 +274,50 @@ final class KeptLayerControlsRows {
     TimelineDisplayRow row,
     LayerControlsRowInputs inputs,
     Widget Function() build,
-  ) {
-    final built = _rows.keep(berths, row, inputs.facts, build);
-    return BerthRow(
-      layer: row.layer,
-      child: _wrapped.keep(
-        berths,
-        row,
-        (drag: inputs.drag, address: row.address, row: ByIdentity(built)),
-        () => drags(row, built),
-      ),
-    );
-  }
+  ) => BerthRow(
+    layer: row.layer,
+    child: _wrap(
+      berths,
+      row,
+      _rows.keep(berths, row, inputs.facts, build),
+      inputs.drag,
+    ),
+  );
+
+  /// [row]'s LANE controls row in its berth of [berths]: the row [build]
+  /// makes, kept while its facts hold, in its drag wrapper kept as a layer
+  /// row's is. No [BerthRow]: its facts name its layer, so a kept lane row
+  /// is never handed to another.
+  Widget keepLane(
+    RowBerthMap berths,
+    TimelineDisplayRow row,
+    LaneControlsRowInputs inputs,
+    Widget Function() build,
+  ) => _wrap(
+    berths,
+    row,
+    _lanes.keep(
+      berths,
+      row,
+      laneControlsRowKeptBy(inputs.committed, inputs.dragPreview),
+      build,
+    ),
+    inputs.drag,
+  );
+
+  /// [built] in the drag wrapper put on it, kept while [row]'s address, the
+  /// row it is put on and what it is built from ([drag]) hold.
+  Widget _wrap(
+    RowBerthMap berths,
+    TimelineDisplayRow row,
+    Widget built,
+    LayerRowDragInputs drag,
+  ) => _wrapped.keep(
+    berths,
+    row,
+    (drag: drag, address: row.address, row: ByIdentity(built)),
+    () => drags(row, built),
+  );
 }
 
 /// What a kept row's drag wrapper is built from: the wrapper's inputs, the

@@ -7,7 +7,7 @@
 // always leaves keeps the caller's `return;`, an added import follows the
 // repo's relative style, and a static caller gets a static method.
 //
-//   dart run tool/refactor/extract_method.dart <projectRoot> <jobs.json> [<analysisRoot>]
+//   dart tool/refactor/extract_method.dart <projectRoot> <jobs.json> [<analysisRoot>]
 //
 // Pass `<projectRoot>/lib` as the analysis root: the whole tree takes
 // minutes to crawl, lib alone a dozen seconds.

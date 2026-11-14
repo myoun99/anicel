@@ -1,21 +1,25 @@
-import 'dart:ui' as ui;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
+import '../../helpers/due_timers.dart';
+import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_laid.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🗣️A zoom's tiles are rastered once it stops (유저 2026-10-30,
@@ -29,16 +33,24 @@ import 'timeline_frame_geometry_probe.dart';
 /// on S5_BA's cut 352, rastered in the frames after it and thrown away by
 /// the next step.
 ///
-/// The stop waits [TimelineGridTileStore.debugZoomSettles]: two seconds
-/// where the zoom has to stop, an hour where it must not have to — a
-/// loaded machine stretches the steps' gaps, never by that much.
+/// The stop is the test's to fire ([stop]): a step arms it
+/// ([TimelineGridTileStore.debugZoomTimer]) and nothing fires it but the
+/// test. ↩️It came on a real clock, two seconds after a step — an hour where
+/// it must not come — and a test waited 0.2–1 s past it, a margin a loaded
+/// machine could outlast (타임라인/콘티 리뷰 2026-11-09 C).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
-  final dllPath = nativeEngineLibraryPathOrNull();
   final store = TimelineGridTileStore.instance;
   var landings = 0;
   void landed() => landings += 1;
+
+  /// The stops the zoom armed, the latest last.
+  late DueTimers stops;
+
+  /// The zoom stands still: its latest stop comes.
+  void stop() => stops.armed.last.fire();
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -57,14 +69,14 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 2)},
   );
 
-  TimelineRowCellsPainter at(double extent, {Layer? of}) =>
+  TimelineRowCellsPainter at(double extent, {Layer? of, double across = 28}) =>
       TimelineRowCellsPainter(
         layer: of ?? layer,
         geometry: testFrameGeometry(
           frameCellExtent: extent,
           frameEndIndexExclusive: 40,
         ),
-        crossAxisExtent: 28,
+        crossAxisExtent: across,
         exposureStateForLayer: stateFor,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
@@ -72,7 +84,7 @@ void main() {
       );
 
   /// The tile of the span from [start] four cells long, its cells [extent].
-  ui.Image? ask(double extent, {int start = 0}) => store.tileFor(
+  TimelineGridTilePicture? ask(double extent, {int start = 0}) => store.tileFor(
     painter: at(extent),
     spanStartIndex: start,
     spanEndIndexExclusive: start + 4,
@@ -80,7 +92,7 @@ void main() {
   );
 
   /// The span from [start], baked at [extent] — the tiles a zoom stretches.
-  Future<ui.Image> baked(double extent, {int start = 0}) async {
+  Future<TimelineGridTilePicture> baked(double extent, {int start = 0}) async {
     final before = landings;
     expect(ask(extent, start: start), isNull, reason: '⛔전제: a cold span');
     expect(await pollUntil(() => landings > before), isTrue);
@@ -91,40 +103,22 @@ void main() {
   Future<void> aWhile() =>
       Future<void>.delayed(const Duration(milliseconds: 300));
 
-  /// Whether this machine has no engine to raster with — the case is
-  /// skipped, said as such.
-  bool skipped() {
-    if (dllPath != null) {
-      return false;
-    }
-    markTestSkipped('qa_engine.dll not built');
-    return true;
-  }
-
   setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     store.clear();
     store.revision.addListener(landed);
     landings = 0;
+    stops = DueTimers();
+    store.debugZoomTimer = stops.arm;
   });
 
   tearDown(() {
     store.revision.removeListener(landed);
-    store.debugZoomSettles = TimelineGridTileStore.zoomSettles;
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
+    store.debugZoomTimer = Timer.new;
     store.clear();
   });
 
   test('a zoom\'s steps show the old tile and raster nothing; stopped, the '
       'span is rastered once at the extent it stopped at', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
     for (final extent in [20.0, 16.0, 14.0, 12.0]) {
@@ -133,7 +127,13 @@ void main() {
     await aWhile();
     expect(landings, 1, reason: 'nothing rastered at a step\'s extent');
     expect(store.debugBusy, isTrue, reason: 'the span waits for the stop');
+    expect(
+      stops.running.single.after,
+      TimelineGridTileStore.zoomSettles,
+      reason: 'the stop comes the user\'s 0.15 s after the latest step',
+    );
 
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     final crisp = ask(12);
     expect(crisp, isNot(same(old)));
@@ -143,10 +143,6 @@ void main() {
   });
 
   test('past twice the old tile\'s extent a step is rastered then', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(hours: 1);
     await baked(24);
 
     expect(ask(10), isNull, reason: 'the classic paint covers the step');
@@ -156,48 +152,38 @@ void main() {
 
   test('a span a zoom left waiting and a jump then took past twice is '
       'rastered at the jump, and not again when the zoom stops', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
     expect(ask(10), isNull);
     expect(await pollUntil(() => landings == 2), isTrue);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 2, reason: 'the stop finds nothing waiting');
     expect(ask(10)!.width, 4 * 10 * 2, reason: 'the jump\'s tile stays');
   });
 
   test('a zoom that comes back to the tile\'s extent stretches it no more '
       '— the stop rasters nothing', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
     ask(16);
     expect(ask(24), same(old), reason: 'the tile shows its extent again');
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 1);
     expect(ask(24), same(old), reason: 'it was not rastered over');
   });
 
   test('once the zoom stopped, a span it did not reach is asked at the '
       'extent it stopped at as any other', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(24, start: 4);
     ask(16);
     ask(12);
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
 
-    store.debugZoomSettles = const Duration(hours: 1);
     expect(ask(12, start: 4), isNotNull, reason: 'its old tile, scaled');
     expect(await pollUntil(() => landings == 4), isTrue);
     expect(ask(12, start: 4)!.width, 4 * 12 * 2);
@@ -205,10 +191,6 @@ void main() {
 
   test('a warm-up waits for the zoom too — and what a step asked of it at '
       'another extent is let go', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(20);
@@ -222,6 +204,7 @@ void main() {
     await aWhile();
     expect(landings, 1, reason: 'the warm-up waits for the stop');
 
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     await aWhile();
     expect(
@@ -233,26 +216,19 @@ void main() {
 
   test('a span a step stretched and the last step did not ask for is let '
       'go at the stop, not rastered at that step\'s extent', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(24, start: 4);
 
     ask(16);
     ask(16, start: 4);
     ask(12);
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
     await aWhile();
     expect(landings, 3, reason: 'the span left behind at 16 is let go');
   });
 
   test('a span waiting for the stop is not warmed beside it', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
@@ -262,6 +238,9 @@ void main() {
       spanEndIndexExclusive: 4,
       devicePixelRatio: 2.0,
     );
+    await aWhile();
+    expect(landings, 1, reason: 'not warmed while it waits');
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     await aWhile();
     expect(landings, 2, reason: 'rastered once, for the stop');
@@ -269,10 +248,6 @@ void main() {
 
   test('a span the zoom came back to with an edit is baked in that ask, '
       'and not rastered over at the stop', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
@@ -289,27 +264,26 @@ void main() {
       devicePixelRatio: 2.0,
     );
     expect(landings, 2, reason: '⛔전제: the edit is baked in its ask');
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 2, reason: 'the stop finds nothing waiting');
   });
 
   test('a clear lets go of a zoom under way and of where the cells stood '
       'still', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     ask(16);
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     ask(20);
+    final before = stops.armed.last;
 
     store.clear();
     expect(store.debugBusy, isFalse, reason: 'nothing waits past a clear');
-    store.debugZoomSettles = const Duration(hours: 1);
     await baked(24);
     ask(16);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    before.fire();
+    await aWhile();
     expect(
       landings,
       3,
@@ -319,58 +293,51 @@ void main() {
   });
 
   test('a zoom begun after a clear stops as any other', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     ask(20);
 
     store.clear();
     await baked(24);
     ask(20);
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
   test('a span queued at a jump and stretched by the next step waits for '
       'the stop — the jump\'s raster is not made', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     expect(ask(10), isNull, reason: '⛔전제: queued, past twice');
     ask(16);
+    await aWhile();
+    expect(landings, 1, reason: 'the jump\'s raster is not made');
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await aWhile();
     expect(landings, 2, reason: 'one raster, at the stop');
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
   test('each step puts the stop off — a zoom that goes on is not stopped '
       'by the time since its first step', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 4);
     await baked(24);
 
     ask(20);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    final first = stops.running.single;
     ask(16);
-    await Future<void>.delayed(const Duration(seconds: 2));
-    expect(landings, 1, reason: 'four seconds have not passed since a step');
+    expect(first.isActive, isFalse, reason: 'the step put the first off');
+    expect(
+      stops.running.single,
+      isNot(same(first)),
+      reason: 'and armed its own',
+    );
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
   test('a zoom that came back stands where its paint last asked — a '
       'warm-up a step asked is let go', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
     ask(16);
@@ -382,16 +349,13 @@ void main() {
     );
     await aWhile();
     expect(ask(24), same(old));
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 1, reason: 'the span past the edge was asked at 16');
   });
 
   test('a warm-up the zoom held goes on when it stops, though nothing it '
       'stretched is left to raster', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(12, start: 4);
 
@@ -405,29 +369,24 @@ void main() {
     await aWhile();
     expect(landings, 2, reason: '⛔전제: the warm-up waits for the stop');
     expect(ask(12, start: 4), isNotNull, reason: 'the row stands at 12');
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
   test('a second zoom after one that came back stops as any other', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
     ask(16);
     expect(ask(24), same(old));
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
 
     ask(16);
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
   test('another row\'s warm-up is not let go at this row\'s stop', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
@@ -445,21 +404,212 @@ void main() {
       spanEndIndexExclusive: 4,
       devicePixelRatio: 2.0,
     );
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
   test('a repaint at the extent the zoom already waits at does not put '
       'the stop off', () async {
-    if (skipped()) {
-      return;
-    }
-    store.debugZoomSettles = const Duration(seconds: 3);
     await baked(24);
 
     ask(16);
-    await Future<void>.delayed(const Duration(seconds: 2));
+    final armed = stops.running.single;
     ask(16);
-    await Future<void>.delayed(const Duration(milliseconds: 2200));
-    expect(landings, 2, reason: 'stopped 3s after the step, not the repaint');
+    expect(
+      stops.armed.single,
+      same(armed),
+      reason: 'the stop the step armed, not one the repaint armed',
+    );
+    expect(armed.isActive, isTrue);
+    stop();
+    expect(await pollUntil(() => landings == 2), isTrue);
   });
+
+  // 🚨Through the row's own cut: a span is 512 px of cells
+  // ([timelineFrameWindowMinSpanPx]), so a step under narrow cells cuts the
+  // row into other spans than its tiles hold (검증/서피스 11-08 02:04: on
+  // S5's cut 352 the steps went crisp at once, the old picture unseen).
+  test('🚨a zoom that cuts the row into other spans shows its old tiles, '
+      'scaled over the frames they hold, and rasters nothing until it '
+      'stops', () async {
+    expect(
+      at(20).tileSpans.shown,
+      isNot(at(24).tileSpans.shown),
+      reason: '⛔전제: the step cuts the row into other spans',
+    );
+    tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
+    await tileStoreIdle(store);
+    final baked = tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
+    expect(
+      baked,
+      hasLength(at(24).tileSpans.shown.length),
+      reason: '⛔전제: every span is tiled',
+    );
+    final rastered = landings;
+
+    final step = tilesLaidBy(
+      () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
+    );
+    expect(
+      step.map((draw) => draw.picture).toSet(),
+      baked.map((draw) => draw.picture).toSet(),
+      reason: 'the old tiles, scaled',
+    );
+    expect(
+      along(step),
+      [0.0, 40 * 20.0],
+      reason: 'over every frame the row shows, edge to edge',
+    );
+    // By hand: kept 0–22 (528 px) and 22–40 (432 px) at 24 px, asked 0–26
+    // and 26–40 at 20 px — the second tile's frames 22–26 under the first
+    // span, 26–40 under the second.
+    expect(
+      [
+        for (final draw in step)
+          (width: draw.picture.width, src: draw.from, dst: draw.onto),
+      ],
+      [
+        (
+          width: 528,
+          src: const Rect.fromLTRB(0, 0, 528, 28),
+          dst: const Rect.fromLTRB(0, 0, 440, 28),
+        ),
+        (
+          width: 432,
+          src: const Rect.fromLTRB(0, 0, 96, 28),
+          dst: const Rect.fromLTRB(440, 0, 520, 28),
+        ),
+        (
+          width: 432,
+          src: const Rect.fromLTRB(96, 0, 432, 28),
+          dst: const Rect.fromLTRB(520, 0, 800, 28),
+        ),
+      ],
+      reason: 'each frame of a tile over the same frame of the row',
+    );
+    await aWhile();
+    expect(landings, rastered, reason: 'nothing rastered at a step\'s extent');
+
+    stop();
+    expect(await pollUntil(() => landings > rastered), isTrue);
+    await tileStoreIdle(store);
+    final stopped = tilesLaidBy(
+      () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
+    );
+    expect(
+      stopped.map((draw) => draw.picture).toSet().intersection(
+        baked.map((draw) => draw.picture).toSet(),
+      ),
+      isEmpty,
+      reason: 'rastered at the extent the zoom stopped at',
+    );
+    expect(
+      landings - rastered,
+      at(20).tileSpans.shown.length,
+      reason: 'each of its spans once',
+    );
+  });
+
+  // Kept one at a time, the row's other tile lands and the one shown before
+  // it is let go.
+  test('a tile the store let go stands in for nothing', () async {
+    store.debugCapacity = 1;
+    addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+    tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
+    await tileStoreIdle(store);
+    final shown = tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
+    await tileStoreIdle(store);
+    expect(
+      shown.single.picture.debugHolds,
+      0,
+      reason: '⛔전제: the tile shown was let go when the other landed',
+    );
+
+    final step = tilesLaidBy(
+      () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
+    );
+    expect(
+      [
+        for (final draw in step)
+          if (draw.picture.debugHolds == 0) draw.onto,
+      ],
+      isEmpty,
+      reason: 'no let-go tile is laid',
+    );
+  });
+
+  test('a row whose every tile was let go is kept no more', () async {
+    store.debugCapacity = 1;
+    addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+    await baked(24);
+    expect(store.debugRowsKept, 1, reason: '⛔전제: A\'s row holds its tile');
+    final other = Layer(
+      id: const LayerId('layer-b'),
+      name: 'B',
+      frames: layer.frames,
+      timeline: layer.timeline,
+    );
+    store.tileFor(
+      painter: at(24, of: other),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(await pollUntil(() => landings == 2), isTrue);
+    expect(store.debugRowsKept, 1, reason: 'A\'s tile let go as B\'s landed');
+  });
+
+  test('a tile stands in only at its own pixel ratio and in a row as thick '
+      'as its own', () async {
+    final old = await baked(24);
+    expect(ask(20), same(old), reason: '⛔CONTROL: but for the extent, it does');
+    expect(
+      store.tileFor(
+        painter: at(20),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      ),
+      isNull,
+      reason: 'at another pixel ratio',
+    );
+    expect(
+      store.tileFor(
+        painter: at(20, across: 40),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 2.0,
+      ),
+      isNull,
+      reason: 'in a thicker row',
+    );
+  });
+}
+
+/// Where the laid tiles start and end along the row, when they abut one
+/// another from the first to the last — and every edge between where they
+/// do not.
+List<double> along(List<TimelineGridScreenTile> laid) {
+  final rects = [...laid.map((tile) => tile.onto)]
+    ..sort((a, b) => a.left.compareTo(b.left));
+  if (rects.isEmpty) {
+    return const [];
+  }
+  final edges = <double>[rects.first.left];
+  for (var at = 1; at < rects.length; at += 1) {
+    if ((rects[at].left - rects[at - 1].right).abs() > 1e-6) {
+      edges
+        ..add(rects[at - 1].right)
+        ..add(rects[at].left);
+    }
+  }
+  return [...edges, rects.last.right];
 }

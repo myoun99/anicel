@@ -488,7 +488,7 @@ void main() {
         edits: const CutFolderEdits(
           custom: true,
           into: {'A': ImportDestination.newCut},
-          fits: {'B': MediaFitMode.none},
+          fits: {'B': MediaFitMode.contain},
         ),
       );
     });
@@ -506,12 +506,17 @@ void main() {
             ?.tiles
             .length ??
         0;
-    expect(tiles(own, a), greaterThan(1), reason: 'contained: the canvas over');
+    expect(
+      tiles(own, a),
+      1,
+      reason: '1:1, eight pixels — the fit a row starts on (유저 2026-11-10 '
+          'F-581: 「기본값은 원본크기로」)',
+    );
     expect(
       tiles(joined, b),
-      1,
-      reason: '1:1, eight pixels — in the cut it joined, not the one the '
-          'import stands in after',
+      greaterThan(1),
+      reason: 'contained: the canvas over — in the cut it joined, not the '
+          'one the import stands in after',
     );
     await tester.pumpAndSettle();
   });

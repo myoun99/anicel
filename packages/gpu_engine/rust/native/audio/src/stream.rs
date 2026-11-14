@@ -19,11 +19,9 @@
 
 use std::ffi::CStr;
 
-use media::span::Span;
-
 use crate::container::Container;
 use crate::start::{Start, container_start};
-use crate::{FORMAT_AAC, FORMAT_ALAC, FORMAT_MOVIE_PCM, bundled, movie_pcm};
+use crate::{FORMAT_AAC, FORMAT_ALAC, FORMAT_MOVIE_PCM, FORMAT_OS, bundled, movie_pcm, os};
 
 /// Frames a decoder is asked for at a time, where it is the one to say.
 pub(crate) const BLOCK_FRAMES: usize = 4096;
@@ -33,6 +31,14 @@ pub(crate) trait Decode {
     /// The next block of what the decoder hands back, interleaved, into
     /// `block`: how many frames — 0 at the end.
     fn next(&mut self, block: &mut Vec<f32>) -> usize;
+
+    /// The channels and the rate of what it hands back, once it has handed
+    /// a block back, for a decoder that says them only then — the NDK's
+    /// MediaCodec, by its output format, where its first block fixes them.
+    /// None: what it said as it opened.
+    fn shape(&self) -> Option<(i32, i32)> {
+        None
+    }
 }
 
 /// A decoder that read the container as it opened: which one, the sound's
@@ -58,17 +64,22 @@ type Opener = fn(&Container) -> Option<Opened>;
 /// sound-lands-on-its-exact-sample-Q2: 「파일 머리를 먼저 본다」). An MP3
 /// frame-sync scan finds frames in the quiet stretches of uncompressed
 /// sound, whose small negative samples are `FF Fx` bytes: a 30-minute
-/// H.264 + PCM reel came back as a tenth of a second of noise (2026-10-06).
-/// The sniff reads only a container's own magic at its first byte
-/// (`start::mp3_may_try`), never a chunk inside it.
+/// H.264 + PCM reel came back as a tenth of a second of noise (2026-10-06),
+/// and the OS stack, which reads that file exactly, was never asked — it can
+/// only come after the MP3 decoder, and the MP3 decoder said yes. ⛔Trying
+/// the MP3 decoder last of the bundled decoders was the old guard, and it
+/// was not enough. The sniff reads only a container's own magic at its
+/// first byte (`start::mp3_may_try`), never a chunk inside it.
 ///
 /// The ogg sits BEFORE the MP3 on purpose: `OggS` makes its reader strict,
 /// while an MP3 scan is the most permissive of all. What tries after it is
 /// kept from it all the same — a movie by its head (`mp3_may_try`), a bare
 /// AAC stream by its layer, 00, which no MPEG audio frame has. Then a
 /// movie's uncompressed sound, which needs no codec; then a movie's AAC or
-/// ALAC, and a bare AAC stream.
-const OPENERS: [Opener; 7] = [
+/// ALAC, and a bare AAC stream; and for whatever none of these reads, the
+/// OS's own codec stack ([os]) — last, so that what a bundled decoder reads
+/// decodes alike on every device.
+const OPENERS: [Opener; 8] = [
     bundled::open_wav,
     bundled::open_flac,
     bundled::open_ogg,
@@ -76,6 +87,7 @@ const OPENERS: [Opener; 7] = [
     movie_pcm::open,
     bundled::open_movie_codec,
     bundled::open_adts,
+    os::open,
 ];
 
 /// The sound of a container, read on.
@@ -108,7 +120,7 @@ impl Stream {
     /// short container decodes as a corrupt file, which is a much worse
     /// answer than 「that span is not in there」.
     pub fn open(path: &CStr, offset: i64, length: i64, framed: bool) -> Option<Stream> {
-        let container = Container::new(Span::open(path, offset, length, framed)?);
+        let container = Container::open(path, offset, length, framed)?;
         OPENERS.iter().find_map(|open| Stream::begin(&container, open(&container)?))
     }
 
@@ -123,10 +135,12 @@ impl Stream {
         if block_frames == 0 {
             return None;
         }
+        let (channels, sample_rate) = decoder.shape().unwrap_or((channels, sample_rate));
         // A movie's sound starts where the movie says, and a bare AAC
         // stream's where AAC's standard says — only the file knows, not the
-        // decoder: its rate is the decoder's by the first block.
-        if [FORMAT_MOVIE_PCM, FORMAT_AAC, FORMAT_ALAC].contains(&format) {
+        // decoder: its rate is the decoder's by the first block. The OS
+        // stack's too: Media Foundation takes nothing off the front.
+        if [FORMAT_MOVIE_PCM, FORMAT_AAC, FORMAT_ALAC, FORMAT_OS].contains(&format) {
             container_start(container, sample_rate, &mut start);
         }
         Some(Stream {
@@ -137,7 +151,7 @@ impl Stream {
             block,
             block_frames,
             block_at: 0,
-            lead: start.lead,
+            lead: start.left_to_take(),
             left: start.keep,
         })
     }
@@ -241,3 +255,6 @@ pub fn window(path: &CStr, offset: i64, length: i64, framed: bool, first: i64, c
     samples.truncate(kept as usize * channels);
     Some(Window { samples, format: stream.format, channels: stream.channels, sample_rate: stream.sample_rate })
 }
+
+#[cfg(test)]
+mod tests;

@@ -22,7 +22,7 @@ import '../playback/canvas_playback_controller.dart';
 import '../text/app_strings.dart';
 import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
-import '../../native/qa_audio_native.dart' show QaAudioNative;
+import '../../native/qa_audio_denoiser.dart' show denoiseVoiceTake;
 import '../../native/qa_audio_device.dart'
     show
         QaAudioDevice,
@@ -789,7 +789,7 @@ class EditorVoiceRecording {
   AudioRecorder Function()? debugVoiceRecorderFactory;
 
   /// Test hook: stand in for the native RNNoise pass. Null result =
-  /// "declined, keep the raw take" — the same contract as the C.
+  /// "declined, keep the raw take" — the same contract as the engine's.
   Float32List? Function(Float32List samples, int channels, int sampleRate)?
   debugVoiceDenoiser;
 
@@ -801,7 +801,7 @@ class EditorVoiceRecording {
     Float32List samples,
     int channels,
     int sampleRate,
-  ) => QaAudioNative.instance?.denoiseVoice(
+  ) => denoiseVoiceTake(
     samples: samples,
     channels: channels,
     sampleRate: sampleRate,
@@ -1210,9 +1210,9 @@ class EditorVoiceRecording {
         ..setRange(padFloats, padFloats + samples.length, samples);
     }
     // Suppression first, on the trimmed raw capture (per channel, the
-    // OBS filter order) — the RNNoise round. A declined pass (no native
-    // engine, wrong rate) keeps the raw take: recording never fails
-    // because a denoiser is missing.
+    // OBS filter order) — the RNNoise round. A declined pass (another rate,
+    // an empty take) keeps the raw take: recording never fails because the
+    // denoiser said no.
     if (denoise) {
       final suppressed = (debugVoiceDenoiser ?? _nativeVoiceDenoiser)(
         samples,
@@ -1315,7 +1315,10 @@ class EditorVoiceRecording {
               // clearing the Recordings folder before saving used to take
               // the performance with it. Carrying now means held, not just
               // flagged.
-              carriedAs: carry.token,
+              //
+              // Its date is now, the moment it was recorded (F-589): its
+              // path is an address in the run's room, not a file to ask.
+              carriedAs: (token: carry.token, modified: DateTime.now()),
               identity: readMediaIdentity(path),
             ),
           ],

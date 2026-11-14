@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -39,15 +40,15 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
-    show exposedCelIdAt;
+    show exposedCelIdAt, referenceMoveAt;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/fx_bake_plan.dart'
     show BakedFrames, FxBakePlan;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -65,26 +66,36 @@ import '../../helpers/wait_window.dart';
 /// Q4 switches off what changes the picture at its defaults; Q8 bakes no
 /// row without a picture of its own.
 void main() {
-  // The difference blend below is an advanced one, drawn by the shader.
-  setUpAll(LayerBlendShader.load);
+  opensTheEnginesScreens();
 
   const canvasSize = CanvasSize(width: 64, height: 48);
   const cutId = CutId('cut');
   const green = [0, 160, 0, 255];
   const bright = EffectId('e-bright');
 
-  /// Opaque tiles of [rgba] at [coords], 16 pixels a side.
+  /// Opaque squares of [rgba] 16 pixels a side, [coords] counting them.
   BitmapSurface inkAt(List<TileCoord> coords, List<int> rgba) {
-    final pixels = Uint8List(16 * 16 * 4);
-    for (var i = 0; i < pixels.length; i += 4) {
-      pixels.setRange(i, i + 4, rgba);
+    const side = 16;
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
+    for (final coord in coords) {
+      for (var y = coord.y * side; y < (coord.y + 1) * side; y += 1) {
+        for (var x = coord.x * side; x < (coord.x + 1) * side; x += 1) {
+          pixels.setRange(
+            (y * defaultCelTileSize + x) * 4,
+            (y * defaultCelTileSize + x + 1) * 4,
+            rgba,
+          );
+        }
+      }
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 16,
+      tileSize: defaultCelTileSize,
       tiles: {
-        for (final coord in coords)
-          coord: BitmapTile(size: 16, pixels: Uint8List.fromList(pixels)),
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: defaultCelTileSize,
+          pixels: pixels,
+        ),
       },
     );
   }
@@ -235,9 +246,9 @@ void main() {
     return hosted;
   }
 
-  /// What [s]'s cut — [of], where given — shows on [frame], drawn as an
-  /// export draws it: the wall's pixels row by row, [width] to a row, the
-  /// first at canvas ([left], [top]).
+  /// What [s]'s cut — [of], where given — shows on [frame], drawn as a bake
+  /// draws it: the wall's pixels row by row, straight as the engine reads
+  /// them, [width] to a row, the first at canvas ([left], [top]).
   Future<({List<int> rgba, int width, int left, int top})> wallAt(
     WidgetTester tester,
     EditorSessionManager s,
@@ -249,22 +260,20 @@ void main() {
     final drawn = await tester.runAsync(() async {
       final renderer = ExportFrameRenderer(
         session: s,
-        background: const ui.Color(0x00000000),
+        ground: const ui.Color(0x00000000),
       );
       try {
-        final image = await renderer.renderOver(cut, frame, wall.rect);
+        final shown = await renderer.frameOver(cut, frame, wall.rect);
         try {
-          final bytes = (await image.toByteData(
-            format: ui.ImageByteFormat.rawStraightRgba,
-          ))!;
           return (
-            rgba: bytes.buffer
-                .asUint8List(bytes.offsetInBytes, bytes.lengthInBytes)
+            rgba: appGpuExport
+                .straight(shown, shown.width, shown.height)
+                .take()
                 .toList(),
-            width: image.width,
+            width: shown.width,
           );
         } finally {
-          image.dispose();
+          shown.free();
         }
       } finally {
         renderer.dispose();
@@ -378,7 +387,7 @@ void main() {
         await shownAt(tester, s, frame, 36, 5),
     ];
     expect(coloursOf(seen), hasLength(3), reason: '⛔전제: every frame its own');
-    expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
+    expect(s.layerMerging.fxFramesBaked(const LayerId('a'), bright), isNotNull);
 
     await rasterize(tester, s);
 
@@ -938,6 +947,80 @@ void main() {
 
       expect(a(s).transformTrack.isEmpty, isTrue);
       expect(await seenNow(), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    /// `r` as a reference row: its cel holds its file laid where the
+    /// canvas's middle is, its reference fx keyed to stand it 4 further
+    /// right — which a rider wears none of (-Q4).
+    Layer fileRider() => riderOf('a').copyWith(
+      mediaReference: MediaReference(
+        assetPath: 'sheet.png',
+        laid: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+        pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+        pictureSize: canvasSize,
+        fx: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 36, y: 24),
+          ),
+        ),
+      ),
+    );
+
+    /// `a` moved 16 to the right by its transform, its fx off.
+    EditorSessionManager underTheMove(Layer rider) => ridden(
+      rider,
+      effects: [brightness(keyed: false, enabled: false)],
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 48, y: 24),
+        ),
+      ),
+    );
+
+    /// Where `r`'s ink shows its edges on frames 0..2, a pixel inside and
+    /// a pixel outside each: x 16 + [move].
+    Future<List<List<int>>> edgesOfR(
+      WidgetTester tester,
+      EditorSessionManager s,
+      int move,
+    ) async => [
+      for (var frame = 0; frame < 3; frame += 1) ...[
+        await shownAt(tester, s, frame, 17 + move, 20),
+        await shownAt(tester, s, frame, 15 + move, 20),
+      ],
+    ];
+
+    testWidgets('🎯a rider showing a file of its own is baked with the row — '
+        'the file in its pictures where the row\'s move stood it, its own '
+        'reference fx moving it nowhere — and lets go of its reference; one '
+        'undo gives both back (🗣️attach-rows-lose-the-base-move-when-it-'
+        'bakes-Q3 「같이 래스터화해 굽는다 — 참조 굽기 · Fx 굽기 둘 다」 · Q4 '
+        '「어태치줄의 참조fx는없앰」 · ↩️Q23 lit the press off over it)', (
+      tester,
+    ) async {
+      final s = underTheMove(fileRider());
+      final before = s.requireActiveCut.layers;
+      final seen = await edgesOfR(tester, s, 0);
+      expect(seen.first, blue, reason: '⛔전제: it rides a 16 to the right');
+      expect(seen[1], isNot(blue));
+      expect(
+        referenceMoveAt(rOf(s), 0),
+        isNotNull,
+        reason: '⛔CONTROL: its own fx would move it',
+      );
+      expect(s.layerMerging.fxFramesBaked(const LayerId('a'), null), isNotNull);
+
+      await rasterize(tester, s, null);
+
+      final rider = rOf(s);
+      expect(rider.mediaReference, isNull);
+      expect(rider.attachedMode, AttachedMode.synced);
+      expect(await edgesOfR(tester, s, 0), seen);
+      s.undo();
+      expect(s.requireActiveCut.layers, before);
       s.playbackRig.prerenderScheduler.cancel();
     });
 
@@ -1638,6 +1721,66 @@ void main() {
         exposedFrameIdAt(row.timeline, frame),
     ];
 
+    test('🗣️F-572 · F-572-Q2 「셋 다 행마다 센다」 — an image each of whose '
+        'cuts shows one picture of it stays an image, though the bank '
+        'holds a picture for each cut (↩️I-120-Q22\'s option, more than '
+        'one cel an animation, changed by F-572-Q2 (유저 11-11))', () {
+      final s = linkedOf(
+        [
+          rowA(kind: LayerKind.image, effects: [brightness(keyed: false)]),
+        ],
+        twin: (use) => use.copyWith(
+          effects: [
+            LayerEffect(
+              id: bright,
+              kind: EffectKind.brightnessContrast,
+              parameters: {'brightness': EffectParameter(value: 20)},
+            ),
+          ],
+        ),
+      );
+
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+
+      expect(
+        plan.row.frames,
+        hasLength(greaterThan(1)),
+        reason: '⛔전제: the bank holds more than one picture',
+      );
+      expect(plan.row.kind, LayerKind.image);
+    });
+
+    test('🗣️F-572-Q2 — an image one of whose cuts shows more than one '
+        'picture after the bake is an animation row in every cut, as a merge '
+        'makes it: the kind is the row\'s, read off every lane', () {
+      final s = linkedOf(
+        [
+          rowA(kind: LayerKind.image, effects: [brightness(keyed: false)]),
+        ],
+        twin: (use) => use.copyWith(effects: [brightness()]),
+      );
+
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+
+      final rows = [
+        plan.row,
+        plan.others.single.layers.firstWhere((row) => row.name == 'A'),
+      ];
+      final pictures = [
+        for (final row in rows) celsOf(row).toSet().length,
+      ]..sort();
+      expect(pictures.first, 1, reason: '⛔전제: one cut shows one picture');
+      expect(
+        pictures.last,
+        greaterThan(1),
+        reason: '⛔전제: the other shows more',
+      );
+      expect([for (final row in rows) row.kind], [
+        LayerKind.animation,
+        LayerKind.animation,
+      ]);
+    });
+
     testWidgets('🎯a still fx pressed in the linked cut: every use bakes it — '
         'its cel baked once into the one bank, the fx at rest in both cuts, '
         'each showing what it showed — and one undo gives both back', (
@@ -2176,7 +2319,103 @@ void main() {
           ['1', '1-2', '1-3'],
         );
         expect(plan.others.single.layers.byId(const LayerId('r')), isNull);
-        expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
+        expect(
+          s.layerMerging.fxFramesBaked(const LayerId('a'), bright),
+          isNotNull,
+        );
+      });
+
+      test("🚨a synced rider showing another cel over the row's one cel in "
+          'each cut: each picture is a cel of its own in the one bank — '
+          'never two cels of one id '
+          '(conte-pair-merge-mints-one-cel-id-for-two-pictures)', () {
+        final s = linkedOf(
+          [
+            rowA(effects: [brightness(keyed: false)]),
+            riderOf('a').copyWith(
+              frames: [
+                Frame(
+                  id: const FrameId('r-1'),
+                  duration: 3,
+                  name: '1',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('r-2'),
+                  duration: 1,
+                  name: '2',
+                  strokes: const [],
+                ),
+              ],
+            ),
+          ],
+          riderTwin: (ridden) => ridden.copyWith(
+            baseFrameLinks: {const FrameId('a-1'): const FrameId('r-2')},
+          ),
+        );
+        expect(
+          [rIn(s).baseFrameLinks, riderTwinOf(s).baseFrameLinks],
+          [
+            {const FrameId('a-1'): const FrameId('r-1')},
+            {const FrameId('a-1'): const FrameId('r-2')},
+          ],
+          reason: "⛔전제: over the row's one cel, each cut shows its own",
+        );
+        final twin = riderTwinOf(s).id;
+
+        final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+
+        final bank = plan.riders.single.frames;
+        final ids = [for (final cel in bank) cel.id];
+        expect(ids.toSet(), hasLength(ids.length), reason: 'one id a cel');
+        expect(
+          plan.others.single.layers.byId(twin)!.frames,
+          bank,
+          reason: 'one bank',
+        );
+        final drawn = [
+          for (final picture in plan.pictures)
+            if (ids.contains(picture.frameId)) picture,
+        ];
+        expect(
+          {for (final picture in drawn) picture.frameId},
+          hasLength(drawn.length),
+          reason: 'one picture a cel',
+        );
+        expect(
+          {for (final picture in drawn) picture.from.id},
+          {cutId, s.requireActiveCut.id},
+          reason: 'what each cut showed is baked — neither lost',
+        );
+        // 🗣️conte-pair-…-Q1 own-cel (유저 11-11): 「컷마다 제 셀로 — 두
+        // 컷 다 계속 따라간다」.
+        final riders = [
+          plan.riders.single,
+          plan.others.single.layers.byId(twin)!,
+        ];
+        expect(
+          [
+            for (final rider in riders)
+              (rider.attachedToLayerId != null, rider.attachedMode),
+          ],
+          [(true, AttachedMode.synced), (true, AttachedMode.synced)],
+          reason: 'both cuts\' riders still ride the row',
+        );
+        expect(
+          riders.first.baseFrameLinks.keys,
+          riders.last.baseFrameLinks.keys,
+          reason: 'over the same cels of the row',
+        );
+        expect(
+          {
+            for (final key in riders.first.baseFrameLinks.keys)
+              if (riders.first.baseFrameLinks[key] !=
+                  riders.last.baseFrameLinks[key])
+                key,
+          },
+          isNotEmpty,
+          reason: 'each cut links a cel of the row to a cel of its own',
+        );
       });
 
       group('🗣️Q19 — a rider linked to a row riding one that is no use of the '
@@ -2763,7 +3002,7 @@ void main() {
   group('🚨what it bakes nothing of yet — its button lit off, the slot kept '
       '(Q8, and the card\'s rounds ahead)', () {
     bool bakes(EditorSessionManager s, String row, [EffectId? fx = bright]) =>
-        s.layerMerging.bakesFx(LayerId(row), fx);
+        s.layerMerging.fxFramesBaked(LayerId(row), fx) != null;
 
     Layer withBright(Layer layer) => layer.copyWith(effects: [brightness()]);
 
@@ -2808,21 +3047,6 @@ void main() {
       final s = sessionOf([rowA(), withBright(riderOf('a'))]);
       addTearDown(s.dispose);
       expect([bakes(s, 'a'), bakes(s, 'r')], [true, false]);
-    });
-
-    test('a reference row riding the row (⑤)', () {
-      final s = sessionOf([
-        rowA(),
-        riderOf('a').copyWith(
-          mediaReference: MediaReference(
-            assetPath: 'ref.png',
-            pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
-            pictureSize: const CanvasSize(width: 16, height: 16),
-          ),
-        ),
-      ]);
-      addTearDown(s.dispose);
-      expect(bakes(s, 'a'), isFalse);
     });
 
     test('a reference row (⑤)', () {

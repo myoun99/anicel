@@ -67,7 +67,8 @@ import 'static_raster.dart';
 /// texture, a platform view, a follower pinned to a leader elsewhere, a
 /// backdrop filter reading what is behind the region, a layer type this
 /// file does not know — makes the region stand down for as long as it
-/// holds one.
+/// holds one, unless it stands under a tick that is always live
+/// ([TickSceneLayer.alwaysLive]).
 ///
 /// ## Where it is, and where not
 ///
@@ -254,9 +255,35 @@ class RenderStillRaster extends RenderProxyBox {
   int _captureCount = 0;
 
   /// Whether the last scene drew this region from its image.
+  ///
+  /// ⚠️A region under one drawn from ITS image is not in the scene at all,
+  /// and this keeps the answer of the last scene it was in. 🔬Card
+  /// timeline-playback-drops-every-row-image-each-frame (11-07): a measure
+  /// that read this as a row's image dropped counted ~9300 drops in 300
+  /// frames of playback — every row, every frame, each holding its image
+  /// under the dock's. What the scene draws a region from is
+  /// [debugDrawnFrom].
   @visibleForTesting
   bool get debugDrawnFromImage => _drawnFromImage;
   bool _drawnFromImage = false;
+
+  /// The region whose image the last scene drew this one from — this one,
+  /// or the outermost above it drawn from ITS image, which the scene holds
+  /// in this one's stead. Null when drawn live.
+  ///
+  /// One walk for every reader that asks it (rule of three, 11-08): a
+  /// playing timeline's pin, the dock probe and the conte's rows' pin each
+  /// walked the parents by hand.
+  @visibleForTesting
+  RenderStillRaster? get debugDrawnFrom {
+    RenderStillRaster? from;
+    for (RenderObject? node = this; node != null; node = node.parent) {
+      if (node is RenderStillRaster && node._drawnFromImage) {
+        from = node;
+      }
+    }
+    return from;
+  }
 
   /// How many frames drawn from the image asked where the region sits the
   /// full way — a transform to the root — before building the scene,
@@ -649,7 +676,7 @@ class _StillLayer extends OffsetLayer {
   /// film frame threw away — two images a page again, and the first film
   /// frame after every turn drawn live (10-12, cut 302: 55 of 55).
   bool _moving(TickSceneLayer tick) =>
-      _frame - tick._movedAloneAt <= _movingFor;
+      tick.alwaysLive || _frame - tick._movedAloneAt <= _movingFor;
 
   /// Marks the ticks that changed in this frame as moved alone, unless the
   /// region changed in it too. A tick looked at for the first time is a
@@ -690,6 +717,53 @@ class _StillLayer extends OffsetLayer {
       _frame - _changedAt > _waitNow &&
       StillRaster._lastCaptureFrame != _frame;
 
+  /// Whether the region is owed an image: on screen, holding none, and
+  /// allowed one ([RenderStillRaster._gate]).
+  bool get _owedAnImage =>
+      attached && _strata == null && _owner._gate() == StillStandDown.none;
+
+  /// Whether this region's check takes its image in the checks of the
+  /// frame under way ([_watch]), unless it gives way ([_givesWayTo]).
+  ///
+  /// ⛔Not asked whether it is owed one ([_owedAnImage]): one told no or
+  /// gone empty since its check was asked for has changed, and one taken
+  /// in a gap has its image first drawn in this frame — neither may take
+  /// (the mutants of F-533's fix, 2026-11-07).
+  bool get _takesNow => _watching && _mayTake;
+
+  /// Whether the scene draws this region's own image: no region above it
+  /// is drawn from an image, which holds this one's pixels too.
+  bool get _shown {
+    for (var layer = parent; layer != null; layer = layer.parent) {
+      if (layer is _StillLayer && layer._strata != null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Whether this region gives its turn to one of [waiting], the regions
+  /// taking theirs in the same turn.
+  ///
+  /// 🚨A REGION THE SCENE DRAWS GOES BEFORE ONE UNDER ANOTHER'S IMAGE
+  /// (F-533, 2026-11-07): one image a frame, and the one drawn pays in the
+  /// frame after it — the other only once the region above it is drawn
+  /// live. 🔬When every row of the timeline's dock became a region of its
+  /// own (a-live-dock-frame-costs-a-whole-draw-Q1), HomePage at rest drew
+  /// `dock:bottom` from its image from its 12th frame, and its twelve rows
+  /// took frames 12–23, one each; the right tool strip, waiting since the
+  /// 3rd, was taken in the 24th. ⛔Not left untaken: taken while the dock
+  /// is drawn from its image, the rows are images from the first frame of
+  /// the scroll that draws the dock live — what Q1 is for.
+  bool _givesWayTo(Iterable<_StillLayer> waiting) =>
+      !_shown && waiting.any((other) => other._shown);
+
+  /// The regions whose checks take their images in the frame under way.
+  static Iterable<_StillLayer> _takingNow() => StillRaster.census
+      .map((region) => region._layer)
+      .whereType<_StillLayer>()
+      .where((layer) => layer._takesNow);
+
   void _watch() {
     if (_watching) {
       return;
@@ -697,15 +771,12 @@ class _StillLayer extends OffsetLayer {
     _watching = true;
     void check(Duration _) {
       _watching = false;
-      if (!attached || _strata != null) {
-        return;
-      }
-      if (_owner._gate() != StillStandDown.none) {
+      if (!_owedAnImage) {
         return;
       }
       // The frame clock ticks after the scene is built, so [_frame] here
       // already reads the next frame — the one that draws what is taken.
-      if (_mayTake) {
+      if (_mayTake && !_givesWayTo(_takingNow())) {
         if (_capture()) {
           // The scene still holds the children: re-add this layer so the
           // next frame draws the strata instead.
@@ -733,10 +804,7 @@ class _StillLayer extends OffsetLayer {
   /// Takes the region in a gap in the frames ([_FrameGap]), for the next
   /// frame that comes anyway.
   void _takeInAGap() {
-    if (attached &&
-        _strata == null &&
-        _owner._gate() == StillStandDown.none &&
-        _capture()) {
+    if (_owedAnImage && _capture()) {
       markNeedsAddToScene();
     }
   }
@@ -831,6 +899,9 @@ class _StillLayer extends OffsetLayer {
       own?.add(layer);
       out.add(layer);
       if (layer case TickSceneLayer(:final offset)) {
+        if (layer.alwaysLive) {
+          return true;
+        }
         final held = <Object?>[offset];
         final itsOwn = <Object?>[offset];
         for (var child = layer.firstChild;
@@ -968,10 +1039,11 @@ typedef _Packing = ({List<Offset?> at, Size size});
 /// the timeline: 9.3 8.1 8.8 → 3.9 1.1 1.0 ms.
 ///
 /// So once no frame has come for a [_step], the region that has waited
-/// longest is taken, one a [_step], for the next frame that comes. That
-/// asks for no frame either, and lands on none. A region that backed off
-/// waits as many more steps as it would have frames, so what changes every
-/// so often is not taken every time.
+/// longest is taken, one a [_step], for the next frame that comes — the
+/// scene's before those under another's image, as in the frames
+/// ([_StillLayer._givesWayTo]). That asks for no frame either, and lands
+/// on none. A region that backed off waits as many more steps as it would
+/// have frames, so what changes every so often is not taken every time.
 abstract final class _FrameGap {
   /// The quiet a region waiting the shortest wait needs: its
   /// [StillRaster.stillFrames] at 60Hz. It is what keeps two images apart
@@ -1010,8 +1082,12 @@ abstract final class _FrameGap {
     }
     _quiet += 1;
     final waited = _quiet * StillRaster.stillFrames;
-    for (final layer in _owed) {
-      if (waited >= layer._stillFramesNeeded) {
+    final ready = [
+      for (final layer in _owed)
+        if (waited >= layer._stillFramesNeeded) layer,
+    ];
+    for (final layer in ready) {
+      if (!layer._givesWayTo(ready)) {
         _owed.remove(layer);
         layer._takeInAGap();
         break;
@@ -1241,6 +1317,14 @@ class _Strata {
   /// app whatever its size, 09-25; on the Surface the pixels outweigh it —
   /// [StillRaster._lastCaptureFrame]), and a region cut at every tick has
   /// several strata.
+  ///
+  /// ⚠️What stands over a tick that is always live is taken like the rest: a
+  /// frame grid's rows stand over the grid's screen, and a picture reaches its
+  /// boundary's whole box ([_lowest]), so the image holds what of the grid the
+  /// dock shows a second time — 1.52 times the dock (11-09). ⛔Drawn as
+  /// painted instead, in no image, it costs the raster twice what the part of
+  /// the image saves: 🔬a stroke on S5_BA's cut 352 (main PC, profile), p50
+  /// 1.7–2.2 → 3.5–3.7 ms quiet, 4.0–4.7 → 8.4–11.1 under 18 test processes.
   static _Strata take(
     _Layout layout,
     Size size,
@@ -1514,6 +1598,16 @@ class _Strata {
 /// every tick in the timeline read as covered and the region was never
 /// still (10-12).
 class TickSceneLayer extends OffsetLayer {
+  TickSceneLayer({this.alwaysLive = false});
+
+  /// 🚨Drawn live between its region's strata in every frame, and not
+  /// looked into: what it holds is not the region's image to keep, and
+  /// says nothing of what it shows. A texture is this — the frame grid's
+  /// screen (`timeline_grid_screen.dart`) drew a dock live for as long as it
+  /// showed one, 🔬the raster's p50 0.80 → 2.45 ms under a stroke on a dock
+  /// that did not change (S5_BA's cut 352, the main PC, 11-09).
+  final bool alwaysLive;
+
   /// The box the tick paints in, at [offset] — for the region's
   /// diagnostics.
   Size size = Size.zero;

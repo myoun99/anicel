@@ -5,11 +5,16 @@
 /// production v1 file was ever written.)
 library;
 
+import 'dart:async' show FutureOr;
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart' show malloc;
+
 import 'anicel_payload_codec.dart';
+import '../../core/on_a_worker.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -25,6 +30,8 @@ import '../../models/layer_id.dart';
 import '../../models/media_reference.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
+import '../../native/engine_tile_ledger.dart';
+import '../../native/tile_blocks.dart';
 
 /// One cel's BAKED raster — the persistence TRUTH from .anicel format v2 on
 /// (R19 bake-only): what you saved is exactly what reopens, byte for
@@ -116,8 +123,8 @@ typedef CelParts<P> = ({
 typedef AnicelLaidCel = CelParts<int>;
 
 /// [surface] in plain parts, each tile's pixels as [pixelsOf] gives them:
-/// the copy [AnicelCelEntry.fromSurface] makes, or the blocks' addresses
-/// ([celBlocksOf]) — the way back of [_surfaceOf], one for both.
+/// the copy [AnicelCelEntry.fromSurface] makes, or the tiles' places
+/// ([onAWorkerWithCelCopy]) — the way back of [_surfaceOf], one for both.
 CelParts<P> _partsOf<P>(
   BitmapSurface surface,
   P Function(BitmapTile tile) pixelsOf,
@@ -149,36 +156,104 @@ List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
     (id: photo.id, reference: jsonEncode(photo.reference.toJson())),
 ];
 
-/// [surface] with each tile's pixels named by the ADDRESS of its block, for
-/// a worker to read them where they lie ([copiedCelSurface]) — the way
-/// there of [laidCelSurface], with no pixel copied here.
+/// [job]'s answer, made on a worker of a copy of the hot cel [surface]: a
+/// surface that isolate owns and frees as its own, behind the wall the
+/// picture stands behind here — which its parts do not carry.
 ///
-/// 🚨The addresses are good only while [surface] is held: its tiles' blocks
-/// go back to the pool with them (native-tile-pixel-lifetime). The caller
-/// holds it until the worker is done.
-AnicelLaidCel celBlocksOf(BitmapSurface surface) => _partsOf(
-  surface,
-  (tile) => tile.readPixels((pointer, _) => pointer.address),
-);
-
-/// [laid]'s blocks — another isolate's, read where they lie
-/// ([celBlocksOf]) — copied into tiles of this one: a surface this isolate
-/// owns, whose tiles it frees as its own, behind the wall the picture
-/// [standsBehind] there — which its parts do not carry.
-BitmapSurface copiedCelSurface(
-  AnicelLaidCel laid, {
-  required PasteboardReach standsBehind,
-}) {
-  final bytes = BitmapTile.bytesFor(laid.tileSize);
-  return _surfaceOf(
-    laid,
-    (address) => BitmapTile(
-      size: laid.tileSize,
-      pixels: Pointer<Uint8>.fromAddress(address).asTypedList(bytes),
-    ),
-    standsBehind: standsBehind,
+/// A worker has no engine ([EngineTileLedger.instance]), so it asks this
+/// isolate for the tiles ([onAWorkerAsking]) — read as [cel]'s, the name
+/// its painters give the cel ([BrushFrameKey.cel]), or
+/// [BrushFrameKey.noCel] for a picture that is nobody's yet: a vector
+/// layer an import has drawn (`clipVectorTiles`).
+///
+/// 🚨A BATCH AT A TIME, THROUGH ONE BLOCK [blocks] GIVES, NEVER THE CEL
+/// WHOLE: a block of every tile was 132 MiB on this isolate for a cel of
+/// 5800² inked whole (저장's review of the flip lane, 11-09), what
+/// [EngineTileLedger.readEach] was written not to ask for.
+///
+/// 🚨THE WORKER IS ANSWERED WITH THE BLOCK'S ADDRESS, and copies the batch
+/// out of it THERE: its next ask says it is done with the bytes, so the
+/// block is read into again only then, and freed here when its work ends.
+/// ↩️Till 2026-11-14 each batch was copied out of the block HERE for the
+/// crossing (`TransferableTypedData`) — 117–246 ms of a heavy save's UI
+/// isolate on Surface for twenty cels, the reads the same either way
+/// (card `a-save-serialises-each-hot-cel-on-the-ui-isolate`, ⓑ). ⛔Not a
+/// block a batch, freed by the worker (that lane's first cut): it measured
+/// the same, and sent the allocator across isolates for it.
+Future<T> onAWorkerWithCelCopy<T>(
+  Object cel,
+  BitmapSurface surface,
+  FutureOr<T> Function(BitmapSurface copy) job, {
+  Allocator blocks = malloc,
+}) async {
+  // By the tile itself: a tile's == compares, and hashes, every byte.
+  final indices = Map<BitmapTile, int>.identity();
+  final parts = _partsOf(
+    surface,
+    (tile) => indices.putIfAbsent(tile, () => indices.length),
   );
+  final tiles = [...indices.keys];
+  final bytes = BitmapTile.bytesFor(surface.tileSize);
+  // One tile's at the least: C may answer a malloc of 0 with null, which
+  // package:ffi throws for.
+  final capacity = math.max(1, _batchEnd(0, tiles.length)) * bytes;
+  final block = blocks<Uint8>(capacity);
+  try {
+    return await onAWorkerAsking<int, int, T>(
+      (first) {
+        EngineTileLedger.instance.read(
+          cel,
+          tiles.sublist(first, _batchEnd(first, tiles.length)),
+          block,
+        );
+        return block.address;
+      },
+      _onACopyOf(parts, tiles.length, surface.pasteboardReach, job),
+    );
+  } finally {
+    blocks.free(block);
+  }
 }
+
+/// Where the batch a worker asks for at [first] of [tileCount] ends — read
+/// by the isolate that answers and the one that asks alike.
+int _batchEnd(int first, int tileCount) =>
+    math.min(first + EngineTileLedger.readBatch, tileCount);
+
+/// [job] on a copy of [parts] — each tile named by its place among the
+/// [tileCount] it asks for, a tile at two places one tile there too. Each
+/// answer is the address of the block holding the batch asked for, which
+/// is copied out of before the next ask.
+///
+/// ⚠️Made HERE: the closure crosses, and one made beside the answer would
+/// carry the surface's tiles, which no isolate message carries
+/// (`_reportingInto`).
+FutureOr<T> Function(Future<int> Function(int first) ask) _onACopyOf<T>(
+  CelParts<int> parts,
+  int tileCount,
+  PasteboardReach standsBehind,
+  FutureOr<T> Function(BitmapSurface copy) job,
+) => (ask) async {
+  final bytes = BitmapTile.bytesFor(parts.tileSize);
+  final tiles = <BitmapTile>[];
+  while (tiles.length < tileCount) {
+    final count = _batchEnd(tiles.length, tileCount) - tiles.length;
+    final read = Pointer<Uint8>.fromAddress(
+      await ask(tiles.length),
+    ).asTypedList(count * bytes);
+    for (var at = 0; at < read.length; at += bytes) {
+      tiles.add(
+        BitmapTile(
+          size: parts.tileSize,
+          pixels: Uint8List.sublistView(read, at, at + bytes),
+        ),
+      );
+    }
+  }
+  return job(
+    _surfaceOf(parts, (index) => tiles[index], standsBehind: standsBehind),
+  );
+};
 
 /// [parts] made a surface, each tile's pixels made a tile by [tileOf]: the
 /// copy [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's
@@ -235,7 +310,7 @@ CelPhoto _photoOf(AnicelPhotoRecord record) => CelPhoto(
   ),
 );
 
-/// [entry] laid into native blocks from [blocks] — the copies
+/// [entry] laid into tile blocks ([TileBlocks]) — the copies
 /// [AnicelCelEntry.toSurface] makes, made on the worker that decoded the
 /// cel, so they cost the screen nothing (card
 /// `cel-thaw-holds-the-ui-thread`: ~40 ms of a first playback's late frames
@@ -245,11 +320,11 @@ CelPhoto _photoOf(AnicelPhotoRecord record) => CelPhoto(
 /// they exist. ⚠️The tile size is asked BEFORE the first block: the main
 /// isolate's adoption asks it again, and must never be the first to refuse,
 /// for it would refuse with blocks not adopted yet.
-AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
+AnicelLaidCel layCelEntry(AnicelCelEntry entry) {
   BitmapTile.checkSize(entry.tileSize);
   final got = <Pointer<Uint8>>[];
   int laid(Uint8List pixels) {
-    final block = blocks.allocate(pixels.length);
+    final block = TileBlocks.alloc(pixels.length);
     got.add(block);
     block.asTypedList(pixels.length).setAll(0, pixels);
     return block.address;
@@ -272,28 +347,25 @@ AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
       laidBounds: entry.laidBounds,
     );
   } on Object {
-    for (final block in got) {
-      blocks.free(block);
-    }
+    got.forEach(TileBlocks.free);
     rethrow;
   }
 }
 
-/// Gives back every block [laid] holds to [blocks] — for a worker whose work
-/// failed after laying it, when nothing will adopt it ([layCelEntry]'s rule).
-void freeLaidCel(AnicelLaidCel laid, TileBlockHands blocks) {
+/// Gives back every block [laid] holds — for a worker whose work failed
+/// after laying it, when nothing will adopt it ([layCelEntry]'s rule).
+void freeLaidCel(AnicelLaidCel laid) {
   for (final tile in [
     ...laid.tiles,
     for (final text in laid.texts) ...text.plate,
   ]) {
-    blocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
+    TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
   }
 }
 
-/// [laid]'s blocks adopted as its tiles, on the isolate whose allocator they
-/// came from ([BitmapTile.blocks]) — no pixel is copied here — behind the
-/// wall the worker that laid them made the picture [standsBehind]: none,
-/// for one laid as its bytes were.
+/// [laid]'s blocks adopted as its tiles — no pixel is copied here — behind
+/// the wall the worker that laid them made the picture [standsBehind]:
+/// none, for one laid as its bytes were.
 BitmapSurface laidCelSurface(
   AnicelLaidCel laid, {
   PasteboardReach standsBehind = PasteboardReach.whole,
@@ -335,6 +407,7 @@ BitmapSurface laidCelSurface(
 /// floor, as the blob's did.
 const int anicelCelBinaryVersion = 5;
 
+
 /// A cel's stream, taken straight off its SURFACE — without the defensive
 /// pixel copy per tile that building an [AnicelCelEntry] first would make.
 ///
@@ -346,11 +419,24 @@ const int anicelCelBinaryVersion = 5;
 /// those copies is live at the same moment — four times the cel,
 /// asked for at the instant the budget says there is no room.
 ///
-/// ⛔`readPixels`, never the `pixels` getter: that getter IS the
-/// defensive copy this exists to avoid (see BitmapTile.readPixels for
-/// why the tile must stay the receiver).
-Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
-  final writer = _ByteWriter();
+/// ⛔Never the `pixels` getter: that getter IS the defensive copy this
+/// exists to avoid. The bytes come back from the engine a batch at a time
+/// through one block ([EngineTileLedger.readEach]), never the cel whole —
+/// or from where [bytesOf] says they are.
+Uint8List encodeCelEntryFromSurface(
+  BrushFrameKey key,
+  BitmapSurface surface, {
+  TileBytesOf? bytesOf,
+}) {
+  final read =
+      bytesOf ??
+      (tiles, use) => EngineTileLedger.instance.readEach(key.cel, tiles, use);
+  // Each tile its coordinate and its bytes, and a page for the rest.
+  final writer = _ByteWriter(
+    expected:
+        surface.keptTileCount * (BitmapTile.bytesFor(surface.tileSize) + 8) +
+        4096,
+  );
   writer.celStreamHeader(
     key,
     surface.canvasSize,
@@ -358,7 +444,7 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
     _photoRecordsOf(surface.photos),
   );
   writer.u32(surface.tiles.length);
-  writer.tilesOf(surface.tiles);
+  writer.tilesOf(surface.tiles, read);
   writer.u32(surface.texts.length);
   for (final text in surface.texts) {
     writer.celTextHeader(
@@ -366,11 +452,39 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
       jsonEncode(text.content.toJson()),
       text.plate.length,
     );
-    writer.tilesOf(text.plate);
+    writer.tilesOf(text.plate, read);
   }
   writer.celLaid(surface.laidBounds);
   return writer.takeBytes();
 }
+
+/// [then] of [key]'s stream ([encodeCelEntryFromSurface]), made on a worker
+/// of a copy of the hot cel [surface] — handed to it a batch of tiles at a
+/// time, the screen's turns between ([onAWorkerWithCelCopy]) — and read off
+/// the copy's own tiles, since a worker has no engine.
+///
+/// 🎯ONE road for every hot cel that leaves for bytes: a save's
+/// (`AnicelFileService._workForDirtyKey`), a cooling's
+/// (`BrushFrameStore._coolLoop`) and an undo snapshot's park
+/// (`UndoSurfaceSnapshot._park`) — the cooling and the park were matched on
+/// purpose and move together, and the save took the park's shape (F-304).
+/// ↩️The cooling and the park serialised the whole cel on the UI isolate in
+/// one stretch and compressed it on a worker (card
+/// `the-cooling-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
+/// 관제 2026-11-13).
+Future<T> onAWorkerWithCelStream<T>(
+  BrushFrameKey key,
+  BitmapSurface surface,
+  T Function(Uint8List stream) then,
+) => onAWorkerWithCelCopy(key.cel, surface, _streamOfTheCopy(key, then));
+
+/// ⚠️Made HERE, so the closure crosses with [key] and [then] alone
+/// (`onAWorkerReporting`'s 🚨).
+T Function(BitmapSurface copy) _streamOfTheCopy<T>(
+  BrushFrameKey key,
+  T Function(Uint8List stream) then,
+) => (copy) =>
+    then(encodeCelEntryFromSurface(key, copy, bytesOf: readTilesInPlace));
 
 /// What a cel stream says it is, up to its tiles: its version, its key,
 /// its canvas and its tile size, and the photos its picture carries — read
@@ -551,11 +665,14 @@ class AnicelCelBlob {
   /// The blob of [surface], [key]'s picture: its stream straight off the
   /// surface ([encodeCelEntryFromSurface]) and whether it shows anything
   /// ([BitmapSurface.showsSomething]), asked of the same picture.
-  factory AnicelCelBlob.ofSurface(BrushFrameKey key, BitmapSurface surface) =>
-      AnicelCelBlob.ofPayload(
-        encodeCelEntryFromSurface(key, surface),
-        showsSomething: surface.showsSomething,
-      );
+  factory AnicelCelBlob.ofSurface(
+    BrushFrameKey key,
+    BitmapSurface surface, {
+    TileBytesOf? bytesOf,
+  }) => AnicelCelBlob.ofPayload(
+    encodeCelEntryFromSurface(key, surface, bytesOf: bytesOf),
+    showsSomething: surface.showsSomething,
+  );
 
   /// The blob of a cel's uncompressed [payload] — the bytes
   /// [encodeCelEntryFromSurface] writes off a surface — compressed here.
@@ -624,7 +741,8 @@ class AnicelCelBlob {
     required List<String> photoPaths,
     required Uint8List body,
   }) {
-    final writer = _ByteWriter()
+    // The body and a page for the head before it.
+    final writer = _ByteWriter(expected: body.length + 4096)
       ..u8(_anicelCelBlobVersion)
       ..celIdentity(key, canvasSize, tileSize)
       ..u8(codec)
@@ -679,36 +797,76 @@ class AnicelCelBlob {
   BitmapSurface toSurface() => decoded((entry) => entry.toSurface());
 }
 
+/// The bytes of a stream or a head, written into ONE buffer made room for
+/// at once — [expected] bytes, which a writer of tiles knows before its
+/// first (a cel's tiles are most of its stream).
+///
+/// ↩️A `BytesBuilder(copy: true)`, which starts at a kilobyte and doubles:
+/// a cel's 20.6 MB stream was laid into fifteen buffers, each new one
+/// zeroed and the last copied into it, before the stream was whole —
+/// 🧪12–20 ms a whole-canvas cel on a worker (Surface Pro 11, profile,
+/// 2026-11-13, card `a-save-serialises-each-hot-cel-on-the-ui-isolate`),
+/// on the save's road, the cooling's and the parked undo's alike. A
+/// writer that guessed short still doubles, as that one did.
 class _ByteWriter {
-  final BytesBuilder _builder = BytesBuilder(copy: true);
+  _ByteWriter({int expected = 0})
+    : _buffer = Uint8List(math.max(expected, _least));
+
+  static const int _least = 256;
+
+  Uint8List _buffer;
+  int _length = 0;
   final ByteData _scratch = ByteData(8);
 
-  void u8(int value) => _builder.addByte(value);
+  /// Room for [count] more bytes past what is written.
+  void _roomFor(int count) {
+    final needed = _length + count;
+    if (needed <= _buffer.length) {
+      return;
+    }
+    var size = _buffer.length * 2;
+    while (size < needed) {
+      size *= 2;
+    }
+    _buffer = Uint8List(size)..setRange(0, _length, _buffer);
+  }
+
+  void _add(List<int> value) {
+    _roomFor(value.length);
+    _buffer.setRange(_length, _length + value.length, value);
+    _length += value.length;
+  }
+
+  void u8(int value) {
+    _roomFor(1);
+    _buffer[_length] = value;
+    _length += 1;
+  }
 
   void u16(int value) {
     _scratch.setUint16(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 2));
+    _add(_scratch.buffer.asUint8List(0, 2));
   }
 
   void u32(int value) {
     _scratch.setUint32(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 4));
+    _add(_scratch.buffer.asUint8List(0, 4));
   }
 
   void i32(int value) {
     _scratch.setInt32(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 4));
+    _add(_scratch.buffer.asUint8List(0, 4));
   }
 
   void f32(double value) {
     _scratch.setFloat32(0, value, Endian.little);
-    _builder.add(_scratch.buffer.asUint8List(0, 4));
+    _add(_scratch.buffer.asUint8List(0, 4));
   }
 
   void string(String value) {
     final encoded = utf8.encode(value);
     u16(encoded.length);
-    _builder.add(encoded);
+    _add(encoded);
   }
 
   /// The cel stream's header, written in ONE place: what the cel is — its
@@ -797,23 +955,35 @@ class _ByteWriter {
   void longString(String value) {
     final encoded = utf8.encode(value);
     u32(encoded.length);
-    _builder.add(encoded);
+    _add(encoded);
   }
 
-  /// Tiles straight off a surface or a plate — each one's coordinate, then
-  /// its bytes read in place ([BitmapTile.readPixels], never the copying
-  /// `pixels` getter; see [encodeCelEntryFromSurface]).
-  void tilesOf(Map<TileCoord, BitmapTile> tiles) {
-    for (final entry in tiles.entries) {
-      i32(entry.key.x);
-      i32(entry.key.y);
-      entry.value.readPixels((_, view) => bytes(view));
+  /// Tiles off a surface or a plate — each one's coordinate, then its bytes
+  /// as [read] hands them over (see [encodeCelEntryFromSurface]); [read]
+  /// is not asked for none, so a picture of no tiles opens no engine.
+  void tilesOf(Map<TileCoord, BitmapTile> tiles, TileBytesOf read) {
+    if (tiles.isEmpty) {
+      return;
     }
+    final at = tiles.keys.iterator;
+    read([...tiles.values], (pixels) {
+      at.moveNext();
+      i32(at.current.x);
+      i32(at.current.y);
+      bytes(pixels);
+    });
   }
 
-  void bytes(List<int> value) => _builder.add(value);
+  void bytes(List<int> value) => _add(value);
 
-  Uint8List takeBytes() => _builder.takeBytes();
+  /// What is written, as a view of the one buffer — not copied out, as
+  /// `BytesBuilder.takeBytes` did not; the writer starts empty again.
+  Uint8List takeBytes() {
+    final written = Uint8List.sublistView(_buffer, 0, _length);
+    _buffer = Uint8List(_least);
+    _length = 0;
+    return written;
+  }
 }
 
 class _ByteReader {

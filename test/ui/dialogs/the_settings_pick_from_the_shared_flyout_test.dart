@@ -6,7 +6,6 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -14,7 +13,6 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
 
-import '../../helpers/native_engine_path.dart';
 
 /// 🗣️F-230 (유저 2026-09-29): 「오디오의 출력 선택이나 트랜지션레이어의 ol선택등
 /// 선택하는 ui가 구식 ui 쓰는곳있는데, 앵커팝오버? 공용화된 ui 통일적용.
@@ -25,7 +23,6 @@ import '../../helpers/native_engine_path.dart';
 /// the button, then the row — so a picker that went back to a framework menu
 /// has no rows under these keys to tap.
 void main() {
-  final enginePath = nativeEngineLibraryPathOrNull();
   late EditorSessionManager session;
 
   setUp(() {
@@ -203,16 +200,10 @@ void main() {
       'off the UI thread once the frame that lists the outputs is drawn', (
     tester,
   ) async {
-    if (enginePath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = enginePath;
     addTearDown(() {
       QaAudioDevice.instance?.close();
       QaAudioDevice.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
     });
     // The bench's device: opened once on the null backend, so the program's
     // own road opens it there again.

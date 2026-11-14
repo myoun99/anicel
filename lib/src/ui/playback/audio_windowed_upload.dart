@@ -272,7 +272,7 @@ Future<List<AudioMixSource>?> readStreamWindowsOnAWorker(
   List<StreamWindowRead> reads,
   QaAudioDevice device,
 ) async {
-  final landed = await _readOnAWorker(reads, device.buffers);
+  final landed = await _readOnAWorker(reads);
   if (landed == null) {
     return null;
   }
@@ -289,11 +289,10 @@ Future<List<AudioMixSource>?> readStreamWindowsOnAWorker(
 }
 
 /// The worker's job, in a function of its own: `Isolate.run` copies the
-/// closure's whole context, and this one holds [reads] and two addresses.
+/// closure's whole context, and this one holds [reads].
 Future<List<LandedStreamWindow>?> _readOnAWorker(
   List<StreamWindowRead> reads,
-  AudioBuffers buffers,
-) => onAWorker(() => readStreamWindowsInto(reads, audioBuffersHere(buffers)));
+) => onAWorker(() => readStreamWindowsInto(reads, audioBuffersHere()));
 
 /// Where a window read on a worker landed: [floats] samples from
 /// [startSample] in the buffer at [address] — none, at 0, for a window

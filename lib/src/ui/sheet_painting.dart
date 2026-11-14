@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/contain_rect.dart';
 import '../core/convex_clip.dart' show convexIntersection;
+import '../core/display_filter.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
@@ -123,9 +124,9 @@ void paintSheetImageContained(
 
 /// The quality a cell's picture, a raster [width] pixels wide, is laid into
 /// its [shot] with: what is left of the reduction, as the canvas's display
-/// takes it — the picture was rendered down by the display's own levels
-/// (`CameraFrameRenderService.renderThroughCamera`), so the print and the
-/// live composite reduce one way (F-215, 유저
+/// takes it — the picture was rendered down by the display's own filter
+/// (`frameOnTheEngine`), so the print and the live composite reduce one
+/// way (F-215, 유저
 /// 2026-09-30: 「왜 브러시허용이랑 렌더링이랑 연관있는거냐고」). ↩️It was
 /// `medium`, which mipmaps where an engine has mips and does not where it
 /// has none.

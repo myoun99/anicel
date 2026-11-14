@@ -40,7 +40,12 @@ void main() {
 
   test('the runner reads the key the settings write, in the shape of the '
       'version it knows', () {
-    final key = const AppGpuSettings().toJson().keys.single;
+    // The preference's key — the file holds the plugins' limit too, which
+    // the runner does not read.
+    final json = const AppGpuSettings().toJson();
+    final key = json.keys.singleWhere(
+      (key) => json[key] == AppGpuPreference.auto.name,
+    );
     expect(readerOf(), contains('"\\"$key\\""'));
     expect(
       AppGpuSettingsStore.version,

@@ -67,10 +67,10 @@ fn meshed(
     window: Window,
     mode: ResampleMode,
 ) -> Option<Vec<u32>> {
-    let Rig { engine, warp, .. } = rig();
+    let Rig { engine, warp, owners } = rig();
     let pixels = boxed(pixels);
     let picture = Boxed { pixels: &pixels, size };
-    let warped = warp.mesh(engine, mesh, &picture, source_at, window, 1.0, mode)?;
+    let warped = warp.mesh(engine, (owners, mesh), &picture, source_at, window, 1.0, mode)?;
     Some(words(&read_buffer(engine, &warped)))
 }
 

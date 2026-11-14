@@ -5,7 +5,6 @@ import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
-import '../../native/qa_engine_abi.dart';
 import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../../services/audio/sound_span.dart';
 import '../../services/import/raster_cel_import.dart';
@@ -14,6 +13,7 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/media/movie_span.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
+import '../import/import_file_settings.dart' show MovieParts;
 import 'session_roles.dart';
 
 /// The IN/OUT the window chose for a file — what a [KeptSpan] is made of
@@ -32,7 +32,8 @@ typedef _Trim = ({int inFrame, int? outFrame});
 /// and what the pool names; the original is only where it came from. Every
 /// kind, one law; only how a kind is cut differs:
 ///  * a movie → MP4 of the frames the project shows, at its pace
-///    ([writeMovieSpan])
+///    ([writeMovieSpan]) — without its sound when it brings its picture
+///    alone, and a sound's piece when it brings its sound alone (I-171-Q1)
 ///  * a sound → WAV of the span in its own time ([soundSpanAsWav])
 ///  * a PDF → the kept pages as a PDF ([PdfRenderService.pageSpan])
 ///  * an animated image → APNG of the kept frames ([encodeAnimatedPng])
@@ -82,24 +83,45 @@ class TrimmedPieces {
   /// [onProgress] hears how far a movie's piece is ([writeMovieSpan]) — the
   /// one kind whose cut takes long enough to stand behind a wait at 0%
   /// (F-494). The other kinds cut in one call and say nothing until done.
-  Future<({String path, int frames})?> cut(
+  ///
+  /// [parts] is what of a MOVIE the piece holds (🗣️I-171-Q1, 유저
+  /// 2026-11-14: 「그 부분만 새 파일로 품는다」): its sound alone is a sound's
+  /// piece, a WAV, cut as a sound file's is — the sound's clock measures a
+  /// movie's span too — and its picture alone an MP4 with no sound. The
+  /// piece's [kind] says which: what it is placed and registered as.
+  ///
+  /// [pull] rewrites a movie's piece at the project's speed, [inFrame] and
+  /// [outFrame] counted on the clock it is read on (🗣️F-588, [framePullOf]):
+  /// its pictures frame for frame, its sound pulled with them — a sound's
+  /// piece of it as well.
+  Future<({String path, int frames, MediaAssetKind kind})?> cut(
     String source,
     MediaAssetKind kind, {
     int inFrame = 0,
     int? outFrame,
+    MovieParts parts = MovieParts.pictureAndSound,
+    ({int numerator, int denominator}) pull = noPull,
     void Function(double fraction)? onProgress,
   }) async {
+    final pieceKind = pieceKindOf(kind, parts);
     // ⚠️Named with the piece's extension already: the OS encoder picks its
     // container from it, and refuses a name that has none.
     final work =
         '${_staging.directoryPath}/${_uniqueName('cutting')}.'
-        '${_extensionOf(kind)}';
+        '${_extensionOf(pieceKind)}';
     Directory(_staging.directoryPath).createSync(recursive: true);
     final trim = (inFrame: inFrame, outFrame: outFrame);
     try {
-      final kept = switch (kind) {
-        MediaAssetKind.video => await _movie(source, work, trim, onProgress),
-        MediaAssetKind.audio => await _sound(source, work, trim),
+      final kept = switch (pieceKind) {
+        MediaAssetKind.video => await _movie(
+          source,
+          work,
+          trim,
+          onProgress,
+          withSound: parts == MovieParts.pictureAndSound,
+          pull: pull,
+        ),
+        MediaAssetKind.audio => await _sound(source, work, trim, pull),
         MediaAssetKind.pdf => await _pages(source, work, trim),
         MediaAssetKind.image => await _frames(source, work, trim),
       };
@@ -108,14 +130,21 @@ class TrimmedPieces {
         return null;
       }
       final address = '${_staging.directoryPath}/'
-          '${_pieceName(source, kind, kept)}';
+          '${_pieceName(source, pieceKind, kept)}';
       File(work).renameSync(address);
-      return (path: address, frames: kept.count);
+      return (path: address, frames: kept.count, kind: pieceKind);
     } on Object {
       _deleteIfThere(work);
       return null;
     }
   }
+
+  /// What the piece of a [kind] file bringing [parts] is ([cut]): a movie's
+  /// sound alone is a sound's piece; every other piece is its file's kind.
+  static MediaAssetKind pieceKindOf(MediaAssetKind kind, MovieParts parts) =>
+      kind == MediaAssetKind.video && parts == MovieParts.sound
+      ? MediaAssetKind.audio
+      : kind;
 
   /// Lets go of the file the doors read, once its bytes are held: the door
   /// that placed the piece held them before it landed, as it holds every
@@ -150,35 +179,44 @@ class TrimmedPieces {
     String source,
     String work,
     _Trim trim,
-    void Function(double fraction)? onProgress,
-  ) async {
+    void Function(double fraction)? onProgress, {
+    required bool withSound,
+    required ({int numerator, int denominator}) pull,
+  }) async {
     final clock = _clock();
-    final written = await onAWorkerWithThisEngineReporting(
+    final written = await onAWorkerReporting(
       onProgress,
       (report) => writeMovieSpan(
         source,
         work,
         trim: trim,
         clock: clock,
+        withSound: withSound,
+        pull: pull,
         onProgress: report,
       ),
     );
     return written.kept;
   }
 
-  Future<KeptSpan?> _sound(String source, String work, _Trim trim) async {
+  Future<KeptSpan?> _sound(
+    String source,
+    String work,
+    _Trim trim,
+    ({int numerator, int denominator}) pull,
+  ) async {
     final peaks = await _soundPeaks(normalizedMediaPath(source));
     if (peaks == null) {
       return null;
     }
     final clock = _clock();
     final kept = KeptSpan(
-      length: peaks.durationFrames(clock.rate),
+      length: peaks.durationFrames(clock.rate, pull: pull),
       inFrame: trim.inFrame,
       outFrame: trim.outFrame,
     );
-    final wav = await onAWorkerWithThisEngine(
-      () => soundSpanAsWav(MediaFileBytes(source), kept, clock),
+    final wav = await onAWorker(
+      () => soundSpanAsWav(MediaFileBytes(source), kept, clock, pull: pull),
     );
     if (wav == null) {
       return null;

@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
+import '../core/frozen_collections.dart';
 import 'conte/conte_camera_room.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
@@ -71,7 +72,7 @@ class CutMetadata {
     while (notes.isNotEmpty && notes.last.isEmpty) {
       notes.removeLast();
     }
-    final kept = List<String>.unmodifiable(notes);
+    final kept = frozenList<String>(notes);
     return switch (side) {
       SheetMemoSide.left => copyWith(pageNotes: kept),
       SheetMemoSide.right => copyWith(rightPageNotes: kept),
@@ -200,10 +201,10 @@ class CutMetadata {
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {
     return CutMetadata(
-      pageNotes: List.unmodifiable([
+      pageNotes: frozenList([
         for (final note in json['pageNotes'] as List? ?? const []) '$note',
       ]),
-      rightPageNotes: List.unmodifiable([
+      rightPageNotes: frozenList([
         for (final note in json['rightPageNotes'] as List? ?? const []) '$note',
       ]),
       mark: LayerMark.fromJson(json['mark']),
@@ -211,7 +212,7 @@ class CutMetadata {
       sheetKind: TimesheetSheetKind.fromJson(json['sheetKind']),
       scene: '${json['scene'] ?? ''}',
       openStaffFolds: switch (json['openStaffFolds']) {
-        final List<dynamic> open => Set.unmodifiable({
+        final List<dynamic> open => frozenSet({
           for (final value in open) ?LayerProcess.fromJson(value),
         }),
         _ => staffFoldsOpenAtFirst,

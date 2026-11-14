@@ -1,0 +1,10 @@
+[package]
+name = "fx_wgsl"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+# The engine's own naga (wgpu 30's, already in the lock): the plugin is read
+# by the same parser and validator the device compiles it with.
+naga = { version = "=30.0.1", features = ["wgsl-in"] }

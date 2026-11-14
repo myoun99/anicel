@@ -19,9 +19,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_mount.dart'
+    show LayerAttachDrop;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -234,6 +238,56 @@ void main() {
       reason: 'standing on the transform, the box is the layer\'s',
     );
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1200, y: 827));
+    await wrapUp(tester, s);
+  });
+
+  testWidgets('a row that wears its base\'s fx has no box of its file — '
+      'where it stands is its base\'s (🗣️attach-rows-lose-the-base-move-'
+      'when-it-bakes-Q4 「어태치줄의 참조fx는없앰」)', (tester) async {
+    final (s, row, tool) = await onTheCanvas(tester);
+    s.standOnRow(LaneRowAddress(row.id, referenceGroupLaneId));
+    await tester.pump();
+    expect(boxOf(tester), isNotNull, reason: '⛔CONTROL: on its own it has');
+
+    final base = s.requireActiveCut.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.animation && layer.id != row.id,
+    );
+    s.cutCommandCoordinator.setLayerAttachment(
+      cutId: s.requireActiveCut.id,
+      attach: LayerAttachDrop(
+        mounts: [
+          (
+            layerId: row.id,
+            baseId: base.id,
+            placement: AttachedPlacement.above,
+          ),
+        ],
+      ),
+    );
+    expect(
+      s.layerById(row.id)!.attachedToLayerId,
+      base.id,
+      reason: '⛔premise',
+    );
+    // The canvas reads the row anew once the session says it changed.
+    s.selectLayer(base.id);
+    s.selectLayer(row.id);
+
+    tool.value = tool.value.copyWith(tool: CanvasTool.move);
+    s.standOnRow(LayerRowAddress(row.id));
+    await tester.pump();
+    final fx = referenceOf(s, row).fx;
+    boxOf(tester)?.move?.committed(CanvasPoint(x: 1200, y: 827));
+    await tester.pump();
+    expect(
+      referenceOf(s, row).fx,
+      fx,
+      reason: 'the move tool on it keys nothing of where its file stands',
+    );
+
+    s.standOnRow(LaneRowAddress(row.id, referenceGroupLaneId));
+    await tester.pump();
+    expect(boxOf(tester), isNull, reason: 'standing on its 参照 header');
     await wrapUp(tester, s);
   });
 

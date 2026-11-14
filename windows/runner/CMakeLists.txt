@@ -22,7 +22,8 @@ add_executable(${BINARY_NAME} WIN32
 apply_standard_settings(${BINARY_NAME})
 
 # /utf-8: the runner's sources ARE UTF-8 (the F-128 decision comment quotes the
-# user in Korean) - the same law every qa_native target carries (#657). Without
+# user in Korean) - the law the C engine's targets carried (#657) till that
+# package went, and the GPU engine's plugin carries. Without
 # it MSVC reads them in the SYSTEM code page, and on a Japanese or Korean
 # Windows (CP932/949) that is C4819, which the standard settings' /WX turns
 # into a failed build rather than noise.

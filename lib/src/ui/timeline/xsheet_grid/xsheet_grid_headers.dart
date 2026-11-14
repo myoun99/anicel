@@ -62,61 +62,79 @@ class _XSheetGridHeaders {
       dragPreview: _state.widget.hooks.dragPreview,
       layer: entry.layer,
       slice: (layer) => laneRowSlice(layer, entry.lane!.laneId),
-      rowBuilder: (context, layer) => TimelineLaneControlsRow(
-        axis: Axis.vertical,
-        keyPrefix: 'xsheet',
-        layer: layer,
-        lane: previewedLaneRow(
-          row: entry,
-          previewLayer: layer,
-          lanesForLayer: _state.widget.hooks.lanesOf,
-        ),
-        metrics: _state._metrics,
-        width: timelineDisplayRowExtent(entry, _state._metrics),
-        // Laid out at the natural extent like every other header; the
-        // rail window above is what cuts it.
-        height: naturalHeaderExtent,
-        frameCursor: _state.widget.hooks.frameCursor,
-        onSelectFrame: _state.widget.hooks.onSelectFrame,
-        laneEdit: _state.widget.hooks.laneEdit,
-        onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-        onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
-        onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
-        onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
-        onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-        currentRowHooks: _state.widget.hooks.currentRowHooks,
-        // The SAME answer the layer's own column header reads, so a
-        // group header's fx lands in the sheet's fx row (R5 #7).
-        optionalColumns: _state.widget.hooks.optionalRailColumns,
-        laneGraphs: _state.widget.hooks.laneGraphs,
-        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
-        seat: entry.graph,
-        folded: entry.folded,
-      ),
+      rowBuilder: (context, layer) => _laneControls(entry, layer),
     );
   }
 
-  /// [entry]'s column header, draggable. A LAYER's is kept while nothing
-  /// it is built from changed — the rail's memo, turned on its side
+  /// [entry]'s header as [layer] shows it: the committed layer's is what
+  /// the header is kept by, a preview's what the gate builds mid-drag.
+  TimelineLaneControlsRow _laneControls(
+    TimelineDisplayRow entry,
+    Layer layer,
+  ) => TimelineLaneControlsRow(
+    axis: Axis.vertical,
+    keyPrefix: 'xsheet',
+    layer: layer,
+    lane: previewedLaneRow(
+      row: entry,
+      previewLayer: layer,
+      lanesForLayer: _state.widget.hooks.lanesOf,
+    ),
+    metrics: _state._metrics,
+    width: timelineDisplayRowExtent(entry, _state._metrics),
+    // Laid out at the natural extent like every other header; the
+    // rail window above is what cuts it.
+    height: naturalHeaderExtent,
+    frameCursor: _state.widget.hooks.frameCursor,
+    onSelectFrame: _state.widget.hooks.onSelectFrame,
+    laneEdit: _state.widget.hooks.laneEdit,
+    onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+    onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
+    onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
+    onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
+    onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+    laneSpan: _state.widget.hooks.laneRange?.selection,
+    currentRowHooks: _state.widget.hooks.currentRowHooks,
+    // The SAME answer the layer's own column header reads, so a
+    // group header's fx lands in the sheet's fx row (R5 #7).
+    optionalColumns: _state.widget.hooks.optionalRailColumns,
+    laneGraphs: _state.widget.hooks.laneGraphs,
+    laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
+    seat: entry.graph,
+    folded: entry.folded,
+  );
+
+  /// [entry]'s column header, draggable — kept while nothing it is built
+  /// from changed: the rail's memo, turned on its side
   /// ([KeptLayerControlsRows], F-244): a commit rebuilt every header of
-  /// the sheet. A lane's is built every pass.
+  /// the sheet. A lane's as the rail's lane rows are
+  /// ([TimelineLaneControlsRow.facts]).
   Widget header(TimelineDisplayRow entry) {
-    if (entry.isLane) {
-      return draggableHeader(entry, _laneHeader(entry));
-    }
     final grid = _controlsRowGrid;
+    final drag = layerRowDragInputs(
+      row: entry,
+      drawnRows: _state._dragRows,
+      hooks: grid.hooks.rowDragHooks,
+      onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
+    );
+    if (entry.isLane) {
+      return _kept.keepLane(
+        _state._berths,
+        entry,
+        (
+          committed: _laneControls(entry, entry.layer),
+          dragPreview: grid.hooks.dragPreview,
+          drag: drag,
+        ),
+        () => _laneHeader(entry),
+      );
+    }
     final fold = _state._groupFoldFor(entry);
     final facts = layerControlsRowFacts(
       entry,
       grid,
       fold: fold,
       hasLanes: _state.widget.hooks.lanesOf(entry.layer).isNotEmpty,
-    );
-    final drag = layerRowDragInputs(
-      row: entry,
-      drawnRows: _state._dragRows,
-      hooks: grid.hooks.rowDragHooks,
-      onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
     );
     return _kept.keep(
       _state._berths,
@@ -135,14 +153,17 @@ class _XSheetGridHeaders {
 
   /// Every column's [header] where [edges] puts it — the room after a
   /// graph's last lane left empty, and a column of no extent no box, as
-  /// the rail leaves them (I-89 ③) — each in its column's BERTH.
+  /// the rail leaves them (I-89 ③) — each in its column's BERTH, and named
+  /// for its row as the rail's rows are ([Named]).
   List<Widget> headers(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
   ) => [
     for (var index = 0; index < entries.length; index += 1) ...[
       if (edges.extentOf(index) > 0)
-        KeyedSubtree(
+        Named(
+          'xsheet-header-${entries[index].layer.id}-'
+          '${entries[index].lane?.laneId ?? 'row'}',
           key: _state._berths.keyOf(entries[index]),
           child: header(entries[index]),
         ),

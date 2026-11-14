@@ -16,7 +16,6 @@ import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -25,7 +24,6 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/canned_audio_recorder.dart';
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 
 /// 🚨★★★**A TAKE LANDS BY WHAT WAS HEARD** (take-head-trims-at-the-
 /// playback-start, 10-15) — through the session: the record press, the
@@ -33,19 +31,14 @@ import '../../helpers/native_engine_path.dart';
 ///
 /// The bench never hears a run the session plays
 /// (`audioDeviceUnlessTesting`), so this hands the rig's transport a device
-/// it opened on miniaudio's null backend (`PlaybackRig.debugTransportOutput`)
+/// it opened on the engine's null backend (`PlaybackRig.debugTransportOutput`)
 /// — a real callback on a real thread, no speaker. The microphone is made:
 /// it says what it had taken in at any moment, five eighths of a second
 /// ahead of the press, so the head it is placed by can only be the measured
 /// one.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -54,7 +47,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   /// A session over [project] whose runs ride the null device, at four
@@ -155,7 +147,7 @@ void main() {
           'moments to the anchor: five or six frames. ↩️The estimate took '
           'off the output latency alone and left eight',
     );
-  }, skip: skip);
+  });
 
   test('🚨a take begun under a cut played alone is measured on the run\'s own '
       'frames — b\'s frame 0 is track frame 18', () async {
@@ -213,7 +205,7 @@ void main() {
           'track\'s 21, which this run would not reach for four seconds and '
           'more: unmeasured, the estimate would have left eight',
     );
-  }, skip: skip);
+  });
 }
 
 AudioRecording _takeOfSeconds(double seconds) {

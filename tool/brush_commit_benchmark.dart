@@ -5,7 +5,7 @@
 // shapes, so P1..P3 optimizations can prove before/after with real numbers.
 //
 // Run with:
-//   dart run tool/brush_commit_benchmark.dart
+//   dart tool/brush_commit_benchmark.dart
 //
 // This is a dev tool only: it is not imported by lib/ or test/ runtime code
 // and does not change runtime behavior.

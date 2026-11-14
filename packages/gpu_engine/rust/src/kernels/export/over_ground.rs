@@ -3,9 +3,8 @@
 //! alpha cut (①c) — `over_ground.wgsl` has the law and why each number is
 //! the one it is.
 
-use super::{Picture, compile, holds, out_plane, submit};
+use super::{Frame, Picture, Pipelines, out_plane, submit};
 use crate::device::Engine;
-use crate::kernels::shared::PREMULTIPLY_WGSL;
 
 impl Picture {
     /// The RGB bytes the writers read: three a pixel, row after row with
@@ -26,39 +25,34 @@ const NO_CUT: u32 = 256;
 
 /// The over-the-ground pass.
 pub(crate) struct OverGround {
-    pipeline: wgpu::ComputePipeline,
+    pipelines: Pipelines,
 }
 
 impl OverGround {
-    pub(crate) fn new(engine: &Engine) -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            pipeline: compile(
-                engine,
-                &[PREMULTIPLY_WGSL, include_str!("over_ground.wgsl")],
-                "over_ground_pass",
-            ),
+            pipelines: Pipelines::new(&[include_str!("over_ground.wgsl")], "over_ground_pass"),
         }
     }
 
-    /// Lays `frame` — the composite's output tiles for the picture, asked
-    /// row by row from its top-left tile — over `ground` (red, green,
-    /// blue), its alpha `cut` where a GIF cuts it (none: its shades), and
-    /// submits the work; the caller waits. Returns the buffer the RGB
-    /// bytes are at the start of ([`Picture::rgb_bytes`] of them), to be
-    /// copied out for reading.
+    /// Lays the picture in `frame` over `ground` (red, green, blue), its
+    /// alpha `cut` where a GIF cuts it (none: its shades), and submits the
+    /// work; the caller waits. Returns the buffer the RGB bytes are at the
+    /// start of ([`Picture::rgb_bytes`] of them), to be copied out for
+    /// reading.
     pub(crate) fn run(
         &self,
         engine: &Engine,
-        frame: &wgpu::Buffer,
+        frame: Frame,
         picture: Picture,
         ground: [u8; 3],
         cut: Option<u8>,
     ) -> Option<wgpu::Buffer> {
         picture.check()?;
-        holds(frame, picture.tiles())?;
+        frame.holds(picture)?;
         let row_groups = picture.width.div_ceil(4);
         let params = [
-            picture.tiles().0,
+            frame.stride(picture),
             picture.width,
             picture.height,
             row_groups,
@@ -69,7 +63,8 @@ impl OverGround {
         ];
         let groups = (row_groups.div_ceil(64), picture.height);
         let out = out_plane(engine, "over ground out", picture.rgb_words_bytes(), groups)?;
-        submit(engine, &self.pipeline, &params, frame, &out, groups);
+        let pipeline = self.pipelines.of(engine, frame);
+        submit(engine, pipeline, &params, frame.buffer(), &out, groups);
         Some(out)
     }
 }

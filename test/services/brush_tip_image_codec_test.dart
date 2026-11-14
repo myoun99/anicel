@@ -2,7 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/core/rgba_premultiply.dart';
+import 'package:anicel/src/services/brush_tip_coverage.dart';
 import 'package:anicel/src/services/brush_tip_image_codec.dart';
+import 'package:anicel/src/services/photoshop/psd_image.dart';
+
+import '../helpers/psd_fixture.dart';
 
 /// A mask with a recognisable gradient plus a hard hole, so a round trip
 /// that quantises, premultiplies or flips anything shows up immediately.
@@ -155,11 +160,58 @@ void main() {
     });
   });
 
+  // 🧭관제 2026-11-11 18:47 (gpu-export-path 1b ②): a Photoshop document's
+  // tip is read from the reader's own bytes. ↩️It went up as a GPU image and
+  // was read back straight, which a partly clear pixel does not survive.
+  group('a Photoshop document as a tip', () {
+    test('🎯its coverage is its composite\'s own — a partly clear pixel read '
+        'as the file holds it', () async {
+      // A grey ramp at alpha 100, a pixel a step: a premultiply and its
+      // undoing move several of these.
+      const width = 256;
+      final grey = Uint8List.fromList([for (var v = 0; v < width; v += 1) v]);
+      final alpha = Uint8List(width)..fillRange(0, width, 100);
+      final bytes = buildPsd(
+        width: width,
+        height: 1,
+        channels: 4,
+        compositePlanes: [grey, grey, grey, alpha],
+        mergedAlpha: true,
+        layers: [
+          PsdTestLayer(
+            name: 'only',
+            left: 0,
+            top: 0,
+            right: width,
+            bottom: 1,
+            planes: psdSolidPlanes(width, 1, [255, 255, 255]),
+            alpha: alpha,
+          ),
+        ],
+      );
+      final composite = await readPsdComposite(bytes);
+      expect(
+        straightRgbaFor(premultipliedRgbaCopy(composite.rgba)),
+        isNot(composite.rgba),
+        reason: 'premise: a premultiply and its undoing move these',
+      );
+
+      expect(
+        (await decodeBrushTipImage(bytes, id: 'psd')).alpha,
+        (await brushTipMaskFromCoverage(
+          brushTipCoverageOfRgba(composite.rgba),
+          size: (width: width, height: 1),
+          id: 'psd',
+        )).alpha,
+      );
+    });
+  });
+
   group('brushTipThumbnailAlpha', () {
     test('is the requested side and averages the source', () async {
       final mask = _sampleMask(size: 64);
 
-      final thumbnail = brushTipThumbnailAlpha(mask, side: 16);
+      final thumbnail = await brushTipThumbnailAlpha(mask, side: 16);
 
       expect(thumbnail.length, 16 * 16);
       // The source ramps left to right, so the thumbnail has to as well.
@@ -172,7 +224,7 @@ void main() {
     test('a mask smaller than the thumbnail still fills every cell', () async {
       // Integer cell arithmetic can hand out empty ranges when upscaling;
       // an empty range would punch holes in the preview.
-      final thumbnail = brushTipThumbnailAlpha(
+      final thumbnail = await brushTipThumbnailAlpha(
         BrushTipMask(
           id: 'tiny',
           size: 2,

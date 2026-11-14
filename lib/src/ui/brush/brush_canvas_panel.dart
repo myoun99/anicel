@@ -20,6 +20,7 @@ import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
+import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds, celTextPlateSurface;
 import '../../services/bitmap_surface_brush_commit.dart'
@@ -32,6 +33,7 @@ import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/cel_text.dart';
+import '../../models/tiles_covering.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
@@ -44,6 +46,7 @@ import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/selection_clip.dart';
+import '../../services/selection_lift.dart';
 import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
 import '../../services/selection_placement.dart';
 import '../../services/stamp_carry.dart';
@@ -99,6 +102,7 @@ import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/stage_planes_painter.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../playback/frame_wait_mark.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
@@ -167,10 +171,11 @@ part 'canvas_panel/canvas_panel_build.dart';
 part 'canvas_panel/canvas_panel_control_holds.dart';
 
 /// What the row being drawn on shows its cel through, as a painter made
-/// for the cel holds it: its colour keys' values, and the plugin its chain
-/// runs ([celSourcePlugin]) — a plugin's picture moves with its frame and
-/// the rows it reads, none of which changes the cel.
-typedef _ShownThrough = ({String keys, ResolvedLayerEffect? plugin});
+/// for the cel holds it: its leading colour keys' values — whether a text
+/// in hand floats as itself or as its landing turns on them. ↩️And the
+/// plugin at its chain's head, while that ran on the cel here
+/// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+typedef _ShownThrough = String;
 
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
@@ -715,13 +720,9 @@ class BrushCanvasPanel extends StatefulWidget {
     return (
       surface: coordinator.activeSessionState.canvasState.currentSurface,
       key: coordinator.activeFrameKey,
-      // The colour keys' VALUES join the token: they change no surface and
-      // no cel, so without them dragging Tolerance would keep serving the
-      // painter built at the old value.
-      fx: (
-        keys: celSourceEffectSignature(activeSourceEffects).join(','),
-        plugin: celSourcePlugin(activeSourceEffects),
-      ),
+      // The leading keys join the token: a text in hand floats as its
+      // landing on a keyed row (`_CanvasPanelText._floatsTheLanding`).
+      fx: celSourceEffectSignature(activeSourceEffects).join(','),
     );
   }
 
@@ -1363,9 +1364,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShownCels.instance.hide(this);
       return null;
     }
-    // The overlay shows its pictures in place of this painter's tiles, so
-    // through the chain they are shown through below.
-    overlay.sourceEffects = widget.activeSourceEffects;
     final identity = widget._activeSurfaceIdentityFor(coordinator);
     // 🚨★★★**AN OPEN MOVE SESSION IS PART OF WHAT THIS PAINTER DRAWS**, so
     // it is part of the token: the hole is a derived surface the session
@@ -1410,26 +1408,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
-    // The canvas says which cel it is drawing, and THROUGH what: the texts
-    // laid over it and the colour keys make the tiles it paints other
-    // objects than the cel's own, so a picture made ahead for the cel's own
-    // would go unused.
-    ShownCels.instance.show(
-      this,
-      (token.key.layerId, token.key.frameId),
-      painted: (surface) =>
-          celSurfaceAsShown(surface, widget.activeSourceEffects),
-    );
+    // The canvas says which cel it shows — the one the steps of an undo
+    // are read ahead for — and that it draws no picture of a tile: the
+    // engine lays the row from its tiles, so none is made ahead. ↩️It said
+    // through what it painted them, its texts laid, while its stack drew
+    // pictures (till 2026-11-12).
+    ShownCels.instance.show(this, token.key.cel, pictured: null);
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
-      // ★DRAWN THROUGH THE SEAM — the texts laid, then the keys. Both are
-      // cached per TILE, so a dab re-lays and re-keys the one tile it
-      // changed and the rest of the cel answers from memory.
-      surface: celSurfaceAsShown(token.surface, widget.activeSourceEffects),
+      // ★DRAWN WITH ITS TEXTS LAID. They are laid per TILE, so a dab
+      // re-lays the one tile it changed and the rest of the cel answers
+      // from memory.
+      surface: token.surface,
       overlayModel: overlay,
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.
       showTransparentBackground: false,
-      lineage: (token.key.layerId, token.key.frameId),
+      lineage: token.key.cel,
       landingPreview: _text.float,
     );
   }
@@ -2172,11 +2166,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _brush.activeShapeKind ??
                   CanvasShapeKind
                       .rect,
-              // R17-U: Move = 이동+변형 통합 툴
-              // — 핸들 상시.
-              alwaysShowTransformBox:
-                  _brush.tool ==
-                  CanvasTool.move,
               onShapeCommitted:
                   _selectionSeat.recordSelectionChange,
               // I-14: a host whose content is not a cel cuts from what it
@@ -2874,7 +2863,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// The ghost of [preview] as the area the view lays ([ShapeArea]): the
-  /// door's own answer for the cel on screen ([pieceDabs]), read and cut
+  /// door's own answer for the cel on screen ([pieceDabs]), read
   /// when the view lays it — inside a frame's share, never in the build or
   /// the hover that asked.
   ShapeArea _stampGhostArea(
@@ -2899,6 +2888,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       description: 'Stamp',
     );
     final standing = store.canonicalKeyOf(coordinator.activeFrameKey);
+    final answer = _ghostAnsweredOnce(coordinator, ground, stamp, standing);
     return (
       // 🚨EVERYTHING THE GHOST'S BYTES ARE MADE OF — the aim, the cel as it
       // is now, and every fact of the ground the door reads — so whatever
@@ -2919,19 +2909,38 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ]),
       ),
       pieces: () sync* {
-        final answer = pieceDabs(
+        if (answer() case final answer?) {
+          yield answer.dab;
+        }
+      },
+      blend: blend,
+      selection: () => answer()?.within,
+    );
+  }
+
+  /// The door's answer for [stamp] on [standing] ([pieceDabs]) — asked
+  /// once, when the view lays the ghost: its piece and the selection the
+  /// door lands it through on the cel on screen.
+  PieceDab? Function() _ghostAnsweredOnce(
+    BrushFrameEditingCoordinator coordinator,
+    PieceGround ground,
+    PieceStamp stamp,
+    BrushFrameKey standing,
+  ) {
+    PieceDab? answered;
+    var asked = false;
+    return () {
+      if (!asked) {
+        asked = true;
+        answered = pieceDabs(
           coordinator: coordinator,
           ground: ground,
           stamp: stamp,
           only: standing,
         )[standing];
-        if (answer != null) {
-          yield answer.dab;
-        }
-      },
-      blend: blend,
-      selection: null,
-    );
+      }
+      return answered;
+    };
   }
 
   /// What the stamp's ghost listens to, let go: the aim and the softness
@@ -3109,7 +3118,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
             ),
       blend: blend,
-      selection: _selectionSeat.clipNow(),
+      selection: _selectionSeat.clipNow,
     );
   }
 
@@ -3299,10 +3308,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final standing = coordinator.frameStore.canonicalKeyOf(
       coordinator.activeFrameKey,
     );
+    final record = landed[standing] ?? landed.values.first;
     widget.lastStroke?.hold(
       BrushStrokeCommitData(
-        sourceDabs: [(landed[standing] ?? landed.values.first).dab],
+        sourceDabs: [record.dab],
         blendMode: blend,
+        selection: record.within,
       ),
     );
     setState(() {
@@ -3345,15 +3356,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the same place on the cel you stand on — one step, one undo
   /// (confirm-button, 유저 2026-09-24).
   ///
-  /// ⛔It goes through [_commitSourceStroke] like any stroke, so the live
-  /// selection clips it and the history takes it the way it takes a stroke.
+  /// ⛔What landed, cut by the selection it landed through
+  /// ([BrushStrokeCommitData.selection]) — not by the marquee standing now:
+  /// the screen showed it so, and what 확정 lays must be what was seen
+  /// (관제 2026-11-14 by 유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안
+  /// 되」, then 유저 11-14 Q2 「그릴 때 보이던 모양대로」, board
+  /// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+  /// ↩️From 09-24 it went down [_commitSourceStroke] whole, and the live
+  /// selection cut it again — the funnel reused, which nobody had asked
+  /// for. It lands the way a stroke lands all the same ([_landStroke]).
   void _reinputLastStroke() {
     final stroke = widget.lastStroke?.stroke;
     if (stroke == null) {
       return;
     }
     if (widget._editableCoordinator != null) {
-      _commitSourceStroke(stroke);
+      _landStroke(stroke);
       return;
     }
     // No cel to lay it on: the door a stroke on an empty cell takes — the
@@ -3369,7 +3387,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     WidgetsBinding.instance
       ..addPostFrameCallback((_) {
         if (mounted && widget._editableCoordinator != null) {
-          _commitSourceStroke(stroke);
+          _landStroke(stroke);
         }
         widget.onAutoFrameSettled?.call();
       })
@@ -3393,12 +3411,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       setState(() {});
       return;
     }
-    // What landed, clipped as it landed — the pixels 확정 lays down again.
+    // What landed, with the selection it landed through — what 확정 lays
+    // down again.
     // ⛔Here, for every verb that comes down this funnel: each passes this
     // line, so none can be the one that forgets to record itself. The one
     // drawing verb that lands elsewhere — the cut tool's stamp, through the
     // piece door — records at its own ([_landStamp]).
     widget.lastStroke?.hold(strokeData);
+    _landStroke(strokeData);
+  }
+
+  /// [strokeData] onto the cel you stand on, as one step of the history —
+  /// a stroke past the funnel, or the one 확정 lays down again.
+  void _landStroke(BrushStrokeCommitData strokeData) {
+    final coordinator = widget._editableCoordinator!;
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {
@@ -3411,6 +3437,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           strokeOpacity: strokeData.strokeOpacity,
           promotedBase: strokeData.promotedBase,
           promotedTiles: strokeData.promotedTiles,
+          selection: strokeData.selection,
         );
         return;
       }
@@ -3702,6 +3729,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           bottom: cover.bottom + (onFloor ? 0 : lane + _transportCover),
           child: _FloatingCanvasControls(
             children: [
+              // 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에
+              // 준비 중 표시를 둔다」 — at the middle of THIS box, what the
+              // docks leave of the panel to be seen: at the panel's own
+              // middle the mark stood half behind the timeline docked under
+              // it (🔬shot, 2026-11-11). Nothing where the panel is no place
+              // that marks its frames' waits ([FrameWaitPlace]).
+              const Positioned.fill(child: FrameWaitMark()),
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
               //
               // ⛔It used to take the top corner away from the tool strip
@@ -3846,6 +3880,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     child: CanvasCapsule(
       keyValue: 'canvas-transport',
       height: transport.height,
+      clipped: true,
       child: transport.child,
     ),
   );

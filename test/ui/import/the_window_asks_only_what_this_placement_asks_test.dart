@@ -107,9 +107,14 @@ void main() {
     // A pool's door asks no placement's questions — they cannot be asked
     // there at all (유저 2026-10-09: 「미디어패널의 경우엔 굽기 맞춤 옵션
     // 안넣어도되」).
-    for (final id in ['bake', 'fit', 'option']) {
+    for (final id in ['bake', 'fit']) {
       expect(column(id), findsNothing, reason: id);
     }
+    // The 「옵션」 column stands, a dash on a row it asks nothing of
+    // (I-171-Q2, 유저 2026-11-14: 「넣는다 — 옵션 열만(굽기 · 맞춤은 그대로
+    // 없음)」).
+    expect(column('option'), findsOneWidget);
+    expect(cellWord(tester, 'option', png), '—');
     // Where it goes is said — the pool, locked (F-282: the strip's 「풀」
     // came down to the row).
     expect(column('into'), findsOneWidget);
@@ -185,14 +190,45 @@ void main() {
     );
   });
 
+  testWidgets('a file\'s 맞춤 starts on 원본 크기 — the first answer, still '
+      'asked (유저 2026-11-10 F-581: 「파일 임포트시, 기본값 지금 비율유지 '
+      '늘림 이건거같은데 기본값은 원본크기로」)', (tester) async {
+    final png = await tester.runAsync(() => writePng('a.png'));
+    await open(tester, session(), [png!]);
+
+    expect(cellWord(tester, 'fit', png), AppText.strings.imFitOriginal);
+    await tester.ensureVisible(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('fit', png));
+    await tester.pumpAndSettle();
+    expect(openOptions(), {
+      'import-option-fit-none',
+      'import-option-fit-contain',
+      'import-option-fit-stretch',
+    });
+  });
+
   testWidgets('🚨a NEW cut is made at the file\'s own size, so its fit shows '
       '1:1 — locked, not hidden (「1:1로 고정시켜서 노출시키도록. '
       '비활성화된상태로」)', (tester) async {
     final png = await tester.runAsync(() => writePng('a.png'));
     await open(tester, session(), [png!]);
 
+    // The row answers another fit first: the one a file starts on is 1:1
+    // too, and would say nothing of the lock.
+    //
     // The table scrolls sideways when its columns outgrow the window (the
     // test font's glyphs are wide), so a cell is brought into view first.
+    await tester.ensureVisible(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('fit', png));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-fit-stretch')),
+    );
+    await tester.pumpAndSettle();
+    expect(cellWord(tester, 'fit', png), AppText.strings.imFitStretch);
+
     await tester.ensureVisible(cell('into', png));
     await tester.pumpAndSettle();
     await tester.tap(cell('into', png));

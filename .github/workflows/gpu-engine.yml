@@ -1,11 +1,13 @@
-name: GPU engine on Metal, Mesa and WARP
+name: GPU engine on Metal and Mesa, built on ARM64 Windows
 
 # The GPU engine crate's tests — every ledger row, and each bridge's test
 # that the bytes Flutter is handed are the kernel's — where no machine of
-# ours runs them: macOS (Metal), Linux (Mesa's software Vulkan, lavapipe)
-# and ARM64 Windows (WARP, with the arm64 dxcompiler.dll). wgpu runs its
-# own GPU tests on the first two runner shapes (gfx-rs/wgpu
-# .github/workflows/ci.yml, gpu-test).
+# ours runs them: macOS (Metal) and Linux (Mesa's software Vulkan,
+# lavapipe). wgpu runs its own GPU tests on these two runner shapes
+# (gfx-rs/wgpu .github/workflows/ci.yml, gpu-test). ARM64 Windows builds
+# them and runs the native crates' alone (its job says why). The Mac and
+# Linux jobs then run the measurement app (packages/gpu_engine/example),
+# whose screen must show the GPU's bytes through each plugin half.
 #
 # ⛔workflow_dispatch ONLY — no cron, no push or pull_request trigger
 # (유저, gpu-engine-skeleton-Q5 2026-11-05: 「손으로 거는 CI 하나를 만든다」).
@@ -15,17 +17,26 @@ name: GPU engine on Metal, Mesa and WARP
 # has the history).
 #
 # Every job runs the tests twice, debug then release, as a land does
-# (tool/lane.sh, refusal 8 — 관제 2026-11-05): a debug build's wgpu turns
+# (tool/lane.sh, refusal 8 — 관제 2026-11-05; the ARM64 job builds the GPU
+# kernels' and runs none of them): a debug build's wgpu turns
 # InstanceFlags::DEBUG on and compiles shaders with optimizations skipped,
 # so only release compiles the shaders the app ships (the grid kernel's
 # X3507 was red in release alone). Debug keeps the validation layers.
 #
-# And every job builds the C engine first: the native crates (native/*,
-# native-to-rust 2026-11-06) are held to it byte for byte, through
-# QA_ENGINE_PATH, and a missing engine fails them (native/oracle). It is
-# built as every CI job builds it (.github/actions/native-engine, cached on
-# the C), whose provenance stamp runs on Dart — no Flutter is needed here,
-# so the Dart that Flutter 3.47.4 ships, alone.
+# 🚨ONE RED HIDES NOTHING (관제 2026-11-07, gpu-engine-skeleton): the first
+# run (42274856506) stopped the macOS and Linux jobs at a pin of the first
+# crate, `audio`, and not one GPU kernel test ran — cargo stops at the first
+# test binary that fails. So every run is --no-fail-fast, naming every red
+# at its end; the GPU kernels (the root crate, gpu_engine) and the native
+# crates (native/*) are a step each, so each shows its own result; and each
+# test step runs once the toolchain is in place, whatever the step before
+# it said — debug's red does not keep release from running.
+#
+# ↩️And every job built the C engine first, with a Dart of its own for
+# the build's provenance stamp: the native crates (native/*, native-to-rust
+# 2026-11-06) were held to it byte for byte, through QA_ENGINE_PATH, and a
+# missing engine failed them (native/oracle) — till the C went
+# (2026-11-13). The crates are held to their ledger rows.
 on:
   workflow_dispatch:
 
@@ -33,73 +44,218 @@ concurrency:
   group: gpu-engine-${{ github.ref }}
   cancel-in-progress: true
 
+# The Flutter the app's own Apple and Linux builds use (apple.yml,
+# linux-release.yml), for the measurement app below.
+env:
+  FLUTTER_VERSION: '3.47.4'
+
 jobs:
   macos:
-    name: crate tests on Metal (macOS)
+    name: crate tests and the plugin half on Metal (macOS)
     runs-on: macos-latest
-    # A cold build of wgpu and the tests is minutes; 30 bounds a hang.
-    timeout-minutes: 30
+    # The crate tests took 7 minutes (run 42324320792); the app builds —
+    # the engine for the Mac and for iOS, and Xcode's — are on top of them.
+    # 45 bounds a hang.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.dylib
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: 3.13.3
-      - uses: ./.github/actions/native-engine
       # rustup reads rust-toolchain.toml: the pinned compiler, as on every
       # machine that builds the engine.
-      - run: rustup show
-      - run: cargo test --locked --workspace
-      - run: cargo test --locked --workspace --release
+      - id: toolchain
+        run: rustup show
+      # The fx SDK example as WebAssembly, the module the fx tests open on
+      # each WebAssembly host, built where they read it (QA_FX_MODULE,
+      # .cargo/config.toml) as a land builds it (tool/lane.sh, cmd_crate).
+      # Its target is fetched here, not listed in rust-toolchain.toml: that
+      # list is what the engine is built for and ships (crate_notices.dart).
+      - name: fx SDK example as WebAssembly
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/fx_wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked --release -p fx_sdk_example --target wasm32-unknown-unknown
+      - name: GPU kernels (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine
+      - name: native crates (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
+      - name: GPU kernels (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release
+      - name: native crates (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release
+      # 🌉THE PLUGIN HALF (connection-round-checklist A, gpu-engine-skeleton):
+      # the measurement app, built as an app is, shows the engine's texture
+      # through the plugin and reads its screen back — `screen bytes … MATCH`
+      # is the bytes the GPU wrote, through Flutter's own texture path. The
+      # app is sandboxed, so its report is in its container's tmp. iOS has
+      # the Mac's source (darwin/), built to compile it: no runner shows it.
+      - uses: subosito/flutter-action@v2
+        if: ${{ !cancelled() }}
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: plugin half on macOS
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        working-directory: packages/gpu_engine/example
+        timeout-minutes: 20
+        run: |
+          flutter build macos --debug
+          build/macos/Build/Products/Debug/gpu_engine_example.app/Contents/MacOS/gpu_engine_example > "$RUNNER_TEMP/probe.log" 2>&1 || true
+          cat "$RUNNER_TEMP/probe.log"
+          report=$(find "$HOME/Library/Containers/com.myoun.gpuEngineExample/Data/tmp" "${TMPDIR:-/tmp}" -path '*/gpu_probe_out/report.txt' 2>/dev/null | head -n 1)
+          bash report_matched.sh "$report"
+      - name: plugin half compiled for iOS
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        working-directory: packages/gpu_engine/example
+        run: flutter build ios --debug --no-codesign
 
   linux:
-    name: crate tests on lavapipe (Linux)
+    name: crate tests and the plugin half on lavapipe (Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The crate tests took 13 minutes (run 42324320792); the app build is
+    # on top of them. 45 bounds a hang.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: 3.13.3
-      - uses: ./.github/actions/native-engine
       # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU. The
       # audio device's cpal builds against ALSA (native-to-rust-Q7), which
       # alsa-sys finds through pkg-config; its tests open the null device.
-      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libasound2-dev pkg-config
-      - run: rustup show
-      - run: cargo test --locked --workspace
-      - run: cargo test --locked --workspace --release
+      # The rest is Flutter's list for a Linux desktop build and a virtual
+      # screen with Mesa's GL for its launch, as linux-release.yml has it.
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libasound2-dev pkg-config clang cmake ninja-build libgtk-3-dev xvfb libgl1-mesa-dri
+      # The Linux bridge exports a dma-buf through
+      # VK_EXT_image_drm_format_modifier, and lavapipe offers it only when
+      # llvmpipe can open /dev/udmabuf — without it llvmpipe imports
+      # dma-bufs and exports none (Mesa 25.2.8, this runner's
+      # mesa-vulkan-drivers: llvmpipe/lp_screen.c, lavapipe/lvp_device.c).
+      # The first run's bridge test stopped there (관제 2026-11-07, run
+      # 42274856506), so the runner's user is lent the device. A lend that
+      # fails is shown and stops nothing: the bridge test then says why.
+      # The module is loaded only when the device is missing: this runner's
+      # kernel (7.0.0-1017-azure) has udmabuf built in, root:kvm, so
+      # modprobe finds no module, and its exit 1 ended the step before the
+      # chown — the bridge test was red behind a green step (관제 2026-11-07,
+      # run 42324320792).
+      - name: lend lavapipe /dev/udmabuf
+        continue-on-error: true
+        run: |
+          ls -l /dev/udmabuf || true
+          [ -e /dev/udmabuf ] || sudo modprobe udmabuf
+          sudo chown "$USER" /dev/udmabuf
+          ls -l /dev/udmabuf
+      - id: toolchain
+        run: rustup show
+      # The fx SDK example as WebAssembly, the module the fx tests open on
+      # each WebAssembly host, built where they read it (QA_FX_MODULE,
+      # .cargo/config.toml) as a land builds it (tool/lane.sh, cmd_crate).
+      # Its target is fetched here, not listed in rust-toolchain.toml: that
+      # list is what the engine is built for and ships (crate_notices.dart).
+      - name: fx SDK example as WebAssembly
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/fx_wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked --release -p fx_sdk_example --target wasm32-unknown-unknown
+      - name: GPU kernels (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine
+      - name: native crates (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
+      - name: GPU kernels (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release
+      - name: native crates (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release
+      # 🌉THE PLUGIN HALF, as on the Mac: the measurement app shows the
+      # engine's dma-buf through Flutter's EGL — on Xvfb, as linux-release.yml
+      # launches the app, with lavapipe the engine's Vulkan and llvmpipe
+      # Flutter's GL.
+      - uses: subosito/flutter-action@v2
+        if: ${{ !cancelled() }}
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: plugin half on Linux, on a virtual screen
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        working-directory: packages/gpu_engine/example
+        timeout-minutes: 20
+        run: |
+          flutter build linux --debug --dart-define=GPU_OUT="$RUNNER_TEMP/gpu_probe_out"
+          Xvfb :99 -screen 0 1920x1080x24 &
+          screen=$!
+          sleep 2
+          DISPLAY=:99 build/linux/x64/debug/bundle/gpu_engine_example > "$RUNNER_TEMP/probe.log" 2>&1 || true
+          kill "$screen" 2>/dev/null || true
+          cat "$RUNNER_TEMP/probe.log"
+          bash report_matched.sh "$RUNNER_TEMP/gpu_probe_out/report.txt"
 
   # The ARM64 Windows build ships the arm64 dxcompiler.dll, and no machine
   # of ours can load it (the Surface Pro 11 is Intel x64) — 관제
-  # 2026-11-05, gpu-engine-feasibility. The runner has no GPU, so the tests
-  # run on WARP, Windows' software D3D12. The kernels are integer-only: a
-  # ledger row WARP reproduces differently fails like any other.
+  # 2026-11-05, gpu-engine-feasibility. The runner has no GPU: wgpu opens
+  # WARP, Windows' software D3D12.
+  #
+  # ⛔BUILT, NOT RUN, ON WARP (유저, gpu-engine-skeleton-Q9 2026-11-07:
+  # 「ARM 은 빌드와 CPU 크레이트 시험만 — 다른 잡 급으로」). WARP fails the
+  # GPU kernels' tests on its own side (measured on the main PC's x64 WARP,
+  # d3d10warp 10.0.26100.9711, gpu-engine-skeleton): in release the shaders
+  # DXC optimizes for blend, composite, the dab blur, gaussian, resample
+  # and warp never finish (one `case` took a one-case shader from 54 ms to
+  # past 15 minutes), and in debug a chain test takes 868 s to the RTX
+  # 4080's 10 s and its first run reads values no other device does. So
+  # this job builds the GPU kernels' tests, debug and release, and runs the
+  # native crates', which use no GPU, as the other jobs do. The cost: no CI
+  # runs a GPU kernel on ARM64 Windows — a real ARM64 device is the first
+  # to — and shaders compile when a pipeline is made, so the build says
+  # nothing of them. Bringing the GPU tests back here is a new question for
+  # the user, not a fix.
   windows-arm64:
-    name: crate tests on WARP (Windows ARM64)
+    name: crate builds and CPU tests (Windows ARM64)
     runs-on: windows-11-arm
-    # Two cold builds of wgpu, and WARP rasterises on the CPU.
-    timeout-minutes: 60
+    # Two cold builds of wgpu; 30 bounds a hang, as on the others.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
-    env:
-      QA_ENGINE_PATH: ${{ github.workspace }}\build\native_standalone\Release\qa_engine.dll
     steps:
       - uses: actions/checkout@v5
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: 3.13.3
-      - uses: ./.github/actions/native-engine
-      - run: rustup show
-      - run: cargo test --locked --workspace
-      - run: cargo test --locked --workspace --release
+      - id: toolchain
+        run: rustup show
+      # The fx SDK example as WebAssembly, the module the fx tests open on
+      # each WebAssembly host, built where they read it (QA_FX_MODULE,
+      # .cargo/config.toml) as a land builds it (tool/lane.sh, cmd_crate).
+      # Its target is fetched here, not listed in rust-toolchain.toml: that
+      # list is what the engine is built for and ships (crate_notices.dart).
+      - name: fx SDK example as WebAssembly
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/fx_wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked --release -p fx_sdk_example --target wasm32-unknown-unknown
+      - name: GPU kernels built (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --no-run
+      - name: native crates (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
+      - name: GPU kernels built (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release --no-run
+      - name: native crates (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release

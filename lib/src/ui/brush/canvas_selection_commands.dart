@@ -1,8 +1,8 @@
-import 'dart:async';
 import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/once_a_microtask.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_values.dart';
@@ -35,6 +35,34 @@ LiveShape? liveShapeOf(
   CanvasSelectionRegion? region, {
   bool implicit = false,
 }) => region == null ? null : (region: region, implicit: implicit);
+
+/// The transform box's warp points as the tool settings list them (F-586):
+/// each one's displacement from where it rests, in the order a list reads a
+/// grid — row by row from the top, each row left to right (`BoxWarp
+/// .asRead`) — and the ones in hand, by their place in that list.
+@immutable
+class WarpPointsShown {
+  const WarpPointsShown({required this.offsets, this.inHand = const []});
+
+  final List<CanvasPoint> offsets;
+  final List<int> inHand;
+
+  /// The [index]-th point's displacement, or null for one the box does not
+  /// hold — the tool armed for a grid the box has not been brought to yet.
+  CanvasPoint? offsetAt(int index) =>
+      index < offsets.length ? offsets[index] : null;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WarpPointsShown &&
+          listEquals(other.offsets, offsets) &&
+          listEquals(other.inHand, inHand);
+
+  @override
+  int get hashCode =>
+      Object.hash(Object.hashAll(offsets), Object.hashAll(inHand));
+}
 
 /// ONE PROJECT's selection on its canvas: the marquee (or the box a tool
 /// made) and an open polygon trace. The channel below shows the one of the
@@ -306,6 +334,8 @@ class CanvasSelectionCommands extends ChangeNotifier {
   TransformValues? Function()? _transformValues;
   void Function(TransformValues Function(TransformValues now) change)?
   _editTransformValues;
+  void Function(int index, CanvasPoint Function(CanvasPoint now) change)?
+  _editWarpPoint;
   bool Function()? _undoTransformStep;
   bool Function()? _canUndoTransformStep;
   VoidCallback? _beginTransformStep;
@@ -315,8 +345,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   bool Function()? _canApplyTransform;
   bool Function()? _canEditTransform;
   Object? _owner;
-
-  bool _notifyScheduled = false;
 
   /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
   /// an unconditional `unbind()` produced (유저 #13, 2026-08-14).
@@ -335,6 +363,8 @@ class CanvasSelectionCommands extends ChangeNotifier {
     TransformValues? Function()? transformValues,
     void Function(TransformValues Function(TransformValues now) change)?
     editTransformValues,
+    void Function(int index, CanvasPoint Function(CanvasPoint now) change)?
+    editWarpPoint,
     bool Function()? undoTransformStep,
     bool Function()? canUndoTransformStep,
     VoidCallback? beginTransformStep,
@@ -362,6 +392,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _confirmPendingMove = confirmPendingMove;
     _transformValues = transformValues;
     _editTransformValues = editTransformValues;
+    _editWarpPoint = editWarpPoint;
     _undoTransformStep = undoTransformStep;
     _canUndoTransformStep = canUndoTransformStep;
     _beginTransformStep = beginTransformStep;
@@ -385,6 +416,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _confirmPendingMove = null;
     _transformValues = null;
     _editTransformValues = null;
+    _editWarpPoint = null;
     _undoTransformStep = null;
     _canUndoTransformStep = null;
     _beginTransformStep = null;
@@ -399,18 +431,13 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Coalesced, microtask-deferred change ping — safe to call from any
   /// phase (the layer mutates state inside builds and gesture handlers,
   /// where a synchronous notifyListeners could re-enter the build).
-  void notifySessionChanged() {
-    if (_notifyScheduled) {
-      return;
+  void notifySessionChanged() => _sessionChanged.ask();
+
+  late final _sessionChanged = OnceAMicrotask(() {
+    if (!_disposed) {
+      notifyListeners();
     }
-    _notifyScheduled = true;
-    scheduleMicrotask(() {
-      _notifyScheduled = false;
-      if (!_disposed) {
-        notifyListeners();
-      }
-    });
-  }
+  });
 
   /// ⚠️A ping can be on its way when the channel goes: the layer unbinds as
   /// it is let go of, and a viewer handed no channel lets go of its own
@@ -421,6 +448,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     liveTransformValues.dispose();
+    liveWarpPoints.dispose();
     super.dispose();
   }
 
@@ -562,9 +590,12 @@ class CanvasSelectionCommands extends ChangeNotifier {
       ValueNotifier<TransformValues?>(null);
 
   /// The layer publishing what the box is showing right now.
+  ///
+  /// ⚠️Nothing once the channel is gone: a layer on its way out says its
+  /// box closed a frame later (it cannot speak from inside the unmount),
+  /// and a viewer's own channel goes in that same unmount ([dispose]).
   void publishTransformValues(TransformValues? values) {
-    final current = liveTransformValues.value;
-    if (current == values) {
+    if (_disposed) {
       return;
     }
     liveTransformValues.value = values;
@@ -592,6 +623,37 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void editTransformValues(
     TransformValues Function(TransformValues now) change,
   ) => _editTransformValues?.call(change);
+
+  /// The open box's warp points, live — [liveTransformValues]' other half,
+  /// and a notifier for its reason: a point dragged on the canvas repaints
+  /// its own two numbers and no row beside them. Null with no box up, or
+  /// one whose mode holds no points; the list then shows each point at
+  /// rest.
+  ///
+  /// 🗣️F-586 (유저 2026-11-12): 「다시말하지만 화면에서 조작하는건 설정쪽에서도
+  /// 보여야함. 지금 중간 왼쪽아래 사각형 조작했는데 도구설정패널에서 바뀌는게
+  /// 없는거 보고 확인함. 포인트별로 좌표 둔다거나」.
+  final ValueNotifier<WarpPointsShown?> liveWarpPoints =
+      ValueNotifier<WarpPointsShown?>(null);
+
+  /// The layer publishing the points the box is showing right now — as
+  /// [publishTransformValues] does its numbers, in the same breath.
+  void publishWarpPoints(WarpPointsShown? points) {
+    if (_disposed) {
+      return;
+    }
+    liveWarpPoints.value = points;
+  }
+
+  /// Moves ONE of the open box's warp points — the [index]-th as
+  /// [liveWarpPoints] lists them: [change] is handed where it stands now and
+  /// answers where it should. The door [editTransformValues] is for the
+  /// box's own numbers, with its law: a writer names the one point it
+  /// means, and with no box open this opens one.
+  void editWarpPoint(
+    int index,
+    CanvasPoint Function(CanvasPoint now) change,
+  ) => _editWarpPoint?.call(index, change);
 
   /// Takes ONE operation back inside an open transform box.
   ///

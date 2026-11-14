@@ -10,11 +10,15 @@ import '../models/brush_dab_sequence.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'bitmap_surface_brush_commit.dart';
-import 'brush_blur_stroke_landing.dart';
+import 'brush_stroke_landing.dart';
 import 'brush_commit_cache_invalidation.dart';
 import 'brush_stroke_blend.dart';
 import 'canvas_selection_paint_clip.dart';
+import 'selection_clip.dart';
 
+/// [selection] cuts what lands, where it lands: a stamp under its mask, a
+/// stroke's buffer as one ([compositeStrokePixelsOntoBitmapSurface]), a blur
+/// by its rasterizer — promoted tiles were cut as they were made.
 BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
@@ -25,6 +29,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
   List<PlacedTile>? promotedTiles,
+  SelectionClip? selection,
 }) {
   // PROMOTION fast path: the live overlay already produced the finished
   // tiles — pre-blended against `promotedBase` with these very kernels,
@@ -45,11 +50,11 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     );
   }
   // I-75: a BLUR stroke re-derived from its dabs is laid again over this
-  // surface by the rasterizer that showed it (`blurStrokeLandedOn`) — it
+  // surface by the rasterizer that showed it (`strokeLandedOn`) — it
   // has no stroke buffer for the routes below to composite.
   if (sequence.firstOrNull?.blurs ?? false) {
     return _installed(
-      blurStrokeLandedOn(surface, sequence.dabs, opacity: sequence.opacity),
+      strokeLandedOn(surface, sequence, selection: selection),
       on: surface,
       layerId: layerId,
       frameId: frameId,
@@ -98,17 +103,18 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     // re-derived from its dabs, a stamp that blends), materialize the dabs
     // onto an EMPTY surface first — same kernels, same pixels.
     if (strokePixels == null || strokeBounds == null) {
-      // 🚨★★★**THE SAME RASTERIZER THE CLIP PATH USES, and it had to be:
+      // 🚨★★★**THE SAME RASTERIZER THE CLIP PATH USED, and it had to be:
       // this was a second copy of it that had lost the one rule that
-      // matters.** Both build the stroke's coverage on an EMPTY surface,
+      // matters.** Both built the stroke's coverage on an EMPTY surface,
       // and there `dab.erase` erases nothing from nothing — the copy here
       // kept the flag on, so an erase stroke arriving without live pixels
       // rasterized to an all-zero buffer and committed as a no-op. The
       // sibling flips it off and says why (「what is wanted here is the
       // stroke's COVERAGE, which the commit then re-applies as one erase
       // stamp」). Two implementations of one algorithm, and the one
-      // without the law was this one.
-      final raster = rasterizeStrokeForClipping(
+      // without the law was this one. (The clip path went 2026-11-14: a
+      // selection cuts on the engine, where the stroke lands.)
+      final raster = rasterizeStrokeCoverage(
         dabs: sequence.dabs,
         canvasSize: surface.canvasSize,
         tileSize: surface.tileSize,
@@ -134,7 +140,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     );
     if (coverage != null) {
       strokePixels = Uint8List.fromList(strokePixels);
-      applySelectionMaskToStrokeAlpha(
+      applyCoverageToStrokeAlpha(
         pixels: strokePixels,
         mask: coverage,
         pixelCount: coverage.length,
@@ -151,10 +157,12 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
           // what the object already knows.
           erase: sequence.firstOrNull?.erase ?? false,
           blendMode: blendMode,
+          selection: selection,
         )
       : materializeBrushDabSequenceOnBitmapSurface(
           surface: surface,
           sequence: sequence,
+          selection: selection,
         );
   final cacheInvalidationPlan = cacheInvalidationPlanForDirtyTiles(
     layerId: layerId,

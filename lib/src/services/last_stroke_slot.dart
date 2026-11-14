@@ -48,15 +48,11 @@ class LastStrokeSlot extends ChangeNotifier {
   /// stroke landed on, so they could never be laid down anywhere else — and
   /// holding them would keep that cel's pictures alive for as long as the
   /// app runs.
+  ///
+  /// With its selection: what landed was cut there, where it landed, and is
+  /// cut there again (2026-11-14 — ↩️the dabs came here cut on the CPU).
   void hold(BrushStrokeCommitData stroke) {
-    _stroke = BrushStrokeCommitData(
-      sourceDabs: stroke.sourceDabs,
-      strokePixels: stroke.strokePixels,
-      strokeBounds: stroke.strokeBounds,
-      blendMode: stroke.blendMode,
-      strokeOpacity: stroke.strokeOpacity,
-      end: stroke.end,
-    );
+    _stroke = stroke.withoutPromotion();
     notifyListeners();
   }
 
@@ -74,7 +70,9 @@ class LastStrokeSlot extends ChangeNotifier {
     };
     var bytes = stroke.strokePixels?.lengthInBytes ?? 0;
     for (final stamp in stamps) {
-      bytes += stamp.rgba.lengthInBytes;
+      // By its size, not its bytes: a picture the engine carried holds them
+      // there, and counting must not be what reads them back.
+      bytes += stamp.width * stamp.height * 4;
     }
     return bytes;
   }

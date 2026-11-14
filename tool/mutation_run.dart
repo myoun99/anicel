@@ -34,12 +34,12 @@
 //
 // ## Usage
 //
-//   dart run tool/mutation_run.dart lib/src/services/x.dart
-//   dart run tool/mutation_run.dart lib/src/services/x.dart --sample 6
-//   dart run tool/mutation_run.dart --out results.jsonl lib/a.dart lib/b.dart
-//   dart run tool/mutation_run.dart --plan lib/a.dart   # say what it would do
-//   dart run tool/mutation_run.dart --max-namers 3 lib/a.dart
-//   dart run tool/mutation_run.dart --resume --out r.jsonl lib/*.dart
+//   dart tool/mutation_run.dart lib/src/services/x.dart
+//   dart tool/mutation_run.dart lib/src/services/x.dart --sample 6
+//   dart tool/mutation_run.dart --out results.jsonl lib/a.dart lib/b.dart
+//   dart tool/mutation_run.dart --plan lib/a.dart   # say what it would do
+//   dart tool/mutation_run.dart --max-namers 3 lib/a.dart
+//   dart tool/mutation_run.dart --resume --out r.jsonl lib/*.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -164,6 +164,7 @@ List<Mutation> spreadOrder(List<Mutation> all) {
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final sample = int.tryParse(_flag(args, '--sample') ?? '') ?? 5;
   final maxNamers = int.tryParse(_flag(args, '--max-namers') ?? '') ?? 6;
   final outPath = _flag(args, '--out');
@@ -195,9 +196,7 @@ Future<void> main(List<String> args) async {
     // as SURVIVED. Every mutation in those files would have been written down
     // as unnoticed, bought from a suite that could not have noticed anything
     // (2026-09-08).
-    if (!entry.key.startsWith('test/') || !entry.key.endsWith('_test.dart')) {
-      continue;
-    }
+    if (!isSuite(entry.key)) continue;
     for (final target in entry.value) {
       namersOf.putIfAbsent(target, () => []).add(entry.key);
     }
@@ -499,6 +498,7 @@ Future<Verdict> _runSuiteIn(RunTemp temp, List<String> namers) async {
     }),
   );
 
+  final memory = MemoryWatch(process.pid);
   Timer(_suiteTimeout, () {
     if (done.isCompleted) return;
     cutTree(process.pid);
@@ -506,6 +506,7 @@ Future<Verdict> _runSuiteIn(RunTemp temp, List<String> namers) async {
   });
 
   final code = await done.future;
-  if (code == -1) return Verdict.timeout;
+  memory.stop();
+  if (code == -1 || memory.outgrew != null) return Verdict.timeout;
   return classifyRun(exitCode: code, output: buffer.toString());
 }

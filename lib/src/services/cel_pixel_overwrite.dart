@@ -1,12 +1,18 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart';
+
 import '../core/argb_channels.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/bitmap_tile_rewrite.dart';
+import '../models/brush_frame_key.dart';
 import '../models/tile_coord.dart';
-import '../native/qa_native_engine.dart';
+import '../native/engine_cel_pixels.dart';
+import '../native/engine_tile_ledger.dart';
 import 'cel_source_effect_pass.dart';
+import 'selection_clip.dart';
 
 /// The five PIXEL VERBS the timeline's 색 편집 popover runs.
 ///
@@ -161,7 +167,7 @@ enum CelPixelChannel {
   /// "was there ink here", so undo could not tell an already-empty pixel
   /// from one this pass emptied.
   ///
-  /// ⛔ONE ANSWER FOR TWO LANGUAGES (ABI 34). The C pass stages this as a
+  /// ⛔ONE ANSWER FOR TWO LANGUAGES. The engine's pass is told this as a
   /// flag rather than re-deriving it from the channel, so the rule lives
   /// here and only here — an exhaustive switch, like the two above, so a
   /// third channel has to state its answer.
@@ -218,7 +224,7 @@ bool celPixelParticipates({
   // ⚠️The rule is [CelPixelChannel.takesEmptyPixels] — an exhaustive switch
   // on the enum, so a new channel must STATE its participation rule rather
   // than inheriting alpha's by falling off the end of a boolean. It lives
-  // there rather than here because the C pass stages the same answer.
+  // there rather than here because the engine's pass is told the same answer.
   return channel.takesEmptyPixels || alpha > 0;
 }
 
@@ -268,8 +274,8 @@ sealed class CelPixelRestore {
     return flat;
   }
 
-  /// How the C pass reads this recipe: [bytes], the entry for touched pixel
-  /// `i` at `i * step`.
+  /// How the engine's pass reads this recipe: [bytes], the entry for touched
+  /// pixel `i` at `i * step`.
   ///
   /// Laid flat ([expand]) unless a shape can say it more cheaply — and the
   /// cheap answers are the COMMON ones: a uniform recipe is its one value
@@ -459,7 +465,7 @@ final class RunLengthCelPixelRestore extends CelPixelRestore {
   /// A run at a time rather than a pixel at a time — [readInto]'s cursor
   /// walk, in bulk. ⚠️Real drawings land HERE (runs beat a palette wherever
   /// values repeat along a row), so laying this one out per pixel would leave
-  /// their undo paying the Dart loop the C pass exists to remove.
+  /// their undo paying the Dart loop the engine's pass exists to remove.
   @override
   ({Uint8List bytes, int step}) streamFor(int byteCount) {
     final flat = Uint8List(touchedPixelCount * byteCount);
@@ -585,11 +591,11 @@ class _RestoreBuilder {
 
   /// Adds [length] touched pixels whose channel bytes are all the
   /// [byteCount] bytes of [from] at [at] — ONE pixel from the Dart pass, a
-  /// whole RUN from the C one.
+  /// whole RUN from the engine's.
   ///
-  /// 🚨Runs are why the C pass pays off. Fed one pixel at a time, this
-  /// method cost as much as the pixel loop C took over; fed a run, a flat
-  /// cel costs one call per tile.
+  /// 🚨Runs are why a kernel's pass pays off. Fed one pixel at a time, this
+  /// method cost as much as the pixel loop the kernel took over; fed a run,
+  /// a flat cel costs one call per tile.
   void addRun(Uint8List from, int at, int length) {
     _count += length;
     if (_uniform) {
@@ -732,12 +738,17 @@ class _RestoreBuilder {
   }
 }
 
-/// The tiles one pass covers, each with the coverage over it.
+/// The tiles one pass covers, and the selection over them.
 ///
-/// A `null` mask means the whole tile is covered — the "범위는 전체" case,
-/// which is the default gesture and would otherwise pay for a 64 KB buffer
-/// of 255s per tile. Otherwise the mask is one byte per tile pixel, in the
-/// tile's own row-major order.
+/// A `null` [clip] means every pixel of each tile is covered — the "범위는
+/// 전체" case, which is the default gesture. Otherwise the selection says
+/// how much of each pixel: on the engine's grid the mask it made there
+/// ([SelectionClip.maskOnEngine]), the pass reading 0 past its box; off it
+/// a tile's window of it ([SelectionClip.maskFor]).
+///
+/// ↩️Till 2026-11-14 the walk handed each tile its mask's bytes, sliced out
+/// of one the CPU made of the whole selection at every press — and on the
+/// engine's grid glued back into one plane and handed up.
 ///
 /// ⛔TILE-GRANULAR ON PURPOSE, not pixel-granular. A whole-canvas pass over
 /// a shipping cel visits ~4 million pixels; handing those over one callback
@@ -750,8 +761,7 @@ class _RestoreBuilder {
 /// the pass off the per-pixel [TileCoord] allocation and map lookup that
 /// made whole-picture lifts quadratic — the lesson
 /// `gatherMaskedSurfacePixels` records at length.
-typedef CelPixelWalk =
-    void Function(void Function(TileCoord coord, Uint8List? mask) visit);
+typedef CelPixelWalk = ({List<TileCoord> tiles, SelectionClip? clip});
 
 /// Applies [channel] over [surface] wherever [walk] reaches, writing
 /// [value] (blended by mask coverage) and returning the new surface
@@ -799,28 +809,32 @@ typedef CelPixelWalk =
     threshold: threshold,
     builder: builder,
   );
-  final engine = QaNativeEngine.instance;
-  final rewrite = engine == null
-      ? _dartTileRewrite(pass)
-      : _nativeTileRewrite(engine, pass);
+  if (surface.tileSize == gpuTileSide && !debugCelPixelsInDart) {
+    return _overwriteOnEngine(surface, walk, pass);
+  }
+  final rewrite = _dartTileRewrite(pass);
+  final (:tiles, :clip) = walk;
+  final side = surface.tileSize;
 
   final rebuilt = <TileCoord, BitmapTile>{};
-  try {
-    walk((coord, mask) {
-      // Absent tile: nothing has ever been drawn here, so 색 변환 has no
-      // colour to replace and 비우기 has nothing to empty. It stays absent
-      // rather than materializing 256 KB of zeroes.
-      final tile = surface.tileAt(coord);
-      if (tile == null) {
-        return;
-      }
-      final rewritten = rewrite(tile, mask);
-      if (rewritten != null) {
-        rebuilt[coord] = rewritten;
-      }
-    });
-  } finally {
-    engine?.finishCelPixelPass();
+  for (final coord in tiles) {
+    // Absent tile: nothing has ever been drawn here, so 색 변환 has no
+    // colour to replace and 비우기 has nothing to empty. It stays absent
+    // rather than materializing 256 KB of zeroes.
+    final tile = surface.tileAt(coord);
+    if (tile == null) {
+      continue;
+    }
+    final mask = clip?.maskFor(
+      left: coord.x * side,
+      top: coord.y * side,
+      width: side,
+      height: side,
+    );
+    final rewritten = rewrite(tile, mask);
+    if (rewritten != null) {
+      rebuilt[coord] = rewritten;
+    }
   }
 
   return (
@@ -829,12 +843,157 @@ typedef CelPixelWalk =
   );
 }
 
+/// Test seam: the pass in Dart on the app's grid too — the reference
+/// `a_colour_verb_runs_on_the_engine_test.dart` holds the engine's to.
+@visibleForTesting
+bool debugCelPixelsInDart = false;
+
+/// A tile the walk reached.
+typedef _Walked = ({TileCoord coord, BitmapTile tile});
+
+/// The pass on the engine (flip lane ⓒ): the law in the kernel
+/// (rust/src/kernels/cel_pixel), over the tiles where the pool has them,
+/// under the mask the walk's selection made there — each tile a pixel of
+/// took part in landing as a new one and nothing read back. The RECIPE
+/// stays here: the kernel hands back what the pixels held as RUNS and
+/// [_RestoreBuilder] — the one place a recipe's shape is chosen — takes
+/// them a run at a time, so the compression is never written twice (the
+/// card's fork ②, from when the kernel was C's: the kernel speaks the
+/// bytes, Dart compresses).
+({BitmapSurface surface, CelPixelRestore? restore}) _overwriteOnEngine(
+  BitmapSurface surface,
+  CelPixelWalk walk,
+  _Pass pass,
+) {
+  final (:tiles, :clip) = walk;
+  final walked = <_Walked>[
+    for (final coord in tiles)
+      if (surface.tileAt(coord) case final tile?) (coord: coord, tile: tile),
+  ];
+  if (walked.isEmpty) {
+    return (surface: surface, restore: null);
+  }
+  final ledger = EngineTileLedger.instance;
+  final mask = clip?.maskOnEngine();
+  final passed = ledger.held(
+    (hold) => _ran(hold, ledger.pool, walked, mask, pass),
+  );
+  try {
+    _keepWhatTheyHeld(passed.runs, pass);
+    // Nothing under a tile is asked: a pass's landing compares with nothing
+    // (`Passed::land` has why).
+    final asks = <TileAsk>[
+      for (final (:column, :row) in passed.tiles)
+        (column: column, row: row, under: null),
+    ];
+    final landed = ledger.land(
+      EngineTileLedger.landedCel,
+      asks,
+      by: (pool, cel, asked) =>
+          passed.land(pool, cel, asks.length - asked.length, asked),
+    );
+    final rebuilt = <TileCoord, BitmapTile>{
+      for (final (at, (change: _, :tile)) in landed.indexed)
+        TileCoord(x: asks[at].column, y: asks[at].row): ?tile,
+    };
+    return (
+      surface: surface.withRebuiltTiles(rebuilt),
+      restore: pass.builder?.build(),
+    );
+  } finally {
+    passed.free();
+  }
+}
+
+/// [pass] over [walked], the box of them a cel of the kernel's with a gap
+/// wherever the walk did not go.
+GpuCelPassed _ran(
+  TileHold hold,
+  GpuPool pool,
+  List<_Walked> walked,
+  GpuMask? mask,
+  _Pass pass,
+) {
+  final grid = hold.gridOf(BrushFrameKey.noCel, {
+    for (final one in walked) one.coord: one.tile,
+  });
+  final (:channel, :value, :restore, :selector, :threshold) = (
+    channel: pass.channel,
+    value: pass.value,
+    restore: pass.restore,
+    selector: pass.selector,
+    threshold: pass.threshold,
+  );
+  final (:base, :stride) = _addressOf(channel);
+  final stream = restore?.streamFor(channel.byteCount);
+  return EngineCelPixels.pass.run(
+    pool,
+    grid.x0,
+    grid.y0,
+    grid.columns,
+    grid.rows,
+    grid.tiles,
+    channel: (
+      bytes: channel.byteCount,
+      base: base,
+      stride: stride,
+      takesEmpty: channel.takesEmptyPixels,
+    ),
+    incoming: stream == null
+        ? GpuCelValue(value!)
+        : GpuCelRecipe(
+            stream.bytes,
+            step: stream.step,
+            count: restore!.touchedPixelCount,
+          ),
+    mask: mask,
+    selector: selector == null ? null : _selectorOf(selector),
+    threshold: threshold,
+  );
+}
+
+/// [key] as the kernel takes it: the tables of what it NAMES, whether it
+/// erases that or the rest being the verb's to say.
+GpuCelSelector _selectorOf(CelColorKey key) {
+  final (:red, :green, :blue, restores: _, alphaMaps: _) = keyRgbaTablesOf([
+    CelColorKey(
+      red: key.red,
+      green: key.green,
+      blue: key.blue,
+      tolerance: key.tolerance,
+      amount: key.amount,
+      operation: CelKeyOperation.eraseMatches,
+    ),
+  ]).single;
+  return (
+    red: red,
+    green: green,
+    blue: blue,
+    keepsMatches: key.operation == CelKeyOperation.eraseOthers,
+  );
+}
+
+/// [runs], the kernel's ([GpuCelPassed.runs]), told to [pass]'s recipe.
+void _keepWhatTheyHeld(Uint32List runs, _Pass pass) {
+  final builder = pass.builder;
+  if (builder == null) {
+    return;
+  }
+  final value = Uint8List(builder.byteCount);
+  for (var at = 0; at < runs.length; at += 2) {
+    for (var byte = 0; byte < value.length; byte += 1) {
+      value[byte] = (runs[at] >> (8 * byte)) & 0xFF;
+    }
+    builder.addRun(value, 0, runs[at + 1]);
+  }
+}
+
 /// One tile of the pass: the rewritten tile, or null when nothing in it
-/// took part. Each implementation carries its own running walk index — the
-/// only addressing a recipe has.
+/// took part. It carries its running walk index — the only addressing a
+/// recipe has.
 typedef _TileRewrite = BitmapTile? Function(BitmapTile tile, Uint8List? mask);
 
-/// One pass, named once: everything both rewrites read.
+/// One pass, named once: everything both routes read.
 typedef _Pass = ({
   CelPixelChannel channel,
   int tileSize,
@@ -845,8 +1004,9 @@ typedef _Pass = ({
   _RestoreBuilder? builder,
 });
 
-/// The pass in Dart: the reference `cel_pixel_pass_parity_test.dart`
-/// compares the C pass against byte for byte, and what runs with no engine.
+/// The pass in Dart: the reference
+/// `a_colour_verb_runs_on_the_engine_test.dart` holds the kernel to, byte
+/// for byte, and what a grid the engine does not hold runs.
 _TileRewrite _dartTileRewrite(_Pass pass) {
   final (
     :channel,
@@ -894,8 +1054,8 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
       builder?.addRun(original, 0, 1);
       if (recipe != null) {
         // ⛔A recipe shorter than its walk was built over some other
-        // surface. The C pass has to refuse it — reading on there reads
-        // whatever memory follows the stream — so this one refuses it too,
+        // surface. The kernel's pass has to refuse it — reading on there
+        // reads past what it was given — so this one refuses it too,
         // or the two passes would answer one malformed undo differently.
         if (index >= recipe.touchedPixelCount) {
           throw StateError(
@@ -933,57 +1093,8 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
   });
 }
 
-/// The pass in C (ABI 34): `qa_cel_pixel_pass_tile`, one tile per call.
-///
-/// The participation law, the blend and the lazy copy run in the kernel;
-/// the RECIPE stays here. C hands back each tile's originals as RUNS and
-/// [_RestoreBuilder] — the one place a recipe's shape is chosen — takes them
-/// a run at a time, so the compression is never written twice (the card's
-/// fork ②: C speaks the bytes, Dart compresses). An undo hands C the recipe
-/// the way [CelPixelRestore.streamFor] lays it out.
-_TileRewrite _nativeTileRewrite(QaNativeEngine engine, _Pass pass) {
-  final tileSize = pass.tileSize;
-  final builder = pass.builder;
-  final byteCount = pass.channel.byteCount;
-  engine.stageCelPixelPass(_stageOf(pass));
-  var index = 0;
-  return (tile, mask) {
-    final result = tile.readPixels(
-      (pixels, _) => engine.celPixelPassTile(
-        inPixels: pixels,
-        mask: mask,
-        startIndex: index,
-        wantRuns: builder != null,
-      ),
-    );
-    index += result.count;
-    final values = result.runValues;
-    final lengths = result.runLengths;
-    if (builder != null && values != null && lengths != null) {
-      for (var run = 0; run < lengths.length; run += 1) {
-        builder.addRun(values, run * byteCount, lengths[run]);
-      }
-    }
-    final pixels = result.pixels;
-    return pixels == null
-        ? null
-        : BitmapTile.adoptNative(size: tileSize, pixels: pixels);
-  };
-}
-
-/// What the C pass is handed for [pass]: its channel's bytes as a base and
-/// a stride, the incoming bytes — the value forward, the recipe's stream on
-/// an undo — the selector and 2치화's cut.
-CelPixelStage _stageOf(_Pass pass) {
-  final (
-    :channel,
-    :tileSize,
-    :value,
-    :restore,
-    :selector,
-    :threshold,
-    builder: _,
-  ) = pass;
+/// [channel]'s bytes as a kernel addresses them: byte i at base + i × stride.
+({int base, int stride}) _addressOf(CelPixelChannel channel) {
   final byteCount = channel.byteCount;
   final base = channel.byteOffset(0);
   final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
@@ -994,29 +1105,8 @@ CelPixelStage _stageOf(_Pass pass) {
       }
     }
     return true;
-  }(), 'the C pass addresses channel byte i at base + i * stride');
-  final stream = restore?.streamFor(byteCount);
-  return CelPixelStage(
-    byteCount: byteCount,
-    byteOffsetBase: base,
-    byteOffsetStride: stride,
-    takesEmptyPixels: channel.takesEmptyPixels,
-    tileSize: tileSize,
-    isUndo: restore != null,
-    incoming: value ?? stream!.bytes,
-    incomingCount: restore?.touchedPixelCount ?? 1,
-    incomingStep: stream?.step ?? 0,
-    selector: selector == null
-        ? null
-        : (
-            red: selector.red,
-            green: selector.green,
-            blue: selector.blue,
-            tolerance: selector.tolerance,
-            keepsMatches: selector.operation == CelKeyOperation.eraseOthers,
-          ),
-    threshold: threshold,
-  );
+  }(), 'a kernel addresses channel byte i at base + i * stride');
+  return (base: base, stride: stride);
 }
 
 /// `older + (incoming - older) * coverage / 255`, in the integer mul-div-255

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -24,6 +25,7 @@ import '../../helpers/wait_window.dart';
 /// its tooltip naming the fx (「fx 이름 래스터라이즈」); and Q8 「폴더 · 조정 레이어 둘 다
 /// 버튼이 꺼진다」: there, lit off in its place.
 void main() {
+  opensTheEnginesScreens();
   Future<EditorSessionManager> theApp(WidgetTester tester) async {
     // The WHOLE app: the lanes are HomePage's state.
     await tester.binding.setSurfaceSize(const Size(1280, 1200));
@@ -48,8 +50,9 @@ void main() {
   RailGlyphButton button(WidgetTester tester, String name) =>
       tester.widget<RailGlyphButton>(find.named(name));
 
-  testWidgets('🎯an fx header\'s button, and the Transform\'s, stand lit on '
-      'a drawing row — pressed, the fx is baked in one undo step', (
+  testWidgets('🎯an fx header\'s button stands lit on a drawing row — the '
+      'Transform\'s out while the transform stands at rest (🗣️F-583 「값이 '
+      '안바뀌었으면 비활성화로」) — pressed, the fx is baked in one undo step', (
     tester,
   ) async {
     final session = await theApp(tester);
@@ -67,8 +70,11 @@ void main() {
     ]);
     await tester.pumpAndSettle();
 
-    expect(button(tester, buttonOf(row, 'transform-group')).onPressed,
-        isNotNull);
+    expect(
+      button(tester, buttonOf(row, 'transform-group')).onPressed,
+      isNull,
+      reason: 'its values stand where a reset puts them',
+    );
     expect(button(tester, fx).onPressed, isNotNull);
     expect(button(tester, fx).tooltip, contains('Blur'));
 

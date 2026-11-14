@@ -35,6 +35,8 @@ void main() {
           if (request.effects.isNotEmpty) {
             return request.effects;
           }
+        case CompositeLeaf(payload: CanvasNameTagRow()):
+          break;
         case CompositeGroup<CanvasStackRow>(:final children):
         case CompositeAdjustment<CanvasStackRow>(:final children):
         case CompositeBackdropBlend<CanvasStackRow>(:final children):
@@ -62,7 +64,12 @@ void main() {
     final effect = session.activeLayer!.effects.single;
     expect(effect.kind, EffectKind.blur);
     expect(
-      resolveLayerEffectsAt(effects: [effect], frameIndex: 0, blocks: null),
+      resolveLayerEffectsAt(
+        effects: [effect],
+        frameIndex: 0,
+        blocks: null,
+        worn: null,
+      ),
       isEmpty,
       reason: 'a fresh effect is all defaults — nothing to paint',
     );

@@ -7,10 +7,10 @@
 
 use std::ops::Range;
 
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::TILE_BYTES;
 
 /// A buffer a pass reads or puts, of `bytes` — nothing at first: wgpu
 /// zeroes a new buffer.
@@ -30,18 +30,17 @@ pub(crate) fn words_buffer(
     words: &[u32],
     usage: wgpu::BufferUsages,
 ) -> wgpu::Buffer {
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(label),
-            contents: &le_bytes(words),
-            usage,
-        })
+    engine.filled(label, &le_bytes(words), usage)
 }
 
 /// `words` as a buffer holds them: little-endian, one after another.
 pub(crate) fn le_bytes(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
+}
+
+/// The words a buffer's `bytes` hold — [`le_bytes`] read back.
+pub(crate) fn le_words(bytes: &[u8]) -> Vec<u32> {
+    bytes.chunks_exact(4).map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]])).collect()
 }
 
 /// The bytes one binding holds on this device: no more than a buffer does.
@@ -64,6 +63,16 @@ pub(crate) fn tiles_a_pass(engine: &Engine, per_tile: u64, fixed: u64) -> Option
     }
 }
 
+/// The most tiles a page takes on this device: as many as a pass takes and
+/// a slot names — a u16 (`TileAt`). ⛔ONE COUNT: a gathered row's page, a
+/// chained row's, a stamp's and the letters' each worked it out, and a kept
+/// picture's was to be the fifth (11-08). ⚠️No test reaches the u16: a
+/// page past it is a binding of 4 GiB, past every device here (mutant M13,
+/// 11-08).
+pub(crate) fn tiles_a_page(engine: &Engine) -> Option<usize> {
+    Some(tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX)))
+}
+
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
 /// each of `groups`.
 pub(crate) fn fits(
@@ -74,10 +83,7 @@ pub(crate) fn fits(
     let limits = engine.device.limits();
     let room = room(engine);
     if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
-        return fail(format!(
-            "a plane of {plane} bytes exceeds a binding of {room} — a picture this large \
-             waits for the round that cuts it into bands"
-        ));
+        return fail(format!("a plane of {plane} bytes exceeds a binding of {room}"));
     }
     let most = limits.max_compute_workgroups_per_dimension;
     if groups.any(|(across, down)| across > most || down > most) {
@@ -123,8 +129,32 @@ pub(crate) fn flat((across, down): (u32, u32)) -> (u32, u32, u32) {
     (across, down, 1)
 }
 
+/// 🚨What write-only storage bindings of `target` have written so far lands
+/// before what is encoded after this touches it, between two passes. wgpu's
+/// DX12 puts a UAV barrier between two uses of a texture only when the first
+/// was read-write (wgpu-hal 30.0.1, `transition_textures`), so dispatches
+/// writing one pixel through write-only bindings overlap on the GPU and
+/// either may land last. 🔬11-09, RTX 4080, a clear and a tile on each pixel:
+/// a fifth of the pixels cleared away in one pass (38,683 of 204,800), none
+/// of 163,840 in two. ⚠️Two passes held with or without this call there, and
+/// D3D12 does not promise it: within one submission a later command list may
+/// start before an earlier one has finished (`ExecuteCommandLists`' Remarks).
+/// Leaving read-write for the next dispatch's write-only is what makes the
+/// barrier, and no texture needs a usage more for it.
+pub(crate) fn land_storage_writes(encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture) {
+    encoder.transition_resources(
+        std::iter::empty(),
+        std::iter::once(wgpu::TextureTransition {
+            texture: target,
+            selector: None,
+            state: wgpu::TextureUses::STORAGE_READ_WRITE,
+        }),
+    );
+}
+
 /// Encodes `dispatches` in order on `encoder`, in one compute pass — each
-/// dispatch sees what the ones before it put (wgpu orders a pass's
+/// dispatch sees what the ones before it put in a buffer or a read-write
+/// binding, not a write-only one's ([`land_storage_writes`]; wgpu orders a pass's
 /// dispatches as it would passes). Submitting is the caller's: a kernel
 /// that copies between its dispatches, or times the GPU's work alone,
 /// submits where it does now. The crate's one compute pass: `one_pass.rs`

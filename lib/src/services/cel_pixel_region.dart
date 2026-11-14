@@ -1,12 +1,10 @@
-import 'dart:math' as math;
-import 'dart:typed_data';
-
 import '../models/bitmap_surface.dart';
+import '../models/dirty_region.dart';
 import 'layer_pose_matrix.dart' show LayerPlacement, canvasToArtwork;
-import 'canvas_selection.dart'
-    show SelectionMaskOptions, selectionMaskOnPasteboard;
+import 'canvas_selection.dart' show SelectionMaskOptions;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_overwrite.dart';
+import 'selection_clip.dart';
 
 /// WHICH PIXELS a pixel verb acts on — 선택 있으면 그 영역, 없으면 전체.
 ///
@@ -16,11 +14,13 @@ import 'cel_pixel_overwrite.dart';
 /// drawing including the pasteboard, not the canvas rectangle: artwork
 /// parked off-stage is still the drawing.
 ///
-/// Returns a walk in the shape [overwriteCelPixels] consumes. Build it
-/// fresh at each execution rather than storing it in a command: a walk
-/// closes over its mask, and an undo entry that held one would keep
-/// megabytes alive for the rest of the session — the very thing the recipe
-/// design exists to avoid.
+/// Returns a walk in the shape [overwriteCelPixels] consumes: the selection
+/// as every verb under it reads it ([SelectionClip.of]), so its softness
+/// is read whole and a tile's edge is no seam. Build it fresh at each
+/// execution rather than storing it in a command: a walk holds its clip,
+/// and an undo entry that held one would keep the clip and what it made on
+/// the engine alive for the rest of the session — the very thing the
+/// recipe design exists to avoid.
 CelPixelWalk celPixelWalkFor({
   required BitmapSurface surface,
   CanvasSelectionRegion? region,
@@ -35,55 +35,29 @@ CelPixelWalk celPixelWalkFor({
     ..sort((a, b) => a.y != b.y ? a.y - b.y : a.x - b.x);
 
   if (region == null || region.steps.isEmpty) {
-    return (visit) {
-      for (final coord in coords) {
-        visit(coord, null);
-      }
-    };
+    return (tiles: coords, clip: null);
   }
-
-  final tileSize = surface.tileSize;
-  // ONE mask over the whole region, sliced per tile — not one mask per
-  // tile. The post-passes (grow/feather/AA) read neighbouring pixels, so a
-  // tile rasterized on its own would soften against its own edge and leave
-  // a seam at every tile boundary.
-  final read = selectionMaskOnPasteboard(
+  final clip = SelectionClip.of(
     region,
     wall: surface.pasteboard,
     options: options,
   );
-  if (read == null) {
-    return (visit) {};
-  }
-  final (:mask, :box) = read;
-  final (:left, :top, :width, :height) = box;
-  final right = left + width;
-  final bottom = top + height;
-
-  return (visit) {
-    // One reusable tile buffer: the kernel reads the mask inside the visit
-    // and never keeps it.
-    final tileMask = Uint8List(tileSize * tileSize);
-    for (final coord in coords) {
-      final tileLeft = coord.x * tileSize;
-      final tileTop = coord.y * tileSize;
-      final startX = math.max(tileLeft, left);
-      final endX = math.min(tileLeft + tileSize, right);
-      final startY = math.max(tileTop, top);
-      final endY = math.min(tileTop + tileSize, bottom);
-      if (endX <= startX || endY <= startY) {
-        continue;
-      }
-      tileMask.fillRange(0, tileMask.length, 0);
-      final runLength = endX - startX;
-      for (var y = startY; y < endY; y += 1) {
-        final tileRow = (y - tileTop) * tileSize + (startX - tileLeft);
-        final maskRow = (y - top) * width + (startX - left);
-        tileMask.setRange(tileRow, tileRow + runLength, mask, maskRow);
-      }
-      visit(coord, tileMask);
-    }
-  };
+  final side = surface.tileSize;
+  return (
+    tiles: [
+      for (final coord in coords)
+        if (clip.mayCover(
+          DirtyRegion.fromXYWH(
+            x: coord.x * side,
+            y: coord.y * side,
+            width: side,
+            height: side,
+          ),
+        ))
+          coord,
+    ],
+    clip: clip,
+  );
 }
 
 /// [region], stated in the pixels of a layer POSED by [pose].

@@ -125,7 +125,18 @@ void main() {
     // ②나눔고딕에는 라틴 확장이 없고 BIZ 에는 프랑스어 32/32 가 있다
     //   ⇒ 뒤집히면 é 가 두부가 된다
     expect(AppTypography.familyFor(AppLanguage.ja), 'BIZ UDPGothic');
-    expect(AppTypography.fallbackFor(AppLanguage.ja), ['Nanum Gothic']);
+    // 🗣️connection-round-checklist-Q21 (유저 2026-11-08): 「UI 글꼴 끝에
+    // Noto Sans SC 를 더한다」 — what neither has is the bundled Chinese
+    // face's, as it is in the engine, not the machine's.
+    expect(AppTypography.fallbackFor(AppLanguage.ja), [
+      'Nanum Gothic',
+      'Noto Sans SC',
+    ]);
+    expect(
+      AppTypography.fallbackFor(AppLanguage.ko),
+      AppTypography.fallbackFor(AppLanguage.ja),
+      reason: 'every UI but the Chinese one, in one order',
+    );
     expect(
       AppTypography.familyFor(AppLanguage.ko),
       'BIZ UDPGothic',
@@ -139,18 +150,23 @@ void main() {
     // 간체 글꼴이 그린다. ↩️I-4-Q10 은 중국어를 OS 에 맡겼다 — BIZ 에 앱의
     // 중국어 한자가 다 없어서 한 문장 안에서 두 얼굴로 섞였기 때문이다.
     expect(AppTypography.familyFor(AppLanguage.zhHans), 'Noto Sans SC');
+    // Behind it the bundled two, in their order — it is the last of the
+    // others' itself (Q21).
     expect(AppTypography.fallbackFor(AppLanguage.zhHans), [
       AppTypography.familyFor(AppLanguage.ja),
-      ...AppTypography.fallbackFor(AppLanguage.ja),
+      ...AppTypography.bundledFallback,
     ]);
-    // Its one file is declared UNDER its family, as the others' are.
+    // Its files are declared UNDER its family, as the others' are.
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final start = pubspec.indexOf(RegExp(r'- family: Noto Sans SC\r?\n'));
     expect(start, isNot(-1));
     final next = pubspec.indexOf('- family:', start + 1);
     expect(
       pubspec.substring(start, next == -1 ? null : next),
-      contains('- asset: ${AppTypography.chineseFile}'),
+      allOf(
+        contains('- asset: ${AppTypography.chineseFiles.regular}'),
+        contains('- asset: ${AppTypography.chineseFiles.bold}'),
+      ),
     );
   });
 
@@ -171,7 +187,7 @@ void main() {
     expect(han, isNotEmpty, reason: '⛔전제: 표의 한자를 읽었다');
     final covered = TtfParser(
       ByteData.view(
-        File('assets/fonts/NotoSansSC-Variable.ttf').readAsBytesSync().buffer,
+        File(AppTypography.chineseFiles.regular).readAsBytesSync().buffer,
       ),
     ).charToGlyphIndexMap;
     expect([
@@ -206,14 +222,17 @@ void main() {
   test('🚨문서의 번들 글꼴도 같은 둘이다 — 콘티 PDF 가 박는 파일이 앱의 파일', () {
     // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」. 콘티(PDF 가
     // 이 파일을 박는다)와 텍스트 셀은 UI 언어와 무관하게 이 둘로 찍는다.
+    // 🗣️connection-round-checklist-Q21 (11-08): the UI goes on to the Chinese
+    // face behind these two. 🗣️connection-round-checklist-Q22 (11-08): 「콘티도
+    // 끝에 Noto Sans SC 를 더한다」 — the document goes on to it too.
     expect(
       AppTypography.bundledFamily,
       AppTypography.familyFor(AppLanguage.ja),
     );
-    expect(
-      AppTypography.bundledFallback,
-      AppTypography.fallbackFor(AppLanguage.ja),
-    );
+    expect(AppTypography.fallbackFor(AppLanguage.ja), [
+      ...AppTypography.bundledFallback,
+      AppTypography.familyFor(AppLanguage.zhHans),
+    ]);
     final pubspec = File('pubspec.yaml').readAsStringSync();
     for (final (family, files) in [
       (AppTypography.bundledFamily, AppTypography.bundledFiles),

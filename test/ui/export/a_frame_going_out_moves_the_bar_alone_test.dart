@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/export/png_sequence_export_service.dart'
     show ExportWriteSummary;
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/export_preview_probe.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -36,10 +38,11 @@ class _HeldVideoRun extends VideoExportService {
   @override
   Future<ExportWriteSummary> exportVideo({
     required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+    required Future<GpuShown?> Function(int index) renderFrame,
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
+    SoundBefore? soundBefore,
     ExportVideoContainer container = ExportVideoContainer.mp4,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
@@ -66,6 +69,7 @@ class _HeldVideoRun extends VideoExportService {
 /// one bar. A run that writes a frame in a few milliseconds would spend
 /// most of them on that.
 void main() {
+  opensTheEnginesScreens();
   late Directory temp;
 
   setUp(() async {
@@ -129,6 +133,8 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    await tester.settleExportPreview();
     await tester.pumpAndSettle();
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }

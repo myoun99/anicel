@@ -10,12 +10,8 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// What ONE pointer move of a transform drag costs, and what that cost
 /// follows.
@@ -26,23 +22,18 @@ import '../helpers/native_engine_path.dart';
 /// for, the ordinary transform now pays by itself. This measures what
 /// that is before anything is changed to make it smaller.
 ///
-/// Three questions, in the order that matters:
+/// Two questions, in the order that matters:
 ///
 ///   1. what does the resample cost, and does it follow the OUTPUT area?
-///   2. what else rides on the same pointer move (the premultiply)?
-///   3. how much bigger does the uniform (aspect-locked) solve make that
+///   2. how much bigger does the uniform (aspect-locked) solve make that
 ///      output than the free one, for the same hand movement?
+///
+/// ↩️A third — what else rides on the same pointer move: the premultiply
+/// for the decode — until nothing was decoded for the screen of a move
+/// (a-float-premultiplies-in-the-c-each-step).
 ///
 /// Prints; asserts only that the work happened. Run it alone.
 void main() {
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
-
   /// A stamp of [width]×[height] with mixed alpha, so neither the opaque
   /// nor the transparent early-out carries the whole run.
   BrushDab stampDab(int width, int height) {
@@ -137,14 +128,6 @@ void main() {
   }
 
   test('the resample is the pointer move, and it follows the OUTPUT area', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-
     // Three sizes: a modest selection, a 1080p-ish cel, and the whole
     // picture on the default canvas — which is what an unselected
     // transform box opens on, and so the common case rather than the
@@ -189,46 +172,7 @@ void main() {
     }
   });
 
-  test('the premultiply that rides the same pointer move', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-
-    // Every resample is followed by a premultiplied copy for the decode.
-    // It is a second full pass over the OUTPUT, so it belongs in the
-    // per-move total even though it is not the resample.
-    final native = QaNativeEngine.instance;
-    expect(native, isNotNull, reason: 'the native engine is the fast path');
-    for (final (label, width, height) in const <(String, int, int)>[
-      ('selection 512²', 512, 512),
-      ('whole picture 2340×1654', 2340, 1654),
-    ]) {
-      final rgba = stampDab(width, height).stamp!.rgba;
-      final ms = millisPer(4, () {
-        final scratch = native!.premultipliedStampCopy(rgba);
-        scratch.free();
-      });
-      debugPrint(
-        '[premultiply] $label  ${ms.toStringAsFixed(2)} ms  '
-        '(${(rgba.length / 1e6).toStringAsFixed(1)} MB)',
-      );
-      expect(ms, greaterThanOrEqualTo(0));
-    }
-  });
-
   test('what the viewport clip buys: the same drag, only the visible part', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-
     // A whole-picture transform against a 1600×1000 window — a laptop
     // canvas pane over the default 2340×1654 canvas, which is the case
     // the tool is slowest in and the case a user hits by pressing Ctrl+T
@@ -282,14 +226,6 @@ void main() {
   });
 
   test('the same drag on LINE ART, which is what the tool is for', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-
     for (final mode in ResampleMode.values) {
       for (final (label, width, height) in const <(String, int, int)>[
         ('selection 512²', 512, 512),
@@ -320,43 +256,6 @@ void main() {
         expect(artMs, greaterThan(0));
       }
     }
-  });
-
-  test('the instrument first: is the "native" number actually native?', () {
-    if (dllPath == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    // `resampleSelectionInto` falls back to the Dart reference silently
-    // when the engine is missing OR when the binding returns false, and
-    // the two produce identical bytes by contract — so nothing about the
-    // RESULT says which one ran. Only the clock does, which is exactly
-    // what a benchmark must not take on trust.
-    final dab = stampDab(1024, 1024);
-    final affine = SelectionAffine(
-      pivot: CanvasPoint(x: 512, y: 512),
-      sx: 1.25,
-      sy: 1.25,
-      rotationDegrees: 12,
-    );
-
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    final native = millisPer(3, () => transformStampDab(dab, affine));
-
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = true;
-    final dart = millisPer(3, () => transformStampDab(dab, affine));
-
-    debugPrint(
-      '[instrument] 1024² ×1.25 blend  native ${native.toStringAsFixed(1)} ms  '
-      'dart ${dart.toStringAsFixed(1)} ms  '
-      '→ ${(dart / native).toStringAsFixed(1)}× '
-      '${(dart / native) < 2 ? "(SUSPECT: the fast path may not be running)" : "(native is running)"}',
-    );
-    expect(native, greaterThan(0));
   });
 
   test('what the aspect LOCK adds: the uniform solve takes the larger axis, '

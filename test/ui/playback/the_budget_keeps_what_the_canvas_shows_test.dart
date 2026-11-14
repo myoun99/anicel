@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -15,13 +16,13 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 「허용치 = 레이어 그림 수요 순서」(playback-plays-the-screen-material,
 /// 10-09): what every screen shows is what the budget keeps — by when each
@@ -33,6 +34,7 @@ import '../../helpers/draw_on_current_frame.dart';
 /// the pictures left of the line, and gave way first, until no screen drew
 /// a row's image (②-5b-1).
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   final cut = Cut(
@@ -66,13 +68,13 @@ void main() {
           at: corner,
           size: 2,
           tipShape: BrushTipShape.square,
-          tileSize: 4,
+          tileSize: defaultCelTileSize,
         );
       }
     }
     final layers = LayerFrameImageCache(frameStore: store);
     addTearDown(layers.dispose);
-    final pictureStore = FramePictureStore<FramePictureKey>();
+    final pictureStore = aStoreOfPictures();
     addTearDown(pictureStore.dispose);
     return FramePictures(
       store: pictureStore,

@@ -442,6 +442,7 @@ void main() {
               effects: layer.effects,
               frameIndex: 2,
               blocks: null,
+              worn: null,
             ),
           ),
       ],

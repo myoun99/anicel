@@ -6,13 +6,15 @@ import 'dart:typed_data';
 /// [erodeMask4]. The caller picks the operator from the SIGN of its value
 /// — there is no mode inside these kernels.
 ///
-/// ⚠️ THE C MIRROR: `qa_fill_finish_mask` mode 1 in
-/// `packages/qa_native/src/qa_engine.c` is the fill expand's native copy
-/// ('identical to the Dart grown-copy'), held to [dilateMask4] mask for
-/// mask by `test/services/fill_gap_close_test.dart` ('C kernel == Dart
-/// reference, mask for mask') and `test/services/
-/// qa_native_engine_parity_test.dart`. Both SKIP without a built
-/// `qa_engine.dll` — build it before touching this file.
+/// ⚠️THEY ARE SPELLED ONCE MORE, OUTSIDE DART: the engine's mask kernel
+/// (`packages/gpu_engine/rust/src/kernels/mask`, WGSL) grows and shrinks
+/// the same way, and since 2026-11-12 the bucket's expand is its growth —
+/// while an area's expand (`buildRegionFillDabs`) and the selection's grow
+/// and shrink are still these. `test/native/
+/// an_area_is_finished_as_the_bucket_is_test.dart` holds [dilateMask4] to
+/// the kernel's byte for byte (board
+/// `an-areas-finish-is-a-second-spelling-of-the-floods`). ↩️The C kernel
+/// `qa_fill_finish_mask` mode 1 was that copy till then.
 
 /// Expand: grow the region by N pixels (covers anti-aliased ink edges).
 /// 4-neighbor generations — generation-exact like the fill expand: a zero

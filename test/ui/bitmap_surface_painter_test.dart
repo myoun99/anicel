@@ -18,7 +18,6 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
-import 'package:anicel/src/ui/canvas/pictured_tiles.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
@@ -148,9 +147,8 @@ void main() {
       // The painter stamps what its paint had under the view
       // ([TilePictureBudget.shown]) — the one thing the budget's walk must
       // never let go. Pinned through the real paint, not the stamp alone.
-      final pictured = PicturedTiles();
-      final cache = BitmapTileImageCache(pictured: pictured);
-      final budget = TilePictureBudget(cache: cache, pictured: pictured);
+      final cache = BitmapTileImageCache();
+      final budget = TilePictureBudget(cache: cache);
       final surface = grid();
       final baseline = BitmapTileImageCache.liveImageBytes;
       for (final entry in surface.tiles.entries) {

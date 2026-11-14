@@ -367,8 +367,14 @@ class ConformHeader {
 /// (2026-10-16, board mac-reads-no-movie-pcm): Media Foundation read 8-bit
 /// sound up to 1/128 off that and 32-bit integers a last bit off, and
 /// Android's path takes what MediaCodec hands back as 16 bits unless it is
-/// float (`qa_os_take_output`).
-const int conformDecodeRecipe = 3;
+/// float (`qa_os_take_output`). 4 = the engine's decoder is the Rust one,
+/// its bundled decoders symphonia's (native-to-rust-Q4; the connection
+/// round, connection-round-checklist H, 2026-11-08): an MP3 and an ogg
+/// computed within a decoder's rounding of dr_mp3's and stb_vorbis's, a
+/// movie's AAC-LC and ALAC read by the bundled decoder where the OS stack
+/// read them. A WAV's, a FLAC's, an AIFF's and a movie's uncompressed sound
+/// are the samples they were, to the bit (the ledger's `audio/*` rows).
+const int conformDecodeRecipe = 4;
 
 /// Whether [head] starts with the conform magic — the cheap half of「is this
 /// file ours」, and all the cache collector needs before it counts or deletes
@@ -426,7 +432,9 @@ Uint8List encodeConform({
 ///
 /// 🚨**32768, not 32767** — the industry convention, and what dr_wav uses (it
 /// multiplies by the literal 0.000030517578125f). Matching it is not
-/// cosmetic: every OTHER format arrives through dr_libs, so a conform read
+/// cosmetic: every OTHER format arrives through the engine's decoders, whose
+/// whole-number conversions are dr_wav's (native/audio `convert.rs`; ↩️dr_libs
+/// itself until the connection round), so a conform read
 /// with a different scale than an imported WAV would put the same audio at
 /// two different levels depending on which path it took. It also makes a
 /// unity-gain clip round trip BIT-EXACTLY through the whole chain: raw ÷

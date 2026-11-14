@@ -176,12 +176,13 @@ extension RailGlyphFinders on CommonFinders {
 }
 
 /// What [widget] says as its tooltip, if it is one of the boxes that summon
-/// the window (`find.tooltipSaying`).
+/// the window (`find.tooltipSaying`) — and an empty one says none, as it
+/// summons none ([RailPlateButton.tooltip]).
 String? tooltipOf(Widget widget) => switch (widget) {
   RailGlyphButton(:final tooltip) ||
   RailPlateButton(:final tooltip) ||
-  IconButtonPressFace(:final tooltip) => tooltip,
-  AppTooltip(message: final tooltip) => tooltip,
+  IconButtonPressFace(:final tooltip) ||
+  AppTooltip(message: final tooltip) when tooltip.isNotEmpty => tooltip,
   _ => null,
 };
 

@@ -80,7 +80,7 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
     // observed at all: `decodeStraightRgbaImage` was a callback the SDK
     // simply never invoked on failure.
     final image = await decodedImageStillWanted(
-      decodeStraightRgbaImage(
+      decodeStraightRgbaImageOnAWorker(
         rgba: piece.image.rgba,
         width: piece.image.width,
         height: piece.image.height,

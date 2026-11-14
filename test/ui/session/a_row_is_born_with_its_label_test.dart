@@ -38,7 +38,7 @@ void main() {
 
   for (final (kind, process) in [
     (LayerKind.storyboard, LayerProcess.conte),
-    (LayerKind.image, LayerProcess.art),
+    (LayerKind.image, LayerProcess.layout),
     (LayerKind.animation, LayerProcess.layout),
   ]) {
     test('F-76: a ${kind.name} row made from the add button is born '

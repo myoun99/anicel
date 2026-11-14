@@ -1,4 +1,3 @@
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -16,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/conte_track_fixture.dart';
+import '../../helpers/fx_plugin_file.dart';
 import '../../helpers/home_page_probes.dart';
 
 /// 🗣️I-132-Q28 a 「Fx 목록에 그 fx 가 회색으로 남고」 on the conte panel as
@@ -23,15 +23,7 @@ import '../../helpers/home_page_probes.dart';
 /// greys the header of an effect of a plugin this device has not, from the
 /// app's one list.
 void main() {
-  final glow = FxPluginDescription.fromJson({
-    'spec': 1,
-    'id': 'com.example.glow',
-    'name': 'Glow',
-    'vendor': 'Example',
-    'version': '1',
-    'can': ['cpu'],
-    'params': <Object?>[],
-  })!;
+  final glow = fxPluginDescriptionOf('com.example.glow', name: 'Glow');
   LayerEffect glowing(String id) => LayerEffect.defaults(
     id: EffectId(id),
     kind: EffectKind.plugin,

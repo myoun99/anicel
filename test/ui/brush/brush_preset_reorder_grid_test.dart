@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/icon_button_box.dart' show FaceGround;
 import 'package:anicel/src/ui/widgets/owning_draggable.dart';
 
 /// 🚨유저 확정 (`brush-grid-reorder-Q1`, 답 1): 「2열에서도 드래그 재정렬을
@@ -330,6 +332,47 @@ void main() {
       // whether the cells could be dragged or not.
       expect(find.byType(OwningDraggable<int>), findsNothing);
       expect(find.text('3'), findsOneWidget);
+    });
+
+    testWidgets('a carried cell stands on no one colour — whatever the '
+        'pointer passes (a-live-dock-frame-costs-a-whole-draw-Q12)', (
+      tester,
+    ) async {
+      final grounds = <Color?>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 260,
+              height: 400,
+              child: BrushPresetReorderGrid(
+                itemCount: 4,
+                cellHeight: brushPresetRowHeight,
+                itemKey: (index) => ValueKey<String>('cell-$index'),
+                onReorder: (_, _) {},
+                itemBuilder: (context, index) => Builder(
+                  builder: (context) {
+                    grounds.add(FaceGround.of(context));
+                    return Text('$index');
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(grounds, isNotEmpty);
+      expect(grounds, everyElement(AppColors.surface), reason: 'in the grid');
+
+      grounds.clear();
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
+      );
+      await gesture.moveBy(const Offset(0, brushPresetRowHeight + 6));
+      await tester.pump();
+      expect(grounds, contains(isNull), reason: 'carried');
+      await gesture.up();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('the rail is told when a drag starts and ends', (tester) async {

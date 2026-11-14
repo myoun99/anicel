@@ -421,10 +421,6 @@ void main() {
   testWidgets('🚨F-371: the JPG stands on the paper too — its colour, and '
       'white where the paper is absent or thin, as a file with no alpha '
       'can only show it', (tester) async {
-    if (QaImageEncoder.instance == null) {
-      markTestSkipped('no native JPG encoder in this run');
-      return;
-    }
     final strip = await pumpApp(tester);
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
@@ -458,10 +454,6 @@ void main() {
   testWidgets('JPG writes a JPEG of the same frame at the canvas\'s size', (
     tester,
   ) async {
-    if (QaImageEncoder.instance == null) {
-      markTestSkipped('no native JPG encoder in this run');
-      return;
-    }
     final strip = await pumpApp(tester);
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
@@ -502,8 +494,8 @@ void main() {
 
   testWidgets('⛔a picture with no bytes to write fails — the window goes, '
       'and a notice says why', (tester) async {
-    QaImageEncoder.debugForceAbsent = true;
-    addTearDown(() => QaImageEncoder.debugForceAbsent = false);
+    QaImageEncoder.debugForceRefusal = true;
+    addTearDown(() => QaImageEncoder.debugForceRefusal = false);
     final target = '${folder.path}${Platform.pathSeparator}frame.jpg';
     FolderPicker.debugSaveDestinationPicker = ({
       required String suggestedName,
@@ -513,8 +505,7 @@ void main() {
     final session = strip.projects.active;
     final said = find.text(AppText.strings.exNothingInFrame);
 
-    // What the row runs — the row itself is dim here, as the test below
-    // pins: this is the answer for the day an encoder fails after all.
+    // What the row runs, when the encoder refuses the picture.
     unawaited(
       saveFrameAsImage(
         tester.element(find.byType(EditorTopStrip)),
@@ -544,24 +535,6 @@ void main() {
     ) => strip
         .menuRows(tester.element(find.byType(EditorTopStrip)))
         .singleWhere((row) => row.shortcuts.contains(action));
-
-    testWidgets('without a JPG encoder, JPG — and every other picture stays '
-        'live', (tester) async {
-      QaImageEncoder.debugForceAbsent = true;
-      addTearDown(() => QaImageEncoder.debugForceAbsent = false);
-      final strip = await pumpApp(tester);
-
-      expect(rowOf(strip, tester, 'file-save-as-jpg').enabled, isFalse);
-      for (final action in [
-        'file-save-as-png',
-        'file-save-as-bmp',
-        'file-save-as-tga',
-        'file-save-as-tiff',
-        'file-save-as-webp',
-      ]) {
-        expect(rowOf(strip, tester, action).enabled, isTrue, reason: action);
-      }
-    });
 
     testWidgets('off a cut, every picture — as Export is — and the project '
         'is still saved as', (tester) async {

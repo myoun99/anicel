@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, AppShapes;
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
@@ -233,6 +233,18 @@ void main() {
     expect(_row('preset-marker'), findsOneWidget);
     expect(_row('preset-sampled'), findsOneWidget);
     expect(find.byType(BrushTipPreview), findsNWidgets(3));
+    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2): a
+    // preset's tip stands in a well in a still region — cut by the well's
+    // corners, never clipped to them.
+    expect(
+      [
+        for (final tip in tester.widgetList<BrushTipPreview>(
+          find.byType(BrushTipPreview),
+        ))
+          tip.well,
+      ],
+      everyElement(AppShapes.container(AppShapes.wellRadius)),
+    );
     expect(find.byType(BrushStrokePreview), findsNWidgets(3));
     expect(find.text('Marker'), findsOneWidget);
     expect(tester.takeException(), isNull);

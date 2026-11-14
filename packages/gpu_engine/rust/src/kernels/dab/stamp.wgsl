@@ -42,6 +42,9 @@ struct Stamp {
   // 1: a pixel the mask covers at all is covered whole (the app's
   // `takeWholePixels` — the erase the twin of the lift's gather).
   whole: u32,
+  // The word of `given` the box's first pixel is: a picture a wall cut
+  // reads on from where what it left begins.
+  origin: u32,
 }
 
 @group(0) @binding(0) var<uniform> stamp: Stamp;
@@ -99,7 +102,7 @@ fn stamp_picture(@builtin(global_invocation_id) id: vec3<u32>) {
   let y = u32(at.y - stamp.top);
   var word = 0u;
   if (x < stamp.width && y < stamp.height) {
-    word = given[y * stamp.stride + x];
+    word = given[stamp.origin + y * stamp.stride + x];
   }
   stamp_put(id, word);
 }

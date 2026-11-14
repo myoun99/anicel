@@ -3,8 +3,14 @@ name = "fx_plugin"
 version = "0.0.1"
 edition = "2024"
 publish = false
+# The examples are the plugins the tests open, listed below; invert.rs is
+# one they share, not one of them.
+autoexamples = false
 
 [dependencies]
+# The spec: the frame's types and places and the names a plugin exports —
+# the crate the SDK hands a maker, so the host and every plugin read one.
+anicel-fx = { path = "../../../../../sdk/fx/anicel-fx" }
 libloading = "0.8"
 wasmtime = { version = "=48.0.8", default-features = false, features = [
   "runtime",
@@ -14,6 +20,38 @@ wasmtime = { version = "=48.0.8", default-features = false, features = [
 ] }
 wasmtime-wasi = { version = "=48.0.8", default-features = false, features = ["p1"] }
 
+# The app's ledger (native/ledger), which keeps the SDK example's answers
+# the C host gave before it was deleted.
 [dev-dependencies]
-oracle = { path = "../oracle" }
+ledger = { path = "../ledger" }
 wat = "=1.254.2"
+
+# The plugins the tests open (src/tests.rs), each built against the spec
+# crate as a maker builds one: `cargo test` makes them before it runs a
+# test — given `--lib` or a test's name it makes none, and the tests refuse
+# a build older than its sources or another checkout's (src/tests.rs,
+# `sample`). The sample, two builds of it a host must refuse, and the SDK's
+# example from its own source.
+#
+# Examples rather than a dev-dependency crate, native/pen's wintab_fake's
+# form (2026-11-07): the SDK's example as a crate of its own could not read
+# QA_CHECKOUT — it is the maker's source, kept as a maker writes it — and
+# its library, which lands in deps/ under no hash, would stay as another
+# checkout last built it while this checkout's build of it counts as
+# fresh. An example here reads that source and the checkout both. And
+# the sample is three builds at once, which one crate's features are not.
+[[example]]
+name = "qa_fx_plugin_sample"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "qa_fx_plugin_sample_spec2"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "qa_fx_plugin_sample_no_render"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "qa_fx_sdk_example"
+crate-type = ["cdylib"]

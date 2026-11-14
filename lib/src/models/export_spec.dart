@@ -370,10 +370,11 @@ class CelsExportSpec extends ExportTabSpec {
     this.videoAudio = true,
   });
 
-  /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
+  /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」 — 미술 is the
+  /// image kind since F-578-Q4.
   static const Set<ExportCelKind> defaultKinds = {
     ExportCelKind.cel,
-    ExportCelKind.art,
+    ExportCelKind.image,
     ExportCelKind.timesheet,
   };
 
@@ -390,11 +391,12 @@ class CelsExportSpec extends ExportTabSpec {
 
   /// The ONE colour label an export is about — process × revise picked as a
   /// single item (「원화 작감」, 「LO 上がり」…; 유저: 「색라벨은 하나야. 공정이랑
-  /// 수정 나누지않고」). A CEL row exports only when its own mark wears this
-  /// label; the take component of this value is not consulted — [take] is.
+  /// 수정 나누지않고」). A cel or an image row exports only when its own mark
+  /// wears this label (F-578); the take component of this value is not
+  /// consulted — [take] is.
   ///
-  /// The other kinds do not answer to it: an art row is art whatever the
-  /// label, and a conte or a direction row is its kind by being that row.
+  /// The other kinds do not answer to it: a conte or a direction row is its
+  /// kind by being that row. ↩️An art row was art whatever the label (F-289).
   final LayerMark label;
 
   /// The take a row must wear, or null for 「최신」: among rows sharing a
@@ -817,14 +819,14 @@ class AeScriptExportSpec extends ExportTabSpec {
   static const Set<ExportCelKind> rowKinds = {
     ExportCelKind.cel,
     ExportCelKind.conte,
-    ExportCelKind.art,
+    ExportCelKind.image,
     ExportCelKind.direction,
   };
 
-  /// The cels and the art, and the directions over them as guides: what a
+  /// The cels and the images, and the directions over them as guides: what a
   /// comp is made of.
   static const CelsExportSpec defaultCels = CelsExportSpec(
-    kinds: {ExportCelKind.cel, ExportCelKind.art, ExportCelKind.direction},
+    kinds: {ExportCelKind.cel, ExportCelKind.image, ExportCelKind.direction},
   );
 
   /// How the tab picks its cels — a Cels spec's picking, the rest left at

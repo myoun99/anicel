@@ -44,7 +44,7 @@ import '../../helpers/wait_window.dart' show waitOutTheWaitWindow;
 void main() {
   /// A picture at the CUT's canvas size — the store answers only that shape.
   BitmapSurface ink(CanvasSize canvasSize) {
-    const tile = 256;
+    const tile = defaultCelTileSize;
     final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, 255);
     return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
       (

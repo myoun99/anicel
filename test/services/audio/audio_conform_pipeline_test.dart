@@ -6,7 +6,6 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_decode_stream.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -17,6 +16,7 @@ import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart'
     show mediaFramedOrPlainPaths;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/audio_resampler_reference.dart';
 import '../../helpers/conform_file_path.dart';
 import '../../helpers/memory_decode_stream.dart';
 import '../../helpers/project_scratch_folder.dart';

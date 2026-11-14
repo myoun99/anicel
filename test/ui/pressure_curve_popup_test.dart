@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/widgets/anchored_popup.dart';
+import 'package:anicel/src/ui/widgets/icon_button_box.dart' show FaceGround;
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 
 import '../helpers/text_finders.dart';
@@ -49,6 +50,81 @@ void main() {
 
   final graph = find.byKey(const ValueKey<String>('pressure-curve-graph-pressure'));
 
+  /// [curve]'s button stood on [ground] — the ground its face is told of
+  /// ([FaceGround]) and the box under it — as captured: RGBA, row by row.
+  Future<({Uint8List bytes, int width, int height})> capture(
+    WidgetTester tester,
+    BrushPressureCurve? curve,
+    Color ground,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: RepaintBoundary(
+              key: const ValueKey<String>('mini-curve-capture'),
+              child: ColoredBox(
+                color: ground,
+                child: FaceGround(
+                  ground: ground,
+                  child: PressureCurveButton(
+                    keyValue: 'test-pressure-button',
+                    target: BrushPressureTarget.size,
+                    curves: {BrushInputSource.pressure: curve},
+                    onChanged: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('mini-curve-capture')),
+    );
+    final image = boundary.toImageSync();
+    late Uint8List bytes;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = data!.buffer.asUint8List();
+    });
+    final shot = (bytes: bytes, width: image.width, height: image.height);
+    image.dispose();
+    return shot;
+  }
+
+  /// How strongly [curve]'s button paints each pixel, 0 to 1, row by row:
+  /// its alpha over whatever it stands on, read back from the button stood
+  /// on black and on white — over black a pixel is `a·c`, over white
+  /// `a·c + (1 − a)·255`, so `a = 1 − (white − black) / 255`.
+  ///
+  /// ↩️R4 #9 and R6 #2 read the alpha of ONE capture on nothing until
+  /// 2026-11-08. A face with an edge paints the ground it stands on inside
+  /// that edge since a-live-dock-frame-costs-a-whole-draw-Q12 (유저 답 2), so
+  /// that capture went opaque wherever the button is and said nothing about
+  /// the mark. 🔬On the app's own brush panel the OFF button's pixels did not
+  /// move with that change — the edge 10% white, the X 30%, the inside the
+  /// panel's own colour, only the edge's antialiasing apart (9/255 at worst).
+  /// Its ground is painted, and painted as the ground, so it reads as none.
+  Future<List<List<double>>> inkOf(
+    WidgetTester tester,
+    BrushPressureCurve? curve,
+  ) async {
+    final black = await capture(tester, curve, const Color(0xFF000000));
+    final white = await capture(tester, curve, const Color(0xFFFFFFFF));
+    double alphaAt(int pixel) => [
+      for (var c = 0; c < 3; c += 1)
+        1 - (white.bytes[pixel * 4 + c] - black.bytes[pixel * 4 + c]) / 255,
+    ].reduce((a, b) => a > b ? a : b);
+    return [
+      for (var y = 0; y < black.height; y += 1)
+        [for (var x = 0; x < black.width; x += 1) alphaAt(y * black.width + x)],
+    ];
+  }
+
+
   testWidgets('유저 R4 #9: pressure OFF wears an X, not a flat graph pinned '
       'to the top of the box', (tester) async {
     // 그게 아니라 해당 버튼에 그래프 말고 x 이렇게 둬서 필압 적용 안 되어
@@ -69,51 +145,19 @@ void main() {
     // went red the moment the edge colour moved — the test was reading the
     // button, not the drawing inside it.
     Future<List<double>> inkRows(BrushPressureCurve? curve) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: RepaintBoundary(
-                key: const ValueKey<String>('mini-curve-capture'),
-                child: PressureCurveButton(
-                  keyValue: 'test-pressure-button',
-                  target: BrushPressureTarget.size,
-                  curves: {BrushInputSource.pressure: curve},
-                  onChanged: (_) {},
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final boundary = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(const ValueKey<String>('mini-curve-capture')),
-      );
-      final image = boundary.toImageSync();
-      late Uint8List bytes;
-      await tester.runAsync(() async {
-        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
-        bytes = data!.buffer.asUint8List();
-      });
-      final width = image.width;
-      final height = image.height;
-      image.dispose();
+      final ink = await inkOf(tester, curve);
       // Two logical pixels in from every edge: the 1px border and its
       // antialiasing, gone. The X's corners sit 7 logical px in (a 3px
       // border+padding inset, then the painter's own 3px), so nothing the
       // test is actually about is cropped with it.
       final inset = (2 * tester.view.devicePixelRatio).round();
-      // How much non-background ink each row carries, top row first.
-      final rows = <double>[];
-      for (var y = inset; y < height - inset; y += 1) {
-        var ink = 0.0;
-        for (var x = inset; x < width - inset; x += 1) {
-          ink += bytes[(y * width + x) * 4 + 3] / 255.0;
-        }
-        rows.add(ink);
-      }
-      return rows;
+      // How much ink each row carries, top row first.
+      return [
+        for (final row in ink.sublist(inset, ink.length - inset))
+          row
+              .sublist(inset, row.length - inset)
+              .fold(0.0, (sum, pixel) => sum + pixel),
+      ];
     }
 
     final off = await inkRows(null);
@@ -151,52 +195,18 @@ void main() {
     // a particular grey: nothing in the OFF state may reach full opacity.
     // Put any opaque colour back on either the painter or the border and
     // this goes red.
-    Future<int> peakAlpha(BrushPressureCurve? curve) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: RepaintBoundary(
-                key: const ValueKey<String>('mini-curve-capture'),
-                child: PressureCurveButton(
-                  keyValue: 'test-pressure-button',
-                  target: BrushPressureTarget.size,
-                  curves: {BrushInputSource.pressure: curve},
-                  onChanged: (_) {},
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final boundary = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(const ValueKey<String>('mini-curve-capture')),
-      );
-      final image = boundary.toImageSync();
-      late Uint8List bytes;
-      await tester.runAsync(() async {
-        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
-        bytes = data!.buffer.asUint8List();
-      });
-      image.dispose();
-      var peak = 0;
-      for (var i = 3; i < bytes.length; i += 4) {
-        if (bytes[i] > peak) {
-          peak = bytes[i];
-        }
-      }
-      return peak;
-    }
+    Future<double> peakAlpha(BrushPressureCurve? curve) async => [
+      for (final row in await inkOf(tester, curve)) ...row,
+    ].reduce((a, b) => a > b ? a : b);
 
     expect(
       await peakAlpha(null),
-      lessThan(150),
+      lessThan(150 / 255),
       reason: 'OFF is a whisper: the X is white at ~30%, the edge at ~10%',
     );
     expect(
       await peakAlpha(BrushPressureCurve.identity()),
-      greaterThan(200),
+      greaterThan(200 / 255),
       reason:
           'and ON is not — the accent still lands solidly, so this is a '
           'statement about the OFF state and not about the whole button',

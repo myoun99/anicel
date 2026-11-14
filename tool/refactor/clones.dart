@@ -1,5 +1,5 @@
 // Lists clone candidates across lib/ — the audit's Round 1 work list.
-//   dart run tool/refactor/clones.dart [--min 40] [--top 60] [--same-body]
+//   dart tool/refactor/clones.dart [--min 40] [--top 60] [--same-body]
 // See clone_scan.dart for what a candidate is (and is not).
 import 'dart:io';
 

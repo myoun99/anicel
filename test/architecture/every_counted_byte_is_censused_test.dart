@@ -188,20 +188,13 @@ const _notCensused = <String, String>{
   // — Budgets, not holdings. A ceiling is not memory in use.
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':
       'a CEILING. What is actually held is counted by the playback cache — '
-      'the layer images — which the census already reads',
-  'lib/src/ui/session/playback_cache_budget.dart → lendableBytes':
-      'a CEILING — how much an export run may hold on playback\'s line; '
-      'what it holds is lentBytes, which the census reads',
+      'the frames\' pictures — which the census already reads',
 
   // — A PART of a holding the census reads whole.
   'lib/src/ui/canvas/tile_pages.dart → bytes':
       'one TilePages\' own pages — a part of liveBytes, which the census '
       'reads whole through liveImageBytes (`tileImages`); a test weighs its '
       'own pages by it, where another test\'s tiles may die meanwhile',
-  'lib/src/ui/canvas/subtree_image_composite.dart → heldBelowBytes':
-      'the rasters held below a pen — a part of heldBytes, which the '
-      'census reads (`framePictures`); the line weighs the nodes over the '
-      'pen by it',
 
   // — On DISK, not in RAM. The census is a RAM readout.
   'lib/src/services/brush_frame_store.dart → coldBakedBytes':
@@ -211,11 +204,6 @@ const _notCensused = <String, String>{
 
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
-  'lib/src/native/native_upload_cache.dart → residentBytes':
-      'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
-      'mask alphas) and sums them; ALSO ledgered because the bare name is '
-      'shared with BrushTipStampCache, so a name match would pass this '
-      'entry for the wrong reason',
   'lib/src/ui/storyboard_cut_thumbnail_store.dart → thumbnailBytes':
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
@@ -234,11 +222,6 @@ const _notCensused = <String, String>{
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
-  'lib/src/native/qa_blur_kernel.dart → debugScratchBytes':
-      'via:liveBytes — the blur\'s scratch is a NativeScratch, which '
-      'NativeScratch.liveBytes already sums with every other (the census\'s '
-      'engineScratch row); this one is the test\'s pin that a stroke\'s end '
-      'lets it go',
 };
 
 /// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,
@@ -248,13 +231,19 @@ const _notCensused = <String, String>{
 /// onto it, card every-bounded-cache-is-one-lru — and on again 10-30, to
 /// the viewer's holding; the held subtree rasters keep one) and
 /// `BakeOnceLru` (the
-/// baked words', the brush list's strokes — 2026-10-17). Record keys
+/// baked words', the brush list's strokes — 2026-10-17), and an export
+/// run's `HeldPictures` (2026-11-12: made generic for the frames the
+/// export holds on the engine, its two maps fell out of the census — the
+/// field that names what it holds is the holder), and a cache kept on the
+/// app's engine (`KeptOnTheAppsEngine` — 2026-11-12: those frames went
+/// into one, to be made again on the next engine, and fell out the same
+/// way). Record keys
 /// are allowed — `Map<(A, B), ui.Image>` is still a holder.
 /// Crude on purpose, like [_counter]: a holder that hides from this also
 /// hides from the reader looking for one.
 const _keepers =
     '(?:LinkedHash|Hash|SplayTree)?(?:Map|Set)|List|(?:List)?Queue|Expando'
-    '|(?:BakeOnce)?Lru';
+    '|(?:BakeOnce)?Lru|HeldPictures|KeptOnTheAppsEngine';
 
 /// The fields of [source] that keep pictures — [pictures] being what a
 /// type names to be one ([_pictureTypesBy]) — typed
@@ -291,7 +280,9 @@ Iterable<String> _imageKeepersIn(String source, String pictures) sync* {
 }
 
 /// For each file, what a field's type names when it keeps a picture:
-/// `ui.Image`, and every type whose values wrap one — a class or mixin with
+/// `ui.Image`, a frame held on the engine (`GpuShown` — 2026-11-12: an
+/// export's pictures moved there, the holding they were), and every type
+/// whose values wrap one — a class or mixin with
 /// a field of it, or a record typedef with one, and so on up the chain
 /// (`BrushStrokeSample`, the timeline's `_TileEntry`, the move's `_Float`
 /// around its warp preview). A public name is the app's; a private one is
@@ -310,6 +301,7 @@ Map<String, String> _pictureTypesBy(Map<String, String> sources) {
   };
   String picturesIn(String relative) => [
     r'ui\.Image',
+    'GpuShown',
     for (final name in namedIn(relative)) RegExp.escape(name),
   ].join('|');
   var grew = true;
@@ -333,19 +325,20 @@ Map<String, String> _pictureTypesBy(Map<String, String> sources) {
 }
 
 /// The types of [source] whose values wrap one of [pictures]: a class or
-/// mixin with a field of it — or of the pieces of one (2026-10-21: a
-/// picture past the side is held in pieces, `List<ImagePiece>`, and the
-/// stored picture and the compose, each one image the day before, fell out
-/// of the chain with every holder above them) — or an abstract getter of
-/// one, whose kinds each keep it their own way (2026-10-29: a tile's slot
-/// came to read its page's picture on the getter, and the tile cache fell
-/// out with `TilePicture`) — a record typedef with one.
-/// ⛔Only pieces: a list of any picture is a holding, and a holder of
-/// holdings no picture of its own (widened so, the home page's sessions
-/// came up).
+/// mixin with a field of it — or an abstract getter of one, whose kinds
+/// each keep it their own way (2026-10-29: a tile's slot came to read its
+/// page's picture on the getter, and the tile cache fell out with
+/// `TilePicture`) — a record typedef with one.
+/// ⛔A list of any picture is a holding, and a holder of holdings no
+/// picture of its own (widened so, the home page's sessions came up).
+/// ↩️A field of the pieces of one counted too (2026-10-21: a picture past
+/// the side was held in pieces, `List<ImagePiece>`, and the stored picture
+/// and the compose fell out of the chain with every holder above them),
+/// till the pieces went with the Flutter chain
+/// (the-flutter-fx-chain-is-a-second-chain).
 Iterable<String> _wrappersIn(String source, String pictures) sync* {
   final field = RegExp(
-    '^  (?:late )?(?:final )?(?:$pictures|List<ImagePiece>)'
+    '^  (?:late )?(?:final )?(?:$pictures)'
     r'\??\s+\w+\s*[;=]',
     multiLine: true,
   );
@@ -413,8 +406,6 @@ const _imageHolders = <String, String>{
       'a cut block borrows one picture per cell from the storyboard '
       'thumbnail store, which owns and counts them (thumbnailBytes); the '
       'block only carries them into a paint',
-  'lib/src/ui/canvas/subtree_image_composite.dart → _held':
-      'counted:heldBytes',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _pictures':
       'counted:liveImageBytes',
   'lib/src/ui/canvas/tile_pages.dart → _open': 'counted:liveBytes',
@@ -422,9 +413,12 @@ const _imageHolders = <String, String>{
       'one export render\'s media images (SheetImageRun), read for that '
       'render and let go when it ends — the working set of a render, as '
       'the ink rasters and cell pictures composed beside it are',
-  'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
+  'lib/src/ui/canvas/active_stroke_overlay.dart → _shown':
       'the tiles of the stroke in progress, each freed as it settles into '
       'the surface',
+  'lib/src/ui/canvas/active_stroke_overlay.dart → _staged':
+      'a dragged shape\'s stroke pictured before it is shown (I-69-Q4ⓒ), '
+      'shown in place of the stroke or dropped in the same drag',
   'lib/src/ui/canvas/deferred_image_disposal.dart → _buckets':
       'images already let go, kept only for the frames the raster thread '
       'may still read; a disposal queue, not a holding',
@@ -435,11 +429,14 @@ const _imageHolders = <String, String>{
   'lib/src/ui/text/word_bake.dart → _images': 'counted:imageBytes',
   'lib/src/ui/brush/brush_stroke_preview_cache.dart → _store':
       'counted:sampleBytes',
-  'lib/src/ui/timeline/timeline_grid_tile_store.dart → _entries':
-      'counted:tileImageBytes',
+  // ↩️The timeline's tiles were the third (`timeline_grid_tile_store.dart`,
+  // `_entries` and its index `_keptByRow`): they keep the GPU engine's
+  // pictures since grid-on-the-engine ⑤, no `ui.Image`, and are still
+  // weighed by `tileImageBytes`, which the test above holds to the census.
+  // ↩️A frame's pictures were the fourth (`frame_picture_store.dart`,
+  // `_entries` and `waiting`): the engine keeps them since flip ⓑ, no
+  // `ui.Image`, and they are still weighed by `estimatedBytes`.
   // … holdings counted all along, by a counter of their own file …
-  'lib/src/ui/playback/frame_picture_store.dart → _entries':
-      'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
   'lib/src/ui/widgets/still_raster.dart → _owed':
       'the regions owed an image, which hold none while they wait: what a '
@@ -451,58 +448,35 @@ const _imageHolders = <String, String>{
       'held reports its total (_report) to where the census reads it '
       '(viewerRasterBytes, storyboardThumbnailBytes, sheetImageBytes) — '
       '↩️until 10-30 three fields, each its own holding',
-  'lib/src/ui/export/held_rows.dart → _rows':
-      'an export run\'s row pictures: every change in what they hold is '
-      'told to playback\'s line (onHeld, PlaybackCacheBudget.lend), which '
-      'the census reads (lentBytes)',
-  'lib/src/ui/export/held_rows.dart → _inUse':
-      'the held rows ONE picture is made of — of _rows, not a holding '
-      'beside them',
   // … and what one draw, one edit or one render holds while it lasts.
-  'lib/src/ui/export/held_rows.dart → _passing':
-      'the rows composed for one picture alone, let go once it is made '
-      '(during) — the working set of a render',
-  'lib/src/ui/canvas/subtree_image_composite.dart → _images':
-      'what one effect chain\'s picture draws while it is laid (_Laying), '
-      'let go once that picture is recorded — the working set of a chain',
-  'lib/src/ui/export/held_pictures.dart → _thisFrame':
-      'an export run\'s pictures — a cut\'s whole picture, the finished '
-      'frame — for the frame being drawn, held one frame more and let go '
-      'after (nextFrame), every one when the run ends (dispose): the '
-      'working set of a render, as the sheets\' _pictures are',
-  'lib/src/ui/export/held_pictures.dart → _frameBefore':
-      'the same pictures one frame on: what the frame before was made of',
+  'lib/src/ui/export/export_frame_renderer.dart → _pictures':
+      'an export run\'s pictures, made on the engine — a cut\'s whole '
+      'picture, the finished frame — for the frame being drawn, held one '
+      'frame more and let go after (HeldPictures.nextFrame), every one when '
+      'the run ends (dispose), and left with the engine they were made on '
+      'once the app lets it go (KeptOnTheAppsEngine): the working set of a '
+      'render, as the sheets\' _pictures are',
+  'lib/src/ui/export/export_frame_renderer.dart → _drawn':
+      'what the app draws over those frames — a stage\'s apron, a cut\'s '
+      'names, its veils — rastered and on the engine, held as they are',
+  'lib/src/ui/export/export_frame_renderer.dart → _handedOut':
+      'each of those frames read back once as the picture a sink or a '
+      'preview takes, held as the frame it is of',
   'lib/src/ui/export/export_frame_renderer.dart → all':
       'one camera frame\'s track stack, laying pictures the run\'s '
       'HeldPictures holds — a frame described, not a holding',
+  'lib/src/ui/export/frames_of_pictures.dart → _held':
+      'the one page a run of files draws for itself — a sheet\'s, an '
+      'envelope, a conte\'s — laid on an engine frame for its writer, let '
+      'go when the next is asked or the run ends (dispose), and left with '
+      'the engine it was made on once the app lets it go '
+      '(KeptOnTheAppsEngine): the working set of a write',
   'lib/src/ui/canvas/canvas_selection_layer.dart → floats':
       'the open move\'s floats, one a cel it lifted: what each keeps of '
-      'pictures is its warp preview — the last resample decoded for the '
-      'screen, one at a time (FloatResamplePreview) — while the box is open',
+      'pictures is its warp preview — the newest resample, pictured only '
+      'where a canvas that draws pictures asks (FloatResamplePreview) — '
+      'while the box is open',
   'lib/src/ui/canvas/selection_float_overlay.dart → floats':
       'a paint\'s floats: each picture is a float\'s warp preview, owned by '
       'the float (canvas_selection_layer.dart → floats)',
-
-  // — 2026-10-21, a picture past the side held in pieces (card
-  // a-cel-past-the-device-side-composes-smaller): ONE picture, as many
-  // images as the side cuts it into, held and counted where its one image
-  // was.
-  'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
-      'one compose\'s picture, in pieces past the side (piecesOver): its '
-      'holder keeps and counts them as it did the one image',
-  'lib/src/ui/playback/frame_picture_store.dart → waiting':
-      'a patch\'s texels from its render to the write that takes them, a '
-      'batch at a time, let go of once written (_writeWaiting) — a write\'s '
-      'round trip, never drawn: ↩️billed with their picture while they were '
-      'drawn over it until its levels were in, up to 64 at a time (F-465, '
-      '2026-10-26)',
-
-  // — 2026-10-31, a camera lens blur's table kept for its next gather.
-  'lib/src/ui/canvas/iris_blur_shader.dart → _kept': 'counted:tableBytes',
-
-  // — 2026-10-31, a plugin anywhere in a chain (I-132-Q34 a).
-  'lib/src/ui/canvas/fx_plugin_stages.dart → _stages':
-      'one recording through its plugins: each step\'s input read back and '
-      'what its plugin made, the stages made and let go of by the one call '
-      'that records (recordedThrough) — the working set of a render',
 };

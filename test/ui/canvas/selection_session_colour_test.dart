@@ -38,6 +38,7 @@ void main() {
     WidgetTester tester, {
     required bool changed,
     Offset? anchor,
+    List<int> inHand = const [],
   }) async {
     final controller = AnimationController(
       vsync: const TestVSync(),
@@ -56,6 +57,7 @@ void main() {
         handles: chrome.handles,
         anchor: anchor,
       ),
+      handlesInHand: inHand,
       sessionHasChanges: changed,
     );
     final recorder = ui.PictureRecorder();
@@ -203,6 +205,31 @@ void main() {
         lessThan(0x30),
         reason: 'changed: $changed',
       );
+    }
+  });
+
+  /// 🗣️F-586 (유저 2026-11-12): 「화면에서 조작하는건 설정쪽에서도 보여야함」 —
+  /// and the other way: the point the settings' list has in hand is told
+  /// from the rest on the canvas, by its fill alone.
+  testWidgets('the handle in hand is filled in the accent, and the rest '
+      'stay white', (tester) async {
+    // A handle's middle is its fill at full coverage: the bytes as painted.
+    int fillAt(Uint8List rgba, Offset handle) {
+      final row = handle.dy.toInt() * size.width.toInt();
+      final o = (row + handle.dx.toInt()) * 4;
+      return rgba[o + 3] << 24 | rgba[o] << 16 | rgba[o + 1] << 8 | rgba[o + 2];
+    }
+
+    const white = 0xFFFFFFFF;
+    final none = await paint(tester, changed: false);
+    final one = await paint(tester, changed: false, inHand: const [1]);
+
+    for (final handle in chrome.handles) {
+      expect(fillAt(none, handle), white, reason: 'none in hand: $handle');
+    }
+    expect(fillAt(one, chrome.handles[1]), AppColors.accent.toARGB32());
+    for (final rest in [chrome.handles[0], chrome.handles[2]]) {
+      expect(fillAt(one, rest), white, reason: 'not in hand: $rest');
     }
   });
 }

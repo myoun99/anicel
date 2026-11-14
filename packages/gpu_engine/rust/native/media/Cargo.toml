@@ -8,12 +8,29 @@ publish = false
 [dependencies]
 compress = { path = "../compress" }
 
-# Media Foundation's one start (media_foundation.rs), and the one UTF-8 →
-# UTF-16 call a path is widened by (path.rs); the crate is already in the
-# lock as wgpu-hal's major.
+# Media Foundation's one start (media_foundation.rs) and its one byte stream
+# over a span (media_foundation/span_stream.rs), and the one UTF-8 → UTF-16
+# call a path is widened by (path.rs); the crate is already in the lock as
+# wgpu-hal's major. windows-core is in the lock as its own: the stream's
+# `#[implement]` names it.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Globalization", "Win32_Media_MediaFoundation"] }
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Globalization",
+  "Win32_Media_MediaFoundation",
+] }
+windows-core = "0.62"
 
-# The C answer key: the engine's qa_media_span_* (native/oracle).
+# The one serving of a span to the NDK's MediaExtractor (served_span.rs),
+# through ndk-sys — bindings made from the NDK's own headers, never a table
+# by hand; already in the lock as cpal's.
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-sys = { version = "0.6", features = ["media"] }
+
+# The app's ledger (native/ledger), and a medium framed as the save frames
+# it (native/oracle's `framed`). ↩️And the C answer key, the engine's
+# qa_media_span_*, until the connection round deleted it
+# (connection-round-checklist H, 2026-11-08).
 [dev-dependencies]
+ledger = { path = "../ledger" }
 oracle = { path = "../oracle" }

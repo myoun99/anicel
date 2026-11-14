@@ -431,7 +431,7 @@ void main() {
               path: path,
               name: 'take',
               kind: MediaAssetKind.video,
-              carriedAs: mediaCarryNamed(path, 'c1'),
+              carriedAs: (token: mediaCarryNamed(path, 'c1'), modified: null),
             ),
           ],
         ),

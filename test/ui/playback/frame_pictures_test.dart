@@ -19,24 +19,27 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_pictures.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import 'dart:ui' as ui;
 
 /// one-picture-per-frame ②-2 (D7-2-Q3=a, 유저 10-24 「쓸데없는 소재를 만들고
 /// 싶지 않은 것」): what the warmer makes ahead of a screen is the frame the
 /// screen shows — one picture, kept under the key of the tree it stacks —
 /// and nothing else.
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
-  const tileSize = 4;
+  opensTheEnginesScreens();
+  // Two tiles across and two down, at the engine's side.
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
 
   final cut = Cut(
     id: const CutId('c'),
@@ -69,7 +72,8 @@ void main() {
     for (final cel in cels) {
       for (final corner in [
         CanvasPoint(x: 1, y: 1),
-        if (bothCorners) CanvasPoint(x: 6, y: 6),
+        if (bothCorners)
+          CanvasPoint(x: canvasSize.width - 2.0, y: canvasSize.height - 2.0),
       ]) {
         inkCelIn(
           store,
@@ -105,7 +109,7 @@ void main() {
     QuietTurns? quietTurns,
     void Function()? onWalk,
   }) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
@@ -174,33 +178,55 @@ void main() {
       final warmed = pictures.store.peek(pictures.keyOf(at(0)));
       expect(warmed, isNotNull, reason: 'LIVENESS: the warmer\'s picture');
 
-      expect(
-        await pictures.pictureOf(
-          pictures.stackOf(at(1)),
-          at(1),
+      Future<EngineFramePicture?> handed(int frame) async {
+        final picture = await pictures.pictureOf(
+          pictures.stackOf(at(frame)),
+          at(frame),
           shouldAbort: () => false,
-        ),
+        );
+        picture?.release();
+        return picture;
+      }
+
+      expect(
+        await handed(1),
         same(warmed),
         reason: 'frame 1 stacks as frame 0 does: nothing made for it',
       );
       final bytes = pictures.store.estimatedBytes;
-      final made = await pictures.pictureOf(
-        pictures.stackOf(at(2)),
-        at(2),
-        shouldAbort: () => false,
-      );
+      final made = await handed(2);
       expect(made, isNotNull);
       expect(made, same(pictures.store.peek(pictures.keyOf(at(2)))));
       expect(pictures.store.estimatedBytes, greaterThan(bytes));
       expect(
-        await pictures.pictureOf(
-          pictures.stackOf(at(3)),
-          at(3),
-          shouldAbort: () => false,
-        ),
+        await handed(3),
         same(made),
         reason: 'made once, for every panel of the frame',
       );
+    });
+  });
+
+  testWidgets('🚨a panel\'s picture is held for it: let go of by the store '
+      'on its way to the show, it stays until the panel releases it (the '
+      'store\'s 「HELD BY WHOEVER SHOWS IT」)', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      final picture = (await pictures.pictureOf(
+        pictures.stackOf(at(0)),
+        at(0),
+        shouldAbort: () => false,
+      ))!;
+      final kept = picture.bytes;
+      expect(kept, greaterThan(0), reason: 'LIVENESS: a frame is kept');
+
+      pictures.store.letGo(pictures.keyOf(at(0)));
+      expect(picture.gone, isTrue, reason: 'LIVENESS: the store let it go');
+      expect(picture.bytes, kept, reason: 'the panel still holds it');
+
+      picture.release();
+      expect(picture.bytes, 0, reason: 'freed once the panel lets go too');
     });
   });
 
@@ -218,7 +244,7 @@ void main() {
       expect(
         await pictures.store.lay(
           key.standingOn(canvas),
-          pictures.drawingNow(nodes, at(0)).frame.drawing,
+          pictures.drawingNow(nodes, at(0)).frame,
         ),
         isNotNull,
         reason: 'LIVENESS: lent to the canvas',
@@ -247,7 +273,7 @@ void main() {
         opacity: 1,
         blendMode: LayerBlendMode.normal,
       );
-      final store = FramePictureStore<FramePictureKey>();
+      final store = aStoreOfPictures();
       addTearDown(store.dispose);
       final pictures = FramePictures(
         store: store,
@@ -358,10 +384,9 @@ void main() {
 
       expect(await pictures.make(frame, shouldAbort: () => false), isTrue);
 
-      final image = pictures.store.peek(pictures.keyOf(frame))!.image;
-      final pixels = (await image.toByteData())!;
+      final picture = pictures.store.peek(pictures.keyOf(frame))!;
       expect(
-        pixels.getUint8((1 * image.width + 1) * 4 + 3),
+        pixelsOfPicture(picture, const ui.Rect.fromLTWH(1, 1, 1, 1))[3],
         0xFF,
         reason: 'its ink',
       );
@@ -405,6 +430,14 @@ void main() {
       pictures.bytesToMake(at(3));
       await pictures.readIn(at(3));
       expect(images.read, 1, reason: '⛔not read again at the same content');
+
+      pictures.store.letGo(pictures.keyOf(at(3)));
+      expect(
+        pictures.standingOf(at(3)).state,
+        PictureState.toCome,
+        reason: '⛔nor one once its picture is let go: made again, as any '
+            'frame not there — given up, b would never be shown again',
+      );
     });
   });
 
@@ -417,7 +450,7 @@ void main() {
       addTearDown(images.dispose);
       final pictures = picturesOf(
         images,
-        drawnAt: const CanvasSize(width: 16, height: 16),
+        drawnAt: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
       );
       final key = pictures.keyOf(at(0));
 
@@ -490,7 +523,7 @@ void main() {
       store,
       keyOf('a'),
       canvasSize: canvasSize,
-      at: CanvasPoint(x: 5, y: 1),
+      at: CanvasPoint(x: tileSize + 1.0, y: 1),
       size: 2,
       tipShape: BrushTipShape.square,
       tileSize: tileSize,
@@ -565,6 +598,40 @@ void main() {
       expect(await pictures.make(at(0), shouldAbort: () => ++asked > 3), isFalse);
 
       expect(pictures.has(at(0)), isFalse);
+    });
+  });
+
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  // 않고 새 장치를 열어 사본으로 되살린다」.
+  testWidgets('what the frames stand on goes with its engine: every '
+      'picture, the chains held, and the word that a frame\'s making threw '
+      '— each frame is to come, as if for the first time', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      addTearDown(pictures.dispose);
+      expect(await pictures.make(at(2), shouldAbort: () => false), isTrue);
+      pictures.noteFailure(at(0));
+      // A chain held: asked for again, it answers to the number it has.
+      final held = pictures.heldNodes.idOf('a chain');
+      pictures.heldNodes.settle();
+      expect(pictures.heldNodes.idOf('a chain'), held, reason: '⛔premise');
+      pictures.heldNodes.settle();
+      var went = 0;
+      pictures.store.wentWithItsTools.addListener(() => went += 1);
+
+      pictures.letGoWithTheirEngine();
+
+      expect(went, 1);
+      expect(pictures.has(at(2)), isFalse);
+      expect(pictures.standingOf(at(2)).state, PictureState.toCome);
+      expect(pictures.standingOf(at(0)).state, PictureState.toCome);
+      expect(pictures.heldNodes.idOf('a chain'), isNot(held));
+      pictures.heldNodes.settle();
+
+      expect(await pictures.make(at(0), shouldAbort: () => false), isTrue);
+      expect(pictures.has(at(0)), isTrue, reason: 'laid with the next tools');
     });
   });
 
@@ -770,7 +837,7 @@ void main() {
         var turnsAsked = 0;
         final pictures = picturesOf(
           images,
-          drawnAt: const CanvasSize(width: 16, height: 16),
+          drawnAt: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
           quietTurns: QuietTurns(
             clock: QuietClock(
               quiet: () {

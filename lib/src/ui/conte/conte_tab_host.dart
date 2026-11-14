@@ -33,8 +33,6 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../shortcuts/panel_keys.dart';
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../timeline/memo_token.dart' show ByIdentity;
 import '../dialogs/conte_format_window.dart';
@@ -472,14 +470,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // Every page shares one metrics.
       inkController.syncGeometry(pages.first.metrics);
     }
-    // A key presses the format window — the conte sheet is one panel,
-    // whatever is in hand (I-40).
-    return PanelKeysBinding(
-      buttons: {EditorActionIds.conteFormat: _editFormat},
-      child: KeyedSubtree(
-        key: const ValueKey<String>('conte-panel'),
-        child: _panel(pages),
-      ),
+    // ↩️A key pressed the format window (I-40) until F-580 took 「패널 안」
+    // off the shortcut list.
+    return KeyedSubtree(
+      key: const ValueKey<String>('conte-panel'),
+      child: _panel(pages),
     );
   }
 
@@ -544,7 +539,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
     AppIconButton(
       keyValue: 'conte-format-button',
       tooltip: AppText.strings.conteFormatTitle,
-      shortcuts: const [EditorActionIds.conteFormat],
       icon: const Icon(Icons.edit_note),
       size: AppIconButtonSize.strip,
       onPressed: _editFormat,
@@ -600,6 +594,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// What [page]'s pictures repaint on: a picture of one of its cells' cuts
+  /// landed, never another page's (conte-one-eye-repaints-every-track).
+  Listenable? _picturesLandedOn(ContePageLayout page) => widget.thumbnails
+      ?.noticesFor([for (final cell in page.cells) CutId(cell.cutId)]);
+
   /// The pages the view shows, each drawn through the view moved to where
   /// it lies in the stack — and ONE ink layer over them all, its windows in
   /// the stack's own space, so the pen is heard on every page on screen.
@@ -645,7 +644,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
               strokeHold: _strokeHold,
               imageFor: widget.imageFor,
               imageRepaint: widget.imageRepaint,
-              picturesLanded: widget.thumbnails?.landed,
+              picturesLanded: _picturesLandedOn(shown[index].page),
               inkController: widget.inkController,
               pictures: pictures?[index] ?? const [],
               cels: widget.pictures,

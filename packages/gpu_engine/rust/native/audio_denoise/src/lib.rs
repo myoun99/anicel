@@ -1,7 +1,9 @@
 //! Voice-take noise suppression — the engine's `qa_audio_denoise.c` over
-//! RNNoise (v0.1.1), in Rust (native-to-rust, 타임라인/콘티). Until the
-//! connection round the C is the answer key: the tests hold every sample
-//! to the engine's `qa_audio_denoise_f32`, bit for bit.
+//! RNNoise (v0.1.1), in Rust (native-to-rust, 타임라인/콘티). The C was the
+//! answer key until the connection round deleted it (H): the tests hold
+//! every sample to the ledger rows pinned beside its answers, bit for bit.
+//! RNNoise is BSD-3-Clause — its notice (`COPYING`, `PROVENANCE.md` beside
+//! this crate) ships with the app.
 //!
 //! Ported line for line, not swapped for a crate: RNNoise is its model
 //! and its float arithmetic, and only the same operations in the same
@@ -10,9 +12,9 @@
 //! built-in one), the voice probability (the app throws it away), and
 //! the training build.
 //!
-//! The contract with Dart (`lib/src/native/qa_audio_native.dart`) is the
-//! C's, unchanged: a finished take denoised in place, once, at stop —
-//! never on the capture thread.
+//! The contract with Dart (`lib/src/native/qa_audio_denoiser.dart`, which
+//! asks the engine's library) is the C's, unchanged: a finished take
+//! denoised in place, once, at stop — never on the capture thread.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,

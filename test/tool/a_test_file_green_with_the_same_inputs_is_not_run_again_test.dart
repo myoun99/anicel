@@ -167,7 +167,7 @@ void main() {
       'lib/src/scanned/two.png',
       'lib/src/other.dart',
       'assets/fonts/f.ttf',
-      'packages/qa_native/src/e.c',
+      'packages/gpu_engine/rust/src/e.rs',
       'pubspec.lock',
     ];
     Inputs inputs() => Inputs(
@@ -191,8 +191,8 @@ void main() {
       });
     });
 
-    test('every test reads the package, its assets, the native package and '
-        'the test config with its reach', () {
+    test('every test reads the package, its assets and the test config '
+        'with its reach — and no package beside the app, unnamed', () {
       expect(inputs().everyTest, {
         'pubspec.yaml',
         'pubspec.lock',
@@ -200,7 +200,6 @@ void main() {
         'test/flutter_test_config.dart',
         'lib/c.dart',
         'assets/fonts/f.ttf',
-        'packages/qa_native/src/e.c',
       });
     });
   });
@@ -339,7 +338,7 @@ void main() {
         ),
         isNull,
       );
-      expect(unread, containsAll(['the machine folder', "the engine's stamp"]));
+      expect(unread, contains('the machine folder'));
     });
 
     test('the records stand beside the times', () {
@@ -410,13 +409,13 @@ void main() {
     });
 
     test('a path a test can read is under lib, test, tool, the assets, the '
-        'shaders or the native package — or one every test reads', () {
+        'shaders or a package — or one every test reads', () {
       expect(canBeAnInput('lib/a.dart'), isTrue);
       expect(canBeAnInput('tool/run.sh'), isTrue);
       // A shell a test reads as text (유저 10-20 Q6).
       expect(canBeAnInput('windows/runner/flutter_window.cpp'), isTrue);
       expect(canBeAnInput('pubspec.lock'), isTrue);
-      expect(canBeAnInput('packages/qa_native/src/e.c'), isTrue);
+      expect(canBeAnInput('packages/gpu_engine/rust/src/e.rs'), isTrue);
       expect(canBeAnInput('단축키/a.txt'), isFalse);
       expect(canBeAnInput('README.md'), isFalse);
     });

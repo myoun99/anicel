@@ -94,7 +94,6 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'sheetInk' => strings.memoryItemSheetInk,
       'undo' => strings.memoryItemUndo,
       'framePictures' => strings.memoryItemFramePictures,
-      'layerImages' => strings.memoryItemLayerImages,
       'brushTips' => strings.memoryItemBrushTips,
       'panelRasters' => strings.memoryItemPanelRasters,
       'viewerPages' => strings.memoryItemViewerPages,
@@ -108,7 +107,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'tileImages' => strings.memoryItemTileImages,
       'enginePool' => strings.memoryItemEnginePool,
       'engineScratch' => strings.memoryItemEngineScratch,
-      'lensBlurTables' => strings.memoryItemLensBlurTables,
+      'pluginSteps' => strings.memoryItemPluginSteps,
       _ => id,
     };
   }

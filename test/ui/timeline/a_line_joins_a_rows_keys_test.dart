@@ -80,13 +80,20 @@ void main() {
     Axis axis = Axis.horizontal,
     Color? ground,
   }) async {
+    final geometry = ValueNotifier(
+      TimelineFrameGeometry(
+        frameCellExtent: cell,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive: frameEndIndexExclusive,
+      ),
+    );
+    addTearDown(geometry.dispose);
     Widget band = TimelineLaneFrameRow(
       layer: layer,
       lane: lane,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      leadingFrameSpacerWidth: 0,
-      trailingFrameSpacerWidth: 0,
+      geometry: geometry,
       metrics: metrics,
       axis: axis,
     );
@@ -221,15 +228,17 @@ void main() {
 
     testWidgets('it lies UNDER the marks', (tester) async {
       await pumpBand(tester, laneOf({3, 14}));
-      final stack = tester.widget<Stack>(
-        find.ancestor(of: line, matching: find.byType(Stack)).first,
+      final drawn = tester.widget<TimelineFrameSpanLayout>(
+        find
+            .ancestor(of: line, matching: find.byType(TimelineFrameSpanLayout))
+            .first,
       );
       expect(
-        (stack.children.first as Positioned).child,
+        (drawn.children.first as TimelineFrameSpan).child,
         isA<TimelineLaneKeysLine>(),
         reason: 'the first child is painted first',
       );
-      expect(stack.children.length, greaterThan(1), reason: 'then the marks');
+      expect(drawn.children.length, greaterThan(1), reason: 'then the marks');
     });
 
     testWidgets('a group header\'s union is joined as its members are', (

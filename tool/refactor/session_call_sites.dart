@@ -5,7 +5,7 @@
 // host, so a call site this misses is a COMPILE ERROR, not a silent
 // survivor. That is the safety net: `flutter analyze` names the rest.
 //
-//   dart run tool/refactor/session_call_sites.dart <spec.json> [--dry]
+//   dart tool/refactor/session_call_sites.dart <spec.json> [--dry]
 //
 // The spec is a JSON object:
 //   {"receivers": ["s", "session", ...],      // session-typed expressions

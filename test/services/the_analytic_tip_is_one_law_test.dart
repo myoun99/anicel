@@ -16,9 +16,9 @@ import 'package:anicel/src/services/brush_dab_tip_geometry.dart';
 /// wrote it out a fourth time until 2026-10-23 (board
 /// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`) — and
 /// ↩️the stamp cache baked a round tip with it until 2026-10-25: a round
-/// tip is its profile now (`RoundTipProfile`), whose tables the C kernel
-/// reads too. The commit parity suite pins it byte-exact against the
-/// oracle.
+/// tip is its profile now (`RoundTipProfile`), whose tables the engine's
+/// kernel reads too. The commit parity suite pins it byte-exact against
+/// the oracle.
 void main() {
   BrushTipNumbers round({
     double size = 20,
@@ -75,8 +75,8 @@ void main() {
     });
 
     test('a quarter-turned tip turns by the table — exactly, no 6e-17', () {
-      // The C kernel takes these same two numbers, so a residue here would
-      // be a 90° tip that misses its lattice on both engines alike — the
+      // Every kernel takes these same two numbers, so a residue here would
+      // be a 90° tip that misses its lattice in all of them alike — the
       // parity suites cannot see it.
       final mask = BrushTipMask(id: 't', size: 2, alpha: Uint8List(4));
       for (final (degrees, cos, sin) in [

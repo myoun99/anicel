@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/settle_async.dart';
 
@@ -94,5 +93,5 @@ void main() {
       0,
       reason: 'undone: nothing of the text stays where it floated',
     );
-  }, skip: noFlutterGpu != null);
+  });
 }

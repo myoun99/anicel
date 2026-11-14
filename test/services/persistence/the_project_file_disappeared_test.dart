@@ -56,17 +56,18 @@ void main() {
   );
 
   BitmapSurface inked(int value) {
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 4) {
       pixels[i] = value;
       pixels[i + 3] = 0xFF;
     }
     return BitmapSurface(
-      canvasSize: const CanvasSize(width: 8, height: 8),
-      tileSize: 8,
+      canvasSize: const CanvasSize(width: side, height: side),
+      tileSize: side,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
-          size: 8,
+          size: side,
           pixels: pixels,
         ),
       },

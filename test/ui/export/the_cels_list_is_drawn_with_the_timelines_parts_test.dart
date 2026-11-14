@@ -860,7 +860,7 @@ void main() {
       'has no room for its ends — and says its whole name on hover while it '
       'is no file', (tester) async {
     const withDirection = CelsExportSpec(
-      kinds: {ExportCelKind.cel, ExportCelKind.art, ExportCelKind.direction},
+      kinds: {ExportCelKind.cel, ExportCelKind.image, ExportCelKind.direction},
     );
     await pumpBoard(tester, spec: withDirection);
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', true)]);

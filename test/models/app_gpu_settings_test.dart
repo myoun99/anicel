@@ -15,10 +15,29 @@ void main() {
     expect(const AppGpuSettings().preference, AppGpuPreference.auto);
   });
 
+  test('each pixel of a GPU fx plugin may spend -Q19\'s 100만 by default', () {
+    expect(const AppGpuSettings().pluginShare.share, 1000000);
+    expect(const AppGpuSettings().pluginShare.cuts, isTrue);
+  });
+
   test('json roundtrip, for every choice', () {
     for (final preference in AppGpuPreference.values) {
       final chosen = AppGpuSettings(preference: preference);
       expect(AppGpuSettings.fromJson(chosen.toJson()), chosen);
+    }
+    for (final share in FxPluginShare.values) {
+      final chosen = AppGpuSettings(pluginShare: share);
+      expect(AppGpuSettings.fromJson(chosen.toJson()), chosen);
+    }
+  });
+
+  test('a share this build does not know reads as the standard', () {
+    for (final stranger in <Object?>['billion', '', 1000000, null]) {
+      expect(
+        AppGpuSettings.fromJson({'pluginShare': stranger}).pluginShare,
+        FxPluginShare.standard,
+        reason: '$stranger',
+      );
     }
   });
 

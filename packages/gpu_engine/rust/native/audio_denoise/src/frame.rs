@@ -40,12 +40,12 @@ fn common() -> &'static Common {
         let mut half_window = [0.0f32; FRAME_SIZE];
         for (i, w) in half_window.iter_mut().enumerate() {
             let a = 0.5 * PI * (i as f64 + 0.5) / FRAME_SIZE as f64;
-            *w = (0.5 * PI * a.sin() * a.sin()).sin() as f32;
+            *w = libm::sin(0.5 * PI * libm::sin(a) * libm::sin(a)) as f32;
         }
         let mut dct_table = [0.0f32; NB_BANDS * NB_BANDS];
         for i in 0..NB_BANDS {
             for j in 0..NB_BANDS {
-                let mut v = ((i as f64 + 0.5) * j as f64 * PI / NB_BANDS as f64).cos() as f32;
+                let mut v = libm::cos((i as f64 + 0.5) * j as f64 * PI / NB_BANDS as f64) as f32;
                 if j == 0 {
                     v = (f64::from(v) * 0.5f64.sqrt()) as f32;
                 }
@@ -280,7 +280,7 @@ impl DenoiseState {
         for (l, &x) in ly.iter_mut().zip(ex) {
             // MAX16 over a float and a double is a double.
             let max_d = |a: f64, b: f64| if a > b { a } else { b };
-            let y = (1e-2 + f64::from(x)).log10() as f32;
+            let y = libm::log10(1e-2 + f64::from(x)) as f32;
             *l = max_d(f64::from(log_max - 7.0), max_d(f64::from(follow) - 1.5, f64::from(y))) as f32;
             log_max = max(log_max, *l);
             follow = max_d(f64::from(follow) - 1.5, f64::from(*l)) as f32;

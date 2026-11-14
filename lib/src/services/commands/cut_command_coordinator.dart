@@ -128,11 +128,15 @@ typedef PastedAnchors = ({LayerId? folderId, LayerAttachment? riding});
 /// of its cels was minted from — what the pictures follow, since they live
 /// in a store keyed by the ids the paste just changed (F-62's lesson, at the
 /// layer's scale) — and, by each of its blocks' handwriting ids, the one it
-/// starts as a copy of (`conteHandwritingOfACopy`).
+/// starts as a copy of (`conteHandwritingOfACopy`); and the panels its 겸용
+/// copies were born showing its pictures in, each with the cel of the row
+/// whose picture it is ([AddLayerCommand.picturedPanels]) — pictures that
+/// follow the copy's once those are in (🗣️I-120-Q29).
 typedef PastedLayer = ({
   LayerId layerId,
   Map<FrameId, FrameId> minted,
   Map<String, String> handwriting,
+  Map<FrameId, FrameId> picturedPanels,
 });
 
 /// A duplicated cut: its id, which row of it each source row became, and
@@ -859,27 +863,27 @@ class CutCommandCoordinator {
 
     // A pasted row is an added row: in a 겸용 cut its siblings get it too
     // (F-398).
-    historyManager.execute(
-      plannedAddLayerCommand(
-        repository: repository,
-        cutId: cutId,
-        layer: riding == null
-            ? placed
-            : _ridingAgain(
-                // The plan's one conte row per cut is no law for a row
-                // riding that one (F-535).
-                placed.copyWith(kind: payload.kind),
-                riding,
-                plan.frameIdMap,
-              ),
-        insertionIndex: plan.insertionIndex,
-      ),
+    final add = plannedAddLayerCommand(
+      repository: repository,
+      cutId: cutId,
+      layer: riding == null
+          ? placed
+          : _ridingAgain(
+              // The plan's one conte row per cut is no law for a row
+              // riding that one (F-535).
+              placed.copyWith(kind: payload.kind),
+              riding,
+              plan.frameIdMap,
+            ),
+      insertionIndex: plan.insertionIndex,
     );
+    historyManager.execute(add);
 
     return (
       layerId: plan.layer.id,
       minted: plan.frameIdMap,
       handwriting: plan.handwriting,
+      picturedPanels: add.picturedPanels,
     );
   }
 
@@ -1658,7 +1662,7 @@ class CutCommandCoordinator {
   bool relinkMediaAsset({
     required String oldPath,
     required String newPath,
-    String? carriedAs,
+    MediaCarriedAs? carriedAs,
     String description = 'Relink media',
   }) {
     final project = repository.requireProject();

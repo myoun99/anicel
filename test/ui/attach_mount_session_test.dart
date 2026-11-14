@@ -63,7 +63,7 @@ void main() {
     final secondId = s.activeLayer!.id;
     s.selectLayer(firstId);
 
-    expect(foldersOf(s).canDetachActiveLayer, isTrue);
+    expect(foldersOf(s).canDetachRows, isTrue);
     final displayed = s.layers.firstWhere((layer) => layer.id == firstId);
     final shownBlocks = [
       for (final entry in displayed.timeline.entries)
@@ -72,7 +72,7 @@ void main() {
     ];
     expect(shownBlocks, hasLength(2), reason: 'it mirrors the base\'s two cels');
 
-    foldersOf(s).detachActiveLayer();
+    foldersOf(s).detachRows();
 
     final detached = _row(s, firstId);
     expect(detached.attachedToLayerId, isNull);
@@ -123,7 +123,7 @@ void main() {
       reason: 'the fixture is a real organizer',
     );
 
-    foldersOf(s).detachActiveLayer();
+    foldersOf(s).detachRows();
 
     expect(_row(s, attachId).attachedToLayerId, isNull);
     expect(_row(s, attachId).folderId, isNot(organizerId));

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/keyed_notices.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 
@@ -75,54 +76,27 @@ class RowNamingRevision extends ChangeNotifier implements CelContentRevision {
   int _value = 0;
 
   /// The listeners of each row's [forRow], while something listens.
-  final Map<LayerId, List<VoidCallback>> _rows = {};
+  final KeyedNotices<LayerId> _rows = KeyedNotices();
 
   /// Moves the number for a change to the answers of [rows] — of every row
   /// when null.
   void bump({Set<LayerId>? rows}) {
     _value += 1;
-    final heard = rows == null
-        ? [for (final listeners in _rows.values) ...listeners]
-        : [for (final row in rows) ...?_rows[row]];
-    for (final listener in heard) {
-      listener();
+    if (rows == null) {
+      _rows.noticeAll();
+    } else {
+      _rows.notice(rows);
     }
     notifyListeners();
   }
 
   @override
-  Listenable forRow(LayerId row) => _RowHears(this, row);
+  Listenable forRow(LayerId row) => _rows.of(row);
 
   @override
   void dispose() {
     _rows.clear();
     super.dispose();
-  }
-}
-
-/// A row's side of a [RowNamingRevision]: its painter adds a listener when
-/// it is attached and removes it when it is detached, so the revision holds
-/// a row only while something shows it.
-class _RowHears implements Listenable {
-  const _RowHears(this._revision, this._row);
-
-  final RowNamingRevision _revision;
-  final LayerId _row;
-
-  @override
-  void addListener(VoidCallback listener) =>
-      _revision._rows.putIfAbsent(_row, () => <VoidCallback>[]).add(listener);
-
-  @override
-  void removeListener(VoidCallback listener) {
-    final listeners = _revision._rows[_row];
-    if (listeners == null) {
-      return;
-    }
-    listeners.remove(listener);
-    if (listeners.isEmpty) {
-      _revision._rows.remove(_row);
-    }
   }
 }
 

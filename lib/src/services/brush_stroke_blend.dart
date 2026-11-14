@@ -5,12 +5,17 @@ import 'dart:typed_data';
 
 import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart' show BrushDualView;
+import '../models/brush_frame_key.dart';
 import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuBlend;
+
+import '../native/engine_tile_ledger.dart';
 import 'brush_stamp_span_kernel.dart';
 
 /// BB-1 (R26 #9): the stroke-level blend kernel.
@@ -38,7 +43,11 @@ import 'brush_stamp_span_kernel.dart';
 
 /// The surface's straight-RGBA pixels within [bounds], BOUNDS-LOCAL
 /// (row-major, stride = bounds width). Missing tiles read transparent.
-Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
+Uint8List bitmapSurfaceRegionPixels(
+  BitmapSurface surface,
+  DirtyRegion bounds, {
+  TileBytesOf bytesOf = readTilesInPlace,
+}) {
   final width = bounds.rightExclusive - bounds.left;
   final height = bounds.bottomExclusive - bounds.top;
   final region = Uint8List(width * height * 4);
@@ -46,49 +55,37 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
     return region;
   }
   final tileSize = surface.tileSize;
-  for (final covered in tilesCovering(surface, bounds)) {
-    final worldLeft = covered.worldLeft;
-    final worldTop = covered.worldTop;
+  final covering = tilesCovering(surface, bounds).toList();
+  var next = 0;
+  bytesOf([for (final covered in covering) covered.tile], (tilePixels) {
+    final covered = covering[next];
+    next += 1;
     final copyLeft = covered.left;
-    final copyTop = covered.top;
-    final copyRight = covered.rightExclusive;
-    final copyBottom = covered.bottomExclusive;
-    final rowBytes = (copyRight - copyLeft) * 4;
-    // Inside readPixels: the tile is the receiver, so its buffer cannot
-    // be finalized out from under these reads (see BitmapTile.readPixels —
-    // the live rasterizer's copy of this exact loop, `_copyBaseRectInto`,
-    // is where that bug was caught).
-    covered.tile.readPixels((_, tilePixels) {
-      for (var y = copyTop; y < copyBottom; y += 1) {
-        final srcOffset =
-            ((y - worldTop) * tileSize + (copyLeft - worldLeft)) * 4;
-        final dstOffset =
-            ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
-        region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
-      }
-    });
-  }
+    final rowBytes = (covered.rightExclusive - copyLeft) * 4;
+    for (var y = covered.top; y < covered.bottomExclusive; y += 1) {
+      final srcOffset =
+          ((y - covered.worldTop) * tileSize + (copyLeft - covered.worldLeft)) *
+          4;
+      final dstOffset =
+          ((y - bounds.top) * width + (copyLeft - bounds.left)) * 4;
+      region.setRange(dstOffset, dstOffset + rowBytes, tilePixels, srcOffset);
+    }
+  });
   return region;
 }
 
-/// THE selection rule (R26 #18): scales a straight-alpha stroke buffer's
-/// ALPHA by [mask]'s coverage, in place.
-///
-/// Every path that confines a stroke to a selection goes through this —
-/// the live pre-blend's Dart route, the commit's clip for strokes with no
-/// live raster, and a fill's stamp bytes — and the C kernel's
-/// `qa_mask_alpha` is a transcription of it. One rule, one rounding
-/// (Skia's mul-div-255), so the preview, the committed pixels and a redo
-/// cannot disagree about where the selection ends. Three separate rules
-/// is what this replaced, and they only agreed by accident: while masks
-/// are binary, "zero the texel" and "scale alpha by 0" are the same
-/// thing; the moment a mask goes soft (the selection tool's feather / AA
-/// knobs) they stop being.
-///
-/// RGB is left alone deliberately. Alpha 0 is the documented "the
-/// destination survives untouched" input of every commit kernel — none
-/// of them read colour behind it — and premultiplying for display zeroes
-/// those bytes anyway.
+/// [bitmapSurfaceRegionPixels], each tile read back from the engine: what a
+/// plugin is handed (flip lane ⓓ-4). Waits for the GPU.
+Uint8List engineSurfaceRegionPixels(
+  BitmapSurface surface,
+  DirtyRegion bounds,
+) => bitmapSurfaceRegionPixels(
+  surface,
+  bounds,
+  bytesOf: (tiles, use) =>
+      EngineTileLedger.instance.readEach(BrushFrameKey.noCel, tiles, use),
+);
+
 /// The stroke's own OPACITY as a coverage byte — the channel a selection
 /// mask already speaks.
 ///
@@ -109,38 +106,41 @@ Uint8List bitmapSurfaceRegionPixels(BitmapSurface surface, DirtyRegion bounds) {
 int strokeOpacityCoverage(double opacity) =>
     (opacity.clamp(0.0, 1.0) * 255).round();
 
-/// [selection] with [opacity] folded in, or a uniform mask when there is no
-/// selection — null when there is nothing to scale at all.
+/// [opacity] as a mask over [pixelCount] pixels — null at full opacity,
+/// nothing to scale.
 ///
-/// ⚠️Folded into the MASK rather than applied as a second pass, because the
-/// native kernel takes exactly one mask: `mul255(a, mul255(m, o))` is what
-/// C computes, so Dart has to compute it the same way round or the two
-/// drift by a byte at soft edges.
+/// ↩️It folded a selection's mask in till 2026-11-14 — into the MASK, not
+/// as a second pass, so that every road computed `mul255(a, mul255(m, o))`
+/// — and a selection cuts on the engine alone now (`cutOnTheEngineOnly`).
 Uint8List? strokeCoverageMask({
-  Uint8List? selection,
   required int pixelCount,
   required double opacity,
 }) {
   final uniform = strokeOpacityCoverage(opacity);
   if (uniform >= 255) {
-    return selection;
+    return null;
   }
-  if (selection == null) {
-    return Uint8List(pixelCount)..fillRange(0, pixelCount, uniform);
-  }
-  final folded = Uint8List(pixelCount);
-  for (var i = 0; i < pixelCount; i += 1) {
-    final coverage = selection[i];
-    if (coverage == 0) {
-      continue;
-    }
-    final product = coverage * uniform + 128;
-    folded[i] = (product + (product >> 8)) >> 8;
-  }
-  return folded;
+  return Uint8List(pixelCount)..fillRange(0, pixelCount, uniform);
 }
 
-void applySelectionMaskToStrokeAlpha({
+/// THE coverage rule (R26 #18): scales a straight-alpha stroke buffer's
+/// ALPHA by [mask]'s coverage, in place — the stroke's opacity ceiling
+/// (F-12) off the engine's grid, which the commit's buffer and the live
+/// pre-blend both go through, so the preview, the committed pixels and a
+/// redo round it the same (Skia's mul-div-255).
+///
+/// ↩️It was THE selection rule till 2026-11-14: every path that confined
+/// a stroke to a selection went through it — the live pre-blend, the
+/// commit's buffer, a fill's stamp bytes — where three rules had agreed
+/// only while masks were binary ("zero the texel" and "scale alpha by 0"
+/// part the moment a mask goes soft). A selection cuts on the engine
+/// alone now (`cutOnTheEngineOnly`).
+///
+/// RGB is left alone deliberately. Alpha 0 is the documented "the
+/// destination survives untouched" input of every commit kernel — none
+/// of them read colour behind it — and premultiplying for display zeroes
+/// those bytes anyway.
+void applyCoverageToStrokeAlpha({
   required Uint8List pixels,
   required Uint8List mask,
   required int pixelCount,
@@ -161,9 +161,22 @@ void applySelectionMaskToStrokeAlpha({
   }
 }
 
-/// The C-side `QA_STROKE_BLEND_*` id for [mode] (BB-N1, ABI 22) — a fixed
-/// FFI contract; both tables MUST stay in lockstep. color/erase never
-/// reach the blend kernel (they ride the ordinary stamp path).
+/// The blend the engine lands a stroke's picture in — the eraser's where
+/// [erase], the plain one for a brush that only paints.
+int engineBlendModeOf(BrushBlendMode mode, {required bool erase}) {
+  if (erase || mode == BrushBlendMode.erase) {
+    return GpuBlend.erase;
+  }
+  return mode == BrushBlendMode.color
+      ? GpuBlend.normal
+      : strokeBlendModeNativeId(mode);
+}
+
+/// The engine's blend id for [mode] (`BLEND_*`, blend.wgsl) — a fixed
+/// contract; both tables MUST stay in lockstep. color/erase have no place
+/// in the table: [engineBlendModeOf] names theirs. ↩️The ids were the C
+/// stroke kernel's (`QA_STROKE_BLEND_*`, BB-N1, ABI 22), which went with
+/// the C on 2026-11-12.
 int strokeBlendModeNativeId(BrushBlendMode mode) {
   return switch (mode) {
     // ⛔`behind` is the one id that is NOT separable — it is a porter-duff
@@ -184,9 +197,10 @@ int strokeBlendModeNativeId(BrushBlendMode mode) {
 /// The same fixed ids, asked of the SEPARABLE vocabulary directly.
 ///
 /// 🚨★★★ONE TABLE, TWO DOORS (v33). The dab kernel's DUAL MASK combines two
-/// coverages through the very same `qa_stroke_blend_channel` the stroke
-/// kernel reads, so it needs the very same ids — and a second switch
-/// spelling them out would be a copy the moment either one gained a mode.
+/// coverages through the very same B table the stroke blend reads
+/// ([blendSeparableChannel]), so it needs the very same ids — and a second
+/// switch spelling them out would be a copy the moment either one gained a
+/// mode.
 /// [strokeBlendModeNativeId] is now this and [nonSeparableBlendModeNativeId]
 /// plus the two porter-duff answers its own callers need.
 int separableBlendModeNativeId(SeparableBlendMode mode) {
@@ -237,9 +251,10 @@ int nonSeparableBlendModeNativeId(NonSeparableBlendMode mode) {
 /// The separable B(Cs, Cd) table, in doubles.
 ///
 /// 🚨★★★PUBLIC SINCE v33 — the dab kernel's DUAL MASK combines two
-/// COVERAGES through this very table. A second transcription would be a
-/// copy of the only thing in the app that has to agree with
-/// `qa_stroke_blend_channel` byte for byte.
+/// COVERAGES through this very table, and a second transcription would be
+/// a copy of it. ↩️Till 2026-11-12 the C kernel's `qa_stroke_blend_channel`
+/// had to agree with it byte for byte, and went with the C; the engine's is
+/// `blend_channel` (blend.wgsl).
 ///
 /// ⚠️It takes a [BrushBlendMode] because that is what its first caller
 /// speaks; a separable-only caller passes `mode.blendMode` — no, it passes
@@ -353,8 +368,8 @@ double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
 /// (every channel (c - min) * s / (max - min)): the spec's max/mid/min
 /// assignment without ranking the three, ties included.
 ///
-/// 🚨The C mirror is `qa_stroke_blend_triple`, every expression in the same
-/// grouping; the parity suite pins the pair byte for byte.
+/// ↩️Till 2026-11-12 the C held a mirror (`qa_stroke_blend_triple`), every
+/// expression in the same grouping; the engine's six are blend.wgsl's.
 final class _ChannelMix {
   final b = Float64List(3);
   final _cs = Float64List(3);
@@ -496,11 +511,12 @@ int _clampByte(double value) {
 /// blitter's srcOver at opacity 1 (the color landing is one stamp of the
 /// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
 /// ONE display pipeline, live == commit unconditionally).
-/// [mask] (R28 selection): 1 byte of coverage per pixel, scaling the
-/// STROKE's alpha before the composite — `a = mul255(a, mask)`, the same
-/// rounding the kernel uses. Null means no selection and is byte-for-byte
-/// the pre-mask path. It applies to the ACCUMULATED stroke, never per
-/// dab: masking dabs individually would break soft masks, because
+/// [mask] (R28): 1 byte of coverage per pixel — the stroke's opacity
+/// ceiling ([applyCoverageToStrokeAlpha]) — scaling the STROKE's alpha
+/// before the composite, `a = mul255(a, mask)`, the same rounding the
+/// kernel uses. Null means nothing to scale and is byte-for-byte the
+/// pre-mask path. It applies to the ACCUMULATED stroke, never per dab:
+/// masking dabs individually would break soft masks, because
 /// srcOver(a₁·m, a₂·m) ≠ srcOver(a₁, a₂)·m.
 Uint8List preBlendStrokeOverlayPixels({
   required Uint8List dst,
@@ -514,7 +530,7 @@ Uint8List preBlendStrokeOverlayPixels({
     // One masked copy up front keeps the kernels below untouched — they
     // are the commit's own code and must stay byte-identical to it.
     final masked = Uint8List.fromList(src);
-    applySelectionMaskToStrokeAlpha(
+    applyCoverageToStrokeAlpha(
       pixels: masked,
       mask: mask,
       pixelCount: pixelCount,
@@ -529,7 +545,7 @@ Uint8List preBlendStrokeOverlayPixels({
     // included, exactly like the commit's skip), sa==255 copies or zeroes
     // it byte-hard, and the general case runs the same double expressions
     // in the same order — because it is the same code. The parity test
-    // pins the result against the real commit, native kernel included.
+    // pins the result against the real commit.
     //
     // The blitter writes IN PLACE, over the destination the commit is
     // about to change. Here the caller wants a fresh buffer instead (the
@@ -552,8 +568,8 @@ Uint8List preBlendStrokeOverlayPixels({
   // Mirror the LANDING normalization: the commit lands the kernel result
   // through an erase-clear + srcOver stamp, whose srcOver skips α==0
   // pixels — a fully transparent result pixel therefore lands as
-  // (0,0,0,0) whatever RGB the kernel's verbatim-copy rule carried (the
-  // native kernel mirrors the same rule). Without this the straight
+  // (0,0,0,0) whatever RGB the kernel's verbatim-copy rule carried.
+  // Without this the straight
   // bytes differ where the base held α==0 junk RGB, even though both
   // display identically after premultiply.
   zeroFullyClearPixels(result);
@@ -645,11 +661,29 @@ Uint8List blendStrokeRegionPixels({
 
 /// The byte alpha a stroke with a second tip shows where its first plane
 /// holds [firstWide] and its second [secondWide] (both alpha * 65535) —
-/// the view the bytes are rebuilt through. The law and its reasons are
-/// beside `qa_dual_view_rows` (qa_engine.c, ABI 60); this is its
-/// arithmetic, operation by operation, and the Dart kernel and the
-/// reference both read it. A channel's byte is its plane's, rounded
-/// (`(wide / 257).round()`), under any alpha above 0.
+/// the view the bytes are rebuilt through. A channel's byte is its
+/// plane's, rounded (`(wide / 257).round()`), under any alpha above 0.
+///
+/// 🚨★★★THE SECOND TIP IS A SECOND STROKE (ABI 60; board
+/// an-imported-pencil-drops-its-second-brush Q3 b, 유저 2026-10-25 「두 번째
+/// 획으로 다시 만든다」). Its dabs are stamped along the same path
+/// (`BrushSecondStroke`) and pile on the tile's SECOND plane (alpha *
+/// 65535); the first tip's dabs pile on the 16-bit plane as any stroke's
+/// do. The BYTES are the view of the two: the first plane's colour, and its
+/// alpha combined with the second's through the tip's mode at its density
+/// ([dualViewLevel]). Outside the first tip's ink nothing shows — a second
+/// tip lays only where both lay (Photoshop's Dual Brush, and the mask brush
+/// Krita draws it with lays its mask over the WHOLE stroke). A pure
+/// function of the two planes, so the order the two strokes' dabs land in
+/// moves no byte, and what the stroke shows as it is drawn is what it
+/// lands. ↩️Until ABI 60 the second tip was a tiled mask over each dab, at
+/// a random phase a dab: a grain inside each stamp, never a stroke of its
+/// own.
+///
+/// That the tip has a mode at all is `BrushDualView`'s to say. The Dart
+/// kernel and the reference both read this, and the engine's is
+/// `pile.wgsl`'s. ↩️Till 2026-11-12 this text stood beside the C kernel's
+/// `qa_dual_view_rows`, which went with the C.
 int dualViewAlpha(int firstWide, int secondWide, BrushDualView view) {
   final alpha = dualViewLevel(firstWide / 65535.0, secondWide / 65535.0, view);
   return (alpha * 255.0).round().clamp(0, 255);
@@ -666,6 +700,11 @@ int dualViewAlpha(int firstWide, int secondWide, BrushDualView view) {
 /// ⚠️Multiply is commutative so nothing that exists today can tell the order
 /// apart; the non-commutative modes are REASONED, not measured, and want a
 /// side-by-side against Clip Studio before anything is built on them.
+///
+/// ⛔MULTIPLY KEEPS ITS OWN LINE. The general form below is
+/// `lerp(a, B(s, a), d)`, which for B = multiply is the SAME NUMBER and NOT
+/// THE SAME BYTES: `a * ((1-d) + d*s)` and `a*(1-d) + d*s*a` differ in the
+/// last bit of a double, and the default should be the one written plainly.
 double dualViewLevel(double first, double second, BrushDualView view) {
   if (first <= 0.0) {
     return 0.0;
@@ -686,8 +725,8 @@ double dualViewLevel(double first, double second, BrushDualView view) {
 /// above that floor — fully once the paper stands [paperHeightBand] above
 /// it.
 ///
-/// 🚨The C mirror is the texture block of `qa_dab_blend_spans`, written
-/// with this grouping, and the parity suite pins the pair.
+/// The tile kernel and the reference both read this (`blendDabTilesDart`,
+/// `forEachBrushPixelCoverage`); the engine's is `dab.wgsl`'s.
 double paperHeightCoverage(double coverage, double sample, double density) {
   final touched = (sample + density * coverage - 1.0) / paperHeightBand;
   if (touched <= 0.0) {

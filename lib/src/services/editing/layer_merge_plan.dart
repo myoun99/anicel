@@ -39,6 +39,7 @@ import '../layer_pose_matrix.dart'
 import '../playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_spans.dart';
 import '../project_lookup.dart' show requireCut, requireCutPosition;
+import 'synced_cel_ids.dart';
 
 /// Why a merge's row may show otherwise than the rows it was made of did —
 /// what the press warns of (I-78-Q1 「포토샵 · 클튜처럼 (+경고)」).
@@ -533,11 +534,11 @@ LayerMergePlan planLayerMerge(
   for (final layer in layers) {
     final first = all[layer.first];
     final keptUnder = _resultIdIn(takings, first, first);
+    final synced = SyncedCelIds(keptUnder, () => mintFrameId(keptUnder));
     final bank = _bankOf(
       [for (final index in layer) parts[index]],
       (part, spans) => switch (part.follows) {
-        final conte? => attachedMirrorCelId(
-          keptUnder,
+        final conte? => synced.over(
           exposedFrameIdAt(conte.timeline, spans.first.start)!,
         ),
         null => mintFrameId(keptUnder),
@@ -553,6 +554,7 @@ LayerMergePlan planLayerMerge(
           head: pressed._anchor,
           bank: held,
           cels: bank.byPart[at],
+          lanes: bank.byPart,
         ),
         mintFrameId,
         (wall: wall, inkOf: part.reads.inkOf),
@@ -778,12 +780,14 @@ typedef _BankCel = ({_Cel cel, int part});
 
 /// Of a share, the row the merge leaves there: [id], wearing [head] — the
 /// pressed cut's topmost row, whose name a 겸용 layer wears in every cut —
-/// over the [bank] every cut's results hold, showing its own [cels].
+/// over the [bank] every cut's results hold, showing its own [cels]; the
+/// [lanes] the cels each cut's result shows, its own among them.
 typedef _ResultOf = ({
   LayerId id,
   Layer head,
   List<_Cel> bank,
   List<_Cel> cels,
+  List<List<_Cel>> lanes,
 });
 
 /// What a share's cut is made of the merge: its result where its topmost
@@ -810,12 +814,7 @@ _Made _madeOf(
   final row = _resultRow(of, taking._anchor, part.standing);
   final result = (
     row: switch (taking._conte) {
-      final conte? => _onTheConte(
-        row,
-        taking._keeper,
-        conte,
-        following: part.follows == null ? null : of.cels,
-      ),
+      final conte? => _onTheConte(row, conte, part: part, of: of),
       null => row,
     },
     runs: part.runs,
@@ -1311,7 +1310,7 @@ List<LayerMergePicture> _picturesOf(
 Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
   id: of.id,
   name: of.head.name,
-  kind: kindHoldingPictures(of.head.kind, of.bank.length),
+  kind: kindHoldingPictures(of.head.kind, _celsShownOn(of.lanes)),
   mark: of.head.mark,
   onTimesheet: anchor.onTimesheet,
   folderId: folderId,
@@ -1320,42 +1319,74 @@ Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
 );
 
 /// [row] made a row of [conte] (🗣️I-78-Q20: 「결과는 트랙 구조에서 맨 위 행
-/// 자리에 서고 모든 컷이 같은 구조를 유지」): riding it on the side [keeper]
-/// rode, as [keeper]'s row of the track's structure, of its kind — and,
-/// [following] the conte's timing as every row taken did
-/// ([_conteFollowed]), a cel for each cel of the conte it shows, as a
-/// synced row's are; a timing of its own where null.
+/// 자리에 서고 모든 컷이 같은 구조를 유지」): riding it on the side [part]'s
+/// keeper rode, as the keeper's row of the track's structure, of its kind
+/// — and, where [part] follows the conte's timing as every row taken did
+/// ([_conteFollowed]), a cel for each cel of the conte [of] shows, as a
+/// synced row's are; a timing of its own where it does not. Its kind is
+/// the one [of]'s lanes — every cut's of the layer — leave the keeper's.
 Layer _onTheConte(
   Layer row,
-  Layer keeper,
   Layer conte, {
-  required List<_Cel>? following,
+  required _Part part,
+  required _ResultOf of,
 }) {
+  final keeper = part.taking._keeper;
   final riding = row.copyWith(
-    kind: kindHoldingPictures(keeper.kind, row.frames.length),
+    kind: kindHoldingPictures(keeper.kind, _celsShownOn(of.lanes)),
     attachedToLayerId: conte.id,
     attachedPlacement: keeper.attachedPlacement,
     conteKey: keeper.conteKey,
   );
-  if (following == null) {
+  if (part.follows == null) {
     return riding.copyWith(attachedMode: AttachedMode.free);
   }
   return riding.copyWith(
     timeline: const {},
     baseFrameLinks: {
-      for (final cel in following)
+      for (final cel in of.cels)
         exposedFrameIdAt(conte.timeline, cel.spans.first.start)!: cel.frameId,
     },
   );
 }
 
-/// The kind a row of [kind] is once it holds [pictures] cels: a picture
-/// row's own — a folder or an image that now holds more than one picture
-/// becoming a drawing row.
-LayerKind kindHoldingPictures(LayerKind kind, int pictures) =>
-    kind.isDrawingCel && !(kind.holdsSingleCel && pictures > 1)
+/// The kind a row of [kind] is once its [lanes] show the cels each shows —
+/// one lane for each cut the row is in: a picture row's own — a folder, or
+/// an image one of whose lanes shows more than one picture, becoming a
+/// drawing row.
+///
+/// 🗣️F-572 (유저 2026-11-08): 「이미지 레이어끼리 병합하면 애니메이션레이어되는데
+/// 특별한 일 없으면 이미지레이어 유지하도록」. ⛔Never the BANK: a 겸용
+/// layer's bank holds every cut's picture of it, and an image holds one a
+/// LANE ([LayerKind.holdsSingleCel]) — counted from the bank, two images
+/// each showing one picture in each of two 겸용 cuts merged into an
+/// animation row.
+LayerKind kindHoldingPictures(
+  LayerKind kind,
+  Iterable<Iterable<FrameId>> lanes,
+) =>
+    kind.isDrawingCel &&
+        !(kind.holdsSingleCel && lanes.any((lane) => lane.toSet().length > 1))
     ? kind
     : LayerKind.animation;
+
+/// [kindHoldingPictures] of lanes each read as the cel it shows at each
+/// frame — a bake's `celAt`, one map for each use of the row: the fx
+/// rasterize's and the reference rasterize's, counted as a merge counts.
+///
+/// 🗣️F-572-Q2 (유저 2026-11-11): 「셋 다 행마다 센다 — 행마다 한 장이면
+/// 이미지」. ↩️The way I-120-Q22 was taken read 「셀이 둘 이상이 되면
+/// 애니메이션 레이어가 된다」, and both rasterizes counted the bank as one
+/// lane (`d56d28bef`) — F-572-Q2 changed that.
+LayerKind kindShowingCelsAt(
+  LayerKind kind,
+  Iterable<Map<int, FrameId>> celAt,
+) => kindHoldingPictures(kind, [for (final lane in celAt) lane.values]);
+
+/// The cels each of [lanes] shows, as [kindHoldingPictures] reads them.
+Iterable<Iterable<FrameId>> _celsShownOn(List<List<_Cel>> lanes) => [
+  for (final cels in lanes) [for (final cel in cels) cel.frameId],
+];
 
 List<Frame> _framesOf(List<_Cel> cels) => [
   for (final cel in cels)
@@ -1439,7 +1470,7 @@ typedef _Minting = ({
   return (
     row: rider.copyWith(
       attachedToLayerId: result.row.id,
-      kind: kindHoldingPictures(rider.kind, cels.length),
+      kind: kindHoldingPictures(rider.kind, _celsShownOn([cels])),
       frames: _framesOf(cels),
       timeline: _timelineOf(cels),
     ),
@@ -1647,13 +1678,16 @@ class BlockMergePlan {
   }
 }
 
-/// One new cel of a block merge: of [rowId], laid of [layers] — each the
-/// cut holding one of the cels it is made of, alone and as it is, drawn at
-/// its first frame — bottom → top.
+/// One new cel of a block merge: [frameId] of [rowId], laid of [cels] — the
+/// row's cels it is made of, each as it is, bottom → top: no look of the
+/// row's, which stays on the row (Q18).
+///
+/// ↩️Each was a cut holding that cel alone, drawn by itself, until the cels
+/// were stacked as the canvas stacks rows (2026-11-14, `merge_layer_rows`).
 typedef BlockMergePicture = ({
   LayerId rowId,
   FrameId frameId,
-  List<Cut> layers,
+  List<FrameId> cels,
 });
 
 /// The blocks ONE press of MERGE takes of a band — what lights its button
@@ -1706,12 +1740,12 @@ BlockMergePlan planBlockMerge(
   final rows = <Layer>[];
   final pictures = <BlockMergePicture>[];
   for (final MapEntry(key: row, value: starts) in taking._starts.entries) {
-    final merged = _blocksMerged(cut, row, starts, mintFrameId(row.id));
+    final merged = _blocksMerged(row, starts, mintFrameId(row.id));
     rows.add(merged.row);
     pictures.add(merged.picture);
     for (final rider in attachedLayersOf(row.id, cut.layers)) {
       if (isSyncedAttachedLayer(rider)) {
-        final ridden = _riderMerged(cut, rider, merged);
+        final ridden = _riderMerged(rider, merged);
         rows.add(ridden.row);
         pictures.addAll(ridden.pictures);
       }
@@ -1732,7 +1766,6 @@ typedef _BlocksMerged = ({
 
 /// [row]'s blocks at [starts] made one block over the new cel [celId].
 _BlocksMerged _blocksMerged(
-  Cut cut,
   Layer row,
   List<int> starts,
   FrameId celId,
@@ -1777,7 +1810,7 @@ _BlocksMerged _blocksMerged(
     picture: (
       rowId: row.id,
       frameId: celId,
-      layers: [for (final cel in cels.reversed) _celAlone(cut, row, cel)],
+      cels: cels.reversed.toList(),
     ),
   );
 }
@@ -1786,7 +1819,6 @@ _BlocksMerged _blocksMerged(
 /// cel laid of its own for the run's, and its mirrors of the cels the base
 /// lets go gone with them.
 ({Layer row, List<BlockMergePicture> pictures}) _riderMerged(
-  Cut cut,
   Layer rider,
   _BlocksMerged merged,
 ) {
@@ -1822,9 +1854,7 @@ _BlocksMerged _blocksMerged(
         (
           rowId: rider.id,
           frameId: celId,
-          layers: [
-            for (final cel in laid.reversed) _celAlone(cut, rider, cel),
-          ],
+          cels: laid.reversed.toList(),
         ),
     ],
   );
@@ -1879,17 +1909,3 @@ String? _nameKept(String? name, List<Frame> kept) {
   }
   return tailClearOf({for (final cel in kept) ?celNumberOf(cel.name)}, shown);
 }
-
-/// [cut] holding [cel] of [row] alone and as it is — no look of the row's,
-/// no folder over it — shown at its first frame.
-Cut _celAlone(Cut cut, Layer row, FrameId cel) => cut.copyWith(
-  layers: [
-    Layer(
-      id: row.id,
-      name: row.name,
-      kind: row.kind,
-      frames: [row.frameById(cel)!],
-      timeline: {0: TimelineExposure.drawing(cel, length: 1)},
-    ),
-  ],
-);

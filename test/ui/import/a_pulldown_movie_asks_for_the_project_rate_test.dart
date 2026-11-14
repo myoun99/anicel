@@ -16,8 +16,11 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
@@ -26,6 +29,7 @@ import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 import '../../helpers/import_span.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/os_video_codec.dart';
 
 void main() {
   late Directory tempDir;
@@ -349,5 +353,225 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
     s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️F-588 (유저 2026-11-14: 「이 영상만」 — the movie carried in is
+  // rewritten at the project's speed; the slot always there, pressed only
+  // where it can be, the label in plain words).
+  group('fitting the movie to the project', () {
+    final fit = find.byKey(const ValueKey<String>('import-movie-rate-fit'));
+    final cancel = find.byKey(
+      const ValueKey<String>('import-movie-rate-cancel'),
+    );
+
+    VoidCallback? fitPress(WidgetTester tester) =>
+        tester.widget<ButtonStyleButton>(fit).onPressed;
+
+    Future<void> answer(
+      WidgetTester tester,
+      String column,
+      String path,
+      String value,
+    ) async {
+      final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+      await tester.ensureVisible(cell);
+      await settleLoadedPages(tester);
+      await tester.tap(cell);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey<String>('import-option-$column-$value')),
+      );
+      await settleLoadedPages(tester);
+    }
+
+    /// The hover [button] wears.
+    String tipOf(WidgetTester tester, Finder button) => tester
+        .widget<AppTooltip>(
+          find.ancestor(of: button, matching: find.byType(AppTooltip)),
+        )
+        .message;
+
+    /// Six real frames at 23.976, each its own flat red — 20, 50, 80 … —
+    /// over a sound; null where this run has no encoder.
+    Future<String?> sixFrames(WidgetTester tester) =>
+        tester.runAsync<String?>(() async {
+          final path = '${tempDir.path}${Platform.pathSeparator}take.mp4';
+          return writeEncodedMovie(
+                path,
+                frames: 6,
+                fps: (numerator: 24000, denominator: 1001),
+                picture: (frame, _) =>
+                    (red: 20 + frame * 30, green: 0, blue: 0),
+                sound: (sample) => (sample * 37) % 20000 - 10000,
+              )
+              ? path
+              : null;
+        });
+
+    /// Presses Import, fits the movie, and answers where the bytes the
+    /// pool carries for [movie] were copied out to, a decoder to open them —
+    /// after holding that they are a piece cut from it, the project still
+    /// at 24.
+    Future<String> fitAndCopyThePiece(
+      WidgetTester tester,
+      EditorSessionManager s,
+      String movie,
+    ) async {
+      await pressImport(tester);
+      await tester.tap(fit);
+      await pumpPastTheWaitWindow(tester);
+      bool isAMovie(MediaAsset asset) => asset.kind == MediaAssetKind.video;
+      await settleAsync(tester, () => s.mediaPool.mediaAssets.any(isAMovie));
+      await tester.pumpAndSettle();
+      s.playbackRig.prerenderScheduler.cancel();
+
+      expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
+      final entry = s.mediaPool.mediaAssets.singleWhere(isAMovie);
+      expect(entry.carried, isTrue);
+      expect(
+        normalizedMediaPath(entry.sourcePath!),
+        normalizedMediaPath(movie),
+        reason: 'carried as a piece of its own — kept, the movie would come '
+            'in whole',
+      );
+      return (await tester.runAsync(() async {
+        final bytes = await s.projectFile
+            .mediaByteSourceFor(entry.path)
+            .read();
+        final file = File('${tempDir.path}${Platform.pathSeparator}held.mp4');
+        await file.writeAsBytes(bytes);
+        return file.path;
+      }))!;
+    }
+
+    testWidgets('carried in, the movie can be fitted; pointed at, the button '
+        'stands where it was and cannot be pressed', (tester) async {
+      final movie = await write(tester, 'take.mp4');
+      await open(tester, [movie]);
+
+      await pressImport(tester);
+      expect(
+        fitPress(tester),
+        isNotNull,
+        reason: 'a movie placed is carried in unless answered otherwise',
+      );
+      expect(
+        find.text(
+          AppText.strings.imRateFitMovie(ProjectFrameRate.fps24.label),
+        ),
+        findsOneWidget,
+      );
+      // The numbers are the hover's (F-588: 「0.1% 같은 숫자는 호버로」).
+      expect(
+        tipOf(tester, find.byKey(const ValueKey('import-movie-rate-keep'))),
+        AppText.strings.imRateKeepTip(42),
+        reason: 'a 23.976 take kept in 24 holds a picture every 41.7 s',
+      );
+      expect(tipOf(tester, fit), AppText.strings.imRateFitTipPictureAndSound);
+      expect(
+        tipOf(tester, find.byKey(const ValueKey('import-movie-rate-take'))),
+        AppText.strings.imRateTakeTip(const ProjectFrameRate.ntsc(24).label),
+      );
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+
+      await answer(tester, 'file', movie, 'reference');
+      await pressImport(tester);
+      expect(fit, findsOneWidget, reason: 'its slot is always there');
+      expect(
+        fitPress(tester),
+        isNull,
+        reason: 'pointed at, no bytes are the import\'s own to rewrite',
+      );
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('bringing its sound alone, the button names the sound — and '
+        'its hover says the sound is what is rewritten', (tester) async {
+      final movie = await write(tester, 'take.mp4');
+      await open(tester, [movie]);
+      await answer(tester, 'option', movie, 'sound');
+
+      await pressImport(tester);
+
+      expect(
+        find.text(
+          AppText.strings.imRateFitSound(ProjectFrameRate.fps24.label),
+        ),
+        findsOneWidget,
+      );
+      expect(tipOf(tester, fit), AppText.strings.imRateFitTipSound);
+      expect(fitPress(tester), isNotNull);
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('🎯fitted, a 23.976 movie placed in a 24 project is carried '
+        'as its piece rewritten at 24 — frame for frame, and the project '
+        'stays at 24', (tester) async {
+      final movie = await sixFrames(tester);
+      if (movie == null) {
+        return;
+      }
+      final s = await open(tester, [movie]);
+
+      final copy = await fitAndCopyThePiece(tester, s, movie);
+
+      final decoder = osVideoDecoderOrSkip();
+      if (decoder == null) {
+        return;
+      }
+      final piece = decoder.openDocument(copy)!;
+      try {
+        expect(piece.info.frameCount, 6, reason: 'one frame for each of its');
+        expect(
+          piece.info.fpsNumerator / piece.info.fpsDenominator,
+          closeTo(24, 1e-3),
+        );
+      } finally {
+        decoder.closeDocument(piece);
+      }
+    });
+
+    testWidgets('🎯fitted, a trimmed movie keeps the very pictures its IN '
+        'and OUT stood on — counted again on the clock it is rewritten on', (
+      tester,
+    ) async {
+      final movie = await sixFrames(tester);
+      if (movie == null) {
+        return;
+      }
+      final s = await open(tester, [movie]);
+      // One-based on screen: IN at frame 3, OUT at 4 — on the 24 clock they
+      // show the movie's pictures 2 and 3.
+      await keepImportSpan(tester, 4, 5);
+
+      final copy = await fitAndCopyThePiece(tester, s, movie);
+
+      final decoder = osVideoDecoderOrSkip();
+      if (decoder == null) {
+        return;
+      }
+      final piece = decoder.openDocument(copy)!;
+      try {
+        expect(piece.info.frameCount, 2);
+        final reds = [
+          for (var frame = 0; frame < 2; frame += 1)
+            decoder.frameOf(piece, frame)![0],
+        ];
+        // Half the step between neighbouring reds: nearer is that picture.
+        const shown = [80, 110];
+        expect(
+          [for (var at = 0; at < 2; at += 1) (reds[at] - shown[at]).abs() < 15],
+          [true, true],
+          reason: 'pictures 2 and 3 (reds 80 · 110) — the same frame '
+              'numbers on the rewritten clock would be pictures 3 and 4; '
+              'read $reds',
+        );
+      } finally {
+        decoder.closeDocument(piece);
+      }
+    });
   });
 }

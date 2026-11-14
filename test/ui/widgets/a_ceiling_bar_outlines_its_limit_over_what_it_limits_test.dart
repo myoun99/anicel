@@ -56,21 +56,26 @@ void main() {
     );
 
     expect(tester.getSize(track).width, width, reason: 'premise: no hands');
+    // Each the track's shape where it lies — the levels and the outline's
+    // four sides, cut by the corner they reach (Q10); the far side stands
+    // clear of it, a rectangle.
+    const value = width * 0.5;
     expect(
       track,
       paints
+        ..clipRect(rect: const Rect.fromLTWH(0, 0, width * 0.3, 24))
+        ..rsuperellipse(color: AppColors.hairline)
+        ..clipRect(rect: const Rect.fromLTWH(0, 0, width * 0.1, 24))
+        ..rsuperellipse(color: AppColors.accent)
+        ..clipRect(rect: const Rect.fromLTRB(0, 0, value, 1.5))
+        ..rsuperellipse(color: AppColors.textDim)
+        ..clipRect(rect: const Rect.fromLTRB(0, 22.5, value, 24))
+        ..rsuperellipse(color: AppColors.textDim)
+        ..clipRect(rect: const Rect.fromLTRB(0, 1.5, 1.5, 22.5))
+        ..rsuperellipse(color: AppColors.textDim)
         ..rect(
-          rect: const Rect.fromLTWH(0, 0, width * 0.3, 24),
-          color: AppColors.hairline,
-        )
-        ..rect(
-          rect: const Rect.fromLTWH(0, 0, width * 0.1, 24),
-          color: AppColors.accent,
-        )
-        ..rect(
-          rect: const Rect.fromLTWH(0, 0, width * 0.5, 24).deflate(0.75),
+          rect: const Rect.fromLTRB(value - 1.5, 1.5, value, 22.5),
           color: AppColors.textDim,
-          style: PaintingStyle.stroke,
         ),
     );
   });

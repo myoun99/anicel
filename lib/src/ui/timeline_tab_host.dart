@@ -13,12 +13,12 @@ import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'timeline/cut_list.dart' show cutListButton;
+import 'timeline/lane_group_reset.dart' show resetLaneGroupOf;
 import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
-import 'timeline/se_layer_mixer.dart';
 import 'brush/transform_tool_options.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
@@ -294,12 +294,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// R10 moved the lane list out to [timelineLanesForLayer] — the ↑/↓ row
   /// nav needs the same answer, and a second copy would have drifted from
-  /// what the grids draw.
-  List<PropertyLaneRow> _lanesForLayer(Layer layer) => timelineLanesForLayer(
-    layer: layer,
+  /// what the grids draw. Handed back as the same lanes while what they are
+  /// read from holds ([KeptTimelineLanes]), so the grids keep the lane rows
+  /// a pass did not change.
+  List<PropertyLaneRow> _lanesForLayer(Layer layer) => _lanes.of(
+    layer,
     session: _session,
     expandedGroupKeys: widget.rail.expandedLaneGroupKeys,
   );
+
+  final _lanes = KeptTimelineLanes();
 
   /// The CAMERA row's union summary (B4): the shared transform-header union
   /// lane, re-derived per row rebuild from the session's preview-aware
@@ -667,18 +671,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // same wiring (F-101).
             onDropMediaAssetOnSeBlock: sessionSeBlockDrop(_session),
             onAddLayer: _session.layerStack.addLayer,
-            isLayerSoloed: (layerId) => _session
-                .visibilitySolo
-                .soloedSeLayerIds
-                .value
-                .contains(layerId),
-            onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-              showSeLayerMixer(
-                anchorContext,
-                session: _session,
-                layerId: layerId,
-              ),
-            ),
+            onToggleLayerMute: _rowPresses.toggleMute,
+            onLayerTotalVolumeChangeEnd: _rowPresses.setTotalVolume,
             onOpenLayerReference: (anchorContext, layerId) =>
                 showLayerReferencePopover(
                   anchorContext,
@@ -968,7 +962,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
-                _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
+                resetLaneGroupOf(_session, layer, lane),
             transport: timelineTransport,
             // The legend's heading is the cut list (I-154).
             legendHeading: cutListButton(context, _session),

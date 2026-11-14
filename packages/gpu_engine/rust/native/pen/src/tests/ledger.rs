@@ -1,6 +1,4 @@
-//! The ledger's ring and what it answers, on answers worked out here: the
-//! C (qa_pen_ledger_apple.m) is compiled into the Apple app alone, never
-//! beside the engine, so there is no C to hold it to.
+//! The ledger's ring and what it answers, on answers worked out here.
 
 use crate::ledger::{
     ESTIMATED, ESTIMATED_FINAL, Ledger, MEASURED, NO_PRESSURE, RING, Sample, UNREPORTED, micros,

@@ -41,12 +41,16 @@ void main() {
       layerId: cut.layers.first.id,
       frameId: const FrameId('cel-1'),
     );
-    final pixels = Uint8List(256 * 256 * 4);
+    const tileSide = defaultCelTileSize;
+    final pixels = Uint8List(BitmapTile.bytesFor(tileSide));
     pixels[3] = 255;
     s.renderCaches.brushFrameStore.storeBakedSurface(
       key,
-      BitmapSurface(canvasSize: originalSize, tileSize: 256).putTiles([
-        (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: 256, pixels: pixels)),
+      BitmapSurface(canvasSize: originalSize, tileSize: tileSide).putTiles([
+        (
+          coord: TileCoord(x: 0, y: 0),
+          tile: BitmapTile(size: tileSide, pixels: pixels),
+        ),
       ]),
     );
     // The corruption vector: a DIRECT model-size write (what the pre-R7

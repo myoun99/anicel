@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
+import '../../helpers/drawn_shapes.dart';
+import '../../helpers/grid_tile_drawn.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🗣️I-129 (유저 2026-10-25): 「레이어 비지블 껐을때, 블록도 그걸
@@ -227,20 +229,7 @@ void main() {
           openMask: 0,
           rgba: timelineGridPackRgba(ring.color),
         );
-      Uint8List raster(Int32List ops) {
-        final pixels = Uint8List(4 * 2 * 24 * 28);
-        expect(
-          timelineGridRasterTileReference(
-            pixels: pixels,
-            tileWidth: 2 * 24,
-            tileHeight: 28,
-            backgroundRgba: 0,
-            ops: ops,
-          ),
-          0,
-        );
-        return pixels;
-      }
+      Uint8List raster(Int32List ops) => gridTileDrawn(2 * 24, 28, ops);
 
       final baked = timelineGridSubstrateOps(
         painter: painter,
@@ -291,12 +280,12 @@ void main() {
           layer: row,
         );
         await pumpUnder(tester, (on: true, hiddenAbove: false), marker);
-        expect(painted(TimelineLaneKeyMarker), paints..path(color: paper));
+        expect(painted(TimelineLaneKeyMarker), paintsShape(color: paper));
 
         await pumpUnder(tester, eye, marker);
         expect(
           painted(TimelineLaneKeyMarker),
-          paints..path(color: off(paper, under: null)),
+          paintsShape(color: off(paper, under: null)),
           reason: 'no ground known here: the off paper laid as it is',
         );
 

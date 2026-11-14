@@ -6,7 +6,7 @@
 // cluster and the ledgered 「type in the wrong folder」 files — and every
 // importer followed without a hand edit.
 //
-//   dart run tool/refactor/move_files.dart <repoRoot> lib/a/x.dart=lib/b/x.dart ...
+//   dart tool/refactor/move_files.dart <repoRoot> lib/a/x.dart=lib/b/x.dart ...
 //
 // Paths are repo-relative and `=` separates old from new. A `part` file is
 // not rewritten (none of the moved files had one); `show`/`hide` clauses

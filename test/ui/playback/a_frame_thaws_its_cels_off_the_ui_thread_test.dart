@@ -20,13 +20,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/no_worker_free.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel still in the saved file was
 /// inflated on the UI thread the moment a row's image was made — 16–19 ms a
@@ -36,13 +35,16 @@ import '../../helpers/no_worker_free.dart';
 /// after another, each from its cel, until a frame became one picture
 /// (one-picture-per-frame ②-2).
 void main() {
+  opensTheEnginesScreens();
   // 🚨The road production takes — a REAL worker. The corpus runs every
   // worker's job here ([debugWorkersRunHere]); these tests wait through
   // `runAsync`, so they can wait for one.
   setUp(() => debugWorkersRunHere = false);
   tearDown(() => debugWorkersRunHere = true);
 
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  // Two tiles across and two down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
 
   final cut = Cut(
     id: const CutId('c'),
@@ -63,16 +65,16 @@ void main() {
   /// Two inked tiles of the cel's own bytes.
   BitmapSurface surfaceOf(int seed) {
     BitmapTile tile(int salt) {
-      final pixels = Uint8List(4 * 4 * 4);
+      final pixels = Uint8List(tileSide * tileSide * 4);
       for (var i = 0; i < pixels.length; i += 1) {
         pixels[i] = i % 4 == 3 ? 255 : (i * seed * 31 + salt) & 0xFF;
       }
-      return BitmapTile(size: 4, pixels: pixels);
+      return BitmapTile(size: tileSide, pixels: pixels);
     }
 
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: tileSide,
       tiles: {TileCoord(x: 0, y: 0): tile(3), TileCoord(x: 1, y: 1): tile(7)},
     );
   }
@@ -85,7 +87,7 @@ void main() {
   );
 
   FramePictures picturesOf(LayerFrameImageCache images, List<String> cels) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,

@@ -6,7 +6,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
-import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
+import 'package:anicel/src/ui/canvas/subtree_buffer_bounds.dart';
 
 import '../../helpers/placement_reading.dart';
 

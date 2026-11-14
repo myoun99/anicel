@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'camera_instruction.dart';
 import 'canvas_size.dart';
 import 'export_overrides.dart';
@@ -14,6 +15,8 @@ import 'project_id.dart';
 import 'project_timeline.dart';
 import 'timeline_id.dart';
 import 'timesheet_info.dart';
+import 'cut.dart';
+import 'cut_id.dart';
 import 'track.dart';
 
 const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
@@ -83,12 +86,12 @@ class Project {
     ExportProjectOverrides? exportOverrides,
     MediaViewerBookmarks mediaViewerBookmarks = const {},
     List<ProjectFontFile> fonts = const [],
-  }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
-       fonts = List.unmodifiable(fonts),
+  }) : mediaViewerBookmarks = frozenMap(mediaViewerBookmarks),
+       fonts = frozenList(fonts),
        // A project is given its timelines, or the tracks of its one.
        assert(timelines == null || (tracks == null && trailingFrames == 0)),
        assert(timelines?.isNotEmpty ?? tracks != null),
-       timelines = List.unmodifiable(
+       timelines = frozenList(
          timelines ??
              [
                ProjectTimeline(
@@ -332,7 +335,7 @@ class Project {
     List<ProjectFontFile>? fonts,
   }) {
     final current = currentTimelineId ?? this.currentTimelineId;
-    final standing = timelines ?? this.timelines;
+    final standing = timelines ?? ownFrozen(this.timelines);
     return Project(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -370,8 +373,8 @@ class Project {
           audioSpeedDenominator ?? this.audioSpeedDenominator,
       exportOverrides: exportOverrides ?? this.exportOverrides,
       mediaViewerBookmarks:
-          mediaViewerBookmarks ?? this.mediaViewerBookmarks,
-      fonts: fonts ?? this.fonts,
+          mediaViewerBookmarks ?? ownFrozen(this.mediaViewerBookmarks),
+      fonts: fonts ?? ownFrozen(this.fonts),
     );
   }
 
@@ -558,6 +561,15 @@ class Project {
       'createdAt: $createdAt, frameRate: $frameRate, '
       'cameraSize: $cameraSize)';
 }
+
+/// Every cut of [project] by its id, every timeline's — none for no project.
+/// A cut another timeline opened on is no cut a write made (I-150). What a
+/// write gave the cuts is read against it: the conte's rows
+/// (`conteFillsGiven`) and the attach rows' mirrors (`attachedMirrorsGiven`).
+Map<CutId, Cut> cutsOfEveryTimelineById(Project? project) => {
+  for (final track in project?.tracksOfEveryTimeline ?? const <Track>[])
+    for (final cut in track.cuts) cut.id: cut,
+};
 
 /// [stored] plus a synthesized entry (file-name display name) for every
 /// clip-referenced path the pool does not know yet, in first-reference

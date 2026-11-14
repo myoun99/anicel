@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
@@ -146,11 +145,6 @@ void main() {
     });
 
     test('a FRAMED source is fingerprinted as the medium it holds', () {
-      final compressor = QaCelCompressor.instance;
-      if (compressor == null || !compressor.isSupported) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       // Several blocks and a tail, so the window crosses block boundaries.
       final bytes = Uint8List.fromList(
         List.generate(1300 * 1024, (i) => (i ~/ 7 + (i % 5)) & 0xFF),

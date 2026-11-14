@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
+
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
+import '../native/engine_selection_masks.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 
@@ -23,18 +26,54 @@ sealed class SelectionClip {
   const SelectionClip();
 
   /// [region] as a selection reads, at its [options], inside the pasteboard
-  /// [wall].
+  /// [wall] — the same clip for as long as [region] is asked at that
+  /// softness inside that wall, so what it makes on the engine
+  /// ([maskOnEngine]) is made once for every verb under the selection.
+  ///
+  /// ↩️Till 2026-11-14 each asking made a clip of its own — every stroke,
+  /// fill and stamp under one selection had the engine make its mask again.
+  ///
+  /// ↩️And a selection with no softness asked of it was its own outline,
+  /// read past the [wall] — harmless while it only cut what lands on a
+  /// surface that stops there, but a lift takes the box it reads over, and a
+  /// colour verb walks a tile's window of it, and both read the wall's
+  /// (`selectionMaskOnPasteboard`). One reading for every softness now.
   factory SelectionClip.of(
     CanvasSelectionRegion region, {
     required PasteboardWall wall,
     required SelectionMaskOptions options,
-  }) => options.isHard
-      ? _OutlineClip(region)
-      : _SoftClip(region, wall: wall, options: options);
+  }) {
+    final kept = _kept[region];
+    if (kept != null &&
+        kept.wall == wall &&
+        kept.options.growPx == options.growPx &&
+        kept.options.featherPx == options.featherPx &&
+        kept.options.antiAlias == options.antiAlias) {
+      return kept.clip;
+    }
+    final clip = _ReadClip(region, wall: wall, options: options);
+    _kept[region] = (wall: wall, options: options, clip: clip);
+    return clip;
+  }
+
+  /// The clip [SelectionClip.of] made last of each region.
+  static final _kept =
+      Expando<
+        ({
+          PasteboardWall wall,
+          SelectionMaskOptions options,
+          SelectionClip clip,
+        })
+      >();
 
   /// [region]'s own outline, every pixel in or out by its centre.
-  const factory SelectionClip.outline(CanvasSelectionRegion region) =
-      _OutlineClip;
+  factory SelectionClip.outline(CanvasSelectionRegion region) =>
+      _OutlineClip(region);
+
+  /// Every pixel this clip can select — the box of the whole reading, what
+  /// [maskOnEngine] is made over and a lift takes (`liftSelectionPixels`);
+  /// null where it can select none.
+  ({int left, int top, int width, int height})? get box;
 
   /// Whether any of [pixels] can be selected — false only when none can, so
   /// what answers false may be skipped without changing one byte the mask
@@ -49,15 +88,40 @@ sealed class SelectionClip {
     required int width,
     required int height,
   });
+
+  /// The bytes [maskFor] reads, over every pixel this clip can select, made
+  /// on the engine the first time what reads a selection there asks — the
+  /// live stroke (`BrushLiveStrokeRasterizer`), a stamp's landing
+  /// (`materializeBrushDabSequenceOnBitmapSurface`) — and kept as long as
+  /// this clip ([EngineSelectionMasks.keptFor]). Nothing frees it.
+  ///
+  /// ⚠️Only for a clip that [mayCover] some pixel: one that can select none
+  /// has no box to make it over.
+  GpuMask maskOnEngine() => EngineSelectionMasks.keptFor(this, _madeOnEngine);
+
+  GpuMask _madeOnEngine();
 }
 
 final class _OutlineClip extends SelectionClip {
-  const _OutlineClip(this._region);
+  _OutlineClip(this._region) : box = _region.pixelBoxWithin(null);
 
   final CanvasSelectionRegion _region;
 
   @override
-  bool mayCover(DirtyRegion pixels) => _region.mayCover(pixels);
+  final ({int left, int top, int width, int height})? box;
+
+  @override
+  bool mayCover(DirtyRegion pixels) =>
+      box != null && _region.mayCover(pixels);
+
+  @override
+  GpuMask _madeOnEngine() => EngineSelectionMasks.of(
+    _region.spelled,
+    box: box!,
+    grow: 0,
+    feather: 0,
+    antiAlias: false,
+  );
 
   @override
   Uint8List maskFor({
@@ -78,29 +142,48 @@ final class _OutlineClip extends SelectionClip {
 /// mask held for as long as the selection stands; this one pays for the
 /// tiles a stroke touches, once each ([BrushLiveStrokeRasterizer] keeps them
 /// for the stroke), and holds nothing.
-final class _SoftClip extends SelectionClip {
-  _SoftClip(
+final class _ReadClip extends SelectionClip {
+  _ReadClip(
     this._region, {
     required PasteboardWall wall,
     required SelectionMaskOptions options,
   }) : _options = options,
-       _box = _region.pixelBoxWithin(wall.region, pad: options.bboxPad);
+       box = _region.pixelBoxWithin(wall.region, pad: options.bboxPad);
 
   final CanvasSelectionRegion _region;
   final SelectionMaskOptions _options;
 
-  /// The box of the whole reading — null when the selection and the wall do
-  /// not meet.
-  final ({int left, int top, int width, int height})? _box;
+  @override
+  final ({int left, int top, int width, int height})? box;
 
   @override
   bool mayCover(DirtyRegion pixels) {
-    final box = _box;
+    final box = this.box;
     return box != null &&
         pixels.rightExclusive > box.left &&
         pixels.left < box.left + box.width &&
         pixels.bottomExclusive > box.top &&
         pixels.top < box.top + box.height;
+  }
+
+  /// Over the whole reading's box: the windows [maskFor] reads are cut
+  /// from it. ⚠️The whole box, which the class's note turns down for the
+  /// CPU's bytes: on the engine it is passes the UI thread does not wait
+  /// for, made once for the clip and let go of with it (2026-11-13 · 14) —
+  /// where the CPU made a window's bytes and handed them up at every move.
+  @override
+  GpuMask _madeOnEngine() {
+    final box = this.box;
+    if (box == null) {
+      throw StateError('a selection that meets no pixel of its wall');
+    }
+    return EngineSelectionMasks.of(
+      _region.spelled,
+      box: box,
+      grow: _options.growPx,
+      feather: _options.featherPx,
+      antiAlias: _options.antiAlias,
+    );
   }
 
   @override
@@ -111,7 +194,7 @@ final class _SoftClip extends SelectionClip {
     required int height,
   }) {
     final mask = Uint8List(width * height);
-    final box = _box;
+    final box = this.box;
     if (box == null) {
       return mask;
     }
@@ -147,5 +230,24 @@ final class _SoftClip extends SelectionClip {
       );
     }
     return mask;
+  }
+}
+
+/// ⛔A selection cuts on the engine's grid alone (2026-11-14, board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move` ④ — 관제's call,
+/// handed the night's decisions by 유저 「판단생기면 알아서해줘」, on reading
+/// the app's grids and its workers): no road of the app draws under one
+/// anywhere else — its cels are on that grid, on the isolate that has the
+/// engine — and a rule of its own off it cut the same selection to other
+/// bytes (the CPU's 8-bit fold against the engine's 16-bit cover: 2 levels
+/// at a feathered edge, measured that day).
+///
+/// ↩️The CPU folded the selection's mask in there: into a stamp's picture
+/// (`clipStampDabToSelection`), a stroke's buffer
+/// (`clipStrokePixelsToSelection`) and the live stroke's tiles, a mask a
+/// tile.
+void cutOnTheEngineOnly(SelectionClip? selection) {
+  if (selection != null) {
+    throw StateError('a selection cuts on the engine\'s grid alone');
   }
 }

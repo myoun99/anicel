@@ -14,6 +14,7 @@ import '../core/dev_profile.dart';
 import 'brush_bitmap_materialization_history_entry_builder.dart';
 import 'brush_surface_edit_builder.dart';
 import 'canvas_surface_state_edit.dart';
+import 'selection_clip.dart';
 
 BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   required CanvasSurfaceState canvasState,
@@ -26,6 +27,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
   List<PlacedTile>? promotedTiles,
+  SelectionClip? selection,
 }) {
   final edit = labProbe(
     'commit.edit',
@@ -39,6 +41,7 @@ BrushEditSessionCommitResult commitBrushDabSequenceToBrushEditSession({
       blendMode: blendMode,
       promotedBase: promotedBase,
       promotedTiles: promotedTiles,
+      selection: selection,
     ),
   );
   final updatedCanvasState = labProbe(

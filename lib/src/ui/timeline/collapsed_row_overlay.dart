@@ -26,6 +26,7 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_grid_screen.dart';
 import 'timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'timeline_zoom_anchor_policy.dart'
     show applyZoomAnchoredScroll, zoomAnchoredScrollOffset;
@@ -537,7 +538,10 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
             // nowhere the film stops, and the open storyboard shades none.
             null => Stack(
               fit: StackFit.expand,
-              children: [IgnorePointer(child: sheet), content],
+              children: [
+                IgnorePointer(child: sheet),
+                TimelineGridScreenHost(child: content),
+              ],
             ),
             final playback => _whereTheFilmStops(
               sheet: sheet,

@@ -15,9 +15,13 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -25,6 +29,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
@@ -39,10 +44,11 @@ import '../helpers/named_finders.dart';
 const _trackId = TrackId('twin-track');
 const _seId = LayerId('twin-se');
 
-Layer _seRow({bool clipped = false}) => Layer(
+Layer _seRow({bool clipped = false, TransformTrack? transform}) => Layer(
   id: _seId,
   name: 'S1',
   kind: LayerKind.se,
+  transformTrack: transform,
   frames: [
     Frame(id: const FrameId('twin-voice'), duration: 4, strokes: const []),
   ],
@@ -65,7 +71,7 @@ Layer _seRow({bool clipped = false}) => Layer(
   ],
 );
 
-Project _project({bool clipped = false}) => Project(
+Project _project({bool clipped = false, TransformTrack? transform}) => Project(
   id: const ProjectId('twin-project'),
   name: 'Twin Lanes',
   createdAt: DateTime.utc(2026, 9, 16),
@@ -89,16 +95,18 @@ Project _project({bool clipped = false}) => Project(
           ],
         ),
       ],
-      seLayers: [_seRow(clipped: clipped)],
+      seLayers: [_seRow(clipped: clipped, transform: transform)],
     ),
   ],
 );
 
-Future<void> _openApp(WidgetTester tester) async {
+Future<void> _openApp(WidgetTester tester, {TransformTrack? transform}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(
+      home: HomePage(initialProject: _project(transform: transform)),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -231,6 +239,41 @@ void main() {
     await _press(tester, '$chip-option-block');
 
     expect(basis(), FxBasis.block);
+  });
+
+  // 🗣️F-583 (유저 2026-11-11): 「리셋버튼도 값 안바뀌었으면 동일하게 통일해서
+  // 비활성화」 — asked over the span laid on it, on this panel as on the
+  // timeline.
+  testWidgets('the S row\'s Reset is asked again as a lane span is laid '
+      'over its keys, as the timeline\'s is', (tester) async {
+    await _openApp(
+      tester,
+      transform: TransformTrack().copyWith(
+        rotation: PropertyTrack<double>().withKey(0, 0).withKey(10, 45),
+      ),
+    );
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    await _press(tester, 'timeline-mode-storyboard-button');
+    await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
+    VoidCallback? reset() => tester
+        .widget<RailGlyphButton>(
+          find.named(
+            'storyboard-lane-group-reset-${_seId.value}-transform-group',
+          ),
+        )
+        .onPressed;
+    expect(reset(), isNull, reason: 'at rest at the playhead');
+
+    session.laneRangeSelection.value = TimelineLaneSelection(
+      layerId: _seId,
+      laneId: transformGroupHeaderLane.laneId,
+      startIndex: 8,
+      endIndexExclusive: 12,
+    );
+    await tester.pumpAndSettle();
+    expect(reset(), isNotNull, reason: 'the key it covers stands it at 45°');
   });
 
   // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —

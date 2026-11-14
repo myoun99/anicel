@@ -7,11 +7,13 @@
 // Pixel i is bit i % 32 of word i / 32, counted row after row with nothing
 // between, as the colours are.
 //
-// Needs tile.wgsl and frame.wgsl before it.
+// Needs tile.wgsl and its picture's reads (frame.wgsl or
+// frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame.wgsl,
+  // frame_shown.wgsl).
+  stride: u32,
   // The picture.
   width: u32,
   height: u32,
@@ -26,7 +28,6 @@ struct Params {
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 @group(0) @binding(2) var<storage, read_write> clear_bits: array<u32>;
 
 // One invocation, one word: 32 pixels in a run, which may cross from one
@@ -48,7 +49,7 @@ fn clear_pass(@builtin(global_invocation_id) id: vec3<u32>) {
   for (var bit = 0u; bit < 32u; bit += 1u) {
     let index = first + bit;
     if (index < pixels) {
-      let alpha = frame[frame_word(params.columns, index % params.width, index / params.width)] >> 24u;
+      let alpha = frame_alpha(index % params.width, index / params.width);
       if (alpha < params.cut) {
         bits |= 1u << bit;
       }

@@ -813,7 +813,6 @@ class TimelineLaneRangeGestureLayer extends StatefulWidget {
     required this.layer,
     required this.laneId,
     required this.frameStartIndex,
-    required this.leadingFrameSpacerWidth,
     required this.frameCellExtent,
     required this.crossAxisExtent,
     required this.callbacks,
@@ -823,7 +822,6 @@ class TimelineLaneRangeGestureLayer extends StatefulWidget {
   final Layer layer;
   final String laneId;
   final int frameStartIndex;
-  final double leadingFrameSpacerWidth;
   final double frameCellExtent;
 
   /// Lane-row height (horizontal) / column width (X-sheet) — the select
@@ -856,7 +854,7 @@ class _TimelineLaneRangeGestureLayerState
     visibleX: partAlong(widget.axis, localPosition),
     frameStartIndex: widget.frameStartIndex,
     frameCellWidth: widget.frameCellExtent,
-    leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
+    leadingFrameSpacerWidth: 0,
   );
 
   /// The cells the double tap aims at ([timelineDoubleTapAim]).

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/widgets/face_ink_well.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/text_finders.dart';
@@ -315,19 +316,15 @@ void main() {
         )
         .style!
         .color;
-    Color? washOf(String key) =>
-        (tester
-                    .widget<Container>(
-                      find
-                          .descendant(
-                            of: find.byKey(ValueKey<String>(key)),
-                            matching: find.byType(Container),
-                          )
-                          .first,
-                    )
-                    .decoration!
-                as BoxDecoration)
-            .color;
+    // The wash is the pill's share of the strip (Q12, [FaceInkWell.share]).
+    Color? washOf(String key) => tester
+        .widget<FaceInkWell>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(FaceInkWell),
+          ),
+        )
+        .fill;
 
     final accent = theme.colorScheme.primary;
     expect(tone, isNot(accent));

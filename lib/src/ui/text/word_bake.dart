@@ -39,6 +39,19 @@ class BakedWordCoverage {
 /// read back as coverage — what the timeline's tiles blit, and what a
 /// screen draws a narrowed word from ([paintBakedWord]).
 ///
+/// 🗣️A SCREEN'S WORD IS FLUTTER'S RASTER (connection-round-checklist-Q30,
+/// 유저 2026-11-09: 「프레임블록같은 ui적인 요소가 플러터고 출력될 것에
+/// 찍히는건 엔진」 · 「출력에보이는거만 동일하면되는데」). What is stamped into
+/// the output is the GPU engine's; a word on a screen is one raster with the
+/// words beside it.
+/// ↩️From 2026-11-08 to 11-09 the GPU engine set this word (word-bake-Q1,
+/// 유저 2026-11-05: 「엔진이 글자를 직접 그린다」). 🔬Beside the un-narrowed
+/// words Flutter draws it stood −1.5 to +0.8 px off the centre of this bake,
+/// mostly higher, inked 0.88 to 1.34 times as much, and 48 of 216 bakes
+/// inked the same rows (flutter_tester, 9–20 px × ratio 1–2 × four words ×
+/// three narrowings): Flutter hints and puts the baseline on a whole pixel,
+/// the engine draws the outline as it is.
+///
 /// 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
 ///
 /// Names used to shrink to a 4px floor at deep zoom-out (R26 #38/#4) and
@@ -105,9 +118,14 @@ class BakedWordCoverage {
 /// narrowed to 0.7 stood 0.76px high and 0.42px left, beside neighbours
 /// baked at 1 that stood where they should (the 「3a만 … 위에」).
 ///
-/// The coverage is the painted ink's ALPHA, whatever colour [painter]
-/// paints in: a caller that tints it draws the colour's own alpha twice
-/// unless it keys the bake on that colour.
+/// The coverage is the painted ink's ALPHA, whatever colour [painter] paints
+/// in: the letters' ink alone for an opaque colour, so a word painted in
+/// another opaque colour is drawn from the same bake ([_inkless]). A
+/// translucent colour's alpha is in the raster, and the bake is that
+/// colour's own; [paintBakedWord] tints with the colour made opaque.
+///
+/// Null for a word of no size: a tile leaves it out
+/// (`TimelineGridTileStore`).
 Future<BakedWordCoverage?> bakeWordCoverage(
   TextPainter painter, {
   required ({double x, double y}) fit,
@@ -302,7 +320,7 @@ typedef BoxFilterSpan = ({double origin, double step});
 /// not, spreads onto a row this leaves clear, peaks lower (「3a」 at ratio
 /// 1: 149 for 200) and keeps 16–30% less edge contrast; a 12px name
 /// narrowed to a half or under keeps 14–32% less along the line; and past
-/// sixteen source pixels a pixel (`kResampleRadiusCeiling`) Blend stops
+/// sixteen source pixels a pixel (`RESAMPLE_CEILING`, R1's) Blend stops
 /// averaging, which a narrowing to a twentieth asks of a 9px name — its
 /// ink came out from a fifth short to a third over.
 ///
@@ -427,7 +445,7 @@ bool paintBakedWord(
   }
   final baked = BakedWords.instance._bakeFor(
     _Word((
-      span: span,
+      span: _inklessOf[span] ??= HashedOnce(_inkless(span)),
       scaler: painter.textScaler,
       dpr: dpr,
       width: painter.width,
@@ -450,6 +468,7 @@ bool paintBakedWord(
       painter.width * fit.x + 2 / dpr,
       painter.height * fit.y + 2 / dpr,
     ),
+    // Made opaque: a colour's own alpha is in the bake ([bakeWordCoverage]).
     Paint()
       ..filterQuality = FilterQuality.low
       ..colorFilter = ColorFilter.mode(
@@ -575,18 +594,19 @@ mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
   }
 }
 
-/// A word apart from its narrowing: the spans it is set in — text, style
-/// and ink, the letter gaps it gave included — the painter's scaling, the
-/// pixel grid, and the box it was laid in (a word laid short, ellipsis and
-/// all, is not the word laid whole).
+/// A word apart from its narrowing: the spans it is set in — text and
+/// style, the letter gaps it gave included, not its ink ([_inkless]) — the
+/// painter's scaling, the pixel grid, and the box it was laid in (a word
+/// laid short, ellipsis and all, is not the word laid whole).
 ///
 /// Hashed once ([HashedOnce]): a paint looks its word up several times —
 /// its bake taken out and put back, the word's latest bake, its waiters —
-/// and a span's hash walks its style and every child's.
+/// and a span's hash walks its style and every child's. The span is too,
+/// once for as long as it lives ([_inklessOf]).
 typedef _Word =
     HashedOnce<
       ({
-        InlineSpan span,
+        HashedOnce<InlineSpan> span,
         TextScaler scaler,
         double dpr,
         double width,
@@ -597,6 +617,35 @@ typedef _Word =
 /// A word at one narrowing — what one bake is of — hashed once, as its word
 /// is.
 typedef _Bake = HashedOnce<({_Word word, double x, double y})>;
+
+/// [span] with every opaque colour it is set in made one: its bake is the
+/// letters' ink alone, so a word painted in another opaque colour is drawn
+/// from the same bake ([paintBakedWord] tints it). A translucent colour
+/// keeps its own — its alpha is in the raster — as does a style painted with
+/// a [Paint] of its own, and one already in the one colour.
+InlineSpan _inkless(InlineSpan span) => switch (span) {
+  TextSpan(:final text, :final style, :final children) => TextSpan(
+    text: text,
+    style:
+        style == null ||
+            style.foreground != null ||
+            style.color == _ink ||
+            (style.color?.a ?? 1) != 1
+        ? style
+        : style.copyWith(color: _ink),
+    children: [
+      for (final child in children ?? const <InlineSpan>[]) _inkless(child),
+    ],
+  ),
+  _ => span,
+};
+
+const _ink = Color(0xFF000000);
+
+/// Each span's [_inkless] key, made and hashed once for as long as the span
+/// lives — a cached glyph's painter is painted with the same span frame
+/// after frame, and finding it here asks nothing of its hash.
+final Expando<HashedOnce<InlineSpan>> _inklessOf = Expando();
 
 /// The words a screen has baked ([paintBakedWord]) — the app's one cache
 /// of them, as images, and when one lands.
@@ -731,10 +780,10 @@ final class BakedWords {
     RecordedWord? Function() record,
   ) async {
     _baking.add(key.value.word);
-    final recorded = record();
     QuietTurn? turn;
     var landed = false;
     try {
+      final recorded = record();
       if (recorded == null) {
         return null;
       }

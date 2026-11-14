@@ -10,6 +10,7 @@ import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
 import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
+import '../playback/playback_stillness.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
 import 'dart:ui' show ClipOp;
@@ -80,11 +81,17 @@ import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
 import 'timeline_frame_span_layout.dart'
-    show TimelineFrameSpan, TimelineFrameSpanPlacement;
+    show
+        TimelineFrameSpan,
+        TimelineFrameSpanLayout,
+        TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
 import 'timeline_span_name.dart' show TimelineSpanName;
 import 'axis_turn.dart';
-import 'memo_token.dart' show ByList;
+import 'still_row.dart';
+import 'timeline_frame_geometry.dart'
+    show TimelineFrameAxisBox, TimelineFrameGeometryHandle;
+import 'memo_token.dart' show ByIdentity, ByList;
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
 /// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
@@ -160,6 +167,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.onSetLaneGroupBasis,
     this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
+    this.laneSpan,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     this.width,
@@ -207,12 +215,19 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// The group header's RASTERIZE (I-120 round ②) as the host answers it:
   /// none for a header that has none, its press null where it bakes
   /// nothing now (the slot stays, Q8). Null leaves it out everywhere.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
-  /// The group header's RESET (R5, AE's group Reset). Never deletes a key:
-  /// it puts the group's members back to their defaults at the playhead —
-  /// or at the keys a live lane-range selection covers.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  /// The group header's RESET (R5, AE's group Reset) as the host answers it,
+  /// as [onRasterizeLaneGroup] is. Never deletes a key: it puts the group's
+  /// members back to their defaults at the playhead — or at the keys a live
+  /// lane-range selection covers.
+  final LaneGroupPress? onResetLaneGroup;
+
+  /// The lane-range selection — what a group header's RESET and RASTERIZE
+  /// act over ([frameCursor] where none covers the group): the two are
+  /// asked again as either moves, so a press that would change nothing is
+  /// out at once (F-583). Null asks them as the row is built.
+  final ValueListenable<TimelineLaneSelection?>? laneSpan;
 
   /// Which optional columns the OWNING surface carries, so a group header
   /// lays its trailing controls on the same grid its layer rows do (R5 #7,
@@ -260,6 +275,68 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// the label (R10 #19's rail half). Null leaves the label inert and
   /// unwashed, which is what a passive host wants.
   final TimelineCurrentRowHooks? currentRowHooks;
+
+  /// What the row is built from, each as the row reads it — THE facts
+  /// every host keeps a lane's row by: the timeline's rail, the sheet's
+  /// headers turned on their side, the conte's rail. ONE list, beside
+  /// the fields it lists, so a field added here is a fact there.
+  ///
+  /// 🚨Card a-rail-lane-row-is-drawn-again-on-every-host-pass (2026-11-07):
+  /// lane rows were built again at every pass of their host — a runway step
+  /// past the cut's end, a notify that changed nothing — and a row's tick
+  /// layer, handed a new child, was laid out and painted again: the row's
+  /// still region threw its image away and took another (🔬the six lane rows
+  /// of one twirled-open layer, at one runway step). ↩️They stood unkept
+  /// because their lane models were new objects at every pass; a host that
+  /// hands its lanes back as the same objects while what they are read from
+  /// holds (`KeptLaneLists`) makes a lane a fact by identity, as a
+  /// listenable is. A host that reads them anew builds its lane rows anew,
+  /// as every pass did before. 🔬Card the-conte-rails-lane-rows-are-built-
+  /// again-with-the-rail (11-08): the conte's rail was that host — a pick
+  /// of an S row drew both tracks' fx heads again — and the third to keep
+  /// the row, so its facts came here from the timeline's grids
+  /// (`laneControlsRowFacts`, read off a grid's hooks).
+  ///
+  /// ⛔Its VERBS are not facts: a host binds them once, closing over the
+  /// stable session (R13-2, `KeptPiece.facts`), so whether there is one is
+  /// the fact, never which. Of [metrics] the row reads the four below and
+  /// no other — a zoom step moves none of them.
+  Object? get facts => (
+    // The lane is made of its layer.
+    layer: ByIdentity(layer),
+    lane: ByIdentity(lane),
+    seat: seat,
+    folded: folded,
+    layerRowHeight: metrics.layerRowHeight,
+    layerControlsWidth: metrics.layerControlsWidth,
+    sectionLabelGutterWidth: metrics.sectionLabelGutterWidth,
+    railColumns: metrics.railColumns,
+    axis: axis,
+    keyPrefix: keyPrefix,
+    width: width,
+    height: height,
+    leadingInset: leadingInset,
+    optionalColumns: optionalColumns,
+    laneGraphs: laneGraphs,
+    // What the row listens to itself: the frame it reads its value at and
+    // the row stood on.
+    frameCursor: ByIdentity(frameCursor),
+    laneSpan: ByIdentity(laneSpan),
+    currentRow: ByIdentity(currentRowHooks?.currentRow),
+    verbs: (
+      onSelectFrame != null,
+      laneEdit != null,
+      laneEdit?.valueLink != null,
+      onToggleLaneGroup != null,
+      onToggleLaneGroupEnabled != null,
+      onSetLaneGroupBasis != null,
+      onRasterizeLaneGroup != null,
+      onResetLaneGroup != null,
+      laneGraphVerbs != null,
+      currentRowHooks?.onStandOnLane != null,
+      currentRowHooks?.onSettledPress != null,
+    ),
+  );
 
   @override
   State<TimelineLaneControlsRow> createState() =>
@@ -717,7 +794,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// The cell SUBSCRIBES to the current row rather than being rebuilt from
   /// above with it: the claim that moves the row fires on pointer-down
   /// inside gestures that must not notify, and only two rows change
-  /// appearance when it moves.
+  /// appearance when it moves — so it is built again only when what it
+  /// shows of the current row changes ([_shownOf]), as what it shows of the
+  /// frame is ([_onTheFrame]). 🔬Card a-rail-lane-row-is-drawn-again-on-
+  /// every-host-pass (the Surface, 11-08): built again at every move, every
+  /// lane cell laid its layout builders out again, and every lane row of
+  /// the rail drew itself again and let its image go — a pick of another
+  /// layer changed none of them.
   @override
   Widget build(BuildContext context) {
     final hooks = widget.currentRowHooks;
@@ -734,6 +817,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // that holds still builds nothing as the playhead runs, a moving one
     // its value alone, and the key buttons as a key is crossed.
     // ↩️The whole row was built again on every frame the cursor moved to.
+    // ↩️F-587 (유저 2026-11-13): that is the playhead moved by a HAND. While
+    // a run moves it, none of the three is asked — each keeps what it
+    // showed before the run ([PlaybackStillness]).
     return SizedBox(
       width: _cellWidth,
       height: _cellHeight,
@@ -745,11 +831,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         child: PressFireScope(
           fireOn: PressFire.down,
           child: hooks == null
-              ? _buildCell(context, null)
-              : ValueListenableBuilder<TimelineRowAddress?>(
-                  valueListenable: hooks.currentRow,
-                  builder: (context, currentRow, _) =>
-                      _buildCell(context, currentRow),
+              ? _buildCell(context, _shownOf(null))
+              : SlicedListenableBuilder<_ShownOfTheCurrentRow>(
+                  listenable: hooks.currentRow,
+                  slice: () => _shownOf(hooks.currentRow.value),
+                  builder: _buildCell,
                 ),
         ),
       ),
@@ -761,7 +847,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   int get _frame => laneRowFrame(widget.frameCursor);
 
   /// [builder] over what the row shows of the frame the cursor stands on
-  /// ([slice] of it), built again only when that changes.
+  /// ([slice] of it), built again only when that changes — and kept as it
+  /// was while a run moves the cursor (F-587, [PlaybackStillness]). A press
+  /// reads [_frame] itself, as it lands.
   Widget _onTheFrame<S>(
     S Function(int frame) slice,
     Widget Function(BuildContext context, S shown) builder,
@@ -773,17 +861,33 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return SlicedListenableBuilder<S>(
       listenable: cursor,
       slice: () => slice(_frame),
+      stillWhile: PlaybackStillness.of(context),
       builder: builder,
     );
   }
 
-  Widget _buildCell(BuildContext context, TimelineRowAddress? currentRow) {
+  /// What the cell shows of [currentRow]: whether its plate is lit
+  /// ([_plate]), and — on a graph's seat — whether the graph draws its lane.
+  _ShownOfTheCurrentRow _shownOf(TimelineRowAddress? currentRow) {
+    final seat = widget.seat;
+    return (
+      lit:
+          currentRowIsLane(currentRow, layer.id, lane.laneId) ||
+          (lane.isGroupHeader &&
+              currentRowIsInsideGroup(currentRow, layer.id, lane.laneId)),
+      drawn: seat == null
+          ? null
+          : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId),
+    );
+  }
+
+  Widget _buildCell(BuildContext context, _ShownOfTheCurrentRow shown) {
     final colorScheme = Theme.of(context).colorScheme;
-    final plate = _plate(colorScheme, currentRow);
+    final plate = _plate(colorScheme, lit: shown.lit);
     return _standable(
       lane.isGroupHeader
           ? _headerCell(context, colorScheme, plate)
-          : _memberCell(colorScheme, plate, currentRow),
+          : _memberCell(colorScheme, plate, drawn: shown.drawn),
     );
   }
 
@@ -791,13 +895,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// row is the verbs' subject — or while you are standing INSIDE the group
   /// it leads, so the rail reads as the chain it is (layer ▸ Blur ▸ Radius
   /// all lit, user 2026-08-07).
-  Color _plate(ColorScheme colorScheme, TimelineRowAddress? currentRow) {
-    final lit =
-        currentRowIsLane(currentRow, layer.id, lane.laneId) ||
-        (lane.isGroupHeader &&
-            currentRowIsInsideGroup(currentRow, layer.id, lane.laneId));
-    return lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
-  }
+  Color _plate(ColorScheme colorScheme, {required bool lit}) =>
+      lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
 
   /// The cell's size, the same for a header and a member: the rail's row
   /// width (the sheet's column) and the row height. Horizontal: the section
@@ -827,7 +926,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
     ),
     alignment: alignment,
-    child: child,
+    // What the cell's chips stand on: its plate over the panel (Q12,
+    // [FaceGround]).
+    child: Builder(
+      builder: (context) => FaceGround(
+        ground: FaceGround.washedIn(context, plate),
+        child: child,
+      ),
+    ),
   );
 
   /// The rows' section band continues through lane rows (UI-R6 #5); the
@@ -869,7 +975,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // grid, so `Expanded` (not `Flexible`) — the trailing run has to
           // start at the same place on every header, and shrink-wrapping
           // the name is what made it start wherever a name happened to end.
-          Expanded(child: _headerLabel(colorScheme)),
+          Expanded(child: _headerName(colorScheme)),
           ?_groupGraph(),
           ..._headerTrailing(context, colorScheme),
         ],
@@ -910,18 +1016,62 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// stand up on the sheet (user, 2026-08-08).
   ///
   /// An effect of a plugin this device has not greys as the rail's off
-  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」).
-  Widget _headerLabel(ColorScheme colorScheme) => readableText(
-    widget.axis,
-    lane.label,
-    style: TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      color: lane.pluginNotOnDevice
-          ? colorScheme.onSurface.withValues(alpha: 0.35)
-          : colorScheme.onSurface,
-    ),
-  );
+  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」) — and so does one whose
+  /// plugin [failed] to draw.
+  Widget _headerLabel(ColorScheme colorScheme, {required bool failed}) =>
+      readableText(
+        widget.axis,
+        lane.label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: lane.pluginNotOnDevice || failed
+              ? colorScheme.onSurface.withValues(alpha: 0.35)
+              : colorScheme.onSurface,
+        ),
+      );
+
+  /// The header's name, and on a plugin's effect the ⚠ after it —
+  /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08): 「원래
+  /// 셀 + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」. The mark is always
+  /// laid, clear while the plugin drew at the frame the row stands on: only
+  /// its colour changes, as the record button's clip mark's does, so the
+  /// name never narrows and widens with it.
+  ///
+  /// Whether it failed at that frame is one more thing the row shows of the
+  /// frame: built again where the answer turns — it is asked on the
+  /// failures' own news too ([PluginRunFailures]), which the cursor alone
+  /// does not carry. ⛔Not kept through a run as the rest of the row's are
+  /// ([_onTheFrame]): a warning lights the moment a plugin fails under the
+  /// run (🗣️유저 11-14 F-587-Q1, [PlaybackStillness]).
+  Widget _headerName(ColorScheme colorScheme) {
+    final failures = lane.pluginFailures;
+    if (failures == null) {
+      return _headerLabel(colorScheme, failed: false);
+    }
+    final cursor = widget.frameCursor;
+    return SlicedListenableBuilder<bool>(
+      listenable: cursor == null
+          ? failures.changes
+          : Listenable.merge([failures.changes, cursor]),
+      slice: () => failures.failedAt(laneRowFrame(cursor)),
+      builder: (context, failed) => Flex(
+        direction: widget.axis,
+        children: [
+          Expanded(child: _headerLabel(colorScheme, failed: failed)),
+          Icon(
+            Icons.warning_rounded,
+            key: ValueKey<String>(
+              '$_keyPrefix-lane-group-plugin-failed-'
+              '${layer.id}-${lane.laneId}',
+            ),
+            size: 12,
+            color: failed ? colorScheme.error : Colors.transparent,
+          ),
+        ],
+      ),
+    );
+  }
 
   /// R5 #7: the group's switch sits in the LAYER ROW'S fx column, through
   /// the layer row's own skeleton. R6 put it straight after the label, which
@@ -958,19 +1108,63 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
   /// clip toggle owns on layer rows, and the two never appear on
   /// the same row.
-  Widget? _groupReset(ColorScheme colorScheme) {
-    final onReset = widget.onResetLaneGroup;
-    if (onReset == null) return null;
-    return RailGlyphButton(
+  Widget? _groupReset(ColorScheme colorScheme) => _groupPress(
+    widget.onResetLaneGroup,
+    atThePlayhead: true,
+    (press) => RailGlyphButton(
       name: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlResetGroup,
       size: AppIconButtonSize.micro,
-      onPressed: () => onReset(layer, lane),
+      onPressed: press,
       glyph: RailIconGlyph(
         Icons.settings_backup_restore,
         color: colorScheme.onSurfaceVariant,
       ),
-    );
+    ),
+  );
+
+  /// A group header's [verb] — its RASTERIZE or its RESET — as [button]
+  /// draws its answer, asked again as what it acts over moves (the
+  /// [TimelineLaneControlsRow.laneSpan], and the playhead where it acts
+  /// [atThePlayhead]): a press that would change nothing is out at once
+  /// (F-583). Its slot is laid either way.
+  ///
+  /// Drawn again only where the answer turns — shown or not, lit or out
+  /// ([SlicedListenableBuilder]) — and a lit press does what the answer
+  /// says when it is pressed. ↩️It was drawn again at each step of the
+  /// playhead it is asked at, which took a rail's rows off their images
+  /// while the playhead ran: 🔬2026-11-11, fourteen of the conte's headers
+  /// redrawn through a growth of the runway
+  /// (`a_conte_row_keeps_its_image_while_the_runway_grows_test`).
+  /// ↩️F-587 (유저 2026-11-13): and where the answer would turn under a run,
+  /// it is not asked — the button keeps what it showed before the run
+  /// ([PlaybackStillness]).
+  Widget? _groupPress(
+    LaneGroupPress? verb,
+    Widget Function(VoidCallback? press) button, {
+    required bool atThePlayhead,
+  }) {
+    if (verb == null) return null;
+    ({bool shown, bool lit}) answer() => switch (verb(layer, lane)) {
+      null => (shown: false, lit: false),
+      (:final press) => (shown: true, lit: press != null),
+    };
+    void press() => verb(layer, lane)?.press?.call();
+    Widget asked(({bool shown, bool lit}) answer) => answer.shown
+        ? button(answer.lit ? press : null)
+        : const SizedBox.shrink();
+    final scope = [
+      if (atThePlayhead) ?widget.frameCursor,
+      ?widget.laneSpan,
+    ];
+    return scope.isEmpty
+        ? asked(answer())
+        : SlicedListenableBuilder(
+            listenable: Listenable.merge(scope),
+            slice: answer,
+            stillWhile: PlaybackStillness.of(context),
+            builder: (_, answer) => asked(answer),
+          );
   }
 
   Widget? _groupFx(BuildContext context) {
@@ -999,23 +1193,23 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// 🗣️I-120-Q10 「A」: the group's RASTERIZE in the EYE column — a header
   /// has no eye, so the column is free — wearing the hatch the reference
   /// rasterize's window wears, its tooltip naming what it bakes.
-  Widget? _groupRasterize(ColorScheme colorScheme) {
-    final answer = widget.onRasterizeLaneGroup?.call(layer, lane);
-    if (answer == null) return null;
-    return RailGlyphButton(
+  Widget? _groupRasterize(ColorScheme colorScheme) => _groupPress(
+    widget.onRasterizeLaneGroup,
+    atThePlayhead: false,
+    (press) => RailGlyphButton(
       name: '$_keyPrefix-lane-group-rasterize-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlRasterizeFxTemplate.replaceAll(
         '{name}',
         lane.label,
       ),
       size: AppIconButtonSize.micro,
-      onPressed: answer.press,
+      onPressed: press,
       glyph: RailIconGlyph(
         Icons.texture_outlined,
         color: colorScheme.onSurfaceVariant,
       ),
-    );
-  }
+    ),
+  );
 
   /// I-120-Q10: what the group reads its keys by — each frame, or the head
   /// of the block a frame is in — as a list in the BLEND column (the
@@ -1073,9 +1267,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   Widget _memberCell(
     ColorScheme colorScheme,
-    Color plate,
-    TimelineRowAddress? currentRow,
-  ) {
+    Color plate, {
+    required bool? drawn,
+  }) {
     if (widget.folded) {
       return _cellBox(
         plate: plate,
@@ -1085,10 +1279,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
     }
     final hasValue = lane.valueLabel != null;
-    final seat = widget.seat;
-    final drawn = seat == null
-        ? null
-        : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId);
     final ink = colorScheme.onSurfaceVariant;
     // A lane's name reads down its column on the sheet, through the shared
     // vertical-writing table ([readableText]). One its graph does not draw
@@ -1433,6 +1623,10 @@ typedef _StoodShows = ({
 /// ([_TimelineLaneControlsRowState._keysAround]).
 typedef _KeysAround = ({bool keyed, int? previous, int? next});
 
+/// What a lane's cell shows of the current row
+/// ([_TimelineLaneControlsRowState._shownOf]).
+typedef _ShownOfTheCurrentRow = ({bool lit, bool? drawn});
+
 class _NavigatorButton extends StatelessWidget {
   const _NavigatorButton({
     required this.buttonKey,
@@ -1491,9 +1685,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
     required this.lane,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.leadingFrameSpacerWidth,
-    required this.trailingFrameSpacerWidth,
+    required this.geometry,
     required this.metrics,
+    this.windowIsStill = false,
     this.laneRange,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
@@ -1503,9 +1697,23 @@ class TimelineLaneFrameRow extends StatelessWidget {
   final PropertyLaneRow lane;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final double leadingFrameSpacerWidth;
-  final double trailingFrameSpacerWidth;
+
+  /// The LIVE frame-axis geometry its box and its pieces are laid by — the
+  /// grid's, as its cells row's ([TimelineFrameCellsRow.geometry]).
+  final TimelineFrameGeometryHandle geometry;
+
   final TimelineGridMetrics metrics;
+
+  /// Whether the row's WINDOW is a still region of its own ([stillRow]) —
+  /// every lane row of the dock's grids, as their cells rows' are
+  /// ([TimelineFrameCellsRow.windowIsStill]).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 —
+  /// 행 그림 영역을 창 상자로」): the window, not the row's box. 🔬The lane
+  /// row was the axis laid whole — its spacers and the frames between — and
+  /// a still region round it: the runway a drag past the end grows resized
+  /// its pieces and threw away the image of every lane row it showed.
+  final bool windowIsStill;
 
   /// The LANE-scoped selection domain (UI-R23 #3 part 2, superseding the
   /// R22-C owner-layer fallback), and since 2026-08-08 the only thing on
@@ -1537,12 +1745,42 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// one of them now, with the rail's own test for the light
   /// ([timelineRowGround]); the band is its gesture, the line between its
   /// keys and its markers.
+  ///
+  /// Its box is the grid's frame-axis box, laid at the window and its
+  /// pieces by their frames' edges ([TimelineFrameSpanLayout]), as a cells
+  /// row's are: where the axis ends lays none of what it draws again. The
+  /// band's gesture stands OVER what it draws and outside its still region
+  /// — it reaches the axis' end, and draws nothing.
   @override
   Widget build(BuildContext context) {
-    return _withSpacers(
-      Stack(
-        clipBehavior: Clip.none,
-        children: [?_gestureLayer(), ?_keysLine(), ..._liveMarkers()],
+    final drawn = _drawn();
+    final gesture = _gestureLayer();
+    return TimelineFrameAxisBox(
+      key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
+      geometry: geometry,
+      crossAxisExtent: _crossExtent,
+      axis: axis,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (windowIsStill) stillRow(drawn) else drawn,
+          if (gesture != null)
+            TimelineFrameSpanLayout(
+              geometry: geometry,
+              crossAxisExtent: _crossExtent,
+              axis: axis,
+              children: [
+                TimelineFrameSpan(
+                  placement: TimelineFrameSpanPlacement(
+                    startIndex: frameStartIndex,
+                    endIndexExclusive: frameEndIndexExclusive,
+                  ),
+                  // The layer fills a Stack of its own (it is a [Positioned]).
+                  child: Stack(children: [gesture]),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -1552,7 +1790,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// Cross-axis extent: rail-row height in the timeline, column width in
   /// the X-sheet (the transposed metrics carry both as layerRowHeight).
   double get _crossExtent => metrics.layerRowHeight;
-  double get _visibleExtent => _edge(frameEndIndexExclusive);
 
   /// [frame]'s leading boundary along this band — the frame axis' one law
   /// ([timelineFrameEdge]), from the band's first frame.
@@ -1602,12 +1839,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
     }
     final from = math.max(span.first, frameStartIndex);
     final past = math.min(span.last + 1, frameEndIndexExclusive);
-    return placedAlong(
-      axis,
-      along: _edge(from),
-      across: 0,
-      alongExtent: _edge(past) - _edge(from),
-      acrossExtent: _crossExtent,
+    return TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: from,
+        endIndexExclusive: past,
+      ),
       child: TimelineLaneKeysLine(
         key: ValueKey<String>(
           '$keyPrefix-lane-keys-line-${layer.id}-${lane.laneId}',
@@ -1626,11 +1862,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  /// The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the markers: pans
-  /// on the band select THIS lane; marker drags keep their arena priority
-  /// above. The GROUP HEADER band selects too (R26 #3): its anchor spans
-  /// the WHOLE member group — the "모두에 적용되는 그 행", collapsed state
-  /// included.
+  /// The band-wide LANE gesture (UI-R23 #3 part 2), OVER what the band
+  /// draws — its line, its marks and its names are drawings, which no
+  /// press is for: pans on the band select THIS lane. The GROUP HEADER
+  /// band selects too (R26 #3): its anchor spans the WHOLE member group —
+  /// the "모두에 적용되는 그 행", collapsed state included.
   Widget? _gestureLayer() {
     final range = laneRange;
     if (range == null) return null;
@@ -1641,7 +1877,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
       layer: layer,
       laneId: lane.laneId,
       frameStartIndex: frameStartIndex,
-      leadingFrameSpacerWidth: 0,
       frameCellExtent: _cellExtent,
       crossAxisExtent: _crossExtent,
       callbacks: range,
@@ -1649,18 +1884,22 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  /// Markers follow the LIVE lane selection (value-only — no row rebuild)
-  /// so the accent-1 rings track drags per step.
-  List<Widget> _liveMarkers() {
+  /// What the band draws, laid by its frames' edges — the markers following
+  /// the LIVE lane selection (value-only — no row rebuild) so the accent-1
+  /// rings track drags per step.
+  Widget _drawn() {
+    Widget laid(TimelineLaneSelection? selection) => TimelineFrameSpanLayout(
+      geometry: geometry,
+      crossAxisExtent: _crossExtent,
+      axis: axis,
+      children: [?_keysLine(), ..._markers(selection)],
+    );
     final listenable = laneRange?.selection;
-    if (listenable == null) return _markers(null);
-    return [
-      ValueListenableBuilder(
-        valueListenable: listenable,
-        builder: (context, selection, _) =>
-            Stack(clipBehavior: Clip.none, children: _markers(selection)),
-      ),
-    ];
+    if (listenable == null) return laid(null);
+    return ValueListenableBuilder(
+      valueListenable: listenable,
+      builder: (context, selection, _) => laid(selection),
+    );
   }
 
   /// R27 #14: the selection BAND is no longer painted here. It rides the
@@ -1682,14 +1921,19 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// owns the ring now — frame selection is a separate domain and never
   /// rings lane keys. Header union diamonds ring on a whole-group selection
   /// (R26 #3).
+  ///
+  /// In the middle of its cell, either way: a hit box wider than the cell
+  /// (a narrow zoom) stands out past both its edges alike.
   Widget _keyMarker(int frame, TimelineLaneSelection? selection) {
     final hit = _hitSizeAt(frame);
-    return placedAlong(
-      axis,
-      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit.width / 2,
-      across: _crossExtent / 2 - hit.height / 2,
-      alongExtent: hit.width,
-      acrossExtent: hit.height,
+    return TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: frame,
+        mainExtent: hit.width,
+        mainInset: (_edge(frame + 1) - _edge(frame) - hit.width) / 2,
+        crossInset: _crossExtent / 2 - hit.height / 2,
+        crossExtent: hit.height,
+      ),
       child: TimelineLaneKeyMarker(
         key: ValueKey<String>(
           '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
@@ -1747,29 +1991,12 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// 왜 자꾸 멋대로 하는거지? 아예 통일하라고」. One print now: the frame
   /// block's type rule, in the paper's ink, one size on the header and the
   /// member alike.
-  Widget _keyName(int frame, String text) => placedAlong(
-    axis,
-    along: _edge(frame),
-    across: 0,
-    alongExtent: _edge(frame + 1) - _edge(frame),
-    acrossExtent: _crossExtent,
+  Widget _keyName(int frame, String text) => TimelineFrameSpan(
+    placement: TimelineFrameSpanPlacement(
+      startIndex: frame,
+      endIndexExclusive: frame + 1,
+    ),
     child: IgnorePointer(child: _LaneKeyName(text: text, layer: layer)),
-  );
-
-  /// The band between its two spacers, along the axis.
-  Widget _withSpacers(Widget band) => Flex(
-    direction: axis,
-    key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
-    children: [
-      sizedAlong(axis, along: leadingFrameSpacerWidth, across: _crossExtent),
-      sizedAlong(
-        axis,
-        along: _visibleExtent,
-        across: _crossExtent,
-        child: band,
-      ),
-      sizedAlong(axis, along: trailingFrameSpacerWidth, across: _crossExtent),
-    ],
   );
 }
 

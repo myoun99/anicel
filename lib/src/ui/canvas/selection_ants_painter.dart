@@ -35,6 +35,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     this.closeTargetArmed = true,
     this.cursor,
     this.transformChrome,
+    this.handlesInHand = const [],
     this.sessionHasChanges = false,
     this.outlineIsLive = false,
   }) : _phase = repaint,
@@ -124,6 +125,11 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// rebuilding the layer above.
   final ValueListenable<Offset?>? cursor;
   final SelectionTransformChrome? transformChrome;
+
+  /// Which of [transformChrome]'s handles are in hand, by their place among
+  /// them — the warp point last pressed, or written from the tool settings
+  /// (F-586, `BoxWarp.inHand`).
+  final List<int> handlesInHand;
 
   /// R16-① TVP grammar: RED silhouette while the move session holds
   /// unconfirmed changes, GREEN when confirmed/untouched.
@@ -297,7 +303,12 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
     final chrome = transformChrome;
     if (chrome != null) {
-      paintBoxChrome(canvas, chrome, color: _sessionColor);
+      paintBoxChrome(
+        canvas,
+        chrome,
+        color: _sessionColor,
+        inHand: handlesInHand,
+      );
     }
   }
 
@@ -340,6 +351,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     closeTargetArmed,
     ByIdentity(cursor),
     transformChrome,
+    ByList(handlesInHand),
     sessionHasChanges,
   );
 }

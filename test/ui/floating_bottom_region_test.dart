@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/grip_band_drawn.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/settings_flyout.dart';
 
@@ -173,15 +174,14 @@ void main() {
       // moment it is actually dragging something, which is the contract
       // this test is really about.
       expect(
-        tester
-            .widget<ColoredBox>(
-              find.descendant(
-                of: find.byKey(const ValueKey<String>('panel-grip-timeline')),
-                matching: find.byType(ColoredBox),
-              ),
-            )
-            .color,
-        AppColors.accent,
+        [
+          for (final shape in gripBandDrawn(
+            tester,
+            const ValueKey<String>('panel-grip-timeline'),
+          ))
+            shape.paint.color,
+        ],
+        [isSameColorAs(AppColors.accent)],
         reason: 'the tab lifted',
       );
       await gesture.up();

@@ -76,10 +76,7 @@ class _ClashLine extends StatelessWidget {
     // pressed, and shows where the key went.
     final holding = {
       for (final id in clash.holders)
-        if (bindings
-            .activatorsFor(id)
-            .any((activator) => activatorKey(activator) == at))
-          id,
+        if (bindings.holds(id, clash.key)) id,
     };
     Color inkOf(String id) => holding.length > 1
         ? theme.colorScheme.error

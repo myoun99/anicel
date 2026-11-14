@@ -16,7 +16,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/wait_window.dart'
     show waitOutTheWaitWindow, windowBehind;
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**확정 — ONE verb, three doors** (confirm-button, 유저 2026-09-24):
 /// 「입구 확실하게 안전하게 해서 **일반상태=마지막 스트로크 재입력,
@@ -122,7 +122,7 @@ void main() {
     return [
       for (var y = 0; y < size.height; y += step)
         for (var x = 0; x < size.width; x += step)
-          surfacePixelRgba(surface, x, y) ?? 0,
+          surfaceRgbaInPlace(surface, x, y) ?? 0,
     ];
   }
 
@@ -223,7 +223,7 @@ void main() {
     var ink = 0;
     for (var y = 0; y < size.height; y += 2) {
       for (var x = edge.ceil() + 1; x < size.width; x += 1) {
-        if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) {
+        if ((surfaceRgbaInPlace(surface, x, y) ?? 0) != 0) {
           ink += 1;
         }
       }
@@ -247,7 +247,7 @@ void main() {
     var right = -1;
     for (var y = 0; y < size.height; y += 2) {
       for (var x = 0; x < size.width; x += 2) {
-        if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) {
+        if ((surfaceRgbaInPlace(surface, x, y) ?? 0) != 0) {
           left = x < left ? x : left;
           right = x > right ? x : right;
         }

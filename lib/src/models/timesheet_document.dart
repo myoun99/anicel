@@ -1,3 +1,4 @@
+import '../core/frozen_collections.dart';
 import 'camera_instruction.dart';
 import 'camera_moves.dart';
 import 'camera_work_marks.dart' show cameraKeyLabel;
@@ -610,11 +611,11 @@ class TimesheetDocument {
             drawnFrames: drawnFrameCount,
           )) ??
           const [],
-      visibleHeaderFields: List.unmodifiable(info.visibleFields),
+      visibleHeaderFields: frozenList(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       cellExposureBarThreshold: info.cellExposureBarThreshold,
       cutName: cut.name,
-      linkedCuts: List.unmodifiable(linkedCuts),
+      linkedCuts: frozenList(linkedCuts),
       scene: cut.metadata.scene,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
@@ -623,9 +624,11 @@ class TimesheetDocument {
       xdtsForm: xdtsForm,
       xdtsColumns: xdtsColumns,
       pageFrameCount: pageFrameCount,
-      columns: List.unmodifiable(columns),
-      books: List.unmodifiable(sources.actionBooks),
-      pages: List.unmodifiable([
+      columns: frozenList(columns),
+      books: frozenList(
+        sources.actionBookTags(shortened: info.sheetBookNamesShortened),
+      ),
+      pages: frozenList([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
             index: page,

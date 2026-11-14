@@ -73,6 +73,9 @@ class CanvasLetterLines {
 
   final List<CanvasLetterLine> _lines;
 
+  /// Where the lines stand.
+  Iterable<ui.Rect> get rects => _lines.map((line) => line.rect);
+
   /// Draws each line in what paints its letters in [pass] — which, for
   /// letters that are not the pass's, draws nothing
   /// ([CanvasLetterPass.paintOf]).
@@ -247,12 +250,31 @@ class CanvasLetterPasses<T extends Object> {
 
   final void Function(T set) _letGo;
 
+  /// THE LAYERS THE LETTERS ARE DRAWN IN, bottom to top — [paint]'s, in its
+  /// order: the smooth outlines, the hard ones a colour at a time, the
+  /// smooth fills, the hard ones a colour at a time. A hard layer names the
+  /// colour it is cut in ([_drawHard]); a smooth one none. The GPU engine is
+  /// handed its letters in these too (`engine_letters.dart`), so the two
+  /// draw them in one order.
+  List<CanvasLetterLayer<T>> get layers => [
+    if (_stroke case final stroke?)
+      (set: stroke, pass: _outlinePass, hard: null),
+    for (final pass in _hardStrokes)
+      (set: pass.cover, pass: pass.pass, hard: pass.argb),
+    (set: fill, pass: _fillPass, hard: null),
+    for (final pass in _hardFills)
+      (set: pass.cover, pass: pass.pass, hard: pass.argb),
+  ];
+
+  /// Whether the box behind the letters is drawn HARD ([paintBoxBehind]).
+  bool get boxIsHard => _hardThroughout;
+
   /// Draws the box behind the letters — [box], in [argb] — HARD where every
   /// letter of the text is: a text none of whose letters is smoothed has no
   /// smoothed edge at all, its box's included (it has one wherever the text
   /// is turned, or the box ends between two pixels).
   void paintBoxBehind(ui.Canvas canvas, ui.Rect box, int argb) {
-    if (!_hardThroughout) {
+    if (!boxIsHard) {
       canvas.drawRect(box, ui.Paint()..color = ui.Color(argb));
       return;
     }
@@ -291,19 +313,18 @@ class CanvasLetterPasses<T extends Object> {
       canvas.restore();
     }
 
-    void hard(_HardPass<T> pass) => _drawHard(
-      canvas,
-      pass.argb,
-      within: within,
-      cover: () => drawIn(pass.cover, pass.pass),
-    );
-    final stroke = _stroke;
-    if (stroke != null) {
-      drawIn(stroke, _outlinePass);
+    for (final (:set, :pass, :hard) in layers) {
+      if (hard == null) {
+        drawIn(set, pass);
+      } else {
+        _drawHard(
+          canvas,
+          hard,
+          within: within,
+          cover: () => drawIn(set, pass),
+        );
+      }
     }
-    _hardStrokes.forEach(hard);
-    drawIn(fill, _fillPass);
-    _hardFills.forEach(hard);
   }
 
   void dispose() {
@@ -350,6 +371,11 @@ extension CanvasLetterPainterPasses on CanvasLetterPasses<TextPainter> {
 
 /// The hard letters of one colour, set as cover ([_coverIn]) — by [pass].
 typedef _HardPass<T> = ({int argb, CanvasLetterPass pass, T cover});
+
+/// One layer a text's letters are drawn in ([CanvasLetterPasses.layers]):
+/// a setting of them, the pass it was set for, and — where the layer is
+/// hard — the colour it is cut in.
+typedef CanvasLetterLayer<T> = ({T set, CanvasLetterPass pass, int? hard});
 
 /// Draws what [cover] draws HARD, in the colour [argb]: every pixel it
 /// covers by half or more is that colour, whole, and every other is

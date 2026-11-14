@@ -92,6 +92,9 @@ class CanvasTargetPill extends StatelessWidget {
 /// ([EditorActionIds.selectionTransformCancel]) — keyed
 /// `<keyPrefix>-confirm` and `<keyPrefix>-cancel`. [changed] lights the ✓
 /// (its ON state) while what the pill stands under has changes to land.
+/// Either is grey while its verb has nothing to do (null): the pair stays
+/// where it is (F-585, 유저 2026-11-12: 「확정/취소버튼 존재는 하되
+/// 비활성화」).
 ///
 /// ★THE PAIR, WRITTEN ONCE (I-80, 2026-10-08): the transform box's pill,
 /// the canvas adjusted on the canvas (I-79) and the camera frame adjusted
@@ -111,7 +114,7 @@ class CanvasTargetPill extends StatelessWidget {
 List<Widget> targetPillVerbs(
   String keyPrefix, {
   required VoidCallback? onConfirm,
-  required VoidCallback onCancel,
+  required VoidCallback? onCancel,
   bool changed = false,
 }) => [
   AppIconButton(

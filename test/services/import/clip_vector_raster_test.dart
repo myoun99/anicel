@@ -1,11 +1,22 @@
+// The first stroke compiles the executor and the stroke's kernels: 40 s on
+// a machine this busy.
+@Timeout(Duration(minutes: 3))
+library;
+
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/import/clip_cel_raster.dart';
 import 'package:anicel/src/services/import/clip_container.dart'
     show ClipFormatException;
 import 'package:anicel/src/services/import/clip_vector_raster.dart';
 
+import '../../helpers/collect_garbage.dart';
 import 'clip_test_builder.dart';
 
 /// A vector layer's strokes, read and drawn (card `csp-clip-import-analysis`
@@ -14,6 +25,8 @@ import 'clip_test_builder.dart';
 /// stores a render beside them with no blocks in the file, so the strokes
 /// ARE the picture.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   Uint8List body(List<Uint8List> records) =>
       (BytesBuilder()..add([for (final record in records) ...record]))
           .toBytes();
@@ -134,29 +147,71 @@ void main() {
     });
   });
 
+  group('laying', () {
+    // 🔬735 dabs of a 300 px stroke at 2.4–6 px were 735 sizes, and a round
+    // tip is a table a size: 230–270 ms of the 300 ms the stroke took.
+    test('🚨each dab is in the form a stroke\'s dab is laid in — its size '
+        'on the steps a pen\'s is, not the width that made it', () {
+      final stroke = parseClipVectorBody(
+        vectorStrokeBytes([(10, 10, 1), (300, 40, 0.2)], radius: 3),
+      ).strokes.single;
+
+      final dabs = clipVectorDabs(stroke, (x: 0, y: 0));
+
+      expect(dabs.length, greaterThan(100), reason: 'premise: a line');
+      expect(
+        {for (final dab in dabs) dab.size}.length,
+        greaterThan(1),
+        reason: 'premise: it narrows',
+      );
+      for (final dab in dabs) {
+        expect(
+          identical(BrushTipStampCache.instance.resolveDab(dab), dab),
+          isTrue,
+          reason: 'a dab ${dab.size} across',
+        );
+      }
+    });
+  });
+
   group('drawing', () {
-    ClipCelTarget canvas({double alpha = 1}) => (
+    // The app's grid — the one the engine lays on.
+    const side = 128;
+
+    ClipCelTarget canvas({double alpha = 1, int across = 64}) => (
       left: 0,
       top: 0,
-      canvasWidth: 64,
+      canvasWidth: across,
       canvasHeight: 64,
       alpha: alpha,
-      tileSize: 64,
+      tileSize: side,
     );
 
-    /// The pixel (x, y) of [tiles] — one 64 × 64 tile, or none.
+    /// The pixel (x, y) of [tiles] — the one tile a 64 × 64 canvas has, or
+    /// none.
     (int, int, int, int) pixel(List<ClipCelTile> tiles, int x, int y) {
       if (tiles.isEmpty) {
         return (0, 0, 0, 0);
       }
-      final at = (y * 64 + x) * 4;
+      final at = (y * side + x) * 4;
       final bytes = tiles.single.pixels;
       return (bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);
     }
 
+    /// The tiles the cut reads back from the engine while [draw] runs: what
+    /// the strokes landed in.
+    Future<List<BitmapTile>> readBackWhile(Future<void> Function() draw) async {
+      final asked = <BitmapTile>[];
+      EngineTileLedger.debugBeforeRead = asked.addAll;
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+      await draw();
+      EngineTileLedger.debugBeforeRead = null;
+      return asked;
+    }
+
     test('🎯a stroke lands where the layer puts it, as wide as its pen, in '
-        'its colour', () {
-      final drawn = clipVectorTiles(
+        'its colour', () async {
+      final drawn = await clipVectorTiles(
         [
           vectorStrokeBytes(
             [(5, 13, 1), (45, 13, 1)],
@@ -187,14 +242,15 @@ void main() {
     });
 
     test('the layer\'s opacity is baked over the whole picture, and a '
-        'stroke\'s own opacity is its ceiling, however its dabs overlap', () {
+        'stroke\'s own opacity is its ceiling, however its dabs '
+        'overlap', () async {
       final stroke = vectorStrokeBytes(
         [(10, 20, 1), (50, 20, 1)],
         radius: 4,
         opacity: 0.5,
       );
-      final full = clipVectorTiles([stroke], (x: 0, y: 0), canvas());
-      final faint = clipVectorTiles(
+      final full = await clipVectorTiles([stroke], (x: 0, y: 0), canvas());
+      final faint = await clipVectorTiles(
         [stroke],
         (x: 0, y: 0),
         canvas(alpha: 0.5),
@@ -205,7 +261,7 @@ void main() {
     });
 
     test('the picture is baked through the layer\'s mask as a stored one '
-        'is — where the mask stands on the canvas', () {
+        'is — where the mask stands on the canvas', () async {
       // The mask stands from x 20, hiding its first 16 columns; past its
       // edges its fill shows everything.
       final block = Uint8List(256 * 256);
@@ -214,7 +270,7 @@ void main() {
           block[y * 256 + x] = 255;
         }
       }
-      final drawn = clipVectorTiles(
+      final drawn = await clipVectorTiles(
         [
           vectorStrokeBytes([(10, 20, 1), (50, 20, 1)], radius: 3),
         ],
@@ -245,8 +301,8 @@ void main() {
     });
 
     test('a line narrows toward a thin point as a pressed pen\'s does — and '
-        'a point with no width, or less, lays nothing', () {
-      final drawn = clipVectorTiles(
+        'a point with no width, or less, lays nothing', () async {
+      final drawn = await clipVectorTiles(
         [
           body([
             vectorStrokeBytes([
@@ -276,11 +332,11 @@ void main() {
     // 발견되는거있으면 법 통일」): a stroke under a pixel lands as the brush
     // lands one.
     test('a stroke narrower than a pixel lands as the one-pixel stroke '
-        'does, lighter by its width', () {
+        'does, lighter by its width', () async {
       // Below row 20's centre by more than a 0.6 dab's reach — ↩️where a
       // stroke that thin landed nothing.
-      int Function(int, int) drawn(double width) {
-        final tiles = clipVectorTiles(
+      Future<int Function(int, int)> drawn(double width) async {
+        final tiles = (await clipVectorTiles(
           [
             vectorStrokeBytes([
               (10.2, 20.85, 1),
@@ -289,14 +345,14 @@ void main() {
           ],
           (x: 0, y: 0),
           canvas(),
-        ).tiles;
+        )).tiles;
         return (x, y) => pixel(tiles, x, y).$4;
       }
 
-      final whole = drawn(1);
+      final whole = await drawn(1);
       expect(whole(30, 20), greaterThan(0), reason: 'premise: it draws');
       for (final width in [0.2, 0.6]) {
-        final thin = drawn(width);
+        final thin = await drawn(width);
         for (var x = 12; x < 49; x += 1) {
           for (final y in [19, 20, 21]) {
             expect(
@@ -309,20 +365,182 @@ void main() {
       }
     });
 
-    test('a stroke off the canvas lands nothing — and the strokes it cannot '
-        'read are counted', () {
-      final drawn = clipVectorTiles(
+    test('a stroke off the canvas lands nothing, takes no tile of the '
+        'engine\'s — and the strokes it cannot read are counted', () async {
+      late final ({List<ClipCelTile> tiles, int unread}) drawn;
+      final readBack = await readBackWhile(() async {
+        drawn = await clipVectorTiles(
+          [
+            body([
+              // Off the canvas, on the pasteboard a cel's own picture has.
+              vectorStrokeBytes([(-30, 10, 1), (-20, 10, 1)]),
+              vectorStrokeBytes([(1, 1, 1)], flags: 2),
+            ]),
+          ],
+          (x: 0, y: 0),
+          canvas(),
+        );
+      });
+      expect(drawn.tiles, isEmpty);
+      expect(drawn.unread, 1);
+      expect(readBack, isEmpty, reason: 'the picture is the canvas\'s alone');
+    });
+
+    // 🗣️clip-vector-import-draws-with-the-c-brush-Q1 (유저 2026-11-11).
+    test('🚨the strokes land on the engine — the picture handed on to be '
+        'cut is tiles the engine made, none blended here', () async {
+      late final ({List<ClipCelTile> tiles, int unread}) drawn;
+      final readBack = await readBackWhile(() async {
+        drawn = await clipVectorTiles(
+          [
+            vectorStrokeBytes([(10, 20, 1), (50, 20, 1)], radius: 3),
+          ],
+          (x: 0, y: 0),
+          canvas(),
+        );
+      });
+      expect(pixel(drawn.tiles, 30, 20).$4, closeTo(255, 1));
+      expect(readBack, hasLength(1));
+      expect(readBack.single.isOnEngine, isTrue);
+    });
+
+    test('a later stroke lies over the ones before it, in the file\'s '
+        'order', () async {
+      final drawn = await clipVectorTiles(
         [
           body([
-            vectorStrokeBytes([(-300, 10, 1), (-200, 10, 1)]),
-            vectorStrokeBytes([(1, 1, 1)], flags: 2),
+            vectorStrokeBytes(
+              [(10, 30, 1), (50, 30, 1)],
+              colour: (255, 0, 0),
+              radius: 4,
+            ),
+            vectorStrokeBytes(
+              [(30, 10, 1), (30, 50, 1)],
+              colour: (0, 0, 255),
+              radius: 4,
+            ),
           ]),
         ],
         (x: 0, y: 0),
         canvas(),
       );
-      expect(drawn.tiles, isEmpty);
-      expect(drawn.unread, 1);
+      final (r, g, b, _) = pixel(drawn.tiles, 30, 30);
+      expect((r, g, b), (0, 0, 255), reason: 'where the two cross');
+      expect(pixel(drawn.tiles, 15, 30).$1, 255, reason: 'the first, alone');
+    });
+
+    // 🔬6,000 strokes at half opacity held 38,750 slots — 2,432 MB of the
+    // pool — for a picture of 247 tiles (main PC, 2340 × 1654): each tile
+    // laid over stayed as long as the one over it was the engine's alone.
+    test('🚨a tile a stroke lays over is let go then: a layer holds its '
+        'picture\'s tiles of the pool, not a tile for each stroke', () async {
+      final ledger = EngineTileLedger.instance;
+      // What earlier tests left goes first: the slots counted are this
+      // layer's.
+      await collectGarbageUntil(() => ledger.slotCount == 0);
+      int? held;
+      EngineTileLedger.debugBeforeRead = (_) => held = ledger.slotCount;
+      addTearDown(() => EngineTileLedger.debugBeforeRead = null);
+
+      final drawn = await clipVectorTiles(
+        [
+          body([
+            for (var k = 0; k < 20; k += 1)
+              vectorStrokeBytes(
+                [(10, 12.0 + 2 * k, 1), (50, 12.0 + 2 * k, 1)],
+                opacity: 0.5,
+                radius: 3,
+              ),
+          ]),
+        ],
+        (x: 0, y: 0),
+        canvas(),
+      );
+
+      expect(drawn.tiles, hasLength(1), reason: 'premise: one tile, drawn');
+      expect(held, 1, reason: 'the slots held as the picture is read out');
+    });
+
+    group('🚨on the road the app takes — planned on a worker of its own, '
+        'laid on this isolate', () {
+      setUp(() => debugWorkersRunHere = false);
+      tearDown(() => debugWorkersRunHere = true);
+
+      /// Twelve strokes, none over another, each inside one tile of a
+      /// canvas four tiles across.
+      List<Uint8List> twelve() => [
+        body([
+          for (var k = 0; k < 12; k += 1)
+            vectorStrokeBytes([
+              (k % 4 * side + 20.0, 15.0 + k ~/ 4 * 17, 1),
+              (k % 4 * side + 90.0, 15.0 + k ~/ 4 * 17, 1),
+            ], radius: 3),
+        ]),
+      ];
+
+      test('the picture is the one drawn here', () async {
+        Future<List<ClipCelTile>> drawn() async => (await clipVectorTiles(
+          twelve(),
+          (x: 0, y: 0),
+          canvas(across: 4 * side),
+        )).tiles;
+
+        final there = await drawn();
+        debugWorkersRunHere = true;
+        final here = await drawn();
+
+        expect(there, hasLength(4), reason: 'premise: every tile is drawn in');
+        expect(
+          [for (final tile in there) (tile.x, tile.y)],
+          [for (final tile in here) (tile.x, tile.y)],
+        );
+        expect(
+          [for (final tile in there) tile.pixels],
+          [for (final tile in here) tile.pixels],
+        );
+      });
+
+      test('the worker hands over a stroke at a time: the app has its turn '
+          'between any two it lays', () async {
+        // The first stroke of a run opens the engine's kernels: out of the
+        // way, so the strokes counted land a turn each.
+        await clipVectorTiles(twelve(), (x: 0, y: 0), canvas(across: 4 * side));
+        final ledger = EngineTileLedger.instance;
+        // A turn of this isolate's each time it has one, and how many slots
+        // the ledger has then: the first stroke in a tile takes one, and a
+        // stroke over it takes one as it lets one go.
+        final turns = <int>[];
+        var turning = true;
+        void turn() {
+          turns.add(ledger.slotCount);
+          if (turning) {
+            Timer.run(turn);
+          }
+        }
+
+        turn();
+        await clipVectorTiles(twelve(), (x: 0, y: 0), canvas(across: 4 * side));
+        turning = false;
+
+        final most = [
+          for (var at = 1; at < turns.length; at += 1)
+            turns[at] - turns[at - 1],
+        ].reduce((a, b) => a > b ? a : b);
+        expect(most, 1, reason: 'the most strokes laid between two turns');
+      });
+
+      test('strokes that would not read are refused by name', () async {
+        await expectLater(
+          clipVectorTiles(
+            [
+              body([vectorStrokeBytes([(1, 1, 1)]), Uint8List(8)]),
+            ],
+            (x: 0, y: 0),
+            canvas(),
+          ),
+          throwsA(isA<ClipFormatException>()),
+        );
+      });
     });
   });
 }

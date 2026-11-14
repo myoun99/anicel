@@ -1,42 +1,46 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart'
-    show celSourcePlugin;
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
-import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:archive/archive.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'a_canvas_standing_on_a_frame.dart' show theFramesPicture;
+import 'fx_plugin_file.dart';
+import 'panel_finders.dart' show mainCanvasPanel;
 import 'project_scratch_folder.dart';
 
-/// A run of [runner] at [frame], reading [rows].
+/// A run of [runner] at [frame], reading [rows], telling [told] how it
+/// went.
 FxPluginRun fxPluginRunOf(
   FxPluginRunner runner, {
   Map<LayerId, BitmapSurface?> rows = const {},
   int frame = 0,
+  void Function({required bool failed})? told,
 }) => FxPluginRun(
   runner: runner,
   moment: (frameIndex: frame, time: frame / 24, frameRate: 24, scale: 1),
   rows: rows,
+  told: told,
 );
 
 /// The stand-in plugin as its file describes it: one with no parameters.
 final FxPluginDescription shiftingFxPluginDescription =
     FxPluginDescription.fromJson({
-      'spec': 1,
+      'spec': 2,
       'id': 'test.shift',
       'name': 'Shift',
       'vendor': 'Test',
       'version': '1',
-      'can': ['cpu'],
+      'can': ['gpu'],
       'params': <Object?>[],
     })!;
 
@@ -59,48 +63,55 @@ LayerEffect shiftingFxPluginLayerEffect() => LayerEffect.defaults(
 
 /// This device's plugins with the stand-in installed — described [as] says,
 /// the stand-in's own description where it says nothing — on a directory of
-/// the test's own: its build opens as a [ShiftingFxPlugin] by [by].
+/// the test's own: its build opens as a [ShiftingFxPlugin] by [by], or as
+/// [runner] where told one — or not at all, [opens] false.
 Future<InstalledFxPlugins> installedShiftingFxPlugin(
   WidgetTester tester, {
   FxPluginDescription? as,
   int by = 1,
+  bool opens = true,
+  FxPluginRunner? runner,
 }) async {
   final description = as ?? shiftingFxPluginDescription;
   final room = Directory.systemTemp.createTempSync('anicel_fx_shift_');
   deleteAfterSessionEnds(room);
   final plugins = InstalledFxPlugins(
     service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-    // The stand-in's module is its description's text.
-    describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
-    open: (_, _) => ShiftingFxPlugin(by: by),
+    // The stand-in is no WGSL a device would open: no device is asked.
+    check: (_) async => (opened: null, refusal: null),
+    open: (_, _) => opens ? runner ?? ShiftingFxPlugin(by: by) : null,
   );
   addTearDown(plugins.dispose);
   await tester.runAsync(() async {
     await plugins.load();
     await plugins.install(
-      ZipEncoder().encodeBytes(
-        Archive()..add(
-          ArchiveFile.bytes(
-            'plugin.wasm',
-            utf8.encode(jsonEncode(description.toJson())),
-          ),
-        ),
-      ),
-      confirm: (_, {required native, required replacing}) async => true,
+      fxPluginFileOf(description),
+      confirm: (_, {required replacing}) async => true,
     );
   });
   return plugins;
 }
 
 /// Whether the row the canvas draws on runs a plugin: the device's build
-/// bound to its chain ([celSourcePlugin]).
-bool theCanvasRowRunsAPlugin(WidgetTester tester) =>
-    celSourcePlugin(
-      tester
-          .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
-          .activeSourceEffects,
-    ) !=
-    null;
+/// bound to its chain ([ResolvedLayerEffect.run]), as the canvas's stack
+/// hands the row on.
+bool theCanvasRowRunsAPlugin(WidgetTester tester) {
+  var runs = false;
+  mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(
+    tester
+        .widget<FramePictureView>(theFramesPicture(within: mainCanvasPanel()))
+        .nodes,
+    (row) {
+      if (row case CanvasActiveLayerRow(:final effects)) {
+        runs = effects.any(
+          (effect) => effect.kind == EffectKind.plugin && effect.run != null,
+        );
+      }
+      return row;
+    },
+  );
+  return runs;
+}
 
 /// Moves every pixel right by its first value — reaching that far — or by
 /// [by] where it is told one.
@@ -115,18 +126,22 @@ final class ShiftingFxPlugin implements FxPluginRunner {
   late Uint8List lastInput;
   late Float64List lastValues;
   late List<FxPluginPicture> lastLayers;
+  late FxPluginMoment lastMoment;
+
+  @override
+  Future<void>? get toCome => null;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) =>
       reachFails ? null : by ?? values[0].toInt();
 
   @override
-  Uint8List? render({
+  Future<Uint8List?> render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
-  }) {
+  }) async {
     renders += 1;
     inputs.add((
       left: input.left,
@@ -137,6 +152,7 @@ final class ShiftingFxPlugin implements FxPluginRunner {
     lastInput = input.pixels;
     lastValues = values;
     lastLayers = layers;
+    lastMoment = moment;
     if (fails) {
       return null;
     }
@@ -153,5 +169,8 @@ final class ShiftingFxPlugin implements FxPluginRunner {
   }
 
   @override
-  void close() {}
+  void close() => closed = true;
+
+  @override
+  bool closed = false;
 }

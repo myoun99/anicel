@@ -67,7 +67,7 @@ import '../models/track.dart';
 import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
-import '../services/conte_step_scope.dart';
+import '../services/repository_step_scope.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../models/playback_mode.dart';
 import '../models/track_transitions.dart' show drawnFrameCountsOf;
@@ -90,8 +90,11 @@ import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart'
     show conformingInto, resamplingInto, runConformHere;
+import '../native/app_gpu_engine.dart' show EnginePictures;
+import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
-import '../native/qa_native_engine.dart';
+import '../native/qa_memory.dart';
+import '../native/tile_blocks.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
 import 'session/cache_budgets.dart';
@@ -239,7 +242,7 @@ class EditorSessionManager extends ChangeNotifier
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
     historyManager = HistoryManager()
-      ..scope = ConteStepScope(repository)
+      ..scope = RepositoryStepScope(repository)
       ..places.placeNow = () => standingPlace;
     // 🚨With the history, not at its first step: from the first change it
     // lets go of the pictures only deep entries hold. Built lazily, it
@@ -414,7 +417,7 @@ class EditorSessionManager extends ChangeNotifier
   /// Every cache's budget at the automatic allowance, on this device's
   /// laws — what the memory tab's slider scales.
   late final CacheBudgets deviceCacheBudgets = CacheBudgets.forDevice(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
   );
 
   /// The allowance when nobody has moved the slider: the device's, read
@@ -422,8 +425,8 @@ class EditorSessionManager extends ChangeNotifier
   /// what the app holds, and a slider whose automatic end kept moving
   /// would be a lie about what was chosen.
   late final int automaticAllowance = automaticAllowanceBytes(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    appMemoryLimitBytes: QaNativeEngine.instance?.appMemoryLimitBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
+    appMemoryLimitBytes: QaMemory.appMemoryLimitBytes,
     floorBytes: CacheBudgets.floors.total,
     lawsTotalBytes: deviceCacheBudgets.total,
   );
@@ -452,7 +455,6 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches.applyCacheBudgets(own);
     historyManager.byteBudget = budgets.undo;
     playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
-    QaNativeEngine.instance?.nativeUploadByteBudget = budgets.nativeUploads;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
     BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
     // The two the allowance did not reach until 2026-09-16 (Q2): the
@@ -460,12 +462,30 @@ class EditorSessionManager extends ChangeNotifier
     // and the engine's parked tile blocks, a compile-time cap until then.
     // ★A new [CacheBudgetLine] is applied HERE, and nowhere else.
     _frameworkImageCache?.maximumSizeBytes = budgets.imageCache;
-    QaNativeEngine.instance?.setTilePoolByteCap(budgets.enginePool);
+    TileBlocks.setByteCap(budgets.enginePool);
     // The canvas's tile pictures (render round, 2026-09-16): the walk that
     // lets the unshown ones go reads this ceiling after every paint.
     TilePictureBudget.instance.byteBudget = budgets.tileImages;
+    // The engine's slots of the same tiles (screen-on-the-engine c4) ride
+    // the same line: they are what the pictures become.
+    EngineTileLedger.appByteBudget = budgets.tileImages;
     if (enforce) {
-      playbackRig.playbackCache.enforcePlaybackCacheBudget();
+      final line = playbackRig.playbackCache;
+      line.enforcePlaybackCacheBudget();
+      // The slots the pictures let go stay made on the GPU for the next
+      // picture (engine-pictures-keep-to-pool-pages), and are the frames'
+      // row's as the pictures are: where the allowance moved the line they
+      // keep within the room it has left past the pictures, as a cel's
+      // pages keep within theirs ([EngineTileLedger.byteBudget]).
+      // ⛔Here alone, not at every trim: a stroke's and a walk's would give
+      // back pages the next frame makes again, a block of the allocator's
+      // made each time (H57).
+      EnginePictures.giveBackPast(
+        math.max(
+          0,
+          line.bytes - renderCaches.framePictureStore.estimatedBytes,
+        ),
+      );
     }
     playbackLineMoved();
   }
@@ -571,7 +591,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     timeline: this,
     appSettings: appSettings,
-    soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
     renderCaches: renderCaches,
     settings: projectSettings,
     audioConformStore: audioConformStore,
@@ -1739,7 +1758,6 @@ class EditorSessionManager extends ChangeNotifier
         fxPlugins.dispose();
       }
     },
-    visibilitySolo.dispose,
     editingFrameCursor.dispose,
     frameScrub.dispose,
     frameSeekCommitted.dispose,
@@ -2000,11 +2018,14 @@ class EditorSessionManager extends ChangeNotifier
       effectsAndFx.trackEffectsForCut(cutId),
       rowSpans.trackGlobalFrameOf(cutId, frameIndex),
       enabled: effectsAndFx.isCutFxEnabled(cutId),
+      track: trackOwningCut(cutId)?.id,
     ),
     movieLaidAt: (key) => movieCels.laidAt(key),
     ghostsAt: (cut, frameIndex, dragPreview) =>
         onionSkin.ghostsAt(cut, frameIndex, dragPreview),
     pluginsIn: fxPluginsIn,
+    nameTagsAt: (cut, frameIndex, dragPreview) => seEntries
+        .seNameTagsForCutFrame(cut, frameIndex, preview: dragPreview),
   );
 
   /// What runs the plugins [cut]'s chains run on this device
@@ -2015,6 +2036,7 @@ class EditorSessionManager extends ChangeNotifier
     frameRate: repository.requireProject().frameRate,
     surfaceOf: (layer, frame) =>
         renderCaches.celSurfaceIn(cut, layer.id, frame.id),
+    outcomes: fxPlugins.outcomes,
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────
@@ -2388,15 +2410,15 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/folders_and_attachments.dart): the folder and
   // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
   // fold twirl — with the state each one reads.
-  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFolderFold: standing.handOffCurrentRowOnFolderFold, keepStandingShown: standing.keepStandingShown);
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFolderFold: standing.handOffCurrentRowOnFolderFold, keepStandingShown: standing.keepStandingShown, layerVerbs: layerVerbs);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
-  /// listener and by the SE solo — the one mix switch that bypasses
-  /// history (mute, fader and pan are edits and undo).
-  @override
+  /// listener — every mix switch is an edit and undoes (mute, the Total,
+  /// the keyed volume and the pan). ↩️The SE solo bypassed history and
+  /// fired it too, until F-577 took the solo away.
   void refreshLiveAudioSchedule() {
     if (playbackRig.audioDeviceTransport.carryingPlayback) {
       playbackRig.audioDeviceTransport.refreshSchedule();
@@ -2520,9 +2542,6 @@ class EditorSessionManager extends ChangeNotifier
   /// a dialog raised by whichever happened to be on screen is a second copy
   /// of the sentence waiting to drift ([AttachFxConfirmController]).
   final AttachFxConfirmController attachFxConfirm = AttachFxConfirmController();
-
-  // --- SE mix controls (AUDIO-PRO R1) ---------------------------------------
-  // The solo set is [VisibilitySolo.soloedSeLayerIds], held by its toggle.
 
   /// Project-level sheet-header text (title/episode/artist) the timesheet
   /// document reads.
@@ -3952,6 +3971,14 @@ class EditorSessionManager extends ChangeNotifier
   /// ⛔Playback is deliberately not a channel here: none of these three
   /// move while it runs, so a bar cannot start re-deriving 24 times a
   /// second because the film is playing.
+  ///
+  /// ↩️F-587 (유저 2026-11-13): the first half stopped being true on
+  /// 2026-10-09 — a run of the cut plays on the editing canvas (F-296-Q6)
+  /// and takes [editingFrameCursor] with it, frame by frame (🔬sixteen
+  /// frames of it: this fired on all sixteen). The law of the second half
+  /// stands, and is kept by the ones who answer now: a bar's group or a
+  /// rail's row is not asked while a run plays (`PlaybackStillness`). This
+  /// channel still fires through it — the playhead it draws is the run's.
   late final Listenable playheadMoved = Listenable.merge([
     frameSeekCommitted,
     editingFrameCursor,
@@ -3981,6 +4008,10 @@ class EditorSessionManager extends ChangeNotifier
   // answer, rebuilding only when that answer differs. The user's efficiency
   // instruction is kept exactly where it belongs: a crossed frame costs one
   // derivation and zero rebuilds unless something actually changed.
+  //
+  // ↩️「never by playback」 held until 2026-10-09 (F-296-Q6: a run of the cut
+  // moves the cursor). A consumer is not asked while a run plays instead
+  // (F-587, [playheadMoved]).
 
   // The per-layer "empty cels" memo TOKEN that used to live here is gone
   // with [celContentRevision]. It was the weaker form of the same idea: a

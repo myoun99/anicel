@@ -1,17 +1,18 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'dart:ui' show Color;
+
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart';
 import '../../models/import/import_warning.dart' show ImportWarning;
 import '../../models/project_background.dart';
-import '../../services/straight_rgba_image.dart' show straightRgbaOf;
 import '../editor_session_manager.dart';
 import 'export_frame_renderer.dart';
 import 'export_plan.dart';
 import 'png_sequence_export_service.dart';
+import 'still_frame_bytes.dart' show straightOf;
 import 'still_image_encoders.dart';
 
 /// The frame a picture of the film is taken of when nobody has turned to
@@ -56,14 +57,15 @@ ImageExportSpec saveAsPictureSpec(ExportStillFormat format) => ImageExportSpec(
 
 /// [task] as [renderer] draws what the canvas shows, at [spec]'s size, on
 /// [paper] — the ONE render behind every picture this file hands out,
-/// written or held ([writeFrameImage], [shownFramePicture]).
-Future<ui.Image> _asShown(
+/// written or held ([writeFrameImage], [shownFramePicture]): a frame on
+/// the engine, [renderer]'s own.
+Future<GpuShown> _asShown(
   ExportFrameRenderer renderer,
   ExportFrameTask task,
   ImageExportSpec spec, {
   required Color guideInk,
   ProjectBackground? paper,
-}) => renderer.renderAsShown(
+}) => renderer.asShownFrame(
   task,
   spec.sizeMode,
   guideInk: guideInk,
@@ -77,7 +79,8 @@ Future<ui.Image> _asShown(
 ///
 /// 🗣️I-163-Q1 (유저 2026-11-05): 「다른 이름으로 저장 한 장으로 통일
 /// (스포이드도)」 — what the cut tool's 「표시」 reads is THAT picture, by
-/// its code, not a second composite of what is shown.
+/// its code, not a second composite of what is shown: its frame, turned
+/// straight as the PNG's writer turns it ([straightOf]).
 ///
 /// ⚠️ON NO PAPER: the save as writes the paper under its rows, and over an
 /// opaque paper every pixel of the canvas is ink — a cut would take the
@@ -98,16 +101,8 @@ Future<({int width, int height, Uint8List rgba})?> shownFramePicture(
     layerFx: spec.layerFx,
   );
   try {
-    final image = await _asShown(renderer, task, spec, guideInk: guideInk);
-    try {
-      return (
-        width: image.width,
-        height: image.height,
-        rgba: await straightRgbaOf(image),
-      );
-    } finally {
-      image.dispose();
-    }
+    final frame = await _asShown(renderer, task, spec, guideInk: guideInk);
+    return (width: frame.width, height: frame.height, rgba: straightOf(frame));
   } finally {
     renderer.dispose();
   }

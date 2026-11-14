@@ -120,17 +120,25 @@ class MediaPool {
   /// ⚠️SOUNDS: every caller registers one — a clip's file, a take, a
   /// .tvpp's sounds — and the entry says so, as the model's default always
   /// did. The pool's import of any kind is [importMediaFiles].
-  Future<void> addMediaAssets(List<String> paths, {bool carried = false}) =>
-      _admit([
-        for (final path in paths)
-          importedMediaAsset(
-            path: path,
-            kind: MediaAssetKind.audio,
-            fit: MediaFitMode.contain,
-            identity: readMediaIdentity(path),
-            carried: carried,
-          ),
-      ]);
+  ///
+  /// [from]: the file [paths] were taken out of — a .clip's sounds — which
+  /// they say they were copied from ([MediaAsset.sourcePath]), and whose
+  /// date a carry of them records (🗣️F-589-Q1, [importedMediaAsset]): when
+  /// a copy was taken out is not when the file is from.
+  Future<void> addMediaAssets(
+    List<String> paths, {
+    bool carried = false,
+    String? from,
+  }) => _admit([
+    for (final path in paths)
+      importedMediaAsset(
+        path: path,
+        kind: MediaAssetKind.audio,
+        sourcePath: from,
+        identity: readMediaIdentity(path),
+        carried: carried,
+      ),
+  ]);
 
   /// Records the [entries] the pool does not have yet — once the bytes of
   /// every one that is CARRIED are held.
@@ -405,7 +413,9 @@ class MediaPool {
           _project.cutCommandCoordinator.relinkMediaAsset(
             oldPath: oldPath,
             newPath: newPath,
-            carriedAs: carry?.token,
+            carriedAs: carry == null
+                ? null
+                : (token: carry.token, modified: readMediaModified(newPath)),
           )
           ? {oldPath: newPath}
           : const {},
@@ -494,7 +504,9 @@ class MediaPool {
   @visibleForTesting
   bool Function(String path)? debugMediaFileExists;
 
-  /// When each pool file was last written, for the browser's rows.
+  /// When each pool file the project points at was last written, for the
+  /// browser's rows — a carried one shows its carry's date
+  /// ([MediaCarriedAs]).
   ///
   /// Filled by the same sweep that answers "is it still there", because
   /// the sweep is already touching every file: a row that asked the disk
@@ -522,6 +534,10 @@ class MediaPool {
         if (!_file.projectHoldsMediaBytes(asset.path)) {
           missing.add(asset.path);
         }
+        continue;
+      }
+      if (asset.carried) {
+        // Its row shows the date its carry recorded (F-589-Q1).
         continue;
       }
       try {
@@ -610,8 +626,13 @@ class MediaPool {
     }
     // A carry of its own, even for a path carried once before and removed:
     // that one's bytes are an undo's to bring back ([MediaAsset.carriedAs]).
-    final carriedAs = mintMediaCarry(path);
-    await _staging.stageCarriedBytes([(poolPath: path, token: carriedAs)]);
+    final carriedAs = (
+      token: mintMediaCarry(path),
+      modified: readMediaModified(path),
+    );
+    await _staging.stageCarriedBytes([
+      (poolPath: path, token: carriedAs.token),
+    ]);
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
         if (asset.path == path) asset.copyWith(carriedAs: carriedAs) else asset,
@@ -646,14 +667,17 @@ class MediaPool {
         if (asset.carried &&
             asked.contains(asset.path) &&
             File(asset.path).existsSync())
-          asset.path: mintMediaCarry(asset.path),
+          asset.path: (
+            token: mintMediaCarry(asset.path),
+            modified: readMediaModified(asset.path),
+          ),
     };
     if (anew.isEmpty) {
       return const {};
     }
     await _staging.stageCarriedBytes([
-      for (final MapEntry(key: path, value: token) in anew.entries)
-        (poolPath: path, token: token),
+      for (final MapEntry(key: path, value: carried) in anew.entries)
+        (poolPath: path, token: carried.token),
     ]);
     // Read after the wait, as [_admit] does: what changed meanwhile stays.
     _project.cutCommandCoordinator.updateMediaAssets([
@@ -775,7 +799,6 @@ class MediaPool {
         importedMediaAsset(
           path: source,
           kind: kind,
-          fit: MediaFitMode.contain,
           sourcePath: cutFrom[path],
           // Answers "which file is this?", so it is stamped for a carried
           // asset and a reference alike — a reference is exactly the one

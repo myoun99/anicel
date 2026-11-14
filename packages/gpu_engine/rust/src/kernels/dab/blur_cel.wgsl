@@ -1,5 +1,5 @@
 // The blur brush's picture and the cel (I-75 흐리기 — BrushBlurPicture's
-// rewritten tiles and its resultTile, C's qa_blur_result_tile; 캔버스
+// rewritten tiles and its resultTile; 캔버스
 // 베이스 11-06 02:29). `blur_fill` makes a stroke tile's picture of the
 // cel's tile as the executor copies a row whole over nothing — its stored
 // bytes, straight RGBA8, tile after tile in the stroke's order

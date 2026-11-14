@@ -12,33 +12,22 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/stroke_pixel.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_pixel_blend.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
-import '../helpers/native_engine_path.dart';
-
 /// 🗣️유저 2026-10-01 (board `one-pixel-steps-change-a-brush-with-its-size`
 /// Q2, 「a는 제안한대로 16비트?」): a stroke piles up on a 16-bit plane beside
-/// its bytes (`qa_dab_store`, ABI 40). A dab used to round what it left to a
+/// its bytes (`StrokePixel`, ABI 40). A dab used to round what it left to a
 /// byte and the next dab read that byte back, so a soft tail laying under
 /// half a level a dab never piled up at all.
 ///
-/// Every case runs on the Dart kernel and on the C kernel, each built on an
-/// empty buffer the way a stroke is.
+/// Every case runs on the Dart tile kernel (the grid is not the engine's),
+/// built on an empty buffer the way a stroke is.
 void main() {
   const canvasSize = CanvasSize(width: 64, height: 64);
   final origin = TileCoord(x: 0, y: 0);
   const blue = 0xFF224488;
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
 
   /// A hard round dab over the middle of the only tile: full coverage at
   /// the pixel read below.
@@ -65,27 +54,7 @@ void main() {
     return tile.pixels.sublist(at, at + 4);
   }
 
-  void onEachEngine(String name, void Function() body) {
-    test('$name — Dart kernel', () {
-      QaNativeEngine.debugResetForTests();
-      QaNativeEngine.debugForceDartFallback = true;
-      expect(QaNativeEngine.instance, isNull);
-      body();
-    });
-    test('$name — C kernel', () {
-      if (dllPath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      expect(QaNativeEngine.instance, isNotNull);
-      body();
-    });
-  }
-
-  onEachEngine('a dab laying a quarter of a level still piles up', () {
+  test('a dab laying a quarter of a level still piles up', () {
     // Flow 0.001 lays 0.255 of a level over nothing: on bytes it rounded to
     // 0, the next dab found 0 again, and a hundred of them left nothing.
     // On the plane they pile up as they would in real numbers:
@@ -93,8 +62,7 @@ void main() {
     final dabs = [for (var i = 0; i < 100; i += 1) dab(flow: 0.001, sequence: i)];
     expect(pixelAfter(dabs)[3], 24);
     // ⚠️And as the canvas hands them over: a round tip prerendered as a mask
-    // (BrushTipStampCache), which the C kernel blends two pixels at a time —
-    // a road of its own (`qa_dab_blend_pairs`).
+    // (BrushTipStampCache) — the masked road, not the round one.
     expect(
       pixelAfter([
         for (final one in dabs) BrushTipStampCache.instance.resolveDab(one),
@@ -103,7 +71,7 @@ void main() {
     );
   });
 
-  onEachEngine('a soft pile stays within a level of the real-number pile', () {
+  test('a soft pile stays within a level of the real-number pile', () {
     // Flow 0.03: 1 − 0.97ⁿ, one rounding of the plane a dab — far below a
     // level after 120 dabs, where bytes drifted one rounding a dab.
     for (final count in [10, 40, 120]) {
@@ -122,7 +90,7 @@ void main() {
     }
   });
 
-  onEachEngine('a dab after a stamp piles over what the stamp left', () {
+  test('a dab after a stamp piles over what the stamp left', () {
     // The stamp writes the bytes alone, so the plane under them goes stale:
     // a dab after it must read the stamp's picture, not the plane the dabs
     // before the stamp left (`CommitTileScratch`).

@@ -24,7 +24,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/camera_pose_resolver.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show layerPlacementAt;
 import 'package:anicel/src/services/commands/resize_cut_canvas_command.dart';
@@ -32,6 +31,7 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 import '../../helpers/placement_reading.dart' show nearPoint;
+import '../../helpers/surface_rgba_in_place.dart';
 
 void main() {
   group('ResizeCutCanvasCommand', () {
@@ -478,7 +478,7 @@ int? _inkAt(BrushFrameStore store, int x, int y) {
   if (surface == null) {
     return null;
   }
-  return surfacePixelRgba(surface, x, y);
+  return surfaceRgbaInPlace(surface, x, y);
 }
 
 final _targetCut = Cut(

@@ -117,22 +117,19 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
       _playbackCacheBudgetEnforcer.room(lentBytes: _besideThePictures);
 
   /// What the line holds beside the frames' pictures, which give way to it:
-  /// what is [lent], and the pictures the nodes of the frame a screen
-  /// stands on are held in (`FramePictures.heldNodes`) — taken off the
-  /// pictures made ahead ([bytesForNodes]), never laid past the line.
-  int get _besideThePictures => _lentBytes + _run.pictures.heldNodes.heldBytes;
+  /// the pictures the nodes of the frame a screen stands on are held in
+  /// (`FramePictures.heldNodes`) — taken off the pictures made ahead
+  /// ([bytesForNodes]), never laid past the line.
+  int get _besideThePictures => _run.pictures.heldNodes.heldBytes;
 
   /// How much of the line the nodes over a pen may hold, one by one
-  /// (`FramePictures.heldNodes`): all of it but what a screen shows, what
-  /// is [lent] and what lies below the pen held — the frames' pictures made
-  /// ahead give way to them ([giveWayToNodes]). 🗣️유저 2026-10-27 (Q3 = c):
+  /// (`FramePictures.heldNodes`): all of it but what a screen shows and
+  /// what lies below the pen held — the frames' pictures made ahead give
+  /// way to them ([giveWayToNodes]). 🗣️유저 2026-10-27 (Q3 = c):
   /// 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」.
   @override
   int get bytesForNodes {
-    final room =
-        _playbackCacheBudgetEnforcer.lendableBytes() -
-        _lentBytes -
-        _run.pictures.heldNodes.heldBelowBytes;
+    final room = _playbackCacheBudgetEnforcer.lendableBytes();
     return room < 0 ? 0 : room;
   }
 
@@ -169,31 +166,6 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
         within: this.bytes,
         wantedAt: _run.pictures.wantedAt(_run.demand),
       );
-
-  /// What an export run holds on this line while it goes — the row
-  /// pictures its held cut pictures are made of (F-289-Q21, 유저 2026-10-07:
-  /// 「붙든다 — 재생 줄의 허용치 안에서」). Playback rests while a run goes,
-  /// so the run borrows the line and the playback caches give way to it;
-  /// they fill again, as they are asked, once it is lent no more.
-  int get lentBytes => _lentBytes;
-  int _lentBytes = 0;
-
-  /// How much of the line a run may hold now — all of it but what the
-  /// playback caches will not give back, and the frame's nodes held
-  /// ([_besideThePictures]).
-  int get lendableBytes {
-    final lendable =
-        _playbackCacheBudgetEnforcer.lendableBytes() -
-        _run.pictures.heldNodes.heldBytes;
-    return lendable < 0 ? 0 : lendable;
-  }
-
-  /// A run holds [bytes] on this line from now on, and the playback caches
-  /// give way to it at once — 0 when its last row is let go.
-  void lend(int bytes) {
-    _lentBytes = bytes;
-    enforcePlaybackCacheBudget();
-  }
 
   /// The OS memory warning, the playback caches' share: the enforcer
   /// lowers its cap, and the trim runs against the lowered cap at once —

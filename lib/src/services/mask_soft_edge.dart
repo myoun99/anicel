@@ -1,45 +1,17 @@
 import 'dart:typed_data';
 
-/// ONE boundary soft pass over an 8-bit coverage mask: every pixel whose
-/// 4-neighbourhood is not uniform becomes `(center * 3 + neighbour sum) / 7`,
-/// rounded.
-///
-/// 🚨★★★THE FORMULA IS SHARED. THE MEANING IS NOT — and that is what
-/// [insideOutlineOnly] is for.
-///
-/// A FILL's anti-alias is allowed to reach one pixel past its own outline:
-/// the fill is painting, and paint that stops dead on the outline reads as
-/// a hard edge. A SELECTION's is not: since #1288 a pixel the mask touches
-/// at all travels whole, so a ramp outside the outline is a ring of the
-/// neighbour's artwork lifted along with the selection and erased from where
-/// it was (유저 2026-08-27, after looking at TVPaint: 「애초 tvp 보니까
-/// **선택의 aa가 선택 바깥에 걸리는게 아니라 선택 안쪽에 걸고있는거같거든**?」).
-///
-/// ⛔SO DO NOT COLLAPSE THE TWO INTO ONE ANSWER. The card that opened this
-/// said it in one line: 「억지로 하나로 만들면 안 된다 — 뜻이 둘이다」. What
-/// they share is the arithmetic; what they disagree about is a clamp, and a
-/// clamp is an argument.
-///
-/// ⚠️THERE IS A THIRD COPY AND IT STAYS. `qa_fill_finish_mask` in
-/// `packages/qa_native/src/qa_engine.c` is the C kernel for the FILL, and it
-/// mirrors the `insideOutlineOnly: false` branch line for line — including
-/// the double division and the round, for byte identity.
-/// `fill_gap_close_test` compares them mask for mask on randomised walls, so
-/// the C copy is the one kind of copy this repo keeps: one a test holds shut.
-/// 🚨That test SKIPS when `qa_engine.dll` is not built. Build it before
-/// touching this file — the command is in `qa_engine_abi.dart`'s header —
-/// or the guard is not running and you will not be told.
 /// Two-pass 3-4 chamfer distance transform: [target] receives the
 /// distance (orthogonal step 3, diagonal 4, saturated at [infinity])
 /// from every pixel to the nearest SOURCE pixel, where source means
-/// `from[i] == zeroWhen`. Integer math only — the C kernel mirrors it
-/// exactly.
+/// `from[i] == zeroWhen`. Integer math only.
 ///
 /// [borderDistance] is the chamfer distance the canvas border is treated
-/// as lying at. The FILL passes [infinity]: off-canvas neighbors are
-/// ignored (the canvas edge is NOT a barrier). The SELECTION feather
-/// passes 3: a border pixel ramps as if the pixel beyond the edge were
-/// outside. It is applied to the four border lines ONCE, before the two
+/// as lying at. The SELECTION feather passes 3: a border pixel ramps as if
+/// the pixel beyond the edge were outside. ↩️The fill's gap close passed
+/// [infinity] — off-canvas neighbours ignored, the canvas edge NOT a
+/// barrier — till it went to the engine (2026-11-12), whose mask kernel
+/// measures this same distance (`kernels/mask`). It is applied to the four
+/// border lines ONCE, before the two
 /// relaxation passes, which is the same value at the same read points as
 /// forcing it inside the forward pass — a border pixel seeded to 3 can be
 /// lowered by no neighbour (nothing is below 0 + 3), and every neighbour
@@ -126,6 +98,38 @@ void chamferDistance34(
   }
 }
 
+/// ONE boundary soft pass over an 8-bit coverage mask: every pixel whose
+/// 4-neighbourhood is not uniform becomes `(center * 3 + neighbour sum) / 7`,
+/// rounded.
+///
+/// 🚨★★★THE FORMULA IS SHARED. THE MEANING IS NOT — and that is what
+/// [insideOutlineOnly] is for.
+///
+/// A FILL's anti-alias is allowed to reach one pixel past its own outline:
+/// the fill is painting, and paint that stops dead on the outline reads as
+/// a hard edge. A SELECTION's is not: since #1288 a pixel the mask touches
+/// at all travels whole, so a ramp outside the outline is a ring of the
+/// neighbour's artwork lifted along with the selection and erased from where
+/// it was (유저 2026-08-27, after looking at TVPaint: 「애초 tvp 보니까
+/// **선택의 aa가 선택 바깥에 걸리는게 아니라 선택 안쪽에 걸고있는거같거든**?」).
+///
+/// ⛔SO DO NOT COLLAPSE THE TWO INTO ONE ANSWER. The card that opened this
+/// said it in one line: 「억지로 하나로 만들면 안 된다 — 뜻이 둘이다」. What
+/// they share is the arithmetic; what they disagree about is a clamp, and a
+/// clamp is an argument.
+///
+/// ⚠️IT IS SPELLED ONCE MORE, OUTSIDE DART. The engine's mask kernel
+/// (`packages/gpu_engine/rust/src/kernels/mask`, WGSL) carries both
+/// branches, and since 2026-11-12 the bucket's flood is finished by its
+/// unclamped one — while an area (`buildRegionFillDabs`) and a selection
+/// are still finished here. `test/native/
+/// an_area_is_finished_as_the_bucket_is_test.dart` holds the unclamped
+/// branch to the kernel's byte for byte — the one kind of copy this repo
+/// keeps is one a test holds shut — so a change to this arithmetic is a
+/// change to the kernel's (board
+/// `an-areas-finish-is-a-second-spelling-of-the-floods`).
+/// ↩️The C kernel `qa_fill_finish_mask` was that copy till then, held by
+/// `fill_gap_close_test`, which skipped without a built DLL.
 void softenMaskBoundary(
   Uint8List mask, {
   required int width,

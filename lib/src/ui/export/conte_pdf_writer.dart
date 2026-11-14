@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:gpu_engine/gpu_engine.dart' show GpuExport, GpuShown;
 import 'package:pdf/pdf.dart';
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
@@ -13,6 +14,7 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
+import '../../native/app_gpu_engine.dart' show appGpuExport;
 import '../../services/layer_pose_matrix.dart'
     show picturePlacement, placementMatrix;
 import '../conte/conte_fonts.dart';
@@ -24,6 +26,7 @@ import '../sheet_painting.dart'
         sheetInkPaperFromSurface,
         sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
+import 'still_frame_bytes.dart' show rgbOverGroundOf, straightOf;
 
 /// The conte sheet as ONE vector PDF.
 ///
@@ -43,21 +46,26 @@ import '../theme/app_theme.dart' show AppTypography;
 ///
 /// Fonts: the app's bundled faces ([AppTypography.bundledFiles] — BIZ
 /// UDPGothic for Latin, kana and kanji; 나눔고딕 behind it for Hangul and
-/// the keyboard's `~` ([AppTypography] says why), the order the app's own
-/// text resolves in), both weights, per-run selection by glyph coverage so
-/// mixed-script lines print whole. Both are OFL (THIRD_PARTY.md).
+/// the keyboard's `~` ([AppTypography] says why); Noto Sans SC last, for what
+/// neither has ([AppTypography.documentFallback] — the order the app's own
+/// text resolves in)), both weights, per-run selection by glyph coverage so
+/// mixed-script lines print whole. All are OFL (THIRD_PARTY.md).
 class ContePdfFonts {
   ContePdfFonts._({
     required this.regular,
     required this.bold,
     required this.hangul,
     required this.hangulBold,
+    required this.chinese,
+    required this.chineseBold,
   });
 
   final ByteData regular;
   final ByteData bold;
   final ByteData hangul;
   final ByteData hangulBold;
+  final ByteData chinese;
+  final ByteData chineseBold;
 
   /// Loads the bundled OFL fonts for EMBEDDING (rootBundle) — the files
   /// `pubspec.yaml` declares as the app's faces, which the engine measures
@@ -65,27 +73,59 @@ class ContePdfFonts {
   static Future<ContePdfFonts> load() async {
     const face = AppTypography.bundledFiles;
     const behind = AppTypography.bundledFallbackFiles;
+    const last = AppTypography.chineseFiles;
     return ContePdfFonts._(
       regular: await rootBundle.load(face.regular),
       bold: await rootBundle.load(face.bold),
       hangul: await rootBundle.load(behind.regular),
       hangulBold: await rootBundle.load(behind.bold),
+      chinese: await rootBundle.load(last.regular),
+      chineseBold: await rootBundle.load(last.bold),
     );
   }
 }
 
-/// A cell picture for the PDF: raw straight-alpha RGBA (what [PdfImage]
-/// expects — premultiplied bytes would darken translucent edges).
+/// A picture for the PDF as its file keeps it ([PdfImage]): four bytes a
+/// pixel, its colour straight (premultiplied bytes would darken translucent
+/// edges), the fourth made the image's alpha mask — or, where none of it
+/// lets the page through ([alpha] false), three, and no mask.
 class ContePdfPicture {
   const ContePdfPicture({
-    required this.rgba,
+    required this.pixels,
     required this.width,
     required this.height,
+    this.alpha = true,
   });
 
-  final Uint8List rgba;
+  final Uint8List pixels;
   final int width;
   final int height;
+  final bool alpha;
+
+  /// [frame] — made on the engine — read back once as the file keeps it:
+  /// three bytes a pixel where every pixel is opaque ([GpuExport.opaque]),
+  /// laid over a ground none of it shows ([rgbOverGroundOf]), and straight
+  /// ([straightOf]) where one is not.
+  ///
+  /// ↩️It was read back as a picture and read again from that
+  /// ([fromImage]), and every cell — on its opaque ground — carried an
+  /// alpha mask of its own, until card conte-pdf-panels-read-back-twice.
+  factory ContePdfPicture.ofFrame(GpuShown frame) {
+    final (width, height) = (frame.width, frame.height);
+    if (appGpuExport.opaque(frame, width, height)) {
+      return ContePdfPicture(
+        pixels: rgbOverGroundOf(frame, 0xFF000000),
+        width: width,
+        height: height,
+        alpha: false,
+      );
+    }
+    return ContePdfPicture(
+      pixels: straightOf(frame),
+      width: width,
+      height: height,
+    );
+  }
 
   static Future<ContePdfPicture?> fromImage(ui.Image? image) async {
     if (image == null) {
@@ -98,7 +138,7 @@ class ContePdfPicture {
       return null;
     }
     return ContePdfPicture(
-      rgba: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      pixels: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
       width: image.width,
       height: image.height,
     );
@@ -131,9 +171,10 @@ Future<Uint8List> writeContePdf({
   final document = PdfDocument();
   PdfImage embed(ContePdfPicture picture) => PdfImage(
     document,
-    image: picture.rgba,
+    image: picture.pixels,
     width: picture.width,
     height: picture.height,
+    alpha: picture.alpha,
   );
   final writer = _ContePdfPageWriter(
     document: document,
@@ -141,6 +182,8 @@ Future<Uint8List> writeContePdf({
     bold: PdfTtfFont(document, fonts.bold),
     hangul: PdfTtfFont(document, fonts.hangul),
     hangulBold: PdfTtfFont(document, fonts.hangulBold),
+    chinese: PdfTtfFont(document, fonts.chinese),
+    chineseBold: PdfTtfFont(document, fonts.chineseBold),
     pictures: {
       for (final entry in pictures.entries) entry.key: embed(entry.value),
     },
@@ -169,6 +212,8 @@ class _ContePdfPageWriter {
     required this.bold,
     required this.hangul,
     required this.hangulBold,
+    required this.chinese,
+    required this.chineseBold,
     required this.pictures,
     required this.images,
     required this.inkPictures,
@@ -180,6 +225,8 @@ class _ContePdfPageWriter {
   final PdfTtfFont bold;
   final PdfTtfFont hangul;
   final PdfTtfFont hangulBold;
+  final PdfTtfFont chinese;
+  final PdfTtfFont chineseBold;
   final Map<SheetPictureKey, PdfImage> pictures;
   final Map<String, PdfImage> images;
   final Map<BrushFrameKey, PdfImage> inkPictures;
@@ -366,24 +413,24 @@ class _ContePdfPageWriter {
       font.font.charToGlyphIndexMap.containsKey(rune);
 
   /// Splits [text] into per-font runs, the order the engine resolves the
-  /// same line in: the app's face where it has the glyph, 나눔고딕 behind
-  /// it where it does not but Hangul does; unknown-to-both stays on the
-  /// app's face (its notdef says honestly that the glyph is missing).
+  /// same line in: the app's face where it has the glyph, then 나눔고딕,
+  /// then Noto Sans SC; unknown-to-all stays on the app's face (its notdef
+  /// says honestly that the glyph is missing).
   List<({PdfTtfFont font, String text})> _runsFor(
     String text, {
     required bool isBold,
   }) {
-    final preferred = isBold ? bold : regular;
-    final behind = isBold ? hangulBold : hangul;
+    final faces = isBold
+        ? [bold, hangulBold, chineseBold]
+        : [regular, hangul, chinese];
     final runs = <({PdfTtfFont font, String text})>[];
     final buffer = StringBuffer();
     PdfTtfFont? current;
     for (final rune in text.runes) {
-      final font = _covers(preferred, rune)
-          ? preferred
-          : _covers(behind, rune)
-          ? behind
-          : preferred;
+      final font = faces.firstWhere(
+        (face) => _covers(face, rune),
+        orElse: () => faces.first,
+      );
       if (current != null && font != current && buffer.isNotEmpty) {
         runs.add((font: current, text: buffer.toString()));
         buffer.clear();

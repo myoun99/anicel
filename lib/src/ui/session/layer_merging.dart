@@ -1,5 +1,6 @@
 import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
@@ -113,11 +114,15 @@ class LayerMerging {
     );
   }
 
-  /// Whether RASTERIZE in [rowId]'s group header for [effectId] — the
-  /// transform's, where null — bakes anything: its light, from the taking
-  /// [planOfFx] plans from (I-120 round ②).
-  bool bakesFx(LayerId rowId, EffectId? effectId) =>
-      _takingOfFx(rowId, effectId) != null;
+  /// The frames RASTERIZE in [rowId]'s group header for [effectId] — the
+  /// transform's, where null — bakes over [band] (every frame its row
+  /// draws, where none scopes it), or null where it bakes nothing: its
+  /// light, from the taking [planOfFx] plans from (I-120 round ②).
+  BakedFrames? fxFramesBaked(
+    LayerId rowId,
+    EffectId? effectId, {
+    BakedFrames? band,
+  }) => _takingOfFx(rowId, effectId, band)?.framesBaked;
 
   FxBakeTaking? _takingOfFx(
     LayerId rowId,
@@ -179,6 +184,76 @@ class LayerMerging {
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
     return true;
+  }
+
+  /// The rows riding [layerId] of [cutId] a reference RASTERIZE bakes with
+  /// it ([takeReferenceRiders]) — every use whose cels take the picture
+  /// where it shows it ([ReferenceMoveCarried.bakes]); null where none
+  /// draws pictures of its own, or the row shows no file. Asked before the
+  /// row lets go: what the riders are drawn wearing is its move.
+  ReferenceRidersTaking? referenceRidersOf(CutId cutId, LayerId layerId) {
+    final way = _project.cutCommandCoordinator.referenceCarriedOf(
+      cutId: cutId,
+      layerId: layerId,
+    );
+    if (way == null) {
+      return null;
+    }
+    return takeReferenceRiders(
+      project: _project.repository.requireProject(),
+      uses: [
+        for (final (:use, track: _, :asShown) in way.uses)
+          if (asShown) (cutId: use.cut.id, layerId: use.layer.id),
+      ],
+      readsOf: _readsOf,
+    );
+  }
+
+  /// What a reference RASTERIZE that has let its row go makes of the rows
+  /// [taking] took riding it ([planReferenceRiders]).
+  ReferenceRidersPlan planOfReferenceRiders(ReferenceRidersTaking taking) =>
+      planReferenceRiders(
+        taking,
+        after: _project.repository.requireProject(),
+        readsOf: _readsOf,
+        mintFrameId: _frameIds.mintFrameId,
+      );
+
+  /// The riders [plan] bakes made what it planned, each in the cut it
+  /// rides in, as ONE undo step — the press folds it into its own — or
+  /// nothing, when one of them is no longer there.
+  void landReferenceRiders(ReferenceRidersPlan plan) {
+    final layers = <CutId, ({Cut cut, List<Layer> layers})>{};
+    for (final (:cut, :row) in plan.rows) {
+      final now = _project.cutById(cut.id);
+      // 🔬Not «as it was taken»: the row's own let-go has changed a synced
+      // rider already — the write normalized it a mirror cel for each of
+      // the row's new cels, empty (`cutWithReconciledAttachedMirrors`;
+      // measured 2026-11-11: 1 cel → 14, the rider shown nowhere after a
+      // moving paper baked) — and the riders bake those very mirrors'
+      // pictures ([SyncedCelIds]). The wait window stands every other edit
+      // off.
+      if (now == null || now.layers.byId(row.id) == null) {
+        return;
+      }
+      final rows = layers[cut.id]?.layers ?? now.layers;
+      layers[cut.id] = (
+        cut: now,
+        layers: [
+          for (final layer in rows)
+            if (layer.id == row.id) row else layer,
+        ],
+      );
+    }
+    if (!_landsAcross(
+      [...layers.values],
+      _project.repository.requireProject().linkRegistry,
+      'Rasterize layer',
+    )) {
+      return;
+    }
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// What MERGE makes of the band's blocks — null where it merges none.

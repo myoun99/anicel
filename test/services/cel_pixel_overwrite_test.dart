@@ -5,10 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show CanvasSelectionShape, SelectionMaskOptions;
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 void main() {
   const canvas = CanvasSize(width: 512, height: 512);
@@ -40,24 +45,61 @@ void main() {
     );
   }
 
-  /// Coverage over the named tile-local pixels; everything else 0.
-  Uint8List maskOver(Map<(int, int), int> coverage) {
-    final mask = Uint8List(256 * 256);
-    for (final entry in coverage.entries) {
-      mask[(entry.key.$2 * 256) + entry.key.$1] = entry.value;
+  /// The wall every surface here stands in.
+  final wall = surfaceOf(const []).pasteboard;
+
+  CanvasSelectionRegion rect(int left, int top, int right, int bottom) =>
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: left.toDouble(),
+          top: top.toDouble(),
+          right: right.toDouble(),
+          bottom: bottom.toDouble(),
+        ),
+      );
+
+  /// A lasso over the first [count] pixels of the origin tile, row by row:
+  /// the whole rows and the start of the next, concave where it stops.
+  CanvasSelectionRegion firstPixels(int count) {
+    final rows = count ~/ 256;
+    final rest = count % 256;
+    if (rows == 0 || rest == 0) {
+      return rows == 0 ? rect(0, 0, rest, 1) : rect(0, 0, 256, rows);
     }
-    return mask;
+    return CanvasSelectionRegion.shape(
+      CanvasSelectionShape([
+        for (final (x, y) in [
+          (0, 0),
+          (256, 0),
+          (256, rows),
+          (rest, rows),
+          (rest, rows + 1),
+          (0, rows + 1),
+        ])
+          CanvasPoint(x: x.toDouble(), y: y.toDouble()),
+      ]),
+    );
   }
 
-  /// Full coverage of the named pixels.
-  Uint8List maskOverAll(Iterable<(int, int)> pixels) =>
-      maskOver({for (final pixel in pixels) pixel: 255});
+  /// A feather wide enough that the pixels along an edge are each a part.
+  const feathered = SelectionMaskOptions(featherPx: 4);
 
-  CelPixelWalk walk(List<(TileCoord, Uint8List?)> tiles) => (visit) {
-    for (final tile in tiles) {
-      visit(tile.$1, tile.$2);
-    }
-  };
+  /// [tiles], in that order, under [region] read as a selection at
+  /// [options] — every pixel of them with no [region].
+  CelPixelWalk walk(
+    List<TileCoord> tiles, [
+    CanvasSelectionRegion? region,
+    SelectionMaskOptions options = SelectionMaskOptions.none,
+  ]) => (
+    tiles: tiles,
+    clip: region == null
+        ? null
+        : SelectionClip.of(region, wall: wall, options: options),
+  );
+
+  /// How much of the pixel at ([x], [y]) [steps]' selection takes.
+  int coverageAt(CelPixelWalk steps, int x, int y) =>
+      steps.clip!.maskFor(left: x, top: y, width: 1, height: 1).single;
 
   group('colour channel (색 변환)', () {
     test('replaces RGB and leaves alpha exactly as it was', () {
@@ -71,9 +113,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([
-          (origin, maskOverAll([(0, 0), (1, 0)])),
-        ]),
+        walk: walk([origin], rect(0, 0, 2, 1)),
         value: Uint8List.fromList([255, 0, 0]),
       );
 
@@ -93,9 +133,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([
-          (origin, maskOverAll([(0, 0)])),
-        ]),
+        walk: walk([origin], rect(0, 0, 1, 1)),
         value: Uint8List.fromList([255, 0, 0]),
       );
 
@@ -116,7 +154,7 @@ void main() {
         surface: surface,
         channel: CelPixelChannel.colour,
         // null mask = 범위는 전체.
-        walk: walk([(origin, null)]),
+        walk: walk([origin]),
         value: Uint8List.fromList([200, 30, 30]),
       );
 
@@ -138,9 +176,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([
-          (origin, maskOverAll([for (var x = 0; x < 40; x += 1) (x, 0)])),
-        ]),
+        walk: walk([origin], rect(0, 0, 40, 1)),
         value: Uint8List.fromList([200, 30, 30]),
       );
 
@@ -158,9 +194,7 @@ void main() {
           (2, 0): [10, 20, 30, 7],
         }),
       ]);
-      final steps = walk([
-        (origin, maskOverAll([(0, 0), (1, 0), (2, 0)])),
-      ]);
+      final steps = walk([origin], rect(0, 0, 3, 1));
 
       final forward = overwriteCelPixels(
         surface: before,
@@ -204,7 +238,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.keys))]),
+        walk: walk([origin], firstPixels(art.length)),
         value: Uint8List.fromList([0, 0, 255]),
       );
 
@@ -224,7 +258,7 @@ void main() {
         covered.add((x, y));
       }
       final surface = surfaceOf([tileWith(origin, pixels)]);
-      final steps = walk([(origin, maskOverAll(covered))]);
+      final steps = walk([origin], firstPixels(covered.length));
 
       final result = overwriteCelPixels(
         surface: surface,
@@ -261,20 +295,27 @@ void main() {
         }),
       ]);
 
+      final steps = walk([origin], rect(0, 0, 8, 8), feathered);
+      final coverage = coverageAt(steps, 0, 0);
+      expect(
+        coverage,
+        inExclusiveRange(0, 255),
+        reason: '⛔premise: the feather takes a part of the pixel',
+      );
+
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([
-          (origin, maskOver({(0, 0): 128})),
-        ]),
+        walk: steps,
         value: Uint8List.fromList([255, 255, 255]),
       );
 
       final pixel = pixelAt(result.surface, origin, 0, 0);
-      // Half coverage lands halfway between the two colours...
-      expect(pixel[0], closeTo(128, 1));
+      // A part of the pixel lands that part of the way between the two
+      // colours...
+      expect(pixel[0], closeTo(coverage, 1));
       // ...and the shape is untouched. A stamp composited back through
-      // src-over would have thickened this to ~228.
+      // src-over would have thickened it.
       expect(pixel[3], 200);
     });
 
@@ -286,9 +327,12 @@ void main() {
           (2, 0): [10, 20, 30, 255],
         }),
       ]);
-      final steps = walk([
-        (origin, maskOver({(0, 0): 64, (1, 0): 128, (2, 0): 255})),
-      ]);
+      final steps = walk([origin], rect(0, 0, 8, 8), feathered);
+      expect(
+        [for (var x = 0; x < 3; x += 1) coverageAt(steps, x, 0)],
+        everyElement(inExclusiveRange(0, 255)),
+        reason: '⛔premise: every one of them a part',
+      );
 
       final forward = overwriteCelPixels(
         surface: before,
@@ -320,9 +364,7 @@ void main() {
           (1, 0): [40, 50, 60, 128],
         }),
       ]);
-      final steps = walk([
-        (origin, maskOverAll([(0, 0), (1, 0)])),
-      ]);
+      final steps = walk([origin], rect(0, 0, 2, 1));
 
       final forward = overwriteCelPixels(
         surface: before,
@@ -352,9 +394,7 @@ void main() {
           (2, 0): [0, 0, 0, 255],
         }),
       ]);
-      final steps = walk([
-        (origin, maskOverAll([(0, 0), (1, 0), (2, 0)])),
-      ]);
+      final steps = walk([origin], rect(0, 0, 3, 1));
 
       final forward = overwriteCelPixels(
         surface: before,
@@ -408,7 +448,7 @@ void main() {
       final after = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.alpha,
-        walk: walk([(origin, null)]),
+        walk: walk([origin]),
         value: opaque,
         threshold: 128,
       ).surface;
@@ -431,7 +471,7 @@ void main() {
       final after = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.alpha,
-        walk: walk([(origin, null)]),
+        walk: walk([origin]),
         value: opaque,
         threshold: PixelVerbSettings.lowestBinarizeThreshold,
       ).surface;
@@ -449,7 +489,7 @@ void main() {
           (3, 0): [70, 80, 90, 1],
         }),
       ]);
-      final steps = walk([(origin, null)]);
+      final steps = walk([origin]);
 
       final forward = overwriteCelPixels(
         surface: before,
@@ -482,20 +522,30 @@ void main() {
         }),
       ]);
 
+      final steps = walk([origin], rect(0, 0, 8, 8), feathered);
+      final over = coverageAt(steps, 0, 0);
+      final under = coverageAt(steps, 1, 0);
+      expect(
+        [over, under],
+        everyElement(inExclusiveRange(0, 255)),
+        reason: '⛔premise: the feather takes a part of each',
+      );
+
       final after = overwriteCelPixels(
         surface: before,
         channel: CelPixelChannel.alpha,
-        walk: walk([
-          (origin, maskOver({(0, 0): 128, (1, 0): 128})),
-        ]),
+        walk: steps,
         value: opaque,
         threshold: 128,
       ).surface;
 
-      // Half of the way to 255 and to 0 — the mul-div-255 blend every
-      // feathered edge of the pass takes.
-      expect(pixelAt(after, origin, 0, 0), [10, 20, 30, 228]);
-      expect(pixelAt(after, origin, 1, 0), [10, 20, 30, 50]);
+      // That part of the way to 255 and to 0 — the blend every feathered
+      // edge of the pass takes (its bytes are the kernel's
+      // `a_mask_blends_the_value_by_its_coverage`, which the Dart pass is
+      // held to in `a_colour_verb_runs_on_the_engine_test`).
+      expect(pixelAt(after, origin, 0, 0)[3], closeTo(200 + 55 * over / 255, 1));
+      expect(pixelAt(after, origin, 1, 0)[3], closeTo(100 - 100 * under / 255, 1));
+      expect(pixelAt(after, origin, 1, 0).sublist(0, 3), [10, 20, 30]);
     });
   });
 
@@ -514,11 +564,15 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([
-          (origin, maskOverAll([(0, 0)])),
-          // Crossed, but transparent there — nothing to recolour.
-          (neighbour, maskOverAll([(5, 5)])),
-        ]),
+        walk: walk(
+          [origin, neighbour],
+          // Crossed at (5, 5) of the neighbour, but transparent there —
+          // nothing to recolour.
+          CanvasSelectionRegion.unionOf([
+            rect(0, 0, 1, 1),
+            rect(256 + 5, 5, 256 + 6, 6),
+          ]),
+        ),
         value: Uint8List.fromList([1, 1, 1]),
       );
 
@@ -543,7 +597,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, null), (neighbour, null)]),
+        walk: walk([origin, neighbour]),
         value: Uint8List.fromList([2, 2, 2]),
       );
 
@@ -582,7 +636,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: art.surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.covered))]),
+        walk: walk([origin], firstPixels(art.covered.length)),
         value: Uint8List.fromList([0, 0, 255]),
       );
 
@@ -603,7 +657,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: art.surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.covered))]),
+        walk: walk([origin], firstPixels(art.covered.length)),
         value: Uint8List.fromList([0, 0, 255]),
       );
 
@@ -626,7 +680,7 @@ void main() {
       final forward = overwriteCelPixels(
         surface: art.surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.covered))]),
+        walk: walk([origin], firstPixels(art.covered.length)),
         value: Uint8List.fromList([0, 0, 255]),
       );
       expect(forward.restore, isA<RunLengthCelPixelRestore>());
@@ -634,7 +688,7 @@ void main() {
       final undone = overwriteCelPixels(
         surface: forward.surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.covered))]),
+        walk: walk([origin], firstPixels(art.covered.length)),
         restore: forward.restore,
       );
 
@@ -654,7 +708,7 @@ void main() {
       final second = overwriteCelPixels(
         surface: forward.surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.covered))]),
+        walk: walk([origin], firstPixels(art.covered.length)),
         restore: forward.restore,
       );
       for (var i = 0; i < art.covered.length; i += 1) {
@@ -670,7 +724,7 @@ void main() {
       final result = overwriteCelPixels(
         surface: art.surface,
         channel: CelPixelChannel.colour,
-        walk: walk([(origin, maskOverAll(art.covered))]),
+        walk: walk([origin], firstPixels(art.covered.length)),
         value: Uint8List.fromList([0, 0, 255]),
       );
 

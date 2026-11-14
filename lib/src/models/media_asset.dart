@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/frozen_collections.dart';
 import '../core/path_names.dart' show fileNameOfPath, pathHash;
 import 'media_identity.dart';
 
@@ -12,6 +13,22 @@ export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
 /// project file's entry — is named from this ([mediaCarryName]), never from
 /// the path alone.
 typedef MediaCarry = ({String poolPath, String token});
+
+/// What an asset records of its 품기 ([MediaAsset.carriedAs]): the name its
+/// bytes are stored under, minted when it was carried ([mintMediaCarry]),
+/// and when the file they were taken from had last changed — read at that
+/// moment, null where nothing could be read.
+///
+/// 🗣️F-589-Q1 (유저 2026-11-14: 「품을 때의 날짜를 적어 두고 그것을
+/// 띄운다」): the pool row's date. ↩️It read the original's modification
+/// time now — so editing the original changed the date of bytes that had
+/// not changed, and deleting it took the date away.
+///
+/// ⛔ONE value with the name, not a field beside it: two fields could say a
+/// date for an asset nothing carries. A piece cut from a file, or a sound
+/// taken out of a movie, has the date of the file it came from — when its
+/// bytes were written is not when the file is from.
+typedef MediaCarriedAs = ({String token, DateTime? modified});
 
 /// A fresh [MediaAsset.carriedAs] for carrying [poolPath], one per 품기 —
 /// the NAME its bytes are stored under for good,
@@ -131,28 +148,29 @@ enum MediaAssetKind {
 /// decision, not a registration one).
 enum MediaFitMode {
   /// Stretch to the canvas, ignoring aspect (Premiere's Scale to Frame).
-  stretch('stretch'),
+  stretch,
 
-  /// Fit inside the canvas keeping aspect (Set to Frame Size) — default.
-  contain('contain'),
+  /// Fit inside the canvas keeping aspect (Set to Frame Size).
+  contain,
 
   /// 1:1, centered — the pasteboard keeps the overflow alive.
-  none('none');
+  none;
 
-  const MediaFitMode(this.jsonValue);
-
-  final String jsonValue;
-
-  String toJson() => jsonValue;
-
-  static MediaFitMode fromJson(Object? json) {
-    for (final value in values) {
-      if (value.jsonValue == json) {
-        return value;
-      }
-    }
-    return contain;
-  }
+  /// The fit a picture comes in with until someone answers another — the
+  /// ONE starting answer of the import window's 「맞춤」, for a file's row
+  /// and a cut folder's alike, and of the doors a row's answer is handed to.
+  ///
+  /// 🗣️유저 2026-11-10 (F-581): 「파일 임포트시, 기본값 지금 비율유지 늘림
+  /// 이건거같은데 기본값은 원본크기로」. ↩️[contain], written in three places
+  /// with no decision behind any: the window's rows (2026-08-14), the doors'
+  /// own defaults (07-30), and the cut folder's (07-30 — 「the one the folder
+  /// import always laid its scans with」, each row's since F-429).
+  ///
+  /// ↩️It stood beside a second starting answer, the one a pool entry kept
+  /// for itself and a project file spelled `fit` — [contain] where the file
+  /// said none. Nothing read that one, and it went with the entry's other
+  /// placement defaults ([MediaAsset]); a fit is in no file now.
+  static const MediaFitMode born = none;
 }
 
 /// One entry of the project's media pool (the Premiere/Resolve-style
@@ -165,31 +183,51 @@ enum MediaFitMode {
 /// AND on every referencing clip in one undo step (the Resolve offline →
 /// relink flow); nothing else about the link model changes.
 ///
-/// PLACEMENT-PRESET fields (§6-l/§6-z10: asset = placement defaults,
-/// instance = actual values): [offsetFrames], [lengthFrames] and [fitMode]
-/// seed a placement and are user-editable per asset. SOURCE-TRACKING
-/// fields ([sourcePath], [sourceStamp]) power the "original changed"
-/// badge for COPIED assets (§6-g): the copy stays the truth, the badge
-/// only offers re-import.
+/// ⛔NO PLACEMENT PRESET HERE YET — it comes back whole, with the screen
+/// that edits it. ↩️From 07-30 (`98f529fc1`) an entry held three placement
+/// defaults — `offsetFrames`, `lengthFrames`, `fitMode` (JSON `offset` ·
+/// `length` · `fit`) — the model's half of the placement preset the user
+/// adopted on 07-29: 「asset = placement defaults, instance = actual
+/// values」, copied into a placement as it is made, a badge and a sync
+/// button once a preset changes (the design: memory
+/// `import-system-design.md` §6-l · §6-z10). Only the fields were built.
+/// No placement was ever seeded from one and nothing wrote the offset or
+/// the length. The fit had one reader, and not as a preset: from 09-12
+/// (`6b8a57f62`) a row showing a file asked its entry for 「the fit the
+/// row was placed with」, until the reference kept its own pose (I-68,
+/// 10-10 `23ac00114`). After that it was stamped with whatever the window
+/// answered the first time the file came in and read by nobody — a second
+/// 「default fit」 beside [MediaFitMode.born], waiting to come alive the
+/// day somebody read it.
+/// 🗣️유저 2026-11-10 (card `the-fit-stored-on-an-asset-is-read-by-nobody`
+/// -Q1): 「지금은 지운다 — 프리셋은 고치는 화면을 만들 때 같이 만든다」 ·
+/// 「나중에 만들예정이긴함」. So the three are gone, not forgotten: they
+/// return together with the reader, the badge and the screen (card
+/// 「파일마다 배치 기본값(맞춤 · 시작 · 길이)」) — ⛔not one field at a
+/// time, and not from the §6-z10 table alone.
+///
+/// [sourcePath] says where a COPY came from (§6-g).
 ///
 /// [identity] is the one that looks like source-tracking and is not. It
 /// describes the file at [path] rather than the origin, it is recorded for
 /// REFERENCES as much as copies, and it answers "which file is this?" so
-/// relink can recognize one that moved. The stamp cannot do that job —
-/// it carries an mtime precisely so it CAN notice a touched file, which is
-/// the opposite requirement. Detection-only metadata ([sourceFps],
-/// [frameCount], [pageCount]) is recorded at registration and never
-/// forces a policy (§6-x).
+/// relink can recognize one that moved. A modification time cannot do that
+/// job — it notices a touched file, the opposite requirement; the one an
+/// asset keeps is its carry's date ([MediaCarriedAs]). Detection-only
+/// metadata ([sourceFps], [frameCount], [pageCount]) is recorded at
+/// registration and never forces a policy (§6-x).
+///
+/// ↩️A `sourceStamp` (mtime + size of the original, JSON `sourceStamp`)
+/// stood beside [sourcePath] for an 「original changed」 badge. Nothing
+/// wrote it from 08-13 (`a34926a79`, the day carrying stopped copying a
+/// file) and nothing read it; it went with F-589, when the carry took a
+/// date of its own.
 class MediaAsset {
   MediaAsset({
     required String path,
     required this.name,
     this.kind = MediaAssetKind.audio,
-    this.offsetFrames = 0,
-    this.lengthFrames,
-    this.fitMode = MediaFitMode.contain,
     this.sourcePath,
-    this.sourceStamp,
     this.carriedAs,
     this.identity,
     this.sourceFps,
@@ -209,17 +247,6 @@ class MediaAsset {
 
   final MediaAssetKind kind;
 
-  /// Placement default: source frames skipped before the block starts.
-  final int offsetFrames;
-
-  /// Placement default: block length; null = the source's own length
-  /// (an image's default is decided at placement — §6-u: length is a
-  /// placement property, not a source one).
-  final int? lengthFrames;
-
-  /// Placement default: how the picture meets the canvas.
-  final MediaFitMode fitMode;
-
   /// The ORIGINAL path this asset was copied from (null = the asset was
   /// referenced in place, or predates tracking). Copies keep remembering
   /// their origin so the "original changed → re-import" badge works
@@ -238,14 +265,6 @@ class MediaAsset {
   /// what it is not given, so a relink leaves whatever tracking was there
   /// and whoever MAKES a copy is the one that writes these two.
   final String? sourcePath;
-
-  /// Change-detection stamp of the source at copy/registration time
-  /// (mtime+size fingerprint); null = never stamped.
-  ///
-  /// ⚠️ Answers "did the original change?", NOT "is this the same file?".
-  /// It carries a modification time, so it stops matching when a file is
-  /// moved or restored — use [identity] for that question.
-  final String? sourceStamp;
 
   /// Whether the project should CARRY this asset's bytes rather than
   /// point at them.
@@ -292,13 +311,16 @@ class MediaAsset {
   /// ⚠️`''` is the carry an asset had before carries had names — its bytes
   /// are under the name the path alone derives, which is what a project
   /// written then holds ([mediaCarryName]).
-  final String? carriedAs;
+  ///
+  /// And when the file its bytes came from had last changed — the carry's
+  /// date ([MediaCarriedAs]).
+  final MediaCarriedAs? carriedAs;
 
   /// [carriedAs] with the path the asset is at now — what the bytes are
   /// found by ([mediaCarryName]).
   MediaCarry? get carry {
-    final token = carriedAs;
-    return token == null ? null : (poolPath: path, token: token);
+    final carried = carriedAs;
+    return carried == null ? null : (poolPath: path, token: carried.token);
   }
 
   /// What the file at [path] looked like when it was registered — the
@@ -327,12 +349,8 @@ class MediaAsset {
     String? path,
     String? name,
     MediaAssetKind? kind,
-    int? offsetFrames,
-    int? lengthFrames,
-    MediaFitMode? fitMode,
     String? sourcePath,
-    String? sourceStamp,
-    String? carriedAs,
+    MediaCarriedAs? carriedAs,
     MediaIdentity? identity,
     double? sourceFps,
     int? frameCount,
@@ -343,11 +361,7 @@ class MediaAsset {
       path: path ?? this.path,
       name: name ?? this.name,
       kind: kind ?? this.kind,
-      offsetFrames: offsetFrames ?? this.offsetFrames,
-      lengthFrames: lengthFrames ?? this.lengthFrames,
-      fitMode: fitMode ?? this.fitMode,
       sourcePath: sourcePath ?? this.sourcePath,
-      sourceStamp: sourceStamp ?? this.sourceStamp,
       carriedAs: carriedAs ?? this.carriedAs,
       identity: identity ?? this.identity,
       sourceFps: sourceFps ?? this.sourceFps,
@@ -361,12 +375,13 @@ class MediaAsset {
     'path': path,
     'name': name,
     'kind': kind.toJson(),
-    if (offsetFrames != 0) 'offset': offsetFrames,
-    if (lengthFrames != null) 'length': lengthFrames,
-    if (fitMode != MediaFitMode.contain) 'fit': fitMode.toJson(),
     if (sourcePath != null) 'sourcePath': sourcePath,
-    if (sourceStamp != null) 'sourceStamp': sourceStamp,
-    if (carriedAs != null) 'carriedAs': carriedAs,
+    if (carriedAs case final carried?) ...{
+      'carriedAs': carried.token,
+      // UTC, so the file says one instant wherever it is opened.
+      if (carried.modified case final modified?)
+        'carriedModified': modified.toUtc().toIso8601String(),
+    },
     if (identity != null) 'identity': identity!.toJson(),
     if (sourceFps != null) 'sourceFps': sourceFps,
     if (frameCount != null) 'frameCount': frameCount,
@@ -389,16 +404,21 @@ class MediaAsset {
       path: json['path'] as String,
       name: _storedName(json),
       kind: MediaAssetKind.fromJson(json['kind']),
-      offsetFrames: (json['offset'] as int?) ?? 0,
-      lengthFrames: json['length'] as int?,
-      fitMode: MediaFitMode.fromJson(json['fit']),
       sourcePath: json['sourcePath'] as String?,
-      sourceStamp: json['sourceStamp'] as String?,
       // ↩️A project written before carries had names said `carried` — or,
       // before that, only a `sourcePath` — and read here as the carry named
       // by the path alone, 「once no build that wrote them is in use」
       // (audit 09-25). The format's floor made that so.
-      carriedAs: json['carriedAs'] as String?,
+      carriedAs: switch (json['carriedAs']) {
+        final String token => (
+          token: token,
+          modified: switch (json['carriedModified']) {
+            final String at => DateTime.tryParse(at)?.toLocal(),
+            _ => null,
+          },
+        ),
+        _ => null,
+      },
       identity: MediaIdentity.fromJson(json['identity']),
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,
@@ -414,11 +434,7 @@ class MediaAsset {
           other.path == path &&
           other.name == name &&
           other.kind == kind &&
-          other.offsetFrames == offsetFrames &&
-          other.lengthFrames == lengthFrames &&
-          other.fitMode == fitMode &&
           other.sourcePath == sourcePath &&
-          other.sourceStamp == sourceStamp &&
           other.carriedAs == carriedAs &&
           other.identity == identity &&
           other.sourceFps == sourceFps &&
@@ -431,11 +447,7 @@ class MediaAsset {
     path,
     name,
     kind,
-    offsetFrames,
-    lengthFrames,
-    fitMode,
     sourcePath,
-    sourceStamp,
     carriedAs,
     identity,
     sourceFps,
@@ -621,5 +633,5 @@ void validateMediaAssetPaths(List<MediaAsset> assets) {
 /// Immutable validated copy of [assets].
 List<MediaAsset> immutableMediaAssetList(List<MediaAsset> assets) {
   validateMediaAssetPaths(assets);
-  return List.unmodifiable(assets);
+  return frozenList(assets);
 }

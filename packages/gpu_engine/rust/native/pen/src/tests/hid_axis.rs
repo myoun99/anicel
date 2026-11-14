@@ -1,5 +1,6 @@
 //! The HID axis law on the cases of the C's own test
-//! (qa_pen_hid_axis_test.c), which runs on every host, as these do.
+//! (qa_pen_hid_axis_test.c, deleted with the C), which ran on every host, as
+//! these do.
 
 use crate::hid_axis::Axis;
 

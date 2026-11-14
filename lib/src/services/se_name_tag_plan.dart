@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset;
 
+import '../core/collection_equality.dart';
 import '../models/canvas_size.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
@@ -103,14 +104,50 @@ class ResolvedSeNameTag {
   /// off it.
   final double widthBudget;
 
-  /// The line's DELIVERY (I-20) — ON / OFF / MONO — as a tag of its own.
+  /// The line's DELIVERY (I-20) — ON / OFF / MONO — set in the name's
+  /// box, under the name; null for a line with no name.
   ///
-  /// 🗣️유저 2026-09-30: 「해당 타입의 텍스트는 네임태그로서 화면에 보이게함.
-  /// 위치는 캐릭터 이름 박스 위 중앙정렬」 — so it wears the NAME's style, and
-  /// like [line] it carries no usable position: the painter centres it over
-  /// the box once the box is measured. Every type shows here — ON included
+  /// 🗣️유저 2026-09-30: 「해당 타입의 텍스트는 네임태그로서 화면에 보이게함」
+  /// — so it wears the NAME's style, and like [line] it carries no usable
+  /// position: the painter sets it under the name once the name is
+  /// measured (I-173; ↩️「위치는 캐릭터 이름 박스 위 중앙정렬」 — a tag of
+  /// its own, over the box). Every type shows here — ON included
   /// (「캔버스에는 표시」); only the sheets leave ON out.
+  ///
+  /// 🗣️I-173-Q4 (유저 2026-11-14): 「이름없는 대사는 타입도 안보이게」.
+  /// ↩️A line with no name showed its delivery alone, over where the name
+  /// would stand.
   final TextCelContent? delivery;
+
+  /// By value: a frame's picture is keyed by the tags it lays
+  /// (`SeNameTagRowSignature`), and a key that misses an input merges two
+  /// pictures into one.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResolvedSeNameTag &&
+          other.layerId == layerId &&
+          other.content == content &&
+          other.line == line &&
+          other.delivery == delivery &&
+          other.widthBudget == widthBudget &&
+          other.shot == shot &&
+          other.inShot == inShot &&
+          other.opacity == opacity &&
+          listEquals(other.effects, effects);
+
+  @override
+  int get hashCode => Object.hash(
+    layerId,
+    content,
+    line,
+    delivery,
+    widthBudget,
+    shot,
+    inShot,
+    opacity,
+    Object.hashAll(effects),
+  );
 }
 
 /// The tags visible at the TRACK's frame [shown] — the axis the rows
@@ -198,17 +235,20 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
           effects: layer.effects,
           frameIndex: globalFrame,
           blocks: layer.fxBlocks,
+          worn: (owner: layer.id, wearer: layer.id),
         ),
         content: TextCelContent(
           text: name,
           style: nameStyle,
           position: anchor,
         ),
-        delivery: TextCelContent(
-          text: frame.seTypes.inCut(cutId).label,
-          style: nameStyle,
-          position: anchor,
-        ),
+        delivery: name.isEmpty
+            ? null
+            : TextCelContent(
+                text: frame.seTypes.inCut(cutId).label,
+                style: nameStyle,
+                position: anchor,
+              ),
         line: showsLine
             ? TextCelContent(
                 text: dialogue,
@@ -221,20 +261,3 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
   }
   return tags;
 }
-
-/// A cheap identity for "what would be drawn" — display code compares it
-/// to decide whether a repaint is needed without holding the tags.
-Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
-  for (final tag in tags)
-    Object.hash(
-      tag.layerId,
-      tag.content,
-      tag.line,
-      tag.delivery,
-      tag.widthBudget,
-      tag.shot,
-      tag.inShot,
-      tag.opacity,
-      Object.hashAll(tag.effects),
-    ),
-]);

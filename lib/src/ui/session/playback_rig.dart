@@ -12,13 +12,13 @@
 // and if the rig reached back out for `selectCut` neither could be built.
 
 
-import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
+import 'package:flutter/foundation.dart' show Listenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_audio_device.dart'
     show QaAudioDevice, audioDeviceUnlessTesting;
 import '../audio/audio_conform_store.dart';
@@ -51,7 +51,6 @@ class PlaybackRig implements PlaybackRun {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required EditorAppSettings appSettings,
-    required ValueListenable<Set<LayerId>> soloedSeLayerIds,
     required RenderCaches renderCaches,
     required ProjectSettings settings,
     required EditorVoiceRecording voiceRecording,
@@ -75,7 +74,6 @@ class PlaybackRig implements PlaybackRun {
        _changes = changes,
        _timeline = timeline,
        _appSettings = appSettings,
-       _soloedSeLayerIds = soloedSeLayerIds,
        _renderCaches = renderCaches,
        _settings = settings,
        _voiceRecording = voiceRecording,
@@ -90,10 +88,6 @@ class PlaybackRig implements PlaybackRun {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final EditorAppSettings _appSettings;
-
-  /// The SE rows soloed for monitoring (`VisibilitySolo` holds it) — every
-  /// audio path narrows to them while any are.
-  final ValueListenable<Set<LayerId>> _soloedSeLayerIds;
   final RenderCaches _renderCaches;
   final ProjectSettings _settings;
   final EditorVoiceRecording _voiceRecording;
@@ -329,7 +323,6 @@ class PlaybackRig implements PlaybackRun {
     // Widget tests must never open a real OS audio device.
     resolveDevice: () => debugTransportOutput(),
     resolveUserOffsetSamples: userOffsetSamples,
-    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
     resolveOutputDeviceName: () =>
@@ -369,7 +362,6 @@ class PlaybackRig implements PlaybackRun {
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
     resolveDevice: audioDeviceUnlessTesting,
-    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
@@ -390,7 +382,20 @@ class PlaybackRig implements PlaybackRun {
     _renderCaches.brushFrameStore.celPixelRevision.addListener(
       framePictures.letGoOfLeftRevisions,
     );
+    _onTheEngine.start();
   }
+
+  /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+  /// 않고 새 장치를 열어 사본으로 되살린다」 — the frames' pictures are laid
+  /// with the app's engine's tools (`RenderCaches.framePictureStore`), and
+  /// go with that engine ([FramePictures.letGoWithTheirEngine]); the warmer
+  /// looks again from the start, nothing it walked over being there.
+  late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
+    letGo: () {
+      framePictures.letGoWithTheirEngine();
+      prerenderScheduler.wake(fromTheStart: true);
+    },
+  );
 
   /// A run that ends is followed no further. What is wanted next is the
   /// session's to say — its warm of the cut the playhead lands on — and
@@ -408,6 +413,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    _onTheEngine.stop();
     _renderCaches.brushFrameStore.celPixelRevision.removeListener(
       framePictures.letGoOfLeftRevisions,
     );

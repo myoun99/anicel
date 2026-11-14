@@ -9,7 +9,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -36,9 +35,8 @@ import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 
-// The transport driven for real: miniaudio's null backend runs the actual
+// The transport driven for real: the engine's null backend runs the actual
 // callback on an actual thread, so arming, the clock, the wait for the
 // sound, seeks and the loop re-arm are all genuinely exercised — everything
 // short of a speaker.
@@ -95,9 +93,6 @@ AudioConformStore _residentStore() => AudioConformStore(
 );
 
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
 
   late CanvasPlaybackController controller;
 
@@ -110,7 +105,6 @@ void main() {
 
   setUp(() {
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     controller = buildController();
   });
 
@@ -122,7 +116,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   /// A null-backend device, pre-opened so the transport's lazy open is a
@@ -208,7 +201,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('🚨a run whose sound will never come plays without it, and names '
       'it — one undecodable source does not silence the rest', () async {
@@ -233,7 +226,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('🚨a run stopped while it waits for its sound waits no more — the '
       'landing does not start it again', () async {
@@ -252,7 +245,7 @@ void main() {
     expect(transport.carryingPlayback, isFalse);
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('carrying a run: the device plays, the clock reads frames, stop '
       'stops the device', () async {
@@ -284,7 +277,7 @@ void main() {
     expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('a play over a run that plays is no start: the run keeps the sound it '
       'was made ready with', () async {
@@ -304,7 +297,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('arming mid-timeline clamps the clock at the arm frame while the '
       'device latency drains', () async {
@@ -322,7 +315,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   /// play-press-first-frame-stall (10-15): the device started at the press,
   /// and the clock's first look — on the next frame that began, after the
@@ -351,7 +344,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('a live seek re-arms the transport at the target frame', () async {
     final device = openNullDevice();
@@ -374,7 +367,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   /// 유저 2026-10-08: 「그 자리에서 멈췃다가 구워지면 이어서 재생」 — the
   /// sound waits with the clock, or it would be heard ahead of its picture.
@@ -432,7 +425,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('a run that waits from its first frame arms nothing until it goes on',
       () async {
@@ -460,7 +453,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('play-once: the device runs out and the clock reports the end',
       () async {
@@ -482,7 +475,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   group('🗣️F-341: a track with no cut — the device carries the track\'s '
       'sound to the movie\'s end line', () {
@@ -529,7 +522,7 @@ void main() {
       rig.transport.dispose();
       rig.controller.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     test('played once, the device runs out at the end line', () async {
       final device = openNullDevice();
@@ -549,7 +542,7 @@ void main() {
       rig.transport.dispose();
       rig.controller.dispose();
       store.dispose();
-    }, skip: skip);
+    });
   });
 
   test('a loop armed mid-timeline re-arms from zero after its first pass — '
@@ -589,7 +582,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('refreshSchedule swaps the mix MID-RUN (AUDIO-PRO R3): a row '
       'volume change is heard without stopping the transport', () async {
@@ -658,7 +651,7 @@ void main() {
     transport.dispose();
     liveController.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   // 유저 2026-10-08: 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로
   // 어떻게 안되나」 → 「소리 싱크나 영상이나 뭐 그런거 정확하기만하면되.」
@@ -722,7 +715,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     test('🚨the lap is heard out: just after the device has wrapped, the '
         'picture is still on the lap\'s last frame', () async {
@@ -843,7 +836,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     // What is HEARD is what the device has handed, less its latency and
     // less the user's own correction. The line stands at the stair or past it,
@@ -915,7 +908,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     test('🚨the user\'s own correction moves what is heard: three frames\' '
         'worth of it is three frames', () async {
@@ -957,7 +950,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     test('🚨a run started again reads from where it was started: the count '
         'of the run before is not carried into it', () async {
@@ -1001,7 +994,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     test('🚨a run that plays once has no lap to be folded into: heard past '
         'its end — the user\'s correction can put it there — the picture is '
@@ -1049,7 +1042,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
   });
 
   // board a-start-is-heard-ahead-of-its-first-picture: a frame is shown
@@ -1097,7 +1090,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
 
     test('🚨and so does the loop\'s second pass: its run starts afresh at the '
         'look that finds the first pass run out', () async {
@@ -1126,7 +1119,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
   });
 
   // take-head-trims-at-the-playback-start (10-15): a take is placed by what
@@ -1228,7 +1221,7 @@ void main() {
             'roll started the instant the microphone did: these two read the '
             'same',
       );
-    }, skip: skip);
+    });
 
     test('the head is of the moment the anchor was heard: measured 0.4s '
         'later, it measures the same', () async {
@@ -1240,7 +1233,7 @@ void main() {
         closeTo(take.head, 4800),
         reason: 'what was taken in since comes off with the time since',
       );
-    }, skip: skip);
+    });
 
     test('an anchor not heard yet is not measured, and a take whose '
         'microphone is not taking in is let go', () async {
@@ -1294,7 +1287,7 @@ void main() {
       controller.stop();
       transport.dispose();
       store.dispose();
-    }, skip: skip);
+    });
   });
 
   test('the report reads off the device and converts both ways', () async {
@@ -1314,7 +1307,7 @@ void main() {
     controller.stop();
     transport.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   // play-press-first-frame-stall-Q1 (유저 10-15: 「프로젝트를 열면 미리
   // 연다(UI 스레드 밖에서)」): the output opened ahead of a run, and opened
@@ -1351,7 +1344,7 @@ void main() {
       controller.play(scope: PlaybackScope.activeCut);
       expect(transport.carryingPlayback, isTrue);
       controller.stop();
-    }, skip: skip);
+    });
 
     test('🚨an output a run opens itself is open for the setting it was '
         'opened under — whoever opens it says so', () async {
@@ -1367,7 +1360,7 @@ void main() {
       expect(device.openedFor, 'one');
       controller.stop();
       await pumpEventQueue();
-    }, skip: skip);
+    });
 
     test('🚨a run pressed while its output opens waits for the open, and goes '
         'on on it — ↩️it stood down onto the fallback, and the next run rode '
@@ -1388,7 +1381,7 @@ void main() {
       expect(controller.isWaiting, isFalse);
       expect(transport.carryingPlayback, isTrue);
       controller.stop();
-    }, skip: skip);
+    });
 
     test('🚨a setting changed under a run is not followed until the run '
         'ends — then the output is opened again for it', () async {
@@ -1414,7 +1407,7 @@ void main() {
       await pumpEventQueue();
       expect(device.isOpen, isTrue);
       expect(device.openedFor, 'another');
-    }, skip: skip);
+    });
 
     test('🚨a run that finds the output open for another setting opens it '
         'again ahead and waits for it — ↩️it reopened at the press, and then '
@@ -1441,7 +1434,7 @@ void main() {
       expect(controller.isWaiting, isFalse);
       expect(transport.carryingPlayback, isTrue);
       controller.stop();
-    }, skip: skip);
+    });
 
     test('🚨a run that finds the output open at another rate than its sound '
         'opens it again ahead at that rate, and waits for it — ↩️it played '
@@ -1466,7 +1459,7 @@ void main() {
       expect(controller.isWaiting, isFalse);
       expect(transport.carryingPlayback, isTrue);
       controller.stop();
-    }, skip: skip);
+    });
 
     test('🚨a transport going lets the output go: closed where nobody else '
         'keeps it — ↩️it closed it under every other open project', () async {
@@ -1482,7 +1475,7 @@ void main() {
 
       device.letGo(another);
       expect(device.isOpen, isFalse);
-    }, skip: skip);
+    });
 
     test('🚨a transport going while its output is being opened ahead closes '
         'it once the open lands — a project closed as it opens leaves no '
@@ -1495,7 +1488,7 @@ void main() {
       transport.dispose();
       await pumpEventQueue();
       expect(device.isOpen, isFalse);
-    }, skip: skip);
+    });
 
     test('🚨a transport going silences the run it carries — the output stays '
         'open where another keeps it', () async {
@@ -1512,7 +1505,7 @@ void main() {
       expect(device.isPlaying, isFalse);
       expect(device.isOpen, isTrue, reason: 'another keeps it');
       controller.stop();
-    }, skip: skip);
+    });
 
     test('🚨a transport going leaves alone a sound it does not carry — ↩️it '
         'stopped the output whatever played, and a project closed behind the '
@@ -1528,7 +1521,7 @@ void main() {
 
       transport.dispose();
       expect(device.isPlaying, isTrue);
-    }, skip: skip);
+    });
 
     test('🚨a run ending after another player took the output leaves that '
         'sound alone — its end silences its own run only', () async {
@@ -1548,7 +1541,7 @@ void main() {
         isTrue,
         reason: '↩️the run\'s end stopped the output whatever played',
       );
-    }, skip: skip);
+    });
   });
 }
 

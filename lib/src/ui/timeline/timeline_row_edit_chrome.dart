@@ -33,7 +33,6 @@ import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
-import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_run_end_handles.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../text/app_face.dart';
@@ -473,7 +472,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     this.windowBucket,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?windowBucket,
            // Its OWN row's answers: a block that turns empty turns its
            // grips grey (I-129), as its number.
@@ -556,13 +555,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   /// window can show.
   bool Function(Rect rect) _windowShows() {
     final frames = geometry.value;
-    final window = visibleFrameWindowFor(
-      bucket: windowBucket,
-      viewportMainExtent: viewportMainExtent,
-      cellExtent: frames.frameCellExtent,
-      frameStartIndex: frames.frameStartIndex,
-      frameEndIndexExclusive: frames.frameEndIndexExclusive,
-    );
+    final window = frames.rowDrawnFrames(windowBucket);
     final from = frames.edgeAt(window.startIndex);
     final to = frames.edgeAt(window.endIndexExclusive);
     return resolver.axis == Axis.horizontal

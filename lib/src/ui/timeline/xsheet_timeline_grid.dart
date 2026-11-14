@@ -40,8 +40,7 @@ import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
-import 'timeline_frame_geometry.dart'
-    show TimelineFrameGeometry, timelineFrameWindowMarginPx;
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometry;
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
@@ -295,6 +294,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _frameScroll.renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,
+    hold: () => _frameAxis.hold(),
+    letGo: () => _frameAxis.letGo(),
   );
 
   /// The fallback rail extent for hosts that keep none of their own — the

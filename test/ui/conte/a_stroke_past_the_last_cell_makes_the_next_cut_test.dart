@@ -19,7 +19,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
@@ -30,6 +29,7 @@ import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨A STROKE PAST THE CONTE'S LAST CELL MAKES THE NEXT CUT (H44 — 유저
 /// 09-26: 「칸이 비어있는 곳, 비어있는 다음컷이나. 그런곳은 일단
@@ -248,7 +248,7 @@ void main() {
     );
     expect(cel, isNotNull, reason: 'kept where the made cut keeps its cels');
     // The picture's middle is the camera's centre, the canvas's middle.
-    expect(surfacePixelRgba(cel!, 320, 180) ?? 0, isNot(0));
+    expect(surfaceRgbaInPlace(cel!, 320, 180) ?? 0, isNot(0));
   });
 
   for (final (part, spot) in [

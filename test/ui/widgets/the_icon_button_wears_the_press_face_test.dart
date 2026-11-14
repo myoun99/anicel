@@ -57,15 +57,20 @@ class _OldFace extends StatelessWidget {
             minHeight: box.height,
             maxHeight: box.height,
           ),
+          // ↩️It was `ShapeDecoration(shape:, color: overlay)`: an outlined
+          // face is filled with its ground now, its edge by fills
+          // (a-live-dock-frame-costs-a-whole-draw-Q11) — the layer both
+          // faces take, so this still pins the face, not the layer.
           child: DecoratedBox(
-            decoration: ShapeDecoration(
-              shape: appIconButtonShape(
+            decoration: iconButtonLayerOf(
+              appIconButtonShape(
                 size.height,
                 outlined: outlined,
                 danger: danger,
                 isSelected: isSelected,
               ),
-              color: ink.overlay(states),
+              ink.overlay(states),
+              ground: AppColors.surface,
             ),
             child: Align(
               widthFactor: 1.0,

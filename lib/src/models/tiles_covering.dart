@@ -37,9 +37,10 @@ typedef CoveredTile = ({
 /// law for negative pasteboard coordinates lives in [tileAxisSpan], once.
 ///
 /// 🚨It was written twice: here, and again in the native span staging for
-/// the dab kernels (`stageTileSpans`), which needs every tile rather than
-/// the held ones. The clone gate found the second when a batch of dabs
-/// made it a union (2026-09-25, board `preset-spacing-minimum`).
+/// the C dab kernels (`stageTileSpans`, gone with them 2026-11-12), which
+/// needed every tile rather than the held ones. The clone gate found
+/// the second when a batch of dabs made it a union (2026-09-25, board
+/// `preset-spacing-minimum`).
 Iterable<TileSpan> tileSpansOf(
   DirtyRegion region, {
   required int tileSize,

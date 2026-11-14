@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
@@ -161,14 +164,19 @@ void main() {
         .toList();
     expect(mirrorDisplayKeys(), [0, 3]);
 
-    // Undo the base creation: the mirror cel stays as an ORPHAN link
-    // (audio-clip semantics — it comes back with the cel), but the
-    // DERIVED display mirrors only what the base exposes now.
+    // Undo the base creation: the mirror cel and link the write gave go
+    // with it (`RepositoryStepScope` ④). ↩️They stayed as an ORPHAN link
+    // until 2026-11-12 — one more empty cel on the row for every base cel
+    // made and undone (`undo-leaves-empty-mirror-cels-on-a-synced-attach-
+    // row`).
     s.undo();
     expect(mirrorDisplayKeys(), [0]);
+    attached = cutLayers(s).firstWhere((l) => l.id == attachId);
+    expect(attached.frames, hasLength(1));
+    expect(attached.baseFrameLinks, hasLength(1));
 
-    // Redo: the base cel returns and the SAME orphaned mirror cel + link
-    // resume (no duplicate minting — the invariant is adds-only).
+    // Redo: the base cel returns and its mirror cel + link come back under
+    // the SAME id (it is the base cel's — no new minting).
     s.redo();
     attached = cutLayers(s).firstWhere((l) => l.id == attachId);
     expect(attached.baseFrameLinks, links);
@@ -195,6 +203,64 @@ void main() {
       hasLength(3),
       reason: 'the moved-in base cel auto-mirrors like any other',
     );
+  });
+
+  test('🚨a base cel made and undone leaves its attach row as it was, round '
+      'after round, and what is saved with it — and a base cel deleted '
+      'still leaves its link, which the delete\'s undo stands on again '
+      '(undo-leaves-empty-mirror-cels-on-a-synced-attach-row)', () {
+    final (s, base) = sessionWithBase();
+    s.createDrawingAtCurrentFrame();
+    s.folders.addAttachedLayer(AttachedPlacement.above);
+    final attachId = s.activeLayer!.id;
+    Layer attached() => cutLayers(s).firstWhere((l) => l.id == attachId);
+    List<FrameId> cels() => [for (final cel in attached().frames) cel.id];
+    String saved() => jsonEncode(s.repository.requireProject().toJson());
+    final celsBefore = cels();
+    final linksBefore = attached().baseFrameLinks;
+    final savedBefore = saved();
+
+    for (var round = 0; round < 3; round += 1) {
+      s.selectLayer(base.id);
+      s.selectFrameIndex(3);
+      s.createDrawingAtCurrentFrame();
+      expect(
+        cels(),
+        hasLength(celsBefore.length + 1),
+        reason: '⛔premise: the row mirrors the base\'s new cel',
+      );
+      s.undo();
+      expect(cels(), celsBefore, reason: 'round $round: its cels');
+      expect(
+        attached().baseFrameLinks,
+        linksBefore,
+        reason: 'round $round: its links',
+      );
+    }
+    expect(saved(), savedBefore, reason: 'what is saved is as it was');
+
+    // A delete gives the row nothing, so its undo takes nothing: the link
+    // it leaves is the base cel's to come back to (audio-clip semantics).
+    s.selectLayer(base.id);
+    s.selectFrameIndex(3);
+    s.createDrawingAtCurrentFrame();
+    final linksMade = attached().baseFrameLinks;
+    final celsMade = cels();
+    s.cells.deleteCellAtCurrentFrame();
+    expect(
+      s.layers.firstWhere((l) => l.id == attachId).timeline.keys,
+      [0],
+      reason: '⛔premise: the base shows the cel no more',
+    );
+    expect(attached().baseFrameLinks, linksMade);
+    expect(cels(), celsMade);
+    s.undo();
+    expect(
+      s.layers.firstWhere((l) => l.id == attachId).timeline.keys,
+      [0, 3],
+    );
+    expect(attached().baseFrameLinks, linksMade);
+    expect(cels(), celsMade);
   });
 
   test('the mirror reprints the base\'s run-edge NOTATION (UI-R24 #2): a '

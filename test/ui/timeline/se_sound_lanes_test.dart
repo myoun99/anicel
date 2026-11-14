@@ -371,7 +371,13 @@ void main() {
       expect(sound().volumeAt(8), closeTo(0.2, 1e-9), reason: 'as it plays');
 
       s.selectFrameIndex(8);
+      expect(s.laneVerbs.resetsLaneGroup(se.id, seSoundGroupLaneId), isTrue);
       expect(s.laneVerbs.resetLaneGroup(se.id, seSoundGroupLaneId), isTrue);
+      expect(
+        s.laneVerbs.resetsLaneGroup(se.id, seSoundGroupLaneId),
+        isFalse,
+        reason: 'back at 100 % there, its Reset is out (F-583)',
+      );
       expect(sound().volumeAt(8), 1.0);
       expect(sound().volume.keys.keys, [0, 8], reason: 'keys are kept');
       s.undo();

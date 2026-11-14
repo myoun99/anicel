@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/movie_clock.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 
 /// 「영상의 시간은 소리와 같은 시계로」 (유저 2026-09-11): a project frame is
 /// a TIME, and the movie shows the frame that holds it — never frame for
@@ -98,5 +99,76 @@ void main() {
     expect(clock.movieFrameAt(-3), 0);
     expect(clock.movieFrameAt(10), 0);
     expect(clock.projectFramesCovering(10), 0);
+  });
+
+  // 🗣️F-588 (유저 2026-11-14: 「이 영상만」 — the movie carried in is
+  // rewritten at the project's speed).
+  group('the pull that fits a movie to the project', () {
+    QaVideoInfo movieAt(({int numerator, int denominator}) fps) =>
+        QaVideoInfo(
+          width: 64,
+          height: 48,
+          frameCount: 2000,
+          fpsNumerator: fps.numerator,
+          fpsDenominator: fps.denominator,
+        );
+
+    test('🎯lays it FRAME FOR FRAME on the clock it pulls — from the rate '
+        'its decoder names, however it spells 23.976', () {
+      const project = (rate: ProjectFrameRate.fps24, speed: oneToOne);
+      for (final fps in [
+        movie23976,
+        (numerator: 2997, denominator: 125),
+        (numerator: 23976, denominator: 1000),
+      ]) {
+        final movie = movieAt(fps);
+        final pull = framePullOf(project, movie);
+        expect(pull, isNotNull, reason: '$fps');
+        final read = clockPulledBy(project, pull!);
+        final clock = movieClockFor(
+          projectRate: read.rate,
+          audioSpeed: read.speed,
+          movie: movie,
+        );
+        expect(
+          [
+            for (var n = 0; n < 2000; n += 1)
+              if (clock.movieFrameAt(n) != n) n,
+          ],
+          isEmpty,
+          reason: '$fps: every project frame shows its own picture — pulled '
+              'by 24000/1001\'s ratio instead, 2997/125 would show the one '
+              'before from frame 1 on',
+        );
+        expect(clock.projectFramesCovering(2000), 2000, reason: '$fps');
+      }
+      expect(
+        framePullOf(project, movieAt(movie23976)),
+        (numerator: 1001, denominator: 1000),
+        reason: 'the 0.1% the pulldown pair is apart',
+      );
+    });
+
+    test('a movie the clock already lays frame for frame needs none — a '
+        '23.976 take in a 24 project already pulled by 1001/1000', () {
+      expect(
+        framePullOf(
+          (
+            rate: ProjectFrameRate.fps24,
+            speed: (numerator: 1001, denominator: 1000),
+          ),
+          movieAt(movie23976),
+        ),
+        isNull,
+      );
+      expect(
+        framePullOf(
+          (rate: ProjectFrameRate.fps24, speed: oneToOne),
+          movieAt((numerator: 0, denominator: 1)),
+        ),
+        isNull,
+        reason: 'a movie that names no rate',
+      );
+    });
   });
 }

@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -23,10 +22,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/no_worker_free.dart';
@@ -44,12 +41,14 @@ import '../../helpers/settle_async.dart';
 /// stands while a view of whole frames waited, it stands again too — by
 /// the same key.
 void main() {
-  const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
-  const viewSize = Size(48, 40);
+  opensTheEnginesScreens();
+  const tileSize = defaultCelTileSize;
+  // 2 × 2 tiles, the pasteboard round them in view.
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const fill = [0x30, 0x60, 0x90, 0xFF];
   const under = Color(0xFF203040);
-  final view = CanvasViewport(panX: 8, panY: 4);
+  final view = CanvasViewport(panX: tileSize / 2, panY: tileSize / 4);
 
   BrushFrameKey celOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -106,15 +105,15 @@ void main() {
     ),
   ];
 
-  ({StackRun run, LiveRows live}) standing(
-    WritesNeverLand gpu, {
+  ({StackRun run, LiveRows live}) standing({
+    bool layingNothing = false,
     List<int> colour = fill,
   }) {
     final cels = BrushFrameStore();
     keepInAFile(cels, {inked: filled(colour)});
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = layingNothing ? StoreLayingNothing() : aStoreOfPictures();
     addTearDown(store.dispose);
     return (
       run: runOver(
@@ -152,17 +151,20 @@ void main() {
     ),
   );
 
-  RenderCustomPaint theView(WidgetTester tester) =>
-      tester.renderObject<RenderCustomPaint>(
-        find.descendant(
-          of: find.byType(FramePictureView),
-          matching: find.byType(CustomPaint),
-        ),
-      );
+  RenderObject theView(WidgetTester tester) => tester.renderObject(
+    find.descendant(
+      of: find.byType(FramePictureView),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is LeafRenderObjectWidget,
+      ),
+    ),
+  );
 
   /// What [shot] shows inside the page, where the cel is ink.
   List<int> onThePage(Shot shot) {
-    final at = (12 * shot.width + 20) * 4;
+    const x = tileSize * 5 ~/ 4;
+    const y = tileSize * 3 ~/ 4;
+    final at = (y * shot.width + x) * 4;
     return shot.rgba.sublist(at, at + 4);
   }
 
@@ -171,7 +173,7 @@ void main() {
       'an empty cel too', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final (:run, :live) = standing(WritesNeverLand());
+    final (:run, :live) = standing();
     await tester.pumpWidget(shown(run, live, treeOf()));
     final picture = run.pictures.keyOfStack(treeOf(), frame);
     expect(
@@ -211,9 +213,8 @@ void main() {
       'they are', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final gpu = WritesNeverLand()..holdsRenders = true;
-    addTearDown(gpu.letAllThrough);
-    final (:run, :live) = standing(gpu);
+    final (:run, :live) = standing(layingNothing: true);
+    await itsToolsOpen(tester, run.pictures.store);
     final tree = treeOf();
     // ⚠️Held: in this runner a read lands in the microtasks after the
     // frame that asked it.
@@ -247,7 +248,7 @@ void main() {
       'again — its key the same, its cels another store\'s', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final first = standing(WritesNeverLand());
+    final first = standing();
     await tester.pumpWidget(shown(first.run, first.live, treeOf()));
     expect(
       await settleAsync(
@@ -261,9 +262,8 @@ void main() {
 
     const other = [0x90, 0x30, 0x60, 0xFF];
     // Its picture held: what shows is the frame as it stands.
-    final gpu = WritesNeverLand()..holdsRenders = true;
-    addTearDown(gpu.letAllThrough);
-    final (:run, live: _) = standing(gpu, colour: other);
+    final (:run, live: _) = standing(layingNothing: true, colour: other);
+    await itsToolsOpen(tester, run.pictures.store);
     expect(
       run.pictures.keyAsItStands(treeOf(), frame),
       first.run.pictures.keyAsItStands(treeOf(), frame),
@@ -289,9 +289,8 @@ void main() {
       'stands — not left waiting for its picture', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final gpu = WritesNeverLand()..holdsRenders = true;
-    addTearDown(gpu.letAllThrough);
-    final (:run, live: _) = standing(gpu);
+    final (:run, live: _) = standing(layingNothing: true);
+    await itsToolsOpen(tester, run.pictures.store);
     Widget wholeFramesOnly(bool wholeFrames) => onAScreen(
       screen,
       size: viewSize,

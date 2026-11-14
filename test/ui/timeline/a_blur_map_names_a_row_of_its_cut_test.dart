@@ -85,6 +85,7 @@ void main() {
           effects: [named],
           frameIndex: frame,
           blocks: null,
+          worn: null,
         ).single;
         expect(sample.layers, {map: const LayerId('map')});
         expect(sample.parameter(map), 0, reason: 'no number');

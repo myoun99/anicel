@@ -12,8 +12,11 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 
 /// A bar's TRACK is ONE box (card frame-panels-build-in-one-frame,
-/// 2026-10-25), where a probe of its length, a [DecoratedBox], a
-/// [SuperellipseClip] and a [CustomPaint] were four.
+/// 2026-10-25), where a probe of its length, a [DecoratedBox], a corner and
+/// a [CustomPaint] were four — the corner a [SuperellipseHit], which was a
+/// [SuperellipseClip] until the track stopped clipping what it fills
+/// (a-live-dock-frame-costs-a-whole-draw-Q10: its painters cut themselves,
+/// `a_bar_fills_its_corner_test`).
 ///
 /// Every case is asked of the box and of the four it replaced, and the two
 /// must answer alike: the pixels, the size, the length handed to the
@@ -21,8 +24,8 @@ import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 void main() {
   const trackKey = ValueKey<String>('track');
 
-  // A fill that reaches the frame's edge, so a corner the clip lost would
-  // show, and writing over it, so the order would.
+  // A fill that reaches the frame's edge, so a corner drawn another way
+  // would show, and writing over it, so the order would.
   final fill = _HalfFill(const Color(0xFF3355FF));
   const writing = Center(
     child: Text(
@@ -43,7 +46,7 @@ void main() {
     onExtent: onExtent,
     child: DecoratedBox(
       decoration: frame,
-      child: SuperellipseClip(
+      child: SuperellipseHit(
         shape: AppShapes.container(radius),
         child: CustomPaint(
           painter: fill,
@@ -273,7 +276,12 @@ void main() {
     );
     final track = find.byType(FieldSliderTrack);
     expect(track, findsOneWidget);
-    for (final kind in [DecoratedBox, SuperellipseClip, CustomPaint]) {
+    for (final kind in [
+      DecoratedBox,
+      SuperellipseHit,
+      SuperellipseClip,
+      CustomPaint,
+    ]) {
       expect(
         find.descendant(
           of: find.byType(FieldSlider),

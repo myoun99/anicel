@@ -1,6 +1,6 @@
 import '../../models/attached_layer_mount.dart' show detachedLayer;
 import '../../models/attached_layer_resolve.dart'
-    show attachedMirrorCelId, fxCarrierOf, isSyncedAttachedLayer;
+    show fxCarrierOf, isSyncedAttachedLayer;
 import '../../models/attached_mode.dart';
 import '../../models/audio_clip.dart';
 import '../../models/canvas_point.dart';
@@ -31,10 +31,11 @@ import 'layer_merge_plan.dart'
         CelReads,
         LayerMergePicture,
         drawnBare,
-        kindHoldingPictures,
+        kindShowingCelsAt,
         rowsKeyedAcrossCuts,
         runsByPicture,
         tailedName;
+import 'synced_cel_ids.dart';
 import 'timeline_showing.dart';
 
 /// The frames a press of RASTERIZE bakes, from [start] to [end]
@@ -65,6 +66,17 @@ typedef _Use = ({
 /// A row riding the row a press bakes, as the use at [use] — its place
 /// among the uses — holds it.
 typedef _Riding = ({int use, Layer rider});
+
+/// What a bake takes of the rows riding the row it bakes
+/// ([_ridersBaked]): the row's [uses], the [riders] riding them, the
+/// [selves] the riders exist as one with that ride none of them, and what
+/// it bakes of the row they wear ([baking]).
+typedef _Riders = ({
+  List<_Use> uses,
+  List<_Riding> riders,
+  List<_Use> selves,
+  _Baking baking,
+});
 
 /// What ONE press of RASTERIZE in a row's fx group header takes: the row in
 /// every cut it is used in, the fx pressed — the transform, where
@@ -108,6 +120,10 @@ final class FxBakeTaking {
   /// The use the press was pressed in.
   _Use get _pressed => _uses.first;
 
+  /// The frames of the pressed cut it bakes ([over]) — the frames a press
+  /// that would change nothing is asked over (F-583).
+  BakedFrames get framesBaked => _pressed.frames!;
+
   /// What it bakes: the fx pressed, and every fx on that runs before it —
   /// the transform pressed, which runs after every fx, each fx on and
   /// itself — so nothing it leaves runs before what it bakes, at its line
@@ -128,6 +144,14 @@ final class FxBakeTaking {
       transform: _effectId == null,
     );
   }
+
+  /// Its riders, as the rider bake takes them ([_ridersBaked]).
+  _Riders get _riding => (
+    uses: _uses,
+    riders: _riders,
+    selves: _selves,
+    baking: _baking,
+  );
 
   /// It scoped to the frames of the pressed cut its own [band] holds — the
   /// band scoping the press (Q3), which is that cut's: it bakes nothing of
@@ -173,10 +197,20 @@ final class FxBakeTaking {
 /// row, the camera. Nor does a row that wears another's fx: a row riding
 /// another wears its base's and authors none (R9 — the panels draw it none).
 ///
-/// ⚠️A reference row stands down wherever the press reaches one — a use of
-/// its row or a row riding it — until the round that takes it (⑤, Q5): the
-/// card's order, not a law of the verb. ↩️So did a row riding it linked to
-/// a row riding one that is no use of it, until Q19 ([FxBakeTaking._selves]).
+/// 🗣️I-120-Q23 (유저 2026-11-05 「지금처럼 꺼 둔다 — 참조 헤더로 먼저 풀고
+/// 나서 굽는다」): the press stands down where a use of its row is a
+/// reference row, and that row's 参照 header lets go of it first. ↩️It was
+/// the card's order until the round that took it (⑤, Q5). ↩️So did a row
+/// riding it linked to a row riding one that is no use of it, until Q19
+/// ([FxBakeTaking._selves]).
+///
+/// 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q3 (유저 2026-11-11 「같이
+/// 래스터화해 굽는다 — 참조 굽기 · Fx 굽기 둘 다」 — 「이방식으로 통일」): a
+/// rider showing a file of its own is baked with the row as any rider is —
+/// drawn as it shows, its file in the picture where its base's moves stand
+/// it (-Q4) — and lets go of its reference ([_ridersBaked]). Q23 stays for
+/// the row's own uses alone. ↩️A rider's reference stood the press down as
+/// well, and its 参照 header (Q25) let go of it first.
 ///
 /// It bakes every frame each use's cut draws; a band scoping the press
 /// narrows it ([FxBakeTaking.over]).
@@ -209,12 +243,8 @@ FxBakeTaking? takeFxToBake({
     ])
       _useOf(project, cutId, layerId),
   ];
-  final riders = [
-    for (final (index, use) in uses.indexed)
-      for (final rider in _ridersOf(use.cut, use.row))
-        (use: index, rider: rider),
-  ];
-  if (_standsDown(uses, riders)) {
+  final riders = _ridersOf(uses);
+  if (_standsDown(uses)) {
     return null;
   }
   return FxBakeTaking._(
@@ -270,19 +300,21 @@ List<_Use> _selvesOf(
   ];
 }
 
-/// The rows of [cut] riding [row] that wear its fx ([fxCarrierOf]).
-List<Layer> _ridersOf(Cut cut, Layer row) => [
-  for (final other in cut.layers)
-    if (other.id != row.id &&
-        other.kind.isDrawingCel &&
-        fxCarrierOf(other, cut.layers)?.id == row.id)
-      other,
+/// The rows riding each of [uses]' rows that wear its fx ([fxCarrierOf]),
+/// by the use's place.
+List<_Riding> _ridersOf(List<_Use> uses) => [
+  for (final (index, use) in uses.indexed)
+    for (final other in use.cut.layers)
+      if (other.id != use.row.id &&
+          other.kind.isDrawingCel &&
+          fxCarrierOf(other, use.cut.layers)?.id == use.row.id)
+        (use: index, rider: other),
 ];
 
-/// Whether a press taking [uses] and [riders] stands down ([takeFxToBake]).
-bool _standsDown(List<_Use> uses, List<_Riding> riders) =>
-    uses.any((use) => use.row.mediaReference != null) ||
-    riders.any((riding) => riding.rider.mediaReference != null);
+/// Whether a press taking [uses] stands down ([takeFxToBake]): one is a
+/// reference row (Q23).
+bool _standsDown(List<_Use> uses) =>
+    uses.any((use) => use.row.mediaReference != null);
 
 /// A picture a bake copies as it is besides the ones it draws: [cut]'s
 /// cels of the row [row], each copied to the cel [minted] names it to — a
@@ -410,7 +442,7 @@ FxBakePlan planFxBake(
     for (final (index, use) in uses.indexed)
       _rowBaked(use, baking, held[index], free: freed.contains(index)),
   ]);
-  final riders = _ridersBaked(taking, [
+  final riders = _ridersBaked(taking._riding, [
     for (final (index, each) in shown.indexed)
       (runs: each.runs, held: held[index]),
   ], (revisionOf: (cut) => readsOf(cut).revisionOf, mintFrameId: mintFrameId));
@@ -602,16 +634,23 @@ typedef _Bank = ({
 
 /// One row's cels after a bake: the [cels] of its bank, the cel it shows
 /// at each frame ([celAt]) and the first picture each cel baked became
-/// ([firstOf]).
+/// ([firstOf]) — and the cel each use of the bank shows at each frame
+/// ([lanes], its own among them), which its kind is read from
+/// ([kindShowingCelsAt]).
 typedef _Held = ({
   List<Frame> cels,
   Map<int, FrameId> celAt,
   Map<FrameId, FrameId> firstOf,
+  List<Map<int, FrameId>> lanes,
 });
 
 /// [bank] as the use at [place] holds it.
-_Held _heldBy(_Bank bank, int place) =>
-    (cels: bank.cels, celAt: bank.celAt[place], firstOf: bank.firstOf);
+_Held _heldBy(_Bank bank, int place) => (
+  cels: bank.cels,
+  celAt: bank.celAt[place],
+  firstOf: bank.firstOf,
+  lanes: bank.celAt,
+);
 
 /// The cels of the base [use]'s row is synced on, where it rides one, as
 /// its cut shows them where [held] shows a cel — the base not baked.
@@ -622,14 +661,13 @@ _Held? _baseHeld(_Use use, _Held held) =>
     };
 
 /// [row]'s cels as [cut] shows them at [frames], none of them baked.
-_Held _heldAsShown(Cut cut, Layer row, Iterable<int> frames) => (
-  cels: row.frames,
-  celAt: {
+_Held _heldAsShown(Cut cut, Layer row, Iterable<int> frames) {
+  final celAt = {
     for (final frame in frames)
       frame: ?exposedCelIdAt(cut: cut, layerId: row.id, frameIndex: frame),
-  },
-  firstOf: const {},
-);
+  };
+  return (cels: row.frames, celAt: celAt, firstOf: const {}, lanes: [celAt]);
+}
 
 /// Each of [uses]' cels after the bake ([held], by its place) and every
 /// new cel's picture still to be laid: the uses whose row is one key
@@ -1035,12 +1073,14 @@ typedef _Minting = ({
 /// rider parts where its own picture does, as the row does. A synced one
 /// rides the row's cels one for one: a cel for each of the row's new ones
 /// it shows one over, under the id its group's mirror of that cel is
-/// minted by ([attachedMirrorCelId]), as a merge's synced rider takes.
+/// minted by — or a cel of its own where another use's picture over
+/// that cel took the mirror first ([SyncedCelIds]), as a merge's
+/// result on the conte takes.
 ({List<({Cut cut, Layer row})> rows, List<LayerMergePicture> pictures})
-_ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
-  final uses = taking._uses;
+_ridersBaked(_Riders taking, List<_Ridden> ridden, _Minting minting) {
+  final uses = taking.uses;
   final sharing = <LayerId, List<_Riding>>{};
-  for (final riding in taking._riders) {
+  for (final riding in taking.riders) {
     final keys = uses[riding.use].keys;
     (sharing[_linkKey(keys, riding.rider.id)] ??= []).add(riding);
   }
@@ -1048,9 +1088,13 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
   final pictures = <LayerMergePicture>[];
   for (final MapEntry(key: mintedUnder, value: ridings) in sharing.entries) {
     final selves = [
-      for (final self in taking._selves)
+      for (final self in taking.selves)
         if (_linkKey(self.keys, self.row.id) == mintedUnder) self,
     ];
+    final synced = SyncedCelIds(
+      mintedUnder,
+      () => minting.mintFrameId(mintedUnder),
+    );
     final bank = _bankOf(
       [
         for (final riding in ridings)
@@ -1060,8 +1104,7 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
       ],
       // A self bakes nothing, so a rider shows every new cel first.
       (place, run) => isSyncedAttachedLayer(ridings[place].rider)
-          ? attachedMirrorCelId(
-              mintedUnder,
+          ? synced.over(
               ridden[ridings[place].use].held.celAt[run.first.start]!,
             )
           : minting.mintFrameId(mintedUnder),
@@ -1072,7 +1115,9 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
       rows.add((
         cut: uses[use].cut,
         row: _holding(
-          rider,
+          // A file it showed is in its pictures now (-Q3, [takeFxToBake]):
+          // it lets go of the reference.
+          rider.copyWith(mediaReference: null),
           _heldBy(bank, place),
           base: synced ? ridden[use].held : null,
           drawn: uses[use].drawn,
@@ -1098,14 +1143,14 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
 /// [riding] as the bake draws it in its use ([_Shown]), riding the row
 /// baked there ([ridden]).
 _Shown _riderShown(
-  FxBakeTaking taking,
+  _Riders taking,
   _Riding riding,
   _Ridden ridden,
   _Minting minting,
 ) {
-  final use = taking._uses[riding.use];
+  final use = taking.uses[riding.use];
   final rider = riding.rider;
-  final alone = _ridingOnly(use, taking._baking, rider);
+  final alone = _ridingOnly(use, taking.baking, rider);
   return (
     into: use.cut,
     row: rider,
@@ -1133,7 +1178,8 @@ Layer _holding(
   required int drawn,
 }) {
   final after = row.copyWith(
-    kind: kindHoldingPictures(row.kind, own.cels.length),
+    // 🗣️F-572-Q2 (유저 11-11): each use's lane, as a merge counts.
+    kind: kindShowingCelsAt(row.kind, own.lanes),
     frames: own.cels,
     audioClips: _clipsAfter(row, own.firstOf),
   );
@@ -1206,6 +1252,118 @@ Cut _ridingOnly(_Use use, _Baking baking, Layer rider) {
         if (layer.id == row.id) layer.copyWith(isVisible: false) else layer,
       drawnBare(rider).copyWith(folderId: null),
     ],
+  );
+}
+
+/// What a reference RASTERIZE that bakes takes of the rows riding the row
+/// it lets go of — the rows that wear its move, in each use whose cels
+/// take the picture where it shows it — and the row's runs by picture
+/// there, read before it lets go.
+///
+/// 🗣️attach-rows-lose-the-base-move-when-it-bakes-Q1 (유저 2026-11-11
+/// 「어태치 줄도 같이 옮겨 놓는다」 — 「참조말고도 기준fx 구울떄랑
+/// 같은규칙으로 동작하면됨」): a rider wears its base's reference move
+/// (F-578 ⑨), so the bake that takes the move off the row into its cels
+/// takes it into the riders' too — by the rule an fx RASTERIZE bakes its
+/// riders by (I-120 ②b), the row hidden and each rider drawn wearing what
+/// the row lets go of alone: no fx and no transform, its reference kept
+/// ([drawnBare] keeps it). A use whose move goes on as keys keeps its
+/// riders where they stand: they wear its transform.
+/// A rider showing a file of its own is baked so too, and lets go of its
+/// reference (-Q3 — 「같이 래스터화해 굽는다 — 참조 굽기 · Fx 굽기 둘 다」,
+/// [takeFxToBake]).
+final class ReferenceRidersTaking {
+  const ReferenceRidersTaking._(this._riding, this._runs);
+
+  final _Riders _riding;
+
+  /// Each use's row's runs by picture before it lets go, by the use's
+  /// place: what a rider synced on it rides ([_Ridden.runs]).
+  final List<List<List<CutFrameCompositeSpan>>> _runs;
+}
+
+/// [ReferenceRidersTaking] of [uses] — the uses of a reference row whose
+/// cels take the picture where they show it — in [project] before the row
+/// lets go, its cels read by [readsOf]: null where no row rides them so.
+ReferenceRidersTaking? takeReferenceRiders({
+  required Project project,
+  required List<({CutId cutId, LayerId layerId})> uses,
+  required CelReads Function(Cut cut) readsOf,
+}) {
+  final taken = [
+    for (final (:cutId, :layerId) in uses) _useOf(project, cutId, layerId),
+  ];
+  final riders = _ridersOf(taken);
+  if (riders.isEmpty) {
+    return null;
+  }
+  return ReferenceRidersTaking._(
+    (
+      uses: taken,
+      riders: riders,
+      selves: _selvesOf(project, taken, riders),
+      baking: _bakingNothing,
+    ),
+    [
+      for (final use in taken)
+        _shownOf(use, _bakingNothing, readsOf(use.cut).revisionOf).runs,
+    ],
+  );
+}
+
+/// What a reference RASTERIZE makes of [taking]'s riders once the row has
+/// let go in [after]: each rider's row after, as the cut it rides in held
+/// it, and the pictures its new cels are baked from — drawn of the cuts as
+/// they were, so wearing the move the row let go of ([_ridersBaked]).
+typedef ReferenceRidersPlan = ({
+  List<({Cut cut, Layer row})> rows,
+  List<LayerMergePicture> pictures,
+});
+
+/// [ReferenceRidersPlan] of [taking] after [after], the riders' cels read
+/// by [readsOf] and each new one named by [mintFrameId].
+ReferenceRidersPlan planReferenceRiders(
+  ReferenceRidersTaking taking, {
+  required Project after,
+  required CelReads Function(Cut cut) readsOf,
+  required FrameId Function(LayerId row) mintFrameId,
+}) {
+  final uses = taking._riding.uses;
+  return _ridersBaked(taking._riding, [
+    for (final (index, use) in uses.indexed)
+      (
+        runs: taking._runs[index],
+        held: _heldLetGo(use, requireCut(after, use.cut.id)),
+      ),
+  ], (revisionOf: (cut) => readsOf(cut).revisionOf, mintFrameId: mintFrameId));
+}
+
+/// [use]'s row's cels as [after] — its cut once the row let go of its
+/// reference — holds them over the frames the use draws, each cel it holds
+/// no longer baked into the one shown first where it showed
+/// ([_Held.firstOf]): a rider synced on it keeps no link to it
+/// ([_linksAfter]).
+_Held _heldLetGo(_Use use, Cut after) {
+  final row = after.layers.byId(use.row.id)!;
+  final frames = [for (var frame = 0; frame < use.drawn; frame += 1) frame];
+  final held = _heldAsShown(after, row, frames);
+  final firstOf = <FrameId, FrameId>{};
+  for (final frame in frames) {
+    final was = exposedCelIdAt(
+      cut: use.cut,
+      layerId: row.id,
+      frameIndex: frame,
+    );
+    final now = held.celAt[frame];
+    if (was != null && now != null && row.frameById(was) == null) {
+      firstOf.putIfAbsent(was, () => now);
+    }
+  }
+  return (
+    cels: held.cels,
+    celAt: held.celAt,
+    firstOf: firstOf,
+    lanes: held.lanes,
   );
 }
 

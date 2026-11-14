@@ -14,7 +14,7 @@ import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
-import '../../services/import/cel_picture.dart' show pictureOfPixels;
+import '../../services/import/cel_picture.dart' show pictureOfMovieFrame;
 import '../../services/import/raster_cel_import.dart' show layCelPicture;
 import '../../services/layer_pose_matrix.dart' show picturePlacement;
 import '../../services/media/media_byte_source.dart'
@@ -242,15 +242,19 @@ class MovieCelHydrator {
 
   Future<BitmapSurface?> _decode(_OpenMovie movie, _MoviePicture at) async {
     final (_, movieFrame, canvas, pose) = at;
-    final rgba = await movie.reader.frame(movie.token, movieFrame);
-    if (rgba == null || _disposed) {
+    final picture = await pictureOfMovieFrame(
+      movie.reader,
+      movie.token,
+      movieFrame,
+      movie.info,
+    );
+    if (picture == null) {
       return null;
     }
-    final picture = await pictureOfPixels(
-      rgba,
-      width: movie.info.width,
-      height: movie.info.height,
-    );
+    if (_disposed) {
+      picture.dispose();
+      return null;
+    }
     try {
       // Where the row's reference fx stands the frame (I-68). ↩️It was the
       // pool's fit for the file, fitted to the canvas as it was at each

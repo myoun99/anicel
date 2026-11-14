@@ -25,7 +25,11 @@ import '../helpers/cels_parked_cold.dart';
 /// being drawn toward cooling. The budget belongs to what feeds the screen
 /// first. A LOOK gets the same pixels and leaves the store as it found it.
 void main() {
-  const canvasSize = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const canvasSize = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
   final origin = TileCoord(x: 0, y: 0);
 
   BrushFrameKey key(String frame) => BrushFrameKey(
@@ -37,14 +41,14 @@ void main() {
   );
 
   BitmapSurface inkSurface({int seed = 1}) {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed * 31 + seed) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
-      tiles: {origin: BitmapTile(size: 8, pixels: pixels)},
+      tileSize: defaultCelTileSize,
+      tiles: {origin: BitmapTile(size: defaultCelTileSize, pixels: pixels)},
     );
   }
 

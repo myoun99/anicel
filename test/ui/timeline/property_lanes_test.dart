@@ -48,6 +48,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -404,7 +405,7 @@ void main() {
             matching: find.byType(CustomPaint),
           ),
         ),
-        paints..path(color: timelineDrawingStartColor),
+        paintsShape(color: timelineDrawingStartColor),
       );
 
       // ㉙: no header to collapse here, so the ROW's twirl is the only fold —

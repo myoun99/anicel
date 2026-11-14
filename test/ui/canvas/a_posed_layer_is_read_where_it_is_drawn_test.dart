@@ -18,15 +18,16 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨I-36 — 「이 과정에서 법 다른거 통일」: on a TRANSFORMED layer, the tools
 /// that read the picture read it where it is drawn.
@@ -45,6 +46,11 @@ void main() {
   const green = 0xFF00FF00;
   const blue = 0xFF0000FF;
   const opaqueBlue = 0x0000FFFF;
+
+  // The fill reads the frame's picture on the engine, and nothing holds a
+  // test's app while that opens (`appEngineGetsReady`): a launch's hold is
+  // what keeps a tap from coming before it.
+  opensTheEnginesScreens();
 
   setUp(() => AppInput.settings.value = const AppInputSettings());
   tearDown(() => AppInput.settings.value = const AppInputSettings());
@@ -192,7 +198,7 @@ void main() {
       for (var y = 0; y < size.height; y += 4) {
         for (var x = 0; x < size.width; x += 4) {
           cells += 1;
-          if (surfacePixelRgba(surface, x, y) == opaqueBlue) {
+          if (surfaceRgbaInPlace(surface, x, y) == opaqueBlue) {
             filled += 1;
           }
         }

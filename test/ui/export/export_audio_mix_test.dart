@@ -291,6 +291,49 @@ void main() {
       isFalse,
     );
   });
+
+  /// 🗣️유저 2026-11-10 (board an-mp4-reopened-loses-its-first-9-ms-of-
+  /// sound-Q2): the frame a writer puts before a movie's mix holds the sound
+  /// just before it — the END of the mix of the frames before.
+  test('the tail of a mix is its END as written — behind silence where the '
+      'mix is shorter than what is asked for', () async {
+    // A ramp: no two stretches of it are alike.
+    final ramp = Float32List(9600);
+    for (var index = 0; index < ramp.length; index += 1) {
+      ramp[index] = 0.1 + 0.8 * index / ramp.length;
+    }
+    final path = '${directory.path}/mix.wav';
+    await writeExportAudioMixWav(
+      schedule: const [
+        ScheduledAudioClip(
+          filePath: 'ramp',
+          startFrame: 0,
+          endFrameExclusive: 2,
+        ),
+      ],
+      rate: rate,
+      totalFrames: 2,
+      sampleRate: 48000,
+      resolveSource: (_) async => AudioMixSource(samples: ramp, channels: 1),
+      outputPath: path,
+    );
+    final written = Int16List.sublistView(
+      File(path).readAsBytesSync(),
+      wav16HeaderLength,
+    );
+    expect(written, hasLength(9600 * 2));
+    expect(written.first, isNot(0));
+
+    final tail = exportAudioMixTail(path, 1024)!;
+    expect(tail, written.sublist(written.length - 1024 * 2));
+    expect(tail.first, isNot(written.first), reason: 'the head is elsewhere');
+
+    final padded = exportAudioMixTail(path, 9600 + 1200)!;
+    expect(padded.sublist(0, 1200 * 2), everyElement(0));
+    expect(padded.sublist(1200 * 2), written);
+
+    expect(exportAudioMixTail('${directory.path}/none.wav', 1024), isNull);
+  });
 }
 
 /// Reads back the WAV this export writes — a REAL WAV, which is a foreign

@@ -2,7 +2,7 @@
 // G0-2 of the god-object decomposition (round 8, 2026-09-06): the
 // collaborators leave `part` and take the roles by constructor.
 //
-//   dart run tool/refactor/session_departify.dart <repoRoot> <session_map.json>
+//   dart tool/refactor/session_departify.dart <repoRoot> <session_map.json>
 //
 // Run AFTER session_roles_apply.dart (the roles exist, the role members
 // are public) and after session_map.dart was re-run on that tree. One

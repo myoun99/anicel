@@ -7,7 +7,6 @@
 
 use std::sync::OnceLock;
 
-use wgpu::util::DeviceExt;
 
 use super::pages::NO_PAGE;
 use super::{
@@ -72,13 +71,7 @@ fn rig() -> &'static Rig {
 
 fn storage(engine: &Engine, words: &[u32]) -> wgpu::Buffer {
     let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("shared cases"),
-            contents: &bytes,
-            usage: wgpu::BufferUsages::STORAGE,
-        })
+    engine.filled("shared cases", &bytes, wgpu::BufferUsages::STORAGE)
 }
 
 /// Runs `pipeline` over `groups` with `buffers` at their bindings and
@@ -528,6 +521,16 @@ fn scenes() -> Vec<Scene> {
             inverse: [0.9, 0.1, 1.0, -0.05, 0.8, 3.0, -0.012, 0.001, 1.0],
             size: (48, 40),
         },
+        // A small piece in steep perspective over the noise: w falls from
+        // 1 to a quarter across 8 px, so g = −1/16 is past an i32 at Q.36
+        // and g and h take a shift of 2 — a small float pinched hard. It
+        // lands at 30 + 0.625 · (x, y) / w: 1.5 times larger at the near
+        // corner, five times smaller at the far one.
+        Scene {
+            name: "steep",
+            inverse: [-1.25, -0.9375, 30.0, -1.875, -0.3125, 30.0, -1.0 / 16.0, -1.0 / 32.0, 1.0],
+            size: (8, 8),
+        },
     ]
 }
 
@@ -685,6 +688,40 @@ fn nearest_reads_the_word_where_the_centre_lands() {
     let halved = [word(1, 1), word(3, 1), word(1, 3), word(3, 3)];
     assert_eq!(nearest(affine(2.0, 0.0, 0.0, 0.0, 2.0, 0.0), (2, 2)), halved);
     assert_eq!(nearest(affine(1.0, 0.0, 3.5, 0.0, 1.0, 0.0), (1, 1)), [0]);
+}
+
+// A steep homography's centres land where its doubles put them, though
+// g = −1/16 is past an i32 at Q.36 and takes a shift: w = 1 − X/16 at
+// centre X = x + 0.5, so u = X / w lands at 0.52, 1.66, 2.96, 4.48, 6.26,
+// 8.38, 10.95 and 14.12 — each a 30th of a pixel or more off a border —
+// and v, with f/i and d/g both a half, at 0.5.
+#[test]
+fn nearest_reads_where_a_steep_homography_s_centres_land() {
+    let word = |x: u32| 0xff00_0000 | x * 0x0001_0101;
+    let mut picture = Picture::filled(16, 1, 0);
+    for x in 0..16 {
+        picture.put(x, 0, word(x));
+    }
+    let inverse = [1.0, 0.0, 0.0, -1.0 / 32.0, 0.0, 0.5, -1.0 / 16.0, 0.0, 1.0];
+    let map = one_map(inverse, ResampleMode::Nearest, (8, 1));
+    let landed: Vec<u32> = [0, 1, 2, 4, 6, 8, 10, 14].into_iter().map(word).collect();
+    assert_eq!(window(&map, &picture, (8, 1), (0, 0)), landed);
+}
+
+// g and h held coarser with the shift taking them back are the same w and
+// the same Jacobian — rnd(P · 2^k g, 32) is rnd(P · g, 32 − k) — so the
+// same bytes in every mode.
+#[test]
+fn a_shift_is_the_same_map_held_coarser() {
+    let picture = fixture();
+    let scene = scenes().into_iter().find(|scene| scene.name == "steep").expect("steep");
+    for (mode, mode_name) in MODES {
+        let map = map_of(&scene, mode);
+        let coarser = map.coarser(3).expect("g and h whole at Q.31");
+        assert_ne!(coarser.words(), map.words(), "{mode_name}");
+        let by = |map| window(&map, &picture, scene.size, (0, 0));
+        assert_eq!(by(coarser), by(map), "{mode_name}");
+    }
 }
 
 // Enlarged on the axes, Nearest is what Pick picks — what the screen
@@ -1034,13 +1071,7 @@ fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
     let asks = storage(engine, &[table[0], 1, 7, table[2], 0, 9, table[1], 2, 8]);
     let page = |words: &[u32]| {
         let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-        engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("page"),
-                contents: &bytes,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            })
+        engine.filled("page", &bytes, wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC)
     };
     let (zeroth, second) = (page(&[1, 2, 3]), page(&[4, 5, 6]));
     let mut bound = whole(&[(0, &asks)]);
@@ -1141,4 +1172,77 @@ fn a_pass_takes_the_tiles_its_binding_holds_past_its_own() {
     assert_eq!(tiles_a_pass(engine, 1, 0), Some(reach as usize));
     assert_eq!(tiles_a_pass(engine, room, 0), Some(1));
     assert!(tiles_a_pass(engine, room, 1).is_none());
+}
+
+/// A kernel of its own for a test: no other asks for these sources, so the
+/// engine has none of it till the test does.
+fn a_kernel_named(name: &str) -> String {
+    let body = "override lit: bool = true;\n@compute @workgroup_size(1)\nfn main() { _ = lit; }";
+    format!("// {name}\n{body}\n")
+}
+
+/// How many kernels this thread has waited on a compile of.
+fn waited_here() -> u64 {
+    super::gpu_engine_kernels_built_here()
+}
+
+// 🚨The engine compiles a kernel once (gpu-canonical-store ④, 2026-11-11;
+// `Kernels` in device.rs has why): who asks again has the same pipeline,
+// and waits on no compile.
+#[test]
+fn a_kernel_the_engine_has_is_the_same_one_and_no_ones_wait() {
+    let engine = first_engine();
+    let source = a_kernel_named("asked for twice");
+    let before = waited_here();
+    let first = pipeline(engine, &[&source], "main");
+    assert_eq!(waited_here() - before, 1, "⛔CONTROL: the first to ask waits for its compile");
+    let again = pipeline(engine, &[&source], "main");
+    assert_eq!(waited_here() - before, 1, "who asks again waits on none");
+    assert!(first == again, "and has the pipeline the first has");
+}
+
+// What a kernel is compiled of is all of it: other constants — one of
+// another value too —, other sources, or its workgroup memory left as the
+// device hands it, are other kernels.
+#[test]
+fn a_kernel_of_other_sources_constants_or_memory_is_another() {
+    let engine = first_engine();
+    let source = a_kernel_named("of its own");
+    let plain = pipeline(engine, &[&source], "main");
+    let before = waited_here();
+    let unlit = super::pipeline_with(engine, &[&source], "main", &[("lit", 0.0)]);
+    let lit = super::pipeline_with(engine, &[&source], "main", &[("lit", 1.0)]);
+    let unzeroed = super::pipeline_unzeroed(engine, &[&source], "main");
+    let other = pipeline(engine, &[&source, "// and a line more"], "main");
+    assert_eq!(waited_here() - before, 4, "each is compiled");
+    let all = [&plain, &unlit, &lit, &unzeroed, &other];
+    for (at, one) in all.iter().enumerate() {
+        for another in &all[at + 1..] {
+            assert!(one != another, "each is a kernel of its own");
+        }
+    }
+    assert!(unlit == super::pipeline_with(engine, &[&source], "main", &[("lit", 0.0)]));
+}
+
+// Asked for by two at once, a kernel is compiled by one and waited for by
+// the other: what a pen put down finds, where the list the app compiles
+// ahead is at the stroke's own kernels. ↩️The two were held behind the
+// engine's one thread for compiling till 2026-11-13; each asks on a thread
+// of its own now (`CompilerTurn`, in `device.rs`), at once.
+#[test]
+fn two_that_ask_for_a_kernel_at_once_have_the_one() {
+    let engine = first_engine();
+    let source = a_kernel_named("asked for by two at once");
+    let at_once = std::sync::Barrier::new(2);
+    let (first, second) = std::thread::scope(|scope| {
+        let ask = || {
+            scope.spawn(|| {
+                at_once.wait();
+                pipeline(engine, &[&source], "main")
+            })
+        };
+        let (first, second) = (ask(), ask());
+        (first.join().expect("the first"), second.join().expect("the second"))
+    });
+    assert!(first == second, "each compiled its own");
 }

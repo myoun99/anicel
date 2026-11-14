@@ -169,20 +169,45 @@ void main() {
       expect(rows.single.douga, 0, reason: '動画 is no longer estimated');
     });
 
-    test('a row counts 原画 exactly when the sheet prints it in ACTION', () {
+    test('🗣️F-578: a row counts where the sheet prints it — 原画 for LO, '
+        'ラフ原, 原画 and no label, 動画 and 仕上げ for theirs, nowhere for '
+        'the conte\'s and the paper\'s', () {
+      // 유저 2026-11-10: 「레이아웃,러프원,원화 이외 공정이면 북쪽에 안넣음.
+      // 이건 애니메이션레이어도 마찬가지임」 · Q5 「라벨없음도 액션란 취급 …
+      // 컷봉투의 원화 갯수 샌다던가 그런거도 다 법 통일」.
+      const counted = <LayerProcess?, (int, int, int)?>{
+        null: (1, 0, 0),
+        LayerProcess.layout: (1, 0, 0),
+        LayerProcess.roughKey: (1, 0, 0),
+        LayerProcess.key: (1, 0, 0),
+        LayerProcess.inbetween: (0, 1, 0),
+        LayerProcess.finish: (0, 0, 1),
+        LayerProcess.conte: null,
+        LayerProcess.paper: null,
+      };
+      expect(counted.keys, containsAll(LayerProcess.values));
       for (final process in [null, ...LayerProcess.values]) {
         final layer = _layer(
           'A',
-          mark: LayerMark(process: process),
+          mark: process == null ? LayerMark.none : labelsOf(process).first,
           frames: 1,
         );
-        final row = cutEnvelopeCelCounts(_cut([layer])).single;
+        final rows = cutEnvelopeCelCounts(_cut([layer]));
 
-        expect(row.genga + row.douga + row.shiage, 1, reason: '$process');
         expect(
-          row.genga == 1,
-          !layerTakesTheCelBlock(layer),
+          [for (final row in rows) (row.genga, row.douga, row.shiage)],
+          [?counted[process]],
+          reason: '$process',
+        );
+        expect(
+          layerTakesSheetCelColumn(layer),
+          counted[process] != null,
           reason: '$process: the envelope and the sheet read one law',
+        );
+        expect(
+          layerTakesSheetCelColumn(layer) && !layerTakesTheCelBlock(layer),
+          counted[process]?.$1 == 1,
+          reason: '$process: 原画 is the ACTION block',
         );
       }
     });

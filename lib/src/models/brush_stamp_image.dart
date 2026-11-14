@@ -21,7 +21,25 @@ class BrushStampImage {
     required this.width,
     required this.height,
     required Uint8List rgba,
-  }) : rgba = Uint8List.fromList(rgba) {
+  }) : _read = null {
+    _checkNamedAndSized();
+    _rgba = _checked(Uint8List.fromList(rgba));
+  }
+
+  /// A stamp whose bytes are held elsewhere and [rgba] reads the first time
+  /// anything asks for them: the engine's picture of a stamp carried through
+  /// a placement (`EngineStampPictures.carried`), which lands without them
+  /// ever being read.
+  BrushStampImage.read({
+    required this.id,
+    required this.width,
+    required this.height,
+    required Uint8List Function() rgba,
+  }) : _read = rgba {
+    _checkNamedAndSized();
+  }
+
+  void _checkNamedAndSized() {
     if (id.isEmpty) {
       throw ArgumentError.value(
         id,
@@ -36,13 +54,17 @@ class BrushStampImage {
         'BrushStampImage dimensions must be greater than 0.',
       );
     }
-    if (this.rgba.length != width * height * 4) {
+  }
+
+  Uint8List _checked(Uint8List rgba) {
+    if (rgba.length != width * height * 4) {
       throw ArgumentError.value(
         rgba.length,
         'rgba',
         'BrushStampImage.rgba must hold width * height * 4 bytes.',
       );
     }
+    return rgba;
   }
 
   /// Stable identifier (e.g. `lift-<timestamp>`).
@@ -52,7 +74,9 @@ class BrushStampImage {
   final int height;
 
   /// Row-major straight-alpha RGBA bytes.
-  final Uint8List rgba;
+  Uint8List get rgba => _rgba ??= _checked(_read!());
+  final Uint8List Function()? _read;
+  Uint8List? _rgba;
 
   /// Where this stamp lands for a dab centred at [center]: the stamp's
   /// straight-alpha pixels land 1:1 source-over centered on the dab
@@ -115,7 +139,7 @@ class BrushStampImage {
   }
 
   @override
-  int get hashCode => Object.hash(id, width, height, rgba.length);
+  int get hashCode => Object.hash(id, width, height, width * height * 4);
 
   @override
   String toString() =>

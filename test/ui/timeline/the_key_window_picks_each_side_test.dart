@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill, PillStrip;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/text_finders.dart';
 
 /// 🗣️I-89 ② (유저 2026-10-10: 「B' 두줄 줄마다 세기로 가자」): the key window
@@ -315,18 +316,28 @@ void main() {
       ),
     );
     // A 9px box, cut at 4.5: the mark of a key straight on both sides,
-    // with the half its row does not say clipped away.
-    expect(
-      glyph('rename-key-in-linear'),
-      paints
-        ..clipRect(rect: const Rect.fromLTRB(0, 0, 4.5, 9))
-        ..path(includes: const [Offset(2, 4.5), Offset(7, 4.5)]),
-    );
-    expect(
-      glyph('rename-key-out-linear'),
-      paints
-        ..clipRect(rect: const Rect.fromLTRB(4.5, 0, 9, 9))
-        ..path(includes: const [Offset(2, 4.5), Offset(7, 4.5)]),
-    );
+    // with the half its row does not say clipped away — what it covers is
+    // the half its row says.
+    for (final (key, half, said, unsaid) in [
+      (
+        'rename-key-in-linear',
+        const Rect.fromLTRB(0, 0, 4.5, 9),
+        const Offset(2, 4.5),
+        const Offset(7, 4.5),
+      ),
+      (
+        'rename-key-out-linear',
+        const Rect.fromLTRB(4.5, 0, 9, 9),
+        const Offset(7, 4.5),
+        const Offset(2, 4.5),
+      ),
+    ]) {
+      expect(glyph(key), paints..clipRect(rect: half), reason: key);
+      expect(
+        glyph(key),
+        paintsShape(includes: [said], excludes: [unsaid]),
+        reason: key,
+      );
+    }
   });
 }

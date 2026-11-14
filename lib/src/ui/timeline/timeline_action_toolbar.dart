@@ -8,6 +8,7 @@ import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../../models/frame.dart' show InbetweenMark;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../playback/playback_stillness.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
@@ -312,6 +313,12 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
 /// [gates], and its source in [toolbarGateNews]. Inherited widgets stay
 /// live either way — dependencies are tracked per element, so a theme
 /// change still rebuilds the cached subtree.
+///
+/// 🗣️F-587 (유저 2026-11-13): 「재생중에는 바꾸지않고 재생전 마지막 상태
+/// 유지」 — while a run moves the playhead its [gates] are not asked: the
+/// group is the one built before the run, through every frame of it and
+/// through the bar built again around it as a film crosses into its next
+/// cut ([PlaybackStillness]).
 class _StaticCommandGroup extends StatelessWidget {
   const _StaticCommandGroup({
     required this.news,
@@ -335,6 +342,7 @@ class _StaticCommandGroup extends StatelessWidget {
   Widget build(BuildContext context) => SlicedListenableBuilder<Object?>(
     listenable: news,
     slice: gates,
+    stillWhile: PlaybackStillness.of(context),
     builder: (context, shown) => _BakedCommandGroup(
       shown: shown,
       builder: builder,

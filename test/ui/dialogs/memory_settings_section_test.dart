@@ -85,6 +85,7 @@ void main() {
       'moviePictures',
       'enginePool',
       'engineScratch',
+      'pluginSteps',
     });
   });
 
@@ -103,7 +104,6 @@ void main() {
       'sheetInk',
       'undo',
       'framePictures',
-      'layerImages',
       'brushTips',
       'panelRasters',
       'viewerPages',
@@ -117,7 +117,7 @@ void main() {
       'tileImages',
       'enginePool',
       'engineScratch',
-      'lensBlurTables',
+      'pluginSteps',
     });
   });
 

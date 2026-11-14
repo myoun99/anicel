@@ -31,6 +31,8 @@ void main() {
       // The GPU engine's measurement app: tool/resolve_packages.sh's
       // `pub get` in packages/gpu_engine rewrites these too.
       'packages/gpu_engine/example/windows/flutter',
+      'packages/gpu_engine/example/linux/flutter',
+      'packages/gpu_engine/example/macos/Flutter',
     ];
     final found = <String>[
       for (final folder in folders)

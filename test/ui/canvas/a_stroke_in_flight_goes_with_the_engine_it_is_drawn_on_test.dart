@@ -1,0 +1,165 @@
+/// A stroke is drawn on two engines here, and each compiles a stroke's
+/// kernels where it is first drawn on: the bound is this file's own
+/// (`timeline_grid_tile_generation_test.dart` says why).
+@Timeout(Duration(minutes: 3))
+library;
+
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/native/engine_strokes.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
+
+import '../../helpers/blank_cel.dart';
+import '../../helpers/the_apps_engine_let_go.dart';
+
+/// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
+/// 않고 새 장치를 열어 사본으로 되살린다. 잃는 것은 그리던 획 정도다」 — a
+/// stroke in flight is drawn on the engine's stroke, which goes with its
+/// device: it is over as the app lets that engine go, as one is whose cel
+/// went from under the pen (F-232), and lands nothing however the gesture
+/// then ends. The next press draws, on the next engine.
+///
+/// On the app's own engine, which the test loses.
+void main() {
+  final strokeLive = <bool>[];
+  var commits = 0;
+  setUp(() {
+    strokeLive.clear();
+    commits = 0;
+  });
+
+  /// The view on a blank cel of [frame]'s, on the engine's grid — a
+  /// stroke piles on the engine's: painting it and its stroke, or — where
+  /// its host does ([hostsOverlay]) — keeping the input alone, as the
+  /// canvas panel has it.
+  Widget view({
+    ActiveStrokeOverlayModel? hostsOverlay,
+    FrameId frame = const FrameId('frame-a'),
+  }) => MaterialApp(
+    home: Scaffold(
+      body: Align(
+        alignment: Alignment.topLeft,
+        child: InteractiveBrushEditCanvasView(
+          celNow: blankCel(
+            const CanvasSize(width: 64, height: 64),
+            tileSize: defaultCelTileSize,
+          ),
+          layerId: const LayerId('layer-a'),
+          frameId: frame,
+          editable: true,
+          inputSettings: () => BrushEditCanvasInputSettings.defaults,
+          overlayModel: hostsOverlay,
+          paintsContent: hostsOverlay == null,
+          onActiveStrokeChanged: (stroke) =>
+              strokeLive.add(stroke != StrokeInFlight.none),
+          onSourceStrokeCommitted: (_) => commits += 1,
+        ),
+      ),
+    ),
+  );
+
+  /// A stylus pressed on the canvas and drawn a little — still down.
+  Future<TestGesture> beginStroke(WidgetTester tester) async {
+    final origin = tester.getTopLeft(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    final gesture = await tester.startGesture(
+      origin + const Offset(8, 8),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(20, 10));
+    await tester.pump();
+    expect(strokeLive, [true], reason: '⛔premise: the stroke is in flight');
+    return gesture;
+  }
+
+  testWidgets('🚨a stroke in flight as its engine is let go is over — said '
+      'after a frame, which comes — and lands nothing however its gesture '
+      'ends; the next press draws, and lands', (tester) async {
+    await tester.pumpWidget(view());
+    final gesture = await beginStroke(tester);
+
+    theAppsEngineLostAndLetGo();
+
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pump();
+    expect(strokeLive, [true, false], reason: 'the host hears it is over');
+
+    await gesture.up();
+    await tester.pump();
+    expect(strokeLive, [true, false]);
+    expect(commits, 0, reason: 'what it was drawn on is gone');
+
+    strokeLive.clear();
+    final next = await beginStroke(tester);
+    await next.up();
+    await tester.pump();
+    expect(strokeLive, [true, false]);
+    expect(commits, 1);
+  });
+
+  testWidgets('what the stroke was drawn with is let go of as the '
+      'stroke is: the engine\'s stroke it piled on goes back at once, not '
+      'at the next press — seen where its cel went from under the pen, '
+      'the stroke at rest for the next', (tester) async {
+    await tester.pumpWidget(view());
+    await beginStroke(tester);
+    final atRest = EngineStrokes.debugIdle;
+
+    // ⚠️By the cel, which lets go by the one act the engine's going does
+    // (`_letGoOfWhatIsInFlight`): a stroke given back from an engine let
+    // go is freed, kept by none, and nothing counts it
+    // (`the_app_opens_another_engine_once_its_device_is_gone_test.dart`
+    // pins that it is).
+    await tester.pumpWidget(view(frame: const FrameId('frame-b')));
+
+    expect(EngineStrokes.debugIdle, atRest + 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the frame it is said after is the view\'s own to ask '
+      'for: one that keeps the input alone has no painter that would, its '
+      'overlay its host\'s to paint', (tester) async {
+    // A host's model outlives the view it lends it to.
+    final hosts = ActiveStrokeOverlayModel();
+    addTearDown(hosts.dispose);
+    await tester.pumpWidget(view(hostsOverlay: hosts));
+    final gesture = await beginStroke(tester);
+    // The pen rests: its line has come up to it, and no frame is on its
+    // way.
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: '⛔premise');
+
+    theAppsEngineLostAndLetGo();
+
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pump();
+    expect(strokeLive, [true, false]);
+    await gesture.up();
+    await tester.pump();
+    expect(commits, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a view that went hears no more of the app\'s engine: the '
+      'letting go asks nothing of it, nor a frame of the screen it is '
+      'not on', (tester) async {
+    await tester.pumpWidget(view());
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: '⛔premise');
+
+    theAppsEngineLostAndLetGo();
+
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+}

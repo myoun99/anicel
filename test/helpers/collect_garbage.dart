@@ -1,4 +1,5 @@
 import 'dart:developer' show reachabilityBarrier;
+import 'dart:typed_data' show Uint8List;
 
 /// Runs full collections until two have completed, then two turns of the
 /// event loop. For tests that prove a holder LETS GO: what nothing reaches
@@ -12,8 +13,8 @@ import 'dart:developer' show reachabilityBarrier;
 /// green alone). A count a finalizer brings down is waited for with
 /// [collectGarbageUntil], which names what it waits for.
 ///
-/// Churns small lists instead of asking the VM, because a test cannot
-/// reach the VM service — the way `leak_tracker`'s `forceGC` does it.
+/// Churns instead of asking the VM, because a test cannot reach the VM
+/// service — what it churns is [_churn]'s to say.
 ///
 /// 🚨★★★IT GIVES UP AFTER [atMost] (tile-count-timeout-under-load). The
 /// loop used to wait for the barrier with no bound at all, and a barrier
@@ -37,21 +38,65 @@ Future<void> collectGarbage({
 }) async {
   final target = reachabilityBarrier + 2;
   final clock = Stopwatch()..start();
-  final held = <List<int>>[];
   await churnUntil(
     happened: () => reachabilityBarrier >= target,
     elapsed: () => clock.elapsed,
     atMost: atMost,
     churn: () async {
       await Future<void>.delayed(Duration.zero);
-      held.add(List<int>.filled(30000, 0));
-      if (held.length > 100) {
-        held.removeAt(0);
-      }
+      _churn();
     },
   );
   await Future<void>.delayed(Duration.zero);
   await Future<void>.delayed(Duration.zero);
+}
+
+/// A megabyte of bytes, let go as soon as it is made: what brings the
+/// collector round.
+///
+/// 🚨★★★OLD-SPACE GARBAGE THE CHURN MARKS AGAINST ITSELF, NOT PROMOTED
+/// LISTS (gc-pin-stall, 2026-11-08). This used to be `leak_tracker`'s
+/// churn — a hundred 240 KB lists of pointers kept alive — and those 24 MB
+/// outgrow new space, so every scavenge promoted them. Promotion is the one
+/// old-space growth the VM grants with no back pressure: it is forced
+/// growth, and the check after a scavenge asks for no marking at all. So
+/// the mark had to outrun the promotion on its helper threads alone, and
+/// on a loaded machine it did not: the barrier stood still for 60–97 s
+/// while the heap grew by every byte churned, to 16 GB in two test
+/// processes at once. The bare VM's own log (`--verbose_gc`) showed it at
+/// idle as well — every slow mark of ten pairs was one a promotion
+/// started, up to 2.35 s, its two tasks marking 288 MB each.
+///
+/// A list over 256 KB is made in old space directly, and each one makes
+/// the thread that asks for it mark 1.25 times its size and finalize a
+/// finished mark — so the collection moves with the churn itself, whatever
+/// the helper threads get. Bytes hold no pointers: nothing more to mark.
+/// Measured the same day, bare VM: a collection in 13–58 ms.
+void _churn() {
+  Uint8List(churnBytes);
+}
+
+/// The bytes of each list [_churn] makes: past the 256 KB a list may take
+/// in new space (the VM's `kNewAllocatableSize`), so it is made in old
+/// space and never promoted.
+const churnBytes = 1 << 20;
+
+/// Runs full collections until two have completed INSIDE this turn of the
+/// event loop — for a test that reads what a holder does after a
+/// collection and before any finalizer's message can land: the VM hands
+/// those to the isolate as messages, and none runs till the turn ends. A
+/// [WeakReference] to what nothing reaches reads null after.
+///
+/// ⚠️It gives up after [atMost], as [collectGarbage] does, and asserts
+/// nothing: the caller's own `expect` reads the real value.
+void collectGarbageInThisTurn({
+  Duration atMost = const Duration(seconds: 30),
+}) {
+  final target = reachabilityBarrier + 2;
+  final clock = Stopwatch()..start();
+  while (reachabilityBarrier < target && clock.elapsed < atMost) {
+    _churn();
+  }
 }
 
 /// The bounded wait itself: churn until [happened], or until [elapsed]

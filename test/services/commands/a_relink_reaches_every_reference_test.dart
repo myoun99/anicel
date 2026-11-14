@@ -197,12 +197,11 @@ void main() {
       expect(repository.requireProject().mediaAssets.single.sourcePath, isNull);
     });
 
-    test('⛔ and it does not ERASE the tracking a copy already had — the '
-        'badge survives the file being moved', () {
+    test('⛔ and it does not ERASE the tracking a copy already had — where '
+        'it came from survives the file being moved', () {
       // The half that would break silently if a relink ever started
-      // writing these two: `copyWith` reads null as「keep」, so passing
-      // them unconditionally would blank a copy's origin on every relink
-      // and the「original changed」badge would go quiet for good.
+      // writing it: `copyWith` reads null as「keep」, so passing it
+      // unconditionally would blank a copy's origin on every relink.
       final repository = ProjectRepository(
         initialProject: projectWith(
           cutLayers: const [],
@@ -211,7 +210,6 @@ void main() {
               path: '/old/clip.wav',
               name: 'clip',
               sourcePath: '/somewhere/original.wav',
-              sourceStamp: 'stamp',
             ),
           ],
         ),
@@ -222,7 +220,6 @@ void main() {
       final asset = repository.requireProject().mediaAssets.single;
       expect(asset.path, '/new/clip.wav');
       expect(asset.sourcePath, '/somewhere/original.wav');
-      expect(asset.sourceStamp, 'stamp');
     });
   });
 }

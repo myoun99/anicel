@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ContainerLayer;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -16,6 +18,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
@@ -42,7 +45,30 @@ import 'package:anicel/src/ui/widgets/still_raster.dart';
 /// `Scrollbar`, whose foreground picture is the size of its scroll view —
 /// the panel's body — and the image stood at 1.93 times the dock; with the
 /// app's, 1.00. ↩️This ran on the test's Android, where nothing is barred.
+///
+/// 🖥️With the app's engine open, as the app always has it, so the rows stand
+/// over their grid's screen: what stands over a texture cannot sink under it,
+/// so what of the grid the dock shows is in the image a second time. That is
+/// the screen's due (`_Strata.take` says why it is not drawn live instead);
+/// the rest of the law stands. ↩️No engine opened here, and the image's 1.52
+/// times the dock went unseen (11-09).
 void main() {
+  setUpAll(openAppGpuEngine);
+
+  bool holdsAScreen(ContainerLayer layer) {
+    for (var child = layer.firstChild;
+        child != null;
+        child = child.nextSibling) {
+      if (child is TickSceneLayer && child.alwaysLive) {
+        return true;
+      }
+      if (child is ContainerLayer && holdsAScreen(child)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   const frames = 240;
   const rows = 12;
   const block = 12;
@@ -162,20 +188,34 @@ void main() {
       );
       expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise');
       expect(
+        holdsAScreen(region.debugLayer!),
+        isTrue,
+        reason: '⛔premise: the rows stand over their grid\'s screen',
+      );
+      expect(
         region.debugLiveTicks,
         isNotEmpty,
         reason: '⛔premise: the image is cut at the ticks the drag moves',
       );
       final ratio = tester.view.devicePixelRatio;
-      final once =
-          ((region.size.width * ratio).ceil() + 1) *
-          ((region.size.height * ratio).ceil() + 1) *
+      int bytesOf(Size size) =>
+          ((size.width * ratio).ceil() + 1) *
+          ((size.height * ratio).ceil() + 1) *
           4;
+      final dock = MatrixUtils.transformRect(
+        region.getTransformTo(null),
+        Offset.zero & region.size,
+      );
+      final over = tester
+          .getRect(find.byType(TimelineGridScreenHost))
+          .intersect(dock);
+      // 🔬1.09 of the two: the corner beside the shorter part stays empty.
+      final due = (bytesOf(region.size) + bytesOf(over.size)) * 1.10;
       expect(
         region.rasterBytes,
-        inInclusiveRange(1, once * 1.05),
-        reason: '${region.rasterBytes} bytes for a dock of $once — '
-            '${(region.rasterBytes / once).toStringAsFixed(2)} times',
+        inInclusiveRange(1, due),
+        reason: '${region.rasterBytes} bytes for a dock and what of the '
+            'screen it shows, ${due.round()} at most',
       );
 
       if (verb == 'block move') {

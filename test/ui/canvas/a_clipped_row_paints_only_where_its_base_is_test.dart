@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -13,17 +14,12 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/camera_frame_corners.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/cels_parked_cold.dart';
@@ -35,16 +31,16 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// under it, its alpha the base's to lay once ([CompositeClip],
 /// [CompositeOpaque]).
 ///
-/// Both walks, the frame as it stands ([StackedFrame] — a canvas draws it
-/// so, and its one picture is made of it) and the camera (the export's),
-/// over the same shapes.
+/// On the frame as it stands ([StackedFrame] — a canvas draws it so, and its
+/// one picture, an export's too, is made of it).
 void main() {
+  opensTheEnginesScreens();
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // A row in multiply is composed over its backdrop in the shader.
-  setUpAll(LayerBlendShader.load);
-
-  const canvasSize = CanvasSize(width: 4, height: 4);
+  const canvasSize = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
 
   /// The base: grey, opaque at (0, 0), half at (1, 0), nothing at (2, 0).
   BitmapSurface base() => _surface({
@@ -99,59 +95,6 @@ void main() {
     expect(at(2)[3], 0, reason: 'where the base has nothing, nothing');
   }
 
-  group('the camera', () {
-    Future<Uint8List> render(
-      List<CompositeNode<CutFrameCompositeLayer>> nodes,
-    ) async {
-      final view = cameraViewOver(canvasSize.canvasRect);
-      final image = await const CameraFrameRenderService(
-        background: ui.Color(0x00000000),
-      ).renderThroughCamera(
-        canvasSize: canvasSize,
-        nodes: nodes,
-        pose: view.pose,
-        cameraFrameSize: view.frameSize,
-      );
-      final data = await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-      image.dispose();
-      return data!.buffer.asUint8List();
-    }
-
-    CutFrameCompositeLayer row(BitmapSurface surface) =>
-        CutFrameCompositeLayer(surface: surface, opacity: 1);
-
-    test('a clipped row shows by the base\'s alpha', () async {
-      expectClipped(
-        await render(clipped(row(base()), row(over(red)))),
-        red.sublist(0, 3),
-      );
-    });
-
-    test('in multiply it reads the base\'s whole colour, and lays by its '
-        'alpha', () async {
-      expectClipped(
-        await render(
-          clipped(
-            row(base()),
-            row(over(blue)),
-            blendMode: LayerBlendMode.multiply,
-          ),
-        ),
-        blueOnGrey,
-      );
-    });
-
-    test('the group lays at the base\'s strength', () async {
-      expectClipped(
-        await render(clipped(row(base()), row(over(red)), opacity: 0.5)),
-        red.sublist(0, 3),
-        strength: 0.5,
-      );
-    });
-  });
-
   group('the editing stack', () {
     const key = BrushFrameKey(
       projectId: ProjectId('p'),
@@ -180,8 +123,8 @@ void main() {
           home: Scaffold(
             body: Center(
               child: SizedBox(
-                width: 4,
-                height: 4,
+                width: defaultCelTileSize * 1.0,
+                height: defaultCelTileSize * 1.0,
                 child: TheFrameAsItStands(
                   nodes: nodes,
                   imageCache: cache,
@@ -210,9 +153,12 @@ void main() {
           .first;
       return (await tester.runAsync(() async {
         final recorder = ui.PictureRecorder();
-        const size = Size(4, 4);
+        const size = Size(defaultCelTileSize * 1.0, defaultCelTileSize * 1.0);
         painter.paint(Canvas(recorder, Offset.zero & size), size);
-        final image = await recorder.endRecording().toImage(4, 4);
+        final image = await recorder.endRecording().toImage(
+          defaultCelTileSize,
+          defaultCelTileSize,
+        );
         final data = await image.toByteData(
           format: ui.ImageByteFormat.rawStraightRgba,
         );
@@ -257,16 +203,18 @@ void main() {
   });
 }
 
-/// A 4×4 surface holding [row0] along its top row: each x → its RGBA.
+/// A surface of one tile at the engine's side ([defaultCelTileSize]) holding
+/// [row0] along its top row: each x → its RGBA.
 BitmapSurface _surface(Map<int, List<int>> row0) {
-  final pixels = Uint8List(4 * 4 * 4);
+  const side = defaultCelTileSize;
+  final pixels = Uint8List(side * side * 4);
   for (final MapEntry(key: x, value: rgba) in row0.entries) {
     pixels.setAll(x * 4, rgba);
   }
   return BitmapSurface(
-    canvasSize: const CanvasSize(width: 4, height: 4),
-    tileSize: 4,
-    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 4, pixels: pixels)},
+    canvasSize: const CanvasSize(width: side, height: side),
+    tileSize: side,
+    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: pixels)},
   );
 }
 

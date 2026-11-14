@@ -81,7 +81,7 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // A process with no field here has no fold: 用紙 and 美術, and the
+        // A process with no field here has no fold: 用紙, and the
         // stages the other holder keeps ([staffFieldsOf]).
         for (final process in LayerProcess.values)
           if (widget.fields.keys.any((mark) => mark.process == process))

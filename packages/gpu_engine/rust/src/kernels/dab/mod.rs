@@ -32,8 +32,11 @@
 // which 관제 opens (gpu-canonical-store 21:41).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod abi;
 pub(crate) mod blur;
+pub(crate) mod landing;
 pub(crate) mod stamp;
+pub(crate) mod stroke;
 #[cfg(test)]
 mod tests;
 
@@ -46,7 +49,7 @@ use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, whole,
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, sixteen_bit, whole,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -59,7 +62,8 @@ const NO_TABLE: u32 = u32::MAX;
 /// view and of the second plane, as many of each.
 const PILE_PAGES_AT: u32 = 2;
 
-// The C engine's flags (QA_DAB_FLAG_*), as dab.wgsl reads them.
+// A dab's flags, as dab.wgsl reads them (the numbers were the C dab
+// kernel's QA_DAB_FLAG_* and outlived it).
 const ERASE: u32 = 1;
 const ROUND: u32 = 2;
 const THRESHOLD: u32 = 32;
@@ -112,7 +116,7 @@ impl Texture {
         Some(Texture {
             id: MADE.fetch_add(1, Ordering::Relaxed),
             side,
-            words: texels.iter().map(|&texel| wide(texel)).collect(),
+            words: texels.iter().map(|&texel| sixteen_bit(texel)).collect(),
         })
     }
 }
@@ -137,7 +141,7 @@ pub(crate) struct Paper<'a> {
     pub(crate) height: bool,
 }
 
-/// A stroke's second tip (`BrushSecondStroke`, `qa_dual_view_rows`): the
+/// A stroke's second tip (`BrushSecondStroke`, `dualViewAlpha`): the
 /// plane its dabs pile on — alpha alone, a word a pixel, on pages as the
 /// planes, a tile at its page and slot —, and the view the stroke shows of
 /// the two: the second's
@@ -179,7 +183,7 @@ pub(crate) enum Edge {
     Contrast(f64),
 }
 
-/// A dab as the app has it (`qa_dab_spec`).
+/// A dab as the app has it (`BrushDabPlan`).
 #[derive(Clone, Copy)]
 pub(crate) struct Dab<'a> {
     pub(crate) centre: [f64; 2],
@@ -614,7 +618,7 @@ fn planned(
         ]);
     }
     if let Some(second) = second {
-        head[5..].copy_from_slice(&[second.mode, wide(second.density)]);
+        head[5..].copy_from_slice(&[second.mode, sixteen_bit(second.density)]);
     }
     let listed: usize = lists.iter().map(Vec::len).sum();
     let records_at = frame_at + tiles.len() * TILE_WORDS + listed;
@@ -679,15 +683,10 @@ impl Tables {
             return place;
         }
         let place = (self.at + self.words.len()) as u32;
-        self.words.extend(table.iter().map(|&entry| wide(entry)));
+        self.words.extend(table.iter().map(|&entry| sixteen_bit(entry)));
         self.placed.insert(key, place);
         place
     }
-}
-
-/// A number on 0..=1 on the 16-bit scale, rounded once.
-fn wide(value: f64) -> u32 {
-    (value * 65535.0).round() as u32
 }
 
 /// A scale as `per_unit` × 2^point in an integer under [`SCALE_BOUND`],
@@ -727,13 +726,13 @@ fn record(
         flags,
         red | green << 8 | blue << 16,
         alpha * 257,
-        wide(dab.opacity),
-        wide(dab.flow),
+        sixteen_bit(dab.opacity),
+        sixteen_bit(dab.flow),
         contrast,
         dab.evening.map_or(NO_TABLE, |table| tables.place(table)),
     ]);
     words[26] = NO_TABLE;
-    words[28] = dab.density.map_or(NO_TABLE, wide);
+    words[28] = dab.density.map_or(NO_TABLE, sixteen_bit);
     // How far from the centre anything is laid, and the major axis's reach.
     let (extent, major) = match dab.shape {
         Shape::Square => return Some(words),

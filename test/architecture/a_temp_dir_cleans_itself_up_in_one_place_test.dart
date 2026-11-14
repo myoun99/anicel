@@ -49,11 +49,10 @@ void main() {
     'test/services/persistence/a_run_that_ended_leaves_its_room_test.dart':
         'root().deleteSync(recursive: true);',
     // A FILE goes where the room's folder has to be — the shape of a revoked
-    // scope or a full disk — so the folder has to be gone first.
-    'test/services/a_cooled_cel_parks_on_disk_test.dart':
-        'room.deleteSync(recursive: true);',
-    // The same premise, for a wall's move whose cut the room will not take.
-    'test/services/a_pasteboard_that_moves_takes_every_picture_with_it_test.dart':
+    // scope or a full disk — so the folder has to be gone first. One seat
+    // since a third suite asked it (2026-11-14): a cooled cel, a wall's cut
+    // and a copy laid to another size ask `refuseTheRoom`.
+    'test/helpers/a_room_that_refuses.dart':
         'room.deleteSync(recursive: true);',
     // The stand-in coordinator replaces the destination whole, as the native
     // one does; a quiet failure would be a replace that did not happen.

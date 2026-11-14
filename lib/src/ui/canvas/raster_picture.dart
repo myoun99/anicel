@@ -1,7 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
 /// Ends [recorder] and rasters its picture to a [width]×[height] image,
 /// synchronously — the ONE spelling of a step that was copied eight times.
 ///
@@ -43,62 +41,11 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// layer stack's row images were held — until neither was kept
 /// (one-picture-per-frame ②-5a · ②-5b-1).
 ///
-/// [inFloats] rasters it a float a channel (`rgbaFloat32`), for a picture
-/// that holds numbers past a byte — a row sum's, an iris's table — where
-/// the engine's own choice is a byte a channel.
-ui.Image rasterPicture(
-  ui.PictureRecorder recorder,
-  int width,
-  int height, {
-  bool inFloats = false,
-}) => withPicture(
-  recorder,
-  (picture) => picture.toImageSync(
-    width,
-    height,
-    targetFormat: inFloats
-        ? ui.TargetPixelFormat.rgbaFloat32
-        : ui.TargetPixelFormat.dontCare,
-  ),
-);
-
-/// [shader] over the whole of a [width]×[height] raster, rastered as
-/// [rasterPicture] does — and laid as it gives it (`BlendMode.src`) where it
-/// is [inFloats]: over an empty raster the default blend gives the same, but
-/// a number past 1 is no colour a blend is promised to keep.
-///
-/// ⚠️The caller keeps [shader], and disposes it once this returns.
-ui.Image shadedRaster(
-  ui.Shader shader,
-  int width,
-  int height, {
-  bool inFloats = false,
-}) {
-  final recorder = ui.PictureRecorder();
-  final paint = ui.Paint()..shader = shader;
-  if (inFloats) {
-    paint.blendMode = ui.BlendMode.src;
-  }
-  ui.Canvas(recorder).drawRect(
-    ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    paint,
-  );
-  return rasterPicture(recorder, width, height, inFloats: inFloats);
-}
-
-/// [picture]'s plain snapshot, WAITED FOR — the tile compose's, spelled
-/// once so that the waits can be counted ([debugOnWaitedSnapshot]). ↩️The
-/// steps of a layer image's chain shared it (a halving, the cut of the ink)
-/// and were waited for once, at the chain's last step, until no row image
-/// was made (one-picture-per-frame ②-5b-1).
-Future<ui.Image> waitedSnapshot(ui.Picture picture, int width, int height) {
-  debugOnWaitedSnapshot?.call(width, height);
-  return picture.toImage(width, height);
-}
-
-/// Told of every [waitedSnapshot], with the size it rasters.
-@visibleForTesting
-void Function(int width, int height)? debugOnWaitedSnapshot;
+/// ↩️It rastered a float a channel too (`inFloats`), for a row sum's and an
+/// iris's table, and a shader over a whole raster (`shadedRaster`), till
+/// the Flutter chain went (the-flutter-fx-chain-is-a-second-chain).
+ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) =>
+    withPicture(recorder, (picture) => picture.toImageSync(width, height));
 
 /// Ends [recorder], hands the picture to [use], and releases it whatever
 /// [use] does — the one `finally` every raster above shares.

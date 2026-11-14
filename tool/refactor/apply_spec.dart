@@ -7,7 +7,7 @@
 // lives in the JSON and never touches a shell (decided 2026-09-02, after the
 // same anchors failed twice through argv and worked from a file).
 //
-//   dart run tool/refactor/apply_spec.dart <spec.json>
+//   dart tool/refactor/apply_spec.dart <spec.json>
 //
 // The spec is a JSON list of ops. Every pattern is a FULL-LINE regex (the
 // tool wraps it in ^(?:...)$ after stripping CR). Paths are absolute or

@@ -15,7 +15,6 @@ import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/device_viewport.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-69-Q4ⓒ (유저 2026-10-08): 「윤곽선은 손을 따라오고, 실제 결과는 따라
 /// 그린다」 — while the shape tool's 「일반」 line or its fill is dragged, its
@@ -139,7 +139,7 @@ void main() {
       coordinator.currentSurfaceOf(coordinator.activeFrameKey);
 
   int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
-      (surfacePixelRgba(celOf(coordinator), x, y) ?? 0) & 0xFF;
+      (surfaceRgbaInPlace(celOf(coordinator), x, y) ?? 0) & 0xFF;
 
   /// What laying the traced rectangle straight onto [base] lands — the
   /// shape tool's own area, by the builder and the commit, with nothing

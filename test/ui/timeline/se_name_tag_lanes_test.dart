@@ -168,8 +168,18 @@ void main() {
     expect(size(), 48, reason: '⛔전제: the size was typed');
 
     expect(
+      s.laneVerbs.resetsLaneGroup(seLayerId, seNameTagGroupLaneId),
+      isTrue,
+      reason: 'its Reset is lit off rest (F-583)',
+    );
+    expect(
       s.laneVerbs.resetLaneGroup(seLayerId, seNameTagGroupLaneId),
       isTrue,
+    );
+    expect(
+      s.laneVerbs.resetsLaneGroup(seLayerId, seNameTagGroupLaneId),
+      isFalse,
+      reason: 'back at rest, its Reset is out (F-583)',
     );
 
     expect(size(), SeNameTag.defaultStyle.fontSize);

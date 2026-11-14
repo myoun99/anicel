@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -15,7 +13,9 @@ import '../helpers/fill_pieces.dart';
 /// ↩️The box was the coverage grown by the expand alone, so a ramp that met
 /// its edge was cut there: the shape tool's 4px horizontal plain line read
 /// `86 · 100 · 100 · 86 · 14%`, the spread below it and not above, and the
-/// bucket lost its spread at the last cells it filled.
+/// bucket lost its spread at the last cells it filled. (The bucket's ramp is
+/// the engine kernel's: `the_fill_s_ramp_spreads_a_pixel_past_its_outline`,
+/// `kernels/flood/tests.rs`.)
 void main() {
   // The ramp alone: no expand, so the box was the coverage itself.
   const ramp = FloodFillOptions(expandPx: 0, antiAlias: true);
@@ -46,53 +46,6 @@ void main() {
     expect(across[22], greaterThan(0), reason: 'the column right of it');
     expect(across[1], across[22], reason: 'the same spread left and right');
     expect([across.first, across.last], [0, 0], reason: 'one pixel, no more');
-  });
-
-  test('🚨the bucket\'s ramp spreads past the last cells it filled, on every '
-      'side — onto the outline it stopped at', () {
-    // A white 16×16 raster with a black square outline (4,4)..(11,11):
-    // the bucket fills its inside, (5..10, 5..10).
-    const size = 16;
-    final rgb = Uint8List(size * size * 4)..fillRange(0, size * size * 4, 255);
-    for (var i = 4; i <= 11; i += 1) {
-      for (final (x, y) in [(i, 4), (i, 11), (4, i), (11, i)]) {
-        final at = (y * size + x) * 4;
-        rgb
-          ..[at] = 0
-          ..[at + 1] = 0
-          ..[at + 2] = 0;
-      }
-    }
-
-    final region = floodFillRegion(
-      rgb: rgb,
-      width: size,
-      height: size,
-      seedX: 8,
-      seedY: 8,
-      options: ramp,
-    )!;
-    int at(int x, int y) {
-      final lx = x - region.left;
-      final ly = y - region.top;
-      if (lx < 0 || ly < 0 || lx >= region.width || ly >= region.height) {
-        return 0;
-      }
-      return region.mask[ly * region.width + lx];
-    }
-
-    final onTheOutline = [at(8, 4), at(8, 11), at(4, 8), at(11, 8)];
-    expect(
-      onTheOutline,
-      everyElement(greaterThan(0)),
-      reason: 'top, bottom, left and right: the ramp reaches the outline',
-    );
-    expect(onTheOutline.toSet(), hasLength(1), reason: 'the same on each');
-    expect(
-      [at(8, 3), at(8, 12), at(3, 8), at(12, 8)],
-      everyElement(0),
-      reason: 'one pixel past the fill, no more',
-    );
   });
 
   test('what a finish reaches: the expand, and with the anti-alias one pixel '

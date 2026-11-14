@@ -46,6 +46,9 @@ import '../../helpers/an_empty_drawing_row.dart';
 Transitions transitionsOf(EditorSessionManager session) => session.transitions;
 
 void main() {
+  // Its frames lay SE name tags, laid out to measure them.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   EditorSessionManager open() {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
@@ -459,6 +462,7 @@ void main() {
             row.runtimeType,
             frameKey,
           ),
+          CanvasNameTagRow(:final tag) => (row.runtimeType, tag.layerId),
         },
     ];
     final before = drawn();

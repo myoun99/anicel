@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -13,6 +11,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -21,25 +20,37 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/app_kernels_ahead.dart';
+import 'package:anicel/src/native/engine_chain_holds.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
+import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
-    show PromotedStrokeTile;
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts;
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
+    show PromotedStrokeTile;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/media/viewer_page_loading.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
     show FramePictureKey;
+import 'package:anicel/src/ui/widgets/still_raster.dart' show TickSceneLayer;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuComposite, debugKernelsCompiledHere;
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
+import '../../helpers/a_shown_surface.dart';
+import '../../helpers/an_effect_sampled.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
@@ -50,15 +61,27 @@ import '../../helpers/settle_async.dart';
 /// frame's picture, made waiting for the plugin, and a stroke's steps go
 /// into it one patch at a time — a stroke shown late by the plugin's time.
 /// Beside each, the same frame with no plugin, as it always was.
+///
+/// A frame whose effect chain's kernels are still to be compiled waits as
+/// well (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦: 「선 = UI 스레드가
+/// 직접 하는 커널 컴파일 0개(시작 · S5 열기)」): the thread its frames are
+/// built on compiles none of them — the screen stays on the picture it
+/// showed while they are compiled off it, and shows the frame once they
+/// are.
+///
+/// While a frame waits for the engine so — its tools still to be opened,
+/// kernels still to be compiled — its place is marked (🗣️유저 2026-11-10,
+/// gpu-canonical-store-Q12: 「캔버스 자리에 준비 중 표시를 둔다」); while it
+/// waits for a plugin it is not.
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   // ⚠️Wide enough that a folder drawn whole with a plugin's reach on it
   // is held: none is past a page ([HeldSubtreeRasters]).
-  const canvasSize = CanvasSize(width: 128, height: 128);
-  const viewSize = Size(48, 40);
+  const canvasSize = CanvasSize(width: 8 * tileSize, height: 8 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const under = Color(0xFF203040);
-  const ink = [0x00, 0x40, 0x00, 0xFF];
   const stroke = [0x40, 0x00, 0x00, 0xFF];
+  const ink = [0x00, 0x40, 0x00, 0xFF];
   const other = [0x00, 0x00, 0x40, 0xFF];
   const key = BrushFrameKey(
     projectId: ProjectId('p'),
@@ -139,8 +162,11 @@ void main() {
       plugin: shiftingFxPluginDescription,
       values: const [],
     );
-    test('where a folder\'s or an adjustment\'s chain, or a row\'s past its '
-        'head, runs one — not where nothing runs it, nor at a cel\'s head', () {
+    // ↩️Not at a cel's head, while a plugin there ran on the CPU over the
+    // cel's own pixels as the cel was read — until it was a step of the
+    // chain (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
+    test('where a folder\'s or an adjustment\'s chain, or a row\'s anywhere '
+        'in it, runs one — not where nothing runs it', () {
       expect(waitsForItsPlugins(inAFolder([runs])), isTrue);
       expect(
         waitsForItsPlugins([
@@ -154,12 +180,13 @@ void main() {
       );
       final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3]);
       for (final row in <CanvasStackRow>[
-        CanvasActiveLayerRow(opacity: 1, frameKey: key, effects: [blur, runs]),
-        CanvasLayerImageRequest(
-          frameKey: key,
-          opacity: 1,
-          effects: [blur, runs],
-        ),
+        for (final effects in [
+          [blur, runs],
+          [runs],
+        ]) ...[
+          CanvasActiveLayerRow(opacity: 1, frameKey: key, effects: effects),
+          CanvasLayerImageRequest(frameKey: key, opacity: 1, effects: effects),
+        ],
       ]) {
         expect(
           waitsForItsPlugins([CompositeLeaf(row)]),
@@ -173,12 +200,14 @@ void main() {
       expect(
         waitsForItsPlugins([
           CompositeLeaf(
-            CanvasLayerImageRequest(frameKey: key, opacity: 1, effects: [runs]),
+            CanvasLayerImageRequest(
+              frameKey: key,
+              opacity: 1,
+              effects: [runsNot],
+            ),
           ),
         ]),
         isFalse,
-        reason: 'at a cel\'s head it runs over the cel\'s own pixels, as the '
-            'cel is read',
       );
     });
   });
@@ -208,39 +237,53 @@ void main() {
     return BitmapTile(size: tileSize, pixels: pixels);
   }
 
-  /// A canvas standing on [nodes]' frame — its one row inked at (4..8,
-  /// 4..8) — over a store on [gpu]; what [screen] shows, the overlay its
+  /// A canvas standing on [nodes]' frame — its one row inked from a quarter
+  /// of a tile to half of one, across and down, or its cel blank where
+  /// [penOnABlankCel] — over [store]; what [screen] shows, the overlay its
   /// pen's steps are shown by, and a hand of the pen's row anew — on another
-  /// frame's nodes where it is handed them.
+  /// frame's nodes where it is handed them, over another store's pictures
+  /// where it is handed one. Where [parked], the frame is shown as the
+  /// track stack shows a cut it parks on instead: whole, made where it is
+  /// missed, nothing of it drawn live.
   Future<
     ({
-      FramePictureStore<FramePictureKey> store,
+      EngineFramePictureStore<FramePictureKey> store,
       FramePictureKey picture,
       ActiveStrokeOverlayModel overlay,
-      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      Future<void> Function([
+        List<CompositeNode<CanvasStackRow>>? nodes,
+        EngineFramePictureStore<FramePictureKey>? laidBy,
+      ])
       handAnew,
     })
   >
   standOn(
     WidgetTester tester,
     GlobalKey screen,
-    List<CompositeNode<CanvasStackRow>> nodes,
-    RendersHeld gpu, {
-    int onceSide = framePictureSide,
+    List<CompositeNode<CanvasStackRow>> nodes, {
+    EngineFramePictureStore<FramePictureKey>? laidBy,
+    bool penOnABlankCel = false,
+    bool parked = false,
   }) async {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
-      key: BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-        tiles: {
-          TileCoord(x: 0, y: 0): tileOf(
-            TileCoord(x: 0, y: 0),
-            ink,
-            (at) => const Rect.fromLTRB(4, 4, 8, 8).contains(at),
-          ),
-        },
-      ),
+      if (!penOnABlankCel)
+        key: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: tileSize,
+          tiles: {
+            TileCoord(x: 0, y: 0): tileOf(
+              TileCoord(x: 0, y: 0),
+              ink,
+              (at) => const Rect.fromLTRB(
+                tileSize / 4,
+                tileSize / 4,
+                tileSize / 2,
+                tileSize / 2,
+              ).contains(at),
+            ),
+          },
+        ),
       over: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: tileSize,
@@ -248,59 +291,75 @@ void main() {
           TileCoord(x: 0, y: 1): tileOf(
             TileCoord(x: 0, y: 1),
             other,
-            (at) => const Rect.fromLTRB(4, 20, 8, 24).contains(at),
+            (at) => const Rect.fromLTRB(
+              tileSize / 4,
+              tileSize * 5 / 4,
+              tileSize / 2,
+              tileSize * 3 / 2,
+            ).contains(at),
           ),
         },
       ),
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    BitmapSurface thePensCel() => BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    // Pre-blended on its cel, as every stroke of the app's is: a step's
+    // tile is the row's own where it lands, on the engine's screen too.
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
+      ..preBlendBase = thePensCel();
     addTearDown(overlay.dispose);
     BitmapSurfacePainter aPainter() => BitmapSurfacePainter(
-      surface: BrushFrameDisplayCacheService(
-        frameStore: cels,
-        canvasSize: canvasSize,
-      ).prepareFramePreview(key).previewSurface,
+      surface: thePensCel(),
       overlayModel: overlay,
       showTransparentBackground: false,
       lineage: 'a-frame-that-waits-${nodes.hashCode}',
     );
-    final store = FramePictureStore<FramePictureKey>(
-      gpu: gpu,
-      onceSide: onceSide,
-    );
+    final store = laidBy ?? aStoreOfPictures();
     addTearDown(store.dispose);
     var standing = nodes;
-    final run = runOver(
+    StackRun runBy(EngineFramePictureStore<FramePictureKey> store) => runOver(
       images,
       store,
       canvasSize: canvasSize,
       stackOf: (_) => standing,
     );
+    var run = runBy(store);
     final shown = (
       cut: cut,
       frameIndex: 0,
       paintPaper: false,
       ghosts: FrameGhosts.none,
     );
+    // The pasteboard left of the page in view.
+    final viewport = CanvasViewport(panX: tileSize / 2, panY: tileSize / 4);
     Future<void> standWith(BitmapSurfacePainter painter) => tester.pumpWidget(
       onAScreen(
         screen,
         size: viewSize,
         under: under,
-        view: standingOn(
-          run,
-          picture: shown,
-          nodes: standing,
-          // The pasteboard left of the page in view.
-          viewport: CanvasViewport(panX: 8, panY: 4),
-          live: (
-            activeSurfacePainter: painter,
-            floatOverlay: null,
-            liftedRows: const {},
-          ),
-        ),
+        view: parked
+            ? FramePictureView(
+                run: run,
+                picture: shown,
+                nodes: standing,
+                viewport: viewport,
+                laysWhatItMisses: true,
+              )
+            : standingOn(
+                run,
+                picture: shown,
+                nodes: standing,
+                viewport: viewport,
+                live: (
+                  activeSurfacePainter: painter,
+                  floatOverlay: null,
+                  liftedRows: const {},
+                ),
+              ),
       ),
     );
     await standWith(aPainter());
@@ -308,8 +367,11 @@ void main() {
       store: store,
       picture: run.pictures.keyOfStack(nodes, shown),
       overlay: overlay,
-      handAnew: ([nodes]) {
+      handAnew: ([nodes, laidBy]) {
         standing = nodes ?? standing;
+        if (laidBy != null) {
+          run = runBy(laidBy);
+        }
         return standWith(aPainter());
       },
     );
@@ -342,6 +404,23 @@ void main() {
     return true;
   }
 
+  /// The mark a place stands while a frame shown in it waits for the engine
+  /// ([FrameWaitMark]) — stood for the test that asks, as the app stands it
+  /// (`flutter_test_config.dart` says why the corpus does not).
+  final theMark = find.byType(ViewerPageLoading);
+  void theMarkStands() {
+    FrameWaitMark.debugStands = true;
+    addTearDown(() => FrameWaitMark.debugStands = false);
+  }
+
+  /// The frames a place's word is heard after, and its mark built or taken
+  /// down in — and the one the mark's last turn had asked for.
+  Future<void> theMarkFollows(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+  }
+
   for (final (name, waits) in [
     ('waits for a plugin', true),
     ('runs none', false),
@@ -350,66 +429,40 @@ void main() {
         inAFolder(waits ? [aPlugin(ShiftingFxPlugin(by: 2))] : const []);
 
     testWidgets('a frame that $name, its picture not there yet: '
-        '${waits ? 'nothing drawn as it stands' : 'drawn as it stands'}', (
-      tester,
-    ) async {
+        '${waits ? 'nothing drawn as it stands' : 'drawn as it stands'}, '
+        'and its place not marked', (tester) async {
+      theMarkStands();
       final screen = GlobalKey();
-      final gpu = WritesNeverLand()..holdsRenders = true;
-      addTearDown(gpu.letAllThrough);
       final nodes = nodesOf();
       expect(waitsForItsPlugins(nodes), waits, reason: '⛔premise');
-      await standOn(tester, screen, nodes, gpu);
+      final store = StoreLayingNothing();
+      await itsToolsOpen(tester, store);
+      await standOn(tester, screen, nodes, laidBy: store);
       await tester.pump();
 
       expect(onlyTheScreen(await shotOf(tester, screen)), waits);
-    });
-
-    testWidgets('a frame that $name: a step no patch can follow — past what '
-        'its picture can be widened to — ${waits ? 'leaves the picture shown' : 'draws the frame '
-                  'as it stands'}', (tester) async {
-      final screen = GlobalKey();
-      final gpu = WritesNeverLand();
-      final (:store, :picture, :overlay, handAnew: _) = await standOn(
-        tester,
-        screen,
-        nodesOf(),
-        gpu,
-        onceSide: 1,
-      );
-      expect(
-        await settleAsync(tester, () => store.bytesOf(picture) != null),
-        isTrue,
-        reason: 'LIVENESS: the frame\'s picture is made',
-      );
-      await lendBothClocks(tester, rounds: 2);
-      final before = await shotOf(tester, screen);
-
-      await aStep(tester, overlay, TileCoord(x: -1, y: 0));
-      expect(
-        store.landingOf(keptByTheCanvas(tester, picture)),
-        isNull,
-        reason: '⛔premise: it cannot be widened — no patch goes past it',
-      );
-
-      expect(
-        differences(before, await shotOf(tester, screen)),
-        waits ? isEmpty : isNotEmpty,
-      );
-      await tester.pumpWidget(const SizedBox());
+      // 🗣️관제 2026-11-10 23:05: the mark is of the engine's getting ready,
+      // and a plugin's result is not that.
+      await theMarkFollows(tester);
+      expect(theMark, findsNothing);
     });
   }
 
-  // One step on its way at a time, as in every frame (F-512 — a frame that
-  // runs none is pinned by `a_stroke_written_into_the_picture_shown.dart`).
-  testWidgets('a frame that waits for a plugin: once a step is in, the steps '
-      'after it go in together, in the next patch', (tester) async {
-    final screen = GlobalKey();
-    final gpu = _WritesLandWhenLet();
-    final (:store, :picture, :overlay, handAnew: _) = await standOn(
+  /// A canvas standing on a frame that waits for a plugin, its picture
+  /// made, over [store].
+  Future<
+    ({
+      ActiveStrokeOverlayModel overlay,
+      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      handAnew,
+    })
+  >
+  standingMade(WidgetTester tester, _WritesWhenLet store) async {
+    final (picture: picture, :overlay, :handAnew, store: _) = await standOn(
       tester,
-      screen,
+      GlobalKey(),
       inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
-      gpu,
+      laidBy: store,
     );
     expect(
       await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -417,43 +470,102 @@ void main() {
       reason: 'LIVENESS: the frame\'s picture is made',
     );
     await lendBothClocks(tester, rounds: 2);
-    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
-    final first = store.landingOf(keptByTheCanvas(tester, picture));
-    await aStep(tester, overlay, TileCoord(x: 1, y: 1));
-    expect(
-      identical(store.landingOf(keptByTheCanvas(tester, picture)), first),
-      isTrue,
-      reason: 'the second waits behind the first',
-    );
+    return (overlay: overlay, handAnew: handAnew);
+  }
 
+  testWidgets('a frame that waits for a plugin: one write at a time, the '
+      'steps meanwhile going in together, in the next', (tester) async {
+    final store = _WritesWhenLet();
+    addTearDown(store.dispose);
+    final (:overlay, handAnew: _) = await standingMade(tester, store);
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    expect(store.asked, hasLength(1), reason: 'the first is on its way');
+    await aStep(tester, overlay, TileCoord(x: 1, y: 1));
+    await aStep(tester, overlay, TileCoord(x: 2, y: 2));
+    expect(store.asked, hasLength(1), reason: 'the others wait behind it');
+
+    store.letOneGo();
     expect(
-      await settleAsync(tester, () => gpu.writesWaiting > 0),
+      await settleAsync(tester, () => store.asked.length == 2),
       isTrue,
-      reason: 'LIVENESS: the first comes to be written',
+      reason: 'the next goes once the first is in',
     );
-    gpu.landOne();
+    final next = store.asked.last.rect;
     expect(
-      await settleAsync(tester, () {
-        final now = store.landingOf(keptByTheCanvas(tester, picture));
-        return now != null && !identical(now, first);
-      }),
+      next.contains(const Offset(tileSize * 1.5, tileSize * 1.5)) &&
+          next.contains(const Offset(tileSize * 2.5, tileSize * 2.5)),
       isTrue,
-      reason: 'the second goes in once the first is in',
+      reason: 'the steps that waited, in one',
     );
-    gpu.landAll();
+    store.letAllGo();
+    await lendBothClocks(tester, rounds: 2);
     await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('a frame that waits for a plugin: a step whose frame stands no '
       'more once its plugin has run does not go in', (tester) async {
-    final screen = GlobalKey();
-    final gpu = _WritesLandWhenLet()..landsAtOnce = true;
-    final nodes = inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]);
-    final (:store, :picture, :overlay, :handAnew) = await standOn(
+    final store = _WritesWhenLet();
+    addTearDown(store.dispose);
+    final (:overlay, :handAnew) = await standingMade(tester, store);
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    expect(store.asked, hasLength(1), reason: '⛔premise: on its way');
+    // The pen's row handed anew before it goes in: the frame the step was
+    // drawn by stands no more.
+    await handAnew();
+
+    store.letOneGo();
+    expect(
+      await settleAsync(tester, () => store.went.isNotEmpty),
+      isTrue,
+      reason: 'LIVENESS: answered',
+    );
+    expect(store.went, [false]);
+    store.letAllGo();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨A ROW THE PEN IS NOT ON IS THE SAME PICTURE AT EVERY STEP (float-warp-
+  // resamples-in-the-c-engine (2) ⓒ, 관제 2026-11-11): the frame is recorded
+  // again at each write the pen's steps make, and a plug-in's step met in it
+  // was run again each time — past a blur, 4 steps, 4 runs more (🔬11-11).
+  final aBlur = ResolvedLayerEffect(
+    kind: EffectKind.blur,
+    values: const [2, 0],
+  );
+
+  /// The pen's row, and over it the other's, whose chain is [effects].
+  List<CompositeNode<CanvasStackRow>> beside(
+    List<ResolvedLayerEffect> effects,
+  ) => [
+    live,
+    CompositeLeaf(
+      CanvasLayerImageRequest(frameKey: over, opacity: 1, effects: effects),
+    ),
+  ];
+
+  /// A canvas standing on [beside]'s frame for [effects], its picture
+  /// made, over a store that lets every write go.
+  Future<
+    ({
+      _WritesWhenLet store,
+      ActiveStrokeOverlayModel overlay,
+      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      handAnew,
+    })
+  >
+  standingBeside(
+    WidgetTester tester,
+    List<ResolvedLayerEffect> effects,
+  ) async {
+    final store = _WritesWhenLet()..letAllGo();
+    addTearDown(store.dispose);
+    final (:picture, :overlay, :handAnew, store: _) = await standOn(
       tester,
-      screen,
-      nodes,
-      gpu,
+      GlobalKey(),
+      beside(effects),
+      laidBy: store,
     );
     expect(
       await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -461,22 +573,280 @@ void main() {
       reason: 'LIVENESS: the frame\'s picture is made',
     );
     await lendBothClocks(tester, rounds: 2);
-    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
-    final step = store.landingOf(keptByTheCanvas(tester, picture));
-    expect(step, isNotNull, reason: '⛔premise: the step is on its way');
+    return (store: store, overlay: overlay, handAnew: handAnew);
+  }
 
-    // The pen's row handed anew before the plugin has run: the frame the
-    // step was drawn by stands no more.
-    await handAnew();
+  /// The pen's steps over a few tiles — [tiles] where a test names them —
+  /// each let land.
+  Future<void> stepsOf(
+    WidgetTester tester,
+    ActiveStrokeOverlayModel overlay, {
+    List<(int, int)> tiles = const [(0, 0), (1, 1), (2, 2), (1, 0)],
+  }) async {
+    for (final (x, y) in tiles) {
+      await aStep(tester, overlay, TileCoord(x: x, y: y));
+      await lendBothClocks(tester, rounds: 4);
+    }
+  }
 
-    bool? landed;
-    unawaited(step!.then((value) => landed = value));
+  // ↩️A plugin at the head of a cel's chain was the CPU's, run where the
+  // cel was shown and kept nowhere, until it was a step of the chain
+  // (float-warp-resamples-in-the-c-engine (2) C, 2026-11-11).
+  for (final (where, count, blurred) in [
+    ('a plugin at the head of its chain', 1, false),
+    ('a plugin past a blur', 1, true),
+    ('a plugin over what another made, past a blur,', 2, true),
+  ]) {
+    testWidgets('$where on a row the pen is not on runs once, however many '
+        'steps the pen makes elsewhere', (tester) async {
+      final runners = [
+        for (var at = 0; at < count; at += 1) ShiftingFxPlugin(by: 1),
+      ];
+      List<int> runs() => [for (final runner in runners) runner.renders];
+      final (:store, :overlay, handAnew: _) = await standingBeside(tester, [
+        if (blurred) aBlur,
+        for (final runner in runners) aPlugin(runner),
+      ]);
+      expect(runs(), everyElement(1), reason: '⛔premise: run for the picture');
+
+      await stepsOf(tester, overlay);
+
+      expect(
+        store.went.where((went) => went),
+        isNotEmpty,
+        reason: 'LIVENESS: the steps went in — the frame recorded again',
+      );
+      expect(runs(), everyElement(1));
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  // 🚨WHAT A KEPT STEP WAS RUN OVER IS ITS CEL, THE EFFECTS BEFORE IT AND
+  // ITS OWN SAMPLE (`FxPluginStages`): any of them another, it runs again.
+  ResolvedLayerEffect brightened(double by) =>
+      fx(EffectKind.brightnessContrast, {'brightness': by});
+  ResolvedLayerEffect aPluginAt(FxPluginRunner runner, int frame) =>
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(runner, frame: frame),
+      );
+  for (final (what, changed) in [
+    (
+      'a value before it',
+      (ShiftingFxPlugin runner) => [
+        aBlur,
+        brightened(30),
+        aPluginAt(runner, 0),
+      ],
+    ),
+    (
+      'its own sample',
+      (ShiftingFxPlugin runner) => [
+        aBlur,
+        brightened(10),
+        aPluginAt(runner, 1),
+      ],
+    ),
+  ]) {
+    testWidgets('a plugin on a row the pen is not on runs again where $what '
+        'is another', (tester) async {
+      final runner = ShiftingFxPlugin(by: 1);
+      final (:handAnew, store: _, overlay: _) = await standingBeside(tester, [
+        aBlur,
+        brightened(10),
+        aPluginAt(runner, 0),
+      ]);
+      expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+
+      await handAnew(beside(changed(runner)));
+
+      expect(
+        await settleAsync(tester, () => runner.renders > 1),
+        isTrue,
+        reason: 'run again',
+      );
+      expect(runner.renders, 2);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  // 🚨A STEP BEFORE IT THAT READS ANOTHER ROW reads what the plan does not
+  // name — a lens's blur map, the pen's row here — so nothing past it is
+  // kept: each picture of that row is another input.
+  testWidgets('a plugin past a lens blur that reads the pen\'s row runs '
+      'again as the pen steps', (tester) async {
+    final runner = ShiftingFxPlugin(by: 1);
+    final (:overlay, store: _, handAnew: _) = await standingBeside(tester, [
+      fx(
+        EffectKind.cameraLensBlur,
+        {'blurRadius': 5, 'blurFocalDistance': 128},
+        layers: {'blurMapLayer': key.layerId},
+      ),
+      aPlugin(runner),
+    ]);
+    expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+
+    await stepsOf(tester, overlay);
+
+    expect(runner.renders, greaterThan(1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨A KEPT STEP IS SHOWN AS ONE RUN IS: told how it went each time it is
+  // shown (`FxPluginRun.told`) — a plugin that failed, failed again.
+  testWidgets('a plugin that failed on a row the pen is not on is told so '
+      'at every picture it is kept for', (tester) async {
+    final tells = <bool>[];
+    final (:overlay, store: _, handAnew: _) = await standingBeside(tester, [
+      aBlur,
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(
+          ShiftingFxPlugin(by: 0, fails: true),
+          told: ({required failed}) => tells.add(failed),
+        ),
+      ),
+    ]);
+    final first = tells.length;
+    expect(first, greaterThan(0), reason: '⛔premise: run, and told');
+
+    await stepsOf(tester, overlay);
+
+    expect(tells.length, greaterThan(first), reason: 'told again, kept');
+    expect(tells, everyElement(isTrue));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨A CLOSED RUNNER'S RUN TELLS NOBODY (card a-closed-plugin-runners-run-
+  // tells-no-one, 2026-11-13; `FxPluginRun.tell`): the frame's picture, and
+  // the step kept for it, are told again as each is shown — by a run whose
+  // build the list let go, of nothing.
+  testWidgets('a plugin that failed on a row the pen is not on, its runner '
+      'closed since, is told of by none of the pictures it is kept for', (
+    tester,
+  ) async {
+    final tells = <bool>[];
+    final runner = ShiftingFxPlugin(by: 0, fails: true);
+    final (:overlay, :store, handAnew: _) = await standingBeside(tester, [
+      aBlur,
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: fxPluginRunOf(
+          runner,
+          told: ({required failed}) => tells.add(failed),
+        ),
+      ),
+    ]);
+    final first = tells.length;
+    expect(first, greaterThan(0), reason: '⛔premise: run, and told');
+
+    runner.close();
+    await stepsOf(tester, overlay);
+
     expect(
-      await settleAsync(tester, () => landed != null),
-      isTrue,
-      reason: 'LIVENESS: answered',
+      store.went.where((went) => went),
+      isNotEmpty,
+      reason: 'LIVENESS: the steps went in — the frame recorded again',
     );
-    expect(landed, isFalse);
+    expect(tells.length, first);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame\'s picture its plugin failed on, shown again once '
+      'that plugin\'s runner is closed, tells nobody', (tester) async {
+    final tells = <bool>[];
+    final runner = ShiftingFxPlugin(by: 0, fails: true);
+    final store = _WritesWhenLet()..letAllGo();
+    addTearDown(store.dispose);
+    final (:picture, overlay: _, handAnew: _, store: _) = await standOn(
+      tester,
+      GlobalKey(),
+      beside([
+        aBlur,
+        ResolvedLayerEffect(
+          kind: EffectKind.plugin,
+          plugin: shiftingFxPluginDescription,
+          values: const [],
+          run: fxPluginRunOf(
+            runner,
+            told: ({required failed}) => tells.add(failed),
+          ),
+        ),
+      ]),
+      laidBy: store,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    void shownAgain() => store.peek(picture)!.hold().release();
+    final made = tells.length;
+    shownAgain();
+    expect(tells.length, made + 1, reason: '⛔premise: told again, shown');
+    expect(tells.last, isTrue);
+
+    runner.close();
+    shownAgain();
+
+    expect(tells.length, made + 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // What a picture tells again is what its steps told as it was made AND as
+  // each was composed in since (`EngineFramePicture._told`, 9106b7200): a
+  // step that drew over what the pen put tells that, not its making's.
+  testWidgets('a frame\'s picture shown again after a pen\'s step went in '
+      'tells what its plugin told of that step', (tester) async {
+    final tells = <bool>[];
+    final store = _WritesWhenLet()..letAllGo();
+    addTearDown(store.dispose);
+    final (:picture, :overlay, handAnew: _, store: _) = await standOn(
+      tester,
+      GlobalKey(),
+      [
+        CompositeLeaf(
+          CanvasActiveLayerRow(
+            opacity: 1,
+            frameKey: key,
+            effects: [
+              ResolvedLayerEffect(
+                kind: EffectKind.plugin,
+                plugin: shiftingFxPluginDescription,
+                values: const [],
+                run: fxPluginRunOf(
+                  _DrawsOverTheStroke(stroke),
+                  told: ({required failed}) => tells.add(failed),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      laidBy: store,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    expect(tells.last, isTrue, reason: '⛔premise: no stroke, it fails');
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    await lendBothClocks(tester, rounds: 4);
+    expect(store.went, contains(true), reason: 'LIVENESS: the step went in');
+    expect(tells.last, isFalse, reason: '⛔premise: over the stroke, draws');
+
+    tells.clear();
+    store.peek(store.lastTo!)!.hold().release();
+
+    expect(tells, [false]);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -490,6 +860,88 @@ void main() {
         at ~/ 4 % shot.width,
   };
 
+  // 🚨THE PLACE A STEP IS KEPT IN IS THE PEN'S FRAME'S (🗣️유저 2026-10-27,
+  // Q3 = c: 「편집 중인 프레임의 위 폴더만」; card a-stroke-step-reads-back-
+  // and-pictures-each-tile-it-moved, 관제 2026-11-13): the frame beside the
+  // one drawn on, made ahead between two strokes, asks the same cel under
+  // its own moment — it runs its own, and the place stays the pen's.
+  // ↩️It took the place, and each stroke's first write ran the frame's
+  // plug-ins again (🔬a stroke's first ink 26–32 ms → 552–680 ms, S5_BA cut
+  // 352, 11-13).
+  testWidgets('a frame made ahead between two strokes runs its plugin at '
+      'its own moment and takes no place: the next stroke runs none', (
+    tester,
+  ) async {
+    final runner = _ShiftsByItsFrame();
+    List<CompositeNode<CanvasStackRow>> at(int frame) =>
+        beside([aPluginAt(runner, frame)]);
+    final (:store, :overlay, :handAnew) = await standingBeside(tester, [
+      aPluginAt(runner, 0),
+    ]);
+    expect(runner.renders, 1, reason: '⛔premise: run for the picture');
+    Future<void> written() async => expect(
+      await settleAsync(tester, () => store.went.length == store.asked.length),
+      isTrue,
+      reason: 'LIVENESS: every write asked went',
+    );
+    // The frame after it stood on and left: the cel's place holds that
+    // frame's moment now, and the first frame's picture is there still —
+    // nothing is laid as the canvas comes back to it.
+    await handAnew(at(1));
+    expect(
+      await settleAsync(tester, () => runner.renders == 2),
+      isTrue,
+      reason: '⛔premise: the frame after it, laid',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    await handAnew(at(0));
+    await lendBothClocks(tester, rounds: 4);
+    expect(runner.renders, 2, reason: '⛔premise: its picture is there');
+
+    await stepsOf(tester, overlay);
+    await written();
+    expect(store.went, contains(true), reason: 'LIVENESS: the steps went in');
+    expect(
+      runner.renders,
+      3,
+      reason: 'run for the stroke\'s first write, and kept by it for every '
+          'step after',
+    );
+
+    // The frame two on, made ahead as a walk makes it: the same cel, at
+    // its own moment.
+    final view = tester.widget<FramePictureView>(theFramesPicture());
+    final ahead = (await tester.runAsync(
+      () => view.run.pictures.pictureOf(at(2), (
+        cut: cut,
+        frameIndex: 2,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      ), shouldAbort: () => false),
+    ))!;
+    addTearDown(ahead.release);
+    expect(runner.renders, 4, reason: 'run at its own moment, for it');
+    // What the plugin makes at that moment — three to the right — is laid.
+    final row = pixelsOfPicture(
+      ahead,
+      const Rect.fromLTWH(0, tileSize * 5 / 4, tileSize * 1.0, 1),
+    );
+    expect(inkColumnsOf((rgba: row, width: tileSize), colour: other), {
+      for (var x = tileSize ~/ 4; x < tileSize ~/ 2; x += 1) x + 3,
+    });
+
+    final went = store.went.length;
+    await stepsOf(tester, overlay, tiles: const [(3, 1), (2, 1), (3, 2)]);
+    await written();
+    expect(
+      store.went.skip(went),
+      contains(true),
+      reason: 'LIVENESS: the next stroke\'s steps went in',
+    );
+    expect(runner.renders, 4);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   /// What [screen] shows once [nodes]' frame stands there, its picture
   /// made.
   Future<Shot> shownOnceMade(
@@ -501,7 +953,6 @@ void main() {
       tester,
       screen,
       nodes,
-      WritesNeverLand(),
     );
     expect(
       await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -546,13 +997,10 @@ void main() {
   testWidgets('a frame that waits for a plugin, handed another whose picture '
       'is not there yet, stays on the picture it showed', (tester) async {
     final screen = GlobalKey();
-    final gpu = WritesNeverLand();
-    addTearDown(gpu.letAllThrough);
     final (:store, :picture, overlay: _, :handAnew) = await standOn(
       tester,
       screen,
       inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
-      gpu,
     );
     expect(
       await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -563,56 +1011,794 @@ void main() {
     final before = await shotOf(tester, screen);
     expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
 
-    gpu.holdsRenders = true;
     await handAnew(inAFolder([aPlugin(ShiftingFxPlugin(by: 3))]));
     await tester.pump();
 
     expect(differences(before, await shotOf(tester, screen)), isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
+
+  /// What a frame is laid with, on a composite of its own whose effect
+  /// chains' kernels are still to be compiled — every other kernel the app
+  /// compiles ahead compiled, and off this isolate, as the app compiles
+  /// them — and how many kernels this thread had built by then.
+  Future<({EngineFrameTools tools, int built})> toolsWhoseChainsAreToCome(
+    WidgetTester tester,
+  ) async {
+    AppKernels.debugCompileHere = false;
+    addTearDown(() => AppKernels.debugCompileHere = true);
+    final composite = (await tester.runAsync(() async {
+      await compileAppKernelsAhead();
+      // Showing on screens as a test's are laid ([shownSurfaceOf]), which
+      // is not on every platform as the app's own are.
+      final screen = shownSurfaceOf(1, 1);
+      final bgra = screen.bgra;
+      screen.free();
+      return GpuComposite.opening(appGpuEngine, bgra: bgra);
+    }))!;
+    // ⚠️Before the store that lays with it is made: freed after it.
+    addTearDown(() {
+      // ⚠️Freed only once its chains' compile is through: one on its way
+      // holds it. Every test here waits for that; one that failed before
+      // it leaves the composite to the process.
+      if (!composite.chainsAreToCome) {
+        composite.free();
+      }
+    });
+    final letters = (await tester.runAsync(
+      () => EngineLetters.open(composite),
+    ))!;
+    // Nor has the engine them: the app's own composite compiled its chains
+    // in the list, and a kernel the engine keeps is any composite's, with
+    // nothing to compile (rust/src/device.rs, `Kernels`).
+    appGpuEngine.debugForgetKernels();
+    expect(composite.chainsAreToCome, isTrue, reason: '⛔premise');
+    return (
+      tools: (composite: composite, letters: letters),
+      built: debugKernelsCompiledHere,
+    );
+  }
+
+  final blurs = fx(EffectKind.blur, {'blurriness': 3});
+
+  // 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에 준비 중 표시를
+  // 둔다」 — its place is marked while it waits, and nothing turns once the
+  // frame is shown (🗣️관제 2026-11-10 23:05: 「준비가 끝나면 표시가 프레임을
+  // 돌리지 않는다」).
+  testWidgets('a frame whose chain\'s kernels are still to be compiled, '
+      'nothing shown yet: nothing drawn till they are, none compiled here, '
+      'and its place marked till it is shown', (tester) async {
+    theMarkStands();
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final screen = GlobalKey();
+    // No picture comes: what is shown is the frame as it stands.
+    final store = StoreLayingNothing(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    await standOn(tester, screen, inAFolder([blurs]), laidBy: store);
+    await theMarkFollows(tester);
+
+    // ⚠️Before the real clock is lent a turn: the compile, asked for by the
+    // paint above, is through within one where the driver kept its kernels.
+    expect(theMark, findsOneWidget);
+    expect(onlyTheScreen(await shotOf(tester, screen)), isTrue);
+    expect(
+      tester.layers.whereType<TickSceneLayer>(),
+      isEmpty,
+      reason: 'no layer of a texture nothing was presented on',
+    );
+    expect(debugKernelsCompiledHere, built);
+
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: shown once they are compiled',
+    );
+    expect(debugKernelsCompiledHere, built);
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  // 띄운다 — 그때까지 고리」 — a frame the engine could show already is kept
+  // from the screen all the same, while a press on it would still stop the
+  // app for a kernel's compile.
+  testWidgets('a frame the app holds for its engine, its tools open and '
+      'nothing to wait for: nothing of it on the screen till the app is let '
+      'go', (tester) async {
+    holdTheAppForItsEngine();
+    addTearDown(debugLetTheAppGo);
+    final screen = GlobalKey();
+    final store = StoreLayingNothing();
+    await itsToolsOpen(tester, store);
+    await standOn(tester, screen, inAFolder(const []), laidBy: store);
+    await tester.pump();
+
+    expect(onlyTheScreen(await shotOf(tester, screen)), isTrue);
+
+    debugLetTheAppGo();
+    await tester.pump();
+
+    expect(
+      onlyTheScreen(await shotOf(tester, screen)),
+      isFalse,
+      reason: 'drawn as it stands, by the word alone — nothing handed anew',
+    );
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame handed another whose chain\'s kernels are still to be '
+      'compiled stays on the picture it showed till they are', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final screen = GlobalKey();
+    final store = StoreLayingNothing(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final (store: _, picture: _, overlay: _, :handAnew) = await standOn(
+      tester,
+      screen,
+      inAFolder(const []),
+      laidBy: store,
+    );
+    await tester.pump();
+    final before = await shotOf(tester, screen);
+    expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
+
+    await handAnew(inAFolder([blurs]));
+
+    expect(differences(before, await shotOf(tester, screen)), isEmpty);
+    expect(
+      await settleAsync(
+        tester,
+        () async =>
+            differences(before, await shotOf(tester, screen)).isNotEmpty,
+      ),
+      isTrue,
+      reason: 'LIVENESS: the frame handed is shown once they are compiled',
+    );
+    expect(debugKernelsCompiledHere, built);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame whose chain\'s kernels are still to be compiled has '
+      'its picture made once they are, its store saying it waits till '
+      'then', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final store = StoreTellingItsWrites(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final saidToWait = <bool>[];
+    store.waits.addListener(() => saidToWait.add(store.waitsForKernels));
+    final (store: _, :picture, overlay: _, handAnew: _) = await standOn(
+      tester,
+      GlobalKey(),
+      inAFolder([blurs]),
+      laidBy: store,
+    );
+    expect(store.laid, contains(picture), reason: '⛔premise: on its way');
+    expect(store.bytesOf(picture), isNull, reason: '⛔premise: not made yet');
+
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: made once they are compiled',
+    );
+    expect(tester.takeException(), isNull);
+    expect(debugKernelsCompiledHere, built);
+    expect(saidToWait, [true, false]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // A blank cel lays no picture, so none of its row's chain: the frame's
+  // picture is made with the kernels still to come, and it is the pen's
+  // first step that names the chain — where a step is written into the
+  // picture shown.
+  testWidgets('a pen\'s first step on a blank cel under a blur, the '
+      'chain\'s kernels still to be compiled: the screen stays as it was '
+      'till they are', (tester) async {
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final screen = GlobalKey();
+    final store = StoreTellingItsWrites(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final (store: _, :picture, :overlay, handAnew: _) = await standOn(
+      tester,
+      screen,
+      [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, frameKey: key, effects: [blurs]),
+        ),
+        const CompositeLeaf(
+          CanvasLayerImageRequest(frameKey: over, opacity: 1),
+        ),
+      ],
+      laidBy: store,
+      penOnABlankCel: true,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    expect(
+      tools.composite.chainsAreToCome,
+      isTrue,
+      reason: '⛔premise: made with no chain laid',
+    );
+    final before = await shotOf(tester, screen);
+    expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
+
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+
+    expect(
+      store.patched,
+      isNotEmpty,
+      reason: '⛔premise: the step was to be written into the picture',
+    );
+    expect(differences(before, await shotOf(tester, screen)), isEmpty);
+    expect(
+      await settleAsync(
+        tester,
+        () async =>
+            differences(before, await shotOf(tester, screen)).isNotEmpty,
+      ),
+      isTrue,
+      reason: 'LIVENESS: the step is shown once they are compiled',
+    );
+    expect(debugKernelsCompiledHere, built);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🗣️관제 2026-11-11 00:28: 「컴파일이 실패한 뒤 … 고리가 영원히 돌거나 직전
+  // 그림에 영원히 머문다. 실제 실패가 그 끝나지 않는 재시도로 가지 않는지」
+  // — a compile that ends in an error ends the wait as one that ends well
+  // does: it is said by name, once, and the frame is laid by its paint all
+  // the same, which compiles what it runs or says why it cannot (as a frame
+  // the driver refuses is said, `ScreenTexture.present`).
+
+  /// The chains' compile a test ends in an error ([GpuComposite
+  /// .debugChainsCompile]) — made in [zone], the zone of what waits for it:
+  /// an error goes to no listener of another zone's.
+  Completer<void> theChainsCompileToFail({Zone? zone}) {
+    final failed = (zone ?? Zone.current).run(Completer<void>.new);
+    GpuComposite.debugChainsCompile = () => failed.future;
+    addTearDown(() => GpuComposite.debugChainsCompile = null);
+    return failed;
+  }
+
+  testWidgets('a frame whose chain\'s kernels could not be compiled off '
+      'this isolate: said by name, laid by its paint all the same, its '
+      'place marked no more and nothing turning', (tester) async {
+    theMarkStands();
+    final (:tools, :built) = await toolsWhoseChainsAreToCome(tester);
+    final failed = theChainsCompileToFail();
+    final screen = GlobalKey();
+    // No picture comes: what waits for the compile is the paint alone.
+    final store = StoreLayingNothing(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    await standOn(tester, screen, inAFolder([blurs]), laidBy: store);
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked while it waits');
+    expect(
+      onlyTheScreen(await shotOf(tester, screen)),
+      isTrue,
+      reason: '⛔premise: nothing drawn yet',
+    );
+
+    final failure = StateError('the chains would not compile');
+    failed.completeError(failure);
+    // The word of it, then the paint it asks for.
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), same(failure));
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: laid by its paint',
+    );
+    expect(
+      debugKernelsCompiledHere,
+      greaterThan(built),
+      reason: 'compiled where the frame is run, as before any compiled ahead',
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull, reason: 'said once');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a cut parked on whose picture waits for kernels that could '
+      'not be compiled: its making fails once and is said by name, its '
+      'store waits no more, its place is marked no more — and the frame is '
+      'drawn as it stands', (tester) async {
+    theMarkStands();
+    final (:tools, built: _) = await toolsWhoseChainsAreToCome(tester);
+    // What waits is the store's line, in no one's zone.
+    final failed = theChainsCompileToFail(zone: Zone.root);
+    final store = StoreTellingItsWrites(tools: () async => tools);
+    await itsToolsOpen(tester, store);
+    final saidToWait = <bool>[];
+    store.waits.addListener(() => saidToWait.add(store.waitsForKernels));
+    final screen = GlobalKey();
+    final (store: _, :picture, overlay: _, handAnew: _) = await standOn(
+      tester,
+      screen,
+      [
+        CompositeGroup<CanvasStackRow>(
+          children: const [
+            CompositeLeaf(CanvasLayerImageRequest(frameKey: over, opacity: 1)),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: [blurs],
+        ),
+      ],
+      laidBy: store,
+      parked: true,
+    );
+    expect(
+      await settleAsync(tester, () => store.waitsForKernels),
+      isTrue,
+      reason: 'LIVENESS: its line stands behind the compile',
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked while it waits');
+
+    final failure = StateError('the chains would not compile');
+    failed.completeError(failure);
+
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: drawn as it stands, its making given up',
+    );
+    expect(tester.takeException(), same(failure));
+    expect(saidToWait, [true, false]);
+    expect(store.bytesOf(picture), isNull, reason: 'no picture of it was made');
+    expect(
+      store.laid.where((key) => key == picture),
+      hasLength(1),
+      reason: 'asked for once: not made again and again',
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull, reason: 'said once');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  /// A canvas standing on a frame over a store whose tools are still to be
+  /// opened, the app's engine open by then for the screen it shows through
+  /// — and what opens them, or says they will not be: in no one's zone, as
+  /// the app's are opened — an error goes to no listener of another zone's.
+  Future<
+    ({
+      EngineFramePictureStore<FramePictureKey> store,
+      Completer<EngineFrameTools> opened,
+      EngineFrameTools tools,
+    })
+  >
+  standingBeforeItsTools(WidgetTester tester) async {
+    final tools = (await tester.runAsync(() => appEngineFrameTools))!;
+    final opened = Zone.root.run(Completer<EngineFrameTools>.new);
+    final store = StoreLayingNothing(tools: () => opened.future);
+    await standOn(tester, GlobalKey(), inAFolder(const []), laidBy: store);
+    await theMarkFollows(tester);
+    return (store: store, opened: opened, tools: tools);
+  }
+
+  testWidgets('a frame whose engine\'s tools are still to be opened marks '
+      'its place till they are, and nothing turns once they are', (
+    tester,
+  ) async {
+    theMarkStands();
+    final (:store, :opened, :tools) = await standingBeforeItsTools(tester);
+    expect(theMark, findsOneWidget);
+
+    await tester.runAsync(() {
+      opened.complete(tools);
+      return store.tools;
+    });
+    await theMarkFollows(tester);
+
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🗣️유저 2026-11-11: 「캔버스든 타임라인이든 구분안두고 … 공용창 띄워서」 ·
+  // gpu-canonical-store-Q16 「창 한가운데 하나」 — the app stands behind its
+  // one wait window while it is held, and a place whose
+  // frames wait meanwhile, as they do for their tools, turns no mark under
+  // it.
+  testWidgets('a place whose frames wait stands no mark while the app is '
+      'held for its engine, and its own once the app is let go', (
+    tester,
+  ) async {
+    theMarkStands();
+    holdTheAppForItsEngine();
+    addTearDown(debugLetTheAppGo);
+    final (:store, :opened, :tools) = await standingBeforeItsTools(tester);
+    expect(theMark, findsNothing);
+
+    debugLetTheAppGo();
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: 'its tools are still to come');
+
+    await tester.runAsync(() {
+      opened.complete(tools);
+      return store.tools;
+    });
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame whose engine would not open marks its place no more: '
+      'nothing waits for tools that will not come', (tester) async {
+    theMarkStands();
+    final (:store, :opened, tools: _) = await standingBeforeItsTools(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked till then');
+
+    opened.completeError(StateError('no engine'));
+    expect(
+      await settleAsync(tester, () => !store.toolsAreToCome),
+      isTrue,
+      reason: 'LIVENESS: found unable to open',
+    );
+    await theMarkFollows(tester);
+
+    expect(theMark, findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a canvas taken down with its place while it is marked says '
+      'nothing to a place that is gone', (tester) async {
+    theMarkStands();
+    await standingBeforeItsTools(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked');
+
+    await tester.pumpWidget(const SizedBox());
+
+    expect(tester.takeException(), isNull);
+  });
+
+  /// A cut parked on: one row, shown whole.
+  const parkedOn = <CompositeNode<CanvasStackRow>>[
+    CompositeLeaf(CanvasLayerImageRequest(frameKey: over, opacity: 1)),
+  ];
+
+  // The store's line stands behind kernels still to be compiled
+  // ([EngineFramePictureStore.waitsForKernels]): the place is marked where
+  // nothing of the frame is drawn till its picture is there, and not where
+  // the frame is drawn as it stands meanwhile — it is on the screen.
+  for (final (name, nodesOf, parked, marked) in [
+    ('a canvas standing on it', () => inAFolder(const []), false, false),
+    ('a cut parked on, shown whole', () => parkedOn, true, true),
+    (
+      'a canvas standing on it, where it waits for a plugin besides',
+      () => inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
+      false,
+      true,
+    ),
+  ]) {
+    testWidgets('a frame whose picture is on its way behind kernels still to '
+        'be compiled, $name: its place '
+        '${marked ? 'marked while they are' : 'not marked'}', (tester) async {
+      theMarkStands();
+      final store = _OnItsWayAndTold();
+      await itsToolsOpen(tester, store);
+      await standOn(
+        tester,
+        GlobalKey(),
+        nodesOf(),
+        laidBy: store,
+        parked: parked,
+      );
+      await theMarkFollows(tester);
+      expect(theMark, findsNothing, reason: 'on its way alone marks nothing');
+
+      store.said.value = true;
+      await theMarkFollows(tester);
+      expect(theMark, marked ? findsOneWidget : findsNothing);
+
+      store.said.value = false;
+      await theMarkFollows(tester);
+      expect(theMark, findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('a cut parked on whose picture is there, its store\'s line '
+      'behind kernels still to be compiled: its place not marked', (
+    tester,
+  ) async {
+    theMarkStands();
+    final store = _MadeAndTold();
+    await itsToolsOpen(tester, store);
+    final (store: _, :picture, overlay: _, handAnew: _) = await standOn(
+      tester,
+      GlobalKey(),
+      parkedOn,
+      laidBy: store,
+      parked: true,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: its picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    store.said.value = true;
+    await theMarkFollows(tester);
+
+    expect(theMark, findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨A MAKING THAT THREW IS NOT ASKED FOR AGAIN (🗣️관제 2026-11-11: 「실제
+  // 실패가 그 끝나지 않는 재시도로 가지 않는지」). A screen that draws nothing
+  // of its frame till its picture is there asked for the picture again the
+  // moment its making had thrown, for as long as it threw, and said so by
+  // name each time. It is drawn as its cels stand, as a frame the warmer's
+  // making threw at is (`FramePictures.noteFailure`, 2026-10-24: 「a frame
+  // whose making threw is drawn as its cels stand」).
+  testWidgets('a cut parked on whose picture\'s making throws: asked for '
+      'once, said by name once, and drawn as it stands', (tester) async {
+    final failure = StateError('the driver refused');
+    final store = StoreWhoseLaysThrow(failure);
+    await itsToolsOpen(tester, store);
+    final screen = GlobalKey();
+    await standOn(tester, screen, parkedOn, laidBy: store, parked: true);
+
+    expect(
+      await settleAsync(
+        tester,
+        () async => !onlyTheScreen(await shotOf(tester, screen)),
+      ),
+      isTrue,
+      reason: 'LIVENESS: drawn as it stands',
+    );
+    await lendBothClocks(tester, rounds: 4);
+
+    expect(store.laid, hasLength(1));
+    expect(tester.takeException(), same(failure));
+    expect(tester.takeException(), isNull, reason: 'said once');
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame taken down while its place is marked marks it no '
+      'more, and hears its store no more', (tester) async {
+    theMarkStands();
+    final store = _OnItsWayAndTold();
+    await itsToolsOpen(tester, store);
+    final screen = GlobalKey();
+    await standOn(tester, screen, parkedOn, laidBy: store, parked: true);
+    store.said.value = true;
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget, reason: '⛔premise: marked');
+    expect(store.said.isHeard, isTrue, reason: '⛔premise: heard');
+
+    // The place stays; its frame goes.
+    await tester.pumpWidget(
+      onAScreen(screen, size: viewSize, under: under, view: const SizedBox()),
+    );
+    await theMarkFollows(tester);
+
+    expect(theMark, findsNothing);
+    expect(store.said.isHeard, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame handed another store\'s pictures marks its place by '
+      'that store — its tools till they are opened, then its line — and '
+      'hears the one it had no more', (tester) async {
+    theMarkStands();
+    final tools = (await tester.runAsync(() => appEngineFrameTools))!;
+    final opened = Completer<EngineFrameTools>();
+    final had = _OnItsWayAndTold();
+    final handed = _OnItsWayAndTold(tools: () => opened.future);
+    addTearDown(handed.dispose);
+    await itsToolsOpen(tester, had);
+    final (store: _, picture: _, overlay: _, :handAnew) = await standOn(
+      tester,
+      GlobalKey(),
+      parkedOn,
+      laidBy: had,
+      parked: true,
+    );
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing, reason: '⛔premise: not marked');
+    expect(had.said.isHeard, isTrue, reason: '⛔premise: heard');
+
+    await handAnew(null, handed);
+    await theMarkFollows(tester);
+
+    expect(had.said.isHeard, isFalse);
+    expect(theMark, findsOneWidget, reason: 'its tools are still to be opened');
+
+    await tester.runAsync(() {
+      opened.complete(tools);
+      return handed.tools;
+    });
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing, reason: 'opened, and its line waits not');
+
+    handed.said.value = true;
+    await theMarkFollows(tester);
+    expect(theMark, findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
-/// A GPU whose writes go in when let ([landOne]) — or at once, where it
-/// [landsAtOnce] — the texels taken for the picture's own.
-class _WritesLandWhenLet extends RendersHeld {
-  bool landsAtOnce = false;
-  final List<Completer<bool>> _writes = [];
+/// Says its line waits for kernels still to be compiled
+/// ([EngineFramePictureStore.waitsForKernels]) when a test has it say so
+/// ([said]).
+mixin _ToldToSayItWaits on EngineFramePictureStore<FramePictureKey> {
+  final _Said said = _Said();
 
-  int get writesWaiting => _writes.length;
+  @override
+  bool get waitsForKernels => said.value;
 
-  void landOne() => _writes.removeAt(0).complete(true);
+  @override
+  Listenable get waits => _news;
+  late final Listenable _news = Listenable.merge([super.waits, said]);
+}
 
-  void landAll() {
-    landsAtOnce = true;
-    for (final write in _writes) {
-      write.complete(true);
+/// What a store told to says ([_ToldToSayItWaits]), and whether any view
+/// hears it.
+class _Said extends ValueNotifier<bool> {
+  _Said() : super(false);
+
+  bool get isHeard => hasListeners;
+}
+
+/// A store whose lays stay on their way.
+class _OnItsWayAndTold = StoreLayingNothing with _ToldToSayItWaits;
+
+/// A store whose pictures are made.
+class _MadeAndTold = StoreTellingItsWrites with _ToldToSayItWaits;
+
+/// A plugin that moves every pixel right by one more than the frame it
+/// is run at: what it makes at one moment is not what it makes at another.
+/// Hands its input back where a pixel of it is [colour]; fails elsewhere.
+final class _DrawsOverTheStroke implements FxPluginRunner {
+  _DrawsOverTheStroke(this.colour);
+
+  final List<int> colour;
+
+  @override
+  Future<void>? get toCome => null;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) async {
+    final pixels = input.pixels;
+    for (var at = 0; at < pixels.length; at += 4) {
+      if (pixels[at] == colour[0] &&
+          pixels[at + 1] == colour[1] &&
+          pixels[at + 2] == colour[2] &&
+          pixels[at + 3] == colour[3]) {
+        return Uint8List.fromList(pixels);
+      }
     }
-    _writes.clear();
+    return null;
   }
 
   @override
-  Object? hold(ui.Image image) => image.clone();
-
-  /// None: its writes take no texels, so a picture is rastered at once.
-  @override
-  Object? allocate(int width, int height) => null;
+  void close() {}
 
   @override
-  int levelsOf(Object held) {
-    final image = held as ui.Image;
-    return math.max(image.width, image.height).bitLength;
+  bool get closed => false;
+}
+
+final class _ShiftsByItsFrame implements FxPluginRunner {
+  int renders = 0;
+
+  @override
+  Future<void>? get toCome => null;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      moment.frameIndex + 1;
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    renders += 1;
+    return ShiftingFxPlugin(
+      by: moment.frameIndex + 1,
+    ).render(input: input, values: values, layers: layers, moment: moment);
   }
 
   @override
-  ui.Image imageOf(Object held) => (held as ui.Image).clone();
+  void close() {}
 
   @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
-    if (landsAtOnce) {
-      return Future.value(true);
+  bool get closed => false;
+}
+
+/// A store whose writes through a frame's plugins go on when let
+/// ([letOneGo]), saying what each was asked and whether it went in.
+class _WritesWhenLet extends EngineFramePictureStore<FramePictureKey> {
+  _WritesWhenLet() : super(tools: () => appEngineFrameTools);
+
+  final List<({Rect rect, Completer<void> go})> asked = [];
+  final List<bool> went = [];
+
+  /// Where the last patch that went in left its picture.
+  FramePictureKey? lastTo;
+  int _let = 0;
+  bool _allGo = false;
+
+  void letOneGo() => asked[_let++].go.complete();
+
+  void letAllGo() {
+    _allGo = true;
+    while (_let < asked.length) {
+      letOneGo();
     }
-    final write = Completer<bool>();
-    _writes.add(write);
-    return write.future;
+  }
+
+  @override
+  Future<bool> patchThrough({
+    required FramePictureKey from,
+    required FramePictureKey to,
+    required Rect rect,
+    required StackedFrame frame,
+    required bool Function() stands,
+    EngineChainHolds? holds,
+  }) async {
+    final go = Completer<void>();
+    asked.add((rect: rect, go: go));
+    if (_allGo) {
+      letOneGo();
+    }
+    await go.future;
+    final did = await super.patchThrough(
+      from: from,
+      to: to,
+      rect: rect,
+      frame: frame,
+      stands: stands,
+      holds: holds,
+    );
+    went.add(did);
+    if (did) {
+      lastTo = to;
+    }
+    return did;
   }
 }

@@ -142,10 +142,10 @@ class BrushDab {
 
   /// How the stroke shows its second tip — carried by EVERY dab of a stroke
   /// that has one, the first tip's and the second's alike, null on every
-  /// dab of a stroke that has none. The law is beside `qa_dual_view_rows`
-  /// (qa_engine.c, ABI 60): the second tip is a second stroke along the
-  /// same path, piling on a plane of its own ([second]), and what the
-  /// stroke shows is the two planes through this view.
+  /// dab of a stroke that has none. The law is beside `dualViewAlpha` (ABI
+  /// 60): the second tip is a second stroke along the same path, piling on
+  /// a plane of its own ([second]), and what the stroke shows is the two
+  /// planes through this view.
   final BrushDualView? dual;
 
   /// Whether this is a dab of the second tip's stroke: its [tipMask] is the
@@ -575,7 +575,7 @@ void _validateSequence(int value) {
 
 /// How a stroke with a second tip shows its two planes — the first tip's
 /// alpha combined with the second tip's through [compositeMode] at
-/// [density] (`qa_dual_view_rows`, and [BrushDab.dual]).
+/// [density] (`dualViewAlpha`, and [BrushDab.dual]).
 ///
 /// 🚨Both formats say a second tip has a mode and ours had none. Clip
 /// Studio writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and

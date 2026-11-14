@@ -46,7 +46,7 @@ void main() {
   void aStepNotReady() {
     cache = BitmapTileImageCache();
     shown = ShownCels(cache: cache)
-      ..show(Object(), (_key.layerId, _key.frameId));
+      ..show(Object(), _key.cel, pictured: ShownCels.asItIs);
     final now = _surfaceOf([1, 2]);
     next = _surfaceOf([3, 4]);
     _givePictures(cache, now);
@@ -87,7 +87,7 @@ void main() {
       'looks at this one', (tester) async {
     cache = BitmapTileImageCache();
     shown = ShownCels(cache: cache)
-      ..show(Object(), (_key.layerId, _key.frameId));
+      ..show(Object(), _key.cel, pictured: ShownCels.asItIs);
     final now = _surfaceOf([1, 2]);
     final first = _surfaceOf([3, 4]);
     final second = _surfaceOf([5, 6]);
@@ -137,6 +137,37 @@ void main() {
     expect(pictured(next), isFalse);
   });
 
+  testWidgets('🚨the warm makes none for a canvas that draws no picture — '
+      'its steps are read ahead all the same', (tester) async {
+    cache = BitmapTileImageCache();
+    shown = ShownCels(cache: cache)
+      // The drawing canvas: the engine lays its frame from the tiles.
+      ..show(Object(), _key.cel, pictured: null);
+    final now = _surfaceOf([1, 2]);
+    final first = _surfaceOf([3, 4]);
+    final second = _surfaceOf([5, 6]);
+    final deep = _PutsBack(now: first, next: second);
+    history = HistoryManager()
+      ..execute(deep)
+      ..execute(_PutsBack(now: now, next: first));
+    pictures = HistoryPictures(history: history, shown: shown);
+    addTearDown(() {
+      pictures.dispose();
+      history.dispose();
+    });
+
+    pictures.step(undo: true, apply: history.undo);
+    await letTheWarmRun(tester);
+
+    // ⛔Mutation: warmed as a canvas that draws the cel's own tiles →
+    // pictures nobody draws are made and held (the case above this one's
+    // twin, where `asItIs` makes them).
+    expect(pictured(second), isFalse);
+    // ⛔Mutation: a canvas that draws none counted as showing nothing → its
+    // next step is read at the press.
+    expect(deep.readAheads, greaterThan(0));
+  });
+
   testWidgets('the sheet ink view says which cel it paints, while it paints '
       'it', (tester) async {
     final store = BrushFrameEditSessionStore(
@@ -168,7 +199,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final canvas = Object();
-    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
     addTearDown(() => ShownCels.instance.hide(canvas));
     final now = _surfaceOf([7, 8]);
     _givePictures(BitmapTileImageCache.instance, now);
@@ -189,7 +220,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final canvas = Object();
-    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
     addTearDown(() => ShownCels.instance.hide(canvas));
     final held = [
       for (final fill in [11, 12, 13]) _surfaceOf([fill]),
@@ -207,6 +238,32 @@ void main() {
     expect(pictured(held[0]), isFalse, reason: 'deep');
     expect(pictured(held[1]), isFalse, reason: 'deep');
     expect(pictured(held[2]), isTrue, reason: 'the next undo');
+  });
+
+  testWidgets('a deep entry\'s pictures stay where a cel still holds its '
+      'tiles', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final canvas = Object();
+    ShownCels.instance.show(canvas, _key.cel, pictured: ShownCels.asItIs);
+    addTearDown(() => ShownCels.instance.hide(canvas));
+    final held = [
+      for (final fill in [21, 22, 23]) _surfaceOf([fill]),
+    ];
+    for (final surface in held) {
+      _givePictures(BitmapTileImageCache.instance, surface);
+      session.historyManager.execute(_Holds(surface));
+    }
+    session.renderCaches.brushFrameStore.storeBakedSurface(_key, held[0]);
+    await tester.pump();
+
+    bool pictured(BitmapSurface surface) => surface.tiles.values.every(
+      (tile) => BitmapTileImageCache.instance.heldFor(tile) != null,
+    );
+    expect(pictured(held[1]), isFalse, reason: '⛔premise: deep, let go');
+    expect(pictured(held[0]), isTrue, reason: 'the cel holds it');
   });
 }
 
@@ -275,9 +332,14 @@ class _PutsBack implements Command, PictureRestoringCommand {
   @override
   void undo() {}
 
+  /// How many times it was read ahead.
+  int readAheads = 0;
+
   @override
-  void readAhead(CelsAhead cels, {required bool undo}) =>
-      cels.readSnapshot(_key, _snapshot, () => now);
+  void readAhead(CelsAhead cels, {required bool undo}) {
+    readAheads += 1;
+    cels.readSnapshot(_key, _snapshot, () => now);
+  }
 
   @override
   void dropReadAhead() => _snapshot.dropReadAhead();

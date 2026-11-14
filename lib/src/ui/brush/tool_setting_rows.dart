@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart' show ControlPressClaim;
 import '../shortcuts/editor_shortcut_scope.dart' show ShortcutTooltip;
 import '../text/app_strings.dart' show AppText;
-import '../theme/app_theme.dart' show AppColors, AppCursors;
+import '../theme/app_theme.dart' show AppColors, AppCursors, SuperellipseFace;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../widgets/ellipsis_text.dart';
@@ -115,6 +115,7 @@ class ToolSettingRow extends StatelessWidget {
     required this.child,
     this.labelEnd,
   }) : _lay = _Lay.fill,
+       labelLit = false,
        trailing = null;
 
   /// A control that stands at the END of the control column — a swatch,
@@ -124,6 +125,7 @@ class ToolSettingRow extends StatelessWidget {
     required this.label,
     required this.child,
   }) : _lay = _Lay.atEnd,
+       labelLit = false,
        labelEnd = null,
        trailing = null;
 
@@ -137,6 +139,7 @@ class ToolSettingRow extends StatelessWidget {
     required Widget bar,
     this.labelEnd,
     this.trailing,
+    this.labelLit = false,
   }) : child = bar,
        _lay = _Lay.bar;
 
@@ -158,6 +161,7 @@ class ToolSettingRow extends StatelessWidget {
          ],
        ),
        _lay = _Lay.fill,
+       labelLit = false,
        trailing = null;
 
   /// The row's name. Empty for a row that continues the one above it (the
@@ -167,6 +171,11 @@ class ToolSettingRow extends StatelessWidget {
   /// What stands at the end of the name's cell — the scale row's chain.
   final Widget? labelEnd;
 
+  /// Whether the row's name reads in the accent — the one of a list of
+  /// like rows that is in hand (the transform tool's warp point, F-586).
+  /// Colour alone, as every selection is told.
+  final bool labelLit;
+
   final Widget child;
   final Widget? trailing;
   final _Lay _lay;
@@ -174,7 +183,8 @@ class ToolSettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final end = ToolSettingEnd.of(context);
-    final style = Theme.of(context).textTheme.labelSmall;
+    final named = Theme.of(context).textTheme.labelSmall;
+    final style = labelLit ? named?.copyWith(color: AppColors.accent) : named;
     return Padding(
       padding: const EdgeInsets.only(bottom: ToolSettingsSection.rowGap),
       child: LayoutBuilder(
@@ -443,9 +453,9 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
           child: DecoratedBox(
             key: ValueKey<String>(widget.keyValue),
             // The frame's hairline, on the button's own ground.
-            decoration: ShapeDecoration(
+            decoration: SuperellipseFace(
               color: dimmedIfDisabled(shown, enabled: live),
-              shape: frame.shape,
+              edge: frame.edge,
             ),
             child: SizedBox(
               height: FieldSlider.defaultHeight,

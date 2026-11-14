@@ -7,10 +7,11 @@
 // The law is the app's (`_overGround`, lib/src/ui/export/
 // still_image_encoders.dart): a premultiplied channel p over the ground's
 // g is p + g·(255 − a) / 255, the division flooring. The app reads p from
-// Flutter's premultiplied bytes; the frame here is straight, so p is the
-// engine's own premultiply first — the shared `premultiply8`
-// (premultiply.wgsl, qa_engine.c `qa_premultiply_pixel`), round(c·a /
-// 255). An opaque pixel is its own colour — p = c and nothing of the
+// Flutter's premultiplied bytes, as a frame the screen shows holds them
+// (frame_shown.wgsl); a run's frame is straight, so its p is the engine's
+// own premultiply first — the shared `premultiply8` (premultiply.wgsl,
+// the app's `premultiplyRgbaInPlace`), round(c·a / 255) (frame.wgsl).
+// An opaque pixel is its own colour — p = c and nothing of the
 // ground —, as the app's branch for it says. Integers only: a float step
 // may be fused or reassociated on one device and not another (fill.wgsl).
 // p <= a and g·(255 − a) / 255 <= 255 − a, so the sum is a byte.
@@ -24,11 +25,13 @@
 // takes the place of. Cut at 0, none is under it and every pixel is its
 // own colour — a GIF that keeps no clear colour.
 //
-// Needs tile.wgsl, frame.wgsl and premultiply.wgsl before it.
+// Needs tile.wgsl, premultiply.wgsl and its picture's reads (frame.wgsl
+// or frame_shown.wgsl) before it.
 
 struct Params {
-  // The frame's tiles a row.
-  columns: u32,
+  // The frame's step from one row to the next (frame.wgsl,
+  // frame_shown.wgsl).
+  stride: u32,
   // The picture.
   width: u32,
   height: u32,
@@ -44,7 +47,6 @@ struct Params {
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> frame: array<u32>;
 @group(0) @binding(2) var<storage, read_write> rgb: array<u32>;
 
 fn byte_of(word: u32, shift: u32) -> u32 {
@@ -72,9 +74,16 @@ fn pixel(index: u32) -> vec3<u32> {
   if (index >= params.width * params.height) {
     return vec3<u32>(0u);
   }
-  let word = frame[frame_word(params.columns, index % params.width, index / params.width)];
-  let alpha = coverage(word >> 24u);
-  let premultiplied = premultiply8((word & 0xffffffu) | (alpha << 24u));
+  let x = index % params.width;
+  let y = index / params.width;
+  var premultiplied = frame_premultiplied(x, y);
+  // A cut pixel is laid whole or not at all, in the colour it was laid
+  // with: the straight one, at the cut's alpha.
+  if (params.cut <= 255u) {
+    let straight = frame_straight(x, y);
+    premultiplied = premultiply8((straight & 0xffffffu) | (coverage(straight >> 24u) << 24u));
+  }
+  let alpha = premultiplied >> 24u;
   return vec3<u32>(
     laid(premultiplied, alpha, 0u),
     laid(premultiplied, alpha, 8u),

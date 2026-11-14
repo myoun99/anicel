@@ -43,6 +43,7 @@ class TimesheetInfo {
     this.conteFixedText = true,
     this.conteCameraRoom = ConteCameraRoom.standard,
     this.sheetFixedText = true,
+    this.sheetBookNamesShortened = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -143,6 +144,13 @@ class TimesheetInfo {
   /// window's, as [conteFixedText] is the conte's (유저 2026-11-02, F-542).
   final bool sheetFixedText;
 
+  /// Whether a book tag leaves out a name the book before it at its
+  /// boundary already wrote (`sheetBookTag`) — the format window's 「북 이름
+  /// 생략」, on unless taken off (유저 2026-11-09, F-576: 「필요없는 사람이
+  /// 있을수도있으니 타임시트서식에 북 이름 생략? 이런식으로 옵션만들도록.
+  /// 기본값은 on」).
+  final bool sheetBookNamesShortened;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -170,6 +178,7 @@ class TimesheetInfo {
     bool? conteFixedText,
     ConteCameraRoom? conteCameraRoom,
     bool? sheetFixedText,
+    bool? sheetBookNamesShortened,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -196,6 +205,8 @@ class TimesheetInfo {
       conteFixedText: conteFixedText ?? this.conteFixedText,
       conteCameraRoom: conteCameraRoom ?? this.conteCameraRoom,
       sheetFixedText: sheetFixedText ?? this.sheetFixedText,
+      sheetBookNamesShortened:
+          sheetBookNamesShortened ?? this.sheetBookNamesShortened,
     );
   }
 
@@ -228,6 +239,7 @@ class TimesheetInfo {
     if (conteCameraRoom != ConteCameraRoom.standard)
       'conteCameraRoom': conteCameraRoom.name,
     if (!sheetFixedText) 'sheetFixedText': false,
+    if (!sheetBookNamesShortened) 'sheetBookNamesShortened': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -256,6 +268,8 @@ class TimesheetInfo {
       conteOutlined: json['conteOutlined'] as bool? ?? true,
       conteFixedText: json['conteFixedText'] as bool? ?? true,
       sheetFixedText: json['sheetFixedText'] as bool? ?? true,
+      sheetBookNamesShortened:
+          json['sheetBookNamesShortened'] as bool? ?? true,
       conteCameraRoom:
           ConteCameraRoom.named(json['conteCameraRoom']) ??
           ConteCameraRoom.standard,
@@ -280,6 +294,7 @@ class TimesheetInfo {
           other.conteFixedText == conteFixedText &&
           other.conteCameraRoom == conteCameraRoom &&
           other.sheetFixedText == sheetFixedText &&
+          other.sheetBookNamesShortened == sheetBookNamesShortened &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -300,6 +315,7 @@ class TimesheetInfo {
     conteFixedText,
     conteCameraRoom,
     sheetFixedText,
+    sheetBookNamesShortened,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

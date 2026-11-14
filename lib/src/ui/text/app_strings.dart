@@ -32,6 +32,20 @@ abstract final class AppText {
   /// through their own `labelFor` (blend modes, effect kinds) instead of
   /// through a string key.
   static AppLanguage get language => settings.value.programLanguage;
+
+  /// The device's preferred languages, in its own order: what the running
+  /// app speaks by where its user has saved no language
+  /// ([AppLanguageSettings.ofDevice]) — asked by the launch before its
+  /// first frame, and by the session's restore.
+  ///
+  /// ⛔MUTANT SURVIVES: every test injects the device — one that read the
+  /// operating system would pass or fail by the machine it ran on — so
+  /// emptying this list stays green. It is the one line only the real app
+  /// exercises.
+  static Iterable<String> deviceLanguageCodes() => [
+    for (final locale in PlatformDispatcher.instance.locales)
+      locale.languageCode,
+  ];
 }
 
 /// PROGRAM-language strings (UI-R10 #7): what the app chrome reads in.
@@ -182,6 +196,13 @@ enum AppStrings {
   String get launchStageApp => _s('launchStageApp');
   String get launchStageFirstFrame => _s('launchStageFirstFrame');
 
+  /// The line of the wait window a launch stands behind once its first
+  /// screen is drawn, till what a hand needs of the engine is compiled —
+  /// under [launchStageApp], the stage it is still in, as its title
+  /// (🗣️유저 2026-11-11: 「그냥 여는중? 뭐 그런 로딩 안내창있잖아. 그거
+  /// 공용창 띄워서 입력 막게하는게 베스트」).
+  String get launchProgressRunning => _s('launchProgressRunning');
+
   /// The window the app opens at launch (유저 2026-10-28: 「앱 실행시 앱
   /// 설명 넣고싶어. 다음부터 표시안함버튼있고」) — its words are the bundled
   /// files' (`LaunchNoticeSection`); these are its frame.
@@ -324,12 +345,10 @@ enum AppStrings {
   /// '{count}' is replaced with the dropped-frame count.
   String get recordDroppedFramesTemplate => _s('recordDroppedFramesTemplate');
 
-  // --- Mix controls (AUDIO-PRO R1; the SE mixer, R10 R3) ---
-  String get layerAudioTitle => _s('layerAudioTitle');
+  // --- Mix controls (AUDIO-PRO R1; the S row's speaker, F-577) ---
   String get audioGainLabel => _s('audioGainLabel');
   String get audioPanLabel => _s('audioPanLabel');
   String get audioMute => _s('audioMute');
-  String get audioSolo => _s('audioSolo');
 
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
@@ -357,6 +376,11 @@ enum AppStrings {
 
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
+
+  /// A block window's primary button (`InstanceEditDialogShell`, F-584);
+  /// the windows that write settings keep [commonSave].
+  String get commonOk => _s('commonOk');
+
   String get commonDelete => _s('commonDelete');
   String get commonAdd => _s('commonAdd');
   String get commonRename => _s('commonRename');
@@ -729,7 +753,6 @@ enum AppStrings {
   String get memoryItemDrawings => _s('memoryItemDrawings');
   String get memoryItemSheetInk => _s('memoryItemSheetInk');
   String get memoryItemUndo => _s('memoryItemUndo');
-  String get memoryItemLayerImages => _s('memoryItemLayerImages');
   String get memoryItemFramePictures => _s('memoryItemFramePictures');
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
@@ -745,7 +768,7 @@ enum AppStrings {
   String get memoryItemTileImages => _s('memoryItemTileImages');
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
-  String get memoryItemLensBlurTables => _s('memoryItemLensBlurTables');
+  String get memoryItemPluginSteps => _s('memoryItemPluginSteps');
 
   /// What sits outside the allowance — the rows named in [items] — as one
   /// sentence (유저 2026-09-16, memory-allowance-Q2).
@@ -765,6 +788,24 @@ enum AppStrings {
   String get saveCelsLostGone => _s('saveCelsLostGone');
   String get projectFileVanished => _s('projectFileVanished');
 
+  /// What the common window says of a job the graphics device refused
+  /// (`EngineRefusals`, gpu-canonical-store-Q14).
+  String get gpuRefusedNotice => _s('gpuRefusedNotice');
+
+  /// What the common window says once the app stands on another engine,
+  /// its graphics device gone (`EngineRefusals.openedAnother`,
+  /// a-lost-gpu-device-keeps-the-unsaved-tiles-Q1) …
+  String get gpuStartedAgainNotice => _s('gpuStartedAgainNotice');
+
+  /// … and why the device went, as far as anything says — one a cause
+  /// (`GpuDeviceWent`, `gpuStartedAgainMessage`).
+  String get gpuWentUnsaid => _s('gpuWentUnsaid');
+  String get gpuWentByMemory => _s('gpuWentByMemory');
+  String get gpuWentByThisApp => _s('gpuWentByThisApp');
+  String get gpuWentByRemoval => _s('gpuWentByRemoval');
+  String get gpuWentByReset => _s('gpuWentByReset');
+  String get gpuWentByDriver => _s('gpuWentByDriver');
+
   // --- A save its file refused: why, and the failed copy (실패본) the work
   // went to instead (whole-write-temp-beside-the-file, 2026-09-23) ---
   String get saveFailedTitle => _s('saveFailedTitle');
@@ -773,6 +814,8 @@ enum AppStrings {
   String get saveFailedDiskFull => _s('saveFailedDiskFull');
   String get saveFailedLocationGone => _s('saveFailedLocationGone');
   String get saveFailedReplaceRefused => _s('saveFailedReplaceRefused');
+  String get saveFailedEngineRead => _s('saveFailedEngineRead');
+  String get saveFailedEngineReadNoCopy => _s('saveFailedEngineReadNoCopy');
   String get saveFailedUnknown => _s('saveFailedUnknown');
   String get saveFailedCopyKept => _s('saveFailedCopyKept');
   String get saveFailedNoCopy => _s('saveFailedNoCopy');
@@ -830,6 +873,7 @@ enum AppStrings {
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
   String get sheetStretchLineAction => _s('sheetStretchLineAction');
   String get sheetStretchLineCell => _s('sheetStretchLineCell');
+  String get sheetBookNamesShortened => _s('sheetBookNamesShortened');
   String get sheetStretchLineHelp => _s('sheetStretchLineHelp');
   String get sheetStretchLineOn => _s('sheetStretchLineOn');
   String get sheetStretchLineOff => _s('sheetStretchLineOff');
@@ -928,6 +972,14 @@ enum AppStrings {
   String get gpuPreferenceNotOnMacOS => _s('gpuPreferenceNotOnMacOS');
   String get gpuPreferenceDriverPicks => _s('gpuPreferenceDriverPicks');
   String get gpuPreferenceOneGpu => _s('gpuPreferenceOneGpu');
+  String get fxPluginShareLabel => _s('fxPluginShareLabel');
+  String get fxPluginShareHelp => _s('fxPluginShareHelp');
+  String get fxPluginShareTenThousand => _s('fxPluginShareTenThousand');
+  String get fxPluginShareHundredThousand => _s('fxPluginShareHundredThousand');
+  String get fxPluginShareMillion => _s('fxPluginShareMillion');
+  String get fxPluginShareTenMillion => _s('fxPluginShareTenMillion');
+  String get fxPluginShareHundredMillion => _s('fxPluginShareHundredMillion');
+  String get fxPluginShareUncut => _s('fxPluginShareUncut');
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlNoLayers => _s('tlNoLayers');
@@ -1045,6 +1097,15 @@ enum AppStrings {
   String get tlDropOutOfFolder => _s('tlDropOutOfFolder');
   String get tlDropAttachSyncedTemplate => _s('tlDropAttachSyncedTemplate');
   String get tlDropAttachFreeTemplate => _s('tlDropAttachFreeTemplate');
+
+  /// An attach in words — the row it rides by [name], and whether it rides
+  /// SYNCED or free (「A에 어태치 (싱크)」). The timeline's drag caret, the
+  /// import window's place of a folder's correction, and the room that
+  /// place keeps were three spellings of it.
+  String tlDropAttach(String name, {required bool synced}) =>
+      (synced ? tlDropAttachSyncedTemplate : tlDropAttachFreeTemplate)
+          .replaceAll('{name}', name);
+
   String get tlDropDetachAttach => _s('tlDropDetachAttach');
 
   /// ⑦: the one landing a folder attach has no home for — an organizer
@@ -1364,6 +1425,8 @@ enum AppStrings {
   String get shortcutRecordNew => _s('shortcutRecordNew');
   String get shortcutTouch => _s('shortcutTouch');
   String get shortcutSearch => _s('shortcutSearch');
+  String get shortcutSearchByKey => _s('shortcutSearchByKey');
+  String get shortcutSearchByKeyClear => _s('shortcutSearchByKeyClear');
   String get shortcutConflictBanner => _s('shortcutConflictBanner');
 
   /// What a clashing action's name does, pressed (I-158): [key] stays on
@@ -1498,7 +1561,6 @@ enum AppStrings {
   String get exSelDirection => _s('exSelDirection');
   String get exSelCustom => _s('exSelCustom');
   String get exPaperLabel => _s('exPaperLabel');
-  String get exArtLabel => _s('exArtLabel');
   String get exTakeLatest => _s('exTakeLatest');
   String get exFolders => _s('exFolders');
   String get exNameParts => _s('exNameParts');
@@ -1701,12 +1763,22 @@ enum AppStrings {
   String imRateTitle({required String movie, required String project}) => _s(
     'imRateTitleTemplate',
   ).replaceAll('{movie}', movie).replaceAll('{project}', project);
-  String imRateBody(String movie) =>
-      _s('imRateBodyTemplate').replaceAll('{movie}', movie);
+  String get imRateBody => _s('imRateBody');
   String imRateKeep(String project) =>
       _s('imRateKeepTemplate').replaceAll('{project}', project);
+  String imRateKeepTip(int seconds) =>
+      _s('imRateKeepTipTemplate').replaceAll('{seconds}', '$seconds');
+  String imRateFitMovie(String project) =>
+      _s('imRateFitMovieTemplate').replaceAll('{project}', project);
+  String imRateFitSound(String project) =>
+      _s('imRateFitSoundTemplate').replaceAll('{project}', project);
+  String get imRateFitTipPictureAndSound => _s('imRateFitTipPictureAndSound');
+  String get imRateFitTipPicture => _s('imRateFitTipPicture');
+  String get imRateFitTipSound => _s('imRateFitTipSound');
   String imRateTake(String movie) =>
       _s('imRateTakeTemplate').replaceAll('{movie}', movie);
+  String imRateTakeTip(String movie) =>
+      _s('imRateTakeTipTemplate').replaceAll('{movie}', movie);
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitOriginal => _s('imFitOriginal');
@@ -1882,8 +1954,6 @@ enum AppStrings {
   String fxPluginReplaces(String version) =>
       _s('fxPluginReplacesTemplate').replaceAll('{version}', version);
 
-  /// ⚠️A warning: a native build runs outside the sandbox.
-  String get fxPluginRunsNatively => _s('fxPluginRunsNatively');
   String fxPluginInstalled(String name) =>
       _s('fxPluginInstalledTemplate').replaceAll('{name}', name);
   String fxPluginUnreadable(String file) =>
@@ -2301,6 +2371,7 @@ enum AppStrings {
     'launchStagePlugins': 'Registering plugins',
     'launchStageApp': 'Preparing app',
     'launchStageFirstFrame': 'Drawing first screen',
+    'launchProgressRunning': 'Preparing…',
     'launchNoticeTitle': 'About this build',
     'launchNoticeDontShowAgain': "Don't show again",
     'usageStatsSend': 'Send usage statistics',
@@ -2392,11 +2463,9 @@ enum AppStrings {
     'recordPlacementFailed': 'The recording could not be placed.',
     'recordDroppedFramesTemplate':
         'Recorded, but {count} frames were dropped (the machine could not keep up) — check the take.',
-    'layerAudioTitle': 'Layer Audio',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Pan',
     'audioMute': 'Mute',
-    'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
@@ -2409,6 +2478,7 @@ enum AppStrings {
     'selectionInvertInCanvas': 'Invert Selection in Canvas',
     'toolSelectionMode': 'Mode',
     'commonSave': 'Save',
+    'commonOk': 'OK',
     'commonDelete': 'Delete',
     'commonAdd': 'Add',
     'commonRename': 'Rename',
@@ -2672,7 +2742,6 @@ enum AppStrings {
     'memoryItemDrawings': 'Drawings',
     'memoryItemSheetInk': 'Sheet handwriting',
     'memoryItemUndo': 'Undo history',
-    'memoryItemLayerImages': 'Layer images',
     'memoryItemFramePictures': 'Frame pictures',
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
@@ -2687,7 +2756,7 @@ enum AppStrings {
     'memoryItemTileImages': 'Canvas tile images',
     'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
-    'memoryItemLensBlurTables': 'Camera Lens Blur tables',
+    'memoryItemPluginSteps': 'FX plugin pictures',
     'memoryOutsideAllowanceTemplate':
         'Outside the allowance, because no ceiling can be set on it: '
         '{items}.',
@@ -2714,6 +2783,12 @@ enum AppStrings {
     'saveFailedReplaceRefused':
         'This location (a cloud or Files provider) refused to replace the '
         'file.',
+    'saveFailedEngineRead':
+        'The graphics card did not give the drawing back, so the file was '
+        'not changed.',
+    'saveFailedEngineReadNoCopy':
+        'A failed copy would need the same read, so none was made — save '
+        'again before closing the program.',
     'saveFailedUnknown': 'An error occurred while writing the file.',
     'saveFailedCopyKept':
         'Your work so far is kept in a failed copy inside the app. The '
@@ -2751,6 +2826,27 @@ enum AppStrings {
         "This project's file is no longer there — deleted or moved. Restore "
         'it now if it is still in a trash: the drawings already saved live '
         'only inside that file.',
+    'gpuRefusedNotice':
+        'The graphics card could not complete an operation. What you just '
+        'did may not have been applied. Save, then restart the program.',
+    'gpuStartedAgainNotice':
+        'The graphics card restarted. You can keep working. The stroke you '
+        'were drawing may not have been applied.',
+    'gpuWentUnsaid':
+        'The cause could not be determined. Common causes are a graphics '
+        'driver update, waking from sleep, or a driver error.',
+    'gpuWentByMemory': 'Cause: the graphics memory ran out.',
+    'gpuWentByThisApp':
+        'Cause: most likely an operation this program sent that the '
+        'graphics card could not complete.',
+    'gpuWentByRemoval':
+        'Cause: most likely a graphics driver update, or the graphics card '
+        'being turned off or disconnected. This program did not cause it.',
+    'gpuWentByReset':
+        'Cause: the graphics card was reset after an invalid command. '
+        'Whether it came from this program or another could not be '
+        'determined.',
+    'gpuWentByDriver': 'Cause: an error inside the graphics driver.',
     'uiScaleLabel': 'Interface scale',
     'colorModeLabel': 'Appearance',
     'colorModeDark': 'Dark',
@@ -2778,6 +2874,7 @@ enum AppStrings {
     'sheetVisibleBoxes': 'Visible boxes',
     'sheetStretchLineAction': 'Stretch line · ACTION',
     'sheetStretchLineCell': 'Stretch line · CELL',
+    'sheetBookNamesShortened': 'Book names · repeats left out',
     'sheetStretchLineHelp':
         'Draw the line from the (N+1)th comma of N+ holds and × runs',
     'sheetStretchLineOn': 'On',
@@ -2842,6 +2939,15 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': 'On macOS, Anicel cannot pick its GPU.',
     'gpuPreferenceDriverPicks': 'On Linux, the graphics driver picks the GPU.',
     'gpuPreferenceOneGpu': 'This device has one GPU.',
+    'fxPluginShareLabel': 'Plugin limit per run',
+    'fxPluginShareHelp':
+        'How many instructions a GPU effect plugin may spend on one pixel. A drawing that spends them all is cut and shown as failed.',
+    'fxPluginShareTenThousand': '10,000',
+    'fxPluginShareHundredThousand': '100,000',
+    'fxPluginShareMillion': '1 million',
+    'fxPluginShareTenMillion': '10 million',
+    'fxPluginShareHundredMillion': '100 million',
+    'fxPluginShareUncut': 'Never cut',
     'systemStatusHelp':
         'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
@@ -2994,6 +3100,8 @@ enum AppStrings {
     'shortcutRecordNew': 'Record new shortcut',
     'shortcutTouch': 'Touch shortcut',
     'shortcutSearch': 'Search actions',
+    'shortcutSearchByKey': 'Search shortcuts',
+    'shortcutSearchByKeyClear': 'Clear shortcut search',
     'shortcutConflictBanner':
         'Some actions share the same key — the highlighted bindings collide.',
     'shortcutClashKeepTemplate': 'Keep {key} on {name} only — off {others}',
@@ -3081,7 +3189,6 @@ enum AppStrings {
     'exSelDirection': 'Direction',
     'exSelCustom': 'Custom',
     'exPaperLabel': 'Paper',
-    'exArtLabel': 'Art',
     'exTakeLatest': 'Latest',
     'exFolders': 'Folders',
     'exNameParts': 'Name',
@@ -3208,10 +3315,27 @@ enum AppStrings {
     'imSoundOnly': 'Sound only',
     'imRunSpanTemplate': '{first}–{last} ({n})',
     'imRateTitleTemplate': 'Movie {movie} · project {project}',
-    'imRateBodyTemplate':
-        'Set the project to {movie}? The sound keeps its timing.',
+    'imRateBody':
+        'The movie and the project run at slightly different speeds. '
+        'Which should match?',
     'imRateKeepTemplate': 'Keep {project}',
-    'imRateTakeTemplate': 'Set to {movie}',
+    'imRateKeepTipTemplate':
+        'Picture and sound stay together, and drift from the movie\'s '
+        'frames by one frame every {seconds} seconds or so.',
+    'imRateFitMovieTemplate': 'Fit the movie to {project}',
+    'imRateFitSoundTemplate': 'Fit the sound to {project}',
+    'imRateFitTipPictureAndSound':
+        'Carries the movie\'s picture and sound rewritten at the '
+        'project\'s speed (0.1% apart) — frame for frame with the movie.',
+    'imRateFitTipPicture':
+        'Carries the movie\'s picture rewritten at the project\'s speed '
+        '(0.1% apart) — frame for frame with the movie.',
+    'imRateFitTipSound':
+        'Carries the movie\'s sound rewritten at the project\'s speed '
+        '(0.1% apart) — frame for frame with the movie.',
+    'imRateTakeTemplate': 'Set the project to {movie}',
+    'imRateTakeTipTemplate':
+        'Changes the project to {movie}. The sound keeps its timing.',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitOriginal': 'Original size',
@@ -3489,10 +3613,6 @@ enum AppStrings {
         'Install "{name}" {version} from {vendor}?',
     'fxPluginReplacesTemplate':
         'It replaces version {version} on this device.',
-    'fxPluginRunsNatively':
-        'This plugin includes code that runs directly on this device, '
-        'outside the sandbox. Install it only if you trust where it came '
-        'from.',
     'fxPluginInstalledTemplate': 'Installed the FX plugin "{name}".',
     'fxPluginUnreadableTemplate':
         '"{file}" is not an FX plugin this app can read.',
@@ -3755,6 +3875,7 @@ enum AppStrings {
     'launchStagePlugins': 'プラグイン登録',
     'launchStageApp': 'アプリ準備',
     'launchStageFirstFrame': '最初の画面を描画',
+    'launchProgressRunning': '準備中…',
     'launchNoticeTitle': 'ご案内',
     'launchNoticeDontShowAgain': '次回から表示しない',
     'usageStatsSend': '利用統計を送信',
@@ -3837,11 +3958,9 @@ enum AppStrings {
     'recordPlacementFailed': '録音を配置できませんでした。',
     'recordDroppedFramesTemplate':
         '録音しましたが{count}フレームが欠落しました（処理が追いつきませんでした）— テイクを確認してください。',
-    'layerAudioTitle': 'レイヤーオーディオ',
     'audioGainLabel': 'ゲイン',
     'audioPanLabel': 'パン',
     'audioMute': 'ミュート',
-    'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
@@ -3854,6 +3973,7 @@ enum AppStrings {
     'selectionInvertInCanvas': 'カンバス内で選択範囲を反転',
     'toolSelectionMode': 'モード',
     'commonSave': '保存',
+    'commonOk': 'OK',
     'commonDelete': '削除',
     'commonAdd': '追加',
     'commonRename': '名前を変更',
@@ -4147,7 +4267,6 @@ enum AppStrings {
     'memoryItemDrawings': '作画',
     'memoryItemSheetInk': '用紙の手書き',
     'memoryItemUndo': '取り消し履歴',
-    'memoryItemLayerImages': 'レイヤー画像',
     'memoryItemFramePictures': 'フレーム画像',
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
@@ -4162,7 +4281,7 @@ enum AppStrings {
     'memoryItemTileImages': 'キャンバスのタイル画像',
     'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
-    'memoryItemLensBlurTables': 'ブラー（カメラレンズ）の表',
+    'memoryItemPluginSteps': 'FXプラグインの画像',
     'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
@@ -4180,6 +4299,9 @@ enum AppStrings {
     'saveFailedLocationGone':
         '保存先にアクセスできません — ドライブが外されたか、ネットワークが切れたか、フォルダーが削除されました。',
     'saveFailedReplaceRefused': 'この場所（クラウド・ファイルアプリ）がファイルの置き換えを拒否しました。',
+    'saveFailedEngineRead': 'グラフィックカードから絵を読み戻せなかったため、ファイルは変更していません。',
+    'saveFailedEngineReadNoCopy':
+        '失敗版も同じ読み戻しが必要なので作っていません — プログラムを閉じる前にもう一度保存してください。',
     'saveFailedUnknown': 'ファイルの書き込み中にエラーが起きました。',
     'saveFailedCopyKept':
         'ここまでの作業はアプリ内の失敗版に保存してあります。失敗版はプログラムを閉じると消えます — 残すには「失敗版をバックアップ…」で好きな場所に保存してください。',
@@ -4196,6 +4318,25 @@ enum AppStrings {
         'このプロジェクトが保存できなかった作業はアプリ内の失敗版にしかなく、失敗版はプログラムを閉じると消えます。残すには「名前を付けて保存」するか、ファイルメニューの「失敗版をバックアップ…」を使ってください。',
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
+    'gpuRefusedNotice':
+        'グラフィックカードが処理を完了できませんでした。直前の操作が反映されていない可能性があります。保存してからプログラムを再起動してください。',
+    'gpuStartedAgainNotice':
+        'グラフィックカードが再起動しました。そのまま作業を続けられます。'
+        '描いていたストロークは反映されていない可能性があります。',
+    'gpuWentUnsaid':
+        '原因は特定できませんでした。よくある原因は、グラフィックドライバーの更新、'
+        'スリープからの復帰、ドライバーのエラーです。',
+    'gpuWentByMemory': '原因：グラフィックメモリが不足しました。',
+    'gpuWentByThisApp':
+        '原因：このプログラムが送った処理をグラフィックカードが完了できなかった'
+        '可能性が高いです。',
+    'gpuWentByRemoval':
+        '原因：グラフィックドライバーが更新されたか、グラフィックカードが無効化または'
+        '取り外された可能性が高いです。このプログラムが原因ではありません。',
+    'gpuWentByReset':
+        '原因：グラフィックカードが不正な命令を受けてリセットされました。'
+        'このプログラムによるものか、他のプログラムによるものかは特定できませんでした。',
+    'gpuWentByDriver': '原因：グラフィックドライバーの内部でエラーが発生しました。',
     'uiScaleLabel': 'UIの大きさ',
     'colorModeLabel': 'カラーモード',
     'colorModeDark': 'ダーク',
@@ -4223,6 +4364,7 @@ enum AppStrings {
     'sheetVisibleBoxes': '表示する枠',
     'sheetStretchLineAction': '引き伸ばし線・ACTION',
     'sheetStretchLineCell': '引き伸ばし線・CELL',
+    'sheetBookNamesShortened': 'BOOK名の繰り返し省略',
     'sheetStretchLineHelp': 'N コマ以上の止め・× で (N+1) コマ目から線を引く',
     'sheetStretchLineOn': 'あり',
     'sheetStretchLineOff': 'なし',
@@ -4282,11 +4424,19 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': 'macOS では Anicel は GPU を選べません。',
     'gpuPreferenceDriverPicks': 'Linux ではグラフィックドライバーが GPU を選びます。',
     'gpuPreferenceOneGpu': 'このデバイスの GPU は 1 つです。',
+    'fxPluginShareLabel': 'プラグイン 1 回の上限',
+    'fxPluginShareHelp':
+        'GPU エフェクトプラグインが 1 ピクセルを描くのに使える命令の数。使い切った描画は打ち切り、失敗として表示します。',
+    'fxPluginShareTenThousand': '1万',
+    'fxPluginShareHundredThousand': '10万',
+    'fxPluginShareMillion': '100万',
+    'fxPluginShareTenMillion': '1,000万',
+    'fxPluginShareHundredMillion': '1億',
+    'fxPluginShareUncut': '打ち切らない',
     'systemStatusHelp':
         '各サブシステムが今どの実装で動いているかです。フォールバック経路でもアプリは動きますが、たいていは遅くなります — 詳しく知りたいときは名前で検索できます。',
     'shortcutShelf.canvas': 'カンバス',
     'shortcutShelf.tools': 'ツール',
-    'shortcutShelf.toolTiles': 'サブツール',
     'shortcutShelf.blendModes': '合成モード',
     'shortcutShelf.selection': '選択',
     'shortcutShelf.edit': '編集',
@@ -4303,7 +4453,6 @@ enum AppStrings {
     'shortcutShelf.colourEdit': '色編集',
     'shortcutShelf.layerHeader': 'レイヤーヘッダー',
     'shortcutShelf.timelineBar': 'タイムラインのバー',
-    'shortcutShelf.brushLibrary': 'ブラシライブラリ',
     'shortcutShelf.brushToolBrushes': 'ブラシツールのブラシ',
     'shortcutShelf.eraserToolBrushes': '消しゴムツールのブラシ',
     'shortcutShelf.guides': 'ガイド',
@@ -4313,12 +4462,6 @@ enum AppStrings {
     'shortcutShelf.settings': '設定',
     'shortcutShelf.panels': 'パネル',
     'shortcutShelf.debug': 'デバッグ',
-    'shortcutShelf.inAPanel': 'パネルの中',
-    'shortcutShelf.media': 'メディア',
-    'shortcutShelf.timesheet': 'タイムシート',
-    'shortcutShelf.conteSheet': 'コンテ用紙',
-    'shortcutShelf.envelope': 'カット袋',
-    'shortcutShelf.palette': 'パレット',
     'shortcutPreset.clipStudio': 'CLIP STUDIO ベース',
     'shortcutPreset.tvpaint': 'TVPaint ベース',
     'shortcutAction.frame-previous': '前のフレーム',
@@ -4346,7 +4489,6 @@ enum AppStrings {
     'shortcutAction.brush-size-down': 'ブラシサイズを下げる',
     'shortcutAction.guide-add-symmetry': '新規対称ガイド',
     'shortcutAction.guide-add-perspective': '新規パースガイド',
-    'shortcutAction.timesheet-data-mode': '表記シート / データシート',
     'shortcutAction.tool-select': '選択ツール',
     'shortcutAction.tool-transform': '変形ツール',
     'shortcutAction.tool-transform-normal': '通常変形',
@@ -4660,6 +4802,8 @@ enum AppStrings {
     'shortcutRecordNew': '新しいショートカットを記録',
     'shortcutTouch': 'タッチショートカット',
     'shortcutSearch': 'アクションを検索',
+    'shortcutSearchByKey': 'ショートカットを検索',
+    'shortcutSearchByKeyClear': 'ショートカット検索を解除',
     'shortcutConflictBanner':
         '同じキーを共有しているアクションがあります — 強調された割り当てが'
         '衝突しています。',
@@ -4745,7 +4889,6 @@ enum AppStrings {
     'exSelDirection': 'ディレクション',
     'exSelCustom': 'カスタム',
     'exPaperLabel': '用紙',
-    'exArtLabel': '美術',
     'exTakeLatest': '最新',
     'exFolders': 'フォルダ作成',
     'exNameParts': '名前指定',
@@ -4955,9 +5098,20 @@ enum AppStrings {
     'imSoundOnly': '音のみ',
     'imRunSpanTemplate': '{first}–{last}（{n}枚）',
     'imRateTitleTemplate': '動画 {movie}・プロジェクト {project}',
-    'imRateBodyTemplate': 'プロジェクトを {movie} に合わせますか？音のタイミングは維持されます。',
+    'imRateBody': '動画とプロジェクトの速度がわずかに違います。どちらに合わせますか？',
     'imRateKeepTemplate': '{project} のまま',
-    'imRateTakeTemplate': '{movie} に合わせる',
+    'imRateKeepTipTemplate':
+        '絵と音は合ったまま、動画のフレームとは約{seconds}秒ごとに1フレームずつずれます。',
+    'imRateFitMovieTemplate': '動画を {project} に合わせる',
+    'imRateFitSoundTemplate': '音を {project} に合わせる',
+    'imRateFitTipPictureAndSound':
+        '動画の絵と音をプロジェクトの速度（0.1%差）で書き直して取り込みます。動画のフレームと1つずつ合います。',
+    'imRateFitTipPicture':
+        '動画の絵をプロジェクトの速度（0.1%差）で書き直して取り込みます。動画のフレームと1つずつ合います。',
+    'imRateFitTipSound':
+        '動画の音をプロジェクトの速度（0.1%差）で書き直して取り込みます。動画のフレームと1つずつ合います。',
+    'imRateTakeTemplate': 'プロジェクトを {movie} に合わせる',
+    'imRateTakeTipTemplate': 'プロジェクトを {movie} に変えます。音のタイミングは維持されます。',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitOriginal': '原寸',
@@ -5330,9 +5484,6 @@ enum AppStrings {
     'fxPluginInstallBodyTemplate':
         '{vendor} の「{name}」{version} をインストールしますか？',
     'fxPluginReplacesTemplate': 'この端末のバージョン {version} と置き換わります。',
-    'fxPluginRunsNatively':
-        'このプラグインには、サンドボックスの外でこの端末上で直接動くコードが'
-        '含まれています。入手元を信頼できる場合だけインストールしてください。',
     'fxPluginInstalledTemplate': 'FXプラグイン「{name}」をインストールしました。',
     'fxPluginUnreadableTemplate': '「{file}」は読み込めるFXプラグインではありません。',
     'fxPluginUnopenedTemplate':
@@ -5455,7 +5606,6 @@ enum AppStrings {
     'tlLayerTake': 'テイク',
     'layerProcess.paper': '用紙',
     'layerProcess.conte': 'コンテ',
-    'layerProcess.art': '美術',
     'layerProcess.layout': 'レイアウト',
     'layerProcess.rough-key': 'ラフ原',
     'layerProcess.key': '原画',
@@ -5463,7 +5613,6 @@ enum AppStrings {
     'layerProcess.finish': '仕上げ',
     'layerProcessAbbrev.paper': '用紙',
     'layerProcessAbbrev.conte': 'コンテ',
-    'layerProcessAbbrev.art': '美術',
     'layerProcessAbbrev.layout': 'LO',
     'layerProcessAbbrev.rough-key': 'ラフ原',
     'layerProcessAbbrev.key': '原画',
@@ -5630,6 +5779,7 @@ enum AppStrings {
     'launchStagePlugins': '플러그인 등록',
     'launchStageApp': '앱 준비',
     'launchStageFirstFrame': '첫 화면 그리기',
+    'launchProgressRunning': '준비 중…',
     'launchNoticeTitle': '안내',
     'launchNoticeDontShowAgain': '다음부터 표시 안 함',
     'usageStatsSend': '사용 통계 보내기',
@@ -5713,11 +5863,9 @@ enum AppStrings {
     'recordPlacementFailed': '녹음을 배치하지 못했습니다.',
     'recordDroppedFramesTemplate':
         '녹음됐지만 {count}프레임이 유실됐습니다(처리가 따라가지 못함) — 테이크를 확인하세요.',
-    'layerAudioTitle': '레이어 오디오',
     'audioGainLabel': '게인',
     'audioPanLabel': '팬',
     'audioMute': '음소거',
-    'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
@@ -5730,6 +5878,7 @@ enum AppStrings {
     'selectionInvertInCanvas': '캔버스 안 선택 반전',
     'toolSelectionMode': '모드',
     'commonSave': '저장',
+    'commonOk': '확인',
     'commonDelete': '삭제',
     'commonAdd': '추가',
     'commonRename': '이름 변경',
@@ -6021,7 +6170,6 @@ enum AppStrings {
     'memoryItemDrawings': '그림',
     'memoryItemSheetInk': '용지 손글씨',
     'memoryItemUndo': '실행취소 기록',
-    'memoryItemLayerImages': '레이어 이미지',
     'memoryItemFramePictures': '프레임 이미지',
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
@@ -6036,7 +6184,7 @@ enum AppStrings {
     'memoryItemTileImages': '캔버스 타일 이미지',
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
-    'memoryItemLensBlurTables': '카메라 렌즈 흐림 표',
+    'memoryItemPluginSteps': 'FX 플러그인 이미지',
     'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
@@ -6054,6 +6202,9 @@ enum AppStrings {
     'saveFailedLocationGone':
         '저장할 곳에 닿을 수 없습니다 — 드라이브가 빠졌거나, 네트워크가 끊겼거나, 폴더가 지워졌습니다.',
     'saveFailedReplaceRefused': '이 위치(클라우드·파일 앱)가 파일을 바꿔 쓰는 것을 거부했습니다.',
+    'saveFailedEngineRead': '그래픽 카드에서 그림을 읽어 오지 못해 파일을 바꾸지 않았습니다.',
+    'saveFailedEngineReadNoCopy':
+        '실패본도 같은 읽기가 필요해 만들지 않았습니다 — 프로그램을 닫기 전에 다시 저장해 보세요.',
     'saveFailedUnknown': '파일을 쓰는 중에 오류가 났습니다.',
     'saveFailedCopyKept':
         '지금까지의 작업은 앱 안의 실패본에 저장해 두었습니다. 실패본은 프로그램을 닫으면 사라집니다 — 남기려면 「실패본 백업…」으로 원하는 곳에 저장하세요.',
@@ -6070,6 +6221,33 @@ enum AppStrings {
         '이 프로젝트가 저장하지 못한 작업은 앱 안의 실패본에만 있고, 실패본은 프로그램을 닫으면 사라집니다. 남기려면 「다른 이름으로 저장」하거나 파일 메뉴의 「실패본 백업…」을 쓰세요.',
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
+    // 🗣️유저 2026-11-11 (gpu-canonical-store-Q14) chose this sentence as
+    // it stands: the other languages say it after this one.
+    'gpuRefusedNotice':
+        '그래픽 장치가 작업을 처리하지 못했습니다. 방금 한 작업이 반영되지 않았을 수 있습니다. 저장한 뒤 앱을 다시 시작해 주세요.',
+    // 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1):
+    // 「그래픽 장치가 다시 시작되었다고 알린다」 · 「그래픽장치가 왜
+    // 다시시작되었는지는 알수있게. 사용자는 앱 원인인지 다른건지 모르니까
+    // 어느정도는 투명하게. 물론 확실하게 모를 가능성 높으니 그 경우
+    // 가능성높은 원인을 알려주도록」. ⚠️The sentences are 브러시/렌더링's
+    // (2026-11-13), the user's to mend: the other languages say them after
+    // these.
+    'gpuStartedAgainNotice':
+        '그래픽 장치가 다시 시작되었습니다. 앱은 계속 쓸 수 있습니다. '
+        '그리던 획은 반영되지 않았을 수 있습니다.',
+    'gpuWentUnsaid':
+        '원인은 확인되지 않았습니다. 흔한 원인은 그래픽 드라이버 갱신, '
+        '절전에서 깨어남, 드라이버 오류입니다.',
+    'gpuWentByMemory': '원인: 그래픽 메모리가 부족했습니다.',
+    'gpuWentByThisApp':
+        '원인: 이 앱이 보낸 그래픽 작업을 장치가 처리하지 못한 것으로 보입니다.',
+    'gpuWentByRemoval':
+        '원인: 그래픽 드라이버가 갱신되었거나 그래픽 장치가 꺼지거나 분리된 것으로 '
+        '보입니다. 앱이 일으킨 것은 아닙니다.',
+    'gpuWentByReset':
+        '원인: 그래픽 장치가 잘못된 명령을 받아 초기화되었습니다. 이 앱 때문인지 '
+        '다른 프로그램 때문인지는 확인되지 않았습니다.',
+    'gpuWentByDriver': '원인: 그래픽 드라이버 안에서 오류가 났습니다.',
     'uiScaleLabel': 'UI 크기',
     'colorModeLabel': '화면 모드',
     'colorModeDark': '다크',
@@ -6097,6 +6275,7 @@ enum AppStrings {
     'sheetVisibleBoxes': '표시할 칸',
     'sheetStretchLineAction': '늘림 선 · 액션란',
     'sheetStretchLineCell': '늘림 선 · 셀란',
+    'sheetBookNamesShortened': '북 이름 반복 생략',
     'sheetStretchLineHelp': 'N코마 이상 止め · ×에서 (N+1)번째 코마부터 선을 긋기',
     'sheetStretchLineOn': '있음',
     'sheetStretchLineOff': '없음',
@@ -6156,11 +6335,19 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': 'macOS 에서는 애니셀이 GPU 를 고를 수 없습니다.',
     'gpuPreferenceDriverPicks': '리눅스에서는 그래픽 드라이버가 GPU 를 고릅니다.',
     'gpuPreferenceOneGpu': '이 기기는 GPU 가 하나입니다.',
+    'fxPluginShareLabel': '플러그인 한 번의 한계',
+    'fxPluginShareHelp':
+        'GPU 효과 플러그인이 화소 하나를 그리며 쓸 수 있는 명령 수. 다 쓴 그리기는 끊고 실패로 보여 줍니다.',
+    'fxPluginShareTenThousand': '1만',
+    'fxPluginShareHundredThousand': '10만',
+    'fxPluginShareMillion': '100만',
+    'fxPluginShareTenMillion': '1,000만',
+    'fxPluginShareHundredMillion': '1억',
+    'fxPluginShareUncut': '끊지 않음',
     'systemStatusHelp':
         '각 서브시스템이 지금 어떤 구현으로 돌고 있는지입니다. 폴백 경로에서도 앱은 동작하지만 대개 더 느립니다 — 자세히 알고 싶으면 이름으로 검색할 수 있습니다.',
     'shortcutShelf.canvas': '캔버스',
     'shortcutShelf.tools': '도구',
-    'shortcutShelf.toolTiles': '세부 도구',
     'shortcutShelf.blendModes': '합성 모드',
     'shortcutShelf.selection': '선택',
     'shortcutShelf.edit': '편집',
@@ -6177,7 +6364,6 @@ enum AppStrings {
     'shortcutShelf.colourEdit': '색 편집',
     'shortcutShelf.layerHeader': '레이어 머리',
     'shortcutShelf.timelineBar': '타임라인 막대',
-    'shortcutShelf.brushLibrary': '브러시 라이브러리',
     'shortcutShelf.brushToolBrushes': '브러시 도구의 브러시',
     'shortcutShelf.eraserToolBrushes': '지우개 도구의 브러시',
     'shortcutShelf.guides': '가이드',
@@ -6187,12 +6373,6 @@ enum AppStrings {
     'shortcutShelf.settings': '설정',
     'shortcutShelf.panels': '패널',
     'shortcutShelf.debug': '디버그',
-    'shortcutShelf.inAPanel': '패널 안',
-    'shortcutShelf.media': '미디어',
-    'shortcutShelf.timesheet': '타임시트',
-    'shortcutShelf.conteSheet': '콘티 용지',
-    'shortcutShelf.envelope': '컷 봉투',
-    'shortcutShelf.palette': '팔레트',
     'shortcutPreset.clipStudio': '클립 스튜디오 기반',
     'shortcutPreset.tvpaint': 'TVPaint 기반',
     'shortcutAction.frame-previous': '이전 프레임',
@@ -6220,7 +6400,6 @@ enum AppStrings {
     'shortcutAction.brush-size-down': '브러시 크기 내리기',
     'shortcutAction.guide-add-symmetry': '새 대칭 가이드',
     'shortcutAction.guide-add-perspective': '새 퍼스 가이드',
-    'shortcutAction.timesheet-data-mode': '표기 시트 / 데이터 시트',
     'shortcutAction.tool-select': '선택 도구',
     'shortcutAction.tool-transform': '변형 도구',
     'shortcutAction.tool-transform-normal': '일반 변형',
@@ -6535,6 +6714,8 @@ enum AppStrings {
     'shortcutRecordNew': '새 단축키 기록',
     'shortcutTouch': '터치 단축키',
     'shortcutSearch': '동작 검색',
+    'shortcutSearchByKey': '단축키 검색',
+    'shortcutSearchByKeyClear': '단축키 검색 지우기',
     'shortcutConflictBanner': '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
     'shortcutClashKeepTemplate': '{name}에만 {key} 할당 — {others}에서 해제',
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
@@ -6618,7 +6799,6 @@ enum AppStrings {
     'exSelDirection': '디렉션',
     'exSelCustom': '커스텀',
     'exPaperLabel': '용지',
-    'exArtLabel': '미술',
     'exTakeLatest': '최신',
     'exFolders': '폴더 생성',
     'exNameParts': '이름 지정',
@@ -6827,9 +7007,20 @@ enum AppStrings {
     'imSoundOnly': '소리만',
     'imRunSpanTemplate': '{first}–{last} ({n}장)',
     'imRateTitleTemplate': '동영상 {movie} · 프로젝트 {project}',
-    'imRateBodyTemplate': '프로젝트를 {movie} 로 맞출까요? 소리는 타이밍을 유지합니다.',
+    'imRateBody': '동영상과 프로젝트의 속도가 조금 다릅니다. 무엇에 맞출까요?',
     'imRateKeepTemplate': '{project} 그대로',
-    'imRateTakeTemplate': '{movie} 로 맞춤',
+    'imRateKeepTipTemplate':
+        '그림과 소리는 서로 맞고, 영상의 프레임과는 약 {seconds}초마다 1프레임씩 어긋납니다.',
+    'imRateFitMovieTemplate': '영상을 {project} 에 맞춤',
+    'imRateFitSoundTemplate': '소리를 {project} 에 맞춤',
+    'imRateFitTipPictureAndSound':
+        '영상의 그림과 소리를 프로젝트의 속도(0.1% 차이)로 다시 써서 품습니다. 영상의 프레임과 하나씩 맞습니다.',
+    'imRateFitTipPicture':
+        '영상의 그림을 프로젝트의 속도(0.1% 차이)로 다시 써서 품습니다. 영상의 프레임과 하나씩 맞습니다.',
+    'imRateFitTipSound':
+        '영상의 소리를 프로젝트의 속도(0.1% 차이)로 다시 써서 품습니다. 영상의 프레임과 하나씩 맞습니다.',
+    'imRateTakeTemplate': '프로젝트를 {movie} 로 맞춤',
+    'imRateTakeTipTemplate': '프로젝트를 {movie} 로 바꿉니다. 소리는 타이밍을 유지합니다.',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitOriginal': '원본 크기',
@@ -7196,9 +7387,6 @@ enum AppStrings {
     'fxPluginInstall': '설치',
     'fxPluginInstallBodyTemplate': '{vendor}의 「{name}」 {version}을(를) 설치할까요?',
     'fxPluginReplacesTemplate': '이 기기의 {version} 버전을 대신합니다.',
-    'fxPluginRunsNatively':
-        '이 플러그인에는 샌드박스 밖에서 이 기기에서 직접 실행되는 코드가 들어 '
-        '있습니다. 출처를 믿을 수 있을 때만 설치하세요.',
     'fxPluginInstalledTemplate': 'FX 플러그인 「{name}」을(를) 설치했습니다.',
     'fxPluginUnreadableTemplate': '「{file}」은(는) 읽을 수 있는 FX 플러그인이 아닙니다.',
     'fxPluginUnopenedTemplate':
@@ -7321,7 +7509,6 @@ enum AppStrings {
     'tlLayerTake': '테이크',
     'layerProcess.paper': '용지',
     'layerProcess.conte': '콘티',
-    'layerProcess.art': '미술',
     'layerProcess.layout': '레이아웃',
     'layerProcess.rough-key': '러프원화',
     'layerProcess.key': '원화',
@@ -7329,7 +7516,6 @@ enum AppStrings {
     'layerProcess.finish': '시아게',
     'layerProcessAbbrev.paper': '용지',
     'layerProcessAbbrev.conte': '콘티',
-    'layerProcessAbbrev.art': '미술',
     'layerProcessAbbrev.layout': 'LO',
     'layerProcessAbbrev.rough-key': '러프원',
     'layerProcessAbbrev.key': '원화',
@@ -7498,6 +7684,7 @@ enum AppStrings {
     'launchStagePlugins': 'Enregistrement des plugins',
     'launchStageApp': "Préparation de l'application",
     'launchStageFirstFrame': 'Affichage du premier écran',
+    'launchProgressRunning': 'Préparation…',
     'launchNoticeTitle': 'À propos de cette version',
     'launchNoticeDontShowAgain': 'Ne plus afficher',
     'usageStatsSend': "Envoyer des statistiques d'utilisation",
@@ -7593,11 +7780,9 @@ enum AppStrings {
     'recordPlacementFailed': 'La prise n\'a pas pu être placée.',
     'recordDroppedFramesTemplate':
         'Enregistré, mais {count} trames ont été perdues (la machine n\'a pas suivi) — vérifiez la prise.',
-    'layerAudioTitle': 'Audio du calque',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Panoramique',
     'audioMute': 'Muet',
-    'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
@@ -7610,6 +7795,7 @@ enum AppStrings {
     'selectionInvertInCanvas': 'Inverser la sélection dans le canevas',
     'toolSelectionMode': 'Mode',
     'commonSave': 'Enregistrer',
+    'commonOk': 'OK',
     'commonDelete': 'Supprimer',
     'commonAdd': 'Ajouter',
     'commonRename': 'Renommer',
@@ -7916,7 +8102,6 @@ enum AppStrings {
     'memoryItemDrawings': 'Dessins',
     'memoryItemSheetInk': 'Écriture sur feuille',
     'memoryItemUndo': "Historique d'annulation",
-    'memoryItemLayerImages': 'Images de calque',
     'memoryItemFramePictures': 'Images composées',
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
@@ -7931,7 +8116,7 @@ enum AppStrings {
     'memoryItemTileImages': 'Images des tuiles du canevas',
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
-    'memoryItemLensBlurTables': "Tables du flou d'objectif",
+    'memoryItemPluginSteps': 'Images des plug-ins FX',
     'memoryOutsideAllowanceTemplate':
         "Hors de l'allocation, faute de plafond possible : {items}.",
     'containerAreaSettings': 'Réglages',
@@ -7959,6 +8144,12 @@ enum AppStrings {
     'saveFailedReplaceRefused':
         "Cet emplacement (un service cloud ou l'app Fichiers) a refusé de "
         'remplacer le fichier.',
+    'saveFailedEngineRead':
+        "La carte graphique n'a pas rendu le dessin : le fichier n'a pas été "
+        'modifié.',
+    'saveFailedEngineReadNoCopy':
+        "Une copie d'échec demanderait la même lecture : aucune n'a été "
+        'créée — enregistrez à nouveau avant de fermer le programme.',
     'saveFailedUnknown':
         "Une erreur s'est produite pendant l'écriture du fichier.",
     'saveFailedCopyKept':
@@ -7988,6 +8179,31 @@ enum AppStrings {
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
         'dessins déjà enregistrés ne vivent que dans ce fichier.',
+    'gpuRefusedNotice':
+        "La carte graphique n'a pas pu terminer une opération. Ce que vous "
+        "venez de faire n'a peut-être pas été appliqué. Enregistrez, puis "
+        'redémarrez le programme.',
+    'gpuStartedAgainNotice':
+        'La carte graphique a redémarré. Vous pouvez continuer à travailler. '
+        "Le trait que vous étiez en train de dessiner n'a peut-être pas été "
+        'appliqué.',
+    'gpuWentUnsaid':
+        "La cause n'a pas pu être déterminée. Les causes courantes sont une "
+        'mise à jour du pilote graphique, une sortie de veille ou une erreur '
+        'du pilote.',
+    'gpuWentByMemory': 'Cause : la mémoire graphique était insuffisante.',
+    'gpuWentByThisApp':
+        'Cause : très probablement une opération envoyée par ce programme '
+        "que la carte graphique n'a pas pu terminer.",
+    'gpuWentByRemoval':
+        'Cause : très probablement une mise à jour du pilote graphique, ou '
+        'la carte graphique désactivée ou déconnectée. Ce programme '
+        "n'en est pas la cause.",
+    'gpuWentByReset':
+        'Cause : la carte graphique a été réinitialisée après une commande '
+        "invalide. Il n'a pas été possible de déterminer si elle venait de "
+        "ce programme ou d'un autre.",
+    'gpuWentByDriver': 'Cause : une erreur interne du pilote graphique.',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -8005,6 +8221,7 @@ enum AppStrings {
     'sheetVisibleBoxes': 'Cases visibles',
     'sheetStretchLineAction': "Trait d'extension · ACTION",
     'sheetStretchLineCell': "Trait d'extension · CELL",
+    'sheetBookNamesShortened': 'Noms de BOOK · sans répétition',
     'sheetStretchLineHelp':
         'Tracer le trait à partir du (N+1)e comma des maintiens et des × de N+',
     'sheetStretchLineOn': 'Oui',
@@ -8071,11 +8288,19 @@ enum AppStrings {
     'gpuPreferenceDriverPicks':
         'Sous Linux, c’est le pilote graphique qui choisit le GPU.',
     'gpuPreferenceOneGpu': 'Cet appareil n’a qu’un GPU.',
+    'fxPluginShareLabel': 'Limite d’un passage de plugin',
+    'fxPluginShareHelp':
+        'Le nombre d’instructions qu’un plugin d’effet GPU peut dépenser pour un pixel. Un rendu qui les dépense toutes est interrompu et signalé comme échoué.',
+    'fxPluginShareTenThousand': '10 000',
+    'fxPluginShareHundredThousand': '100 000',
+    'fxPluginShareMillion': '1 million',
+    'fxPluginShareTenMillion': '10 millions',
+    'fxPluginShareHundredMillion': '100 millions',
+    'fxPluginShareUncut': 'Ne jamais interrompre',
     'systemStatusHelp':
         'Quelle implémentation chaque sous-système exécute en ce moment. Les chemins de repli gardent l\'application fonctionnelle mais tournent en général plus lentement — les noms sont cherchables si vous voulez les détails.',
     'shortcutShelf.canvas': 'Canevas',
     'shortcutShelf.tools': 'Outils',
-    'shortcutShelf.toolTiles': 'Sous-outils',
     'shortcutShelf.blendModes': 'Modes de fusion',
     'shortcutShelf.selection': 'Sélection',
     'shortcutShelf.edit': 'Édition',
@@ -8092,7 +8317,6 @@ enum AppStrings {
     'shortcutShelf.colourEdit': 'Édition couleur',
     'shortcutShelf.layerHeader': 'En-tête des calques',
     'shortcutShelf.timelineBar': 'Barre de la timeline',
-    'shortcutShelf.brushLibrary': 'Bibliothèque de pinceaux',
     'shortcutShelf.brushToolBrushes': 'Pinceaux de l’outil pinceau',
     'shortcutShelf.eraserToolBrushes': 'Pinceaux de l’outil gomme',
     'shortcutShelf.guides': 'Guides',
@@ -8102,12 +8326,6 @@ enum AppStrings {
     'shortcutShelf.settings': 'Réglages',
     'shortcutShelf.panels': 'Panneaux',
     'shortcutShelf.debug': 'Débogage',
-    'shortcutShelf.inAPanel': 'Dans un panneau',
-    'shortcutShelf.media': 'Médias',
-    'shortcutShelf.timesheet': 'Feuille de temps',
-    'shortcutShelf.conteSheet': 'Feuille de conte',
-    'shortcutShelf.envelope': 'Enveloppe de plan',
-    'shortcutShelf.palette': 'Palette',
     'shortcutPreset.clipStudio': 'Base Clip Studio',
     'shortcutPreset.tvpaint': 'Base TVPaint',
     'shortcutAction.frame-previous': 'Image précédente',
@@ -8137,7 +8355,6 @@ enum AppStrings {
     'shortcutAction.brush-size-down': 'Réduire la taille du pinceau',
     'shortcutAction.guide-add-symmetry': 'Nouveau repère de symétrie',
     'shortcutAction.guide-add-perspective': 'Nouveau repère de perspective',
-    'shortcutAction.timesheet-data-mode': 'Feuille de notation / de données',
     'shortcutAction.tool-select': 'Outil sélection',
     'shortcutAction.tool-transform': 'Outil transformation',
     'shortcutAction.tool-transform-normal': 'Transformation normale',
@@ -8465,6 +8682,8 @@ enum AppStrings {
     'shortcutRecordNew': 'Enregistrer un nouveau raccourci',
     'shortcutTouch': 'Raccourci tactile',
     'shortcutSearch': 'Rechercher une action',
+    'shortcutSearchByKey': 'Rechercher un raccourci',
+    'shortcutSearchByKeyClear': 'Effacer la recherche de raccourci',
     'shortcutConflictBanner':
         'Certaines actions partagent la même touche — les assignations '
         'surlignées entrent en conflit.',
@@ -8555,7 +8774,6 @@ enum AppStrings {
     'exSelDirection': 'Direction',
     'exSelCustom': 'Personnalisé',
     'exPaperLabel': 'Papier',
-    'exArtLabel': 'Décor',
     'exTakeLatest': 'Dernière',
     'exFolders': 'Dossiers',
     'exNameParts': 'Nom',
@@ -8833,10 +9051,27 @@ enum AppStrings {
     'imSoundOnly': 'Son seul',
     'imRunSpanTemplate': '{first}–{last} ({n})',
     'imRateTitleTemplate': 'Vidéo {movie} · projet {project}',
-    'imRateBodyTemplate':
-        'Régler le projet à {movie} ? Le son garde son timing.',
+    'imRateBody':
+        'La vidéo et le projet ne tournent pas tout à fait à la même '
+        'vitesse. Que faut-il accorder ?',
     'imRateKeepTemplate': 'Garder {project}',
-    'imRateTakeTemplate': 'Régler à {movie}',
+    'imRateKeepTipTemplate':
+        'L\'image et le son restent ensemble, et s\'écartent des images de '
+        'la vidéo d\'une image toutes les {seconds} secondes environ.',
+    'imRateFitMovieTemplate': 'Accorder la vidéo à {project}',
+    'imRateFitSoundTemplate': 'Accorder le son à {project}',
+    'imRateFitTipPictureAndSound':
+        'Intègre l\'image et le son de la vidéo réécrits à la vitesse du '
+        'projet (0,1 % d\'écart) — image pour image avec la vidéo.',
+    'imRateFitTipPicture':
+        'Intègre l\'image de la vidéo réécrite à la vitesse du projet '
+        '(0,1 % d\'écart) — image pour image avec la vidéo.',
+    'imRateFitTipSound':
+        'Intègre le son de la vidéo réécrit à la vitesse du projet '
+        '(0,1 % d\'écart) — image pour image avec la vidéo.',
+    'imRateTakeTemplate': 'Régler le projet à {movie}',
+    'imRateTakeTipTemplate':
+        'Passe le projet à {movie}. Le son garde son timing.',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitOriginal': 'Taille d’origine',
@@ -9227,10 +9462,6 @@ enum AppStrings {
         'Installer « {name} » {version} de {vendor} ?',
     'fxPluginReplacesTemplate':
         'Il remplace la version {version} de cet appareil.',
-    'fxPluginRunsNatively':
-        'Ce plug-in contient du code qui s’exécute directement sur cet '
-        'appareil, hors du bac à sable. Ne l’installez que si vous faites '
-        'confiance à sa provenance.',
     'fxPluginInstalledTemplate': 'Plug-in FX « {name} » installé.',
     'fxPluginUnreadableTemplate':
         '« {file} » n’est pas un plug-in FX lisible par cette application.',
@@ -9348,7 +9579,6 @@ enum AppStrings {
     'tlLayerTake': 'Prise',
     'layerProcess.paper': 'Papier',
     'layerProcess.conte': 'Storyboard',
-    'layerProcess.art': 'Décors',
     'layerProcess.layout': 'Layout',
     'layerProcess.rough-key': 'Clé brute',
     'layerProcess.key': 'Animation clé',
@@ -9497,7 +9727,6 @@ enum AppStrings {
     // its own is fr-zh-strings-fall-back-to-english-Q1.
     'layerProcessAbbrev.paper': 'PAP',
     'layerProcessAbbrev.conte': 'SB',
-    'layerProcessAbbrev.art': 'ART',
     'layerProcessAbbrev.layout': 'LO',
     'layerProcessAbbrev.rough-key': 'RK',
     'layerProcessAbbrev.key': 'KEY',
@@ -9553,6 +9782,7 @@ enum AppStrings {
     'launchStagePlugins': '注册插件',
     'launchStageApp': '准备应用',
     'launchStageFirstFrame': '绘制首个画面',
+    'launchProgressRunning': '正在准备…',
     'launchNoticeTitle': '本版本说明',
     'launchNoticeDontShowAgain': '不再显示',
     'usageStatsSend': '发送使用统计',
@@ -9632,11 +9862,9 @@ enum AppStrings {
     'recordTakeEmpty': '录音为空 — 没有可放置的内容。',
     'recordPlacementFailed': '录音未能放置。',
     'recordDroppedFramesTemplate': '已录音，但丢失了 {count} 帧（机器未能跟上）— 请检查这条录音。',
-    'layerAudioTitle': '图层音频',
     'audioGainLabel': '增益',
     'audioPanLabel': '声像',
     'audioMute': '静音',
-    'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
@@ -9649,6 +9877,7 @@ enum AppStrings {
     'selectionInvertInCanvas': '在画布内反选',
     'toolSelectionMode': '模式',
     'commonSave': '保存',
+    'commonOk': '确定',
     'commonDelete': '删除',
     'commonAdd': '添加',
     'commonRename': '重命名',
@@ -9913,7 +10142,6 @@ enum AppStrings {
     'memoryItemDrawings': '画稿',
     'memoryItemSheetInk': '纸面手写',
     'memoryItemUndo': '撤销记录',
-    'memoryItemLayerImages': '图层图像',
     'memoryItemFramePictures': '帧图像',
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',
@@ -9928,7 +10156,7 @@ enum AppStrings {
     'memoryItemTileImages': '画布图块图像',
     'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
-    'memoryItemLensBlurTables': '相机镜头模糊表',
+    'memoryItemPluginSteps': 'FX 插件图像',
     'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
@@ -9943,6 +10171,8 @@ enum AppStrings {
     'saveFailedDiskFull': '保存位置的空间不足。',
     'saveFailedLocationGone': '无法访问保存位置——驱动器已移除、网络已断开，或文件夹已被删除。',
     'saveFailedReplaceRefused': '此位置（云端或“文件”应用）拒绝替换该文件。',
+    'saveFailedEngineRead': '无法从显卡读回画面，文件未作更改。',
+    'saveFailedEngineReadNoCopy': '失败副本同样需要读回，因此未创建——请在关闭程序前再次保存。',
     'saveFailedUnknown': '写入文件时出错。',
     'saveFailedCopyKept':
         '目前的工作已保存在应用内的失败副本中。程序关闭后失败副本会消失——如需保留，请用“备份失败副本…”保存到您选择的位置。',
@@ -9959,6 +10189,14 @@ enum AppStrings {
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
+    'gpuRefusedNotice': '显卡未能完成操作。刚才的操作可能没有生效。请保存后重新启动程序。',
+    'gpuStartedAgainNotice': '显卡已重新启动。您可以继续工作。正在绘制的笔画可能没有生效。',
+    'gpuWentUnsaid': '无法确定原因。常见原因是显卡驱动更新、从睡眠中唤醒或驱动程序错误。',
+    'gpuWentByMemory': '原因：显存不足。',
+    'gpuWentByThisApp': '原因：很可能是本程序发送的操作显卡未能完成。',
+    'gpuWentByRemoval': '原因：很可能是显卡驱动已更新，或显卡被禁用或断开。这不是本程序造成的。',
+    'gpuWentByReset': '原因：显卡收到无效命令后被重置。无法确定该命令来自本程序还是其他程序。',
+    'gpuWentByDriver': '原因：显卡驱动内部发生错误。',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',
@@ -9976,6 +10214,7 @@ enum AppStrings {
     'sheetVisibleBoxes': '显示的栏位',
     'sheetStretchLineAction': '延长线 · ACTION',
     'sheetStretchLineCell': '延长线 · CELL',
+    'sheetBookNamesShortened': 'BOOK名重复省略',
     'sheetStretchLineHelp': '在 N 格以上的保持或 × 中，从第 (N+1) 格开始画线',
     'sheetStretchLineOn': '有',
     'sheetStretchLineOff': '无',
@@ -10035,10 +10274,17 @@ enum AppStrings {
     'gpuPreferenceNotOnMacOS': '在 macOS 上，Anicel 无法选择 GPU。',
     'gpuPreferenceDriverPicks': '在 Linux 上，由显卡驱动选择 GPU。',
     'gpuPreferenceOneGpu': '此设备只有一个 GPU。',
+    'fxPluginShareLabel': '插件单次上限',
+    'fxPluginShareHelp': 'GPU 效果插件绘制一个像素时可用的指令数。用完的绘制会被中断并显示为失败。',
+    'fxPluginShareTenThousand': '1万',
+    'fxPluginShareHundredThousand': '10万',
+    'fxPluginShareMillion': '100万',
+    'fxPluginShareTenMillion': '1000万',
+    'fxPluginShareHundredMillion': '1亿',
+    'fxPluginShareUncut': '不中断',
     'systemStatusHelp': '每个子系统当前运行的是哪一种实现。回退路径仍能让应用正常工作，但通常更慢 — 想了解细节可以按名称搜索。',
     'shortcutShelf.canvas': '画布',
     'shortcutShelf.tools': '工具',
-    'shortcutShelf.toolTiles': '子工具',
     'shortcutShelf.blendModes': '混合模式',
     'shortcutShelf.selection': '选区',
     'shortcutShelf.edit': '编辑',
@@ -10055,7 +10301,6 @@ enum AppStrings {
     'shortcutShelf.colourEdit': '颜色编辑',
     'shortcutShelf.layerHeader': '图层表头',
     'shortcutShelf.timelineBar': '时间轴栏',
-    'shortcutShelf.brushLibrary': '画笔库',
     'shortcutShelf.brushToolBrushes': '画笔工具的画笔',
     'shortcutShelf.eraserToolBrushes': '橡皮工具的画笔',
     'shortcutShelf.guides': '参考线',
@@ -10065,12 +10310,6 @@ enum AppStrings {
     'shortcutShelf.settings': '设置',
     'shortcutShelf.panels': '面板',
     'shortcutShelf.debug': '调试',
-    'shortcutShelf.inAPanel': '面板内',
-    'shortcutShelf.media': '媒体',
-    'shortcutShelf.timesheet': '摄影表',
-    'shortcutShelf.conteSheet': '分镜用纸',
-    'shortcutShelf.envelope': '卡袋',
-    'shortcutShelf.palette': '色板',
     'shortcutPreset.clipStudio': '基于 CLIP STUDIO',
     'shortcutPreset.tvpaint': '基于 TVPaint',
     'shortcutAction.frame-previous': '上一帧',
@@ -10098,7 +10337,6 @@ enum AppStrings {
     'shortcutAction.brush-size-down': '减小画笔大小',
     'shortcutAction.guide-add-symmetry': '新建对称参考线',
     'shortcutAction.guide-add-perspective': '新建透视参考线',
-    'shortcutAction.timesheet-data-mode': '标注表 / 数据表',
     'shortcutAction.tool-select': '选择工具',
     'shortcutAction.tool-transform': '变换工具',
     'shortcutAction.tool-transform-normal': '普通变换',
@@ -10407,6 +10645,8 @@ enum AppStrings {
     'shortcutRecordNew': '录制新快捷键',
     'shortcutTouch': '触摸快捷方式',
     'shortcutSearch': '搜索动作',
+    'shortcutSearchByKey': '搜索快捷键',
+    'shortcutSearchByKeyClear': '清除快捷键搜索',
     'shortcutConflictBanner': '有动作共用同一按键 — 高亮的绑定发生冲突。',
     'shortcutClashKeepTemplate': '仅将{key}分配给{name} — 从{others}移除',
     'shortcutRecordingHint': '请按键…（Esc 取消）',
@@ -10488,7 +10728,6 @@ enum AppStrings {
     'exSelDirection': '指示',
     'exSelCustom': '自定义',
     'exPaperLabel': '用纸',
-    'exArtLabel': '美术',
     'exTakeLatest': '最新',
     'exFolders': '创建文件夹',
     'exNameParts': '命名',
@@ -10688,9 +10927,16 @@ enum AppStrings {
     'imSoundOnly': '仅声音',
     'imRunSpanTemplate': '{first}–{last}（{n}张）',
     'imRateTitleTemplate': '视频 {movie} · 项目 {project}',
-    'imRateBodyTemplate': '将项目设为 {movie}？声音保持其时间。',
+    'imRateBody': '视频与项目的速度略有不同。要对齐哪一方？',
     'imRateKeepTemplate': '保持 {project}',
-    'imRateTakeTemplate': '设为 {movie}',
+    'imRateKeepTipTemplate': '画面与声音保持一致，与视频的帧约每{seconds}秒错开1帧。',
+    'imRateFitMovieTemplate': '将视频对齐到 {project}',
+    'imRateFitSoundTemplate': '将声音对齐到 {project}',
+    'imRateFitTipPictureAndSound': '按项目速度（相差0.1%）重写视频的画面和声音后导入。与视频的帧逐一对齐。',
+    'imRateFitTipPicture': '按项目速度（相差0.1%）重写视频的画面后导入。与视频的帧逐一对齐。',
+    'imRateFitTipSound': '按项目速度（相差0.1%）重写视频的声音后导入。与视频的帧逐一对齐。',
+    'imRateTakeTemplate': '将项目设为 {movie}',
+    'imRateTakeTipTemplate': '将项目改为 {movie}。声音保持其时间。',
     'commonOn': '开',
     'commonOff': '关',
     'imFitOriginal': '原始尺寸',
@@ -11050,7 +11296,6 @@ enum AppStrings {
     'fxPluginInstall': '安装',
     'fxPluginInstallBodyTemplate': '要安装 {vendor} 的“{name}” {version} 吗？',
     'fxPluginReplacesTemplate': '它将替换此设备上的 {version} 版本。',
-    'fxPluginRunsNatively': '此插件包含在沙盒之外、直接在此设备上运行的代码。仅在信任其来源时安装。',
     'fxPluginInstalledTemplate': '已安装 FX 插件“{name}”。',
     'fxPluginUnreadableTemplate': '“{file}”不是可读取的 FX 插件。',
     'fxPluginUnopenedTemplate': '无法在此设备上将“{file}”作为 FX 插件打开：{why}',
@@ -11294,7 +11539,6 @@ enum AppStrings {
     'tlLayerTakeNumber': '镜次 {n}',
     'layerProcess.paper': '用纸',
     'layerProcess.conte': '分镜',
-    'layerProcess.art': '美术',
     'layerProcess.layout': '设计稿',
     'layerProcess.rough-key': '粗原画',
     'layerProcess.key': '原画',
@@ -11302,7 +11546,6 @@ enum AppStrings {
     'layerProcess.finish': '上色',
     'layerProcessAbbrev.paper': '用纸',
     'layerProcessAbbrev.conte': '分镜',
-    'layerProcessAbbrev.art': '美术',
     'layerProcessAbbrev.layout': 'LO',
     'layerProcessAbbrev.rough-key': '粗原',
     'layerProcessAbbrev.key': '原画',

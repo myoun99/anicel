@@ -1,8 +1,11 @@
-//! The OS video codecs — the engine's `qa_video_encode.c` with its colour
-//! and hardware laws (`qa_yuv601.h`, `qa_video_hardware_law.h`), in Rust
-//! (native-to-rust, 저장). The decoder (`qa_video_decode.c`) and Apple's
-//! side of both (`qa_video_apple.m`) join here. Until the connection round
-//! the C is the answer key: the tests hold the exports to the engine's.
+//! The OS video codecs, in Rust (native-to-rust, 저장): the movie writer
+//! with its colour and hardware laws — Apple's writer among them,
+//! AVAssetWriter through objc2 — and the decoder (`decode`), whose
+//! AVAssetReader half 공통 added. ↩️They were the engine's
+//! `qa_video_encode.c`, `qa_yuv601.h`, `qa_video_hardware_law.h`,
+//! `qa_video_apple.m` and `qa_video_decode.c`, the answer key the tests held
+//! the exports to, until the connection round deleted them
+//! (connection-round-checklist H, 2026-11-08).
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
@@ -10,12 +13,10 @@
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 pub mod colour;
-// ⏳Apple's writer (`qa_video_apple.m`) is not here yet: the machine that
-// ported this has no Apple target, so nothing could even compile it there —
-// it joins with a build that can (native-to-rust-Q5). Until then the export
-// is absent on Apple rather than answering for a writer it does not have.
-#[cfg(not(target_vendor = "apple"))]
+pub mod decode;
+// Apple's writer is objc2 over AVFoundation, compiled on the main PC for the
+// Apple targets (`cargo check`) and run on the Mac CI job (↩️held to the C
+// there until the connection round deleted it) — the road 관제 set for
+// every Apple piece of the engine (connection round, H).
 pub mod export;
 pub mod hardware_law;
-#[cfg(target_os = "android")]
-mod ndk;

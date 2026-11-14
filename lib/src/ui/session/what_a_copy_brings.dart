@@ -162,8 +162,15 @@ Future<List<MediaAsset>> holdCarriedMediaOf(
   final known = {for (final asset in project.mediaAssets) asset.path};
   final arriving = [
     for (final asset in names.assets.values)
-      if (asset.carried && !known.contains(asset.path))
-        asset.copyWith(carriedAs: mintMediaCarry(asset.path)),
+      if (asset.carriedAs case final carried?
+          when !known.contains(asset.path))
+        // Bytes of its own under a name of its own, from the same file.
+        asset.copyWith(
+          carriedAs: (
+            token: mintMediaCarry(asset.path),
+            modified: carried.modified,
+          ),
+        ),
   ];
   if (arriving.isEmpty) {
     return const [];

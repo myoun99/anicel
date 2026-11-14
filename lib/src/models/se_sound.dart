@@ -19,6 +19,10 @@ import 'transform_track.dart' show doubleKeySpace;
 /// keyed volume — a pro tool's track fader over its keys — one value, set
 /// from the group's lane and from the speaker's window alike.
 ///
+/// ↩️F-577 (유저 2026-11-10: 「사운드버튼안의 총볼륨 필요없어지니 삭제」): the
+/// second door is the S row's Total bar in the rail's blend column now —
+/// the opacity bar's own look — and the speaker is a mute toggle alone.
+///
 /// ↩️The speaker's mixer held a gain and a pan of the row that nothing could
 /// key, and each sound kept fades, a fade curve and a volume envelope of its
 /// own: this is the one place a row's sound is shaped now. What a BLOCK
@@ -51,7 +55,7 @@ class SeSound {
   /// — 0 silent, 1 as recorded, 2 twice as loud. Empty plays it as recorded.
   PropertyTrack<double> get volume => _volume ?? PropertyTrack<double>.empty();
 
-  /// The loudest a row is set to — the speaker's mixer fader's top, kept.
+  /// The loudest a row is set to — the top of the S row's Total bar.
   static const double maxVolume = 2.0;
 
   /// The volume at [time], a frame or between two — what the lane's value

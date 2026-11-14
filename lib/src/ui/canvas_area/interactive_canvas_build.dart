@@ -309,7 +309,12 @@ class _InteractiveCanvasBuild {
       effectBox: effectBox,
       referenceBox:
           effectBox == null &&
-          _referenceBoxShown(activeLayer, standing, tool),
+          _referenceBoxShown(
+            activeLayer,
+            standing,
+            tool,
+            rows: session.activeCutOrNull?.layers ?? const [],
+          ),
       isCameraLayerActive: isCameraLayerActive,
       pathLane: switch (standingLane) {
         final lane? => switch (transformPropertyOfLaneId(lane)) {
@@ -319,7 +324,7 @@ class _InteractiveCanvasBuild {
         null => null,
       },
     );
-    return MainCanvasBrushHost(
+    final host = MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
         session,
       ),
@@ -565,34 +570,26 @@ class _InteractiveCanvasBuild {
       // the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
       transformOptions: _state.widget.transformOptions,
-      fillRangeAt: (point, symmetry) => fillRangeAt(
-        cut: session.requireActiveCut,
-        frameIndex: session.currentFrameIndex,
-        surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
-        point: point,
-        // TP1: the FILL has its own opacity now — the strip's bar
-        // writes the fill's field, not the brush's.
-        opacity: _state.widget.brushToolState.value.activeOpacity,
+      fillRangeAt: (point, symmetry) => fillRangeOn(
+        session,
+        point,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
-        // The 「현재」 of the fill's reference source (I-36) — the same
-        // layer the eyedropper's reads, above.
-        activeLayerId: session.activeLayer?.id,
         // The seed arrives through the draw-through wrap, in the posed
-        // layer's artwork — the raster is laid in the same space (I-36).
+        // layer's artwork — the picture is read in the same space (I-36).
         space: _interactivePose,
-        // The same guide the brush obeys, handed down by the view
-        // that read it — a symmetry that replicates strokes
-        // replicates fills.
+        // TP1: the FILL has its own opacity now — the strip's bar writes
+        // the fill's field, not the brush's.
+        opacity: _state.widget.brushToolState.value.activeOpacity,
+        // The same guide the brush obeys, handed down by the view that
+        // read it — a symmetry that replicates strokes replicates fills.
         symmetry: symmetry,
-        // Extended fills refuse OPEN regions (the flood reached
-        // the pasteboard apron wall) — say why nothing filled.
+        // Extended fills refuse OPEN regions (the flood reached the
+        // pasteboard apron wall) — say why nothing filled.
         onOpenRegion: () => showAppNotice(
           _state.context,
           title: AppText.strings.commonNotice,
           message: AppText.strings.noticeFillRegionOpen,
         ),
-        // The apron reaches as far as the pasteboard does (I-109).
-        pasteboardReach: session.repository.requireProject().pasteboardReach,
       ),
       fillsContinuously: () =>
           _state.widget.fillOptions?.value.continuous ?? false,
@@ -694,6 +691,16 @@ class _InteractiveCanvasBuild {
                 _state._buildTrackStackView(session, viewport)
           : null,
     );
+    // 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에 준비 중 표시를
+    // 둔다」 — the canvas's ONE place: the frame, its ghosts, the track
+    // stack parked or run and an O.L partner are all shown under this
+    // host, and mark it together — at the middle of what its docks leave
+    // to be seen, where the panel's shell seats the mark ([FrameWaitMark]).
+    //
+    // Under the keys the host is carried and made again by
+    // ([buildInteractiveCanvas]): a place goes with the frames that say
+    // their waits to it.
+    return FrameWaitPlace(child: host);
   }
 
   /// A part of the canvas that follows a drag on its own: [build] again,
@@ -976,10 +983,10 @@ class _InteractiveCanvasBuild {
   ) {
     final session = frame.session;
     final fade = _fadeShown(session);
-    final seNameTags = _seNameTagsShown(session);
     // A RUN shows the film: what is over the picture is what the picture
-    // has — its SE tags and its fade — and none of the chrome about editing
-    // it, the way playback has never drawn a guide or the camera's frame.
+    // has — its fade; its SE tags are rows of it (`CanvasNameTagRow`) — and
+    // none of the chrome about editing it, the way playback has never drawn
+    // a guide or the camera's frame.
     final editing = !_isPlaybackActive;
     final shot = _shotAt(session, _look(session), viewport);
     return _inTheCamerasFrame(
@@ -1006,13 +1013,6 @@ class _InteractiveCanvasBuild {
           // so it never stands between the brush and the cel.
           if (editing && frame.tool == CanvasTool.guide)
             _state._guideEditLayer(frame.session, viewport),
-          if (seNameTags.isNotEmpty)
-            _state._seNameTagOverlay(
-              shot?.frameView ?? viewport,
-              _canvasSize,
-              seNameTags,
-              context,
-            ),
           if (fade != null)
             _state._cutFadeWash(
               viewport,
@@ -1133,14 +1133,21 @@ class _InteractiveCanvasBuild {
   ///
   /// ⛔Not the transform switch's: the reference fx has none, and stands
   /// with it off (I-68-Q1 「레이어의 fx버튼 꺼도 그 자리 유지」).
+  ///
+  /// ⛔Not on a row that wears its base's fx: where its file stands is its
+  /// base's, as its transform is (🗣️attach-rows-lose-the-base-move-when-it-
+  /// bakes-Q4, 유저 2026-11-11 「어태치줄의 참조fx는없앰」). ↩️Its box keyed
+  /// the row's file over its base's move (I-120-Q25).
   bool _referenceBoxShown(
     Layer? layer,
     TimelineRowAddress? standing,
-    CanvasTool tool,
-  ) {
+    CanvasTool tool, {
+    required List<Layer> rows,
+  }) {
     if (_isPlaybackActive ||
         layer == null ||
-        referenceRedrawFor(layer) == null) {
+        referenceRedrawFor(layer) == null ||
+        attachRowWearsBaseComposite(layer, rows)) {
       return false;
     }
     final lane = standing is LaneRowAddress && standing.layerId == layer.id

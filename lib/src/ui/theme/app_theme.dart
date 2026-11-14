@@ -397,6 +397,68 @@ abstract final class AppShapes {
   /// reads as a lozenge.)
 }
 
+/// THE FACE OF A FILLED CORNER WITH AN EDGE — an [AppShapes] shape filled
+/// with [color] and edged with its side, the edge drawn by FILLS: the
+/// side's colour over the whole shape, [color] over the shape the side's
+/// width in.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 2026-11-08, 2: 「가장자리를
+/// 정확한 식으로 칠하게 바꿔 그려 본다(먼저 탐침으로 잰다)」): a superellipse's
+/// side as [RoundedSuperellipseBorder] draws it — a stroke — is multisampled,
+/// and the image a still region takes of it parts from the screen by up to
+/// 49/255 at its edges; the same side as two fills parts by 3~5 (🔬the
+/// Surface's edge probe, 11-08 04:40: `control` 49, `control-fills` 3~5). A
+/// region's image and the region live then look the same. The framework
+/// already draws a rounded RECTANGLE's side so (`drawDRRect`, which is why
+/// `rrect-line` agreed at 0); a superellipse has no such ring.
+///
+/// ⛔Only over an OPAQUE inside, and a side laid inside the shape (as every
+/// side the app draws is): the inside's fill is what draws the side's inner
+/// edge, so a translucent inside would let the side's colour show through
+/// it. Such a face is drawn as [ShapeDecoration] draws it.
+class SuperellipseFace extends ShapeDecoration {
+  const SuperellipseFace({required Color super.color, required this.edge})
+    : super(shape: edge);
+
+  /// The shape, its side the edge — what [shape] is, typed.
+  final RoundedSuperellipseBorder edge;
+
+  /// Whether the edge is drawn by fills: there is one, laid inside, over an
+  /// opaque inside.
+  bool get _edgedByFills =>
+      edge.side.style == BorderStyle.solid &&
+      edge.side.width > 0 &&
+      edge.side.strokeAlign == BorderSide.strokeAlignInside &&
+      color!.a == 1;
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _edgedByFills
+      ? _SuperellipseFacePainter(this, onChanged)
+      : super.createBoxPainter(onChanged);
+}
+
+class _SuperellipseFacePainter extends BoxPainter {
+  _SuperellipseFacePainter(this._face, super.onChanged);
+
+  final SuperellipseFace _face;
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final side = _face.edge.side;
+    final inside = Paint()..color = _face.color!;
+    final outer = _face.edge.borderRadius
+        .resolve(configuration.textDirection)
+        .toRSuperellipse(offset & configuration.size!);
+    // A translucent side lies over the inside, as its stroke did.
+    if (side.color.a < 1) {
+      canvas.drawRSuperellipse(outer, inside);
+    }
+    canvas
+      ..drawRSuperellipse(outer, Paint()..color = side.color)
+      ..drawRSuperellipse(outer.deflate(side.width), inside);
+  }
+}
+
 /// The cursor of everything a press acts on — a button, a toggle, a menu's
 /// row, a tab, a swatch: the HAND while it is live, the arrow while it is
 /// dead. A Material button reads it from this theme; an `InkWell`, which no
@@ -584,10 +646,18 @@ abstract final class AppTypography {
   static String familyFor(AppLanguage language) =>
       language == AppLanguage.zhHans ? _chineseFamily : _family;
 
+  /// 🗣️connection-round-checklist-Q21 (유저 2026-11-08): 「UI 글꼴 끝에 Noto
+  /// Sans SC 를 더한다」 — outside the Chinese UI, a letter neither BIZ nor
+  /// 나눔고딕 has is drawn by the bundled Chinese face, not the machine's.
+  /// The GPU engine, which draws a narrowed block word, sees no OS face, so
+  /// Flutter and the engine set the UI in this one order (the canvas
+  /// letters' answer to the same question, engine-canvas-letters-Q2).
+  /// ↩️Such a letter was the OS's face's until then — and the engine's
+  /// empty box in a narrowed word.
   static List<String> fallbackFor(AppLanguage language) =>
       language == AppLanguage.zhHans
       ? const <String>[_family, ..._fallback]
-      : _fallback;
+      : documentFallback;
 
   /// [style] in the face the app speaks in now.
   ///
@@ -637,22 +707,43 @@ abstract final class AppTypography {
   /// The Chinese UI's face, in front of [_family] ([familyFor]).
   static const String _chineseFamily = 'Noto Sans SC';
 
-  /// The one file behind [_chineseFamily] as `pubspec.yaml` declares it —
-  /// variable, its weight set by the style's.
-  static const String chineseFile = 'assets/fonts/NotoSansSC-Variable.ttf';
+  /// The two files behind [_chineseFamily] as `pubspec.yaml` declares them.
+  ///
+  /// 🗣️connection-round-checklist-Q32 (유저 2026-11-09): 「가변 글꼴을 이 두
+  /// 파일로 바꾼다」 — the conte's PDF embeds them, and the PDF writer copies
+  /// a file's default outlines alone. ↩️One variable file until then, its
+  /// weight set by the style's and its default outlines weight 100: the PDF
+  /// would have printed those letters thin.
+  static const ({String regular, String bold}) chineseFiles = (
+    regular: 'assets/fonts/NotoSansSC-Regular.ttf',
+    bold: 'assets/fonts/NotoSansSC-Bold.ttf',
+  );
 
   /// 🚨THE BUNDLED FACES, whatever the UI language — for what has to print
   /// the same on every machine and in every file (유저 2026-09-25: 「글꼴
   /// 앱에서 정한거 통일하는거 해주고」): the conte, whose PDF embeds these
   /// very files, and a text cel, which bakes into the picture. Only the UI
   /// follows the language ([familyFor]) — a Chinese UI wears
-  /// [_chineseFamily] in front of these two.
+  /// [_chineseFamily] in front of these two, any other UI behind them
+  /// ([fallbackFor]).
   ///
   /// ↩️The conte printed in faces of its own (M PLUS 1p + IBM Plex Sans KR)
   /// and a text cel caught CJK in them: two more families, bundled for two
   /// jobs these two already do.
   static const String bundledFamily = _family;
   static const List<String> bundledFallback = _fallback;
+
+  /// What a document's words fall back on, in the order its PDF embeds them:
+  /// [bundledFallback], then the Chinese face — the order of every UI but the
+  /// Chinese one ([fallbackFor]).
+  ///
+  /// 🗣️connection-round-checklist-Q22 (유저 2026-11-08): 「콘티도 끝에 Noto
+  /// Sans SC 를 더한다」. ↩️A letter neither of the two has was the OS's face's
+  /// on the conte's screen, and the first face's empty box in its PDF.
+  static const List<String> documentFallback = <String>[
+    ..._fallback,
+    _chineseFamily,
+  ];
 
   /// The files behind [bundledFamily] and [bundledFallback], as
   /// `pubspec.yaml` declares them under those names — what a PDF embeds.
@@ -664,6 +755,31 @@ abstract final class AppTypography {
     regular: 'assets/fonts/NanumGothic-Regular.ttf',
     bold: 'assets/fonts/NanumGothic-Bold.ttf',
   );
+
+  /// 🚨THE FACES A CANVAS LETTER IS SET IN, in the order a letter goes down
+  /// them — [bundledFamily], [bundledFallback], then the Chinese UI's face —
+  /// each one's files as `pubspec.yaml` declares them: the names the app
+  /// sets its canvas letters in (`canvasLetterTextStyle`) and the files the
+  /// GPU engine is handed (`engine_letters.dart`), one order read by both.
+  ///
+  /// 🗣️engine-canvas-letters-Q2 (유저 2026-11-07): 「이미 들어 있는 Noto Sans
+  /// SC 를 마지막 글꼴로 더한다」. ↩️A simplified character neither of the two
+  /// has was the OS's face's, as each machine had one.
+  static final List<({String family, List<String> files})> canvasLetterFaces =
+      [
+        (
+          family: _family,
+          files: [bundledFiles.regular, bundledFiles.bold],
+        ),
+        (
+          family: _fallback.single,
+          files: [bundledFallbackFiles.regular, bundledFallbackFiles.bold],
+        ),
+        (
+          family: _chineseFamily,
+          files: [chineseFiles.regular, chineseFiles.bold],
+        ),
+      ];
 }
 
 /// 🚨★★★**THE APP HAS NO PAGE ROUTES, AND PAYS FOR NO PAGE TRANSITION.**

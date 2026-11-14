@@ -1,10 +1,14 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart' show mediaFileNameParts;
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/text_finders.dart';
 
 /// The import window's file list: one row per file, one COLUMN per
 /// question. Nothing named it (2026-09-05).
@@ -432,6 +436,156 @@ void main() {
           ImportFileTable.namePreferredWidth - ImportFileTable.nameMinWidth,
         ),
       );
+    });
+  });
+
+  group('a column that keeps a room is as wide whatever its rows say, and '
+      'a longer word is cut and says its whole on a hover (🗣️F-582, 유저 '
+      '2026-11-10: 「해당 옵션행은 고정길이로 둬서 길어지면 … 생략. 풀네임은 '
+      '호버해서 툴팁으로 알도록」)', () {
+    tearDown(SummonedTooltip.dismiss);
+
+    const room = 'A0001–A9999 (9999)';
+    const long =
+        'background_street_night_0001–background_street_night_0240 (240)';
+
+    /// A question whose rows say a word of their own, as a run's span is.
+    ImportColumn<Object?> span(
+      String word, {
+      List<String>? keepsRoomFor = const [room],
+    }) =>
+        ImportColumn<Object?>(
+          id: 'span',
+          label: 'Span',
+          values: const ['all'],
+          labelOf: (value) => 'All',
+          wordOf: (path, value) => word,
+          keepsRoomFor: keepsRoomFor,
+          valueOf: (path) => 'all',
+          appliesTo: (path) => true,
+          enabledFor: (path, value) => true,
+          onPick: (paths, value) {},
+        );
+
+    /// The table with the column saying [word], in room enough for every
+    /// column and a name.
+    Future<void> pumpSaying(WidgetTester tester, String word) => pumpTable(
+      tester,
+      rows: [row('a.png')],
+      extra: [span(word)],
+      width: 900,
+    );
+
+    Finder wordOfTheCell() => find.descendant(
+      of: cell('span', 'a.png'),
+      matching: find.anyRichText(),
+    );
+
+    bool isCut(WidgetTester tester) =>
+        tester.renderObject<RenderParagraph>(wordOfTheCell()).didExceedMaxLines;
+
+    Future<void> hover(WidgetTester tester, Finder finder) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await tester.pump();
+      await mouse.moveTo(tester.getCenter(finder));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    testWidgets('🚨the table is no wider for a long word and no narrower '
+        'for a short one — nothing beside the column moves', (tester) async {
+      final rows = [row('a.png')];
+      double narrowest(ImportColumn<Object?> column) =>
+          ImportFileTable.minimumWidth(
+            tester.element(find.byType(ImportFileTable)),
+            rows: rows,
+            columns: [column],
+          );
+      Future<(Rect, double, double)> laidOutSaying(String word) async {
+        await pumpSaying(tester, word);
+        return (
+          tester.getRect(find.text(AppText.strings.imSize)),
+          narrowest(span(word)),
+          ImportFileTable.preferredWidth(
+            tester.element(find.byType(ImportFileTable)),
+            rows: rows,
+            columns: [span(word)],
+          ),
+        );
+      }
+
+      final kept = await laidOutSaying(room);
+      expect(await laidOutSaying('A1'), kept);
+      expect(await laidOutSaying(long), kept);
+
+      // ⛔전제: the same words do move a column that keeps no room — it is
+      // as wide as the widest word a row says.
+      expect(narrowest(span('A1', keepsRoomFor: null)), lessThan(kept.$2));
+      expect(narrowest(span(long, keepsRoomFor: null)), greaterThan(kept.$2));
+    });
+
+    // 🗣️F-582-Q1 (유저 2026-11-10: 「넣을 곳도 같은 법으로」): a place's word
+    // takes more than one shape, and which is the widest is the language's.
+    testWidgets('🚨a room of several words is the widest of them, in '
+        'whatever order they are kept', (tester) async {
+      await pumpSaying(tester, room);
+      double narrowest(List<String> kept) => ImportFileTable.minimumWidth(
+        tester.element(find.byType(ImportFileTable)),
+        rows: [row('a.png')],
+        columns: [span('A1', keepsRoomFor: kept)],
+      );
+      final widest = narrowest(const [room]);
+
+      expect(narrowest(const [room, 'A1–A2 (2)']), widest);
+      expect(narrowest(const ['A1–A2 (2)', room]), widest);
+      expect(
+        narrowest(const ['A1–A2 (2)']),
+        lessThan(widest),
+        reason: '⛔전제: the shorter one alone is a narrower room',
+      );
+    });
+
+    testWidgets('🚨a word longer than the room is cut, and says its whole '
+        'on a hover', (tester) async {
+      await pumpSaying(tester, long);
+
+      expect(isCut(tester), isTrue);
+      await hover(tester, wordOfTheCell());
+      expect(SummonedTooltip.debugShownMessage, long);
+    });
+
+    for (final word in const ['A1', room]) {
+      testWidgets('a word the room holds is whole and says nothing — the '
+          'room\'s own word with it: "$word"', (tester) async {
+        await pumpSaying(tester, word);
+
+        expect(isCut(tester), isFalse);
+        await hover(tester, wordOfTheCell());
+        expect(SummonedTooltip.debugTarget, isNull);
+      });
+    }
+
+    testWidgets('🚨a cut word wears the chip the room\'s own word would — '
+        'the column\'s gap stays around it', (tester) async {
+      await pumpSaying(tester, room);
+      final whole = tester.getRect(cell('span', 'a.png'));
+      await pumpSaying(tester, long);
+
+      expect(tester.getRect(cell('span', 'a.png')), whole);
+    });
+
+    testWidgets('⛔a column that keeps no room cuts nothing — it is laid '
+        'out for the word', (tester) async {
+      await pumpTable(
+        tester,
+        rows: [row('a.png')],
+        extra: [span(long, keepsRoomFor: null)],
+        width: null,
+      );
+
+      expect(isCut(tester), isFalse);
     });
   });
 

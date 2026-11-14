@@ -7,55 +7,26 @@ import 'zstd_payload.dart';
 /// Which compressor wrote a payload.
 ///
 /// 🚨★★★**deflate is the FLOOR and that is not a fallback to apologise
-/// for.** `dart:io` has zlib, so every build can read a deflate payload —
-/// a test run, a host run, any build where the engine did not load. zstd
-/// is written only when the engine answered. ⛔A file this app writes must
-/// never need a library that might not be there.
+/// for.** `dart:io` has zlib, so every build can read a deflate payload.
+/// zstd is written wherever the engine does not refuse it. ⛔A file this
+/// app writes must never need a library that might not be there.
+/// ↩️zstd was written only where the C engine loaded, until the connection
+/// round put the compressor in the engine the app ships with
+/// (connection-round-checklist H, 2026-11-08).
 const int anicelCodecDeflate = 0;
 const int anicelCodecZstd = 1;
 
-/// The zstd level, and there is exactly one.
-///
-/// 🪦**19 WAS OFFERED AND REJECTED — 유저 확정 2026-08-30: 「9로통일이고
-/// 19의 남은잔재는 깔끔하게 삭제하고싶어」.** The numbers that settled it,
-/// re-measured on cels from a real project, because the「6ms → 30ms on a
-/// 1MB cel」that used to stand here did NOT reproduce:
-///
-/// | cel | level 9 | level 19 | | smaller |
-/// |---|---|---|---|---|
-/// | 512KB | 4.1ms | 48ms | 12× | 6–8% |
-/// | 768KB | 4.1ms | 50ms | 12× | 6.9% |
-/// | 17.9MB | 256ms | **5.4s** | 21× | 10.1% |
-///
-/// So 19 bought 6–10% for 12–21× the compression time, and the multiplier
-/// GREW with the cel — one big cel costs five seconds. Reading is
-/// unaffected either way (1,522 MB/s against 1,496, which is noise), so
-/// the whole cost sat on the save.
-///
-/// ⛔And it could never have been a simple flag on「save」: a cel's level
-/// is fixed when it COOLS (see `BrushFrameStore._coolLoop`), and a save
-/// hands cold and file-backed bytes through untouched. Offering it meant
-/// re-inflating and re-compressing every cel a save would otherwise have
-/// copied — which is exactly the incremental-append fast path.
-///
-/// ⛔22 was never offered either: 0.4% smaller than 19 and **36× slower**
-/// on the same cel (measured 2026-08-29).
-///
-/// ⚠️This paragraph is the record, not a proposal. Anyone reaching for a
-/// second level should read the table first.
-const int anicelZstdLevel = 9;
-
-/// Compresses [bytes] with the best codec this build has, saying which.
+/// Compresses [bytes] with the best codec this build has, saying which —
+/// zstd at its one level (native/compress's `compress` keeps the record of
+/// why there is one, 🗣️유저 2026-08-30 「9로통일」), deflate where it
+/// refuses.
 ///
 /// 🚨ONE place picks the codec. It was about to be written twice — once
 /// for cel blobs and once for the project manifest — and two copies of
-/// "zstd if the engine answered, else deflate" is exactly the kind of
+/// "zstd unless it refuses, else deflate" is exactly the kind of
 /// pair that drifts when one of them learns something.
 ({int codec, Uint8List bytes}) compressAnicelPayload(Uint8List bytes) {
-  final compressor = QaCelCompressor.instance;
-  final zstd = compressor != null && compressor.isSupported
-      ? compressor.compress(bytes, level: anicelZstdLevel)
-      : null;
+  final zstd = QaCelCompressor.compress(bytes);
   if (zstd != null) {
     return (codec: anicelCodecZstd, bytes: zstd);
   }

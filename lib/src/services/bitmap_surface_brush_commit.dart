@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:gpu_engine/gpu_engine.dart';
+
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -13,14 +15,18 @@ import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/pasteboard_bounds.dart';
+import '../models/placed_tile.dart';
 import '../models/tile_coord.dart';
-import '../native/qa_native_engine.dart';
+import '../native/app_gpu_engine.dart';
+import '../native/engine_stamp_pictures.dart';
+import '../native/engine_tile_ledger.dart';
 import '../core/dev_profile.dart';
 import 'brush_dab_kernel.dart';
+import 'brush_stroke_landing.dart';
 import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart';
 import 'commit_tile_scratch.dart';
-import 'native_tile_span_batch.dart';
+import 'selection_clip.dart';
 
 class BrushSurfaceMaterialization {
   const BrushSurfaceMaterialization({
@@ -34,19 +40,54 @@ class BrushSurfaceMaterialization {
   bool get hasChanges => dirtyTiles.isNotEmpty;
 }
 
+/// Whether a commit on [surface] is laid on the engine: its grid, on the
+/// isolate that has the engine. ⛔A worker has none to ask, and what would
+/// come back are tiles of a pool no other isolate reads: a vector layer an
+/// import draws plans its strokes on a worker and lays them on the isolate
+/// that has the engine (`clipVectorTiles`). ↩️Till 2026-11-12 it drew them
+/// on the worker, as the small grids are drawn — the last road that way had
+/// in the app; the small grids are tests' alone now.
+bool _landsOnEngine(BitmapSurface surface) =>
+    surface.tileSize == gpuTileSide && appGpuEngineIsHere;
+
 /// Rasterizes [sequence] onto [surface] and returns the updated surface plus
 /// the tiles it changed.
 ///
-/// This is the stroke-commit hot path. It blends dabs directly into per-tile
-/// scratch byte buffers: each touched tile's pixels are copied at most once,
-/// and no per-pixel objects are allocated. The blend math is kept identical to
-/// the reference pixel pipeline (`brushPixelBlendOperationsForDabSequence` +
+/// On the engine's grid the engine lays it ([_materializedOnEngine]). On
+/// another the dabs blend here, directly into per-tile scratch byte
+/// buffers: each touched tile's pixels are copied at most once, and no
+/// per-pixel objects are allocated. The blend math is kept identical to the
+/// reference pixel pipeline (`brushPixelBlendOperationsForDabSequence` +
 /// `applyBrushPixelBlendOperationsToBitmapTile`), which remains as the slow
 /// per-pixel-operation oracle used by the parity test.
+///
+/// 🚨★★★A STAMP IN A SELECTION LANDS UNDER THE SELECTION'S MASK (2026-11-14,
+/// board `a-selection-mask-is-built-on-the-cpu-at-every-move`): [selection]
+/// cuts each stamp of [sequence] where it lands — on the engine's grid the
+/// stamp's own picture laid under [SelectionClip.maskOnEngine], the mask a
+/// stroke under the same clip lands under; off it refused
+/// ([cutOnTheEngineOnly]). ↩️Every road cut its stamps on the CPU
+/// before they came here — a mask and a copy of the picture at each.
+///
+/// ⛔Stamps only: a stroke of brush dabs under a selection lands by its
+/// stroke ([strokeLandedOn]) or as one buffer
+/// ([compositeStrokePixelsOntoBitmapSurface]), and nothing hands one here.
 BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
+  SelectionClip? selection,
 }) {
+  if (selection != null && sequence.dabs.any((dab) => dab.stamp == null)) {
+    throw ArgumentError.value(
+      selection,
+      'selection',
+      'cuts stamps; a brush dab lands under a selection by its stroke',
+    );
+  }
+  if (_landsOnEngine(surface)) {
+    return _materializedOnEngine(surface, sequence, selection);
+  }
+  cutOnTheEngineOnly(selection);
   // Strokes clip at the PASTEBOARD (as far past the canvas as the
   // project's size reaches, the canvas itself when it is off — I-109),
   // not the canvas — drawing off the stage is the point.
@@ -55,30 +96,11 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   final wall = surface.pasteboard;
   final tileSize = surface.tileSize;
 
-  // The scratch the dabs blend into — native pooled memory with the
-  // engine loaded, Dart byte lists otherwise (see CommitTileScratch).
-  final native = QaNativeEngine.instance;
   // A stroke with a second tip says so on every dab ([BrushDab.dual]).
   final secondTip =
       sequence.dabs.isNotEmpty && sequence.dabs.first.dual != null;
-  final nativeScratch = native == null
-      ? null
-      : NativeCommitScratch(native, surface, secondTip: secondTip);
-  final scratch =
-      nativeScratch ?? DartCommitScratch(surface, secondTip: secondTip);
+  final scratch = CommitTileScratch(surface, secondTip: secondTip);
   final changedCoords = <TileCoord>{};
-  // Native kernel (R18 A-1): identical pixel visits and float math, the
-  // run's dabs in pooled batches straight into the native-backed scratch
-  // (see NativeDabBatcher). The Dart loop below stays byte-for-byte as the
-  // reference fallback.
-  final dabBatch = nativeScratch == null
-      ? null
-      : NativeDabBatcher(
-          nativeScratch.native,
-          tileSize: tileSize,
-          planesFor: nativeScratch.pointersFor,
-          onTileChanged: changedCoords.add,
-        );
 
   for (final dab in sequence.dabs) {
     // RGBA stamp dabs (R14-④ bitmap lift) take a dedicated 1:1 blend path
@@ -87,16 +109,12 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // because stamps only enter through programmatic commits).
     final stamp = dab.stamp;
     if (stamp != null) {
-      // The dabs before it land first — a stamp is blended on what they
-      // left.
-      dabBatch?.flush();
       _blendStampDab(
         dab: dab,
         stamp: stamp,
         wall: wall,
         tileSize: tileSize,
         scratch: scratch,
-        nativeScratch: nativeScratch,
         changedCoords: changedCoords,
       );
       continue;
@@ -115,11 +133,6 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       continue;
     }
 
-    if (dabBatch != null) {
-      dabBatch.add(plan);
-      continue;
-    }
-
     blendDabTilesDart(
       plan,
       tileSize: tileSize,
@@ -129,52 +142,283 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
           changedCoords.add(TileCoord(x: tileX, y: tileY)),
     );
   }
-  dabBatch?.flush();
 
   return _finishMaterialization(
     surface: surface,
     scratch: scratch,
     changedCoords: changedCoords,
-    probeName: 'commit.putTiles',
   );
 }
 
-/// The commit tail both landings share: the CHANGED scratch tiles become
-/// the surface's tiles, row-major, and whatever was staged but never
-/// changed goes back. A tile the pass emptied is DROPPED rather than
-/// stored — see [BitmapSurface.putMaterializedTiles].
+/// [sequence] laid on [surface] by the engine (flip lane ⓒ), in its order:
+/// a run of brush dabs piled and laid as one stroke, each stamp by itself —
+/// a lift's landing means what it says only dab by dab —, under
+/// [selection]'s mask where there is one. What each lands on is what the
+/// one before it left.
+BrushSurfaceMaterialization _materializedOnEngine(
+  BitmapSurface surface,
+  BrushDabSequence sequence,
+  SelectionClip? selection,
+) {
+  var landed = surface;
+  final changed = <TileCoord>{};
+  void put(List<PlacedTile> tiles) {
+    if (tiles.isNotEmpty) {
+      landed = landed.putMaterializedTiles(tiles);
+      changed.addAll(tiles.map((tile) => tile.coord));
+    }
+  }
+
+  final dabs = sequence.dabs;
+  var at = 0;
+  while (at < dabs.length) {
+    final first = dabs[at];
+    final stamp = first.stamp;
+    if (stamp != null) {
+      at += 1;
+      put(_stampDabOnEngine(landed, first, stamp, selection));
+      continue;
+    }
+    var end = at + 1;
+    while (end < dabs.length &&
+        dabs[end].stamp == null &&
+        dabs[end].erase == first.erase) {
+      end += 1;
+    }
+    put(strokeLandedOn(landed, BrushDabSequence(dabs.getRange(at, end))));
+    at = end;
+  }
+  final coords = changed.toList()..sort(TileCoord.compareRowMajor);
+  return BrushSurfaceMaterialization(
+    surface: landed,
+    dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
+  );
+}
+
+/// [dab]'s [stamp] laid on [surface] by the engine, under [selection]'s
+/// mask where there is one: a picture, or a mask in the dab's colour
+/// ([EngineStampPictures.madeOfMask]).
+List<PlacedTile> _stampDabOnEngine(
+  BitmapSurface surface,
+  BrushDab dab,
+  BrushStampImage stamp,
+  SelectionClip? selection,
+) {
+  final landing = stamp.landingRect(dab.center);
+  final opacity = (dab.opacity * 65535).round();
+  final mode = engineBlendModeOf(BrushBlendMode.color, erase: dab.erase);
+  final ofMask = EngineStampPictures.madeOfMask(stamp);
+  return _stampOnEngine(
+    surface,
+    landing,
+    selection,
+    (clip, mask) => ofMask == null
+        ? _picture(
+            EngineStampPictures.of(stamp),
+            landing,
+            clip,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+          )
+        : _ofMask(
+            ofMask,
+            colour: dab.color,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+          ),
+  );
+}
+
+/// A stamp over [landing], what the pasteboard's wall leaves of it — a
+/// selection dropped past the stage's edge keeps its pixels there —, laid
+/// on [surface] as [lays] says for that `clip`, under [within]'s mask where
+/// there is one: the tiles it changes, a blank one where none is left.
+/// [lays] is asked only where something of the stamp can land.
+List<PlacedTile> _stampOnEngine(
+  BitmapSurface surface,
+  DirtyRegion landing,
+  SelectionClip? within,
+  LandedBy Function(DirtyRegion clip, GpuMask? mask) lays,
+) {
+  final clip = landing.intersection(surface.pasteboard.region);
+  if (clip == null || !(within?.mayCover(clip) ?? true)) {
+    return const [];
+  }
+  final tileSize = surface.tileSize;
+  final (:firstX, :lastX, :firstY, :lastY) = clip.tileRange(tileSize: tileSize);
+  final coords = [
+    for (var y = firstY; y <= lastY; y += 1)
+      for (var x = firstX; x <= lastX; x += 1) TileCoord(x: x, y: y),
+  ];
+  final landed = EngineTileLedger.instance.land(
+    EngineTileLedger.landedCel,
+    [
+      for (final coord in coords)
+        (column: coord.x, row: coord.y, under: surface.tileAt(coord)),
+    ],
+    by: lays(clip, within?.maskOnEngine()),
+    compared: true,
+  );
+  return [
+    for (var at = 0; at < landed.length; at += 1)
+      if (landed[at].change != GpuChange.same)
+        (
+          coord: coords[at],
+          tile: landed[at].tile ?? BitmapTile.blank(size: tileSize),
+        ),
+  ];
+}
+
+/// [picture], its top-left pixel at [landing]'s, what of it lies within
+/// [clip], as the engine lays it at [opacity] (65535 whole) in [mode],
+/// under [mask] if any.
+LandedBy _picture(
+  GpuStampPicture picture,
+  DirtyRegion landing,
+  DirtyRegion clip, {
+  required int opacity,
+  required int mode,
+  required GpuMask? mask,
+}) => (pool, cel, asked) => appGpuStampLanding.land(
+  appGpuComposite,
+  pool,
+  cel,
+  picture,
+  left: landing.left,
+  top: landing.top,
+  within: (clip.left, clip.top, clip.rightExclusive, clip.bottomExclusive),
+  asks: asked,
+  opacity: opacity,
+  mode: mode,
+  mask: mask,
+);
+
+/// A stamp [made] of a mask ([EngineStampPictures.ofMask]) — its box made
+/// to the wall — as the engine lays it in [colour] at [opacity] (65535
+/// whole) in [mode], under [mask] if any.
+LandedBy _ofMask(
+  ({GpuMask Function() coverage, bool whole}) made, {
+  required int colour,
+  required int opacity,
+  required int mode,
+  required GpuMask? mask,
+}) {
+  final coverage = made.coverage();
+  return (pool, cel, asked) => appGpuStampLanding.landMask(
+    appGpuComposite,
+    pool,
+    cel,
+    coverage,
+    colour: colour,
+    whole: made.whole,
+    asks: asked,
+    opacity: opacity,
+    mode: mode,
+    mask: mask,
+  );
+}
+
+/// [stamp], its top-left pixel at ([left], [top]), laid at full strength
+/// on [unders] — tiles of [grid]'s cel at their coordinates, null where it
+/// has none — as a picture stamped there lands
+/// ([compositeStrokePixelsOntoBitmapSurface]): what each becomes, the very
+/// tile where no byte of it changed, null where nothing is left.
+///
+/// ⚠️Only [unders]' coordinates are laid, however many more [stamp]
+/// reaches: a caller that already knows what the others become (the texts'
+/// pairs of tiles, cel_text_laying.dart) would otherwise have them laid a
+/// second time over what they became.
+Map<TileCoord, BitmapTile?> stampLaidOver(
+  BitmapSurface grid,
+  BrushStampImage stamp, {
+  required int left,
+  required int top,
+  required Map<TileCoord, BitmapTile?> unders,
+}) {
+  final landing = DirtyRegion(
+    left: left,
+    top: top,
+    rightExclusive: left + stamp.width,
+    bottomExclusive: top + stamp.height,
+  );
+  if (!_landsOnEngine(grid)) {
+    // Off the engine's grid the commit lands every tile the stamp reaches;
+    // the answers asked for are read off what it left.
+    final laid = compositeStrokePixelsOntoBitmapSurface(
+      surface: BitmapSurface(
+        canvasSize: grid.canvasSize,
+        pasteboardReach: grid.pasteboardReach,
+        tileSize: grid.tileSize,
+        tiles: {
+          for (final MapEntry(:key, :value) in unders.entries)
+            key: ?value,
+        },
+      ),
+      strokePixels: stamp.rgba,
+      bounds: landing,
+    );
+    return {
+      for (final MapEntry(:key, :value) in unders.entries)
+        key: laid.dirtyTiles.contains(key) ? laid.surface.tileAt(key) : value,
+    };
+  }
+  final clip = landing.intersection(grid.pasteboard.region);
+  if (clip == null) {
+    return {...unders};
+  }
+  final coords = unders.keys.toList();
+  final landed = EngineTileLedger.instance.land(
+    EngineTileLedger.landedCel,
+    [
+      for (final coord in coords)
+        (column: coord.x, row: coord.y, under: unders[coord]),
+    ],
+    by: _picture(
+      EngineStampPictures.of(stamp),
+      landing,
+      clip,
+      opacity: 65535,
+      mode: engineBlendModeOf(BrushBlendMode.color, erase: false),
+      mask: null,
+    ),
+    compared: true,
+  );
+  return {
+    for (final (at, coord) in coords.indexed)
+      coord: landed[at].change == GpuChange.same
+          ? unders[coord]
+          : landed[at].tile,
+  };
+}
+
+/// The commit's tail off the engine's grid: the CHANGED scratch tiles
+/// become the surface's tiles, row-major. A tile the pass emptied is
+/// DROPPED rather than stored — see [BitmapSurface.putMaterializedTiles].
 ///
 /// ⚠️[DirtyTileSet] still names a dropped coordinate, and has to: its one
 /// consumer is [CacheInvalidationPlan.fromDirtyTiles], and a coordinate
 /// whose tile just went away is exactly one whose cached picture must go
 /// with it.
-///
-/// R19-Z: the CHANGED scratch buffers become the finished tiles — the
-/// tile ADOPTS the native buffer (ownership leaves the pool; the
-/// tile's finalizer frees it), so a full-canvas commit writes zero
-/// pixel copies out. Untouched staged buffers still return to the
-/// pool below; the Dart fallback keeps the constructor copy.
 BrushSurfaceMaterialization _finishMaterialization({
   required BitmapSurface surface,
   required CommitTileScratch scratch,
   required Iterable<TileCoord> changedCoords,
-  required String probeName,
 }) {
   final sortedCoords = changedCoords.toList()..sort(TileCoord.compareRowMajor);
   if (sortedCoords.isEmpty) {
-    scratch.releaseUnfinished();
     return BrushSurfaceMaterialization(
       surface: surface,
       dirtyTiles: DirtyTileSet.empty(),
     );
   }
   var updatedSurface = surface;
-  labProbe(probeName, () {
+  labProbe('commit.putTiles', () {
     updatedSurface = surface.putMaterializedTiles([
       for (final coord in sortedCoords) (coord: coord, tile: scratch.finish(coord)),
     ]);
   });
-  scratch.releaseUnfinished();
   return BrushSurfaceMaterialization(
     surface: updatedSurface,
     dirtyTiles: DirtyTileSet(sortedCoords),
@@ -190,7 +434,6 @@ void _blendStampDab({
   required PasteboardWall wall,
   required int tileSize,
   required CommitTileScratch scratch,
-  required NativeCommitScratch? nativeScratch,
   required Set<TileCoord> changedCoords,
 }) {
   final dabOpacity = dab.opacity;
@@ -204,7 +447,7 @@ void _blendStampDab({
   if (clip == null) {
     return;
   }
-  // Locals, not field reads: the Dart loop below is per pixel.
+  // Locals, not field reads: the loop below is per pixel.
   final stampLeft = landing.left;
   final stampTop = landing.top;
   final left = clip.left;
@@ -213,48 +456,6 @@ void _blendStampDab({
   final bottomExclusive = clip.bottomExclusive;
   final rgba = stamp.rgba;
   final erase = dab.erase;
-
-  // R18 A-0/A-1.5/F-1: the native core blends whole (dab, tile) spans in
-  // ONE call each (the per-row FFI call overhead was the fill commit's
-  // dominant term), and both sides are native memory — the tile scratch
-  // is native-backed and the stamp uploads once per rgba identity (a
-  // move session re-commits the SAME stamp per drag move, so repeats are
-  // pure pointer math). Byte-identical to the Dart loop below
-  // (parity-pinned); Dart remains the reference and the fallback.
-  if (nativeScratch != null) {
-    final native = nativeScratch.native;
-    final stampUpload = labProbe(
-      'stamp.upload',
-      () => native.stampUploads.upload(rgba),
-    );
-    // One BATCH call for the whole stamp (R18 A-3a): spans fan out
-    // across the C worker pool; disjoint tiles keep it byte-identical
-    // to the sequential loop.
-    final coords = labProbe(
-      'stamp.stage',
-      () => stageTileSpans(
-        native,
-        clip: clip,
-        tileSize: tileSize,
-        pointerFor: nativeScratch.pointerFor,
-      ),
-    );
-    final changed = labProbe(
-      'stamp.blend',
-      () => native.stampBlendTiles(
-        count: coords.length,
-        tileSize: tileSize,
-        stampBytes: stampUpload,
-        stampWidth: stamp.width,
-        stampLeft: stampLeft,
-        stampTop: stampTop,
-        opacity: dabOpacity,
-        erase: erase,
-      ),
-    );
-    changedCoords.addAll(changedTileCoords(changed, coords));
-    return;
-  }
 
   // One blitter per dab: the stamp's bytes, its opacity and its erase
   // flag do not change between spans, so they are resolved before the
@@ -310,28 +511,56 @@ void _blendStampDab({
 /// dabs laid on the artwork one by one reach the same sum but round after
 /// every dab, a level away over paint.
 ///
-/// R21: implemented as ONE synthetic stamp dab through the ordinary
-/// materializer — the stroke buffer IS a stamp at the bounds (integer
-/// placement is exact: center = left + w/2 rounds back to left), and the
-/// stamp blend's opacity-1 source-over/destination-out is byte-identical
-/// to the old inline loop. That routes the pen-up composite through the
-/// SAME C kernels as everything else; the pure-Dart pass here was a
-/// measured ~91ms-avg/193ms-max UI hitch per stroke at 2340×1654.
+/// R21: off the engine's grid it is ONE synthetic stamp dab through the
+/// ordinary materializer — the stroke buffer IS a stamp at the bounds
+/// (integer placement is exact: center = left + w/2 rounds back to left),
+/// and the stamp blend's opacity-1 source-over/destination-out is
+/// byte-identical to the old inline loop.
+///
+/// [selection] cuts it as [materializeBrushDabSequenceOnBitmapSurface] cuts
+/// a stamp: under the clip's mask on the engine's grid, refused off it
+/// ([cutOnTheEngineOnly]).
 BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
   required BitmapSurface surface,
   required Uint8List strokePixels,
   required DirtyRegion bounds,
   bool erase = false,
   BrushBlendMode blendMode = BrushBlendMode.color,
+  SelectionClip? selection,
 }) {
   final width = bounds.rightExclusive - bounds.left;
   final height = bounds.bottomExclusive - bounds.top;
+  final unchanged = BrushSurfaceMaterialization(
+    surface: surface,
+    dirtyTiles: DirtyTileSet.empty(),
+  );
   if (width <= 0 || height <= 0) {
+    return unchanged;
+  }
+  if (_landsOnEngine(surface)) {
+    // One landing whatever the blend: the engine lays the stroke's picture
+    // in its mode.
+    final tiles = _stampOnEngine(
+      surface,
+      bounds,
+      selection,
+      (clip, mask) => _picture(
+        GpuStampPicture(appGpuEngine, strokePixels, width, height),
+        bounds,
+        clip,
+        opacity: 65535,
+        mode: engineBlendModeOf(blendMode, erase: erase),
+        mask: mask,
+      ),
+    );
+    final coords = [for (final tile in tiles) tile.coord]
+      ..sort(TileCoord.compareRowMajor);
     return BrushSurfaceMaterialization(
-      surface: surface,
-      dirtyTiles: DirtyTileSet.empty(),
+      surface: coords.isEmpty ? surface : surface.putMaterializedTiles(tiles),
+      dirtyTiles: coords.isEmpty ? DirtyTileSet.empty() : DirtyTileSet(coords),
     );
   }
+  cutOnTheEngineOnly(selection);
   BrushDab boundsStampDab({
     required String id,
     required Uint8List rgba,
@@ -353,27 +582,14 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
 
   // BB-1 (R26 #9): a non-trivial BRUSH BLEND applies once per stroke.
   if (blendMode != BrushBlendMode.color && blendMode != BrushBlendMode.erase) {
-    // BB-N1 (ABI 22): with the engine loaded, C blends the stroke buffer
-    // straight into the staged tile scratch — no region extraction, no
-    // result buffer, no two-pass stamp landing — fanned across the
-    // worker pool. Byte-identical to the Dart route below (parity-pinned).
-    final native = QaNativeEngine.instance;
-    if (native != null) {
-      return _materializeStrokeBlendNative(
-        surface: surface,
-        strokePixels: strokePixels,
-        bounds: bounds,
-        mode: blendMode,
-        native: native,
-      );
-    }
-    // Dart REFERENCE + fallback: the result region is computed through
-    // the blend kernel and lands through the SAME stamp passes as
-    // everything else: an erase-rect pass clears the bounds, then a
-    // source-over pass writes the result verbatim (over emptiness
-    // srcOver IS replace, byte-exactly). Pixels the stroke never touched
-    // come back verbatim from the kernel's alpha-0 copy rule, so the
-    // round trip is invisible outside the ink.
+    // The result region is computed through the blend kernel and lands
+    // through the SAME stamp passes as everything else: an erase-rect pass
+    // clears the bounds, then a source-over pass writes the result
+    // verbatim (over emptiness srcOver IS replace, byte-exactly). Pixels
+    // the stroke never touched come back verbatim from the kernel's
+    // alpha-0 copy rule, so the round trip is invisible outside the ink.
+    // ⚠️The dirty set is every tile of the bounds, not the true change
+    // set: the two passes mark each.
     final result = blendStrokeRegionPixels(
       dst: bitmapSurfaceRegionPixels(surface, bounds),
       src: strokePixels,
@@ -404,67 +620,5 @@ BrushSurfaceMaterialization compositeStrokePixelsOntoBitmapSurface({
         erase: erase || blendMode == BrushBlendMode.erase,
       ),
     ]),
-  );
-}
-
-/// BB-N1 (ABI 22): the native once-per-stroke blend landing. Stages every
-/// tile the bounds cover (existing bytes copied in, missing tiles zeroed
-/// — the kernel's da==0 branch IS the transparent read), blends the
-/// stroke buffer in place through `qa_stroke_blend_tiles` (one pooled
-/// call), and adopts the CHANGED buffers as the finished tiles. Pixels
-/// the stroke never inked copy through verbatim, so an untouched tile
-/// reports unchanged and returns to the pool — the dirty set is the
-/// TRUE change set (the Dart fallback route over-reports: its erase+
-/// rewrite passes mark every bounds tile).
-BrushSurfaceMaterialization _materializeStrokeBlendNative({
-  required BitmapSurface surface,
-  required Uint8List strokePixels,
-  required DirtyRegion bounds,
-  required BrushBlendMode mode,
-  required QaNativeEngine native,
-}) {
-  final wall = surface.pasteboard;
-  final tileSize = surface.tileSize;
-  // The stroke buffer is BOUNDS-LOCAL (stride = bounds width, origin =
-  // bounds top-left, like a stamp's raw placement); the blend clips at
-  // the pasteboard exactly like the stamp path.
-  final clip = bounds.intersection(wall.region);
-  if (clip == null) {
-    return BrushSurfaceMaterialization(
-      surface: surface,
-      dirtyTiles: DirtyTileSet.empty(),
-    );
-  }
-  final strokeUpload = labProbe(
-    'strokeBlend.upload',
-    () => native.stampUploads.upload(strokePixels),
-  );
-  final staging = NativeCommitScratch(native, surface);
-  final coords = labProbe(
-    'strokeBlend.stage',
-    () => stageTileSpans(
-      native,
-      clip: clip,
-      tileSize: tileSize,
-      pointerFor: staging.pointerFor,
-    ),
-  );
-  final changed = labProbe(
-    'strokeBlend.blend',
-    () => native.strokeBlendTiles(
-      count: coords.length,
-      tileSize: tileSize,
-      strokeBytes: strokeUpload,
-      strokeWidth: bounds.rightExclusive - bounds.left,
-      strokeLeft: bounds.left,
-      strokeTop: bounds.top,
-      mode: strokeBlendModeNativeId(mode),
-    ),
-  );
-  return _finishMaterialization(
-    surface: surface,
-    scratch: staging,
-    changedCoords: changedTileCoords(changed, coords),
-    probeName: 'strokeBlend.putTiles',
   );
 }

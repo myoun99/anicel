@@ -60,7 +60,7 @@ void main() {
       frameStore: s.renderCaches.brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
-        tileSize: 256,
+        tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
@@ -214,7 +214,7 @@ BitmapSurface materializeSingleDabSurface(CanvasSize canvasSize) {
   final store = BrushFrameStore();
   final sessionStore = BrushFrameEditSessionStore(
     canvasSize: canvasSize,
-    tileSize: 256,
+    tileSize: defaultCelTileSize,
   );
   const key = BrushFrameKey(
     projectId: ProjectId('fixture'),

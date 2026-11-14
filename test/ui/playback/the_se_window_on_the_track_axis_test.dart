@@ -253,20 +253,32 @@ void main() {
     expect(scheduled, isEmpty);
   });
 
-  test('⛔SOLO narrows to itself — a row that is not soloed is silent', () {
-    final project = projectWith(
-      cuts: [cut('c1')],
-      sound: (start: 2, length: 3),
-    );
-    final scheduled = buildAudioPlaybackSchedule(
-      window: window(trackStart: 0, frames: 10),
-      project: project,
-      rate: rate,
-      durationSecondsFor: (_) => 100,
-      soloedLayerIds: {const LayerId('somebody-else')},
-    );
+  // 🗣️F-577 (유저 2026-11-10): 「사운드버튼은 단순하게 음소거/비음소거 역할만
+  // 하는 토글버튼되도록」 — the speaker writes the row's own flag, and the
+  // flag is what silences it.
+  test('⛔a row its speaker muted is silent — the row\'s own flag', () {
+    List<ScheduledAudioClip> scheduledWith({required bool muted}) {
+      final project = projectWith(
+        cuts: [cut('c1')],
+        sound: (start: 2, length: 3),
+      );
+      final track = project.tracks.single;
+      return buildAudioPlaybackSchedule(
+        window: window(trackStart: 0, frames: 10),
+        project: project.copyWith(
+          tracks: [
+            track.copyWith(
+              seLayers: [track.seLayers.single.copyWith(muted: muted)],
+            ),
+          ],
+        ),
+        rate: rate,
+        durationSecondsFor: (_) => 100,
+      );
+    }
 
-    expect(scheduled, isEmpty);
+    expect(scheduledWith(muted: false), isNotEmpty, reason: 'CONTROL');
+    expect(scheduledWith(muted: true), isEmpty);
   });
 
   group('the row\'s sound rides every entry (I-140)', () {

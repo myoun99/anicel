@@ -1,7 +1,7 @@
-//! What the app hands the host (qa_fx_plugin.h) as the Dart structs that
-//! mirror it lay it (`QaFxPictureStruct` · `QaFxRenderJobStruct`,
-//! lib/src/native/qa_fx_plugin_host.dart), and the one place its pointers
-//! become slices.
+//! What the app hands the host ([`Picture`] · [`RenderJob`]), as the Dart
+//! structs that mirror them lay it (`QaFxPictureStruct` ·
+//! `QaFxRenderJobStruct`, lib/src/native/qa_fx_plugin_host.dart), and the
+//! one place its pointers become slices.
 
 /// A picture the app hands a plugin or takes back: premultiplied RGBA8,
 /// rows top to bottom, `stride` bytes apart. `left` · `top` place its first
@@ -117,7 +117,7 @@ pub(crate) fn is_whole_job(job: &RenderJob) -> bool {
         && (job.value_count == 0 || !job.values.is_null())
         && job.layer_count >= 0
         && (job.layer_count == 0 || !job.layers.is_null())
-        // SAFETY: a job's layers are `layer_count` pictures (qa_fx_plugin.h).
+        // SAFETY: a job's layers are `layer_count` pictures (RenderJob).
         && unsafe { layers(job) }.iter().all(is_whole)
 }
 
@@ -159,7 +159,7 @@ unsafe fn image(picture: &Picture) -> Option<Image<'_>> {
 ///
 /// # Safety
 /// `job` is whole ([`is_whole_job`]), and each of its pointers holds what
-/// qa_fx_plugin.h says it holds: every row of each picture, the output's
+/// [`RenderJob`] says it holds: every row of each picture, the output's
 /// rows `output_stride` apart, and `value_count` values of four doubles.
 pub(crate) unsafe fn read(job: &RenderJob) -> Option<Job<'_>> {
     let input = &job.input;

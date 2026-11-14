@@ -16,7 +16,6 @@ import '../../models/project.dart';
 import '../../models/project_timeline.dart';
 import '../../models/track_id.dart';
 import '../clipboard/layer_copy_payload.dart';
-import '../command.dart';
 import '../editing/cut_duplicate_helpers.dart'
     show TimelineCopyIds, remapTimelineExposure;
 import '../editing/run_id_mint.dart'
@@ -226,6 +225,10 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,
     clipsToBelow: payload.clipsToBelow,
+    // It folds and twirls as the row it came from (F-579).
+    collapsed: payload.collapsed,
+    lanesExpanded: payload.lanesExpanded,
+    expandedLaneGroups: payload.expandedLaneGroups,
   );
 
   return PasteLayerCommandInputPlan(
@@ -746,7 +749,7 @@ bool _keepsItsOwnSingleton(Project project, CutId sibling, Layer layer) =>
 /// wearing the head of its seat, and a conte born into the track was born
 /// carrying the track's attach rows (I-73). The track's conte structure
 /// lays both now (F-343, `trackWithItsConteLaid`): this adds the one row.
-Command plannedAddLayerCommand({
+AddLayerCommand plannedAddLayerCommand({
   required ProjectRepository repository,
   required CutId cutId,
   required Layer layer,

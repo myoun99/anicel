@@ -35,6 +35,7 @@ import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'held_row_pin.dart';
 import 'row_control_surface.dart';
+import 'still_row.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_row_edges.dart';
 import 'timeline_section_runs.dart' show timelineRowDeltaAt;
@@ -1382,6 +1383,9 @@ Widget layerRowDragWrapper({
   HeldRowPin? pin,
   required Widget child,
 }) {
+  // The row is a still region of its own, inside every branch's target:
+  // the caret a target draws hangs across the row's boundary.
+  final content = stillRow(child);
   // The held row is PINNED in the row window while its grip is taken (the
   // window would otherwise unmount it mid-drag). Derived ONCE from the
   // row's address, whichever branch below takes the grip.
@@ -1397,7 +1401,7 @@ Widget layerRowDragWrapper({
   final lane = row.lane;
   if (lane != null) {
     return hooks == null
-        ? child
+        ? content
         : _laneRowDragTarget(
             (row: row, lane: lane),
             hooks,
@@ -1410,7 +1414,7 @@ Widget layerRowDragWrapper({
               onGripTaken: onGripTaken,
               onGripReleased: onGripReleased,
             ),
-            child: child,
+            child: content,
           );
   }
   final unmovable = unmovableRowSelectTarget(
@@ -1424,14 +1428,14 @@ Widget layerRowDragWrapper({
     grip: grip,
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
-    child: child,
+    child: content,
   );
   if (unmovable != null) {
     return unmovable;
   }
   final caret = LayerRowCaret.of(dragRows(), row.layer.id);
   if (caret == null) {
-    return child;
+    return content;
   }
   return LayerRowDragTarget(
     subject: LayerRowSubject(row.layer.id),
@@ -1468,7 +1472,7 @@ Widget layerRowDragWrapper({
     onSelectCrossed: hooks?.onSelectBegin == null
         ? null
         : (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
-    child: child,
+    child: content,
   );
 }
 

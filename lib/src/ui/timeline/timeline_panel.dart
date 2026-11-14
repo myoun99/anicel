@@ -97,8 +97,8 @@ class TimelinePanel extends StatefulWidget {
     this.onHoverMediaAssetOnLayer,
     this.onLeaveMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
-    this.isLayerSoloed,
-    this.onOpenLayerMixer,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
     this.onOpenCameraPath,
@@ -323,12 +323,11 @@ class TimelinePanel extends StatefulWidget {
   final void Function(List<Layer> displayLayers, int slot, String path)?
   onDropMediaAssetBetweenLayers;
 
-  /// The SE row's mixer (R10 R3), both orientations: its solo tint, and
-  /// the speaker press that opens the window carrying mute/solo/fader/pan.
-  /// Null hides the speaker.
-  final bool Function(LayerId layerId)? isLayerSoloed;
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
+  /// The S row's speaker — a mute toggle — and its Total bar's release,
+  /// both orientations (F-577). Null hides each.
+  final ValueChanged<LayerId>? onToggleLayerMute;
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
 
   /// A reference row's file button, both orientations (미디어 배치 라운드
   /// 3). Null hides the button.
@@ -611,10 +610,10 @@ class TimelinePanel extends StatefulWidget {
   onSetLaneGroupBasis;
 
   /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  final LaneGroupPress? onResetLaneGroup;
 
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.
@@ -762,13 +761,13 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,
       onLeaveMediaAssetOnLayer: widget.onLeaveMediaAssetOnLayer,
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
-      onOpenLayerMixer: widget.onOpenLayerMixer,
+      onToggleLayerMute: widget.onToggleLayerMute,
+      onLayerTotalVolumeChangeEnd: widget.onLayerTotalVolumeChangeEnd,
       onOpenLayerReference: widget.onOpenLayerReference,
       onOpenLayerLinks: widget.onOpenLayerLinks,
       onOpenCameraPath: widget.onOpenCameraPath,
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
-      isLayerSoloed: widget.isLayerSoloed,
       onToggleLayerClip: widget.onToggleLayerClip,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,

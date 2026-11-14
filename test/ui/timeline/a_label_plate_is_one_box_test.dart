@@ -76,8 +76,8 @@ Widget _plateAsItWas(LayerMark mark, {required bool shown, required Axis axis}) 
   final fill = shown
       ? layerMarkColor(mark)
       : layerMarkColor(mark).withValues(alpha: AppColors.offAlpha);
-  final (:process, :revise) = layerMarkChipText(mark);
-  final words = [process, revise].where((text) => text.isNotEmpty).toList();
+  final (:process, :step) = layerMarkChipText(mark);
+  final words = [process, step].where((text) => text.isNotEmpty).toList();
   final style = TextStyle(
     fontSize: 9,
     fontWeight: FontWeight.w400,

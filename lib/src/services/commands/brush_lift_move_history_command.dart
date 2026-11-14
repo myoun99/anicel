@@ -6,6 +6,7 @@ import '../brush_frame_editing_coordinator.dart';
 import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
 import '../command.dart';
+import '../selection_clip.dart';
 import '../undo_surface_snapshot.dart';
 import 'cel_snapshot_step.dart';
 
@@ -48,6 +49,7 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
     this.restoreRegion,
     this.readRegion,
     this.blendMode = BrushBlendMode.color,
+    this.landingSelection,
     this.description = 'Move selection',
   }) : _preLiftSurface = preLiftSurface,
        _landingDabs = landingDabs;
@@ -61,6 +63,11 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
   /// How the landing composites — `color` for a move, either order for a
   /// paste (see the class note).
   final BrushBlendMode blendMode;
+
+  /// The selection the landing is cut by where it lands — a piece pasted or
+  /// stamped through a selection (`pieceLandings`); null for a move, whose
+  /// piece lands whole wherever it was carried.
+  final SelectionClip? landingSelection;
 
   @override
   final String description;
@@ -201,6 +208,7 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
       _landingDabs!,
       blendMode: blendMode,
       key: frameKey,
+      selection: landingSelection,
     );
     if (derived == null) {
       // The dabs changed nothing, which is the answer a no-op stroke gets

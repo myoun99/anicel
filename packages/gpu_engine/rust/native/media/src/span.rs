@@ -1,7 +1,27 @@
 //! The one reader of a medium stored in a span of a file — as its own
-//! bytes, or framed in zstd blocks — read a window at a time: the engine's
-//! `qa_media_span.c`. See `qa_media_span.h` for why there is one reader,
-//! and for the framed layout, which Dart's `writeMediaBlob` writes:
+//! bytes, or framed in zstd blocks — read a window at a time, for every
+//! decoder in this library and for Dart. ↩️The C engine's `qa_media_span.c`
+//! until the connection round deleted it (connection-round-checklist H,
+//! 2026-11-08).
+//!
+//! 🚨★★★**THERE WERE THREE READERS OF A PLAIN SPAN AND NONE OF A FRAMED
+//! ONE.** The audio decoder's cursor read `base + position` through a
+//! `FILE*`, the Windows byte stream through `ReadFile`, Apple's resource
+//! loader through `NSFileHandle` — the same three lines each time, and each
+//! file carried a comment warning that getting them wrong reads the
+//! archive's own header as media. A FRAMED span (a medium the save
+//! compressed in blocks, see `media_blob_codec.dart`) had no native reader
+//! at all, so every OS decoder needed the original file, and the sound of a
+//! carried movie was assembled whole in memory before anything could decode
+//! it (2026-09-24, board `carried-movie-compressed`: 유저 「압축 유지 +
+//! 풀면서 디코더에 먹이는 리더를 플랫폼마다 만든다」, 「최대한 통일할거
+//! 통일해줘」).
+//!
+//! ⚠️THE FORMAT IS WRITTEN IN ONE PLACE, AND IT IS NOT HERE — the writer is
+//! `writeMediaBlob` in Dart. This reads what that writes, and
+//! `test/services/media/framed_media_reads_only_the_blocks_it_needs_test.dart`
+//! reads files that writer wrote through this, so the two cannot drift
+//! unseen:
 //!
 //! ```text
 //!   u32  blockBytes   uncompressed bytes per block
@@ -11,9 +31,14 @@
 //!   then each block, a zstd frame
 //! ```
 //!
-//! all little-endian. Until the connection round the C is the answer key:
-//! the tests hold every export to the engine's, the reads and what they
-//! cost alike.
+//! all little-endian. ⚠️The reader's authority is the HEADER's block size,
+//! never a constant: entries written when the writer used 4MB still live in
+//! files.
+//!
+//! The tests hold every answer and what each read cost to the ledger — the
+//! C's answers, pinned before it went. ↩️Until the connection round the C
+//! was the answer key: every export held to the engine's, the reads and
+//! what they cost alike.
 
 use std::ffi::{CStr, c_char};
 use std::fs::File;
@@ -42,6 +67,10 @@ struct Framed {
 }
 
 /// A medium in `[base, base + stored_length)` of a file.
+///
+/// ⛔Nothing here is shared between threads: one span serves one reader,
+/// and a platform that calls from more than one thread serializes around it
+/// (`media_foundation::span_stream`, `served_span`).
 pub struct Span {
     file: File,
     base: i64,
@@ -65,6 +94,10 @@ impl Span {
         if offset < 0 || length < 0 {
             return None;
         }
+        // ⛔Opened sharing reading and writing (std's way on Windows), never
+        // in a mode that shuts out writers: a save or an export over a file
+        // being read would be refused. ↩️The C opened it with `_wfsopen`
+        // for that reason, not the `_wfopen_s` MSVC's C4996 names.
         let mut file = File::open(crate::path::file(path)?).ok()?;
         // ⛔The span must be INSIDE the file. One that promises bytes the
         // file cannot supply is a truncated medium, which reads as a corrupt

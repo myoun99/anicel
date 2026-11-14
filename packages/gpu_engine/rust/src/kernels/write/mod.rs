@@ -3,22 +3,23 @@
 //! and the cel pixel verbs put them — back onto the pool's pages. A tile
 //! the same in every byte as the one stored where it goes is not written;
 //! where none is stored, a tile of nothing is not written and takes no
-//! slot. The word each tile leaves (`changed`) is what the app's commit and
-//! record read: the paint, the blur, V1, R4 and C pass this one law
-//! (관제 03:36 — the bytes asked are what the app asks, "is any pixel
-//! unlike the cel's").
+//! slot. What each tile is (`Change`) is what the app's commit and record
+//! read: the paint, the blur, V1, R4 and C pass this one law (관제 03:36 —
+//! the bytes asked are what the app asks, "is any pixel unlike the cel's"
+//! and "is any ink left").
 //!
 //! The test reads the stored tiles from the pool's pages as the verbs do
 //! (`Pages`, cut into passes by `runs`): a tile with none stored names no
 //! page and is read as nothing, so one comparison asks both.
 //!
-//! Where a changed tile goes — over the stored one, or a slot of its own
-//! that leaves the old one for the record — is the store's to say: `put`
-//! copies each where it is told. The pool's pages are made `COPY_DST` for
-//! it.
+//! Where a changed tile goes is the store's to say — a slot of its own,
+//! the old one left to whoever holds it (gpu-canonical-store 1a ①: a
+//! stored tile is never written over) —, and `put` copies each where it
+//! is told. The pool's pages are made `COPY_DST` for it.
 
-// ⏳Nothing outside the tests runs it until the app's bridge round
-// (gpu-canonical-store ⑧).
+// ⏳`put` is the pool's store's (kernels/pool, the app's tiles put from the
+// CPU); the test of what a tile is waits for the flip lane, where a pass's
+// output tiles come back to the store (connection-round-checklist B ⓓ).
 #![cfg_attr(not(test), allow(dead_code))]
 
 #[cfg(test)]
@@ -39,6 +40,40 @@ use crate::kernels::shared::{
 /// 11-06), as in the cel pixel passes (d02 · d03).
 const OWN_BUFFERS: u32 = 3;
 
+/// What a tile put is beside the one stored where it goes (write.wgsl's
+/// bits).
+///
+/// ⚠️`Cleared` is its own answer because the app answers it two ways
+/// (bitmap_surface.dart `putMaterializedTiles`): a commit — a stroke's, a
+/// geometry rebuild's, a plugin pass's — DROPS a tile with no ink left,
+/// instead of keeping it as a tile of zeroes the user erased away; the
+/// recipe rewrite (`overwriteCelPixels`) keeps it, as its undo walks the
+/// tiles that exist. Which is the store's to say; this says which tile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Change {
+    /// Every byte the stored one's — or, with none stored, every byte 0.
+    Same,
+    /// Unlike what is stored, with a pixel whose alpha is not 0.
+    Inked,
+    /// Unlike what is stored, with no pixel whose alpha is not 0.
+    Cleared,
+}
+
+impl Change {
+    /// The answer a tile's word of write.wgsl's bits gives.
+    fn of(word: u32) -> Self {
+        match (word & DIFFERS != 0, word & INKED != 0) {
+            (false, _) => Self::Same,
+            (true, true) => Self::Inked,
+            (true, false) => Self::Cleared,
+        }
+    }
+}
+
+/// write.wgsl's `WRITE_DIFFERS` and `WRITE_INKED`.
+const DIFFERS: u32 = 1;
+const INKED: u32 = 2;
+
 /// The write path's test, compiled once for as many pages as the device
 /// lets it bind.
 pub(crate) struct Write {
@@ -55,7 +90,7 @@ impl Write {
         Some(Self { changed: pipeline(engine, &sources, "write_changed"), pages })
     }
 
-    /// Whether each of `put`'s tiles differs from what is stored where it
+    /// What each of `put`'s tiles is beside what is stored where it
     /// goes — `places`, a tile's place on the pool's `pool` pages, or none
     /// where nothing is stored. Waits for the GPU.
     pub(crate) fn changed(
@@ -64,7 +99,7 @@ impl Write {
         pool: &[wgpu::Buffer],
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
-    ) -> Option<Vec<bool>> {
+    ) -> Option<Vec<Change>> {
         // A pass binds its tiles put, a tile's bytes each. No test puts tiles
         // past a binding (2 GB here, 32,768 tiles), so none tells a tile's
         // bytes from a word in this line (mutant m14, 11-06).
@@ -81,7 +116,7 @@ impl Write {
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
         (per_pass, most): (usize, usize),
-    ) -> Option<Vec<bool>> {
+    ) -> Option<Vec<Change>> {
         cut_by(&self.pages, (per_pass, most))?;
         holds(put, places.len())?;
         for at in places.iter().flatten() {
@@ -127,7 +162,8 @@ impl Write {
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
         let words = engine.read_buffer(&changed)?;
-        Some(words.chunks_exact(4).map(|word| word != [0; 4]).collect())
+        let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
+        Some(words.chunks_exact(4).map(|four| Change::of(word(four))).collect())
     }
 
     /// Copies each of `put`'s tiles that `writes` names — by its place

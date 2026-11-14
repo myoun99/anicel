@@ -8,6 +8,7 @@ import '../models/dirty_region.dart';
 import 'brush_frame_editing_coordinator.dart';
 import 'cache_invalidation_executor.dart';
 import 'canvas_selection.dart';
+import 'selection_lift.dart';
 import 'canvas_selection_region.dart';
 import 'command.dart';
 import 'commands/brush_lift_move_history_command.dart';

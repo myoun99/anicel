@@ -223,8 +223,8 @@ void main() {
     });
 
     test('🚨every place that runs the parity list runs it by the plan', () {
-      // `lane.sh` names the runner beside itself through tool/run.sh, the
-      // line broken before the flag.
+      // ↩️`lane.sh` was the fifth, naming the runner beside itself through
+      // tool/run.sh, till its native gate went with the C (2026-11-13).
       final byThePlan = RegExp(r'affected_tests(\.dart"?)?[\s\\]+--files-from');
       final places = <String>[];
       for (final dir in ['tool', '.github', '.githooks']) {
@@ -253,38 +253,19 @@ void main() {
         '.github/workflows/macos-developer-id.yml',
         '.github/workflows/testflight.yml',
         '.github/workflows/windows-arm64-release.yml',
-        'tool/lane.sh',
       ]);
     });
 
-    test('lane.sh hands its list to the runner beside itself — a lane cut '
-        'before the entrance would ignore --files-from', () {
-      expect(
-        File('tool/lane.sh').readAsStringSync(),
-        matches(
-          RegExp(r'bash "\$ROOT/tool/run\.sh" affected_tests[\s\\]+--files-from'),
-        ),
-      );
-    });
-
-    test("a land's gates run it outside the machine's line, as they run "
-        'their architecture tests — asked alone, it stands in the line', () {
+    test("a list run asked outside the machine's line takes no place in it "
+        '— asked alone, it stands in the line', () {
       expect(lineFor(['--files-from', 'parity.txt']).inTheLine, isTrue);
-      final gates = lineFor([
+      final shard = lineFor([
         '--files-from',
         'parity.txt',
         '--outside-the-line',
       ]);
-      expect(gates.inTheLine, isFalse);
-      expect(gates.refusal, isNull);
-      final lane = File('tool/lane.sh').readAsStringSync();
-      expect(
-        lane,
-        contains(r'cmd_native "$name" gates'),
-        reason: 'refusal 5 tells the parity run it is a gate',
-      );
-      expect(lane, contains(r'[ "${2:-}" = gates ] && line=--outside-the-line'));
-      expect(lane, contains(r'--files-from "$list" ${line:+"$line"})'));
+      expect(shard.inTheLine, isFalse);
+      expect(shard.refusal, isNull);
     });
 
     test("🗣️the build's wide check stands at the head of the line — every "
@@ -340,7 +321,6 @@ void main() {
     expectSetMatchesLedger(
       tagged,
       const [
-        'test/native/native_upload_cache_test.dart',
         'test/services/brush_stroke_accumulation_guard_test.dart',
         'test/ui/canvas/a_parked_transform_lets_go_of_its_picture_test.dart',
         'test/ui/canvas/tile_images_are_counted_test.dart',
@@ -350,6 +330,28 @@ void main() {
         // I-57 ㉣ (10-13): a berth that leaves must let go of the row it
         // kept, and only the collector can say it did.
         'test/ui/timeline/a_berth_that_leaves_lets_go_of_its_row_test.dart',
+        // screen-on-the-engine c4 (11-08): an engine slot goes with its
+        // tile, and only the collector can say it did. The ledger's other
+        // pins stay in the crowd, in a file of their own.
+        'test/native/a_tile_collected_lets_its_engine_slot_go_test.dart',
+        // pool-pages-given-back (11-08): a page goes back once its tiles
+        // are collected, and only the collector can say they were.
+        'test/native/the_engine_gives_back_the_pages_nobody_holds_test.dart',
+        // a-lost-gpu-device-keeps-the-unsaved-tiles (B, 11-11): a landed
+        // tile lets go of the tile it landed on once its copy is here, and
+        // only the collector can say it did.
+        'test/native/a_landed_tile_lets_go_of_the_tile_under_it_test.dart',
+        // a-lifted-row-painter-holds-a-reclaimed-hole (11-12): a lifted row's
+        // painter lets go of the hole a memory warning took, and the picture
+        // cannot say so — it draws the same pixels either way.
+        'test/ui/canvas/a_lifted_row_lets_go_of_a_hole_a_warning_took_test.dart',
+        // tile-blocks-on-rust (11-12): a tile's block goes back to the
+        // lists by its finalizer alone, and only the collector runs it.
+        'test/models/a_collected_tile_gives_its_block_back_test.dart',
+        // selection-mask-on-the-engine (11-14): a selection's mask goes with
+        // the clip that asked for it by its finalizer alone, and only the
+        // collector runs it.
+        'test/native/a_selection_mask_goes_with_its_clip_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '

@@ -38,7 +38,7 @@
 //   - the records file missing -> refuses to start rather than serving an
 //     empty board that looks like "nothing to do".
 //
-//   dart run tool/board_server.dart --records <file.jsonl> [--port 4321]
+//   dart tool/board_server.dart --records <file.jsonl> [--port 4321]
 //       [--open-to lan --token-file <file>]
 //
 // ↩️Until 2026-10-07 this said: 「Localhost only, on purpose: the board is
@@ -276,7 +276,7 @@ Future<void> main(List<String> args) async {
 
   if (records.isEmpty || !File(records).existsSync()) {
     stderr.writeln('records file not found. '
-        'usage: dart run tool/board_server.dart --records <file.jsonl>');
+        'usage: dart tool/board_server.dart --records <file.jsonl>');
     exit(2);
   }
   final asked = doorAsked(

@@ -18,6 +18,8 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/services/camera_projection_matrix.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement;
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart'
+    show SeNameTagRowSignature;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 
 /// The on-canvas SE name tag resolution (R5b, §6-z15): which rows show
@@ -284,17 +286,20 @@ void main() {
 
     expect(tag.effects, hasLength(1), reason: 'the switched-off one drops');
     expect(tag.effects.single.parameter('blurriness'), 4);
-    // The effects change what is drawn, so the repaint has to know …
+    // The effects change what is drawn, so the frame's picture is keyed by
+    // them …
     expect(
-      seNameTagSignature(
-        resolve([dressed.copyWith(blendMode: LayerBlendMode.normal)]),
+      SeNameTagRowSignature(
+        resolve([dressed.copyWith(blendMode: LayerBlendMode.normal)]).single,
       ),
-      isNot(seNameTagSignature(plain)),
+      isNot(SeNameTagRowSignature(plain.single)),
     );
     // … the blend does not: the tag is laid normal whatever the row's is.
     expect(
-      seNameTagSignature(resolve([dressed.copyWith(effects: const [])])),
-      seNameTagSignature(plain),
+      SeNameTagRowSignature(
+        resolve([dressed.copyWith(effects: const [])]).single,
+      ),
+      SeNameTagRowSignature(plain.single),
     );
   });
 
@@ -309,5 +314,64 @@ void main() {
       styled.single.content.position,
       Offset(camera.width / 2, camera.height / 2),
     );
+  });
+
+  // The frame's picture is keyed by its tags (SeNameTagRowSignature), so a
+  // tag is the value of all it lays.
+  test('a tag is the tag of what it holds: the same where each is, another '
+      'where any one is', () {
+    const content = TextCelContent(
+      text: 'タモツ',
+      style: SeNameTag.defaultStyle,
+    );
+    ResolvedSeNameTag tag({
+      String layerId = 's1',
+      TextCelContent content = content,
+      double widthBudget = 400,
+      LayerPlacement shot = const LayerPlacement.identity(),
+      LayerPlacement inShot = const LayerPlacement.identity(),
+      double opacity = 1,
+      List<ResolvedLayerEffect> effects = const [],
+      TextCelContent? line,
+      TextCelContent? delivery,
+    }) => ResolvedSeNameTag(
+      layerId: layerId,
+      content: content,
+      widthBudget: widthBudget,
+      shot: shot,
+      inShot: inShot,
+      opacity: opacity,
+      effects: effects,
+      line: line,
+      delivery: delivery,
+    );
+    const moved = LayerPlacement(1, 0, 0, 1, 3, 0);
+    const words = TextCelContent(
+      text: 'おはよう',
+      style: SeNameTag.defaultLineStyle,
+    );
+
+    expect(tag(), tag());
+    expect(tag().hashCode, tag().hashCode);
+    for (final (what, other) in [
+      ('its row', tag(layerId: 's2')),
+      ('its name', tag(content: content.copyWith(text: 'ヒロシ'))),
+      ('its width', tag(widthBudget: 300)),
+      ('its shot', tag(shot: moved)),
+      ('where it stands in its shot', tag(inShot: moved)),
+      ('its strength', tag(opacity: 0.5)),
+      (
+        'its chain',
+        tag(
+          effects: [
+            ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 0, 0]),
+          ],
+        ),
+      ),
+      ('its line', tag(line: words)),
+      ('its delivery', tag(delivery: words)),
+    ]) {
+      expect(other, isNot(tag()), reason: what);
+    }
   });
 }

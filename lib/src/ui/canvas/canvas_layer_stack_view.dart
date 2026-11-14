@@ -1,9 +1,20 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/widgets.dart';
+import 'package:gpu_engine/gpu_engine.dart'
+    show
+        GpuComposite,
+        GpuFloodPicture,
+        GpuMask,
+        GpuPlan,
+        GpuPool,
+        GpuScreen,
+        GpuTarget,
+        gpuTileBytes,
+        gpuTileSide;
 
 import '../../core/collection_equality.dart';
+import '../../core/floor_math.dart';
 import '../../core/tree_nodes.dart';
+import '../../services/canvas_flood_fill.dart' show FloodFillRegion;
 import '../../services/cut_frame_composite_plan.dart'
     show CutFrameCompositeLayer;
 import '../../models/bitmap_surface.dart';
@@ -16,32 +27,43 @@ import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../models/tile_coord.dart';
-import '../debug/input_inspector.dart';
-import '../../core/dev_profile.dart';
-import '../playback/frame_picture_store.dart' show FrameDrawing;
 import 'active_stroke_overlay.dart' show OverlayMoveMark;
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
-import 'tiled_surface_compose.dart';
 import '../../services/composite_effect_paint.dart';
 import 'display_resample.dart';
+import 'landing_preview.dart';
 import 'selection_float_overlay.dart';
-import 'composite_tree_paint.dart';
-import 'subtree_image_composite.dart';
-import 'layer_image_draw.dart';
-import 'paper_background.dart';
+import 'subtree_buffer_bounds.dart';
 import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
-import '../../services/cel_surface_as_shown.dart';
+import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
+import '../../services/guide_geometry.dart' show GuideTransform;
+import '../../services/se_name_tag_plan.dart' show ResolvedSeNameTag;
 import '../../services/playback/cut_frame_composite_signature.dart'
     show
         CompositeLayerSignature,
         CompositeNodeSignature,
-        CutFrameCompositeSignature;
-import 'raster_picture.dart';
+        CompositeRowSignature,
+        CutFrameCompositeSignature,
+        SeNameTagRowSignature;
 import 'tile_origin.dart';
+import '../text/se_name_tag_paint.dart' show seNameTagExtent;
+import '../../core/display_filter.dart' show filterQualityForDisplayScale;
+import '../../models/dirty_region.dart';
+import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
+import '../../native/composite_tree_plan.dart';
+import '../../native/engine_chain_holds.dart';
+import '../../native/engine_letters.dart';
+import '../../native/engine_range_mask.dart';
+import '../../native/engine_row_pose.dart'
+    show gpuRowInverse, gpuSamplingOf;
+import '../../native/engine_tile_ledger.dart';
+import '../../native/screen_texture.dart';
+import 'fx_plugin_stages.dart';
 
-part 'layer_stack/layer_stack_paint_pass.dart';
+part 'layer_stack/layer_stack_engine_screen.dart';
+part 'layer_stack/layer_stack_frame_reading.dart';
 
 /// One ROW that paints in the editing canvas's composite tree: a cached
 /// layer image ([CanvasLayerImageRequest]) or the ACTIVE layer's live
@@ -111,28 +133,17 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   /// A blur wraps the live surface in its own buffer for exactly as long as
   /// the effect is there.
   ///
-  /// ★WHOLE on purpose, like [CanvasLayerImageRequest.effects]: the stack's
-  /// `shouldRepaint` diffs this field, and splitting at construction would
-  /// let a colour-key edit slip past that comparison. The halves are taken
-  /// at USE, below.
+  /// ★WHOLE, like [CanvasLayerImageRequest.effects]: the stack's
+  /// `shouldRepaint` diffs this field, and the composite applies all of it
+  /// — keys and plugins too, the chain's own. ↩️A plugin at the chain's
+  /// head, after the keys before it, was run on the surface and taken out
+  /// of the paint, until it was a step of the chain
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
   final List<ResolvedLayerEffect> effects;
 
-  /// The PAINT half — everything the composite applies. The CPU half (the
-  /// LEADING colour keys) is already on the surface: the session runs the
-  /// same split and feeds `activeSourceEffects` with the other half.
-  ///
-  /// ⛔THE WHOLE CHAIN CANNOT GO TO THE PAINT, and this row was the last one
-  /// handing it over. A leading key then ran TWICE — once on the cel bytes
-  /// and again as a shader over the assembled picture. 🧪Delete and Keep are
-  /// idempotent at Amount 100, which is exactly why it hid; at any lower
-  /// Amount the two applications compound.
-  List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
-
-  /// The CPU half — the leading colour keys, which the session puts on the
-  /// surface this row draws ([CanvasLayerImageRequest.sourceEffects]'s
-  /// split, for the row a pen is on).
-  List<ResolvedLayerEffect> get sourceEffects =>
-      splitSourceEffects(effects).source;
+  /// The leading run of colour keys ([celSourceKeys]), which a float over
+  /// the row asks after.
+  List<ResolvedLayerEffect> get sourceEffects => celSourceKeys(effects);
 }
 
 /// A [LiftedCel] as the view draws it: the painter its surface is shown by,
@@ -175,28 +186,15 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// ([CanvasGhostImageRequest]): ✅유저 2026-08-27 (I-8-Q5) 「a ghost shows
   /// the pixels the screen shows」. ↩️Ghosts carried none while the Colors
   /// tint owned the paint's one colour-filter slot, which read as a design
-  /// ("editing scaffolding") until `resolveCompositeEffectPaint` folded the
-  /// two.
+  /// ("editing scaffolding") until the tint was folded into the chain's
+  /// matrix (`onionTintColorMatrix`).
   ///
-  /// ⛔THE WHOLE CHAIN, both halves. The two `shouldRepaint` comparisons
-  /// diff this field, so splitting it here would let a color-key edit slip
-  /// past them. The halves are taken at USE instead, below.
+  /// ⛔THE WHOLE CHAIN: the two `shouldRepaint` comparisons diff this
+  /// field, and the composite applies all of it.
   final List<ResolvedLayerEffect> effects;
 
-  /// The CPU half — the color keys, which the image cache bakes into the
-  /// image it hands back rather than the paint applying them.
-  ///
-  /// ★This request names a cel by [frameKey] and has no surface of its own,
-  /// which is why the split lives here as a getter while
-  /// `CutFrameCompositeLayer` (which DOES carry a surface) applies the pass
-  /// in its constructor. Same function underneath, two shapes because the
-  /// two routes hold different things.
-  List<ResolvedLayerEffect> get sourceEffects =>
-      splitSourceEffects(effects).source;
-
-  /// The paint half — everything that folds into a color filter or an image
-  /// filter.
-  List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
+  /// The leading run of colour keys ([CanvasActiveLayerRow.sourceEffects]'s).
+  List<ResolvedLayerEffect> get sourceEffects => celSourceKeys(effects);
 }
 
 /// An onion row's GHOST — one of its cels before or after the frame, at its
@@ -214,6 +212,54 @@ class CanvasGhostImageRequest extends CanvasLayerImageRequest {
     super.effects,
   });
 }
+
+/// An SE row's NAME TAG, a row of the frame's own picture (card
+/// the-flutter-fx-chain-is-a-second-chain, 🗣️-Q1 유저 2026-11-12
+/// 「가이드선이 이름표 위에 그려져도 된다 — 이름표를 엔진 그림 안으로」): its
+/// plate in its own space ([seNameTagExtent]), laid by its placement —
+/// normal, whatever the row's blend (🗣️F-387-Q5). It names no cel: it is
+/// drawn from the tag alone.
+///
+/// Its opacity and its chain are the folder round it ([nameTagRows]): they
+/// take the tag as ONE picture, as a folder's take its members — the box
+/// under the name is not seen through the name, and a blur reads both
+/// (🗣️F-387, 유저 2026-10-19: 「같은 fx인데 다른건 말이안됨. 다른것도
+/// 확인해서 통일」).
+///
+/// ↩️Each route painted the tags over the frame it had composited — the
+/// editing canvas, playback, the export and the parked track stack —, each
+/// through a chain of its own beside the engine's: never baked into a
+/// picture, so a rename made none again (R5b).
+final class CanvasNameTagRow extends CanvasStackRow {
+  const CanvasNameTagRow(this.tag);
+
+  final ResolvedSeNameTag tag;
+}
+
+/// [tags] as a frame's rows ([CanvasNameTagRow]), bottom to top — laid
+/// over every other row of it by whoever stacks the frame. None for a tag
+/// at no strength.
+///
+/// A tag at less than full strength or through a chain is a folder round
+/// its row, at its opacity through its chain — normal (🗣️F-387-Q5): the
+/// tag laid on the canvas first and taken as one picture there, the way a
+/// folder takes its members (🗣️F-387) — so its blur is the canvas's
+/// pixels wherever the shot lays it, and repeats the canvas's edge.
+List<CompositeNode<CanvasStackRow>> nameTagRows(
+  List<ResolvedSeNameTag> tags,
+) => [
+  for (final tag in tags)
+    if (tag.opacity > 0)
+      switch (CompositeLeaf<CanvasStackRow>(CanvasNameTagRow(tag))) {
+        final row when tag.opacity >= 1 && tag.effects.isEmpty => row,
+        final row => CompositeGroup(
+          children: [row],
+          opacity: tag.opacity,
+          blendMode: LayerBlendMode.normal,
+          effects: tag.effects,
+        ),
+      },
+];
 
 /// What a frame is drawn ON — the four a [StackedFrame] draws its nodes on:
 /// the page's size, how far its pasteboard reaches, whether it
@@ -238,9 +284,10 @@ typedef LiveRows = ({
   Map<BrushFrameKey, LiftedCel> liftedRows,
 });
 
-/// What the live surface looked like, per coordinate: the overlay's tile
-/// images and the committed tiles. Identity per coordinate is what lets the
-/// next look say WHERE the surface changed ([StackedFrame.movedSince]).
+/// What the live surface looked like, per coordinate: what shows each of
+/// the overlay's (`ActiveStrokeOverlayModel.shownBy`) and the committed
+/// tiles. Identity per coordinate is what lets the next look say WHERE the
+/// surface changed ([StackedFrame.movedSince]).
 ///
 /// 🚨★★★F-130: AND WHAT THE PAINTER DRAWS OVER THE SURFACE. The picture
 /// holds it, and tokens that do not know a preview cannot say where it
@@ -253,23 +300,59 @@ typedef LiveRows = ({
 /// type, so what measures a change does not import a tool's.
 ///
 /// F-344: the text in hand, floated over its hole by the same painter
-/// (`BitmapSurfacePainter.landingPreview`) — the one preview there is now.
+/// (`BitmapSurfacePainter.landingPreview`), and the selection floated in
+/// the live row's slot (`LiveRows.floatOverlay`) — told alike, each where
+/// its slot draws it ([_SurfaceSlot.floated]).
 /// ↩️The stamp's ghost was the first (F-33 drew it inside the painter),
 /// until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved it to the
 /// overlay's CPU pre-blended tiles, which [overlay] carries.
+///
+/// 🚨★★★AND THE ROWS A LIFT HOLDS BESIDE THE LIVE ONE, BY THE SAME LAW
+/// ([lifted]): each by its cel, its surface's tiles and its float
+/// ([LiftedRowTokens]).
+///
+/// ⛔A float moves under the hand without touching anything else a token
+/// sees — not the tree, not the surface's tiles, not the overlay's —, so
+/// untold, a picture patched past it would freeze the canvas for the whole
+/// drag: found by walking the painter's own body asking 「what else can
+/// change」 ([[cache-what-can-say-where-it-changed]],
+/// `float_drag_is_never_cached_test`).
+///
+/// ↩️A float or a lift in hand told nothing, and while either was the
+/// frame was drawn as it stands, whole, at every step
+/// (`_FrameRows._liveCanBeTold`, from `e65f29037` 2026-08-15 — a session's
+/// call, no one's word: 「declining to patch costs only what drawing the
+/// frame as it stands costs」). 🔬What that cost on the Surface Pro 11
+/// (profile, S5_BA cut 352, 68 rows, fitted, a box dragged 4 px every
+/// 8 ms, 2026-11-12): a frame's build p50 22 ms, ≈19 ms of it the UI
+/// thread waiting on the GPU for the whole frame composed again
+/// (`GpuScreen.show`); composed over the box alone, 10–13 ms
+/// (a-float-in-hand-draws-the-frame-as-it-stands).
 typedef LiveSurfaceTokens = ({
   Map<Object, Object> overlay,
   OverlayMoveMark? overlayMoves,
   Map<Object, Object> tiles,
   List<({Object value, Rect rect})> previews,
+  Map<BrushFrameKey, LiftedRowTokens> lifted,
+});
+
+/// A row a lift holds beside the live one, as [LiveSurfaceTokens.lifted]
+/// tells it: its surface's tiles and its float — by value, beside where
+/// its slot draws it — and the tiles of its cel as stored, what the row
+/// shows before the lift takes it up and once the lift lets it go (null
+/// where they are not in hand: such a change cannot be told).
+typedef LiftedRowTokens = ({
+  int tileSize,
+  Map<Object, Object> tiles,
+  Map<Object, Object>? stored,
+  ({Object value, Rect rect})? float,
 });
 
 /// A row as a frame's body draws it from its cel's stored pixels
 /// ([StackedFrame.of]): the layer, the tint an onion ghost wears over it
 /// in Colors mode, whether it is a [ghost] ([CanvasGhostImageRequest]) —
 /// and what it draws, as a frame's picture is signed by it (null where
-/// that is not told: a node holding it is drawn afresh each time,
-/// [HeldNodePictures]).
+/// that is not told: a node holding it is run afresh each time).
 typedef StoredRow = ({
   CutFrameCompositeLayer layer,
   int? tint,
@@ -277,71 +360,27 @@ typedef StoredRow = ({
   CompositeLayerSignature? signature,
 });
 
-/// Where a frame's picture keeps the pictures its nodes are drawn into
-/// ([HeldSubtreeRasters]) — what the frame drawn here keeps of them
-/// ([NodesKept]): the frame for a canvas that stands on it, laid or drawn as
-/// it stands — a stroke's step patched in is cut by its patch, and keeps
-/// none of what that cuts — and what it does with what lies below its pen
-/// ([below]).
-typedef HeldNodePictures = ({
-  HeldSubtreeRasters rasters,
-  NodesKept keeps,
-  BelowThePen below,
-});
-
-/// What a frame drawn here does with the pictures its nodes are drawn into
-/// ([HeldNodePictures.keeps]).
-///
-/// 🚨TWO QUESTIONS, NOT ONE FLAG: whether the ones it draws whole are kept,
-/// and whether the ones it does not draw are let go of
-/// ([HeldSubtreeRasters.holdOnly]). Only a frame drawn whole for the nodes
-/// it holds — a lay — may answer the second: drawn, it is what is held. ↩️A
-/// bool answered both until 2026-11-04, and the frame a canvas draws as it
-/// stands, told to keep (`2b213b4f6`), let go too — and a stroke's step is
-/// patched in by that frame, cut to the step: each step let go of every
-/// folder it did not reach, and the screen fitted to the page drew each
-/// whole again (F-533). 🔬Surface Pro 11, S5_BA cut 352, every row
-/// visible, fitted, 14 strokes a run, 4 runs a build: the longest frame
-/// 209–294 ms against 137–175 ms the commit before, frames past 30 ms 37–43
-/// against 19–24 — at the first pen-down after the view was fitted.
-enum NodesKept {
-  /// Finds them, and keeps none.
-  none,
-
-  /// Keeps the ones it draws whole, and lets go of none — the frame a
-  /// canvas draws as it stands.
-  drawnWhole,
-
-  /// Keeps the ones it draws whole, and lets go of the rest: what it draws
-  /// is what is held after.
-  onlyDrawn,
-}
-
-/// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
+/// 🚨★★★A FRAME'S ONE PICTURE IS LAID FROM THE ROWS THE CANVAS STACKS
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
-/// frame as a screen stacks it, composed over [FrameDrawing.extent] in
-/// world coordinates as a miss composes the display buffer whole at 100% —
-/// the paper as the root's bottom row, folders, adjustments, blends over
-/// their backdrops, effects and poses — with every row drawn from its own
-/// tiles, by the body the live row is drawn with ([_PaintCelSurface], from
-/// what [storedRowOf] hands for it) — or, for a row a cel number is written
+/// frame as a screen stacks it, over [extent] in world coordinates — the
+/// paper as the root's bottom row, folders, adjustments, blends over their
+/// backdrops, effects and poses — with every row from its own tiles, from
+/// what [storedRowOf] hands for it — or, for a row a cel number is written
 /// on with none, [bareRowOf]'s ([mapCompositeLeaves]), as for the row a pen
-/// draws on with none. No second compositor: a frame's picture is what the
-/// canvas would show of it.
+/// draws on with none. The engine lays it (`EngineStackScreen`): no second
+/// compositor.
 ///
-/// Under [live], the rows a canvas that stands holds live are drawn as it
-/// draws them ([_liveRowOf]) — the frame AS IT STANDS, what a still
-/// canvas shows while its picture is not there and what its strokes patch
+/// Under [live], the rows a canvas that stands holds live are shown as they
+/// stand ([_liveRowOf]) — the frame AS IT STANDS, what its strokes patch
 /// into the picture ([movedSince]).
 ///
-/// The extent is what the buffer covers with the whole pasteboard in view:
-/// the page and every row's content.
+/// The extent is the page and every row's content.
 ///
-/// 🚨PAST ITS EXTENT A FRAME IS NOTHING, and the picture holds what the
-/// buffer holds past the paper — what the rows lay over no paper, as they
-/// lay it. A screen lays its pasteboard under the buffer, in a colour each
-/// view sets for itself (`BrushCanvasPanel.pasteboardColor`); laid into the
-/// picture, one frame would be a picture per colour.
+/// 🚨PAST ITS EXTENT A FRAME IS NOTHING, and the picture holds what lies
+/// past the paper — what the rows lay over no paper, as they lay it. A
+/// screen lays its pasteboard under it, in a colour each view sets for
+/// itself (`BrushCanvasPanel.pasteboardColor`); laid into the picture, one
+/// frame would be a picture per colour.
 final class StackedFrame {
   factory StackedFrame.of(
     List<CompositeNode<CanvasStackRow>> nodes, {
@@ -349,20 +388,27 @@ final class StackedFrame {
     required StoredRow? Function(CanvasStackRow row) storedRowOf,
     required StoredRow? Function(CanvasStackRow row) bareRowOf,
     ({LiveRows rows, LiftedRowPainters painters})? live,
-    HeldNodePictures? held,
   }) {
     _PaintRow? paintOf(StoredRow? row, CanvasStackRow of) => switch (row) {
       final stored? => _PaintCelSurface(
         stored,
-        drawnOn: of is CanvasActiveLayerRow,
+        frameKey: switch (of) {
+          CanvasActiveLayerRow(:final frameKey) => frameKey,
+          CanvasLayerImageRequest(:final frameKey) => frameKey,
+          CanvasNameTagRow() => null,
+        },
       ),
       null => null,
     };
     final drawn = mapCompositeLeaves<CanvasStackRow, _PaintRow>(
       nodes,
       (row) {
+        if (row case CanvasNameTagRow(:final tag)) {
+          return _PaintNameTag(tag);
+        }
         if (live != null) {
-          if (_liveRowOf(row, live.rows, live.painters) case final row?) {
+          if (_liveRowOf(row, live.rows, live.painters, storedRowOf)
+              case final row?) {
             return row;
           }
         }
@@ -381,108 +427,44 @@ final class StackedFrame {
         live?.painters._drawn(live.rows.liftedRows) ??
         const <BrushFrameKey, _LiftedRowPaint>{};
     return StackedFrame._(
-      (viewport, devicePixelRatio, debugDisableSingleBuffer) =>
-          _LayerStackPainter(
-            nodes: drawn,
-            activeSurfacePainter: live?.rows.activeSurfacePainter,
-            floatOverlay: live?.rows.floatOverlay,
-            liftedRows: liftedRows,
-            canvasSize: page.canvasSize,
-            pasteboardReach: page.pasteboardReach,
-            viewport: viewport,
-            paintPaper: page.paintPaper,
-            paperBackground: page.paperBackground,
-            devicePixelRatio: devicePixelRatio,
-            debugDisableSingleBuffer: debugDisableSingleBuffer,
-            held: held,
-          ),
+      _FrameRows(
+        nodes: drawn,
+        activeSurfacePainter: live?.rows.activeSurfacePainter,
+        floatOverlay: live?.rows.floatOverlay,
+        liftedRows: liftedRows,
+        canvasSize: page.canvasSize,
+        pasteboardReach: page.pasteboardReach,
+        paintPaper: page.paintPaper,
+        paperBackground: page.paperBackground,
+      ),
     );
   }
 
-  StackedFrame._(this._through)
-    : _painter = _through(CanvasViewport(), 1, false);
+  StackedFrame._(this._painter);
 
-  /// The body seen through a view, at a device's ratio — and, for a parity
-  /// test, without the single buffer
-  /// ([_LayerStackPainter.debugDisableSingleBuffer]).
-  final _LayerStackPainter Function(
-    CanvasViewport viewport,
-    double devicePixelRatio,
-    bool debugDisableSingleBuffer,
-  )
-  _through;
+  /// The rows and the page they stand on.
+  final _FrameRows _painter;
 
-  /// The body in world coordinates — what the picture is drawn by.
-  final _LayerStackPainter _painter;
-
-  /// The frame as it stands drawn ON THE SCREEN, through [viewport] — by
-  /// the walk the canvas's own stack takes there, under the display's laws:
-  /// composed at the frame's own resolution, as its one picture is laid,
-  /// and resampled as the picture is; the paper cut on the device's grid
-  /// (F-67-paper-edge) — what the frame's picture shows of it (D7-2-Q2
-  /// 「항상 원본 한장으로」; F-215 「on하든off하든 바뀌는게 없어야」). ⛔Not
-  /// [drawing] through the view: that is the picture's raster, cut on the
-  /// canvas's grid — an absent paper's checkerboard and the paper's own
-  /// edge parted by a blended column.
-  ///
-  /// 🔬At the display's level (2026-10-25), the frame the conte's brush is
-  /// switched on in cut each row's edge on the screen's grid, and the
-  /// picture that landed after it blended it: 172 pixels, up to 28/255, at
-  /// 1/6. So did every patch landing on a canvas zoomed out, at each step
-  /// of a stroke.
-  ///
-  /// ⚠️What it costs, known and kept: zoomed out, a frame drawn whole as it
-  /// stands — a float's drag, the stroke steps of a posed or bleeding row —
-  /// is a buffer of the canvas's size at each paint, the cost the knee was
-  /// dropped for ([_LayerStackPainter._maxBufferSide]). ⛔Not answered by
-  /// going back to the levels: 유저 (D7-2-Q2, 2026-10-24) 「배율이 어떻든 항상
-  /// 원본 한장 … 100%랑 통일하되, 그런 문제는 통일한 이후 극한으로
-  /// 해결하고싶어」, 10-25 「원본기준으로 해서 쓸데없는 소재 없애고 거기서 극한
-  /// 최적화 해야지」 — the cost is card one-picture-per-frame's to solve on
-  /// this road.
-  void paintOnScreen(
-    Canvas canvas,
-    Size size, {
-    required CanvasViewport viewport,
-    required double devicePixelRatio,
-    @visibleForTesting bool debugDisableSingleBuffer = false,
-  }) => labProbe(
-    'layerStackPaint',
-    // The paint pass (Round 6): one paint of the stack, as its own object,
-    // constructed PER PAINT — its geometry fields are `late final`.
-    () => _LayerStackPaintPass(
-      _through(viewport, devicePixelRatio, debugDisableSingleBuffer),
-    ).paint(canvas, size),
-  );
-
-  /// The frame as the store lays it — its extent asked afresh each time:
-  /// a stroke grows what the live row covers.
-  FrameDrawing get drawing => (
-    extent: _LayerStackPaintPass(_painter).frameExtent(),
-    // A pass per paint, as the painter's own: its geometry is read once.
-    draw: (canvas) => _LayerStackPaintPass(_painter).paintFrame(canvas),
-  );
+  /// The world the frame covers, asked afresh each time: a stroke grows
+  /// what the live row covers.
+  Rect get extent => _FrameReading(_painter).frameExtent();
 
   /// What moves the live rows' pixels with no new frame — a stroke's step,
   /// a float's or a lift's drag — as it repaints the canvas's own stack.
-  Listenable get changes => _LayerStackPainter._liveListenable(
+  Listenable get changes => _FrameRows._liveListenable(
     _painter.activeSurfacePainter,
     _painter.floatOverlay,
     _painter.liftedRows,
   );
 
-  /// Whether where a change of the live rows lands can be told
-  /// ([movedSince]) — as a canvas that stands asks before it patches its
-  /// picture ([_LayerStackPainter._liveCanBeTold]).
-  bool get steady => _painter._liveCanBeTold;
-
-  /// What the live row looks like now, to measure its next change from —
-  /// null where it cannot be told ([_LayerStackPainter._liveSurfaceTokens]).
-  LiveSurfaceTokens? get tokens => _painter._liveSurfaceTokens();
+  /// What the live rows look like now, to measure their next change from
+  /// ([_FrameRows._liveSurfaceTokens]) — nothing where nothing is drawn
+  /// live.
+  LiveSurfaceTokens get tokens => _painter._liveSurfaceTokens();
 
   /// Where the live row's pixels moved since [since], in world coordinates
-  /// ([_LayerStackPainter._liveDirtyCanvasRect]).
-  ({bool located, Rect? dirty, LiveSurfaceTokens? now}) movedSince(
+  /// ([_FrameRows._liveDirtyCanvasRect]).
+  ({bool located, Rect? dirty, LiveSurfaceTokens now}) movedSince(
     LiveSurfaceTokens since,
   ) => _painter._liveDirtyCanvasRect(since: since);
 
@@ -490,22 +472,20 @@ final class StackedFrame {
   /// it, in world coordinates — all a frame laid with its ghosts in place
   /// differs by from the same frame laid without them: each ghost's ink,
   /// told as a stroke's change of the live row is
-  /// ([_LayerStackPainter._whereAChangeShows]). Empty where none has ink;
+  /// ([_FrameRows._whereAChangeShows]). Empty where none has ink;
   /// null where that cannot be told.
   Rect? get whereTheGhostsShow => _painter._whereTheGhostsShow();
 }
 
-/// Whether [nodes] hold a plugin's step past a cel's own pixels — one run
-/// over what its chain made before it (`PluginEffect`, 🗣️I-132-Q34 a): a
-/// frame drawn whole only by a recording that waits for its plugins
+/// Whether [nodes] hold a plugin's step — one run over what its chain made
+/// before it, wherever it stands (`PluginEffect`, 🗣️I-132-Q34 a): a frame
+/// drawn whole only by a recording that waits for its plugins
 /// (`FxPluginStages`), and drawn as it stands with the step as if off.
 bool waitsForItsPlugins(List<CompositeNode<CanvasStackRow>> nodes) =>
     preorderNodes(nodes).any(
       (node) => switch (node) {
-        CompositeLeaf(payload: CanvasActiveLayerRow(:final paintEffects)) ||
-        CompositeLeaf(
-          payload: CanvasLayerImageRequest(:final paintEffects),
-        ) => _runsAPlugin(paintEffects),
+        CompositeLeaf(payload: CanvasActiveLayerRow(:final effects)) ||
+        CompositeLeaf(payload: CanvasLayerImageRequest(:final effects)) ||
         CompositeGroup(:final effects) ||
         CompositeAdjustment(:final effects) => _runsAPlugin(effects),
         _ => false,
@@ -517,46 +497,31 @@ bool _runsAPlugin(List<ResolvedLayerEffect> chain) => chain.any(
 );
 
 /// The painters the rows a lift holds beside the live one are drawn by
-/// ([LiftedCel]), by cel — kept while a row's surface and keys stay what
-/// they were: a new painter is a new set of tile pictures, and a drag step
-/// changes neither. A screen keeps one across its paints.
+/// ([LiftedCel]), by cel — kept while a row's surface stays what it was: a
+/// new painter is a new set of tile pictures, and a drag step changes
+/// none. A screen keeps one across its paints.
 final class LiftedRowPainters {
   final Map<
     BrushFrameKey,
-    ({
-      BitmapSurface surface,
-      List<double> keys,
-      ResolvedLayerEffect? plugin,
-      BitmapSurfacePainter painter,
-    })
+    ({BitmapSurface surface, BitmapSurfacePainter painter})
   >
   _held = {};
 
   /// [lifted] as [request]'s row draws it.
   _LiftedRowPaint _of(CanvasLayerImageRequest request, LiftedCel lifted) {
-    final keys = celSourceEffectSignature(request.sourceEffects);
-    final plugin = celSourcePlugin(request.sourceEffects);
     final held = _held[request.frameKey];
-    if (held != null &&
-        identical(held.surface, lifted.surface) &&
-        listEquals(held.keys, keys) &&
-        held.plugin == plugin) {
+    if (held != null && identical(held.surface, lifted.surface)) {
       return (surface: held.painter, float: lifted.float);
     }
     final painter = BitmapSurfacePainter(
-      // Shown as the row's image is: its texts laid, then its row's keys —
-      // the CPU half of the chain; the paint half rides the row's paint.
-      surface: celSurfaceAsShown(lifted.surface, request.sourceEffects),
+      // Shown as the row's image is, its texts laid; its chain rides the
+      // row's paint.
+      surface: lifted.surface,
       // The stack draws in canvas space, as for the live row.
       showTransparentBackground: false,
-      lineage: (request.frameKey.layerId, request.frameKey.frameId),
+      lineage: request.frameKey.cel,
     );
-    _held[request.frameKey] = (
-      surface: lifted.surface,
-      keys: keys,
-      plugin: plugin,
-      painter: painter,
-    );
+    _held[request.frameKey] = (surface: lifted.surface, painter: painter);
     return (surface: painter, float: lifted.float);
   }
 
@@ -574,11 +539,12 @@ final class LiftedRowPainters {
 }
 
 /// [row] as a canvas that stands draws it live ([LiveRows]), or null where
-/// it is drawn from what is stored.
+/// it is drawn from what is stored ([storedRowOf]).
 _PaintRow? _liveRowOf(
   CanvasStackRow row,
   LiveRows live,
   LiftedRowPainters painters,
+  StoredRow? Function(CanvasStackRow row) storedRowOf,
 ) => switch (row) {
   // A row a lift holds beside the live one draws its lifted surface —
   // whether or not its image is held: that is the cel as it stands, and
@@ -587,12 +553,16 @@ _PaintRow? _liveRowOf(
       when live.liftedRows.containsKey(request.frameKey) =>
     _PaintLiftedSurface(
       lifted: painters._of(request, live.liftedRows[request.frameKey]!),
+      frameKey: request.frameKey,
+      stored: switch (storedRowOf(request)) {
+        null => null,
+        // Laid as the row's own painter lays it ([_PaintCelSurface]).
+        final stored => celSurfaceWithTextsLaid(stored.layer.surface),
+      },
       opacity: request.opacity,
       blendMode: request.blendMode,
       placement: request.placement,
-      // The PAINT half only, as the live row's: the lifted surface's
-      // painter carries the row's leading keys.
-      effects: request.paintEffects,
+      effects: request.effects,
       keys: request.sourceEffects,
     ),
   final CanvasActiveLayerRow active when live.activeSurfacePainter != null =>
@@ -600,9 +570,7 @@ _PaintRow? _liveRowOf(
       opacity: active.opacity,
       blendMode: active.blendMode,
       placement: active.placement,
-      // The PAINT half only — like a cached row. A leading key is already
-      // on the surface this node draws.
-      effects: active.paintEffects,
+      effects: active.effects,
       keys: active.sourceEffects,
     ),
   _ => null,
@@ -617,17 +585,20 @@ sealed class _PaintRow {
 /// ([onUnderlay]): where an advanced blend composes over its backdrop,
 /// the paper is in that backdrop, as a GPU blend reads it off the target
 /// (brush-fidelity-Q4).
-///
-/// The pass paints it ([_LayerStackPaintPass._paintPaperInto]) — it knows
-/// the edge — from the painter's own fields (`paintPaper`,
-/// `paperBackground`).
 final class _PaintPaper extends _PaintRow {
   const _PaintPaper();
 }
 
+/// An SE row's name tag ([CanvasNameTagRow]): its plate, made by the
+/// engine's letters as a cel number's is (`EngineLetters.seNameTagPlate`).
+final class _PaintNameTag extends _PaintRow {
+  const _PaintNameTag(this.tag);
+
+  final ResolvedSeNameTag tag;
+}
+
 /// A row drawn as a SURFACE — the live one, or one a lift holds beside it —
-/// and what its layer composites with, for the one body that draws both
-/// ([_LayerStackPaintPass._paintSurfaceRow]).
+/// and what its layer composites with.
 sealed class _SurfaceRow extends _PaintRow {
   const _SurfaceRow();
 
@@ -636,33 +607,16 @@ sealed class _SurfaceRow extends _PaintRow {
   LayerPlacement? get placement;
   List<ResolvedLayerEffect> get effects;
 
-  /// The CPU half of the row's chain — the leading colour keys its cel is
-  /// shown through — which a float over it asks after
-  /// ([SelectionFloatPaint.shownOn]).
+  /// The leading run of the row's chain — the colour keys still on its
+  /// cel's own bytes and a plugin after them — which a float over it asks
+  /// after ([SelectionFloatPaint.shownOn]).
   List<ResolvedLayerEffect> get keys;
 
   /// The tint an onion ghost wears over its cel ([CanvasLayerImageRequest.
   /// tint]) — none on a row a pen or a lift holds.
   int? get tint => null;
-
-  _SurfaceRowPaint get paint => (
-    opacity: opacity,
-    blendMode: blendMode,
-    placement: placement,
-    effects: effects,
-    tint: tint,
-  );
 }
 
-/// 🪦The first-activation stand-in (device report 2026-08-17 → 2026-09-17)
-/// held the just-deactivated route's layer image over the active slot
-/// until every tile of the promoted surface had decoded: activation
-/// promotes a file-backed cel to a surface of all-fresh tile objects, and
-/// the picture disappeared for one frame per layer. A committed tile
-/// pictures itself inside the paint now, so the walk is whole on the
-/// activation frame itself and nothing stands in. (The active row's
-/// `frameKey` named the cel so this could find the image to hold; it has
-/// another reader now — see [CanvasActiveLayerRow.frameKey].)
 final class _PaintActiveSurface extends _SurfaceRow {
   const _PaintActiveSurface({
     required this.opacity,
@@ -692,12 +646,14 @@ final class _PaintActiveSurface extends _SurfaceRow {
   final List<ResolvedLayerEffect> keys;
 }
 
-/// A row a folder's move session holds lifted ([LiftedCel]): drawn by
-/// its lifted surface with its float over it, by the same body the active
-/// row is drawn with — in its own slot, with its own row's paint.
+/// A row a folder's move session holds lifted ([LiftedCel]): its lifted
+/// surface with its float over it — in its own slot, with its own row's
+/// paint.
 final class _PaintLiftedSurface extends _SurfaceRow {
   const _PaintLiftedSurface({
     required this.lifted,
+    required this.frameKey,
+    required this.stored,
     required this.opacity,
     required this.blendMode,
     required this.placement,
@@ -706,6 +662,13 @@ final class _PaintLiftedSurface extends _SurfaceRow {
   });
 
   final _LiftedRowPaint lifted;
+
+  /// The cel the lift holds ([LiveRows.liftedRows]).
+  final BrushFrameKey frameKey;
+
+  /// That cel's surface as stored, its texts laid — what the row shows with
+  /// no lift on it — or null where it is not in hand.
+  final BitmapSurface? stored;
   @override
   final double opacity;
   @override
@@ -719,12 +682,12 @@ final class _PaintLiftedSurface extends _SurfaceRow {
 }
 
 /// A cel drawn from its OWN TILES, as the plan hands it
-/// ([CutFrameCompositeLayer]: its texts laid and its leading keys run on
-/// the surface, the rest of its chain left to the paint) — every row of a
-/// frame's one picture ([StackedFrame]), by the body the live row is
-/// drawn with.
+/// ([CutFrameCompositeLayer]: its texts laid and a plugin at its chain's
+/// head run on the surface, the rest of its chain — keys alone included —
+/// left to the paint) — every row of a frame's one picture
+/// ([StackedFrame]).
 final class _PaintCelSurface extends _SurfaceRow {
-  _PaintCelSurface(StoredRow row, {required this.drawnOn})
+  _PaintCelSurface(StoredRow row, {required this.frameKey})
     : painter = BitmapSurfacePainter(
         surface: row.layer.surface,
         // The stack lays its own paper.
@@ -746,11 +709,12 @@ final class _PaintCelSurface extends _SurfaceRow {
   /// Whether it is an onion ghost ([StoredRow.ghost]).
   final bool ghost;
 
-  /// Whether it is the row a pen draws on — the active layer's
-  /// ([CanvasActiveLayerRow]), drawn from what is stored until a stroke
-  /// holds it live ([_PaintActiveSurface]): what lies below it is held as
-  /// one picture for the steps to come ([SubtreeHolding.drawnOn]).
-  final bool drawnOn;
+  /// The cel its row names — or null for a row that names none.
+  final BrushFrameKey? frameKey;
+
+  /// That cel ([BrushFrameKey.cel]) — what the engine keeps its tiles
+  /// under ([EngineTiles.lineage]).
+  Object? get lineage => frameKey?.cel;
   @override
   final double opacity;
   @override
@@ -762,81 +726,24 @@ final class _PaintCelSurface extends _SurfaceRow {
   @override
   final int? tint;
 
-  /// None left to show a float through: the plan ran them on the surface,
-  /// and nothing floats over a frame's picture.
+  /// None asked after: nothing floats over a frame's picture.
   @override
   List<ResolvedLayerEffect> get keys => const [];
 }
 
-/// Whether the live layer's last paint handed its opacity/blend to the
-/// individual draws instead of opening a buffer around them.
-///
-/// 🚨THE DECISION, NOT ITS PIXELS. Whether a buffer was opened is invisible
-/// in a comparison — the two routes are the same pixels, which is the whole
-/// point — so the only way to pin WHEN each one runs is to read the answer.
-///
-/// ⚠️Written under `assert`, so a release build pays nothing.
-@visibleForTesting
-bool? debugLiveLayerRodeTheDraws;
-
-/// 🪦`debugActiveSlotDraw` (F-67, 2026-09-10 → 2026-09-17) said which of
-/// the active slot's draws a paint used, because the FLAT projection, the
-/// first-activation STAND-IN and the TILES did not sample alike and a
-/// comparison could not say which it had compared. The tiles are the one
-/// draw left, so there is nothing to tell apart.
-
-/// The geometry field probe's state — the numbers every buffer decision
-/// depends on and nobody has ever measured on a device: the logical view,
-/// the device pixel ratio, the zoom actually worked at, and what the
-/// buffer costs there. ↩️The 1928×1200 that circulated was a comment in the
-/// bake, not a measurement.
-///
-/// Public and outside the painter because the painter class is private and
-/// a fresh object every frame — tests and a hands-on session need to reach
-/// the histogram, and the dedupe line needs to outlive a frame.
-abstract final class CanvasPaintGeometryProbe {
-  /// The last emitted geometry line — the dedupe key, held across frames.
-  static String? lastLine;
-
-  /// Paints per zoom bucket (percent, 10% steps), counted while the
-  /// inspector is visible. Every byte figure in the composite plan hinges
-  /// on "what zoom is actually worked at", and nobody has measured a
-  /// distribution — "83%" is one observation and "400% is the working
-  /// posture" is a sentence in a brief. This counter turns either into a
-  /// fact.
-  static final Map<int, int> zoomHistogram = <int, int>{};
-
-  static void reset() {
-    lastLine = null;
-    // Every dedupe key the paint pass keeps — the T12 line's too, or a
-    // test that runs after another one sees no T12 line at all: the
-    // probes are static on purpose (a painter is rebuilt every frame).
-    _LayerStackPainter._lastStackProbe = null;
-    zoomHistogram.clear();
-  }
-}
-
-/// What a [StackedFrame] is drawn by: its rows and the page they stand on,
-/// seen through a view — one paint of it is a [_LayerStackPaintPass].
-final class _LayerStackPainter {
-  _LayerStackPainter({
+/// What a [StackedFrame] is laid from: its rows and the page they stand on
+/// — one reading of it is a [_FrameReading].
+final class _FrameRows {
+  _FrameRows({
     required this.nodes,
     this.activeSurfacePainter,
     this.floatOverlay,
     this.liftedRows = const {},
     required this.canvasSize,
     required this.pasteboardReach,
-    required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
-    this.devicePixelRatio = 1.0,
-    this.debugDisableSingleBuffer = false,
-    this.held,
   });
-
-  /// Where the frame's picture finds its nodes' pictures drawn before, and
-  /// whether it keeps the ones it draws whole ([StackedFrame.of]).
-  final HeldNodePictures? held;
 
   /// What moves the live rows' pixels: the live row's surface and stroke,
   /// the float, and each lifted row's surface and float — a drag step
@@ -854,11 +761,6 @@ final class _LayerStackPainter {
     for (final lifted in liftedRows.values) ...[lifted.surface, ?lifted.float],
   ]);
 
-  /// The last line the T12 probe in [_LayerStackPaintPass.paint] emitted.
-  /// Static: a painter is a fresh object every frame, so an instance field
-  /// would only ever compare against itself.
-  static String? _lastStackProbe;
-
   final List<CompositeNode<_PaintRow>> nodes;
 
   /// Draws the ACTIVE layer's live surface in place. Its own repaint
@@ -875,46 +777,20 @@ final class _LayerStackPainter {
   final Map<BrushFrameKey, _LiftedRowPaint> liftedRows;
   final CanvasSize canvasSize;
   final PasteboardReach pasteboardReach;
-  final CanvasViewport viewport;
   final bool paintPaper;
   final ProjectBackground paperBackground;
-
-  /// 🚨(v) 2단계 — turns the single composite buffer OFF, so a test can
-  /// render the SAME tree both ways and compare the pixels.
-  ///
-  /// ⚠️The comparison is only an identity at 1:1. That is not a weakness of
-  /// the test, it is the change: above and below 100% the buffer resamples
-  /// ONCE where the direct walk resampled every layer separately, and the
-  /// pixels are supposed to differ there. So parity pins the composite —
-  /// order, blending, paper, pasteboard — and a separate test pins the
-  /// sampling law.
-  final bool debugDisableSingleBuffer;
-
-  /// The EFFECTIVE ratio at build time (monitor × UI scale) — the display
-  /// scale's axis (`zoom·dpr`, [displayScaleOf]). A monitor move re-runs
-  /// the build, so a fresh painter always carries the current value.
-  final double devicePixelRatio;
-
-  /// The largest buffer side worth allocating, in the buffer's own pixels.
-  ///
-  /// Not a quality setting — the safety net (유저 결정 2026-09-16). Below
-  /// 100% the buffer is a level of the artwork and at most 4× the screen,
-  /// so this binds only on a window past 16384 device pixels; at or above
-  /// 100% only on one past the cap itself. Past it the direct walk draws,
-  /// which is always correct and costs only the sampling law.
-  static const int _maxBufferSide = 8192;
 
   /// The coordinates whose token moved from [last] to [now]: one [now]
   /// holds under a different token (or newly), and one [now] no longer
   /// holds at all.
   ///
-  /// Identity per coordinate — for the overlay's tile images and the
+  /// Identity per coordinate — for what shows the overlay's and the
   /// committed tiles alike. The overlay's tiles carry the stroke in
   /// flight, but they ACCUMULATE for the stroke's whole life (nothing
   /// leaves the map until pen-up), so "every overlay coordinate" is the
   /// bounding box of the WHOLE STROKE by the third dab: a long line paid
-  /// its full length again on every step. The overlay replaces a tile's
-  /// image only when a dab touched it, so an unchanged image object IS
+  /// its full length again on every step. The overlay replaces what shows
+  /// a coordinate only when a dab touched it, so an unchanged object IS
   /// "this tile did not move". A coordinate the overlay LEFT has to lose
   /// its ink (pen-up, reset).
   static Iterable<TileCoord> _movedCoords(
@@ -933,21 +809,29 @@ final class _LayerStackPainter {
     }
   }
 
-  /// What the live surface looks like NOW, per coordinate — or null when
-  /// that cannot be said: no live row, or one drawn from state it does not
-  /// publish
-  /// ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
-  /// comparison here can be right. That is the answer that makes a patch
-  /// honest: ask the thing you are patching where it changed, and do not
-  /// patch what cannot say.
+  /// What the live surface looks like NOW, per coordinate — and the rows a
+  /// lift holds beside it. That is the answer that makes a patch honest: ask
+  /// the thing you are patching where it changed, and do not patch what
+  /// cannot say ([_liveDirtyCanvasRect]).
+  ///
+  /// ⛔Nothing drawn live is tokens of nothing, not none: a lift taken up
+  /// where no row is under the pen — a folder's, picked on the timeline — is
+  /// told against the frame the picture holds, as any other change.
   ///
   /// The overlay's tiles carry the stroke in flight — but they ACCUMULATE
   /// for the stroke's whole life (nothing leaves the map until pen-up), so
   /// "every overlay coordinate" is the bounding box of the WHOLE STROKE by
   /// the third dab: a long line paid its full length again on every step.
   /// Identity per coordinate instead, exactly like the committed tiles —
-  /// the overlay replaces a tile's image only when a dab touched it, so an
-  /// unchanged image object IS "this tile did not move".
+  /// the overlay replaces what shows a coordinate only when a dab touched
+  /// it, so an unchanged object IS "this tile did not move".
+  ///
+  /// 🚨NO PICTURE IS ASKED FOR, to measure by: what shows a coordinate is
+  /// the token (`ActiveStrokeOverlayModel.shownBy`). ↩️The overlay's
+  /// pictures were, copied here — and the copy read each, which made one
+  /// of every tile the step had moved: of a tile the engine laid, a wait
+  /// for the GPU to read it back, for a picture this screen never drew
+  /// (till 2026-11-12).
   ///
   /// Committed tiles: a commit replaces the tile — an identity change on
   /// its coordinate.
@@ -960,35 +844,65 @@ final class _LayerStackPainter {
   /// to see each tile's PICTURE, because a decode could land between two
   /// paints and change what a tile drew; a picture is made from its bytes
   /// inside the paint now, so the tile's identity is the whole story.)
-  LiveSurfaceTokens? _liveSurfaceTokens() {
+  LiveSurfaceTokens _liveSurfaceTokens() {
     final surfacePainter = activeSurfacePainter;
-    if (surfacePainter == null || !surfacePainter.drawsOnlyFromPublishedState) {
-      return null;
-    }
-    final overlay = surfacePainter.overlayModel;
+    final reading = _FrameReading(this);
+    final overlay = surfacePainter?.overlayModel;
     // F-344: the text in hand floated over its hole is part of what the
     // live surface looks like, so it is part of the tokens — by value, with
     // the rect it covers, so a drag can be patched. ↩️F-130 put the stamp's
     // ghost here too; since brush-fidelity-Q9 it is the overlay's tiles.
-    final landing = surfacePainter.landingPreview?.value;
+    final landing = surfacePainter?.landingPreview?.value;
     // I-160: the range a held fill covers, drawn over the row — by value
     // too, so a press that moves to another region patches both.
     final range = overlay?.fillRange;
     return (
-      overlay: <TileCoord, Object>{
-        ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
-      },
+      overlay: overlay?.shownBy ?? const <TileCoord, Object>{},
       overlayMoves: overlay?.moveMark,
-      tiles: <TileCoord, Object>{
-        for (final entry in surfacePainter.surface.tiles.entries)
-          entry.key: entry.value,
-      },
+      tiles: _tilesOf(surfacePainter?.surface),
       previews: [
+        ?_floatTold(reading._activeSlot),
         if (landing != null) (value: landing, rect: landing.drawnWorldRect),
         if (range != null) (value: range, rect: range.bounds),
       ],
+      lifted: {
+        for (final row in _liftedRowsIn(nodes))
+          row.frameKey: (
+            tileSize: row.lifted.surface.surface.tileSize,
+            tiles: _tilesOf(row.lifted.surface.surface),
+            stored: switch (row.stored) {
+              null => null,
+              final stored => _tilesOf(stored),
+            },
+            float: _floatTold(reading._slotOf(row)),
+          ),
+      },
     );
   }
+
+  /// [surface]'s tiles, by coordinate — none for no surface.
+  static Map<Object, Object> _tilesOf(BitmapSurface? surface) => {
+    if (surface != null)
+      for (final entry in surface.tiles.entries) entry.key: entry.value,
+  };
+
+  /// The float [slot] draws over its surface, by its value (its own `==`,
+  /// exactly what a step of the hand changes) beside where the slot draws
+  /// it ([_SurfaceSlot.floated]) — null where nothing floats.
+  static ({Object value, Rect rect})? _floatTold(_SurfaceSlot? slot) =>
+      switch ((slot?.float?.value, slot?.floated)) {
+        (final value?, final rect?) => (value: value, rect: rect),
+        _ => null,
+      };
+
+  /// The rows a lift holds beside the live one, wherever the folders put
+  /// them.
+  static List<_PaintLiftedSurface> _liftedRowsIn(
+    List<CompositeNode<_PaintRow>> nodes,
+  ) => [
+    for (final node in preorderNodes(nodes))
+      if (node case CompositeLeaf(payload: final _PaintLiftedSurface row)) row,
+  ];
 
   /// Where the LIVE surface changed since [since] — what it looked like
   /// when the picture it is patched into last took it in — in canvas space
@@ -1003,17 +917,60 @@ final class _LayerStackPainter {
   /// 🚨`located: false` is the safe answer, and it costs only drawing the
   /// frame as it stands. It is the answer whenever the change cannot be
   /// located ([_liveSurfaceTokens]).
-  ({bool located, Rect? dirty, LiveSurfaceTokens? now})
+  ({bool located, Rect? dirty, LiveSurfaceTokens now})
   _liveDirtyCanvasRect({required LiveSurfaceTokens since}) {
     final now = _liveSurfaceTokens();
-    if (now == null) {
-      return (located: false, dirty: null, now: null);
+    Rect? shows;
+    for (final (:moved, :isRow) in [
+      (moved: _whereTheLiveRowMoved(since, now), isRow: _isTheLiveRow),
+      for (final cel in {...since.lifted.keys, ...now.lifted.keys})
+        (
+          moved: _whereALiftedRowMoved(since.lifted[cel], now.lifted[cel]),
+          isRow: (_PaintRow row) => _showsTheCel(row, cel),
+        ),
+    ]) {
+      if (!moved.located) {
+        return (located: false, dirty: null, now: now);
+      }
+      final rect = moved.rect;
+      if (rect == null) {
+        continue;
+      }
+      final here = _whereAChangeShows(
+        nodes,
+        rect,
+        isRow,
+        paper: canvasSize.canvasRect,
+      );
+      if (here == null) {
+        return (located: false, dirty: null, now: now);
+      }
+      shows = shows?.expandToInclude(here) ?? here;
     }
-    final kept = since;
+    return (located: true, dirty: shows, now: now);
+  }
+
+  /// What of the live row moved from [kept] to [now], in its own space:
+  /// the overlay's pictures, the tiles, and what its slot draws over them —
+  /// not located where the row went from under the pen, told nowhere now.
+  ({bool located, Rect? rect}) _whereTheLiveRowMoved(
+    LiveSurfaceTokens kept,
+    LiveSurfaceTokens now,
+  ) {
+    final painter = activeSurfacePainter;
+    if (painter == null) {
+      return (
+        located:
+            kept.tiles.isEmpty &&
+            kept.overlay.isEmpty &&
+            kept.previews.isEmpty,
+        rect: null,
+      );
+    }
     var dirty = _whereTheOverlayMoved(kept, now);
     final tiles = tileCoordsWorldRect(
       _movedCoords(kept.tiles, now.tiles),
-      activeSurfacePainter!.surface.tileSize,
+      painter.surface.tileSize,
     );
     if (tiles != null) {
       dirty = dirty?.expandToInclude(tiles) ?? tiles;
@@ -1031,16 +988,56 @@ final class _LayerStackPainter {
         dirty = dirty?.expandToInclude(preview.rect) ?? preview.rect;
       }
     }
-    if (dirty == null) {
-      return (located: true, dirty: null, now: now);
+    return (located: true, rect: dirty);
+  }
+
+  /// What of a row a lift holds moved from [kept] to [now], in its own
+  /// space ([LiftedRowTokens]): its tiles, and its float where it WAS and
+  /// where it IS (F-130) — or, where the lift took it up or let it go, what
+  /// it shows on the one side against its cel as stored on the other.
+  static ({bool located, Rect? rect}) _whereALiftedRowMoved(
+    LiftedRowTokens? kept,
+    LiftedRowTokens? now,
+  ) {
+    if (kept != null && now != null) {
+      final floats = kept.float?.value == now.float?.value
+          ? const <({Object value, Rect rect})>[]
+          : [?kept.float, ?now.float];
+      return (
+        located: true,
+        rect: _joined(
+          tileCoordsWorldRect(
+            _movedCoords(kept.tiles, now.tiles),
+            now.tileSize,
+          ),
+          floats,
+        ),
+      );
     }
-    final shows = _whereAChangeShows(
-      nodes,
-      dirty,
-      _isTheLiveRow,
-      paper: canvasSize.canvasRect,
+    final one = (now ?? kept)!;
+    final stored = one.stored;
+    if (stored == null) {
+      return (located: false, rect: null);
+    }
+    return (
+      located: true,
+      rect: _joined(
+        tileCoordsWorldRect(_movedCoords(stored, one.tiles), one.tileSize),
+        [?one.float],
+      ),
     );
-    return (located: shows != null, dirty: shows, now: now);
+  }
+
+  /// [tiles] with every one of [floats]' rects.
+  static Rect? _joined(
+    Rect? tiles,
+    List<({Object value, Rect rect})> floats,
+  ) {
+    var joined = tiles;
+    for (final float in floats) {
+      joined = joined?.expandToInclude(float.rect) ?? float.rect;
+    }
+    return joined;
   }
 
   /// What the overlay's pictures moved from [kept] to [now], in the live
@@ -1088,30 +1085,6 @@ final class _LayerStackPainter {
             moved;
     return showsAsItself ? moved : tiles;
   }
-
-  /// Whether what the live rows draw can change only where their tokens
-  /// say ([_liveSurfaceTokens]) — what a frame's one picture a still canvas
-  /// patches stands on (`StackedFrame.steady`).
-  ///
-  /// ⛔A FLOATING SELECTION IS DRAWN IN THE LIVE ROW'S SLOT and moves under
-  /// the hand without touching anything else a token can see, so while one
-  /// exists nothing is patched: the frame is drawn as it stands. Caught by
-  /// walking this painter's own body asking "what else can change" — which
-  /// is the discipline the two reverts before this bought
-  /// ([[cache-what-can-say-where-it-changed]]). Shipping without it would
-  /// have frozen the canvas for the whole drag.
-  ///
-  /// Not cheap-and-narrow (hash the float's value) on purpose: the float is
-  /// a transient editing state, so declining to patch costs only what
-  /// drawing the frame as it stands costs, and it cannot go stale.
-  /// A folder's lift (I-37) floats on each of its rows — the same reason,
-  /// as many times as it has rows.
-  ///
-  /// ⛔A live row drawn from anything but what it published is not asked
-  /// here: it has no tokens at all ([_liveSurfaceTokens]), and a canvas
-  /// holding none draws its frame as it stands. Asked here too, one
-  /// question had two answers and a mutant of either survived.
-  bool get _liveCanBeTold => floatOverlay?.value == null && liftedRows.isEmpty;
 
   /// Where a change at [rect] of the pixels of the row [isRow] picks shows
   /// in the composite of [list] ([_whereTheRowShows]) — or null where that
@@ -1177,7 +1150,7 @@ final class _LayerStackPainter {
       case CompositeLeaf(payload: final _SurfaceRow row):
         // A chain of the row's own that spreads is told by its spread, as a
         // folder's is: the row reads it off a raster on the canvas's grid
-        // (`_LayerStackPaintPass._paintSurfaceRow`). ↩️It was not told until
+        // (`_FrameReading._paintSurfaceRow`). ↩️It was not told until
         // that raster (nested-folder-buffers-read-past-the-view-Q1 = c,
         // 2026-10-27): its blur rode a `saveLayer` the patch's clip cut,
         // and at 200% the patch came apart from the frame along the
@@ -1312,6 +1285,14 @@ final class _LayerStackPainter {
   /// that only shows, and nothing draws into it.
   static bool _isTheLiveRow(_PaintRow row) => row is _PaintActiveSurface;
 
+  /// Whether [row] shows [cel]: lifted, or as stored, once a lift let it
+  /// go.
+  static bool _showsTheCel(_PaintRow row, BrushFrameKey cel) => switch (row) {
+    _PaintLiftedSurface(:final frameKey) ||
+    _PaintCelSurface(:final frameKey?) => frameKey == cel,
+    _ => false,
+  };
+
   /// [StackedFrame.whereTheGhostsShow]: where each ghost's ink shows
   /// ([_whereAChangeShows]), together.
   Rect? _whereTheGhostsShow() {
@@ -1339,13 +1320,3 @@ final class _LayerStackPainter {
     return shows;
   }
 }
-
-/// How many paints have fallen to the direct walk because the buffer would
-/// have exceeded the editing stack's buffer cap — the safety net.
-///
-/// ★A COUNTER AND NOT A COMMENT. "Content bounds and the level keep every
-/// ordinary view under the cap" is a claim about a number, and this is the
-/// number — the one place the editing canvas stops compositing the way
-/// playback, the camera and the export do.
-@visibleForTesting
-int debugCappedFallbacks = 0;

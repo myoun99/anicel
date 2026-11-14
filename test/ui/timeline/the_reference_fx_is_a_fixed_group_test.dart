@@ -18,6 +18,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_mount.dart'
+    show LayerAttachDrop;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
@@ -498,6 +501,35 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
+  testWidgets('an attach row wears its base\'s fx, not its own reference '
+      'fx: its group\'s Reset is out, moved or not (F-583)', (tester) async {
+    final (s, row) = await placed(tester);
+    typed(s, row, referencePositionLaneId, '1210, 800');
+    expect(
+      s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId),
+      isTrue,
+      reason: '⛔premise: its own fx off rest',
+    );
+    final base = s.requireActiveCut.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.animation,
+    );
+    s.cutCommandCoordinator.setLayerAttachment(
+      cutId: s.requireActiveCut.id,
+      attach: LayerAttachDrop(
+        mounts: [
+          (
+            layerId: row.id,
+            baseId: base.id,
+            placement: AttachedPlacement.above,
+          ),
+        ],
+      ),
+    );
+
+    expect(s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId), isFalse);
+    await stopTheWarmer(tester, s);
+  });
+
   testWidgets('🎯the group\'s Reset puts the fx back where its file was '
       'PLACED — not in the middle of the canvas — one undo '
       '(「참조fx에서 리셋버튼도 안먹힘」)', (tester) async {
@@ -510,7 +542,13 @@ void main() {
     );
     typed(s, row, referencePositionLaneId, '1210, 800');
 
+    expect(s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId), isTrue);
     expect(s.laneVerbs.resetLaneGroup(row.id, referenceGroupLaneId), isTrue);
+    expect(
+      s.laneVerbs.resetsLaneGroup(row.id, referenceGroupLaneId),
+      isFalse,
+      reason: 'back where its file was placed, its Reset is out (F-583)',
+    );
 
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1170, y: 827));
     expect(

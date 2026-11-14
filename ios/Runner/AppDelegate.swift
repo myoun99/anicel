@@ -846,18 +846,32 @@ class AnicelViewController: FlutterViewController {
   // Flutter's engine keeps neither: it reads `touch.force` once and never
   // hears the update, so the first samples of every stroke were painted
   // with UIKit's stand-in — the heavy start the user reported (H43,
-  // 2026-09-26). Each call below hands the touches to qa_native's
-  // QaPenLedger BEFORE super, so the ledger holds the sample by the time
-  // Flutter's pointer event reaches the brush, which asks it through FFI.
+  // 2026-09-26). Each call below hands the touches to the GPU engine's
+  // QaPenLedger (native/pen) BEFORE super, so the ledger holds the sample by
+  // the time Flutter's pointer event reaches the brush, which asks it
+  // through FFI.
   //
-  // Looked up by name, not linked by symbol: without the plugin the calls
+  // Looked up by name, not linked by symbol: without the engine the calls
   // do nothing and touches flow exactly as before.
+  //
+  // 🚨LOOKED UP AGAIN UNTIL FOUND, THEN KEPT (connection-round-checklist H,
+  // 2026-11-08): the class is registered as the engine's library loads, and
+  // Flutter copies that framework into the app and links nothing to it —
+  // Dart loads it at its first call into the engine. A touch before that
+  // finds no class; kept as nil, as it was while the C ledger was linked
+  // into the app, it would leave the ledger unfed for the app's life.
   //
   // UNVERIFIED-ON-DEVICE like the rest of this file: the input inspector's
   // `ledger` line says whether the brush heard it.
 
-  private static let penLedger: AnyObject? =
-    NSClassFromString("QaPenLedger").map { $0 as AnyObject }
+  private static var penLedgerFound: AnyObject?
+
+  private static var penLedger: AnyObject? {
+    if penLedgerFound == nil {
+      penLedgerFound = NSClassFromString("QaPenLedger").map { $0 as AnyObject }
+    }
+    return penLedgerFound
+  }
 
   private static func noteToPenLedger(_ touches: Set<UITouch>) {
     _ = penLedger?.perform(NSSelectorFromString("noteTouches:"), with: touches)

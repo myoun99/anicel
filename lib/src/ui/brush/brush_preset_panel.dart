@@ -1,5 +1,4 @@
 import '../shortcuts/brush_actions.dart';
-import '../shortcuts/editor_action_registry.dart' show BrushLibraryActionIds;
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async';
@@ -18,17 +17,17 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../panels/editor_panel_frame.dart';
-import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes, SuperellipseFace;
 import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/group_tab.dart';
+import '../widgets/face_ink_well.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/stand_on_reorder_list.dart';
 import 'brush_group_icon_glyph.dart';
-import '../shortcuts/panel_keys.dart';
 import 'brush_library_look.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_preset_reorder_grid.dart';
@@ -45,25 +44,24 @@ import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 /// Which row elements the brush list shows (every combination except
 /// all-hidden is allowed — the options menu disables the last visible one),
 /// plus the library-wide actions.
+///
+/// ↩️Each named the shortcut list's action that pressed it (I-40), until
+/// F-580 (유저 2026-11-10: 「브러시 가져오기 버튼등이 있는 브러시 라이브러리,
+/// 단축키로 있을 필요없어보이니 해당 항목 깔끔하게 삭제」).
 enum _BrushPresetMenuAction {
-  toggleIcon(BrushLibraryActionIds.tipIcon),
-  toggleStroke(BrushLibraryActionIds.strokePreview),
-  toggleName(BrushLibraryActionIds.name),
-  toggleRailIcon(BrushLibraryActionIds.folderIcon),
-  toggleRailName(BrushLibraryActionIds.folderName),
-  newGroup(BrushLibraryActionIds.newGroup),
-  renameGroup(BrushLibraryActionIds.renameGroup),
-  deleteGroup(BrushLibraryActionIds.deleteGroup),
-  rename(BrushLibraryActionIds.renameBrush),
-  delete(BrushLibraryActionIds.deleteBrush),
-  reset(BrushLibraryActionIds.reset),
-  exportPreset(BrushLibraryActionIds.exportBrush),
-  exportGroup(BrushLibraryActionIds.exportGroup);
-
-  const _BrushPresetMenuAction(this.actionId);
-
-  /// The shortcut list's action that presses this row (I-40).
-  final String actionId;
+  toggleIcon,
+  toggleStroke,
+  toggleName,
+  toggleRailIcon,
+  toggleRailName,
+  newGroup,
+  renameGroup,
+  deleteGroup,
+  rename,
+  delete,
+  reset,
+  exportPreset,
+  exportGroup,
 }
 
 // ⛔The per-tab ⋯ menu is gone (유저, R4 #10: 그 시스템 삭제. 그냥 심플하게
@@ -746,7 +744,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }) => PanelFlyoutItem(
       keyValue: keyValue,
       label: label,
-      shortcuts: [action.actionId],
       enabled: enabled,
       checked: checked,
       onSelected: () => _onMenuSelected(action),
@@ -1043,24 +1040,15 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final visible = _visiblePresets;
     final reorderable = widget.onPresetsReordered != null;
-    // A key presses this library's ⋯ and the two buttons beside it, as
-    // [BrushPresetPanel.tool]'s library — what the rows and the buttons
-    // hold (I-40).
-    return PanelKeysBinding(
-      tool: widget.tool,
-      buttons: {
-        BrushLibraryActionIds.importBrushes: widget.onPresetImportRequested,
-        BrushLibraryActionIds.saveHeldBrush: widget.onPresetSaveRequested,
-      },
-      menu: _menuItems,
-      child: Listener(
-        // Watches the pointer only to spring the tabs open: a reorder drag
-        // reports to the row it picked up, never to what is under it now.
-        behavior: HitTestBehavior.translucent,
-        onPointerMove: (event) => _updateSpringTarget(event.position),
-        onPointerUp: (_) => _cancelSpring(),
-        child: _buildFrame(context, colorScheme, visible, reorderable),
-      ),
+    // ↩️A key pressed this library's ⋯ and the two buttons beside it (I-40)
+    // until F-580 took them off the shortcut list.
+    return Listener(
+      // Watches the pointer only to spring the tabs open: a reorder drag
+      // reports to the row it picked up, never to what is under it now.
+      behavior: HitTestBehavior.translucent,
+      onPointerMove: (event) => _updateSpringTarget(event.position),
+      onPointerUp: (_) => _cancelSpring(),
+      child: _buildFrame(context, colorScheme, visible, reorderable),
     );
   }
 
@@ -1084,7 +1072,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             AppIconButton(
               keyValue: 'brush-preset-import-button',
               tooltip: AppText.strings.brImportBrushes,
-              shortcuts: const [BrushLibraryActionIds.importBrushes],
               size: AppIconButtonSize.dense,
               icon: const Icon(Icons.file_open_outlined),
               onPressed: widget.onPresetImportRequested,
@@ -1093,7 +1080,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             AppIconButton(
               keyValue: 'brush-preset-save-button',
               tooltip: AppText.strings.brSaveAsPreset,
-              shortcuts: const [BrushLibraryActionIds.saveHeldBrush],
               size: AppIconButtonSize.dense,
               // 「＋가 있는 모든 곳, 공통적으로」 — the glyph, not the button.
               icon: Icon(
@@ -1271,31 +1257,19 @@ class _GroupIconPicker extends StatelessWidget {
       required bool isSelected,
       required VoidCallback onTap,
     }) {
+      // Selection reads as colour only, never a checkmark.
+      final (:edge, :fill) = chosenCellFace(colorScheme, selected: isSelected);
       return ControlPressClaim(
         onPressed: onTap,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
+        child: FaceInkWell(
           key: ValueKey<String>(keyValue),
+          edge: edge,
+          fill: fill,
           onTap: silentPress(onTap),
-          customBorder: AppShapes.container(AppShapes.wellRadius),
           child: Container(
             width: 26,
             height: 26,
-            decoration: ShapeDecoration(
-              // Selection reads as colour only, never a checkmark.
-              color: isSelected
-                  ? colorScheme.surfaceContainerHigh
-                  : Colors.transparent,
-              shape: AppShapes.container(
-                AppShapes.wellRadius,
-                side: BorderSide(
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant,
-                  width: isSelected ? 1.5 : 1,
-                ),
-              ),
-            ),
+            padding: edge.dimensions,
             child: child,
           ),
         ),
@@ -1472,15 +1446,17 @@ class _BrushPresetRow extends StatelessWidget {
                   Container(
                     width: _tipSide,
                     height: _tipSide,
-                    decoration: ShapeDecoration(
+                    decoration: SuperellipseFace(
                       color: colorScheme.surfaceContainerHighest,
-                      shape: AppShapes.container(
+                      edge: AppShapes.container(
                         AppShapes.wellRadius,
                         side: BorderSide(color: colorScheme.outlineVariant),
                       ),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: BrushTipPreview(settings: preset.settings),
+                    child: BrushTipPreview(
+                      settings: preset.settings,
+                      well: AppShapes.container(AppShapes.wellRadius),
+                    ),
                   ),
                   if (showName || showStrokePreview)
                     const SizedBox(width: _tipGap),

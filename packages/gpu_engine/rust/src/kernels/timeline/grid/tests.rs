@@ -2,9 +2,9 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why). Each hand case writes its sums out.
 
-use super::{GridTile, MOST_RADIUS_Q9};
+use super::{GridTile, MOST_RADIUS_Q9, atlas_of};
 use crate::device::{Engine, storage_texture};
-use crate::testing::{assert_pinned, first_engine};
+use crate::testing::{assert_pinned, first_engine, last_error};
 
 const RGBA: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const BGRA: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -28,34 +28,10 @@ fn q8(pixels: f64) -> i32 {
     (pixels * 256.0).round() as i32
 }
 
-/// An `R8Uint` atlas of `coverage`, rows top to bottom.
+/// An `R8Uint` atlas of `coverage`, rows top to bottom, as the pass's own
+/// takes one ([`atlas_of`]).
 fn atlas(engine: &Engine, width: u32, height: u32, coverage: &[u8]) -> wgpu::Texture {
-    let size = wgpu::Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-    };
-    let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("test atlas"),
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::R8Uint,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-    engine.queue.write_texture(
-        texture.as_image_copy(),
-        coverage,
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(width),
-            rows_per_image: Some(height),
-        },
-        size,
-    );
-    texture
+    atlas_of(engine, coverage, width, height).expect("an atlas").expect("of a side")
 }
 
 /// A `width` x `height` tile of `ops` over `background`, as `format`
@@ -84,21 +60,18 @@ fn at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
     [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]
 }
 
-/// White as it lands over clear at a coverage, stored premultiplied: every
-/// channel `alpha`, 255·a / 255. A q9 coverage c gives white the 16-bit
-/// alpha (c·65535 + 256) >> 9, stored as its byte (alpha + 128) / 257.
+/// White as it lands over clear at a coverage, stored straight: white at
+/// `alpha`. A q9 coverage c gives white the 16-bit alpha (c·65535 + 256)
+/// >> 9, stored as its byte (alpha + 128) / 257.
 fn white(alpha: u8) -> [u8; 4] {
-    [alpha; 4]
+    [255, 255, 255, alpha]
 }
 
-// Premultiplied as premultiply.wgsl rounds: a channel k at alpha 128 is
-// p = 128k + 128, then (p + (p >> 8)) >> 8 — 0x10: 2176 → 8, 0x20: 4224 →
-// 16, 0x40: 8320 → 32.
 #[test]
-fn an_empty_stream_is_the_background_word_premultiplied() {
+fn an_empty_stream_is_the_background_word() {
     let engine = first_engine();
     let bytes = tile(engine, (5, 3), RGBA, 0x8040_2010, &[], None).unwrap();
-    assert!(bytes.chunks_exact(4).all(|pixel| pixel == [8, 16, 32, 0x80]));
+    assert!(bytes.chunks_exact(4).all(|pixel| pixel == [0x10, 0x20, 0x40, 0x80]));
 }
 
 #[test]
@@ -117,17 +90,15 @@ fn an_opaque_fill_replaces_its_box_and_stops_at_the_tile() {
 // (200, 100, 50) at 128 over clear keeps its colour at 128·257 = 32896.
 // Again over itself: the alpha out is 32896 + round(32896·32639 / 65535)
 // = 32896 + 16383 = 49279, a byte of (49279 + 128) / 257 = 192, and the
-// colour is the one colour both weights carry. Stored premultiplied
-// (p = ka + 128, then (p + (p >> 8)) >> 8): at 128, 25728 → 100, 12928 →
-// 50, 6528 → 25; at 192, 38528 → 151, 19328 → 75, 9728 → 38.
+// colour is the one colour both weights carry.
 #[test]
 fn a_translucent_fill_lays_over_the_one_before() {
     let engine = first_engine();
     let fill = [FILL_RECT, 0, 0, 1, 1, rgba(200, 100, 50, 128)];
-    assert_eq!(clear_tile(engine, (1, 1), &fill), [100, 50, 25, 128]);
+    assert_eq!(clear_tile(engine, (1, 1), &fill), [200, 100, 50, 128]);
     assert_eq!(
         clear_tile(engine, (1, 1), &[fill, fill].concat()),
-        [151, 75, 38, 192],
+        [200, 100, 50, 192],
     );
 }
 
@@ -148,10 +119,22 @@ fn a_vertical_line_runs_its_length_down_and_a_horizontal_one_across() {
     assert_eq!(at(&horizontal, 5, 0, 3), [0; 4]);
 }
 
+#[test]
+fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_match_is_refused() {
+    let engine = first_engine();
+    for (width, height) in [(0, 3), (3, 0)] {
+        assert!(atlas_of(engine, &[], width, height).expect("no atlas").is_none(), "{width} × {height}");
+    }
+    for length in [5, 7] {
+        assert!(atlas_of(engine, &vec![0; length], 3, 2).is_none(), "{length}");
+        assert!(last_error().contains(&format!("a letters' atlas 3 × 2 of {length} bytes")), "{}", last_error());
+    }
+    assert!(atlas_of(engine, &[0; 6], 3, 2).expect("an atlas").is_some(), "{}", last_error());
+}
+
 // (10, 20, 30) opaque, its alpha scaled by the coverage: 65535 times
 // 128·257 is 32896, a byte of 128; 64 gives 64; 255 lays it whole. Over
-// clear the colour stays (10, 20, 30), stored premultiplied: at 128 it is
-// 1408, 2688, 3968 → (5, 10, 15); at 64, 768, 1408, 2048 → (3, 5, 8).
+// clear the colour stays (10, 20, 30).
 #[test]
 fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     let engine = first_engine();
@@ -167,12 +150,12 @@ fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     .concat();
     let bytes = tile(engine, (5, 4), RGBA, 0, &ops, Some(&letters)).unwrap();
     assert_eq!(at(&bytes, 5, 1, 1), [0; 4]);
-    assert_eq!(at(&bytes, 5, 2, 1), [5, 10, 15, 128]);
+    assert_eq!(at(&bytes, 5, 2, 1), [10, 20, 30, 128]);
     assert_eq!(at(&bytes, 5, 3, 1), [10, 20, 30, 255]);
     assert_eq!(at(&bytes, 5, 1, 2), [10, 20, 30, 255]);
-    assert_eq!(at(&bytes, 5, 2, 2), [3, 5, 8, 64]);
+    assert_eq!(at(&bytes, 5, 2, 2), [10, 20, 30, 64]);
     assert_eq!(at(&bytes, 5, 3, 2), [0; 4]);
-    assert_eq!(at(&bytes, 5, 0, 3), [5, 10, 15, 128]);
+    assert_eq!(at(&bytes, 5, 0, 3), [10, 20, 30, 128]);
     assert_eq!(at(&bytes, 5, 1, 3), [10, 20, 30, 255]);
     assert_eq!(at(&bytes, 5, 2, 3), [0; 4], "past the atlas");
     assert_eq!(at(&bytes, 5, 3, 0), [0; 4], "before the atlas");

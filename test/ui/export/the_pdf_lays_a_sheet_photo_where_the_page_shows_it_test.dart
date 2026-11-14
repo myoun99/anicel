@@ -67,7 +67,7 @@ void main() {
   }
 
   ContePdfPicture blank(int width, int height) => ContePdfPicture(
-    rgba: Uint8List(width * height * 4),
+    pixels: Uint8List(width * height * 4),
     width: width,
     height: height,
   );

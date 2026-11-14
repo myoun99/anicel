@@ -4,8 +4,10 @@
 //
 // A PANEL'S OWN BUTTONS ARE ACTIONS, AND A KEY PRESSES THE BUTTON — the
 // callback it holds, on a panel a key reaches: the panels of the tool in
-// hand (the guide list, the tool settings) and the panels of no tool (the
-// media pool, the timesheet). A dead button is dead by key too.
+// hand (the guide list, the tool settings). A dead button is dead by key
+// too. ↩️The panels of no tool — the media pool, the sheets, the palette —
+// were pressed whatever was in hand, until F-580 (유저 2026-11-11: 「패널
+// 안 항목도 깔끔하게 삭제」) took them off the shortcut list.
 //
 // The tool settings' own buttons came into the button scan's sight when
 // they became one kind of button (tool-settings-panel-tidy, 2026-10-10),
@@ -26,15 +28,12 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
-import 'package:anicel/src/services/persistence/folder_grant.dart'
-    show FolderGrant, FolderPicker;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
@@ -44,9 +43,8 @@ import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
-import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/cel_text_tool_harness.dart';
-import '../../helpers/rail_group_button.dart';
+import '../../helpers/rail_group_button.dart' show pressToolSettingsButton;
 
 const k = LogicalKeyboardKey.keyK;
 
@@ -54,12 +52,6 @@ const panelButtons = [
   EditorActionIds.guideAddSymmetry,
   EditorActionIds.guideAddPerspective,
   EditorActionIds.textDeleteText,
-  EditorActionIds.mediaPoolImport,
-  EditorActionIds.timesheetFormat,
-  EditorActionIds.timesheetDataMode,
-  EditorActionIds.conteFormat,
-  EditorActionIds.envelopeFormat,
-  EditorActionIds.paletteNew,
   ...toolSettingsButtons,
 ];
 
@@ -113,19 +105,6 @@ Future<void> pumpHome(WidgetTester tester) async {
 
 Future<void> takeUp(WidgetTester tester, String tool) async {
   await tester.tap(find.byKey(ValueKey<String>('tool-$tool-button')));
-  await tester.pumpAndSettle();
-}
-
-/// Opens the rail group [slot] on that side — a panel that ships shut is
-/// not mounted, and a key presses only a button a panel shows.
-Future<void> openRailGroup(
-  WidgetTester tester, {
-  required bool right,
-  required int slot,
-}) async {
-  await tester.tap(
-    railGroupButton(EditorWorkspace.railGroupId(right: right, slot: slot)),
-  );
   await tester.pumpAndSettle();
 }
 
@@ -259,22 +238,24 @@ void main() {
   setUp(() => _held = null);
 
   group('PanelKeys', () {
-    test('a panel of no tool answers whatever is in hand; a tool\'s panel '
-        'answers only with its tool in hand', () {
+    test('a tool\'s panel answers only with its tool in hand', () {
       final keys = PanelKeys();
       final pressed = <String>[];
-      keys.bind(Object(), (buttons: {'a': () => pressed.add('pool')}, menu: null));
-      keys.bind(
-        Object(),
-        (buttons: {'b': () => pressed.add('guides')}, menu: null),
-        tool: CanvasTool.guide,
-      );
+      keys.bind(Object(), (
+        buttons: {'a': () => pressed.add('text')},
+      ), tool: CanvasTool.text);
+      keys.bind(Object(), (
+        buttons: {'b': () => pressed.add('guides')},
+      ), tool: CanvasTool.guide);
 
       keys.press('a', CanvasTool.brush);
       keys.press('b', CanvasTool.brush);
-      expect(pressed, ['pool']);
+      expect(pressed, isEmpty);
       keys.press('b', CanvasTool.guide);
-      expect(pressed, ['pool', 'guides']);
+      keys.press('a', CanvasTool.guide);
+      expect(pressed, ['guides']);
+      keys.press('a', CanvasTool.text);
+      expect(pressed, ['guides', 'text']);
     });
 
     test('a dead button presses nothing — and an owner let go takes only '
@@ -283,8 +264,10 @@ void main() {
       final pressed = <String>[];
       final one = Object();
       final two = Object();
-      keys.bind(one, (buttons: {'a': null}, menu: null));
-      keys.bind(two, (buttons: {'b': () => pressed.add('two')}, menu: null));
+      keys.bind(one, (buttons: {'a': null}), tool: CanvasTool.brush);
+      keys.bind(two, (
+        buttons: {'b': () => pressed.add('two')},
+      ), tool: CanvasTool.brush);
 
       keys.press('a', CanvasTool.brush);
       expect(pressed, isEmpty);
@@ -307,8 +290,7 @@ void main() {
       }
     });
 
-    test('…named in the program\'s language — the window\'s own word where '
-        'the button opens one', () {
+    test('…named in the program\'s language', () {
       addTearDown(() => AppText.settings.value = const AppLanguageSettings());
       AppText.settings.value = const AppLanguageSettings(
         programLanguage: AppLanguage.ko,
@@ -317,16 +299,7 @@ void main() {
         editorActionLabel(EditorActionIds.guideAddSymmetry),
         '새 대칭 가이드',
       );
-      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트');
-      expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식');
-      expect(editorActionLabel(EditorActionIds.conteFormat), '콘티 용지 서식');
-      expect(editorActionLabel(EditorActionIds.envelopeFormat), '컷 봉투 서식');
-      expect(
-        editorActionLabel(EditorActionIds.timesheetDataMode),
-        '표기 시트 / 데이터 시트',
-      );
       expect(editorActionLabel(EditorActionIds.textDeleteText), '텍스트 삭제');
-      expect(editorActionLabel(EditorActionIds.paletteNew), '새 팔레트');
       // The button's own words — or, where the button's alone would say
       // less in a list of every key (초기화 · 반전), its tool's name with
       // them.
@@ -371,115 +344,6 @@ void main() {
       await takeUp(tester, 'brush');
       await pressKeyOf(tester, EditorActionIds.guideAddSymmetry);
       expect(symmetries(), before + 1);
-    });
-
-    testWidgets('the timesheet\'s format window opens by key, and its '
-        'notation ⇄ data switch flips — and back', (tester) async {
-      await pumpHome(tester);
-      final window = find.byKey(
-        const ValueKey<String>('timesheet-format-window'),
-      );
-      expect(window, findsNothing, reason: '⛔premise');
-      await pressKeyOf(tester, EditorActionIds.timesheetFormat);
-      expect(window, findsOneWidget);
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-
-      bool dataSheet() => tester
-          .appIconButton(
-            find.byKey(
-              const ValueKey<String>('timesheet-data-mode-toggle-button'),
-            ),
-          )
-          .isSelected;
-      final before = dataSheet();
-      await pressKeyOf(tester, EditorActionIds.timesheetDataMode);
-      expect(dataSheet(), !before);
-      await tester.sendKeyEvent(k);
-      await tester.pumpAndSettle();
-      expect(dataSheet(), before);
-    });
-
-    testWidgets('the conte sheet\'s and the cut envelope\'s format windows '
-        'open by key once their panel is up — a panel that is shut has no '
-        'button to press', (tester) async {
-      await pumpHome(tester);
-      final conte = find.byKey(const ValueKey<String>('conte-format-window'));
-      await pressKeyOf(tester, EditorActionIds.conteFormat);
-      expect(conte, findsNothing, reason: 'the sheet ships shut');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-mode-conte-button')),
-      );
-      await tester.pumpAndSettle();
-      await pressKeyOf(tester, EditorActionIds.conteFormat);
-      expect(conte, findsOneWidget);
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-
-      final envelope = find.byKey(
-        const ValueKey<String>('envelope-format-window'),
-      );
-      tester
-          .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
-          .firstWhere(
-            (host) => host.tabs.any(
-              (tab) => tab.id == EditorWorkspace.envelopeTabId,
-            ),
-          )
-          .onTabSelected(EditorWorkspace.envelopeTabId);
-      await tester.pumpAndSettle();
-      expect(envelope, findsNothing, reason: '⛔premise');
-      await pressKeyOf(tester, EditorActionIds.envelopeFormat);
-      expect(envelope, findsOneWidget);
-    });
-
-    testWidgets('the media pool\'s ＋ asks for files — whatever tool is in '
-        'hand', (tester) async {
-      var asked = 0;
-      FolderPicker.debugFilePicker =
-          ({required acceptedTypeGroups, required allowMultiple}) async {
-            asked += 1;
-            return const [FolderGrant.cancelled()];
-          };
-      await pumpHome(tester);
-      await pressKeyOf(tester, EditorActionIds.mediaPoolImport);
-      expect(asked, 0, reason: 'the pool ships shut: no ＋ to press');
-
-      await openRailGroup(tester, right: true, slot: 3);
-      await tester.sendKeyEvent(k);
-      await tester.pumpAndSettle();
-      expect(asked, 1);
-      await takeUp(tester, 'select');
-      await tester.sendKeyEvent(k);
-      await tester.pumpAndSettle();
-      expect(asked, 2);
-    });
-
-    testWidgets('the palette panel\'s ＋ makes a palette — whatever tool is '
-        'in hand (I-131)', (tester) async {
-      Finder named(int n) => find.byKey(ValueKey<String>('palette-p$n-name'));
-      await pumpHome(tester);
-      await pressKeyOf(tester, EditorActionIds.paletteNew);
-
-      final colour = find.byKey(const ValueKey<String>('tool-color-button'));
-      await tester.ensureVisible(colour);
-      await tester.pumpAndSettle();
-      await tester.tap(colour);
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('panel-tab-color-palette')),
-      );
-      await tester.pumpAndSettle();
-      expect(named(1), findsOneWidget, reason: '⛔premise: the panel shows');
-      expect(named(2), findsNothing, reason: 'it was shut: no ＋ to press');
-
-      await tester.sendKeyEvent(k);
-      await tester.pumpAndSettle();
-      expect(named(2), findsOneWidget);
-      await takeUp(tester, 'select');
-      await tester.sendKeyEvent(k);
-      await tester.pumpAndSettle();
-      expect(named(3), findsOneWidget);
     });
 
     testWidgets('the text tool\'s 🗑 takes the text in hand off its cel — '

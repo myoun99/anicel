@@ -46,6 +46,18 @@ pub struct Planes<'a> {
 /// ⚠️Each 2×2 block takes its chroma from its top-left pixel rather than an
 /// average: it is what the Android writer always did, and a flat picture —
 /// what every test of this reads — is the same either way.
+///
+/// 🚨★★★TWO SPELLINGS OF ONE CONVERSION, ON PURPOSE (관제 2026-11-12,
+/// gpu-export-path ⑶-3 ①). The GPU engine's NV12 pass
+/// (`gpu_engine` `kernels/export/nv12.wgsl`) makes these same bytes for an
+/// export's frames, and the writers only lay them (`export/nv12.rs`). This
+/// one stays for a trimmed movie, re-encoded on a worker that has no GPU
+/// engine (`lib/src/services/media/movie_span.dart` `writeMovieSpan`). The
+/// pass's tests hold it to this byte for byte (`kernels/export/tests.rs`,
+/// this their oracle) — ⛔change one and the other goes with it, or the
+/// export and the trimmed movie part colours. It goes when the decoder
+/// hands NV12 itself and nothing comes here as RGBA (board
+/// `trimmed-movie-decodes-to-nv12`).
 pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Planes) {
     for y in 0..height {
         for x in 0..width {
@@ -83,10 +95,32 @@ pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Pl
 /// ⛔The picture size comes in as ARGUMENTS. It used to read the decoder's
 /// global document, which is what tied a pure calculation to a backend
 /// having opened something.
-pub fn to_rgba(data: &[u8], width: usize, height: usize, stride: usize, slice: usize, semi_planar: bool, rgba: &mut [u8]) {
+///
+/// ⚠️Whether it could: `data` that ends before the last byte its own stride
+/// and slice place is refused, not read past — the C read on regardless
+/// (2026-11-07, the decoder's move to Rust, where reading past is a panic
+/// and a panic across the FFI is the app gone).
+#[must_use]
+pub fn to_rgba(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    slice: usize,
+    semi_planar: bool,
+    rgba: &mut [u8],
+) -> bool {
     let cb_at = stride * slice;
     let (cr_at, chroma_stride, chroma_step) =
         if semi_planar { (cb_at + 1, stride, 2) } else { (cb_at + (stride / 2) * (slice / 2), stride / 2, 1) };
+    if width == 0 || height == 0 {
+        return true;
+    }
+    let last_luma = (height - 1) * stride + width - 1;
+    let last_chroma = cr_at + (height - 1) / 2 * chroma_stride + (width - 1) / 2 * chroma_step;
+    if data.len() <= last_luma.max(last_chroma) || rgba.len() < width * height * 4 {
+        return false;
+    }
     for y in 0..height {
         for x in 0..width {
             let chroma = (y / 2) * chroma_stride + (x / 2) * chroma_step;
@@ -100,6 +134,7 @@ pub fn to_rgba(data: &[u8], width: usize, height: usize, stride: usize, slice: u
             out.copy_from_slice(&[r.clamp(0, 255) as u8, g.clamp(0, 255) as u8, b.clamp(0, 255) as u8, 255]);
         }
     }
+    true
 }
 
 #[cfg(test)]

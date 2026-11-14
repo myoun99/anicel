@@ -16,9 +16,10 @@
 //! the tiles it covers (`_stampPieces`) for its CPU's sake; here a tile it
 //! covers none of is laid as nothing, and the write path keeps the cel's
 //! tile there (`kernels/write`) — knowing which tiles those are before the
-//! plan is made would wait for the GPU to say. Where a stamp lands — the
-//! app clips a landing to the pasteboard's wall — is the landing's extent,
-//! not the stamp's.
+//! plan is made would wait for the GPU to say. The app clips a landing to
+//! the pasteboard's wall: a picture says what the wall left of it (`within`),
+//! a mask's box is made to it. ⛔Not the plan's extent, which cuts every row:
+//! a cel laid past the wall (`laidBounds`) keeps what lies there.
 //!
 //! Under a gradient (I-160, `_gradientRgba`) each pixel is the gradient's
 //! colour at its centre instead: this file turns the gradient's ends into
@@ -29,15 +30,21 @@
 #[path = "stamp_tests.rs"]
 pub(crate) mod tests;
 
+use std::sync::OnceLock;
+
+use super::landing::{self, Asked, Laid, Over};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_BYTES, TileAt, TileSet};
+use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
+use crate::kernels::mesh::{MeshGrid, MeshOwners};
+use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane, tiles_a_pass, whole,
-    words_buffer,
+    Encoded, PREMULTIPLY_WGSL, ResampleMap, ResampleMode, TILE_WGSL, WIDE_WGSL, encode, pipeline,
+    plane, tiles_a_page, whole, words_buffer,
 };
-use crate::kernels::warp::Boxed;
+use crate::kernels::warp::{Boxed, Warp, Window};
+use crate::kernels::write::{Change, Write};
 
 /// The stops a gradient is looked up in, `FillGradient.stops`' count
 /// (`_gradientStops`): four to each level a channel takes.
@@ -62,6 +69,8 @@ pub(crate) enum Source<'a> {
     Picture {
         picture: &'a Boxed<'a>,
         at: (i32, i32),
+        /// What of the canvas it lands on — [left, top, right, bottom).
+        within: [i32; 4],
     },
 }
 
@@ -113,7 +122,7 @@ struct Read<'a> {
     stride: u32,
     given: &'a wgpu::Buffer,
     pipeline: &'a wgpu::ComputePipeline,
-    rest: [u32; 7],
+    rest: [u32; 8],
     stops: Option<wgpu::Buffer>,
 }
 
@@ -142,8 +151,8 @@ impl Stamps {
         source: &Source,
         first_page: u16,
     ) -> Option<Stamped> {
-        // A pass a page, a tile a workgroup deep — and a slot is a u16.
-        let most = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        // A pass a page, a tile a workgroup deep.
+        let most = tiles_a_page(engine)?;
         self.stamp_by(engine, source, first_page, most)
     }
 
@@ -157,7 +166,7 @@ impl Stamps {
         per_page: usize,
     ) -> Option<Stamped> {
         let read = self.read(engine, source)?;
-        let set = tiles_of(read.at, read.size, first_page, per_page)?;
+        let set = TileSet::paged(read.at, read.size, first_page, per_page)?;
         let mut pages = Vec::new();
         let mut first = 0;
         while first < set.tiles.len() {
@@ -224,19 +233,29 @@ impl Stamps {
                         along_x,
                         along_y,
                         u32::from(whole),
+                        0,
                     ],
                     stops,
                 })
             }
-            Source::Picture { picture, at } => {
+            Source::Picture { picture, at, within } => {
                 picture.checked()?;
+                let (width, height) = (picture.size.0 as i32, picture.size.1 as i32);
+                let left = at.0.max(within[0]);
+                let top = at.1.max(within[1]);
+                let right = (at.0 + width).min(within[2]);
+                let bottom = (at.1 + height).min(within[3]);
+                if right <= left || bottom <= top {
+                    return fail(format!("nothing of a picture at {at:?} lies in {within:?}"));
+                }
+                let origin = (top - at.1) as u32 * picture.size.0 + (left - at.0) as u32;
                 Some(Read {
-                    at,
-                    size: picture.size,
+                    at: (left, top),
+                    size: ((right - left) as u32, (bottom - top) as u32),
                     stride: picture.size.0,
                     given: picture.pixels,
                     pipeline: &self.picture,
-                    rest: [0; 7],
+                    rest: [0, 0, 0, 0, 0, 0, 0, origin],
                     stops: None,
                 })
             }
@@ -244,6 +263,88 @@ impl Stamps {
     }
 }
 
+/// What lands a stamp on a cel: the stamp's passes and the write path's, and
+/// the warp a picture is carried by on its way to one.
+pub(crate) struct StampLanding {
+    stamps: Stamps,
+    write: Write,
+    warp: Warp,
+    /// Compiled where a mesh is first carried: the landing is compiled as
+    /// the app launches, and a mesh's warp is the one most never make.
+    owners: OnceLock<MeshOwners>,
+}
+
+impl StampLanding {
+    /// Its kernels compiled — or nothing, where the device binds too few
+    /// storage buffers a stage for them.
+    pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        Some(Self {
+            stamps: Stamps::new(engine),
+            write: Write::new(engine)?,
+            warp: Warp::new(engine),
+            owners: OnceLock::new(),
+        })
+    }
+
+    /// `picture` carried through `map`, the `window` of the output it maps
+    /// to: what a box's affine or quad makes of a float (the app's
+    /// `transformStampDab` · `transformStampDabQuad`, a window of it where
+    /// only that much shows) and the picture a posed row's landing lays
+    /// (`carryStampDab`), nothing of it where there is no map. Submits the
+    /// warp; what lands the picture, or reads it, waits.
+    ///
+    /// 🗣️gpu-canonical-store ⑪ (관제 2026-11-10 18:14: 「자세 있음 … 선 =
+    /// master 이하」): a float carried over a posed row shows as its landing
+    /// at each step of the hand, and that landing crossed into the row on
+    /// the CPU and came up again whole — 🔬55–68 ms of resample and 32–44 ms
+    /// of upload a step for a 26.7 MB stamp, main PC, 2026-11-11. The
+    /// float's picture is here once; the crossing is one pass over it.
+    pub(crate) fn carried(
+        &self,
+        engine: &Engine,
+        picture: &Boxed,
+        map: Option<&ResampleMap>,
+        window: Window,
+    ) -> Option<wgpu::Buffer> {
+        self.warp.one(engine, picture, map, window)
+    }
+
+    /// `picture`, its top-left pixel at `source_at` on the canvas, through
+    /// `mesh`: the `window` of the canvas its triangles paint, each pixel by
+    /// its triangle's map with `radius_floor` and `mode` (the app's
+    /// `transformStampDabMesh`). Submits the warp; what lands the picture,
+    /// or reads it, waits.
+    pub(crate) fn meshed(
+        &self,
+        engine: &Engine,
+        mesh: &MeshGrid,
+        (picture, source_at): (&Boxed, (f64, f64)),
+        window: Window,
+        (radius_floor, mode): (f64, ResampleMode),
+    ) -> Option<wgpu::Buffer> {
+        let owners = self.owners.get_or_init(|| MeshOwners::new(engine));
+        self.warp.mesh(engine, (owners, mesh), picture, source_at, window, radius_floor, mode)
+    }
+
+    /// Lays `source` on the tiles `asked`, each result compared with the
+    /// tile under it and in a fresh slot of `cel` where it differs: a stamp
+    /// is a finished landing (`landing::land`).
+    pub(crate) fn land(
+        &self,
+        engine: &Engine,
+        (composite, pool, cel): (&Composite, &mut Pool, Cel),
+        source: &Source,
+        asked: &[Asked],
+        laid: &Laid,
+    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+        if asked.is_empty() {
+            return Some(Vec::new());
+        }
+        let Stamped { pages, set } = self.stamps.stamp(engine, source, pool.pages().len() as u16)?;
+        let over = Over { pages: &pages, set };
+        landing::land(engine, (composite, &self.write, pool, cel), over, asked, laid, true)
+    }
+}
 
 /// `gradient` as stamp.wgsl reads it over `mask`: its shape, its `from` and
 /// `to − from` in 1/256 px — each rounded once —, and its stops, each
@@ -278,47 +379,4 @@ fn graded(gradient: &Gradient, mask: &Mask) -> Option<([u32; 5], Vec<u32>)> {
         })
         .collect();
     Some((ends, stops))
-}
-
-/// The tiles a box `size` across and down from `at` meets, row after row,
-/// `per_page` to a page from page `first_page` on.
-fn tiles_of(
-    at: (i32, i32),
-    size: (u32, u32),
-    first_page: u16,
-    per_page: usize,
-) -> Option<TileSet> {
-    let side = i64::from(TILE);
-    let (left, top) = (i64::from(at.0), i64::from(at.1));
-    let (width, height) = (i64::from(size.0), i64::from(size.1));
-    // In tiles, ends excluded; an empty box meets none.
-    let (x0, y0) = (left.div_euclid(side), top.div_euclid(side));
-    let x1 = if width == 0 { x0 } else { (left + width - 1).div_euclid(side) + 1 };
-    let y1 = if height == 0 { y0 } else { (top + height - 1).div_euclid(side) + 1 };
-    let (Ok(x0), Ok(y0), Ok(columns), Ok(rows)) = (
-        i32::try_from(x0),
-        i32::try_from(y0),
-        u32::try_from(x1 - x0),
-        u32::try_from(y1 - y0),
-    ) else {
-        return fail("a stamp's box lies past the canvas's grid");
-    };
-    let count = columns as usize * rows as usize;
-    let tiles: Option<Vec<Option<TileAt>>> = (0..count)
-        .map(|tile| {
-            let page = u16::try_from(tile / per_page).ok()?.checked_add(first_page)?;
-            let slot = u16::try_from(tile % per_page).ok()?;
-            Some(Some(TileAt { page, slot }))
-        })
-        .collect();
-    let Some(tiles) = tiles else {
-        return fail("a stamp's pages are past what a plan names");
-    };
-    Some(TileSet {
-        x0,
-        y0,
-        columns,
-        rows,
-        tiles,
-    })
 }

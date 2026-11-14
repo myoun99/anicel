@@ -1,3 +1,5 @@
+import '../helpers/a_canvas_standing_on_a_frame.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_dab.dart';
@@ -43,6 +45,7 @@ RenderCaches renderCachesOf(EditorSessionManager session) =>
     session.renderCaches;
 
 void main() {
+  opensTheEnginesScreens();
   // The warm it restarts makes playback's rows, and a row asks the binding
   // for the quiet it takes its turn in ([QuietTurns]).
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -94,7 +97,7 @@ void main() {
       frameStore: renderCachesOf(session).brushFrameStore,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: defaultCelTileSize,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
@@ -317,14 +320,5 @@ void main() {
       expect(started(), 1);
     });
 
-    test('a frame made ahead asks the session if it goes in pieces', () {
-      final store = aSession().playbackRig.framePictures.store;
-      expect(store.aheadInPieces(), isFalse, reason: 'a test\'s clock');
-
-      RenderCaches.aheadGoesInPieces = true;
-      addTearDown(() => RenderCaches.aheadGoesInPieces = false);
-
-      expect(store.aheadInPieces(), isTrue);
-    });
   });
 }

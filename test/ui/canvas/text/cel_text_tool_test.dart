@@ -574,7 +574,7 @@ void main() {
   // 좋네 … 동작은 텍스트 선택하면 해당 버튼 활성화색」.
   group('the text in hand turned into drawing', () {
     /// The tile the stand-in bakes a text anchored at (8, 8) to.
-    final plateTile = TileCoord(x: 1, y: 1);
+    final plateTile = TileCoord(x: 0, y: 0);
 
     /// What the cel SHOWS: its drawing with its texts laid.
     BitmapSurface shownOn(CelTextCel cel) =>
@@ -595,7 +595,7 @@ void main() {
       final (:tool, :host, baker: _, :cel) = hand(
         texts: [
           carried(4, said([run('ab')])),
-          carried(5, said([run('zz')], x: 16, y: 16)),
+          carried(5, said([run('zz')], x: 256, y: 256)),
         ],
       );
       final showed = shownOn(cel);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../../core/byte_needle.dart';
+import '../../core/frozen_collections.dart';
 import 'tvp_import_model.dart';
 import 'tvpp_key_value_lines.dart';
 import 'import_warning.dart';
@@ -363,6 +364,29 @@ bool _isFourCc(Uint8List bytes, int at) {
   return true;
 }
 
+/// The bytes every TVPaint record head shares: a GUID of TVPaint's own — a
+/// version-1 UUID, the same time-mid · time-high (`bc40 11d7`) and node
+/// (`0010 5aaf aaab`) in every one measured — before its u64. Two of them
+/// open the file and each clip's property block.
+const _recordHeadBytes = {
+  4: 0xbc,
+  5: 0x40,
+  6: 0x11,
+  7: 0xd7,
+  10: 0x00,
+  11: 0x10,
+  12: 0x5a,
+  13: 0xaf,
+  14: 0xaa,
+  15: 0xab,
+};
+
+bool _isRecordHead(Uint8List bytes, int at) =>
+    at + 24 <= bytes.length &&
+    _recordHeadBytes.entries.every(
+      (entry) => bytes[at + entry.key] == entry.value,
+    );
+
 int _u32(Uint8List bytes, int at) =>
     ByteData.sublistView(bytes, at, at + 4).getUint32(0);
 
@@ -562,9 +586,9 @@ TvppClip _parseClip(
         visible: header == null || field(7) & 1 == 0,
         collapsed: header != null && field(11) & 0xFFFF == 1,
         locked: field(7) & 0x10 != 0,
-        slots: List.unmodifiable(slots),
-        ctgSecondStream: List.unmodifiable(secondStream),
-        instanceNames: Map.unmodifiable(instanceNames),
+        slots: frozenList(slots),
+        ctgSecondStream: frozenList(secondStream),
+        instanceNames: frozenMap(instanceNames),
       ),
     );
     name = null;
@@ -584,6 +608,15 @@ TvppClip _parseClip(
   var closed = false;
   while (p + 8 <= end && !closed) {
     if (!_isFourCc(bytes, p)) {
+      // 🚨THE NEXT CLIP'S HEAD ENDS THIS ONE as well as a TMST does
+      // (저장 2026-11-07): the builds of 2023 and 2025 write no TMST, and
+      // every clip of theirs but the last ran into the head of the next —
+      // all 119 such clips of the user's own 82 files (あるふぁYOU_MV), each
+      // told the user its chain broke and the rest was dropped while
+      // nothing was. What follows is the next clip's, read as that clip.
+      if (_isRecordHead(bytes, p)) {
+        break;
+      }
       warnings.add(
         ImportWarning(
           'tvppChunkBroken',
@@ -710,9 +743,10 @@ TvppClip _parseClip(
         }
         audioTracks = _audioTracks(text);
       case 'TMST':
-        // Every clip ends on its timestamp chunk (measured on all
-        // samples); what follows is the NEXT clip's property block and
-        // preview data, which are not chunks.
+        // A clip of the builds first measured ends on its timestamp chunk;
+        // what follows is the NEXT clip's property block and preview data,
+        // which are not chunks. The builds of 2023 and 2025 write none, and
+        // the next clip's record head ends it (the walk's top).
         closed = true;
     }
     p = payload + length + (length & 1);
@@ -725,8 +759,8 @@ TvppClip _parseClip(
     height: height,
     frameRate: frameRate,
     pixelAspectRatio: pixelAspectRatio,
-    layers: List.unmodifiable(layers),
-    imageMarks: List.unmodifiable(marks),
+    layers: frozenList(layers),
+    imageMarks: frozenList(marks),
     cameraPoints: _cameraPoints(cameraDataText),
     cameraDataText: cameraDataText,
     audioTracks: audioTracks,
@@ -760,7 +794,7 @@ List<TvppAudioTrack> _audioTracks(String fcfgText) {
       ),
     );
   }
-  return List.unmodifiable(tracks);
+  return frozenList(tracks);
 }
 
 String _printable(Uint8List bytes, int at, int length) {

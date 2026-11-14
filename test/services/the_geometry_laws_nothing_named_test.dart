@@ -216,21 +216,6 @@ void main() {
       }
       expect(canvasToArtwork(const LayerPlacement(2, 0, 4, 0, 5, 5)), isNull);
     });
-
-    test('rasterScale restates the SAME pose in a scaled raster', () {
-      // The playback quality tiers render at half size and must land the
-      // same picture: every canvas-space coordinate simply halves.
-      final full = layerPoseMatrix(poseAt(60, 34, zoom: 2), canvas);
-      final half = placementMatrix(
-        placementOf((
-          pose: poseAt(60, 34, zoom: 2),
-          anchorPoint: null,
-        ), canvas),
-        rasterScale: 0.5,
-      );
-      final fullPoint = _apply(full, 20, 10);
-      expect(_apply(half, 10, 5), _point(fullPoint.dx / 2, fullPoint.dy / 2));
-    });
   });
 
   group('tilesCovering', () {

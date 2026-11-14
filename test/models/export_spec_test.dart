@@ -71,7 +71,7 @@ void main() {
       // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
       expect(spec.kinds, {
         ExportCelKind.cel,
-        ExportCelKind.art,
+        ExportCelKind.image,
         ExportCelKind.timesheet,
       });
       expect(spec.label, const LayerMark(process: LayerProcess.key));
@@ -257,19 +257,19 @@ void main() {
     test('a kind is turned on or off one at a time, and a kind the JSON '
         'names that nobody knows is dropped', () {
       const spec = CelsExportSpec();
-      expect(spec.withKind(ExportCelKind.art, false).kinds, {
+      expect(spec.withKind(ExportCelKind.image, false).kinds, {
         ExportCelKind.cel,
         ExportCelKind.timesheet,
       });
       expect(spec.withKind(ExportCelKind.direction, true).kinds, {
         ExportCelKind.cel,
-        ExportCelKind.art,
+        ExportCelKind.image,
         ExportCelKind.timesheet,
         ExportCelKind.direction,
       });
       expect(spec.withKind(ExportCelKind.timesheet, false).kinds, {
         ExportCelKind.cel,
-        ExportCelKind.art,
+        ExportCelKind.image,
       });
       expect(spec.withKind(ExportCelKind.cel, true), spec);
       expect(
@@ -300,7 +300,7 @@ void main() {
         {
           ExportCelKind.cel: '',
           ExportCelKind.conte: '',
-          ExportCelKind.art: '_',
+          ExportCelKind.image: '_',
           ExportCelKind.direction: '_',
           ExportCelKind.timesheet: '_',
           ExportCelKind.envelope: '_',
@@ -309,22 +309,22 @@ void main() {
       );
       final typed = naming
           .withPrefix(ExportCelKind.cel, 'k')
-          .withPrefix(ExportCelKind.art, '');
+          .withPrefix(ExportCelKind.image, '');
       expect(typed.prefixOf(ExportCelKind.cel), 'k');
-      expect(typed.prefixOf(ExportCelKind.art), '');
+      expect(typed.prefixOf(ExportCelKind.image), '');
       expect(typed.prefixOf(ExportCelKind.direction), '_');
       expect(typed, isNot(naming));
       expect(ExportCelNaming.fromJson(typed.toJson()), typed);
       expect(
         typed
             .withPrefix(ExportCelKind.cel, '')
-            .withPrefix(ExportCelKind.art, '_'),
+            .withPrefix(ExportCelKind.image, '_'),
         naming,
         reason: 'typing a kind\'s own prefix back is the default again',
       );
       expect(
         ExportCelNaming.fromJson({
-          'prefixes': {'art': '_', 'cel': 'k', 'hologram': 'x'},
+          'prefixes': {'image': '_', 'cel': 'k', 'hologram': 'x'},
         }).prefixes,
         {ExportCelKind.cel: 'k'},
         reason: 'a default spelled out, and a kind nobody knows, are dropped',

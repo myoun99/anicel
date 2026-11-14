@@ -28,7 +28,7 @@ struct Warp {
 
 // A map in the table: R1's words (resample.rs's ResampleMap::words), then
 // 1 where it lands anything.
-const WARP_MAP_WORDS: u32 = 16u;
+const WARP_MAP_WORDS: u32 = RESAMPLE_MAP_WORDS + 1u;
 
 @group(0) @binding(0) var<uniform> warp: Warp;
 @group(0) @binding(1) var<storage, read> maps: array<u32>;
@@ -64,12 +64,12 @@ fn warp_window(@builtin(global_invocation_id) id: vec3<u32>) {
     map = owners[pixel];
   }
   var word = 0u;
-  if (map < arrayLength(&maps) / WARP_MAP_WORDS && maps[map * WARP_MAP_WORDS + 15u] != 0u) {
+  if (map < arrayLength(&maps) / WARP_MAP_WORDS && maps[map * WARP_MAP_WORDS + RESAMPLE_MAP_WORDS] != 0u) {
     let at = map * WARP_MAP_WORDS;
-    let taken = resample_map(array<u32, 15>(
+    let taken = resample_map(array<u32, RESAMPLE_MAP_WORDS>(
       maps[at], maps[at + 1u], maps[at + 2u], maps[at + 3u], maps[at + 4u], maps[at + 5u],
       maps[at + 6u], maps[at + 7u], maps[at + 8u], maps[at + 9u], maps[at + 10u],
-      maps[at + 11u], maps[at + 12u], maps[at + 13u], maps[at + 14u],
+      maps[at + 11u], maps[at + 12u], maps[at + 13u], maps[at + 14u], maps[at + 15u],
     ));
     word = resample(taken, 0u, warp.left + i32(id.x), warp.top + i32(id.y));
   }

@@ -892,7 +892,202 @@ void main() {
   /// against the lane's base (`40d076f75`) names it added and nothing gone.
   /// ⛔Not bundled to fit: the paper is the one input the two doors give
   /// differently, and the 「one render」 pin counts the call it makes.
-  const wideSignatures = 462;
+  ///
+  /// ⚠️462 → 463 on 2026-11-08, named as the rule above asks
+  /// (connection-round-checklist H, the fx host moved into the Rust
+  /// engine): `_reach` (seven) in `qa_fx_plugin_host.dart` is the `@Native`
+  /// binding of the host's `qa_fx_plugin_reach`, its parameters the
+  /// export's own — the plugin, the values and their count, and the
+  /// moment's four numbers. It was the same seven as a `lookupFunction`
+  /// type, which this scan does not read. 🔬`clean_code_diff` against the
+  /// lane's base (`fe520ab12`) names it added and nothing gone. ⛔Not
+  /// bundled to fit: the binding takes what the export takes.
+  ///
+  /// ⚠️463 → 464 on 2026-11-08, named as the rule above asks
+  /// (connection-round-checklist H, the conform's resampler moved into the
+  /// Rust engine): in `qa_audio_resampler.dart`, `_resample` (eight) and
+  /// `_open` (five) are the `@Native` bindings of `qa_audio_resample` and
+  /// `qa_audio_resampler_open`, their parameters the exports' own — the
+  /// same as `lookupFunction` types before, which this scan does not read —
+  /// and `resampleAudio` (six) is `QaAudioNative.resample` moved there
+  /// whole. Gone: that method, and `resampleAudioReference`, which went to
+  /// the test helpers as the answer key. 🔬`clean_code_diff` against the
+  /// lane's base (`fd101433a`) names those three added and those two gone.
+  /// ⛔Not bundled to fit: the bindings take what the exports take, and the
+  /// conversion's quality is the caller's to ask, as the export's is.
+  ///
+  /// ⚠️464 → 465 on 2026-11-08, the same way (connection-round-checklist
+  /// H, the JPEG encoder moved into the Rust engine): `_encodeJpg` (six) in
+  /// `qa_image_encoder.dart` is the `@Native` binding of
+  /// `qa_image_encode_jpg` — the picture, its two sides, the quality and
+  /// the two outs it hands the file back through. 🔬`clean_code_diff`
+  /// against the lane's base (`302604dde`) names it added and nothing gone.
+  /// ⛔Not bundled to fit: the binding takes what the export takes.
+  ///
+  /// ⚠️465 → 466 on 2026-11-08, one name (cel-number-on-the-engine-
+  /// letters): `planCompositeTree` (five) takes the engine's letters beside
+  /// the plan, the tree, the tiles' hold and the paper — what sets a cel
+  /// number's plate, opened once from the bundle's faces. 🔬`clean_code_diff`
+  /// against the lane's base (`a83767c20`) names it added and nothing gone.
+  /// ⛔Not bundled to fit: the hold and the letters live apart — a hold is
+  /// one run's, the letters the screen's.
+  ///
+  /// ⚠️466 → 469 on 2026-11-08, the same way (connection-round-checklist
+  /// H, the sound device and its mixer moved into the Rust engine): `_mix`
+  /// (ten) in `qa_audio_native.dart`, and `_setSchedule` (six) and
+  /// `_deviceDescribe` (five) in `qa_audio_device.dart`, are the `@Native`
+  /// bindings of `qa_audio_mix`, `qa_audio_device_set_schedule` and
+  /// `qa_audio_device_describe`, their parameters the exports' own — the
+  /// same as `lookupFunction` types before, which this scan does not read.
+  /// 🔬`clean_code_diff` against the lane's base (`f5348acc6`) names those
+  /// three added and nothing gone. ⛔Not bundled to fit: the bindings take
+  /// what the exports take.
+  ///
+  /// ⚠️469 → 471 on 2026-11-08, the same way as 464 → 465
+  /// (connection-round-checklist H, the movie writer and reader moved into
+  /// the Rust engine): `_open` (eleven) in `qa_video_encoder.dart` and
+  /// `_info` (six) in `qa_video_decoder.dart` are the `@Native` bindings of
+  /// `qa_video_export_open` — the path, the picture's sides, the rate's two
+  /// numbers, the sound's rate and channels, the container, the codec, the
+  /// alpha and the bitrate — and of `qa_video_decode_info`, the handle and
+  /// the five outs it describes the movie through. 🔬`clean_code_diff`
+  /// against the lane's base (`a037dd5b0`) names those two added and nothing
+  /// gone. ⛔Not bundled to fit: the bindings take what the exports take.
+  ///
+  /// ⚠️471 → 473 on 2026-11-08, the same way (connection-round-checklist
+  /// H, the sound decoder moved into the Rust engine): `_decodeSpan` (ten)
+  /// and `_streamOpen` (seven) in `qa_audio_decoder.dart` are the `@Native`
+  /// bindings of `qa_audio_decode_span_window` — the span's path, offset,
+  /// length and framing, the window's first frame and count, and the four
+  /// outs — and of `qa_audio_stream_open`, the span and its three outs.
+  /// They were `lookupFunction` types before, which this scan does not read.
+  /// 🔬`clean_code_diff` against master (`6793af759`) names those two added
+  /// and nothing gone. ⛔Not bundled to fit: the bindings take what the
+  /// exports take.
+  ///
+  /// ⚠️473 → 463 on 2026-11-08, lowered as the rule asks
+  /// (grid-on-the-engine ⑤⑥ — the frame grids' tiles are drawn by the GPU
+  /// engine's grid pass and laid on their grid's screen). With the C's
+  /// rasterizer went its binding (`QaNativeEngine.gridRasterTile` and
+  /// `gridRasterTileBytes`), the Dart reference it was pinned to
+  /// (`timelineGridRasterTileReference`, `_rrectDistance`, `_blendRect`,
+  /// `_blendSpan`) and the writer's split spellings of a rounded fill
+  /// (`boxFill`, `runFill`, the 388 → 391 step's); a row lays a tile on its
+  /// screen, not on a canvas with a paint (`TimelineRowCellsPainter
+  /// ._layTile`), and the engine narrows a word where Dart averaged its
+  /// raster (`boxFilterA8`, ③). 🔬`clean_code_diff` against master
+  /// (`0570a2a1b`) names those ten gone and nothing added.
+  ///
+  /// ⚠️463 → 464 on 2026-11-09 (connection-round-checklist-Q30, a screen's
+  /// words back to Flutter's raster): `boxFilterA8` came back with the bake
+  /// it averages, the one signature added.
+  /// ⚠️464 → 465 on 2026-11-08, one name (flip-writers-and-holders, the
+  /// frames' pictures on the engine — 관제 11-08 21:40, the ghosts over
+  /// their film): `EngineFramePictureStore.lay` (five) took the film a
+  /// ghost's frame is laid over and where it is fresh (`over`) beside the
+  /// four of the store it replaces (`FramePictureStore.lay` — the key, the
+  /// frame, whether the screen shows it now, and whether its asker is
+  /// gone, F-529). 🔬`clean_code_diff` against the lane's base
+  /// (`63d034dba`) names it added and nothing gone. ⛔Not bundled to
+  /// fit: whether it is wanted first, whether it is wanted at all, and what
+  /// it lies over are three questions, each asked by a caller of its own.
+  ///
+  /// ⚠️465 → 468 on 2026-11-10, four names in and one out
+  /// (gpu-canonical-store 7′, the exports on the engine): `frameShot` (ten,
+  /// eleven since the looks below) is the ONE door every picture of a frame that goes to a file or a
+  /// panel takes, and its parameters are what a shot is — the pictures it
+  /// asks, the stack and the frame they are of, the page they are drawn on,
+  /// the view and the raster they are shown through, the ground under
+  /// them, whether they are cut at the canvas, and what is laid over them.
+  /// `ExportFrameRenderer._shot` (ten) is the renderer's spelling of it —
+  /// the page made of its ground and paper, the ghosts a route asks — and
+  /// `_cutPicture` (eight) holds a cut's shot under the key the engine
+  /// keeps its picture by. `EditingCanvas._mapOf` (five) is the one map of
+  /// a tree onto the stack that the canvas, a ghost's film and an export's
+  /// rows are each mapped by (the third made it one), its parameters the
+  /// map's own. `ExportFrameRenderer._composite` went with the rows the
+  /// renderer composed itself. 🔬`clean_code_diff` against the lane's base
+  /// (`9d682dae1`) names those four added and that one gone. ⛔Not bundled
+  /// to fit: a shot's view, its page and what is laid over it are asked by
+  /// different routes, each of its own.
+  ///
+  /// ⚠️468 → 469 the same day, one name in (gpu-canonical-store-Q10, 유저
+  /// 「추천대로 법 지키도록」): `FramePictures.pictureOf` (five) takes the
+  /// looks a render reads its cels through (`CelLooks`) — the one thing a
+  /// render's making differs from playback's in, asked by the shot that
+  /// holds them. 🔬`clean_code_diff` against the 7′ commit before it names
+  /// that one added.
+  ///
+  /// ⚠️464 → 459 on 2026-11-12, four names in and nine out
+  /// (fill-runs-in-the-c-engine — the bucket's flood on the engine; master
+  /// stood at 464 under 469). `fillPictureOver` (eight) is the one door a
+  /// canvas's fill reads its frame's picture by, and its parameters are
+  /// what that read is of — the box, the frame's pictures and the canvas
+  /// whose rows a layer read names, the cut and the frame, the read source
+  /// and the row stood on, and the space the seed is in. `fillRangeOn`
+  /// (seven) is the one call a fill pressed on a session is asked by — the
+  /// canvas's, and the helper's of the tests that press one, which spelled
+  /// it a second time till then — and its parameters are the press's own:
+  /// the session and the point, the tool's options, the space the point is
+  /// in, the fill's opacity, the guide's symmetry and who hears of an open
+  /// region. `fillPictureOf` (six) is the engine's picture of a stacked
+  /// frame over a box, in a space, with the tools it is laid by, and
+  /// `_planned` (six) the one laying of a frame's plan that the screen and
+  /// that picture share — the screen's `_laid` was it alone. Gone with the
+  /// CPU flood and its C calls: `floodFillRegion`, `_gapCloseFloodRegion`,
+  /// `_cropAndFinishFloodRegion`, `_floodFinishBox`, and
+  /// `QaNativeEngine.fillClearRect` · `fillComposeTile` · `floodFillRun` ·
+  /// `gapCloseFillRun` · `finishFillMask`. 🔬`clean_code_diff` against
+  /// master (`48604553a`) names those. ⛔Not bundled to fit: each of the
+  /// doors' parameters is asked of a different owner — the playback rig,
+  /// the editing canvas, the tool's options, the view's pose, the guide,
+  /// the selection.
+  ///
+  /// ⚠️459 → 451 on 2026-11-12, eight gone and nothing added (c-brush-goes,
+  /// card `what-still-runs-on-the-cpu` — the C brush left, ABI 80):
+  /// `QaNativeEngine.prepareDabAt` · `setTileSpan` · `stampBlendTiles` ·
+  /// `strokeBlendTiles`, `QaBlurKernel.blurDab` · `resultTile`,
+  /// `materializeStrokeBlendNative` and
+  /// `BrushLiveStrokeRasterizer.preBlendTileInDart`. 🔬`clean_code_diff`
+  /// against master (`8edb2a59d`) names those.
+  ///
+  /// ⚠️451 → 453 on 2026-11-13, two named as the rule above asks (card
+  /// an-exports-overlay-raster-reads-back-the-whole-frame-Q1, 유저 「빠른
+  /// 길 — 이름표 둘레만 굽는다」): `drawnOnTheEngine` (five) took where its
+  /// overlay inks — its painter's answer, the part a raster is made of —
+  /// and `ExportFrameRenderer._drawnOver` (five), the renderer's spelling of
+  /// it, asks that painter for it when it is drawn. 🔬`clean_code_diff`
+  /// against master (`c38c2eb02`) names those two. ⛔Not bundled to fit:
+  /// the size, what is drawn and where it inks are asked of different
+  /// owners — the frame, the overlay's draw and its painter.
+  ///
+  /// ⚠️453 → 452 on 2026-11-13, one gone and nothing added (card
+  /// conte-pdf-panels-read-back-twice): `frameShot` (ten) lost its last
+  /// caller when a panel's picture became its frame read back
+  /// (`PanelPictures.render` through `pictureOfShot`) and a conte PDF took
+  /// the frame itself. 🔬`clean_code_diff` against master (`b2f068f57`)
+  /// names that one.
+  ///
+  /// ⚠️452 → 451 on 2026-11-13, two gone and one added
+  /// (tip-coverage-is-a-second-r1 — the Dart R1 left, a tip's coverage
+  /// reading down on the engine's): `resampleRgbaReference` and
+  /// `resampleRgbaReferenceInto` went with it, and `resampleOnTheEngine`
+  /// (eight) is the app's one door onto the engine's R1, the reference's
+  /// own eight — the source and its size, the output's, the map, the mode
+  /// and the radius floor. 🔬`clean_code_diff` against master
+  /// (`b2f068f57`) names those. ⛔Not bundled to fit: the arguments
+  /// are what the contracts it carries are stated in.
+  ///
+  /// ⚠️449 → 450 on 2026-11-14 under the same ceiling, one named as the
+  /// rule above asks (F-586 — 유저 「포인트별로 좌표 둔다거나」): `_boxNumber`
+  /// (six) is the one number box the Transform tool's settings show the
+  /// box's numbers in — an affine value's, and each warp point's coordinate
+  /// (`_WarpPointList`): the channel a scrub announces its one step on, the
+  /// box's key, name and text, and what a scrub and a typed number do.
+  /// 🔬`clean_code_diff` against master (`d8b474794`) names that one.
+  /// ⛔Not bundled to fit: a scrub and a typed number are two answers, and
+  /// the affine's and a point's differ in both.
+  const wideSignatures = 451;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1266,7 +1461,52 @@ void main() {
   /// column handed its rows and lane to a method of their own (`5745769e0`,
   /// I-153), landed beside ⑤d. 🔬`clean_code_diff` across that commit names
   /// `ExportCelsBoardState._folderColumn` gone and nothing added.
-  const longBodies = 415;
+  ///
+  /// ⚠️415 → 414 on 2026-11-08, following one down: `QaAudioNative._load`
+  /// found the mixer's names only once the resampler and the denoiser left
+  /// the C (connection-round-checklist H). 🔬`clean_code_diff` against the
+  /// lane's base (`fd101433a`) names it gone and nothing added.
+  ///
+  /// ⚠️414 → 410 on 2026-11-08, one named and two gone as the rule above
+  /// asks (grid-on-the-engine ⑤⑥; master stood at 411 under 414).
+  /// `_RowCellsPicture.build` (64) crossed when the row's picture came to
+  /// stand in its grid's screen slot (`TimelineGridScreenSlot`), where the
+  /// row lays its tiles. `timelineGridRasterTileReference` left with the C
+  /// rasterizer it was pinned to, and `TimelineGridTileOpWriter.boxFill`
+  /// with the split of a rounded fill into cheap pieces — the engine's pass
+  /// asks every op at every pixel, so one field op a piece costs least.
+  /// 🔬`clean_code_diff` against master (`0570a2a1b`) names those.
+  /// ⛔Not split to fit: the build is one constructor call, each argument
+  /// the row's own fact.
+  ///
+  /// ⚠️406 → 400 on 2026-11-12, six gone and nothing added
+  /// (fill-runs-in-the-c-engine; master stood at 406 under 410): the CPU
+  /// flood — `floodFillRegion`, `_gapCloseFloodRegion`,
+  /// `LazyCanvasRasterRgb`'s constructor, `composeTile` and
+  /// `ensureComposedBatch` — and the C wave's driver
+  /// (`QaNativeEngine.floodFillRun`) went when the bucket's fill moved to
+  /// the engine. 🔬`clean_code_diff` against master (`2a11cfca6`) names
+  /// those.
+  ///
+  /// ⚠️400 → 395 on 2026-11-12, five gone and nothing added (c-brush-goes —
+  /// the C brush left, ABI 80): `QaNativeEngine.prepareDabAt`,
+  /// `QaBlurKernel.load` and the dab kernel's `_prepareDab` went with it,
+  /// the commit's `_blendStampDab` went under without the C's half, and
+  /// `BrushLiveStrokeRasterizer.preBlendedOverlayTiles` without its batch.
+  /// 🔬`clean_code_diff` against master (`8edb2a59d`) names those.
+  ///
+  /// ⚠️395 → 394 on 2026-11-13, one gone and nothing added
+  /// (tip-coverage-is-a-second-r1): `resampleRgbaReferenceInto`, the Dart
+  /// R1's body, went with it. 🔬`clean_code_diff` against master
+  /// (`b2f068f57`) names it.
+  ///
+  /// ⚠️394 → 393 on 2026-11-14, one gone and nothing added (관제's ask on
+  /// F-588): `ImportDialogState._registerFiles` crossed sixty when a picked
+  /// file began coming in as its piece (`piece-part-pull`), into the one
+  /// place the trunk's count stood under the ceiling; what the pool is
+  /// handed is `_handedToThePool` now. 🔬`clean_code_diff` against master
+  /// (`efb502eea`) names it gone.
+  const longBodies = 393;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1690,7 +1930,17 @@ void main() {
   /// other setters do (`_record`). 🔬`clean_code_diff` against master names
   /// this one and no other class. ⛔Not split to fit: a key is put and taken
   /// off where its recording is kept.
-  const longClasses = 85;
+  ///
+  /// ⚠️85 → 84 on 2026-11-08, following one down: `QaAudioDevice` went
+  /// under (its thirty-one lookups became the `@Native` bindings beside it,
+  /// connection-round-checklist H). 🔬`clean_code_diff` against the lane's
+  /// base (`f5348acc6`) names it gone and no class added.
+  ///
+  /// ⚠️84 → 82 on 2026-11-12, following one down under a ceiling that stood
+  /// one over (master at 83): `QaNativeEngine` went under when the C brush
+  /// left it (c-brush-goes, ABI 80). 🔬`clean_code_diff` against master
+  /// (`8edb2a59d`) names it gone and no class added.
+  const longClasses = 82;
 
   late CleanCodeScan scan;
   setUpAll(() {

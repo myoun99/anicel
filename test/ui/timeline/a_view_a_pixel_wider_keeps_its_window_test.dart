@@ -25,7 +25,7 @@ void main() {
 
   test('a window ends on the edge of the span its view and overscan end '
       'in', () {
-    expect(span, 16, reason: '⛔전제: 96px of six-pixel cells');
+    expect(span, 86, reason: '⛔전제: 512px of six-pixel cells');
     for (var view = 1.0; view <= 2000; view += 1) {
       // Every cell the view can reveal from anywhere in the bucket, and the
       // overscan past them.

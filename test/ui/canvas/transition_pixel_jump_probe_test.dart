@@ -1,6 +1,7 @@
 @Tags(['impeller'])
 library;
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -29,10 +30,9 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// Windows at zoom >= 100% with a fractional pan, at pen-down / pen-up /
 /// layer-switch moments.
 ///
-/// The fixture walks the frame drawn as it stands
-/// (`layer_stack_paint_pass.dart _composeDisplayBuffer`) through the
-/// transition moments — pen-down, pen-up, a layer switch, and the direct
-/// walk — while the COMMITTED PICTURE never changes. Every snapshot is
+/// The fixture walks the frame shown as it stands through the transition
+/// moments — pen-down, pen-up, a layer switch — while the COMMITTED PICTURE
+/// never changes. Every snapshot is
 /// byte-compared against the steady baseline; any nonzero diff is a repro
 /// of a one-frame jump, and the phase where it appears names the
 /// mechanism. ↩️It walked the display buffer's states too — a kept buffer
@@ -40,12 +40,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// buffer (one-picture-per-frame ②-5a).
 ///
 /// Output goes through debugPrint as `PROBE ...` lines; the hard
-/// assertions are baseline stability (two steady paints byte-identical)
-/// and the route flip (step 8): buffer route vs direct walk must be
-/// byte-identical at ANY pan phase. Pre-snap, the fractional-pan run put
-/// a one-pixel 290px strip between the routes while the integer-pan run
-/// read zero — the render translation is snapped to whole device pixels
-/// now ([renderSnappedViewport]), so both runs must read zero.
+/// assertion is baseline stability (two steady paints byte-identical).
 ///
 /// 📌Where this probe's verdict landed (the final law): every phase above
 /// read ZERO, which exonerated OUR compose state machine and left the
@@ -60,8 +55,9 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// origin down is an integral count of device pixels IN LAYOUT. The pin for
 /// that is `canvas_boundary_on_grid_test.dart`.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 512, height: 512);
-  const tileSize = 256;
+  const tileSize = defaultCelTileSize;
   const screen = Size(300, 200);
   final tileCache = BitmapTileImageCache.instance;
 
@@ -86,8 +82,8 @@ void main() {
   }
 
   Map<TileCoord, BitmapTile> freshTiles() => {
-    for (var ty = 0; ty < 2; ty += 1)
-      for (var tx = 0; tx < 2; tx += 1)
+    for (var ty = 0; ty * tileSize < canvasSize.height; ty += 1)
+      for (var tx = 0; tx * tileSize < canvasSize.width; tx += 1)
         TileCoord(x: tx, y: ty): BitmapTile(
           size: tileSize,
           pixels: linePixels(tx, ty),
@@ -159,9 +155,8 @@ void main() {
     );
 
     Future<CustomPainter> pumpWith(
-      BitmapSurfacePainter surfacePainter, {
-      bool disableBuffer = false,
-    }) async {
+      BitmapSurfacePainter surfacePainter,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -177,7 +172,6 @@ void main() {
                   activeSurfacePainter: surfacePainter,
                   paintPaper: true,
                   paperBackground: ProjectBackground.defaultBackground,
-                  debugDisableSingleBuffer: disableBuffer,
                 ),
               ),
             ),
@@ -334,40 +328,6 @@ void main() {
     final painter3 = await pumpWith(painterFor(surface3));
     report('layer-switch', await paintBytes(tester, painter3));
 
-    // 8. the ROUTE FLIP measured directly: the same picture through the
-    //    direct walk instead of the buffer. If a transition frame ever
-    //    falls off the buffer route, THIS is the picture it swaps to.
-    final walkPainter = await pumpWith(
-      painterFor(surface3),
-      disableBuffer: true,
-    );
-    final walkDiff = report(
-      'direct-walk(route-flip)',
-      await paintBytes(tester, walkPainter),
-    );
-    // The pan-phase snap's oracle: both routes render under the SAME
-    // snapped translation, so the fractional-pan strip cannot exist any
-    // more — it is structurally impossible, not merely unobserved. The
-    // integer-pan run pins the zero the routes always had.
-    // ⚠️For a few hours on 2026-09-11 this was INTERIOR ONLY: F-67's snap
-    // lands the translation on whole + phase device pixels above 1:1 (1/4
-    // px at 150%), so the content's edges sit at fractional device
-    // positions — and this software backend covered a fractional edge
-    // differently as an image's resampled edge (buffer route) and as a
-    // rect's anti-aliased edge (the walk): 486 pixels, every one on a
-    // boundary row or column. F-67-paper-edge closed that the same day:
-    // on an axis-aligned view under nearest sampling neither edge is
-    // anti-aliased any more (`displayEdgeAntiAliased`), both are cut by
-    // pixel centres, and the two routes agree everywhere again — edges
-    // included, which is what `the_canvas_edge_is_cut_on_the_pixel_grid`
-    // pins at 110% and this line pins at 150%.
-    expect(
-      walkDiff.diff,
-      0,
-      reason: 'buffer route vs direct walk must agree byte for byte at any '
-          'pan phase, edges included — a nonzero diff is the transition '
-          'route-flip jump (or the edge cut differently by the two routes)',
-    );
   }
 
   // Logical == device pixels for both probes: [paintBytes] rasterises at

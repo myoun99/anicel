@@ -4,7 +4,7 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
 /// The "instance edit" family's window — one layer kind's entry being
-/// created or edited (an SE line, a camera key, an instruction mark).
+/// created or edited (an SE line, an instruction mark).
 ///
 /// It owns no chrome of its own: [AppWindow] draws the window and this
 /// holds what the FAMILY shares — the stable action keys every kind's
@@ -27,8 +27,8 @@ class InstanceEditDialogShell extends StatelessWidget {
   final String title;
   final IconData? titleIcon;
 
-  /// Kind-specific field column; scrolls when tall (long SE dialogue), the
-  /// preview below keeps its height.
+  /// Kind-specific field column; scrolls when tall (an SE line's linked
+  /// sounds), the preview below keeps its height.
   final Widget body;
 
   /// Live preview pane ([InstanceEditPreview] usually); null hides the slot.
@@ -93,8 +93,12 @@ class InstanceEditDialogShell extends StatelessWidget {
           actionKey: const ValueKey<String>('instance-edit-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        // 🗣️F-584 (유저 2026-11-12): 「이름 저장이아니라 확인이 맞지않나」;
+        // F-584-Q1 (유저 2026-11-13): 「블록 편집 창 둘 (SE · 지시)」 — the
+        // family's one button, so both read it; the windows that write
+        // settings keep their Save. ↩️It read Save, as those do.
         AppWindowAction(
-          label: strings.commonSave,
+          label: strings.commonOk,
           actionKey: const ValueKey<String>('instance-edit-ok-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: onSubmit,

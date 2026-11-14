@@ -3,7 +3,7 @@
 // mask_morphology.dart), the boundary soften (S2c — softenMaskBoundary),
 // and the feather (S2b): the 3-4 chamfer distance (chamferDistance34)
 // relaxed a generation at a time, then the ramp over it. The fill's gap
-// close measures by the same distances (_gapCloseFloodRegion).
+// close measures by the same distances.
 //
 // A mask is a plane of bytes over its box, `width` × `height`, four to a
 // word with the leftmost in the low byte, each row `stride` words — the

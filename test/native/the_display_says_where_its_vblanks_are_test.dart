@@ -3,16 +3,15 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_display_timing.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 
-import '../helpers/native_engine_path.dart';
-
-/// The engine's word on the display (`qa_display_vblank`,
-/// `qa_display_window_screens`, `qa_display_wait_until_us`,
-/// `qa_display_compose_every_vblank`): where the real vblanks are, on the
-/// frame clock, a wait that ends on its microsecond — what a clock's frame
-/// is handed to the GPU by (`PresentPacing`) — and the compositor kept
+/// The engine's word on the display — the engine's Rust ([_display])
+/// through [QaDisplayTiming]: where the real vblanks are, on the frame
+/// clock, a wait that ends on its microsecond — what a clock's frame is
+/// handed to the GPU by (`PresentPacing`) — and the compositor kept
 /// composing while it runs.
+///
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// these asked the C engine, where a build had made one.
 void main() {
   group('🚨the grid of a window (유저 2026-11-02: 「주사율 다른 모니터 둘에 '
       '걸쳐있으면 높은쪽을 기반으로 하도록」)', () {
@@ -99,31 +98,19 @@ void main() {
     });
   });
 
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  setUp(() {
-    QaDisplayTiming.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-  });
-
-  tearDown(() {
-    QaDisplayTiming.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
+  setUp(QaDisplayTiming.debugResetForTests);
+  tearDown(QaDisplayTiming.debugResetForTests);
 
   test('only Windows has a display that says where its vblanks are — and '
       'says it on the frame clock', () {
-    if (dllPath == null) {
-      markTestSkipped('qa_engine not built');
-      return;
-    }
     final timing = QaDisplayTiming.instance;
     if (!Platform.isWindows) {
       expect(timing, isNull, reason: 'its engine vsync is the display\'s');
       return;
     }
     if (timing == null) {
-      markTestSkipped('the compositor did not answer: no display here');
+      markTestSkipped('the compositor did not answer $_display: no display '
+          'here');
       return;
     }
     final grid = timing.vblankGrid()!;
@@ -147,7 +134,7 @@ void main() {
 
   test('with no app window to compose on — a test has none — the compositor '
       'is not kept composing, and letting it rest says so too', () {
-    final timing = dllPath == null ? null : QaDisplayTiming.instance;
+    final timing = QaDisplayTiming.instance;
     if (timing == null) {
       markTestSkipped('no display timing here');
       return;
@@ -157,7 +144,7 @@ void main() {
   });
 
   test('a wait ends on its microsecond — never before it', () {
-    final timing = dllPath == null ? null : QaDisplayTiming.instance;
+    final timing = QaDisplayTiming.instance;
     if (timing == null) {
       markTestSkipped('no display timing here');
       return;
@@ -169,3 +156,8 @@ void main() {
     }
   });
 }
+
+/// The display these ask — named as a path, so a lane that changed only the
+/// engine's display runs this file (`affected_tests` picks a test by the
+/// paths it writes out, 보드/인프라 2026-11-08 05:35).
+const _display = 'packages/gpu_engine/rust/native/display';

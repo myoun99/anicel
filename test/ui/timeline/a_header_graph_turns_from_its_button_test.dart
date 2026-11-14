@@ -81,8 +81,8 @@ void main() {
   });
 
   testWidgets('a header\'s button ends its name, where a layer row\'s name '
-      'ends; the camera row\'s ends its own — it folds nothing — the path '
-      'button before it — and no legend heads a graph', (tester) async {
+      'ends; the camera row\'s stands in the blend column, the path button '
+      'before it — and no legend heads a graph', (tester) async {
     await _pump(tester);
     await _openLanes(tester, _drawId);
 
@@ -92,7 +92,9 @@ void main() {
     final cameraRow = rectNamed('timeline-layer-row-cam');
     final cameraName = rectNamed('timeline-layer-name-cam');
     final camera = rectNamed('timeline-layer-graph-cam');
+    final path = rectNamed('timeline-layer-camera-path-cam');
     final header = rectNamed(_headerGraph('timeline', _transform));
+    final blend = rectOf('legend-blend');
 
     // 유저 2026-10-12: 「추가로 공간 만드는게아니라 이름공간을 줄여서
     // 오른쪽정렬로」 — out of the name, at its end. [twirl][name][graph]
@@ -102,22 +104,19 @@ void main() {
       moreOrLessEquals(cameraRow.right - cameraName.right, epsilon: 0.5),
       reason: 'a header\'s ends its name where a layer row\'s name ends',
     );
-    // 🗣️F-454 (유저 2026-10-23): 「카메라 레이어는 현재 어태치레이어
-    // 존재안하니 … 그 자리에 그래프버튼,그왼쪽에 경로버튼」.
+    // 🗣️F-577 (유저 2026-11-10): 「카메라행도 블렌드행에 경로/그래프버튼
+    // 이동」 — the order F-454 gave them kept: 「그래프버튼,그왼쪽에
+    // 경로버튼」. ↩️They ended the name.
     expect(
-      camera.right,
-      moreOrLessEquals(cameraName.right, epsilon: 0.5),
-      reason: 'a row that folds nothing ends its name with its own last '
-          'button. ↩️It stood a fold slot short (F-29)',
+      path.left,
+      greaterThan(cameraName.right),
+      reason: 'out of the name',
     );
+    expect(path.right, moreOrLessEquals(camera.left, epsilon: 0.5));
     expect(
-      camera.right,
-      moreOrLessEquals(header.right, epsilon: 0.5),
-      reason: 'so the camera\'s button stands where a header\'s does',
-    );
-    expect(
-      rectNamed('timeline-layer-camera-path-cam').right,
-      moreOrLessEquals(camera.left, epsilon: 0.5),
+      path.left - blend.left,
+      moreOrLessEquals(blend.right - camera.right, epsilon: 0.5),
+      reason: 'the two, centred under the legend\'s blend',
     );
     expect(
       find.byKey(const ValueKey<String>('legend-layer')),
@@ -198,9 +197,12 @@ void main() {
   // 🗣️F-454 (유저 2026-10-23): 「카메라 레이어는 현재 어태치레이어
   // 존재안하니(나중에 추가될 가능성) 그 자리에 그래프버튼,그왼쪽에 경로버튼」
   // — and once it has one, the fold takes the far end, as on every row.
-  testWidgets('a camera row that FOLDS ends its name with the twirl, the '
-      'graph and the path before it — and the sweep starts from where its '
-      'graph stands', (tester) async {
+  // ↩️F-577 (유저 2026-11-10: 「카메라행도 블렌드행에 경로/그래프버튼 이동」):
+  // the graph and the path left the name for the blend column, the twirl
+  // stays.
+  testWidgets('a camera row that FOLDS ends its name with the twirl, its '
+      'graph and path in the blend column past it — and the sweep starts '
+      'from where its graph stands', (tester) async {
     final s = await _pump(
       tester,
       blur: false,
@@ -211,6 +213,7 @@ void main() {
     Rect rectNamed(String name) => tester.getRect(find.named(name));
     final twirl = rectNamed('timeline-attach-twirl-cam');
     final graph = rectNamed('timeline-layer-graph-cam');
+    final path = rectNamed('timeline-layer-camera-path-cam');
 
     expect(
       twirl.right,
@@ -219,11 +222,8 @@ void main() {
         epsilon: 0.5,
       ),
     );
-    expect(graph.right, moreOrLessEquals(twirl.left, epsilon: 0.5));
-    expect(
-      rectNamed('timeline-layer-camera-path-cam').right,
-      moreOrLessEquals(graph.left, epsilon: 0.5),
-    );
+    expect(path.left, greaterThan(twirl.right));
+    expect(path.right, moreOrLessEquals(graph.left, epsilon: 0.5));
 
     await _sweepFromTheCamerasGraph(tester, (button) => button.left + 1);
     expect(

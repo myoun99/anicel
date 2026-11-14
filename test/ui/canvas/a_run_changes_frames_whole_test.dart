@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -20,13 +21,12 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// playback-plays-the-screen-material ③ (10-09): a RUN the canvas plays
 /// changes frames WHOLE — a frame that is not there yet leaves the last
@@ -43,8 +43,9 @@ import '../../helpers/draw_on_current_frame.dart';
 /// (`CanvasLayerStackView.run`), each asked at the level of the view it was
 /// seen through, until a frame became one picture.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 16, height: 16);
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   const blue = 0xFF0000FF;
   const red = 0xFFFF0000;
   final screen = GlobalKey();
@@ -97,7 +98,7 @@ void main() {
   /// The run's frames' pictures, drawn of [cache]'s cels — frame 0 blue,
   /// 1 red, 2 a cel with nothing in it.
   FramePictures picturesOver(LayerFrameImageCache cache) {
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
@@ -133,11 +134,11 @@ void main() {
     ),
   );
 
-  Future<void> pumpScreen(WidgetTester tester, Widget view) {
+  Future<void> pumpScreen(WidgetTester tester, Widget view) async {
     // One canvas pixel a device pixel at 100%: the middle is the middle.
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    return tester.pumpWidget(
+    await tester.pumpWidget(
       MaterialApp(
         home: Center(
           child: RepaintBoundary(
@@ -147,6 +148,8 @@ void main() {
         ),
       ),
     );
+    // A screen's first frame opens its texture.
+    await tester.pump();
   }
 
   /// The canvas playing a run: [cel]'s frame, as the run's maker made it.

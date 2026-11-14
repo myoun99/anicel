@@ -53,13 +53,13 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     required this.trackId,
     required this.seat,
     required this.layoutEntries,
-    required this.width,
     required this.height,
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
     required this.showSeconds,
     required this.projectFrameRate,
+    this.windowIsStill = false,
     this.onRowFramePress,
     this.stripEdges,
     this.stripSelect,
@@ -88,8 +88,9 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       : '${trackId.value}-'
             '${_StoryboardRowsAndLabels.conteLabelKeyName(seat)}';
 
-  /// The scroll content's full width — the V row's own.
-  final double width;
+  /// Whether the row's window is a still region of its own
+  /// ([_storyboardRowBox]) — every row of the panel's strips.
+  final bool windowIsStill;
 
   /// Its label's height ([_StoryboardRowHeights.conte]) — one row.
   @override
@@ -165,8 +166,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     return layer == null ? null : (entry: entry, layer: layer);
   }
 
-  int _frameAtX(double x) =>
-      timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
+  int _frameAtX(double x) => _storyboardRowFrameAt(frameGeometry, x) ?? 0;
 
   /// The panels' half of the shared range gesture.
   ///
@@ -295,7 +295,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     trackId,
     seat,
     ByList(layoutEntries),
-    width,
     height,
     timelineScale.pixelsPerFrame,
     timelineScale.minBlockWidth,
@@ -303,6 +302,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     ByIdentity(windowBucket),
     showSeconds,
     projectFrameRate,
+    windowIsStill,
     onRowFramePress != null,
     stripEdges != null,
     stripSelect != null,
@@ -320,13 +320,11 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     final edges = stripEdges;
     final stripSelect = this.stripSelect;
     final edit = _edit;
-    return SizedBox(
+    return _storyboardRowBox(
       key: ValueKey<String>('storyboard-conte-row-$_scope'),
-      width: math.max(
-        _storyboardCutsExtent(layoutEntries, timelineScale),
-        width,
-      ),
+      geometry: frameGeometry,
       height: height,
+      windowIsStill: windowIsStill,
       child: Stack(
         children: [
           _cells(context, shown, headShown: headShown),
@@ -418,14 +416,17 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     // I-44: the HOST's ground and lines, stated once by its law — as the
     // timeline's rows read them.
     final law = TimelineGridLaw.maybeOf(context);
+    final clip = _ConteCutsClip(
+      geometry: frameGeometry,
+      spans: _cutSpans(withConteLayer: true),
+    );
     return Positioned.fill(
       child: ClipPath(
         clipBehavior: Clip.hardEdge,
-        clipper: _ConteCutsClip(
-          geometry: frameGeometry,
-          spans: _cutSpans(withConteLayer: true),
-        ),
-        child: RepaintBoundary(
+        clipper: clip,
+        // A layer of its own, as the timeline's rows lay theirs.
+        child: TimelineGridScreenSlot(
+          clip: clip,
           child: CustomPaint(
             key: ValueKey<String>('storyboard-conte-cells-$_scope'),
             painter: TimelineRowCellsPainter(
@@ -637,13 +638,17 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       if (end <= start) {
         break;
       }
-      return Stack(
+      // Laid by its frames' edges, as every piece of the row is.
+      return TimelineFrameSpanLayout(
+        geometry: frameGeometry,
+        crossAxisExtent: height,
+        axis: Axis.horizontal,
         children: [
-          Positioned(
-            left: timelineScale.leftForFrame(start),
-            top: 0,
-            bottom: 0,
-            width: timelineScale.spanWidth(start, end),
+          TimelineFrameSpan(
+            placement: TimelineFrameSpanPlacement(
+              startIndex: start,
+              endIndexExclusive: end,
+            ),
             child: Semantics(
               key: const ValueKey<String>('storyboard-strip-range-selection'),
               label: AppText.strings.tlSelectedPanelRange,
@@ -896,29 +901,27 @@ class _StoryboardPanelEdges extends StatelessWidget {
 
 /// Holds the conte row's cells to the stretches of the track whose cut has
 /// a conte layer ([_StoryboardConteRow]) — re-cut on a zoom step, which
-/// moves the frames and builds nothing.
-class _ConteCutsClip extends CustomClipper<Path> {
+/// moves the frames and builds nothing. The tiles the row lays on its
+/// grid's screen are held to them too ([TimelineGridScreenSlot.clip]).
+class _ConteCutsClip extends TimelineGridScreenClip {
   _ConteCutsClip({required this.geometry, required this.spans})
-    : super(reclip: geometry);
+    : super(reclip: timelineFrameDrawing(geometry));
 
   final TimelineFrameGeometryHandle geometry;
   final List<({int start, int endExclusive})> spans;
 
   @override
-  Path getClip(Size size) {
+  List<Rect> rectsIn(Size size) {
     final frames = geometry.value;
-    final path = Path();
-    for (final span in spans) {
-      path.addRect(
+    return [
+      for (final span in spans)
         Rect.fromLTRB(
           frames.edgeAt(span.start),
           0,
           frames.edgeAt(span.endExclusive),
           size.height,
         ),
-      );
-    }
-    return path;
+    ];
   }
 
   @override
@@ -952,7 +955,12 @@ class StoryboardConteCreatePainter extends CustomPainter with RepaintOnProps {
     required this.colorScheme,
     required this.baseTextStyle,
     required this.windowBucket,
-  }) : super(repaint: Listenable.merge([geometry, windowBucket]));
+  }) : super(
+         repaint: Listenable.merge([
+           timelineFrameDrawing(geometry),
+           windowBucket,
+         ]),
+       );
 
   /// The cuts that wear the button, each as its frames on the track's axis.
   final List<({int start, int endExclusive})> spans;

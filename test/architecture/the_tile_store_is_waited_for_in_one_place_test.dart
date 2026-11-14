@@ -76,8 +76,9 @@ void main() {
     }
   });
 
-  test('premise: the seat holds the one wait the scan forbids elsewhere', () {
-    expect(handWaitsIn(File(seat).readAsStringSync()), hasLength(1));
+  test('premise: the seat holds the wait the scan forbids elsewhere, once '
+      'for each clock', () {
+    expect(handWaitsIn(File(seat).readAsStringSync()), hasLength(2));
   });
 
   test('no test waits on the tile store\'s word but through its seat', () {

@@ -12,6 +12,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/accent_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/face_ink_well.dart';
 
 void main() {
   testWidgets('a preset tap applies the accent and the palette marks it', (
@@ -34,13 +35,10 @@ void main() {
         'settings-accent1-preset-${color.toARGB32().toRadixString(16)}',
       ),
     );
-    BorderSide edgeOf(Color color) {
-      final box = tester.widget<Container>(
-        find.descendant(of: presetOf(color), matching: find.byType(Container)),
-      );
-      final shape = (box.decoration! as ShapeDecoration).shape;
-      return (shape as OutlinedBorder).side;
-    }
+    // The swatch's face is its well's (a-live-dock-frame-costs-a-whole-
+    // draw-Q12): its edge, and its colour inside.
+    BorderSide edgeOf(Color color) =>
+        tester.widget<FaceInkWell>(presetOf(color)).edge!.side;
 
     const preset = Color(0xFF5B9BD5);
     expect(edgeOf(preset), isNot(edgeOf(before.accent)), reason: '⛔전제');

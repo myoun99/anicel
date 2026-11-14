@@ -2,15 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/services/resample/selection_resample.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../helpers/native_engine_path.dart';
 
 /// The folds that carry the transform tool's geometry into the shared
 /// resampler.
@@ -24,7 +20,7 @@ import '../../helpers/native_engine_path.dart';
 /// the arithmetic the tool has always used".
 void main() {
   /// The kernel's destination-index → source-index map, evaluated the way
-  /// the kernel evaluates it (`resample_kernel.dart`).
+  /// the kernel evaluates it (R1's, `resample.wgsl`).
   ({double u, double v}) kernelSample(ResampleTransform t, int ox, int oy) {
     final x = ox + 0.5;
     final y = oy + 0.5;
@@ -352,67 +348,6 @@ void main() {
     });
   });
 
-  group('triangle fold', () {
-    test('reproduces barycentric interpolation exactly', () {
-      final random = math.Random(31337);
-      var worst = 0.0;
-      for (var trial = 0; trial < 300; trial += 1) {
-        CanvasPoint point() => CanvasPoint(
-          x: random.nextDouble() * 60 - 30,
-          y: random.nextDouble() * 60 - 30,
-        );
-        final d0 = point();
-        final d1 = point();
-        final d2 = point();
-        final s0 = point();
-        final s1 = point();
-        final s2 = point();
-        final denominator =
-            (d1.x - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (d1.y - d0.y);
-        if (denominator.abs() < 1) {
-          continue; // Near-degenerate: the tool refuses these too.
-        }
-        final left = random.nextInt(40) - 20;
-        final top = random.nextInt(40) - 20;
-        const srcLeft = 3.5;
-        const srcTop = -2.25;
-        final folded = selectionTriangleResampleTransform(
-          d0: d0,
-          d1: d1,
-          d2: d2,
-          s0: s0,
-          s1: s1,
-          s2: s2,
-          denominator: denominator,
-          left: left,
-          top: top,
-          srcLeft: srcLeft,
-          srcTop: srcTop,
-        );
-        for (var i = 0; i < 5; i += 1) {
-          final ox = random.nextInt(20);
-          final oy = random.nextInt(20);
-          final qx = left + ox + 0.5;
-          final qy = top + oy + 0.5;
-          // The rasteriser's own barycentric interpolation, verbatim.
-          final w1 =
-              ((qx - d0.x) * (d2.y - d0.y) - (d2.x - d0.x) * (qy - d0.y)) /
-              denominator;
-          final w2 =
-              ((d1.x - d0.x) * (qy - d0.y) - (qx - d0.x) * (d1.y - d0.y)) /
-              denominator;
-          final w0 = 1.0 - w1 - w2;
-          final px = s0.x * w0 + s1.x * w1 + s2.x * w2;
-          final py = s0.y * w0 + s1.y * w1 + s2.y * w2;
-          final got = kernelSample(folded, ox, oy);
-          worst = math.max(worst, (got.u - (px - srcLeft - 0.5)).abs());
-          worst = math.max(worst, (got.v - (py - srcTop - 0.5)).abs());
-        }
-      }
-      expect(worst, lessThan(1e-6));
-    });
-  });
-
   group('the output rect and its clip', () {
     test('the rect snaps outward, so no covered pixel is dropped', () {
       final rect = selectionWarpOutputRect(<CanvasPoint>[
@@ -437,94 +372,19 @@ void main() {
     });
   });
 
-  group('the router', () {
-    test('native and the Dart reference produce the same bytes', () {
-      // The whole point of routing through one function: which kernel ran
-      // must be invisible in the result. Without the engine LOADED this
-      // would compare the reference with itself and pass while proving
-      // nothing, so the engine is wired here explicitly and the test skips
-      // loudly when there is none to wire.
-      final path = nativeEngineLibraryPathOrNull();
-      if (path == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      debugQaEngineLibraryPathOverride = path;
-      QaNativeEngine.debugResetForTests();
-      addTearDown(() {
-        debugQaEngineLibraryPathOverride = null;
-        QaNativeEngine.debugResetForTests();
-      });
-      expect(
-        QaNativeEngine.instance,
-        isNotNull,
-        reason: 'the engine at $path refused to load (ABI mismatch?)',
-      );
-
-      final source = Uint8List(32 * 32 * 4);
-      final words = Uint32List.view(source.buffer);
-      for (var i = 0; i < words.length; i += 1) {
-        words[i] = 0xffffffff;
-      }
-      for (var i = 0; i < 32; i += 1) {
-        words[i * 32 + i] = 0xff101010;
-        words[i * 32 + 16] = 0xff3050a0;
-      }
-      final affine = SelectionAffine(
-        pivot: CanvasPoint(x: 16, y: 16),
-        sx: 1.3,
-        sy: 0.8,
-        rotationDegrees: 21,
-        tx: 2.5,
-        ty: -1.25,
-      );
-      final transform = selectionAffineResampleTransform(
-        affine: affine,
-        srcLeft: 0,
-        srcTop: 0,
-        outLeft: -4,
-        outTop: -4,
-      );
-      for (final mode in ResampleMode.values) {
-        final routed = Uint8List(40 * 40 * 4);
-        resampleSelectionInto(
-          src: source,
-          srcWidth: 32,
-          srcHeight: 32,
-          dst: routed,
-          dstWidth: 40,
-          dstHeight: 40,
-          transform: transform,
-          mode: mode,
-        );
-        final reference = resampleRgbaReference(
-          src: source,
-          srcWidth: 32,
-          srcHeight: 32,
-          dstWidth: 40,
-          dstHeight: 40,
-          transform: transform,
-          mode: mode,
-          radiusFloor: kSelectionResampleRadiusFloor,
-        );
-        expect(routed, reference, reason: mode.name);
-      }
-    });
-
-    test('the floor it passes matches the kernel default, and Pick no '
-        'longer has a radius for it to reach', () {
+  group('the radius floor', () {
+    test('the floor every warp is handed is 1.0, and Pick no longer has a '
+        'radius for it to reach', () async {
       // The floor is 1.0 and belongs to Blend. It was 1.5 for Pick once,
       // on an argument about jagged spurs that only held while the weight
       // was a tent; it stopped meaning anything when the weight became
       // area, and it stopped existing when Pick started supersampling the
       // preimage instead of gathering taps around it.
       //
-      // The second assertion is the guard, and it points the opposite way
+      // The last assertion is the guard, and it points the opposite way
       // from the one it replaced: a floor that changed what Pick elected
       // would mean a radius had come back.
       expect(kSelectionResampleRadiusFloor, 1.0);
-      expect(resampleRadiusFloor(ResampleMode.pick), 1.0);
-      expect(resampleRadiusFloor(ResampleMode.blend), 1.0);
 
       const size = 40;
       final source = Uint8List(size * size * 4);
@@ -550,7 +410,7 @@ void main() {
         outLeft: 0,
         outTop: 0,
       );
-      Uint8List pickAt(double floor) => resampleRgbaReference(
+      Future<Uint8List> pickAt(double floor) => resampleOnTheEngine(
         src: source,
         srcWidth: size,
         srcHeight: size,
@@ -563,14 +423,14 @@ void main() {
 
       expect(
         Uint32List.view(
-          pickAt(kSelectionResampleRadiusFloor).buffer,
+          (await pickAt(kSelectionResampleRadiusFloor)).buffer,
         ).where((word) => word == ink).length,
         expected,
         reason: 'a quarter turn must be an exact permutation',
       );
       expect(
-        pickAt(4.0),
-        pickAt(kSelectionResampleRadiusFloor),
+        await pickAt(4.0),
+        await pickAt(kSelectionResampleRadiusFloor),
         reason:
             'Pick read the radius floor — it has no radius, and a value '
             'that reaches one is a footprint that has grown back',

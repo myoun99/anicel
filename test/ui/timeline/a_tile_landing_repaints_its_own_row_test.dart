@@ -4,26 +4,24 @@
 @Timeout(Duration(minutes: 3))
 library;
 
-import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/straight_rgba_image.dart'
-    show debugRawRgbaUploader;
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_drawn_off_the_paint.dart';
+import '../../helpers/tiles_laid.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -47,13 +45,12 @@ import 'timeline_frame_geometry_probe.dart';
 /// here, before the store stopped asking twice).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
   final store = TimelineGridTileStore.instance;
 
   /// A row [frames] long with a block of two at every fourth frame — four
-  /// frames to a span at 24px (`timelineFrameWindowSpanFor`).
+  /// frames to a span at 128px (`timelineFrameWindowSpanFor`).
   Layer rowLayer(String id, {required int frames}) => Layer(
     id: LayerId(id),
     name: id,
@@ -68,7 +65,7 @@ void main() {
       TimelineRowCellsPainter(
         layer: layer,
         geometry: testFrameGeometry(
-          frameCellExtent: 24,
+          frameCellExtent: 128,
           frameEndIndexExclusive: frames,
         ),
         crossAxisExtent: 28,
@@ -83,7 +80,9 @@ void main() {
   /// every span it shows and keeps warm.
   void paintRow(TimelineRowCellsPainter painter, int frames) {
     final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder), Size(frames * 24.0, 28));
+    tilesLaidBy(
+      () => painter.paint(Canvas(recorder), Size(frames * 128.0, 28)),
+    );
     recorder.endRecording().dispose();
   }
 
@@ -93,25 +92,11 @@ void main() {
     addTearDown(() => painter.removeListener(onRepaint));
   }
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    store.clear();
-  });
+  setUp(store.clear);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    store.clear();
-  });
+  tearDown(store.clear);
 
   test('a landed tile repaints the row it belongs to, and no other', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final a = painterFor(rowLayer('a', frames: 8), frames: 8);
     final b = painterFor(rowLayer('b', frames: 8), frames: 8);
     var aRepaints = 0;
@@ -129,10 +114,6 @@ void main() {
 
   test('a row the queue turned away is come back to once the queue runs dry '
       '— every span each row paints ends up warm', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     // Twenty spans a row: sixty asked for at once, and the queue keeps 32 —
     // the first row's every request is turned away.
     final rows = [
@@ -159,10 +140,6 @@ void main() {
 
   test('a row turned away that nothing shows any more is not rastered — the '
       'rows still shown are', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final gone = painterFor(rowLayer('gone', frames: 40), frames: 40);
     final shown = painterFor(rowLayer('shown', frames: 40), frames: 40);
     final big = painterFor(rowLayer('big', frames: 128), frames: 128);
@@ -197,25 +174,8 @@ void main() {
 
   test('a tile being rastered is not asked for again when its row repaints '
       'meanwhile', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    // The upload is held, so the raster is out for as long as the test says.
-    final out = <({Completer<ui.Image> landing, int width, int height})>[];
-    debugRawRgbaUploader =
-        (
-          rgba, {
-          required width,
-          required height,
-          targetWidth,
-          targetHeight,
-        }) {
-          final landing = Completer<ui.Image>();
-          out.add((landing: landing, width: width, height: height));
-          return landing.future;
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
+    // Its drawing is held, so the raster is out for as long as the test says.
+    final out = holdTilesDrawnOffThePaint(store);
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     show(a, () => paintRow(a, 4));
 
@@ -225,10 +185,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(out, hasLength(1), reason: 'its one tile is out once, not twice');
 
-    for (final (:landing, :width, :height) in out) {
-      final recorder = ui.PictureRecorder();
-      Canvas(recorder);
-      landing.complete(recorder.endRecording().toImageSync(width, height));
+    for (final draw in out) {
+      draw.complete();
     }
     await tileStoreIdle(store);
     expect(out, hasLength(1), reason: 'and its landing asks for nothing more');
@@ -236,15 +194,11 @@ void main() {
 
   test('a row turned away in a world no longer live is not come back to — '
       'the store does not bring the old world back (#29)', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     TimelineRowCellsPainter inWorld(String world, String id, int frames) =>
         TimelineRowCellsPainter(
           layer: rowLayer(id, frames: frames),
           geometry: testFrameGeometry(
-            frameCellExtent: 24,
+            frameCellExtent: 128,
             frameEndIndexExclusive: frames,
           ),
           crossAxisExtent: 28,
@@ -285,30 +239,8 @@ void main() {
 
   test('the store is busy while ANY raster is out — a drain that finishes '
       'beside another does not call it idle', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    final out = <({Completer<ui.Image> landing, int width, int height})>[];
-    debugRawRgbaUploader =
-        (
-          rgba, {
-          required width,
-          required height,
-          targetWidth,
-          targetHeight,
-        }) {
-          final landing = Completer<ui.Image>();
-          out.add((landing: landing, width: width, height: height));
-          return landing.future;
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
-    void land(int index) {
-      final (:landing, :width, :height) = out[index];
-      final recorder = ui.PictureRecorder();
-      Canvas(recorder);
-      landing.complete(recorder.endRecording().toImageSync(width, height));
-    }
+    final out = holdTilesDrawnOffThePaint(store);
+    void land(int index) => out[index].complete();
 
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     final b = painterFor(rowLayer('b', frames: 4), frames: 4);
@@ -327,30 +259,8 @@ void main() {
 
   test('a clear fences off a raster still out — its key is asked for again '
       'at once, the store is idle, and the old pixels land nowhere', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    final out = <({Completer<ui.Image> landing, int width, int height})>[];
-    debugRawRgbaUploader =
-        (
-          rgba, {
-          required width,
-          required height,
-          targetWidth,
-          targetHeight,
-        }) {
-          final landing = Completer<ui.Image>();
-          out.add((landing: landing, width: width, height: height));
-          return landing.future;
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
-    void land(int index) {
-      final (:landing, :width, :height) = out[index];
-      final recorder = ui.PictureRecorder();
-      Canvas(recorder);
-      landing.complete(recorder.endRecording().toImageSync(width, height));
-    }
+    final out = holdTilesDrawnOffThePaint(store);
+    void land(int index) => out[index].complete();
 
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     var landings = 0;
@@ -360,16 +270,22 @@ void main() {
     expect(out, hasLength(1), reason: 'premise: its one tile is out');
 
     // What a test's tear-down does — a widget test's clock never lets that
-    // upload land.
+    // raster land.
     store.clear();
     expect(store.debugBusy, isFalse, reason: 'the raster out is not counted');
     paintRow(a, 4);
     await pollUntil(() => out.length > 1);
     expect(out, hasLength(2), reason: 'its key is asked for again at once');
 
+    final live = TimelineGridTilePicture.debugLive;
     land(0);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(landings, 0, reason: 'the fenced raster lands nowhere');
+    expect(
+      TimelineGridTilePicture.debugLive,
+      live,
+      reason: 'and what it drew is freed',
+    );
     land(1);
     await tileStoreIdle(store);
     expect(landings, 1, reason: 'the one asked for after it does');
@@ -377,10 +293,6 @@ void main() {
 
   test('a row is come back to with its NEWEST painter — once a tile of its '
       'lands, its repaints ask for it and the store does not', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final before = painterFor(rowLayer('b', frames: 40), frames: 40);
     // An edit: the same row, a new layer — a tile of the old one is stale
     // for the new painter, which shows it only until its own lands.

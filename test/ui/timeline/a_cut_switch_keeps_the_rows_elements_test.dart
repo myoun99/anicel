@@ -93,12 +93,12 @@ Cut _cut(
 );
 
 /// A popup a row opens (`AnchoredPopupsOpenFrom`): on the cuts' second
-/// rows ([row]) or the track's SE row ([se]), from [button] — in a lane of
-/// the [lanes] group, opened first, if it has one.
+/// rows ([row]), from [button] — in a lane of the [lanes] group, opened
+/// first, if it has one. ↩️An SE row's speaker opened its mixer until
+/// F-577 (2026-11-10); it is a mute toggle now and opens nothing.
 typedef _Popup = ({
   String name,
   Layer Function(String id) row,
-  bool se,
   String? lanes,
   Finder Function(_Grid grid) button,
   Finder window,
@@ -115,7 +115,6 @@ final _popups = <_Popup>[
   (
     name: 'a pencil\'s number pad',
     row: _drawing,
-    se: false,
     lanes: 'transform-group',
     button: (_) => _keyed(RegExp(r'-lane-value-a2-position-edit$')),
     window: theNumberPadsNumber,
@@ -123,23 +122,13 @@ final _popups = <_Popup>[
   (
     name: 'a reference\'s popover',
     row: _picture,
-    se: false,
     lanes: null,
     button: (grid) => find.named('${grid.prefix}-layer-reference-a2'),
     window: find.byKey(const ValueKey<String>('layer-reference-popover')),
   ),
   (
-    name: 'an SE row\'s mixer',
-    row: _drawing,
-    se: true,
-    lanes: null,
-    button: (grid) => find.named('${grid.prefix}-layer-mute-se'),
-    window: find.byKey(const ValueKey<String>('se-layer-mixer')),
-  ),
-  (
     name: 'a colour lane\'s swatch',
     row: _numbered,
-    se: false,
     lanes: effectGroupLaneId(_number),
     button: (grid) => find.byKey(
       ValueKey<String>(
@@ -198,14 +187,12 @@ extension on _Grid {
 
 /// The timeline tab alone ([pumpTimelineHost]), as the app's window of
 /// 800 × 600 laid it unless [surface] says another — the rows' berths are
-/// the panel's. Each cut's [second] row as [_cut] makes it; an SE row on
-/// the track with [se].
+/// the panel's. Each cut's [second] row as [_cut] makes it.
 Future<EditorSessionManager> _open(
   WidgetTester tester,
   _Grid grid, {
   Size surface = const Size(640, 320),
   Layer Function(String id) second = _drawing,
-  bool se = false,
 }) async {
   final session = await pumpTimelineHost(
     tester,
@@ -221,16 +208,7 @@ Future<EditorSessionManager> _open(
             _cut(_first, ['a1', 'a2', 'a3'], second: second),
             _cut(_second, ['b1', 'b2', 'b3'], second: second),
           ],
-          seLayers: [
-            if (se)
-              Layer(
-                id: const LayerId('se'),
-                name: 'se',
-                kind: LayerKind.se,
-                frames: const [],
-                timeline: const {},
-              ),
-          ],
+          seLayers: const [],
         ),
       ],
     ),
@@ -383,7 +361,6 @@ void main() {
               grid,
               surface: const Size(870, 546),
               second: popup.row,
-              se: popup.se,
             );
             if (popup.lanes case final group?) {
               await tester.tap(

@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'canvas_point.dart';
 import 'canvas_size.dart';
 import 'effect_parameter_spec.dart';
@@ -499,7 +500,7 @@ enum EffectKind {
 
   /// A plugin's effect: its parameters, the words they go by and what it
   /// does to the pixels are the plugin's ([LayerEffect.plugin],
-  /// anicel_fx_plugin.h) — ONE kind for every plugin, told apart by the
+  /// sdk/fx/anicel-fx) — ONE kind for every plugin, told apart by the
   /// description it keeps, so a plugin's lanes, keys and values are the
   /// app's own code (🗣️I-132-Q29).
   ///
@@ -575,16 +576,18 @@ enum EffectKind {
   /// composite has already painted.
   ///
   /// 🚨THIS IS A SPLIT POINT, NOT A GATE. A threshold comparison has no
-  /// colour-matrix form, so a colour key at the HEAD of a chain runs as a
-  /// CPU pass over the cel surface (`celSurfaceWithSourceEffects`) — that is
-  /// what keeps the fx and the destructive button in exact agreement, since
-  /// only the CPU sees the cel's own straight bytes.
+  /// colour-matrix form, so a colour key at the HEAD of a chain runs over
+  /// the cel's own straight bytes — the engine's row keys, by one set of
+  /// tables with the destructive button's — which is what keeps the two in
+  /// exact agreement. ↩️Or the CPU's pass where a plugin followed it, until
+  /// the plugin was a step of the chain
+  /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
   ///
   /// ⛔IT NO LONGER DECIDES WHERE A KIND MAY BE OFFERED. A gate called
   /// `effectKindsFor` used to hide these kinds wherever the input was not
   /// cel bytes; a folder keys the picture it composed now, through a
-  /// fragment shader proven identical to this pass. `splitSourceEffects`
-  /// reads this to find the leading run and nothing else does.
+  /// fragment shader proven identical to this pass. `celSourceKeys` reads
+  /// this to find the leading run and nothing else does.
   final bool runsOnSourcePixels;
 
   /// Whether this kind DRAWS a picture of its own over the row's — the cel
@@ -647,7 +650,7 @@ enum EffectKind {
 
 /// The kinds added as themselves ([EffectKind.addedByItsKind]), in their
 /// order — the Fx list's own rows and the actions that press them.
-final List<EffectKind> effectKindsAddedAlone = List.unmodifiable([
+final List<EffectKind> effectKindsAddedAlone = frozenList([
   for (final kind in EffectKind.values)
     if (kind.addedByItsKind) kind,
 ]);
@@ -834,7 +837,7 @@ class LayerEffect {
   }) : plugin = kind == EffectKind.plugin
            ? ArgumentError.checkNotNull(plugin, 'plugin')
            : null,
-       parameters = Map.unmodifiable({
+       parameters = frozenMapOrSame(parameters, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit != EffectParameterUnit.color &&
                spec.unit != EffectParameterUnit.point &&
@@ -843,17 +846,17 @@ class LayerEffect {
                  parameters?[spec.id] ??
                  EffectParameter(value: spec.defaultValue),
        }),
-       colors = Map.unmodifiable({
+       colors = frozenMapOrSame(colors, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.color)
              spec.id: colors?[spec.id] ?? PropertyTrack<int>.empty(),
        }),
-       points = Map.unmodifiable({
+       points = frozenMapOrSame(points, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.point)
              spec.id: points?[spec.id] ?? TransformTrack.empty(),
        }),
-       layers = Map.unmodifiable({
+       layers = frozenMapOrSame(layers, {
          for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.layer)
              spec.id: layers?[spec.id],
@@ -980,10 +983,10 @@ class LayerEffect {
       plugin: plugin,
       enabled: enabled ?? this.enabled,
       basis: basis ?? this.basis,
-      parameters: parameters ?? this.parameters,
-      colors: colors ?? this.colors,
-      points: points ?? this.points,
-      layers: layers ?? this.layers,
+      parameters: parameters ?? ownFrozen(this.parameters),
+      colors: colors ?? ownFrozen(this.colors),
+      points: points ?? ownFrozen(this.points),
+      layers: layers ?? ownFrozen(this.layers),
       stand: stand ?? this.stand,
     );
   }
@@ -1174,6 +1177,17 @@ class LayerEffect {
       'LayerEffect($kind, enabled: $enabled, parameters: $parameters)';
 }
 
+/// Whose chain an effect is sampled in ([resolveLayerEffectsAt]): the row —
+/// or the V row's track — whose lanes it is ([owner]), and the row whose
+/// picture it runs over ([wearer]) — the owner itself but on an attach row,
+/// which wears its base's chain (`chainWornBy`).
+typedef EffectWorn = ({StringId owner, StringId wearer});
+
+/// A plugin's effect where it is worn — [effect] of [owner]'s chain, run
+/// over [wearer]'s picture ([EffectWorn]): where its run tells how it went
+/// (`FxPluginOutcomes`), and where its header asks.
+typedef FxPluginWorn = ({StringId owner, EffectId effect, StringId wearer});
+
 /// An effect with its parameters SAMPLED at one frame — what the composite
 /// carries and what the caches compare. Values are in [specs]' order, which
 /// is the only order anything builds them in.
@@ -1186,10 +1200,11 @@ class ResolvedLayerEffect {
     Map<String, CanvasPoint?> points = const {},
     Map<String, LayerId?> layers = const {},
     this.frame,
+    this.worn,
     this.run,
-  }) : values = List.unmodifiable(values),
-       points = Map.unmodifiable(points),
-       layers = Map.unmodifiable(layers);
+  }) : values = frozenList(values),
+       points = frozenMap(points),
+       layers = frozenMap(layers);
 
   final EffectKind kind;
 
@@ -1228,6 +1243,24 @@ class ResolvedLayerEffect {
   /// or not.
   final int? frame;
 
+  /// Where a PLUGIN's sample is worn — null for every other kind's, and on
+  /// a route that names no row: where its run tells how it went
+  /// ([FxPluginRun.told]), and its fx row's header asks (`FxPluginOutcomes`).
+  ///
+  /// ⛔By the ids of its row and its effect, not by the effect's object
+  /// (↩️`instance`, until card a-cached-failed-picture-loses-its-mark,
+  /// 2026-11-08): an edit that leaves what it draws as it was — a key set at
+  /// the value it had, the effect switched off and on — makes the effect
+  /// anew, and the picture of the old one comes back from every cache with
+  /// no run to tell the new one (🔬the whole app under test: neither the
+  /// cel pass nor the V row's step told once after either; the Surface's
+  /// verifier saw the V row's ⚠ stay off, 2/2); and a row copied keeps its
+  /// chain's objects (`effectsWithRowsRenamed`), as an attach row wears its
+  /// base's, so two rows told one record.
+  /// ⛔NOT IN [==]: it names whose outcome a run is, not what is drawn —
+  /// two samples equal in all else draw one picture and fail alike.
+  final FxPluginWorn? worn;
+
   /// What a plugin's effect is run with at this frame ([FxPluginRun]) —
   /// null for every other kind, and for a plugin's where it does not run:
   /// 🗣️I-132-Q34 a, anywhere in any chain, on a route that binds it, on a
@@ -1244,6 +1277,7 @@ class ResolvedLayerEffect {
     points: points,
     layers: layers,
     frame: frame,
+    worn: worn,
     run: run,
   );
 
@@ -1274,6 +1308,7 @@ class ResolvedLayerEffect {
           points: points,
           layers: {for (final parameter in layers.keys) parameter: null},
           frame: frame,
+          worn: worn,
           run: run,
         );
 
@@ -1420,10 +1455,16 @@ double effectValueAt(
 /// [blocks] — the blocks of the row whose chain this is, null for one that
 /// has none ([fxReadFrame]). ⛔REQUIRED so every route answers whose blocks
 /// it reads: a chain sampled without them goes on moving through the holds.
+///
+/// [worn] says whose chain it is, and whose picture it runs over — what a
+/// plugin's sample tells its run's outcome by ([ResolvedLayerEffect.worn]);
+/// null on a route that runs no plugin. ⛔REQUIRED for [blocks]' reason: a
+/// route that forgot it would draw a failed plugin with no mark to say so.
 List<ResolvedLayerEffect> resolveLayerEffectsAt({
   required List<LayerEffect> effects,
   required int frameIndex,
   required SplayTreeMap<int, TimelineExposure>? blocks,
+  required EffectWorn? worn,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -1436,36 +1477,48 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     final sample = sampleLayerEffectAt(
       effect,
       fxReadFrame(effect.basis, blocks, frameIndex),
+      worn: worn,
     );
     if (sample.isNoOp) {
       continue;
     }
     resolved.add(sample);
   }
-  return resolved.isEmpty ? const [] : List.unmodifiable(resolved);
+  return resolved.isEmpty ? const [] : frozenList(resolved);
 }
 
 /// [effect] sampled at [frameIndex] — every lane, whether or not the
 /// sample changes a pixel ([resolveLayerEffectsAt] drops the ones that do
-/// not, and the switched-off ones).
-ResolvedLayerEffect sampleLayerEffectAt(LayerEffect effect, int frameIndex) =>
-    ResolvedLayerEffect(
-      kind: effect.kind,
-      plugin: effect.plugin,
-      values: [
-        for (final spec in effect.specs)
-          spec.clamp(effectValueAt(effect, spec, frameIndex.toDouble())),
-      ],
-      stand: effect.kind.drawsItsOwnPicture
-          ? effectStandAt(effect.stand, frameIndex.toDouble())
-          : null,
-      points: {
-        for (final MapEntry(key: id, value: keys) in effect.points.entries)
-          id: effectPointAt(keys, frameIndex.toDouble()),
-      },
-      layers: effect.layers,
-      frame: effect.plugin == null ? null : frameIndex,
-    );
+/// not, and the switched-off ones) — worn as [worn] says.
+ResolvedLayerEffect sampleLayerEffectAt(
+  LayerEffect effect,
+  int frameIndex, {
+  required EffectWorn? worn,
+}) => ResolvedLayerEffect(
+  kind: effect.kind,
+  plugin: effect.plugin,
+  values: [
+    for (final spec in effect.specs)
+      spec.clamp(effectValueAt(effect, spec, frameIndex.toDouble())),
+  ],
+  stand: effect.kind.drawsItsOwnPicture
+      ? effectStandAt(effect.stand, frameIndex.toDouble())
+      : null,
+  points: {
+    for (final MapEntry(key: id, value: keys) in effect.points.entries)
+      id: effectPointAt(keys, frameIndex.toDouble()),
+  },
+  layers: effect.layers,
+  frame: effect.plugin == null ? null : frameIndex,
+  worn: switch ((effect.plugin, worn)) {
+    (_?, (:final owner, :final wearer)) => (
+      owner: owner,
+      effect: effect.id,
+      wearer: wearer,
+    ),
+    _ => null,
+  },
+);
 
 /// Whether any of [effects] spreads pixels beyond their own coverage — the
 /// blur question the folder-buffer decision and the dirty-bounds math ask.

@@ -1,30 +1,26 @@
-//! A frame grid's tile, drawn from the op stream the grids write — the
-//! words the C rasterizer `qa_grid_raster_tile` reads today
-//! (timeline_grid_tile_ops.dart has them) — over an A8 atlas of the
-//! letters, in `grid.wgsl`.
+//! A frame grid's tile, drawn from the op stream the grids write
+//! (timeline_grid_tile_ops.dart has the words) over an A8 atlas of the
+//! letters, in `grid.wgsl` — the one place the stream is drawn, and so
+//! what it says.
 //!
-//! What the stream says is the C rasterizer's, but for the rounded rects:
-//! their field is taken in q9 integers with `isqrt_round`, not in doubles
-//! with the C library's square root, so an edge pixel may differ from an
-//! old build's by a step — the same on every device, which is the point.
+//! ↩️The C rasterizer `qa_grid_raster_tile` drew it until
+//! grid-on-the-engine ⑥. What the stream said was the C's, but for the
+//! rounded rects: their field is taken here in q9 integers with
+//! `isqrt_round`, not in doubles with the C library's square root, so an
+//! edge pixel may differ from an old build's by a step — the same on every
+//! device, which is the point.
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-int-spec-timeline, 관제 13:5x — the app connects after the bridges
-// land).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
+pub(crate) mod lay;
 #[cfg(test)]
 mod tests;
 
-use std::time::Instant;
-
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, PREMULTIPLY_WGSL, encode_on, flat, pipeline, storage_format, whole,
+    Encoded, ISQRT_WGSL, encode_on, flat, pipeline, storage_format, whole,
 };
 use crate::kernels::timeline::LAID_WGSL;
 
@@ -47,8 +43,98 @@ const RRECT_RING: i32 = 6;
 /// (`TimelineGridTileOpWriter.rrectFill` · `rrectRing`, at the bridge).
 pub(crate) const MOST_RADIUS_Q9: i32 = 1 << 15;
 
-/// A frame grid's tile pass, one pipeline per texture format it has been
-/// run on.
+/// A frame grid's tile as the engine keeps it: what the pass draws, stored
+/// straight (grid.wgsl says why), for the view's screen to lay
+/// ([`lay::GridLay`]; grid-on-the-engine ⓑ, 관제 2026-11-08 16:42) — never
+/// read back for the app to raise again (관제 11-05 14:02).
+pub(crate) struct GridPicture {
+    pub(crate) texture: wgpu::Texture,
+}
+
+impl GridPicture {
+    /// What every tile's picture is made in: what the app's tile pass is
+    /// compiled for before a tile is drawn ([`GridTile::for_pictures`]).
+    pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+    /// A clear picture `width` × `height` pixels — None, with the last
+    /// error, for a side of none or past what the device makes.
+    pub(crate) fn new(engine: &Engine, width: u32, height: u32) -> Option<Self> {
+        let most = engine.device.limits().max_texture_dimension_2d;
+        if width == 0 || height == 0 || width > most || height > most {
+            return fail(format!("a grid tile {width} × {height}: a side is 1 to {most} pixels"));
+        }
+        let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("grid tile"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::FORMAT,
+            // Drawn by the pass, laid by the screen, read for a fingerprint.
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        Some(Self { texture })
+    }
+}
+
+/// The atlas a stream's letters are read from: `bytes`, `width` across
+/// and `height` down, row by row — None for one of no side, and None with
+/// the last error for one past what the device makes or one its bytes do
+/// not match.
+///
+/// ↩️It was laid here from the words and their places (23c70b786): the
+/// tile store lays its atlas itself, as the C rasterizer read one
+/// (timeline_grid_tile_store.dart `_setWords`), and keeps its words as the
+/// app's bytes — so the engine takes that atlas, and one place lays it.
+pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -> Option<Option<wgpu::Texture>> {
+    if width == 0 || height == 0 {
+        return Some(None);
+    }
+    let most = engine.device.limits().max_texture_dimension_2d;
+    if width > most || height > most {
+        return fail(format!("a letters' atlas {width} × {height}: a side is 1 to {most} pixels"));
+    }
+    if bytes.len() as u64 != u64::from(width) * u64::from(height) {
+        return fail(format!("a letters' atlas {width} × {height} of {} bytes", bytes.len()));
+    }
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("grid atlas"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R8Uint,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    engine.queue.write_texture(
+        texture.as_image_copy(),
+        bytes,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width),
+            rows_per_image: Some(height),
+        },
+        size,
+    );
+    Some(Some(texture))
+}
+
+/// A frame grid's tile pass, one pipeline per texture format: compiled
+/// where the pass first runs on one, or ahead of it for a tile's picture
+/// ([`GridTile::for_pictures`]).
 pub(crate) struct GridTile {
     params: wgpu::Buffer,
     /// What the atlas binding holds for a stream with no letters.
@@ -81,7 +167,7 @@ fn shape_of(op: i32) -> Option<(usize, &'static [usize])> {
 /// have, one cut short, a letter with no atlas, a place or length past
 /// [`MOST_REACH`], or a corner below square or past [`MOST_RADIUS_Q9`].
 ///
-/// ⚠️Mine: a stream the C rasterizer would stop part-way through is refused
+/// ⚠️Mine: a stream the C rasterizer stopped part-way through is refused
 /// whole here — a pass cannot stop at an op — so nothing of it is drawn.
 fn fault_in(ops: &[i32], has_atlas: bool) -> Option<String> {
     let mut at = 0;
@@ -143,6 +229,18 @@ impl GridTile {
         }
     }
 
+    /// The pass with its pipeline for a tile's picture compiled where the
+    /// caller is, so that the first tile drawn compiles nothing: the app
+    /// makes it off the thread its frames are built on (🗣️관제 2026-11-10
+    /// 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접 하는 커널 컴파일
+    /// 0개」 — 🔬the row that first drew a tile waited 0.17 s for it at
+    /// launch on the Surface Pro 11, and 1.9–2.2 s where S5 opened).
+    pub(crate) fn for_pictures(engine: &Engine) -> Self {
+        let mut tile = Self::new(engine);
+        tile.pipeline(engine, GridPicture::FORMAT);
+        tile
+    }
+
     fn pipeline(
         &mut self,
         engine: &Engine,
@@ -157,7 +255,7 @@ impl GridTile {
         let body = include_str!("grid.wgsl").replace("__FORMAT__", token);
         let pipeline = pipeline(
             engine,
-            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body],
+            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, &body],
             "grid",
         );
         self.pipelines.push((format, pipeline.clone()));
@@ -165,9 +263,19 @@ impl GridTile {
     }
 
     /// Draws `ops` into `tile` over `background` (an RGBA word), the
-    /// letters from `atlas` (an `R8Uint` texture of coverages), and waits
-    /// for the GPU. Returns the wall time from submit to completion, in
-    /// nanoseconds; None, with the last error, for a stream it refuses.
+    /// letters from `atlas` (an `R8Uint` texture of coverages) — submitted,
+    /// not waited for: what reads the tile after comes after it on the same
+    /// queue, and the screen it is laid on ([`lay::GridLay::lay`]) is put up
+    /// once the GPU has finished all of it (`Engine::done_then`), as a read
+    /// back waits for itself (`Engine::read_texture`). None, with the last
+    /// error, for a stream it refuses. ↩️The lay waited before the screen
+    /// was shown, on the UI thread, till 2026-11-12
+    /// (the-grid-lay-waits-on-the-ui-thread).
+    ///
+    /// ↩️It waited for the GPU after each tile: 🔬a zoom across S5_BA's cut
+    /// 352 draws some 16 tiles a frame, in the row's paint, and the UI
+    /// thread's build stood at a median of 11.6 ms a frame of it against 3.1
+    /// with the rows drawing their own cells (main PC, profile, 11-09).
     pub(crate) fn run(
         &mut self,
         engine: &Engine,
@@ -175,7 +283,7 @@ impl GridTile {
         background: u32,
         ops: &[i32],
         atlas: Option<&wgpu::Texture>,
-    ) -> Option<u64> {
+    ) -> Option<()> {
         if let Some(fault) = fault_in(ops, atlas.is_some()) {
             return fail(fault);
         }
@@ -201,13 +309,7 @@ impl GridTile {
             .iter()
             .flat_map(|word| word.to_le_bytes())
             .collect();
-        let stream = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("grid ops"),
-                contents: &words,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let stream = engine.filled("grid ops", &words, wgpu::BufferUsages::STORAGE);
         let atlas_view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
         let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
         let mut bound = whole(&[(0, &self.params), (1, &stream)]);
@@ -232,9 +334,7 @@ impl GridTile {
                 groups,
             }],
         );
-        let start = Instant::now();
         engine.queue.submit([encoder.finish()]);
-        engine.wait()?;
-        Some(start.elapsed().as_nanos() as u64)
+        Some(())
     }
 }

@@ -1,4 +1,5 @@
 // ANOTHER TRACK'S S ROW ANSWERS ITS BUTTONS (other-track-s-row-fx-and-mixer).
+// ↩️F-577: its speaker is a mute toggle and its Total a bar beside it.
 //
 // The storyboard rail carries every track's S rows, and the eye and the
 // sheet switch reached all of them. The fx button and the speaker did not:
@@ -25,7 +26,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
 
@@ -57,34 +57,27 @@ void main() {
     );
   });
 
-  testWidgets('its speaker opens its mixer, and the mixer mutes it and sets '
-      'its Total', (tester) async {
+  // F-577: the speaker is a mute toggle and the Total is the bar beside it.
+  // ↩️The speaker opened a mixer holding both.
+  testWidgets('its speaker mutes it, and its Total bar sets its Total', (
+    tester,
+  ) async {
     final s = await _rail(tester);
 
     await tester.tap(
       find.named('storyboard-layer-mute-${_other.value}'),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('se-layer-mixer')),
-      findsOneWidget,
-      reason: 'it opened blank',
-    );
-
-    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
-    await tester.pumpAndSettle();
-
     expect(_row(s, _other).muted, isTrue);
 
     // I-145: the bar writes through the lane's own verb, which finds the
     // row on any track.
-    tester
-        .widget<FieldSlider>(
-          find.byKey(const ValueKey<String>('se-mixer-total-volume')),
-        )
-        .onChangeEnd!(0.5);
+    await tester.drag(
+      find.named('storyboard-layer-total-volume-${_other.value}'),
+      const Offset(-20, 0),
+    );
     await tester.pumpAndSettle();
-    expect(_row(s, _other).seSound.totalVolume, 0.5);
+    expect(_row(s, _other).seSound.totalVolume, lessThan(1.0));
   });
 }
 

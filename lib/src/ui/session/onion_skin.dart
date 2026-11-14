@@ -10,7 +10,7 @@ import '../../models/onion_skin_settings.dart';
 import '../../models/project.dart';
 import '../../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../../services/cut_frame_composite_plan.dart'
-    show CutFrameCompositeGhost, chainBlocksOf, chainWornBy;
+    show CutFrameCompositeGhost, chainBlocksOf, chainWornAs, chainWornBy;
 import '../../services/onion_skin_plan.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
@@ -273,8 +273,9 @@ class OnionSkin {
                 // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the
                 // screen shows. It used to carry NO chain, which read as a
                 // design ("editing scaffolding") but was really the Colors
-                // tint owning the paint's one color-filter slot — the fold
-                // in `resolveCompositeEffectPaint` retired that constraint.
+                // tint owning the paint's one color-filter slot — folding
+                // the tint into the chain's matrix (`onionTintColorMatrix`)
+                // retired that constraint.
                 //
                 // Sampled at the GHOST's own frame: the chain the composite
                 // lays the row with ([chainWornBy]). ↩️A carrier rule of its
@@ -284,6 +285,7 @@ class OnionSkin {
                   effects: chainWornBy(cut, layer),
                   frameIndex: plan.frameIndex,
                   blocks: chainBlocksOf(cut, layer),
+                  worn: chainWornAs(cut, layer),
                 ),
               ),
           ],

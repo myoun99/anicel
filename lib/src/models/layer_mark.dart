@@ -17,16 +17,33 @@ import 'layer_process.dart';
 /// process/revise pair through the chosen palette, so switching palettes
 /// repaints every mark in the project without touching a single layer.
 class LayerMark {
-  const LayerMark({required this.process, this.revise, this.take = firstTake});
+  /// A drawing stage's label, its correction (null for 소재) after it.
+  ///
+  /// ⛔Not a 用紙 label — that one is [LayerMark.paper], which cannot be
+  /// written without saying what it is the paper of.
+  const LayerMark({
+    required this.process,
+    LayerRevise? revise,
+    this.take = firstTake,
+  }) : step = revise,
+       assert(process != LayerProcess.paper, 'a 用紙 label is LayerMark.paper');
+
+  /// A 用紙 label: the paper of [of], a stage or a correction — 🗣️F-578
+  /// (유저 2026-11-10): 「용지-레이아웃, 용지-러프원, 용지-작감 이런식으로 …
+  /// 용지는 용지-소재가 아니라 용지-LO 이런식으로」. There is no 用紙 소재.
+  /// ↩️用紙 was a label of its own, with no second axis (유저 2026-08-27:
+  /// 「용지는 수정공정 존재 안하도록」).
+  const LayerMark.paper(LabelStep of, {this.take = firstTake})
+    : process = LayerProcess.paper,
+      step = of,
+      assert(of != LayerProcess.paper, 'a paper is the paper of a stage');
+
+  const LayerMark._of(this.process, this.step, this.take);
 
   /// The same label with a different take — the take chip's one writer.
-  LayerMark withTake(int next) =>
-      LayerMark(process: process, revise: revise, take: next);
+  LayerMark withTake(int next) => LayerMark._of(process, step, next);
 
-  const LayerMark._none()
-    : process = null,
-      revise = null,
-      take = firstTake;
+  const LayerMark._none() : process = null, step = null, take = firstTake;
 
   /// 리테이크를 안 한 상태 = 1판. 유저 2026-08-27: 「테이크는 **기본값 T1**」.
   ///
@@ -55,16 +72,19 @@ class LayerMark {
   /// solo lists and passes a row by (F-553, 유저 2026-11-04: 「색 라벨로만
   /// 보고 인식하도록. 테이크 다른거는 신경쓰지않음. 그거는 테이크 레전드버튼
   /// 만들어서 별도구현」).
-  LayerMark get colorLabel =>
-      isNone ? none : LayerMark(process: process, revise: revise);
+  LayerMark get colorLabel => isNone ? none : LayerMark._of(process, step, firstTake);
 
   /// The label a row of [kind] made from nothing is born with (F-76, 유저
   /// 2026-09-12): 「콘티레이어 생성하면 색라벨 콘티 소재가 되도록. 이미지
   /// 레이어는 미술 소재, 애니메이션 레이어는 LO 소재」 — the kind's stage, as its
   /// 소재. The kinds the user did not name are born unlabelled.
+  ///
+  /// 🗣️F-578 (유저 2026-11-10): an image row is born LO 소재 like an
+  /// animation row — 美術 is gone, its pictures being the layout artist's
+  /// ([LayerProcess]). ↩️It was born 美術 소재 (F-76).
   static LayerMark bornOfKind(LayerKind kind) => switch (kind) {
     LayerKind.storyboard => const LayerMark(process: LayerProcess.conte),
-    LayerKind.image => const LayerMark(process: LayerProcess.art),
+    LayerKind.image ||
     LayerKind.animation => const LayerMark(process: LayerProcess.layout),
     LayerKind.folder ||
     LayerKind.se ||
@@ -77,11 +97,19 @@ class LayerMark {
   /// Which stage this layer is. Null only for [none].
   final LayerProcess? process;
 
-  /// Whose correction it is. Null means 소재 (上がり) — the stage's own
-  /// delivered work, which is the FIRST entry in the popover rather than a
-  /// 「수정 없음」 (유저 2026-08-27: 「제일 위에 수정없음말고 上がり 라고 하자.
-  /// 그 공정의 소재」).
-  final LayerRevise? revise;
+  /// The label's second axis ([LabelStep]): whose correction it is, or for
+  /// a 用紙 label what it is the paper of. Null means 소재 (上がり) — the
+  /// stage's own delivered work, which is the FIRST entry in the popover
+  /// rather than a 「수정 없음」 (유저 2026-08-27: 「제일 위에 수정없음말고
+  /// 上がり 라고 하자. 그 공정의 소재」).
+  final LabelStep? step;
+
+  /// Whose correction it is — null for 소재, and for a 用紙 label that is
+  /// the paper of a stage.
+  LayerRevise? get revise => switch (step) {
+    final LayerRevise correction => correction,
+    _ => null,
+  };
 
   /// 리테이크 번호 1–9. ⚠️언제나 값이 있다 — 기본은 [firstTake].
   ///
@@ -116,7 +144,7 @@ class LayerMark {
   /// Japanese vertical writing reads right to left (유저 2026-08-27). The
   /// widget does that with two columns; this getter only says what text.
   String get processText => process?.abbreviation ?? '';
-  String get reviseText => revise?.abbreviation ?? '';
+  String get stepText => step?.abbreviation ?? '';
 
   /// The unabbreviated reading, for tooltips and the flyout.
   String get displayName {
@@ -124,10 +152,10 @@ class LayerMark {
     if (stage == null) {
       return '';
     }
-    final correction = revise;
-    return correction == null
+    final second = step;
+    return second == null
         ? stage.displayName
-        : '${stage.displayName} ${correction.displayName}';
+        : '${stage.displayName} ${second.displayName}';
   }
 
   /// The stable slug this mark is addressed by — flyout item keys, filter
@@ -135,14 +163,19 @@ class LayerMark {
   /// call site: three surfaces spell the same key and a fourth is coming.
   String get keySlug => isNone
       ? 'none'
-      : revise == null
+      : step == null
       ? process!.jsonValue
-      : '${process!.jsonValue}-${revise!.jsonValue}';
+      : '${process!.jsonValue}-${step!.jsonValue}';
 
-  /// A stable order for lists of marks — 공정 순서, 그 안에서 수정 순서.
-  /// 소재(수정 없음)가 자기 공정의 맨 앞에 온다.
-  int get sortKey =>
-      isNone ? -1 : process!.index * 100 + (revise == null ? 0 : revise!.index + 1);
+  /// A stable order for lists of marks — 공정 순서, 그 안에서 그 공정의
+  /// 하위 메뉴 순서([labelsOf]). 소재(수정 없음)가 자기 공정의 맨 앞에 온다.
+  int get sortKey {
+    if (isNone) {
+      return -1;
+    }
+    final place = labelsOf(process!).indexOf(colorLabel);
+    return process!.index * 100 + (place < 0 ? 99 : place);
+  }
 
   /// ⚠️「라벨 없음」 은 공정이 없고 테이크도 1판일 때다 — 테이크만 올린 행은
   /// 저장돼야 한다.
@@ -150,7 +183,11 @@ class LayerMark {
       ? 'none'
       : <String, Object?>{
           if (process != null) 'process': process!.jsonValue,
-          if (revise != null) 'revise': revise!.jsonValue,
+          ...switch (step) {
+            null => const {},
+            final LayerRevise correction => {'revise': correction.jsonValue},
+            final LayerProcess stage => {'paperOf': stage.jsonValue},
+          },
           if (take != firstTake) 'take': take,
         };
 
@@ -160,20 +197,30 @@ class LayerMark {
   /// invent data. A project opened from before this lands simply has no
   /// labels, which is honest and is what the user's own project has anyway
   /// (there is no production data to protect).
+  ///
+  /// A 用紙 label that names nothing it is the paper of is no label: this
+  /// build writes none such (v35 — `anicelFormatVersion`).
   static LayerMark fromJson(Object? json) {
     if (json is Map) {
-      final take = json['take'];
+      final rawTake = json['take'];
+      // ⚠️Clamped by the choices rather than trusted: a number outside
+      // 1–9 would draw a chip the popover can never unset.
+      final take = rawTake is int && takeChoices.contains(rawTake)
+          ? rawTake
+          : firstTake;
       final process = LayerProcess.fromJson(json['process']);
-      if (process == null && take is! int) {
+      final revise = LayerRevise.fromJson(json['revise']);
+      if (process == LayerProcess.paper) {
+        return switch (revise ?? LayerProcess.fromJson(json['paperOf'])) {
+          final LabelStep of when of != LayerProcess.paper =>
+            LayerMark.paper(of, take: take),
+          _ => none,
+        };
+      }
+      if (process == null && rawTake is! int) {
         return none;
       }
-      return LayerMark(
-        process: process,
-        revise: LayerRevise.fromJson(json['revise']),
-        // ⚠️Clamped by the choices rather than trusted: a number outside
-        // 1–9 would draw a chip the popover can never unset.
-        take: take is int && takeChoices.contains(take) ? take : firstTake,
-      );
+      return LayerMark(process: process, revise: revise, take: take);
     }
     return none;
   }
@@ -182,11 +229,11 @@ class LayerMark {
   bool operator ==(Object other) =>
       other is LayerMark &&
       other.process == process &&
-      other.revise == revise &&
+      other.step == step &&
       other.take == take;
 
   @override
-  int get hashCode => Object.hash(process, revise, take);
+  int get hashCode => Object.hash(process, step, take);
 
   @override
   String toString() => isNone ? 'LayerMark.none' : 'LayerMark($displayName)';
@@ -205,12 +252,34 @@ class LayerMark {
 /// 2026-09-03).
 List<LayerMark> everyLayerMark() => [
   LayerMark.none,
-  for (final process in LayerProcess.values) ...[
+  for (final process in LayerProcess.values) ...labelsOf(process),
+];
+
+/// The labels [process] offers, in the order its second level lists them:
+/// its 소재 and then the corrections it references ([revisesFor]) — or, for
+/// 用紙, the paper of every other stage and then of every correction.
+///
+/// 🗣️F-578 (유저 2026-11-10): 「용지라벨은 권한대로. 모든 공정을 넣음. 앞으로
+/// 발생하는것도.」 — built from the two lists, so a stage or a correction
+/// added later is a paper too. There is no 用紙 소재, and 용지-LO comes first
+/// where a 소재 would (「용지는 용지-소재가 아니라 용지-LO 이런식으로」).
+List<LayerMark> labelsOf(LayerProcess process) => switch (process) {
+  LayerProcess.paper => [
+    for (final stage in [
+      LayerProcess.layout,
+      for (final other in LayerProcess.values)
+        if (other != LayerProcess.paper && other != LayerProcess.layout)
+          other,
+    ])
+      LayerMark.paper(stage),
+    for (final revise in revisesFor(process)) LayerMark.paper(revise),
+  ],
+  _ => [
     LayerMark(process: process),
     for (final revise in revisesFor(process))
       LayerMark(process: process, revise: revise),
   ],
-];
+};
 
 /// [staff] — who does each stage's work, by its label's [LayerMark.keySlug]
 /// — with [mark]'s name set to [name]; an empty one drops the entry, so the
@@ -241,9 +310,10 @@ enum StaffHolder {
 }
 
 /// Who keeps [process]'s staff — null for 用紙, which is nobody's work
-/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」), and for 美術
-/// (유저 2026-10-28, F-291: 「컷 설정의 미술 항목 전부 삭제. 작업자나
-/// 연출이나 포함해서 미술이란 항목 통째로. 필요없음」). The labels keep both.
+/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」). The label keeps it.
+/// ↩️美術 had none either (유저 2026-10-28, F-291: 「컷 설정의 미술 항목 전부
+/// 삭제. 작업자나 연출이나 포함해서 미술이란 항목 통째로. 필요없음」) until
+/// F-578 took 美術 out of the labels too.
 ///
 /// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
 /// 공통적인 부분인 제목/화수/회사로고/표지그림등만 남겨두고, 스태프는 콘티만
@@ -251,7 +321,7 @@ enum StaffHolder {
 /// stage's name and a cut's own name stood over it (09-25: 작품 설정에는
 /// 기본값, 컷 설정에는 컷별 이름).
 StaffHolder? staffHolderOf(LayerProcess process) => switch (process) {
-  LayerProcess.paper || LayerProcess.art => null,
+  LayerProcess.paper => null,
   LayerProcess.conte => StaffHolder.work,
   _ => StaffHolder.cut,
 };

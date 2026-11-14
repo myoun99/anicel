@@ -8,21 +8,18 @@ import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../models/transition_geometry.dart' show TransitionVeil;
-import '../../services/se_name_tag_plan.dart';
-import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../canvas/display_resample.dart';
 import '../../services/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
 import '../canvas/stage_planes_painter.dart' show paintStagePlane;
 import '../canvas/viewport_canvas_transform.dart';
-import '../text/se_name_tag_paint.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 import 'transition_veil_paint.dart';
 
 /// Paints what a frame lays around its picture inside the canvas panel
 /// viewport — the paper, the stage's apron, the letterbox past a camera's
-/// frame, and the names and veils over it. The picture is never this
+/// frame, and the veils over it. The picture is never this
 /// painter's: on screen it is the canvas's own rows (`CameraShot`,
 /// `CanvasTrackStackView`), and in a film the cut drawn through its camera
 /// (`ExportFrameRenderer._stackUnit`) — each laid between a painter of what
@@ -61,7 +58,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     this.checkersAbsentPlanes = false,
     this.paintPaper = true,
     this.paintLetterbox = true,
-    this.seNameTags = const [],
     this.devicePixelRatio = 1.0,
   }) : assert(
          cameraPose == null || cameraFrameSize != null,
@@ -94,8 +90,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// the backdrop — never a painted-on wash).
   final List<TransitionVeil> veils;
 
-  /// How thin the cut's own contribution is laid over the stage — its names
-  /// and veils here, its picture beside them. A stacked track above the
+  /// How thin the cut's own contribution is laid over the stage — its veils
+  /// here, its picture beside them. A stacked track above the
   /// stage fades through this, so that fading away it reveals the stage;
   /// the stage's own fade takes its paper and apron along, and is laid
   /// around the whole unit by its caller. 1 costs nothing.
@@ -149,14 +145,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// hop the picture by a sub-pixel. Export passes no [viewport], so the
   /// default never reaches pixels there.
   final double devicePixelRatio;
-
-  /// The SE rows' on-canvas NAME TAGS at this frame (R5b, §6-z15), drawn
-  /// directly over the composite — never baked into it (the camera's
-  /// rule): the text comes from the SE frames themselves, so a rename shows
-  /// instantly without invalidating one cached composite. Each stands in
-  /// its shot ([ResolvedSeNameTag.shot]), so through the camera projection
-  /// it holds its place in the frame (I-67-Q1).
-  final List<ResolvedSeNameTag> seNameTags;
 
   void _paintPaper(
     Canvas canvas,
@@ -214,29 +202,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
     }
     final resolvedViewport = viewport;
-    if (resolvedViewport != null) {
-      applyViewportTransform(
-        canvas,
-        resolvedViewport,
-        devicePixelRatio: devicePixelRatio,
-      );
-    }
+    final frameRect = _viewThrough(canvas);
     final canvasRect = canvasSize.canvasRect;
-
-    Rect? frameRect;
-    if (pose != null) {
-      // The camera's output frame takes the canvas's place in viewport
-      // space; the projection inside it matches
-      // CameraFrameRenderService.renderThroughCamera.
-      final frameSize = cameraFrameSize!;
-      frameRect = Rect.fromLTWH(
-        0,
-        0,
-        frameSize.width.toDouble(),
-        frameSize.height.toDouble(),
-      );
-      canvas.clipRect(frameRect);
-    }
     // The cut's UNIT — what its fade thins and its transition's screen
     // covers: the camera's frame through the camera; seen through none, as
     // far as its pasteboard reaches — the plane and what is drawn on it
@@ -297,36 +264,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         screen: screen,
       );
     }
-    if (seNameTags.isNotEmpty) {
-      // The tags belong to the cut's own contribution, so a stacked UPPER
-      // track thins them with its picture: that track fades through
-      // [imageOpacity] (only the stage's fade, laid around the whole unit,
-      // carries the tags for free), and an annotation left fully opaque
-      // over a fading picture reads as a bug.
-      final thinning = imageOpacity < 1;
-      if (thinning) {
-        // Bounded by what is clipped already — through the camera, its
-        // frame. ↩️It was bounded by [unit], which is in the frame's space,
-        // here under the camera's projection in the canvas's: a camera that
-        // looked away from the canvas's corner cut the thinned names away
-        // whole (🧪10-13: 15,008 pixels at 1, none at a half).
-        canvas.saveLayer(null, Paint()..color = alphaOnly(imageOpacity));
-      }
-      paintSeNameTags(
-        canvas,
-        tags: seNameTags,
-        canvasSize: canvasSize,
-        // Device pixels per canvas pixel under the view and, through the
-        // camera, its projection — whose turn keeps scale, so its zoom is
-        // the whole of it (as `renderThroughCamera` reads it).
-        rasterScale:
-            displayScaleOf(resolvedViewport?.zoom ?? 1, devicePixelRatio) *
-            (pose?.zoom.abs() ?? 1),
-      );
-      if (thinning) {
-        canvas.restore();
-      }
-    }
     if (pose != null) {
       canvas.restore();
     }
@@ -335,6 +272,34 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // stage thins it by its own weight, as it thins its picture.
     paintTransitionVeils(canvas, unit, veils, thinnedBy: imageOpacity);
     canvas.restore();
+  }
+
+  /// Puts the view on [canvas] — the viewport's transform and, through a
+  /// camera, its output frame's clip — and answers that frame: what [paint]
+  /// lays the cut's unit in.
+  Rect? _viewThrough(Canvas canvas) {
+    if (viewport case final resolvedViewport?) {
+      applyViewportTransform(
+        canvas,
+        resolvedViewport,
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (cameraPose == null) {
+      return null;
+    }
+    // The camera's output frame takes the canvas's place in viewport
+    // space; the projection inside it is the camera's own
+    // ([cameraProjectionMatrix]).
+    final frameSize = cameraFrameSize!;
+    final frameRect = Rect.fromLTWH(
+      0,
+      0,
+      frameSize.width.toDouble(),
+      frameSize.height.toDouble(),
+    );
+    canvas.clipRect(frameRect);
+    return frameRect;
   }
 
   @override
@@ -356,6 +321,5 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // The pan-phase snap reads it — a monitor move must repaint, not
     // keep the old phase.
     devicePixelRatio,
-    seNameTagSignature(seNameTags),
   );
 }

@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/frozen_collections.dart';
 import 'cut_id.dart';
 
 /// 동기컷 — ONE CUT SHOWN IN SEVERAL TIMELINES (I-150-Q3).
@@ -18,7 +19,7 @@ import 'cut_id.dart';
 /// (`syncedCopy`). At most one of them stands in each timeline.
 class CutSync {
   CutSync({required this.id, required List<CutId> cuts})
-    : cuts = List.unmodifiable(cuts) {
+    : cuts = frozenList(cuts) {
     if (cuts.length < 2) {
       throw ArgumentError.value(cuts, 'cuts', 'A sync holds two cuts or more.');
     }
@@ -33,7 +34,7 @@ class CutSync {
   CutId get canonical => cuts.first;
 
   CutSync copyWith({List<CutId>? cuts}) =>
-      CutSync(id: id, cuts: cuts ?? this.cuts);
+      CutSync(id: id, cuts: cuts ?? ownFrozen(this.cuts));
 
   Map<String, dynamic> toJson() => {
     'id': id,

@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../../models/app_accents.dart';
-import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
+import '../widgets/face_ink_well.dart';
 import '../input/control_press_claim.dart';
 
 /// A compact swatch palette (hue sweep + the historical teal first).
@@ -54,30 +55,23 @@ class AccentSettingsRow extends StatelessWidget {
               for (final preset in _presetAccents)
                 ControlPressClaim(
                   onPressed: () => pick(preset),
-                  child: InkWell(
-                    mouseCursor: AppCursors.press,
+                  child: FaceInkWell(
                     key: ValueKey<String>(
                       '$_keyPrefix-preset-'
                       '${preset.toARGB32().toRadixString(16)}',
                     ),
-                    onTap: silentPress(() => pick(preset)),
-                    customBorder: AppShapes.container(AppShapes.wellRadius),
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: ShapeDecoration(
-                        color: preset,
-                        shape: AppShapes.container(
-                          AppShapes.wellRadius,
-                          side: BorderSide(
-                            color: preset == settings.accent
-                                ? colorScheme.onSurface
-                                : colorScheme.outlineVariant,
-                            width: preset == settings.accent ? 2 : 1,
-                          ),
-                        ),
+                    edge: AppShapes.container(
+                      AppShapes.wellRadius,
+                      side: BorderSide(
+                        color: preset == settings.accent
+                            ? colorScheme.onSurface
+                            : colorScheme.outlineVariant,
+                        width: preset == settings.accent ? 2 : 1,
                       ),
                     ),
+                    fill: preset,
+                    onTap: silentPress(() => pick(preset)),
+                    child: const SizedBox.square(dimension: 24),
                   ),
                 ),
             ],

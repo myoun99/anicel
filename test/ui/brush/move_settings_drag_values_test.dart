@@ -691,6 +691,10 @@ void main() {
       'at the end; the flips a line under 회전; 초기화 · 적용 end the '
       'settings', (tester) async {
     // In 메쉬, where every row stands (F-478-Q1).
+    // ⚠️Tall enough for every line to be built: 메쉬 lists its grid's
+    // points between the grid's two rows and the last line (F-586).
+    await tester.binding.setSurfaceSize(const Size(800, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpMoveSettings(
       tester,
       applied: [],

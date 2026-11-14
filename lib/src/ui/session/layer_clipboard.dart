@@ -483,6 +483,14 @@ class LayerClipboard implements BringsMedia {
       minted: pasted.minted,
       pictureOf: (source) => copy.pictures[source],
     );
+    // And from them, the panels its 겸용 copies were born showing them in
+    // (🗣️I-120-Q29).
+    givePanelsTheirPictures(
+      project: _project,
+      store: _renderCaches.brushFrameStore,
+      row: (cut: cut, row: pasted.layerId),
+      panels: pasted.picturedPanels,
+    );
     carryConteHandwriting(
       store: _renderCaches.conteInkRowStore,
       cut: cut.id,

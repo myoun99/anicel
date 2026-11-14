@@ -200,6 +200,11 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// ⚠️Not every slider is integral and this does not claim they are: brush
   /// SIZE goes down to 0.7, the pressure curve is a gamma, and the transform
   /// tool's scale is the exception 유저 named in the same sentence.
+  ///
+  /// [percents] is how far the bar reaches, in whole per cent — 100 for an
+  /// opacity. 🗣️F-577 (유저 2026-11-10: 「총 볼륨 막대 … 불투명도막대랑 완전
+  /// 동일한 디자인/크기」): an S row's Total is this very bar, to its 200
+  /// (`SeSound.maxVolume`).
   const FieldSlider.opacity({
     super.key,
     this.name,
@@ -216,6 +221,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.upright = false,
     this.readout,
     this.stepsRun,
+    int percents = 100,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
@@ -230,8 +236,8 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        ),
        min = 0,
        fillOrigin = null,
-       max = 1,
-       divisions = 100,
+       max = percents / 100,
+       divisions = percents,
        stops = null,
        levels = null,
        floor = null,
@@ -469,13 +475,13 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// field ran the whole of it, so the frame was the field's (유저
   /// 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데. 다른박스 마찬가지
   /// 통일」), until the field moved into the pad (I-134).
-  static ShapeDecoration frameOf(
+  static SuperellipseFace frameOf(
     double height, {
     required bool enabled,
     bool typed = false,
-  }) => ShapeDecoration(
+  }) => SuperellipseFace(
     color: dimmedIfDisabled(AppColors.surface, enabled: enabled),
-    shape: AppShapes.container(
+    edge: AppShapes.container(
       radiusFor(height),
       side: BorderSide(
         color: typed
@@ -849,6 +855,7 @@ class _FieldSliderState extends State<FieldSlider> {
           t: t,
           originT: _originFraction,
           accent: _asDrawn(accent),
+          corner: _radius,
         )
       : _FieldSliderCeilingPainter(
           levels: [
@@ -857,6 +864,7 @@ class _FieldSliderState extends State<FieldSlider> {
           ],
           t: t,
           edge: _asDrawn(accent),
+          corner: _radius,
         );
 
   /// [color] the way this bar draws it — dimmed when the bar is disabled.
@@ -1639,7 +1647,7 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
           tooltip: AppText.strings.valueTypeIn,
           onPressed: _enabled ? _type : null,
           focus: keyboardFocus,
-          hoverShape: AppShapes.control(sizes.height),
+          shape: AppShapes.control(sizes.height),
           child: Center(
             child: Text(
               said,
@@ -1657,16 +1665,35 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
   }
 }
 
+/// The track's shape over [size], which what the track fills is cut by —
+/// a fill reaching the corner drawn as the corner itself
+/// ([SuperellipseCut.drawRSuperellipseCut]).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림 안의
+/// 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」, which named
+/// this bar: 「값 막대의 값 칠은 축에 맞는 사각형으로 자르고(정확) 그 안에 초타원
+/// 채움」): a bar stands in still regions — a rail row, a dock — so what it
+/// fills is not clipped to its corner ([SuperellipseClip]). ↩️The track
+/// clipped the rectangles these painters drew.
+RSuperellipse _trackIn(Size size, double corner) => AppShapes.container(corner)
+    .borderRadius
+    .resolve(null)
+    .toRSuperellipse(Offset.zero & size);
+
 class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
   const _FieldSliderTrackPainter({
     required this.t,
     required this.accent,
+    required this.corner,
     this.axis = Axis.horizontal,
     this.originT = 0.0,
   });
 
   /// Vertical fills UPWARD from the bottom — a fader's direction.
   final Axis axis;
+
+  /// The track's corner ([FieldSlider.radiusFor]).
+  final double corner;
 
   final double t;
 
@@ -1696,22 +1723,19 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
     // mark the position because a wash that pale did not read as an end. A
     // solid fill IS the position, so keeping the line would be marking the
     // same fact twice.
-    final fill = Paint()..color = accent;
-    if (far > near) {
-      final extent = far - near;
-      canvas.drawRect(
-        rectAlong(
-          axis,
-          along: (from: near, to: near + extent),
-          across: (from: 0, to: extentAcross(axis, size)),
-        ),
-        fill,
-      );
-    }
+    canvas.drawRSuperellipseCut(
+      _trackIn(size, corner),
+      rectAlong(
+        axis,
+        along: (from: near, to: far),
+        across: (from: 0, to: extentAcross(axis, size)),
+      ),
+      Paint()..color = accent,
+    );
   }
 
   @override
-  Object get props => (t, originT, axis, accent);
+  Object get props => (t, originT, axis, accent, corner);
 }
 
 /// A [FieldSlider.ceiling]'s track: its levels filled from the left, a
@@ -1721,7 +1745,11 @@ class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
     required this.levels,
     required this.t,
     required this.edge,
+    required this.corner,
   });
+
+  /// The track's corner ([FieldSlider.radiusFor]).
+  final double corner;
 
   /// Where each level ends along the track, 0..1, and its colour.
   final List<({double t, Color color})> levels;
@@ -1737,39 +1765,46 @@ class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final track = _trackIn(size, corner);
     for (final level in levels) {
-      if (level.t > 0) {
-        canvas.drawRect(
-          Rect.fromLTWH(0, 0, size.width * level.t, size.height),
-          Paint()..color = level.color,
-        );
-      }
+      canvas.drawRSuperellipseCut(
+        track,
+        Rect.fromLTWH(0, 0, size.width * level.t, size.height),
+        Paint()..color = level.color,
+      );
     }
+    // The outline as its four sides, each the track's shape where it lies —
+    // a stroke of the rectangle, cut by the corner as the fill is.
     final reach = math.max(size.width * t, edgeWidth);
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, reach, size.height).deflate(edgeWidth / 2),
-      Paint()
-        ..color = edge
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = edgeWidth,
-    );
+    const w = edgeWidth;
+    final h = size.height;
+    final outline = Paint()..color = edge;
+    for (final side in [
+      Rect.fromLTRB(0, 0, reach, w),
+      Rect.fromLTRB(0, h - w, reach, h),
+      Rect.fromLTRB(0, w, math.min(w, reach), h - w),
+      Rect.fromLTRB(math.max(w, reach - w), w, reach, h - w),
+    ]) {
+      canvas.drawRSuperellipseCut(track, side, outline);
+    }
   }
 
   // A list compares by identity; its levels are records, so by value.
   @override
-  Object get props => (ByList(levels), t, edge);
+  Object get props => (ByList(levels), t, edge, corner);
 }
 
 /// The bar's TRACK, as one box: its [frame] under everything, its [fill]
-/// inside the frame's corner under the writing, and the writing — the
-/// order a [DecoratedBox], a [SuperellipseClip] and a [CustomPaint] painted
-/// them in, and the clip's exact corner for a pointer.
+/// inside the frame's corner under the writing — cut by the corner, not
+/// clipped to it ([_trackIn]) — and the writing, with the exact corner for
+/// a pointer.
 ///
 /// 🪶WHY (card frame-panels-build-in-one-frame, 2026-10-25): the track was
-/// those three and a probe of its length — four elements and four render
-/// objects for one painted bar, made again for every bar a tab reopens
-/// (fourteen on each of the timeline's tabs). It IS the clip, so the
-/// corner is the clip's code and not a second spelling of it.
+/// a [DecoratedBox], a clip and a [CustomPaint] and a probe of its length —
+/// four elements and four render objects for one painted bar, made again
+/// for every bar a tab reopens (fourteen on each of the timeline's tabs).
+/// It IS the shape a pointer meets ([SuperellipseHit]), so the corner is
+/// that code and not a second spelling of it.
 ///
 /// It also hands the bar's length along its axis to the gesture math as the
 /// bar is laid out — the one thing the bar needed a `LayoutBuilder` for.
@@ -1784,7 +1819,7 @@ class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
 /// pick's heaviest frame spent ~4 ms there. This lays the bar out exactly
 /// as the builder did (its constraints, handed straight through) and asks
 /// for nothing when the bar is only repainted.
-class FieldSliderTrack extends SuperellipseClip {
+class FieldSliderTrack extends SuperellipseHit {
   const FieldSliderTrack({
     super.key,
     required this.axis,
@@ -1806,10 +1841,9 @@ class FieldSliderTrack extends SuperellipseClip {
   final ValueChanged<double> onExtent;
 
   @override
-  RenderSuperellipseClip createRenderObject(BuildContext context) =>
+  RenderSuperellipseHit createRenderObject(BuildContext context) =>
       RenderFieldSliderTrack(
         borderRadius: borderRadiusIn(context),
-        clipBehavior: clipBehavior,
         axis: axis,
         frame: frame,
         textDirection: Directionality.maybeOf(context),
@@ -1833,10 +1867,9 @@ class FieldSliderTrack extends SuperellipseClip {
 }
 
 /// [FieldSliderTrack]'s render object.
-class RenderFieldSliderTrack extends RenderSuperellipseClip {
+class RenderFieldSliderTrack extends RenderSuperellipseHit {
   RenderFieldSliderTrack({
     required super.borderRadius,
-    required super.clipBehavior,
     required Axis axis,
     required ShapeDecoration frame,
     required TextDirection? textDirection,
@@ -1911,19 +1944,13 @@ class RenderFieldSliderTrack extends RenderSuperellipseClip {
       offset,
       ImageConfiguration(size: size, textDirection: _textDirection),
     );
-    super.paint(context, offset);
-  }
-
-  @override
-  void paintInside(PaintingContext context, Offset offset) {
-    final canvas = context.canvas;
-    canvas.save();
+    final canvas = context.canvas..save();
     if (offset != Offset.zero) {
       canvas.translate(offset.dx, offset.dy);
     }
     _fill.paint(canvas, size);
     canvas.restore();
-    super.paintInside(context, offset);
+    super.paint(context, offset);
   }
 
   @override

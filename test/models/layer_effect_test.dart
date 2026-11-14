@@ -96,6 +96,7 @@ void main() {
               effects: [effect],
               frameIndex: 0,
               blocks: null,
+              worn: null,
             ),
             kind.changesNothingAtItsDefaults ? isEmpty : hasLength(1),
             reason: 'a fresh $kind',
@@ -151,6 +152,7 @@ void main() {
         ],
         frameIndex: 0,
         blocks: null,
+        worn: null,
       );
       expect(resolved, hasLength(1));
       expect(resolved.single.kind, EffectKind.blur);
@@ -161,7 +163,12 @@ void main() {
     test('a DISABLED effect resolves to nothing but keeps its keys', () {
       final disabled = blur(blurriness: 6).copyWith(enabled: false);
       expect(
-        resolveLayerEffectsAt(effects: [disabled], frameIndex: 0, blocks: null),
+        resolveLayerEffectsAt(
+          effects: [disabled],
+          frameIndex: 0,
+          blocks: null,
+          worn: null,
+        ),
         isEmpty,
       );
       expect(disabled.parameterOf('blurriness').value, 6);
@@ -177,6 +184,7 @@ void main() {
         effects: [wild],
         frameIndex: 0,
         blocks: null,
+        worn: null,
       );
       expect(resolved.single.parameter('brightness'), 100);
     });
@@ -197,7 +205,12 @@ void main() {
         },
       );
       expect(
-        resolveLayerEffectsAt(effects: [animated], frameIndex: 0, blocks: null),
+        resolveLayerEffectsAt(
+          effects: [animated],
+          frameIndex: 0,
+          blocks: null,
+          worn: null,
+        ),
         isEmpty,
         reason: 'sampled at its default at frame 0 — nothing to paint',
       );
@@ -206,6 +219,7 @@ void main() {
           effects: [animated],
           frameIndex: 5,
           blocks: null,
+          worn: null,
         ).single.parameter('blurriness'),
         5,
       );
@@ -219,7 +233,12 @@ void main() {
       );
       expect(
         resolvedEffectsSpreadPixels(
-          resolveLayerEffectsAt(effects: [colour], frameIndex: 0, blocks: null),
+          resolveLayerEffectsAt(
+            effects: [colour],
+            frameIndex: 0,
+            blocks: null,
+            worn: null,
+          ),
         ),
         isFalse,
       );
@@ -229,6 +248,7 @@ void main() {
             effects: [blur(blurriness: 3)],
             frameIndex: 0,
             blocks: null,
+            worn: null,
           ),
         ),
         isTrue,

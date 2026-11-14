@@ -26,7 +26,6 @@ mod tests;
 
 use std::time::Instant;
 
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
@@ -99,13 +98,7 @@ impl WavePeaks {
             .map(|pair| pair[0] as u32 | (*pair.get(1).unwrap_or(&0) as u32) << 16)
             .flat_map(|word| word.to_le_bytes())
             .collect();
-        let words = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("wave peaks"),
-                contents: &words,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let words = engine.filled("wave peaks", &words, wgpu::BufferUsages::STORAGE);
         Some(Self {
             words,
             lanes: lanes.len() as u32,
@@ -260,13 +253,7 @@ impl WaveTile {
             .flat_map(|x| edge_of(view, peaks.buckets, view.along0 as i64 + x))
             .flat_map(|word| word.to_le_bytes())
             .collect();
-        let edges = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("wave edges"),
-                contents: &edges,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let edges = engine.filled("wave edges", &edges, wgpu::BufferUsages::STORAGE);
         let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
         let mut bound = whole(&[(0, &self.params), (1, &peaks.words), (2, &edges)]);
         bound.push(wgpu::BindGroupEntry {

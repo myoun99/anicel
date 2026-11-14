@@ -120,6 +120,30 @@ void main() {
       );
       expect(_alphaAt(c, x: 1, y: 1), greaterThan(0));
     });
+
+    // R27: canvas sizes are per cut, and a cel takes a new size from its
+    // own cut's resize alone — laying another cut's cel on this canvas
+    // would crop it to a size that is not its own.
+    test('🚨a cel of ANOTHER size is never laid on the canvas: its session '
+        'seeds blank and the cel stays exactly as it was', () {
+      final c = coordinator();
+      final other = key('frame-other');
+      BrushFrameEditingCoordinator(
+        initialFrameKey: other,
+        frameStore: c.frameStore,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: const CanvasSize(width: 16, height: 16),
+          tileSize: 4,
+        ),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(sourceDabs: [_dab(x: 13, y: 13)]);
+      final kept = c.frameStore.bakedSurfaceOrNull(other)!;
+
+      c.selectFrame(other);
+
+      expect(c.activeSessionState.canvasState.currentSurface.tiles, isEmpty);
+      expect(identical(c.frameStore.bakedSurfaceOrNull(other), kept), isTrue);
+    });
   });
 }
 

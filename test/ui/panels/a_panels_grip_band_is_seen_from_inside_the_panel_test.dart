@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/grip_band.dart';
 
 import '../../helpers/app_shortcuts.dart';
+import '../../helpers/drawn_shapes.dart';
+import '../../helpers/grip_band_drawn.dart';
 
 const _window = Size(1600, 1000);
 const _shot = ValueKey<String>('the-whole-window');
@@ -89,8 +91,26 @@ int _distance(Color seen, Color ink) {
 Finder _gripOf(String tabId) =>
     find.byKey(ValueKey<String>('panel-grip-$tabId'));
 
-Finder _bandOf(String tabId) =>
-    find.descendant(of: _gripOf(tabId), matching: find.byType(ColoredBox));
+/// What [tabId]'s band paints, where the screen has it.
+List<DrawnShape> _bandOf(WidgetTester tester, String tabId) =>
+    gripBandDrawn(tester, ValueKey<String>('panel-grip-$tabId'));
+
+/// The one ink [tabId]'s band paints in — none while it is clear.
+List<Color> _inksOf(WidgetTester tester, String tabId) => [
+  for (final shape in _bandOf(tester, tabId)) shape.paint.color,
+];
+
+/// That [tabId]'s band lies in its grip — on the strip's edge, where the
+/// hand reaches for it.
+void _expectInItsGrip(WidgetTester tester, String tabId, String where) {
+  final band = _bandOf(tester, tabId).single.outline.getBounds();
+  final grip = tester.getRect(_gripOf(tabId)).inflate(0.5);
+  expect(
+    grip.contains(band.topLeft) && grip.contains(band.bottomRight),
+    isTrue,
+    reason: '$where: the band $band lies in its grip $grip',
+  );
+}
 
 /// The panel [tabId]'s tab lifts: its dock's whole box.
 Rect _panelOf(WidgetTester tester, String tabId) => tester.getRect(
@@ -101,7 +121,7 @@ Rect _panelOf(WidgetTester tester, String tabId) => tester.getRect(
 
 /// Every row of [tabId]'s band, as painted down the middle of it.
 Future<List<Color>> _bandRows(WidgetTester tester, String tabId) async {
-  final rect = tester.getRect(_bandOf(tabId));
+  final rect = _bandOf(tester, tabId).single.outline.getBounds();
   final data = await _pixels(tester);
   final x = rect.center.dx.round();
   return [
@@ -145,8 +165,8 @@ void main() {
     await mouse.moveTo(away);
     await tester.pump();
     expect(
-      tester.widget<ColoredBox>(_bandOf(tabId)).color,
-      Colors.transparent,
+      _inksOf(tester, tabId),
+      isEmpty,
       reason: '⛔premise ($where): nothing is near, and the band is clear',
     );
 
@@ -154,7 +174,8 @@ void main() {
     await tester.pump();
 
     final ink = GripBand.ink(nearby: true, hovered: false, active: false);
-    expect(tester.widget<ColoredBox>(_bandOf(tabId)).color, ink, reason: where);
+    expect(_inksOf(tester, tabId), [isSameColorAs(ink)], reason: where);
+    _expectInItsGrip(tester, tabId, where);
     final rows = await _bandRows(tester, tabId);
     expect(rows, hasLength(GripBand.rest.round()), reason: where);
     expect(
@@ -236,6 +257,7 @@ void main() {
     await tester.pump();
 
     final ink = GripBand.ink(nearby: true, hovered: true, active: false);
+    _expectInItsGrip(tester, tabId, 'under the pointer');
     final rows = await _bandRows(tester, tabId);
     expect(rows, hasLength(GripBand.reach.round()));
     expect(

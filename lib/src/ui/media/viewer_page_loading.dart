@@ -10,7 +10,8 @@ import 'package:flutter/material.dart';
 /// 콘티용지 출력탭에서 준비안된장이 그냥 흰색장인채로 보인다던가」 — and of
 /// the three surfaces it names, 「다 똑같은데」: ONE widget for the viewer, the
 /// export window's preview and the import window's, as their pages are one
-/// cache ([PageRasters]).
+/// cache ([PageRasters]). The canvas stands the same one while a frame it
+/// shows waits for the engine (`FrameWaitMark`, gpu-canonical-store-Q12).
 ///
 /// The app's spinner, as its progress window has it, and no words. It
 /// takes no press — what the hand does goes to the page under it — and

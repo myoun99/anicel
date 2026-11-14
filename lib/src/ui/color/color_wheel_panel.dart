@@ -45,24 +45,27 @@ class ColorWheelPanel extends StatefulWidget {
 
 class _ColorWheelPanelState extends State<ColorWheelPanel> {
   late HSVColor _hsv = HSVColor.fromColor(Color(widget.color));
-  int? _lastEmitted;
 
   @override
   void didUpdateWidget(covariant ColorWheelPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Re-derive HSV only for EXTERNAL color changes (preset swatches, brush
-    // switches); our own emissions round-trip through the parent and must
-    // not clobber the held hue.
-    if (widget.color != oldWidget.color && widget.color != _lastEmitted) {
+    // Re-derive HSV only for a colour the wheel does not already show: our
+    // own emissions round-trip through the parent as exactly that colour
+    // and must not clobber the held hue.
+    // ↩️F-571 (유저 2026-11-07): this compared with the wheel's LAST
+    // EMISSION, which outlived its round trip. The triangle's black corner
+    // is #000000 at every hue, so after one drag there, every black picked
+    // from the palette below (past another colour) was taken for the
+    // wheel's own echo, and the wheel stayed on the colour before it.
+    if (widget.color != oldWidget.color &&
+        widget.color != _hsv.toColor().toARGB32()) {
       _hsv = HSVColor.fromColor(Color(widget.color));
     }
   }
 
   void _setHsv(HSVColor hsv) {
     setState(() => _hsv = hsv);
-    final argb = hsv.toColor().toARGB32();
-    _lastEmitted = argb;
-    widget.onColorChanged(argb);
+    widget.onColorChanged(hsv.toColor().toARGB32());
   }
 
   @override

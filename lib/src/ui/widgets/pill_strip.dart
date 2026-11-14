@@ -6,6 +6,7 @@ import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import 'app_tooltip.dart';
 import 'ellipsis_text.dart';
+import 'face_ink_well.dart';
 import 'field_slider.dart' show FieldSlider;
 
 const _pillPadding = EdgeInsets.symmetric(horizontal: 7, vertical: 2);
@@ -129,7 +130,7 @@ class PillStrip extends StatelessWidget {
       context,
       DefaultTextStyle.of(context).style.merge(Pill._wordStyleOf(theme)),
     );
-    var width = _outlineOf(theme).padding.horizontal;
+    var width = _outlineOf(theme).dimensions.horizontal;
     for (final (index, label) in labels.indexed) {
       width +=
           _pillPadding.horizontal +
@@ -140,12 +141,11 @@ class PillStrip extends StatelessWidget {
   }
 
   /// The outline an across or down strip stands in.
-  static ShapeDecoration _outlineOf(ThemeData theme) => ShapeDecoration(
-    shape: AppShapes.container(
-      AppShapes.wellRadius,
-      side: BorderSide(color: theme.dividerColor),
-    ),
-  );
+  static RoundedSuperellipseBorder _outlineOf(ThemeData theme) =>
+      AppShapes.container(
+        AppShapes.wellRadius,
+        side: BorderSide(color: theme.dividerColor),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -153,27 +153,34 @@ class PillStrip extends StatelessWidget {
     final pills = [
       for (var i = 0; i < items.length; i += 1) _pill(items[i], first: i == 0),
     ];
-    final strip = Container(
-      clipBehavior: Clip.antiAlias,
-      // A settings row's strip wears the box's face — the ground and the
-      // hairline a bar and a number box stand in, dimmed as a dead bar's
-      // is when no answer takes a press — so the grid's controls read as
-      // one kind of box.
-      decoration: _even
-          ? FieldSlider.frameOf(
-              FieldSlider.defaultHeight,
-              enabled: items.any((item) => item.onTap != null),
-            )
-          : _outlineOf(theme),
-      // Down, each pill is one line tall at the strip's full width.
-      child: _even
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [for (final pill in pills) Expanded(child: pill)],
-            )
-          : axis == Axis.horizontal
-          ? _PillRow(children: pills)
-          : Column(mainAxisSize: MainAxisSize.min, children: pills),
+    // A settings row's strip wears the box's face — the ground and the
+    // hairline a bar and a number box stand in, dimmed as a dead bar's is
+    // when no answer takes a press — so the grid's controls read as one
+    // kind of box.
+    final frame = _even
+        ? FieldSlider.frameOf(
+            FieldSlider.defaultHeight,
+            enabled: items.any((item) => item.onTap != null),
+          )
+        : null;
+    final edge = frame?.edge ?? _outlineOf(theme);
+    // Each pill's hover and choice are its share of the strip's inside
+    // ([FaceInkWell.share]): nothing is clipped to the strip's corners.
+    final strip = SharedFace(
+      edge: edge,
+      fill: frame?.color,
+      child: Padding(
+        padding: edge.dimensions,
+        // Down, each pill is one line tall at the strip's full width.
+        child: _even
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (final pill in pills) Expanded(child: pill)],
+              )
+            : axis == Axis.horizontal
+            ? _PillRow(children: pills)
+            : Column(mainAxisSize: MainAxisSize.min, children: pills),
+      ),
     );
     return _even
         ? SizedBox(height: FieldSlider.defaultHeight, child: strip)
@@ -447,8 +454,8 @@ class Pill extends StatelessWidget {
     final hairline = _hairlineOf(theme);
     return ControlPressClaim(
       onPressed: onTap,
-      child: InkWell(
-        mouseCursor: AppCursors.press,
+      child: FaceInkWell.share(
+        fill: selected ? accent.withValues(alpha: 0.14) : null,
         onTap: silentPress(onTap),
         child: Container(
           padding: fills ? _sharePadding : _pillPadding,
@@ -458,7 +465,6 @@ class Pill extends StatelessWidget {
           // a share of an even strip.
           alignment: axis == Axis.vertical || fills ? Alignment.center : null,
           decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.14) : null,
             border: !leadingHairline
                 ? null
                 : axis == Axis.horizontal

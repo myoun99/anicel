@@ -13,14 +13,20 @@
 /// the byte-parity contract makes the choice inaudible by construction.
 library;
 
+import 'dart:ffi' show Float, FloatPointer, Pointer;
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/on_a_worker.dart';
 import '../../models/audio_pcm_scale.dart';
 import '../../models/project_frame_rate.dart';
+import '../../native/qa_audio_device.dart'
+    show QaAudioDevice, audioDeviceUnlessTesting;
 import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/wav16_header.dart';
 import '../../services/audio/conform_pcm_stream.dart';
+import '../../services/media/media_byte_source.dart' show MediaFileBytes;
 import '../playback/audio_playback_schedule.dart'
     show AudioMixSchedule, ScheduledAudioClip, audioMixScheduleFrom;
 
@@ -65,6 +71,7 @@ Future<bool> writeExportAudioMixWav({
   ExportAudioStreamResolver? resolveStreamReader,
   int channels = 2,
   void Function(String message)? log,
+  QaAudioDevice? Function() device = audioDeviceUnlessTesting,
 }) async {
   if (schedule.isEmpty || totalFrames <= 0) {
     return false;
@@ -84,11 +91,35 @@ Future<bool> writeExportAudioMixWav({
   if (!await writer.bindSources()) {
     return false;
   }
-  writer.writeTo(
+  await writer.writeOnAWorker(
     outputPath,
     totalSamples: rate.frameToSample(totalFrames, sampleRate),
+    device: device(),
   );
   return true;
+}
+
+/// The last [samples] frames of the mix at [path], interleaved as it was
+/// written — behind silence where the mix is shorter than that, for nothing
+/// sounded before it began. Null where the file cannot be read as a mix.
+///
+/// What a writer that puts a frame of sound before a movie's mix is handed
+/// (`SoundBefore`, video_export_service.dart): the mix of the frames before
+/// the movie's first ends where the movie's own begins, so its END is the
+/// movie's past.
+Int16List? exportAudioMixTail(String path, int samples) {
+  final reader = ConformPcmStreamReader.overWav16(MediaFileBytes(path));
+  if (reader == null || samples <= 0) {
+    return null;
+  }
+  final held = math.min(samples, reader.length);
+  final tail = reader.readInt16Window(reader.length - held, held).samples;
+  // A window that came back short is a file that could not be read.
+  if (tail.length != held * reader.channels) {
+    return null;
+  }
+  return Int16List(samples * reader.channels)
+    ..setAll(samples * reader.channels - tail.length, tail);
 }
 
 /// ONE export mix on its way to disk, in the three phases it always had:
@@ -182,75 +213,187 @@ class _ExportMixWriter {
     return true;
   }
 
-  /// Writes the header and then [totalSamples] of mixed audio.
+  /// Writes the header and then [totalSamples] of mixed audio, on a worker
+  /// ([_mixOnAWorker]) — each resident source read where it lies, lent by
+  /// [device] for as long as the mix takes ([QaAudioDevice.lendToAWorker]).
   ///
-  /// Block-mixed so a long timeline never holds its whole bus in memory;
-  /// the buffers are reused across blocks, and streaming sources read
-  /// exactly one block's worth of disk at a time.
-  void writeTo(String outputPath, {required int totalSamples}) {
-    final sink = File(outputPath).openSync(mode: FileMode.write);
-    try {
+  /// ↩️It mixed here, on the UI isolate, the whole timeline in one stretch
+  /// (card `the-export-sound-blocks-the-ui-isolate`, the CPU census — 관제
+  /// 2026-11-13). The Dart reference still mixes it (this library's head
+  /// says why) — on a worker, which changes nothing it writes.
+  Future<void> writeOnAWorker(
+    String outputPath, {
+    required int totalSamples,
+    required QaAudioDevice? device,
+  }) => _lendingEach(
+    device,
+    [for (final source in _sources) source.samples],
+    (lent) => _mixOnAWorker(
+      (
+        path: outputPath,
+        totalSamples: totalSamples,
+        channels: channels,
+        sampleRate: sampleRate,
+      ),
+      _clips,
+      [
+        for (final (index, source) in _sources.indexed)
+          (
+            samples: lent[index] == null ? source.samples : Float32List(0),
+            lent: lent[index],
+            channels: source.channels,
+            sourceStart: source.sourceStart,
+          ),
+      ],
+      _streamed,
+    ),
+  );
+}
+
+/// Where a mix is written: the file, its length, its channels and rate.
+typedef _MixInto = ({
+  String path,
+  int totalSamples,
+  int channels,
+  int sampleRate,
+});
+
+/// A resident source on its way to the mix's worker: where it lies when
+/// the device lent it, its samples when not.
+typedef _SourceCrossing = ({
+  Float32List samples,
+  ({int address, int floats})? lent,
+  int channels,
+  int sourceStart,
+});
+
+/// [work] given where each of [each] lies — each held until [work] is done
+/// ([QaAudioDevice.lendToAWorker]), null for one the device did not make,
+/// which [work] sends itself.
+Future<T> _lendingEach<T>(
+  QaAudioDevice? device,
+  List<Float32List> each,
+  Future<T> Function(List<({int address, int floats})?> lent) work, [
+  List<({int address, int floats})?> lent = const [],
+]) {
+  if (lent.length == each.length) {
+    return work(lent);
+  }
+  if (device == null) {
+    return work(List.filled(each.length, null));
+  }
+  return device.lendToAWorker(
+    each[lent.length],
+    (one) => _lendingEach(device, each, work, [...lent, one]),
+  );
+}
+
+/// The mix [onAWorker] writes, in a function of its own: the closure
+/// carries what it is handed — the clips, the sources, the streaming
+/// readers, which hold no OS handle — and nothing of the writer's, whose
+/// resolvers hold the session.
+Future<void> _mixOnAWorker(
+  _MixInto into,
+  List<AudioMixClip> clips,
+  List<_SourceCrossing> sources,
+  List<_StreamedClip> streamed,
+) => onAWorker(
+  () => _writeMix(into, clips, [
+    for (final source in sources) _sourceHere(source),
+  ], streamed),
+);
+
+AudioMixSource _sourceHere(_SourceCrossing source) {
+  final lent = source.lent;
+  return AudioMixSource(
+    samples: lent == null
+        ? source.samples
+        : Pointer<Float>.fromAddress(lent.address).asTypedList(lent.floats),
+    channels: source.channels,
+    sourceStart: source.sourceStart,
+  );
+}
+
+/// Writes the header and then [into]'s samples of [clips] mixed over
+/// [sources].
+///
+/// Block-mixed so a long timeline never holds its whole bus in memory;
+/// the buffers are reused across blocks, and streaming sources read
+/// exactly one block's worth of disk at a time.
+void _writeMix(
+  _MixInto into,
+  List<AudioMixClip> clips,
+  List<AudioMixSource> sources,
+  List<_StreamedClip> streamed,
+) {
+  final (:path, :totalSamples, :channels, :sampleRate) = into;
+  final sink = File(path).openSync(mode: FileMode.write);
+  try {
+    sink.writeFromSync(
+      wav16HeaderBytes(
+        dataBytes: totalSamples * channels * 2,
+        sampleRate: sampleRate,
+        channels: channels,
+      ),
+    );
+    const blockSamples = 65536;
+    final bus = Float64List(blockSamples * channels);
+    final out = Int16List(blockSamples * channels);
+    var position = 0;
+    while (position < totalSamples) {
+      final count = (totalSamples - position).clamp(0, blockSamples);
+      _refillStreamedSources(sources, streamed, position, count);
+      final busView = count == blockSamples
+          ? bus
+          : Float64List.sublistView(bus, 0, count * channels);
+      mixAudioReference(
+        clips: clips,
+        sources: sources,
+        startSample: position,
+        sampleCount: count,
+        outChannels: channels,
+        into: busView,
+      );
+      final outView = count == blockSamples
+          ? out
+          : Int16List.sublistView(out, 0, count * channels);
+      int16PcmOf(busView, into: outView);
       sink.writeFromSync(
-        wav16HeaderBytes(
-          dataBytes: totalSamples * channels * 2,
-          sampleRate: sampleRate,
-          channels: channels,
+        outView.buffer.asUint8List(
+          outView.offsetInBytes,
+          outView.lengthInBytes,
         ),
       );
-      const blockSamples = 65536;
-      final bus = Float64List(blockSamples * channels);
-      final out = Int16List(blockSamples * channels);
-      var position = 0;
-      while (position < totalSamples) {
-        final count = (totalSamples - position).clamp(0, blockSamples);
-        _refillStreamedSources(position, count);
-        final busView = count == blockSamples
-            ? bus
-            : Float64List.sublistView(bus, 0, count * channels);
-        mixAudioReference(
-          clips: _clips,
-          sources: _sources,
-          startSample: position,
-          sampleCount: count,
-          outChannels: channels,
-          into: busView,
-        );
-        final outView = count == blockSamples
-            ? out
-            : Int16List.sublistView(out, 0, count * channels);
-        int16PcmOf(busView, into: outView);
-        sink.writeFromSync(
-          outView.buffer.asUint8List(
-            outView.offsetInBytes,
-            outView.lengthInBytes,
-          ),
-        );
-        position += count;
-      }
-    } finally {
-      sink.closeSync();
+      position += count;
     }
+  } finally {
+    sink.closeSync();
   }
+}
 
-  /// Reads this block's window for every streaming clip that sounds in it.
-  void _refillStreamedSources(int position, int count) {
-    for (final streamed in _streamed) {
-      final clip = streamed.clip;
-      if (position + count <= clip.startSample || position >= clip.endSample) {
-        continue; // this block never reads the clip; keep whatever is there
-      }
-      final clipLength = clip.endSample - clip.startSample;
-      final from =
-          clip.sourceOffset + (position - clip.startSample).clamp(0, clipLength);
-      final to =
-          clip.sourceOffset +
-          (position + count - clip.startSample).clamp(0, clipLength);
-      final window = streamed.reader.readWindow(from, to - from);
-      _sources[streamed.slot] = AudioMixSource(
-        samples: window.samples,
-        channels: streamed.reader.channels,
-        sourceStart: window.startSample,
-      );
+/// Reads this block's window for every streaming clip that sounds in it.
+void _refillStreamedSources(
+  List<AudioMixSource> sources,
+  List<_StreamedClip> streamed,
+  int position,
+  int count,
+) {
+  for (final each in streamed) {
+    final clip = each.clip;
+    if (position + count <= clip.startSample || position >= clip.endSample) {
+      continue; // this block never reads the clip; keep whatever is there
     }
+    final clipLength = clip.endSample - clip.startSample;
+    final from =
+        clip.sourceOffset + (position - clip.startSample).clamp(0, clipLength);
+    final to =
+        clip.sourceOffset +
+        (position + count - clip.startSample).clamp(0, clipLength);
+    final window = each.reader.readWindow(from, to - from);
+    sources[each.slot] = AudioMixSource(
+      samples: window.samples,
+      channels: each.reader.channels,
+      sourceStart: window.startSample,
+    );
   }
 }

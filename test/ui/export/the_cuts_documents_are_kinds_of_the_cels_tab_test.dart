@@ -189,7 +189,7 @@ void main() {
 
     expect(state.debugSpecs.cels.kinds, {
       ExportCelKind.cel,
-      ExportCelKind.art,
+      ExportCelKind.image,
       ExportCelKind.timesheet,
     });
     expect(tester.celsBoardRowIds, ['a', 'document-timesheet']);
@@ -269,7 +269,7 @@ void main() {
     expect(keysOf(stripOf(ExportCelKind.cel)), [
       'export-cels-kind-cel',
       'export-cels-kind-conte',
-      'export-cels-kind-art',
+      'export-cels-kind-image',
       'export-cels-kind-direction',
     ]);
     expect(keysOf(stripOf(ExportCelKind.timesheet)), [
@@ -632,8 +632,8 @@ void main() {
     // second page's off is no file of it (I-162-Q6).
     await pickPaperFormat(tester, 'export-tsformat', 'xdts');
     expect(tester.celsBoardBlocksOf('document-timesheet'), [
-      (layerProcessAbbrev(LayerProcess.key), true),
-      (layerProcessAbbrev(LayerProcess.inbetween), true),
+      (layerStepAbbrev(LayerProcess.key), true),
+      (layerStepAbbrev(LayerProcess.inbetween), true),
     ]);
     expect(listed(tester), ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts']);
     session.playbackRig.prerenderScheduler.cancel();

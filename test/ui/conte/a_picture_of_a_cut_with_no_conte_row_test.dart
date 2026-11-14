@@ -1,8 +1,8 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -22,7 +22,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
@@ -32,6 +31,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
+import '../../helpers/surface_rgba_in_place.dart';
 
 /// 🚨A PICTURE OF A CUT WITH NO CONTE ROW DRAWS AS THE CANVAS WOULD (유저 답
 /// conte-drawing-target-Q2 「토글을 따른다 (캔버스와 한 법)」).
@@ -48,6 +48,7 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 /// said 「또는 블록이 없는 칸」): the stroke covers THAT row with one cel,
 /// as a row is born, rather than make a second.
 void main() {
+  opensTheEnginesScreens();
   const canvas = CanvasSize(width: 640, height: 360);
   const drawn = CutId('38');
   const empty = CutId('39');
@@ -136,6 +137,7 @@ void main() {
     AppInput.settings.value = input.copyWith(autoCreateFrameOnDraw: autoCreates);
     addTearDown(() => AppInput.settings.value = input);
     session = EditorSessionManager(initialProject: project());
+    await itsToolsOpen(tester, session.renderCaches.framePictureStore);
     addTearDown(session.dispose);
     session.selectCut(drawn);
     ink = ConteInkController();
@@ -193,7 +195,7 @@ void main() {
       session.brushFrameKeyForCut(cutOf(of), row.id, row.frames.single.id),
     );
     return surface != null &&
-        (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
+        (surfaceRgbaInPlace(surface, pixel.dx.floor(), pixel.dy.floor()) ?? 0) !=
             0;
   }
 
@@ -292,28 +294,15 @@ void main() {
       );
 
       Future<bool> showsInk() async {
-        final painter = tester
-            .widgetList<CustomPaint>(
-              find.descendant(of: live, matching: find.byType(CustomPaint)),
-            )
-            .map((paint) => paint.painter)
-            .whereType<CustomPainter>()
-            .first;
-        final size = tester.getSize(live);
-        final bytes = (await tester.runAsync(() async {
-          final recorder = ui.PictureRecorder();
-          painter.paint(Canvas(recorder, Offset.zero & size), size);
-          final image = await recorder.endRecording().toImage(
-            size.width.ceil(),
-            size.height.ceil(),
-          );
-          final data = await image.toByteData(
-            format: ui.ImageByteFormat.rawRgba,
-          );
-          image.dispose();
-          return data!.buffer.asUint8List();
-        }))!;
-        return _inkAt(bytes, size.width.ceil(), at);
+        final shot = await shotOfBox(
+          tester,
+          tester.renderObject<RenderBox>(theFrameScreenIn(live)),
+        );
+        return _inkAt(
+          shot.rgba,
+          shot.width,
+          at * tester.view.devicePixelRatio,
+        );
       }
 
       expect(await showsInk(), isFalse);
@@ -332,6 +321,7 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
       expect(await showsInk(), isTrue, reason: 'the pen-up changes nothing');
+      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 

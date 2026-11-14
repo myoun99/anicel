@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
@@ -60,9 +61,10 @@ class FakeVideoBackend implements VideoDecodeBackend {
   /// ⚠️Settable so a test can say NO while the machine running it has a
   /// native engine sitting right there — which is the only way to prove
   /// that the document asks the BACKEND and not the decoder. Taking the
-  /// real engine away does not work: it is already loaded, and
-  /// `openQaEngineLibrary` finds it by bare name whatever the override
-  /// says (measured 2026-09-08).
+  /// real engine away does not work: it is already loaded (measured
+  /// 2026-09-08 on the C engine, which its loader found by bare name
+  /// whatever a path override said; the decoder is the GPU engine
+  /// library's now, bound by name).
   @override
   final bool supported;
 
@@ -101,6 +103,14 @@ class FakeVideoBackend implements VideoDecodeBackend {
     return Uint8List.fromList(
       List<int>.filled(width * height * 4, 0xFF),
     );
+  }
+
+  /// [frame], premultiplied by the app's one law — what a decoder's side
+  /// hands a picture.
+  @override
+  Future<Uint8List?> premultipliedFrame(int token, int index) async {
+    final straight = await frame(token, index);
+    return straight == null ? null : premultipliedRgbaCopy(straight);
   }
 
   @override

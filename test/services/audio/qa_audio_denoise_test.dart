@@ -2,62 +2,20 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_audio_native.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_audio_denoiser.dart';
 
-import '../../helpers/native_engine_path.dart';
-
-/// The RNNoise round, C half: the vendored model must actually SUPPRESS
-/// through the FFI surface, and the wrapper must honor its own refusal
-/// contract (48 kHz only, null = untouched).
+/// The RNNoise round, through the app's door to the engine's denoiser
+/// ([_denoise]): the model must actually SUPPRESS through the
+/// FFI surface, and the export must honor its own refusal contract (48 kHz
+/// only, null = untouched).
 ///
-/// No byte-parity here — there is no Dart reference for a neural model,
-/// and pinning exact floats would pin the compiler's math, which the
-/// -ffp-contract story says differs per target. What is pinned instead
-/// is BEHAVIOR: non-speech noise loses most of its energy, and the
-/// declined paths decline loudly.
+/// No byte-parity here — there is no Dart reference for a neural model.
+/// The exact floats are the engine crate's ledger rows (`audio_denoise/*`
+/// in `test/fixtures/fingerprints.json`, held by its own tests); what is
+/// pinned here is BEHAVIOR: non-speech noise loses most of its energy, and
+/// the declined paths decline loudly. The engine always loads, so nothing
+/// here skips (connection-round-checklist H).
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaAudioNative.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-    QaAudioNative.debugForceDartFallback = false;
-  });
-
-  tearDown(() {
-    QaAudioNative.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaAudioNative.debugForceDartFallback = false;
-  });
-
-  QaAudioNative requireNative() {
-    final native = QaAudioNative.instance;
-    expect(
-      native,
-      isNotNull,
-      reason:
-          'the binary at $libraryPath loaded but the denoise entry point '
-          'did not bind — an ABI mismatch, which is what this suite '
-          'exists to catch',
-    );
-    return native!;
-  }
-
-  test('native engine required on CI builders', () {
-    if (nativeEngineRequired) {
-      expect(
-        available,
-        isTrue,
-        reason:
-            'QA_REQUIRE_NATIVE=1 but no engine binary was found — the '
-            'build stopped producing one',
-      );
-    }
-  });
-
   Float32List noise(int frames, {double amplitude = 0.1, int seed = 7}) {
     final random = math.Random(seed);
     final out = Float32List(frames);
@@ -78,9 +36,8 @@ void main() {
   }
 
   test('white noise at 48 kHz loses most of its energy', () {
-    final native = requireNative();
     final input = noise(48000 * 2);
-    final output = native.denoiseVoice(
+    final output = denoiseVoiceTake(
       samples: input,
       channels: 1,
       sampleRate: 48000,
@@ -98,14 +55,13 @@ void main() {
       outputRms,
       lessThan(inputRms * 0.7),
       reason:
-          'steady non-speech noise should be attenuated '
+          'steady non-speech noise should be attenuated by $_denoise '
           '(in $inputRms → out $outputRms)',
     );
-  }, skip: skip);
+  });
 
   test('stereo processes each channel independently — each equals the '
       'SAME data run alone as mono, bit for bit', () {
-    final native = requireNative();
     const frames = 48000;
     final input = Float32List(frames * 2);
     final left = noise(frames, seed: 11);
@@ -114,17 +70,17 @@ void main() {
       input[index * 2] = left[index];
       input[index * 2 + 1] = right[index];
     }
-    final stereo = native.denoiseVoice(
+    final stereo = denoiseVoiceTake(
       samples: input,
       channels: 2,
       sampleRate: 48000,
     );
-    final leftAlone = native.denoiseVoice(
+    final leftAlone = denoiseVoiceTake(
       samples: left,
       channels: 1,
       sampleRate: 48000,
     );
-    final rightAlone = native.denoiseVoice(
+    final rightAlone = denoiseVoiceTake(
       samples: right,
       channels: 1,
       sampleRate: 48000,
@@ -139,25 +95,29 @@ void main() {
       expect(stereo![index * 2], leftAlone![index], reason: 'L@$index');
       expect(stereo[index * 2 + 1], rightAlone![index], reason: 'R@$index');
     }
-  }, skip: skip);
+  });
 
   test('the refusal contract: wrong rate and empty input return null, '
       'input stays untouched', () {
-    final native = requireNative();
     final input = noise(44100);
     final before = Float32List.fromList(input);
     expect(
-      native.denoiseVoice(samples: input, channels: 1, sampleRate: 44100),
+      denoiseVoiceTake(samples: input, channels: 1, sampleRate: 44100),
       isNull,
     );
     expect(input, before, reason: 'a refusal must not half-process');
     expect(
-      native.denoiseVoice(
+      denoiseVoiceTake(
         samples: Float32List(0),
         channels: 1,
         sampleRate: 48000,
       ),
       isNull,
     );
-  }, skip: skip);
+  });
 }
+
+/// The denoiser these ask — named as a path, so a lane that changed only the
+/// engine's denoiser runs this file (`affected_tests` picks a test by the
+/// paths it writes out, 보드/인프라 2026-11-08 05:35).
+const _denoise = 'packages/gpu_engine/rust/native/audio_denoise';

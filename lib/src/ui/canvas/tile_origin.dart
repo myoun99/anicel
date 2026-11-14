@@ -1,11 +1,15 @@
 import 'dart:ui' show Offset, Rect;
 
+import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
+import '../../services/cel_text_laying.dart';
 
 /// Where [placed]'s top-left corner sits in canvas space: the ONE place the
 /// tile-coordinate-times-size product is turned into an [Offset] for a
-/// draw (the surface paint pass, the tiled compose, the painter's rects).
+/// draw (the surface paint pass, the painter's rects).
 /// Coordinates may be negative — the pasteboard's tiles are.
 ///
 /// ⚠️It takes the PAIR, not the tile: a tile does not know where it sits.
@@ -57,3 +61,37 @@ Rect? tileCoordsWorldRect(Iterable<TileCoord> coords, int tileSize) {
     ((bottom + 1) * tileSize).toDouble(),
   );
 }
+
+/// The tiles every rect below is measured from: [surface]'s picture as
+/// shown — its drawing with the texts it carries laid over it
+/// (`celSurfaceWithTextsLaid`).
+///
+/// 🚨★★★A PICTURE'S RECT CANNOT BE MEASURED WITHOUT ITS TEXTS (R9-rest,
+/// 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a text that reaches past
+/// the drawing grows the rect exactly as a stroke there would. A surface
+/// that carries no text comes back as the object it was.
+Map<TileCoord, BitmapTile> _tilesShownBy(BitmapSurface surface) =>
+    celSurfaceWithTextsLaid(surface).tiles;
+
+/// The canvas rect UNIONED with every stored tile's rect — the extent of a
+/// surface's content, pasteboard and all. Integer-aligned by construction.
+Rect surfaceContentWorldRect(BitmapSurface surface) {
+  final canvas = surface.canvasSize.canvasRect;
+  final tiles = tileCoordsWorldRect(
+    _tilesShownBy(surface).keys,
+    surface.tileSize,
+  );
+  return tiles == null ? canvas : canvas.expandToInclude(tiles);
+}
+
+/// The part of [surfaceContentWorldRect] that holds the stored tiles —
+/// where every pixel of the surface that is not transparent sits: the
+/// tiles' rect, which the content holds.
+///
+/// ↩️It was pushed out to multiples of 4 counted from the content's
+/// origin (the deepest playback level), so that at every level of the
+/// display's pyramid its edges fell on whole texels of the whole content's
+/// level — until no picture was halved (one-picture-per-frame ②-5b-3).
+Rect surfaceInkWorldRect(BitmapSurface surface) =>
+    tileCoordsWorldRect(_tilesShownBy(surface).keys, surface.tileSize) ??
+    surfaceContentWorldRect(surface);

@@ -141,6 +141,11 @@ sealed class CanvasSelectionStep {
   /// of it is left inside ([CanvasSelectionRegion.clippedTo] reads that as
   /// the empty set).
   CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode);
+
+  /// The operand as the engine reads it ([CanvasSelectionRegion.spelled]):
+  /// its kind's word and what follows it into [words], its points into
+  /// [points].
+  void _spellInto(List<int> words, List<double> points);
 }
 
 /// The polygons ONE act drew — usually one, several under a symmetry guide
@@ -241,6 +246,22 @@ final class CanvasSelectionCopies extends CanvasSelectionStep {
     return kept.isEmpty ? null : CanvasSelectionCopies(kept, mode);
   }
 
+  /// 0, the polygons' count and each one's points' count.
+  @override
+  void _spellInto(List<int> words, List<double> points) {
+    words
+      ..add(0)
+      ..add(shapes.length);
+    for (final shape in shapes) {
+      words.add(shape.points.length);
+      for (final point in shape.points) {
+        points
+          ..add(point.x)
+          ..add(point.y);
+      }
+    }
+  }
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) {
@@ -315,6 +336,13 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
   CanvasSelectionStep? _clippedTo(ui.Rect wall, SelectionCombineMode mode) {
     final kept = region.clippedTo(wall);
     return kept == null ? null : CanvasSelectionNested(kept, mode);
+  }
+
+  /// 1, and the selection spelled as the top is.
+  @override
+  void _spellInto(List<int> words, List<double> points) {
+    words.add(1);
+    region._spellInto(words, points);
   }
 
   @override
@@ -543,21 +571,24 @@ class CanvasSelectionRegion {
   /// this arithmetic out for themselves (the cut without the pad), which is
   /// one algorithm three times; the pixel copy (I-55) would have been a
   /// fourth, the cut's with the pad added by hand.
+  ///
+  /// With no [clip] the box is the region's own — what a clip that knows no
+  /// wall reads (`SelectionClip.outline`).
   ({int left, int top, int width, int height})? pixelBoxWithin(
-    DirtyRegion clip, {
+    DirtyRegion? clip, {
     int pad = 0,
   }) {
     final bounds = coverageBounds;
-    final left = math.max(clip.left, bounds.left.floor() - pad);
-    final top = math.max(clip.top, bounds.top.floor() - pad);
-    final rightExclusive = math.min(
-      clip.rightExclusive,
-      bounds.right.ceil() + 1 + pad,
-    );
-    final bottomExclusive = math.min(
-      clip.bottomExclusive,
-      bounds.bottom.ceil() + 1 + pad,
-    );
+    var left = bounds.left.floor() - pad;
+    var top = bounds.top.floor() - pad;
+    var rightExclusive = bounds.right.ceil() + 1 + pad;
+    var bottomExclusive = bounds.bottom.ceil() + 1 + pad;
+    if (clip != null) {
+      left = math.max(clip.left, left);
+      top = math.max(clip.top, top);
+      rightExclusive = math.min(clip.rightExclusive, rightExclusive);
+      bottomExclusive = math.min(clip.bottomExclusive, bottomExclusive);
+    }
     if (rightExclusive <= left || bottomExclusive <= top) {
       return null;
     }
@@ -567,6 +598,29 @@ class CanvasSelectionRegion {
       width: rightExclusive - left,
       height: bottomExclusive - top,
     );
+  }
+
+  /// This selection as the engine reads its steps (`steps_of`,
+  /// rust/src/kernels/mask/abi.rs), to make its mask there: the steps'
+  /// count, then each step's fold — its mode's [Enum.index], the engine's
+  /// value for it — and its operand ([CanvasSelectionStep._spellInto]);
+  /// every polygon's points, x then y, in that order.
+  ({Uint32List program, Float64List points}) get spelled {
+    final words = <int>[];
+    final points = <double>[];
+    _spellInto(words, points);
+    return (
+      program: Uint32List.fromList(words),
+      points: Float64List.fromList(points),
+    );
+  }
+
+  void _spellInto(List<int> words, List<double> points) {
+    words.add(steps.length);
+    for (final step in steps) {
+      words.add(step.mode.index);
+      step._spellInto(words, points);
+    }
   }
 
   ({double left, double top, double right, double bottom})? _selectedBounds;

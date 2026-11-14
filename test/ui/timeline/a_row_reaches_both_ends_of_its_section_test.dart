@@ -78,7 +78,7 @@ final _scenes = <String, _Scene>{
 };
 
 final _two = [
-  _picture('tap', mark: const LayerMark(process: LayerProcess.paper)),
+  _picture('tap', mark: const LayerMark.paper(LayerProcess.layout)),
   _picture('csm'),
 ];
 
@@ -330,7 +330,7 @@ void main() {
         addTearDown(session.dispose);
         session.selectLayer(const LayerId('near'));
 
-        session.folders.detachActiveLayer();
+        session.folders.detachRows();
 
         expect(_layerOf(session, 'near').attachedToLayerId, isNull);
         expect(_pictures(session), ['near', 'far', 'base']);

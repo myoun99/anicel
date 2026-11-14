@@ -30,6 +30,8 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// resize works out ahead is what its step will take — the same cuts, the
 /// same move — and where the step is no step, nothing is worked out.
 void main() {
+  const tileBytes = defaultCelTileSize * defaultCelTileSize * 4;
+
   ({
     CutCommandCoordinator coordinator,
     BrushFrameStore store,
@@ -48,14 +50,17 @@ void main() {
       layerId: const LayerId('l'),
       frameId: const FrameId('kept'),
     );
-    // Tiles of 8: the moves below are of no whole tile.
+    // Tiles of the engine's side: the moves below are of no whole tile.
     keepInAFile(store, {
-      kept: BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
+      kept: BitmapSurface(
+        canvasSize: cut.canvasSize,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
         (
           coord: TileCoord(x: 1, y: 1),
           tile: BitmapTile(
-            size: 8,
-            pixels: Uint8List(256)..fillRange(0, 256, 50),
+            size: defaultCelTileSize,
+            pixels: Uint8List(tileBytes)..fillRange(0, tileBytes, 50),
           ),
         ),
       ]),
@@ -110,7 +115,10 @@ void main() {
     const track = TrackId('track');
     const cutWithCels = CutId('cut-1');
     const linked = CutId('cut-2');
-    const size = CanvasSize(width: 40, height: 24);
+    const size = CanvasSize(
+      width: 5 * defaultCelTileSize,
+      height: 3 * defaultCelTileSize,
+    );
     Cut cut(CutId id, LayerId layer) => Cut(
       id: id,
       name: id.value,
@@ -167,12 +175,15 @@ void main() {
       frameId: FrameId('kept'),
     );
     keepInAFile(store, {
-      kept: BitmapSurface(canvasSize: size, tileSize: 8).putTiles([
+      kept: BitmapSurface(
+        canvasSize: size,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
         (
           coord: TileCoord(x: 1, y: 1),
           tile: BitmapTile(
-            size: 8,
-            pixels: Uint8List(256)..fillRange(0, 256, 50),
+            size: defaultCelTileSize,
+            pixels: Uint8List(tileBytes)..fillRange(0, tileBytes, 50),
           ),
         ),
       ]),

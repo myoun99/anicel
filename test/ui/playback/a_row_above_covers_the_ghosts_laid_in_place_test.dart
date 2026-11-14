@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🗣️onion-ghosts-in-place (유저 2026-10-26: 「TVPaint · 클립 스튜디오처럼
 /// 위 레이어가 고스트를 가리게」, Q1 = a 「바로 밑」): laid in place, a row's
@@ -107,13 +108,10 @@ void main() {
     final pictures = session.playbackRig.framePictures;
     final made = pictures.store.peek(pictures.keyOf(picture));
     expect(made, isNotNull, reason: '⛔premise: $picture is made');
-    final x = at.x.floor() - made!.extent.left.round();
-    final y = at.y.floor() - made.extent.top.round();
-    final bytes = (await made.image.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!;
-    final at4 = (y * made.image.width + x) * 4;
-    return bytes.buffer.asUint8List(at4, 4);
+    return pixelsOfPicture(
+      made!,
+      ui.Rect.fromLTWH(at.x.floorToDouble(), at.y.floorToDouble(), 1, 1),
+    );
   }
 
   testWidgets('a row above covers the ghosts in place, and where none does '

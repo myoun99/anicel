@@ -6,6 +6,7 @@ import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
+import 'selection_clip.dart';
 
 /// A finished stroke handed from the interactive canvas to the commit route.
 ///
@@ -41,6 +42,7 @@ class BrushStrokeCommitData {
     this.promotedBase,
     this.promotedTiles,
     this.end,
+    this.selection,
   }) : sourceDabs = List<BrushDab>.unmodifiable(sourceDabs);
 
   final List<BrushDab> sourceDabs;
@@ -73,4 +75,45 @@ class BrushStrokeCommitData {
   /// ⚠️The path's own end, not the last dab's centre: a symmetry guide's
   /// copies are among [sourceDabs], and the last of them may be a mirror's.
   final CanvasPoint? end;
+
+  /// The selection the commit cuts it by where it lands
+  /// (`brushCommitResultForBrushDabSequenceOnBitmapSurface`) — on whichever
+  /// cel that is, 확정 laying it down again included; null where nothing
+  /// cuts it. [promotedTiles] were cut as they were made and are installed
+  /// as they are while their base stands; what is re-derived is cut by this.
+  ///
+  /// ↩️Till 2026-11-14 the funnel cut it on the CPU before it came here
+  /// (`clipStrokeCommitToSelection`): a mask and a copy of each stamp's
+  /// picture, and of a stroke's buffer, at every commit under a selection.
+  final SelectionClip? selection;
+
+  // 🚨THE TWO COPIES OF THIS STROKE ARE HERE, BESIDE ITS FIELDS — a field
+  // added above goes into both. ↩️The slot 확정 lays from copied it field
+  // by field where it held it and left [selection] behind: a stamp pressed
+  // through a feathered marquee was laid down whole (2026-11-14, 관제).
+
+  /// This stroke landing through [clip] (`clipStrokeCommitToSelection`).
+  BrushStrokeCommitData through(SelectionClip clip) => BrushStrokeCommitData(
+    sourceDabs: sourceDabs,
+    strokePixels: strokePixels,
+    strokeBounds: strokeBounds,
+    blendMode: blendMode,
+    strokeOpacity: strokeOpacity,
+    promotedBase: promotedBase,
+    promotedTiles: promotedTiles,
+    end: end,
+    selection: clip,
+  );
+
+  /// This stroke without its promotion — what 확정 holds (`LastStrokeSlot`):
+  /// those tiles were blended against the cel it landed on.
+  BrushStrokeCommitData withoutPromotion() => BrushStrokeCommitData(
+    sourceDabs: sourceDabs,
+    strokePixels: strokePixels,
+    strokeBounds: strokeBounds,
+    blendMode: blendMode,
+    strokeOpacity: strokeOpacity,
+    end: end,
+    selection: selection,
+  );
 }

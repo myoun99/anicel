@@ -12,12 +12,12 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_lift.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 /// The CUT verb: it takes a copy and leaves the cel alone — and, asked by
 /// name, the step that takes what it cut (I-90).
@@ -401,13 +401,16 @@ void main() {
       surface: before,
       options: const SelectionMaskOptions(antiAlias: true),
     )!;
+    final (:left, :top, :width, :height) = read.lifted.box;
     expect(
-      read.lifted.mask.any((coverage) => coverage > 0 && coverage < 255),
+      read.lifted.clip
+          .maskFor(left: left, top: top, width: width, height: height)
+          .any((coverage) => coverage > 0 && coverage < 255),
       isTrue,
       reason: '⛔premise: the outline covers some pixel in part',
     );
     int alphaOf(BitmapSurface surface, int x, int y) =>
-        (surfacePixelRgba(surface, x, y) ?? 0) & 0xFF;
+        (surfaceRgbaInPlace(surface, x, y) ?? 0) & 0xFF;
     int onThePiece(int x, int y) {
       final piece = read.piece;
       final (column, line) = (x - piece.originLeft, y - piece.originTop);
@@ -442,8 +445,8 @@ void main() {
     for (var y = 20; y < 60; y += 1) {
       for (var x = 8; x < 72; x += 1) {
         expect(
-          surfacePixelRgba(undone, x, y),
-          surfacePixelRgba(before, x, y),
+          surfaceRgbaInPlace(undone, x, y),
+          surfaceRgbaInPlace(before, x, y),
           reason: '($x, $y)',
         );
       }

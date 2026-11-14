@@ -1,13 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -25,21 +22,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// sound — so the overshoot is not a fraction of a frame that rounding
 /// hides but sixty frames that are plainly not there.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
-  tearDown(() {
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   test('🚨twelve pictures with three seconds of sound are twelve frames, and '
       'the last of them is a picture', () {
@@ -80,7 +63,7 @@ void main() {
       isNotNull,
       reason: 'the last frame counted is a picture: ${decoder.lastError}',
     );
-  }, skip: skip);
+  });
 
   test('a movie whose last picture ends a tick short of a whole frame still '
       'counts that frame', () {
@@ -102,5 +85,5 @@ void main() {
       12,
       reason: 'counted to the nearest frame — truncated, it is eleven',
     );
-  }, skip: skip);
+  });
 }

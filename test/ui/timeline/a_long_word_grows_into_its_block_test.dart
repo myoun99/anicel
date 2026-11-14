@@ -19,21 +19,21 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -49,6 +49,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// the baked tile after the name's own, and the storyboard panel's comma.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
   const cell = 24.0;
   const crossExtent = 28.0;
@@ -64,28 +65,36 @@ void main() {
     return TimelineCellExposureState.uncovered;
   }
 
-  // A four-cell block from frame 2, named wider than its first cell.
-  final layer = Layer(
+  // A four-cell block from [start], named wider than its first cell.
+  Layer blockFrom(int start) => Layer(
     id: const LayerId('layer-a'),
     name: 'A',
     frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
-    timeline: {2: const TimelineExposure.drawing(FrameId('f1'), length: 4)},
+    timeline: {
+      start: const TimelineExposure.drawing(FrameId('f1'), length: 4),
+    },
   );
+  final layer = blockFrom(2);
+
+  // Cells to a span, and so to a tile (`timelineFrameWindowSpanFor`).
+  final span = timelineFrameWindowSpanFor(cell);
 
   TimelineRowCellsPainter cellsPainter({
     TimelineGridTileStore? store,
     ValueNotifier<int>? bucket,
     double viewport = 0,
+    int start = 2,
   }) => TimelineRowCellsPainter(
-    layer: layer,
+    layer: blockFrom(start),
     geometry: testFrameGeometry(
       viewExtentPx: viewport,
       frameCellExtent: cell,
-      frameEndIndexExclusive: 40,
+      frameEndIndexExclusive: 3 * span,
     ),
     crossAxisExtent: crossExtent,
     exposureStateForLayer: stateFor,
-    frameNameForLayer: (_, frameIndex) => frameIndex == 2 ? longName : null,
+    frameNameForLayer: (_, frameIndex) =>
+        frameIndex == start ? longName : null,
     colorScheme: const ColorScheme.dark(),
     baseTextStyle: const TextStyle(fontSize: 11),
     tileStore: store,
@@ -94,8 +103,8 @@ void main() {
   );
 
   /// The name's laid-out width, through the painter's own style.
-  double nameWidth(TimelineRowCellsPainter painter) {
-    final model = painter.cellModelAt(2);
+  double nameWidth(TimelineRowCellsPainter painter, {int start = 2}) {
+    final model = painter.cellModelAt(start);
     return laidOutGlyph(model.glyph, painter.glyphStyleFor(model))
         .width;
   }
@@ -126,76 +135,66 @@ void main() {
 
   test('a name that starts before the painted window still shows the part '
       'that grows into it', () {
-    final bucket = ValueNotifier<int>(2);
+    final bucket = ValueNotifier<int>(1);
     addTearDown(bucket.dispose);
-    final painter = cellsPainter(bucket: bucket, viewport: 96);
+    // A cell before the second span's window, which its overscan opens two
+    // cells early.
+    final start = span - 3;
+    final painter = cellsPainter(bucket: bucket, viewport: 96, start: start);
     final window = painter.visibleFrameWindow();
-    expect(window.startIndex, greaterThan(2), reason: 'fixture');
+    expect(window.startIndex, greaterThan(start), reason: 'fixture');
     expect(
-      painter.cellRectFor(2).left + nameWidth(painter),
+      painter.cellRectFor(start).left + nameWidth(painter, start: start),
       greaterThan(painter.cellRectFor(window.startIndex).left),
       reason: 'fixture: the name reaches into the window',
     );
     final spy = _Spy();
-    painter.paint(spy, const Size(cell * 40, crossExtent));
+    painter.paint(spy, Size(cell * 3 * span, crossExtent));
     expect(
       spy.texts.map((offset) => offset.dx),
-      anyElement(closeTo(painter.cellRectFor(2).left, 0.5)),
+      anyElement(closeTo(painter.cellRectFor(start).left, 0.5)),
       reason: 'the window lays the word that grows into it',
     );
   });
 
   test('a name that grows past its tile is baked into the next tile '
       'too', () async {
-    final dllPath = nativeEngineLibraryPathOrNull();
-    if (dllPath == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     final store = TimelineGridTileStore.instance..clear();
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
-    final painter = cellsPainter(store: store);
+    addTearDown(store.clear);
+    // Two cells before a tile's end: the name lives in [0, span) and runs
+    // on through [span, 2 * span).
+    final start = span - 2;
+    final painter = cellsPainter(store: store, start: start);
     var landings = 0;
     void count() => landings += 1;
     store.revision.addListener(count);
     addTearDown(() => store.revision.removeListener(count));
 
-    // At 24px a tile is four cells: the name lives in [0, 4) and runs on
-    // through [4, 8) — row pixels [48, 48 + width).
-    ui.Image? nextTile() => store.tileFor(
+    TimelineGridTilePicture? nextTile() => store.tileFor(
       painter: painter,
-      spanStartIndex: 4,
-      spanEndIndexExclusive: 8,
+      spanStartIndex: span,
+      spanEndIndexExclusive: 2 * span,
       devicePixelRatio: 1.0,
     );
     expect(
-      painter.cellRectFor(2).left + nameWidth(painter),
-      greaterThan(painter.cellRectFor(4).left + 22),
+      painter.cellRectFor(start).left + nameWidth(painter, start: start),
+      greaterThan(painter.cellRectFor(span).left + 22),
       reason: 'fixture: the name covers the first cell of the next tile',
     );
     expect(nextTile(), isNull, reason: 'fixture: the store starts cold');
     await pollUntil(() => landings > 0);
     final image = nextTile();
     expect(image, isNotNull, reason: 'fixture: the tile landed');
-    final bytes = (await image!.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!;
+    final bytes = image!.picture.read();
     int sumAt(int x, int y) {
       final i = (y * image.width + x) * 4;
-      return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
+      return bytes[i] + bytes[i + 1] + bytes[i + 2];
     }
 
-    // Frame 4 is a held cell of the block: paper, with a seam at each end.
-    // Between the seams and above the row's bottom seam, only the name can
-    // put ink on it (the X of the empty run sits over frame 6).
+    // The tile's first frame is a held cell of the block: paper, with a
+    // seam at each end. Between the seams and above the row's bottom seam,
+    // only the name can put ink on it (the X of the empty run sits two
+    // frames on).
     final paper = sumAt(12, 25);
     var inked = 0;
     for (var y = 6; y < 22; y += 1) {
@@ -219,21 +218,8 @@ void main() {
   /// is a whole name and half a name).
   test('a name longer than its block is BAKED narrowed, every letter of it', (
   ) async {
-    final dllPath = nativeEngineLibraryPathOrNull();
-    if (dllPath == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     final store = TimelineGridTileStore.instance..clear();
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    addTearDown(store.clear);
     // Four letters with gaps between them, in a TWO-cell block: 7 em-wide
     // glyphs (the test face) at 11px against 48px of block.
     const gapped = 'A A A A';
@@ -267,7 +253,7 @@ void main() {
     void count() => landings += 1;
     store.revision.addListener(count);
     addTearDown(() => store.revision.removeListener(count));
-    ui.Image? tile() => store.tileFor(
+    TimelineGridTilePicture? tile() => store.tileFor(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
@@ -277,46 +263,58 @@ void main() {
     await pollUntil(() => landings > 0);
     final image = tile();
     expect(image, isNotNull, reason: 'fixture: the tile landed');
-    final bytes = (await image!.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!;
+    final bytes = image!.picture.read();
     int sumAt(int x, int y) {
       final i = (y * image.width + x) * 4;
-      return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
+      return bytes[i] + bytes[i + 1] + bytes[i + 2];
     }
 
-    // Along the word's middle line, across the block (x 0-47): the ink runs.
+    // Across the block (x 0-47), where the word's band holds ink: one run
+    // per letter. A letter is not its advance — the narrowing shows in how
+    // far apart they start.
     final layout = painter.cellWordSetFor(
       0,
       model.glyph,
       painter.glyphStyleFor(model),
     );
-    final y = (layout.origin.dy + natural.height * layout.fit.y / 2).round();
+    final tight = laidOutGlyph(
+      model.glyph,
+      painter.glyphStyleFor(model),
+      tightening: layout.tightening,
+    );
+    double leftOf(int at) => tight
+        .getBoxesForSelection(
+          TextSelection(baseOffset: at, extentOffset: at + 1),
+        )
+        .single
+        .left;
+    final top = layout.origin.dy.floor();
+    final bottom = (layout.origin.dy + natural.height * layout.fit.y).ceil();
     final paper = sumAt(24, 25);
-    final runs = <int>[];
-    var run = 0;
+    bool inked(int x) => [
+      for (var y = top; y < bottom; y += 1) y,
+    ].any((y) => (sumAt(x, y) - paper).abs() > 60);
+    final starts = <int>[];
+    var inRun = false;
     for (var x = 1; x < 2 * cell - 1; x += 1) {
-      if ((sumAt(x, y) - paper).abs() > 60) {
-        run += 1;
-      } else if (run > 0) {
-        runs.add(run);
-        run = 0;
+      final ink = inked(x);
+      if (ink && !inRun) {
+        starts.add(x);
       }
-    }
-    if (run > 0) {
-      runs.add(run);
+      inRun = ink;
     }
     expect(
-      runs,
+      starts,
       hasLength(4),
       reason: 'all four letters are in the tile, inside the block — a name '
           'baked wide shows the first two or three and is cut off',
     );
+    // The second and third: the first is cut by the scan's edge.
     expect(
-      runs.first,
-      lessThan(11 * 0.8),
-      reason: 'narrowed as the classic pass narrows it (fit '
-          '${layout.fit.x}), not at its full 11px',
+      starts[2] - starts[1],
+      closeTo((leftOf(4) - leftOf(2)) * layout.fit.x, 1),
+      reason: 'narrowed as the classic pass narrows it — its gaps set '
+          '(${layout.tightening}), then fit ${layout.fit.x}',
     );
   });
 

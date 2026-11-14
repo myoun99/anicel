@@ -104,8 +104,8 @@ class TimelineGridHooks {
     this.onHoverMediaAssetOnLayer,
     this.onLeaveMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
-    this.isLayerSoloed,
-    this.onOpenLayerMixer,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
     this.onOpenCameraPath,
@@ -179,6 +179,10 @@ class TimelineGridHooks {
   /// playing). ONLY the cursor layer, the ruler and the lane labels
   /// subscribe — a tick never rebuilds the grid or its cells (the
   /// playback-performance architecture).
+  ///
+  /// ↩️F-587 (유저 2026-11-13): the lane labels hear it and keep what they
+  /// showed while a run plays — they are asked again as it ends
+  /// (`PlaybackStillness`).
   final ValueListenable<int> frameCursor;
 
   /// Repaints the ruler's cached-range green strip as frames warm; never
@@ -361,13 +365,11 @@ class TimelineGridHooks {
   final void Function(List<Layer> displayLayers, int slot, String path)?
   onDropMediaAssetBetweenLayers;
 
-  /// The SE row's mixer (R10 R3): its solo tint, and the speaker press
-  /// that opens the window carrying mute/solo/fader/pan. Null hides the
-  /// speaker.
-  final bool Function(LayerId layerId)? isLayerSoloed;
-
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
+  /// The S row's speaker — a mute toggle — and its Total bar's release, in
+  /// the blend column (F-577). Null hides each.
+  final ValueChanged<LayerId>? onToggleLayerMute;
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
 
   /// A reference row's file button: the popover that bakes it (미디어 배치
   /// 라운드 3). Null hides the button.
@@ -592,10 +594,10 @@ class TimelineGridHooks {
   onSetLaneGroupBasis;
 
   /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
-  final LaneGroupRasterize? onRasterizeLaneGroup;
+  final LaneGroupPress? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
-  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+  final LaneGroupPress? onResetLaneGroup;
 
   /// Sections folded to one stub row (SE/camera; drawing never folds) and
   /// the gutter-label toggle.

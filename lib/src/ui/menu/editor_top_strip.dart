@@ -56,7 +56,6 @@ import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../workspace/workspace_door_commands.dart';
-import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
     show ExportFrameTask, sanitizeExportFileComponent, unnamedExportName;
 import '../export/frame_image_file.dart';
@@ -423,7 +422,7 @@ class EditorTopStrip extends StatelessWidget {
             id: saveAsImageActionId(format),
             label: format.label,
             shortcuts: [saveAsImageActionId(format)],
-            onPressed: _onACut && stillFormatWritable(format)
+            onPressed: _onACut
                 ? () => unawaited(saveFrameAsImage(context, session, format))
                 : null,
           ),
@@ -1876,11 +1875,14 @@ String saveFailureMessage(SaveFailure failure) {
     SaveFailureCause.diskFull => strings.saveFailedDiskFull,
     SaveFailureCause.locationGone => strings.saveFailedLocationGone,
     SaveFailureCause.replaceRefused => strings.saveFailedReplaceRefused,
+    SaveFailureCause.engineRead => strings.saveFailedEngineRead,
     SaveFailureCause.unknown => strings.saveFailedUnknown,
   };
-  final where = failure.failedCopy == null
-      ? strings.saveFailedNoCopy
-      : strings.saveFailedCopyKept;
+  final where = failure.failedCopy != null
+      ? strings.saveFailedCopyKept
+      : failure.cause == SaveFailureCause.engineRead
+      ? strings.saveFailedEngineReadNoCopy
+      : strings.saveFailedNoCopy;
   return '$why\n\n$where\n\n${strings.saveFailedRetry}';
 }
 

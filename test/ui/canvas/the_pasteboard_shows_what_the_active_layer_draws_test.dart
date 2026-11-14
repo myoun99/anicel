@@ -1,3 +1,5 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_resample_shown.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -54,6 +56,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// committed layer holds nothing. The first case is the state the user
 /// called normal: the same red as a COMMITTED tile there.
 void main() {
+  opensTheEnginesScreens();
   // A 32×32 page on 16px tiles, seen 1:1 with the page's origin 32px in, so
   // screen x 0..32 is the pasteboard column left of the page.
   const canvasSize = CanvasSize(width: 32, height: 32);
@@ -64,18 +67,7 @@ void main() {
   // Tile (-1, 1) exactly: canvas (-16..0, 16..32), screen (16..32, 48..64).
   const pasteboardSpot = Rect.fromLTWH(-16, 16, 16, 16);
   const pasteboardProbe = Offset(24, 56);
-
-  ui.Image redSquare() {
-    final recorder = ui.PictureRecorder();
-    Canvas(recorder).drawRect(
-      const Rect.fromLTWH(0, 0, 16, 16),
-      Paint()..color = const Color(0xFFFF0000),
-    );
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(16, 16);
-    picture.dispose();
-    return image;
-  }
+  const red = [255, 0, 0, 255];
 
   Uint8List redRgba() {
     final rgba = Uint8List(tileSize * tileSize * 4);
@@ -87,7 +79,9 @@ void main() {
   }
 
   BitmapSurface surfaceWith(Map<TileCoord, BitmapTile> tiles) =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: tiles);
+      onTheEnginesTiles(
+        BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: tiles),
+      );
 
   void decodeAll(BitmapTileImageCache cache, BitmapSurface surface) {
     for (final entry in surface.tiles.entries) {
@@ -229,17 +223,19 @@ void main() {
       'pose brings it in', (tester) async {
     final tiles = BitmapTileImageCache();
     // Tile (-3, 1): the cel's (-48..-32, 16..32), the column past the wall.
-    final surface = BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: tileSize,
-      tiles: {
-        TileCoord(x: -3, y: 1): BitmapTile(size: tileSize, pixels: redRgba()),
-      },
-      laidBounds: DirtyRegion(
-        left: -48,
-        top: 16,
-        rightExclusive: -32,
-        bottomExclusive: 32,
+    final surface = onTheEnginesTiles(
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          TileCoord(x: -3, y: 1): BitmapTile(size: tileSize, pixels: redRgba()),
+        },
+        laidBounds: DirtyRegion(
+          left: -48,
+          top: 16,
+          rightExclusive: -32,
+          bottomExclusive: 32,
+        ),
       ),
     );
     decodeAll(tiles, surface);
@@ -281,21 +277,23 @@ void main() {
     );
     final tiles = BitmapTileImageCache();
     // The file over the cel's (-48..-32, 16..32), past the wall.
-    final surface = BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: tileSize,
-      tiles: {
-        TileCoord(x: -3, y: 1): BitmapTile(size: tileSize, pixels: redRgba()),
-      },
-      laidBounds: DirtyRegion(
-        left: -48,
-        top: 16,
-        rightExclusive: -32,
-        bottomExclusive: 32,
+    final surface = onTheEnginesTiles(
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          TileCoord(x: -3, y: 1): BitmapTile(size: tileSize, pixels: redRgba()),
+        },
+        laidBounds: DirtyRegion(
+          left: -48,
+          top: 16,
+          rightExclusive: -32,
+          bottomExclusive: 32,
+        ),
       ),
     );
     decodeAll(tiles, surface);
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
+    final overlay = ActiveStrokeOverlayModel(tileSize: defaultCelTileSize)
       ..preBlendBase = surface;
     addTearDown(overlay.dispose);
     final stack = await pumpStack(
@@ -348,16 +346,19 @@ void main() {
   });
 
   testWidgets('🚨the stroke in flight shows on the pasteboard', (tester) async {
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final surface = surfaceWith(const {});
+    final overlay = ActiveStrokeOverlayModel(tileSize: defaultCelTileSize)
+      ..preBlendBase = surface
+      ..blendMode = BrushBlendMode.color;
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-      tileSize: tileSize,
+      tileSize: defaultCelTileSize,
     );
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(
-        surface: surfaceWith(const {}),
+        surface: surface,
         overlayModel: overlay,
         tileImageCache: BitmapTileImageCache(),
         showTransparentBackground: false,
@@ -396,7 +397,7 @@ void main() {
     // the overlay as pre-blended tiles that REPLACE their coordinates —
     // pasteboard coordinates included.
     final base = surfaceWith(const {});
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
+    final overlay = ActiveStrokeOverlayModel(tileSize: defaultCelTileSize)
       ..preBlendBase = base;
     addTearDown(overlay.dispose);
     final stack = await pumpStack(
@@ -413,14 +414,9 @@ void main() {
       what: 'a fill\'s result tile',
       stack: stack,
       draw: (where) async => overlay.showResultTiles([
-        PromotedStrokeTile(
-          TileCoord(
-            x: (where.center.dx / tileSize).floor(),
-            y: (where.center.dy / tileSize).floor(),
-          ),
-          BitmapTile(size: tileSize, pixels: redRgba()),
-          fillPromotionRevision,
-        ),
+        for (final MapEntry(:key, :value)
+            in tilesOfColorOver(where, red).entries)
+          PromotedStrokeTile(key, value, fillPromotionRevision),
       ]),
     );
   });
@@ -430,8 +426,6 @@ void main() {
   // the ghost is laid as a fill's result tiles — the case above.
 
   testWidgets('🚨a transform\'s float shows on the pasteboard', (tester) async {
-    final image = redSquare();
-    addTearDown(image.dispose);
     final float = SelectionFloatOverlay(null);
     addTearDown(float.dispose);
     final stack = await pumpStack(
@@ -448,9 +442,7 @@ void main() {
       what: 'a transform\'s resampled float',
       stack: stack,
       draw: (where) async => float.value = SelectionFloatPaint(
-        image: image,
-        imageLeft: where.left,
-        imageTop: where.top,
+        resampled: resampleShownOver(where, red),
         clip: canvasSize.pasteboardAt(PasteboardReach.whole).rect,
       ),
     );
@@ -546,15 +538,10 @@ void main() {
   /// hand (F-344) — rides the same tokens and the same carry.
   testWidgets('🚨a landing preview leaves nothing behind when it crosses the '
       'extent edge, either way', (tester) async {
-    final image = redSquare();
-    addTearDown(image.dispose);
     final landing = ValueNotifier<LandingPreview?>(null);
     addTearDown(landing.dispose);
-    SelectionFloatPaint floatAt(Rect where) => SelectionFloatPaint(
-      image: image,
-      imageLeft: where.left,
-      imageTop: where.top,
-    );
+    SelectionFloatPaint floatAt(Rect where) =>
+        SelectionFloatPaint(resampled: resampleShownOver(where, red));
     // A committed tile, blank so it draws nothing a probe could read. It was
     // load-bearing when this pin was written — an empty snapshot then read
     // as 「nothing to compare」 and refused the carry on its own — and since

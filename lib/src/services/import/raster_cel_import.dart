@@ -3,7 +3,10 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuBlend, GpuPlan, gpuTileBytes, gpuTileSide;
 
+import '../../core/floor_math.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -15,7 +18,11 @@ import '../../models/media_reference.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
+import '../../models/tiles_covering.dart';
 import '../../models/transform_pose.dart';
+import '../../native/app_gpu_engine.dart' show appGpuComposite;
+import '../../native/engine_row_pose.dart';
+import '../../native/engine_tile_ledger.dart';
 import '../brush_frame_store.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
@@ -254,12 +261,11 @@ LayerPlacement rectPlacement(
 /// 참조 그림은 벽 밖까지 통째로」. ⚠️What a tool draws (a text's letters) is
 /// cut at the wall as ever.
 ///
-/// A picture the engine holds is rastered ([_rastered]). One held off it
-/// ([pictureSideLimit]) never becomes one GPU image: laid 1:1 on whole
-/// pixels — a reference's file always is (F-374-Q1) — its rows are cut into
-/// the cel's tiles byte for byte ([cutFileInWorker], [cutPixels]); laid
-/// otherwise it is resampled a block at a time from the part of it each
-/// block reaches ([_resampled]).
+/// Laid 1:1 on whole pixels — a reference's file always is (F-374-Q1) — a
+/// picture whose pixels are the app's to read ([FilePicture],
+/// [PixelsPicture]) has its rows cut into the cel's tiles byte for byte
+/// ([cutFileInWorker], [cutPixels]), never held whole. Every other lay is
+/// the engine's, by the law the canvas lays a row by ([_laidOnEngine]).
 Future<BitmapSurface> layCelPicture({
   required CelPicture picture,
   required CanvasSize canvas,
@@ -267,7 +273,59 @@ Future<BitmapSurface> layCelPicture({
   int tileSize = defaultCelTileSize,
   bool whole = false,
 }) async {
-  final placed = placedBounds(placement, picture.size);
+  final layout = _layoutOf(picture.size, canvas, placement, tileSize, whole);
+  if (layout == null) {
+    return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
+  }
+  return switch (picture) {
+    final FilePicture file when _copiesPixels(placement) => laidCelSurface(
+      await cutFileInWorker(file, _cutAt(placement, layout)),
+    ),
+    final PixelsPicture pixels when _copiesPixels(placement) =>
+      laidCelSurface(cutPixels(pixels, _cutAt(placement, layout))),
+    final FilePicture file => await _laidOnEngine(
+      _PictureSource(await readFileInWorker(file)),
+      placement,
+      layout,
+    ),
+    _ => await _laidOnEngine(_PictureSource(picture), placement, layout),
+  };
+}
+
+/// [region] of [cel] — where its file lies — laid by [placement], the
+/// region's own pixels → the canvas, as [layCelPicture] lays a picture: the
+/// picture the cel's tiles already are, laid from them where they lie on
+/// the engine, never composed into one image or read back first.
+Future<BitmapSurface> layCelRegion({
+  required BitmapSurface cel,
+  required DirtyRegion region,
+  required LayerPlacement placement,
+  bool whole = false,
+}) async {
+  final layout = _layoutOf(
+    CanvasSize(width: region.width, height: region.height),
+    cel.canvasSize,
+    placement,
+    cel.tileSize,
+    whole,
+  );
+  if (layout == null) {
+    return BitmapSurface(canvasSize: cel.canvasSize, tileSize: cel.tileSize);
+  }
+  return _laidOnEngine(_RegionSource(cel, region), placement, layout);
+}
+
+/// Where a lay of a [picture]-sized picture by [placement] puts it on a
+/// [canvas]-sized cel of [tileSize] tiles ([layCelPicture]) — null where
+/// it puts nothing there.
+CelLayout? _layoutOf(
+  CanvasSize picture,
+  CanvasSize canvas,
+  LayerPlacement placement,
+  int tileSize,
+  bool whole,
+) {
+  final placed = placedBounds(placement, picture);
   final laid = whole && !placed.isEmpty
       ? DirtyRegion.wholePixelsOf(placed)
       : null;
@@ -275,9 +333,9 @@ Future<BitmapSurface> layCelPicture({
       ? placed.intersect(canvas.pasteboardAt(PasteboardReach.whole).rect)
       : laid.rect;
   if (clipped.isEmpty) {
-    return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
+    return null;
   }
-  final layout = (
+  return (
     canvas: canvas,
     tileSize: tileSize,
     tiles: tileRangeCovering(
@@ -289,20 +347,6 @@ Future<BitmapSurface> layCelPicture({
     ),
     laid: laid,
   );
-  return switch (picture) {
-    EnginePicture(:final image) => await _rastered(image, placement, layout),
-    _ when !_copiesPixels(placement) => await _resampled(
-      picture,
-      placement,
-      layout,
-    ),
-    final FilePicture file => laidCelSurface(
-      await cutFileInWorker(file, _cutAt(placement, layout)),
-    ),
-    final PixelsPicture pixels => laidCelSurface(
-      cutPixels(pixels, _cutAt(placement, layout)),
-    ),
-  };
 }
 
 /// Where [placement], standing a picture 1:1 on whole pixels, cuts it into
@@ -317,74 +361,394 @@ BitmapSurface _surfaceOf(CelLayout layout, List<PlacedTile> tiles) =>
       laidBounds: layout.laid,
     ).putTiles(tiles);
 
-/// [image], a picture the engine holds, laid by [placement] over [layout]'s
-/// tiles — ONE raster a block.
-Future<BitmapSurface> _rastered(
-  ui.Image image,
-  LayerPlacement placement,
-  CelLayout layout,
-) async {
-  final drawn = (
-    image: image,
-    inPicture: const GuideTransform.identity(),
-    owned: false,
-  );
-  final tiles = <PlacedTile>[];
-  for (final block in _layBlocks(layout.tiles, layout.tileSize)) {
-    tiles.addAll(await _laidBlock(drawn, placement, block, layout.tileSize));
-  }
-  return _surfaceOf(layout, tiles);
-}
-
-/// A picture held off the engine, laid where [placement] resamples it: read
-/// whole, and drawn a block at a time from the part of it each block
-/// reaches, which is all that is ever uploaded ([_partUploaded]) — by the
-/// engine's own resampler, as a picture it holds is laid, each part read on
-/// the grid the picture whole is mipped on ([_mipGrid]).
+/// [source] laid by [placement] over [layout]'s tiles on the engine, by
+/// the law the canvas lays a row by — its pose's inverse as the row's
+/// ([gpuRowInverse]), sampled at the canvas's own resolution
+/// ([canvasResolutionSampling]) — so a picture baked where it shows is the
+/// picture shown, byte for byte: a run of the composite a part of a block
+/// ([_partsFitting]), read back a tile at a time.
 ///
-/// ⛔Not halved first to hold a quarter of it, as a mip chain is read: 🔬a
-/// lay at 0.3 came out up to 86/255 apart in `flutter test` from the same
-/// picture laid by the engine, which reads it whole (2026-10-20). A picture
-/// past the side is laid by the law a picture within it is.
-Future<BitmapSurface> _resampled(
-  CelPicture picture,
+/// 🗣️I-120-Q26 (유저 2026-11-07 「굽기를 화면에 맞춘다 — 확대된 그림은 계단
+/// 그대로 굽는다」) · Q28 (「축소도 같은 법 — 화면처럼 최근접으로 굽는다」) ·
+/// gpu-export-path 1b ② (관제 2026-11-11 18:47: 「굽기를 화면과 같은 R1 ·
+/// 같은 샘플러 고르기로 옮기는 것이 곧 I-120-Q26」). ↩️The lay drew the
+/// picture into a Flutter raster a block at a time, by Flutter's sampler,
+/// uploaded premultiplied by the C engine, while the canvas lays its rows
+/// on the engine: 🔬2026-11-11, a 64² checker baked in place came out
+/// 54–1,992 pixels apart from the frame it was, at every pose but a halving
+/// — its edge, which Flutter antialiased and the engine does not, and every
+/// centre on a texel's edge, where each read the other texel.
+Future<BitmapSurface> _laidOnEngine(
+  _Source source,
   LayerPlacement placement,
   CelLayout layout,
 ) async {
-  final pixels = switch (picture) {
-    final FilePicture file => await readFileInWorker(file),
-    final PixelsPicture held => held,
-    EnginePicture() => throw StateError('The engine holds it: rastered.'),
-  };
+  if (layout.tileSize != gpuTileSide) {
+    throw ArgumentError(
+      'the engine lays tiles of $gpuTileSide, not ${layout.tileSize}',
+    );
+  }
+  final back = canvasToArtwork(placement);
+  if (back == null) {
+    return _surfaceOf(layout, const []);
+  }
   final tiles = <PlacedTile>[];
   for (final block in _layBlocks(layout.tiles, layout.tileSize)) {
-    for (final part in _partsFitting(block, pixels.size, placement, layout)) {
-      final drawn = await _partUploaded(pixels, placement, part, layout);
-      if (drawn != null) {
-        tiles.addAll(await _laidBlock(drawn, placement, part, layout.tileSize));
+    for (final part in _partsFitting(block, source.size, back, layout)) {
+      final laid = await _laidArea(
+        source,
+        back,
+        part,
+        _areaOf(part, layout.tileSize),
+        layout.canvas,
+      );
+      for (final MapEntry(key: coord, value: rgba) in laid.entries) {
+        if (_anyInk(rgba)) {
+          tiles.add((
+            coord: coord,
+            tile: BitmapTile(size: layout.tileSize, pixels: rgba),
+          ));
+        }
       }
     }
   }
   return _surfaceOf(layout, tiles);
 }
 
+/// [area]'s pixels — all of [part]'s tiles, or a piece of its one tile —
+/// laid from what of [source] they reach: each of [part]'s tiles, row by
+/// row, with nothing outside [area] — none where they reach none of it.
+///
+/// A part of ONE tile that reaches past one raster ([_partsFitting]) is
+/// laid as the halves of its area, each from what IT reaches, and put back
+/// together: a pixel reads the one texel its centre lands on, so the
+/// halves are the whole to the byte. 🔬2026-11-08 (I-120-Q28): read from
+/// what it reached decoded smaller, such a tile came out with 6,630 grey
+/// pixels of black-and-white line art laid at 0.15.
+Future<Map<TileCoord, Uint8List>> _laidArea(
+  _Source source,
+  GuideTransform back,
+  TileRange part,
+  DirtyRegion area,
+  CanvasSize canvas,
+) async {
+  final reached = _reachedBy(area, source.size, back);
+  if (reached == null) {
+    return const {};
+  }
+  final oneTile = part.firstX == part.lastX && part.firstY == part.lastY;
+  if (oneTile && !_fitsOneRaster(reached) && area.width + area.height > 2) {
+    final (first, second) = _halvesOf(area);
+    final one = await _laidArea(source, back, part, first, canvas);
+    final other = await _laidArea(source, back, part, second, canvas);
+    return _together(one, other);
+  }
+  final held = await source.tilesOver(reached);
+  if (held.tiles.isEmpty) {
+    return const {};
+  }
+  return _ran(held, back, part, area, canvas);
+}
+
+/// [area] in two along its longer side.
+(DirtyRegion, DirtyRegion) _halvesOf(DirtyRegion area) {
+  if (area.width >= area.height) {
+    final half = area.width >> 1;
+    return (
+      DirtyRegion.fromXYWH(
+        x: area.left,
+        y: area.top,
+        width: half,
+        height: area.height,
+      ),
+      DirtyRegion.fromXYWH(
+        x: area.left + half,
+        y: area.top,
+        width: area.width - half,
+        height: area.height,
+      ),
+    );
+  }
+  final half = area.height >> 1;
+  return (
+    DirtyRegion.fromXYWH(
+      x: area.left,
+      y: area.top,
+      width: area.width,
+      height: half,
+    ),
+    DirtyRegion.fromXYWH(
+      x: area.left,
+      y: area.top + half,
+      width: area.width,
+      height: area.height - half,
+    ),
+  );
+}
+
+/// The tiles two runs over apart areas of them laid, as one: each byte is
+/// one run's, the other's nothing there.
+Map<TileCoord, Uint8List> _together(
+  Map<TileCoord, Uint8List> one,
+  Map<TileCoord, Uint8List> other,
+) {
+  final together = {...one};
+  for (final MapEntry(key: coord, value: rgba) in other.entries) {
+    final laid = together[coord];
+    if (laid == null) {
+      together[coord] = rgba;
+      continue;
+    }
+    for (var at = 0; at < laid.length; at += 1) {
+      laid[at] |= rgba[at];
+    }
+  }
+  return together;
+}
+
+/// The pixels [part]'s tiles cover.
+DirtyRegion _areaOf(TileRange part, int tileSize) => DirtyRegion.fromXYWH(
+  x: part.firstX * tileSize,
+  y: part.firstY * tileSize,
+  width: (part.lastX - part.firstX + 1) * tileSize,
+  height: (part.lastY - part.firstY + 1) * tileSize,
+);
+
+/// [held] laid by [back] — a canvas pixel to the picture's — over [part]'s
+/// tiles of a [canvas]-sized cel, nothing outside [area]: ONE run of the
+/// composite, its one row the canvas's own ([_laidOnEngine]), read back.
+Map<TileCoord, Uint8List> _ran(
+  _HeldTiles held,
+  GuideTransform back,
+  TileRange part,
+  DirtyRegion area,
+  CanvasSize canvas,
+) {
+  final coords = [
+    for (var y = part.firstY; y <= part.lastY; y += 1)
+      for (var x = part.firstX; x <= part.lastX; x += 1) TileCoord(x: x, y: y),
+  ];
+  final ledger = EngineTileLedger.instance;
+  return ledger.held((hold) {
+    final plan = GpuPlan(appGpuComposite.engine);
+    try {
+      final grid = hold.gridOf(BrushFrameKey.noCel, held.tiles);
+      final GuideTransform(:a, :b, :c, :d, :tx, :ty) = back;
+      final laid = plan.row(
+        set: plan.set(grid.x0, grid.y0, grid.columns, grid.rows, grid.tiles),
+        inverse: gpuRowInverse(
+          GuideTransform(a, b, c, d, tx + held.dx, ty + held.dy),
+        ),
+        sampling: canvasResolutionSampling,
+        columns: canvas.width,
+        rows: canvas.height,
+        mode: GpuBlend.normal,
+      );
+      if (!laid) {
+        return const {};
+      }
+      debugLayRuns += 1;
+      final run = appGpuComposite.run(
+        ledger.pool,
+        plan,
+        [for (final coord in coords) (coord.x, coord.y)],
+        (area.left, area.top, area.rightExclusive, area.bottomExclusive),
+      );
+      try {
+        final bytes = run.read();
+        return {
+          for (final (at, coord) in coords.indexed)
+            coord: Uint8List.sublistView(
+              bytes,
+              at * gpuTileBytes,
+              (at + 1) * gpuTileBytes,
+            ),
+        };
+      } finally {
+        run.free();
+      }
+    } finally {
+      plan.free();
+    }
+  });
+}
+
+/// Whether straight RGBA [rgba] holds a pixel that is not clear.
+bool _anyInk(Uint8List rgba) {
+  for (var at = 3; at < rgba.length; at += 4) {
+    if (rgba[at] != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// What a lay reads its picture from: tiles of it, a part at a time
+/// ([tilesOver]).
+sealed class _Source {
+  const _Source();
+
+  /// The picture's size: its pixels from (0, 0).
+  CanvasSize get size;
+
+  /// The tiles that hold [reached] — pixels of the picture — and where
+  /// they lie past the picture's own.
+  Future<_HeldTiles> tilesOver(_Reached reached);
+}
+
+/// Tiles of a picture — in a space a whole number of pixels from its own,
+/// [dx] across and [dy] down — keyed where they lie in that space.
+typedef _HeldTiles = ({Map<TileCoord, BitmapTile> tiles, int dx, int dy});
+
+/// A picture as an import hands it, cut into tiles where a part reaches
+/// it: its pixels in hand cut as they are; one the engine holds rastered
+/// 1:1 over that part first — at no more than a lay's raster a side
+/// ([layRasterSide]), which every engine holds.
+final class _PictureSource extends _Source {
+  const _PictureSource(this.picture);
+
+  final CelPicture picture;
+
+  @override
+  CanvasSize get size => picture.size;
+
+  @override
+  Future<_HeldTiles> tilesOver(_Reached reached) async {
+    final over = _onTheGrid(reached, picture.size);
+    final cut = switch (picture) {
+      final PixelsPicture pixels => cutPixels(pixels, _cutOver(over, 0, 0)),
+      EnginePicture(:final image) => cutPixels(
+        await _rasterOver(image, over),
+        _cutOver(over, over.left, over.top),
+      ),
+      FilePicture() => throw StateError('A file is read before it is laid.'),
+    };
+    return (tiles: laidCelSurface(cut).tiles, dx: 0, dy: 0);
+  }
+
+  /// The cut of [over]'s tiles of a picture whose top-left pixel is
+  /// ([left], [top]) in the picture's own.
+  PictureCut _cutOver(DirtyRegion over, int left, int top) => (
+    left: left,
+    top: top,
+    layout: (
+      canvas: picture.size,
+      tileSize: gpuTileSide,
+      tiles: over.tileRange(tileSize: gpuTileSide),
+      laid: null,
+    ),
+  );
+}
+
+/// [image]'s pixels over [over], straight, row after row — drawn 1:1 on
+/// whole pixels, which copies.
+Future<PixelsPicture> _rasterOver(ui.Image image, DirtyRegion over) async {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawImageRect(
+    image,
+    over.rect,
+    ui.Rect.fromLTWH(0, 0, over.width.toDouble(), over.height.toDouble()),
+    ui.Paint()
+      ..filterQuality = ui.FilterQuality.none
+      ..isAntiAlias = false,
+  );
+  final picture = recorder.endRecording();
+  // 🚨THE `finally` IS THE POINT. `toImage` is the awaited call, and an
+  // await that throws skips every statement after it — so a dispose written
+  // on the line below runs on the landing arm ONLY, and a raster that
+  // failed took the picture's native memory with it.
+  final ui.Image raster;
+  try {
+    raster = await picture.toImage(over.width, over.height);
+  } finally {
+    picture.dispose();
+  }
+  try {
+    return PixelsPicture(
+      await straightRgbaOf(raster),
+      width: over.width,
+      height: over.height,
+    );
+  } finally {
+    raster.dispose();
+  }
+}
+
+/// [region] of [cel] — where its file lies — as the picture a lay reads:
+/// the cel's own tiles, on the canvas, [region]'s top-left the picture's.
+final class _RegionSource extends _Source {
+  const _RegionSource(this.cel, this.region);
+
+  final BitmapSurface cel;
+  final DirtyRegion region;
+
+  @override
+  CanvasSize get size => CanvasSize(width: region.width, height: region.height);
+
+  @override
+  Future<_HeldTiles> tilesOver(_Reached reached) async {
+    final over = DirtyRegion.fromXYWH(
+      x: region.left + reached.left,
+      y: region.top + reached.top,
+      width: reached.width,
+      height: reached.height,
+    );
+    return (
+      tiles: {
+        for (final covered in tilesCovering(cel, over))
+          covered.coord: covered.tile,
+      },
+      dx: region.left,
+      dy: region.top,
+    );
+  }
+}
+
+/// [reached] out to the tiles it lies in, inside the picture: what a part
+/// cuts of a picture.
+DirtyRegion _onTheGrid(_Reached reached, CanvasSize picture) {
+  final side = gpuTileSide;
+  final left = floorDiv(reached.left, side) * side;
+  final top = floorDiv(reached.top, side) * side;
+  final right = math.min(
+    picture.width,
+    -floorDiv(-(reached.left + reached.width), side) * side,
+  );
+  final bottom = math.min(
+    picture.height,
+    -floorDiv(-(reached.top + reached.height), side) * side,
+  );
+  return DirtyRegion.fromXYWH(
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  );
+}
+
+/// Whether what a raster reaches ([_reachedBy]) is no longer a side than
+/// one lay's raster ([layRasterSide]).
+bool _fitsOneRaster(_Reached reached) {
+  final side = debugLayRasterSide ?? layRasterSide;
+  return reached.width <= side && reached.height <= side;
+}
+
 /// [block], cut into the parts whose reach into the picture
-/// ([_reachedBy]) is no longer a side than one lay's raster
-/// ([layRasterSide]) — a block of one tile however far it reaches.
+/// ([_reachedBy]) fits one raster ([_fitsOneRaster]) — a block of one tile
+/// however far it reaches, which is laid in halves ([_laidArea]).
 Iterable<TileRange> _partsFitting(
   TileRange block,
   CanvasSize picture,
-  LayerPlacement placement,
+  GuideTransform back,
   CelLayout layout,
 ) sync* {
-  final reached = _reachedBy(block, picture, placement, layout.tileSize);
+  final reached = _reachedBy(_areaOf(block, layout.tileSize), picture, back);
   if (reached == null) {
     return;
   }
-  final side = debugLayRasterSide ?? layRasterSide;
   final wide = block.lastX - block.firstX;
   final tall = block.lastY - block.firstY;
-  if (reached.width <= side && reached.height <= side || wide + tall == 0) {
+  if (_fitsOneRaster(reached) || wide + tall == 0) {
     yield block;
     return;
   }
@@ -417,139 +781,40 @@ Iterable<TileRange> _partsFitting(
             lastY: block.lastY,
           ),
         );
-  yield* _partsFitting(halves.$1, picture, placement, layout);
-  yield* _partsFitting(halves.$2, picture, placement, layout);
+  yield* _partsFitting(halves.$1, picture, back, layout);
+  yield* _partsFitting(halves.$2, picture, back, layout);
 }
 
-/// The pixels of a [picture]-sized picture that [block]'s raster samples
-/// where [placement] lays it — what the block covers, taken back into the
-/// picture and grown by the resampler's reach — or null where it reaches
+/// Pixels of a picture, from its own top-left.
+typedef _Reached = ({int left, int top, int width, int height});
+
+/// The pixels of a [picture]-sized picture that [area]'s pixels sample
+/// where [back] takes a canvas pixel to the picture's — what [area] covers,
+/// taken back into the picture to whole texels — or null where it reaches
 /// none of the picture.
-({int left, int top, int width, int height})? _reachedBy(
-  TileRange block,
-  CanvasSize picture,
-  LayerPlacement placement,
-  int tileSize,
-) {
-  final back = canvasToArtwork(placement);
-  if (back == null) {
-    return null;
-  }
-  final over = placedRectBounds(
-    back,
-    ui.Rect.fromLTRB(
-      (block.firstX * tileSize).toDouble(),
-      (block.firstY * tileSize).toDouble(),
-      ((block.lastX + 1) * tileSize).toDouble(),
-      ((block.lastY + 1) * tileSize).toDouble(),
-    ),
-  );
-  // A resampled pixel reads the picture about two of its own pixels round
-  // where it lands — farther, in the picture's pixels, the more the lay
-  // shrinks it.
-  final shrink = math.min(
-    math.sqrt(placement.a * placement.a + placement.b * placement.b),
-    math.sqrt(placement.c * placement.c + placement.d * placement.d),
-  );
-  final reach = shrink <= 0 ? 0 : (2 / math.min(shrink, 1)).ceil() + 2;
-  final grid = _mipGrid(shrink);
-  final left = math.max(0, over.left.floor() - reach) ~/ grid * grid;
-  final top = math.max(0, over.top.floor() - reach) ~/ grid * grid;
-  final right = math.min(
-    picture.width,
-    (over.right.ceil() + reach + grid - 1) ~/ grid * grid,
-  );
-  final bottom = math.min(
-    picture.height,
-    (over.bottom.ceil() + reach + grid - 1) ~/ grid * grid,
-  );
+_Reached? _reachedBy(DirtyRegion area, CanvasSize picture, GuideTransform back) {
+  final over = placedRectBounds(back, area.rect);
+  // A pixel reads the one texel its centre lands on, and a centre lies half
+  // a pixel inside the area, so it lands inside what the area covers taken
+  // back — on a texel's edge, either texel of it.
+  // ↩️It reached two texels and more past that, 「farther the more the lay
+  // shrinks it」, and out to a mip grid, while a lay resampled smoothly;
+  // and one texel, while it went nearest, which no pixel read (I-120-Q28,
+  // its mutant lived).
+  final left = math.max(0, over.left.floor());
+  final top = math.max(0, over.top.floor());
+  final right = math.min(picture.width, over.right.ceil());
+  final bottom = math.min(picture.height, over.bottom.ceil());
   if (left >= right || top >= bottom) {
     return null;
   }
   return (left: left, top: top, width: right - left, height: bottom - top);
 }
 
-/// The grid of the picture's pixels a part of it is read on where [shrink]
-/// lays it smaller: the texels of the deepest mip level a draw at that
-/// shrink samples. A part read from anywhere else is mipped on another grid
-/// than the picture whole is, and resamples to other pixels.
-///
-/// 🔬On the Surface's engine (Impeller, 2026-10-20, a throwaway probe: an
-/// 8000×1080 picture laid from parts against the engine's lay of it whole)
-/// unaligned parts came out up to 95/255 apart at 0.096, 0.24, 0.3 and 0.6
-/// — all over, not at their seams; on this grid 4 at most, 1 on a smooth
-/// picture, and on the grid a level deeper no closer. The test engine
-/// samples `high` without mips and sees neither ([debugLayFilterQuality]).
-int _mipGrid(double shrink) => shrink <= 0 || shrink >= 1
-    ? 1
-    : 1 << (math.log(1 / shrink) / math.ln2).ceil();
-
-/// The part of [pixels] that [part]'s raster reaches ([_reachedBy]),
-/// uploaded for that raster alone — at no more than a lay's raster a side
-/// ([layRasterSide]), which every engine holds; a part of one tile that
-/// reaches farther is drawn from fewer pixels than it reaches, still more
-/// than the tile shows. Null where it reaches none of the picture.
-Future<_BlockPicture?> _partUploaded(
-  PixelsPicture pixels,
-  LayerPlacement placement,
-  TileRange part,
-  CelLayout layout,
-) async {
-  final reached = _reachedBy(part, pixels.size, placement, layout.tileSize);
-  if (reached == null) {
-    return null;
-  }
-  final side = debugLayRasterSide ?? layRasterSide;
-  final image = await decodeStraightRgbaImage(
-    rgba: _rowsReached(pixels, reached),
-    width: reached.width,
-    height: reached.height,
-    targetWidth: math.min(reached.width, side),
-    targetHeight: math.min(reached.height, side),
-  );
-  return (
-    image: image,
-    inPicture: GuideTransform(
-      reached.width / image.width,
-      0,
-      0,
-      reached.height / image.height,
-      reached.left.toDouble(),
-      reached.top.toDouble(),
-    ),
-    owned: true,
-  );
-}
-
-/// [pixels]' rows over [reached], one after another — a view where they
-/// already lie so.
-Uint8List _rowsReached(
-  PixelsPicture pixels,
-  ({int left, int top, int width, int height}) reached,
-) {
-  final stride = pixels.width * 4;
-  if (reached.left == 0 && reached.width == pixels.width) {
-    return Uint8List.sublistView(
-      pixels.rgba,
-      reached.top * stride,
-      (reached.top + reached.height) * stride,
-    );
-  }
-  final rowBytes = reached.width * 4;
-  final out = Uint8List(rowBytes * reached.height);
-  for (var y = 0; y < reached.height; y += 1) {
-    out.setRange(
-      y * rowBytes,
-      (y + 1) * rowBytes,
-      pixels.rgba,
-      (reached.top + y) * stride + reached.left * 4,
-    );
-  }
-  return out;
-}
-
-/// The longest side, in pixels, of ONE raster a lay asks the GPU for: a
-/// picture that covers more is laid a block of tiles at a time
+/// The longest side, in pixels, of ONE part of a picture a lay reads at a
+/// time — the tiles it cuts of it, the raster of it a picture the engine
+/// holds is copied out of ([_rasterOver]) — and of one run's block of
+/// tiles: a picture that covers more is laid a block of tiles at a time
 /// ([layCelPicture]).
 ///
 /// Since F-374-Q8 (유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지
@@ -570,10 +835,10 @@ const int layRasterSide = 2048;
 @visibleForTesting
 int? debugLayRasterSide;
 
-/// How many rasters the lays have asked the GPU for, counted for the tests
-/// that see a picture laid in blocks.
+/// How many runs of the engine the lays have asked for, counted for the
+/// tests that see a picture laid in blocks.
 @visibleForTesting
-int debugLayRasters = 0;
+int debugLayRuns = 0;
 
 /// [covered] in blocks of at most [layRasterSide] a side, row by row.
 Iterable<TileRange> _layBlocks(TileRange covered, int tileSize) sync* {
@@ -596,135 +861,6 @@ bool _copiesPixels(LayerPlacement placement) =>
     placement.isPureTranslation &&
     placement.tx == placement.tx.truncateToDouble() &&
     placement.ty == placement.ty.truncateToDouble();
-
-/// How [placement] lays a picture's pixels: copied where it stands them 1:1
-/// on whole pixels, resampled anywhere else.
-ui.Paint _layPaint(LayerPlacement placement) {
-  // A 1:1 integer-aligned placement must copy bytes, not resample:
-  // bicubic (high) blurs even at identity — a hard black line came back
-  // 28/255 gray through the cubic kernel — and the text bake's whole
-  // contract is that the store pixels ARE the engine render.
-  return ui.Paint()
-    ..filterQuality = _copiesPixels(placement)
-        ? ui.FilterQuality.none
-        : debugLayFilterQuality ?? ui.FilterQuality.high
-    ..isAntiAlias = true;
-}
-
-/// The quality a test resamples a lay at in place of `high` — `medium`,
-/// which mips on the test engine as `high` does on this device's
-/// ([_mipGrid]) — or null.
-@visibleForTesting
-ui.FilterQuality? debugLayFilterQuality;
-
-/// What one block of a lay draws: an image, where it lies among the
-/// picture's own pixels — the picture whole at its origin, or the part of a
-/// picture held off the engine that the block reaches, uploaded for it
-/// ([_partUploaded]) — and whether the block lets go of it.
-typedef _BlockPicture = ({
-  ui.Image image,
-  LayerPlacement inPicture,
-  bool owned,
-});
-
-/// The tiles of [block] that [drawn], laid by [placement], puts any ink on
-/// — ONE raster of the block, sliced into its tiles. The recorder canvas
-/// is translated so the block's origin is (0,0).
-Future<List<PlacedTile>> _laidBlock(
-  _BlockPicture drawn,
-  LayerPlacement placement,
-  TileRange block,
-  int tileSize,
-) async {
-  try {
-    return await _laidBlockOf(
-      drawn.image,
-      placement.compose(drawn.inPicture),
-      block,
-      tileSize,
-    );
-  } finally {
-    if (drawn.owned) {
-      drawn.image.dispose();
-    }
-  }
-}
-
-Future<List<PlacedTile>> _laidBlockOf(
-  ui.Image image,
-  LayerPlacement placement,
-  TileRange block,
-  int tileSize,
-) async {
-  final (firstX: tileX0, lastX: tileX1, firstY: tileY0, lastY: tileY1) =
-      block;
-  final blockWidth = (tileX1 - tileX0 + 1) * tileSize;
-  final blockHeight = (tileY1 - tileY0 + 1) * tileSize;
-  final recorder = ui.PictureRecorder();
-  ui.Canvas(recorder)
-    ..translate(
-      -(tileX0 * tileSize).toDouble(),
-      -(tileY0 * tileSize).toDouble(),
-    )
-    ..transform(placementMatrix(placement).storage)
-    ..drawImage(image, ui.Offset.zero, _layPaint(placement));
-  final picture = recorder.endRecording();
-  // 🚨THE `finally` IS THE POINT. `toImage` is the awaited call, and an await
-  // that throws skips every statement after it — so a dispose written on the
-  // line below runs on the landing arm ONLY, and a raster that failed took
-  // the picture's native memory with it. The law: what the start took is
-  // given back on ALL THREE arms — landing, overtaking, refusal — and the
-  // place that gives it back has to be structural.
-  final ui.Image raster;
-  debugLayRasters += 1;
-  try {
-    raster = await picture.toImage(blockWidth, blockHeight);
-  } finally {
-    picture.dispose();
-  }
-  try {
-    final bytes = await straightRgbaOf(raster);
-    final rowStride = blockWidth * 4;
-
-    final tiles = <PlacedTile>[];
-    final tilePixels = Uint8List(tileSize * tileSize * 4);
-    for (var ty = tileY0; ty <= tileY1; ty += 1) {
-      for (var tx = tileX0; tx <= tileX1; tx += 1) {
-        final blockX = (tx - tileX0) * tileSize;
-        final blockY = (ty - tileY0) * tileSize;
-        var any = false;
-        for (var row = 0; row < tileSize; row += 1) {
-          final srcStart = (blockY + row) * rowStride + blockX * 4;
-          final dstStart = row * tileSize * 4;
-          tilePixels.setRange(
-            dstStart,
-            dstStart + tileSize * 4,
-            bytes,
-            srcStart,
-          );
-          if (!any) {
-            for (var i = dstStart + 3; i < dstStart + tileSize * 4; i += 4) {
-              if (tilePixels[i] != 0) {
-                any = true;
-                break;
-              }
-            }
-          }
-        }
-        if (!any) {
-          continue; // Fully transparent tile — the surface stays sparse.
-        }
-        tiles.add((
-          coord: TileCoord(x: tx, y: ty),
-          tile: BitmapTile(size: tileSize, pixels: tilePixels),
-        ));
-      }
-    }
-    return tiles;
-  } finally {
-    raster.dispose();
-  }
-}
 
 /// Bakes [tiles] — a decoded picture already cut into cel tiles of
 /// [defaultCelTileSize], straight RGBA, by their place in tiles — as [key]'s

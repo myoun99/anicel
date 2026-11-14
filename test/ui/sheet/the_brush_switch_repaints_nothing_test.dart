@@ -1,6 +1,7 @@
 @Tags(['impeller'])
 library;
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -92,6 +93,7 @@ import '../../helpers/settle_async.dart';
 /// the tiles were drawn nearest between 50% and 100%, whole texels that
 /// round alike whatever composes them.
 void main() {
+  opensTheEnginesScreens();
   const screen = ValueKey<String>('screen');
   late EditorSessionManager session;
   late ValueNotifier<bool> brushAllowed;
@@ -239,6 +241,7 @@ void main() {
                 session: session,
                 thumbnails: (
                   resolve: (cut, frame, {required shownHeight, region}) => printed,
+                  noticesFor: (_) => landed,
                   landed: landed,
                   pending: () => false,
                 ),
@@ -352,8 +355,18 @@ void main() {
         // the region afresh (F-533: the capsule's on this 3.0 view, shot at
         // 1.0, was 300 pixels off it, up to 117/255).
         final ratio = tester.view.devicePixelRatio;
+        final before = await shoot(tester, pixelRatio: ratio);
         brushAllowed.value = on;
         await tester.pump();
+        if (sheet.sheet == 'conte' && on) {
+          // Its live one has a texture to open: the print stands till then.
+          expect(
+            (await shoot(tester, pixelRatio: ratio)).differingFrom(before),
+            0,
+            reason: 'the print stands while the live picture opens',
+          );
+          await tester.pump();
+        }
         final first = await shoot(tester, pixelRatio: ratio);
         await _settle(tester);
         final settled = await shoot(tester, pixelRatio: ratio);

@@ -22,11 +22,12 @@ use std::slice;
 /// The longest prototype a design makes.
 const MAX_TAPS: i64 = 131_071;
 
-/// The quality a sound is conformed at — the Dart reference's
-/// `defaultResamplerStopbandDb` and `defaultResamplerBandwidth` (their
-/// reasons are there), for a conversion Rust starts itself (native/audio's
-/// pieces at another rate, native-to-rust-Q11). The C takes both from its
-/// caller and keeps none. A test holds them to the Dart's.
+/// The quality a sound is conformed at — the app's
+/// `defaultResamplerStopbandDb` and `defaultResamplerBandwidth`
+/// (`audio_resample_stream.dart`, their reasons are there), for a
+/// conversion Rust starts itself (native/audio's pieces at another rate,
+/// native-to-rust-Q11). The exports take both from their caller and keep
+/// none. A test holds them to the Dart's.
 pub const DEFAULT_STOPBAND_DB: f64 = 120.0;
 pub const DEFAULT_BANDWIDTH: f64 = 0.90;
 
@@ -71,7 +72,7 @@ fn kaiser_beta(stopband_db: f64) -> f64 {
     if stopband_db > 50.0 {
         0.1102 * (stopband_db - 8.7)
     } else if stopband_db >= 21.0 {
-        0.5842 * (stopband_db - 21.0).powf(0.4) + 0.07886 * (stopband_db - 21.0)
+        0.5842 * libm::pow(stopband_db - 21.0, 0.4) + 0.07886 * (stopband_db - 21.0)
     } else {
         0.0
     }
@@ -82,7 +83,7 @@ fn sinc(x: f64) -> f64 {
         return 1.0;
     }
     let pix = PI * x;
-    pix.sin() / pix
+    libm::sin(pix) / pix
 }
 
 /// The prototype's length for a conversion: odd, 15 to 131071, and 0 for

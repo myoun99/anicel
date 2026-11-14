@@ -1,22 +1,69 @@
-//! The Rust decoder against the engine's C (native/oracle): every file
-//! decoded by both, through the export each has — which decoder read it,
-//! its channels and rate, and its samples: to the bit where both read whole
-//! numbers, within a decoder's rounding where both compute (MP3, Vorbis).
+//! The decoder through its exports: which decoder read a file, its channels
+//! and rate, and its samples — held to the ledger where the bundled
+//! decoders read them (the C's samples to the bit where it read whole
+//! numbers, this decoder's where it computed: pins.rs), and a window, a
+//! stream and a carried span to the whole decode of the same sound.
+//! ↩️Until the connection round deleted the C (connection-round-checklist
+//! H, 2026-11-08) every file was decoded by both, through the export each
+//! had (native/oracle); what outlives it was pinned before it went
+//! (connection-round-checklist A, 관제 2026-11-07).
 
-use std::ffi::{CString, c_char, c_void};
+use std::ffi::CString;
 use std::path::{Path, PathBuf};
 
-use oracle::export;
+use oracle::framed;
 
 mod movies;
+mod os;
 mod pins;
 mod wavs;
 
-type Window =
-    unsafe extern "C" fn(*const c_char, i64, i64, i32, i64, i64, *mut *mut f32, *mut i64, *mut i32, *mut i32) -> i32;
-type Free = unsafe extern "C" fn(*mut f32);
-type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
-type Bound = extern "C" fn(i64) -> i64;
+/// 🚨The most one request of these tests asks the heap for: past it the
+/// request is refused, and the tests stop there (`handle_alloc_error`)
+/// rather than take the machine's memory before they fail — as a decoder
+/// that sizes a buffer by a file's word would (native-memory-safety-Q5: 5.9
+/// GB for one piece of a file of 1,040 bytes). No test here asks for a
+/// gigabyte.
+const ROOM: usize = 1 << 30;
+
+/// The system's allocator, refusing a request past [ROOM].
+struct Room;
+
+// SAFETY: the system's allocator, or null — which a caller must meet for
+// any request.
+unsafe impl std::alloc::GlobalAlloc for Room {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.size() > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.size() > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, at: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        if size > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.realloc(at, layout, size) }
+    }
+
+    unsafe fn dealloc(&self, at: *mut u8, layout: std::alloc::Layout) {
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.dealloc(at, layout) }
+    }
+}
+
+#[global_allocator]
+static ROOM_ONLY: Room = Room;
 
 /// What a decode answered.
 #[derive(Debug, Clone)]
@@ -42,13 +89,15 @@ impl Span<'_> {
     }
 }
 
-fn decode_with(window: Window, free: Free, span: &Span, first: i64, count: i64) -> Decoded {
+/// The decode of `count` frames of `span` from `first` (-1: to the end),
+/// through the exports the app calls.
+pub(crate) fn decode(span: &Span, first: i64, count: i64) -> Decoded {
     let path = CString::new(span.path.to_str().expect("a UTF-8 path")).expect("no NUL");
     let mut samples = std::ptr::null_mut();
     let (mut frames, mut channels, mut rate) = (0i64, 0i32, 0i32);
     // SAFETY: a NUL-terminated path, and out pointers to locals.
     let format = unsafe {
-        window(
+        crate::qa_audio_decode_span_window(
             path.as_ptr(),
             span.offset,
             span.length,
@@ -67,7 +116,7 @@ fn decode_with(window: Window, free: Free, span: &Span, first: i64, count: i64) 
         // SAFETY: the decoder handed over `frames` frames of `channels`.
         let held = unsafe { std::slice::from_raw_parts(samples, frames as usize * channels as usize) }.to_vec();
         // SAFETY: handed over by the same library, freed once.
-        unsafe { free(samples) };
+        unsafe { crate::qa_audio_decode_free(samples) };
         held
     };
     assert_eq!(held.len(), frames as usize * channels.max(0) as usize, "the frames said are the frames handed over");
@@ -75,33 +124,65 @@ fn decode_with(window: Window, free: Free, span: &Span, first: i64, count: i64) 
     Decoded { format, channels, rate, samples: held }
 }
 
-/// The C's decode of `count` frames from `first` (-1: to the end).
-pub(crate) fn c_window(span: &Span, first: i64, count: i64) -> Decoded {
-    // SAFETY: qa_audio_decode.c's declarations.
-    let (window, free) =
-        unsafe { (export::<Window>("qa_audio_decode_span_window"), export::<Free>("qa_audio_decode_free")) };
-    decode_with(window, free, span, first, count)
-}
+/// A test's decodes in a row, fingerprinted for the ledger: each its
+/// decoder, channels and rate (i32 little-endian), then its samples — their
+/// count (u64) and each as float32 little-endian — the C's answers, pinned
+/// before the C was deleted (connection-round-checklist A, 관제
+/// 2026-11-07). Only the bundled decoders', which decode alike on every
+/// device (pins.rs).
+#[derive(Default)]
+pub(crate) struct Sounds(ledger::Running);
 
-/// This crate's, through its own exports.
-pub(crate) fn rust_window(span: &Span, first: i64, count: i64) -> Decoded {
-    decode_with(crate::qa_audio_decode_span_window, crate::qa_audio_decode_free, span, first, count)
-}
-
-/// Holds the Rust's decode of `span` to the C's, to the bit.
-pub(crate) fn expect_same(what: &str, span: &Span, first: i64, count: i64) -> Decoded {
-    let (rust, c) = (rust_window(span, first, count), c_window(span, first, count));
-    assert_eq!((rust.format, rust.channels, rust.rate), (c.format, c.channels, c.rate), "{what}: which decoder, channels, rate");
-    assert_eq!(rust.samples.len(), c.samples.len(), "{what}: how many samples");
-    if let Some(at) = rust.samples.iter().zip(&c.samples).position(|(r, c)| r.to_bits() != c.to_bits()) {
-        panic!("{what}: sample {at} is {} where the C's is {}", rust.samples[at], c.samples[at]);
+impl Sounds {
+    pub(crate) fn add(&mut self, sound: &Decoded) {
+        // What the OS reads is its own on each device, and a pin a job does
+        // not hold is not split by platform (pins.rs).
+        assert_ne!(sound.format, crate::FORMAT_OS, "a row holds the bundled decoders' sounds");
+        for word in [sound.format, sound.channels, sound.rate] {
+            self.0.add(&word.to_le_bytes());
+        }
+        self.add_samples(&sound.samples);
     }
-    rust
+
+    pub(crate) fn add_samples(&mut self, samples: &[f32]) {
+        self.0.add(&(samples.len() as u64).to_le_bytes());
+        let bytes: Vec<u8> = samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        self.0.add(&bytes);
+    }
+
+    pub(crate) fn pinned(self, id: &str) {
+        self.0.assert_pinned(id);
+    }
 }
 
-/// The biggest difference between two decodes of the same sound.
-pub(crate) fn largest_difference(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max)
+/// Holds `sound` to be `whole`, to the bit: its decoder, channels and rate,
+/// and every sample.
+pub(crate) fn expect_the_same_sound(what: &str, sound: &Decoded, whole: &Decoded) {
+    assert_eq!((sound.format, sound.channels, sound.rate), (whole.format, whole.channels, whole.rate), "{what}");
+    assert!(sound.samples.iter().map(|s| s.to_bits()).eq(whole.samples.iter().map(|s| s.to_bits())), "{what}: the samples");
+}
+
+/// Holds `window` to be the frames `whole` has from `first` on — `count` of
+/// them, or to the end at -1, and none past it.
+pub(crate) fn expect_window_of(what: &str, window: &Decoded, whole: &Decoded, first: i64, count: i64) {
+    let channels = whole.channels as usize;
+    let from = (first as usize * channels).min(whole.samples.len());
+    let to = if count < 0 { whole.samples.len() } else { (from + count as usize * channels).min(whole.samples.len()) };
+    let there = Decoded { samples: whole.samples[from..to].to_vec(), ..whole.clone() };
+    expect_the_same_sound(what, window, &there);
+}
+
+/// Holds a stream of `whole` read `piece` frames at a time to be it: each
+/// read a whole piece until what is left, then nothing; a read of no
+/// buffer or of fewer than no frames refused, of no frames nothing.
+pub(crate) fn expect_stream_of(what: &str, (sound, answers, misuses): &(Decoded, Vec<i64>, [i64; 3]), whole: &Decoded, piece: i64) {
+    expect_the_same_sound(what, sound, whole);
+    let frames = (whole.samples.len() / whole.channels as usize) as i64;
+    let mut reads = vec![piece; (frames / piece) as usize];
+    reads.extend([frames % piece].into_iter().filter(|&left| left > 0));
+    reads.push(0);
+    assert_eq!(answers, &reads, "{what}: each read");
+    assert_eq!(misuses, &[-1, -1, 0], "{what}: what a misuse answers");
 }
 
 /// A file of its own in the temporary folder — named in Hangul, so every
@@ -138,32 +219,6 @@ pub(crate) fn between_junk(name: &str, body: &[u8]) -> (TempFile, i64) {
     bytes.extend_from_slice(body);
     bytes.extend((0..777).map(|i| (i * 29 + 3) as u8));
     (TempFile::new(name, &bytes), offset)
-}
-
-/// `medium` framed as the save frames it — blocks of `block_bytes`, each a
-/// zstd frame the C compresses.
-pub(crate) fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
-    // SAFETY: qa_compress.c's declarations.
-    let (bound, compress) =
-        unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
-    let blocks: Vec<Vec<u8>> = medium
-        .chunks(block_bytes)
-        .map(|block| {
-            let mut frame = vec![0u8; bound(block.len() as i64) as usize];
-            // SAFETY: both buffers hold the sizes passed.
-            let written =
-                unsafe { compress(frame.as_mut_ptr(), frame.len() as i64, block.as_ptr(), block.len() as i64, 9) };
-            frame.truncate(written as usize);
-            frame
-        })
-        .collect();
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(&(block_bytes as u32).to_le_bytes());
-    bytes.extend_from_slice(&(medium.len() as u64).to_le_bytes());
-    bytes.extend_from_slice(&(blocks.len() as u32).to_le_bytes());
-    blocks.iter().for_each(|block| bytes.extend_from_slice(&(block.len() as u32).to_le_bytes()));
-    blocks.iter().for_each(|block| bytes.extend_from_slice(block));
-    bytes
 }
 
 /// A stream of bytes that looks like nothing, the same every run.
@@ -203,69 +258,37 @@ fn id3_holding(payload: &[u8], footer: bool) -> Vec<u8> {
 }
 
 #[test]
-fn the_fixtures_decode_as_the_c_decodes_them() {
+fn a_flac_behind_an_id3_tag_reads_as_the_flac_alone() {
     let flac = fixture("tone.flac");
-    let untagged = expect_same("tone.flac", &Span::whole(&flac), 0, -1);
-    // ⚠️Behind an ID3 tag the C's dr_flac reads no FLAC, whatever the tag
+    let untagged = decode(&Span::whole(&flac), 0, -1);
+    // ⚠️Behind an ID3 tag the C's dr_flac read no FLAC, whatever the tag
     // (measured 2026-11-06: v3 and v4, 0 to 127 bytes): Media Foundation
     // read it to the same samples, and one with a footer not at all. Here
     // it is a FLAC, read past the tag.
     for footer in [false, true] {
         let tagged = TempFile::new("tagged.flac", &[id3(100, footer), std::fs::read(&flac).expect("the fixture")].concat());
-        let span = Span::whole(tagged.path());
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        assert_eq!(rust.format, crate::FORMAT_FLAC, "behind an ID3 tag, a footer {footer}");
-        assert!(rust.samples.iter().map(|s| s.to_bits()).eq(untagged.samples.iter().map(|s| s.to_bits())));
-        assert_ne!(c.format, crate::FORMAT_FLAC, "the C's, a footer {footer}");
-    }
-
-    // The lossy ones compute: the same frames, each within a decoder's
-    // rounding of the C's.
-    for (name, largest) in [("tone.mp3", 0.000_1), ("tone.ogg", 0.000_1)] {
-        let path = fixture(name);
-        let span = Span::whole(&path);
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        assert_eq!((rust.format, rust.channels, rust.rate), (c.format, c.channels, c.rate), "{name}");
-        assert_eq!(rust.samples.len(), c.samples.len(), "{name}: the frames the C hands back");
-        let difference = largest_difference(&rust.samples, &c.samples);
-        assert!(difference <= largest, "{name}: a sample {difference} off the C's");
-    }
-
-    // A movie's AAC, which the C left to the OS (on Windows, Media
-    // Foundation): the same frames from the same start, within one
-    // decoder's rounding of the other's.
-    //
-    // ⚠️But for one place, measured 2026-11-06: a first packet's rising
-    // half is windowed by the shape of the block before it, and the first
-    // has none. This decoder takes the sine, as ffmpeg's and FAAD's do;
-    // Media Foundation takes the first packet's own shape. Where that is
-    // KBD and the packet is not a long one, the two differ over its short
-    // rising window — the Media Foundation movie's first packet is a long
-    // stop with KBD, and its frames 448..576 came back the KBD-to-sine
-    // window ratio apart, to four places, 0.125 at most. Every other sample
-    // holds; a movie that says where it starts takes that packet off.
-    // ⚠️Measured against Media Foundation; the mac job holds this decoder to
-    // AudioToolbox, unmeasured.
-    for (name, unlike) in [("tone.m4a", 0..0), ("tone_with_video.mp4", 448..576)] {
-        let path = fixture(name);
-        let span = Span::whole(&path);
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        assert_eq!(rust.format, crate::FORMAT_AAC, "{name}: read by the bundled decoder");
-        // Linux has no OS stack, so the C read no AAC there: the pins hold
-        // this decoder's samples (pins.rs).
-        if c.format != crate::FORMAT_OS {
-            assert_eq!(c.format, crate::FORMAT_UNKNOWN, "{name}: the C's, with no OS stack");
-            continue;
-        }
-        assert_eq!((rust.channels, rust.rate), (c.channels, c.rate), "{name}");
-        assert_eq!(rust.samples.len(), c.samples.len(), "{name}: the frames the C hands back");
-        let channels = rust.channels as usize;
-        let (unlike_from, unlike_to) = (unlike.start * channels, unlike.end * channels);
-        let before = largest_difference(&rust.samples[..unlike_from], &c.samples[..unlike_from]);
-        let after = largest_difference(&rust.samples[unlike_to..], &c.samples[unlike_to..]);
-        assert!(before.max(after) <= 0.001, "{name}: a sample {} off the C's", before.max(after));
+        let sound = decode(&Span::whole(tagged.path()), 0, -1);
+        assert_eq!(sound.format, crate::FORMAT_FLAC, "behind an ID3 tag, a footer {footer}");
+        assert!(sound.samples.iter().map(|s| s.to_bits()).eq(untagged.samples.iter().map(|s| s.to_bits())));
     }
 }
+
+// ↩️The fixtures' decodes were held to the C's here until the connection
+// round deleted it (connection-round-checklist H, 2026-11-08) — the FLAC to
+// the bit, the MP3 and the Vorbis within 0.0001 of dr_mp3's and
+// stb_vorbis's, a movie's AAC within 0.001 of what the C left to Media
+// Foundation; the pins hold every one of them now (pins.rs).
+//
+// ⚠️But for one place, measured 2026-11-06: a first packet's rising half
+// is windowed by the shape of the block before it, and the first has none.
+// This decoder takes the sine, as ffmpeg's and FAAD's do; Media Foundation
+// takes the first packet's own shape. Where that is KBD and the packet is
+// not a long one, the two differ over its short rising window — the Media
+// Foundation movie's first packet (`tone_with_video.mp4`) is a long stop
+// with KBD, and its frames 448..576 came back the KBD-to-sine window ratio
+// apart, to four places, 0.125 at most. Every other sample held; a movie
+// that says where it starts takes that packet off. Measured against Media
+// Foundation; never against AudioToolbox.
 
 /// The AAC of `movie` as a bare ADTS stream: each packet behind the header
 /// an ADTS frame carries.
@@ -309,34 +332,31 @@ fn a_bare_aac_stream_reads_as_its_movie_reads() {
     let movie = fixture("tone.m4a");
     let frames = adts_of(&movie);
     let adts = TempFile::new("tone.aac", &[id3(40, false), frames.clone()].concat());
-    let span = Span::whole(adts.path());
-    let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
+    let bare = decode(&Span::whole(adts.path()), 0, -1);
     // The same packets from the same start — AAC's standard lead, which the
     // movie takes too — but to their end: the movie says its sound is
     // shorter, and a bare stream has nowhere to say it.
-    let from_movie = rust_window(&Span::whole(&movie), 0, -1);
-    assert_eq!(rust.format, crate::FORMAT_AAC);
-    assert_eq!((rust.channels, rust.rate), (from_movie.channels, from_movie.rate));
-    assert!(rust.samples.iter().zip(&from_movie.samples).all(|(a, b)| a.to_bits() == b.to_bits()));
-    assert_eq!(rust.samples.len(), 22_528 * rust.channels as usize, "23 packets, less one");
-    assert_eq!(from_movie.samples.len(), 22_050 * rust.channels as usize);
-    // Where the C's OS stack read it too, within its rounding.
-    if c.format == crate::FORMAT_OS {
-        assert_eq!(rust.samples.len(), c.samples.len(), "the frames the C hands back");
-        assert!(largest_difference(&rust.samples, &c.samples) <= 0.001);
-    }
+    let from_movie = decode(&Span::whole(&movie), 0, -1);
+    assert_eq!(bare.format, crate::FORMAT_AAC);
+    assert_eq!((bare.channels, bare.rate), (from_movie.channels, from_movie.rate));
+    assert!(bare.samples.iter().zip(&from_movie.samples).all(|(a, b)| a.to_bits() == b.to_bits()));
+    assert_eq!(bare.samples.len(), 22_528 * bare.channels as usize, "23 packets, less one");
+    assert_eq!(from_movie.samples.len(), 22_050 * bare.channels as usize);
+    // ↩️Where the C's OS stack read it too, it was held within 0.001 of
+    // that until the connection round deleted the C
+    // (connection-round-checklist H, 2026-11-08).
 
     // A tag that holds what looks like a frame is passed over whole: the
     // stream starts after it.
     let fake = [0xFF, 0xF1, 0x50, 0x80, 0x02, 0x1F, 0xFC, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     let tagged = TempFile::new("tone.aac", &[id3_holding(&fake, false), frames.clone()].concat());
-    let past_the_tag = rust_window(&Span::whole(tagged.path()), 0, -1);
-    assert!(past_the_tag.samples.iter().map(|s| s.to_bits()).eq(rust.samples.iter().map(|s| s.to_bits())));
+    let past_the_tag = decode(&Span::whole(tagged.path()), 0, -1);
+    assert!(past_the_tag.samples.iter().map(|s| s.to_bits()).eq(bare.samples.iter().map(|s| s.to_bits())));
 
     // Frames behind something that is no tag are no bare stream: its start
     // is where its first frame says nothing of (`start::is_adts`).
     let behind = TempFile::new("tone.aac", &[vec![0x11; 100], frames].concat());
-    assert_eq!(rust_window(&Span::whole(behind.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
+    expect_left_to_the_os("frames behind something", &Span::whole(behind.path()));
 }
 
 #[test]
@@ -350,7 +370,25 @@ fn a_movie_is_what_its_head_says() {
     bytes[4..8].copy_from_slice(b"uuid");
     bytes.extend_from_slice(b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A isom");
     let renamed = TempFile::new("renamed.m4a", &bytes);
-    assert_eq!(rust_window(&Span::whole(renamed.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
+    expect_left_to_the_os("a movie by another head", &Span::whole(renamed.path()));
+}
+
+/// Whether this platform has an OS stage — Media Foundation's, the NDK's
+/// MediaCodec, AudioToolbox. Linux has none, and nothing reads there what
+/// only the OS reads, as the C's read nothing there.
+pub(crate) const OS_STAGE_HERE: bool = cfg!(any(windows, target_os = "android", target_vendor = "apple"));
+
+/// Holds that no bundled decoder reads `span`: what reads it, where
+/// anything does, is the OS stage. ↩️And, until the connection round
+/// deleted the C (connection-round-checklist H, 2026-11-08), that the C's
+/// read it alike.
+pub(crate) fn expect_left_to_the_os(what: &str, span: &Span) {
+    let format = decode(span, 0, -1).format;
+    if OS_STAGE_HERE {
+        assert!([crate::FORMAT_OS, crate::FORMAT_UNKNOWN].contains(&format), "{what}: {format}");
+    } else {
+        assert_eq!(format, crate::FORMAT_UNKNOWN, "{what}");
+    }
 }
 
 #[test]
@@ -359,38 +397,12 @@ fn an_aac_core_of_24_khz_or_less_may_hide_its_sbr() {
     assert!(!crate::bundled::core_may_hide_sbr(32_000));
 }
 
-type Open = unsafe extern "C" fn(*const c_char, i64, i64, i32, *mut i32, *mut i32, *mut i32) -> *mut c_void;
-type Read = unsafe extern "C" fn(*mut c_void, *mut f32, i64) -> i64;
-type Close = unsafe extern "C" fn(*mut c_void);
-
-unsafe extern "C" fn rust_open(
-    path: *const c_char,
-    offset: i64,
-    length: i64,
-    framed: i32,
-    format: *mut i32,
-    channels: *mut i32,
-    rate: *mut i32,
-) -> *mut c_void {
-    // SAFETY: passed on as the caller's.
-    unsafe { crate::qa_audio_stream_open(path, offset, length, framed, format, channels, rate) }.cast()
-}
-
-unsafe extern "C" fn rust_read(stream: *mut c_void, out: *mut f32, frames: i64) -> i64 {
-    // SAFETY: passed on as the caller's.
-    unsafe { crate::qa_audio_stream_read(stream.cast(), out, frames) }
-}
-
-unsafe extern "C" fn rust_close(stream: *mut c_void) {
-    // SAFETY: passed on as the caller's.
-    unsafe { crate::qa_audio_stream_close(stream.cast()) }
-}
-
 /// What a stream of `span` hands back read `piece` frames at a time to its
-/// end: which decoder, channels and rate, the samples, every count each
-/// read answered, and what the misuses answer — a read of no buffer, and of
-/// fewer than no frames.
-fn stream_in_pieces((open, read, close): (Open, Read, Close), span: &Span, piece: i64) -> (Decoded, Vec<i64>, [i64; 3]) {
+/// end, through the exports the app calls: which decoder, channels and
+/// rate, the samples, every count each read answered, and what the misuses
+/// answer — a read of no buffer, of fewer than no frames, and of none.
+fn stream_in_pieces(span: &Span, piece: i64) -> (Decoded, Vec<i64>, [i64; 3]) {
+    use crate::{qa_audio_stream_close as close, qa_audio_stream_open as open, qa_audio_stream_read as read};
     let path = CString::new(span.path.to_str().expect("a UTF-8 path")).expect("no NUL");
     let (mut format, mut channels, mut rate) = (0, 0, 0);
     // SAFETY: a NUL-terminated path, out pointers to locals; the stream read
@@ -417,32 +429,26 @@ fn stream_in_pieces((open, read, close): (Open, Read, Close), span: &Span, piece
     }
 }
 
+// Each read a whole piece until what is left, then nothing — the C's
+// answers, which the tests held this crate's to until the connection round
+// deleted it (connection-round-checklist H, 2026-11-08).
 #[test]
 fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
-    // SAFETY: qa_audio_decode.c's declarations.
-    let c = unsafe {
-        (export::<Open>("qa_audio_stream_open"), export::<Read>("qa_audio_stream_read"), export::<Close>("qa_audio_stream_close"))
-    };
-    let rust: (Open, Read, Close) = (rust_open, rust_read, rust_close);
     let flac = fixture("tone.flac");
+    let whole = decode(&Span::whole(&flac), 0, -1);
+    assert_eq!(whole.samples.len(), 44_100 * whole.channels as usize);
     for piece in [1, 1000, 4096, 50_000] {
-        let span = Span::whole(&flac);
-        let (rust_sound, rust_answers, rust_misuses) = stream_in_pieces(rust, &span, piece);
-        let (c_sound, c_answers, c_misuses) = stream_in_pieces(c, &span, piece);
-        assert_eq!((rust_sound.format, rust_sound.channels, rust_sound.rate), (c_sound.format, c_sound.channels, c_sound.rate));
-        assert_eq!(rust_answers, c_answers, "each read, {piece} frames at a time");
-        assert_eq!(rust_misuses, c_misuses, "what a misuse answers");
-        assert!(rust_sound.samples.iter().zip(&c_sound.samples).all(|(a, b)| a.to_bits() == b.to_bits()));
-        assert_eq!(rust_sound.samples.len(), 44_100 * rust_sound.channels as usize);
+        let streamed = stream_in_pieces(&Span::whole(&flac), piece);
+        expect_stream_of(&format!("{piece} frames at a time"), &streamed, &whole, piece);
     }
     // A stream of nothing is none.
     let missing = std::env::temp_dir().join("오디오-없는-파일.wav");
     let span = Span { path: &missing, offset: 0, length: 100, framed: false };
-    assert_eq!(stream_in_pieces(rust, &span, 10).0.format, crate::FORMAT_UNKNOWN);
+    assert_eq!(stream_in_pieces(&span, 10).0.format, crate::FORMAT_UNKNOWN);
     // SAFETY: a null stream, read and closed as the contract allows.
     unsafe {
-        assert_eq!(rust_read(std::ptr::null_mut(), std::ptr::null_mut(), 1), -1);
-        rust_close(std::ptr::null_mut());
+        assert_eq!(crate::qa_audio_stream_read(std::ptr::null_mut(), std::ptr::null_mut(), 1), -1);
+        crate::qa_audio_stream_close(std::ptr::null_mut());
     }
 }
 
@@ -450,20 +456,19 @@ fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
 fn a_window_holds_the_frames_a_whole_decode_has_there() {
     let flac = fixture("tone.flac");
     let span = Span::whole(&flac);
+    let whole = decode(&span, 0, -1);
     for (first, count) in [(0, 0), (0, 1), (1, 1), (4095, 2), (4096, 4096), (10_000, -1), (44_099, 5), (44_100, 3), (90_000, 10)] {
-        expect_same(&format!("tone.flac from {first}, {count}"), &span, first, count);
+        let what = format!("tone.flac from {first}, {count}");
+        expect_window_of(&what, &decode(&span, first, count), &whole, first, count);
     }
     // A window cannot start before the sound.
-    assert_eq!(rust_window(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
-    assert_eq!(c_window(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
+    assert_eq!(decode(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
 }
 
 #[test]
 fn what_is_not_a_sound_is_refused_as_the_c_refuses_it() {
     let junk = TempFile::new("junk.bin", &noise(20_000, 7));
-    let span = Span::whole(junk.path());
-    let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-    assert_eq!(rust.format, c.format, "junk");
+    assert_eq!(decode(&Span::whole(junk.path()), 0, -1).format, crate::FORMAT_UNKNOWN, "junk");
 
     let flac = fixture("tone.flac");
     let whole = Span::whole(&flac);
@@ -474,9 +479,32 @@ fn what_is_not_a_sound_is_refused_as_the_c_refuses_it() {
         ("a negative length", 0, -10),
     ] {
         let span = Span { offset, length, ..Span::whole(&flac) };
-        assert_eq!(rust_window(&span, 0, -1).format, crate::FORMAT_UNKNOWN, "{what}");
-        assert_eq!(c_window(&span, 0, -1).format, crate::FORMAT_UNKNOWN, "{what}");
+        assert_eq!(decode(&span, 0, -1).format, crate::FORMAT_UNKNOWN, "{what}");
     }
     let missing = std::env::temp_dir().join("오디오-없는-파일.wav");
-    assert_eq!(rust_window(&Span { path: &missing, offset: 0, length: 100, framed: false }, 0, -1).format, 0);
+    assert_eq!(decode(&Span { path: &missing, offset: 0, length: 100, framed: false }, 0, -1).format, 0);
+}
+
+#[test]
+fn a_broken_piece_is_silence_no_longer_than_a_decode_of_it_hands_back() {
+    // The fuzz run's ALAC (run 42274861215, sha1 ec4c17b7…df183): its one
+    // piece is broken, and its table says the piece lasts 1,476,395,408
+    // frames — 51 hours at 8 kHz. A decode of a piece of it hands back the
+    // 4,096 frames its cookie says at most, so the broken one is 4,096 of
+    // silence (native-memory-safety-Q5).
+    let sound = decode(&Span::whole(&fixture("alac_piece_said_to_last_51_hours.m4a")), 0, -1);
+    assert_eq!((sound.format, sound.channels, sound.rate), (crate::FORMAT_ALAC, 1, 8000));
+    assert_eq!(sound.samples.len(), 4096);
+    assert!(sound.samples.iter().all(|&s| s == 0.0), "silence");
+}
+
+// What a decoder took off itself is not taken again — AudioToolbox's packet
+// table, which only the Mac job reads (`os::audio_toolbox`): the arithmetic
+// pinned here, where every platform runs it.
+#[test]
+fn what_a_decoder_took_off_itself_is_not_taken_again() {
+    use crate::start::Start;
+    for (lead, taken, left) in [(2112, 0, 2112), (2112, 1024, 1088), (1024, 2112, 0), (0, 2112, 0)] {
+        assert_eq!(Start { lead, taken, keep: -1 }.left_to_take(), left, "{lead} less {taken}");
+    }
 }

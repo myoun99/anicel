@@ -13,6 +13,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/selection_lift.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 /// R14-④ lift builder: the erase+stamp pair cuts EXACTLY the selection's
 /// pixels, a zero-move drop is byte-identical, and a translated stamp
@@ -179,50 +181,77 @@ void main() {
     ];
 
     for (final box in cases) {
-      // Two masks per case: hard, and a soft one that exercises the
-      // mul-div-255 branch at every pixel.
-      for (final soft in const [false, true]) {
-        final mask = Uint8List(box.width * box.height);
-        for (var i = 0; i < mask.length; i += 1) {
-          // A varying pattern, with genuine zeroes so the skip path runs.
-          final v = (i * 37) % 256;
-          mask[i] = v < 24 ? 0 : (soft ? v : 255);
-        }
-        // ⚠️Both settings of the whole-pixel rule, because the tile-major
-        // walk has to equal the reference under either — it is the WALK
-        // this parity test is about, not the rule.
-        for (final whole in [false, true]) {
-        final expected = referenceGather(
-          surface: surface,
-          mask: mask,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-          takeWholePixels: whole,
-        );
-        final actual = gatherMaskedSurfacePixels(
-          surface: surface,
-          mask: mask,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-          takeWholePixels: whole,
-        );
-        expect(
-          actual.rgba,
-          expected,
-          reason:
-              'tile-major gather differs from the reference at '
-              '${box.left},${box.top} ${box.width}x${box.height} '
-              '(soft: $soft)',
-        );
-        expect(
-          actual.liftedAnything,
-          expected.any((byte) => byte != 0),
-          reason: 'liftedAnything disagrees at ${box.left},${box.top}',
-        );
+      final (:left, :top, :width, :height) = box;
+      // A rectangle and the ellipse inside it, hard and feathered: the
+      // feather's ramp exercises the mul-div-255 branch, and the corners the
+      // ellipse leaves out and the ring the feather pads the box by give the
+      // skip path its genuine zeroes.
+      for (final region in [
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: left.toDouble(),
+            top: top.toDouble(),
+            right: (left + width).toDouble(),
+            bottom: (top + height).toDouble(),
+          ),
+        ),
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.ellipse(
+            left: left.toDouble(),
+            top: top.toDouble(),
+            right: (left + width).toDouble(),
+            bottom: (top + height).toDouble(),
+          ),
+        ),
+      ]) {
+        for (final options in const [
+          SelectionMaskOptions.none,
+          SelectionMaskOptions(featherPx: 2),
+        ]) {
+          final clip = SelectionClip.of(
+            region,
+            wall: surface.pasteboard,
+            options: options,
+          );
+          final read = clip.box!;
+          final mask = clip.maskFor(
+            left: read.left,
+            top: read.top,
+            width: read.width,
+            height: read.height,
+          );
+          // ⚠️Both settings of the whole-pixel rule, because the tile-major
+          // walk has to equal the reference under either — it is the WALK
+          // this parity test is about, not the rule.
+          for (final whole in [false, true]) {
+            final expected = referenceGather(
+              surface: surface,
+              mask: mask,
+              left: read.left,
+              top: read.top,
+              width: read.width,
+              height: read.height,
+              takeWholePixels: whole,
+            );
+            final actual = gatherMaskedSurfacePixels(
+              surface: surface,
+              clip: clip,
+              takeWholePixels: whole,
+            );
+            expect(
+              actual.rgba,
+              expected,
+              reason:
+                  'tile-major gather differs from the reference at '
+                  '$left,$top ${width}x$height (feather: '
+                  '${options.featherPx})',
+            );
+            expect(
+              actual.liftedAnything,
+              expected.any((byte) => byte != 0),
+              reason: 'liftedAnything disagrees at $left,$top',
+            );
+          }
         }
       }
     }

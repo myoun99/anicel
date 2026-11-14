@@ -81,12 +81,12 @@ void main() {
 
     test('🗣️the colour label is part of the value — metadata differing only '
         'in its label is different metadata (유저 2026-09-26: 컷별 색라벨)', () {
-      const art = LayerMark(process: LayerProcess.art);
-      const labelled = CutMetadata(mark: art);
+      const key = LayerMark(process: LayerProcess.key);
+      const labelled = CutMetadata(mark: key);
 
       expect(labelled, isNot(const CutMetadata()));
-      expect(labelled, const CutMetadata(mark: art));
-      expect(labelled.hashCode, const CutMetadata(mark: art).hashCode);
+      expect(labelled, const CutMetadata(mark: key));
+      expect(labelled.hashCode, const CutMetadata(mark: key).hashCode);
     });
 
     test('value equality uses the page memos', () {

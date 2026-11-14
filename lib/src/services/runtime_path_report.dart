@@ -1,9 +1,5 @@
 import 'dart:io';
 
-import '../native/qa_audio_decoder.dart';
-import '../native/qa_audio_native.dart';
-import '../native/qa_engine_abi.dart';
-import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
 import '../core/sync_image_upload.dart';
 import '../native/qa_video_encoder.dart';
@@ -12,9 +8,9 @@ import 'pdf/pdf_render_service.dart';
 /// One runtime-selected implementation path, reported to the user
 /// (Preferences > System).
 ///
-/// The app resolves several subsystems at runtime — native C engine vs
-/// the Dart reference, OS codec stacks vs the ffmpeg fallback, the
-/// Wintab sidecar vs plain OS pointer events. Each resolution is
+/// The app resolves several subsystems at runtime — OS codec stacks vs
+/// the ffmpeg fallback, the Wintab sidecar vs plain OS pointer events.
+/// Each resolution is
 /// GRACEFUL (absence falls back, never crashes), which also means it is
 /// SILENT — this report is where the silence becomes visible, with
 /// searchable technology names so a curious user can look them up.
@@ -30,10 +26,11 @@ class RuntimePathEntry {
     required this.detail,
   });
 
-  /// What part of the app this path serves ('Raster engine').
+  /// What part of the app this path serves ('PDF renderer').
   final String subsystem;
 
-  /// The implementation in use RIGHT NOW ('Native C — qa_engine, ABI 22').
+  /// The implementation in use RIGHT NOW ('PDFium (pdfrx, chromium
+  /// prebuilt)').
   final String active;
 
   /// False when a fallback path is engaged — the UI tints these so a
@@ -50,40 +47,19 @@ class RuntimePathEntry {
 List<RuntimePathEntry> collectRuntimePathReport() {
   final entries = <RuntimePathEntry>[];
 
-  // --- Raster engine (qa_engine): brush strokes, flood fill, the
-  // stroke blend, tile composite, bounds scans.
-  final raster = QaNativeEngine.instance;
-  entries.add(
-    RuntimePathEntry(
-      subsystem: 'Raster engine',
-      active: raster != null
-          ? 'Native C (qa_engine, ABI $kQaEngineAbiVersion) — '
-                'worker-pool parallel'
-          : 'Dart fallback (no native binary loaded)',
-      isPrimary: raster != null,
-      detail:
-          'Brush strokes, flood fill, brush blend modes and tile '
-          'composites, called through dart:ffi. The pure-Dart reference '
-          'produces byte-identical pixels but runs many times slower; '
-          'it engaging outside tests usually means a packaging problem.',
-    ),
-  );
+  // 🪦A 「Raster engine」 row named the C engine (`qa_engine`) against its
+  // Dart fallback — brush strokes, flood fill, brush blend modes, tile
+  // composites, bounds scans — until each of them went to the GPU engine,
+  // the brush last (C ABI 80, 2026-11-12). The GPU engine ships with the app
+  // and has no other path, so it has no row, as the note below says.
 
-  // --- Audio engine (same binary): playback mixer + sinc resampler.
-  final audio = QaAudioNative.instance;
-  entries.add(
-    RuntimePathEntry(
-      subsystem: 'Audio engine',
-      active: audio != null
-          ? 'Native C (qa_engine, ABI $kQaEngineAbiVersion)'
-          : 'Dart fallback (no native binary loaded)',
-      isPrimary: audio != null,
-      detail:
-          'Realtime playback mixing and windowed-sinc sample-rate '
-          'conversion. The Dart reference keeps sound working without '
-          'the native binary, at higher CPU cost.',
-    ),
-  );
+  // 🪦An 「Audio engine」 row named the C's playback mixer (and its
+  // sample-rate conversion), until the conversion and the voice take's
+  // denoiser, and then the mixer with the device it plays through, moved
+  // into the GPU engine's library (connection-round-checklist H,
+  // 2026-11-08). None has another path there — no fallback to report — so
+  // none has a row, as the fx plugin host has none: this report lists what
+  // is chosen at run time.
 
   // --- Audio import decoder: bundled decoders + the OS codec stack.
   //
@@ -93,28 +69,31 @@ List<RuntimePathEntry> collectRuntimePathReport() {
   // the only two places in `lib/` that start a process are both video
   // export. Naming a fallback that is gone is worse than naming none — it
   // reads as "something still works".
-  final decoder = QaAudioDecoder.instance;
+  //
+  // ↩️It said 「none — audio does not conform」 where the C engine was not
+  // built, until the connection round moved the decoder into the GPU
+  // engine's library (connection-round-checklist H, 2026-11-08), which
+  // ships with the app: the row stays for the OS stage it names, which is
+  // the host's.
   entries.add(
     RuntimePathEntry(
       subsystem: 'Audio import decoder',
-      active: decoder != null
-          ? 'Native (dr_libs WAV/FLAC/MP3, stb_vorbis OGG, '
-                '${_HostOs.current.audioCodec} for AAC/M4A)'
-          : 'none — audio does not conform',
-      isPrimary: decoder != null,
+      active:
+          'Native (symphonia WAV/FLAC/MP3/OGG/AAC-LC/ALAC, '
+          '${_HostOs.current.audioCodec} for the rest)',
+      isPrimary: true,
       detail:
           'Audio files decode ONCE at import (conform). Bundled '
-          'decoders read WAV/FLAC/MP3/OGG; AAC goes through the '
-          'operating system codec stack. Without the native core there '
-          'is no second decoder: waveforms stay blank and clips are '
-          'silent.',
+          'decoders read WAV/FLAC/MP3/OGG and a movie\'s AAC-LC and ALAC; '
+          'what none of them reads (HE-AAC, WMA) goes through the '
+          'operating system codec stack.',
     ),
   );
 
   // --- Video export encoder: the OS encoder is the primary path since
   // AUDIO-PRO R7; ffmpeg is fallback-only.
   final video = QaVideoEncoder.instance;
-  final videoSupported = video != null && video.isSupported;
+  final videoSupported = video.isSupported;
   entries.add(
     RuntimePathEntry(
       subsystem: 'Video export encoder',
@@ -177,7 +156,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     RuntimePathEntry(
       subsystem: 'Pen tablet driver',
       active: tabletAvailable
-          ? 'Wintab sidecar (qa_tablet) + OS pointer events'
+          ? 'Wintab sidecar + OS pointer events'
           : Platform.isWindows
           ? 'OS pointer events only (Windows Ink) — no Wintab driver '
                 'detected'

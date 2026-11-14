@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 
+import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/stand_in_movie.dart';
@@ -98,34 +99,13 @@ void main() {
     final s = await placed(tester);
 
     await tester.runAsync(() async {
-      final image = await ExportFrameRenderer(session: s).videoRun([
-        ExportFrameTask(cut: s.requireActiveCut, frameIndex: 5),
-      ], ExportSizeMode.camera).frame(0);
+      final image = await pictureOfFilmFrame(
+        ExportFrameRenderer(session: s).videoRun([
+          ExportFrameTask(cut: s.requireActiveCut, frameIndex: 5),
+        ], ExportSizeMode.camera).frame(0),
+      );
       expect(await centreIsRed(image), isTrue, reason: 'the take, not paper');
       image.dispose();
-    });
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('the export holds none of the take\'s pictures itself', (
-    tester,
-  ) async {
-    final s = await placed(tester);
-
-    await tester.runAsync(() async {
-      final renderer = ExportFrameRenderer(session: s);
-      for (var frame = 0; frame < 4; frame += 1) {
-        final image = await renderer.renderComposite(
-          ExportFrameTask(cut: s.requireActiveCut, frameIndex: frame),
-          ExportSizeMode.canvas,
-        );
-        image.dispose();
-      }
-      expect(
-        renderer.debugHeldSurfaceCount,
-        0,
-        reason: 'the store\'s budget decides how long a picture lives',
-      );
     });
     await tester.pumpAndSettle();
   });

@@ -21,7 +21,7 @@ import '../persistence/media_blob_codec.dart';
 import '../persistence/scratch_file.dart' show ScratchFile;
 import 'audio_decode_stream.dart';
 import 'audio_peaks_extractor.dart';
-import 'audio_resampler_reference.dart' show AudioResampleStream;
+import 'audio_resample_stream.dart';
 import 'conform_pcm_codec.dart';
 import 'conform_pcm_stream.dart' show conformStaysOnDisk;
 
@@ -43,7 +43,7 @@ typedef AudioDecodeCallback =
     AudioDecodeStream? Function(MediaByteSource source);
 
 /// Opens a conversion of [channels] from [inputRate] to [outputRate] — the
-/// rates unequal — fed a piece at a time. The native polyphase resampler
+/// rates unequal — fed a piece at a time. The engine's polyphase resampler
 /// supplies this.
 typedef AudioResampleCallback =
     AudioResampleStream Function({

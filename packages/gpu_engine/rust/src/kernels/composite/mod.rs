@@ -16,8 +16,16 @@
 //! lays, after (캔버스 베이스, gpu-canonical-store 11-06 07:48). A buffer
 //! may close through one too — an adjustment's colour-only chain over its
 //! scope.
-//! The other effects, adjustments past a matrix and a cel number's letters (drawn by the
-//! engine's glyph path, then a row here) come in later rounds.
+//! A row or a buffer may carry an effect chain past colour — the blurs the
+//! app's chain lays before its final paint (kernels/chain). The executor
+//! runs each before it walks the steps, the innermost first, as the app
+//! rasters a folder's rows before its chain runs on them
+//! (`drawSubtreeAsImage`): a row's over its stored tiles in its own space,
+//! before its pose; a buffer's over its rows composited alone on the
+//! canvas, put as bytes as the app's raster is. What a chain puts is laid
+//! as a row in its place — a buffer's at its close's opacity, mode and
+//! matrix, which the app's final paint is (`layerCompositePaint`) — so the
+//! walk meets no chain.
 //!
 //! The pages a pass can bind are few — `max_storage_buffers_per_shader_stage`
 //! less the plan and the work buffer, 2 where GLES reports 4 — so a plan is
@@ -56,34 +64,41 @@
 //! output's extent, a page a later run can lay as a row — or on a surface
 //! Flutter shows, premultiplied, inside a rectangle of it
 //! ([`Composite::show`]). The screen is the second with one row: the
-//! canvas's composite tiles posed by the camera. The canvas is composited
+//! canvas's composite tiles posed by the camera — under 1/16 a halving
+//! stage of them ([`halvings`]). The canvas is composited
 //! on its own grid first, so a magnified screen shows the canvas's pixels
 //! — the result's — and a pan or a zoom runs the screen alone
 //! (gpu-canonical-store ④⑤).
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-canonical-store 14:49 — the app connects after the bridges land).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
+#[cfg(test)]
+mod chained_tests;
+pub(crate) mod halvings;
+pub(crate) mod held;
+pub(crate) mod screen;
 #[cfg(test)]
 pub(crate) mod tests;
 
 use std::ops::Range;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::blend::mode::NORMAL;
+use crate::kernels::blend::mode::{NORMAL, PLUS};
+use crate::kernels::chain::{Chain, Chained, laid_as, tiles_of, with_drawn};
+use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, room, runs,
-    storage_format, tiles_a_pass, whole, words_buffer,
+    storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
 };
+use crate::platform::stores;
+
+use held::Made;
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -98,9 +113,15 @@ pub(crate) const TILE_BYTES: u64 = TILE_TEXELS * 4;
 /// levels its plan's passes reach (composite.wgsl's DEPTH), these at most.
 pub(crate) const DEPTH: usize = 8;
 const STEP_WORDS: usize = 14;
-const NO_TILE: u32 = u32::MAX;
+/// The word that names no tile, where a tile's word ([`TileAt::word`])
+/// names one.
+pub(crate) const NO_TILE: u32 = u32::MAX;
 /// A row's matrix place where it runs none (composite.wgsl's NO_MATRIX).
 const NO_MATRIX: u32 = u32::MAX;
+/// An output with no edge: every pixel of every output tile as it is.
+pub(crate) const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
+/// Whole, on the 16-bit scale of an opacity and a mix.
+pub(crate) const WHOLE: u32 = 65535;
 /// The plan and the work buffer: the storage buffers a pass binds besides
 /// its pages — and its pass's words, a uniform one. A device that binds
 /// sixteen pages past them binds them past one fewer as well, so no test
@@ -113,6 +134,20 @@ const OWN_BUFFERS: u32 = 2;
 pub(crate) struct TileAt {
     pub(crate) page: u16,
     pub(crate) slot: u16,
+}
+
+impl TileAt {
+    /// The one word this tile is named by — `page << 16 | slot` — wherever
+    /// a tile set travels as words: from the app over the C ABI
+    /// ([`TileSet::from_words`]) and to a pass in its plan (composite.wgsl).
+    pub(crate) fn word(self) -> u32 {
+        u32::from(self.page) << 16 | u32::from(self.slot)
+    }
+
+    /// The tile `word` names ([`Self::word`]) — none for [`NO_TILE`].
+    pub(crate) fn of_word(word: u32) -> Option<Self> {
+        (word != NO_TILE).then(|| Self { page: (word >> 16) as u16, slot: word as u16 })
+    }
 }
 
 /// A row's picture on the canvas's tile grid: the tiles of the rectangle
@@ -128,6 +163,75 @@ pub(crate) struct TileSet {
 }
 
 impl TileSet {
+    /// The set of `columns` × `rows` tiles whose top-left is column `x0`,
+    /// row `y0`, named by `words` row by row — each a tile's
+    /// [`TileAt::word`], or [`NO_TILE`] — as the app hands one over the C
+    /// ABI: the plan's tile sets and the ink scan's cel alike.
+    pub(crate) fn from_words(x0: i32, y0: i32, columns: u32, rows: u32, words: &[u32]) -> Self {
+        let tiles = words.iter().copied().map(TileAt::of_word).collect();
+        Self { x0, y0, columns, rows, tiles }
+    }
+
+    /// The tiles a box `size` across and down from `at` meets, row after
+    /// row, `per_page` to a page from page `first_page` on: a stamp's
+    /// (dab/stamp.rs).
+    pub(crate) fn paged(at: (i32, i32), size: (u32, u32), first_page: u16, per_page: usize) -> Option<Self> {
+        let mut set = Self::unplaced(at, size)?;
+        let tiles: Option<Vec<Option<TileAt>>> = (0..set.tiles.len())
+            .map(|tile| {
+                let page = u16::try_from(tile / per_page).ok()?.checked_add(first_page)?;
+                let slot = u16::try_from(tile % per_page).ok()?;
+                Some(Some(TileAt { page, slot }))
+            })
+            .collect();
+        let Some(tiles) = tiles else {
+            return fail("a box's pages are past what a plan names");
+        };
+        set.tiles = tiles;
+        Some(set)
+    }
+
+    /// The grid of the tiles a box `size` across and down from `at` meets,
+    /// none of them placed yet: a kept picture's, whose tiles the pool it
+    /// is kept in places ([`TileSet::place`]; halvings.rs).
+    pub(crate) fn unplaced(at: (i32, i32), size: (u32, u32)) -> Option<Self> {
+        let side = i64::from(TILE);
+        let (left, top) = (i64::from(at.0), i64::from(at.1));
+        let (width, height) = (i64::from(size.0), i64::from(size.1));
+        // In tiles, ends excluded; an empty box meets none.
+        let (x0, y0) = (left.div_euclid(side), top.div_euclid(side));
+        let x1 = if width == 0 { x0 } else { (left + width - 1).div_euclid(side) + 1 };
+        let y1 = if height == 0 { y0 } else { (top + height - 1).div_euclid(side) + 1 };
+        let (Ok(x0), Ok(y0), Ok(columns), Ok(rows)) = (
+            i32::try_from(x0),
+            i32::try_from(y0),
+            u32::try_from(x1 - x0),
+            u32::try_from(y1 - y0),
+        ) else {
+            return fail("a box lies past the canvas's grid");
+        };
+        let count = columns as usize * rows as usize;
+        Some(Self { x0, y0, columns, rows, tiles: vec![None; count] })
+    }
+
+    /// Every tile of the grid, placed or not, row after row, each row's
+    /// from the left.
+    fn grid(&self) -> Vec<(i32, i32)> {
+        let (columns, rows) = (self.columns as i32, self.rows as i32);
+        (self.y0..self.y0 + rows)
+            .flat_map(|row| (self.x0..self.x0 + columns).map(move |column| (column, row)))
+            .collect()
+    }
+
+    /// The grid's tile at `column`, `row` placed at `at`. Nothing for a
+    /// tile past the grid.
+    fn place(&mut self, (column, row): (i32, i32), at: TileAt) {
+        let (c, r) = (column - self.x0, row - self.y0);
+        if c >= 0 && r >= 0 && (c as u32) < self.columns && (r as u32) < self.rows {
+            self.tiles[(r as u32 * self.columns + c as u32) as usize] = Some(at);
+        }
+    }
+
     fn at(&self, column: i32, row: i32) -> Option<TileAt> {
         let (c, r) = (column - self.x0, row - self.y0);
         if c < 0 || r < 0 || c as u32 >= self.columns || r as u32 >= self.rows {
@@ -196,6 +300,7 @@ fn placed_on(page: u16, tiles: &[(i32, i32)]) -> TileSet {
 /// as the app keys a cel before it is placed (캔버스 베이스,
 /// gpu-canonical-store 11-05 18:24), every run against the pixel's stored
 /// alpha.
+#[derive(Clone)]
 pub(crate) struct KeyChain {
     pub(crate) runs: Vec<Vec<u32>>,
 }
@@ -213,13 +318,15 @@ pub(crate) struct Through<'a> {
 /// among them.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
-    /// Tile set `set`, keyed by chain `keys` if any, posed by `map` —
-    /// canvas pixel to the row's own —, through colour matrix `matrix` if
-    /// any, laid at `opacity` in `mode`, under the plan's mask where
-    /// `masked`.
+    /// Tile set `set`, keyed by chain `keys` if any or run through effect
+    /// chain `chain` if any, posed by `map` — canvas pixel to the row's
+    /// own —, through colour matrix `matrix` if any, laid at `opacity` in
+    /// `mode`, under the plan's mask where `masked`. Keys and an effect
+    /// chain are not both named: the chain's key runs are its ops.
     Row {
         set: usize,
         keys: Option<usize>,
+        chain: Option<usize>,
         map: ResampleMap,
         matrix: Option<usize>,
         opacity: u32,
@@ -236,14 +343,32 @@ pub(crate) enum Step {
     /// mix folded into the matrix (`resolveAdjustmentScopePass`). The
     /// matrix runs on bytes, so the buffer is rounded to them first, as a
     /// stored pixel is — as the app's scope is, drawn to its layer's
-    /// bytes before the filter runs.
+    /// bytes before the filter runs. Through effect chain `chain` before
+    /// the matrix, if one is named, at its mix: a folder's or an
+    /// adjustment's, on a buffer opened on nothing ([`Step::Open`]).
     Close {
         opacity: u32,
         mode: u32,
         matrix: Option<usize>,
+        chain: Option<BufferChain>,
     },
     /// Closes a clip's scope onto its base by the base's alpha (srcATop).
     CloseAtop,
+    /// Closes a buffer opened on nothing ([`Step::Open`]) as the row it is
+    /// the picture of: its steps, laid in the row's own space, drawn alone
+    /// over the tiles `over` names there, and laid as that row is — posed
+    /// by `map`, canvas pixel to the row's own, through colour matrix
+    /// `matrix` if any, at `opacity` in `mode`. What a hand holds over a
+    /// row (a lifted selection, a text being set) is drawn so: in the
+    /// row's own pixels before its chain, as the canvas's walk draws it,
+    /// and as it lies there once it lands (flip lane ⓐ-2).
+    CloseRow {
+        over: Over,
+        map: ResampleMap,
+        matrix: Option<usize>,
+        opacity: u32,
+        mode: u32,
+    },
     /// Lays `colour` — straight RGBA8, A<<24|B<<16|G<<8|R, its alpha its
     /// strength — over the canvas pixels `rect`, [left, top, right,
     /// bottom), in normal, as a row of that colour there lays it: the paper
@@ -263,6 +388,48 @@ pub(crate) enum Step {
     Mark { map: ResampleMap, shift: [i32; 2] },
 }
 
+/// What a step does to the buffers open: opens one over the one on top,
+/// closes the one on top onto the one under it, or draws into it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Nesting {
+    Opens,
+    Closes,
+    Draws,
+}
+
+impl Step {
+    /// What the step does to the buffers open — the one place a step is
+    /// told as opening or closing one, where six walks each told it.
+    fn nesting(&self) -> Nesting {
+        match self {
+            Step::Open | Step::OpenOpaque => Nesting::Opens,
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => Nesting::Closes,
+            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => Nesting::Draws,
+        }
+    }
+}
+
+/// What a buffer closed as a row ([`Step::CloseRow`]) is drawn over, in the
+/// row's space: tiles of its own — those of them its output reads through
+/// the row's pose —, or effect chain `Chain`'s, whose rectangle it runs on
+/// whole as a row's chain runs on its picture.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Over {
+    Tiles(TileRect),
+    Chain(usize),
+}
+
+/// A buffer's effect chain: chain `chain` of the plan, and how much of what
+/// it puts the close lays against the buffer it ran on — an adjustment's
+/// mix, (1−m)·U + m·F in one buffer, the second added by plus
+/// (`composeAdjustmentScope`); whole for a folder's, which lays what its
+/// chain puts alone. A row has no mix: its chain is an index alone.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BufferChain {
+    pub(crate) chain: usize,
+    pub(crate) mix: u32,
+}
+
 /// What one pass may take: pages to bind, output tiles — as many as the
 /// work buffer, stack and all, fits in one binding — and stack levels to
 /// hold, 2 (a buffer and the one it closes onto) to [`DEPTH`].
@@ -278,12 +445,14 @@ pub(crate) struct Budget {
 /// screen lays the canvas's — and how many passes it took.
 pub(crate) struct Composited {
     pub(crate) out: wgpu::Buffer,
+    // Only the tests count a run's passes; a show returns its own.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) passes: usize,
 }
 
-/// What a plan lays: the pool's pages, the rows' tile sets, key chains and
-/// colour matrices (`effects::matrix_words`), the steps, bottom to top, and
-/// the selection its masked steps are laid
+/// What a plan lays: the pool's pages, the rows' tile sets, key chains,
+/// colour matrices (`effects::matrix_words`) and effect chains, the steps,
+/// bottom to top, and the selection its masked steps are laid
 /// under — one a plan: the stroke being drawn is the row there is one for
 /// (R28, 11-06 06:51), and a range mark's range is on that row.
 pub(crate) struct Plan<'a> {
@@ -291,6 +460,7 @@ pub(crate) struct Plan<'a> {
     pub(crate) sets: &'a [TileSet],
     pub(crate) keys: &'a [KeyChain],
     pub(crate) matrices: &'a [[u32; MATRIX_WORDS]],
+    pub(crate) chains: &'a [Chained<'a>],
     pub(crate) steps: &'a [Step],
     pub(crate) mask: Option<&'a Mask<'a>>,
 }
@@ -298,7 +468,64 @@ pub(crate) struct Plan<'a> {
 /// Where a run's last pass puts its pixels.
 enum Target<'a> {
     Tiles(&'a wgpu::Buffer),
+    Placed(Placed<'a>),
     Surface(wgpu::TextureView),
+}
+
+/// Where a run puts each of its output tiles, in the order asked: a place
+/// on `pages` each — fresh slots of the pool a picture is kept in
+/// ([`Composite::run_onto`]).
+#[derive(Clone, Copy)]
+pub(crate) struct Placed<'a> {
+    pub(crate) pages: &'a [wgpu::Buffer],
+    pub(crate) at: &'a [TileAt],
+}
+
+/// The composite's work buffer, kept from one run to the next on its
+/// engine: a run takes the one the last left where it holds what the run
+/// needs, else makes one that does and leaves that.
+///
+/// A pass reads of it only what its own run put there — the mask's rows a
+/// run copies in, the stack levels a pass saves for the next, the output
+/// tiles the last pass puts whole, nothing where a pixel lies outside
+/// (to_tiles.wgsl) — so what an earlier run left is nothing to the next.
+/// And a run is one submit, so two runs' uses of it never cross.
+///
+/// ↩️Made for each run and dropped with it till 2026-11-13: 15 to 22 MiB a
+/// picture of S5_BA cut 352, each through the device's allocator (🔬캔버스
+/// 베이스, H57 — what [`crate::kernels::pool::Pictures`] says of the stops).
+#[derive(Clone, Default)]
+pub(crate) struct Work(Arc<Mutex<Option<wgpu::Buffer>>>);
+
+impl Work {
+    /// A work buffer of `size` bytes at least.
+    fn of(&self, engine: &Engine, size: u64) -> wgpu::Buffer {
+        let mut kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(work) = kept.as_ref().filter(|work| work.size() >= size) {
+            return work.clone();
+        }
+        let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("composite work"),
+            size,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        *kept = Some(work.clone());
+        work
+    }
+
+    /// The buffer kept, let go: the next run makes its own.
+    pub(crate) fn let_go(&self) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
+
+    /// The bytes of the buffer kept.
+    pub(crate) fn bytes(&self) -> u64 {
+        let kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        kept.as_ref().map_or(0, wgpu::Buffer::size)
+    }
 }
 
 /// A step as the GPU reads it, the pages it lays a row from — one for a
@@ -339,21 +566,79 @@ pub(crate) struct Composite {
     passes: Arc<Mutex<Passes>>,
     /// The pages of the pool a pass binds, past the plan and the work.
     pages: Pages,
+    /// The effect chains' blurs: seven kernels, compiled for a chain of any
+    /// ops, a row's colour keys alone too. Not where the engine starts —
+    /// the project an app starts on names no chain — and not under the plan
+    /// that first names one, on the thread the frames are built on: the app
+    /// compiles them off it and lays no plan that names a chain before they
+    /// stand ([`Composite::chains`]; 🗣️관제 2026-11-10 18:14,
+    /// gpu-canonical-store ⑦: 「UI 스레드가 직접 하는 커널 컴파일 0개」 —
+    /// 🔬the seven were 6.5 s of a stopped UI where S5 opened on the
+    /// Surface Pro 11). ↩️Until then it was compiled where a plan first
+    /// named a chain (11-07), and a plan run before they stand still
+    /// compiles them where it runs, as this crate's tests do.
+    chain: OnceLock<Chain>,
 }
+
+/// The app compiles the chains on one thread while its frames run plans on
+/// another (`gpu_engine_composite_chains`): that an executor may be shared
+/// so is checked here, for the field that comes next.
+const _: fn() = || {
+    fn shared<T: Sync>() {}
+    shared::<Composite>();
+};
 
 impl Composite {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        Self::showing(engine, None)
+    }
+
+    /// [`Composite::new`], and with it the full pass that stores to a
+    /// surface of `format`, so that the first [`Composite::show`] onto one
+    /// compiles nothing: the app asks where it makes the executor, off the
+    /// thread its frames are built on (gpu-canonical-store ⑦, as
+    /// [`Composite::chains`]). None where this adapter stores to no such
+    /// surface: none is made there (`platform::Surface`).
+    ///
+    /// The tiles' full pass is compiled here, where the engine starts, not
+    /// under a canvas's first composite — as before passes came apart. Only
+    /// when the compile is paid changes; no test sees it.
+    ///
+    /// 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
+    /// 「나란히 컴파일」): the two at once, each on a thread of the engine's
+    /// for compiling (`CompilerTurn`). 🔬One after the other they were the
+    /// app's wait window's last 3.2 s on the Surface Pro 11 with no shader
+    /// kept (1.76 s and 1.40 s, 11-13), all else in it through 2.5 s before.
+    /// ↩️The surface's was a call of its own after this one till then.
+    pub(crate) fn showing(engine: &Engine, format: Option<wgpu::TextureFormat>) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let composite = Self {
             passes: Arc::default(),
             pages,
+            chain: OnceLock::new(),
         };
-        // The tiles' full pass is compiled here, where the engine starts, not
-        // under a canvas's first composite — as before passes came apart.
-        // Only when the compile is paid changes; no test sees it.
-        composite.pass(engine, Compiled::full(None));
+        let shown = format.filter(|&format| stores(engine, format)).and_then(storage_format);
+        let fulls = [Some(Compiled::full(None)), shown.map(|token| Compiled::full(Some(token)))];
+        let (source, binding) = (&composite.pages.source(), composite.surface_binding());
+        let made: Vec<_> = std::thread::scope(|scope| {
+            let compiling: Vec<_> = fulls
+                .into_iter()
+                .flatten()
+                .map(|full| scope.spawn(move || (full, compile(engine, source, binding, full))))
+                .collect();
+            compiling.into_iter().map(|one| one.join().expect("a full pass compiled")).collect()
+        });
+        let mut passes = composite.passes.lock().unwrap_or_else(PoisonError::into_inner);
+        passes.asked.extend(made.into_iter().map(|(full, pipeline)| (full, Some(pipeline))));
+        drop(passes);
         Some(composite)
+    }
+
+    /// The effect chains' blurs, compiled where the caller is if they are
+    /// not — or waited for, where another thread is at it.
+    pub(crate) fn chains(&self, engine: &Engine) -> &Chain {
+        self.chain.get_or_init(|| Chain::new(engine))
     }
 
     /// All this device lets a pass take.
@@ -391,6 +676,30 @@ impl Composite {
         Some(Composited { out, passes })
     }
 
+    /// [`Composite::run`], each output tile's pixels put at its place in
+    /// `onto` — one a tile, in the order asked — and no buffer of the run's
+    /// own made for them: how a picture is kept in the pictures' pool
+    /// (halvings.rs, `Kept`). Submits the work; returns how many passes it
+    /// took.
+    ///
+    /// ⚠️A place is a FRESH slot: one no pass of this run reads, so the
+    /// pages `onto` names may be pages `plan` lays rows from — a halving
+    /// stage reads the stage above it off the pool it is kept in.
+    pub(crate) fn run_onto(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        extent: [i32; 4],
+        onto: Placed,
+        budget: Budget,
+    ) -> Option<usize> {
+        if onto.at.len() != tiles.len() {
+            return fail(format!("{} places for {} output tiles", onto.at.len(), tiles.len()));
+        }
+        self.walk(engine, plan, tiles, extent, None, &Target::Placed(onto), budget)
+    }
+
     /// `tiles` of `set` — its tiles on `pages` — as a row copied whole over
     /// nothing lays them: their stored bytes, tile after tile in `tiles`'
     /// order, nothing for a tile the set has none of, and no edge — a
@@ -425,6 +734,7 @@ impl Composite {
         let steps = [Step::Row {
             set: 0,
             keys: through.keys.map(|_| 0),
+            chain: None,
             map: ResampleMap::moved(0, 0),
             matrix: through.matrix.map(|_| 0),
             // Whole. 65534 copies the same bytes — a stored byte's step is 257
@@ -438,19 +748,33 @@ impl Composite {
             sets: std::slice::from_ref(set),
             keys: through.keys.map_or(&[], std::slice::from_ref),
             matrices: through.matrix.map_or(&[], std::slice::from_ref),
+            chains: &[],
             steps: &steps,
             mask: None,
         };
-        let no_edge = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
-        self.run(engine, &plan, tiles, no_edge, budget)
+        self.run(engine, &plan, tiles, NO_EDGE, budget)
     }
 
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
     /// right, bottom), the output's pixels being the surface's own — and
     /// leaves the rest of it as it was, the other panels of an atlas;
-    /// submits the work, the caller waits, and returns how many passes it
-    /// took. The screen is this with one row: the canvas's composite posed
-    /// by the camera (gpu-canonical-store ④⑤).
+    /// submits the work and returns how many passes it took. The screen is
+    /// this with one row: the canvas's composite posed by the camera
+    /// (gpu-canonical-store ④⑤).
+    ///
+    /// 🚨IT DOES NOT WAIT — what hands the surface to Flutter does, off the
+    /// thread that asked ([`Engine::done_then`], the app's screen texture):
+    /// Flutter shows a surface without waiting on the engine's work — on
+    /// Windows nothing tells either side the other is done
+    /// (gpu-engine-feasibility ⑤), on Apple's Flutter waits on no GPU work
+    /// of ours (the Apple bridge's ①), on Android it waits on an image's
+    /// fence from API 33 only — so a surface handed over before the GPU is
+    /// done shows what it held. What reads the surface back waits as a read
+    /// does. ↩️It waited here, as the fill, the grid and the wave do, until
+    /// a screen's frame was put up as the GPU finished it (🗣️유저
+    /// 2026-11-12, a-float-in-hand-draws-the-frame-as-it-stands-Q2): 🔬on the
+    /// Surface Pro 11 the UI thread waited here ≈19 ms of a frame's 22, a
+    /// float dragged over the whole of S5 cut 352.
     pub(crate) fn show(
         &self,
         engine: &Engine,
@@ -491,8 +815,9 @@ impl Composite {
     /// which composites the same bytes, slower. A compile takes seconds
     /// where a frame takes milliseconds (1.7 s to 6 s cold on this PC,
     /// 11-06), so no plan waits on one but an output's first: the full one,
-    /// compiled where it is first asked for — the tiles' in `new` — as
-    /// before passes came apart.
+    /// compiled where it is first asked for — the tiles' in `new`, a
+    /// surface's in `shows` where the app has said what its screens are —
+    /// as before passes came apart.
     fn pass(&self, engine: &Engine, wanted: Compiled) -> wgpu::ComputePipeline {
         let full = Compiled::full(wanted.surface);
         let mut passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
@@ -522,10 +847,14 @@ impl Composite {
     /// asks for at once — a tablet has few. The latest first, as the plan on
     /// screen now is the one likeliest to be asked again; which goes first
     /// changes only when each is made, and no test sees it.
+    ///
+    /// Each waits its turn behind what the app compiles ahead for a hand
+    /// (`Apart`, in `device.rs`): no one waits for a pass of a plan's own.
     fn compile_apart(&self, engine: &Engine) {
         let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
         let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
         std::thread::spawn(move || loop {
+            engine.apart.wait();
             let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
             let next = held.asked.iter().rev().find(|(_, made)| made.is_none());
             let Some(&(wanted, _)) = next else {
@@ -578,8 +907,25 @@ impl Composite {
         if !(2..=DEPTH).contains(&budget.levels) {
             return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
         }
-        check_depth(plan.steps, plan.sets.len(), plan.keys.len(), plan.matrices.len())?;
+        check_depth(
+            plan.steps,
+            plan.sets.len(),
+            plan.keys.len(),
+            plan.matrices.len(),
+            plan.chains.len(),
+        )?;
         check_mask(plan)?;
+        if plan.steps.iter().any(runs_first) {
+            let (pages, sets, steps) = self.chained(engine, plan, tiles, budget)?;
+            let plan = Plan {
+                pages: &pages,
+                sets: &sets,
+                chains: &[],
+                steps: &steps,
+                ..*plan
+            };
+            return self.walk(engine, &plan, tiles, extent, surface, target, budget);
+        }
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         if laid.iter().all(|each| each.pages.len() <= pages_per_pass) {
             return self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget);
@@ -608,8 +954,7 @@ impl Composite {
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Laid>)> {
         let side = i64::from(TILE);
-        // A slot is a u16.
-        let held = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        let held = tiles_a_page(engine)?;
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
         let mut gathered = Vec::with_capacity(laid.len());
         for mut each in laid {
@@ -652,6 +997,209 @@ impl Composite {
         Some((pages, sets, gathered))
     }
 
+    /// `plan`'s steps with every effect chain run, the innermost first, and
+    /// the pages and tile sets they then lay. A chained row's tiles over its
+    /// chain's rectangle, as they are stored ([`Composite::copied`]), go
+    /// through the chain and are laid as a set of their own. A chained
+    /// buffer's steps — from its open to its close, their own chains run —
+    /// are composited alone over its chain's rectangle, through the chain,
+    /// and laid as one row in their place, unposed, at the close's opacity,
+    /// mode and matrix — or, at a mix under whole, as the app's crossfade
+    /// lays an adjustment's scope (`composeAdjustmentScope`): in a buffer
+    /// of their own, closed at the close's opacity and mode, the steps' tiles
+    /// at the rest of the mix and what the chain put added by plus at the
+    /// mix, through the matrix. Alone with no edge: the walk holds a buffer
+    /// whole and cuts only what a run puts to its extent. A lens blur's map
+    /// drawn from the rows it reads (`MapTiles::Drawn`) is those rows drawn
+    /// so over the chain's rectangle first, as they show by themselves.
+    ///
+    /// A buffer closed as a row ([`Step::CloseRow`]) is one so too, over
+    /// its chain's rectangle, or over its own tiles that the output `tiles`
+    /// read through its pose where it names no chain — and is laid posed.
+    ///
+    /// A chain whose hold keeps what it put over its rectangle is not run:
+    /// that is laid, and a buffer's steps are not walked ([`held::HeldChains`]).
+    /// A chain run under a hold is kept by it.
+    fn chained(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
+        let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
+        let mut steps: Vec<Step> = Vec::with_capacity(plan.steps.len());
+        // Where in `steps` each buffer open there was opened, and whether
+        // on nothing.
+        let mut opens: Vec<(usize, bool)> = Vec::new();
+        let closes = closes_of(plan.steps);
+        // A buffer whose chain's hold keeps what it put: its close, and that.
+        let mut kept: Option<(usize, Made)> = None;
+        for (index, step) in plan.steps.iter().enumerate() {
+            if kept.as_ref().is_some_and(|&(close, _)| index < close) {
+                continue;
+            }
+            if let (Step::Open, Some(close)) = (step, closes[index])
+                && let Some(made) = held_over(plan, &plan.steps[close])
+            {
+                kept = Some((close, made));
+                continue;
+            }
+            let chained = chain_of(step).map(|at| &plan.chains[at]);
+            let rect = match (*step, chained) {
+                (_, Some(chained)) => chained.rect,
+                (Step::CloseRow { over: Over::Tiles(rect), map, .. }, None) => {
+                    read_through(rect, &map, tiles)
+                }
+                _ => {
+                    match step.nesting() {
+                        Nesting::Opens => opens.push((steps.len(), matches!(step, Step::Open))),
+                        Nesting::Closes => {
+                            opens.pop();
+                        }
+                        Nesting::Draws => {}
+                    }
+                    steps.push(*step);
+                    continue;
+                }
+            };
+            let found = match step {
+                Step::Row { .. } => held_over(plan, step),
+                _ => kept.take().map(|(_, made)| made),
+            };
+            let made = match found {
+                Some(made) => made,
+                None => {
+                    let now = Plan { pages: &pages, sets: &sets, ..*plan };
+                    let laying = (&mut opens, &mut steps);
+                    let made = self.made(engine, &now, (index, step), rect, laying, budget)?;
+                    if let Some((held, id)) = chained.and_then(|chained| chained.held) {
+                        held.keep(id, rect, made.clone());
+                    }
+                    made
+                }
+            };
+            let put = laid_on(&mut pages, &mut sets, made.put, rect)?;
+            match (*step, made.under) {
+                (
+                    Step::Close {
+                        opacity,
+                        mode,
+                        matrix,
+                        chain: Some(BufferChain { mix, .. }),
+                    },
+                    Some(under),
+                ) if mix < WHOLE => {
+                    let read = laid_on(&mut pages, &mut sets, under, rect)?;
+                    let laid = |set, opacity, mode, matrix| Step::Row {
+                        set,
+                        keys: None,
+                        chain: None,
+                        map: ResampleMap::moved(0, 0),
+                        matrix,
+                        opacity,
+                        mode,
+                        masked: false,
+                    };
+                    steps.extend([
+                        Step::Open,
+                        laid(read, WHOLE - mix, NORMAL, None),
+                        laid(put, mix, PLUS, matrix),
+                        Step::Close {
+                            opacity,
+                            mode,
+                            matrix: None,
+                            chain: None,
+                        },
+                    ]);
+                }
+                _ => steps.push(unchained(*step, put)),
+            }
+        }
+        Some((pages, sets, steps))
+    }
+
+    /// What step `index`, `step`, of `plan` puts over `rect`, run
+    /// ([`Composite::chained`]): a row's tiles as they are stored, or the
+    /// steps of the buffer it closes — taken off the steps laid so far where
+    /// the opens say it opened — composited alone, through its chain where
+    /// it names one; and those tiles where it is laid crossfaded with them.
+    fn made(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        (index, step): (usize, &Step),
+        rect: TileRect,
+        (opens, steps): (&mut Vec<(usize, bool)>, &mut Vec<Step>),
+        budget: Budget,
+    ) -> Option<Made> {
+        let read = tiles_of(rect);
+        let page = tiles_a_page(engine)?;
+        // ⚠️No test reaches this refusal, as none reaches `gathered`'s:
+        // a page holds 2048 tiles at WebGPU's least binding.
+        if read.len() > page {
+            let count = read.len();
+            return fail(format!("step {index} runs on {count} tiles; a page holds {page}"));
+        }
+        let under = match *step {
+            Step::Row { set, .. } => self.copied(engine, plan.pages, &plan.sets[set], &read, budget)?,
+            _ => {
+                // A buffer opened on the one under it holds what is under
+                // it, which its steps alone do not lay.
+                let Some((open, true)) = opens.pop() else {
+                    return fail(format!("step {index} runs a buffer opened on another"));
+                };
+                let alone = steps.split_off(open + 1);
+                steps.truncate(open);
+                let plan = Plan {
+                    chains: &[],
+                    steps: &alone,
+                    ..*plan
+                };
+                self.run(engine, &plan, &read, NO_EDGE, budget)?
+            }
+        };
+        let put = match chain_of(step) {
+            Some(at) => {
+                let chained = &plan.chains[at];
+                self.through(engine, plan, chained, under.out.clone(), &read, budget)?
+            }
+            None => under.out.clone(),
+        };
+        let under = mixed(step).then_some(under.out);
+        Some(Made { put, under })
+    }
+
+    /// `under` — tiles over `chained`'s rectangle, `read` — through its ops:
+    /// the tiles the last put. Each map a lens blur reads from rows is
+    /// those rows drawn alone over the rectangle first, as they show by
+    /// themselves — their own chains run.
+    fn through(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        chained: &Chained,
+        under: wgpu::Buffer,
+        read: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<wgpu::Buffer> {
+        let mut drawn = Vec::with_capacity(chained.ops.len());
+        for op in &chained.ops {
+            let Some(rows) = op.map_rows() else {
+                drawn.push(None);
+                continue;
+            };
+            if reads_drawn_maps(rows, plan.chains) {
+                return fail("a chain reads a map whose rows read a map");
+            }
+            let plan = Plan { steps: rows, ..*plan };
+            drawn.push(Some(self.run(engine, &plan, read, NO_EDGE, budget)?.out));
+        }
+        let ops = with_drawn(&chained.ops, &drawn);
+        // A chain reads its tiles and puts others: what it read stays.
+        self.chains(engine).run(engine, self, under, chained.rect, &ops)
+    }
+
     /// [`Composite::walk`] from the steps as `lay` laid them.
     fn walk_laid(
         &self,
@@ -673,13 +1221,7 @@ impl Composite {
         let masked = laid.iter().any(|each| masked_map(&each.step).is_some());
         let wanted = Compiled { surface, modes: written.modes, levels, masked };
         let pipeline = &self.pass(engine, wanted);
-        let steps = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("composite plan"),
-                contents: &written.words,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let steps = engine.filled("composite plan", &written.words, wgpu::BufferUsages::STORAGE);
         // The stack is kept between passes only; one pass keeps none.
         let kept = batches[..batches.len() - 1]
             .iter()
@@ -688,7 +1230,7 @@ impl Composite {
             .unwrap_or(0);
         // Output tiles wait in `work` past the stack until they are copied
         // out; a surface takes its pixels from the last pass itself.
-        let waiting = u64::from(matches!(target, Target::Tiles(_)));
+        let waiting = u64::from(!matches!(target, Target::Surface(_)));
         let held = (kept * 2 + waiting) * TILE_TEXELS * 4;
         let band = plan.mask.map_or(0, Mask::per_tile);
         let chunk =
@@ -723,15 +1265,8 @@ impl Composite {
         if size > room(engine) {
             return fail(format!("a pass's masked steps read {banded} bytes of their mask"));
         }
-        let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite work"),
-            // A binding holds something, even where nothing waits.
-            size: size.max(16),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        // A binding holds something, even where nothing waits.
+        let work = engine.work.of(engine, size.max(16));
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -800,14 +1335,23 @@ impl Composite {
                 .collect();
             encode_on(engine, &mut encoder, &dispatches);
             passes += dispatches.len();
-            if let Target::Tiles(out) = target {
-                encoder.copy_buffer_to_buffer(
+            match target {
+                Target::Tiles(out) => encoder.copy_buffer_to_buffer(
                     &work,
                     out_at * 4,
                     out,
-                    first_tile as u64 * TILE_TEXELS * 4,
-                    chunk_tiles as u64 * TILE_TEXELS * 4,
-                );
+                    first_tile as u64 * TILE_BYTES,
+                    chunk_tiles as u64 * TILE_BYTES,
+                ),
+                Target::Placed(onto) => {
+                    let places = &onto.at[first_tile..first_tile + chunk_tiles];
+                    for (from, at) in (out_at * 4..).step_by(TILE_BYTES as usize).zip(places) {
+                        let page = &onto.pages[usize::from(at.page)];
+                        let to = u64::from(at.slot) * TILE_BYTES;
+                        encoder.copy_buffer_to_buffer(&work, from, page, to, TILE_BYTES);
+                    }
+                }
+                Target::Surface(_) => {}
             }
         }
         engine.queue.submit([encoder.finish()]);
@@ -907,6 +1451,170 @@ fn check_mask(plan: &Plan) -> Option<()> {
     }
 }
 
+/// The effect chain a step names: a row's, or a buffer's close's.
+fn chain_of(step: &Step) -> Option<usize> {
+    match *step {
+        Step::Row { chain, .. } => chain,
+        Step::Close { chain, .. } => chain.map(|named| named.chain),
+        Step::CloseRow { over: Over::Chain(chain), .. } => Some(chain),
+        _ => None,
+    }
+}
+
+/// Whether the walk runs `step` before it lays the plan
+/// ([`Composite::chained`]): one naming an effect chain, or a buffer
+/// closed as a row.
+fn runs_first(step: &Step) -> bool {
+    chain_of(step).is_some() || matches!(step, Step::CloseRow { .. })
+}
+
+/// What the hold of the chain `step` names keeps of it, over the chain's
+/// rectangle and — where `step` is laid crossfaded with them — with the
+/// tiles it ran on; none where it names no chain or none held.
+fn held_over(plan: &Plan, step: &Step) -> Option<Made> {
+    let chained = &plan.chains[chain_of(step)?];
+    let (held, id) = chained.held?;
+    held.over(id, chained.rect, mixed(step))
+}
+
+/// Whether `step` closes a chained buffer at a mix under whole: laid as a
+/// crossfade of its tiles with what its chain put ([`Composite::chained`]).
+fn mixed(step: &Step) -> bool {
+    matches!(*step, Step::Close { chain: Some(BufferChain { mix, .. }), .. } if mix < WHOLE)
+}
+
+/// For each step that opens a buffer, the step that closes it, if one does.
+fn closes_of(steps: &[Step]) -> Vec<Option<usize>> {
+    let mut closes = vec![None; steps.len()];
+    let mut opens = Vec::new();
+    for (index, step) in steps.iter().enumerate() {
+        match step.nesting() {
+            Nesting::Opens => opens.push(index),
+            Nesting::Closes => {
+                if let Some(open) = opens.pop() {
+                    closes[open] = Some(index);
+                }
+            }
+            Nesting::Draws => {}
+        }
+    }
+    closes
+}
+
+/// The tiles of `rect` whose pixels `map` reads for the output `tiles` —
+/// every one where it is a homography, which bounds no read; none for no
+/// output.
+fn read_through(rect: TileRect, map: &ResampleMap, tiles: &[(i32, i32)]) -> TileRect {
+    let side = i64::from(TILE);
+    let columns = tiles.iter().map(|&(column, _)| i64::from(column));
+    let rows = tiles.iter().map(|&(_, row)| i64::from(row));
+    let bounds = (columns.clone().min(), columns.max(), rows.clone().min(), rows.max());
+    let (Some(x0), Some(x1), Some(y0), Some(y1)) = bounds else {
+        return TileRect { columns: 0, rows: 0, ..rect };
+    };
+    let Some([left, top, right, bottom]) =
+        map.reads(x0 * side, y0 * side, (x1 + 1) * side, (y1 + 1) * side)
+    else {
+        return rect;
+    };
+    let [x0, y0] = [rect.x0, rect.y0].map(i64::from);
+    let (x1, y1) = (x0 + i64::from(rect.columns), y0 + i64::from(rect.rows));
+    let (from_x, from_y) = (left.div_euclid(side).max(x0), top.div_euclid(side).max(y0));
+    let to_x = (right + side - 1).div_euclid(side).min(x1).max(from_x);
+    let to_y = (bottom + side - 1).div_euclid(side).min(y1).max(from_y);
+    TileRect {
+        x0: from_x as i32,
+        y0: from_y as i32,
+        columns: (to_x - from_x) as u32,
+        rows: (to_y - from_y) as u32,
+    }
+}
+
+/// Whether `steps` name a chain whose lens blur reads a map drawn from
+/// rows — what a map's rows never do: a map's own blur map is not read
+/// (🗣️I-132-Q22 a; the app's `namingNoRow` takes it off the rows it
+/// draws), and one that were would be drawn again under it, without end
+/// where it read its own reader.
+fn reads_drawn_maps(steps: &[Step], chains: &[Chained]) -> bool {
+    let reads = |chained: &Chained| chained.ops.iter().any(|op| op.map_rows().is_some());
+    steps.iter().filter_map(chain_of).filter_map(|at| chains.get(at)).any(reads)
+}
+
+/// `put` — tiles over `rect` — on a page past `pages`, laid as a tile set
+/// past `sets`: that set. Nothing where the page is past what a plan names.
+fn laid_on(
+    pages: &mut Vec<wgpu::Buffer>,
+    sets: &mut Vec<TileSet>,
+    put: wgpu::Buffer,
+    rect: TileRect,
+) -> Option<usize> {
+    let Ok(page) = u16::try_from(pages.len()) else {
+        return fail("a chain's page is past what a plan names");
+    };
+    pages.push(put);
+    sets.push(laid_as(rect, page));
+    Some(sets.len() - 1)
+}
+
+/// What chained `step` lays once its chain has put tile set `set`: a row
+/// from that set, as it was posed; a buffer's close a row of it, unposed,
+/// at the close's opacity, mode and matrix; a buffer closed as a row that
+/// row, posed.
+fn unchained(step: Step, set: usize) -> Step {
+    match step {
+        Step::Row {
+            keys,
+            map,
+            matrix,
+            opacity,
+            mode,
+            masked,
+            ..
+        } => Step::Row {
+            set,
+            keys,
+            chain: None,
+            map,
+            matrix,
+            opacity,
+            mode,
+            masked,
+        },
+        Step::Close {
+            opacity,
+            mode,
+            matrix,
+            ..
+        } => Step::Row {
+            set,
+            keys: None,
+            chain: None,
+            map: ResampleMap::moved(0, 0),
+            matrix,
+            opacity,
+            mode,
+            masked: false,
+        },
+        Step::CloseRow {
+            map,
+            matrix,
+            opacity,
+            mode,
+            ..
+        } => Step::Row {
+            set,
+            keys: None,
+            chain: None,
+            map,
+            matrix,
+            opacity,
+            mode,
+            masked: false,
+        },
+        other => other,
+    }
+}
+
 /// The map of a step laid under the plan's mask — a masked row's, or a
 /// range mark's — which takes canvas pixels to where it reads the mask.
 fn masked_map(step: &Step) -> Option<ResampleMap> {
@@ -944,9 +1652,16 @@ fn read_band(mask: &Mask, maps: &[ResampleMap], tiles: &[(i32, i32)]) -> Range<u
 }
 
 /// Fails unless every buffer the steps open is closed, none is closed that
-/// was not opened, and every row names a tile set and a key chain there
-/// are.
-fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> Option<()> {
+/// was not opened, every step names a tile set, a key chain, a matrix and an
+/// effect chain there are, no row names both keys and an effect chain, and
+/// no buffer mixes its chain past whole.
+fn check_depth(
+    steps: &[Step],
+    sets: usize,
+    keys: usize,
+    matrices: usize,
+    chains: usize,
+) -> Option<()> {
     let mut depth = 0usize;
     for (index, step) in steps.iter().enumerate() {
         match *step {
@@ -955,23 +1670,57 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> O
             }
             Step::Row {
                 keys: Some(chain), ..
-            } if chain >= chains => {
-                return fail(format!("step {index} keys by chain {chain} of {chains}"));
+            } if chain >= keys => {
+                return fail(format!("step {index} keys by chain {chain} of {keys}"));
             }
             Step::Row {
                 matrix: Some(matrix), ..
             }
             | Step::Close {
                 matrix: Some(matrix), ..
+            }
+            | Step::CloseRow {
+                matrix: Some(matrix), ..
             } if matrix >= matrices => {
                 return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
             }
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
-            Step::Open | Step::OpenOpaque => depth += 1,
-            Step::Close { .. } | Step::CloseAtop if depth == 0 => {
+            Step::Row {
+                chain: Some(chain), ..
+            }
+            | Step::Close {
+                chain: Some(BufferChain { chain, .. }),
+                ..
+            }
+            | Step::CloseRow {
+                over: Over::Chain(chain),
+                ..
+            } if chain >= chains => {
+                return fail(format!("step {index} runs effect chain {chain} of {chains}"));
+            }
+            Step::Close {
+                chain: Some(BufferChain { mix, .. }),
+                ..
+            } if mix > WHOLE => {
+                return fail(format!("step {index} mixes its chain at {mix}, past whole"));
+            }
+            // Both run on the stored pixels before the pose, so neither
+            // order would be the plan's: a chain's key runs are its ops.
+            Step::Row {
+                keys: Some(_),
+                chain: Some(_),
+                ..
+            } => {
+                return fail(format!("step {index} names keys and an effect chain"));
+            }
+            _ => {}
+        }
+        match step.nesting() {
+            Nesting::Opens => depth += 1,
+            Nesting::Closes if depth == 0 => {
                 return fail(format!("step {index} closes a buffer that is not open"));
             }
-            Step::Close { .. } | Step::CloseAtop => depth -= 1,
+            Nesting::Closes => depth -= 1,
+            Nesting::Draws => {}
         }
     }
     if depth != 0 {
@@ -1095,10 +1844,10 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         }
         let fresh = each.pages.iter().filter(|page| !batch.pages.contains(page)).count();
         // The levels the step reads and writes, lowest and highest.
-        let (low, high) = match each.step {
-            Step::Open | Step::OpenOpaque => (depth, depth + 1),
-            Step::Close { .. } | Step::CloseAtop => (depth - 1, depth),
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => (depth, depth),
+        let (low, high) = match each.step.nesting() {
+            Nesting::Opens => (depth, depth + 1),
+            Nesting::Closes => (depth - 1, depth),
+            Nesting::Draws => (depth, depth),
         };
         let outside = low < batch.base || high >= batch.base + levels;
         if batch.pages.len() + fresh > pages_per_pass || outside {
@@ -1131,10 +1880,10 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
                 batch.pages.push(page);
             }
         }
-        match each.step {
-            Step::Open | Step::OpenOpaque => depth += 1,
-            Step::Close { .. } | Step::CloseAtop => depth -= 1,
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+        match each.step.nesting() {
+            Nesting::Opens => depth += 1,
+            Nesting::Closes => depth -= 1,
+            Nesting::Draws => {}
         }
     }
     batch.end = laid.len();
@@ -1175,10 +1924,7 @@ fn plan_words(
     let mut maps: Vec<u32> = Vec::new();
     for set in sets {
         map_at.push(maps_at + maps.len() as u32);
-        maps.extend(set.tiles.iter().map(|tile| match tile {
-            Some(at) => (u32::from(at.page) << 16) | u32::from(at.slot),
-            None => NO_TILE,
-        }));
+        maps.extend(set.tiles.iter().map(|tile| tile.map_or(NO_TILE, TileAt::word)));
     }
     let chains_at = maps_at + maps.len() as u32;
     // The empty list also keeps the plan from being empty, as a storage
@@ -1218,6 +1964,8 @@ fn plan_words(
             Step::Row {
                 set,
                 keys,
+                // Run before the walk ([`Composite::chained`]): none is left.
+                chain: _,
                 map,
                 matrix,
                 opacity,
@@ -1250,8 +1998,12 @@ fn plan_words(
                 opacity,
                 mode,
                 matrix,
+                chain: _,
             } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, matrix_at(matrix)],
             Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::CloseRow { .. } => {
+                unreachable!("run before the walk ([`Composite::chained`]): none is left")
+            }
             Step::Solid {
                 colour,
                 rect: [left, top, right, bottom],
@@ -1260,7 +2012,7 @@ fn plan_words(
                 [5, colour, left, top, right, bottom, 0, 0, 0, 0, 0, 0, 0, 0]
             }
             // Its map and its mask where a row keeps them (composite.wgsl's
-            // mark_colour and step_cover read both).
+            // mark_colour and step_sampled read both).
             Step::Mark { map, shift: [x, y] } => {
                 [6, x as u32, y as u32, 0, 0, 0, 0, 0, 0, 0, posed(&map), 0, 1, 0]
             }

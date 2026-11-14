@@ -1,15 +1,20 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart'
-    show LicenseEntryWithLineBreaks, LicenseRegistry;
+    show LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
+import 'src/models/app_language.dart';
+import 'src/native/app_kernels_ahead.dart';
 import 'src/native/device_battery.dart';
+import 'src/native/engine_refusals.dart';
+import 'src/native/engine_tile_ledger.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
-import 'src/services/import/cel_picture.dart' show pictureSideLimit;
+import 'src/services/crate_licences.dart';
+import 'src/services/licence_entry.dart';
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
@@ -18,10 +23,6 @@ import 'src/services/persistence/app_window_store.dart';
 import 'src/services/persistence/app_language_settings_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
-import 'src/ui/canvas/colour_key_shader.dart';
-import 'src/ui/canvas/directional_blur_shader.dart';
-import 'src/ui/canvas/iris_blur_shader.dart';
-import 'src/ui/canvas/layer_blend_shader.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -66,10 +67,18 @@ Future<void> main(List<String> handedAtLaunch) async {
   // launch splash says what the launch is doing in the app's own language
   // (I-106, 2026-10-21), and it says it before the session exists. One
   // small file read; the session's restore then lands on the same value.
-  final language = await AppLanguageSettingsStore().load();
-  if (language != null) {
-    AppText.settings.value = language;
-  }
+  //
+  // 🚨THE DEVICE'S WHERE NONE IS SAVED, HERE TOO (F-157, 유저 2026-09-17:
+  // 「앱 기본 언어 설정값, 디바이스? 의 언어 설정 기준으로」). ↩️Till
+  // 2026-11-11 only a saved choice was spoken here, and the device's came
+  // with the session's restore: on a device that reads Japanese the splash
+  // stood in English, and so did the window the app waits for its engine
+  // behind, which reads its words at the first frame
+  // (gpu-canonical-store-Q15) — 9 s of it on a Surface Pro 11 (검증/서피스
+  // 2026-11-11 20:12).
+  AppText.settings.value =
+      await AppLanguageSettingsStore().load() ??
+      AppLanguageSettings.ofDevice(AppText.deviceLanguageCodes());
   await LaunchSplash.preparing(AppText.strings);
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
@@ -90,22 +99,7 @@ Future<void> main(List<String> handedAtLaunch) async {
   // keyboard, so a Japanese or Korean input mode cannot swallow a shortcut.
   // Once, for the app's lifetime — see the class.
   KeyboardImeSwitch.install();
-  // 🚨AWAITED, BEFORE THE FIRST FRAME. The colour key on a folder is a
-  // fragment shader, and a `Paint` is built inside a paint — which cannot
-  // wait for an asset. A composite that reached a key with no program would
-  // have to drop the effect, and a dropped effect is the screen lying about
-  // the file. Loading it here is what lets the paint-time guard stay a
-  // guard rather than a case.
-  await ColourKeyShader.load();
-  // 🚨The same, for a layer in an advanced blend (brush-fidelity-Q4): it is
-  // composed over its backdrop by a shader, and drawing it in any other
-  // blend because the program was late would be the same lie.
-  await LayerBlendShader.load();
-  // 🚨The same, for a directional, a radial and a camera lens blur
-  // (I-132-Q3): rasters of a chain's step, as a key is.
-  await DirectionalBlurShader.load();
-  await IrisBlurShader.load();
-  // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
+  // 🚨AWAITED, BEFORE THE FIRST FRAME (I-103-Q1): the top strip keeps
   // a place for the battery on a device that has one and never on one that
   // has not — a place that came a frame later would be UI popping into
   // existence. One question to the OS.
@@ -119,28 +113,58 @@ Future<void> main(List<String> handedAtLaunch) async {
   // which embeds the same files. The third is the Chinese UI's (유저
   // 2026-11-05, gpu-int-spec-word-bake-Q2).
   LicenseRegistry.addLicense(() async* {
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'BIZ UDPGothic',
     ], await rootBundle.loadString('assets/fonts/OFL-BIZUDPGothic.txt'));
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'Nanum Gothic',
     ], await rootBundle.loadString('assets/fonts/OFL-NanumGothic.txt'));
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'Noto Sans SC',
     ], await rootBundle.loadString('assets/fonts/OFL-NotoSansSC.txt'));
     // PDFium binaries bundle at build time (pdfrx native assets); their
     // license requires the notice to ship with binary redistributions —
     // pub's automatic NOTICES only covers the Dart packages, not the
     // downloaded engine itself.
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'PDFium',
     ], await rootBundle.loadString('assets/licenses/LICENSE-PDFium.txt'));
-    // Wasmtime is linked into the engine (the fx plugins' sandbox, I-132):
-    // Apache 2.0 with LLVM exceptions — shipped with the binary as PDFium's
-    // is, so the notice goes wherever the code does.
-    yield LicenseEntryWithLineBreaks(const [
-      'Wasmtime',
-    ], await rootBundle.loadString('assets/licenses/LICENSE-Wasmtime.txt'));
+    // RNNoise, ported line for line into the GPU engine's denoiser
+    // (native/audio_denoise): BSD-3-Clause asks binary distributions to
+    // reproduce its notice. It is not a registry crate, so
+    // rust_crates.json below never lists it — and the C it was before
+    // shipped without this entry (connection-round-checklist H, 관제
+    // 2026-11-08 06:15 ⓔ).
+    yield licenceEntry(const [
+      'RNNoise',
+    ], await rootBundle.loadString('assets/licenses/LICENSE-RNNoise.txt'));
+    // zstd's BSD-3 asks a binary to reproduce its notice, and the engine's
+    // compressor is a port of it (packages/gpu_engine/rust/native/compress,
+    // whose LICENSE this is — 관제 2026-11-08, connection-round-checklist).
+    yield licenceEntry(const [
+      'Zstandard',
+    ], await rootBundle.loadString('assets/licenses/LICENSE-zstd.txt'));
+    // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
+    // beside it on Windows: one entry for the three licence texts its zip
+    // carries, since the zip does not say which file each covers
+    // (packages/gpu_engine/rust/build.rs, LICENCES).
+    yield licenceEntry(const [
+      'DirectX Shader Compiler',
+    ], [
+      await rootBundle.loadString('assets/licenses/LICENSE-DXC-LLVM.txt'),
+      await rootBundle.loadString('assets/licenses/LICENSE-DXC-MIT.txt'),
+      await rootBundle.loadString('assets/licenses/LICENSE-DXC-MS.txt'),
+    ].join('\n\n'));
+    // The registry crates the GPU engine's library carries, on every target
+    // it is built for: one entry a licence text, naming each crate under it
+    // (tool/crate_notices.dart writes the file from the engine's lock, and
+    // test/every_crate_the_engine_ships_is_noticed_test.dart holds it there).
+    // ⚠️Shown before the app links the engine (the connection round): a
+    // notice shown early costs nothing, one left for later can be forgotten
+    // (관제 2026-11-07, connection-round-checklist A 📜).
+    yield* Stream.fromIterable(crateLicenceEntries(
+      await rootBundle.loadString('assets/licenses/rust_crates.json'),
+    ));
   });
   unawaited(AppStorage.ensureInitialized());
   // Probe PDFium once at startup (loads the bundled library, ~ms): the
@@ -160,6 +184,12 @@ Future<void> main(List<String> handedAtLaunch) async {
   // persistent frame callback cannot be removed, so registering it
   // anywhere that re-runs would stack duplicates.
   DeviceGridAudit.install();
+  // 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
+  // 알린다」 — the two doors an error ends at, watched for a job the
+  // graphics device refused from before anything is asked of it. HERE for
+  // the reason of the three above: wrapped anywhere that re-runs, a door
+  // would tell once a wrap.
+  EngineRefusals.install();
   // AWAITED, unlike every other settings restore. The rest land late and
   // the app repaints; this one decides how large the window's contents are
   // laid out, so restoring it after the first frame would show 100% and
@@ -194,6 +224,15 @@ Future<void> main(List<String> handedAtLaunch) async {
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
   LaunchSplash.drawing(AppText.strings);
+  // 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  // 띄운다 — 그때까지 고리」 · 「타임라인같은거도 포함해서 고리띄우고 모든 조작
+  // 막음」 — said before the first frame, so that frame is held already;
+  // the list asked for below lets the app go ([appEngineGetsReady]).
+  holdTheAppForItsEngine();
+  // 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
+  // 유지한다」 — what the engine alone holds is copied here whenever the
+  // hand rests, from this launch's first landing on.
+  EngineTileLedger.copiesAtRest = true;
   runApp(
     AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),
   );
@@ -202,12 +241,21 @@ Future<void> main(List<String> handedAtLaunch) async {
   // (유저 2026-10-26) took it back: 「앞으로는 앱 키고 이 허용을 체크해야
   // 권한묻도록」 — ⛔nothing asks at launch; the OS first hears of the
   // microphone when Preferences ▸ Audio ▸ Allow microphone is turned on.
-  // The side this engine holds, read once after the first frame (a few small
-  // pictures, off the frame): a compose past it is made
-  // in pieces (`piecesOver`), and one made inside a build before it is read
-  // is made whole, as it always was.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(pictureSideLimit()),
+  // The GPU engine the frame grids' tiles are drawn and shown on, opened
+  // off this isolate once the first frame is on the screen (관제 2026-11-08
+  // 20:54: 「장치는 첫 프레임 뒤에」): till it is open every row draws its
+  // cells itself.
+  // ↩️Asked once the first frame was BUILT (a post-frame callback), it was
+  // open before that frame was rastered in 4 of 5 launches (🔬main PC,
+  // profile, 11-09). The first frame was no later for it — run to first
+  // raster 623 ms there, 652 with no open, 622 opened after the raster
+  // (medians of five) — so it waits for the raster, which costs nothing.
+  // Its kernels are compiled behind it, off this isolate too
+  // ([compileAppKernelsAhead]).
+  unawaited(
+    WidgetsBinding.instance.waitUntilFirstFrameRasterized.then(
+      (_) => compileAppKernelsAhead(),
+    ),
   );
 }
 

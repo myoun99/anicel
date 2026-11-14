@@ -36,9 +36,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
@@ -73,6 +71,7 @@ final class _CountedReads extends LayerFrameImageCache {
 const int _enough = 100;
 
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 8, height: 8);
   final film = BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -108,7 +107,7 @@ void main() {
       );
     final images = _CountedReads(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     // No quiet comes, as none came in the app: the frame laying its
     // picture waits for one, and nothing else ends the stands.
@@ -185,7 +184,7 @@ void main() {
       );
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>();
+    final store = aStoreOfPictures();
     addTearDown(store.dispose);
     final pictures = runOver(
       images,
@@ -194,19 +193,10 @@ void main() {
       stackOf: (_) => nodes,
     ).pictures;
 
-    final recorder = ui.PictureRecorder();
-    pictures
-        .frameAsItStands(nodes, picture)
-        .drawing
-        .draw(ui.Canvas(recorder));
-    final drawn = recorder.endRecording();
-    final rgba = (await tester.runAsync(() async {
-      final image = await drawn.toImage(8, 8);
-      drawn.dispose();
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      return bytes!.buffer.asUint8List();
-    }))!;
+    final rgba = pixelsOfFrame(
+      pictures.frameAsItStands(nodes, picture),
+      const ui.Rect.fromLTWH(0, 0, 8, 8),
+    );
 
     const middle = (8 * 4 + 4) * 4;
     expect(

@@ -202,6 +202,228 @@ void main() {
     second.value = 11;
     expect(heard, 1);
   });
+
+  /// F-587 (유저 2026-11-13): 「재생중에는 바꾸지않고 재생전 마지막 상태
+  /// 유지」 — what a hold is, whoever asks for it.
+  group('held still', () {
+    testWidgets('news that moves the slice builds nothing and asks '
+        'nothing — and the release builds it once, from the slice as it '
+        'is then', (tester) async {
+      final model = _Counter();
+      final still = ValueNotifier<bool>(false);
+      addTearDown(model.dispose);
+      addTearDown(still.dispose);
+      final seen = <int>[];
+      var asked = 0;
+
+      await tester.pumpWidget(
+        SlicedListenableBuilder<int>(
+          listenable: model,
+          slice: () {
+            asked += 1;
+            return model.shown;
+          },
+          stillWhile: still,
+          builder: (context, shown) {
+            seen.add(shown);
+            return Text('$shown', textDirection: TextDirection.ltr);
+          },
+        ),
+      );
+      still.value = true;
+      await tester.pump();
+      final askedBefore = asked;
+
+      model.bumpShown();
+      model.bumpShown();
+      await tester.pump();
+      expect(seen, [0], reason: 'the slice moved twice, and it is held');
+      expect(asked, askedBefore, reason: 'a held slice is not even asked');
+      expect(find.text('0'), findsOneWidget);
+
+      still.value = false;
+      await tester.pump();
+      expect(seen, [0, 2], reason: 'one build for the whole hold');
+      expect(find.text('2'), findsOneWidget);
+    });
+
+    testWidgets('a release that finds the slice where it was builds '
+        'nothing', (tester) async {
+      final model = _Counter();
+      final still = ValueNotifier<bool>(true);
+      addTearDown(model.dispose);
+      addTearDown(still.dispose);
+      final seen = <int>[];
+
+      await tester.pumpWidget(
+        SlicedListenableBuilder<int>(
+          listenable: model,
+          slice: () => model.shown,
+          stillWhile: still,
+          builder: (context, shown) {
+            seen.add(shown);
+            return const SizedBox();
+          },
+        ),
+      );
+      model.bumpUnseen();
+      still.value = false;
+      await tester.pump();
+      expect(seen, [0]);
+    });
+
+    testWidgets('a rebuild from above hands the builder what it showed '
+        'before the hold — and afresh again once it is released', (
+      tester,
+    ) async {
+      final model = _Counter();
+      final still = ValueNotifier<bool>(false);
+      addTearDown(model.dispose);
+      addTearDown(still.dispose);
+      final seen = <int>[];
+
+      Widget host() => SlicedListenableBuilder<int>(
+        listenable: model,
+        slice: () => model.shown,
+        stillWhile: still,
+        builder: (context, shown) {
+          seen.add(shown);
+          return const SizedBox();
+        },
+      );
+
+      await tester.pumpWidget(host());
+      still.value = true;
+      model.shown = 5; // changed with no news
+      await tester.pumpWidget(host());
+      expect(seen, [0, 0]);
+
+      still.value = false;
+      await tester.pump();
+      expect(seen, [0, 0, 5]);
+    });
+
+    testWidgets('a rebuild that brings NEW channels keeps it too — a bar '
+        'merges its channels anew on every build', (tester) async {
+      final model = _Counter();
+      final still = ValueNotifier<bool>(false);
+      addTearDown(model.dispose);
+      addTearDown(still.dispose);
+      final seen = <int>[];
+
+      Widget host() => SlicedListenableBuilder<int>(
+        listenable: Listenable.merge([model]),
+        slice: () => model.shown,
+        stillWhile: still,
+        builder: (context, shown) {
+          seen.add(shown);
+          return const SizedBox();
+        },
+      );
+
+      await tester.pumpWidget(host());
+      model.shown = 3; // changed with no news
+      await tester.pumpWidget(host());
+      expect(seen, [0, 3], reason: 'not held: new channels read it afresh');
+
+      still.value = true;
+      model.shown = 5;
+      await tester.pumpWidget(host());
+      await tester.pumpWidget(host());
+      expect(seen, [0, 3, 3, 3], reason: 'held through two new merges');
+
+      // The news of the channels it stands on now is still stopped...
+      model.bumpShown();
+      await tester.pump();
+      expect(seen, [0, 3, 3, 3]);
+
+      // ...and the release reaches the gate that stands there now.
+      still.value = false;
+      await tester.pump();
+      expect(seen, [0, 3, 3, 3, 6]);
+    });
+
+    testWidgets('it is held by the word it is built with NOW — a rebuild '
+        'that brings another lets go of the first', (tester) async {
+      final model = _Counter();
+      final first = ValueNotifier<bool>(true);
+      final second = ValueNotifier<bool>(false);
+      addTearDown(model.dispose);
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      final seen = <int>[];
+
+      Widget host(ValueNotifier<bool> still) => SlicedListenableBuilder<int>(
+        listenable: model,
+        slice: () => model.shown,
+        stillWhile: still,
+        builder: (context, shown) {
+          seen.add(shown);
+          return const SizedBox();
+        },
+      );
+
+      await tester.pumpWidget(host(first));
+      model.bumpShown();
+      await tester.pump();
+      expect(seen, [0], reason: 'held by the first');
+
+      await tester.pumpWidget(host(second));
+      expect(seen, [0, 1], reason: 'the second holds nothing');
+      model.bumpShown();
+      await tester.pump();
+      expect(seen, [0, 1, 2]);
+
+      second.value = true;
+      model.bumpShown();
+      first.value = false;
+      await tester.pump();
+      expect(seen, [0, 1, 2], reason: 'the first releases nothing now');
+
+      second.value = false;
+      await tester.pump();
+      expect(seen, [0, 1, 2, 3]);
+    });
+
+    test('a listener that is not a widget hears nothing while it is '
+        'held, reads the slice as it was, and hears the release once', () {
+      final model = _Counter();
+      final still = ValueNotifier<bool>(true);
+      addTearDown(model.dispose);
+      addTearDown(still.dispose);
+      var asked = 0;
+      final gate = SlicedListenable<int>(model, () {
+        asked += 1;
+        return model.shown;
+      }, stillWhile: still);
+      var heard = 0;
+      gate.addListener(() => heard += 1);
+      final askedBefore = asked;
+
+      model.bumpShown();
+      gate.recheck();
+      expect(heard, 0);
+      expect(gate.reread(), 0);
+      expect(gate.slice, 0);
+      expect(asked, askedBefore);
+
+      still.value = false;
+      expect(heard, 1);
+      expect(gate.slice, 1);
+
+      // Released, it is the gate it always was.
+      model.bumpShown();
+      expect(heard, 2);
+      expect(gate.reread(), 2);
+
+      gate.dispose();
+      final askedAtDispose = asked;
+      still.value = true;
+      still.value = false;
+      expect(asked, askedAtDispose, reason: 'a disposed gate has let go '
+          'of what held it');
+    });
+  });
 }
 
 class _Counter extends ChangeNotifier {

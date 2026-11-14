@@ -2,11 +2,11 @@
 //! (2026-10-16, board mac-reads-no-movie-pcm). AudioToolbox read nothing of
 //! the tests' PCM movie on the macOS CI runner (2026-10-15) where Media
 //! Foundation reads it to the sample, and a ProRes movie this app exports
-//! on a Mac carries its sound as PCM (`qa_video_apple.m`), as editors'
-//! reels do. Uncompressed sound needs no codec — it is bytes the movie's
-//! sample table lays out — so it is read here, into floats by dr_wav's
-//! conversions (what a WAV of the same samples gets), and no OS stack is
-//! asked for it. Where it starts is the movie's to say
+//! on a Mac carries its sound as PCM (native/video `export/apple.rs`), as
+//! editors' reels do. Uncompressed sound needs no codec — it is bytes the
+//! movie's sample table lays out — so it is read here, into floats by
+//! dr_wav's conversions (what a WAV of the same samples gets), and no OS
+//! stack is asked for it. Where it starts is the movie's to say
 //! (`start::container_start`).
 //!
 //! What is read is the layout ffmpeg's movie reader reads (⚠️known from it
@@ -27,8 +27,9 @@
 //! Nor is one whose description names a reference its list does not have.
 //!
 //! Media Foundation, which read these movies before, reads every shape and
-//! layout the C's `qa_audio_range_test.c` builds to the same samples and
-//! refuses what it refuses (measured 2026-10-16), but:
+//! layout the C's `qa_audio_range_test.c` built (tests/movies.rs's since
+//! the connection round) to the same samples and refuses what it refuses
+//! (measured 2026-10-16), but:
 //!   - 8-bit sound by a convention of its own (up to 1/128 off what a WAV of
 //!     it gives), 32-bit integers a last bit off (2^-23), and a `twos` of 24
 //!     bits and an `enda` outside a `wave` as noise;

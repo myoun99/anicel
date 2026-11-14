@@ -11,6 +11,9 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
+    show CanvasActiveLayerRow;
+import 'package:anicel/src/ui/canvas/float_warp.dart' show FloatResampleShown;
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -32,7 +35,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const canvasSize = CanvasSize(width: 128, height: 128);
-  const tile = 32;
+  const tile = defaultCelTileSize;
+  const side = 32;
   final keys = [
     ResolvedLayerEffect(
       kind: EffectKind.colorKey,
@@ -40,7 +44,7 @@ void main() {
     ),
   ];
 
-  /// A cel of one tile at the canvas's corner, every pixel of it [alpha].
+  /// A cel of one tile at the canvas's corner, a [side]² of it all [alpha].
   BitmapSurface tileOf(int alpha) => BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tile,
@@ -48,7 +52,9 @@ void main() {
       TileCoord(x: 0, y: 0): BitmapTile(
         size: tile,
         pixels: Uint8List.fromList([
-          for (var i = 0; i < tile * tile; i += 1) ...[64, 192, 96, alpha],
+          for (var y = 0; y < tile; y += 1)
+            for (var x = 0; x < tile; x += 1)
+              ...(x < side && y < side ? [64, 192, 96, alpha] : [0, 0, 0, 0]),
         ]),
       ),
     },
@@ -76,24 +82,22 @@ void main() {
   );
 
   /// A float of [alpha] carried to (8, 8)–(40, 40) over [holed] — its own
-  /// surface, or [image] for a warp.
+  /// surface, or [resampled] for a warp.
   ({SelectionFloatPaint float, _Cel cel}) floatOver(
     BitmapSurface holed, {
     int alpha = 255,
     bool onCanvasGrid = true,
-    bool image = false,
+    bool resampled = false,
   }) {
     final cel = _Cel(holed, onCanvasGrid: onCanvasGrid);
-    final stamp = stampOf(tile, alpha);
-    final float = image
+    final stamp = stampOf(side, alpha);
+    final float = resampled
         ? SelectionFloatPaint(
-            image: _image,
-            imageLeft: 8,
-            imageTop: 8,
+            resampled: FloatResampleShown.of(stamp),
             lands: (stamp: stamp, on: cel),
           )
         : SelectionFloatPaint(
-            surface: floatPainter(tileOf(alpha), const []),
+            surface: floatPainter(tileOf(alpha)),
             surfaceOffset: CanvasPoint(x: 8, y: 8),
             lands: (stamp: stamp, on: cel),
           );
@@ -113,10 +117,6 @@ void main() {
     image.dispose();
     return bytes.getUint8((y * canvasSize.width + x) * 4 + 3);
   }
-
-  setUpAll(() async {
-    _image = await _imageOf(tile);
-  });
 
   test('an opaque float landing on nothing is its own pixels keyed — no '
       'landing is made, at any place it is carried to', () {
@@ -144,8 +144,11 @@ void main() {
     expect(cel.asked, 0);
   });
 
-  test('a float keyed once is keyed again when its row keys another colour '
-      '— and by the first keys when they come back', () async {
+  // ↩️It held the float keyed by its row's keys, keyed again when they
+  // changed, until the engine keyed what a hand holds with its row
+  // (float-warp-resamples-in-the-c-engine (1), 2026-11-11).
+  test('a float its row keys lays its own pixels in place of what it covers, '
+      'whatever the keys — the row keys them with the cel', () async {
     final (:float, cel: _) = floatOver(empty);
     final another = [
       ResolvedLayerEffect(
@@ -153,14 +156,17 @@ void main() {
         values: [0, 0xFFC81414, 10, 100],
       ),
     ];
+    final own = float.surface!.surface.tiles;
 
-    final away = await alphaAt(float.shownOn(keys).preview, 24, 24);
-    final kept = await alphaAt(float.shownOn(another).preview, 24, 24);
-    final awayAgain = await alphaAt(float.shownOn(keys).preview, 24, 24);
-
-    expect(away, 0, reason: 'its own colour is keyed away');
-    expect(kept, 255, reason: 'another colour keyed leaves it be');
-    expect(awayAgain, 0);
+    for (final rowKeys in [keys, another]) {
+      final shown = float.shownOn(rowKeys).preview;
+      expect(shown.heldTiles.map((held) => held.tiles), [same(own), same(own)]);
+      expect(shown.heldTiles.map((held) => held.laying), [
+        isA<LaidErasing>(),
+        isA<LaidOver>(),
+      ]);
+      expect(await alphaAt(shown, 24, 24), 255, reason: 'no key runs here');
+    }
   });
 
   test('a partly clear float landing on ink is the landing — it blends with '
@@ -182,24 +188,46 @@ void main() {
     expect(cel.asked, 1);
   });
 
+  test('🚨a float on a posed row is the landing on a row that keys nothing '
+      'too — the pose resamples what lands, and the row the cel again '
+      '(flip lane ⓐ-2 · 유저 09-17)', () {
+    final (:float, :cel) = floatOver(empty, onCanvasGrid: false);
+
+    expect(float.shownOn(const []).preview, same(_landing));
+    expect(cel.asked, 1);
+  });
+
   test('a float a warp resampled is the landing', () {
-    final (:float, :cel) = floatOver(empty, image: true);
+    final (:float, :cel) = floatOver(empty, resampled: true);
 
     expect(float.shownOn(keys).preview, same(_landing));
     expect(cel.asked, 1);
   });
 
-  test('🗣️I-132-Q32 b: on a row whose chain runs a plugin a float is the '
-      'landing, even an opaque one over nothing — the plugin may change '
-      'the cel anywhere', () {
+  // ↩️🗣️I-132-Q32 b: on a row whose chain ran a plugin at its head a float
+  // was the landing, even an opaque one over nothing (the plugin may change
+  // the cel anywhere), while that plugin ran on the CPU over the cel alone
+  // — until it was a step of the chain, which the engine runs over what
+  // floats as over the cel (float-warp-resamples-in-the-c-engine (2),
+  // 2026-11-11).
+  test('on a row whose chain runs a plugin, a float is what its keys alone '
+      'make it — the row asks it through its leading keys', () {
     final (:float, :cel) = floatOver(empty);
+    CanvasActiveLayerRow rowOf(List<ResolvedLayerEffect> effects) =>
+        CanvasActiveLayerRow(opacity: 1, effects: effects);
 
-    expect(float.shownOn([shiftingFxPluginEffect()]).preview, same(_landing));
     expect(
-      float.shownOn([...keys, shiftingFxPluginEffect()]).preview,
-      same(_landing),
+      float.shownOn(rowOf([shiftingFxPluginEffect()]).sourceEffects).preview,
+      same(float),
     );
-    expect(cel.asked, 2);
+    expect(
+      float
+          .shownOn(rowOf([...keys, shiftingFxPluginEffect()]).sourceEffects)
+          .preview,
+      isNot(same(_landing)),
+      reason: 'opaque over nothing, its own pixels in place of what it covers',
+    );
+    expect(cel.asked, 0);
   });
 
   test('⛔CONTROL: on a row that keys nothing, a float is itself', () {
@@ -260,7 +288,7 @@ void main() {
       ),
       (
         'over a surface',
-        (canvas) => floatPainter(empty, const []).paintContentInto(
+        (canvas) => floatPainter(empty).paintContentInto(
           canvas,
           pixelRatio: 2,
           float: (preview: float, canvasToRow: null),
@@ -295,20 +323,6 @@ void main() {
   });
 }
 
-late Image _image;
-
-Future<Image> _imageOf(int size) async {
-  final recorder = PictureRecorder();
-  Canvas(recorder).drawRect(
-    Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
-    Paint()..color = const Color(0xFF40C060),
-  );
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(size, size);
-  picture.dispose();
-  return image;
-}
-
 /// What the cel's landing would show — one object, so a test can tell it
 /// from anything else.
 final LandingPreview _landing = _Landing();
@@ -319,6 +333,9 @@ class _Landing implements LandingPreview {
 
   @override
   void paintInto(Canvas canvas, {required double pixelRatio}) {}
+
+  @override
+  List<HeldTiles> get heldTiles => const [];
 }
 
 /// A cel under a float, counting the landings it is asked for.
@@ -334,10 +351,7 @@ class _Cel implements FloatLandsOn {
   int asked = 0;
 
   @override
-  LandingPreview? landingShown(
-    BrushDab stamp,
-    List<ResolvedLayerEffect> keys,
-  ) {
+  LandingPreview? landingShown(BrushDab stamp) {
     asked += 1;
     return _landing;
   }

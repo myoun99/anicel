@@ -45,9 +45,7 @@ struct Dual {
 pub(super) fn filled(label: &str, words: &[u32]) -> wgpu::Buffer {
     let contents: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let descriptor =
-        wgpu::util::BufferInitDescriptor { label: Some(label), contents: &contents, usage };
-    wgpu::util::DeviceExt::create_buffer_init(&first_engine().device, &descriptor)
+    first_engine().filled(label, &contents, usage)
 }
 
 pub(super) fn words(buffer: &wgpu::Buffer) -> Vec<u32> {
@@ -899,7 +897,16 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
     let lands = |mode, opacity| {
         let map = ResampleMap::moved(0, 0);
         let row = |set, mode, opacity| {
-            Step::Row { set, keys: None, map, matrix: None, opacity, mode, masked: false }
+            Step::Row {
+                set,
+                keys: None,
+                chain: None,
+                map,
+                matrix: None,
+                opacity,
+                mode,
+                masked: false,
+            }
         };
         let steps = [row(0, NORMAL, ONE), row(1, mode, opacity)];
         let plan = Plan {
@@ -907,6 +914,7 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
             sets: &sets,
             keys: &[],
             matrices: &[],
+            chains: &[],
             steps: &steps,
             mask: None,
         };

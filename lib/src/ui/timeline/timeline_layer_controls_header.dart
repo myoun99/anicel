@@ -58,7 +58,7 @@ class LegendHeadingButton {
         name: 'legend-heading',
         tooltip: tooltip,
         entriesBuilder: entries,
-        hoverShape: AppShapes.control(rowHeight),
+        shape: AppShapes.control(rowHeight),
         child: words,
       );
 }

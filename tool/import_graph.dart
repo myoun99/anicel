@@ -85,22 +85,44 @@ Set<String> pathsReadAsText(String source) => {
 /// ([pathsReadAsText]): the Dart sources, the platform folders the app's
 /// shells live in, and the packages beside the app — a scan reads the GPU
 /// engine's by path (its example's plugin registrants), while every suite
-/// reads only `kEngineSources`.
+/// reads none of them unnamed (`kEveryTestReadsUnder`). 🆕And the CI's own
+/// files (2026-11-07): four
+/// scans read workflows by path, and a change to one ran none of them — the
+/// GPU engine's job split that day was 「no test reaches」.
 const kTextRoots = [
   'lib', 'test', 'tool', //
   'android', 'ios', 'linux', 'macos', 'windows',
-  'packages',
+  'packages', '.github',
 ];
 
+final _textRoot = kTextRoots.map(RegExp.escape).join('|');
+
 final _sourcePathLiteral = RegExp(
-  '''['"]((?:${kTextRoots.join('|')})(?:/[A-Za-z0-9_/.\\-]*)?)'''
+  '''['"]((?:$_textRoot)(?:/[A-Za-z0-9_/.\\-]*)?)'''
   r'''(?:\$[^'"]*)?['"]''',
 );
+
+/// The packages beside the app that it depends on by path (pubspec.yaml):
+/// ours, so an import of one is an edge into its `lib/` as an import of the
+/// app's own is. 🆕2026-11-07: the app came to depend on the GPU engine
+/// (screen-on-the-engine), and while `package:gpu_engine` read as a third
+/// party's, a change to the engine selected none of the suites that call it.
+const kPathPackages = ['gpu_engine'];
+
+/// The folder of the package of [kPathPackages] whose shipped code [file] is
+/// — `packages/<it>/` for a file under `packages/<it>/lib/` — or null.
+String? pathPackageOf(String file) {
+  for (final package in kPathPackages) {
+    if (file.startsWith('packages/$package/lib/')) return 'packages/$package/';
+  }
+  return null;
+}
 
 /// The repo-relative Dart files [source] (living at [from]) depends on.
 ///
 /// `dart:` is not a file. Third-party `package:` targets are not ours to
-/// track. `package:anicel/x` and a relative path both resolve into `lib/…`.
+/// track. `package:anicel/x` and a relative path both resolve into `lib/…`,
+/// and a package of [kPathPackages] into its own `lib/`.
 Set<String> importsOf(String from, String source) {
   final out = <String>{};
   for (final match in _sourceReference.allMatches(source)) {
@@ -111,6 +133,8 @@ Set<String> importsOf(String from, String source) {
     if (target.startsWith('dart:')) continue;
     if (target.startsWith('package:anicel/')) {
       out.add('lib/${target.substring('package:anicel/'.length)}');
+    } else if (_inPathPackage(target) case final file?) {
+      out.add(file);
     } else if (target.startsWith('package:')) {
       continue; // third-party: not ours to track
     } else {
@@ -118,6 +142,17 @@ Set<String> importsOf(String from, String source) {
     }
   }
   return out;
+}
+
+/// Where `package:<one of kPathPackages>/x` lives: `packages/<it>/lib/x`.
+String? _inPathPackage(String target) {
+  for (final package in kPathPackages) {
+    final uri = 'package:$package/';
+    if (target.startsWith(uri)) {
+      return 'packages/$package/lib/${target.substring(uri.length)}';
+    }
+  }
+  return null;
 }
 
 /// file -> the repo-relative Dart files it imports directly, for every
@@ -142,8 +177,12 @@ Map<String, Set<String>> buildImportGraph({
 /// result records alike. `tool/` too: a tool test reaches what its tool
 /// imports — until 2026-10-19 the walk stopped at the tool a test named,
 /// and a change to `tool/flutter_room.dart` selected none of the line's
-/// tests that run through `tool/test_queue.dart`.
-const kGraphRoots = ['lib', 'test', 'tool'];
+/// tests that run through `tool/test_queue.dart`. And the shipped code of
+/// each package of [kPathPackages], which an import of one is an edge into.
+const kGraphRoots = [
+  'lib', 'test', 'tool', //
+  'packages/gpu_engine/lib',
+];
 
 /// Everything [start] can reach through [graph] — however far away, or no
 /// more than [within] imports from it.
@@ -171,6 +210,9 @@ Set<String> closureOf(
 /// path one of those spells to read as text ([pathsReadAsText]).
 typedef Reach = ({Set<String> files, Set<String> prefixes});
 
+/// The mark of Dart that binds native code.
+final _nativeMark = RegExp(r'@Native\b|\bDynamicLibrary\.');
+
 /// The [Reach] of each file asked — one law for what a test depends on,
 /// asked by the selection (`selectTests`) and by the green record
 /// (`Inputs.of`). ↩️Until 10-20 each walked it on its own: the record read
@@ -189,21 +231,51 @@ class Reaches {
   final int? within;
 
   final _texts = <String, Set<String>>{};
+  final _native = <String, Set<String>>{};
+  final _binds = <String, bool>{};
   final _of = <String, Reach>{};
 
   /// ⛔A file under `lib/` reads no path: it is the app's code, run where
   /// no checkout exists, and a literal there is a word — the `'tool'` key
   /// of `tool_choice.dart` once made every test that reaches it read all
-  /// of `tool/` (10-20, 392 files for a change to one tool).
+  /// of `tool/` (10-20, 392 files for a change to one tool). A package's
+  /// shipped code is the app's too.
   Reach of(String start) => _of.putIfAbsent(start, () {
     final files = {start, ...closureOf(start, imports, within: within)};
     return (
       files: files,
       prefixes: {
         for (final file in files)
-          if (!file.startsWith('lib/')) ..._textsOf(file),
+          if (pathPackageOf(file) != null)
+            ..._nativeOf(file)
+          else if (!file.startsWith('lib/'))
+            ..._textsOf(file),
       },
     );
+  });
+
+  /// What a package's shipped [file] reads past its imports: the whole
+  /// package, when it or a file of the package it imports binds native
+  /// code — names `@Native` or opens a `DynamicLibrary` — for what is bound
+  /// is built from the package's other folders, which no import names (the
+  /// Rust its build hook compiles, the plugin its loader opens). However
+  /// near the reach was asked: the binding is the package's own, not a step
+  /// further from the test. Found by the mark, not a list, so a third
+  /// binding is not missed (관제 2026-11-07).
+  Set<String> _nativeOf(String file) => _native.putIfAbsent(file, () {
+    final package = pathPackageOf(file)!;
+    final bound = {file, ...closureOf(file, imports)}.any(
+      (reached) => reached.startsWith(package) && _bindsNative(reached),
+    );
+    return bound ? {package} : const <String>{};
+  });
+
+  bool _bindsNative(String file) => _binds.putIfAbsent(file, () {
+    try {
+      return _nativeMark.hasMatch(read(file));
+    } on FileSystemException {
+      return false;
+    }
   });
 
   Set<String> _textsOf(String file) => _texts.putIfAbsent(file, () {
@@ -244,6 +316,28 @@ Map<String, Set<String>> reachedBy(
     }
   }
   return out;
+}
+
+/// Whether [path] is a test file — a suite `flutter test` runs.
+bool isSuite(String path) =>
+    path.startsWith('test/') && path.endsWith('_test.dart');
+
+/// Whether [source] imports, exports or parts a file of [package]: a
+/// third-party target, which the graph's edges leave out ([importsOf]).
+bool importsPackage(String source, String package) => _directive
+    .allMatches(source)
+    .any((match) => match.group(1)!.startsWith('package:$package/'));
+
+/// The test files in [graph] that are one of [files] or reach one of them.
+Set<String> testsReaching(
+  Set<String> files,
+  Map<String, Set<String>> graph,
+) {
+  final reached = reachedBy(graph.keys.where(isSuite), graph);
+  return {
+    for (final file in files) ...?reached[file],
+    ...files.where(isSuite),
+  };
 }
 
 String dirOf(String path) {

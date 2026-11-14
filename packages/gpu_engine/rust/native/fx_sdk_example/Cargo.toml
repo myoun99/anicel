@@ -1,0 +1,21 @@
+[package]
+name = "fx_sdk_example"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# The fx SDK's example (sdk/fx/example) built as WebAssembly — the module
+# every device runs — for the fx tests to open on each WebAssembly host
+# (native/fx_plugin, src/tests/wasm.rs). fx_plugin's own example of it is
+# its native build, and cannot be this one: an example brings its package's
+# library, and wasmtime with it, which no WebAssembly build takes. The gate
+# and CI build it before the tests (tool/lane.sh, cmd_crate), where the
+# tests read it (QA_FX_MODULE, .cargo/config.toml):
+#
+#   CARGO_TARGET_DIR=../../../build/fx_wasm \
+#     cargo build --release -p fx_sdk_example --target wasm32-unknown-unknown
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anicel-fx = { path = "../../../../../sdk/fx/anicel-fx" }

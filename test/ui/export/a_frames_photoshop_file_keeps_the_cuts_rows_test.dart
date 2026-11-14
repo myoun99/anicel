@@ -35,7 +35,6 @@ import 'package:anicel/src/services/import/media_import_planner.dart'
 import 'package:anicel/src/services/import/psd_layer_plan.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
@@ -59,10 +58,11 @@ import '../../helpers/temp_dir.dart';
 /// 것을 알리듯이」. Its picture is the one its rows lay up: the cut's without
 /// what no row of it holds — the cost the answer was chosen at.
 void main() {
-  const size = CanvasSize(width: 8, height: 8);
-
-  // A row in multiply is composed over its backdrop in the shader.
-  setUpAll(LayerBlendShader.load);
+  // One tile, at the engine's side.
+  const size = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
 
   const cutId = CutId('cut');
   const black = [0, 0, 0, 255];
@@ -135,7 +135,12 @@ void main() {
       transformTrack: posed
           ? TransformTrack(
               keyframes: {
-                0: TransformPose(center: CanvasPoint(x: 5, y: 4)),
+                0: TransformPose(
+                  center: CanvasPoint(
+                    x: size.width / 2 + 1,
+                    y: size.height / 2,
+                  ),
+                ),
               },
             )
           : null,
@@ -202,9 +207,12 @@ void main() {
         session.brushFrameKeyForCut(cut, LayerId(row), FrameId('$row-1')),
         BitmapSurface(
           canvasSize: size,
-          tileSize: 8,
+          tileSize: defaultCelTileSize,
           tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: only({dot: rgba})),
+            TileCoord(x: 0, y: 0): BitmapTile(
+              size: defaultCelTileSize,
+              pixels: only({dot: rgba}),
+            ),
           },
         ),
       );
@@ -290,7 +298,7 @@ void main() {
       straight(
         await ExportFrameRenderer(
           session: session,
-          background: const ui.Color(0x00000000),
+          ground: const ui.Color(0x00000000),
         ).renderComposite(frameOf(session), ExportSizeMode.canvas),
       );
 

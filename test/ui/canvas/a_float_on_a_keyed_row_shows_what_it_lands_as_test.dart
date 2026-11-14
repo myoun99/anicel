@@ -1,4 +1,6 @@
-import 'dart:ui' as ui;
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
@@ -11,6 +13,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
@@ -18,6 +21,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -40,6 +45,7 @@ import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/placement_reading.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/wait_window.dart' show windowBehind;
@@ -63,6 +69,19 @@ enum _Rows { live, range, folder }
 /// float shows in, dragged and warped, by each of the three ways a float
 /// is shown (`SelectionFloatPaint.shownOn`), at 1:1 and zoomed out.
 void main() {
+  // The engine and what a frame is laid with, open before the first test:
+  // a frame is on its screen from the frame it is stood in.
+  //
+  // ↩️They opened of themselves, in the first test, in whatever real time
+  // its waits lent, until 2026-11-11 (card
+  // float-landing-test-red-once-under-load). 🔬The shot that test takes
+  // before its box opens was of a screen with nothing on it in every run
+  // — 11,532,672 pixels, all clear: its control compared a landing with
+  // nothing — and on a loaded machine the shot with the box open was too:
+  // 「what floats is what lands」 read 3,870,360 pixels apart, the whole
+  // frame, once in a run of 118 files. The 33 tests after it met an engine
+  // already open. ⇒ [composite] refuses a screen with nothing on it.
+  opensTheEnginesScreens();
   const ground = 0xFF40C060;
   const rowB = LayerId('keyed-row-b');
   const celB = FrameId('keyed-row-b-cel');
@@ -236,36 +255,44 @@ void main() {
   /// device pixels, fell on thirds of the raster's. 🔬Under Impeller
   /// (Vulkan, 10-24) the multisampled raster blended them — at 1:1 a
   /// landing read grey 64 on nine pixels the box had carried black.
+  ///
+  /// ⛔Of a frame that is on its screen: one the engine has not come to yet
+  /// paints nothing at all, its paper neither, and two shots of nothing
+  /// are the same bytes.
+  ///
+  /// 🗣️I-132-Q34 a: a frame whose chain runs a plugin shows the picture
+  /// last made of it until the next is there — waited for, until nothing
+  /// more of it is on its way (`FramePictureView.nothingOnItsWay`).
   Future<Uint8List> composite(WidgetTester tester) async {
-    final paint = find
-        .descendant(
-          of: theFramesPicture(within: mainCanvasPanel()),
-          matching: find.byType(CustomPaint),
-        )
-        .evaluate()
-        .firstWhere((e) => (e.widget as CustomPaint).painter != null);
-    final size = (paint.renderObject! as RenderBox).size;
-    final dpr = tester.view.devicePixelRatio;
-    final recorder = ui.PictureRecorder();
-    (paint.widget as CustomPaint).painter!.paint(
-      Canvas(recorder, Offset.zero & size * dpr)..scale(dpr),
-      size,
+    bool caughtUp() =>
+        (tester.state(theFramesPicture(within: mainCanvasPanel())) as dynamic)
+                .nothingOnItsWay
+            as bool;
+    expect(
+      await settleAsync(tester, caughtUp),
+      isTrue,
+      reason: 'LIVENESS: what the frame waits for comes',
     );
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(
-      (size.width * dpr).round(),
-      (size.height * dpr).round(),
+    await pumpFrames(tester, 2);
+    final shot = await shotOfBox(
+      tester,
+      tester.renderObject<RenderBox>(
+        theFrameScreenIn(theFramesPicture(within: mainCanvasPanel())),
+      ),
     );
-    picture.dispose();
-    final bytes = await tester.runAsync(image.toByteData);
-    image.dispose();
-    return Uint8List.fromList(bytes!.buffer.asUint8List());
+    expect(
+      shot.rgba.any((channel) => channel != 0),
+      isTrue,
+      reason: '⛔fixture: the frame is on its screen',
+    );
+    return shot.rgba;
   }
 
-  /// Lets a step land: its frames, and the one thing here drawn off the
-  /// frame's clock — the picture an open warp resamples to, decoded by the
-  /// engine on a real thread — waited for until it is the one the box's
+  /// Lets a step land: its frames, and the resample an open warp shows
+  /// once a frame has ended, waited for until it is the one the box's
   /// values ask for now ([CanvasSelectionCommands.debugFloatsCaughtUp]).
+  /// ↩️That resample was decoded by the engine on a real thread, until the
+  /// canvas laid its tiles (a-float-premultiplies-in-the-c-each-step).
   ///
   /// ↩️It lent both clocks twelve rounds of 16 ms until 2026-10-25. 🔬On
   /// two pumped frames and no real time 17 of the 22 tests passed, their
@@ -409,16 +436,19 @@ void main() {
   /// move.
   ///
   /// Asked with the text tool in hand: its stage says where a canvas pixel
-  /// is on the screen.
+  /// is on the screen — where the row's own pixel of that number is, so on
+  /// a row its pose turns the hand is told where to take hold ([holdAt],
+  /// [sheetOnATurnedRow]).
   Future<({Uint8List carried, Uint8List landed})> carry(
     WidgetTester tester,
     _Rows rows, {
     required Rect region,
+    Offset? holdAt,
     List<TransformValues Function(TransformValues now)> warps = const [],
     bool twice = false,
     Future<void> Function()? whileOpen,
   }) async {
-    final hold = holdIn(tester, region);
+    final hold = holdAt ?? holdIn(tester, region);
     final step = handFor(tester, 40, 30);
     final drop = hold + step;
     final commands = await select(tester, rows, region);
@@ -479,15 +509,15 @@ void main() {
           switch (float) {
             null => 'nothing',
             _ when float.isEmpty => 'nothing',
-            _ when float.image != null => 'an image',
+            _ when float.resampled != null => 'its resample',
             _ => 'its surface',
           },
       ],
       [
         for (final _ in before)
-          if (warps.isNotEmpty) 'an image' else 'its surface',
+          if (warps.isNotEmpty) 'its resample' else 'its surface',
       ],
-      reason: 'every row floats — a warp as the image it resamples to, a '
+      reason: 'every row floats — a warp as what it resamples to, a '
           'drag as its own surface, in a box it opened or one already open',
     );
     expect(
@@ -711,6 +741,30 @@ void main() {
     );
   });
 
+  // 🧭관제 2026-11-11 18:47 (a-float-premultiplies-in-the-c-each-step):
+  // 「플로트를 엔진에 놓아(`EngineHeld` 길) Flutter 표시용 디코드 자체를
+  // 없애는 쪽」 — the canvas lays an open warp's resample as its tiles, so
+  // nothing pictures it: no premultiply, no upload, a step of the box.
+  testWidgets('a sheet scaled in its box, and scaled again, is laid as its '
+      'tiles — no picture is made of what the canvas shows', (tester) async {
+    final c = await open(tester, projectOf(_Rows.live, keyed: false));
+    final region = await sheets(tester, c, _Rows.live);
+    final commands = await select(tester, _Rows.live, region);
+    await pressCtrl(tester, LogicalKeyboardKey.keyT);
+    commands.beginTransform();
+
+    final shown = <Object>{};
+    for (final by in [1.25, 1.5]) {
+      commands.editTransformValues((now) => now.copyWith(sx: by, sy: by));
+      await settle(tester);
+      final resampled = canvasOf(tester).live!.floatOverlay!.value!.resampled;
+      expect(resampled, isNotNull, reason: '⛔fixture: its resample shown');
+      shown.add(resampled!);
+      expect(resampled.debugPictured, isFalse, reason: 'scaled by $by');
+    }
+    expect(shown, hasLength(2), reason: '⛔CONTROL: each scale a resample');
+  });
+
   testWidgets('a keyed sheet on a posed row shows what it lands as', (
     tester,
   ) async {
@@ -814,20 +868,24 @@ void main() {
     });
   }
 
-  // ── 🗣️I-132-Q32 b: rows whose chain runs a plugin, dragged and warped. ──
+  // ── Rows whose chain runs a plugin, dragged and warped: the engine runs
+  // it over what floats as over the cel. ↩️What floated was the landing
+  // made on the whole cel (🗣️I-132-Q32 b), while a plugin at the chain's
+  // head ran on the CPU over the cel alone — until it was a step of the
+  // chain (float-warp-resamples-in-the-c-engine (2), 2026-11-11). ──
 
   for (final rows in _Rows.values) {
     for (final warped in [false, true]) {
       final how = warped ? 'warped' : 'dragged';
       testWidgets('${rows.name}: a sheet $how by the box on rows whose chain '
-          'runs a PLUGIN shows what it lands as — the whole cel the plugin '
-          'makes', (tester) async {
+          'runs a PLUGIN shows what it lands as — the plugin over the cel and '
+          'what floats on it', (tester) async {
         final c = await open(
           tester,
           projectOf(rows, keyed: false, plugin: true),
           // Past the stamp a float lands as — the box it was carried in,
-          // 60 round the sheets, scaled up too — so that only a landing
-          // made on the whole cel shows where the sheet goes.
+          // 60 round the sheets, scaled up too — so that what the plugin
+          // makes of the float shows where nothing of the float lies.
           fxPlugins: await installedShiftingFxPlugin(tester, by: 100),
         );
         expect(
@@ -850,6 +908,162 @@ void main() {
       });
     }
   }
+
+  /// The app on row A wearing the stand-in plugin, A's sheet laid: the
+  /// region it is carried in, and the frame as it stands before any box.
+  Future<({Rect region, Uint8List drawn})> aPluginRowToCarry(
+    WidgetTester tester,
+  ) async {
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, plugin: true),
+      fxPlugins: await installedShiftingFxPlugin(tester, by: 100),
+    );
+    final region = await sheets(tester, c, _Rows.live);
+    return (region: region, drawn: await composite(tester));
+  }
+
+  testWidgets('live: a sheet dragged by the box on a row whose chain runs a '
+      'PLUGIN and put back by a cancel shows the frame as it stood — what '
+      'went through the plugin was the view\'s own, not the frame\'s', (
+    tester,
+  ) async {
+    final (:region, :drawn) = await aPluginRowToCarry(tester);
+    // Read with the text tool in hand, as [carry] reads them.
+    final hold = holdIn(tester, region);
+    final step = handFor(tester, 40, 30);
+    final commands = await select(tester, _Rows.live, region);
+    final hand = await tester.startGesture(
+      hold,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await hand.moveTo(hold + step);
+    await tester.pump();
+    await hand.up();
+    await settle(tester);
+    expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
+    expect(
+      _apart(drawn, await composite(tester)),
+      greaterThan(0),
+      reason: '⛔CONTROL: what is carried shows',
+    );
+    final picture = theFramesPicture(within: mainCanvasPanel());
+    final view = tester.widget<FramePictureView>(picture);
+    final frame = view.run.pictures.keyOfStack(view.nodes, view.picture);
+    expect(
+      view.run.pictures.store.peek(
+        keptByTheCanvas(tester, frame, view: picture),
+      ),
+      isNotNull,
+      reason:
+          'what went through the plugin with the float is kept under the '
+          'canvas\'s own key — a picture under the frame\'s is the frame, '
+          'for every screen that asks for it',
+    );
+
+    commands.cancelTransform();
+    await settle(tester);
+
+    expect(_apart(drawn, await composite(tester)), 0);
+  });
+
+  testWidgets('live: a sheet dragged by the box on a row whose chain runs a '
+      'PLUGIN shows what it lands as once the row\'s opacity changes with '
+      'the box open — the picture the frame is given goes through too', (
+    tester,
+  ) async {
+    final (:region, :drawn) = await aPluginRowToCarry(tester);
+
+    expectLandsAsCarried(
+      await carry(
+        tester,
+        _Rows.live,
+        region: region,
+        whileOpen: () async {
+          sessionOf(tester).opacityVerbs.setLayerOpacity(
+            layerId: textToolLayerId,
+            opacity: 0.5,
+          );
+          await settle(tester);
+        },
+      ),
+      drawn,
+    );
+  });
+
+  /// 🧭관제 2026-11-12 08:5x (float-warp-resamples-in-the-c-engine): 「변화가
+  /// 몰리면 하나만 돈다(앞 것이 끝나야 다음, 마지막 변화는 반드시 돈다)」 — a
+  /// device's run takes real time, on a worker (`GpuFxPlugin.render`), so a
+  /// drag's moves come while a write is on its way through the plugin.
+  testWidgets('live: a sheet dragged by the box on a row whose chain runs a '
+      'PLUGIN goes through it one write at a time — what moves meanwhile '
+      'waits, and the last of it goes through once the write on its way has '
+      'ended', (tester) async {
+    final gate = _HeldAtTheGate(ShiftingFxPlugin(by: 100));
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, plugin: true),
+      fxPlugins: await installedShiftingFxPlugin(tester, runner: gate),
+    );
+    final region = await sheets(tester, c, _Rows.live);
+    final drawn = await composite(tester);
+    // Read with the text tool in hand, as [carry] reads them.
+    final hold = holdIn(tester, region);
+    final step = handFor(tester, 20, 15);
+    final commands = await select(tester, _Rows.live, region);
+    bool nothingOnItsWay() =>
+        (tester.state(theFramesPicture(within: mainCanvasPanel())) as dynamic)
+                .nothingOnItsWay
+            as bool;
+
+    final before = gate.asked;
+    gate.hold();
+    final hand = await tester.startGesture(
+      hold,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await hand.moveTo(hold + step);
+    // 🔬Read before a frame: the next already owes the box's step behind
+    // the write, and owed alone would answer.
+    expect(
+      nothingOnItsWay(),
+      isFalse,
+      reason: 'the write the move began is on its way, nothing behind it yet',
+    );
+    await pumpFrames(tester, 2);
+    expect(gate.asked, before + 1, reason: '⛔CONTROL: a write on its way');
+    for (final times in [2.0, 3.0]) {
+      await hand.moveTo(hold + step * times);
+      await pumpFrames(tester, 2);
+    }
+    await hand.up();
+    await settle(tester);
+    expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
+    expect(
+      nothingOnItsWay(),
+      isFalse,
+      reason: 'the frame shows late what is on its way',
+    );
+    expect(
+      gate.asked,
+      before + 1,
+      reason: 'what moved meanwhile starts no write of its own',
+    );
+
+    // ⚠️Not how many runs follow: the write on its way records the live
+    // rows as they are at each of its rounds, and one whose step's picture
+    // grew with the move meets that step anew (`FxPluginStages`).
+    gate.letThrough();
+    final carried = await composite(tester);
+    await windowBehind(tester, () async => commands.applyTransform());
+    await settle(tester);
+    expectLandsAsCarried(
+      (carried: carried, landed: await composite(tester)),
+      drawn,
+    );
+  });
 
   for (final rows in [_Rows.live, _Rows.range]) {
     for (final warped in [false, true]) {
@@ -917,6 +1131,160 @@ void main() {
     );
   });
 
+  /// The landing the live row shows the float as, asked through the row's
+  /// own keys — the one its paint was handed.
+  CelTextLanding shownLanding(WidgetTester tester) {
+    final stack = canvasOf(tester);
+    CanvasActiveLayerRow? row;
+    void walk(List<CompositeNode<CanvasStackRow>> nodes) {
+      for (final node in nodes) {
+        switch (node) {
+          case CompositeLeaf(payload: final CanvasActiveLayerRow live):
+            row = live;
+          case CompositeGroup(:final children):
+            walk(children);
+          case CompositeAdjustment(:final children):
+            walk(children);
+          case CompositeBackdropBlend(:final children):
+            walk(children);
+          case CompositeClip(:final children):
+            walk(children);
+          case CompositeReadsRows(:final children):
+            walk(children);
+          case CompositeLeaf():
+          case CompositeOpaque():
+          case CompositeCelNumber():
+            break;
+        }
+      }
+    }
+
+    walk(stack.nodes);
+    final shown = stack.live!.floatOverlay!.value!
+        .shownOn(row!.sourceEffects)
+        .preview;
+    expect(shown, isA<CelTextLanding>(), reason: '⛔fixture: a landing');
+    return shown as CelTextLanding;
+  }
+
+  // ── A posed row's float is its landing, and the landing is the engine's. ──
+
+  /// A's sheet left of [c] on a row [pose] turns about the page's middle,
+  /// and the box a hand carries it in: THE CANVAS'S, round where the row
+  /// shows the sheet — and where on the screen a hand takes hold in it, on
+  /// the sheet, clear of the cross at the box's middle.
+  ///
+  /// ⚠️The stage reads the row's own pixels ([onScreen]), which such a row
+  /// shows somewhere other than their numbers say: a box of the sheet's own
+  /// numbers is not round it, and a hold a quarter across that box
+  /// ([holdIn]) was the box's turn, not its move (🔬2026-11-11).
+  Future<({Rect region, Offset hold})> sheetOnATurnedRow(
+    WidgetTester tester,
+    Offset c,
+    TransformPose pose,
+  ) async {
+    final a = Rect.fromLTWH(c.dx - 160, c.dy - 64, 120, 120);
+    await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
+    await settle(tester);
+    final placement = placedBy(pose, defaultCutCanvasSize);
+    final shown = [
+      for (final corner in [a.topLeft, a.topRight, a.bottomRight, a.bottomLeft])
+        placement.apply(CanvasPoint(x: corner.dx, y: corner.dy)),
+    ];
+    final xs = [for (final point in shown) point.x];
+    final ys = [for (final point in shown) point.y];
+    return (
+      region: Rect.fromLTRB(
+        xs.reduce(math.min).floorToDouble(),
+        ys.reduce(math.min).floorToDouble(),
+        xs.reduce(math.max).ceilToDouble(),
+        ys.reduce(math.max).ceilToDouble(),
+      ).inflate(60),
+      hold: onScreen(tester, a.center.dx + 30, a.center.dy + 30),
+    );
+  }
+
+  // 🗣️유저 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」 — a pose
+  // resamples what lands into the cel, so off the canvas's grid the float is
+  // its landing whatever its row keys (flip lane ⓐ-2).
+  testWidgets('a sheet on a row turned off the quarter shows what it lands '
+      'as', (tester) async {
+    const page = defaultCutCanvasSize;
+    final pose = TransformPose(
+      center: CanvasPoint(x: page.width / 2, y: page.height / 2),
+      scaleX: 1.1,
+      scaleY: 1.1,
+      rotationDegrees: 8,
+    );
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, pose: pose),
+    );
+    final (:region, :hold) = await sheetOnATurnedRow(tester, c, pose);
+    final drawn = await composite(tester);
+
+    expectLandsAsCarried(
+      await carry(tester, _Rows.live, region: region, holdAt: hold),
+      drawn,
+    );
+  });
+
+  // 🔬A float on a posed row is its landing, made at each place a hand
+  // carries it to, and that landing is the engine's: read back to be shown
+  // it was a GPU wait a tile, about 187 a frame on S5_BA's paper (Surface
+  // Pro 11, 검증/서피스 11-10) — and its crossing into the row made here, a
+  // 26.7 MB float was 55–68 ms of resample and 32–44 ms of handing the
+  // bytes up again, a step (main PC, 11-11, gpu-canonical-store ⑪).
+  testWidgets('carried on a posed row, a step is the engine\'s: no tile '
+      'comes off it, the float is neither resampled here nor handed up '
+      'again nor read back', (tester) async {
+    const page = defaultCutCanvasSize;
+    final pose = TransformPose(
+      center: CanvasPoint(x: page.width / 2, y: page.height / 2),
+      rotationDegrees: 8,
+    );
+    final c = await open(
+      tester,
+      projectOf(_Rows.live, keyed: false, pose: pose),
+    );
+    final (:region, :hold) = await sheetOnATurnedRow(tester, c, pose);
+    final first = hold + handFor(tester, 40, 30);
+    final second = hold + handFor(tester, 46, 34);
+    final commands = await select(tester, _Rows.live, region);
+
+    // From the press on: the lift crosses the sheet out onto the canvas on
+    // the engine too, and nothing asks for its bytes back.
+    final readBack = EngineStampPictures.debugReadBack;
+    final hand = await tester.startGesture(hold, kind: PointerDeviceKind.mouse);
+    await tester.pump();
+    await hand.moveTo(first);
+    await settle(tester);
+    expect(commands.movePending, isTrue, reason: '⛔fixture: in hand');
+    expect(
+      canvasOf(tester).live!.floatOverlay!.value!.resampled,
+      isNull,
+      reason: '⛔fixture: carried, the float its own pixels — no warp of the '
+          'box\'s',
+    );
+    final there = shownLanding(tester);
+
+    final reads = EngineTileLedger.instance.debugTileReads;
+    final handedUp = EngineStampPictures.debugHandedUp;
+    await hand.moveTo(second);
+    await settle(tester);
+
+    expect(
+      identical(shownLanding(tester), there),
+      isFalse,
+      reason: '⛔CONTROL: the step made a landing of its own',
+    );
+    expect(EngineTileLedger.instance.debugTileReads, reads);
+    expect(EngineStampPictures.debugHandedUp, handedUp);
+    await hand.up();
+    await settle(tester);
+    expect(EngineStampPictures.debugReadBack, readBack);
+  });
+
   // ── What a landing holds is let go. ──
 
   testWidgets('a landing made for one place is let go once the hand carries '
@@ -928,62 +1296,29 @@ void main() {
     final second = step + handFor(tester, 46, 34);
     final commands = await select(tester, _Rows.live, region);
 
-    /// The landing the live row shows the float as, asked through the
-    /// row's own keys — the one its paint was handed.
-    CelTextLanding shownLanding() {
-      final stack = canvasOf(tester);
-      CanvasActiveLayerRow? row;
-      void walk(List<CompositeNode<CanvasStackRow>> nodes) {
-        for (final node in nodes) {
-          switch (node) {
-            case CompositeLeaf(payload: final CanvasActiveLayerRow live):
-              row = live;
-            case CompositeGroup(:final children):
-              walk(children);
-            case CompositeAdjustment(:final children):
-              walk(children);
-            case CompositeBackdropBlend(:final children):
-              walk(children);
-            case CompositeClip(:final children):
-              walk(children);
-            case CompositeReadsRows(:final children):
-              walk(children);
-            case CompositeLeaf():
-            case CompositeOpaque():
-            case CompositeCelNumber():
-              break;
-          }
-        }
-      }
-
-      walk(stack.nodes);
-      final shown = stack.live!.floatOverlay!.value!
-          .shownOn(row!.sourceEffects)
-          .preview;
-      expect(shown, isA<CelTextLanding>(), reason: '⛔fixture: a landing');
-      return shown as CelTextLanding;
-    }
-
     final hand = await tester.startGesture(step, kind: PointerDeviceKind.mouse);
     await tester.pump();
     await hand.moveTo(first);
     await settle(tester);
-    final there = shownLanding();
+    final there = shownLanding(tester);
+    // Made as a canvas that paints the landing makes it: what is let go.
+    final pictureThere = there.picture;
     await hand.moveTo(second);
     await settle(tester);
-    final further = shownLanding();
+    final further = shownLanding(tester);
+    final pictureFurther = further.picture;
     await hand.up();
     await settle(tester);
 
     expect(identical(there, further), isFalse, reason: '⛔fixture: carried on');
-    expect(there.picture.debugDisposed, isTrue);
-    expect(further.picture.debugDisposed, isFalse, reason: 'still shown');
+    expect(pictureThere.debugDisposed, isTrue);
+    expect(pictureFurther.debugDisposed, isFalse, reason: 'still shown');
 
     await windowBehind(tester, () async => commands.applyTransform());
     expect(
       await settleAsync(
         tester,
-        () => further.picture.debugDisposed,
+        () => pictureFurther.debugDisposed,
         step: const Duration(milliseconds: 16),
       ),
       isTrue,
@@ -1004,4 +1339,56 @@ int _apart(Uint8List a, Uint8List b) {
     }
   }
   return n;
+}
+
+/// [_shifting] whose runs wait, while it is held ([hold]), for the test to
+/// let them through ([letThrough]): a device's run takes real time, a
+/// stand-in's none.
+final class _HeldAtTheGate implements FxPluginRunner {
+  _HeldAtTheGate(this._shifting);
+
+  final ShiftingFxPlugin _shifting;
+  Completer<void>? _gate;
+
+  /// How many runs it was asked for.
+  int asked = 0;
+
+  void hold() => _gate ??= Completer<void>();
+
+  void letThrough() {
+    _gate?.complete();
+    _gate = null;
+  }
+
+  @override
+  Future<void>? get toCome => null;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) =>
+      _shifting.reach(values, moment);
+
+  @override
+  Future<Uint8List?> render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) async {
+    asked += 1;
+    if (_gate case final gate?) {
+      await gate.future;
+    }
+    return _shifting.render(
+      input: input,
+      values: values,
+      layers: layers,
+      moment: moment,
+    );
+  }
+
+  @override
+  void close() => _shifting.close();
+
+  @override
+  bool get closed => _shifting.closed;
 }

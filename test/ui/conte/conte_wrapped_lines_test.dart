@@ -50,7 +50,7 @@ void main() {
     // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」.
     final resolved = conteTextStyle(9, bold: true);
     expect(resolved.fontFamily, AppTypography.bundledFamily);
-    expect(resolved.fontFamilyFallback, AppTypography.bundledFallback);
+    expect(resolved.fontFamilyFallback, AppTypography.documentFallback);
     expect(resolved.fontWeight, FontWeight.w700);
     expect(resolved.height, 1.25);
   });

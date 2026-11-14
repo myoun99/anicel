@@ -63,7 +63,8 @@ import '../../tool/refactor/clone_scan.dart';
 /// what this ratchet is FOR, and the alternative is the number-chasing the
 /// complexity section refuses.
 /// 🔜**A third rectangle-mean makes it a law**, and then it is extracted and
-/// this comes back down.
+/// this comes back down. ↩️`boxFilterA8` went to the GPU engine on
+/// 2026-11-08 and came back on 2026-11-09 (86 → 85 → 86 below).
 /// 89 → 88 (2026-09-10, the pixel pass's recipe builder). The pair that left:
 ///
 ///     lib/src/services/cel_pixel_overwrite.dart
@@ -758,8 +759,108 @@ import '../../tool/refactor/clone_scan.dart';
 /// where it is not clear, or under the coverage.
 /// 🔬Measured on the lane over master (`826a20074`, at 86): none added,
 /// that one gone.
+///
+/// 85 → 86 (2026-11-07, viewer-frame-premultiply-on-the-worker — a movie
+/// page's frame asked for premultiplied, where it is decoded, and uploaded
+/// as it comes). Named:
+///
+///     46 tokens
+///       lib/src/services/media/video_viewer_document.dart
+///         VideoViewerDocument.renderPage
+///       lib/src/services/media/video_viewer_document.dart
+///         VideoViewerDocument.readRegionRgba
+///
+/// They share one step — "ask the backend for the page's frame, and say
+/// it could not be read when it does not come" — which both bodies carried
+/// before this round, word for word; what each does with the bytes (an
+/// upload at the page's size, a box cut straight out) is its own, and the
+/// two ask for different forms of the frame. ⛔Not merged, by the rule of
+/// three (CLAUDE.md): two reads of a page's frame. 🔜A third read of a
+/// page's frame merges the step.
+/// 🔬Measured on the lane over master (`0aa978aae`, at 85): this one
+/// added, none gone.
+/// 86 → 85 (2026-11-08, the narrowed word's average to the GPU engine,
+/// word-bake-Q1): `resampleRgbaReferenceInto` · `boxFilterA8` left with
+/// `boxFilterA8` — the average is the engine's `narrowed_cover` now, in
+/// Rust, which this scan does not read. 🔬`clones.dart` on the lane over
+/// its base (`296c7021a`, at 86): that pair gone, none added.
+/// 85 → 86 (2026-11-09, the narrowed word's average back from the GPU
+/// engine, connection-round-checklist-Q30): that pair again, the bake's
+/// Dart average being what 「화면 글자는 전부 Flutter」 reads back into.
+/// 86 → 88 (2026-11-11, the flip lane). 🔬`clones.dart` on the lane over
+/// master (`666f7941c`, at 86): two added, none gone. ↩️The two stood
+/// under the ceiling while master counted 84 (2026-11-10); master came to
+/// its 86 before the lane landed. Two pairs came with the strokes that
+/// land on the engine:
+///
+///     lib/src/services/brush_live_stroke_rasterizer.dart
+///       BrushLiveStrokeRasterizer._touch
+///       BrushLiveStrokeRasterizer._blendDab
+///
+/// Both mark the tiles a dab reaches as touched, a blur's from its region
+/// and a paint dab's from its plan.
+///
+///     lib/src/services/bitmap_surface_brush_commit.dart  _pictureOnEngine
+///     lib/src/services/brush_live_stroke_rasterizer.dart
+///       BrushLiveStrokeRasterizer._promotedFromEngine
+///
+/// Both keep the tiles a landing changed, a picture's and a stroke's, each
+/// as what its own caller takes. ⛔Neither merged, by the rule of three
+/// (CLAUDE.md): two each. 🔜A third of either merges it. Merged at their
+/// thirds in the same lane: the grid of slots (a composite's tile set, the
+/// lift, the colour verbs — `TileHold.gridOf`) and the kernels the app
+/// keeps one of (`AppKernels`).
+/// ⚠️Two more came unnamed in the slack on 2026-11-10 (84 at the flip's
+/// base `290038c00` → 86 at `666f7941c`, the ceiling 86). Named
+/// (clone-pairs-unnamed-in-masters-slack-1111), 🔬`clones.dart` at both:
+///
+///     56 tokens
+///       lib/src/ui/text/model_vocabulary.dart  LabelStepWords.labelFor
+///       lib/src/ui/text/model_vocabulary.dart
+///         LabelStepWords.abbreviationFor
+///
+/// F-578 (`333da50ca` — a 用紙 label says what it is the paper of): both
+/// send a label's step to its table by its kind — a stage's or a
+/// correction's — one dispatch asked for two words, the name and the
+/// chip's abbreviation. The sealed switch has the compiler ask each of them
+/// for a new kind of step, so the two cannot part on which table a kind
+/// reads. ⛔Not merged, by the rule of three (CLAUDE.md): two words of a
+/// step. 🔜A third word of a step merges the dispatch.
+///
+///     40 tokens
+///       lib/src/ui/export/export_plan.dart  exportFramesBefore
+///       lib/src/ui/export/export_plan.dart  _trackOwnedSpans
+///
+/// `b00c57986` (a movie's sound led by what sounded before it): each asked
+/// where a frame of the plan stands on its track's axis — the track that
+/// holds the cut and the frame there — and `_blocksContiguous` asked it of
+/// both sides of a boundary: three readers of one answer. Merged below.
+/// 88 → 87 (2026-11-11, clone-pairs-1111): the three ask `_onTheTrack`.
+/// 🔬`clones.dart` on the lane over master (`afe46b0f1`, at 88): that pair
+/// gone, none added.
+/// 87 → 80 (2026-11-13, tip-coverage-is-a-second-r1), under the ceiling —
+/// five pairs had left since without it following them down. Two left
+/// here: `resampleRgbaReferenceInto` · `boxFilterA8`, with the Dart R1 (a
+/// tip's coverage reads down on the engine's now, and the reference's
+/// contracts run there), and `softenMaskBoundary` · `paintBrushTipGrid`,
+/// with the grid's own average (it draws its picture a cell a byte).
+/// 🔬`clones.dart` on the lane over master (`b2f068f57`, at 82): those two
+/// gone, none added.
+/// 80 → 81 (2026-11-14, the-attach-row-bake-test-waits-a-gpu-read-a-frame-
+/// under-load). 🔬`clones.dart` on the lane over master (`b61324025`, at
+/// 80): one added, none gone —
+///
+///     43 tokens
+///       lib/src/services/canvas_flood_fill.dart  _colorStampDab
+///       lib/src/ui/timeline/baked_frame_ink.dart  inkBoxOf
+///
+/// A candidate, not a clone: the same walk over a mask — skip the empty,
+/// act on the rest — with two algorithms in it. A fill stamps its colour
+/// where the mask has coverage; a bake grows the box of a frame's ink where
+/// its clear mask names none. ⛔Nothing to merge: the run is the loop's
+/// head, and what each does after it is its own.
 void main() {
-  const ceiling = 85;
+  const ceiling = 81;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

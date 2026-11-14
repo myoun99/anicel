@@ -7,8 +7,9 @@
 import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:collection/collection.dart' show ListExtensions;
 
 import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
@@ -61,9 +62,11 @@ final class ClipProjectRead {
     required this.project,
     required ClipImportPlan plan,
     required ({String path, bool staged}) source,
+    required String clipPath,
     required List<String> sounds,
   }) : _plan = plan,
        _source = source,
+       _clipPath = clipPath,
        _sounds = sounds;
 
   /// The project the file becomes — every timeline a 겸용 cut, its layers
@@ -74,6 +77,10 @@ final class ClipProjectRead {
   /// The bytes the pictures are baked from — a staged copy the bake
   /// deletes when it is done with it.
   final ({String path, bool staged}) _source;
+
+  /// The file as it was asked for, where [_source] may be a copy of it —
+  /// what its sounds say they were taken out of (F-589).
+  final String _clipPath;
 
   /// The sounds taken out of the file, where the project's SE rows play
   /// them from until the bake carries them into the project.
@@ -135,6 +142,7 @@ Future<ClipProjectRead?> readClipProject({
     project: _projectOf(name, document, plan),
     plan: plan,
     source: source,
+    clipPath: clipPath,
     sounds: [...sounds.values],
   );
 }
@@ -341,7 +349,7 @@ final class ClipImportDoor {
         onProgress: onProgress,
         isCancelled: isCancelled,
       );
-      await _carrySounds(read._sounds);
+      await _carrySounds(read._sounds, from: read._clipPath);
       _file.markDirty();
       _changes.warmActiveCut();
       _changes.notifyChanged();
@@ -356,12 +364,13 @@ final class ClipImportDoor {
   /// as a recording is: their bytes held in the project, so the copies
   /// taken out go once held (the pool does not call a carried asset whose
   /// original left 「missing」). Registered as the file's, not as an edit
-  /// to undo — the .tvpp door's way with its sounds.
-  Future<void> _carrySounds(List<String> paths) async {
+  /// to undo — the .tvpp door's way with its sounds. Each has the date of
+  /// the file it was taken out of ([from], F-589).
+  Future<void> _carrySounds(List<String> paths, {required String from}) async {
     if (paths.isEmpty) {
       return;
     }
-    await _mediaPool.addMediaAssets(paths, carried: true);
+    await _mediaPool.addMediaAssets(paths, carried: true, from: from);
     _project.historyManager.clear();
     _projectDoor.warmAudioConforms();
     for (final path in paths) {
@@ -389,8 +398,8 @@ final class ClipImportDoor {
     try {
       final work = _workOf(read._plan, ClipContainer.indexOf(reader), warnings);
       final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
-      for (var at = 0; at < work.length; at += pool) {
-        final wave = work.sublist(at, math.min(at + pool, work.length));
+      var baked = 0;
+      for (final wave in work.slices(pool)) {
         Future<Uint8List> read(ClipPlace place) async {
           await reader.setPosition(place.offset);
           return reader.read(place.length);
@@ -415,7 +424,8 @@ final class ClipImportDoor {
         ]);
         for (var w = 0; w < wave.length; w += 1) {
           await _bakeDecoded(decoded[w], wave[w], warnings);
-          onProgress?.call((at + w + 1) / work.length);
+          baked += 1;
+          onProgress?.call(baked / work.length);
           MaterializeCancelled.throwIf(isCancelled);
         }
       }
@@ -531,8 +541,9 @@ final class ClipImportDoor {
     return (mask: mask, place: place);
   }
 
-  /// [item] decoded on a worker of its own out of [bytes] — its blocks, its
-  /// strokes, or its texts' pictures — through its mask's [maskBlocks].
+  /// [item] decoded on a worker of its own out of [bytes] — its blocks, or
+  /// its texts' pictures; its strokes planned there and laid here
+  /// ([_drawn]) — through its mask's [maskBlocks].
   Future<Object?> _decodeOne(
     _ClipWork item,
     List<Uint8List> bytes,
@@ -563,7 +574,7 @@ final class ClipImportDoor {
         at(picture.left, picture.top),
         mask,
       ),
-      _Strokes() => _drawOnWorker(
+      _Strokes() => _drawn(
         bytes,
         (x: bake.source.offsetX, y: bake.source.offsetY),
         at(0, 0),
@@ -778,20 +789,18 @@ Object? _tilesOf(
   }
 }
 
-/// One vector layer drawn on a worker of its own ([clipVectorTiles]) — its
-/// tiles and its unread strokes, or the reason its strokes would not read.
-/// Its own function for the same reason as [_decodeOnWorker].
-Future<Object?> _drawOnWorker(
+/// One vector layer drawn ([clipVectorTiles]: its strokes planned on a
+/// worker of its own and laid here, on the engine) — its tiles and its
+/// unread strokes, or the reason its strokes would not read.
+Future<Object?> _drawn(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
   ClipCelTarget target,
   ClipStoredMask? mask,
-) {
-  return Isolate.run<Object?>(() {
-    try {
-      return clipVectorTiles(bodies, offset, target, mask: mask);
-    } on ClipFormatException catch (error) {
-      return error;
-    }
-  });
+) async {
+  try {
+    return await clipVectorTiles(bodies, offset, target, mask: mask);
+  } on ClipFormatException catch (error) {
+    return error;
+  }
 }

@@ -4,10 +4,12 @@ import '../../core/progress_share.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../services/editing/fx_bake_plan.dart' show ReferenceRidersTaking;
 import '../../services/reference_move_carried.dart' show ReferenceMoveCarried;
 import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import 'merge_layer_rows.dart' show layBakedPictures;
 
 /// Rasterizes [targets] — the reference rows a press acts on — each the
 /// way the coordinator's one answer says (`referenceLetGo`, F-374-Q7), with
@@ -22,6 +24,11 @@ import '../text/app_strings.dart';
 /// ↩️A row whose uses showed its still apart was left the reference it
 /// was, and a notice said why (F-374-Q11 「막고 경고」), until 🗣️I-120-Q22
 /// parted its cels.
+///
+/// The press is ONE undo step however its rows let go — the law the keyed
+/// rows' one step already kept, asked of the whole press (I-120 ⑥-③, the
+/// Surface 2026-11-07: two rows baked, three undos). ↩️Each baked row was
+/// a step of its own, or more, until then.
 Future<void> rasterizeReferenceRows(
   BuildContext context,
   EditorSessionManager session,
@@ -31,6 +38,25 @@ Future<void> rasterizeReferenceRows(
   if (cutId == null) {
     return;
   }
+  // The bakes write a row at a time across the wait window's events, so
+  // the press folds what it wrote once it is over, as Import's does (F-405)
+  // — a batch that stopped part-way is still one press.
+  final history = session.historyManager.gestures;
+  final pressed = history.mark;
+  try {
+    await _letGo(context, session, cutId, targets);
+  } finally {
+    history.foldSince(pressed, 'Rasterize layers');
+  }
+}
+
+/// [targets] let go, each the way `referenceLetGo` says.
+Future<void> _letGo(
+  BuildContext context,
+  EditorSessionManager session,
+  CutId cutId,
+  List<Layer> targets,
+) async {
   final keyed = <LayerId>[];
   final baked = <_Baked>[];
   for (final layer in targets) {
@@ -84,20 +110,41 @@ Future<void> _bake(
           ),
         );
         final layerId = baked[i].row.id;
+        final riders = session.layerMerging.referenceRidersOf(cutId, layerId);
+        final bool letGo;
         if (baked[i].framed) {
-          await session.importDoors.rasterizeReferenceFrames(
+          letGo = await session.importDoors.rasterizeReferenceFrames(
             cutId: cutId,
             layerId: layerId,
             onRenderProgress: share,
           );
         } else {
-          await session.importDoors.bakeReferenceAsSeen(
+          letGo = await session.importDoors.bakeReferenceAsSeen(
             cutId: cutId,
             layerId: layerId,
           );
           share(1, 1);
         }
+        if (letGo && riders != null) {
+          await _bakeRiders(session, riders);
+        }
       }
     },
   );
+}
+
+/// The rows riding a row a bake let go of, taken before it did ([riders]),
+/// baked wearing the move it let go of — by the rule an fx RASTERIZE bakes
+/// its riders by (🗣️attach-rows-lose-the-base-move-when-it-bakes-Q1, 유저
+/// 2026-11-11 「어태치 줄도 같이 옮겨 놓는다」 — 「기준fx 구울떄랑
+/// 같은규칙으로」): their pictures laid, then their rows landed in the
+/// press's one step.
+Future<void> _bakeRiders(
+  EditorSessionManager session,
+  ReferenceRidersTaking riders,
+) async {
+  final merging = session.layerMerging;
+  final plan = merging.planOfReferenceRiders(riders);
+  await layBakedPictures(session, plan.pictures, (_) {});
+  merging.landReferenceRiders(plan);
 }

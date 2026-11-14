@@ -38,6 +38,7 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 /// editing cut's pasteboard through it, and the wash thinned the cut to
 /// the backdrop's own colour, its alpha dropped.
 void main() {
+  opensTheEnginesScreens();
   final screen = GlobalKey();
   const translucent = 0x802040C0;
 

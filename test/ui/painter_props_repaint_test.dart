@@ -170,5 +170,28 @@ void main() {
       );
       expect(_ants(const [], trails: [line]).shouldRepaint(old), isTrue);
     });
+
+    // The handle in hand is drawn another colour (F-586): the same box
+    // with another point in hand is another picture.
+    test('SelectionAntsPainter: the handles in hand', () {
+      SelectionAntsPainter box(List<int> inHand) => SelectionAntsPainter(
+        repaint: const AlwaysStoppedAnimation<double>(0),
+        viewport: CanvasViewport(),
+        committedRegion: null,
+        screenOffset: Offset.zero,
+        marqueeShapes: const [],
+        openTrails: const [],
+        transformChrome: const (
+          box: <Offset>[],
+          handles: [Offset(10, 10), Offset(30, 10)],
+          anchor: null,
+        ),
+        handlesInHand: inHand,
+      );
+      final old = box([0]);
+      expect(box([0]).shouldRepaint(old), isFalse);
+      expect(box([1]).shouldRepaint(old), isTrue);
+      expect(box(const []).shouldRepaint(old), isTrue);
+    });
   });
 }

@@ -2,11 +2,16 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
+import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/ui/text/cel_number_paint.dart';
 import 'package:anicel/src/ui/text/text_cel_render.dart'
     show textCelLayoutsKept;
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🔬card paint-walk-redoes-the-same-work-each-step (2026-10-27): a stroke's
 /// every step laid each numbered row's letters out twice — the buffer's
@@ -49,6 +54,8 @@ CelNumberLetters _letters(
 );
 
 void main() {
+  opensTheEnginesScreens();
+
   testWidgets('the same letters anywhere, at any size, are the one '
       'layout', (tester) async {
     final here = celNumberLayoutOf(_letters('A1'));
@@ -101,31 +108,51 @@ void main() {
     );
   });
 
-  testWidgets('a cel number draws, at every paint, the letters it laid out '
-      'once', (tester) async {
-    List<ui.Paragraph> paint(CelNumberLetters letters) =>
-        _drawnBy((canvas) => paintCelNumber(canvas, letters));
+  // A cel number's plate is the engine's letters' (cel-number-on-the-
+  // engine-letters) — the same letters the same plate, another letter
+  // another: the_engine_lays_a_tree_as_the_walk_paints_it_test. ↩️The app
+  // kept one of its own too (`keptLetterPlate`), held to its bytes here,
+  // till the Flutter chain went (the-flutter-fx-chain-is-a-second-chain).
+  final paper = BitmapSurface(
+    canvasSize: const CanvasSize(width: 200, height: 120),
+    tileSize: defaultCelTileSize,
+  );
+  BitmapSurface plateOf(CelNumberLetters letters) =>
+      appEngineFrameToolsOpen!.letters.celNumberPlate(letters, paper);
 
-    final first = paint(_letters('C4'));
+  testWidgets('a font registered since makes the plate again', (tester) async {
+    final before = plateOf(_letters('D5'));
+    expect(before.tiles, isNotEmpty, reason: 'LIVENESS: the letters were set');
 
-    expect(first, isNotEmpty, reason: 'LIVENESS: the letters painted');
-    final again = paint(
-      _letters('C4', center: CanvasPoint(x: 10, y: 90)),
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      SystemChannels.system.name,
+      SystemChannels.system.codec.encodeMessage(<String, Object?>{
+        'type': 'fontsChange',
+      }),
+      (_) {},
     );
-    expect(again, hasLength(first.length));
-    for (var i = 0; i < first.length; i += 1) {
-      expect(
-        identical(again[i], first[i]),
-        isTrue,
-        reason: '🚨a second paint laid pass $i out again',
-      );
-    }
+
+    expect(
+      plateOf(_letters('D5')),
+      isNot(same(before)),
+      reason: '🚨a plate rastered before the fonts changed outlived them',
+    );
+  });
+
+  testWidgets('letters scaled to nothing make a plate of no tile', (
+    tester,
+  ) async {
+    expect(
+      plateOf(_letters('F7', scale: CanvasPoint(x: 0, y: 1))).tiles,
+      isEmpty,
+      reason: '🚨letters that cover no pixel were rastered',
+    );
   });
 
   testWidgets('letters pushed out by as many others as are kept are let go '
       'of', (tester) async {
     final drawn = _drawnBy(
-      (canvas) => paintCelNumber(canvas, _letters('pushed out')),
+      (canvas) => celNumberLayoutOf(_letters('pushed out')).paint(canvas),
     );
     expect(drawn, isNotEmpty, reason: 'LIVENESS: the letters painted');
     expect(drawn.first.debugDisposed, isFalse, reason: 'held');

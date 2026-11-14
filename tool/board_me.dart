@@ -39,7 +39,7 @@ void main(List<String> args) {
     stderr.writeln('board_me: 이 세션이 어느 기계의 어느 세션인지 알 수 '
         '없습니다 — $kBoardFolderVariable 와 $kSessionIdVariable 가 있어야 '
         '합니다. 앞의 것은 설치 명령이 넣습니다'
-        '(dart run tool/session_hooks/install.dart …), 뒤의 것은 Claude Code '
+        '(dart tool/session_hooks/install.dart …), 뒤의 것은 Claude Code '
         '의 세션 안에서만 있습니다.');
     exit(2);
   }

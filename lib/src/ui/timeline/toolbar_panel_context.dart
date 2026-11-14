@@ -721,6 +721,10 @@ Listenable toolbarGateNews(EditorSessionManager session) => Listenable.merge([
   // ruler drag held every answer at the frame it began on). The efficiency
   // half is the groups' own: a crossed frame costs their gates' reads and
   // builds nothing unless an ANSWER changed.
+  // ↩️F-587 (유저 2026-11-13): that is a frame crossed by a HAND. A run of
+  // the cut crosses frames on this channel too, and a group reads nothing
+  // for those — it keeps what it showed before the run
+  // ([PlaybackStillness]).
   session.playheadMoved,
   // A language switch fires no notify; every name cell and tooltip prints in
   // the program language.

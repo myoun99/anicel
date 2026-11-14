@@ -57,9 +57,42 @@ class _StoryboardRowsAndLabels {
         if (index >= lanes.length)
           rows[index]
         else
-          _laneRow(chain, (lane: lanes[index], index: index), rows[index]),
+          _keptLaneRow(
+            chain,
+            (lane: lanes[index], index: index),
+            rows[index],
+          ),
     ]);
   }
+
+  /// [_laneRow], kept while what it is built from holds ([_KeptRailRows]):
+  /// the label [row] it wraps by identity — a label is kept itself
+  /// ([laneLabels]) — the lane, the chain it re-orders, where the lane
+  /// stands in it and how far, and the host's half ([_dragInputs]). The
+  /// timeline's rail keeps a lane row's wrapper the same way
+  /// ([KeptLayerControlsRows]).
+  Widget _keptLaneRow(
+    ({
+      LayerId rowId,
+      LayerId? chainId,
+      List<({int rowIndex, EffectId effectId})> headers,
+    })
+    chain,
+    ({PropertyLaneRow lane, int index}) at,
+    Widget row,
+  ) => _kept.keep(
+    (laneRow: LaneRowAddress(chain.rowId, at.lane.laneId)),
+    (
+      ByIdentity(row),
+      ByIdentity(at.lane),
+      chain.chainId,
+      ByList(chain.headers),
+      at.index,
+      _laneExtentOf(chain.rowId, at.lane),
+      _dragInputs,
+    ),
+    () => _laneRow(chain, at, row),
+  );
 
   /// One lane label of [chain]'s row at [at]: a group header re-orders the
   /// chain, and selects; every other lane moves nothing, and selects like
@@ -85,11 +118,15 @@ class _StoryboardRowsAndLabels {
         : displayEffects.indexOf(parsed.effectId);
     final extent = _laneExtentOf(chain.rowId, at.lane);
     final address = LaneRowAddress(chain.rowId, at.lane.laneId);
+    // The row is a still region of its own, inside its target, as the
+    // timeline's rail rows are ([layerRowDragWrapper]): the caret a target
+    // draws hangs across the row's boundary.
+    final content = stillRow(row);
     if (hooks == null || chainId == null || slot < 0) {
       return selectOnly(
         LaneRowSubject(chain.rowId, at.lane.laneId),
         extent,
-        row,
+        content,
       );
     }
     return LayerRowDragTarget(
@@ -120,7 +157,7 @@ class _StoryboardRowsAndLabels {
       // the row the rail draws, which a projection row's chain is not.
       onSelectCrossed: _spanOnSelect(),
       selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(address),
-      child: row,
+      child: content,
     );
   }
 
@@ -204,10 +241,12 @@ class _StoryboardRowsAndLabels {
     Widget Function(Widget label) wrap,
   ) {
     final piece = label.piece;
+    // The row is a still region of its own, inside the wrapper [wrap] puts
+    // on it, as the timeline's rail rows are ([layerRowDragWrapper]).
     final row = _kept.keep(
       key,
       (inputs, piece.runtimeType, piece.facts),
-      () => wrap(piece),
+      () => wrap(stillRow(piece)),
     );
     return switch (label.wears) {
       final wears? => _wearing(wears, row),
@@ -296,13 +335,14 @@ class _StoryboardRowsAndLabels {
     /// The header's basis chip (I-120-Q10). Null leaves it out.
     void Function(PropertyLaneRow lane, FxBasis basis)? onSetGroupBasis,
 
-    /// The header's RASTERIZE (I-120), as [LaneGroupRasterize] answers it.
+    /// The header's RASTERIZE (I-120), as [LaneGroupPress] answers it.
     /// Null leaves it out.
     ({VoidCallback? press})? Function(PropertyLaneRow lane)? rasterizeGroup,
 
-    /// The header's RESET (R5, AE's group Reset). Null hides the button —
-    /// a header whose group has no reset route must not show one.
-    void Function(PropertyLaneRow lane)? onResetGroup,
+    /// The header's RESET (R5, AE's group Reset), as [LaneGroupPress] answers
+    /// it. Null hides the button — a header whose group has no reset route
+    /// must not show one.
+    ({VoidCallback? press})? Function(PropertyLaneRow lane)? onResetGroup,
 
     /// How a row FOLLOWS a lane edit in flight (F-195): [row] rebuilt with
     /// the carrier and the lane as the edit shows them, whenever the edit
@@ -321,6 +361,11 @@ class _StoryboardRowsAndLabels {
     /// keys its rows ([_StoryboardRailRows._laneGraphVerbs]). Null mounts
     /// none.
     LaneGraphVerbs? graphVerbs,
+
+    /// What [follow] and the verbs above close over of the model besides
+    /// [carrier] and [lanes] — a projection row's cut and layer in hand:
+    /// a kept label holds while these do as well.
+    Object? closesOver,
   }) {
     final laneHeight = _state._rowHeights.lane;
     final metrics = TimelineGridMetrics(
@@ -331,51 +376,83 @@ class _StoryboardRowsAndLabels {
     final toggleGroup = _state.widget.onToggleLaneGroupKey;
     final selection = _state.widget.rowSelection;
     final hand = _state._railRows._laneHandOf(carrier.id);
+    TimelineLaneControlsRow label(
+      Layer shown,
+      PropertyLaneRow lane,
+      _SeatedLane? seated,
+      TimelineGraphSeat? seat,
+    ) => TimelineLaneControlsRow(
+      layer: shown,
+      lane: lane,
+      metrics: metrics,
+      width: _state._naturalRailWidth,
+      height: seated?.extent ?? laneHeight,
+      frameCursor: hand.cursor,
+      laneSpan: _state.widget.laneRange?.selection,
+      onSelectFrame: active ? onSelectFrame : null,
+      laneEdit: lane.isGroupHeader || !active ? null : hand.edit,
+      onToggleLaneGroup: toggleGroup == null
+          ? null
+          : (_, _) => toggleGroup(groupKeyOf(lane)),
+      onToggleLaneGroupEnabled: onToggleGroupEnabled == null
+          ? null
+          : (_, _) => onToggleGroupEnabled(lane),
+      onSetLaneGroupBasis: onSetGroupBasis == null
+          ? null
+          : (_, _, basis) => onSetGroupBasis(lane, basis),
+      onRasterizeLaneGroup: rasterizeGroup == null
+          ? null
+          : (_, lane) => rasterizeGroup(lane),
+      onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
+          ? null
+          : (_, _) => onResetGroup(lane),
+      keyPrefix: 'storyboard',
+      leadingInset: layerSectionLabelSlotWidth,
+      optionalColumns: StoryboardPanel.optionalRailColumns,
+      currentRowHooks: _state.widget.currentRowHooks,
+      // As this rail keys its rows: a projection row's by its own id.
+      laneGraphs: _state._railRows._laneGraphs,
+      laneGraphVerbs: graphVerbs,
+      seat: seat,
+      folded: seated?.row.folded ?? false,
+    );
     Widget row(Layer shown, PropertyLaneRow lane) {
       final seated = _seatedOf(carrier.id, lane);
-      Widget label(TimelineGraphSeat? seat) => TimelineLaneControlsRow(
-        layer: shown,
-        lane: lane,
-        metrics: metrics,
-        width: _state._naturalRailWidth,
-        height: seated?.extent ?? laneHeight,
-        frameCursor: hand.cursor,
-        onSelectFrame: active ? onSelectFrame : null,
-        laneEdit: lane.isGroupHeader || !active ? null : hand.edit,
-        onToggleLaneGroup: toggleGroup == null
-            ? null
-            : (_, _) => toggleGroup(groupKeyOf(lane)),
-        onToggleLaneGroupEnabled: onToggleGroupEnabled == null
-            ? null
-            : (_, _) => onToggleGroupEnabled(lane),
-        onSetLaneGroupBasis: onSetGroupBasis == null
-            ? null
-            : (_, _, basis) => onSetGroupBasis(lane, basis),
-        onRasterizeLaneGroup: rasterizeGroup == null
-            ? null
-            : (_, lane) => rasterizeGroup(lane),
-        onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
-            ? null
-            : (_, _) => onResetGroup(lane),
-        keyPrefix: 'storyboard',
-        leadingInset: layerSectionLabelSlotWidth,
-        optionalColumns: StoryboardPanel.optionalRailColumns,
-        currentRowHooks: _state.widget.currentRowHooks,
-        // As this rail keys its rows: a projection row's by its own id.
-        laneGraphs: _state._railRows._laneGraphs,
-        laneGraphVerbs: graphVerbs,
-        seat: seat,
-        folded: seated?.row.folded ?? false,
-      );
       // What an open graph draws follows the row selection, which this rail
       // draws on a listener of its own ([_StoryboardRailRows._seatIn]).
       if (seated == null || seated.row.graph == null || selection == null) {
-        return label(seated?.row.graph);
+        return label(shown, lane, seated, seated?.row.graph);
       }
       return ValueListenableBuilder<List<TimelineRowAddress>>(
         valueListenable: selection,
-        builder: (context, selected, _) =>
-            label(_state._railRows._seatIn(seated, selected)),
+        // Seated where the lane stands NOW: a kept label outlives the pass
+        // it was built in, and the rows above it come and go.
+        builder: (context, selected, _) => label(
+          shown,
+          lane,
+          seated,
+          _state._railRows._seatIn(
+            _seatedOf(carrier.id, lane) ?? seated,
+            selected,
+          ),
+        ),
+      );
+    }
+
+    // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail
+    // (11-08): every label was built again at every pass of the rail — a
+    // pick of an S row drew both tracks' fx heads again. A label is kept
+    // ([_KeptRailRows]) by the row's own facts as it stands committed
+    // ([TimelineLaneControlsRow.facts]) — the lane by identity, and a list
+    // read again is new lanes, so what [follow] reads a lane again from
+    // holds while the lane does — by the selection its graph is seated
+    // for, and by [closesOver].
+    Object? factsOf(PropertyLaneRow lane) {
+      final seated = _seatedOf(carrier.id, lane);
+      return (
+        label(carrier, lane, seated, seated?.row.graph).facts,
+        ByIdentity(selection),
+        closesOver,
       );
     }
 
@@ -388,7 +465,13 @@ class _StoryboardRowsAndLabels {
     // else (the timeline rail's own line).
     return [
       for (final lane in lanes)
-        if (follow == null) row(carrier, lane) else follow(carrier, lane, row),
+        _kept.keep(
+          (laneLabel: LaneRowAddress(carrier.id, lane.laneId)),
+          factsOf(lane),
+          () => follow == null
+              ? row(carrier, lane)
+              : follow(carrier, lane, row),
+        ),
     ];
   }
 
@@ -974,16 +1057,16 @@ class _StoryboardRowsAndLabels {
 
   /// The transition row's strip: the track's spans on the GLOBAL axis, live
   /// through the session's edge-drag form while a grip is held.
-  Widget transitionStripRow(Track track, double width, TimelineScale scale) {
+  Widget transitionStripRow(Track track, TimelineScale scale) {
     final committed = track.transitionLayer;
     final height = _state._rowHeights.transition;
     Widget row(Layer layer) => _StoryboardTransitionRow(
       trackId: track.id,
       layer: _state.widget.transitionRowShown?.call(track, layer) ?? layer,
-      width: width,
       height: height,
       timelineScale: scale,
-      frameGeometry: _state._frameGeometry,
+      frameGeometry: _state._windowedFrameGeometry,
+      windowIsStill: true,
       windowBucket: _state._horizontalWindowBucket,
       showSeconds: _state.widget.showSeconds,
       projectFrameRate: _state.widget.projectFrameRate,
@@ -1023,7 +1106,8 @@ class _StoryboardRowsAndLabels {
   /// for the same layer, so its sheet toggle (B5③ 2026-08-17, superseding
   /// UI-R9 #5's empty slot — ordered twice: the flag is a LAYER field and
   /// the row's layer is track-owned, so it needs no cut to act), its
-  /// speaker opening the row's mixer (R10 R3), and no waveform-hide eye
+  /// speaker muting it beside its Total bar (F-577 — ↩️the speaker opened
+  /// the row's mixer, R10 R3), and no waveform-hide eye
   /// (UI-R7 #8 — ↩️said while the twirled-down Audio lane was the big
   /// waveform; the lane went with I-140).
   ///
@@ -1063,8 +1147,8 @@ class _StoryboardRowsAndLabels {
         opacityDragPreview: widget.opacityDragPreview,
         onLayerMarkSelected: widget.onLayerMarkSelected,
         onToggleLayerTimesheet: _sheetToggleOf(layer.id),
-        onOpenLayerMixer: widget.onOpenLayerMixer,
-        soloed: widget.isLayerSoloed?.call(layer.id) ?? false,
+        onToggleLayerMute: widget.onToggleLayerMute,
+        onLayerTotalVolumeChangeEnd: widget.onLayerTotalVolumeChangeEnd,
         onToggleLayerFx: widget.onToggleLayerFx,
         // This rail has the blend column: an S row keeps its slot empty, so
         // its columns stand over every other row's — the sweep's bands

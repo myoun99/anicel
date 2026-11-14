@@ -15,6 +15,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
@@ -48,24 +49,25 @@ import '../../helpers/wait_window.dart';
 /// asks first where the merge changes how they look (Q1 「포토샵 · 클튜처럼
 /// (+경고)」).
 void main() {
-  const canvasSize = CanvasSize(width: 64, height: 48);
+  const tile = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 4 * tile, height: 3 * tile);
   const cutId = CutId('cut');
   const red = [200, 0, 0, 255];
   const green = [0, 200, 0, 255];
   const blue = [0, 0, 200, 255];
 
-  /// Opaque tiles of [rgba] at [coords], 16 pixels a side.
+  /// Opaque tiles of [rgba] at [coords].
   BitmapSurface inkAt(List<TileCoord> coords, List<int> rgba) {
-    final pixels = Uint8List(16 * 16 * 4);
+    final pixels = Uint8List(tile * tile * 4);
     for (var i = 0; i < pixels.length; i += 4) {
       pixels.setRange(i, i + 4, rgba);
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 16,
+      tileSize: tile,
       tiles: {
         for (final coord in coords)
-          coord: BitmapTile(size: 16, pixels: Uint8List.fromList(pixels)),
+          coord: BitmapTile(size: tile, pixels: Uint8List.fromList(pixels)),
       },
     );
   }
@@ -272,16 +274,19 @@ void main() {
     ]);
     expect(cut.layers.first.frames, hasLength(1), reason: 'one picture');
     final cel = mergedCel(s);
-    expect([at(cel, 20, 5), at(cel, 36, 5)], [red, green]);
-    expect(at(cel, -10, 5), red, reason: 'past the canvas, as it showed');
-    expect(at(cel, 5, 5)?[3] ?? 0, 0, reason: 'nothing where neither drew');
+    expect([at(cel, 160, 40), at(cel, 288, 40)], [red, green]);
+    expect(at(cel, -80, 40), red, reason: 'past the canvas, as it showed');
+    expect(at(cel, 40, 40)?[3] ?? 0, 0, reason: 'nothing where neither drew');
     expect(s.rowSelection.value, isEmpty);
     expect(s.activeLayer?.id, const LayerId('a'));
 
     s.undo();
     expect(s.requireActiveCut.layers, before);
     s.redo();
-    expect([at(mergedCel(s), 20, 5), at(mergedCel(s), 36, 5)], [red, green]);
+    expect(
+      [at(mergedCel(s), 160, 40), at(mergedCel(s), 288, 40)],
+      [red, green],
+    );
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -289,11 +294,11 @@ void main() {
       'cel baked wearing what it wore of its base — the result moves '
       'nowhere now — and one undo gives every row back (Q8)', (tester) async {
     final s = session(
-      // 16 pixels to the right of the canvas's centre.
+      // A tile to the right of the canvas's centre.
       aMoves: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>.empty().withKey(
           0,
-          CanvasPoint(x: 48, y: 24),
+          CanvasPoint(x: 384, y: 192),
         ),
       ),
       aRidden: true,
@@ -314,23 +319,23 @@ void main() {
     final result = cut.layers.first;
     expect(result.transformTrack.isEmpty, isTrue);
     final cel = mergedCel(s);
-    expect([at(cel, 20, 5), at(cel, 52, 5)], [red, green]);
-    expect(at(cel, 36, 5)?[3] ?? 0, 0, reason: 'a was drawn moved');
+    expect([at(cel, 160, 40), at(cel, 416, 40)], [red, green]);
+    expect(at(cel, 288, 40)?[3] ?? 0, 0, reason: 'a was drawn moved');
     final ridden = cut.layers.byId(const LayerId('r'))!;
     expect(ridden.attachedToLayerId, result.id);
     expect(ridden.baseFrameLinks, {
       result.frames.single.id: ridden.frames.single.id,
     });
     final riderCel = mergedCel(s, 'r');
-    expect(at(riderCel, 20, 20), blue, reason: 'it wore a\'s move');
-    expect(at(riderCel, 5, 20)?[3] ?? 0, 0);
-    expect(at(riderCel, 52, 5)?[3] ?? 0, 0, reason: 'a\'s own is not in it');
+    expect(at(riderCel, 160, 160), blue, reason: 'it wore a\'s move');
+    expect(at(riderCel, 40, 160)?[3] ?? 0, 0);
+    expect(at(riderCel, 416, 40)?[3] ?? 0, 0, reason: 'a\'s own is not in it');
     expect(ridden.opacity, 0.5, reason: 'its strength stays on its row');
 
     s.undo();
     expect(s.requireActiveCut.layers, before);
     s.redo();
-    expect(at(mergedCel(s, 'r'), 20, 20), blue);
+    expect(at(mergedCel(s, 'r'), 160, 160), blue);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -356,15 +361,219 @@ void main() {
     final block = cut.layers.byId(const LayerId('a'))!.timeline[0]!;
     expect(block.length, 2);
     final cel = mergedCel(s);
-    expect([at(cel, 36, 5), at(cel, 5, 20)], [green, blue]);
-    expect(at(cel, 20, 5)?[3] ?? 0, 0, reason: 'b is not in it');
+    expect([at(cel, 288, 40), at(cel, 40, 160)], [green, blue]);
+    expect(at(cel, 160, 40)?[3] ?? 0, 0, reason: 'b is not in it');
     expect(cut.layers.byId(const LayerId('b')), before.first);
     expect(s.frameRangeSelection.value, isNull);
 
     s.undo();
     expect(s.requireActiveCut.layers, before);
     s.redo();
-    expect([at(mergedCel(s), 36, 5), at(mergedCel(s), 5, 20)], [green, blue]);
+    expect(
+      [at(mergedCel(s), 288, 40), at(mergedCel(s), 40, 160)],
+      [green, blue],
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  /// A cel of straight [shade]s in each tile at [coords] — clear wherever
+  /// the shade's alpha is nothing.
+  BitmapSurface shadedAt(
+    List<TileCoord> coords,
+    List<int> Function(int x, int y) shade,
+  ) {
+    final pixels = Uint8List(tile * tile * 4);
+    for (var y = 0; y < tile; y += 1) {
+      for (var x = 0; x < tile; x += 1) {
+        final rgba = shade(x, y);
+        if (rgba[3] > 0) {
+          pixels.setRange((y * tile + x) * 4, (y * tile + x + 1) * 4, rgba);
+        }
+      }
+    }
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tile,
+      tiles: {
+        for (final coord in coords)
+          coord: BitmapTile(size: tile, pixels: Uint8List.fromList(pixels)),
+      },
+    );
+  }
+
+  /// Every alpha across a tile, the colours down it — and [turned], the
+  /// alphas down and the colours across, so that where the two lie one
+  /// over the other every alpha meets every alpha.
+  List<int> Function(int x, int y) everyShade({bool turned = false}) =>
+      (x, y) {
+        final (along, across) = turned ? (y, x) : (x, y);
+        return [
+          across * 2,
+          255 - across * 2,
+          (along + across * 3) & 255,
+          along * 255 ~/ (tile - 1),
+        ];
+      };
+
+  testWidgets('🎯a row\'s blocks merged lay its cels as a merge of rows lays '
+      'the same cels each on a row of its own, in the same order — to the '
+      'byte, where a half-clear cel lies over another and at the wall\'s '
+      'edges (🧭관제 2026-11-14 (1): 「블록 머지 = 레이어 머지」)', (
+    tester,
+  ) async {
+    final context = await hostedContext(tester);
+    // `b` under `a`, each a cel of its own.
+    final byRows = sessionOf([row('b'), row('a')]);
+    addTearDown(byRows.dispose);
+    final rowsCut = byRows.requireActiveCut;
+    final wall = byRows.pasteboardOf(canvasSize);
+    // Where both lie: a tile inside the canvas, and the tiles the wall's
+    // left and right edges run through.
+    final coords = [
+      TileCoord(x: 1, y: 0),
+      TileCoord(x: (wall.left / tile).floor(), y: 1),
+      TileCoord(x: ((wall.rightExclusive - 1) / tile).floor(), y: 2),
+    ];
+    final under = shadedAt(coords, everyShade());
+    final over = shadedAt(coords, everyShade(turned: true));
+    for (final (id, cel) in [('b', under), ('a', over)]) {
+      bakeCelSurface(
+        byRows.renderCaches.brushFrameStore,
+        byRows.brushFrameKeyForCut(rowsCut, LayerId(id), FrameId('$id-1')),
+        cel,
+      );
+    }
+    byRows.rowSelection.value = const [
+      LayerRowAddress(LayerId('a')),
+      LayerRowAddress(LayerId('b')),
+    ];
+    unawaited(mergeLayerRows(context, byRows));
+    await settleBehindTheWaitWindow(tester, () => merged(byRows));
+
+    // `a`'s two blocks: the leftmost lies on top (Q17).
+    final byBlocks = sessionOf([parted(row('a'))]);
+    addTearDown(byBlocks.dispose);
+    final blocksCut = byBlocks.requireActiveCut;
+    for (final (cel, surface) in [('1', over), ('2', under)]) {
+      bakeCelSurface(
+        byBlocks.renderCaches.brushFrameStore,
+        byBlocks.brushFrameKeyForCut(
+          blocksCut,
+          const LayerId('a'),
+          FrameId('a-$cel'),
+        ),
+        surface,
+      );
+    }
+    byBlocks.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('a'),
+      startIndex: 0,
+      endIndexExclusive: 2,
+    );
+    unawaited(mergeBlocks(context, byBlocks));
+    await settleBehindTheWaitWindow(tester, () => blocksMerged(byBlocks));
+
+    final (rows, blocks) = (mergedCel(byRows), mergedCel(byBlocks));
+    expect(
+      at(rows, tile + 100, 100)?[3],
+      inExclusiveRange(0, 255),
+      reason: '⛔premise: half-clear over half-clear',
+    );
+    expect(
+      rows.tiles.keys.toSet(),
+      containsAll(coords),
+      reason: '⛔premise: the wall\'s edges are in it',
+    );
+    expect(blocks.tiles.keys.toSet(), rows.tiles.keys.toSet());
+    var apart = 0;
+    String? first;
+    for (final MapEntry(key: coord, value: laid) in rows.tiles.entries) {
+      final other = blocks.tiles[coord]!.pixels;
+      for (var byte = 0; byte < laid.pixels.length; byte += 1) {
+        if (laid.pixels[byte] != other[byte]) {
+          apart += 1;
+          first ??= '$coord byte $byte: ${laid.pixels[byte]} by rows, '
+              '${other[byte]} by blocks';
+        }
+      }
+    }
+    expect(apart, 0, reason: first);
+    byRows.playbackRig.prerenderScheduler.cancel();
+    byBlocks.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a row\'s blocks merged lay its cels as they are — its keys '
+      'and its fx stay on the row — and a synced row riding it merges its '
+      'cels in the same order, the leftmost on top (Q18 ⓐ · ⓔ)', (
+    tester,
+  ) async {
+    final a = parted(row('a')).copyWith(
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 384, y: 192),
+        ),
+      ),
+      effects: [
+        LayerEffect(
+          id: const EffectId('e-darker'),
+          kind: EffectKind.brightnessContrast,
+          parameters: {'brightness': EffectParameter(value: -40)},
+        ),
+      ],
+    );
+    final riding = Layer(
+      id: const LayerId('r'),
+      name: 'r',
+      attachedToLayerId: const LayerId('a'),
+      frames: [
+        for (final cel in ['1', '2'])
+          Frame(id: FrameId('r-$cel'), duration: 1, name: cel, strokes: []),
+      ],
+      baseFrameLinks: {
+        const FrameId('a-1'): const FrameId('r-1'),
+        const FrameId('a-2'): const FrameId('r-2'),
+      },
+      timeline: const {},
+    );
+    final s = sessionOf([a, riding]);
+    addTearDown(s.dispose);
+    final cut = s.requireActiveCut;
+    for (final (id, cel, coords, rgba) in [
+      ('a', '1', [TileCoord(x: 2, y: 0)], green),
+      ('a', '2', [TileCoord(x: 2, y: 0), TileCoord(x: 0, y: 1)],
+          blue),
+      ('r', '1', [TileCoord(x: 1, y: 1)], red),
+      ('r', '2', [TileCoord(x: 1, y: 1), TileCoord(x: 3, y: 2)],
+          blue),
+    ]) {
+      bakeCelSurface(
+        s.renderCaches.brushFrameStore,
+        s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-$cel')),
+        inkAt(coords, rgba),
+      );
+    }
+    s.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('a'),
+      startIndex: 0,
+      endIndexExclusive: 2,
+    );
+    final context = await hostedContext(tester);
+
+    unawaited(mergeBlocks(context, s));
+    await settleBehindTheWaitWindow(tester, () => blocksMerged(s));
+
+    final after = s.requireActiveCut.layers.byId(const LayerId('a'))!;
+    expect(after.transformTrack, a.transformTrack, reason: 'on the row');
+    expect(after.effects, a.effects, reason: 'on the row');
+    final cel = mergedCel(s);
+    expect(
+      [at(cel, 288, 40), at(cel, 40, 160)],
+      [green, blue],
+      reason: 'where they lie, as they are: not moved, not darkened',
+    );
+    final ridden = mergedCel(s, 'r');
+    expect([at(ridden, 160, 160), at(ridden, 416, 288)], [red, blue]);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -407,7 +616,7 @@ void main() {
     kind: LayerKind.image,
     mediaReference: MediaReference(
       assetPath: 'paper.png',
-      pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+      pose: TransformPose(center: CanvasPoint(x: 256, y: 192)),
       pictureSize: CanvasSize(width: width, height: height),
     ),
   );
@@ -421,7 +630,7 @@ void main() {
       row('base'),
       riding('o', AttachedPlacement.above),
       row('y'),
-      still(640, 480),
+      still(5120, 3840),
     ]);
     addTearDown(s.dispose);
     s.rowSelection.value = const [
@@ -496,7 +705,7 @@ void main() {
       (false, {LayerMergeChange.wall}),
     ]) {
       // Past the canvas, and inside a pasteboard three times its size.
-      final s = sessionOf([row('a'), still(96, 72)], pasteboardInUse: inUse);
+      final s = sessionOf([row('a'), still(768, 576)], pasteboardInUse: inUse);
       addTearDown(s.dispose);
       s.rowSelection.value = const [
         LayerRowAddress(LayerId('a')),
@@ -515,16 +724,16 @@ void main() {
       'file is (Q19)', () {
     for (final (dx, inUse, changes) in [
       // b's tile past the canvas's left edge, the pasteboard's to hold.
-      (16.0, true, <LayerMergeChange>{}),
-      (16.0, false, {LayerMergeChange.wall}),
+      (128.0, true, <LayerMergeChange>{}),
+      (128.0, false, {LayerMergeChange.wall}),
       // a's ink keyed past the pasteboard's right edge.
-      (96.0, true, {LayerMergeChange.wall}),
+      (768.0, true, {LayerMergeChange.wall}),
     ]) {
       final s = session(
         aMoves: TransformTrack.empty().copyWith(
           position: PropertyTrack<CanvasPoint>.empty().withKey(
             0,
-            CanvasPoint(x: 32 + dx, y: 24),
+            CanvasPoint(x: 256 + dx, y: 192),
           ),
         ),
         pasteboardInUse: inUse,
@@ -655,12 +864,12 @@ void main() {
         ],
       );
       final there = shown(other, 'a2');
-      expect([at(shown(cutId, 'a'), 20, 5), at(shown(cutId, 'a'), 36, 5)], [
+      expect([at(shown(cutId, 'a'), 160, 40), at(shown(cutId, 'a'), 288, 40)], [
         red,
         green,
       ]);
-      expect(at(there, 36, 5), green);
-      expect(at(there, 20, 5)?[3] ?? 0, 0, reason: 'b is no row of that cut');
+      expect(at(there, 288, 40), green);
+      expect(at(there, 160, 40)?[3] ?? 0, 0, reason: 'b is no row of that cut');
       Layer result(CutId cut, String id) =>
           s.cutById(cut)!.layers.byId(LayerId(id))!;
       expect(
@@ -680,7 +889,7 @@ void main() {
       }, layersBefore);
       expect(s.repository.requireProject().linkRegistry, before);
       s.redo();
-      expect(at(shown(other, 'a2'), 36, 5), green);
+      expect(at(shown(other, 'a2'), 288, 40), green);
       expect(s.repository.requireProject().linkRegistry, after);
       s.playbackRig.prerenderScheduler.cancel();
     });
@@ -692,7 +901,7 @@ void main() {
         a2Moves: TransformTrack.empty().copyWith(
           position: PropertyTrack<CanvasPoint>.empty().withKey(
             0,
-            CanvasPoint(x: 32 + 96, y: 24),
+            CanvasPoint(x: 256 + 768, y: 192),
           ),
         ),
       );
@@ -804,13 +1013,13 @@ void main() {
         )!;
       }
 
-      expect([at(shown(cutId, 'k2'), 20, 5), at(shown(cutId, 'k2'), 36, 5)], [
-        red,
-        green,
-      ]);
-      expect(at(shown(other, 'j2'), 20, 5), blue);
       expect(
-        at(shown(other, 'j2'), 36, 5)?[3] ?? 0,
+        [at(shown(cutId, 'k2'), 160, 40), at(shown(cutId, 'k2'), 288, 40)],
+        [red, green],
+      );
+      expect(at(shown(other, 'j2'), 160, 40), blue);
+      expect(
+        at(shown(other, 'j2'), 288, 40)?[3] ?? 0,
         0,
         reason: "that cut's own rows, not the pressed one's",
       );

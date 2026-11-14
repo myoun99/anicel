@@ -11,8 +11,8 @@ import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
-import '../../models/layer_effect.dart';
 import '../../models/tile_coord.dart';
+import '../../native/engine_tile_ledger.dart';
 import '../../services/brush_live_stroke_rasterizer.dart'
     show
         ActiveStrokePixelSource,
@@ -21,10 +21,7 @@ import '../../services/brush_live_stroke_rasterizer.dart'
         PromotedStrokeTile;
 import '../../services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
-import '../../services/cel_source_effect_pass.dart'
-    show celSourceEffectSignature, celSourcePlugin;
-import '../../services/cel_surface_as_shown.dart'
-    show celStraightTileAsShown, celSurfaceAsShown, celTileAsShown;
+import '../../services/cel_surface_as_shown.dart' show celTileAsShown;
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_tile_image_cache.dart';
 import 'chained_picture.dart';
@@ -70,6 +67,18 @@ import 'fill_range_mark.dart';
 /// pictures made 2381 → 666 at 100% and 1919 → 350 fitted, a flush 0.8 → 0.3
 /// ms, input to raster done p50 36.1 → 35.0 and 73.1 → 66.1 ms. Quiet, a
 /// flush for each step, 2879 → 2086, and no later.
+///
+/// 🚨A SCREEN THAT LAYS TILES IS ASKED FOR NO PICTURE (`EngineStackScreen`):
+/// it is handed the tiles ([shownTiles]) and measures a step by what shows
+/// each coordinate ([shownBy]). Of a tile the engine laid, a picture is a
+/// wait for the GPU — the tile read back, alone — so one nobody draws is
+/// not made: not at a step, not at pen-up, not of a fill's result.
+/// ↩️Till 2026-11-12 the screen's measure copied [tileImages], which made
+/// one of every tile the step had moved; pen-up made one of every tile it
+/// landed, and a fill one of every tile of its result. 🔬The app on its
+/// engine, a pen's line across 13 tiles: 13 tiles read back at pen-up,
+/// inside the pointer's handler, and one at each paint that measured a
+/// step — for pictures no screen drew.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
   ActiveStrokeOverlayModel({int tileSize = defaultCelTileSize})
     : _tileSize = tileSize;
@@ -126,27 +135,25 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Whether tiles carry PRE-BLENDED result pixels (replacement
   /// semantics) rather than stroke-only pixels the painter must blend.
-  bool get preBlended => preBlendBase != null;
-
-  /// The colour keys the cel's row shows it through — the chain the cel's
-  /// own painter shows its tiles through (`celSurfaceAsShown`).
   ///
   /// 🚨A COORDINATE THE OVERLAY REPLACES SHOWS THE OVERLAY'S PICTURE AND
-  /// NOTHING ELSE, so that picture goes through the row's keys as it has the
-  /// cel's texts laid ([_platesOver]): the bytes the committed tile will
-  /// show. 🔬Without them a keyed sheet's ground showed bare under a stroke
-  /// until the pen came up — 2,868 pixels apart on a keyed row, 0 on a bare
-  /// one (공통 2026-10-16, card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed;
-  /// 유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
-  ///
-  /// ★Told by the host that builds the cel's painter, in the statement
-  /// beside it: the keys are the ROW's, not the cel's, and that is where
-  /// the cel's tiles are shown through them — so the two cannot show the
-  /// cel two ways, and a stroke's start has nothing new to remember
-  /// ([preBlendBase]'s reason).
-  List<ResolvedLayerEffect> sourceEffects = const [];
+  /// NOTHING ELSE, and the engine runs the row's chain over it there as over
+  /// the cel's tiles — its keys and its plugins: the bytes the committed
+  /// tile will show. ↩️The keys were run here, on each result tile (공통
+  /// 2026-10-16, card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed —
+  /// 2,868 pixels apart without them; 유저 절대규칙 2026-09-17: 「보이는 중이랑
+  /// 결과랑 절대로 다르면 안 되」), until the engine keyed a row's stored bytes
+  /// (float-warp-resamples-in-the-c-engine (1), 2026-11-11); and on a row
+  /// whose chain ran a plugin at its head, the result was laid on the cel
+  /// and run through it whole at every change (🗣️I-132-Q32 b 「무거운
+  /// 플러그인은 그 행이 바뀔 때마다 캔버스가 그만큼 멈춘다」), until the plugin
+  /// was a step of the chain ((2)) — whose frame waits for it instead.
+  bool get preBlended => preBlendBase != null;
 
-  final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
+  /// What each coordinate the overlay shows is shown by ([_Shown]) — one
+  /// record, so a picture, the tile it is of and the revision it shows
+  /// cannot part.
+  final Map<TileCoord, _Shown> _shown = <TileCoord, _Shown>{};
 
   /// Where the stroke moved and no picture shows it yet ([pictureOwed]).
   final Set<TileCoord> _owed = <TileCoord>{};
@@ -159,37 +166,39 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// mark in this one tells nothing ([movedSince]). It goes with its stroke.
   List<DirtyRegion> _moves = [];
 
-  /// 🗣️I-132-Q32 b 「무거운 플러그인은 그 행이 바뀔 때마다 캔버스가 그만큼
-  /// 멈춘다」: on a row whose chain runs a plugin, a result changes the
-  /// cel's whole picture — the plugin may move a pixel anywhere — so it is
-  /// not shown a tile at a time. The stroke's result tiles so far, by
-  /// coordinate, laid on the cel and run through its chain WHOLE at every
-  /// change ([_showThroughPlugin]).
-  final Map<TileCoord, BitmapTile> _landed = <TileCoord, BitmapTile>{};
-
-  /// The plugin the row's chain runs, where a result here REPLACES the
-  /// cel's tiles ([preBlended]) — null elsewhere.
-  ResolvedLayerEffect? get _pluginOver =>
-      preBlended ? celSourcePlugin(sourceEffects) : null;
-
-  /// Whether a picture made here belongs to the ONE committed tile at its
-  /// coordinate, so pen-up hands it over ([tileShownFor],
-  /// [takeTileImageAt]) — not on a row whose chain runs a plugin, where the
-  /// landed cel is pictured as a whole, as it is shown.
-  bool get handsTilesOver => _pluginOver == null;
-
-  /// The stroke revision each picture represents (promotable path only).
-  /// Pen-up hands an image to the adopted tile ONLY when the two revisions
-  /// agree: a stale image pinned onto a fresher tile would show the wrong
-  /// pixels for as long as that tile lives.
-  final Map<TileCoord, int> _tileImageRevisions = <TileCoord, int>{};
-
   /// Overlay tile pictures by tile coordinate. Tiles never overlap, so the
   /// painter draws each with plain source-over at `(coord * tileSize)`,
-  /// exactly like the committed tile images.
+  /// exactly like the committed tile images. One is made the first time it
+  /// is read ([_imageAt]); asking which coordinates have one makes none.
   Map<TileCoord, ui.Image> get tileImages {
     pictureOwed();
-    return UnmodifiableMapView(_tileImages);
+    return _PicturesOf(this);
+  }
+
+  /// 🚨★★★THE TILE EACH COORDINATE SHOWS, where the overlay REPLACES the
+  /// cel's tile there ([preBlended]) — what its picture is of: what a screen
+  /// that lays tiles rather than drawing pictures lays in the cel's place
+  /// (`EngineStackScreen`, flip lane ⓐ: 「쥔 픽셀은 타일로 쥐고 그림은 거기서
+  /// 낸다」). None where the overlay holds the stroke alone, drawn over the
+  /// cel's own tile — no tile shows that.
+  Map<TileCoord, BitmapTile> get shownTiles {
+    pictureOwed();
+    return {
+      for (final MapEntry(key: coord, value: shown) in _shown.entries)
+        coord: ?shown.tile,
+    };
+  }
+
+  /// What shows each coordinate, by identity: the tile where one shows it
+  /// ([shownTiles]), else its picture — another object once a dab moves
+  /// the coordinate, the same one while none does. What a screen measures
+  /// a step by (`LiveSurfaceTokens`), and no picture is made for it.
+  Map<TileCoord, Object> get shownBy {
+    pictureOwed();
+    return {
+      for (final MapEntry(key: coord, value: shown) in _shown.entries)
+        coord: shown.tile ?? shown.image!,
+    };
   }
 
   /// Whether the overlay currently has stroke content to draw.
@@ -197,7 +206,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Whether a stroke is in hand here, its pictures made or not: what asks
   /// of a stroke in every paint, whether or not anything draws it.
-  bool get strokeInHand => _owedFrom != null || _tileImages.isNotEmpty;
+  bool get strokeInHand => _owedFrom != null || _shown.isNotEmpty;
 
   /// Where the pictures stand, for [movedSince] to be asked from.
   OverlayMoveMark get moveMark => (moves: _moves, count: _moves.length);
@@ -238,27 +247,21 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// 🚨★★★A FILL'S RESULT TILES, AS THIS OVERLAY'S PICTURES (유저 절대규칙
   /// 2026-09-17, `promoteFillDabs`): the tiles the commit will install,
-  /// each pictured from its own bytes and shown at its coordinate exactly
-  /// as a stroke's pre-blended tiles are — so the pen-up handoff takes
-  /// them at [fillPromotionRevision] and nothing is pictured twice. Every
-  /// picture exists before this returns: a fill appears whole.
+  /// each shown at its coordinate exactly as a stroke's pre-blended tiles
+  /// are, and pictured from its own bytes by the screen that draws
+  /// pictures ([_imageAt]) — so the pen-up handoff takes them at
+  /// [fillPromotionRevision] and nothing is pictured twice. A paint makes
+  /// every picture it shows: a fill appears whole. ↩️Every picture was
+  /// made before this returned, whoever drew it (till 2026-11-12).
   void showResultTiles(Iterable<PromotedStrokeTile> tiles) {
     pictureOwed();
-    if (_pluginOver != null) {
-      for (final entry in tiles) {
-        _landed[entry.coord] = entry.tile;
-      }
-      _showThroughPlugin();
-    } else {
-      for (final entry in tiles) {
-        _install(
-          entry.coord,
-          BitmapTileImageCache.pictureOfTile(
-            tileShownFor(entry.coord, entry.tile),
-          ),
-          revision: entry.revision,
-        );
-      }
+    for (final entry in tiles) {
+      _install(entry.coord, (
+        image: null,
+        tile: tileShownFor(entry.coord, entry.tile),
+        landed: null,
+        revision: entry.revision,
+      ));
     }
     _moves = [];
     notifyListeners();
@@ -280,26 +283,21 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// Read off [preBlendBase] — the cel as the stroke found it — rather than
   /// set beside it, so there is no second thing for a stroke's start to
   /// forget.
-  List<BitmapTile>? _platesOver(TileCoord coord) {
+  List<Map<TileCoord, BitmapTile>>? _platesOver(TileCoord coord) {
     final base = preBlendBase;
     return base == null ? null : celTextPlatesOver(base)?[coord];
   }
 
   /// The tile [coord] SHOWS when the cel holds [tile] there: [tile] itself,
-  /// or it with the cel's texts laid over it and the row's keys through it
-  /// ([sourceEffects]) — the tile the painter draws once the stroke has
-  /// landed, and so the one a picture made for this coordinate belongs to
-  /// ([takeTileImageAt]'s caller hands it over).
-  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) =>
-      celTileAsShown(tile, _platesOver(coord), _effectsOver, tileSize);
-
-  /// The keys a result here is shown through: the row's ([sourceEffects])
-  /// where it REPLACES the cel's tile ([preBlended]), and none where it is
-  /// the stroke alone drawn over the cel's own tile — which its painter
-  /// shows through them already. Read off [preBlendBase] as [_platesOver]
-  /// is, for its reason.
-  List<ResolvedLayerEffect> get _effectsOver =>
-      preBlended ? sourceEffects : const [];
+  /// or it with the cel's texts laid over it — the tile the painter draws
+  /// once the stroke has landed, and so the one a picture made for this
+  /// coordinate belongs to ([takeTileImageAt]'s caller hands it over).
+  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) {
+    final base = preBlendBase;
+    return base == null
+        ? tile
+        : celTileAsShown(base, coord, tile, _platesOver(coord));
+  }
 
   /// The overlay tiles that [region] touches moved in the live stroke
   /// [source]: pictured when they are next read ([pictureOwed]).
@@ -326,11 +324,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _owedFrom = null;
     _owed.clear();
     final preBlended = _preBlendedFrom(source);
-    if (preBlended != null && _pluginOver != null) {
-      _eachPreBlended(preBlended, coords, _keepLanded);
-      _showThroughPlugin();
-      return;
-    }
     if (preBlended != null) {
       _eachPreBlended(preBlended, coords, _showPreBlended);
       return;
@@ -340,43 +333,16 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     }
   }
 
-  /// [blended] kept as the stroke's result at [coord] ([_landed]).
-  void _keepLanded(TileCoord coord, PreBlendedOverlayTile blended) {
-    try {
-      _landed[coord] = BitmapTile.written(
+  /// [result] — a whole tile of the stroke's result, pre-blended against
+  /// the cel — as a tile of its own: the rasterizer's resident bytes are
+  /// blended again in place.
+  BitmapTile _tileOf(PictureBytes result) =>
+      (result is PreBlendedOverlayTile ? result.landed : null) ??
+      BitmapTile.written(
         size: tileSize,
         write: (bytes) =>
-            blended.readStraight((straight) => bytes.setAll(0, straight)),
+            result.readStraight((straight) => bytes.setAll(0, straight)),
       );
-    } finally {
-      blended.free();
-    }
-  }
-
-  /// The cel with the stroke's result laid in ([_landed]), as its row shows
-  /// it — run through the chain whole — pictured at every coordinate it or
-  /// the cel as it stood shows, at once: what pen-up lands is what is on
-  /// screen, and a coordinate the plugin cleared shows clear.
-  void _showThroughPlugin() {
-    _moves = [];
-    final base = preBlendBase!;
-    final shown = celSurfaceAsShown(
-      base.putTiles([
-        for (final MapEntry(key: coord, value: tile) in _landed.entries)
-          (coord: coord, tile: tile),
-      ]),
-      sourceEffects,
-    );
-    final before = celSurfaceAsShown(base, sourceEffects);
-    for (final coord in {...shown.tiles.keys, ...before.tiles.keys}) {
-      if (_tileImages.remove(coord) case final previous?) {
-        DeferredImageDisposer.instance.retire(previous);
-      }
-      _tileImages[coord] = BitmapTileImageCache.pictureOfTile(
-        shown.tileAt(coord) ?? BitmapTile.blank(size: tileSize),
-      );
-    }
-  }
 
   /// [updateRegion]'s pictures for [coords], made OFF SCREEN and kept for
   /// [showStaged] — a dragged shape's stroke is pictured a few tiles a frame
@@ -388,9 +354,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     required List<TileCoord> coords,
   }) {
     final preBlended = _preBlendedFrom(source);
-    // A row that runs a plugin shows a stroke as the whole cel it makes
-    // ([_showThroughPlugin]), never a few tiles ahead.
-    if (preBlended == null || _pluginOver != null) {
+    if (preBlended == null) {
       return false;
     }
     _eachPreBlended(preBlended, coords, _stagePreBlended);
@@ -402,13 +366,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// stroke and the new never share a frame.
   void showStaged(List<BrushDab> strokeDabs) {
     _clearTiles();
-    for (final MapEntry(key: coord, value: staged) in _staged.entries) {
-      _tileImages[coord] = staged.image;
-      final revision = staged.revision;
-      if (revision != null) {
-        _tileImageRevisions[coord] = revision;
-      }
-    }
+    _shown.addAll(_staged);
     _staged.clear();
     dabs
       ..clear()
@@ -422,13 +380,13 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// the old one could pass for the new one's.
   void dropStaged() {
     for (final staged in _staged.values) {
-      staged.image.dispose();
+      staged.image?.dispose();
     }
     _staged.clear();
   }
 
   /// Pictures [stageRegion] made and nothing has shown yet.
-  final Map<TileCoord, ({ui.Image image, int? revision})> _staged = {};
+  final Map<TileCoord, _Shown> _staged = {};
 
   /// How many pictures are staged and not shown.
   @visibleForTesting
@@ -450,11 +408,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// [coords] pre-blended against [preBlendBase] by [source], each handed
   /// to [take].
   ///
-  /// ONE pooled kernel call for the whole region (ABI 24). A pointer move
-  /// touches a neighbourhood of tiles, and staging + blending +
-  /// premultiplying them one at a time never engaged the C worker pool:
-  /// measured at 256px tiles, an 1800px brush spent 122ms of every frame
-  /// there and now spends ~21ms.
+  /// ONE call for the whole region: a pointer move touches a neighbourhood
+  /// of tiles, and the engine lands them in one pass. ↩️The C's reason
+  /// (ABI 24, till 2026-11-12): staging + blending + premultiplying them
+  /// one at a time never engaged its worker pool — measured at 256px tiles,
+  /// an 1800px brush spent 122ms of every frame there and ~21ms in one
+  /// pooled call.
   void _eachPreBlended(
     BrushLiveStrokeRasterizer source,
     List<TileCoord> coords,
@@ -501,7 +460,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         : math.min(tileSize, wall.bottomExclusive - top);
     _install(
       coord,
-      _pictureOfResult(
+      _shownOf(
         coord,
         _SnapshotBytes(
           source: source,
@@ -513,8 +472,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
           mode: blendMode,
           erase: erase,
         ),
+        revision: null,
       ),
-      revision: null,
     );
   }
 
@@ -547,75 +506,100 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Pictures an already pre-blended tile (single or batched) and adopts
   /// the image as this coordinate's overlay picture, with its revision
-  /// recorded beside it. The tile's staging is released read or not.
+  /// recorded beside it.
   void _showPreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
-    try {
-      _install(
-        coord,
-        _pictureOfResult(coord, blended),
-        revision: blended.revision,
-      );
-    } finally {
-      blended.free();
-    }
+    _install(coord, _shownOf(coord, blended, revision: blended.revision));
   }
 
   /// [_showPreBlended] kept off screen for [showStaged].
   void _stagePreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
-    try {
-      // Never on screen, so nothing can still be drawing it.
-      _staged.remove(coord)?.image.dispose();
-      _staged[coord] = (
-        image: _pictureOfResult(coord, blended),
-        revision: blended.revision,
-      );
-    } finally {
-      blended.free();
-    }
+    // Never on screen, so nothing can still be drawing it.
+    _staged.remove(coord)?.image?.dispose();
+    _staged[coord] = _shownOf(coord, blended, revision: blended.revision);
   }
 
-  /// The picture [coord] shows for [result] — a live stroke's bytes there,
-  /// pre-blended against the cel: the result's own picture, or, where the
-  /// cel's texts stand over the coordinate ([_platesOver]) or the row keys
-  /// its colours ([sourceEffects]), the result as the cel shows it.
+  /// What [coord] is shown by for [result] — a live stroke's bytes there,
+  /// at [revision]. Pre-blended against the cel ([preBlended]): the tile the
+  /// coordinate shows — the result, or, where the cel's texts stand over
+  /// the coordinate ([_platesOver]), the result as the cel shows it
+  /// ([tileShownFor]) — and its picture. Else the stroke alone, which no
+  /// tile shows.
   ///
   /// Those are the bytes the committed tile will show there, made by the
-  /// seam that will show them (`celStraightTileAsShown`, the same laying and
-  /// the same keys' walk as a tile's own) — so pen-up hands this very
-  /// picture to that tile ([tileShownFor]) and not a byte on screen moves.
-  ///
-  /// ⚠️A COPY of the result first: the laying and the keys write in place,
-  /// and those bytes are the rasterizer's resident result — the commit's
-  /// own.
-  ui.Image _pictureOfResult(TileCoord coord, PictureBytes result) {
-    final plates = _platesOver(coord);
-    final effects = _effectsOver;
-    if (plates == null && celSourceEffectSignature(effects).isEmpty) {
-      return pictureOf(result);
+  /// seam that will show them — so pen-up hands this very picture to that
+  /// tile ([tileShownFor]) and not a byte on screen moves.
+  _Shown _shownOf(
+    TileCoord coord,
+    PictureBytes result, {
+    required int? revision,
+  }) {
+    if (!preBlended) {
+      return (
+        image: pictureOf(result),
+        tile: null,
+        landed: null,
+        revision: revision,
+      );
     }
-    return BitmapTileImageCache.pictureOfTile(
-      BitmapTile.written(
-        size: tileSize,
-        write: (shown) {
-          result.readStraight((straight) => shown.setAll(0, straight));
-          celStraightTileAsShown(shown, plates, effects, tileSize);
-        },
-      ),
+    final landed = _tileOf(result);
+    final shown = tileShownFor(coord, landed);
+    if (result is PreBlendedOverlayTile && result.landed != null) {
+      // No picture: the screen lays the tile, and one read back to make a
+      // picture of it would cost every tile of every frame ([_imageAt]).
+      return (image: null, tile: shown, landed: landed, revision: revision);
+    }
+    return (
+      // Shown as it is, the result is pictured from its own bytes: the door
+      // reads the premultiplied ones the blend already made.
+      image: identical(shown, landed)
+          ? pictureOf(result)
+          : BitmapTileImageCache.pictureOfTile(shown),
+      tile: shown,
+      landed: null,
+      revision: revision,
     );
   }
 
-  /// [image] becomes [coord]'s picture — the one it showed before retired
-  /// DEFERRED (a frame may still be holding it), the stroke [revision] it
-  /// represents recorded beside it.
-  void _install(TileCoord coord, ui.Image image, {required int? revision}) {
-    final previous = _tileImages[coord];
+  /// [shown] becomes what [coord] is shown by — the picture it showed before
+  /// retired DEFERRED (a frame may still be holding it).
+  void _install(TileCoord coord, _Shown shown) {
+    final previous = _shown[coord];
     if (previous != null) {
-      DeferredImageDisposer.instance.retire(previous);
+      _letGo(previous);
     }
-    _tileImages[coord] = image;
-    if (revision != null) {
-      _tileImageRevisions[coord] = revision;
+    _shown[coord] = shown;
+  }
+
+  /// What [shown] holds, let go: its picture past the frames that may still
+  /// be drawing it, the slot of the tile the engine laid at once — a frame
+  /// composes before anything lands over it.
+  void _letGo(_Shown shown) {
+    final image = shown.image;
+    if (image != null) {
+      DeferredImageDisposer.instance.retire(image);
     }
+    final landed = shown.landed;
+    if (landed != null) {
+      EngineTileLedger.instance.retire(landed);
+    }
+  }
+
+  /// [coord]'s picture, made from its tile the first time it is asked where
+  /// none was — the engine's results ([_shownOf]) and a fill's
+  /// ([showResultTiles]), which only a screen that draws pictures asks for.
+  ui.Image? _imageAt(TileCoord coord) {
+    final shown = _shown[coord];
+    if (shown == null || shown.image != null) {
+      return shown?.image;
+    }
+    final image = BitmapTileImageCache.pictureOfTile(shown.tile!);
+    _shown[coord] = (
+      image: image,
+      tile: shown.tile,
+      landed: shown.landed,
+      revision: shown.revision,
+    );
+    return image;
   }
 
   /// [coord]'s picture as a screen drawing it REDUCED samples it — carrying
@@ -624,17 +608,22 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// very picture the screen showed to the committed tile. Null where
   /// nothing is pictured at [coord].
   ///
-  /// The painter is not told: at 100% it is the same picture. ⚠️A screen
-  /// that measures the live row by its pictures (`LiveSurfaceTokens`) sees
-  /// the coordinate change once and patches the same bytes once.
+  /// The painter is not told: at 100% it is the same picture.
   ui.Image? chainedTileImageAt(TileCoord coord) {
-    final image = tileImages[coord];
+    pictureOwed();
+    final image = _imageAt(coord);
     if (image == null || carriesChain(image)) {
       return image;
     }
+    final shown = _shown[coord]!;
     final chained = chainedPictureOf(image);
     DeferredImageDisposer.instance.retire(image);
-    _tileImages[coord] = chained;
+    _shown[coord] = (
+      image: chained,
+      tile: shown.tile,
+      landed: shown.landed,
+      revision: shown.revision,
+    );
     return chained;
   }
 
@@ -647,12 +636,16 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// at becomes the committed tile's image, with no second picture and no
   /// window where the tile has none.
   ui.Image? takeTileImageAt(TileCoord coord, {required int revision}) {
-    if (_tileImageRevisions[coord] != revision) {
+    if (_shown[coord]?.revision != revision) {
       return null;
     }
     _moves = [];
-    _tileImageRevisions.remove(coord);
-    return _tileImages.remove(coord);
+    final taken = _shown.remove(coord)!;
+    final landed = taken.landed;
+    if (landed != null) {
+      EngineTileLedger.instance.retire(landed);
+    }
+    return taken.image;
   }
 
   /// Clears the overlay and retires its tile pictures; the single
@@ -677,16 +670,42 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _owed.clear();
     _owedFrom = null;
     _moves = [];
-    _landed.clear();
-    for (final image in _tileImages.values) {
+    for (final shown in _shown.values) {
       // The overlay being cleared is what the on-screen frame currently
       // shows (e.g. the stroke at commit); defer disposal past the frames
       // that may still reference it.
-      DeferredImageDisposer.instance.retire(image);
+      _letGo(shown);
     }
-    _tileImages.clear();
-    _tileImageRevisions.clear();
+    _shown.clear();
   }
+}
+
+/// What a coordinate of the overlay is shown by: its [image], the [tile]
+/// that picture is of where a tile shows the coordinate
+/// ([ActiveStrokeOverlayModel.shownTiles]), and the stroke [revision] it
+/// shows, on the promotable road — pen-up hands the picture to the adopted
+/// tile ONLY when the two revisions agree: a stale one pinned onto a fresher
+/// tile would show the wrong pixels for as long as that tile lives.
+typedef _Shown = ({
+  ui.Image? image,
+  BitmapTile? tile,
+  BitmapTile? landed,
+  int? revision,
+});
+
+/// The pictures of [_shown], by coordinate — a view, so a paint's reads
+/// make no map.
+final class _PicturesOf extends UnmodifiableMapBase<TileCoord, ui.Image> {
+  _PicturesOf(this._overlay);
+
+  final ActiveStrokeOverlayModel _overlay;
+
+  @override
+  ui.Image? operator [](Object? key) =>
+      key is TileCoord ? _overlay._imageAt(key) : null;
+
+  @override
+  Iterable<TileCoord> get keys => _overlay._shown.keys;
 }
 
 /// A place in the moves of an overlay's pictures
@@ -697,11 +716,7 @@ typedef OverlayMoveMark = ({List<DirtyRegion> moves, int count});
 /// One overlay tile of the CLASSIC route (a host whose overlay grid differs
 /// from its surface's, or a plain colour-mode stroke), as the door reads
 /// it: the straight rows snapshotted from the live stroke — pre-blended
-/// against the cel when the overlay replaces coordinates — or, where the
-/// engine uploads, the R25 fused snapshot + premultiply in ONE C call over
-/// the native buffer (per 2000px move that is ~256 tiles — the Dart loops
-/// were the big-brush stall and the visible pre-stroke tiles). Same bytes:
-/// the C premultiply is parity-pinned against this exact rounding.
+/// against the cel when the overlay replaces coordinates.
 class _SnapshotBytes implements PictureBytes {
   _SnapshotBytes({
     required this.source,
@@ -728,10 +743,7 @@ class _SnapshotBytes implements PictureBytes {
   /// The straight-alpha rows, then — R27 #4 — the COMMIT's result,
   /// computed by the commit's own math against the cel's committed bytes
   /// where the overlay replaces coordinates: the painter replaces the base
-  /// with it, and pen-up lands the exact same bytes. (This forgoes the
-  /// fused C snapshot: correctness is the rule here; the giant-brush +
-  /// blend-mode combo pays some Dart time and is flagged for a native
-  /// lift if it ever shows.)
+  /// with it, and pen-up lands the exact same bytes.
   Uint8List _straight() {
     final left = coord.x * tileSize;
     final top = coord.y * tileSize;
@@ -765,24 +777,8 @@ class _SnapshotBytes implements PictureBytes {
 
   @override
   T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
-    final source = this.source;
-    if (preBlend == null &&
-        width == tileSize &&
-        height == tileSize &&
-        source is BrushLiveStrokeRasterizer &&
-        source.tileSize == tileSize) {
-      final fused = source.premultipliedOverlayTile(coord.x, coord.y);
-      if (fused != null) {
-        try {
-          return use(fused.view);
-        } finally {
-          fused.free();
-        }
-      }
-    }
-    // Premultiplied in place with the same per-pixel branches/rounding as
-    // the kernel: the alpha==0 case must ZERO the color bytes — a
-    // straight-alpha stroke pixel can round to alpha 0 while keeping
+    // Premultiplied in place: the alpha==0 case must ZERO the color bytes
+    // — a straight-alpha stroke pixel can round to alpha 0 while keeping
     // non-zero color, which would be invalid premultiplied data.
     final bytes = _straight();
     premultiplyRgbaInPlace(bytes);

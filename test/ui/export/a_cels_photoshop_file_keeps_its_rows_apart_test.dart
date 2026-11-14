@@ -18,14 +18,15 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
-import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
+import 'package:anicel/src/ui/frame_shots.dart' show pictureOfLaid;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/no_guides_laid.dart';
@@ -36,10 +37,11 @@ import '../../helpers/no_guides_laid.dart';
 /// drawn as itself and carrying its strength and blend for the file to lay
 /// it by — over the ground the picture stands on, where it has one.
 void main() {
-  const size = CanvasSize(width: 8, height: 8);
-
-  // A row in multiply is composed over its backdrop in the shader.
-  setUpAll(LayerBlendShader.load);
+  // One tile, at the engine's side.
+  const size = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
 
   const cutId = CutId('cut');
   final a1 = Frame(id: const FrameId('a1'), duration: 1, strokes: const []);
@@ -117,9 +119,12 @@ void main() {
           session.brushFrameKeyForCut(cut, LayerId(row), cel),
           BitmapSurface(
             canvasSize: size,
-            tileSize: 8,
+            tileSize: defaultCelTileSize,
             tiles: {
-              TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: only(paint)),
+              TileCoord(x: 0, y: 0): BitmapTile(
+                size: defaultCelTileSize,
+                pixels: only(paint),
+              ),
             },
           ),
         );
@@ -157,7 +162,7 @@ void main() {
   }
 
   List<ExportLayerRow> rowsOf(EditorSessionManager session, ui.Color ground) =>
-      ExportFrameRenderer(session: session, background: ground).celGroupRows(
+      ExportFrameRenderer(session: session, ground: ground).celGroupRows(
         celOf(session),
         ExportSizeMode.canvas,
         guideColor: noGuidesLaid,
@@ -195,7 +200,7 @@ void main() {
       paint(session, onA: {(2, 2): gray}, onShade: {(2, 2): blue});
       final picture = (await ExportFrameRenderer(
         session: session,
-        background: white,
+        ground: white,
       ).renderCelGroup(
         celOf(session),
         ExportSizeMode.canvas,
@@ -231,7 +236,7 @@ void main() {
         );
         final picture = (await ExportFrameRenderer(
           session: session,
-          background: white,
+          ground: white,
         ).renderCelGroup(
           celOf(session),
           ExportSizeMode.canvas,
@@ -297,7 +302,7 @@ void main() {
       (tester) async {
     await tester.runAsync(() async {
       final session = film();
-      final renderer = ExportFrameRenderer(session: session, background: white);
+      final renderer = ExportFrameRenderer(session: session, ground: white);
       final task = celOf(session);
 
       expect(
@@ -319,31 +324,6 @@ void main() {
     });
   });
 
-  testWidgets('drawn after the cel\'s picture, its rows read no cel the '
-      'picture did not', (tester) async {
-    await tester.runAsync(() async {
-      final session = film();
-      draw(session);
-      final renderer = ExportFrameRenderer(session: session, background: clear);
-      final task = celOf(session);
-      (await renderer.renderCelGroup(
-        task,
-        ExportSizeMode.canvas,
-        guideColor: noGuidesLaid,
-      ))!.dispose();
-      final read = renderer.debugCelReads;
-
-      for (final row in renderer.celGroupRows(
-        task,
-        ExportSizeMode.canvas,
-        guideColor: noGuidesLaid,
-      )) {
-        (await row.draw()).dispose();
-      }
-      expect(renderer.debugCelReads, read);
-    });
-  });
-
   testWidgets('written, they are the document\'s rows over the cel\'s '
       'picture — names, strengths, blends and pixels as drawn, a colour as '
       'it is where its alpha is half', (tester) async {
@@ -355,18 +335,19 @@ void main() {
         onA: {(1, 1): black, (2, 1): half},
         onShade: {(2, 2): blue},
       );
-      final renderer = ExportFrameRenderer(session: session, background: white);
+      final renderer = ExportFrameRenderer(session: session, ground: white);
       final task = celOf(session);
-      final picture = (await renderer.renderCelGroup(
+      final frame = (await renderer.celGroupFrame(
         task,
         ExportSizeMode.canvas,
         guideColor: noGuidesLaid,
       ))!;
+      final picture = pictureOfLaid(appGpuExport, frame);
       final drawn = (await picture.toByteData(
         format: ui.ImageByteFormat.rawRgba,
       ))!.buffer.asUint8List();
       final bytes = await encodePsd(
-        picture,
+        frame,
         const ExportFormatSelection(
           kind: ExportMediaKind.still,
           stillFormat: ExportStillFormat.psd,

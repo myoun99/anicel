@@ -188,6 +188,49 @@ void main() {
     );
   });
 
+  test('where the row drawn on shows nothing yet, it carries out its '
+      'LEADING keys too — what follows them is a step of the chain', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.selectFrameIndex(0);
+    s.effectsAndFx.updateLayerEffects(s.activeLayer!.id, [
+      effect(EffectKind.colorKey, 'amount', 100),
+      effect(EffectKind.blur, 'blurriness', 8),
+    ]);
+    final cut = s.activeCutOrNull!;
+    final map = EditingStackMap(
+      opacityVerbs: s.opacityVerbs,
+      project: s,
+      cut: cut,
+      stackCut: cut,
+      frameIndex: 0,
+      activeLayerId: s.activeLayerId,
+      movieLaidAt: s.movieCels.laidAt,
+      plugins: null,
+    );
+
+    final nodes = map.mapTree(
+      resolveCutFrameCompositeTree(
+        cut: cut,
+        frameIndex: 0,
+        liveLayerId: s.activeLayerId,
+      ),
+    );
+
+    expect(
+      rowsIn(nodes).whereType<CanvasActiveLayerRow>(),
+      isNotEmpty,
+      reason: '⛔fixture: the row stands in the stack with no cel',
+    );
+    expect(
+      map.activeSourceEffects.map((effect) => effect.kind),
+      [EffectKind.colorKey],
+      reason:
+          'a float pasted where the row shows nothing asks the same keys '
+          'as one over its cel — the run the chain opens with',
+    );
+  });
+
   group('a drag that moves the brush\'s cel (canvas-follows-block-moves)', () {
     /// The stack of [shown] — the cut as a drag shows it — over [s]'s
     /// committed cut, with the active row placed as the canvas places it.

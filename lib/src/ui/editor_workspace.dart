@@ -124,6 +124,7 @@ import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
+import 'widgets/face_ink_well.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/still_raster.dart';
 import 'widgets/superellipse_clip.dart';
@@ -1510,11 +1511,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _followProjectFonts() {
     final session = widget.session;
     final fonts = session.repository.requireProject().fonts;
-    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. A project is made
-    // anew at every edit and builds its lists anew with it (`Project`'s
-    // constructor), so 「is it the same list」 is no at every stroke — and
-    // saying the fonts again reads the project file's directory. The
-    // session tells of every edit; this hears all of them.
+    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. Saying the fonts
+    // again reads the project file's directory, and the session tells of
+    // every edit; this hears all of them. A copy of the project hands its
+    // list on as it was (card a-track-copy-wraps-its-unchanged-lists-anew,
+    // 11-11), but a list that says the same need not be that one.
+    // ↩️Until 11-11 every edit built the list anew (`Project`'s
+    // constructor), and 「is it the same list」 was no at every stroke.
     if (listEquals(fonts, _projectFontsShown)) {
       return;
     }
@@ -3438,6 +3441,7 @@ class _RailGroupButton extends StatelessWidget {
               for (final tab in tabs) (icon: tab.icon, label: tab.label),
             ],
             nearby: nearby,
+            shape: AppShapes.control(ToolsPanel.buttonExtent),
             onLifted: onLifted,
           );
     final button = face == null
@@ -3453,15 +3457,12 @@ class _RailGroupButton extends StatelessWidget {
             message: tooltip,
             child: Material(
               key: ValueKey<String>('rail-group-$railId'),
-              color: open
-                  ? colorScheme.surfaceContainerHigh
-                  : Colors.transparent,
-              clipBehavior: Clip.antiAlias,
-              shape: AppShapes.control(ToolsPanel.buttonExtent),
+              color: Colors.transparent,
               child: ControlPressClaim(
                 onPressed: onPressed,
-                child: InkWell(
-                  mouseCursor: AppCursors.press,
+                child: FaceInkWell(
+                  edge: AppShapes.control(ToolsPanel.buttonExtent),
+                  fill: open ? colorScheme.surfaceContainerHigh : null,
                   onTap: silentPress(onPressed),
                   // The pair sizes itself to one button cell, so a group that
                   // wears a face is the same square as every other.
@@ -3470,8 +3471,7 @@ class _RailGroupButton extends StatelessWidget {
                     child: Stack(
                       children: [
                         Positioned.fill(child: face!),
-                        if (band != null)
-                          Positioned(left: 0, right: 0, top: 0, child: band),
+                        if (band != null) Positioned.fill(child: band),
                       ],
                     ),
                   ),

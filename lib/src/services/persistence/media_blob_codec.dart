@@ -105,7 +105,6 @@ import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
-import 'anicel_payload_codec.dart';
 
 /// Uncompressed bytes per block, for entries written from now on.
 ///
@@ -193,8 +192,11 @@ const double mediaCompressionWorthIt = 0.95;
 /// around it — which is the whole reason this format exists.
 ///
 /// ⛔**THIS SIDE ONLY WRITES IT.** The one reader is the engine's
-/// (`qa_media_span.c`, reached from Dart as `QaMediaSpan`), which every
-/// decoder and every Dart read of a framed medium goes through. 🪦A Dart
+/// (native/media's span, reached from Dart as `QaMediaSpan`), which every
+/// decoder and every Dart read of a framed medium goes through. ↩️The C's
+/// own (`qa_media_span.c`) read for the C's audio decoder, held to the
+/// Rust's byte for byte, until the connection round deleted both
+/// (connection-round-checklist H, 2026-11-08). 🪦A Dart
 /// parser, block map and whole-entry decoder lived here too, and went when
 /// the engine's became the only one (2026-09-24): a format with two readers
 /// is two chances for them to disagree about a boundary.
@@ -380,16 +382,15 @@ int _fill(
 /// not need every block's length before the first one is compressed.
 ///
 /// False means「do not frame this」, and the caller writes the same file
-/// verbatim over the top. Every exit takes it: no engine, a short source, a
-/// block the engine refused, or an allowance already spent.
+/// verbatim over the top. Every exit takes it: nothing to frame, a short
+/// source, a block the engine refused, or an allowance already spent.
 bool _writeFramedBlocks(
   RandomAccessFile out,
   int length,
   int Function(Uint8List, int, int) readInto,
   int blockBytes,
 ) {
-  final compressor = QaCelCompressor.instance;
-  if (compressor == null || !compressor.isSupported || length <= 0) {
+  if (length <= 0) {
     return false;
   }
   final blockCount = (length + blockBytes - 1) ~/ blockBytes;
@@ -410,9 +411,8 @@ bool _writeFramedBlocks(
     if (_fill(buffer, at, want, readInto) != want) {
       return false; // The source ran short — verbatim says what is there.
     }
-    final block = compressor.compress(
+    final block = QaCelCompressor.compress(
       Uint8List.sublistView(buffer, 0, want),
-      level: anicelZstdLevel,
     );
     if (block == null) {
       return false;

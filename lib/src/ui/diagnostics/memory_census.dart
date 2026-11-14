@@ -2,15 +2,21 @@ import 'dart:io' show ProcessInfo;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask, GpuStampPicture;
 
+import '../../native/app_gpu_engine.dart';
+import '../../native/engine_strokes.dart';
+import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
-import '../../native/qa_native_engine.dart';
+import '../../native/qa_memory.dart';
+import '../../native/screen_texture.dart';
+import '../../native/tile_blocks.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/iris_blur_shader.dart';
+import '../canvas/fx_plugin_stages.dart';
 import '../editor_session_manager.dart';
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
@@ -92,8 +98,9 @@ class MemoryCensus {
   /// 2026-09-10, idle release: 194.8MB RSS against 139.3MB private, and
   /// the 55.5MB gap is shared pages — not a leak, and not ours.
   ///
-  /// ⚠️RSS remains the fallback, and only for a run with no native engine
-  /// at all, where every other native number is already absent too.
+  /// ⚠️RSS remains the fallback, and only where the platform will not say —
+  /// ↩️a run with no native engine at all, until the connection round moved
+  /// the question into the engine that ships with the app.
   final int footprintBytes;
 
   /// How much more the OS will let this process take, where the platform
@@ -221,34 +228,27 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       // The frames' pictures every screen shows (one-picture-per-frame),
       // the ones on screen in its detail — and the pictures of the nodes
       // they are drawn of, held for a stroke's patches and a walk's next frame.
+      // And what the engine keeps made for the next one: its pictures lie
+      // in slots of a pool's pages, and the slots a picture let go stay
+      // on the GPU till the pages are given back
+      // (engine-pictures-keep-to-pool-pages) — the app's, so once.
       MemoryCensusItem(
         id: 'framePictures',
-        bytes: sum(
-          (session) =>
-              session.renderCaches.framePictureStore.estimatedBytes +
-              session.playbackRig.framePictures.heldBytes,
-        ),
+        bytes:
+            sum(
+              (session) =>
+                  session.renderCaches.framePictureStore.estimatedBytes +
+                  session.playbackRig.framePictures.heldBytes,
+            ) +
+            EnginePictures.idlePictureBytes,
         detail: sum(
           (session) => session.renderCaches.framePictureStore.pinnedBytes,
         ),
-      ),
-    if (textures)
-      MemoryCensusItem(
-        id: 'layerImages',
-        // An export run's row pictures, held on this line while the run goes
-        // (F-289-Q21). ↩️The canvas's row images beside them, until no
-        // screen drew a row's image (one-picture-per-frame ②-5b-1).
-        bytes: sum((session) => session.playbackRig.playbackCache.lentBytes),
       ),
     MemoryCensusItem(
       id: 'brushTips',
       bytes:
           BrushTipStampCache.instance.residentBytes +
-          // ⛔The NATIVE copies of the same things belong on the same row:
-          // a stamp's bytes and a mask's alphas uploaded for the kernels.
-          // They were byte-budgeted and reported to nobody, so they read
-          // as engine overhead — 2026-09-10.
-          (QaNativeEngine.instance?.nativeUploadBytes ?? 0) +
           // The cut tool's HELD piece is the stamp's tip (유저: 「잘라내기 할
           // 때마다 가지고 있는 찍기 팁 교체야」), so it rides this row — the
           // app's one slot, counted once. 🆕I-14: a cut from the media
@@ -263,10 +263,19 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // a third more, and is counted with it (`pictureBytesOf`). ↩️From 4c
     // (2026-09-16) the row also held the LEVEL TILES — the same pictures
     // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
+    // The engine's slots of the same tiles ride it (screen-on-the-engine
+    // c4): its pool's pages, each whole — what the pictures become, under
+    // the same line. So do the masks a canvas verb keeps there — a
+    // selection's, which its clip holds (2026-11-14), a held fill's.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
-        bytes: BitmapTileImageCache.liveImageBytes,
+        bytes:
+            BitmapTileImageCache.liveImageBytes +
+            EngineTileLedger.appPoolBytes +
+            EngineStrokes.idleBytes +
+            GpuStampPicture.liveBytes +
+            GpuMask.liveBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest
@@ -277,7 +286,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // allowance and half out.
     MemoryCensusItem(
       id: 'enginePool',
-      bytes: QaNativeEngine.instance?.tilePoolParkedBytes ?? 0,
+      bytes: TileBlocks.parkedBytes,
     ),
     MemoryCensusItem(id: 'engineScratch', bytes: NativeScratch.liveBytes),
     // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
@@ -339,7 +348,10 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // store bounded by how many, up to 512, 512 and 768 of them. They read
     // as engine overhead until 2026-10-17 (card
     // census-misses-bake-once-images): no field of theirs had the shape the
-    // census ratchet looked for.
+    // census ratchet looked for. ↩️And the plates of the letters a picture
+    // holds — a cel number's, a name tag's — while the app rastered them
+    // (cel-number-letters-drawn-as-vectors, 2026-11-07), until the engine's
+    // letters made them, in its tiles (the-flutter-fx-chain-is-a-second-chain).
     if (textures)
       MemoryCensusItem(
         id: 'textImages',
@@ -353,15 +365,18 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     if (textures)
       MemoryCensusItem(
         id: 'timelineTiles',
-        bytes: TimelineGridTileStore.instance.tileImageBytes,
+        bytes:
+            TimelineGridTileStore.instance.tileImageBytes +
+            // What the frame grids show those tiles through, a texture a
+            // grid (`TimelineGridScreenHost`, 관제 2026-11-09 08:07 E①). Folded
+            // in for the reason `drawings` gives above; the canvas's own
+            // view, when it takes one, is no timeline's and needs a row.
+            ScreenTexture.liveBytes,
       ),
-    // The table of a camera lens blur's iris last laid, the app's one,
-    // kept for the next gather of the same iris (2026-10-31).
-    if (textures)
-      MemoryCensusItem(
-        id: 'lensBlurTables',
-        bytes: IrisBlurShader.tableBytes,
-      ),
+    // What a plug-in in a chain made, kept on the cel it was run over —
+    // a picture a canvas's size a step (관제 2026-11-11, (2) ⓒ). Bytes in
+    // the app's own memory, as the drawings are, on every platform.
+    MemoryCensusItem(id: 'pluginSteps', bytes: FxPluginStages.keptBytes),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
     // but they are not the user's artwork, so not that row: a take warmed
@@ -377,13 +392,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
   return MemoryCensus(
     // ⛔The PLATFORM's own answer, not the Dart VM's RSS — see
     // [MemoryCensus.footprintBytes] for why they differ and which one the
-    // user is looking at. `ProcessInfo.currentRss` stands in only when no
-    // native engine loaded at all.
-    footprintBytes:
-        QaNativeEngine.instance?.processFootprintBytes ??
-        ProcessInfo.currentRss,
-    availableBytes: QaNativeEngine.instance?.availableMemoryBytes,
-    deviceBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    // user is looking at. `ProcessInfo.currentRss` stands in only where the
+    // platform will not say.
+    footprintBytes: QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
+    availableBytes: QaMemory.availableMemoryBytes,
+    deviceBytes: QaMemory.physicalMemoryBytes,
     items: items,
   );
 }

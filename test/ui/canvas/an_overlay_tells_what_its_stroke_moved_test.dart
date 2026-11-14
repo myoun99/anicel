@@ -6,13 +6,10 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
-import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
-
-import '../../helpers/a_plugin_that_shifts.dart';
 
 /// 🚨THE OVERLAY TELLS WHAT MOVED ONLY WHILE THAT IS ALL ITS PICTURES CHANGED
 /// BY (F-533). A step is written as far as [ActiveStrokeOverlayModel.movedSince]
@@ -21,17 +18,17 @@ import '../../helpers/a_plugin_that_shifts.dart';
 /// fill landed. Each way a picture changes that is not a dab is here; each
 /// says nothing, and the canvas falls back on the tiles it sees change.
 void main() {
-  const canvasSize = CanvasSize(width: 64, height: 64);
-  const tileSize = 8;
+  const canvasSize = CanvasSize(
+    width: 8 * defaultCelTileSize,
+    height: 8 * defaultCelTileSize,
+  );
+  const tileSize = defaultCelTileSize;
   final farTile = TileCoord(x: 7, y: 7);
   final tile = BitmapTile.blank(size: tileSize);
 
-  ActiveStrokeOverlayModel overlayOn({
-    List<ResolvedLayerEffect> effects = const [],
-  }) {
+  ActiveStrokeOverlayModel overlayOn() {
     final model = ActiveStrokeOverlayModel(tileSize: tileSize)
-      ..preBlendBase = BitmapSurface(canvasSize: canvasSize, tileSize: tileSize)
-      ..sourceEffects = effects;
+      ..preBlendBase = BitmapSurface(canvasSize: canvasSize, tileSize: tileSize);
     addTearDown(model.dispose);
     return model;
   }
@@ -152,19 +149,17 @@ void main() {
         ..showResultTiles([PromotedStrokeTile(farTile, tile, 1)]);
       final mark = markBeforeADab(model);
 
-      expect(model.takeTileImageAt(farTile, revision: 1), isNotNull);
+      // No picture of it was read — the screen that asks what moved draws
+      // none — and the coordinate leaves the overlay all the same.
+      model.takeTileImageAt(farTile, revision: 1);
+      expect(
+        model.shownBy.containsKey(farTile),
+        isFalse,
+        reason: '⛔premise: handed over',
+      );
 
       expect(model.movedSince(mark), isNull);
     });
 
-    test('a plugin\'s whole cel, once it is pictured', () {
-      final model = overlayOn(effects: [shiftingFxPluginEffect()]);
-      final mark = model.moveMark;
-      dabInto(model, 4, 4);
-
-      model.tileImages;
-
-      expect(model.movedSince(mark), isNull);
-    });
   });
 }

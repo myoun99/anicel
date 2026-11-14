@@ -10,9 +10,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/native/qa_image_encoder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/frame_image_file.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
@@ -60,12 +58,29 @@ void main() {
       });
     });
 
+    // The preview's picture is the written frame read back, in the renderer
+    // (`renderAsShown` is `asShownFrame`'s, 2026-11-12: the stills went on
+    // the engine).
     test('🚨what that call writes and what the image tab previews are one '
         'render (F-547)', () {
-      expect(callersOf('.renderAsShown('), {
-        'lib/src/ui/export/export_dialog.dart': 1,
+      expect(callersOf('.asShownFrame('), {
         'lib/src/ui/export/frame_image_file.dart': 1,
       });
+      expect(callersOf('.renderAsShown('), {
+        'lib/src/ui/export/export_dialog.dart': 1,
+      });
+      expect(
+        RegExp(
+          r'Future<ui\.Image> renderAsShown\([^;]*?=> _handed\(\s*'
+          r'await asShownFrame\(',
+        ).hasMatch(
+          File(
+            'lib/src/ui/export/export_frame_renderer.dart',
+          ).readAsStringSync(),
+        ),
+        isTrue,
+        reason: 'the preview is the frame the file is written from',
+      );
     });
 
     test('JPG bytes are made in one place', () {
@@ -96,7 +111,7 @@ void main() {
           format: format,
           layerFx: ExportLayerFx.on,
           alphaVideo: alphaVideo,
-        ).renderService.background;
+        ).ground;
 
     test('the ground: none where the file keeps alpha, the format\'s colour '
         'under any other still, white under a video', () {
@@ -315,38 +330,5 @@ void main() {
       saveAsImageActionLabel(ExportStillFormat.jpg, AppLanguage.en),
       'Save as: JPG',
     );
-  });
-
-  group('what this machine writes', () {
-    tearDown(() => QaImageEncoder.debugForceAbsent = false);
-
-    // Which tab lays its picture out as a PSD's rows is the tab's to say
-    // (`export_dialog_test.dart`).
-    test('PNG and PSD always, JPG where an encoder is', () {
-      expect(stillFormatWritable(ExportStillFormat.png), isTrue);
-      expect(stillFormatWritable(ExportStillFormat.psd), isTrue);
-      expect(
-        stillFormatWritable(ExportStillFormat.jpg, jpgSupported: false),
-        isFalse,
-      );
-      expect(
-        stillFormatWritable(ExportStillFormat.jpg, jpgSupported: true),
-        isTrue,
-      );
-      QaImageEncoder.debugForceAbsent = true;
-      expect(stillFormatWritable(ExportStillFormat.jpg), isFalse);
-    });
-
-    test('and the export window grays by the same rule', () {
-      final none = ExportFormatAvailability(
-        jpgSupported: false,
-        encoderResolver: () => null,
-        ffmpegCheck: () async => false,
-      );
-      addTearDown(none.dispose);
-      expect(none.stillAllowed(ExportStillFormat.jpg), isFalse);
-      expect(none.stillAllowed(ExportStillFormat.png), isTrue);
-      expect(none.stillAllowed(ExportStillFormat.psd), isTrue);
-    });
   });
 }

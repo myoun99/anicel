@@ -33,8 +33,8 @@ PsPattern _pattern({
 }
 
 void main() {
-  test('dark means paint — coverage is the inverted luminance', () {
-    final mask = brushTipMaskFromPattern(
+  test('dark means paint — coverage is the inverted luminance', () async {
+    final mask = await brushTipMaskFromPattern(
       _pattern(width: 4, height: 4, luminance: (x, y) => x < 2 ? 0 : 255),
       id: 'paper',
     );
@@ -44,8 +44,8 @@ void main() {
     expect(mask.alpha.sublist(2, 4), everyElement(0));
   });
 
-  test('a non-square pattern is padded to a centred square', () {
-    final mask = brushTipMaskFromPattern(
+  test('a non-square pattern is padded to a centred square', () async {
+    final mask = await brushTipMaskFromPattern(
       _pattern(width: 8, height: 4, luminance: (x, y) => 0),
       id: 'paper',
     );
@@ -58,13 +58,13 @@ void main() {
   });
 
   test('🚨an oversized pattern comes down through the shared filter, and '
-      'the grain a sampler would drop comes with it', () {
+      'the grain a sampler would drop comes with it', () async {
     // Ink on every fourth row of a 1024px paper, reduced 4x. A filter that
     // reads a fixed four taps lands between the lines on three rows out of
     // four and answers "blank paper"; one whose support tracks the
     // reduction reads all four and every row keeps its share.
     const side = maxBrushTipMaskSide * 4;
-    final mask = brushTipMaskFromPattern(
+    final mask = await brushTipMaskFromPattern(
       _pattern(
         width: side,
         height: side,

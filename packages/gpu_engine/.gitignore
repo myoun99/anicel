@@ -1,6 +1,8 @@
-# Cargo's output when the crate is built by hand; the build hook builds
-# under .dart_tool.
+# Cargo's output when the crate is built by hand or by a crate gate, and the
+# build hook's (hook/build.dart — under .dart_tool when it has no bash to
+# take its folder's turn).
 /rust/target/
+/rust/target-hook/
 # A library's lock is not committed (dart.dev, private files); the
 # example app keeps its own.
 /pubspec.lock

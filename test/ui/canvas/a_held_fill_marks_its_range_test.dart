@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/selection_reads_spied.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -19,6 +21,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show SelectionMaskOptions;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
@@ -36,6 +40,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// outside the row's own opacity — and a mark that moves is patched where
 /// it was and where it is, as a landing preview is.
 void main() {
+  opensTheEnginesScreens();
   const side = 32;
   const canvasSize = CanvasSize(width: side, height: side);
 
@@ -48,7 +53,9 @@ void main() {
   );
 
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: tiles);
+      onTheEnginesTiles(
+        BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: tiles),
+      );
 
   /// The mark of a closed, hard range [width]×[height] at ([left], [top]).
   FillRangeMark markOf(int left, int top, int width, int height) =>
@@ -61,7 +68,7 @@ void main() {
             height: height,
             mask: Uint8List(width * height)..fillRange(0, width * height, 255),
           ),
-        ).contoursWithin(null),
+        ).coveredWithin(null)!,
       );
 
   /// The frame [nodes] stack, the live row drawn by [live].
@@ -88,17 +95,9 @@ void main() {
     ),
   );
 
-  /// [frame] as its picture is drawn, its premultiplied bytes.
-  Future<Uint8List> bytesOf(WidgetTester tester, StackedFrame frame) async {
-    final recorder = ui.PictureRecorder();
-    frame.drawing.draw(Canvas(recorder));
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(side, side);
-    picture.dispose();
-    final data = await tester.runAsync(image.toByteData);
-    image.dispose();
-    return data!.buffer.asUint8List();
-  }
+  /// [frame] as its picture is laid, its premultiplied bytes.
+  Future<Uint8List> bytesOf(WidgetTester tester, StackedFrame frame) async =>
+      pixelsOfFrame(frame, const Rect.fromLTWH(0, 0, side * 1.0, side * 1.0));
 
   List<int> pixelAt(Uint8List bytes, int x, int y) {
     final at = (y * side + x) * 4;
@@ -107,7 +106,7 @@ void main() {
 
   group('the mark in the stack', () {
     late ActiveStrokeOverlayModel overlay;
-    setUp(() => overlay = ActiveStrokeOverlayModel(tileSize: 16));
+    setUp(() => overlay = ActiveStrokeOverlayModel(tileSize: defaultCelTileSize));
     tearDown(() => overlay.dispose());
 
     BitmapSurfacePainter liveOn(BitmapSurface surface) => BitmapSurfacePainter(
@@ -224,7 +223,7 @@ void main() {
         FillRangeMark(
           FillRange.over(
             FloodFillRegion(left: 8, top: 8, width: 16, height: 16, mask: mask),
-          ).contoursWithin(null),
+          ).coveredWithin(null)!,
         ),
       );
 
@@ -285,21 +284,21 @@ void main() {
       final was = markOf(0, 0, 8, 8);
 
       // It comes: where it is.
-      var before = frame.tokens!;
+      var before = frame.tokens;
       overlay.showFillRange(was);
       var moved = frame.movedSince(before);
       expect(moved.located, isTrue, reason: 'it is a patch');
       expect(moved.dirty, was.bounds.inflate(1));
 
       // Its checker is pushed (F-568): where it is, the outline unmoved.
-      before = frame.tokens!;
+      before = frame.tokens;
       overlay.showFillRange(was.shifted(const Offset(3, 0)));
       moved = frame.movedSince(before);
       expect(moved.located, isTrue);
       expect(moved.dirty, was.bounds.inflate(1));
 
       // It moves to another region: where it was and where it is.
-      before = frame.tokens!;
+      before = frame.tokens;
       final now = markOf(16, 16, 8, 8);
       overlay.showFillRange(now);
       moved = frame.movedSince(before);
@@ -307,7 +306,7 @@ void main() {
       expect(moved.dirty, was.bounds.expandToInclude(now.bounds).inflate(1));
 
       // It goes: where it was.
-      before = frame.tokens!;
+      before = frame.tokens;
       overlay.showFillRange(null);
       moved = frame.movedSince(before);
       expect(moved.located, isTrue);
@@ -369,11 +368,11 @@ void main() {
       for (final at in [14, 15, 20, 21]) {
         mask[at] = 0;
       }
-      final contours = FillRange.over(
+      final covered = FillRange.over(
         FloodFillRegion(left: 0, top: 0, width: 6, height: 6, mask: mask),
-      ).contoursWithin(null);
-      expect(contours, hasLength(2), reason: 'the square and its hole');
-      final path = FillRangeMark(contours).outline;
+      ).coveredWithin(null)!;
+      expect(covered.outline, hasLength(2), reason: 'the square and its hole');
+      final path = FillRangeMark(covered).outline;
       expect(path.contains(const Offset(0.5, 0.5)), isTrue);
       expect(path.contains(const Offset(2.5, 2.5)), isFalse, reason: 'hole');
     });
@@ -386,7 +385,7 @@ void main() {
       mask.fillRange(16 + 8, 16 + 12, 0);
       final contours = FillRange.over(
         FloodFillRegion(left: 0, top: 0, width: 16, height: 3, mask: mask),
-      ).contoursWithin(null);
+      ).coveredWithin(null)!.outline;
       expect(
         [
           for (final contour in contours)
@@ -406,7 +405,7 @@ void main() {
         ),
       );
       final path = FillRangeMark(
-        FillRange.over(square(0, 0, 6)).contoursWithin(clip),
+        FillRange.over(square(0, 0, 6)).coveredWithin(clip)!,
       ).outline;
       expect(path.contains(const Offset(1.5, 1.5)), isTrue);
       expect(
@@ -414,6 +413,123 @@ void main() {
         isFalse,
         reason: 'past the selection nothing fills, so nothing is marked',
       );
+    });
+
+    test('🚨its cover — what the engine lays its checker under — is 255 on '
+        'every pixel its outline holds and 0 elsewhere: a soft edge whole, '
+        'words read at once among them (flip lane ⓐ-3)', () {
+      // A row covered across three words, a row whose first word is empty,
+      // and a row of every coverage there is.
+      const width = 12;
+      final mask = Uint8List(width * 3)
+        ..fillRange(0, width, 255)
+        ..fillRange(width + 4, 2 * width, 255);
+      for (var x = 0; x < width; x += 1) {
+        mask[2 * width + x] = const [0, 1, 128, 255][x % 4];
+      }
+      final covered = FillRange.over(
+        FloodFillRegion(left: 5, top: 7, width: width, height: 3, mask: mask),
+      ).coveredWithin(null)!;
+      final cover = covered.cover;
+      expect(
+        (cover.left, cover.top, cover.width, cover.height),
+        (5, 7, width, 3),
+      );
+      expect(cover.mask, [
+        for (final byte in mask)
+          if (byte > 0) 255 else 0,
+      ]);
+      final path = FillRangeMark(covered).outline;
+      for (var at = 0; at < mask.length; at += 1) {
+        final centre = Offset(5 + at % width + 0.5, 7 + at ~/ width + 0.5);
+        expect(
+          path.contains(centre),
+          cover.mask[at] == 255,
+          reason: 'pixel $at',
+        );
+      }
+    });
+
+    test('its cover is cut by the selection, as its outline is', () {
+      final clip = SelectionClip.outline(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 0, top: 0, right: 3, bottom: 6),
+        ),
+      );
+      final cover = FillRange.over(
+        square(0, 0, 6),
+      ).coveredWithin(clip)!.cover;
+      expect(cover.mask, [
+        for (var at = 0; at < 36; at += 1)
+          if (at % 6 < 3) 255 else 0,
+      ]);
+    });
+
+    test('🚨its cover under a grown, feathered, anti-aliased selection is '
+        'the range\'s pixels the selection takes any of — cut on the engine, '
+        'the selection read on the CPU nowhere', () {
+      final asked = <int>[];
+      final clip = SelectionClip.of(
+        SelectionReadsSpied(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(left: 1, top: 1, right: 4, bottom: 5),
+          ),
+          asked,
+        ),
+        wall: const CanvasSize(
+          width: 64,
+          height: 64,
+        ).pasteboardAt(PasteboardReach.none),
+        options: const SelectionMaskOptions(
+          growPx: 1,
+          featherPx: 2,
+          antiAlias: true,
+        ),
+      );
+      final cover = FillRange.over(
+        square(0, 0, 6),
+      ).coveredWithin(clip)!.cover;
+      // The rectangle grown a pixel by its four sides — its corners not —
+      // and every pixel of that taking some of the feather inward.
+      bool takes(int x, int y) =>
+          (x >= 1 && x <= 3 && y >= 0 && y <= 5) ||
+          (x >= 0 && x <= 4 && y >= 1 && y <= 4);
+      expect(cover.mask, [
+        for (var at = 0; at < 36; at += 1)
+          if (takes(at % 6, at ~/ 6)) 255 else 0,
+      ]);
+      expect(asked, isEmpty, reason: 'the selection is the engine\'s to read');
+    });
+
+    test('a selection that meets none of the range covers none of it — one '
+        'past its wall too, which has nothing made on the engine to cut by',
+        () {
+      final wall = const CanvasSize(
+        width: 64,
+        height: 64,
+      ).pasteboardAt(PasteboardReach.none);
+      SelectionClip clipOf(double left, double top) => SelectionClip.of(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: left,
+            top: top,
+            right: left + 4,
+            bottom: top + 4,
+          ),
+        ),
+        wall: wall,
+        options: SelectionMaskOptions.none,
+      );
+      final beside = clipOf(30, 30);
+      final beyond = clipOf(200, 200);
+      expect(beyond.box, isNull, reason: '⛔premise: past the wall');
+      for (final clip in [beside, beyond]) {
+        final covered = FillRange.over(
+          square(0, 0, 6),
+        ).coveredWithin(clip)!;
+        expect(covered.cover.mask, everyElement(0));
+        expect(covered.outline, isEmpty);
+      }
     });
   });
 }

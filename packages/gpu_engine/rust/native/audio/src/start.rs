@@ -8,9 +8,11 @@
 //! leaves in it, an MP3's LAME tag — and where the format has no place to
 //! say it, from the format's standard delay (an MP3 without the tag: 1,105,
 //! LAME's own; AAC's: 1,024, one frame). The bundled decoders are told to
-//! take nothing off themselves (`bundled`), so all of it is taken here; the
-//! C's count of what a decoder already took (dr_mp3, AudioToolbox) comes
-//! back with the OS stage, if that stage takes any.
+//! take nothing off themselves (`bundled`), so all of it is taken here. A
+//! decoder that already took some off says how much ([Start::taken]), and
+//! only the rest is taken: AudioToolbox, which trims by a packet table of
+//! its own, is told to trim nothing where this part reads the start, and
+//! says what it took of anything else (`os::audio_toolbox`).
 //!
 //! A MOVIE THAT SAYS NOTHING — no edit list on its sound track, and no note
 //! of iTunes' — takes the standard of its sound's format off too (user
@@ -21,6 +23,13 @@
 //! movie, measured 2026-10-09 — and it marks every movie it writes
 //! ([MEDIA_FOUNDATION_MARK]). The mark is the writer's own name for itself,
 //! not a guess from the sound.
+//! ↩️2026-11-10: this app's own exports are no longer among the movies that
+//! say nothing — the export puts a frame before its sound and writes the
+//! edit list that takes it off (유저, board
+//! an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2; native/video
+//! `export/edit_list.rs`), and a list is asked before the mark is. What Q7
+//! still covers is every other movie the sink writer wrote, and this app's
+//! exports from before.
 
 use crate::container::Container;
 
@@ -36,15 +45,26 @@ pub(crate) const AAC_STANDARD_LEAD: i64 = 1024;
 pub(crate) struct Start {
     /// Frames before the sound: what the file says, or its format's standard.
     pub(crate) lead: i64,
+    /// Of [lead](Start::lead), the frames the decoder already took off
+    /// itself.
+    pub(crate) taken: i64,
     /// Frames of sound after the lead, or -1: everything that came.
     pub(crate) keep: i64,
+}
+
+impl Start {
+    /// The frames still to take off the front: the lead less what the
+    /// decoder took, and never fewer than none.
+    pub(crate) fn left_to_take(&self) -> i64 {
+        (self.lead - self.taken).max(0)
+    }
 }
 
 impl Default for Start {
     /// No file a bundled decoder reads puts frames of its own before its
     /// sound but an MP3, whose opener counts its lead.
     fn default() -> Start {
-        Start { lead: 0, keep: -1 }
+        Start { lead: 0, taken: 0, keep: -1 }
     }
 }
 
@@ -61,31 +81,22 @@ pub(crate) struct Atom {
     pub(crate) end: i64,
 }
 
-/// The box at `at`, when a whole one fits before `end`.
+/// The box at `at`, when a whole one fits before `end` — its head read as
+/// every walker of this engine reads one (`media::iso_box`).
 ///
 /// ⛔A size of 0 — 「to the end of the file」, which the format allows the
 /// last box — is no box here: Media Foundation refuses a movie whose movie
 /// box says it (measured 2026-10-09), so a reading of it would be a branch
 /// nothing here can ask, and such a movie keeps what the decoder gave.
 pub(crate) fn box_at(container: &Container, at: i64, end: i64) -> Option<Atom> {
-    let mut head = [0u8; 16];
-    if end - at < 8 || !container.read_all_at(at, &mut head[..8]) {
+    let mut bytes = [0u8; 16];
+    let have = usize::try_from(end - at).ok()?.min(bytes.len());
+    if have < 8 || !container.read_all_at(at, &mut bytes[..have]) {
         return None;
     }
-    let mut size = big_endian(&head[..4]);
-    let mut header = 8;
-    if size == 1 {
-        // A 64-bit size follows the type.
-        if end - at < 16 || !container.read_all_at(at + 8, &mut head[8..]) {
-            return None;
-        }
-        size = big_endian(&head[8..]);
-        header = 16;
-    }
-    if size < header as u64 || size > (end - at) as u64 {
-        return None;
-    }
-    Some(Atom { kind: head[4..8].try_into().expect("4 bytes"), body: at + header, end: at + size as i64 })
+    let head = media::iso_box::head(&bytes[..have]).filter(|head| !head.runs_to_the_end())?;
+    let size = head.size_in((end - at) as u64)?;
+    Some(Atom { kind: head.kind, body: at + head.bytes as i64, end: at + size as i64 })
 }
 
 /// The first box of `kind` directly inside `[start, end)`.
@@ -120,7 +131,8 @@ fn ticks_to_frames(value: i64, scale: u32, rate: i32) -> i64 {
 /// open with — `ftyp` is the ISO file's first box, and the older movies
 /// start with whatever the editor wrote first.
 ///
-/// ⚠️Not the question `qa_apple_container_type` (qa_video_apple.m) answers:
+/// ⚠️Not the question `container_of` (native/video `decode/apple.rs`; ↩️the
+/// C's `qa_apple_container_type`, gone in the connection round) answers:
 /// that one is handed a movie and names its kind. Two heads read, two
 /// questions — a third reader is the time to make them one.
 pub(crate) fn head_is_a_movie_box(head: &[u8; 8]) -> bool {

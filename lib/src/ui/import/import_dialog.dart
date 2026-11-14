@@ -20,7 +20,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
-import '../../models/movie_clock.dart' show ProjectClock, movieClockFor;
+import '../../models/movie_clock.dart'
+    show ProjectClock, clockPulledBy, framePullOf, movieClockFor;
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
@@ -43,6 +44,7 @@ import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/cloud_wait.dart';
 import '../editor_session_manager.dart';
 import '../open_projects.dart';
+import '../session/trimmed_pieces.dart' show TrimmedPieces;
 import '../timeline/layer_label_controls.dart'
     show
         LayerAttachArrowCell,
@@ -1469,32 +1471,83 @@ class _ImportDialogState extends State<ImportDialog> {
   /// is asked when it is placed, through this window — and a row bound for
   /// a new project places it in a project at its own rate (I-156-Q2). False
   /// when the person backed out of the import.
+  ///
+  /// 🗣️F-588 (유저 2026-11-14: 「이 영상만」): or the project keeps its rate
+  /// and each such movie is carried in rewritten at its speed ([_fitted]) —
+  /// offered where every one of them is carried in as a piece of its own
+  /// ([_carriesItsOwnPiece]), as no other bytes are the import's to
+  /// rewrite.
   Future<bool> _answerMovieRates() async {
+    _fitted.clear();
     final project = widget.session.projectSettings.projectFrameRate;
-    final movie = await _pulldownPartnerAmongPlaced(project);
-    if (movie == null) {
+    final clock = (rate: project, speed: _projectAudioSpeed);
+    final partners = await _pulldownPartnersAmongPlaced(project);
+    if (partners.isEmpty) {
       return true;
     }
     if (!mounted) {
       return false;
     }
+    final pulls = {
+      for (final row in partners) row.path: framePullOf(clock, row.movie),
+    };
     final answer = await showMovieRateDialog(
       context,
-      project: project,
-      movie: movie,
+      project: clock,
+      movie: partners.first.partner,
+      fit: (
+        can: pulls.entries.every(
+          (pull) =>
+              pull.value != null &&
+              _carriesItsOwnPiece(
+                pull.key,
+                _settingsFor(pull.key),
+                session: widget.session,
+              ),
+        ),
+        brings: _partsAllBring([
+          for (final row in partners)
+            if (_asksSound(row.path))
+              _settingsFor(row.path).movieParts
+            else
+              MovieParts.picture,
+        ]),
+      ),
     );
+    if (answer == MovieRateAnswer.fit) {
+      _fitted.addAll({
+        for (final pull in pulls.entries) pull.key: pull.value!,
+      });
+    }
     if (answer == MovieRateAnswer.take && mounted) {
+      final movie = partners.first.partner;
       await _respanFor(from: project, to: movie);
       widget.session.projectSettings.setProjectFrameRate(movie);
     }
     return answer != null && mounted;
   }
 
-  /// The rate of the first movie placed in THIS project that runs at
-  /// [project]'s pulldown partner, or null when none does.
-  Future<ProjectFrameRate?> _pulldownPartnerAmongPlaced(
-    ProjectFrameRate project,
-  ) async {
+  /// The pull each movie of this press is carried in at, rewritten at the
+  /// project's speed (🗣️F-588, [framePullOf]) — empty unless the rate
+  /// question was answered so. Asked anew at each press: its span stays the
+  /// one the person stood on, moved to that clock only as it is cut
+  /// ([_placeCarryingOnlyTheSpan]), so a press that did not land leaves
+  /// nothing to undo.
+  final Map<String, ({int numerator, int denominator})> _fitted = {};
+
+  /// What of their movies [parts] bring between them — the one part they
+  /// all bring, or both; a movie with no sound brings its picture.
+  static MovieParts _partsAllBring(List<MovieParts> parts) =>
+      parts.every((part) => part == parts.first)
+      ? parts.first
+      : MovieParts.pictureAndSound;
+
+  /// Every movie placed in THIS project that runs at [project]'s pulldown
+  /// partner, with what it says of itself and that partner.
+  Future<List<({String path, QaVideoInfo movie, ProjectFrameRate partner})>>
+  _pulldownPartnersAmongPlaced(ProjectFrameRate project) async {
+    final found =
+        <({String path, QaVideoInfo movie, ProjectFrameRate partner})>[];
     for (final path in _files.where(
       (path) => _placing(path) && !_landsInANewProject(path),
     )) {
@@ -1508,11 +1561,11 @@ class _ImportDialogState extends State<ImportDialog> {
               numerator: movie.fpsNumerator,
               denominator: movie.fpsDenominator,
             ));
-      if (partner != null) {
-        return partner;
+      if (movie != null && partner != null) {
+        found.add((path: path, movie: movie, partner: partner));
       }
     }
-    return null;
+    return found;
   }
 
   /// What [path]'s movie says of itself, read as its door will read it
@@ -1913,11 +1966,17 @@ class _ImportDialogState extends State<ImportDialog> {
     return landed;
   }
 
-  /// Whether [path] comes in as its PIECE ([TrimmedPieces]) — trimmed, and
-  /// carried in — whether it is placed or only registered.
+  /// Whether [path] comes in as its PIECE ([TrimmedPieces]) — trimmed, or
+  /// bringing part of its movie ([importCutsAPart]), and carried in —
+  /// whether it is placed or only registered.
   ///
   /// 🗣️유저 2026-09-23: 「비디오든 이미지든 오디오든 관계없이 법 하나로」 —
-  /// ONE answer, here, for every kind and both of the window's modes.
+  /// ONE answer, here, for every kind and both of the window's modes. A
+  /// movie's part is the same law along its other edge (🗣️I-171-Q1, 유저
+  /// 2026-11-14: 「그 부분만 새 파일로 품는다」): what is not brought in is
+  /// not carried, placed or only registered — the same answer means the same
+  /// file wherever the row lands. ↩️A placed movie's sound alone carried the
+  /// whole movie, and the pool asked no part at all.
   ///
   /// ⚠️Not a file the pool already holds, and not an exception of this
   /// round's making — two standing answers meet here. The pool's answer
@@ -1932,12 +1991,27 @@ class _ImportDialogState extends State<ImportDialog> {
   ///
   /// The pool is the one of the project [session] holds — the project the
   /// file comes into: a new project's holds nothing yet (I-156).
+  ///
+  /// A movie rewritten at the project's speed is a piece of it too
+  /// (🗣️F-588, [_fitted]): the bytes carried are no longer the file's.
   bool _comesInAsAPiece(
     String path,
     ImportFileSettings settings, {
     required EditorSessionManager session,
   }) =>
-      settings.isTrimmed &&
+      (settings.isTrimmed ||
+          _cutsAPart(path, settings) ||
+          _fitted.containsKey(path)) &&
+      _carriesItsOwnPiece(path, settings, session: session);
+
+  /// Whether [path] would come in as a piece of its own, were there one to
+  /// cut ([_comesInAsAPiece]): carried in, not held by [session]'s pool
+  /// already, and leaving an entry there.
+  bool _carriesItsOwnPiece(
+    String path,
+    ImportFileSettings settings, {
+    required EditorSessionManager session,
+  }) =>
       settings.mode == ImportFileMode.keepInside &&
       _poolEntryIn(session, path) == null &&
       _keepsAPoolEntry(path);
@@ -1975,15 +2049,20 @@ class _ImportDialogState extends State<ImportDialog> {
       return _placeThrough(into, path, kind, tally, fileReport);
     }
     final pieces = into.session.trimmedPieces;
-    // Named from its start: a sound's or a page range's cut says nothing
-    // until it is done (F-494).
-    fileReport.cutting(0, kind);
+    // Named from its start, as what the piece is: a sound's or a page
+    // range's cut says nothing until it is done (F-494).
+    final cut = TrimmedPieces.pieceKindOf(kind, settings.movieParts);
+    fileReport.cutting(0, cut);
+    final pull = _fitted[path] ?? noPull;
+    final span = await _spanRewrittenAt(path, settings, pull);
     final piece = await pieces.cut(
       path,
       kind,
-      inFrame: settings.inFrame,
-      outFrame: settings.outFrame,
-      onProgress: (fraction) => fileReport.cutting(fraction, kind),
+      inFrame: span.inFrame,
+      outFrame: span.outFrame,
+      parts: settings.movieParts,
+      pull: pull,
+      onProgress: (fraction) => fileReport.cutting(fraction, cut),
     );
     if (piece == null) {
       return false;
@@ -1997,7 +2076,8 @@ class _ImportDialogState extends State<ImportDialog> {
           settings: settings.copyWith(inFrame: 0, outFrame: piece.frames - 1),
         ),
         piece.path,
-        kind,
+        // A movie's sound alone is a sound's piece, placed as a sound is.
+        piece.kind,
         tally,
         fileReport,
         sourcePath: path,
@@ -2010,6 +2090,30 @@ class _ImportDialogState extends State<ImportDialog> {
       }
     }
     return landed;
+  }
+
+  /// [settings]' span as the piece [pull] rewrites [path] into counts it —
+  /// the same pictures, on the clock it is read on ([clockPulledBy]); as it
+  /// stands without a pull, or for a movie that does not open.
+  Future<ImportFileSettings> _spanRewrittenAt(
+    String path,
+    ImportFileSettings settings,
+    ({int numerator, int denominator}) pull,
+  ) async {
+    if (pull == noPull) {
+      return settings;
+    }
+    final clock = (
+      rate: widget.session.projectSettings.projectFrameRate,
+      speed: _projectAudioSpeed,
+    );
+    return await _spanMoved(
+          path,
+          settings,
+          clock,
+          clockPulledBy(clock, pull),
+        ) ??
+        settings;
   }
 
   /// Which door this file goes through, as [into] says: an expanded PSD,
@@ -2186,7 +2290,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // The files the pool keeps, and those of them cut into a piece first.
     final keeping = [
       for (final path in paths)
-        if (_settingsFor(path).mode == ImportFileMode.keepInside) path,
+        if (_keepsInside(path)) path,
     ];
     final cutting = [
       for (final path in keeping)
@@ -2204,29 +2308,12 @@ class _ImportDialogState extends State<ImportDialog> {
       keptShare: doneShare(keeping.length, paths.length),
       cuts: cutting.length,
     );
-    // What the pool is handed — a piece in place of the file it was cut
-    // from — and the picked file each one stands for.
-    final carried = <String, String>{};
-    final referenced = <String>[];
-    for (final path in paths) {
-      final kind = mediaAssetKindForPath(path);
-      if (kind != null && cutting.contains(path)) {
-        final piece = await _cutForThePool(
-          path,
-          kind,
-          told.cut(cutting.indexOf(path), kind),
-        );
-        if (piece == null) {
-          _warnOf(tally, path, (name) => _placementFailure(name, kind));
-        } else {
-          carried[piece] = path;
-        }
-      } else if (keeping.contains(path)) {
-        carried[path] = path;
-      } else {
-        referenced.add(path);
-      }
-    }
+    final (:carried, :referenced) = await _handedToThePool(
+      paths,
+      cutting: cutting,
+      told: told,
+      tally: tally,
+    );
     await _holdInThePool(carried, told);
     tally
       ..imported += carried.length
@@ -2240,6 +2327,49 @@ class _ImportDialogState extends State<ImportDialog> {
       ..imported += referenced.length
       ..done.addAll(referenced);
     report(1);
+  }
+
+  /// Whether the pool keeps the picked file [path] inside the project, as
+  /// its settings say.
+  bool _keepsInside(String path) =>
+      _settingsFor(path).mode == ImportFileMode.keepInside;
+
+  /// What the pool is handed of [paths] — a piece in place of each of
+  /// [cutting] it was cut from, the rest it keeps as they are, the others
+  /// referenced — the [carried] by the picked file each stands for. A piece
+  /// that will not cut is told in [tally], and handed nothing.
+  Future<({Map<String, String> carried, List<String> referenced})>
+  _handedToThePool(
+    List<String> paths, {
+    required List<String> cutting,
+    required _PoolReport told,
+    required _ImportTally tally,
+  }) async {
+    final carried = <String, String>{};
+    final referenced = <String>[];
+    for (final path in paths) {
+      final kind = mediaAssetKindForPath(path);
+      if (kind != null && cutting.contains(path)) {
+        final piece = await _cutForThePool(
+          path,
+          kind,
+          told.cut(
+            cutting.indexOf(path),
+            TrimmedPieces.pieceKindOf(kind, _settingsFor(path).movieParts),
+          ),
+        );
+        if (piece == null) {
+          _warnOf(tally, path, (name) => _placementFailure(name, kind));
+        } else {
+          carried[piece] = path;
+        }
+      } else if (_keepsInside(path)) {
+        carried[path] = path;
+      } else {
+        referenced.add(path);
+      }
+    }
+    return (carried: carried, referenced: referenced);
   }
 
   /// [carried] — what the pool is handed, by the picked file each stands
@@ -2288,6 +2418,7 @@ class _ImportDialogState extends State<ImportDialog> {
         kind,
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
+        parts: settings.movieParts,
         onProgress: told,
       );
       return piece?.path;
@@ -2837,10 +2968,16 @@ class _ImportDialogState extends State<ImportDialog> {
   /// to the no-disappearing-UI rule, and the reason was the PSD column,
   /// meaningless beside other files (유저 10-09).
   ///
-  /// ⛔Not in a window a pool's door opened ([ImportDialog.poolOnly]): every
-  /// row there registers, so the questions of a placement cannot be asked
-  /// at all (유저 2026-10-09: 「미디어패널의 경우엔 굽기 맞춤 옵션
-  /// 안넣어도되 … 임포트는 진짜 존재할일이 없는 구조잖아. 그런건 예외로」).
+  /// ⛔No bake and no fit in a window a pool's door opened
+  /// ([ImportDialog.poolOnly]): every row there registers, so a placement's
+  /// questions cannot be asked at all (유저 2026-10-09: 「미디어패널의 경우엔
+  /// 굽기 맞춤 옵션안넣어도되 … 임포트는 진짜 존재할일이 없는 구조잖아. 그런건
+  /// 예외로」). The 「옵션」 column stands there (🗣️I-171-Q2, 유저 2026-11-14:
+  /// 「넣는다 — 옵션 열만(굽기 · 맞춤은 그대로 없음)」): since I-171-Q1 a
+  /// movie's picture and sound say what the pool keeps of it, and a row the
+  /// column asks nothing of shows 「—」. ↩️From 10-09 it stood out of that
+  /// window with the other two — 「옵션은 필요할지도?」 was left for when an
+  /// option meant something there (F-282).
   ///
   /// ⚠️A value the CONTEXT answered — a new cut's 1:1, an expanded PSD's
   /// bake, a pooled file's carry in a mixed batch — shows locked
@@ -2866,8 +3003,9 @@ class _ImportDialogState extends State<ImportDialog> {
           _alsoOfTheFolder(_fileColumn(), _folderFile),
         if (placementAsked) _alsoOfTheFolder(_fitColumn(), _folderFit),
         // A run's, a Photoshop document's, a movie-with-sound's own
-        // question — one column, each row its own (F-282).
-        if (placementAsked) _alsoOfTheFolder(_optionColumn(), _folderOption),
+        // question — one column, each row its own (F-282) — in every
+        // window, a pool's door's too (I-171-Q2).
+        _alsoOfTheFolder(_optionColumn(), _folderOption),
       ])
         _settingsRows.alsoOfThem(column),
     ];
@@ -2895,6 +3033,7 @@ class _ImportDialogState extends State<ImportDialog> {
       final row? => folder.wordOf?.call(row, value),
       null => files.wordOf?.call(key, value),
     },
+    keepsRoomFor: files.keepsRoomFor,
     valueOf: (key) => switch (_folderRowAt(key)) {
       final row? => folder.valueOf(row),
       null => files.valueOf(key),
@@ -2978,10 +3117,10 @@ class _ImportDialogState extends State<ImportDialog> {
     if (row is! _FolderLayerRow) {
       return null;
     }
-    final template = _parsed!.correctsOnlyItsBaseCels(row.layer)
-        ? AppText.strings.tlDropAttachSyncedTemplate
-        : AppText.strings.tlDropAttachFreeTemplate;
-    return template.replaceAll('{name}', row.layer.symbol);
+    return AppText.strings.tlDropAttach(
+      row.layer.symbol,
+      synced: _parsed!.correctsOnlyItsBaseCels(row.layer),
+    );
   }
 
   /// [value] as the 넣을 곳 of [rows]: a destination kept for each, or —
@@ -3043,13 +3182,25 @@ class _ImportDialogState extends State<ImportDialog> {
   /// the sound alone.
   bool _placesPicture(String path) => !_landsAsSound(path);
 
-  /// Whether the 「소리」 question is this row's: a movie being placed that
-  /// the conform found a sound in ([_probeMovieSound]).
+  /// Whether the 「소리」 question is this row's: a movie the conform found a
+  /// sound in ([_probeMovieSound]), placed or put in the pool.
   bool _asksSound(String path) => importSoundAllowed(
     kind: mediaAssetKindForPath(path),
-    placing: _placing(path),
-    hasSound: _movieSound[normalizedMediaPath(path)] ?? false,
+    hasSound: _hasSound(path),
   );
+
+  /// Whether the conform found a sound in [path]'s movie — false until it
+  /// has answered.
+  bool _hasSound(String path) =>
+      _movieSound[normalizedMediaPath(path)] ?? false;
+
+  /// Whether [path]'s row brings part of its movie ([importCutsAPart]).
+  bool _cutsAPart(String path, ImportFileSettings settings) =>
+      importCutsAPart(
+        kind: mediaAssetKindForPath(path),
+        hasSound: _hasSound(path),
+        settings: settings,
+      );
 
   /// Whether [path] lands as a SOUND on the SE rows — a sound file, or a
   /// movie whose 「소리」 answer is the sound alone ([importLandsAsSound]).
@@ -3160,6 +3311,13 @@ class _ImportDialogState extends State<ImportDialog> {
       _RunSpan() => _runSpanWord(path),
       _ => null,
     },
+    // The room a span is said in, whatever the files are named (🗣️F-582,
+    // [ImportColumn.keepsRoomFor]) — measured in the language, as the
+    // resolution's five digits a side are. ⚠️How long is THIS SESSION'S
+    // PICK, not the user's word: a letter and four digits a side and a
+    // four-digit count, which a scan's 「A0001」 fills and a folder's
+    // 「A1–A21 (22장)」 leaves room in. One line to change.
+    keepsRoomFor: [AppText.strings.imRunSpan('A0001', 'A9999', 9999)],
     valueOf: _optionAnswerOf,
     appliesTo: (path) => _optionAsked(path) != null,
     enabledFor: (path, value) => switch (value) {
@@ -3167,9 +3325,19 @@ class _ImportDialogState extends State<ImportDialog> {
       // and a row takes frames).
       final PsdPlaceMode psd =>
         psd == PsdPlaceMode.merge || !importPsdLocked(widget.spot),
-      // What the drop's place keeps in is not an answer to take out
+      // What the drop's place keeps in is not an answer to take out, and a
+      // file only pointed at from the pool is taken whole
       // ([importMovieParts]).
-      final MovieParts parts => importMovieParts(parts, widget.spot) == parts,
+      final MovieParts parts =>
+        importMovieParts(
+              parts,
+              widget.spot,
+              wholeFile: importTakesTheWholeFile(
+                placing: _placing(path),
+                mode: _settingsFor(path).mode,
+              ),
+            ) ==
+            parts,
       _ => true,
     },
     // A header press speaks for every row: each takes the answer of its
@@ -3225,20 +3393,37 @@ class _ImportDialogState extends State<ImportDialog> {
       ? shown.single
       : AppText.strings.imRunSpan(shown.first, shown.last, shown.length);
 
-  /// Which question the 「옵션」 column asks [path]'s row, if any — only of
-  /// a placed row: registering brings the file in as it is.
+  /// Which question the 「옵션」 column asks [path]'s row, if any: a run's
+  /// and a Photoshop document's only of a placed row — registering brings
+  /// the file in as it is — and a movie's sound of both (🗣️I-171-Q1: in the
+  /// pool it says which part is carried).
   _OptionAsked? _optionAsked(String path) {
-    if (!_placing(path)) {
-      return null;
-    }
-    if (_runOf(path) != null) {
+    if (_placing(path) && _runOf(path) != null) {
       return _OptionAsked.run;
     }
-    if (importPathIsPsd(path)) {
+    if (_placing(path) && importPathIsPsd(path)) {
       return _OptionAsked.psd;
     }
     return _asksSound(path) ? _OptionAsked.sound : null;
   }
+
+  /// The room a place is said in, whatever the layer is named (🗣️F-582-Q1,
+  /// 유저 2026-11-10: 「넣을 곳도 같은 법으로 — 고정 길이 · 넘치면 생략 ·
+  /// 호버로 전체」; [ImportColumn.keepsRoomFor]). A place carries a name in
+  /// two shapes — the row and the cell a drop aimed at ([_spotLabel]), and
+  /// the symbol a folder's correction rides ([_attachWord]) — and which is
+  /// the widest is the language's to say, so the room is of each.
+  ///
+  /// ⚠️How long is THIS SESSION'S PICK, not the user's word: an eight-letter
+  /// row with a three-digit cell, and a four-letter symbol (「BOOK」). The
+  /// app's cut takes a word's END, so a longer name loses its cell or its
+  /// 「(싱크)」 first — the cost the answer was given with. One list to
+  /// change.
+  List<String> get _placeRoom => [
+    AppText.strings.imIntoRowCell('ABCDEFGH', 999),
+    for (final synced in const [true, false])
+      AppText.strings.tlDropAttach('BOOK', synced: synced),
+  ];
 
   /// Where each file goes: a new layer, a new cut, a new project (I-156) —
   /// the SE rows, for a sound — or the media pool alone (「미디어」, F-282:
@@ -3264,6 +3449,7 @@ class _ImportDialogState extends State<ImportDialog> {
         _LeftOut() => AppText.strings.imExcluded,
         _ => '',
       },
+      keepsRoomFor: _placeRoom,
       // A sound's place is the SE rows' own rule (유저 2026-09-11: 「SE1부터
       // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — the one placement a
       // sound has.

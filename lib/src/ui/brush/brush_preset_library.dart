@@ -15,6 +15,7 @@ import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
 import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
+import '../../services/brush_tip_thumbnails.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
 import '../dialogs/handed_text_file.dart';
@@ -158,10 +159,21 @@ class BrushPresetLibrary extends ChangeNotifier {
       resolveTip: _tipLibrary?.maskFor,
       nameBuiltIn: _nameInProgramLanguage,
     );
+    _hold(library);
+    await _adoptCarriedTips();
+  }
+
+  /// Takes [library] whole — read, imported into or seeded again — and asks
+  /// for the picture of each preset's tip as the list draws it
+  /// ([BrushTipThumbnails]), ahead of the list
+  /// (tip-coverage-is-a-second-r1-Q1).
+  void _hold(BrushPresetLibraryData library) {
     _groups = library.groups;
     _presets = library.presets;
+    BrushTipThumbnails.instance.want([
+      for (final preset in _presets) ?preset.settings.tipMask,
+    ]);
     _notify();
-    await _adoptCarriedTips();
   }
 
   /// Moves any tip that came in ON a preset into the tip library.
@@ -312,9 +324,10 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   /// Throws the whole library away and re-seeds the built-ins.
   void resetToDefaults() {
-    _groups = namedDefaultBrushGroups(_nameInProgramLanguage);
-    _presets = namedDefaultBrushPresets(_nameInProgramLanguage);
-    _notify();
+    _hold((
+      groups: namedDefaultBrushGroups(_nameInProgramLanguage),
+      presets: namedDefaultBrushPresets(_nameInProgramLanguage),
+    ));
     _persist();
   }
 
@@ -482,7 +495,10 @@ class BrushPresetLibrary extends ChangeNotifier {
         imported = result.presets;
         warnings = result.warnings;
       } else {
-        final result = decodeAbrBrushFile(pick.bytes, sourceName: baseName);
+        final result = await decodeAbrBrushFile(
+          pick.bytes,
+          sourceName: baseName,
+        );
         imported = result.presets;
         warnings = result.warnings;
       }
@@ -499,9 +515,7 @@ class BrushPresetLibrary extends ChangeNotifier {
       imported: imported,
       sourceName: baseName,
     );
-    _groups = merged.groups;
-    _presets = merged.presets;
-    _notify();
+    _hold(merged);
     _persist();
     // The pack's tips become library tips in their own right, so they can be
     // put on any brush and survive the preset they arrived with.

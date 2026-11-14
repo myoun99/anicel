@@ -303,7 +303,13 @@ void main() {
     );
 
     // Part them: the linked cut's conte row goes its own way, then goes.
-    session.layerVerbs.unlinkLayers([session.activeLayerId!]);
+    // A row of a 겸용 cut cannot leave alone through 독립시키기 (F-573), so
+    // the parting is the command's own — the diverged structure the
+    // mirror stands down for, however it came.
+    session.cutCommandCoordinator.unlinkLayer(
+      cutId: pair.linked,
+      layerId: session.activeLayerId!,
+    );
     session.layerVerbs.deleteActiveLayer();
     expect(rowsOf(pair.linked, LayerKind.storyboard), isEmpty);
     expect(rowsOf(pair.source, LayerKind.storyboard), hasLength(1));

@@ -1,3 +1,4 @@
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ import '../../helpers/wait_window.dart';
 /// when the defaults began to travel (10-30): the arrangement put back at
 /// the factory one, and the export window's settings read again.
 void main() {
+  opensTheEnginesScreens();
   Finder region() =>
       find.byKey(const ValueKey<String>('floating-bottom-region'));
 

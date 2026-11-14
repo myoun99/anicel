@@ -7,12 +7,63 @@ publish = false
 [lib]
 # Both kinds are required by native_toolchain_rust.
 crate-type = ["staticlib", "cdylib"]
+# ⛔NOT `gpu_engine`, the package's name: on Apple's the plugin's pod is
+# gpu_engine.framework (CocoaPods names it after the plugin), and Flutter
+# wraps a code asset libX.dylib as X.framework without looking at the
+# pods' names — the two met in one place, and the macOS app found no
+# gpu_engine_open_sole in the gpu_engine it opened (GPU engine run
+# 42349881697, 2026-11-07). Dart binds the library by its asset's id
+# (lib/src/engine_ffi.dart), never by this name.
+name = "gpu_engine_core"
 
 [dependencies]
 # The fingerprint: the same CRC-32 as the app's anicelCrc32, not a hash of
 # our own (gpu-engine-skeleton, 2026-11-05).
 crc32fast = "1"
+# The app's native modules this library carries, each exported from here
+# (src/lib.rs names it — the workspace note below says why it must).
+audio = { path = "native/audio" }
+audio_denoise = { path = "native/audio_denoise" }
+audio_device = { path = "native/audio_device" }
+audio_mix = { path = "native/audio_mix" }
+compress = { path = "native/compress" }
+display = { path = "native/display" }
+fx_plugin = { path = "native/fx_plugin" }
+# A GPU fx plugin (fx spec 2): checked and counted there, run here on the
+# engine's device (kernels/plugin).
+fx_wgsl = { path = "native/fx_wgsl" }
+image_encode = { path = "native/image_encode" }
+media = { path = "native/media" }
+memory = { path = "native/memory" }
+pen = { path = "native/pen" }
+# A tile's bytes premultiplied for its picture's upload, four pixels a step
+# — the last kernel the app took from the C engine.
+premultiply = { path = "native/premultiply" }
+# A tile's block of pixels, and the lists a freed one waits on — the last
+# memory the app took from the C engine.
+tile_blocks = { path = "native/tile_blocks" }
+# The NV12 pass's tests hold it to video's `from_rgba` byte for byte too,
+# which a trimmed movie's re-encode still runs on the CPU — a worker has no
+# engine (관제 2026-11-12, gpu-export-path ⑶-3 ①). ↩️The pin was to go when
+# 7′ deleted `from_rgba` (공통, 2026-11-07 23:20 ④); it goes with the RGBA
+# road instead (board `trimmed-movie-decodes-to-nv12`).
+video = { path = "native/video" }
+# A Gaussian's weights are alike on every device (유저 gpu-same-formula-Q2):
+# their exp is libm's, the same Rust on every OS, not the device's maths
+# library — as the audio crates' sin and pow are; already in the lock as
+# zeno's.
+libm = "0.2"
 pollster = "0.4"
+# The engine sets canvas letters itself (engine-canvas-letters; 🗣️유저
+# gpu-int-spec-word-bake-Q1 「엔진이 글자를 직접 그린다」, the crates allowed
+# in chat 2026-11-07 「허락할게」, -Q3): read-fonts reads a face's charmap and
+# its outlines in font units, harfrust turns a cluster's text into the
+# face's glyphs as HarfBuzz does, zeno rasters an outline to coverage.
+# zeno's `libm`, not `std`: its stroker's curve maths is then the same Rust
+# on every OS, never the platform's maths library.
+harfrust = "=0.15.0"
+read-fonts = "=0.46.0"
+zeno = { version = "=0.3.3", default-features = false, features = ["eval", "libm"] }
 wgpu = { version = "=30.0.1", default-features = false, features = [
   "std",
   "parking_lot",
@@ -90,18 +141,20 @@ libc = "0.2"
 [build-dependencies]
 sha2 = "0.10"
 
-# The tests read the ledger, test/fixtures/fingerprints.json.
+# The tests read the ledger, test/fixtures/fingerprints.json, through the
+# workspace's one reader; the letters' tests read a fixture of their own.
 [dev-dependencies]
+ledger = { path = "native/ledger" }
 serde_json = "1"
 
 # THE APP'S NATIVE C MOVES HERE, A MODULE TO A CRATE (native-to-rust, 유저
 # 2026-11-06 via 관제: no C left — what we wrote, third_party, .m, .cpp).
 # A lane moves one module whole, the C it calls with it, and touches only
 # its own folder under native/: these globs take a new crate in without a
-# line here, and `cargo test` in this folder runs every crate. Until the
-# connection round each module's Rust is held to the C byte for byte
-# (native/oracle); that round links the modules into this library and
-# deletes the C.
+# line here, and `cargo test` in this folder runs every crate. ↩️Until
+# the connection round each module's Rust was held to the C byte for byte
+# (native/oracle, the answer key then); that round linked the modules into
+# this library and deleted the C, the last of it on 2026-11-13.
 # ⚠️ONE LIBRARY, AND IT MUST NAME WHAT IT CARRIES. A crate this one depends
 # on but never names is not linked, and its extern "C" functions are not
 # exported — measured 2026-11-06 on a scratch workspace: the dependency
@@ -112,3 +165,49 @@ serde_json = "1"
 [workspace]
 members = ["native/*"]
 default-members = [".", "native/*"]
+# The vendored crates below are patched in, not members: `cargo test` here
+# runs this workspace's tests, not theirs.
+exclude = ["vendor"]
+
+# 🚨SYMPHONIA IS OURS TO PATCH (유저 native-to-rust-Q14, 2026-11-07: 「고친
+# 사본을 묶는다」 — 「릴리즈할때 리포 링크 공개할예정」, so this repository
+# is where the modified source is offered, as MPL-2.0 asks). A sound
+# decodes alike on every device (유저 gpu-same-formula-Q2), and symphonia
+# made its tables and some of each frame's values with Rust's `f32`/`f64`
+# `sin` · `cos` · `tan` · `powf` · `exp` · `atan` — the device's own maths
+# library, which rounds its last place differently from OS to OS: the
+# first CI run (42274856506) decoded the AAC fixture alike on Linux x64
+# and Windows ARM64 and otherwise on Windows x64, and the MP3 otherwise on
+# the Mac. Those fifteen places call `libm` instead — the same Rust on
+# every OS, as zeno's does above — and each file says so under its MPL
+# header. No setting of symphonia's picks this; ⚠️EVERY UPGRADE OF
+# SYMPHONIA DOES IT AGAIN: copy the new release's four crates here, route
+# every std maths call in them through `libm` (grep their `src` for
+# `.sin()` · `.cos()` · `.tan()` · `powf` · `.exp()` · `.atan()`), and
+# pin the new fingerprints (native/audio/src/tests/pins.rs).
+[patch.crates-io]
+symphonia-core = { path = "vendor/symphonia-core" }
+symphonia-codec-aac = { path = "vendor/symphonia-codec-aac" }
+symphonia-bundle-mp3 = { path = "vendor/symphonia-bundle-mp3" }
+symphonia-codec-vorbis = { path = "vendor/symphonia-codec-vorbis" }
+# 🚨WGPU-HAL IS OURS TO PATCH TOO (유저 2026-11-13,
+# the-wait-window-stands-seven-seconds-on-the-surface-Q1: 「고친 사본을 묶는다
+# — 디스크 캐시 + 나란히 컴파일」). DXC was nine tenths of every compile the
+# app's wait window stood for on the Surface Pro 11, and wgpu-hal 30 kept
+# none of what it made past the run and compiled on one compiler from every
+# thread: what DXC makes is now kept on disk (src/dx12/dxil_cache.rs) and
+# each compile under way takes a compiler of its own
+# (src/dx12/shader_compilation.rs, `DxcCompilers`). Every change of ours
+# says ANICEL. ⚠️EVERY UPGRADE OF WGPU DOES IT AGAIN: copy the new
+# release's wgpu-hal here whole from the registry, put back what
+# `grep -rn ANICEL vendor/wgpu-hal` finds in this one, and run this crate's
+# tests on Windows. MIT/Apache-2.0: no source has to be offered.
+wgpu-hal = { path = "vendor/wgpu-hal" }
+
+# A DEPENDENCY'S DEBUG INFO IS ITS LINE TABLES (브러시/렌더링 23:09 · 관제
+# 2026-11-07, connection-round-checklist): the shared target had grown to
+# 47 GB, 42 of it debug builds. A dependency's frames keep their names and
+# lines in a dump and a backtrace, and no one has stepped into wgpu or naga
+# with a debugger; this workspace's own crates keep their full debug info.
+[profile.dev.package."*"]
+debug = "line-tables-only"

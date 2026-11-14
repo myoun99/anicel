@@ -155,7 +155,6 @@ void main() {
           layer: layer,
           laneId: 'position',
           frameStartIndex: 0,
-          leadingFrameSpacerWidth: 0,
           frameCellExtent: cell,
           crossAxisExtent: 24,
           callbacks: TimelineLaneRangeCallbacks(

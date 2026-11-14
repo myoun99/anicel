@@ -10,9 +10,10 @@ use std::sync::OnceLock;
 use super::super::TileRect;
 use super::super::iris::{Focus, Iris};
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles};
-use super::{BlurMap, Lens, LensBlur, Light, MOST_FRINGE, MapChannel};
+use super::{BlurMap, Lens, LensBlur, Light, MOST_FRINGE, MapChannel, sums_bytes};
 use crate::device::Engine;
 use crate::kernels::effects::tests::rgba;
+use crate::kernels::shared::room;
 use crate::testing::{assert_pinned, first_engine};
 
 struct Rig {
@@ -68,6 +69,17 @@ fn blurred(
     pixel: impl Fn(i32, i32) -> u32,
     map: Option<Map>,
 ) -> Option<Blurred> {
+    blurred_in(rect, picture, (lens, map), pixel, room(rig().engine))
+}
+
+/// `blurred`, its sums in bands a binding of `room` bytes holds.
+fn blurred_in(
+    rect: TileRect,
+    picture: [i32; 4],
+    (lens, map): (&Lens, Option<Map>),
+    pixel: impl Fn(i32, i32) -> u32,
+    room: u64,
+) -> Option<Blurred> {
     let Rig { engine, blur } = rig();
     let map_tiles = map.map(|(pixel, _, _)| tiles(engine, rect, pixel));
     let map = map.zip(map_tiles.as_ref()).map(|((_, channel, focus), tiles)| BlurMap {
@@ -75,7 +87,8 @@ fn blurred(
         channel,
         focus,
     });
-    let out = blur.run(engine, &tiles(engine, rect, pixel), rect, picture, lens, map)?;
+    let tiles = tiles(engine, rect, pixel);
+    let out = blur.run_in(engine, &tiles, rect, picture, (lens, map), room)?;
     Some(Blurred::read(engine, rect, &out))
 }
 
@@ -162,7 +175,9 @@ fn a_fringe_with_nowhere_to_go_keeps_the_light() {
 /// lies from the focal distance, over 255. At 382.5 out a level one off the
 /// focus is 1.5 out — 3 × 3 — and the focus itself the pixel alone. Each
 /// channel names its own byte of the map's pixel, premultiplied (red 200 at
-/// half alpha is 100), and its luma Rec. 709's (74 of 40, 80, 120).
+/// half alpha is 100), and its luma Rec. 709's by the app's weights (74 of
+/// 40, 80, 120; 16 of 0, 5, 179 — 16.4998 — where weights summing to 2^16
+/// made 17).
 #[test]
 fn a_blur_map_names_each_pixel_level() {
     let spread = rgba(255, 255, 255, 28);
@@ -172,6 +187,7 @@ fn a_blur_map_names_each_pixel_level() {
         (MapChannel::Blue, rgba(40, 80, 120, 255), 120.0),
         (MapChannel::Alpha, rgba(40, 80, 120, 255), 255.0),
         (MapChannel::Luminance, rgba(40, 80, 120, 255), 74.0),
+        (MapChannel::Luminance, rgba(0, 5, 179, 255), 16.0),
         (MapChannel::Red, rgba(200, 0, 0, 128), 100.0),
     ];
     for (channel, word, level) in cases {
@@ -246,14 +262,19 @@ fn in_linear_light_the_mean_is_of_light() {
     let blur = whole(&Lens { light: linear, ..lens(1.5) }, on_black);
     assert_eq!(blur.at(65, 65), grey(94));
     assert_eq!(whole(&lens(1.5), on_black).at(65, 65), grey(28));
-    // The nearer of the curve's two bytes is stored: black among eight grey
-    // 38 is 1129 of light, on the midpoint of 35's 1101 and 36's 1156 — so
-    // 36 —, and among grey 17 it is 326, just under 15's and 16's — so 15.
+    // The byte sRGB's curve rounds the light to is stored, as the app's
+    // render target rounds it: black among eight grey 38 is 1129 of light,
+    // the least that stores as 36 (35.507), and among grey 17 it is 326, one
+    // under the least that stores as 16 (15.494) — so 15.
     for (shade, byte) in [(38, 36), (17, 15)] {
         let block = move |x, y| if (x, y) == (64, 64) { grey(0) } else { grey(shade) };
         let blur = whole(&Lens { light: linear, ..lens(1.5) }, block);
         assert_eq!(blur.at(64, 64), grey(byte), "among grey {shade}");
     }
+    // A lone grey 42 lends a neighbour 169 (8.496): 8 — where the byte of
+    // the nearest light was 9, 169 being 8's and 9's midpoint (159, 179).
+    let lone = |x, y| if (x, y) == (64, 64) { grey(42) } else { grey(0) };
+    assert_eq!(whole(&Lens { light: linear, ..lens(1.5) }, lone).at(65, 65), grey(8));
     let every = |x: i32, y: i32| {
         let (x, y) = (x as u32, y as u32);
         rgba(x & 255, 255 - (y & 255), (x + y) & 255, 255)
@@ -420,4 +441,57 @@ fn every_device_blurs_the_pinned_picture() {
         .flat_map(|word| word.to_le_bytes())
         .collect();
     assert_pinned("effects/lens-blur", &bytes);
+}
+
+// ---- Bands ----
+
+/// The ledger's pictures blurred in bands, a binding holding a third of
+/// their sums — so two bands at least —, are the pictures blurred whole,
+/// byte for byte (connection-round-checklist ④): the rows past a band its
+/// iris reaches are summed again as the whole sums them, on the picture
+/// and on a paper whose edge repeats, at a blur map's levels too.
+#[test]
+fn a_picture_in_bands_is_blurred_as_it_is_whole() {
+    let read: &dyn Fn(i32, i32) -> u32 = &|x, y| pattern(y, x);
+    for (picture, lens, map) in scenes() {
+        let map = map.map(|(channel, focus)| (read, channel, focus));
+        let whole = blurred(LEDGER_TILES, picture, &lens, pattern, map).expect("whole");
+        let room = sums_bytes(picture)[0] / 3;
+        let banded = blurred_in(LEDGER_TILES, picture, (&lens, map), pattern, room);
+        assert!(
+            banded.expect("bands").words == whole.words,
+            "{picture:?}: the bands put the whole's bytes"
+        );
+    }
+}
+
+/// A blur map is bound whole, as the tiles are: a map larger than its
+/// blur's tiles goes on a binding that holds it, the sums cut into bands to
+/// fit, and is refused on one a byte short of it.
+#[test]
+fn a_map_past_a_binding_is_refused() {
+    let Rig { engine, blur } = rig();
+    let picture_tiles = tiles(engine, ONE_TILE, pattern);
+    let map_tiles = tiles(engine, LEDGER_TILES, pattern);
+    let map = BlurMap {
+        tiles: &map_tiles,
+        channel: MapChannel::Alpha,
+        focus: Focus {
+            focal: 100.5,
+            inverts: false,
+        },
+    };
+    let bytes = map_tiles.size();
+    for (room, kept) in [(bytes, true), (bytes - 1, false)] {
+        let lens = (&lens(1.5), Some(map));
+        let out = blur.run_in(engine, &picture_tiles, ONE_TILE, ONE_TILE.pixels(), lens, room);
+        assert_eq!(out.is_some(), kept, "a binding of {room}");
+    }
+}
+
+/// A binding that holds no band of one row's sums refuses the blur.
+#[test]
+fn a_picture_no_band_of_one_row_fits_is_refused() {
+    let picture = ONE_TILE.pixels();
+    assert!(blurred_in(ONE_TILE, picture, (&lens(1.5), None), pattern, 0).is_none());
 }

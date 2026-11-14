@@ -6,26 +6,27 @@
 //! Windows (관제 11:11 ②). No C is asked: the pins hold where no engine is
 //! built.
 //!
-//! The FLAC's and the WAV's are the ledger's own — the C's samples, to the
-//! bit. The rest are this decoder's: what the C's computed differs within a
-//! decoder's rounding (`the_fixtures_decode_as_the_c_decodes_them`).
-//! ⚠️Those three are where a device could differ: symphonia makes its
-//! tables with the platform's own `sin` · `cos` · `powf`, and AAC's 4/3
-//! power table in `f32`. A pin the Linux or mac job does not hold is that,
-//! found — not a test to loosen.
+//! Every one is read from the ledger, which the Dart side's
+//! `a_sound_decodes_alike_on_every_device_test` reads too. The FLAC's and
+//! the WAV's are the C's samples, to the bit. The rest are this decoder's:
+//! what the C's computed differed within a decoder's rounding (tests.rs,
+//! ↩️held there until the connection round deleted the C, which moved the
+//! MP3's row from dr_mp3's samples to these and these into the ledger).
+//! ⚠️Those three were where a device differed, and the first CI run
+//! (42274856506) found it: symphonia made its tables and some of each
+//! frame's values with the device's own maths library — the AAC decoded
+//! alike on Linux x64 and Windows ARM64 and otherwise on Windows x64, where
+//! these were first pinned; the MP3 otherwise on the Mac. The vendored
+//! symphonia calls `libm` there instead (the workspace's `[patch]`, 유저
+//! native-to-rust-Q14), and these are its fingerprints, one for every
+//! device. A pin a job does not hold is a maths call still left to the
+//! device — not a test to loosen, nor to split by platform.
 
 use std::ffi::CString;
 use std::path::Path;
 
 use super::{TempFile, fixture};
 use crate::stream::window;
-
-/// The CRC-32 the app's ledger takes (`anicelCrc32*`).
-fn crc32(bytes: &[u8]) -> u32 {
-    !bytes.iter().fold(!0u32, |crc, &byte| {
-        (0..8).fold(crc ^ u32::from(byte), |crc, _| if crc & 1 != 0 { crc >> 1 ^ 0xEDB8_8320 } else { crc >> 1 })
-    })
-}
 
 /// The fingerprint of `path`'s whole decode, with which decoder read it and
 /// how many frames.
@@ -34,7 +35,7 @@ fn fingerprint(file: &Path) -> (i32, usize, String) {
     let path = CString::new(file.to_str().expect("a UTF-8 path")).expect("no NUL");
     let sound = window(&path, 0, length, false, 0, -1).expect("the fixture decodes");
     let bytes: Vec<u8> = sound.samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
-    (sound.format, sound.samples.len() / sound.channels as usize, format!("{:08x}", crc32(&bytes)))
+    (sound.format, sound.samples.len() / sound.channels as usize, ledger::fingerprint(&bytes))
 }
 
 /// Two channels of whole numbers at 48 kHz — a full-scale sawtooth on the
@@ -64,15 +65,17 @@ fn whole_number_wav() -> Vec<u8> {
 #[test]
 fn a_sound_decodes_alike_on_every_device() {
     use crate::{FORMAT_AAC, FORMAT_FLAC, FORMAT_MP3, FORMAT_VORBIS, FORMAT_WAV};
-    for (name, format, frames, pinned) in [
-        ("tone.flac", FORMAT_FLAC, 44_100, "e9616c02"),
-        ("tone.mp3", FORMAT_MP3, 44_975, "61e7d29e"),
-        ("tone.ogg", FORMAT_VORBIS, 22_050, "7ef2a0f4"),
-        ("tone.m4a", FORMAT_AAC, 22_050, "7383f2de"),
-        ("tone_with_video.mp4", FORMAT_AAC, 22_528, "76f94a7b"),
+    for (name, format, frames) in [
+        ("tone.flac", FORMAT_FLAC, 44_100),
+        ("tone.mp3", FORMAT_MP3, 44_975),
+        ("tone.ogg", FORMAT_VORBIS, 22_050),
+        ("tone.m4a", FORMAT_AAC, 22_050),
+        ("tone_with_video.mp4", FORMAT_AAC, 22_528),
     ] {
-        assert_eq!(fingerprint(&fixture(name)), (format, frames, pinned.to_string()), "{name}");
+        let pinned = ledger::pinned(&format!("audio/{name}-samples"));
+        assert_eq!(fingerprint(&fixture(name)), (format, frames, pinned), "{name}");
     }
     let wav = TempFile::new("whole-number.wav", &whole_number_wav());
-    assert_eq!(fingerprint(wav.path()), (FORMAT_WAV, 4800, "f3b4dddf".to_string()), "the whole-number WAV");
+    let pinned = ledger::pinned("audio/whole-number.wav-samples");
+    assert_eq!(fingerprint(wav.path()), (FORMAT_WAV, 4800, pinned), "the whole-number WAV");
 }

@@ -1,21 +1,20 @@
-import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data' show Uint8List;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
-import '../../core/rgba_premultiply.dart' show straightRgbaFor;
+import '../../core/keyed_notices.dart';
+import '../../core/once_a_microtask.dart';
 import '../../core/signed_memo.dart';
-import '../../core/sync_image_upload.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
-import '../../native/qa_native_engine.dart';
+import '../../native/app_gpu_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
@@ -24,6 +23,7 @@ import 'inbetween_mark_painter.dart' show inbetweenMarkRingWidth;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
+import 'timeline_grid_tile_picture.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
 import '../../core/lru.dart';
@@ -33,10 +33,11 @@ import '../../services/playback/let_go_wanted_latest.dart';
 ///
 /// A row's cells — its paper and the frame lines on it
 /// ([TimelineTileRasterSource.substrateIn]), plus the ink over them —
-/// rasterize ONCE per (row, span, look) through the native
-/// `qa_grid_raster_tile` and land here as a premultiplied [ui.Image]; the
-/// row painter then draws one `drawImageRect` per span instead of 2-3
-/// canvas calls per cell.
+/// are drawn ONCE per (row, span, look) on the app's GPU engine
+/// ([GpuGrid]) into a picture that stays there
+/// ([TimelineGridTilePicture]); the row painter then lays one per span on
+/// its grid's screen (`TimelineGridScreenSlot.laying`) instead of 2-3 canvas
+/// calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
 /// the foreground — the in-between marks inline, glyph text through the A8
@@ -51,9 +52,8 @@ import '../../services/playback/let_go_wanted_latest.dart';
 /// The classic Dart pass is the FALLBACK, for spans with no usable tile.
 ///
 /// Contracts:
-/// - Tiles are TRANSPARENT (background 0): accumulation from
-///   transparent black is premultiplied, the raw-upload contract, so a
-///   tile composites pixel-true over any panel background.
+/// - Tiles are TRANSPARENT (drawn over clear), so a tile laid
+///   composites pixel-true over any panel background.
 /// - The tile grid rides the SHARED window policy
 ///   ([timelineFrameWindowSpanFor]): tile i covers cells
 ///   [i*span, (i+1)*span) — scrolling reuses tiles bucket by bucket.
@@ -61,12 +61,17 @@ import '../../services/playback/let_go_wanted_latest.dart';
 ///   are immutable, an edit is a new instance — extents, the paper's
 ///   ground, the block-frame-lines switch and the fps, scheme, DPR): any
 ///   mismatch re-rasters, so edits invalidate exactly like `shouldRepaint`.
-/// - NO native engine (flutter_tester, unsupported platforms, load
-///   failure) = the store stands down entirely ([tileFor] returns null
-///   and requests nothing): rows keep the classic Dart paint, tests and
-///   packaging stay byte-for-byte on today's path.
+/// - NO open engine ([appGpuEngineOpen] — not yet, or never: a test that
+///   opens none) = the store stands down entirely ([tileFor] returns null
+///   and requests nothing): rows keep the classic Dart paint.
+/// - The engine LET GO, its device gone ([letTheGoneAppGpuEngineGo],
+///   🗣️gpu-canonical-store-Q11) = every tile goes with it ([clear]) and is
+///   drawn again on the next: a device lays nothing of another's.
 class TimelineGridTileStore {
-  TimelineGridTileStore._();
+  // For as long as the store is: the app's lifetime.
+  TimelineGridTileStore._() {
+    StandsOnTheAppsEngine(letGo: clear).start();
+  }
 
   static final TimelineGridTileStore instance = TimelineGridTileStore._();
 
@@ -84,14 +89,17 @@ class TimelineGridTileStore {
 
   /// The rows shown now, each with the listeners of the painters that show
   /// it: they come as those painters are attached and go as they are
-  /// detached ([noticesFor]), so a row nothing shows is not here.
-  final Map<String, List<VoidCallback>> _shown = <String, List<VoidCallback>>{};
+  /// detached ([noticesFor]), so a row nothing shows is not here — nor who
+  /// last asked for it ([_askedBy]).
+  late final KeyedNotices<String> _shown = KeyedNotices(
+    unheard: _askedBy.remove,
+  );
 
   /// Whether [row] is shown now and [painter] paints the live state — the
   /// only rows the store asks anything for of its own accord: a warm-up,
   /// or a request its queue once turned away.
   bool _showsLive(String row, TimelineTileRasterSource painter) =>
-      _shown.containsKey(row) && _answersLive(painter);
+      _shown.isHeard(row) && _answersLive(painter);
 
   /// Whether [painter]'s resolvers still describe its rows: always, for a
   /// source that follows no live cut; for one that does, while its world
@@ -105,9 +113,18 @@ class TimelineGridTileStore {
   final LinkedHashMap<String, _TileRequest> _starved =
       LinkedHashMap<String, _TileRequest>();
 
-  /// How many tiles it comes back to keeping ([_letGoWantedLatest]). A span
-  /// tile at 96px × a 28px row × DPR 2 ≈ 42KB; 768 covers dozens of rows ×
-  /// the whole scroll neighborhood before it lets any go.
+  /// How many tiles it comes back to keeping ([_letGoWantedLatest]): dozens
+  /// of rows × the whole scroll neighborhood before it lets any go. A tile
+  /// is a span wide ([timelineFrameWindowSpanFor]): 🔬S5 cut 352 (68 rows ×
+  /// 36 frames) at 1.5 held 267 (the timeline) · 426 (the X-sheet) tiles of
+  /// ~100 KB after a lap at 512px — at 96px it was past this, 804 · 811
+  /// tiles of 28 KB (11-07).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q6 (유저 2026-11-07, a: 「512 로
+  /// 넓히고 타일은 장수 상한 그대로」): a count, not bytes. ↩️A byte cap at
+  /// what the 96px tiles held at most (~23 MB at 1.5) keeps ~220 tiles of
+  /// 512px — fewer than the X-sheet's lap took, so it would bake again while
+  /// playing. The cost: up to ~82 MB at 1.5 · ~146 MB at 2 on a huge cut.
   static const int capacity = 768;
 
   /// How many tiles it comes back to keeping: [capacity] — lowered by a test
@@ -131,6 +148,12 @@ class TimelineGridTileStore {
   /// warm-up from starting ([_startWarming]).
   final Map<String, _Kept> _entries = <String, _Kept>{};
 
+  /// [_entries] by row, each row's by the frame its spans start on — what
+  /// [_standInFor] walks over a span's frames. Kept beside [_entries] where
+  /// a tile is kept and where it is let go, and nowhere else.
+  final Map<String, SplayTreeMap<int, _Kept>> _keptByRow =
+      <String, SplayTreeMap<int, _Kept>>{};
+
   /// What [_entries]' pictures weigh together.
   int _heldBytes = 0;
 
@@ -149,14 +172,12 @@ class TimelineGridTileStore {
     letGo: (_, turnedAway) => _starved[turnedAway.row] = turnedAway,
   );
 
-  bool _drainScheduled = false;
-
   /// 🗣️THE SPANS A ZOOM LEFT STRETCHED WAIT FOR IT TO STOP (유저 2026-10-30,
   /// zoom-step-lays-out-five-times-the-07-25-count-Q1: 「줌이 멈출 때까지
   /// 늘린 옛 타일만 보여 준다」): shown, each its old tile scaled, and rastered
   /// at the new cell extent once the zoom has stood still for
-  /// [debugZoomSettles] — once, however many steps it took within the
-  /// band a tile stretches across ([_stretches]); a step past it rasters
+  /// [zoomSettles] — once, however many steps it took within the
+  /// band a tile stretches across ([_standInFor]); a step past it rasters
   /// then, as before.
   ///
   /// ↩️Each step queued every shown span at its own extent, and the drain
@@ -174,7 +195,7 @@ class TimelineGridTileStore {
   /// storyboard's run along one axis at two zooms.
   final Map<String, double> _zooming = <String, double>{};
 
-  /// What ends the zoom [debugZoomSettles] after its latest step.
+  /// What ends the zoom [zoomSettles] after its latest step.
   Timer? _zoomStops;
 
   /// The cell extent each row last stood still at. A stretched span asked
@@ -186,11 +207,14 @@ class TimelineGridTileStore {
   /// the user's example, 「예: 0.15초」.
   static const Duration zoomSettles = Duration(milliseconds: 150);
 
-  /// [zoomSettles] — longer in a test that steps a zoom on a real clock,
-  /// where a loaded machine could stretch a step's gap past it.
-  /// ⚠️TEST ONLY.
+  /// How the stop is timed, [zoomSettles] after the zoom's latest step:
+  /// [Timer.new], or a timer a test fires by hand. ⚠️TEST ONLY.
+  ///
+  /// ↩️A test stretched the wait instead (`debugZoomSettles`, two seconds
+  /// or an hour) and stepped on a real clock, 0.2–1 s short of the stop — a
+  /// margin a loaded machine could outlast (타임라인/콘티 리뷰 2026-11-09 C).
   @visibleForTesting
-  Duration debugZoomSettles = zoomSettles;
+  Timer Function(Duration, void Function()) debugZoomTimer = Timer.new;
 
   /// The latest painter each row's paint asked through, with the device
   /// pixel ratio it asked at — whom a warm-up asks for its next page
@@ -212,10 +236,6 @@ class TimelineGridTileStore {
   /// spans there, held to that count, waited for a run that never came.
   final LinkedHashMap<String, _TileRequest> _ahead =
       LinkedHashMap<String, _TileRequest>();
-
-  /// Whether a paint's [warmAhead] has a warm-up's start waiting for the
-  /// paint phase to end.
-  bool _warmScheduled = false;
 
   /// The keys a warm-up has in flight, and of those the ones a paint asked
   /// for meanwhile — whose landing tells the row, as a shown one's does.
@@ -259,8 +279,13 @@ class TimelineGridTileStore {
   bool get debugBusy =>
       _drainsRunning > 0 ||
       _pending.isNotEmpty ||
-      _warmScheduled ||
+      _warmAsked.asked ||
       _stretched.isNotEmpty;
+
+  /// How many rows [_keptByRow] holds tiles of — not one whose every tile
+  /// was let go. ⚠️TEST ONLY.
+  @visibleForTesting
+  int get debugRowsKept => _keptByRow.length;
 
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
@@ -282,12 +307,14 @@ class TimelineGridTileStore {
   String _liveGeneration = '';
 
   /// Lets go of every tile — a project closing (F-505: its tiles keep its
-  /// session through the resolvers they were baked against), and tests.
+  /// session through the resolvers they were baked against), the engine
+  /// they were drawn on let go, and tests.
   void clear() {
     for (final kept in _entries.values) {
-      kept.entry.image.dispose();
+      kept.entry.picture.letGo();
     }
     _entries.clear();
+    _keptByRow.clear();
     _heldBytes = 0;
     _pending.clear();
     _starved.clear();
@@ -312,16 +339,10 @@ class TimelineGridTileStore {
     required String substrateGeneration,
     required LayerId layerId,
     required Axis axis,
-  }) => _RowNotices(this, _rowKey(substrateGeneration, layerId, axis));
+  }) => _shown.of(_rowKey(substrateGeneration, layerId, axis));
 
   static String _rowKey(String generation, LayerId layerId, Axis axis) =>
       '$generation|${layerId.value}:${axis.index}';
-
-  void _noticeLanding(String row) {
-    for (final listener in [...?_shown[row]]) {
-      listener();
-    }
-  }
 
   /// The substrate tile for [painter]'s span starting at [spanStartIndex]:
   /// the one it holds where that shows the span, one baked in this call
@@ -330,13 +351,13 @@ class TimelineGridTileStore {
   /// until its raster lands, and null for a cold span (the classic paint
   /// covers this frame). What is not baked here is scheduled off the paint
   /// phase — what a zoom stretched, once it stops.
-  ui.Image? tileFor({
+  TimelineGridTilePicture? tileFor({
     required TimelineTileRasterSource painter,
     required int spanStartIndex,
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) {
-    final engine = QaNativeEngine.instance;
+    final engine = appGpuEngineOpen.value;
     if (engine == null) {
       return null;
     }
@@ -367,7 +388,7 @@ class TimelineGridTileStore {
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _touched(key);
     if (entry != null && _shows(entry, asked)) {
-      return entry.image;
+      return entry.picture;
     }
     // 🚨F-314 (유저 2026-10-08: 「코마 바꿀때 +나 N이나 코마텍스트 이런 위젯이랑
     // 블록이랑 위치 어긋나는 프레임 1프레임정도 … 1프레임도 위치 안어긋나게」):
@@ -376,7 +397,8 @@ class TimelineGridTileStore {
     // that came a frame later showed the block a step behind its own grips:
     // 🔬every one of a drag's steps did (8 of 8 — comma, +, a move, a move
     // to another row; Surface, 10-25), each tile ~0.3ms of ops and ~70µs of
-    // raster through the door's picture ([pictureOf]), ~1.5 tiles a step.
+    // raster through the door's picture (`pictureOf`, the C raster's before
+    // grid-on-the-engine ⑤), ~1.5 tiles a step.
     // A word never baked before is the one wait left: its bake reads the
     // word back ([bakeWordCoverage]), which a paint cannot wait for.
     final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
@@ -403,13 +425,11 @@ class TimelineGridTileStore {
     // A span a warm-up still holds becomes a shown one's to raster first; one
     // a warm-up has in flight tells this row when it lands. One a zoom under
     // way stretched waits for it to stop ([_stretched]).
-    final stretched = stale == null && entry != null && _stretches(entry, asked)
-        ? entry
-        : null;
+    final standIn = stale == null ? _standInFor(asked) : null;
     if (!_inFlight.contains(key)) {
       _warming.remove(key);
       _ahead.remove(key);
-      if (stretched != null && _stoodAt[row] != painter.frameCellExtent) {
+      if (standIn != null && _stoodAt[row] != painter.frameCellExtent) {
         _waitForTheZoom(key, asked);
       } else {
         _enqueue(key, asked);
@@ -441,26 +461,98 @@ class TimelineGridTileStore {
     // cut" — the alias that turned a mid-drain grey from a flicker into
     // a resident.
     if (stale != null) {
-      return stale.image;
+      return stale.picture;
     }
-    return stretched?.image;
+    return switch (standIn) {
+      [final only]
+          when only.spanStartIndex == spanStartIndex &&
+              only.entry.spanEndIndexExclusive == spanEndIndexExclusive =>
+        only.entry.picture,
+      _ => null,
+    };
   }
 
-  /// Whether [entry] may stand in for [asked], scaled — its geometry but for
-  /// the cell extent, which a zoom moved by no more than twice.
+  /// The tiles [painter]'s row keeps over its span's frames, edge to edge,
+  /// which stand in for the span, scaled, while it is rastered
+  /// ([_standInFor]) — each with the frames it holds — or null where they
+  /// leave a frame of it bare. Asks for nothing: what [tileFor] answered
+  /// null for, the paint lays from these.
+  List<TileStandIn>? standInFor({
+    required TimelineTileRasterSource painter,
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) {
+    final parts = _standInFor(
+      _TileRequest(
+        row: _rowKey(painter.substrateGeneration, painter.layer.id, painter.axis),
+        painter: painter,
+        spanStartIndex: spanStartIndex,
+        spanEndIndexExclusive: spanEndIndexExclusive,
+        devicePixelRatio: devicePixelRatio,
+      ),
+    );
+    return parts == null
+        ? null
+        : [
+            for (final kept in parts)
+              (
+                picture: kept.entry.picture,
+                spanStartIndex: kept.spanStartIndex,
+                spanEndIndexExclusive: kept.entry.spanEndIndexExclusive,
+              ),
+          ];
+  }
+
+  /// What may stand in for [asked], scaled: the tiles its row keeps over
+  /// its frames, edge to edge, each baked as [asked] but for the cell
+  /// extent, which a zoom moved by no more than twice — null where they
+  /// leave a frame of it bare.
   ///
   /// R27 #10: a ZOOM step changes the geometry of every visible tile at
   /// once, and dropping all of them to the classic Dart pass is what
-  /// made zooming crawl. The tile covers the SAME frames either way and
+  /// made zooming crawl. A tile holds the SAME frames either way and
   /// the painter draws it into a `dst` rect built from the CURRENT
   /// geometry — so the stale raster simply scales, the way every pro
   /// timeline shows a stretched last frame while the real one renders.
   /// Bounded so an extreme jump (a 10× slider throw) still takes the
   /// crisp path rather than showing mush.
-  static bool _stretches(_TileEntry entry, _TileRequest asked) {
+  ///
+  /// ↩️2026-11-08: THE TILES OVER ITS FRAMES, not the one at its key. A
+  /// span is 512 px of cells ([timelineFrameWindowMinSpanPx]), so under
+  /// cells narrower than 128 px every step cuts the row into other spans
+  /// than it kept, and the one tile asked for by the span's own start and
+  /// end was never there: 🔬on S5's cut 352 the steps went crisp at once
+  /// and the old picture was not seen (검증/서피스 11-08 02:04, card
+  /// zoom-step-lays-out-five-times-the-07-25-count) — and 24 px to 20 px
+  /// laid neither of the two tiles kept
+  /// (`a_zoom_bakes_its_tiles_once_it_stops_test`).
+  List<_Kept>? _standInFor(_TileRequest asked) {
+    final kept = _keptByRow[asked.row];
+    if (kept == null) {
+      return null;
+    }
+    final parts = <_Kept>[];
+    var frame = asked.spanStartIndex;
+    while (frame < asked.spanEndIndexExclusive) {
+      final from = kept.lastKeyBefore(frame + 1);
+      final part = from == null ? null : kept[from]!;
+      if (part == null ||
+          part.entry.spanEndIndexExclusive <= frame ||
+          !_stretchesTo(part.entry, asked)) {
+        return null;
+      }
+      parts.add(part);
+      frame = part.entry.spanEndIndexExclusive;
+    }
+    return parts;
+  }
+
+  /// Whether [entry] was baked as [asked] is asked but for the cell extent,
+  /// which moved by no more than twice.
+  static bool _stretchesTo(_TileEntry entry, _TileRequest asked) {
     final painter = asked.painter;
     return entry.substrateGeneration == painter.substrateGeneration &&
-        entry.spanEndIndexExclusive == asked.spanEndIndexExclusive &&
         entry.devicePixelRatio == asked.devicePixelRatio &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
         _withinRescaleBand(entry.frameCellExtent, painter.frameCellExtent);
@@ -477,7 +569,7 @@ class TimelineGridTileStore {
     }
     _zooming[asked.row] = extent;
     _zoomStops?.cancel();
-    _zoomStops = Timer(debugZoomSettles, _zoomStopped);
+    _zoomStops = debugZoomTimer(zoomSettles, _zoomStopped);
   }
 
   /// The zoom stood still: each row it ran in stands at the extent its
@@ -511,7 +603,7 @@ class TimelineGridTileStore {
   /// asking draws — or null while a word it sets has never been baked.
   /// What was asked for it before is answered by it, and a raster of it in
   /// flight lands nothing ([_overtaken]).
-  ui.Image? _landNow(QaNativeEngine engine, _TileRequest asked) {
+  TimelineGridTilePicture? _landNow(GpuEngine engine, _TileRequest asked) {
     final rastered = _rasterNow(engine, asked);
     if (rastered == null) {
       return null;
@@ -525,7 +617,7 @@ class TimelineGridTileStore {
     }
     _keep(key, asked, _entryOf(asked, rastered));
     revision.value += 1;
-    return rastered.image;
+    return rastered.picture;
   }
 
   /// The tile at [key], made the newest in the cache: a span asked for —
@@ -547,7 +639,7 @@ class TimelineGridTileStore {
     final replaced = _entries.remove(key);
     if (replaced != null) {
       _heldBytes -= replaced.bytes;
-      replaced.entry.image.dispose();
+      replaced.entry.picture.letGo();
     }
     final kept = _Kept(
       landed,
@@ -556,6 +648,8 @@ class TimelineGridTileStore {
       lastUsed: ++_clock,
     );
     _entries[key] = kept;
+    final row = _keptByRow.putIfAbsent(request.row, SplayTreeMap.new);
+    row[request.spanStartIndex] = kept;
     _heldBytes += kept.bytes;
     _letGoWantedLatest();
   }
@@ -587,8 +681,13 @@ class TimelineGridTileStore {
       bytesOf: (_) => 1,
       letGo: (entry) {
         _entries.remove(entry.key);
+        final row = _keptByRow[entry.value.row];
+        row?.remove(entry.value.spanStartIndex);
+        if (row != null && row.isEmpty) {
+          _keptByRow.remove(entry.value.row);
+        }
         _heldBytes -= entry.value.bytes;
-        entry.value.entry.image.dispose();
+        entry.value.entry.picture.letGo();
       },
     );
   }
@@ -600,7 +699,7 @@ class TimelineGridTileStore {
   /// step, for a tile of a row nothing shows, or wherever nothing plays.
   /// [shownBy] holds each row's answers for one letting go.
   int? _wantedAt(_Kept kept, Map<String, _RowShows> shownBy) {
-    final asked = _shown.containsKey(kept.row) ? _askedBy[kept.row] : null;
+    final asked = _shown.isHeard(kept.row) ? _askedBy[kept.row] : null;
     if (asked == null) {
       return null;
     }
@@ -623,13 +722,12 @@ class TimelineGridTileStore {
 
   void _enqueue(String key, _TileRequest request) {
     _pending.keep(key, request);
-    if (!_drainScheduled) {
-      _drainScheduled = true;
-      // Off the paint phase; microtasks run before the next frame, so a
-      // tile can land within a frame or two.
-      scheduleMicrotask(_drain);
-    }
+    _drainAsked.ask();
   }
+
+  /// Off the paint phase; microtasks run before the next frame, so a tile
+  /// can land within a frame or two.
+  late final _drainAsked = OnceAMicrotask(() => unawaited(_drain()));
 
   /// How far a stale tile may be stretched before the classic pass is the
   /// better answer.
@@ -642,8 +740,7 @@ class TimelineGridTileStore {
   }
 
   Future<void> _drain() async {
-    _drainScheduled = false;
-    final engine = QaNativeEngine.instance;
+    final engine = appGpuEngineOpen.value;
     if (engine == null) {
       _pending.clear();
       return;
@@ -676,7 +773,7 @@ class TimelineGridTileStore {
   /// of a row for a tile it does not show is a frame drawn for nothing —
   /// unless a paint asked for it while it was in flight ([_askedWhileWarm]).
   Future<bool> _rasterAndLand(
-    QaNativeEngine engine,
+    GpuEngine engine,
     _TileRequest request,
     int epoch, {
     required bool warm,
@@ -705,12 +802,12 @@ class TimelineGridTileStore {
       }
     }
     if (epoch != _epoch) {
-      rastered?.image.dispose();
+      rastered?.picture.letGo();
       return false;
     }
     if (_overtaken.remove(key)) {
       _askedWhileWarm.remove(key);
-      rastered?.image.dispose();
+      rastered?.picture.letGo();
       return true;
     }
     if (rastered == null) {
@@ -722,7 +819,7 @@ class TimelineGridTileStore {
       // A row whose tile lands asks again for itself when it repaints —
       // coming back to it could only find an older painter.
       _starved.remove(request.row);
-      _noticeLanding(request.row);
+      _shown.notice([request.row]);
     }
     return true;
   }
@@ -760,7 +857,7 @@ class TimelineGridTileStore {
       unnamedMark: painter.unnamedMark,
       framesPerSecond: painter.framesPerSecond,
       shown: painter.shown,
-      image: rastered.image,
+      picture: rastered.picture,
       ink: emitted.ink,
     );
   }
@@ -791,7 +888,7 @@ class TimelineGridTileStore {
   /// ([TimelineTileRasterSource.nextPage]) — the run's end it reads is the
   /// cut's drawn length, worked out again at each asking.
   void warmTheNextPage({int tiles = 6}) {
-    if (QaNativeEngine.instance == null) {
+    if (appGpuEngineOpen.value == null) {
       return;
     }
     final pages = <TimelineNextPage? Function(), TimelineNextPage?>{};
@@ -840,7 +937,7 @@ class TimelineGridTileStore {
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) {
-    if (QaNativeEngine.instance == null) {
+    if (appGpuEngineOpen.value == null) {
       return;
     }
     _warm(
@@ -857,16 +954,13 @@ class TimelineGridTileStore {
         devicePixelRatio: devicePixelRatio,
       ),
     );
-    if (_ahead.isEmpty || _warmScheduled) {
-      return;
+    if (_ahead.isNotEmpty) {
+      _warmAsked.ask();
     }
-    _warmScheduled = true;
-    // Off the paint phase, as a shown span's drain is ([_enqueue]).
-    scheduleMicrotask(() {
-      _warmScheduled = false;
-      _startWarming();
-    });
   }
+
+  /// Off the paint phase, as a shown span's drain is ([_enqueue]).
+  late final _warmAsked = OnceAMicrotask(_startWarming);
 
   /// Queues [request] in [queue] unless a tile shows its span already or
   /// it is on its way. One the next page's warm-up holds moves to [_ahead]
@@ -894,7 +988,7 @@ class TimelineGridTileStore {
   /// Starts a warm-up when no raster is under way and it has something to
   /// warm — what is on the screen is rastered first.
   void _startWarming({int pageTiles = 0}) {
-    final engine = QaNativeEngine.instance;
+    final engine = appGpuEngineOpen.value;
     if (engine != null &&
         _drainsRunning == 0 &&
         _warmQueue(pageTiles) != null) {
@@ -916,7 +1010,7 @@ class TimelineGridTileStore {
     return pageTiles > 0 && _warming.isNotEmpty ? _warming : null;
   }
 
-  Future<void> _drainWarm(QaNativeEngine engine, int pageTiles) async {
+  Future<void> _drainWarm(GpuEngine engine, int pageTiles) async {
     final epoch = _epoch;
     _drainsRunning += 1;
     var pagesLeft = pageTiles;
@@ -1005,7 +1099,7 @@ class TimelineGridTileStore {
       // A span the ask bakes in itself lands there ([_landNow]) — with no
       // paint under way to draw it, so the row hears of it.
       if (revision.value != landings) {
-        _noticeLanding(row);
+        _shown.notice([row]);
       }
       for (final (start, end) in ahead) {
         _warm(
@@ -1060,10 +1154,11 @@ class TimelineGridTileStore {
     _GlyphBake at,
   ) {
     final (:dpr, :fit, :tightening) = at;
-    // COVERAGE bake: white text on transparent, alpha channel out — the
-    // GLYPH op multiplies the per-cell ink's alpha by it. Rasterised big and
-    // shrunk where it is small ([bakeWordCoverage], the bake a screen draws
-    // a narrowed word from too, F-224).
+    // COVERAGE bake: the letters' ink alone — the GLYPH op multiplies the
+    // per-cell ink's alpha by it. Rasterised big and shrunk where it is
+    // small ([bakeWordCoverage], the bake a screen draws a narrowed word
+    // from too, F-224). Laid out white whatever the cell's ink, so every
+    // ink shares one layout ([laidOutGlyph] keys on the colour).
     //
     // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
     // parameter, so the shrink and the narrowing happen in the bake, before
@@ -1080,12 +1175,12 @@ class TimelineGridTileStore {
     );
   }
 
-  /// Rasters the request and returns the image TOGETHER WITH the content
+  /// Rasters the request and returns the picture TOGETHER WITH the content
   /// revision the raster's answers described and the substrate it laid
   /// down — both sampled in the same synchronous block as the substrate
   /// emit, so pixels, stamp and substrate can never disagree.
   Future<_Rastered?> _raster(
-    QaNativeEngine engine,
+    GpuEngine engine,
     _TileRequest request,
   ) async {
     final emitted = _emit(request);
@@ -1093,18 +1188,29 @@ class TimelineGridTileStore {
       return null;
     }
     final words = await _bakedWords(emitted.ink.glyphs);
-    final pixels = _pixelsOf(engine, request, emitted, words);
-    if (pixels == null) {
+    if (debugBeforeDrawing case final wait?) {
+      await wait();
+    }
+    // Let go while its words were baked: the pass kept by now is the next
+    // engine's, and draws nothing on this one — nor is it compiled here,
+    // on the thread the app's frames are built on.
+    if (!identical(engine, appGpuEngineOpen.value)) {
       return null;
     }
-    final image = await _upload(pixels, emitted.tileWidth, emitted.tileHeight);
-    return (image: image, emitted: emitted);
+    final picture = _drawn(engine, request, emitted, words);
+    return picture == null ? null : (picture: picture, emitted: emitted);
   }
 
-  /// [_raster] within the call, the picture made through the door
-  /// ([pictureOf]) — or null while a word the span sets has never been
-  /// baked.
-  _Rastered? _rasterNow(QaNativeEngine engine, _TileRequest request) {
+  /// What a raster off the paint waits on before it draws: a test counts
+  /// them by it, or holds one in flight. ↩️It was the upload such a raster
+  /// awaited (test/helpers/awaited_uploads.dart); one drawn on the engine
+  /// awaits none.
+  @visibleForTesting
+  Future<void> Function()? debugBeforeDrawing;
+
+  /// [_raster] within the call — or null while a word the span sets has
+  /// never been baked.
+  _Rastered? _rasterNow(GpuEngine engine, _TileRequest request) {
     final emitted = _emit(request);
     if (emitted == null) {
       return null;
@@ -1113,16 +1219,8 @@ class TimelineGridTileStore {
     if (words == null) {
       return null;
     }
-    final pixels = _pixelsOf(engine, request, emitted, words);
-    if (pixels == null) {
-      return null;
-    }
-    return (
-      image: pictureOf(
-        _TileBytes(pixels, emitted.tileWidth, emitted.tileHeight),
-      ),
-      emitted: emitted,
-    );
+    final picture = _drawn(engine, request, emitted, words);
+    return picture == null ? null : (picture: picture, emitted: emitted);
   }
 
   /// The request's span laid as ops up to its words ([_setWords]) — its
@@ -1187,10 +1285,10 @@ class TimelineGridTileStore {
     );
   }
 
-  /// [emitted]'s span with [words] set over it ([_setWords]), rastered by
-  /// [engine] into the tile's premultiplied bytes — null where it refused.
-  static Uint8List? _pixelsOf(
-    QaNativeEngine engine,
+  /// [emitted]'s span with [words] set over it ([_setWords]), drawn on
+  /// [engine] into a tile — null where the pass refused it.
+  TimelineGridTilePicture? _drawn(
+    GpuEngine engine,
     _TileRequest request,
     _Emitted emitted,
     Map<String, BakedWordCoverage> words,
@@ -1202,22 +1300,19 @@ class TimelineGridTileStore {
       words,
       devicePixelRatio: request.devicePixelRatio,
     );
-    final pixels = Uint8List(emitted.tileWidth * emitted.tileHeight * 4);
-    final result = engine.gridRasterTileBytes(
-      pixels: pixels,
-      tileWidth: emitted.tileWidth,
-      tileHeight: emitted.tileHeight,
-      backgroundRgba: 0,
-      ops: writer.build(),
-      atlas: atlas?.alpha,
-      atlasWidth: atlas?.width ?? 0,
-      atlasHeight: atlas?.height ?? 0,
+    final picture = GpuGridPicture(
+      engine,
+      emitted.tileWidth,
+      emitted.tileHeight,
     );
-    if (result != 0) {
-      assert(false, 'qa_grid_raster_tile failed: $result');
+    try {
+      appGpuGridKernels.kept.tiles.draw(picture, writer.build(), atlas: atlas);
+    } on StateError catch (error) {
+      picture.free();
+      assert(false, 'the grid pass refused a tile: $error');
       return null;
     }
-    return pixels;
+    return TimelineGridTilePicture(picture);
   }
 
   /// The ink [painter]'s span [spanStartIndex, spanEndIndexExclusive) bakes
@@ -1393,7 +1488,7 @@ class TimelineGridTileStore {
 
   /// Writes the GLYPH ops of the [glyphs] [baked] holds — returns the
   /// transient atlas those ops reference, or null (no word to set).
-  static _TileAtlas? _setWords(
+  static GpuGridAtlas? _setWords(
     TimelineGridTileOpWriter writer,
     List<_TileGlyph> glyphs,
     Map<String, BakedWordCoverage> baked, {
@@ -1447,15 +1542,7 @@ class TimelineGridTileStore {
         cell.rgba,
       );
     }
-    return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
-  }
-
-  Future<ui.Image> _upload(
-    Uint8List pixels,
-    int tileWidth,
-    int tileHeight,
-  ) async {
-    return uploadRawRgba(pixels, width: tileWidth, height: tileHeight);
+    return (alpha: atlas, width: atlasWidth, height: atlasHeight);
   }
 }
 
@@ -1481,37 +1568,17 @@ class _TileRequest {
   static String keyOf(String row, int spanStartIndex) => '$row:$spanStartIndex';
 }
 
-/// A row's side of the store's landing notices ([TimelineGridTileStore.
-/// noticesFor]): its painter adds a listener when it is attached and
-/// removes it when it is detached, so the store holds a row only while
-/// something shows it.
-class _RowNotices implements Listenable {
-  const _RowNotices(this._store, this._row);
-
-  final TimelineGridTileStore _store;
-  final String _row;
-
-  @override
-  void addListener(VoidCallback listener) =>
-      _store._shown.putIfAbsent(_row, () => <VoidCallback>[]).add(listener);
-
-  @override
-  void removeListener(VoidCallback listener) {
-    final listeners = _store._shown[_row];
-    if (listeners == null) {
-      return;
-    }
-    listeners.remove(listener);
-    if (listeners.isEmpty) {
-      _store._shown.remove(_row);
-      _store._askedBy.remove(_row);
-    }
-  }
-}
-
 /// A word a tile writes: its text and type, its ink, its bake key, how far it
 /// is narrowed, and where it lands in the tile (logical px from the span's
 /// start).
+/// A kept tile that stands in for part of a span while the span is rastered
+/// ([TimelineGridTileStore.standInFor]), with the frames it holds.
+typedef TileStandIn = ({
+  TimelineGridTilePicture picture,
+  int spanStartIndex,
+  int spanEndIndexExclusive,
+});
+
 typedef _TileGlyph = ({
   String text,
   TextStyle style,
@@ -1539,30 +1606,7 @@ typedef _Emitted = ({
 });
 
 /// What a raster hands its landing: the picture, and what it shows.
-typedef _Rastered = ({ui.Image image, _Emitted emitted});
-
-/// A tile's pixels as the door ([pictureOf]) reads them: the raster's own
-/// premultiplied bytes, and on the road that draws them the straight bytes
-/// that premultiply back to them ([straightRgbaFor]).
-class _TileBytes implements PictureBytes {
-  const _TileBytes(this._premultiplied, this.width, this.height);
-
-  final Uint8List _premultiplied;
-
-  @override
-  final int width;
-
-  @override
-  final int height;
-
-  @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
-      use(_premultiplied);
-
-  @override
-  T readStraight<T>(T Function(Uint8List straight) use) =>
-      use(straightRgbaFor(_premultiplied));
-}
+typedef _Rastered = ({TimelineGridTilePicture picture, _Emitted emitted});
 
 /// The ink a tile bakes over its substrate ([TimelineGridTileStore._inkOf]):
 /// the ops its marks write, and the words it sets.
@@ -1584,7 +1628,7 @@ class _Kept {
     required this.row,
     required this.spanStartIndex,
     required this.lastUsed,
-  }) : bytes = estimatedImageBytes(entry.image.width, entry.image.height);
+  }) : bytes = estimatedImageBytes(entry.picture.width, entry.picture.height);
 
   final _TileEntry entry;
   final String row;
@@ -1614,7 +1658,7 @@ class _TileEntry {
     required this.unnamedMark,
     required this.framesPerSecond,
     required this.shown,
-    required this.image,
+    required this.picture,
     required this.ink,
   });
 
@@ -1686,7 +1730,7 @@ class _TileEntry {
   /// (I-129).
   final bool shown;
 
-  final ui.Image image;
+  final TimelineGridTilePicture picture;
 
   /// The ink `_raster` baked over [substrate] — read in the same pass.
   final _TileInk ink;
@@ -1852,20 +1896,6 @@ final SignedMemo<Layer, int?> _agreements = SignedMemo(
   same: identical,
 );
 
-/// The per-raster transient atlas (a vertical stack of the span's
-/// distinct glyphs) the GLYPH ops reference.
-class _TileAtlas {
-  const _TileAtlas({
-    required this.width,
-    required this.height,
-    required this.alpha,
-  });
-
-  final int width;
-  final int height;
-  final Uint8List alpha;
-}
-
 /// Emits the SUBSTRATE op stream for [painter]'s cells in
 /// [spanStartIndex, spanEndIndexExclusive): the paper and the frame lines
 /// across it — asked of the painter itself
@@ -1900,7 +1930,6 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
   required int spanEndIndexExclusive,
   required double devicePixelRatio,
 }) {
-  final horizontal = painter.axis == Axis.horizontal;
   final toLocal = offsetAlong(
     painter.axis,
     along: -startAlong(painter.axis, painter.cellRectFor(spanStartIndex)),
@@ -1915,9 +1944,14 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
   for (final piece in substrate.paper) {
     final local = piece.rect.shift(toLocal);
     final corner = _cornerOf(piece.radius);
-    // ⚡The field is paid for at the run's two ends; the rest is plain
-    // fills ([TimelineGridTileOpWriter.runFill] — the same bytes).
-    writer.runFill(
+    // ⚡One field op a piece: the engine's pass asks every op at every
+    // pixel of the tile, so a piece split into more ops costs more.
+    // ↩️It was split into corner pieces and boxes while the C rastered the
+    // tiles, whose cost was the field's square root at every pixel of the
+    // paper (block frame lines, 09-24); the split's Dart field was a copy
+    // of the pass's own, an alpha apart on the engine (grid-on-the-engine
+    // ⑥).
+    writer.rrectFill(
       local.left * devicePixelRatio,
       local.top * devicePixelRatio,
       local.width * devicePixelRatio,
@@ -1925,16 +1959,17 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
       corner.radius * devicePixelRatio,
       corner.mask,
       timelineGridPackRgba(piece.color),
-      alongX: horizontal,
     );
   }
   for (final line in substrate.lines) {
     final local = line.rect.shift(toLocal);
-    writer.boxFill(
+    writer.rrectFill(
       local.left * devicePixelRatio,
       local.top * devicePixelRatio,
       local.width * devicePixelRatio,
       local.height * devicePixelRatio,
+      0,
+      0,
       timelineGridPackRgba(line.color),
     );
   }

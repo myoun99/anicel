@@ -31,8 +31,8 @@ import 'package:anicel/src/services/brush_dab_share.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
+import '../helpers/surface_rgba_in_place.dart';
 
 BrushDab _dab(
   double x,
@@ -105,7 +105,7 @@ double _pile(List<BrushDab> dabs) {
   for (var y = 100; y < 300; y += 1) {
     strongest = math.max(
       strongest,
-      (surfacePixelRgba(surface, 200, y) ?? 0) & 0xFF,
+      (surfaceRgbaInPlace(surface, 200, y) ?? 0) & 0xFF,
     );
   }
   return strongest / 255.0;
@@ -364,8 +364,10 @@ void main() {
     // Both kernels read the table Dart built; the guard here is only that a
     // rebuilt table (after the cache let it go) is the same one.
     final first = Float64List.fromList(eveningTableFor(0.3));
-    for (var share = 1; share < 200; share += 1) {
-      eveningTableFor(share / shareSteps);
+    // More shares than the tables hold at once — none a dab lays, so they
+    // are over and above whatever this file has asked for.
+    for (var share = 1; share <= shareSteps + 1; share += 1) {
+      eveningTableFor(share / (shareSteps + 2));
     }
     expect(eveningTableFor(0.3), first);
   });

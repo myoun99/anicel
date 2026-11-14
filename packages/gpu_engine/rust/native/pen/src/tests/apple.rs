@@ -1,9 +1,8 @@
 //! Apple's readers on objects that answer as UITouch and NSEvent do, read
-//! back through the ledger's exports, on answers worked out here: the C
-//! (qa_pen_ledger_apple.m) is compiled into the app alone. The iPad's reader
-//! is reached as the Runner reaches it, by the class's name — nothing here
-//! registers it. The event monitor itself needs a running AppKit app, which
-//! no test has.
+//! back through the ledger's exports, on answers worked out here. The iPad's
+//! reader is reached as the Runner reaches it, by the class's name — nothing
+//! here registers it. The event monitor itself needs a running AppKit app,
+//! which no test has.
 
 use std::cell::Cell;
 

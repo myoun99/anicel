@@ -71,6 +71,7 @@ void main() {
                     const ValueKey<String>('storyboard-timeline-scroll-content'),
                   ),
                 )
+                .parent! // its grid's screen host
                 .parent!
             as RenderRepaintBoundary;
     final ring = find.byKey(const ValueKey<String>('storyboard-standing-cell'));

@@ -1,0 +1,186 @@
+//! The OS stage: what no bundled decoder reads, read by the OS's own codec
+//! stack — held as `ONLY_THE_OS` says. ↩️Until the connection round deleted
+//! the C (connection-round-checklist H, 2026-11-08) it was held to the
+//! C's, to the bit: on Windows both were Media Foundation's in the one
+//! process.
+//!
+//! The fixtures are Media Foundation's own encodes of a tone, written on
+//! this machine's encoder (2026-11-07) — each channel its own pitch with a
+//! 9 kHz high over it, for SBR to carry: `tone_aac_22khz` AAC-LC at
+//! 22,050 Hz, `tone_he_aac` HE-AAC (profile 0x2C) at 48 kHz,
+//! `tone_he_aac_v2` HE-AAC v2 (0x30, parametric stereo) at 44.1 kHz,
+//! `tone_5_1` AAC-LC in six channels at 48 kHz, `tone.wma` WMA 8 at
+//! 44.1 kHz.
+
+use super::{
+    Span, TempFile, between_junk, decode, expect_left_to_the_os, expect_stream_of, expect_window_of, fixture, framed,
+    stream_in_pieces,
+};
+use crate::{FORMAT_OS, FORMAT_UNKNOWN};
+
+/// Where what these tests hold was measured — Media Foundation's answers.
+/// ⚠️Elsewhere a fixture is held only to be no bundled decoder's
+/// (`expect_left_to_the_os`): a device's MediaCodec reads what it reads, and
+/// there is no Android run of these tests; on the Mac job AudioToolbox
+/// reads them, unmeasured — ↩️held to the C's, read through the same
+/// AudioToolbox in the one process, until the connection round deleted the
+/// C (connection-round-checklist H, 2026-11-08).
+const MEASURED: bool = cfg!(windows);
+
+/// What only the OS reads: the fixture, and the channels and rate its
+/// decoder hands back.
+///
+/// ⛔ITS SAMPLES — AND SO HOW MANY — ARE NOT HELD ONCE THE C IS GONE (유저
+/// connection-round-checklist-Q14, 2026-11-07: 「OS 가 푼 샘플은 얼리지
+/// 않는다 — 우리 코드가 정하는 것만 C 없이 남긴다」): they are the OS
+/// decoder's own, and an update to it would turn the test red with no
+/// change of ours. Held without the C: the stage, the channels, the rate,
+/// a length floor and a tone; what this crate decides of it — where it
+/// starts, a window, a stream, a carried span — against its own whole
+/// decode.
+///
+/// ⚠️The AAC-LC of 22,050 Hz comes back at 44,100: Media Foundation's
+/// decoder takes a core of 24 kHz or less to be half of an HE-AAC stream
+/// that may not say so (measured 2026-11-07) — the reason such a core is
+/// left to it (`bundled::core_may_hide_sbr`).
+const ONLY_THE_OS: [(&str, i32, i32); 5] = [
+    ("tone_aac_22khz.m4a", 2, 44_100),
+    ("tone_he_aac.m4a", 2, 48_000),
+    ("tone_he_aac_v2.m4a", 2, 44_100),
+    ("tone_5_1.m4a", 6, 48_000),
+    ("tone.wma", 2, 44_100),
+];
+
+#[test]
+fn what_no_bundled_decoder_reads_the_os_stage_reads() {
+    for (name, channels, rate) in ONLY_THE_OS {
+        let path = fixture(name);
+        let span = Span::whole(&path);
+        if !MEASURED {
+            expect_left_to_the_os(name, &span);
+            continue;
+        }
+        let sound = decode(&span, 0, -1);
+        assert_eq!((sound.format, sound.channels, sound.rate), (FORMAT_OS, channels, rate), "{name}");
+        assert!(sound.samples.len() >= (rate / 4) as usize * channels as usize, "{name}: the sound, not a scrap of it");
+        assert!(sound.samples.iter().any(|&s| s.abs() > 0.05), "{name}: the tone, not silence");
+    }
+}
+
+#[test]
+fn a_carried_sound_reads_through_the_os_stage_as_its_file_does() {
+    // The span arithmetic in the reader it is there for: between junk, as a
+    // carried sound sits in the project file, and framed as the save frames
+    // it — blocks small enough that the reader crosses many.
+    let path = fixture("tone_he_aac.m4a");
+    let bytes = std::fs::read(&path).expect("the fixture");
+    let whole = decode(&Span::whole(&path), 0, -1);
+    let (carried, offset) = between_junk("carried.m4a", &bytes);
+    let blob = framed(&bytes, 1000);
+    let (framed_file, framed_offset) = between_junk("framed.m4a", &blob);
+    for (what, span) in [
+        ("between junk", Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false }),
+        ("framed", Span { path: framed_file.path(), offset: framed_offset, length: blob.len() as i64, framed: true }),
+    ] {
+        if !MEASURED {
+            expect_left_to_the_os(what, &span);
+            continue;
+        }
+        let sound = decode(&span, 0, -1);
+        assert_eq!(sound.format, FORMAT_OS, "{what}");
+        assert!(sound.samples.iter().map(|s| s.to_bits()).eq(whole.samples.iter().map(|s| s.to_bits())), "{what}");
+    }
+}
+
+#[test]
+fn what_the_os_reads_starts_where_the_movie_says() {
+    // Media Foundation takes nothing off the front, so where the sound
+    // starts is the movie's to say, as for every sound read here
+    // (`start::container_start`). The fixtures are Media Foundation's and
+    // say nothing, which leaves their sound where it is; the same movie
+    // without the writer's mark says nothing either, and takes AAC's
+    // standard 1,024 off — as the C's did.
+    let path = fixture("tone_he_aac.m4a");
+    let mut bytes = std::fs::read(&path).expect("the fixture");
+    assert_eq!((&bytes[28..32], bytes[32]), (&b"uuid"[..], 0x5C), "the mark, straight after the file type");
+    bytes[32] ^= 1;
+    let unmarked = TempFile::new("unmarked.m4a", &bytes);
+    let span = Span::whole(unmarked.path());
+    if !MEASURED {
+        expect_left_to_the_os("unmarked", &span);
+        return;
+    }
+    let marked = decode(&Span::whole(&path), 0, -1);
+    let sound = decode(&span, 0, -1);
+    let lead = 1024 * sound.channels as usize;
+    assert_eq!(sound.samples.len(), marked.samples.len() - lead);
+    assert!(sound.samples.iter().map(|s| s.to_bits()).eq(marked.samples[lead..].iter().map(|s| s.to_bits())));
+}
+
+#[test]
+fn a_window_of_what_the_os_reads_holds_the_frames_a_whole_decode_has_there() {
+    if !MEASURED {
+        return;
+    }
+    let path = fixture("tone_5_1.m4a");
+    let span = Span::whole(&path);
+    let whole = decode(&span, 0, -1);
+    let frames = (whole.samples.len() / 6) as i64;
+    for (first, count) in [(0, 0), (0, 1), (1000, 2000), (frames - 5, 10), (frames, 3), (frames + 100, 10)] {
+        let what = format!("tone_5_1.m4a from {first}, {count}");
+        expect_window_of(&what, &decode(&span, first, count), &whole, first, count);
+    }
+}
+
+#[test]
+fn a_stream_of_what_the_os_reads_hands_back_its_whole_decode() {
+    if !MEASURED {
+        return;
+    }
+    let path = fixture("tone.wma");
+    let whole = decode(&Span::whole(&path), 0, -1);
+    assert_eq!(whole.format, FORMAT_OS);
+    for piece in [1, 1000, 50_000] {
+        let streamed = stream_in_pieces(&Span::whole(&path), piece);
+        expect_stream_of(&format!("{piece} frames at a time"), &streamed, &whole, piece);
+    }
+}
+
+#[test]
+fn a_file_the_os_does_not_read_either_is_no_sound() {
+    // The fixture cut short of its movie box: nothing reads it, the OS
+    // stage included — and it says so rather than hand back a scrap.
+    let bytes = std::fs::read(fixture("tone_he_aac.m4a")).expect("the fixture");
+    let cut = TempFile::new("cut.m4a", &bytes[..bytes.len() / 3]);
+    let span = Span::whole(cut.path());
+    if !MEASURED {
+        expect_left_to_the_os("cut short", &span);
+        return;
+    }
+    let sound = decode(&span, 0, -1);
+    assert_eq!((sound.format, sound.samples.len()), (FORMAT_UNKNOWN, 0));
+}
+
+// A container whose start is AudioToolbox's to say — a CAF of AAC, its
+// packet table the encoder's priming: AudioToolbox takes it off itself and
+// says it did (`Start::taken`), where a movie's start is the crate's. ↩️Held
+// to the C's, read through the same AudioToolbox in the one process, until
+// the connection round deleted the C (connection-round-checklist H,
+// 2026-11-08).
+// ⚠️Made by the test on the Mac, by the `afconvert` every Mac has (관제
+// 2026-11-07: no CAF in the repo, nothing to download); nowhere else.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_caf_audio_toolbox_trims_itself_is_read() {
+    let caf = TempFile::new("tone.caf", &[]);
+    let made = std::process::Command::new("afconvert")
+        .args(["-f", "caff", "-d", "aac"])
+        .arg(fixture("tone.m4a"))
+        .arg(caf.path())
+        .status()
+        .expect("afconvert, which every Mac has");
+    assert!(made.success(), "afconvert made the CAF");
+    let sound = decode(&Span::whole(caf.path()), 0, -1);
+    assert_eq!(sound.format, FORMAT_OS, "no bundled decoder reads a CAF");
+    assert!(sound.samples.iter().any(|&s| s.abs() > 0.05), "the tone, not silence");
+}

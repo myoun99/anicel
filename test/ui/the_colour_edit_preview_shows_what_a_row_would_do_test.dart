@@ -14,7 +14,6 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
-import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart'
     show CelPixelVerb;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
@@ -28,6 +27,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
 import '../helpers/wait_window.dart' show windowBehind;
+import '../helpers/surface_rgba_in_place.dart';
 
 /// 🗣️I-164 (유저 2026-11-05): 「색변환의 수치 지정해서 하는 버튼들. 삭제나
 /// 남기기나 2치화. 그런거는 프리뷰버튼 두도록. 그러고 수치 막대는 최대한
@@ -136,7 +136,7 @@ void main() {
   }
 
   int alphaOf(BitmapSurface surface) =>
-      (surfacePixelRgba(surface, 1, 1) ?? 0) & 0xFF;
+      (surfaceRgbaInPlace(surface, 1, 1) ?? 0) & 0xFF;
 
   int storedAlpha(EditorSessionManager session, LayerId row) => alphaOf(
     session.pixelEditing.coordinator!.currentSurfaceOf(celOf(session, row)),

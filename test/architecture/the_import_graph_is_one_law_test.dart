@@ -53,6 +53,46 @@ void main() {
       );
     });
 
+    test('a package the app depends on by path is a file of its own lib',
+        () {
+      expect(
+        importsOf('lib/a.dart', "import 'package:gpu_engine/gpu_engine.dart';"),
+        {'packages/gpu_engine/lib/gpu_engine.dart'},
+      );
+      // A file of the package naming its own by package: — none does yet
+      // (보드/인프라 21:54) — reaches the same file.
+      expect(
+        importsOf(
+          'packages/gpu_engine/lib/src/x.dart',
+          "import 'package:gpu_engine/gpu_engine.dart';",
+        ),
+        {'packages/gpu_engine/lib/gpu_engine.dart'},
+      );
+      expect(
+        pathPackageOf('packages/gpu_engine/lib/src/x.dart'),
+        'packages/gpu_engine/',
+      );
+      expect(pathPackageOf('packages/gpu_engine/hook/build.dart'), isNull);
+    });
+
+    // The list is pubspec.yaml's, written twice: once here, once in the
+    // roots the graph is walked from.
+    test('the packages followed are the ones pubspec.yaml names by path, '
+        'each walked', () {
+      final byPath = {
+        for (final match in RegExp(
+          r'^\s+path: packages/(\w+)\s*$',
+          multiLine: true,
+        ).allMatches(File('pubspec.yaml').readAsStringSync()))
+          match[1]!,
+      };
+      expect(byPath, isNotEmpty);
+      expect(kPathPackages.toSet(), byPath);
+      for (final package in kPathPackages) {
+        expect(kGraphRoots, contains('packages/$package/lib'));
+      }
+    });
+
     test('export and part are edges, not just import', () {
       expect(
         importsOf('lib/a.dart', "export 'b.dart';\npart 'c.dart';"),
@@ -174,6 +214,66 @@ void main() {
         'lib/b.dart': {'lib/a.dart'},
       };
       expect(closureOf('lib/a.dart', cyclic), {'lib/a.dart', 'lib/b.dart'});
+    });
+  });
+
+  // A package's bindings are built from its folders no import names: a test
+  // that reaches one reads the package whole (2026-11-07).
+  group('what a package binds', () {
+    Reach reach(String deep) => Reaches(
+      {
+        'test/a_test.dart': {'packages/gpu_engine/lib/a.dart'},
+        'packages/gpu_engine/lib/a.dart': {
+          'packages/gpu_engine/lib/src/b.dart',
+        },
+      },
+      (path) => path.endsWith('b.dart') ? deep : '',
+      within: 1,
+    ).of('test/a_test.dart');
+
+    test('a file of it that binds native code, however deep in it, reads '
+        'the whole package', () {
+      const package = {'packages/gpu_engine/'};
+      expect(reach("@Native<Void Function()>(symbol: 'x')").prefixes, package);
+      expect(reach("DynamicLibrary.open('x.dll')").prefixes, package);
+      expect(reach('final x = 1;').prefixes, isEmpty);
+    });
+  });
+
+  // The Windows shards leave the tests that reach package:gpu_engine to the
+  // Linux shards (유저 gpu-engine-skeleton-Q16, tool/tests_reaching_package
+  // .dart): a test the walk missed would run on WARP and never finish.
+  group('the tests that reach a package', () {
+    test("a package's import is told from another package's", () {
+      const source = "import 'package:gpu_engine/gpu_engine.dart';";
+      expect(importsPackage(source, 'gpu_engine'), isTrue);
+      expect(importsPackage(source, 'gpu'), isFalse);
+      const longer = "import 'package:gpu_engines/x.dart';";
+      expect(importsPackage(longer, 'gpu_engine'), isFalse);
+      const exported = "export 'package:gpu_engine/x.dart';";
+      expect(importsPackage(exported, 'gpu_engine'), isTrue);
+    });
+
+    test('a test is chosen when it, or anything it reaches, imports it', () {
+      final graph = {
+        'test/far_test.dart': {'lib/a.dart'},
+        'test/near_test.dart': <String>{},
+        'test/clear_test.dart': {'lib/b.dart'},
+        'test/helper.dart': {'lib/a.dart'},
+        'tool/check_test.dart': {'lib/a.dart'},
+        'lib/a.dart': {'lib/engine_seat.dart'},
+        'lib/b.dart': <String>{},
+        'lib/engine_seat.dart': <String>{},
+      };
+      final importers = {
+        'lib/engine_seat.dart',
+        'test/near_test.dart',
+        'test/helper.dart',
+      };
+      expect(
+        testsReaching(importers, graph),
+        {'test/far_test.dart', 'test/near_test.dart'},
+      );
     });
   });
 

@@ -29,6 +29,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/a_room_that_refuses.dart';
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
 import '../helpers/files_written_under.dart';
@@ -42,11 +43,16 @@ import '../helpers/files_written_under.dart';
 /// pixel, and one undo puts every pixel back. Q4: a file's picture laid past
 /// the wall is left as it is.
 ///
-/// The paper is 16 × 8 in tiles of 4: at 1.5x the wall stands 4 past the
-/// sides and 2 past the top and bottom — x in [-4, 20), y in [-2, 10).
+/// The paper is 512 × 256 in tiles of 128, the engine's
+/// ([defaultCelTileSize]): at 1.5x the wall stands 128 past the sides and 64
+/// past the top and bottom — x in [-128, 640), y in [-64, 320).
 void main() {
-  const canvas = CanvasSize(width: 16, height: 8);
-  const tileSize = 4;
+  const canvas = CanvasSize(width: 512, height: 256);
+  const tileSide = defaultCelTileSize;
+
+  /// A quarter of a tile's side. The rows these tests speak of are bands of
+  /// this many pixel rows, so a tile has the four rows it had at 4².
+  const band = tileSide ~/ 4;
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -58,10 +64,13 @@ void main() {
 
   /// A tile whose every pixel is [value] in all four channels, so a byte
   /// read off it says which tile it came from.
-  BitmapTile tile(int value) => BitmapTile(
-    size: tileSize,
-    pixels: Uint8List(tileSize * tileSize * 4)..fillRange(0, 64, value),
-  );
+  BitmapTile tile(int value) {
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    return BitmapTile(
+      size: tileSide,
+      pixels: pixels..fillRange(0, pixels.length, value),
+    );
+  }
 
   /// Inside the paper (0, 0), inside the 1.5x pasteboard (-1, 0) and
   /// (4, 1), straddling its top (1, -1: two rows past it, two inside), and
@@ -75,7 +84,7 @@ void main() {
 
   BitmapSurface drawn({DirtyRegion? laid}) => BitmapSurface(
     canvasSize: canvas,
-    tileSize: tileSize,
+    tileSize: tileSide,
     laidBounds: laid,
   ).putTiles([
     (coord: inside, tile: tile(10)),
@@ -86,24 +95,54 @@ void main() {
     (coord: pastRight, tile: tile(60)),
   ]);
 
-  /// The straddling tile's rows, top to bottom, as the byte each holds.
-  List<int> rowsOf(BitmapTile tile) {
+  /// [tile] in blocks of [rows] × [columns] pixels, block row by block row,
+  /// as the byte every byte of a block holds — or -1 where they differ, so
+  /// a block read as a value holds it in every pixel and channel.
+  List<List<int>> blocksOf(
+    BitmapTile tile, {
+    required int rows,
+    required int columns,
+  }) {
     final pixels = tile.pixels;
+    int blockAt(int top, int left) {
+      final value = pixels[(top * tileSide + left) * 4];
+      for (var y = top; y < top + rows; y += 1) {
+        final start = (y * tileSide + left) * 4;
+        for (var i = start; i < start + columns * 4; i += 1) {
+          if (pixels[i] != value) {
+            return -1;
+          }
+        }
+      }
+      return value;
+    }
+
     return [
-      for (var row = 0; row < tileSize; row += 1)
-        pixels[row * tileSize * 4],
+      for (var top = 0; top < tileSide; top += rows)
+        [
+          for (var left = 0; left < tileSide; left += columns)
+            blockAt(top, left),
+        ],
     ];
   }
 
-  /// The straddling tile alone, ink on its [rows] — 0 and 1 past the 1.5x
-  /// wall, 2 and 3 inside it.
+  /// The straddling tile's rows, top to bottom, as the byte each holds — a
+  /// row being a band of [band] pixel rows, the four a tile had at 4².
+  List<int> rowsOf(BitmapTile tile) => [
+    for (final row in blocksOf(tile, rows: band, columns: tileSide))
+      row.single,
+  ];
+
+  /// The straddling tile alone, ink on its [rows] — bands of [band] pixel
+  /// rows, 0 and 1 past the 1.5x wall, 2 and 3 inside it.
   BitmapSurface straddlingInk(List<int> rows) {
-    final pixels = Uint8List(tileSize * tileSize * 4);
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    const rowBytes = band * tileSide * 4;
     for (final row in rows) {
-      pixels.fillRange(row * tileSize * 4, (row + 1) * tileSize * 4, 40);
+      pixels.fillRange(row * rowBytes, (row + 1) * rowBytes, 40);
     }
-    return BitmapSurface(canvasSize: canvas, tileSize: tileSize).putTiles([
-      (coord: straddling, tile: BitmapTile(size: tileSize, pixels: pixels)),
+    return BitmapSurface(canvasSize: canvas, tileSize: tileSide).putTiles([
+      (coord: straddling, tile: BitmapTile(size: tileSide, pixels: pixels)),
     ]);
   }
 
@@ -125,19 +164,19 @@ void main() {
 
     test('clears what of a straddling tile lies past it, and only that', () {
       final behind = surfaceBehindReach(drawn(), PasteboardReach.quarter);
-      // Rows -4 and -3 are past the top wall (-2); rows -2 and -1 inside.
+      // Rows -128..-65 are past the top wall (-64); rows -64..-1 inside.
       expect(rowsOf(behind.tileAt(straddling)!), [0, 0, 40, 40]);
     });
 
     test('a straddling tile whose ink all lay past it is not kept empty', () {
       // Ink on the two rows past the top wall only.
-      final pixels = Uint8List(tileSize * tileSize * 4)
-        ..fillRange(0, 2 * tileSize * 4, 40);
+      final pixels = Uint8List(tileSide * tileSide * 4)
+        ..fillRange(0, 2 * band * tileSide * 4, 40);
       final surface = BitmapSurface(
         canvasSize: canvas,
-        tileSize: tileSize,
+        tileSize: tileSide,
       ).putTiles([
-        (coord: straddling, tile: BitmapTile(size: tileSize, pixels: pixels)),
+        (coord: straddling, tile: BitmapTile(size: tileSide, pixels: pixels)),
       ]);
       final behind = surfaceBehindReach(surface, PasteboardReach.quarter);
       expect(behind.tiles, isEmpty);
@@ -172,7 +211,7 @@ void main() {
     test('cuts a text\'s letters the way it cuts the drawing', () {
       final surface = BitmapSurface(
         canvasSize: canvas,
-        tileSize: tileSize,
+        tileSize: tileSide,
         texts: [
           CelText(
             id: 1,
@@ -211,10 +250,10 @@ void main() {
 
     test('leaves a file\'s picture laid past the wall as it is (Q4)', () {
       final laid = DirtyRegion(
-        left: -8,
-        top: -4,
-        rightExclusive: 24,
-        bottomExclusive: 12,
+        left: -256,
+        top: -128,
+        rightExclusive: 768,
+        bottomExclusive: 384,
       );
       final before = drawn(laid: laid);
       final behind = surfaceBehindReach(before, PasteboardReach.quarter);
@@ -253,59 +292,67 @@ void main() {
       }
     });
 
-    // A paper 18 wide does not end on a tile: at 1.5x the wall stands 5
-    // past it — x in [-5, 23) — so a tile can straddle it across, and a
-    // file laid on the same tile keeps columns of its own.
-    const narrow = CanvasSize(width: 18, height: 8);
+    // A paper 576 wide — four tiles and a half — does not end on a tile: at
+    // 1.5x the wall stands 144 past it — x in [-144, 720) — so a tile can
+    // straddle it across, and a file laid on the same tile keeps columns of
+    // its own. 144 is no whole quarter of a tile, so the columns are eighths.
+    const narrow = CanvasSize(width: 576, height: 256);
 
     /// [column]s of the tile at [coord] once [laid] and the 1.5x wall have
-    /// kept what they keep, row by row, as the byte each holds.
+    /// kept what they keep, row by row, as the byte each holds — a row being
+    /// a band of [band] pixel rows, a column a band of an eighth of a tile.
     List<List<int>> columnsBehind(TileCoord coord, DirtyRegion laid) {
       final surface = BitmapSurface(
         canvasSize: narrow,
-        tileSize: tileSize,
+        tileSize: tileSide,
         laidBounds: laid,
       ).putTiles([(coord: coord, tile: tile(70))]);
-      final pixels = surfaceBehindReach(
-        surface,
-        PasteboardReach.quarter,
-      ).tileAt(coord)!.pixels;
-      return [
-        for (var row = 0; row < tileSize; row += 1)
-          [
-            for (var column = 0; column < tileSize; column += 1)
-              pixels[(row * tileSize + column) * 4],
-          ],
-      ];
+      return blocksOf(
+        surfaceBehindReach(surface, PasteboardReach.quarter).tileAt(coord)!,
+        rows: band,
+        columns: tileSide ~/ 8,
+      );
     }
 
     test('clears a straddling tile across, keeping each run a file holds', () {
-      // Tile (-2, 0) holds x -8..-5: the wall keeps -5 alone, a file laid
-      // on its first two rows keeps -8 — a run to the left of the wall's.
+      // Tile (-2, 0) holds x -256..-129: the wall keeps -144..-129 alone, a
+      // file laid on its first two rows keeps -256..-225 — a run to the left
+      // of the wall's.
       expect(
         columnsBehind(
           TileCoord(x: -2, y: 0),
-          DirtyRegion(left: -8, top: 0, rightExclusive: -7, bottomExclusive: 2),
+          DirtyRegion(
+            left: -256,
+            top: 0,
+            rightExclusive: -224,
+            bottomExclusive: 64,
+          ),
         ),
         [
-          [70, 0, 0, 70],
-          [70, 0, 0, 70],
-          [0, 0, 0, 70],
-          [0, 0, 0, 70],
+          [70, 70, 0, 0, 0, 0, 0, 70],
+          [70, 70, 0, 0, 0, 0, 0, 70],
+          [0, 0, 0, 0, 0, 0, 0, 70],
+          [0, 0, 0, 0, 0, 0, 0, 70],
         ],
       );
     });
 
     test('a run inside the wall\'s takes nothing of what the wall keeps', () {
-      // Tile (5, 0) holds x 20..23: the wall keeps 20..22, a file laid on
-      // 21 alone keeps nothing more — and must not cut the wall's short.
+      // Tile (5, 0) holds x 640..767: the wall keeps 640..719, a file laid
+      // on 672..703 alone keeps nothing more — and must not cut the wall's
+      // short.
       expect(
         columnsBehind(
           TileCoord(x: 5, y: 0),
-          DirtyRegion(left: 21, top: 0, rightExclusive: 22, bottomExclusive: 2),
+          DirtyRegion(
+            left: 672,
+            top: 0,
+            rightExclusive: 704,
+            bottomExclusive: 64,
+          ),
         ),
         [
-          for (var row = 0; row < tileSize; row += 1) [70, 70, 70, 0],
+          for (var row = 0; row < 4; row += 1) [70, 70, 70, 70, 70, 0, 0, 0],
         ],
       );
     });
@@ -318,7 +365,7 @@ void main() {
     /// [clean] has ink inside the 1.5x wall only.
     BitmapSurface inkInside() => BitmapSurface(
       canvasSize: canvas,
-      tileSize: tileSize,
+      tileSize: tileSide,
     ).putTiles([(coord: inside, tile: tile(10))]);
 
     void expectCut(BitmapSurface? surface) {
@@ -434,7 +481,7 @@ void main() {
         keep(store, {
           cut: BitmapSurface(
             canvasSize: canvas,
-            tileSize: tileSize,
+            tileSize: tileSide,
           ).putTiles([(coord: pastLeft, tile: tile(50))]),
           clean: inkInside(),
         });
@@ -499,7 +546,7 @@ void main() {
           dataOffset: 0,
           length: 1,
           canvasSize: canvas,
-          tileSize: tileSize,
+          tileSize: tileSide,
           photoPaths: [],
           showsSomething: true,
         ),
@@ -818,20 +865,7 @@ void main() {
             '${ahead ? ' — worked out ahead too' : ''}', () async {
           final store = BrushFrameStore();
           keepInAFile(store, {cut: drawn()});
-          // A FILE where the room's folder has to go — a revoked scope or a
-          // full disk (`a_cooled_cel_parks_on_disk_test`).
-          final room = Directory(SessionScratch.stagedFolder());
-          if (room.existsSync()) {
-            room.deleteSync(recursive: true);
-          }
-          final blocker = File(SessionScratch.stagedFolder())
-            ..createSync(recursive: true)
-            ..writeAsBytesSync(const [0]);
-          addTearDown(() {
-            if (blocker.existsSync()) {
-              blocker.deleteSync();
-            }
-          });
+          final blocker = refuseTheRoom();
           if (ahead) {
             await store.cutCelsAhead(PasteboardReach.quarter);
           }
@@ -1124,7 +1158,7 @@ void main() {
           frameStore: store,
           sessionStore: BrushFrameEditSessionStore(
             canvasSize: canvas,
-            tileSize: tileSize,
+            tileSize: tileSide,
           ),
           historyPolicy: const BrushHistoryPolicy(),
         );
@@ -1171,10 +1205,10 @@ void main() {
     BitmapSurface drawnWithLetters() =>
         drawn(
           laid: DirtyRegion(
-            left: -6,
+            left: -192,
             top: 0,
-            rightExclusive: 2,
-            bottomExclusive: 4,
+            rightExclusive: 64,
+            bottomExclusive: 128,
           ),
         ).copyWith(
           texts: [

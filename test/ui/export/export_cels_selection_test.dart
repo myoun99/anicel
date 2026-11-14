@@ -21,7 +21,7 @@ import 'package:anicel/src/ui/export/export_cels_selection.dart';
 void main() {
   const withDirection = {
     ExportCelKind.cel,
-    ExportCelKind.art,
+    ExportCelKind.image,
     ExportCelKind.direction,
   };
   const key = LayerMark(process: LayerProcess.key);
@@ -30,8 +30,7 @@ void main() {
     revise: LayerRevise.animationDirector,
   );
   const layout = LayerMark(process: LayerProcess.layout);
-  const paper = LayerMark(process: LayerProcess.paper);
-  const art = LayerMark(process: LayerProcess.art);
+  const paper = LayerMark.paper(LayerProcess.key);
 
   Layer layer(
     String id, {
@@ -210,18 +209,54 @@ void main() {
     );
   });
 
+  test('🗣️F-578 ⑧: the paper laid is the filter\'s — of its correction '
+      'where it names one, of its stage where it does not, and none where '
+      'the cut has no such paper', () {
+    // 유저 2026-11-10: 「내보내기의 용지적용은 필터대로. LO필터면 용지-LO가
+    // 걸리도록. 용지-작감은 안걸림. LO작감필터면 용지-작감이 걸리고,
+    // 원화작감필터도 용지-작감 걸리고」.
+    final layers = [
+      layer('lo', mark: const LayerMark.paper(LayerProcess.layout)),
+      layer('ad', mark: const LayerMark.paper(LayerRevise.animationDirector)),
+      layer('key', mark: const LayerMark.paper(LayerProcess.key)),
+      layer('a'),
+    ];
+    List<String> laid(LayerMark label) =>
+        ids(resolve(layers, spec: CelsExportSpec(label: label)).paperLayers);
+
+    expect(laid(layout), ['lo'], reason: 'LO필터면 용지-LO, 용지-작감은 안걸림');
+    expect(
+      laid(
+        const LayerMark(
+          process: LayerProcess.layout,
+          revise: LayerRevise.animationDirector,
+        ),
+      ),
+      ['ad'],
+      reason: 'LO작감필터면 용지-작감',
+    );
+    expect(laid(keyAd), ['ad'], reason: '원화작감필터도 용지-작감');
+    expect(laid(key), ['key']);
+    expect(
+      laid(const LayerMark(process: LayerProcess.inbetween)),
+      isEmpty,
+      reason: 'no 용지-동화 in the cut: none is laid in its stead',
+    );
+    expect(laid(LayerMark.none), isEmpty);
+  });
+
   group('the kinds come first', () {
     const conte = LayerMark(process: LayerProcess.conte);
 
-    test('which kind a row is: a direction row, the conte row, a row '
-        'labelled 미술, and every other drawing row a cel — an attach row of '
+    test('which kind a row is: a direction row, the conte row, an image '
+        'row (F-578), and every other drawing row a cel — an attach row of '
         'its BASE\'s kind, and the rows that export nothing of none', () {
       final layers = [
         layer('a'),
         layer('still', kind: LayerKind.image),
-        layer('bg', mark: art),
+        layer('bg', kind: LayerKind.image),
         layer('bgc', attachedTo: 'bg', mark: keyAd),
-        layer('ac', attachedTo: 'a', mark: art),
+        layer('ac', attachedTo: 'a', mark: layout),
         layer('s', kind: LayerKind.storyboard, mark: conte),
         layer('inst', kind: LayerKind.instruction),
         layer('p', mark: paper),
@@ -236,9 +271,9 @@ void main() {
         },
         {
           'a': ExportCelKind.cel,
-          'still': ExportCelKind.cel,
-          'bg': ExportCelKind.art,
-          'bgc': ExportCelKind.art,
+          'still': ExportCelKind.image,
+          'bg': ExportCelKind.image,
+          'bgc': ExportCelKind.image,
           'ac': ExportCelKind.cel,
           's': ExportCelKind.conte,
           'inst': ExportCelKind.direction,
@@ -250,44 +285,56 @@ void main() {
       );
     });
 
-    test('미술: art rows are written whatever the label, and what rides them '
-        'with them — and not at all while the kind is off', () {
-      // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크」 — art is on from the
-      // start, where it used to be a switch that added it.
+    test('🗣️F-578 이미지: an image row wears the label as a cel does, and '
+        'what rides it is of its kind — and none goes out while the kind is '
+        'off', () {
+      // 유저 2026-11-10: 「해당 공정에서 발생한걸 내보낸다」 — the LO filter
+      // takes LO's BG/BOOK. ↩️F-289: 美術 rows went out whatever the label.
       final layers = [
         layer('a'),
-        layer('bg', mark: art),
-        layer('bgc', attachedTo: 'bg', mark: layout),
+        layer('ad', mark: keyAd),
+        layer('bg', kind: LayerKind.image, mark: layout),
+        layer('bgc', attachedTo: 'bg', mark: keyAd),
+        layer('book', kind: LayerKind.image, mark: keyAd),
       ];
-      expect(cels(layers), ['a', 'bg', 'bgc']);
+      expect(cels(layers), ['a']);
+      expect(cels(layers, spec: const CelsExportSpec(label: layout)), ['bg']);
       expect(
         cels(layers, spec: const CelsExportSpec(label: keyAd)),
-        ['bg', 'bgc'],
-        reason: 'the label is the cel rows\' filter — art does not wear it',
+        ['ad', 'bgc', 'book'],
+        reason: 'an attach row by its OWN mark, whatever its base wears',
       );
       expect(
-        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.cel})),
-        ['a'],
+        cels(
+          layers,
+          spec: const CelsExportSpec(kinds: {ExportCelKind.image}, label: keyAd),
+        ),
+        ['bgc', 'book'],
       );
       expect(
-        cels(layers, spec: const CelsExportSpec(attach: false)),
-        ['a', 'bg'],
+        cels(layers, spec: const CelsExportSpec(attach: false, label: keyAd)),
+        ['ad', 'book'],
         reason: '어태치 is asked of every row that rides one',
       );
     });
 
     test('셀: with the kind off no cel row goes out, whatever it wears', () {
-      final layers = [layer('a'), layer('ad', mark: keyAd), layer('bg', mark: art)];
+      final layers = [
+        layer('a'),
+        layer('ad', mark: keyAd),
+        layer('bg', kind: LayerKind.image),
+        layer('bgad', kind: LayerKind.image, mark: keyAd),
+      ];
       expect(
-        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.art})),
+        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.image})),
         ['bg'],
       );
       expect(
         cels(
           layers,
-          spec: const CelsExportSpec(kinds: {ExportCelKind.art}, label: keyAd),
+          spec: const CelsExportSpec(kinds: {ExportCelKind.image}, label: keyAd),
         ),
-        ['bg'],
+        ['bgad'],
       );
     });
 
@@ -314,14 +361,14 @@ void main() {
 
     test('the hand cannot bring back a row whose kind is off — and its '
         'answer is still there when the kind comes back', () {
-      final layers = [layer('a'), layer('ad', mark: keyAd), layer('bg', mark: art)];
+      final layers = [layer('a'), layer('ad', mark: keyAd), layer('bg', kind: LayerKind.image)];
       final delta = ExportCelsCutDelta()
           .withLayerOverride(const LayerId('ad'), true)
           .withLayerOverride(const LayerId('bg'), true);
       expect(
         cels(
           layers,
-          spec: const CelsExportSpec(kinds: {ExportCelKind.art}),
+          spec: const CelsExportSpec(kinds: {ExportCelKind.image}),
           delta: delta,
         ),
         ['bg'],
@@ -334,7 +381,7 @@ void main() {
       final layers = [
         layer('a', folder: 'f'),
         createFolderLayer(id: const LayerId('f'), name: 'F'),
-        layer('bg', mark: art, folder: 'g'),
+        layer('bg', kind: LayerKind.image, folder: 'g'),
         createFolderLayer(id: const LayerId('g'), name: 'G'),
         layer('ac', attachedTo: 'a', mark: keyAd),
         layer('inst', kind: LayerKind.instruction),
@@ -349,7 +396,7 @@ void main() {
       ];
       expect(listed(const CelsExportSpec()), ['a', 'f', 'bg', 'g', 'ac']);
       expect(
-        listed(const CelsExportSpec(kinds: {ExportCelKind.art})),
+        listed(const CelsExportSpec(kinds: {ExportCelKind.image})),
         ['bg', 'g'],
         reason: 'a kind that is off takes its rows — and the folder that '
             'held only those — out of the list',

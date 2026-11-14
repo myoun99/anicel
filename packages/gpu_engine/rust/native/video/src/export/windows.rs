@@ -4,13 +4,14 @@
 //! RGBA → BGRA (MFVideoFormat_RGB32 is BGRA in memory) plus the even-size
 //! pad H.264 requires.
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{GUID, PCWSTR, Result};
 
-use super::{CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
+use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, edit_list, lock, set_error};
 use crate::hardware_law;
 
 pub const SUPPORTED: bool = true;
@@ -20,6 +21,9 @@ const TICKS: i64 = 10_000_000;
 
 struct Writer {
     writer: IMFSinkWriter,
+    /// Where the movie is written: its boxes are gone back to once the sink
+    /// has finished ([finish]).
+    path: PathBuf,
     video_stream: u32,
     audio_stream: u32,
     src_width: usize,
@@ -85,18 +89,11 @@ fn hevc_encoders() -> u32 {
 
 pub fn open(job: &Job) -> bool {
     let mut held = lock(&WRITER);
-    let Some(path) = job.path.filter(|_| {
-        held.is_none()
-            && job.width > 0
-            && job.height > 0
-            && job.fps_num > 0
-            && job.fps_den > 0
-            && job.channels >= 0
-            && (job.channels == 0 || job.sample_rate > 0)
-    }) else {
-        set_error("video export: bad open parameters");
+    if held.is_some() {
+        set_error(BAD_OPEN);
         return false;
-    };
+    }
+    let path = job.path;
     if job.container != CONTAINER_MP4 || (job.codec != CODEC_H264 && job.codec != CODEC_HEVC) {
         set_error("video export: Windows writes MP4 H.264/H.265 here - MOV/ProRes go through FFmpeg");
         return false;
@@ -105,7 +102,7 @@ pub fn open(job: &Job) -> bool {
         set_error("video export: Media Foundation failed to start");
         return false;
     }
-    let Some(wide) = media::path::wide(path) else {
+    let (Some(wide), Some(file)) = (media::path::wide(path), media::path::file(path)) else {
         set_error("video export: the output path did not convert");
         return false;
     };
@@ -140,6 +137,7 @@ pub fn open(job: &Job) -> bool {
     }
     *held = Some(Writer {
         writer,
+        path: file,
         video_stream,
         audio_stream,
         src_width: job.width as usize,
@@ -338,6 +336,88 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     false
 }
 
+/// The frames this writer puts before the mix: one AAC frame.
+///
+/// 🚨★A FRAME BEFORE THE SOUND, AND AN EDIT LIST THAT TAKES IT OFF — AS FFMPEG
+/// WRITES IT (유저 2026-11-10, board
+/// an-mp4-reopened-loses-its-first-9-ms-of-sound-Q2: 「ffmpeg처럼하는게
+/// 맘에들긴해. 더 좋기만 한거니까」). Media Foundation puts no AAC frame
+/// before the sound (48,000 samples → 47 frames), so the first block's front
+/// half has nothing to overlap: a sound that starts on the movie's first
+/// sample comes back silent for 448 samples and rising until 576 (48 kHz,
+/// measured 2026-11-10). So the first block is one the mix is not in — a
+/// frame written as the stream's first sound, the mix after it — and once
+/// the sink has finished, the movie is told that its sound starts after the
+/// frame (`edit_list`). ⛔Stamped before zero the frame is taken and dropped
+/// by the sink writer — the file comes out the same (measured) — so it is
+/// written from zero, as sound.
+///
+/// ⚠️THE COST THE USER TOOK: Media Foundation's own reader ignores an edit
+/// list's lead — it hands the first frame back at time 0 (measured on
+/// `tone.m4a`) — so Windows' own players sound the whole mix a frame late
+/// (21 ms at 48 kHz, half a frame of animation at 24), as they do an MP4
+/// ffmpeg wrote. After Effects and Premiere put the frame in and say nothing
+/// of it — 1,024 and 1,023 samples late wherever they are read (관제's
+/// measurement on the main PC, 2026-11-10, on the same board card).
+///
+/// ↩️Until this, the same day: no frame and no list — 「그대로 둔다」,
+/// 「윈도의 한계」 (-Q1) — for a list meant rewriting the boxes after
+/// `Finalize`, which is what `edit_list` does now.
+///
+/// WHAT THE FRAME HOLDS: the sound just before the mix where the caller has
+/// it ([write_lead]) — the option the user took reads 「무음, 범위 앞에 소리가
+/// 있으면 그 소리」 — and silence where it has none. A mix that starts in the
+/// middle of a wave comes back closer behind its own past than behind
+/// silence: a 750 Hz cosine starting on its peak, the error of its first 128
+/// samples 0.0045 behind silence and 0.0009 behind itself, its worst sample
+/// 0.026 and 0.002 (unit scale, 48 kHz, measured 2026-11-10). A frame that is
+/// not the mix's own past costs what silence does.
+pub const AUDIO_LEAD: i64 = 1024;
+
+/// `frames` of sound, filled by `fill`, as the stream's next — stamped from
+/// how many it has had.
+fn feed(writer: &mut Writer, frames: i64, fill: impl FnOnce(&mut [u8])) -> bool {
+    let bytes = frames as usize * writer.channels * 2;
+    let time = writer.audio_samples * TICKS / writer.sample_rate;
+    let duration = frames * TICKS / writer.sample_rate;
+    match write_sample(writer, writer.audio_stream, bytes as u32, (time, duration), fill) {
+        Written::NoBuffer | Written::NotLocked => {}
+        Written::Refused => set_error("video export: an audio chunk failed to encode"),
+        Written::Taken => {
+            writer.audio_samples += frames;
+            return true;
+        }
+    }
+    false
+}
+
+/// What a lead that is not the first frame is told: the list takes off
+/// [AUDIO_LEAD], no more and no less, from the stream's start.
+const NOT_THE_LEAD: &str = "video export: the sound before the mix is one frame, handed before any other";
+
+/// The sound just before the mix, as the frame that goes first — in place
+/// of the silence [write_audio] puts there when handed none.
+///
+/// # Safety
+/// `interleaved` is null or holds `frames` × the channels `open` was given.
+pub unsafe fn write_lead(interleaved: *const i16, frames: i32) -> bool {
+    let mut held = lock(&WRITER);
+    let Some(writer) = held.as_mut().filter(|writer| writer.channels > 0 && !interleaved.is_null()) else {
+        return false;
+    };
+    if writer.audio_samples != 0 || i64::from(frames) != AUDIO_LEAD {
+        set_error(NOT_THE_LEAD);
+        return false;
+    }
+    // SAFETY: the caller's contract.
+    let pcm = unsafe { std::slice::from_raw_parts(interleaved.cast::<u8>(), frames as usize * writer.channels * 2) };
+    feed(writer, AUDIO_LEAD, |target| target.copy_from_slice(pcm))
+}
+
+/// The mix's next `frames`, as Media Foundation's AAC takes them — behind
+/// the frame that goes first ([AUDIO_LEAD]): the caller's ([write_lead]),
+/// or silence.
+///
 /// # Safety
 /// `interleaved` is null or holds `frames` × the channels `open` was given.
 pub unsafe fn write_audio(interleaved: *const i16, frames: i32) -> bool {
@@ -346,29 +426,32 @@ pub unsafe fn write_audio(interleaved: *const i16, frames: i32) -> bool {
     else {
         return false;
     };
-    let bytes = frames as usize * writer.channels * 2;
     // SAFETY: the caller's contract.
-    let pcm = unsafe { std::slice::from_raw_parts(interleaved.cast::<u8>(), bytes) };
-    let time = writer.audio_samples * TICKS / writer.sample_rate;
-    let duration = i64::from(frames) * TICKS / writer.sample_rate;
-    match write_sample(writer, writer.audio_stream, bytes as u32, (time, duration), |target| target.copy_from_slice(pcm)) {
-        Written::NoBuffer | Written::NotLocked => {}
-        Written::Refused => set_error("video export: an audio chunk failed to encode"),
-        Written::Taken => {
-            writer.audio_samples += i64::from(frames);
-            return true;
-        }
+    let pcm = unsafe { std::slice::from_raw_parts(interleaved.cast::<u8>(), frames as usize * writer.channels * 2) };
+    if writer.audio_samples == 0 && !feed(writer, AUDIO_LEAD, |target| target.fill(0)) {
+        return false;
     }
-    false
+    feed(writer, i64::from(frames), |target| target.copy_from_slice(pcm))
 }
 
+/// Finalizes the movie and, where the mix went into it, goes back into the
+/// file to say where its sound starts ([AUDIO_LEAD]). A movie that cannot be
+/// told is a failed export: left as it is, its sound would play a frame
+/// late everywhere with nothing in it to say so.
 pub fn finish() -> bool {
-    let Some(writer) = lock(&WRITER).take() else {
+    let Some(Writer { writer, path, audio_samples, sample_rate, .. }) = lock(&WRITER).take() else {
         return false;
     };
     // SAFETY: a writer that began.
-    if unsafe { writer.writer.Finalize() }.is_err() {
+    if unsafe { writer.Finalize() }.is_err() {
         set_error("video export: the MP4 failed to finalize");
+        return false;
+    }
+    // The sink lets go of the file with its last reference.
+    drop(writer);
+    let kept = audio_samples - AUDIO_LEAD;
+    if kept > 0 && edit_list::mark_the_lead(&path, sample_rate, AUDIO_LEAD, kept).is_none() {
+        set_error("video export: the MP4's sound could not be told where it starts");
         return false;
     }
     true

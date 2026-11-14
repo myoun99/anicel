@@ -76,7 +76,8 @@ const double timelineLayerRowLeadingBorder = 1;
 /// Deliberately absent (the row renders none of them): `frames`, `timeline`,
 /// `instructions`, `audioClips`, `baseFrameLinks`,
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
-/// `seSound` (its 「오디오」 lanes read it), `attachedMode` and `folderId`.
+/// `seSound` past its Total (its 「오디오」 lanes read the rest; the Total is
+/// the blend column's bar since F-577), `attachedMode` and `folderId`.
 ///
 /// 🚨And `isVisible`, which the row DOES show — through [RailEyes], not
 /// through this token. an-eye-rebuilds-its-whole-row (measured 2026-09-23):
@@ -102,6 +103,7 @@ final class ControlsRowFace {
             a.kind == b.kind &&
             a.opacity == b.opacity &&
             a.muted == b.muted &&
+            a.seSound.totalVolume == b.seSound.totalVolume &&
             a.mark == b.mark &&
             a.onTimesheet == b.onTimesheet &&
             a.blendMode == b.blendMode &&
@@ -125,6 +127,7 @@ final class ControlsRowFace {
     layer.kind,
     layer.opacity,
     layer.muted,
+    layer.seSound.totalVolume,
     layer.mark,
     layer.onTimesheet,
     layer.blendMode,
@@ -167,12 +170,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.onToggleLayerClip,
-    this.onOpenLayerMixer,
+    this.onToggleLayerMute,
+    this.onLayerTotalVolumeChangeEnd,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
     this.onOpenCameraPath,
     this.isReferenceSourceShort = false,
-    this.isLayerSoloed = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -252,11 +255,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;
 
-  /// SE rows' speaker button, which opens the row's mixer (mute, solo, the
-  /// total volume) anchored under itself; null hides the speaker. It takes
-  /// the BUTTON's context so the popup lands on the speaker.
-  final void Function(BuildContext anchorContext, LayerId layerId)?
-  onOpenLayerMixer;
+  /// An S row's speaker, a mute toggle ([_speaker], F-577); null hides
+  /// it.
+  final ValueChanged<LayerId>? onToggleLayerMute;
+
+  /// An S row's Total bar's release ([layerTotalVolumeField], F-577); null
+  /// hides the bar.
+  final void Function(LayerId layerId, double share)?
+  onLayerTotalVolumeChangeEnd;
 
   /// A REFERENCE row's file button, which opens the row's reference popover
   /// anchored under itself; null hides it. It takes the BUTTON's context so
@@ -281,7 +287,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   )?
   onOpenLayerLinks;
 
-  /// The camera row's path button ([_cameraPathButton], I-89 ④): how the
+  /// The camera row's path button ([_cameraBlendCell], I-89 ④): how the
   /// canvas shows the camera's path, opened under the button. Null mounts
   /// none.
   final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
@@ -289,10 +295,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// Whether this row asks its file for more film than the file has — the
   /// button turns red, and its popover says by how much.
   final bool isReferenceSourceShort;
-
-  /// Whether this SE row is soloed (AUDIO-PRO R1) — the speaker tints
-  /// accent while soloing narrows monitoring to the soloed rows.
-  final bool isLayerSoloed;
 
   /// AE-style property-lane twirl-down: layers with lanes get a chevron
   /// leading the row; rows without lanes keep an empty slot so labels stay
@@ -729,6 +731,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the row's own buttons, there only on a row that folds. ↩️Its slot was
   /// reserved on every row (F-29), so a row's own buttons stood a twirl
   /// short of the name's end on the rows that fold nothing.
+  ///
+  /// 🗣️F-577 (유저 2026-11-10): the S row's speaker and the camera row's
+  /// path and graph left the name for the BLEND column, which those rows
+  /// leave empty ([_blendCell]). ↩️They stood here (F-443 · F-454).
   Widget _nameArea(BuildContext context, ColorScheme colorScheme) => Expanded(
     child: Named(
       '$keyPrefix-layer-name-${layer.id}',
@@ -749,9 +755,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ?_linkBadge(colorScheme, LinkKind.link, linkPartners),
           ?_linkBadge(colorScheme, LinkKind.sync, syncPartners),
           ?_referenceButton(),
-          ?_soundButton(colorScheme),
-          ?_cameraPathButton(),
-          ?_graphToggle(context),
           ?_foldTwirl(context),
         ],
       ),
@@ -777,9 +780,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
     ),
   );
 
-  /// The box every button at the end of the name stands in — the link
-  /// badge, a reference row's file, an SE row's speaker, the camera's path
-  /// — the header graph's ([LaneGraphToggle]), so the five are one button.
+  /// The box every glyph button of a row's own stands in — at the end of
+  /// the name the link badge and a reference row's file, in the blend
+  /// column an SE row's speaker and the camera's path (F-577) — the header
+  /// graph's ([LaneGraphToggle]), so the five are one button.
   ///
   /// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
   /// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨.
@@ -871,29 +875,35 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
-  /// An SE row's SPEAKER among the name's buttons (F-443, 유저 2026-10-23:
-  /// 「se레이어의 사운드버튼도 se레이어만 쓰는데 자리 고정으로 차지하는거
-  /// 비효율적이니 동일하게 위에서 말한 규칙적용해서 위치옮김」) — the room a
-  /// row's own button takes comes out of its name. ↩️It stood in a column
-  /// of its own after the eye, reserved and empty on every other row.
+  /// An S row's SPEAKER — a mute toggle and nothing more.
   ///
-  /// A DOOR, not a toggle (R10 R3): it opens the SE mixer (mute, solo, the
-  /// total volume) under itself, and SHOWS mute and solo, because a door has
-  /// to say what is behind it — solo in the accent, as a selection reads.
-  Widget? _soundButton(ColorScheme colorScheme) {
-    final onOpenMixer = onOpenLayerMixer;
-    if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
+  /// 🗣️F-577 (유저 2026-11-10): 「사운드버튼안의 총볼륨 필요없어지니 삭제하고
+  /// 음소거나 솔로버튼도 그냥 삭제. 사운드버튼은 단순하게 음소거/비음소거 역할만
+  /// 하는 토글버튼되도록」. ↩️It was a DOOR (R10 R3) to the SE mixer — mute,
+  /// solo and the Total — and showed solo in the accent; the Total is the
+  /// bar beside it now ([layerTotalVolumeField]) and solo is gone.
+  Widget? _speaker() {
+    final onToggle = onToggleLayerMute;
+    if (layer.kind != LayerKind.se || onToggle == null) return null;
     return _nameButton(
       slug: 'mute',
-      tooltip: AppText.strings.layerAudioTitle,
+      tooltip: AppText.strings.audioMute,
       look: _NameButtonLook(
-        RailIconGlyph(
-          layer.muted ? Icons.volume_off : Icons.volume_up,
-          color: isLayerSoloed ? colorScheme.primary : null,
-        ),
+        RailIconGlyph(layer.muted ? Icons.volume_off : Icons.volume_up),
       ),
-      onPressed: (context) =>
-          onOpenMixer(context, layerIdNow(context, layer.id)),
+      onPressed: (context) => onToggle(layerIdNow(context, layer.id)),
+    );
+  }
+
+  /// An S row's Total, the opacity bar to 200 % ([layerTotalVolumeField]).
+  Widget? _totalVolumeBar() {
+    final onEnd = onLayerTotalVolumeChangeEnd;
+    if (layer.kind != LayerKind.se || onEnd == null) return null;
+    return layerTotalVolumeField(
+      layer: layer,
+      keyPrefix: keyPrefix,
+      axis: axis,
+      onChangeEnd: onEnd,
     );
   }
 
@@ -901,9 +911,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
   /// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
   /// it opens how the canvas shows the camera's path under itself — one value
-  /// for every open project, as the row's eye and its dim are. Among the
-  /// name's buttons — the camera's row is never a reference row, so the two
-  /// never stand together.
+  /// for every open project, as the row's eye and its dim are. In the blend
+  /// column since F-577 ([_cameraBlendCell]).
   Widget? _cameraPathButton() {
     final onOpen = onOpenCameraPath;
     if (!layer.kind.carriesCameraPath || onOpen == null) {
@@ -977,7 +986,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     onion: _onionToggle(context, colorScheme),
     visibility: _visibilityToggle(),
     opacity: _opacitySlot(),
-    blend: _blendChip(context),
+    blend: _blendCell(context),
   );
 
   /// Clip to layer below (I-92): every row that can clip
@@ -1094,10 +1103,57 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return _horizontal ? field : Center(child: field);
   }
 
+  /// What the BLEND column holds on this row: the mode where the row
+  /// composites, and on the two rows that do not, their own buttons.
+  ///
+  /// 🗣️F-577 (유저 2026-11-10): 「s행은 블렌드행이 비어있으니 그 행 왼쪽에
+  /// 사운드버튼두고, 그 오른쪽에 총 볼륨 막대 둠 … 블렌드영역의 중앙정렬로」 ·
+  /// 「카메라행도 블렌드행에 경로/그래프버튼 이동. 레전드행의 블렌드 일괄조작은
+  /// 지금처럼 카메라랑 s행 무시. 블렌드열이지만 다른게 섞여있다는 느낌으로
+  /// 문제없음」.
+  Widget? _blendCell(BuildContext context) => switch (layer.kind) {
+    LayerKind.se => _ownCell(buttons: [_speaker()], bar: _totalVolumeBar()),
+    _ when layer.kind.carriesCameraPath => _cameraBlendCell(context),
+    _ => _blendChip(context),
+  };
+
+  /// The camera row's path and graph, the graph last as it ended the name
+  /// (F-454: 「그 자리에 그래프버튼,그왼쪽에 경로버튼」).
+  Widget? _cameraBlendCell(BuildContext context) =>
+      _ownCell(buttons: [_cameraPathButton(), _graphToggle(context)]);
+
+  /// A row's own [buttons] and then its [bar], side by side along the rail
+  /// and centred in the column; null when none stands. Each keeps its own
+  /// size — a button the box the eye stands in, the bar the opacity bar's
+  /// length ([layerRailPlateLength]) — and the column is wide enough for
+  /// both ([layerBlendSlotWidth]).
+  Widget? _ownCell({required List<Widget?> buttons, Widget? bar}) {
+    final standing = buttons.nonNulls.toList();
+    if (standing.isEmpty && bar == null) return null;
+    final length = layerRailPlateLength(metrics.railColumns.opacity);
+    return Center(
+      child: Flex(
+        direction: axis,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...standing,
+          if (bar != null)
+            alongBox(
+              axis,
+              length,
+              child: _horizontal ? bar : Center(child: bar),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// R27 #6: the blend mode, RIGHTMOST — the user's placement. Within a
   /// host that HAS the column, non-compositing kinds keep the slot so rows
-  /// and the legend header stay aligned; hosts without it (the storyboard's
-  /// track rail) skip the column outright, exactly like the onion cell.
+  /// and the legend header stay aligned — two of them fill it with their
+  /// own buttons ([_blendCell], F-577); a host without it skips the column
+  /// outright, exactly like the onion cell (↩️the storyboard's track rail
+  /// was one until I-73, 2026-10-08).
   Widget? _blendChip(BuildContext context) {
     final onSelected = onLayerBlendModeSelected;
     if (onSelected == null || !layerKindShowsBlendControl(layer.kind)) {
@@ -1194,17 +1250,26 @@ class _StoodPlate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = RailStand.standsOnRow(context) ?? row.active;
-    return RowPlate(
-      name: active ? '${row.keyPrefix}-selected-layer' : null,
-      width: row._size.width,
-      height: row._size.height,
-      padding: row._padding,
-      decoration: row._plate(colorScheme, active: active),
-      // The program language's word, as the conte's own rows say it.
-      label: active
-          ? AppText.strings.semSelectedLayer
-          : AppText.strings.semLayer,
-      child: child,
+    final plate = row._plate(colorScheme, active: active);
+    // What the row's chips stand on: its plate over the panel — and,
+    // chromeless over the artwork, no one colour (Q12, [FaceGround]).
+    return FaceGround(
+      ground: switch (plate?.color) {
+        final wash? => FaceGround.washedIn(context, wash),
+        null => null,
+      },
+      child: RowPlate(
+        name: active ? '${row.keyPrefix}-selected-layer' : null,
+        width: row._size.width,
+        height: row._size.height,
+        padding: row._padding,
+        decoration: plate,
+        // The program language's word, as the conte's own rows say it.
+        label: active
+            ? AppText.strings.semSelectedLayer
+            : AppText.strings.semLayer,
+        child: child,
+      ),
     );
   }
 }

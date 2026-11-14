@@ -18,7 +18,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
@@ -29,7 +28,6 @@ import 'package:anicel/src/ui/playback/audio_device_transport.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨AN ARM READS NO WINDOW IT ALREADY HOLDS (play-press-first-frame-stall
@@ -45,8 +43,6 @@ import '../../helpers/temp_dir.dart';
 /// The conform's bytes count the windows read; the device is the null
 /// backend at 8 kHz, so a sound past the threshold stays small on disk.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
   const deviceRate = 8000;
   const fps = ProjectFrameRate.integer(10);
   const soundFrames = deviceRate * (conformStreamingThresholdSeconds + 1);
@@ -56,7 +52,6 @@ void main() {
 
   setUp(() async {
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-arm-window');
   });
 
@@ -67,7 +62,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
   });
 
@@ -141,7 +135,7 @@ void main() {
     controller.seekToGlobalFrame(290); // a second behind the new centre
     expect(conform.windowsRead, 2, reason: 'a step back inside reads nothing');
     controller.stop();
-  }, skip: skip);
+  });
 
   test('🚨the media viewer\'s sound, put back past its window\'s trailing '
       'edge, reads the window there — and picks up inside it reading '
@@ -170,7 +164,7 @@ void main() {
       reason: 'ten seconds back is past its trailing two: ↩️it played out of '
           'the window as it stood — silence',
     );
-  }, skip: skip);
+  });
 }
 
 /// Forty seconds of film at 10 fps, one sound under all of it.

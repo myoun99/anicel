@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_vertical_scrollbar_rail.dart';
@@ -115,8 +116,8 @@ void main() {
         }
       };
       try {
-        // One bucket: four cells.
-        controller.jumpTo(4 * cell);
+        // One bucket: a span of cells.
+        controller.jumpTo(timelineFrameWindowSpanFor(cell) * cell);
         await tester.pump();
         controller.jumpTo(0);
         await tester.pump();

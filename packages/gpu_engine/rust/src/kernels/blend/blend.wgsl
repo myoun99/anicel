@@ -19,8 +19,9 @@ const W_ONE: u32 = 65535u;
 // For a channel a byte gave, c·257 <= 32767 is exactly c <= 127.
 const W_HALF: u32 = 32767u;
 
-// Mode ids: the C engine's stroke table (qa_engine.c, QA_STROKE_BLEND_*),
-// the one the app's layer blend maps onto (brush_stroke_blend.dart), and
+// Mode ids: the app's stroke table (brush_stroke_blend.dart's
+// `strokeBlendModeNativeId` — the C stroke kernel's ids, which outlived
+// it), the one the app's layer blend maps onto, and
 // normal beside it — srcOver had no id there because it never reached
 // the table.
 const BLEND_BEHIND: u32 = 0u;
@@ -151,7 +152,7 @@ fn blend_soft_light(cs: u32, cd: u32) -> u32 {
   return cd + blend_mul(2u * cs - W_ONE, d - cd);
 }
 
-// B(cs, cd) of the separable modes (qa_stroke_blend_channel's table). A
+// B(cs, cd) of the separable modes (`blendSeparableChannel`'s table). A
 // glow reads its source already times its alpha (blend_composite).
 fn blend_channel(mode: u32, cs: u32, cd: u32) -> u32 {
   switch (mode) {
@@ -235,7 +236,7 @@ fn blend_channel(mode: u32, cs: u32, cd: u32) -> u32 {
 
 // ---- The six that mix the three channels ----
 // W3C Compositing Level 1's Lum, ClipColor, SetLum, Sat, SetSat, and
-// Photoshop's darker / lighter colour (qa_stroke_blend_triple).
+// Photoshop's darker / lighter colour (`_ChannelMix`, the app's).
 
 // Lum with the weights 0.3 / 0.59 / 0.11 as 19661 / 38666 / 7209 — they sum
 // to 65536, so Lum(c + d) is Lum(c) + d for any whole d, exactly.
@@ -525,7 +526,8 @@ fn blend_pack8(pixel: vec4<u32>) -> u32 {
 
 // A stored pixel premultiplied on the 16-bit scale, as every blur reads one
 // (effects/blur/held.wgsl, the blur brush's picture — kernels/dab/
-// blur_cel.wgsl): C's qa_blur_premultiplied, round(c·a·257 / 255), which is
+// blur_cel.wgsl): `BrushBlurPicture._premultiplied`, round(c·a·257 / 255),
+// which is
 // blend_mul(c·257, a·257) exactly. So a transparent pixel carries no colour
 // into its neighbours.
 fn blend_unpack8_premultiplied(texel: u32) -> vec4<u32> {
@@ -538,10 +540,10 @@ fn blend_unpack8_premultiplied(texel: u32) -> vec4<u32> {
   );
 }
 
-// A premultiplied pixel as every blur stores one — as C's
-// qa_blur_result_tile stores it: its alpha rounded to a byte, each channel
-// over that alpha rounded once, and nothing where the alpha rounds to none.
-// (C's (2a + 257) / 514 is blend_to8's (a + 128) / 257, and its
+// A premultiplied pixel as every blur stores one — as
+// `BrushBlurPicture.resultTile` stores it: its alpha rounded to a byte, each
+// channel over that alpha rounded once, and nothing where the alpha rounds
+// to none. (Its (2a + 257) / 514 is blend_to8's (a + 128) / 257, and its
 // (510c + a) / 2a is blend_over_alpha's (255c + ⌊a/2⌋) / a: for an odd a
 // they part only where a(2k − 1) = 510c, odd against even.)
 fn blend_pack8_premultiplied(pixel: vec4<u32>) -> u32 {
@@ -553,4 +555,21 @@ fn blend_pack8_premultiplied(pixel: vec4<u32>) -> u32 {
     | (blend_over_alpha(pixel.y * 255u, pixel.w) << 8u)
     | (blend_over_alpha(pixel.z * 255u, pixel.w) << 16u)
     | (alpha << 24u);
+}
+
+// A row or a buffer laid on the one under it at `opacity` under the
+// coverage byte `cover` (blend_cover), in `mode` — an eraser's taking its
+// alpha off what is under it, as a stroke of the eraser lands on its cel,
+// and a plus adding itself to it, as a crossfade's second pass does. The
+// composite lays its rows by it, and an export a frame's pictures
+// (export/lay.wgsl): one law for a picture laid at a strength.
+fn blend_laid(mode: u32, opacity: u32, cover: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
+  let alpha = blend_mul(src.w, blend_cover(opacity, cover));
+  if (mode == BLEND_ERASE) {
+    return blend_erase(alpha, dst);
+  }
+  if (mode == BLEND_PLUS) {
+    return blend_plus(vec4<u32>(src.xyz, alpha), dst);
+  }
+  return blend_composite(mode, vec4<u32>(src.xyz, alpha), dst);
 }

@@ -74,7 +74,7 @@ enum LayerBlendMode {
       NonSeparableBlendMode.forName(name);
 
   /// Whether a row in this mode is composed over a picture of everything
-  /// below it ([CompositeBackdropBlend], `shaders/layer_blend.frag`) rather
+  /// below it ([CompositeBackdropBlend]) rather
   /// than drawn in a GPU blend: every mode but normal, the one the GPU lays
   /// pixel by pixel where it draws.
   ///
