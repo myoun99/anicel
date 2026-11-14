@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../models/canvas_point.dart';
 
 /// The closed contours of the pixels [rows] hold — row `r` is the canvas
@@ -135,6 +137,11 @@ _EdgeTable _boundaryEdges(List<List<int>> rows, int width) {
   }
   return edges;
 }
+
+/// Test seam: how many edges [_boundaryEdges] lays for [rows].
+@visibleForTesting
+int debugBoundaryEdgeCount(List<List<int>> rows, int width) =>
+    _boundaryEdges(rows, width).length;
 
 /// The ways a boundary edge goes from the vertex it starts at.
 const _right = 0;

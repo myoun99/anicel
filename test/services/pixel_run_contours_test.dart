@@ -59,6 +59,45 @@ void main() {
     ]);
   });
 
+  test('two runs that meet only at a corner, each of its own length, are '
+      'walked through it a run each', () {
+    expect(walk([[0, 3], [3, 6]], width: 6), [
+      [
+        (0.0, 0.0),
+        (3.0, 0.0),
+        (3.0, 1.0),
+        (6.0, 1.0),
+        (6.0, 2.0),
+        (3.0, 2.0),
+        (3.0, 1.0),
+        (0.0, 1.0),
+      ],
+    ]);
+  });
+
+  test('a hole wider than a pixel starts at its top-left corner going down, '
+      'as the pixel scan met it', () {
+    bool hole(int x, int y) => x >= 2 && x < 5 && y >= 1 && y < 3;
+    expect(
+      walk(rowsOf((x, y) => !hole(x, y), width: 7, height: 5), width: 7),
+      [
+        [(0.0, 0.0), (7.0, 0.0), (7.0, 5.0), (0.0, 5.0)],
+        [(2.0, 1.0), (2.0, 3.0), (5.0, 3.0), (5.0, 1.0)],
+      ],
+    );
+  });
+
+  test('a straight side is laid as an edge or two, not a pixel\'s each', () {
+    // A 1000-pixel run three rows deep: its top one edge, its bottom two
+    // (its first pixel's own, then the rest), its sides one a row.
+    expect(
+      debugBoundaryEdgeCount([
+        for (var y = 0; y < 3; y += 1) [0, 1000],
+      ], 1000),
+      9,
+    );
+  });
+
   test('holes come after the outline that holds them, in the order the scan '
       'meets them — past the size the edge table starts at', () {
     // 225 one-pixel holes: over a thousand vertices with an edge, so the
