@@ -172,7 +172,7 @@ class ConformFormatException implements Exception {
 /// JSON blob for four integers.
 ///
 /// ```
-///  0   8  'QACONF02'          magic + version
+///  0   8  'QACONF01'          magic + version
 ///  8   4  sampleRate          u32
 /// 12   2  channels            u16
 /// 14   2  flags               u16   1 = fingerprint, 2 = source stat
@@ -181,7 +181,7 @@ class ConformFormatException implements Exception {
 /// 28   4  speedDenominator    u32
 /// 32   8  sourceLength        u64
 /// 40   4  sourceCrc32         u32
-/// 44   4  peaksPerSecond      u32   the waveform's buckets a second
+/// 44   4  peaksPerSecond      u32   the waveform's buckets a second (0 = none)
 /// 48   8  sourceModifiedMicros i64
 /// 56   4  decodeRecipe        u32   which decode made the PCM (0 = before)
 /// 60   4  peakBuckets         u32   buckets in each channel's lane
@@ -197,8 +197,14 @@ class ConformFormatException implements Exception {
 /// and the PCM of a sound past the streaming threshold read for nothing
 /// else (measured 2026-11-14). Kept here rather than in a file beside it
 /// for the reason the fingerprint is: no second file to go missing on its
-/// own. ↩️'QACONF01' had no peaks; one of those is not a conform this build
-/// reads, and is made again from its source.
+/// own.
+///
+/// ⚠️**The magic did not move.** A conform written before the peaks has 0 in
+/// both their words (they were reserved), so its peaks are of no bucket rate
+/// anything asks for: it is stale, and made again from its source. And a
+/// build before them reads this layout as it always did — the peaks lie
+/// past the PCM, where it never reads. ↩️'QACONF02' was tried, and walled
+/// those builds off a conform they read whole for nothing.
 ///
 /// 🔑**64 is not a round number for looks.** The PCM starting on a 64-byte
 /// boundary is what lets a reader take an `Int16List.view` over it instead
@@ -269,7 +275,7 @@ class ConformHeader {
   static const int length = 64;
 
   static const List<int> magic = [
-    0x51, 0x41, 0x43, 0x4f, 0x4e, 0x46, 0x30, 0x32, // QACONF02
+    0x51, 0x41, 0x43, 0x4f, 0x4e, 0x46, 0x30, 0x31, // QACONF01
   ];
 
   static const int _flagFingerprint = 1;

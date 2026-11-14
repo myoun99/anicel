@@ -872,8 +872,8 @@ void main() {
       );
     });
 
-    test('↩️a conform with no peaks behind its PCM — QACONF01 — is not read: '
-        'it is made again from its source', () {
+    test('a conform written before its peaks were kept — none behind its PCM, '
+        'their rate 0 — is made again from its source', () {
       final source = writeSource('old.wav');
       final pipeline = pipelineFor();
       final made = pipeline
@@ -884,10 +884,9 @@ void main() {
           .conformBytes!
           .readSync();
       final head = ConformHeader.parse(made);
-      // As one was written before the peaks: '01', its two fields reserved
-      // (0), and the file ending with the PCM.
+      // As one was written before the peaks: their two words reserved (0),
+      // and the file ending with the PCM.
       final old = Uint8List.fromList(made.sublist(0, head.peaksOffset))
-        ..[7] = 0x31
         ..fillRange(44, 48, 0)
         ..fillRange(60, 64, 0);
       final path = '${temp.path}/old.conform';

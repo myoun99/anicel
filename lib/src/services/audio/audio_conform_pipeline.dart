@@ -557,8 +557,9 @@ class AudioConformPipeline {
     // 0.1% of drift back in the door. And for a conform another decode made
     // ([conformDecodeRecipe]): the same file decodes to other samples now —
     // an m4a made before 2026-10-09 still holds its encoder's 1,024 frames.
-    // And for peaks folded at another bucket rate: they are handed back as
-    // they lie ([_reuse]), so they have to be the ones asked for.
+    // And for peaks folded at another bucket rate — or at none, a conform
+    // written before they were kept (0, [ConformHeader]): they are handed
+    // back as they lie ([_reuse]), so they have to be the ones asked for.
     final settingsMatch =
         existing != null &&
         existing.sampleRate == projectSampleRate &&
