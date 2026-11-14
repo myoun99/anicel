@@ -22,33 +22,42 @@ mod abi_tests;
 mod pace;
 #[cfg(test)]
 mod tests;
+mod tiles;
 
 use std::borrow::Cow;
 
-use fx_wgsl::{CHUNK_WORD, CUT, Cut, FRAME, Frame, Kernel, OUTPUT, RENDER};
+use fx_wgsl::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, INPUT, Kernel, OUTPUT, RENDER, ROWS};
 
 use crate::device::Engine;
-use crate::kernels::shared::{Encoded, encode, fits, le_bytes, le_words, pipeline_or_why, whole, words_buffer};
+use crate::kernels::shared::{
+    Encoded, encode, fits, le_bytes, le_words, pipeline_or_why, plane, whole, words_buffer,
+};
 
 pub(crate) use pace::Pace;
+pub(crate) use tiles::Tiled;
+use tiles::Tiles;
 
 /// The fewest words a host binding holds: the widest element of one, a
 /// value's `vec4<i32>`. An empty picture or no values is bound so, its
 /// count in the frame 0, so no word of it is read.
 const LEAST_WORDS: usize = 4;
 
-/// A plugin the device compiled.
+/// A plugin the device compiled, and the passes that hand it a chain's
+/// tiles and lay what it made back on them ([`Tiles`]).
 pub(crate) struct Plugin {
     kernel: Kernel,
     pipeline: wgpu::ComputePipeline,
+    tiles: Tiles,
 }
 
 impl Plugin {
     /// Compiles `kernel` on `engine`'s device, or says why the device
-    /// would not.
+    /// would not — the tile passes with it, so no render waits for one.
     pub(crate) fn open(engine: &Engine, kernel: Kernel) -> Result<Self, String> {
         let pipeline = pipeline_or_why(engine, &[kernel.source()], RENDER)?;
-        Ok(Plugin { kernel, pipeline })
+        let tiles = Tiles::of(engine);
+        tiles.compile(engine);
+        Ok(Plugin { kernel, pipeline, tiles })
     }
 
     /// The plugin's reach for `frame`'s values and moment, run on the CPU
@@ -64,41 +73,137 @@ impl Plugin {
     /// sized for alone; none where the device could not (the last error
     /// says why). A run cut leaves `output` as it was.
     pub(crate) fn render(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32]) -> Option<Result<(), Cut>> {
-        let [across, down, _] = self.kernel.workgroup_size();
-        let most = Pace::of(engine)?.chunk(frame.fuel, across * down);
+        let most = self.most(engine, frame)?;
         self.run(engine, frame, output, most)
     }
 
     /// [`Self::render`] in chunks of `most` workgroups at most.
     fn run(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32], most: u64) -> Option<Result<(), Cut>> {
         let bindings = self.kernel.bindings();
-        let [across, down, _] = self.kernel.groups(frame);
-        let buffers = {
-            let words: Vec<Cow<[u32]>> = bindings
-                .iter()
-                .map(|bound| {
-                    let words = frame.bound(bound.name, output).expect("the prelude binds it");
-                    if words.len() < LEAST_WORDS { Cow::Owned(padded(&words)) } else { words }
-                })
-                .collect();
-            let bytes: Vec<u64> = words.iter().map(|words| 4 * words.len() as u64).collect();
-            fits(engine, &bytes, std::iter::once((across, down)))?;
-            bindings
-                .iter()
-                .zip(&words)
-                .map(|(bound, words)| {
-                    let kind = if bound.uniform { wgpu::BufferUsages::UNIFORM } else { wgpu::BufferUsages::STORAGE };
-                    let back = if bound.written { wgpu::BufferUsages::COPY_SRC } else { wgpu::BufferUsages::empty() };
-                    let chunked = if bound.name == FRAME { wgpu::BufferUsages::COPY_DST } else { wgpu::BufferUsages::empty() };
-                    words_buffer(engine, bound.name, words, kind | back | chunked)
-                })
-                .collect::<Vec<_>>()
+        let words: Vec<Cow<[u32]>> = bindings
+            .iter()
+            .map(|bound| least(frame.bound(bound.name, output).expect("the prelude binds it")))
+            .collect();
+        let bytes: Vec<u64> = words.iter().map(|words| 4 * words.len() as u64).collect();
+        let groups = self.fitting(engine, frame, &bytes)?;
+        let buffers: Vec<_> = bindings
+            .iter()
+            .zip(&words)
+            .map(|(bound, words)| words_buffer(engine, bound.name, words, usage(bound)))
+            .collect();
+        if let Err(cut) = self.chunked(engine, &bindings, &buffers, groups, most)? {
+            return Some(Err(cut));
+        }
+        if let Some(at) = bindings.iter().position(|bound| bound.name == OUTPUT) {
+            output.copy_from_slice(&le_words(&engine.read_buffer(&buffers[at])?)[..output.len()]);
+        }
+        Some(Ok(()))
+    }
+
+    /// [`Self::render`] over pictures that stay on the device: `input`'s
+    /// tiles and each of `rows`' — a layer's, by slot — read at `frame`'s
+    /// input place (its `in_origin` and `in_size`; its `input` and `rows`
+    /// words are not read), the output started clear, and what the render
+    /// made at its output place laid on tiles over `input`'s rectangle,
+    /// clear past it and wherever its alpha is 0 — as a chain puts what a
+    /// plug-in made (`Op::Put`). Submits the work; the caller waits for
+    /// what it reads of the tiles.
+    // ⏳The tests alone ask it until the app hands a plug-in its chain's
+    // tiles through the C ABI — over the door the letters plate's lane
+    // lands first (a-plugin-step-goes-through-the-cpu-and-back, 관제
+    // 2026-11-15 08:11).
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn render_tiled(
+        &self,
+        engine: &Engine,
+        frame: &Frame<'_>,
+        input: Tiled,
+        rows: &[Tiled],
+    ) -> Option<Result<wgpu::Buffer, Cut>> {
+        let most = self.most(engine, frame)?;
+        let place = |[left, top]: [i32; 2], [width, height]: [i32; 2]| {
+            ([left, top, width, height], width.max(0) as u64 * height.max(0) as u64)
         };
-        let bound: Vec<_> = bindings.iter().zip(&buffers).map(|(bound, buffer)| (bound.number, buffer)).collect();
+        let (read, area) = place(frame.in_origin, frame.in_size);
+        let (drawn, drawn_area) = place(frame.out_origin, frame.out_size);
+        let bindings = self.kernel.bindings();
+        // The words a binding is laid from, or none for a picture the
+        // device holds.
+        let words = |bound: &Bound| match bound.name {
+            FRAME => Some(Cow::Owned(frame.words_of_layers(rows.len()))),
+            INPUT | ROWS | OUTPUT => None,
+            name => Some(least(frame.bound(name, &[]).expect("the prelude binds it"))),
+        };
+        let pictured = |words: u64| 4 * words.max(LEAST_WORDS as u64);
+        let bytes: Vec<u64> = bindings
+            .iter()
+            .map(|bound| match (bound.name, words(bound)) {
+                (_, Some(words)) => 4 * words.len() as u64,
+                (ROWS, None) => pictured(area * rows.len() as u64),
+                (OUTPUT, None) => pictured(drawn_area),
+                (_, None) => pictured(area),
+            })
+            .collect();
+        let groups = self.fitting(engine, frame, &bytes)?;
+        // A new buffer is zeros: the output as the render starts it.
+        let buffers: Vec<_> = bindings
+            .iter()
+            .zip(&bytes)
+            .map(|(bound, &bytes)| match words(bound) {
+                Some(words) => words_buffer(engine, bound.name, &words, usage(bound)),
+                None => plane(engine, bound.name, bytes),
+            })
+            .collect();
+        let buffer = |name: &str| bindings.iter().position(|bound| bound.name == name).map(|at| &buffers[at]);
+        if let Some(planes) = buffer(INPUT) {
+            self.tiles.rows_of(engine, input, read, planes, 0);
+        }
+        if let Some(planes) = buffer(ROWS) {
+            for (slot, &row) in rows.iter().enumerate() {
+                self.tiles.rows_of(engine, row, read, planes, (area * slot as u64) as u32);
+            }
+        }
+        if let Err(cut) = self.chunked(engine, &bindings, &buffers, groups, most)? {
+            return Some(Err(cut));
+        }
+        let made = match buffer(OUTPUT) {
+            Some(made) => made,
+            // A render that writes no pixel made a clear picture.
+            None => &plane(engine, OUTPUT, pictured(drawn_area)),
+        };
+        self.tiles.tiles_of(engine, made, 0, drawn, input.rect).map(Ok)
+    }
+
+    /// The most workgroups a chunk of a render over `frame` takes.
+    fn most(&self, engine: &Engine, frame: &Frame<'_>) -> Option<u64> {
+        let [across, down, _] = self.kernel.workgroup_size();
+        Some(Pace::of(engine)?.chunk(frame.fuel, across * down))
+    }
+
+    /// The workgroups across and down a render over `frame` is dispatched
+    /// over, where its bindings of `bytes` fit the device.
+    fn fitting(&self, engine: &Engine, frame: &Frame<'_>, bytes: &[u64]) -> Option<[u32; 2]> {
+        let [across, down, _] = self.kernel.groups(frame);
+        fits(engine, bytes, std::iter::once((across, down)))?;
+        Some([across, down])
+    }
+
+    /// Dispatches the render over `groups` with `bindings`' `buffers`, in
+    /// chunks of `most` workgroups at most, the cut read after each: a run
+    /// cut stops there. One loop whichever pictures the run is handed.
+    fn chunked(
+        &self,
+        engine: &Engine,
+        bindings: &[Bound],
+        buffers: &[wgpu::Buffer],
+        groups: [u32; 2],
+        most: u64,
+    ) -> Option<Result<(), Cut>> {
+        let bound: Vec<_> = bindings.iter().zip(buffers).map(|(bound, buffer)| (bound.number, buffer)).collect();
         let buffer = |name: &str| bindings.iter().position(|bound| bound.name == name).map(|at| &buffers[at]);
         let framed = buffer(FRAME).expect("every render reads its frame as it enters");
         let cut = buffer(CUT).expect("every render reads the cut as it enters");
-        for (first, size) in chunks([across, down], most) {
+        for (first, size) in chunks(groups, most) {
             engine.queue.write_buffer(framed, 4 * CHUNK_WORD as u64, &le_bytes(&first));
             let groups = (size[0], size[1], 1);
             encode(engine, &[Encoded { pipeline: &self.pipeline, bound: whole(&bound), groups }]);
@@ -106,11 +211,18 @@ impl Plugin {
                 return Some(Err(Cut));
             }
         }
-        if let Some(written) = buffer(OUTPUT) {
-            output.copy_from_slice(&le_words(&engine.read_buffer(written)?)[..output.len()]);
-        }
         Some(Ok(()))
     }
+}
+
+/// How the buffer of `bound` is made: a uniform or storage buffer, read
+/// back where the run writes it, written a chunk at a time where it is the
+/// frame.
+fn usage(bound: &Bound) -> wgpu::BufferUsages {
+    let kind = if bound.uniform { wgpu::BufferUsages::UNIFORM } else { wgpu::BufferUsages::STORAGE };
+    let back = if bound.written { wgpu::BufferUsages::COPY_SRC } else { wgpu::BufferUsages::empty() };
+    let chunked = if bound.name == FRAME { wgpu::BufferUsages::COPY_DST } else { wgpu::BufferUsages::empty() };
+    kind | back | chunked
 }
 
 /// The chunks a dispatch of `groups` — across, down — is cut into, `most`
@@ -131,9 +243,13 @@ fn chunks([across, down]: [u32; 2], most: u64) -> Vec<([u32; 2], [u32; 2])> {
         .collect()
 }
 
-/// `words` and zeros after them, [`LEAST_WORDS`] in all.
-fn padded(words: &[u32]) -> Vec<u32> {
-    let mut padded = words.to_vec();
+/// `words`, with zeros after them where they are fewer than
+/// [`LEAST_WORDS`].
+fn least(words: Cow<[u32]>) -> Cow<[u32]> {
+    if words.len() >= LEAST_WORDS {
+        return words;
+    }
+    let mut padded = words.into_owned();
     padded.resize(LEAST_WORDS, 0);
-    padded
+    Cow::Owned(padded)
 }

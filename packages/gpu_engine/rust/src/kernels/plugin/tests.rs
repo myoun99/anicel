@@ -6,7 +6,11 @@
 
 use fx_wgsl::{Cut, Frame, Kernel, open, open_uncut};
 
-use super::{Pace, Plugin};
+use super::{Pace, Plugin, Tiled};
+use crate::kernels::chain::put_over;
+use crate::kernels::composite::TILE;
+use crate::kernels::effects::blur::TileRect;
+use crate::kernels::shared::le_bytes;
 use crate::kernels::shared::{Encoded, encode, pipeline_or_why, whole};
 use crate::testing::first_engine;
 
@@ -391,4 +395,75 @@ fn the_engines_pace_is_measured_once() {
     assert!(pace.chunk(1_000_000, 256) >= 1);
     assert_eq!(engine.plugin_pace.get(), Some(&pace), "kept on the engine");
     assert_eq!(Pace::of(engine), Some(pace));
+}
+
+/// `words`, a picture over `whole` — (left, top, right, bottom) — at
+/// `at`'s (left, top, width, height), row after row: clear past `whole`.
+fn cropped(words: &[u32], [left, top, right, bottom]: [i32; 4], [x0, y0, width, height]: [i32; 4]) -> Vec<u32> {
+    let mut out = Vec::with_capacity((width * height).max(0) as usize);
+    for y in y0..y0 + height {
+        for x in x0..x0 + width {
+            let inside = (left..right).contains(&x) && (top..bottom).contains(&y);
+            out.push(if inside { words[((y - top) * (right - left) + (x - left)) as usize] } else { 0 });
+        }
+    }
+    out
+}
+
+/// A chain's tiles over `rect`, each pixel its place hashed by `seed`, and
+/// those words row after row over the tiles' pixels.
+fn chain_tiles(engine: &crate::device::Engine, rect: TileRect, seed: u32) -> (wgpu::Buffer, Vec<u32>, [i32; 4]) {
+    let side = TILE as i32;
+    let whole = [rect.x0 * side, rect.y0 * side, (rect.x0 + rect.columns as i32) * side, (rect.y0 + rect.rows as i32) * side];
+    let words = hashed(((whole[2] - whole[0]) * (whole[3] - whole[1])) as usize, seed);
+    let tiles = put_over(engine, rect, whole, &le_bytes(&words)).expect("laid");
+    (tiles, words, whole)
+}
+
+#[test]
+fn a_run_over_a_chains_tiles_lays_on_them_what_the_cpu_draws() {
+    // The CPU's run over the very pixels the tiles hold at the input's
+    // place, what it drew put as a chain puts it — a pixel no alpha shows
+    // zeroed (hashed words leave some at alpha 0, with colour). Past the
+    // tiles the input reads clear: the second rectangle ends at x = 128,
+    // inside the picture.
+    let engine = first_engine();
+    let rects = [
+        (TileRect { x0: -1, y0: 0, columns: 2, rows: 1 }, None),
+        (TileRect { x0: 0, y0: 0, columns: 1, rows: 1 }, Some([110, 20])),
+    ];
+    for (rect, origin) in rects {
+        for (name, source, given) in &fixtures([37, 23]) {
+            let base = given.frame();
+            let [x, y] = origin.unwrap_or(base.in_origin);
+            let reach = given.reach;
+            let frame = Frame { in_origin: [x, y], out_origin: [x + reach, y + reach], ..base };
+            let read = [x, y, frame.in_size[0], frame.in_size[1]];
+            let (input, input_words, whole) = chain_tiles(engine, rect, 7);
+            let layers: Vec<_> = (0..2).map(|slot| chain_tiles(engine, rect, 11 + slot)).collect();
+            let cpu_input = cropped(&input_words, whole, read);
+            let cpu_rows: Vec<u32> = layers.iter().flat_map(|(_, words, _)| cropped(words, whole, read)).collect();
+            let kernel = open(source).unwrap_or_else(|refusal| panic!("refused: {refusal}"));
+            let mut drawn = vec![0; (given.size[0] * given.size[1]) as usize];
+            let cpu_cut = kernel.render(&Frame { input: &cpu_input, rows: &cpu_rows, ..frame }, &mut drawn);
+            assert_eq!(cpu_cut, Ok(()), "{name}");
+            for word in &mut drawn {
+                if *word >> 24 == 0 {
+                    *word = 0;
+                }
+            }
+            let [left, top] = frame.out_origin;
+            let put = [left, top, left + given.size[0], top + given.size[1]];
+            let expected = put_over(engine, rect, put, &le_bytes(&drawn)).expect("put");
+            let plugin = Plugin::open(engine, kernel).unwrap_or_else(|why| panic!("the device refused: {why}"));
+            let rows: Vec<_> = layers.iter().map(|(tiles, _, _)| Tiled { tiles, rect }).collect();
+            let made = plugin
+                .render_tiled(engine, &frame, Tiled { tiles: &input, rect }, &rows)
+                .expect("the device ran it")
+                .unwrap_or_else(|Cut| panic!("{name}: cut"));
+            let (made, expected) = (engine.read_buffer(&made).expect("read"), engine.read_buffer(&expected).expect("read"));
+            let apart = made.chunks(4).zip(expected.chunks(4)).position(|(a, b)| a != b);
+            assert_eq!(apart, None, "{name} over {rect:?}: the first word apart, tile after tile");
+        }
+    }
 }

@@ -51,7 +51,7 @@ mod tests;
 
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 
-pub use frame::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, OUTPUT};
+pub use frame::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, INPUT, OUTPUT, ROWS};
 
 /// The host's prelude, appended after every plugin's source.
 pub const PRELUDE: &str = include_str!("prelude.wgsl");

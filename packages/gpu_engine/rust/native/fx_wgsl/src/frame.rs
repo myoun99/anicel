@@ -12,6 +12,12 @@ use crate::Kernel;
 /// The prelude's binding the run's picture is written to.
 pub const OUTPUT: &str = "anicel_host_output";
 
+/// The prelude's binding the run's input picture is read from.
+pub const INPUT: &str = "anicel_host_input";
+
+/// The prelude's binding the layers' planes are read from.
+pub const ROWS: &str = "anicel_host_rows";
+
 /// The prelude's binding a cut run is marked in.
 pub const CUT: &str = "anicel_host_cut";
 
@@ -72,8 +78,8 @@ impl<'a> Frame<'a> {
     {
         match name {
             FRAME => Some(Cow::Owned(self.words())),
-            "anicel_host_input" => Some(Cow::Borrowed(self.input)),
-            "anicel_host_rows" => Some(Cow::Borrowed(self.rows)),
+            INPUT => Some(Cow::Borrowed(self.input)),
+            ROWS => Some(Cow::Borrowed(self.rows)),
             "anicel_host_values" => Some(Cow::Owned(self.values.iter().flatten().map(|&w| w as u32).collect())),
             OUTPUT => Some(Cow::Borrowed(output)),
             CUT => Some(Cow::Owned(vec![0])),
@@ -86,7 +92,14 @@ impl<'a> Frame<'a> {
     /// members and their offsets to the prelude's).
     fn words(&self) -> Vec<u32> {
         let plane = (self.in_size[0].max(0) * self.in_size[1].max(0)) as usize;
-        let rows = if plane == 0 { 0 } else { self.rows.len() / plane };
+        self.words_of_layers(if plane == 0 { 0 } else { self.rows.len() / plane })
+    }
+
+    /// [`FRAME`]'s words for a run over `layers` planes the host holds
+    /// itself — on the device, not in `rows` (gpu_engine's kernels/plugin,
+    /// whose pictures never leave the GPU).
+    pub fn words_of_layers(&self, layers: usize) -> Vec<u32> {
+        let rows = layers;
         let [out_x, out_y] = self.out_origin;
         let [out_w, out_h] = self.out_size;
         let [in_x, in_y] = self.in_origin;

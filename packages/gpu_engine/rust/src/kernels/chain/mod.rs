@@ -276,7 +276,7 @@ impl Chain {
 }
 
 /// The tiles over `rect` holding `pixels` at `picture`, clear elsewhere.
-fn put_over(engine: &Engine, rect: TileRect, picture: [i32; 4], pixels: &[u8]) -> Option<wgpu::Buffer> {
+pub(crate) fn put_over(engine: &Engine, rect: TileRect, picture: [i32; 4], pixels: &[u8]) -> Option<wgpu::Buffer> {
     if pixels.len() != picture_bytes(picture) {
         return fail(format!("{} bytes put over {picture:?}", pixels.len()));
     }
