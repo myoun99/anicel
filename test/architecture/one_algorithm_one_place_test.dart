@@ -897,8 +897,21 @@ import '../../tool/refactor/clone_scan.dart';
 ///
 /// the second of the outline's two above, a candidate and not a clone: the
 /// lattice went with the Dart dab loop that read it.
+/// 80 → 81 (2026-11-15, H60 — a picture tip smoothed by its step about its
+/// own contour). Named:
+///
+///     40 tokens
+///       lib/src/models/brush_tip_mask.dart  brushTipMaskSmoothed
+///       lib/src/services/round_tip_profile.dart  _buildSquare
+///
+/// A candidate and not a clone: what they share is the scaffold — two
+/// planes of a side squared, then a walk down the side. One smooths a
+/// picture by a box along its rows and then its columns; the other
+/// integrates a round tip's profile over each pixel's square. Not one
+/// algorithm, so nothing to share. 🔬`clones.dart` on the lane over master
+/// (`62254f54d`, at 80): this one added, none gone.
 void main() {
-  const ceiling = 80;
+  const ceiling = 81;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
