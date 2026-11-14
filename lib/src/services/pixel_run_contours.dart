@@ -44,21 +44,22 @@ List<List<CanvasPoint>> pixelRunContours(
       continue;
     }
     while (edges.hasAt(start, line)) {
-      contours.add(_closedContour(edges, laid.xs[edge], line, at));
+      contours.add(_closedContour(edges, start, laid.xs[edge], line, at));
     }
   }
   return contours;
 }
 
-/// The contour walked from vertex ([x], [y]) ([_walkContour]), its join
-/// merged.
+/// The contour walked from vertex ([x], [y]), its first place [start]
+/// ([_walkContour]), its join merged.
 List<CanvasPoint> _closedContour(
   _EdgeTable edges,
+  int start,
   int x,
   int y,
   CanvasPoint Function(int x, int y) at,
 ) {
-  final contour = _walkContour(edges, x, y, at);
+  final contour = _walkContour(edges, start, x, y, at);
   // ⚠️And once more AROUND the join. The walk starts wherever the edge
   // map happened to hand it a vertex, which is usually the middle of a
   // straight run, and the segment that closes the contour is implied
@@ -254,13 +255,14 @@ final class _EdgeTable {
   /// and span ([_LaidEdges.ways]) — or -1 when none is left.
   int take(int x, int line) {
     final place = _placeOf(x, line);
-    if (place < 0) {
-      return -1;
-    }
-    return _paired(place, line) && _ways[place + 1] >= 0
-        ? _taken(place + 1)
-        : _taken(place);
+    return place < 0 ? -1 : takeAt(place, line);
   }
+
+  /// [take] from the vertex whose first place is [place], on [line].
+  int takeAt(int place, int line) =>
+      _paired(place, line) && _ways[place + 1] >= 0
+      ? _taken(place + 1)
+      : _taken(place);
 
   int _taken(int place) {
     final way = _ways[place];
@@ -319,8 +321,13 @@ final class _EdgeTable {
 
 /// One closed contour of [edges], walked from vertex ([startX], [startY])
 /// and consumed as it goes — [at] is a vertex's canvas point.
+///
+/// ⚠️Its first edge is taken at [start], the very place the caller asked
+/// [_EdgeTable.hasAt] of, never found again: so every walk the caller asks
+/// for takes an edge, and its asking ends.
 List<CanvasPoint> _walkContour(
   _EdgeTable edges,
+  int start,
   int startX,
   int startY,
   CanvasPoint Function(int x, int y) at,
@@ -344,11 +351,8 @@ List<CanvasPoint> _walkContour(
   // ⚠️Bounded by the edge count rather than trusted to close: a
   // malformed walk must end, not hang the paint thread.
   var guard = edges.length + 8;
-  while (guard-- > 0) {
-    final taken = edges.take(x, y);
-    if (taken < 0) {
-      break;
-    }
+  var taken = edges.takeAt(start, startY);
+  while (taken >= 0 && guard-- > 0) {
     final way = taken & 3;
     final nextX = x + _acrossBy[way] * (taken >> 2);
     final nextY = y + _downBy[way] * (taken >> 2);
@@ -367,6 +371,7 @@ List<CanvasPoint> _walkContour(
     lastWay = way;
     x = nextX;
     y = nextY;
+    taken = edges.take(x, y);
   }
   if (behind) {
     contour[contour.length - 1] = at(x, y);
