@@ -1,9 +1,10 @@
 //! Windows: Media Foundation's Sink Writer. The writer owns the H.264 and
-//! AAC encoder MFTs AND the MP4 muxing. Its pictures go in as NV12 in the
-//! app's colour law (`colour`, BT.601 studio range), and its types say so:
-//! an export's as the GPU engine made them (`write_nv12`), a trimmed
-//! movie's made here of its RGBA (`write_frame`), each padded even as
-//! H.264 requires.
+//! AAC encoder MFTs AND the MP4 muxing. Its pictures go in as NV12, each
+//! padded even as H.264 requires, and its types say what they are: an
+//! export's in the app's colour law (`colour`, BT.601 studio range) as the
+//! GPU engine made them (`write_nv12`) or made here of RGBA
+//! (`write_frame`); a trimmed piece's as its movie's decoder made them
+//! (`write_nv12`), named as that movie names them.
 //!
 //! ↩️Till 2026-11-14 the RGBA of both went in as RGB32 — made BGRA here,
 //! then YUV by Media Foundation's own converter: two passes on the CPU a
@@ -23,8 +24,8 @@ use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{GUID, PCWSTR, Result};
 
 use super::nv12::{self, Nv12};
-use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, edit_list, lock, set_error};
-use crate::colour::{self, Picture, Planes};
+use super::{A_PIECE_TAKES_NV12, BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, edit_list, lock, set_error};
+use crate::colour::{self, Picture, Planes, media_foundation};
 use crate::hardware_law;
 
 pub const SUPPORTED: bool = true;
@@ -44,6 +45,8 @@ struct Writer {
     /// Padded even.
     width: usize,
     height: usize,
+    /// Whether RGBA may be handed (`Job::takes_rgba`).
+    takes_rgba: bool,
     fps_num: i64,
     fps_den: i64,
     frame_index: i64,
@@ -157,6 +160,7 @@ pub fn open(job: &Job) -> bool {
         src_height: job.height as usize,
         width: width as usize,
         height: height as usize,
+        takes_rgba: job.takes_rgba(),
         fps_num: i64::from(job.fps_num),
         fps_den: i64::from(job.fps_den),
         frame_index: 0,
@@ -193,9 +197,10 @@ unsafe fn sink_writer(path: PCWSTR, hardware: bool) -> Result<IMFSinkWriter> {
     unsafe { MFCreateSinkWriterFromURL(path, None, attributes.as_ref()) }
 }
 
-/// A video type of this job's frame size, rate and square pixels, in the
-/// app's colour law — and its bitrate, for the encoded one. The attributes
-/// go in the C's order, the law's after them.
+/// A video type of this job's frame size, rate and square pixels, named as
+/// its pictures are (`Job::named` — the app's colour law, or a piece's
+/// movie's) — and its bitrate, for the encoded one. The attributes go in
+/// the C's order, the colours after them.
 fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job: &Job) -> Result<IMFMediaType> {
     // SAFETY: setting attributes on a type of our own.
     unsafe {
@@ -223,10 +228,9 @@ fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job
         // transfer, darks 16 brighter; the main PC's (NVIDIA) dropped the
         // colour named and read HD as BT.709's matrix, green +13, whatever
         // the transfer. ↩️So the transfer was sRGB's for a day.
-        let _ = media_type.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601.0 as u32);
-        let _ = media_type.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32);
-        let _ = media_type.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE170M.0 as u32);
-        let _ = media_type.SetUINT32(&MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709.0 as u32);
+        // A piece names its movie's four instead, and none the movie does
+        // not name (`colour`; the table names SMPTE170M, not SMPTE_C).
+        media_foundation::name(&media_type, job.named());
         Ok(media_type)
     }
 }
@@ -351,8 +355,9 @@ fn picture(writer: &mut Writer, fill: impl FnOnce(&mut Planes)) -> bool {
     false
 }
 
-/// A trimmed movie's frame, made NV12 here in the app's colour law — the
-/// padding white, so an odd canvas gains a hairline of paper, not garbage.
+/// A frame the app made, made NV12 here in its colour law — the padding
+/// white, so an odd canvas gains a hairline of paper, not garbage. A
+/// piece's writer refuses it (`Job::takes_rgba`).
 ///
 /// # Safety
 /// `rgba` is null or holds the frame `open` was given.
@@ -361,6 +366,10 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
         return false;
     };
+    if !writer.takes_rgba {
+        set_error(A_PIECE_TAKES_NV12);
+        return false;
+    }
     // SAFETY: the caller's contract.
     let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
     let picture_of = Picture { rgba, width: writer.src_width, height: writer.src_height };

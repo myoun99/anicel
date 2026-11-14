@@ -37,6 +37,60 @@
 //! hid the first and not the second. Android's writer names them
 //! too since that day (it had named none — an HD movie it wrote read as
 //! BT.709 on Windows); ⚠️no device read one back where this was measured.
+//!
+//! 🗣️★★★**A PIECE CUT FROM A MOVIE IS NOT WRITTEN IN THIS LAW — IT KEEPS
+//! THE MOVIE'S OWN** (유저 2026-11-14, board trimmed-movie-decodes-to-nv12-Q1:
+//! 「원본의 색을 그대로 따라 쓴다」). This law is how the app makes YCbCr
+//! of a picture it drew; a trimmed piece has YCbCr already. Its decoder
+//! hands the movie's 4:2:0 as it is ([`nv12_of`]) and says what the movie
+//! calls it ([`Colours`]); its writer lays those bytes and names those
+//! colours, and names nothing the movie did not. No sum either way.
+//! ⚠️So a piece's writer takes no RGBA (`export`): RGBA becomes YCbCr in
+//! this law only, which is not what the piece says it holds.
+
+/// What a movie says its pictures are, in the code points every container
+/// and bitstream spell them in (ITU-T H.273 — an MP4's `colr`, H.264's
+/// VUI): the colour primaries, the transfer curve and the YCbCr matrix, and
+/// the range — 0 studio, 1 full. [`UNSPECIFIED`] is said of any the movie
+/// does not name — H.273's own 2 for the first three, and the same 2 for
+/// the range, which H.273 has no word for. Each platform keeps one table
+/// of its own names against these numbers (Apple asks the OS's own).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Colours {
+    pub primaries: u8,
+    pub transfer: u8,
+    pub matrix: u8,
+    pub range: u8,
+}
+
+/// What [`Colours`] holds for anything a movie does not name.
+pub const UNSPECIFIED: u8 = 2;
+
+impl Colours {
+    /// This law's four: SMPTE C's primaries (SMPTE 170M, 6), BT.709's
+    /// transfer (1), BT.601's matrix (SMPTE 170M, 6), studio range (0).
+    pub const LAW: Colours = Colours { primaries: 6, transfer: 1, matrix: 6, range: 0 };
+
+    /// What a movie that names nothing says.
+    pub const NONE: Colours =
+        Colours { primaries: UNSPECIFIED, transfer: UNSPECIFIED, matrix: UNSPECIFIED, range: UNSPECIFIED };
+}
+
+/// Each of `named`'s pairs — a platform's name and the code point it is —
+/// read one way: the code point `name` is, or [`UNSPECIFIED`] where the
+/// platform says nothing the table knows. One table a platform and an
+/// attribute serves both ways ([`name_of`]), so what a reader understands
+/// and what a writer names cannot drift apart.
+pub fn code_of<T: PartialEq>(named: &[(T, u8)], name: Option<T>) -> u8 {
+    name.and_then(|name| named.iter().find(|(known, _)| *known == name)).map_or(UNSPECIFIED, |&(_, code)| code)
+}
+
+/// The platform's name for `code` in `named` — none for [`UNSPECIFIED`],
+/// or for a code point the platform has no name for: nothing is written
+/// then, as a movie that names nothing names nothing.
+pub fn name_of<T: Copy>(named: &[(T, u8)], code: u8) -> Option<T> {
+    named.iter().find(|&&(_, known)| known == code && code != UNSPECIFIED).map(|&(name, _)| name)
+}
 
 /// A straight-RGBA picture, rows top-down and packed.
 pub struct Picture<'a> {
@@ -99,13 +153,100 @@ pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Pl
     }
 }
 
+/// Where a decoder's 4:2:0 frame lies, to be read — what [`Planes`] is to
+/// be written: `y` rows `y_stride` apart, and the chroma sample for 2×2
+/// pixels at `row * chroma_stride + column * chroma_step` past `cb` (and
+/// past `cr`) in `chroma`. Apple hands its two planes apart; Media
+/// Foundation and MediaCodec one buffer ([`Decoded::in_one_buffer`]).
+pub struct Decoded<'a> {
+    pub y: &'a [u8],
+    pub y_stride: usize,
+    pub chroma: &'a [u8],
+    pub cb: usize,
+    pub cr: usize,
+    pub chroma_stride: usize,
+    pub chroma_step: usize,
+}
+
+impl<'a> Decoded<'a> {
+    /// One buffer `data`: `slice` Y rows `stride` bytes apart, then the
+    /// chroma — side by side on rows as long (NV12, `semi_planar`), or Cb's
+    /// plane of half rows and then Cr's (I420).
+    ///
+    /// `stride` is BYTES PER LUMA ROW and `slice` the rows between the Y
+    /// plane and the chroma that follows it. Both are ≥ the picture, and
+    /// assuming either equals it is the classic way to get a green-striped
+    /// frame on one vendor's hardware and a correct one on another's.
+    pub fn in_one_buffer(data: &'a [u8], stride: usize, slice: usize, semi_planar: bool) -> Self {
+        let cb = stride * slice;
+        let (cr, chroma_stride, chroma_step) =
+            if semi_planar { (cb + 1, stride, 2) } else { (cb + (stride / 2) * (slice / 2), stride / 2, 1) };
+        Decoded { y: data, y_stride: stride, chroma: data, cb, cr, chroma_stride, chroma_step }
+    }
+
+    /// Whether it holds a `width`×`height` frame: its last luma byte and
+    /// its last chroma pair are inside it.
+    ///
+    /// ⚠️Whether it could: a buffer that ends before the last byte its own
+    /// stride and slice place is refused, not read past — the C read on
+    /// regardless (2026-11-07, the decoder's move to Rust, where reading
+    /// past is a panic and a panic across the FFI is the app gone).
+    fn holds(&self, width: usize, height: usize) -> bool {
+        let last_chroma =
+            self.cb.max(self.cr) + (height - 1) / 2 * self.chroma_stride + (width - 1) / 2 * self.chroma_step;
+        self.y.len() > (height - 1) * self.y_stride + width - 1 && self.chroma.len() > last_chroma
+    }
+
+    /// The Y, Cb and Cr of pixel (`x`, `y`).
+    fn at(&self, x: usize, y: usize) -> (u8, u8, u8) {
+        let chroma = (y / 2) * self.chroma_stride + (x / 2) * self.chroma_step;
+        (self.y[y * self.y_stride + x], self.chroma[self.cb + chroma], self.chroma[self.cr + chroma])
+    }
+}
+
+/// How many bytes [`nv12_of`] makes of a `width`×`height` picture: NV12 of
+/// it padded even, as an encoder takes it.
+pub fn nv12_bytes(width: usize, height: usize) -> usize {
+    let (width, height) = (width + (width & 1), height + (height & 1));
+    width * height * 3 / 2
+}
+
+/// `frame`'s `width`×`height` into `out` as it is — no sum, the decoder's
+/// own bytes — laid as NV12 padded even ([`nv12_bytes`]): the Y rows, then
+/// the CbCr pairs side by side, every row the padded width apart.
+///
+/// The padding repeats the picture's last column and row: an odd picture's
+/// chroma already covers it (a 2×2 block's sample is the decoder's), and
+/// a repeated edge is a colour the movie has, in whatever range it is in.
+/// False, and `out` untouched, where `frame` does not hold the picture.
+#[must_use]
+pub fn nv12_of(frame: &Decoded, width: usize, height: usize, out: &mut [u8]) -> bool {
+    if width == 0 || height == 0 {
+        return true;
+    }
+    let (padded, rows) = (width + (width & 1), height + (height & 1));
+    if !frame.holds(width, height) || out.len() < nv12_bytes(width, height) {
+        return false;
+    }
+    let (luma, chroma) = out.split_at_mut(padded * rows);
+    for (y, row) in luma.chunks_exact_mut(padded).enumerate() {
+        let from = &frame.y[y.min(height - 1) * frame.y_stride..][..width];
+        row[..width].copy_from_slice(from);
+        row[width..].fill(from[width - 1]);
+    }
+    for (y, row) in chroma.chunks_exact_mut(padded).take(rows / 2).enumerate() {
+        for (x, pair) in row.chunks_exact_mut(2).enumerate() {
+            let (_, cb, cr) = frame.at(x * 2, y * 2);
+            pair.copy_from_slice(&[cb, cr]);
+        }
+    }
+    true
+}
+
 /// YUV420 → RGBA, BT.601 studio range — the inverse of [`from_rgba`].
 ///
-/// `stride` is BYTES PER LUMA ROW and `slice` the rows between the Y plane
-/// and the chroma that follows it. Both are ≥ the picture, and assuming
-/// either equals it is the classic way to get a green-striped frame on one
-/// vendor's hardware and a correct one on another's. `semi_planar` picks
-/// NV12 (interleaved chroma) over planar I420.
+/// `data` lies as [`Decoded::in_one_buffer`] reads it: `stride` bytes a
+/// luma row, `slice` rows to the chroma, `semi_planar` NV12 over I420.
 ///
 /// 🚨★★★**IT LIVES IN THE LAW BECAUSE IT IS ARITHMETIC, AND BECAUSE IT WAS
 /// NEVER RUN.** It was inside the Android backend, where it compiled on
@@ -118,10 +259,8 @@ pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Pl
 /// global document, which is what tied a pure calculation to a backend
 /// having opened something.
 ///
-/// ⚠️Whether it could: `data` that ends before the last byte its own stride
-/// and slice place is refused, not read past — the C read on regardless
-/// (2026-11-07, the decoder's move to Rust, where reading past is a panic
-/// and a panic across the FFI is the app gone).
+/// ⚠️Refused, not read past, where `data` does not hold the frame
+/// ([`Decoded::holds`]).
 #[must_use]
 pub fn to_rgba(
     data: &[u8],
@@ -132,23 +271,17 @@ pub fn to_rgba(
     semi_planar: bool,
     rgba: &mut [u8],
 ) -> bool {
-    let cb_at = stride * slice;
-    let (cr_at, chroma_stride, chroma_step) =
-        if semi_planar { (cb_at + 1, stride, 2) } else { (cb_at + (stride / 2) * (slice / 2), stride / 2, 1) };
     if width == 0 || height == 0 {
         return true;
     }
-    let last_luma = (height - 1) * stride + width - 1;
-    let last_chroma = cr_at + (height - 1) / 2 * chroma_stride + (width - 1) / 2 * chroma_step;
-    if data.len() <= last_luma.max(last_chroma) || rgba.len() < width * height * 4 {
+    let frame = Decoded::in_one_buffer(data, stride, slice, semi_planar);
+    if !frame.holds(width, height) || rgba.len() < width * height * 4 {
         return false;
     }
     for y in 0..height {
         for x in 0..width {
-            let chroma = (y / 2) * chroma_stride + (x / 2) * chroma_step;
-            let luma = i32::from(data[y * stride + x]) - 16;
-            let cb = i32::from(data[cb_at + chroma]) - 128;
-            let cr = i32::from(data[cr_at + chroma]) - 128;
+            let (luma, cb, cr) = frame.at(x, y);
+            let (luma, cb, cr) = (i32::from(luma) - 16, i32::from(cb) - 128, i32::from(cr) - 128);
             let r = (298 * luma + 409 * cr + 128) >> 8;
             let g = (298 * luma - 100 * cb - 208 * cr + 128) >> 8;
             let b = (298 * luma + 516 * cb + 128) >> 8;
@@ -158,6 +291,15 @@ pub fn to_rgba(
     }
     true
 }
+
+#[cfg(windows)]
+pub mod media_foundation;
+
+#[cfg(target_os = "android")]
+pub mod media_format;
+
+#[cfg(target_vendor = "apple")]
+pub mod core_video;
 
 #[cfg(test)]
 mod tests;

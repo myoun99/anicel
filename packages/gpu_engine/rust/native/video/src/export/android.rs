@@ -1,8 +1,9 @@
 //! Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer, through `ndk-sys`
 //! — the NDK's own headers, never a hand table (media's `served_span.rs`).
-//! An export's frames come as the GPU engine's NV12 and are only laid
-//! (`nv12`); a trimmed movie's come as RGBA, converted here in the app's
-//! colour law (`crate::colour`). Hardware encoders overwhelmingly accept
+//! An export's frames come as the GPU engine's NV12 and a trimmed piece's
+//! as its movie's decoder made it, each only laid (`nv12`) and named as
+//! it is (`crate::colour`); RGBA is converted here in the app's colour
+//! law. Hardware encoders overwhelmingly accept
 //! COLOR_FormatYUV420SemiPlanar; the planar variant is the fallback.
 //!
 //! 🪦The C once resolved its own NDK table, and its constants were wrong
@@ -21,8 +22,7 @@ use ndk_sys::{
     AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM, AMEDIACODEC_CONFIGURE_FLAG_ENCODE,
     AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED, AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED, AMEDIACODEC_INFO_TRY_AGAIN_LATER,
     AMEDIAFORMAT_KEY_AAC_PROFILE, AMEDIAFORMAT_KEY_BIT_RATE, AMEDIAFORMAT_KEY_CHANNEL_COUNT,
-    AMEDIAFORMAT_KEY_COLOR_FORMAT, AMEDIAFORMAT_KEY_COLOR_RANGE, AMEDIAFORMAT_KEY_COLOR_STANDARD,
-    AMEDIAFORMAT_KEY_COLOR_TRANSFER, AMEDIAFORMAT_KEY_FRAME_RATE, AMEDIAFORMAT_KEY_HEIGHT,
+    AMEDIAFORMAT_KEY_COLOR_FORMAT, AMEDIAFORMAT_KEY_FRAME_RATE, AMEDIAFORMAT_KEY_HEIGHT,
     AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, AMEDIAFORMAT_KEY_MIME, AMEDIAFORMAT_KEY_SAMPLE_RATE, AMEDIAFORMAT_KEY_WIDTH,
     AMediaCodec, AMediaCodec_configure, AMediaCodec_createEncoderByType, AMediaCodec_delete,
     AMediaCodec_dequeueInputBuffer, AMediaCodec_dequeueOutputBuffer, AMediaCodec_getInputBuffer,
@@ -33,9 +33,9 @@ use ndk_sys::{
     OutputFormat, media_status_t,
 };
 
-use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
+use super::{A_PIECE_TAKES_NV12, BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
 use super::nv12;
-use crate::colour::{self, Picture, Planes};
+use crate::colour::{self, Colours, Picture, Planes, media_format};
 
 const AMEDIA_OK: media_status_t = media_status_t::AMEDIA_OK;
 
@@ -48,15 +48,6 @@ pub const SUPPORTED: bool = true;
 /// overwhelmingly take — and COLOR_FormatYUV420Planar (I420), the fallback.
 const SEMI_PLANAR: i32 = 21;
 const PLANAR: i32 = 19;
-
-/// The colour law's four as MediaFormat names them (`colour`): BT.601 NTSC
-/// is SMPTE C's primaries with BT.601's matrix, then studio range and the
-/// SDR video curve, BT.709's — COLOR_STANDARD_BT601_NTSC,
-/// COLOR_RANGE_LIMITED and COLOR_TRANSFER_SDR_VIDEO, which the NDK keys
-/// take as plain numbers.
-const BT601_NTSC: i32 = 4;
-const LIMITED_RANGE: i32 = 2;
-const SDR_VIDEO: i32 = 3;
 
 /// How long a codec may keep us waiting for an input buffer, in µs.
 const INPUT_WAIT_US: i64 = 100_000;
@@ -99,6 +90,10 @@ struct Writer {
     audio_samples: i64,
     sample_rate: i64,
     channels: usize,
+    /// What the pictures are named (`Job::named`).
+    colours: Colours,
+    /// Whether RGBA may be handed (`Job::takes_rgba`).
+    takes_rgba: bool,
 }
 
 // SAFETY: the codecs and the muxer are called one call at a time under the
@@ -176,10 +171,10 @@ impl Writer {
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color_format);
             // What the pictures are, named as every writer names them
-            // (`colour`) — ⚠️not read back on a device: none is here.
-            AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_STANDARD, BT601_NTSC);
-            AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_RANGE, LIMITED_RANGE);
-            AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_TRANSFER, SDR_VIDEO);
+            // (`colour`) — the law's four, or a piece's movie's, and none
+            // that movie does not name. ⚠️Not read back on a device: none is
+            // here.
+            media_format::name(format, self.colours);
             let configured =
                 AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE as u32);
             AMediaFormat_delete(format);
@@ -341,6 +336,8 @@ pub fn open(job: &Job) -> bool {
         audio_samples: 0,
         sample_rate: i64::from(job.sample_rate),
         channels: job.channels as usize,
+        colours: job.named(),
+        takes_rgba: job.takes_rgba(),
     };
     // SAFETY: a NUL-terminated path; the fd is the writer's to close.
     writer.fd = unsafe { libc::open(path.as_ptr(), libc::O_CREAT | libc::O_TRUNC | libc::O_RDWR, 0o644 as libc::c_uint) };
@@ -386,6 +383,10 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
         return false;
     };
+    if !writer.takes_rgba {
+        set_error(A_PIECE_TAKES_NV12);
+        return false;
+    }
     // RGBA → YUV420 in the app's colour law (BT.601 studio range — the
     // convention H.264 players assume for unflagged content). Pad pixels
     // render white.
@@ -414,8 +415,9 @@ pub unsafe fn write_nv12(bytes: *const u8, stride: i64) -> bool {
     let Some(frame) = (unsafe { nv12::handed(bytes, stride as usize, writer.width, writer.height) }) else {
         return false;
     };
-    // The engine's bytes as they are: the semi-planar codec takes them row
-    // for row, the planar one with CbCr parted — no sum either way.
+    // The bytes as they are — the engine's, or a piece's movie's: the
+    // semi-planar codec takes them row for row, the planar one with CbCr
+    // parted — no sum either way.
     nv12::lay(&frame, &mut planes_of(writer));
     queue(writer)
 }

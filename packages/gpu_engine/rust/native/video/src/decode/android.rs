@@ -2,8 +2,9 @@
 //! The colour conversion is ours ([`colour::to_rgba`]) — a decoder hands
 //! back YUV in whichever layout the vendor's hardware likes, described by
 //! STRIDE, SLICE HEIGHT and a colour format, easy to assume and wrong to.
-//! Planar I420 and semi-planar NV12 are read; anything else is refused by
-//! name instead of drawn as noise.
+//! Planar I420 and semi-planar NV12 are read — into RGBA, or laid as NV12
+//! as they are for a document opened for it ([`colour::nv12_of`]);
+//! anything else is refused by name instead of drawn as noise.
 //!
 //! ⚠️Not run on a device by these tests, as the C's was not: the law and
 //! the colour arithmetic are what the bench proves.
@@ -28,8 +29,8 @@ use ndk_sys::{
     AMediaFormat_getFloat, AMediaFormat_getInt32, AMediaFormat_getInt64, AMediaFormat_getString, SeekMode,
 };
 
-use super::{Opened, Rate, Why, frame_ticks, sample_reaches, ticks_at};
-use crate::colour;
+use super::{Opened, Pixels, Rate, Why, frame_ticks, sample_reaches, ticks_at};
+use crate::colour::{self, Decoded, media_format};
 
 pub const SUPPORTED: bool = true;
 
@@ -52,6 +53,7 @@ pub struct Reader {
     codec: Codec,
     extractor: Extractor,
     _served: Option<ServedSpan>,
+    pixels: Pixels,
     stored: (usize, usize),
 }
 
@@ -61,7 +63,7 @@ pub struct Reader {
 unsafe impl Send for Reader {}
 
 impl Reader {
-    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>) -> Result<(Reader, Opened), Why> {
+    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, pixels: Pixels) -> Result<(Reader, Opened), Why> {
         // SAFETY: no arguments.
         let extractor = Extractor(unsafe { AMediaExtractor_new() });
         if extractor.0.is_null() {
@@ -113,6 +115,10 @@ impl Reader {
             AMediaFormat_getInt64(track.0, AMEDIAFORMAT_KEY_DURATION, &mut duration);
             AMediaFormat_getInt32(track.0, AMEDIAFORMAT_KEY_ROTATION, &mut rotation);
         }
+        // What the movie says its pictures are, off the same track: the
+        // extractor fills them in from the container and the stream.
+        // SAFETY: a live format.
+        let colours = unsafe { media_format::colours_of(track.0) };
         // SAFETY: plain NDK calls on live objects; `mime` points into `track`.
         let codec = unsafe {
             let mut codec = Codec { codec: AMediaCodec_createDecoderByType(mime), started: false };
@@ -130,6 +136,7 @@ impl Reader {
         let opened = Opened {
             stored_width: width,
             stored_height: height,
+            colours,
             rotation,
             // 🚨★★★**29.97 IS NOT 30**: read as a FLOAT; some extractors store
             // the key as an int32 and the float getter refuses it, and the
@@ -138,7 +145,7 @@ impl Reader {
             length: (duration, TICKS),
         };
         let stored = (width.max(0) as usize, height.max(0) as usize);
-        Ok((Reader { codec, extractor, _served: served, stored }, opened))
+        Ok((Reader { codec, extractor, _served: served, pixels, stored }, opened))
     }
 
     /// ⛔The flush goes WITH the seek: flushing without seeking would throw
@@ -153,7 +160,7 @@ impl Reader {
         Ok(())
     }
 
-    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
+    pub fn read(&mut self, index: i64, rate: (i32, i32), pixels: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
         let target = ticks_at(index, TICKS, rate);
         let frame = frame_ticks(TICKS, rate);
         // Each read starts feeding afresh, as the C's did.
@@ -168,7 +175,7 @@ impl Reader {
             alive();
             // Below 0: try again, or a format change read below.
             let Ok(out) = usize::try_from(out) else { continue };
-            let wrote = sample_reaches(info.presentationTimeUs, target, frame).then(|| self.copy(out, rgba));
+            let wrote = sample_reaches(info.presentationTimeUs, target, frame).then(|| self.copy(out, pixels));
             // SAFETY: the buffer just dequeued, handed back once.
             unsafe { AMediaCodec_releaseOutputBuffer(self.codec.codec, out, false) };
             if let Some(wrote) = wrote {
@@ -203,8 +210,9 @@ impl Reader {
         }
     }
 
-    /// Output buffer `out` as RGBA at the stored size.
-    fn copy(&self, out: usize, rgba: &mut [u8]) -> Result<(), Why> {
+    /// Output buffer `out` at the stored size, in the document's [`Pixels`]:
+    /// RGBA in the app's law, or the decoder's own 4:2:0 as NV12, no sum.
+    fn copy(&self, out: usize, pixels: &mut [u8]) -> Result<(), Why> {
         let (width, height) = self.stored;
         let mut size = 0;
         // SAFETY: plain NDK calls on the live codec; the format handed over
@@ -230,7 +238,15 @@ impl Reader {
         let data = unsafe { std::slice::from_raw_parts(bytes, size) };
         // ⚠️Measured, not assumed: the C read as far as stride and slice said,
         // whatever the buffer held.
-        if !colour::to_rgba(data, width, height, stride, slice, colour == SEMI_PLANAR, rgba) {
+        let semi_planar = colour == SEMI_PLANAR;
+        let wrote = match self.pixels {
+            Pixels::Rgba => colour::to_rgba(data, width, height, stride, slice, semi_planar, pixels),
+            Pixels::Nv12 => {
+                let frame = Decoded::in_one_buffer(data, stride, slice, semi_planar);
+                colour::nv12_of(&frame, width, height, pixels)
+            }
+        };
+        if !wrote {
             return Err("the decoded frame was short".into());
         }
         Ok(())

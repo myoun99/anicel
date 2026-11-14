@@ -11,6 +11,7 @@ import 'package:ffi/ffi.dart';
 
 import 'gpu_engine_asset.dart';
 import 'native_scratch.dart';
+import 'qa_video_decoder.dart' show MovieColours, QaVideoDocument;
 
 @Native<Int32 Function()>(symbol: 'qa_video_export_supported')
 external int _supported();
@@ -28,6 +29,7 @@ external int _supported();
     Int32,
     Int32,
     Int32,
+    Pointer<Int32>,
   )
 >(symbol: 'qa_video_export_open')
 external int _open(
@@ -42,6 +44,7 @@ external int _open(
   int codec,
   int alpha,
   int bitrateBps,
+  Pointer<Int32> colours,
 );
 
 @Native<Int32 Function(Int32, Int32)>(symbol: 'qa_video_export_probe')
@@ -111,6 +114,11 @@ final class QaVideoEncoder {
   /// [container]/[codec] follow the ABI v21 values ([alpha] only matters
   /// for ProRes 4444, [bitrateBps] 0 = the encoder's own budget).
   /// Returns false with [lastError] readable on any refusal.
+  ///
+  /// [colours]: none for pictures the app made, written in its colour law;
+  /// a piece's movie's ([QaVideoDocument.colours]) for that movie's own
+  /// NV12, handed to [writeNv12] as its decoder made it and named as the
+  /// movie names it — such a writer takes no RGBA (`colour.rs`).
   bool open({
     required String path,
     required int width,
@@ -123,27 +131,32 @@ final class QaVideoEncoder {
     int codec = 0,
     bool alpha = false,
     int bitrateBps = 0,
-  }) {
-    final pathUtf8 = path.toNativeUtf8();
-    try {
-      return _open(
-            pathUtf8,
-            width,
-            height,
-            fpsNumerator,
-            fpsDenominator,
-            sampleRate,
-            channels,
-            container,
-            codec,
-            alpha ? 1 : 0,
-            bitrateBps,
-          ) !=
-          0;
-    } finally {
-      calloc.free(pathUtf8);
+    MovieColours? colours,
+  }) => using((arena) {
+    final codes = colours == null ? nullptr : arena<Int32>(4);
+    if (colours != null) {
+      codes
+        ..[0] = colours.primaries
+        ..[1] = colours.transfer
+        ..[2] = colours.matrix
+        ..[3] = colours.range;
     }
-  }
+    return _open(
+          path.toNativeUtf8(allocator: arena),
+          width,
+          height,
+          fpsNumerator,
+          fpsDenominator,
+          sampleRate,
+          channels,
+          container,
+          codec,
+          alpha ? 1 : 0,
+          bitrateBps,
+          codes,
+        ) !=
+        0;
+  });
 
   /// Writes one top-down RGBA frame of the size [open] was given.
   bool writeFrame(Uint8List rgba) =>

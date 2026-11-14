@@ -4,7 +4,7 @@
 
 use std::ffi::CStr;
 
-use super::{Opened, Why};
+use super::{Opened, Pixels, Why};
 
 pub const SUPPORTED: bool = false;
 
@@ -12,7 +12,7 @@ pub const SUPPORTED: bool = false;
 pub struct Reader;
 
 impl Reader {
-    pub fn open(_path: &CStr, _span: Option<(i64, i64, bool)>) -> Result<(Reader, Opened), Why> {
+    pub fn open(_path: &CStr, _span: Option<(i64, i64, bool)>, _pixels: Pixels) -> Result<(Reader, Opened), Why> {
         Err("no video decoder in this build".into())
     }
 
@@ -20,7 +20,7 @@ impl Reader {
         Err("no video decoder in this build".into())
     }
 
-    pub fn read(&mut self, _index: i64, _rate: (i32, i32), _rgba: &mut [u8], _alive: &dyn Fn()) -> Result<(), Why> {
+    pub fn read(&mut self, _index: i64, _rate: (i32, i32), _out: &mut [u8], _alive: &dyn Fn()) -> Result<(), Why> {
         Err("no video decoder in this build".into())
     }
 }

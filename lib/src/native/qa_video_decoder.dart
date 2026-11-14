@@ -16,6 +16,14 @@ external int _supported();
 @Native<Int32 Function(Pointer<Utf8>)>(symbol: 'qa_video_decode_open')
 external int _open(Pointer<Utf8> utf8Path);
 
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'qa_video_decode_open_nv12')
+external int _openNv12(Pointer<Utf8> utf8Path);
+
+@Native<Int32 Function(Int32, Pointer<Int32>)>(
+  symbol: 'qa_video_decode_colours',
+)
+external int _colours(int handle, Pointer<Int32> colours);
+
 @Native<Int32 Function(Pointer<Utf8>, Int64, Int64, Int32)>(
   symbol: 'qa_video_decode_open_span',
 )
@@ -124,25 +132,57 @@ final class QaVideoDecoder {
     String path, {
     ({int offset, int length, bool framed})? span,
   }) {
-    final utf8Path = path.toNativeUtf8(allocator: malloc);
-    final int handle;
-    try {
-      handle = span == null
+    final handle = _opened(
+      path,
+      (utf8Path) => span == null
           ? _open(utf8Path)
           : _openSpan(
               utf8Path,
               span.offset,
               span.length,
               span.framed ? 1 : 0,
-            );
+            ),
+    );
+    return _documentOf(handle, path, span, QaVideoPixels.rgba);
+  }
+
+  /// Opens [path] as [openDocument] does, for the movie's own 4:2:0
+  /// ([QaVideoPixels.nv12]): [frameOf] hands each frame as the decoder
+  /// made it, with no sum, and [QaVideoDocument.colours] says what the
+  /// movie calls it — what a trimmed piece is written of (🗣️유저
+  /// 2026-11-14, trimmed-movie-decodes-to-nv12-Q1: 「원본의 색을 그대로 따라
+  /// 쓴다」).
+  QaVideoDocument? openNv12Document(String path) => _documentOf(
+    _opened(path, _openNv12),
+    path,
+    null,
+    QaVideoPixels.nv12,
+  );
+
+  /// The handle [open] answers for [path], spelled for the native side.
+  static int _opened(String path, int Function(Pointer<Utf8> path) open) {
+    final utf8Path = path.toNativeUtf8(allocator: malloc);
+    try {
+      return open(utf8Path);
     } finally {
       malloc.free(utf8Path);
     }
+  }
+
+  /// The document [handle] holds, as it says itself — or none, and the
+  /// handle let go, when it opened nothing or will not say.
+  QaVideoDocument? _documentOf(
+    int handle,
+    String path,
+    ({int offset, int length, bool framed})? span,
+    QaVideoPixels pixels,
+  ) {
     if (handle == 0) {
       return null;
     }
     final info = _infoOf(handle);
-    if (info == null) {
+    final colours = _coloursOf(handle);
+    if (info == null || colours == null) {
       _close(handle);
       return null;
     }
@@ -151,13 +191,15 @@ final class QaVideoDecoder {
       path: path,
       span: span,
       info: info,
+      pixels: pixels,
+      colours: colours,
     );
   }
 
-  /// The frame at [index] OF [document]. Null when it could not be read —
-  /// [lastError] says why.
+  /// The frame at [index] OF [document], in its [QaVideoDocument.pixels].
+  /// Null when it could not be read — [lastError] says why.
   Uint8List? frameOf(QaVideoDocument document, int index, {Uint8List? into}) {
-    final bytes = document.info.width * document.info.height * 4;
+    final bytes = document.frameBytes;
     if (bytes <= 0) {
       return null;
     }
@@ -211,6 +253,21 @@ final class QaVideoDecoder {
         ..free(fpsDen);
     }
   }
+
+  /// What a document says its pictures are.
+  static MovieColours? _coloursOf(int handle) => using((arena) {
+    final codes = arena<Int32>(4);
+    if (_colours(handle, codes) == 0) {
+      return null;
+    }
+    return (
+      primaries: codes[0],
+      transfer: codes[1],
+      matrix: codes[2],
+      range: codes[3],
+    );
+  });
+
   /// 🚨★★★**NOTHING IS MINTED PER FRAME.** Playing a 4K movie at 24fps used
   /// to allocate a 32MB native buffer AND a 32MB Dart list every frame —
   /// 1.5GB of churn a second, on the device class this app promises to run
@@ -262,6 +319,8 @@ final class QaVideoDocument {
     required this.path,
     required this.span,
     required this.info,
+    required this.pixels,
+    required this.colours,
   });
 
   /// The native document. ⛔Never 0: that is how the native side spells
@@ -271,7 +330,37 @@ final class QaVideoDocument {
   final String path;
   final ({int offset, int length, bool framed})? span;
   final QaVideoInfo info;
+
+  /// What [QaVideoDecoder.frameOf] hands of this document.
+  final QaVideoPixels pixels;
+
+  /// What the movie says its pictures are.
+  final MovieColours colours;
+
+  /// The bytes of one frame in [pixels]: RGBA at the shown size, or NV12
+  /// of it padded even — the Y rows, then the CbCr pairs side by side,
+  /// every row the padded width apart.
+  int get frameBytes {
+    final (width, height) = (info.width, info.height);
+    return switch (pixels) {
+      QaVideoPixels.rgba => width * height * 4,
+      QaVideoPixels.nv12 =>
+        (width + width % 2) * (height + height % 2) * 3 ~/ 2,
+    };
+  }
 }
+
+/// What a document hands for a frame: straight RGBA — what every surface
+/// shows — or the movie's own 4:2:0 as NV12, for a piece written of it
+/// with no sum ([QaVideoDecoder.openNv12Document]).
+enum QaVideoPixels { rgba, nv12 }
+
+/// What a movie says its pictures are, in the code points containers and
+/// bitstreams spell them in (ITU-T H.273): its primaries, transfer curve
+/// and YCbCr matrix, and its range — 0 studio, 1 full; 2 for each it does
+/// not name. A piece of the movie is written naming the same
+/// ([QaVideoEncoder.open]'s `colours`).
+typedef MovieColours = ({int primaries, int transfer, int matrix, int range});
 
 /// What a document says about itself.
 class QaVideoInfo {

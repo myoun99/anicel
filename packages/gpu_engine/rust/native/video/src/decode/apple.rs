@@ -5,7 +5,8 @@
 //! asset on its URL; a span is SERVED — AVFoundation has no 「open this file
 //! from byte N」 — through a URL whose scheme it does not know, and a
 //! resource loader answering every request for it out of media's one span
-//! reader. The only pixel job here is BGRA → RGBA and the stride.
+//! reader. The only pixel job here is BGRA → RGBA and the stride — or,
+//! for a document opened for NV12, the two planes laid as they are.
 //!
 //! 🔄**THE C'S READER HALF ONCE SAID THE OPPOSITE**: 「deliberately NOT
 //! AVAssetReader … a reader is sequential, the wrong tool for 『the picture
@@ -28,16 +29,18 @@ use objc2_av_foundation::{
     AVAssetResourceLoaderDelegate, AVAssetResourceLoadingRequest, AVAssetTrack, AVFileTypeAppleM4V,
     AVFileTypeMPEG4, AVFileTypeQuickTimeMovie, AVMediaTypeVideo, AVURLAsset,
 };
-use objc2_core_media::{CMTime, CMTimeFlags, CMTimeRange, kCMTimePositiveInfinity};
+use objc2_core_media::{CMFormatDescription, CMTime, CMTimeFlags, CMTimeRange, kCMTimePositiveInfinity};
 use objc2_core_video::{
-    CVPixelBuffer, CVPixelBufferGetBaseAddress, CVPixelBufferGetBytesPerRow, CVPixelBufferGetHeight,
+    CVPixelBuffer, CVPixelBufferGetBaseAddress, CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRow,
+    CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferGetHeight, CVPixelBufferGetHeightOfPlane, CVPixelBufferGetPlaneCount,
     CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidth, CVPixelBufferIsPlanar,
     CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
     kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA, kCVReturnSuccess,
 };
 use objc2_foundation::{NSData, NSDictionary, NSNumber, NSString, NSURL};
 
-use super::{Opened, PAST_THE_END, Rate, Why, frame_ticks, sample_reaches, ticks_at};
+use super::{Opened, PAST_THE_END, Pixels, Rate, Why, frame_ticks, sample_reaches, ticks_at};
+use crate::colour::{self, Colours, Decoded, core_video};
 
 pub const SUPPORTED: bool = true;
 
@@ -65,6 +68,9 @@ pub struct Reader {
     /// The reader over the range last started, and its one output.
     reading: Option<(Retained<AVAssetReader>, Retained<AVAssetReaderTrackOutput>)>,
     stored: (usize, usize),
+    /// What the output is asked for: BGRA, or the movie's own two-plane
+    /// 4:2:0 in the range it says ([`core_video::biplanar_of`]).
+    format: u32,
 }
 
 // SAFETY: the asset, its track and the reader are opened on the caller's
@@ -74,7 +80,7 @@ pub struct Reader {
 unsafe impl Send for Reader {}
 
 impl Reader {
-    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>) -> Result<(Reader, Opened), Why> {
+    pub fn open(path: &CStr, span: Option<(i64, i64, bool)>, pixels: Pixels) -> Result<(Reader, Opened), Why> {
         autoreleasepool(|_| {
             let (asset, serving) = match span {
                 Some((offset, length, framed)) => {
@@ -123,9 +129,19 @@ impl Reader {
                 .into_iter()
                 .find(|seconds| seconds.is_finite() && *seconds > 0.0)
                 .unwrap_or(0.0);
+            // What the movie says its pictures are: its track's format
+            // description's extensions, which the container and the stream
+            // fill in.
+            // SAFETY: a property read on the track; each of its objects is a
+            // CMFormatDescription, toll-free a CF object.
+            let colours = unsafe { track.formatDescriptions() }.firstObject().map_or(Colours::NONE, |format| {
+                let format = unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() };
+                core_video::colours_of(format)
+            });
             let opened = Opened {
                 stored_width: width,
                 stored_height: height,
+                colours,
                 rotation,
                 // ⚠️The rate goes back RAW, as a number: the law makes it a
                 // fraction (`rate_to_fraction`), for MediaCodec's too.
@@ -136,7 +152,11 @@ impl Reader {
             // depends on the frame asked for — `reposition`'s, which the law
             // calls exactly when the position it wants is not the one loaded.
             let stored = (width.max(0) as usize, height.max(0) as usize);
-            Ok((Reader { asset, track, serving, reading: None, stored }, opened))
+            let format = match pixels {
+                Pixels::Rgba => kCVPixelFormatType_32BGRA,
+                Pixels::Nv12 => core_video::biplanar_of(colours.range),
+            };
+            Ok((Reader { asset, track, serving, reading: None, stored, format }, opened))
         })
     }
 
@@ -165,8 +185,9 @@ impl Reader {
             let reader = AVAssetReader::initWithAsset_error(AVAssetReader::alloc(), &self.asset).map_err(described)?;
             reader.setTimeRange(CMTimeRange { start, duration: kCMTimePositiveInfinity });
             // 32BGRA so the pixel job is the byte swap Media Foundation's path
-            // does — one conversion shape rather than a second one.
-            let format = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
+            // does — one conversion shape rather than a second one; a
+            // document opened for NV12 the movie's own 4:2:0, no sum.
+            let format = NSNumber::new_u32(self.format);
             let (key, value): (&NSString, &AnyObject) = (kCVPixelBufferPixelFormatTypeKey.as_ref(), &format);
             let settings = NSDictionary::from_slices(&[key], &[value]);
             let output = AVAssetReaderTrackOutput::assetReaderTrackOutputWithTrack_outputSettings(&self.track, Some(&settings));
@@ -194,13 +215,13 @@ impl Reader {
         }
     }
 
-    /// Walks the reader forward to the picture for `index` and writes it,
-    /// straight RGBA at the stored size.
+    /// Walks the reader forward to the picture for `index` and writes it at
+    /// the stored size, in the document's [`Pixels`].
     ///
     /// 🚨★★★**FORWARD, NOT A SEEK.** The reader is already standing on the
     /// next picture whenever the law asks for it, which is what makes the walk
     /// below empty in the common case.
-    pub fn read(&mut self, index: i64, rate: (i32, i32), rgba: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
+    pub fn read(&mut self, index: i64, rate: (i32, i32), out: &mut [u8], alive: &dyn Fn()) -> Result<(), Why> {
         let Some((reader, output)) = &self.reading else {
             return Err("no document is open".into());
         };
@@ -222,7 +243,10 @@ impl Reader {
                 }
                 // SAFETY: as above.
                 let pixels = unsafe { sample.image_buffer() }.ok_or("that frame could not be read")?;
-                return copy_bgra(&pixels, self.stored, rgba);
+                if self.format == kCVPixelFormatType_32BGRA {
+                    return copy_bgra(&pixels, self.stored, out);
+                }
+                return copy_nv12(&pixels, self.format, self.stored, out);
             }
             Err("that frame could not be read".into())
         })
@@ -285,6 +309,45 @@ fn copy_bgra(pixels: &CVPixelBuffer, (width, height): (usize, usize), rgba: &mut
             }
         }
         Ok(())
+    };
+    // SAFETY: locked above.
+    unsafe { CVPixelBufferUnlockBaseAddress(pixels, CVPixelBufferLockFlags::ReadOnly) };
+    copied
+}
+
+/// One two-plane 4:2:0 pixel buffer out as NV12 at the stored size, padded
+/// even (`colour::nv12_of`) — the movie's own bytes, no sum. It checks what
+/// it was handed as [`copy_bgra`] does: the `format` asked for, two planes,
+/// as large as the picture.
+fn copy_nv12(pixels: &CVPixelBuffer, format: u32, (width, height): (usize, usize), nv12: &mut [u8]) -> Result<(), Why> {
+    let handed = CVPixelBufferGetPixelFormatType(pixels);
+    let have = (CVPixelBufferGetWidth(pixels), CVPixelBufferGetHeight(pixels));
+    if handed != format || CVPixelBufferGetPlaneCount(pixels) != 2 || have.0 < width || have.1 < height {
+        let (name, asked) = (format_name(handed), format_name(format));
+        let why = format!("the reader handed back a {name} picture of {}x{}, not the {asked} {width}x{height} this copy reads", have.0, have.1);
+        return Err(why.into());
+    }
+    // SAFETY: a buffer of our own, unlocked below.
+    if unsafe { CVPixelBufferLockBaseAddress(pixels, CVPixelBufferLockFlags::ReadOnly) } != kCVReturnSuccess {
+        return Err("the reader's picture would not lock for reading".into());
+    }
+    let plane = |plane: usize| {
+        let base = CVPixelBufferGetBaseAddressOfPlane(pixels, plane).cast::<u8>();
+        (base, CVPixelBufferGetBytesPerRowOfPlane(pixels, plane), CVPixelBufferGetHeightOfPlane(pixels, plane))
+    };
+    let ((luma, luma_pitch, luma_rows), (chroma, chroma_pitch, chroma_rows)) = (plane(0), plane(1));
+    let copied = if luma.is_null() || chroma.is_null() {
+        Err("the reader's picture has no readable rows".into())
+    } else {
+        // SAFETY: a locked buffer's two planes, each its rows of its pitch.
+        let (y, chroma) = unsafe {
+            (
+                std::slice::from_raw_parts(luma, luma_pitch * luma_rows),
+                std::slice::from_raw_parts(chroma, chroma_pitch * chroma_rows),
+            )
+        };
+        let frame = Decoded { y, y_stride: luma_pitch, chroma, cb: 0, cr: 1, chroma_stride: chroma_pitch, chroma_step: 2 };
+        if colour::nv12_of(&frame, width, height, nv12) { Ok(()) } else { Err("the decoded frame was short".into()) }
     };
     // SAFETY: locked above.
     unsafe { CVPixelBufferUnlockBaseAddress(pixels, CVPixelBufferLockFlags::ReadOnly) };

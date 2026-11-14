@@ -31,7 +31,8 @@ ndk-sys = { version = "0.6", features = ["media"] }
 # but AVFoundation's and CoreMedia's was already in the lock (wgpu-hal, cpal,
 # pen's dispatch2); their default features would pull in frameworks it has
 # not. The reader serves a span through a resource loader, whose delegate is
-# called on a dispatch queue.
+# called on a dispatch queue. A movie's full range is a CFBoolean
+# (`colour/core_video.rs`), which CFNumber brings.
 [target.'cfg(target_vendor = "apple")'.dependencies]
 block2 = "0.6"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
@@ -55,7 +56,7 @@ objc2-av-foundation = { version = "0.3.2", default-features = false, features = 
 ] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVAudioSettings"] }
 objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFString"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFNumber", "CFString"] }
 objc2-core-media = { version = "0.3.2", default-features = false, features = [
   "std",
   "CMBase",

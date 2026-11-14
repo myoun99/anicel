@@ -19,16 +19,17 @@
 //!     what the machine cannot write instead of failing at Export.
 //!   - `open()` takes the frame geometry, the fps as an exact fraction, the
 //!     audio shape (channels 0 = silent video), and the container/codec
-//!     pair plus alpha and bitrate knobs (ABI v21). The audio codec follows
-//!     the video codec: ProRes carries PCM (the delivery convention),
-//!     H.264/H.265 carry AAC.
+//!     pair plus alpha and bitrate knobs (ABI v21) — and, for a piece of a
+//!     movie, the colours that movie names (`colour`). The audio codec
+//!     follows the video codec: ProRes carries PCM (the delivery
+//!     convention), H.264/H.265 carry AAC.
 //!   - `write_frame()` takes top-down RGBA; a BGRA or YCbCr conversion
 //!     happens HERE, beside the encoder that wants it. `nv12_shape()` says
 //!     whether the open writer takes NV12 instead, and `write_nv12()` takes
-//!     it as the GPU engine made it — every H.26x writer, for an export's
-//!     frames (gpu-export-path ⑶; Windows' since 2026-11-14); a trimmed
-//!     movie's frames, made on a worker that has no engine, still come as
-//!     RGBA.
+//!     it as it was made — every H.26x writer: an export's frames as the GPU
+//!     engine made them (gpu-export-path ⑶; Windows' since 2026-11-14), a
+//!     trimmed piece's as its movie's decoder did (2026-11-15; ↩️they came
+//!     as RGBA, converted twice — board trimmed-movie-decodes-to-nv12).
 //!   - `write_audio()` takes interleaved int16 PCM chunks, interleaved with
 //!     the frames by the caller so no side buffers the whole track. Windows
 //!     puts a frame before the first (`windows.rs`, `AUDIO_LEAD`):
@@ -44,6 +45,8 @@
 
 use std::ffi::{CStr, c_char};
 use std::sync::{Mutex, MutexGuard};
+
+use crate::colour::{self, Colours};
 
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
@@ -107,6 +110,14 @@ struct Job<'a> {
     #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
     alpha: bool,
     bitrate_bps: i32,
+    /// What the pictures are said to be: the colours of the movie this is
+    /// a piece of, its own YCbCr handed as NV12 and named as that movie
+    /// names it (`colour`: 유저 2026-11-14, trimmed-movie-decodes-to-nv12-
+    /// Q1) — or none, for pictures the app made, written in the app's law
+    /// and named [`Colours::LAW`]. A piece's writer takes no RGBA
+    /// ([`Job::takes_rgba`]).
+    #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+    colours: Option<Colours>,
 }
 
 /// What an open says of a job it is not given — one that is no job at all,
@@ -160,7 +171,25 @@ impl Job<'_> {
             && self.channels >= 0
             && (self.channels == 0 || self.sample_rate > 0)
     }
+
+    /// The four the pictures are named: a piece's movie's, or the law's.
+    #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+    fn named(&self) -> Colours {
+        self.colours.unwrap_or(Colours::LAW)
+    }
+
+    /// Whether RGBA may be handed to this job: only where it is written in
+    /// the app's law, which is the only YCbCr RGBA becomes here
+    /// (`colour::from_rgba`) — a piece's pictures are its movie's NV12.
+    #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+    fn takes_rgba(&self) -> bool {
+        self.colours.is_none()
+    }
 }
+
+/// What a writer says of RGBA handed to a piece ([`Job::takes_rgba`]).
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+const A_PIECE_TAKES_NV12: &str = "video export: a piece of a movie is written of its NV12, not of RGBA";
 
 /// What the C's buffer held: the message's first 255 bytes.
 const ERROR_BYTES: usize = 255;
@@ -210,8 +239,14 @@ pub extern "C" fn qa_video_export_probe(container: i32, codec: i32) -> i32 {
     (in_the_lineup(container) && os::probe(container, codec)) as i32
 }
 
+/// `colours`: null for pictures the app made, written in its law; or the
+/// four a piece's movie says (`decode::qa_video_decode_colours` — its
+/// primaries, transfer, matrix and range as H.273 code points, 2 for one it
+/// does not name), and the piece's frames come as that movie's NV12.
+///
 /// # Safety
-/// `utf8_path` is null or a NUL-terminated string.
+/// `utf8_path` is null or a NUL-terminated string; `colours` is null or
+/// holds four.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_video_export_open(
     utf8_path: *const c_char,
@@ -225,11 +260,31 @@ pub unsafe extern "C" fn qa_video_export_open(
     codec: i32,
     alpha: i32,
     bitrate_bps: i32,
+    colours: *const i32,
 ) -> i32 {
     // SAFETY: the caller's contract.
     let path = (!utf8_path.is_null()).then(|| unsafe { CStr::from_ptr(utf8_path) });
     let alpha = alpha != 0;
-    let job = path.map(|path| Job { path, width, height, fps_num, fps_den, sample_rate, channels, container, codec, alpha, bitrate_bps });
+    // SAFETY: the caller's contract.
+    let colours = (!colours.is_null()).then(|| unsafe { std::slice::from_raw_parts(colours, 4) });
+    let colours = colours.map(|codes| {
+        let code = |at: usize| u8::try_from(codes[at]).unwrap_or(colour::UNSPECIFIED);
+        Colours { primaries: code(0), transfer: code(1), matrix: code(2), range: code(3) }
+    });
+    let job = path.map(|path| Job {
+        path,
+        width,
+        height,
+        fps_num,
+        fps_den,
+        sample_rate,
+        channels,
+        container,
+        codec,
+        alpha,
+        bitrate_bps,
+        colours,
+    });
     let Some(job) = job.filter(|job| job.well_formed()) else {
         set_error(BAD_OPEN);
         return 0;
@@ -258,8 +313,9 @@ pub unsafe extern "C" fn qa_video_export_write_audio(interleaved: *const i16, fr
 /// `shape` — or as RGBA ([`qa_video_export_write_frame`]), 0. Every H.26x
 /// writer takes the engine's NV12 (gpu-export-path ⑶, 2026-11-12): the
 /// colour law's bytes (`colour::from_rgba`), made on the GPU before the
-/// readback. ProRes is not 4:2:0. ↩️Media Foundation kept its own
-/// conversion until 2026-11-14 (`windows.rs` says why it no longer does).
+/// readback — and a piece's movie's own. ProRes is not 4:2:0. ↩️Media
+/// Foundation kept its own conversion until 2026-11-14 (`windows.rs` says
+/// why it no longer does).
 ///
 /// # Safety
 /// `shape` is null or holds two.

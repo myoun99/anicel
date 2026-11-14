@@ -1,8 +1,10 @@
-//! A frame the GPU engine made NV12 (gpu_engine `kernels/export/nv12`),
-//! laid into the buffer an encoder takes. Its bytes are the colour law's
-//! already — the kernel makes what `colour::from_rgba` makes, held to it
-//! byte for byte by the kernel's tests — so all that is left here is where
-//! they lie: no sum (gpu-export-path ⑶, 2026-11-12).
+//! A frame handed as NV12, laid into the buffer an encoder takes: an
+//! export's as the GPU engine made it (gpu_engine `kernels/export/nv12`) —
+//! the colour law's bytes already, the kernel making what
+//! `colour::from_rgba` makes, held to it byte for byte by the kernel's
+//! tests — or a trimmed piece's as its movie's decoder made it
+//! (`colour::nv12_of`). All that is left here is where they lie: no sum
+//! (gpu-export-path ⑶, 2026-11-12).
 
 use super::set_error;
 use crate::colour::Planes;

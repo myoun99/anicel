@@ -19,8 +19,9 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use video::decode::{
-    qa_video_decode_close, qa_video_decode_close_all, qa_video_decode_frame, qa_video_decode_info,
-    qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_span, qa_video_decode_supported,
+    qa_video_decode_close, qa_video_decode_close_all, qa_video_decode_colours, qa_video_decode_frame,
+    qa_video_decode_info, qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_nv12,
+    qa_video_decode_open_span, qa_video_decode_supported,
 };
 use video::colour::{self, Picture, Planes};
 use video::export::{
@@ -198,6 +199,7 @@ fn write_movie(
             codec,
             alpha,
             bitrate_bps,
+            std::ptr::null(),
         )
     };
     if opened != 1 {
@@ -393,7 +395,7 @@ fn an_nv12_frame_of_another_shape_is_refused_and_said() {
     let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
     // SAFETY (each): the export's declarations; room for the two the shape
     // says, and a frame of the stride handed.
-    let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, 0, 0, 0) };
+    let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, 0, 0, 0, std::ptr::null()) };
     assert_eq!(opened, 1, "{}", export_error());
     let mut shape = [0i32; 2];
     assert_eq!(unsafe { qa_video_export_nv12_shape(shape.as_mut_ptr()) }, 1, "the writer takes NV12");
@@ -511,4 +513,152 @@ fn eight_movies_open_at_once_and_a_ninth_is_refused() {
     assert!(info(5).is_some(), "the others are untouched");
     qa_video_decode_close_all();
     assert!(info(5).is_none(), "and close_all closes them all");
+}
+
+fn open_nv12(path: &std::path::Path) -> i32 {
+    let path = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    // SAFETY: a NUL-terminated path.
+    unsafe { qa_video_decode_open_nv12(path.as_ptr()) }
+}
+
+/// NV12 of `width` × `height` (even), one colour — its Y, Cb and Cr — all
+/// over.
+fn flat_nv12(width: usize, height: usize, [y, cb, cr]: [u8; 3]) -> Vec<u8> {
+    let mut nv12 = vec![y; width * height];
+    nv12.extend([cb, cr].repeat(width * height / 4));
+    nv12
+}
+
+/// A movie at 24 of `frames` NV12, `width` × `height` (even), written as a
+/// piece's are: named `colours`, its frames laid as they are. Its path.
+fn write_named(name: &str, (width, height): (usize, usize), colours: [i32; 4], frames: &[Vec<u8>]) -> PathBuf {
+    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.mp4", std::process::id()));
+    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let (width, height) = (width as i32, height as i32);
+    // SAFETY (each): the export's declarations; four colours, and a whole
+    // frame of rows `width` apart.
+    let opened =
+        unsafe { qa_video_export_open(utf8.as_ptr(), width, height, 24, 1, 0, 0, 0, 0, 0, 0, colours.as_ptr()) };
+    assert_eq!(opened, 1, "{name}: {}", export_error());
+    for (k, nv12) in frames.iter().enumerate() {
+        let written = unsafe { qa_video_export_write_nv12(nv12.as_ptr(), i64::from(width)) };
+        assert_eq!(written, 1, "{name} frame {k}: {}", export_error());
+    }
+    assert_eq!(qa_video_export_finish(), 1, "{name}: {}", export_error());
+    path
+}
+
+/// The movie at `path` opened for its NV12: the four it names, and every
+/// frame.
+fn read_nv12(path: &std::path::Path) -> ([i32; 4], Vec<Vec<u8>>) {
+    let handle = open_nv12(path);
+    assert!(handle > 0, "it opens for its NV12: {}", error());
+    let mut colours = [0; 4];
+    // SAFETY: room for the four.
+    assert_eq!(unsafe { qa_video_decode_colours(handle, colours.as_mut_ptr()) }, 1);
+    let (width, height, count, _) = info(handle).expect("it describes the movie");
+    let (width, height) = (width as usize, height as usize);
+    let bytes = (width + (width & 1)) * (height + (height & 1)) * 3 / 2;
+    let frames = (0..count).map(|k| frame(handle, k, bytes).unwrap_or_else(|why| panic!("frame {k}: {why}"))).collect();
+    qa_video_decode_close(handle);
+    (colours, frames)
+}
+
+/// The Y, Cb and Cr in the middle of an NV12 frame `width` wide and
+/// `height` tall.
+fn middle_of(nv12: &[u8], width: usize, height: usize) -> [u8; 3] {
+    let (x, y) = (width / 2, height / 2);
+    let chroma = width * height + (y / 2) * width + (x / 2) * 2;
+    [nv12[y * width + x], nv12[chroma], nv12[chroma + 1]]
+}
+
+fn near(a: [u8; 3], b: [u8; 3], within: u8) -> bool {
+    a.iter().zip(b).all(|(a, b)| a.abs_diff(b) <= within)
+}
+
+/// The middle pixel of each of the first `count` frames of the movie at
+/// `path`, as every surface shows it: RGBA.
+fn shown(path: &std::path::Path, (width, height): (usize, usize), count: usize) -> Vec<[u8; 3]> {
+    let handle = open(path.to_str().expect("UTF-8"));
+    assert!(handle > 0, "{}", error());
+    let at = ((height / 2) * width + width / 2) * 4;
+    let pixels = (0..count as i64)
+        .map(|k| frame(handle, k, width * height * 4).unwrap_or_else(|why| panic!("frame {k}: {why}")))
+        .map(|rgba| [rgba[at], rgba[at + 1], rgba[at + 2]])
+        .collect();
+    qa_video_decode_close(handle);
+    pixels
+}
+
+// 🗣️A PIECE IS ITS MOVIE'S OWN BYTES, NAMED AS THE MOVIE NAMES THEM (유저
+// 2026-11-14, trimmed-movie-decodes-to-nv12-Q1: 「원본의 색을 그대로 따라
+// 쓴다」). A 1920×1080 movie named BT.709 all round — what cameras and
+// editors write, and a size read as BT.709 when nothing is named — opened
+// for its NV12 says those four and hands its frames as they were written;
+// a piece written of those frames says them too, holds the same bytes, and
+// is shown as the movie is. ↩️Pieces were RGBA made BT.601 again: the
+// movie's BT.709 read as the app's law (`colour`).
+#[test]
+fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
+    let _turn = one_at_a_time();
+    if qa_video_decode_supported() == 0 {
+        return;
+    }
+    let size = (1920, 1080);
+    let bt709 = [1, 1, 1, 0];
+    let written = [[120, 90, 170], [60, 160, 100], [200, 128, 128]];
+    let frames: Vec<_> = written.iter().map(|&ycc| flat_nv12(size.0, size.1, ycc)).collect();
+    let movie = write_named("bt709", size, bt709, &frames);
+    let (named, decoded) = read_nv12(&movie);
+    assert_eq!(named, bt709, "the movie says what it was named");
+    assert_eq!(decoded.len(), written.len(), "every frame");
+    for (k, frame) in decoded.iter().enumerate() {
+        let middle = middle_of(frame, size.0, size.1);
+        assert!(near(middle, written[k], 2), "frame {k}: {:?} came back {middle:?}", written[k]);
+    }
+    let piece = write_named("bt709-piece", size, named, &decoded);
+    let (piece_named, pieced) = read_nv12(&piece);
+    assert_eq!(piece_named, bt709, "the piece says what its movie says");
+    for (k, (frame, was)) in pieced.iter().zip(&decoded).enumerate() {
+        let (middle, was) = (middle_of(frame, size.0, size.1), middle_of(was, size.0, size.1));
+        assert!(near(middle, was, 2), "piece frame {k}: {was:?} came back {middle:?}");
+    }
+    let (movie_shown, piece_shown) = (shown(&movie, size, written.len()), shown(&piece, size, written.len()));
+    for (k, (piece, movie)) in piece_shown.into_iter().zip(movie_shown).enumerate() {
+        assert!(near(piece, movie, 3), "frame {k} shown: the movie {movie:?}, its piece {piece:?}");
+    }
+    std::fs::remove_file(movie).ok();
+    std::fs::remove_file(piece).ok();
+}
+
+// A movie that names nothing makes a piece that names nothing — the reader
+// of either guesses alike — and a piece's writer takes no RGBA: RGBA
+// becomes YCbCr in the app's law only, which is not what a piece holds.
+#[test]
+fn a_piece_of_a_movie_that_names_nothing_names_nothing() {
+    let _turn = one_at_a_time();
+    if qa_video_decode_supported() == 0 {
+        return;
+    }
+    let unnamed = [2, 2, 2, 2];
+    let frames = vec![flat_nv12(64, 48, [120, 90, 170]); 3];
+    let movie = write_named("unnamed", (64, 48), unnamed, &frames);
+    let (named, _) = read_nv12(&movie);
+    std::fs::remove_file(movie).ok();
+    assert_eq!(named, unnamed, "nothing named, nothing said");
+
+    let path = std::env::temp_dir().join(format!("영상-디코드-{}-piece-rgba.mp4", std::process::id()));
+    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let bt709 = [1, 1, 1, 0];
+    // SAFETY (each): the export's declarations; four colours, and a whole
+    // frame of the size opened.
+    let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, 0, 0, 0, bt709.as_ptr()) };
+    assert_eq!(opened, 1, "{}", export_error());
+    let rgba = picture(64, 48, 0);
+    let refused = unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
+    let said = export_error();
+    qa_video_export_abort();
+    std::fs::remove_file(path).ok();
+    assert_eq!(refused, 0, "a piece's writer takes no RGBA");
+    assert!(said.contains("a piece of a movie is written of its NV12"), "{said}");
 }

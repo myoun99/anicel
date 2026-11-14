@@ -39,6 +39,8 @@ use std::sync::{Mutex, PoisonError};
 
 use reading::{Reading, Wanted};
 
+use crate::colour::{self, Colours};
+
 mod reading;
 
 #[cfg(target_os = "android")]
@@ -72,10 +74,35 @@ enum Rate {
     Nominal(f64),
 }
 
+/// What a document hands for a frame: straight RGBA — what every surface
+/// shows — or the movie's own 4:2:0 as NV12, as the decoder made it, for a
+/// piece written of it with no sum (`colour`: 유저 2026-11-14,
+/// trimmed-movie-decodes-to-nv12-Q1). A document is opened for one; the
+/// backend asks its decoder for that, and a reader opened afresh asks the
+/// same ([`Doc::source`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Pixels {
+    Rgba,
+    Nv12,
+}
+
+impl Pixels {
+    /// The bytes of one `width`×`height` frame.
+    fn bytes(self, (width, height): (usize, usize)) -> usize {
+        match self {
+            Pixels::Rgba => width * height * 4,
+            Pixels::Nv12 => colour::nv12_bytes(width, height),
+        }
+    }
+}
+
 /// What a backend learns opening a movie, for the law to read back.
 struct Opened {
     stored_width: i32,
     stored_height: i32,
+    /// What the movie says its pictures are — [`Colours::NONE`] where it
+    /// says nothing.
+    colours: Colours,
     /// The clockwise turn the container asks for, in degrees, as it says it.
     ///
     /// 🚨★★★**A PHONE HOLDS ITS SENSOR SIDEWAYS AND WRITES THE TURN DOWN.**
@@ -109,13 +136,21 @@ struct Shape {
     shown: (i32, i32),
     rate: (i32, i32),
     frame_count: i64,
+    pixels: Pixels,
+    colours: Colours,
+}
+
+/// What one movie is opened from, and for: to open it again when its reader
+/// stops answering ([`reading`]).
+struct Source {
+    path: CString,
+    span: Option<(i64, i64, bool)>,
+    pixels: Pixels,
 }
 
 /// One open movie: the thread that reads it and what the law made of it.
 struct Doc {
-    /// What was opened — the path and the span — to open it again when its
-    /// reader stops answering ([`reading`]).
-    source: (CString, Option<(i64, i64, bool)>),
+    source: Source,
     /// None once a reader opened afresh stopped answering too: 「could not
     /// be read」 from then on.
     reading: Option<Reading>,
@@ -226,10 +261,13 @@ fn rotation_quarter(degrees: i32) -> i32 {
     (degrees / 90).rem_euclid(4) * 90
 }
 
-/// `stored` (`width` x `height`, RGBA) into `out` turned clockwise by
-/// `rotation`. ⚠️`out` is the DISPLAY size; ⛔never in place — a quarter turn
-/// changes the shape, and a half turn would overwrite rows still to be read.
-fn rotate(stored: &[u8], width: usize, height: usize, rotation: i32, out: &mut [u8]) {
+/// `stored` (`width` x `height` samples of `bytes` each, packed) into `out`
+/// turned clockwise by `rotation`: an RGBA picture's pixels are 4 bytes, an
+/// NV12 frame's luma 1 and its chroma pairs 2 — the same turn, so a piece
+/// lies as its movie is shown. ⚠️`out` is the DISPLAY size; ⛔never in
+/// place — a quarter turn changes the shape, and a half turn would
+/// overwrite rows still to be read.
+fn rotate(stored: &[u8], (width, height): (usize, usize), bytes: usize, rotation: i32, out: &mut [u8]) {
     for y in 0..height {
         for x in 0..width {
             let (dx, dy, row) = match rotation {
@@ -239,16 +277,30 @@ fn rotate(stored: &[u8], width: usize, height: usize, rotation: i32, out: &mut [
                 270 => (y, width - 1 - x, height),
                 _ => (x, y, width),
             };
-            let from = (y * width + x) * 4;
-            let to = (dy * row + dx) * 4;
-            out[to..to + 4].copy_from_slice(&stored[from..from + 4]);
+            let from = (y * width + x) * bytes;
+            let to = (dy * row + dx) * bytes;
+            out[to..to + bytes].copy_from_slice(&stored[from..from + bytes]);
         }
     }
 }
 
+/// `stored`, a frame of `pixels` at `size`, turned by `rotation` into
+/// `out`: RGBA as one picture, NV12 as its luma and its chroma pairs, each
+/// plane at its own size ([`colour::nv12_of`] pads the frame even, so a
+/// quarter turn lands on the even size of the shown picture).
+fn turn(stored: &[u8], pixels: Pixels, size: (usize, usize), rotation: i32, out: &mut [u8]) {
+    let Pixels::Nv12 = pixels else {
+        return rotate(stored, size, 4, rotation, out);
+    };
+    let (width, height) = (size.0 + (size.0 & 1), size.1 + (size.1 & 1));
+    let ((luma, chroma), (luma_out, chroma_out)) = (stored.split_at(width * height), out.split_at_mut(width * height));
+    rotate(luma, (width, height), 1, rotation, luma_out);
+    rotate(chroma, (width / 2, height / 2), 2, rotation, chroma_out);
+}
+
 /// What both opens make of a backend's answer — one copy, so 「a file」 and
 /// 「a span of a file」 cannot drift apart on rotation, rate or length.
-fn settle(opened: Opened) -> Result<Shape, Why> {
+fn settle(opened: Opened, pixels: Pixels) -> Result<Shape, Why> {
     if opened.stored_width <= 0 || opened.stored_height <= 0 {
         return Err("the video stream has no frame size".into());
     }
@@ -265,7 +317,7 @@ fn settle(opened: Opened) -> Result<Shape, Why> {
     // that declared no rate — while it then sought at 24; Android and Apple
     // made the 24 first. The law's order, for every backend.
     let frame_count = frame_count_for(opened.length, rate);
-    Ok(Shape { stored, rotation, shown, rate, frame_count })
+    Ok(Shape { stored, rotation, shown, rate, frame_count, pixels, colours: opened.colours })
 }
 
 /// The slot `handle` names, locked, while it holds a movie. Handles are
@@ -294,7 +346,7 @@ fn release(index: usize) {
 
 /// # Safety
 /// `path` is null or a NUL-terminated string.
-unsafe fn open(path: *const c_char, span: Option<(i64, i64, bool)>) -> i32 {
+unsafe fn open(path: *const c_char, span: Option<(i64, i64, bool)>, pixels: Pixels) -> i32 {
     set_error("");
     // SAFETY: the caller's contract.
     let path = (!path.is_null()).then(|| unsafe { CStr::from_ptr(path) });
@@ -310,10 +362,11 @@ unsafe fn open(path: *const c_char, span: Option<(i64, i64, bool)>) -> i32 {
         set_error("too many movies are open at once");
         return 0;
     };
-    let opened = os::Reader::open(path, span).and_then(|(reader, opened)| {
-        let shape = settle(opened)?;
+    let opened = os::Reader::open(path, span, pixels).and_then(|(reader, opened)| {
+        let shape = settle(opened, pixels)?;
         let reading = Reading::spawn(reader, shape)?;
-        Ok(Doc { source: (path.to_owned(), span), reading: Some(reading), shape, next: None })
+        let source = Source { path: path.to_owned(), span, pixels };
+        Ok(Doc { source, reading: Some(reading), shape, next: None })
     });
     match opened {
         Ok(doc) => {
@@ -351,7 +404,22 @@ pub extern "C" fn qa_video_decode_last_error() -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_video_decode_open(path: *const c_char) -> i32 {
     // SAFETY: the caller's contract.
-    unsafe { open(path, None) }
+    unsafe { open(path, None, Pixels::Rgba) }
+}
+
+/// Opens the movie at `path` as [`qa_video_decode_open`] does, for its own
+/// 4:2:0 as NV12 ([`Pixels::Nv12`]): [`qa_video_decode_frame`] then hands
+/// each frame the right way up, padded even — the Y rows, then the CbCr
+/// pairs side by side, every row the padded width apart — and
+/// [`qa_video_decode_colours`] says what the movie calls them. A trimmed
+/// piece is written of these with no sum (`colour`).
+///
+/// # Safety
+/// `path` is null or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_decode_open_nv12(path: *const c_char) -> i32 {
+    // SAFETY: the caller's contract.
+    unsafe { open(path, None, Pixels::Nv12) }
 }
 
 /// 🚨★★★**A MOVIE INSIDE THE PROJECT FILE IS A RANGE, NOT A PATH** — a
@@ -370,7 +438,7 @@ pub unsafe extern "C" fn qa_video_decode_open_span(
     framed: i32,
 ) -> i32 {
     // SAFETY: the caller's contract.
-    unsafe { open(path, Some((offset, length, framed != 0))) }
+    unsafe { open(path, Some((offset, length, framed != 0)), Pixels::Rgba) }
 }
 
 /// The movie's shown size, frame count and rate, into whichever of the
@@ -403,6 +471,27 @@ pub unsafe extern "C" fn qa_video_decode_info(
     1
 }
 
+/// What the movie says its pictures are ([`Colours`]): its primaries,
+/// transfer, matrix and range into `out`, in that order, as H.273 code
+/// points — 2 for each it does not name.
+///
+/// # Safety
+/// `out` is null or holds four.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_video_decode_colours(handle: i32, out: *mut i32) -> i32 {
+    let Some(slot) = slot_of(handle) else {
+        set_error("no document is open");
+        return 0;
+    };
+    let Some(doc) = slot.as_ref().filter(|_| !out.is_null()) else { return 0 };
+    let Colours { primaries, transfer, matrix, range } = doc.shape.colours;
+    for (at, code) in [primaries, transfer, matrix, range].into_iter().enumerate() {
+        // SAFETY: the caller's contract; `at` < 4.
+        unsafe { out.add(at).write(i32::from(code)) };
+    }
+    1
+}
+
 /// # Safety
 /// `into` is null or writable.
 unsafe fn put<T>(into: *mut T, value: T) {
@@ -412,24 +501,26 @@ unsafe fn put<T>(into: *mut T, value: T) {
     }
 }
 
-/// Frame `index` as straight RGBA at the shown size, into `rgba`.
+/// Frame `index` at the shown size, into `pixels`: straight RGBA, or the
+/// NV12 a document opened for it hands ([`qa_video_decode_open_nv12`]).
 ///
 /// # Safety
-/// `rgba` is null or holds `capacity` bytes.
+/// `pixels` is null or holds `capacity` bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qa_video_decode_frame(handle: i32, index: i64, rgba: *mut u8, capacity: i32) -> i32 {
+pub unsafe extern "C" fn qa_video_decode_frame(handle: i32, index: i64, pixels: *mut u8, capacity: i32) -> i32 {
     let Some(mut slot) = slot_of(handle) else {
         set_error("no document is open");
         return 0;
     };
     let Some(doc) = slot.as_mut() else { return 0 };
-    let needed = i64::from(doc.shape.shown.0) * i64::from(doc.shape.shown.1) * 4;
-    if rgba.is_null() || i64::from(capacity) < needed {
+    let (width, height) = doc.shape.shown;
+    let needed = doc.shape.pixels.bytes((width as usize, height as usize));
+    if pixels.is_null() || usize::try_from(capacity).map_or(true, |capacity| capacity < needed) {
         set_error("frame buffer too small");
         return 0;
     }
     // SAFETY: the caller's contract; `needed` ≤ `capacity`.
-    let out = unsafe { std::slice::from_raw_parts_mut(rgba, needed as usize) };
+    let out = unsafe { std::slice::from_raw_parts_mut(pixels, needed) };
     match frame(doc, index.max(0), out) {
         Ok(()) => 1,
         Err(why) => {
@@ -452,7 +543,7 @@ fn frame(doc: &mut Doc, index: i64, out: &mut [u8]) -> Result<(), Why> {
     let wanted = Wanted { index, reposition: !positioned, inside: index < doc.shape.frame_count };
     let (source, shape) = (&doc.source, doc.shape);
     reading::read(&mut doc.reading, &wanted, out, reading::STALL, || {
-        let (reader, _) = os::Reader::open(&source.0, source.1)?;
+        let (reader, _) = os::Reader::open(&source.path, source.span, source.pixels)?;
         Reading::spawn(reader, shape)
     })?;
     // Positioned on the frame AFTER this one: asking for it next needs no
@@ -461,9 +552,9 @@ fn frame(doc: &mut Doc, index: i64, out: &mut [u8]) -> Result<(), Why> {
     Ok(())
 }
 
-/// One picture the right way up into `out`, which `read` fills at the
-/// STORED size: straight into `out` with no turn, into `scratch` and then
-/// turned with one.
+/// One frame the right way up into `out`, which `read` fills at the
+/// STORED size, in the document's [`Pixels`]: straight into `out` with no
+/// turn, into `scratch` and then turned with one.
 ///
 /// ⛔The turn is applied HERE, once, for every backend — not by whichever
 /// backend's author happened to know about it (until 2026-08-31 Apple's
@@ -477,14 +568,14 @@ fn upright(
     if shape.rotation == 0 {
         return read(out);
     }
-    let (width, height) = (shape.stored.0 as usize, shape.stored.1 as usize);
-    let needed = width * height * 4;
+    let stored = (shape.stored.0 as usize, shape.stored.1 as usize);
+    let needed = shape.pixels.bytes(stored);
     if scratch.len() < needed {
         scratch.try_reserve_exact(needed - scratch.len()).map_err(|_| "out of memory turning the frame upright")?;
         scratch.resize(needed, 0);
     }
     read(&mut scratch[..needed])?;
-    rotate(scratch, width, height, shape.rotation, out);
+    turn(scratch, shape.pixels, stored, shape.rotation, out);
     Ok(())
 }
 

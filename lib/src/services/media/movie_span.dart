@@ -42,10 +42,19 @@ import 'media_byte_source.dart';
 /// that clock's frames: the piece is the movie rewritten at the project's
 /// speed, its sound pulled with its pictures (🗣️F-588, [framePullOf]).
 ///
+/// 🗣️★★★**THE MOVIE'S OWN PICTURES, NAMED AS THE MOVIE NAMES THEM** (유저
+/// 2026-11-14, trimmed-movie-decodes-to-nv12-Q1: 「원본의 색을 그대로 따라
+/// 쓴다」). The movie is read for its own 4:2:0
+/// ([QaVideoDecoder.openNv12Document]) and the piece written of it as the
+/// decoder made it, naming what the movie names and nothing it does not —
+/// no sum either way. ↩️Each frame went to RGBA in the decoder and back to
+/// YCbCr in the app's law in the writer: a round trip of colour, and a
+/// movie made in BT.709 written as BT.601.
+///
 /// [onProgress] hears the frames written, as 0–1 — the work there is
 /// (🔬F-494, 2026-10-28: two minutes of a 3.4GB 1080p movie took 61 s here,
-/// 55 of them this loop, the decode and the encode half each; reading the
-/// span's sound before it, 5).
+/// 55 of them this loop, the decode and the encode half each — through
+/// RGBA; reading the span's sound before it, 5).
 ({KeptSpan? kept, String? failure}) writeMovieSpan(
   String sourcePath,
   String piecePath, {
@@ -63,7 +72,7 @@ import 'media_byte_source.dart';
   if (!encoder.isSupported) {
     return (kept: null, failure: 'no video encoder');
   }
-  final document = decoder.openDocument(sourcePath);
+  final document = decoder.openNv12Document(sourcePath);
   if (document == null) {
     return (kept: null, failure: decoder.lastError);
   }
@@ -100,6 +109,7 @@ import 'media_byte_source.dart';
       fpsDenominator: pace.denominator,
       sampleRate: sound?.sampleRate ?? 0,
       channels: sound?.channels ?? 0,
+      colours: document.colours,
     )) {
       return (kept: null, failure: encoder.lastError);
     }
@@ -132,17 +142,22 @@ import 'media_byte_source.dart';
           )) {
         return (kept: null, failure: encoder.lastError);
       }
-      final frame = Uint8List(info.width * info.height * 4);
+      // The writer's frame is the decoder's: both the picture padded even.
+      final stride = encoder.nv12Frame?.width;
+      if (stride == null) {
+        return (kept: null, failure: 'the writer takes no NV12');
+      }
+      final frame = Uint8List(document.frameBytes);
       for (var at = kept.first; at <= kept.last; at += 1) {
-        final rgba = decoder.frameOf(
+        final nv12 = decoder.frameOf(
           document,
           movie.movieFrameAt(at),
           into: frame,
         );
-        if (rgba == null) {
+        if (nv12 == null) {
           return (kept: null, failure: decoder.lastError);
         }
-        if (!encoder.writeFrame(rgba) || !writeSoundOf(at)) {
+        if (!encoder.writeNv12(nv12, stride: stride) || !writeSoundOf(at)) {
           return (kept: null, failure: encoder.lastError);
         }
         onProgress?.call(doneShare(at - kept.first + 1, kept.count));

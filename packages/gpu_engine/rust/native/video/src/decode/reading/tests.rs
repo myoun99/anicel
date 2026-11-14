@@ -11,14 +11,23 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use super::super::{PAST_THE_END, Shape, Why};
+use super::super::{PAST_THE_END, Pixels, Shape, Why};
+use crate::colour::Colours;
 use super::{Pull, Reading, SPARES, STOPPED, Wanted, chosen, kept, read};
 
 /// The watch's window here — short, so a stall is seen in a tenth of a second.
 const STALL: Duration = Duration::from_millis(100);
 
 /// A 2 × 1 movie of ten frames: eight bytes a picture.
-const SHAPE: Shape = Shape { stored: (2, 1), rotation: 0, shown: (2, 1), rate: (24, 1), frame_count: 10 };
+const SHAPE: Shape = Shape {
+    stored: (2, 1),
+    rotation: 0,
+    shown: (2, 1),
+    rate: (24, 1),
+    frame_count: 10,
+    pixels: Pixels::Rgba,
+    colours: Colours::NONE,
+};
 
 /// What a fake reader does the next time it is asked to read.
 enum Step {

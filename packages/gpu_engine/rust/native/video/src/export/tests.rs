@@ -85,6 +85,7 @@ fn open(path: Option<&str>, shape: Shape) -> i32 {
             s.codec,
             s.alpha,
             s.bitrate_bps,
+            std::ptr::null(),
         )
     }
 }

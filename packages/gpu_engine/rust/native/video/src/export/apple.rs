@@ -2,9 +2,10 @@
 //! until the connection round deleted it).
 //! The writer IS the OS's MP4/MOV writer on macOS and iOS: hardware H.264
 //! and H.265 through VideoToolbox, ProRes where the machine has it, AAC
-//! through AudioToolbox, muxing included. Our pixel job: for H.26x, an
-//! export's NV12 from the GPU engine laid into the two planes as it is, a
-//! trimmed movie's RGBA → NV12 in the app's colour law; RGBA → BGRA for
+//! through AudioToolbox, muxing included. Our pixel job: for H.26x, NV12
+//! laid into the two planes as it is — an export's from the GPU engine, a
+//! trimmed piece's as its movie's decoder made it, named as that movie
+//! names it — or RGBA → NV12 in the app's colour law; RGBA → BGRA for
 //! ProRes; and the even-size pad.
 
 use std::ffi::c_void;
@@ -20,9 +21,8 @@ use objc2_av_foundation::{
     AVAssetWriter, AVAssetWriterInput, AVAssetWriterInputPixelBufferAdaptor, AVAssetWriterStatus,
     AVFileTypeMPEG4, AVFileTypeQuickTimeMovie, AVMediaTypeAudio, AVMediaTypeVideo,
     AVVideoAverageBitRateKey, AVVideoCodecKey, AVVideoCodecTypeH264, AVVideoColorPrimariesKey,
-    AVVideoColorPrimaries_SMPTE_C, AVVideoColorPropertiesKey, AVVideoCompressionPropertiesKey,
-    AVVideoHeightKey, AVVideoTransferFunctionKey, AVVideoTransferFunction_ITU_R_709_2,
-    AVVideoWidthKey, AVVideoYCbCrMatrixKey, AVVideoYCbCrMatrix_ITU_R_601_4,
+    AVVideoColorPropertiesKey, AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoTransferFunctionKey,
+    AVVideoWidthKey, AVVideoYCbCrMatrixKey,
 };
 use objc2_avf_audio::{
     AVEncoderBitRateKey, AVFormatIDKey, AVLinearPCMBitDepthKey, AVLinearPCMIsBigEndianKey,
@@ -32,7 +32,7 @@ use objc2_core_audio_types::{
     AudioStreamBasicDescription, kAudioFormatFlagIsPacked, kAudioFormatFlagIsSignedInteger,
     kAudioFormatLinearPCM, kAudioFormatMPEG4AAC,
 };
-use objc2_core_foundation::CFRetained;
+use objc2_core_foundation::{CFRetained, CFString};
 use objc2_core_media::{
     CMAudioFormatDescription, CMAudioFormatDescriptionCreate,
     CMAudioSampleBufferCreateWithPacketDescriptions, CMBlockBuffer, CMSampleBuffer, CMTime,
@@ -43,21 +43,18 @@ use objc2_core_video::{
     CVPixelBufferGetBytesPerRow, CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferGetHeight,
     CVPixelBufferGetHeightOfPlane, CVPixelBufferGetPlaneCount, CVPixelBufferIsPlanar,
     CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferPool,
-    CVPixelBufferUnlockBaseAddress, kCVImageBufferColorPrimariesKey,
-    kCVImageBufferColorPrimaries_SMPTE_C, kCVImageBufferTransferFunctionKey,
-    kCVImageBufferTransferFunction_ITU_R_709_2, kCVImageBufferYCbCrMatrixKey,
-    kCVImageBufferYCbCrMatrix_ITU_R_601_4, kCVPixelBufferHeightKey, kCVPixelBufferPixelFormatTypeKey,
-    kCVPixelBufferWidthKey, kCVPixelFormatType_32BGRA, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-    kCVReturnSuccess,
+    CVPixelBufferUnlockBaseAddress, kCVImageBufferColorPrimariesKey, kCVImageBufferTransferFunctionKey,
+    kCVImageBufferYCbCrMatrixKey, kCVPixelBufferHeightKey, kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey,
+    kCVPixelFormatType_32BGRA, kCVReturnSuccess,
 };
 use objc2_foundation::{NSDictionary, NSFileManager, NSNumber, NSString, NSURL};
 
 use super::{
-    BAD_OPEN, CODEC_H264, CODEC_HEVC, CODEC_PRORES_4444, CODEC_PRORES_422, CODEC_PRORES_HQ,
+    A_PIECE_TAKES_NV12, BAD_OPEN, CODEC_H264, CODEC_HEVC, CODEC_PRORES_4444, CODEC_PRORES_422, CODEC_PRORES_HQ,
     CODEC_PRORES_LT, CODEC_PRORES_PROXY, CONTAINER_MOV, CONTAINER_MP4, Job, lock, set_error,
 };
 use super::nv12::{self, Nv12};
-use crate::colour::{self, Picture, Planes};
+use crate::colour::{self, Colours, Picture, Planes, core_video};
 
 pub const SUPPORTED: bool = true;
 
@@ -87,6 +84,10 @@ struct Writer {
     /// Frames go to the encoder as NV12 made here (`colour`) rather than
     /// BGRA for VideoToolbox to convert — every codec but ProRes.
     ycbcr: bool,
+    /// What the NV12 is named, on every buffer (`Job::named`).
+    colours: Colours,
+    /// Whether RGBA may be handed (`Job::takes_rgba`).
+    takes_rgba: bool,
 }
 
 // SAFETY: the one export is called from whichever thread Dart is on, one
@@ -119,6 +120,12 @@ fn named(name: Option<&'static NSString>) -> &'static NSString {
     name.expect("an AVFoundation name")
 }
 
+
+/// A Core Video name as the NSString it is toll-free bridged to — what
+/// AVFoundation's settings take.
+fn bridged(name: &CFString) -> &NSString {
+    name.as_ref()
+}
 
 fn dictionary(entries: &[(&NSString, &AnyObject)]) -> Retained<NSDictionary<NSString, AnyObject>> {
     let (keys, values): (Vec<&NSString>, Vec<&AnyObject>) = entries.iter().copied().unzip();
@@ -180,18 +187,25 @@ fn video_settings(job: &Job, width: usize, height: usize) -> Retained<NSDictiona
     // so the pictures are converted before the encoder sees them, and these
     // properties now describe what was really written. ⚠️ProRes stays BGRA:
     // 4444 carries alpha, and its conversion is still VideoToolbox's to
-    // choose.
-    // SAFETY: reading the framework's constant names.
-    let colour = unsafe {
-        dictionary(&[
-            (named(AVVideoColorPrimariesKey), named(AVVideoColorPrimaries_SMPTE_C)),
-            (named(AVVideoTransferFunctionKey), named(AVVideoTransferFunction_ITU_R_709_2)),
-            (named(AVVideoYCbCrMatrixKey), named(AVVideoYCbCrMatrix_ITU_R_601_4)),
-        ])
+    // choose. A piece's are its movie's (`Job::named`) — ⚠️all three or
+    // none, as AVFoundation takes them: a movie that leaves one unnamed
+    // names it only on its buffers ([`into_two_planes`]).
+    let [primaries, transfer, matrix] = core_video::names_of(job.named());
+    let colour = match (&primaries, &transfer, &matrix) {
+        (Some(primaries), Some(transfer), Some(matrix)) => Some(unsafe {
+            // SAFETY: reading the framework's constant names; each name a
+            // CFString as the NSString it is toll-free bridged to.
+            dictionary(&[
+                (named(AVVideoColorPrimariesKey), bridged(primaries)),
+                (named(AVVideoTransferFunctionKey), bridged(transfer)),
+                (named(AVVideoYCbCrMatrixKey), bridged(matrix)),
+            ])
+        }),
+        _ => None,
     };
-    if !is_prores(job.codec) {
+    if let Some(colour) = colour.as_ref().filter(|_| !is_prores(job.codec)) {
         // SAFETY: as above.
-        entries.push((named(unsafe { AVVideoColorPropertiesKey }), &colour));
+        entries.push((named(unsafe { AVVideoColorPropertiesKey }), colour));
     }
     dictionary(&entries)
 }
@@ -336,7 +350,10 @@ fn writer(path: Option<&str>, job: &Job) -> Result<Writer, &'static str> {
         }
         video
     };
-    let format = NSNumber::new_u32(if ycbcr { kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange } else { kCVPixelFormatType_32BGRA });
+    // The two planes in the range the pictures are in: the law's studio
+    // range, or a piece's movie's own.
+    let format = if ycbcr { core_video::biplanar_of(job.named().range) } else { kCVPixelFormatType_32BGRA };
+    let format = NSNumber::new_u32(format);
     let (pixel_width, pixel_height) = (NSNumber::new_i32(width as i32), NSNumber::new_i32(height as i32));
     // SAFETY: reading the framework's constant keys, each a CFString as the
     // NSString it is toll-free bridged to.
@@ -409,6 +426,8 @@ fn writer(path: Option<&str>, job: &Job) -> Result<Writer, &'static str> {
         channels: job.channels as usize,
         keep_alpha: job.codec == CODEC_PRORES_4444 && job.alpha,
         ycbcr,
+        colours: job.named(),
+        takes_rgba: job.takes_rgba(),
     })
 }
 
@@ -456,14 +475,14 @@ fn fill_bgra(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
 }
 
 /// `rgba` into `pixels` as NV12 in the app's colour law (`colour`) — a
-/// trimmed movie's frames on the H.26x road.
+/// picture the app made, on the H.26x road.
 fn fill_ycbcr(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
     let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
     into_two_planes(writer, pixels, |planes| colour::from_rgba(&picture, writer.width, writer.height, planes))
 }
 
-/// `frame`, the GPU engine's NV12, into `pixels` as it is — an export's
-/// frames on the H.26x road: the colour law's bytes already, laid.
+/// `frame` into `pixels` as it is — an export's frames on the H.26x road,
+/// the colour law's bytes already, or a piece's, its movie's own: laid.
 fn fill_nv12(writer: &Writer, pixels: &CVPixelBuffer, frame: &Nv12) -> bool {
     into_two_planes(writer, pixels, |planes| nv12::lay(frame, planes))
 }
@@ -498,14 +517,18 @@ fn into_two_planes(writer: &Writer, pixels: &CVPixelBuffer, fill: impl FnOnce(&m
         )
     };
     fill(&mut Planes { y, y_stride: luma_stride, chroma, cb: 0, cr: 1, chroma_stride, chroma_step: 2 });
+    // Each the pictures are named (`Job::named`), and none they are not.
+    let [primaries, transfer, matrix] = core_video::names_of(writer.colours);
     // SAFETY: the framework's constant keys, each with a value of its own.
     unsafe {
         for (key, value) in [
-            (kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_601_4),
-            (kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_SMPTE_C),
-            (kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2),
+            (kCVImageBufferYCbCrMatrixKey, matrix),
+            (kCVImageBufferColorPrimariesKey, primaries),
+            (kCVImageBufferTransferFunctionKey, transfer),
         ] {
-            pixels.set_attachment(key, value, CVAttachmentMode::ShouldPropagate);
+            if let Some(value) = value {
+                pixels.set_attachment(key, &value, CVAttachmentMode::ShouldPropagate);
+            }
         }
     }
     true
@@ -627,6 +650,10 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
         return false;
     };
+    if !writer.takes_rgba {
+        set_error(A_PIECE_TAKES_NV12);
+        return false;
+    }
     // SAFETY: the caller's contract.
     let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
     autoreleasepool(|_| {

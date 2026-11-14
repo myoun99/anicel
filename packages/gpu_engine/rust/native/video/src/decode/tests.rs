@@ -96,7 +96,7 @@ fn a_turn_changes_the_picture_and_its_shape() {
     let stored: Vec<u8> = (0..6u8).flat_map(|i| [i, 0, 0, 255]).collect();
     let turned = |rotation| {
         let mut out = vec![0u8; 24];
-        rotate(&stored, 3, 2, rotation, &mut out);
+        rotate(&stored, (3, 2), 4, rotation, &mut out);
         out
     };
     let reds = |out: &[u8]| out.chunks(4).map(|pixel| pixel[0]).collect::<Vec<_>>();
@@ -110,6 +110,27 @@ fn a_turn_changes_the_picture_and_its_shape() {
 }
 
 #[test]
+fn an_nv12_frame_turns_as_its_picture_does() {
+    // 4x2 NV12: luma = the index, each 2x2 block's pair (10+block, 20+block).
+    //   Y: 0 1 2 3     CbCr: (10,20) (11,21)
+    //      4 5 6 7
+    let stored: Vec<u8> = (0..8u8).chain([10, 20, 11, 21]).collect();
+    let mut out = vec![0u8; stored.len()];
+    turn(&stored, Pixels::Nv12, (4, 2), 90, &mut out);
+    // Shown 2x4: the luma turned as RGBA's pixels are, and the left block's
+    // pair on top — each pair whole, Cb before Cr.
+    assert_eq!(&out[..8], [4, 0, 5, 1, 6, 2, 7, 3]);
+    assert_eq!(&out[8..], [10, 20, 11, 21]);
+    turn(&stored, Pixels::Nv12, (4, 2), 180, &mut out);
+    assert_eq!(out, [7, 6, 5, 4, 3, 2, 1, 0, 11, 21, 10, 20]);
+    // An odd frame is turned at the even size it is handed at.
+    let odd: Vec<u8> = (0..4u8).chain([10, 20]).collect();
+    let mut out = vec![0u8; odd.len()];
+    turn(&odd, Pixels::Nv12, (1, 1), 270, &mut out);
+    assert_eq!(out, [1, 3, 0, 2, 10, 20]);
+}
+
+#[test]
 fn a_frame_is_turned_upright_where_it_is_read() {
     // The stored 3x2 of the test above, as a backend hands it over.
     let stored: Vec<u8> = (0..6u8).flat_map(|i| [i, 0, 0, 255]).collect();
@@ -118,7 +139,15 @@ fn a_frame_is_turned_upright_where_it_is_read() {
         into.copy_from_slice(&stored);
         Ok(())
     };
-    let shape = |rotation, shown| Shape { stored: (3, 2), rotation, shown, rate: (24, 1), frame_count: 1 };
+    let shape = |rotation, shown| Shape {
+        stored: (3, 2),
+        rotation,
+        shown,
+        rate: (24, 1),
+        frame_count: 1,
+        pixels: Pixels::Rgba,
+        colours: Colours::NONE,
+    };
     let (mut scratch, mut out) = (Vec::new(), vec![0u8; 24]);
     upright(&shape(90, (2, 3)), &mut scratch, &mut out, read).expect("read");
     assert_eq!(out.chunks(4).map(|pixel| pixel[0]).collect::<Vec<_>>(), [3, 0, 4, 1, 5, 2], "turned");
@@ -134,18 +163,35 @@ fn a_frame_is_turned_upright_where_it_is_read() {
 
 #[test]
 fn the_law_settles_size_rate_and_length_once() {
-    let opened = |rotation, rate, length| Opened { stored_width: 1920, stored_height: 1080, rotation, rate, length };
-    let shape = |opened| settle(opened).unwrap_or_else(|why| panic!("{why}"));
+    let colours = Colours { primaries: 1, transfer: 1, matrix: 1, range: 0 };
+    let opened = |rotation, rate, length| Opened {
+        stored_width: 1920,
+        stored_height: 1080,
+        colours,
+        rotation,
+        rate,
+        length,
+    };
+    let shape = |opened| settle(opened, Pixels::Nv12).unwrap_or_else(|why| panic!("{why}"));
     let upright = shape(opened(-270, Rate::Fraction(30000, 1001), (10_010_000, 10_000_000)));
-    let want = Shape { stored: (1920, 1080), rotation: 90, shown: (1080, 1920), rate: (30000, 1001), frame_count: 30 };
-    assert_eq!(upright, want, "a quarter turn swaps the sides; 1.001 s at 29.97 is thirty");
+    let want = Shape {
+        stored: (1920, 1080),
+        rotation: 90,
+        shown: (1080, 1920),
+        rate: (30000, 1001),
+        frame_count: 30,
+        pixels: Pixels::Nv12,
+        colours,
+    };
+    let said = "a quarter turn swaps the sides; 1.001 s at 29.97 is thirty; the colours and the pixels ride along";
+    assert_eq!(upright, want, "{said}");
     let half = shape(opened(180, Rate::Nominal(23.976), (1_001_000, 1_000_000)));
     assert_eq!((half.shown, half.rate, half.frame_count), ((1920, 1080), (24000, 1001), 24), "a half turn does not");
     // ⚠️No declared rate is 24 BEFORE counting, for every backend.
     let unrated = shape(opened(0, Rate::Fraction(0, 0), (2_000_000, 1_000_000)));
     assert_eq!((unrated.rate, unrated.frame_count), ((24, 1), 48));
     let sizeless = Opened { stored_height: 0, ..opened(0, Rate::Nominal(24.0), (1, 1)) };
-    assert_eq!(settle(sizeless).err().as_deref(), Some("the video stream has no frame size"));
+    assert_eq!(settle(sizeless, Pixels::Rgba).err().as_deref(), Some("the video stream has no frame size"));
 }
 
 #[test]

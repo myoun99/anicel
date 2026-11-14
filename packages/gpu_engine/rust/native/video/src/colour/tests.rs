@@ -5,7 +5,7 @@
 //! `qa_video_decode_law_test.c`'s, until the connection round deleted them
 //! (connection-round-checklist H, 2026-11-08).
 
-use super::{Picture, Planes, from_rgba, to_rgba};
+use super::{Decoded, Picture, Planes, UNSPECIFIED, code_of, from_rgba, name_of, nv12_bytes, nv12_of, to_rgba};
 
 /// One colour over a 2×2 frame: its Y, Cb and Cr.
 fn ycc_of(rgb: [u8; 3]) -> [u8; 3] {
@@ -174,4 +174,55 @@ fn a_colour_comes_back_where_it_was_written() {
             }
         }
     }
+}
+
+// A decoder's 4:2:0 laid as NV12 with no sum: the C test's frame, both
+// layouts, its rows wider than the picture and its chroma rows further
+// down — the bytes as they are, the chroma pairs side by side.
+#[test]
+fn a_decoded_frame_is_laid_as_nv12_as_it_is() {
+    for semi in [false, true] {
+        let data = red_over_grey(semi);
+        let frame = Decoded::in_one_buffer(&data, 8, 6, semi);
+        let mut nv12 = vec![0u8; nv12_bytes(4, 4)];
+        assert!(nv12_of(&frame, 4, 4, &mut nv12), "semi {semi}");
+        assert!(nv12[..16].iter().all(|&luma| luma == 81), "semi {semi}: the luma as it is, packed");
+        assert_eq!(nv12[16..], [90, 240, 90, 240, 128, 128, 128, 128], "semi {semi}: the pairs side by side");
+    }
+}
+
+// An odd picture is padded even with its own last column and row — the
+// chroma already covers it — and a frame short of the picture is refused
+// with nothing written.
+#[test]
+fn an_odd_frame_is_padded_with_its_own_edge() {
+    // 3x3 in rows of 4: luma = 10·row + column; chroma 2x2 pairs.
+    let mut data: Vec<u8> = (0..4u8).flat_map(|row| (0..4u8).map(move |column| 10 * row + column)).collect();
+    data.extend([1, 2, 3, 4, 5, 6, 7, 8]);
+    let frame = Decoded::in_one_buffer(&data, 4, 4, true);
+    let mut nv12 = vec![0u8; nv12_bytes(3, 3)];
+    assert_eq!(nv12.len(), 4 * 4 * 3 / 2);
+    assert!(nv12_of(&frame, 3, 3, &mut nv12));
+    assert_eq!(&nv12[..16], [0, 1, 2, 2, 10, 11, 12, 12, 20, 21, 22, 22, 20, 21, 22, 22]);
+    assert_eq!(&nv12[16..], [1, 2, 3, 4, 5, 6, 7, 8]);
+    let mut untouched = vec![7u8; nv12.len()];
+    let short = Decoded::in_one_buffer(&data[..data.len() - 1], 4, 4, true);
+    assert!(!nv12_of(&short, 3, 3, &mut untouched), "a byte short of the last pair");
+    assert!(untouched.iter().all(|&byte| byte == 7), "and nothing written");
+    assert!(!nv12_of(&frame, 3, 3, &mut untouched[..11]), "an output short of the frame");
+}
+
+// One table a platform and an attribute, read both ways: the first name a
+// code has is the one written, a name the table does not know reads as
+// unnamed, and an unnamed code writes nothing.
+#[test]
+fn a_table_reads_and_names_its_codes() {
+    let table = [("SMPTE170M", 6), ("BT709", 1), ("SMPTE_C", 6)];
+    assert_eq!(code_of(&table, Some("SMPTE_C")), 6);
+    assert_eq!(code_of(&table, Some("BT709")), 1);
+    assert_eq!(code_of(&table, Some("film")), UNSPECIFIED);
+    assert_eq!(code_of(&table, None), UNSPECIFIED);
+    assert_eq!(name_of(&table, 6), Some("SMPTE170M"));
+    assert_eq!(name_of(&table, 9), None);
+    assert_eq!(name_of(&[("unnamed", UNSPECIFIED)], UNSPECIFIED), None, "2 is never written");
 }
