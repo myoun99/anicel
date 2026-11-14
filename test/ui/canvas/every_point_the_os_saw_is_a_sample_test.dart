@@ -108,18 +108,20 @@ void main() {
     'speed is read from',
     (tester) async {
       // The press handled 6 ms after the OS saw it — the clock its moves
-      // are on: the first move is 8 ms of travel, not 2.
+      // are on: the first move is 40 ms of travel, not 34. Slow enough
+      // that neither reaches the speed's ceiling, where both read 1.
       final seen = await _line(tester, _pressureAndSpeed, [
         _press(_p(4, 8, 6, 0.5), seenAt: _ms(0)),
-        _merged([_p(40, 8, 8, 0.5)]),
-        _lift(_p(40, 8, 12, 0)),
+        _merged([_p(12, 8, 40, 0.5)]),
+        _lift(_p(12, 8, 48, 0)),
       ]);
       final handled = await _line(tester, _pressureAndSpeed, [
         _press(_p(4, 8, 0, 0.5)),
-        _merged([_p(40, 8, 8, 0.5)]),
-        _lift(_p(40, 8, 12, 0)),
+        _merged([_p(12, 8, 40, 0.5)]),
+        _lift(_p(12, 8, 48, 0)),
       ]);
 
+      expect(handled, isNotEmpty);
       expect(_look(seen), _look(handled));
     },
   );
