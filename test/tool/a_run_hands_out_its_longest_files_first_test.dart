@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/test_seconds.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🆕2026-10-18 (card tests-crowd-the-machine): a batch ends when its
 /// slowest file ends, so `affected_tests` hands its files out longest first,
@@ -220,9 +221,8 @@ void main() {
       final lanes = File('tool/lane.sh').readAsStringSync();
       expect(lanes, contains(r'. "$ROOT/tool/machine_folder.sh"'));
       final spelt = [
-        for (final file in Directory('tool').listSync(recursive: true))
-          if (file is File &&
-              file.path.endsWith('.sh') &&
+        for (final file in filesUnder('tool'))
+          if (file.path.endsWith('.sh') &&
               !file.path.endsWith('machine_folder.sh') &&
               file.readAsStringSync().contains(
                 RegExp(r'\$\{?LOCALAPPDATA[^\n]*/anicel'),

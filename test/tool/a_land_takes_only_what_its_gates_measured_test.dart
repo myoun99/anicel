@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
 import '../helpers/lane_script.dart';
 
 /// 🚨lane-land-edited-under-its-gates (2026-09-30): while a land sat in
@@ -662,18 +663,18 @@ final _climbingLiteral = RegExp(
   r'(include(?:_str|_bytes)?!\(\s*|#\[path\s*=\s*)?"([^"\n]*\.\./[^"\n]*)"',
 );
 
-/// The Rust sources and manifests under [root], past the build folders.
-Iterable<File> _rustSources(String root) sync* {
-  for (final entity in Directory(root).listSync()) {
-    final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
-    if (entity is Directory && !name.startsWith('target')) {
-      yield* _rustSources(entity.path);
-    } else if (entity is File &&
-        (name.endsWith('.rs') || name == 'Cargo.toml')) {
-      yield entity;
-    }
-  }
-}
+/// The Rust sources and manifests of the workspace at [root], past the
+/// build folders at its top (`target`, `target-hook`) — millions of files
+/// no source is among.
+Iterable<File> _rustSources(String root) => [
+  for (final entity in Directory(root).listSync())
+    if (entity is File)
+      entity
+    else if (!entity.uri.pathSegments
+        .lastWhere((s) => s.isNotEmpty)
+        .startsWith('target'))
+      ...filesUnder(entity.path),
+].where((file) => file.path.endsWith('.rs') || file.path.endsWith('Cargo.toml'));
 
 /// The folder of the crate [folder] is in: the nearest with a manifest.
 Directory _crateOf(Directory folder) =>

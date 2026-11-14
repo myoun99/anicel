@@ -124,6 +124,17 @@
 # it, and a killed waiter's ticket holds no one back and goes. ⚠️The script
 # before THAT fails 3 of the 7 there: the one that came later takes the
 # turn at once and lands first, and the dead ticket stays.
+# 🆕And not twice (2026-11-14, a-land-runs-the-crate-tests-the-lane-already-
+# passed-here — section T, 199 checks in all): a profile green here with the
+# same input is not run again, by `crate` or by the land after it; a red is
+# asked again, alone, and what it said is kept; a line of Rust, a file the
+# tests read from outside the crate, or a run of an edit nobody committed
+# asks again; and a lane that changed only such a file pays refusal 8. The
+# machine's folder is the run's own (LOCALAPPDATA), or a green kept by the
+# last run would answer for this one's same bytes. ⚠️The script before THAT
+# fails 9 of the 17 there: it runs the same input again, debug and release,
+# builds the module for it, keeps no red, and lands the Dart file the
+# crate's tests read with none of them run.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
