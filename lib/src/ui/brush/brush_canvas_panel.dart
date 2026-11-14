@@ -3365,7 +3365,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ([BrushStrokeCommitData.selection]) — not by the marquee standing now:
   /// the screen showed it so, and what 확정 lays must be what was seen
   /// (관제 2026-11-14 by 유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안
-  /// 되」, board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+  /// 되」, then 유저 11-14 Q2 「그릴 때 보이던 모양대로」, board
+  /// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
   /// ↩️From 09-24 it went down [_commitSourceStroke] whole, and the live
   /// selection cut it again — the funnel reused, which nobody had asked
   /// for. It lands the way a stroke lands all the same ([_landStroke]).
