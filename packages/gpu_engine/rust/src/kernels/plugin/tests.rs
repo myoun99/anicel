@@ -426,11 +426,14 @@ fn a_run_over_a_chains_tiles_lays_on_them_what_the_cpu_draws() {
     // place, what it drew put as a chain puts it — a pixel no alpha shows
     // zeroed (hashed words leave some at alpha 0, with colour). Past the
     // tiles the input reads clear: the second rectangle ends at x = 128,
-    // inside the picture.
+    // inside the picture, and is two tiles high — a word past a row of
+    // tiles' right edge is the next row's, so only the check makes it
+    // clear (one row high, the word lay past the buffer, which this device
+    // reads as 0).
     let engine = first_engine();
     let rects = [
         (TileRect { x0: -1, y0: 0, columns: 2, rows: 1 }, None),
-        (TileRect { x0: 0, y0: 0, columns: 1, rows: 1 }, Some([110, 20])),
+        (TileRect { x0: 0, y0: 0, columns: 1, rows: 2 }, Some([110, 20])),
     ];
     for (rect, origin) in rects {
         for (name, source, given) in &fixtures([37, 23]) {
