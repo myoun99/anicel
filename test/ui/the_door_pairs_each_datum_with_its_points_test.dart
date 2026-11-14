@@ -57,12 +57,17 @@ void main() {
     ui.PointerChange change,
     Offset physical, {
     PointerDeviceKind kind = PointerDeviceKind.stylus,
+    Offset? from,
   }) => ui.PointerData(
     viewId: tester.view.viewId,
     change: change,
     kind: kind,
     physicalX: physical.dx,
     physicalY: physical.dy,
+    // The step from the pointer's last place, as the engine works it
+    // out (pointer_data_packet_converter.cc) and the framework reads it.
+    physicalDeltaX: from == null ? 0 : physical.dx - from.dx,
+    physicalDeltaY: from == null ? 0 : physical.dy - from.dy,
     pressure: 500,
     pressureMax: 1024,
     timeStamp: const Duration(milliseconds: 40),
@@ -99,7 +104,12 @@ void main() {
       ui.PointerDataPacket(
         data: [
           datum(tester, ui.PointerChange.down, const Offset(400, 360)),
-          datum(tester, ui.PointerChange.move, handed),
+          datum(
+            tester,
+            ui.PointerChange.move,
+            handed,
+            from: const Offset(400, 360),
+          ),
           datum(tester, ui.PointerChange.up, handed),
         ],
       ),
