@@ -186,7 +186,6 @@ class RasterGridFit {
           return null;
         }
         transform = Matrix4.identity();
-        _toRoot[node] = (frame: frame, toRoot: transform);
         break;
       }
       below.add(node);
