@@ -168,8 +168,10 @@ const _notCensused = <String, String>{
       'the size of ONE tile, for the code that allocates them',
   'lib/src/services/audio/conform_pcm_codec.dart → dataBytes':
       'a header field: how long this conform file is on disk',
+  'lib/src/services/audio/conform_pcm_codec.dart → peaksBytes':
+      'the same header: how long the peaks behind the PCM are on disk',
   'lib/src/services/audio/conform_pcm_codec.dart → totalBytes':
-      'the same header, header + data — a file length, not RAM',
+      'the same header, header + data + peaks — a file length, not RAM',
   'lib/src/services/cel_pixel_overwrite.dart → estimatedRetainedBytes':
       'one undo payload weighing itself; the stack sums them in '
       'HistoryManager.retainedBytes, which the census reads',
