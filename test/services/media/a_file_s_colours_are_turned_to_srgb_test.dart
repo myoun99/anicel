@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/services/import/cel_picture.dart';
+import 'package:anicel/src/services/import/raster_cel_import.dart';
 import 'package:anicel/src/services/media/png_writing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -193,6 +194,45 @@ void main() {
   double gammaLinear(int byte, double gamma) =>
       math.pow(byte / 255, gamma).toDouble();
 
+  /// An opaque JPEG of [width] × 1 whose profile is [profile], written in
+  /// [pieces] `APP2` segments put in the file last first.
+  Uint8List jpegOf(
+    Uint8List rgba,
+    int width,
+    Uint8List? profile,
+    int pieces,
+  ) {
+    final plain = img.encodeJpg(
+      img.Image.fromBytes(
+        width: width,
+        height: 1,
+        bytes: rgba.buffer,
+        numChannels: 4,
+      ),
+      quality: 100,
+    );
+    if (profile == null) {
+      return plain;
+    }
+    final size = (profile.length / pieces).ceil();
+    final segments = <int>[];
+    for (var piece = pieces; piece >= 1; piece -= 1) {
+      final from = (piece - 1) * size;
+      final to = math.min(profile.length, piece * size);
+      final payload = [
+        ...'ICC_PROFILE'.codeUnits, 0, piece, pieces,
+        ...profile.sublist(from, to),
+      ];
+      segments.addAll([0xff, 0xe2, (payload.length + 2) >> 8,
+          (payload.length + 2) & 255, ...payload]);
+    }
+    return Uint8List.fromList([
+      ...plain.sublist(0, 2),
+      ...segments,
+      ...plain.sublist(2),
+    ]);
+  }
+
   group('a PNG', () {
     test('🎯with a profile of Adobe RGB\'s primaries and curve: read to '
         'linear light, carried to sRGB\'s primaries, written by its '
@@ -332,45 +372,6 @@ void main() {
   });
 
   group('a JPEG', () {
-    /// An opaque JPEG of [width] × 1 whose profile is [profile], written in
-    /// [pieces] `APP2` segments put in the file last first.
-    Uint8List jpegOf(
-      Uint8List rgba,
-      int width,
-      Uint8List? profile,
-      int pieces,
-    ) {
-      final plain = img.encodeJpg(
-        img.Image.fromBytes(
-          width: width,
-          height: 1,
-          bytes: rgba.buffer,
-          numChannels: 4,
-        ),
-        quality: 100,
-      );
-      if (profile == null) {
-        return plain;
-      }
-      final size = (profile.length / pieces).ceil();
-      final segments = <int>[];
-      for (var piece = pieces; piece >= 1; piece -= 1) {
-        final from = (piece - 1) * size;
-        final to = math.min(profile.length, piece * size);
-        final payload = [
-          ...'ICC_PROFILE'.codeUnits, 0, piece, pieces,
-          ...profile.sublist(from, to),
-        ];
-        segments.addAll([0xff, 0xe2, (payload.length + 2) >> 8,
-            (payload.length + 2) & 255, ...payload]);
-      }
-      return Uint8List.fromList([
-        ...plain.sublist(0, 2),
-        ...segments,
-        ...plain.sublist(2),
-      ]);
-    }
-
     test('🎯with a profile in pieces: put together in their order and '
         'turned as a PNG\'s is', () {
       final opaque = [
@@ -395,6 +396,61 @@ void main() {
           reason: '$pieces piece(s)',
         );
       }
+    });
+  });
+
+  // 🧪Held to the reader, not to the engine: the test engine decodes a
+  // file's colours as stored (an Adobe RGB 32 grey stays 32) — it is the
+  // device's, Impeller, that turns them (🔬the Surface, 2026-11-14).
+  group('within the engine\'s side', () {
+    /// The one picture [decodeImageFrames] holds of [file], and its pixels.
+    Future<(CelPicture, Uint8List)> held(Uint8List file) async {
+      final frames = await decodeImageFrames(file);
+      expect(frames, hasLength(1));
+      final picture = frames.single.picture;
+      try {
+        return (picture, await picture.straightRgba());
+      } finally {
+        picture.dispose();
+      }
+    }
+
+    final profile = matrixProfile(adobeD50, gammaCurve(adobeGamma));
+
+    testWidgets('🎯a still PNG or JPEG whose colours this reads is held as '
+        'its file, its colours turned', (tester) async {
+      final opaque = [for (final (r, g, b, _) in pixels) (r, g, b, 255)];
+      await tester.runAsync(() async {
+        for (final (file, width) in [
+          (pngOf(pixels, chunks: [iccp(profile)]), pixels.length),
+          (pngOf(pixels), pixels.length),
+          (jpegOf(rgbaOf(opaque), opaque.length, profile, 1), opaque.length),
+        ]) {
+          final (picture, rgba) = await held(file);
+
+          expect(picture, isA<FilePicture>());
+          expect(rgba, read(file, width));
+        }
+      });
+    });
+
+    testWidgets('one whose profile this does not read is the engine\'s, '
+        'which turns its colours', (tester) async {
+      final file = pngOf(
+        pixels,
+        chunks: [
+          iccp(
+            profileOf('RGB ', [
+              ('A2B0', [...'mAB '.codeUnits, ...List.filled(28, 0)]),
+            ]),
+          ),
+        ],
+      );
+      await tester.runAsync(() async {
+        final (picture, _) = await held(file);
+
+        expect(picture, isA<EnginePicture>());
+      });
     });
   });
 }

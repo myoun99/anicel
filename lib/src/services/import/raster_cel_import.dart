@@ -28,6 +28,7 @@ import '../../native/tile_blocks.dart';
 import '../brush_frame_store.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
+import '../media/colour_profile.dart' show readsTheColoursOf;
 import '../persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, laidCelSurface;
 import '../photoshop/psd_image.dart';
@@ -63,6 +64,18 @@ class DecodedImageFrame {
 /// A picture longer on a side than this device's engine hands back
 /// ([pictureSideLimit]) never reaches the codec: it is the app's to read,
 /// at its own size ([_framesPastTheSide]).
+///
+/// Nor does a still PNG or JPEG, at any size ([readsTheColoursOf]): its
+/// colours turned as the engine turns them (`colour_profile.dart`), it is
+/// laid where its file is read ([FilePicture]) and the isolate that paints
+/// holds none of its pixels. 🗣️유저 2026-11-14
+/// (a-raster-import-goes-gpu-cpu-gpu-cpu-Q1): 「프로파일대로 바꿔 읽는다
+/// (크기 상관없이)」 — the one law the engine's road and the app's were
+/// split on, by size. ↩️One within the side was the engine's: decoded,
+/// rastered back and cut on the isolate that paints ([_cutEngineImage]).
+/// ⚠️The image package decodes a JPEG several times slower than the engine
+/// (🔬12 MP on the Surface, 2026-11-14: 750–940 ms against 110–210 ms) —
+/// on a worker, so nothing stops, but such an import ends later.
 Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
   if (looksLikePsdBytes(bytes)) {
     return [
@@ -83,6 +96,9 @@ Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
     final side = await pictureSideLimit();
     if (isPastTheSide(descriptor.width, descriptor.height, side)) {
       return await _framesPastTheSide(bytes, descriptor);
+    }
+    if (readsTheColoursOf(bytes) && await _isAStill(descriptor)) {
+      return [_stillAsItsFile(bytes, descriptor)];
     }
     return await _framesDecoded(descriptor);
   } finally {
@@ -113,41 +129,49 @@ Future<List<DecodedImageFrame>> _framesDecoded(
   }
 }
 
-/// [bytes]' frames, a picture past the engine's side: a still as its file,
-/// read when it is laid ([FilePicture]); an animation's frames read now, on
-/// a worker ([readFramesInWorker]). How many it has is the codec's to say,
-/// from the file's head — nothing is decoded to count them.
+/// [bytes]' frames, a picture past the engine's side: a still as its file
+/// ([_stillAsItsFile]); an animation's frames read now, on a worker
+/// ([readFramesInWorker]).
 Future<List<DecodedImageFrame>> _framesPastTheSide(
   Uint8List bytes,
   ui.ImageDescriptor descriptor,
 ) async {
-  final counting = await descriptor.instantiateCodec(
-    targetWidth: 1,
-    targetHeight: 1,
-  );
-  final int count;
-  try {
-    count = counting.frameCount;
-  } finally {
-    counting.dispose();
-  }
-  if (count <= 1) {
-    return [
-      DecodedImageFrame(
-        picture: FilePicture(
-          bytes,
-          width: descriptor.width,
-          height: descriptor.height,
-        ),
-        duration: Duration.zero,
-      ),
-    ];
+  if (await _isAStill(descriptor)) {
+    return [_stillAsItsFile(bytes, descriptor)];
   }
   return [
     for (final frame in await readFramesInWorker(bytes))
       DecodedImageFrame(picture: frame.picture, duration: frame.duration),
   ];
 }
+
+/// Whether [descriptor]'s picture is one frame. How many it has is the
+/// codec's to say, from the file's head — nothing is decoded to count them.
+Future<bool> _isAStill(ui.ImageDescriptor descriptor) async {
+  final counting = await descriptor.instantiateCodec(
+    targetWidth: 1,
+    targetHeight: 1,
+  );
+  try {
+    return counting.frameCount <= 1;
+  } finally {
+    counting.dispose();
+  }
+}
+
+/// The still picture [bytes] as its file, read when it is laid
+/// ([FilePicture]) — at the size [descriptor] says.
+DecodedImageFrame _stillAsItsFile(
+  Uint8List bytes,
+  ui.ImageDescriptor descriptor,
+) => DecodedImageFrame(
+  picture: FilePicture(
+    bytes,
+    width: descriptor.width,
+    height: descriptor.height,
+  ),
+  duration: Duration.zero,
+);
 
 /// Where [fit] stands a picture of [picture]'s size on [canvas] (§6-q: fit
 /// is a placement decision): its centre on the canvas's, scaled over its

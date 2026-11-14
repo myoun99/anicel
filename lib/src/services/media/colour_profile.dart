@@ -65,6 +65,26 @@ ToSrgb? toSrgbOf(Uint8List bytes) {
   return null;
 }
 
+/// Whether the picture file [bytes] is one whose colours this reads as the
+/// engine's decoder does: a PNG or a JPEG that carries no profile, or one
+/// of a matrix and curves or of a grey ([_turnOf]) — so the app's reader
+/// may read it at any size and lay it as the engine would have.
+///
+/// ⏳A file whose profile this does not read (one of tables, a CMYK
+/// JPEG's) is not one: the engine turns its colours, and within the
+/// engine's side its picture stays the engine's to decode.
+bool readsTheColoursOf(Uint8List bytes) {
+  final Uint8List? profile;
+  if (readPngColour(bytes) case final png?) {
+    profile = png.profile;
+  } else if (_startsLikeJpeg(bytes)) {
+    profile = _jpegProfile(bytes);
+  } else {
+    return false;
+  }
+  return profile == null || _turnOf(profile) != null;
+}
+
 /// A PNG's colours as its decoder reads them, in its order: a profile
 /// (`iCCP`) that reads first, then sRGB's own word (`sRGB`), then the
 /// primaries (`cHRM`) on the gamma (`gAMA`) or sRGB's curve, then the gamma
@@ -293,7 +313,7 @@ List<double> _parametricOf(int type, List<double> p) => switch (type) {
 /// order they are numbered — or null where it carries none, or [bytes] are
 /// no JPEG.
 Uint8List? _jpegProfile(Uint8List bytes) {
-  if (bytes.length < 4 || bytes[0] != 0xff || bytes[1] != 0xd8) {
+  if (!_startsLikeJpeg(bytes)) {
     return null;
   }
   final pieces = <int, Uint8List>{};
@@ -334,6 +354,10 @@ Uint8List? _jpegProfile(Uint8List bytes) {
   }
   return profile.toBytes();
 }
+
+/// Whether [bytes] begin as a JPEG does: its start of image.
+bool _startsLikeJpeg(Uint8List bytes) =>
+    bytes.length >= 4 && bytes[0] == 0xff && bytes[1] == 0xd8;
 
 /// Whether the `APP2` payload at [start] begins `ICC_PROFILE\0`.
 bool _saysIccProfile(Uint8List bytes, int start) {

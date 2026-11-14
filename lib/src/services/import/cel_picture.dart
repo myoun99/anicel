@@ -8,8 +8,15 @@
 /// Surface (Impeller): the engine's decoder hands a picture past 16384 a
 /// side back with each side past it cut to 16384 on its own — 20000×1080
 /// came back 16384×1080, squashed — while the file's header says its own
-/// size. A picture within the side keeps the engine's road. A movie's frame
-/// is read where the movie is decoded, at every size ([MovieFramePicture]).
+/// size. A movie's frame is read where the movie is decoded, at every size
+/// ([MovieFramePicture]).
+///
+/// 🗣️유저 2026-11-14 (a-raster-import-goes-gpu-cpu-gpu-cpu-Q1): 「프로파일
+/// 대로 바꿔 읽는다(크기 상관없이)」 — a still PNG or JPEG whose colours
+/// the app reads as the engine does is the app's at every size
+/// (`readsTheColoursOf`), so the isolate that paints holds none of its
+/// pixels. ↩️A picture within the side kept the engine's road; one the app
+/// cannot read the colours of still does.
 library;
 
 import 'dart:isolate';
@@ -105,8 +112,9 @@ sealed class CelPicture {
   void dispose();
 }
 
-/// A picture the engine holds: a file within its side, decoded by it, or a
-/// picture it drew (a text's letters, a cel composed to be moved).
+/// A picture the engine holds: a file within its side the app does not
+/// read ([FilePicture]), decoded by it, or a picture it drew (a text's
+/// letters, a cel composed to be moved).
 final class EnginePicture extends CelPicture {
   const EnginePicture(this.image);
 
@@ -125,8 +133,9 @@ final class EnginePicture extends CelPicture {
   void dispose() => image.dispose();
 }
 
-/// A still picture past the engine's side, as its file: read by the app's
-/// own decoder when it is laid ([readFileRows]), so the picture itself is
+/// A still picture as its file — a PNG or a JPEG whose colours the app
+/// reads, at any size, or any other past the engine's side: read by the
+/// app's own decoder when it is laid ([readFileRows]), so the picture is
 /// never held — laid 1:1 its rows go straight into the cel's tiles
 /// ([cutFileInWorker]).
 final class FilePicture extends CelPicture {

@@ -126,13 +126,16 @@ void main() {
       );
 
   group('held off the engine', () {
+    // A BMP: a still PNG or JPEG is its file's at any size
+    // (`a_file_s_colours_are_turned_to_srgb_test`), so here the side alone
+    // decides.
     testWidgets('🎯a picture longer than the side is held at its own size; '
         'one at the side is the engine\'s', (tester) async {
+      Uint8List bmpOf(int width) =>
+          img.encodeBmp(imageOf(patterned(width, 20), width, 20));
       await tester.runAsync(() async {
-        final past = await decodeImageFrames(
-          pngOf(patterned(100, 20), 100, 20),
-        );
-        final at = await decodeImageFrames(pngOf(patterned(64, 20), 64, 20));
+        final past = await decodeImageFrames(bmpOf(100));
+        final at = await decodeImageFrames(bmpOf(64));
 
         expect(past.single.picture, isA<FilePicture>());
         expect(
