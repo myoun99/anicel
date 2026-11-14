@@ -442,10 +442,11 @@ fn bare(operand: &Operand) -> &Operand {
 /// `into` by `combine`: each polygon scanned straight into it, the first by
 /// `combine` and the rest by what the union makes of it — a replace adds
 /// them after the first, an add adds and a subtract subtracts each. An
-/// intersect of more than one, or an act of none, is joined in plane
-/// `UNION` first and folded in after: a pixel is the act's when ANY of its
-/// polygons holds it, and an intersect with each in turn would keep only
-/// what all hold. None for a point past the reach.
+/// intersect of more than one is joined in plane `UNION` first and folded
+/// in after: a pixel is the act's when ANY of its polygons holds it, and
+/// an intersect with each in turn would keep only what all hold. An act
+/// holds a polygon at least: one of none is refused before (`steps_of`
+/// in abi.rs). None for a point past the reach.
 fn copies_laid(
     combine: Combine,
     polygons: &[Vec<[f64; 2]>],
@@ -453,11 +454,7 @@ fn copies_laid(
     vertices: &mut Vec<u32>,
     passes: &mut Vec<Pass>,
 ) -> Option<()> {
-    let joined = match (combine, polygons.len()) {
-        (_, 1) | (Combine::Add | Combine::Subtract, _) => false,
-        (Combine::Replace, count) => count == 0,
-        (Combine::Intersect, _) => true,
-    };
+    let joined = matches!(combine, Combine::Intersect) && polygons.len() > 1;
     let plane = if joined { UNION } else { into };
     if joined {
         passes.push(Pass::Clear { plane: UNION });
