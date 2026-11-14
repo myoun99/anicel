@@ -33,10 +33,40 @@ void main() {
       [10, 20, 30, 99, 0, 0, 70, 0, 0],
     ]);
     expect(settings.tips.first.size, 3);
-    expect(settings.size, 16);
+    expect(settings.size, 3 * 8 / 100);
     expect(settings.opacity, 0.6);
     expect(settings.spacing, BrushShape.generalSpacing);
     expect(settings.tipOrder, BrushTipOrder.random);
+  });
+
+  test('🎯the size is its share of the tip\'s longer side: at 100 the tip '
+      'as TVPaint drew it, and with none said the same', () async {
+    // Two wide, four high: the side a mask's square spans is its height.
+    final tall = _dip(
+      [
+        [for (var row = 0; row < 4; row += 1) ..._literal([80, 90])],
+      ],
+      width: 2,
+      height: 4,
+    );
+    const sizes = ['100', '20', '8'];
+    final result = await decodeTvpxBrushFile(
+      _panelFile(
+        heading: 'HB',
+        buttons: [for (final size in [...sizes, '']) _button(size, 'b$size')],
+        tools: {
+          for (final size in sizes)
+            'b$size': (tool: _tool(size: '$size.000000'), dip: tall),
+          'b': (tool: _tool(size: ''), dip: tall),
+        },
+      ),
+      sourceName: 'BRUSH',
+    );
+
+    expect(
+      [for (final preset in result.presets) preset.settings.size],
+      [4, 4 * 20 / 100, 4 * 8 / 100, 4],
+    );
   });
 
   test('a tip not read as TVPaint wrote it — written over with what it '
@@ -208,21 +238,27 @@ final Uint8List _rgbaDip = _dip(
   channels: const [1, 2, 3, 17],
 );
 
-/// A 3 × 3 DEEP animation of [frames]' rows: the first a DBOD, the rest
-/// DBANs — its pixels' [channels] in the order DPEL names them, 8 bits
-/// each.
+/// A [width] × [height] DEEP animation of [frames]' rows: the first a DBOD,
+/// the rest DBANs — its pixels' [channels] in the order DPEL names them, 8
+/// bits each.
 Uint8List _dip(
   List<List<int>> frames, {
   List<int> channels = const [3, 2, 1, 17],
+  int width = 3,
+  int height = 3,
 }) {
   final chunks = [
-    ..._chunk('DGBL', [..._u16(3), ..._u16(3), ...List.filled(12, 0)]),
+    ..._chunk('DGBL', [
+      ..._u16(width),
+      ..._u16(height),
+      ...List.filled(12, 0),
+    ]),
     ..._chunk('NIMA', _u32(frames.length)),
     ..._chunk('DPEL', [
       ..._u32(channels.length),
       for (final type in channels) ...[..._u16(type), ..._u16(8)],
     ]),
-    ..._chunk('DLOC', [..._u16(3), ..._u16(3), ..._u32(0)]),
+    ..._chunk('DLOC', [..._u16(width), ..._u16(height), ..._u32(0)]),
     ..._chunk('DBOD', frames.first),
     for (final frame in frames.skip(1)) ..._chunk('DBAN', frame),
   ];

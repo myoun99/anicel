@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -55,6 +56,7 @@ Future<BrushImportResult> decodeTvpxBrushFile(
         settings: _settingsOf(
           button.tool,
           tips: tips,
+          tipSide: math.max(button.tip.width, button.tip.height),
           name: name,
           warnings: warnings,
         ),
@@ -341,8 +343,17 @@ const List<String> _notCarried = [
 
 /// [tool]'s settings as ours.
 ///
-/// ⏳`size` is a radius in pixels, TVPaint's page says, so the size is
-/// twice it; with `stepon` 0 the step is the app's general one
+/// `size` is the share, in percent, of the tip's own side the brush is
+/// drawn at — so the size is that share of [tipSide], the longer side of
+/// the tip as TVPaint drew it, which is what a mask's square spans
+/// ([BrushTipMask.square]). 🗣️유저 2026-11-14 (I-86-Q1): 「tvp는 커스텀
+/// 브러쉬의 경우 사이즈가 기본이 되는 소재 팁을 몇%로 줄였나라서, HB_100%는
+/// 소재 크기 100%인 브러시」. 🔬Their HB_100% · HB20 · HB8 pictures
+/// (2026-11-15) draw strokes 20–21, 3 and 1 pixels wide where the 23-pixel
+/// tip's ink spans 17 — 23, 4.6 and 1.8 at this share. ↩️It was read as a
+/// radius in pixels, TVPaint's page for its round brushes, and drew HB 8
+/// 16 wide (유저 11-15 「tvp에서랑 임포트한거랑 전혀다름」).
+/// With `stepon` 0 the step is the app's general one
 /// ([BrushShape.generalSpacing], 유저 10-30 「특별한일없으면 기본값 다 5%」).
 /// 🚨The anti-aliasing stays the brush default: a tip read from a picture
 /// keeps its own soft edge whatever TVPaint's own setting
@@ -353,6 +364,7 @@ const List<String> _notCarried = [
 BrushSettings _settingsOf(
   Map<String, String> tool, {
   required List<BrushTipMask> tips,
+  required int tipSide,
   required String name,
   required List<String> warnings,
 }) {
@@ -366,10 +378,10 @@ BrushSettings _settingsOf(
       warnings.add('Brush "$name": curve ${entry.key} is not carried.');
     }
   }
-  final radius = double.tryParse(tool['size'] ?? '') ?? 0;
+  final percent = double.tryParse(tool['size'] ?? '') ?? 0;
   final opacity = double.tryParse(tool['opacity'] ?? '') ?? 100;
   return BrushSettings(
-    size: radius > 0 ? radius * 2 : tips.first.size.toDouble(),
+    size: tipSide * (percent > 0 ? percent : 100) / 100,
     opacity: (opacity / 100).clamp(0.0, 1.0),
     spacing: BrushShape.generalSpacing,
     tips: tips,
