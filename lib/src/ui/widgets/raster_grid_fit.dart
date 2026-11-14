@@ -156,8 +156,9 @@ class RasterGridFit {
     return toGlobal == null ? null : _fitOf(toGlobal, devicePixelRatio);
   }
 
-  /// Each render object's transform to the root ([ofPainted]), and the
-  /// frame it was multiplied in — held as weakly as the object is.
+  /// The transform to the root ([ofPainted]) of each render object where
+  /// ways up meet ([_waysMeetAt]), and the frame it was multiplied in —
+  /// held as weakly as the object is.
   static final Expando<({int frame, Matrix4 toRoot})> _toRoot = Expando(
     'a render object\'s transform to the root, this frame',
   );
@@ -165,16 +166,24 @@ class RasterGridFit {
   /// [box]'s transform to its tree's root as `getTransformTo(null)`
   /// multiplies it — down from the root's child, which stands at identity,
   /// each parent's [RenderObject.applyPaintTransform] of the child on the
-  /// way — from the nearest ancestor [frame] already multiplied. Null where
-  /// [box] is not in its owner's tree.
+  /// way — from the nearest ancestor where ways meet that [frame] already
+  /// multiplied, keeping each such one it passes. Null where [box] is not
+  /// in its owner's tree.
+  ///
+  /// 🔬Kept only where ways meet (11-15, 32 rows meeting four parents up,
+  /// 108 from the root, in a test): asked the whole way 73–86 µs a frame,
+  /// kept at every parent 19–22, kept where ways meet 13 — a copy and an
+  /// entry at every parent cost more than the products they saved.
   static Matrix4? _toRootIn(RenderObject box, int frame) {
     final below = <RenderObject>[];
     var node = box;
     Matrix4 transform;
+    var kept = false;
     while (true) {
-      final kept = _toRoot[node];
-      if (kept != null && kept.frame == frame) {
-        transform = kept.toRoot;
+      final keptHere = _keptAt(node, frame);
+      if (keptHere != null) {
+        transform = keptHere;
+        kept = true;
         break;
       }
       final parent = node.parent;
@@ -192,11 +201,33 @@ class RasterGridFit {
       node = parent;
     }
     for (final child in below.reversed) {
-      transform = transform.clone();
+      if (kept) {
+        transform = transform.clone();
+        kept = false;
+      }
       child.parent!.applyPaintTransform(child, transform);
-      _toRoot[child] = (frame: frame, toRoot: transform);
+      if (_waysMeetAt(child)) {
+        _toRoot[child] = (frame: frame, toRoot: transform);
+        kept = true;
+      }
     }
     return transform;
+  }
+
+  /// Whether ways up from more than one region can meet at [node]: it has
+  /// children of its own. 🔬Every row of the timeline dock meets the others
+  /// at a [RenderFlex] (11-15). One that holds its children otherwise is
+  /// only walked past, to the next above it.
+  static bool _waysMeetAt(RenderObject node) =>
+      node is ContainerRenderObjectMixin;
+
+  /// [node]'s transform to the root as [frame] keeps it, if it does.
+  static Matrix4? _keptAt(RenderObject node, int frame) {
+    if (!_waysMeetAt(node)) {
+      return null;
+    }
+    final kept = _toRoot[node];
+    return kept != null && kept.frame == frame ? kept.toRoot : null;
   }
 
   /// The fit of a surface [toGlobal] maps to the root's logical pixels,
