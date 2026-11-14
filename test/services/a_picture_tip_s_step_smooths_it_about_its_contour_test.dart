@@ -168,9 +168,10 @@ void main() {
         'down its minor axis', () {
       // Two tips a texel a pixel down at one radius: one pressed to half
       // its height, one twice its texels drawn whole. The first is laid
-      // whole first: the same width across, another down.
+      // whole first — the same width across, another down — and across it
+      // lays as it did.
       for (final step in steps) {
-        laid(aDab(step, size: 64), tileSize: tileSize);
+        final unpressed = laid(aDab(step, size: 64), tileSize: tileSize);
         final squeezed = laid(
           aDab(step, size: 64, roundness: 0.5),
           tileSize: tileSize,
@@ -186,6 +187,17 @@ void main() {
           closeTo(soft, soft * 0.02),
           reason: '$step',
         );
+        final (across, unpressedAcross) = (
+          rowOf(squeezed),
+          rowOf(unpressed),
+        );
+        for (var at = 0; at < across.length; at += 1) {
+          expect(
+            across[at],
+            closeTo(unpressedAcross[at], 1.5 / 255),
+            reason: '$step across at $at',
+          );
+        }
       }
     });
   }
