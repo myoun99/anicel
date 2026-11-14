@@ -388,6 +388,16 @@ class RenderStillRaster extends RenderProxyBox {
   RasterGridFit? _gridFit() =>
       attached ? RasterGridFit.of(this, _devicePixelRatio) : null;
 
+  /// [_gridFit], as its frame's scene is built — the ancestors every region
+  /// under them shares multiplied once ([RasterGridFit.ofPainted]).
+  RasterGridFit? _paintedGridFit() => attached
+      ? RasterGridFit.ofPainted(
+          this,
+          _devicePixelRatio,
+          frame: StaticRaster.debugFrameSerial,
+        )
+      : null;
+
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
@@ -578,7 +588,7 @@ class _StillLayer extends OffsetLayer {
           _nowDy != _placedDy ||
           _nowBelowTransforms != _placedBelowTransforms) {
         _owner._fullPlacementChecks += 1;
-        if (_owner._gridFit() != strata.fit) {
+        if (_owner._paintedGridFit() != strata.fit) {
           markNeedsAddToScene();
         } else {
           _keepPlacement();

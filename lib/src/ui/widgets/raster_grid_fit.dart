@@ -124,6 +124,89 @@ class RasterGridFit {
     } on Object catch (_) {
       return null;
     }
+    return _fitOf(toGlobal, ratio);
+  }
+
+  /// [of], for a frame laid out and painted — asked as its scene is built:
+  /// [box]'s transform to the root multiplied off its parent's as this
+  /// [frame] already holds it, so an ancestor every region under it asks
+  /// through is multiplied once a frame, not once a region.
+  ///
+  /// 🔬Card row-images-placement-check-ui-cost: a scroll moves every row's
+  /// ancestors, and each row asked the whole way to the root — 32 a frame
+  /// on the main PC at about 14 µs each, 0.45 ms of the UI thread. The
+  /// rows meet four parents up, 114 from the root (11-15, the timeline
+  /// dock in a test).
+  ///
+  /// 🚨The same products in the same order as [of]'s `getTransformTo`, so
+  /// the same bits: a fit compared against one [of] took must read equal
+  /// wherever the region sits where it did. ⛔Only once the frame is laid
+  /// out — a parent's transform is kept for the whole [frame] — and not
+  /// under a follower, whose transform is the one it was last added with.
+  /// ⚠️[frame] is [StaticRaster.debugFrameSerial], which reads the same in
+  /// the frame its clock was installed in and the next: nothing has been
+  /// held still long enough to ask in the first. ⛔Not between frames
+  /// either: the serial there is already the next frame's.
+  static RasterGridFit? ofPainted(
+    RenderObject box,
+    double devicePixelRatio, {
+    required int frame,
+  }) {
+    final ratio = devicePixelRatio;
+    if (!ratio.isFinite || ratio <= 0) {
+      return null;
+    }
+    final toGlobal = _toRootIn(box, frame);
+    return toGlobal == null ? null : _fitOf(toGlobal, ratio);
+  }
+
+  /// Each render object's transform to the root ([ofPainted]), and the
+  /// frame it was multiplied in — held as weakly as the object is.
+  static final Expando<({int frame, Matrix4 toRoot})> _toRoot = Expando(
+    'a render object\'s transform to the root, this frame',
+  );
+
+  /// [box]'s transform to its tree's root as `getTransformTo(null)`
+  /// multiplies it — down from the root's child, which stands at identity,
+  /// each parent's [RenderObject.applyPaintTransform] of the child on the
+  /// way — from the nearest ancestor [frame] already multiplied. Null where
+  /// [box] is not in its owner's tree.
+  static Matrix4? _toRootIn(RenderObject box, int frame) {
+    final below = <RenderObject>[];
+    var node = box;
+    Matrix4 transform;
+    while (true) {
+      final kept = _toRoot[node];
+      if (kept != null && kept.frame == frame) {
+        transform = kept.toRoot;
+        break;
+      }
+      final parent = node.parent;
+      if (parent == null) {
+        return null;
+      }
+      if (parent.parent == null) {
+        if (!identical(parent, box.owner?.rootNode)) {
+          return null;
+        }
+        transform = Matrix4.identity();
+        _toRoot[node] = (frame: frame, toRoot: transform);
+        break;
+      }
+      below.add(node);
+      node = parent;
+    }
+    for (final child in below.reversed) {
+      transform = transform.clone();
+      child.parent!.applyPaintTransform(child, transform);
+      _toRoot[child] = (frame: frame, toRoot: transform);
+    }
+    return transform;
+  }
+
+  /// The fit of a surface [toGlobal] maps to the root's logical pixels,
+  /// on a view of [ratio] device pixels to one of those.
+  static RasterGridFit? _fitOf(Matrix4 toGlobal, double ratio) {
     final uniformScale = uniformScaleOf(toGlobal);
     if (uniformScale == null) {
       return null;

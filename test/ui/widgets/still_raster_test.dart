@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
+import 'package:anicel/src/ui/widgets/raster_grid_fit.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 
@@ -232,6 +233,35 @@ final _layerChanges = <String, Widget Function(bool changed)>{
 };
 
 final _link = LayerLink();
+
+/// How often a transform was asked through [_CountingTransforms].
+class _Asks {
+  int count = 0;
+}
+
+/// Counts every region below it whose way to the root is multiplied
+/// through it.
+class _CountingTransforms extends SingleChildRenderObjectWidget {
+  const _CountingTransforms({required this.asks, required super.child});
+
+  final _Asks asks;
+
+  @override
+  RenderProxyBox createRenderObject(BuildContext context) =>
+      _RenderCountingTransforms(asks);
+}
+
+class _RenderCountingTransforms extends RenderProxyBox {
+  _RenderCountingTransforms(this.asks);
+
+  final _Asks asks;
+
+  @override
+  void applyPaintTransform(RenderObject child, Matrix4 transform) {
+    asks.count += 1;
+    super.applyPaintTransform(child, transform);
+  }
+}
 
 /// A repaint boundary whose own layer is a transform: whoever paints it
 /// moves it by that layer's OFFSET, which lands after the matrix.
@@ -988,6 +1018,111 @@ void main() {
       afterMove,
       reason: 'and where it sits now is remembered',
     );
+  });
+
+  testWidgets('regions under an ancestor that moved ask through it once a '
+      'frame, not once a region', (tester) async {
+    // 🔬Card row-images-placement-check-ui-cost: a scroll moves every
+    // row's ancestors, and 32 rows each asking the whole way to the root
+    // took 0.45 ms of a frame on the main PC.
+    const rows = 8;
+    final asks = _Asks();
+    Future<void> at(double left) => pumpSurface(
+      tester,
+      RepaintBoundary(
+        child: _CountingTransforms(
+          asks: asks,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              for (var row = 0; row < rows; row += 1)
+                Expanded(
+                  child: StillRaster(debugLabel: 'row $row', child: _box()),
+                ),
+            ],
+          ),
+        ),
+      ),
+      left: left,
+      width: _width,
+      height: _height,
+    );
+    await at(_left);
+    final regions = _regionsByLabel(tester).values.toList();
+    expect(regions, hasLength(rows));
+    bool allFromImage() =>
+        regions.every((region) => region.debugDrawnFromImage);
+    for (var i = 0; i < StillRaster.maxStillFrames * 2; i += 1) {
+      if (allFromImage()) {
+        break;
+      }
+      await _frame(tester);
+    }
+    expect(allFromImage(), isTrue);
+    final checks = [
+      for (final region in regions) region.debugFullPlacementChecks,
+    ];
+
+    asks.count = 0;
+    await at(_left + 3);
+    expect(allFromImage(), isTrue, reason: 'a whole-pixel move');
+    expect(
+      [for (final region in regions) region.debugFullPlacementChecks],
+      [for (final before in checks) before + 1],
+      reason: 'every region asked where it sits now, fully',
+    );
+    expect(
+      asks.count,
+      1,
+      reason: 'and the ancestor they share multiplied once for all of them',
+    );
+  });
+
+  testWidgets('a fit asked as the scene is built is the one asked the whole '
+      'way, bit for bit', (tester) async {
+    // Each ask outside a frame names a frame no real one has: between
+    // frames the serial is already the next frame's.
+    var frame = -1;
+    Future<void> at(double left) => pumpSurface(
+      tester,
+      Transform.scale(
+        scale: 1.25,
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 0.3, top: 0.7),
+          child: Transform.translate(
+            offset: const Offset(1.1, 2.35),
+            child: Column(
+              children: <Widget>[
+                for (var row = 0; row < 4; row += 1)
+                  Padding(
+                    padding: EdgeInsets.only(left: row * 0.37),
+                    child: SizedBox(height: 13.3, key: ValueKey(row)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      left: left,
+      width: _width,
+      height: _height,
+    );
+    final ratio = tester.view.devicePixelRatio;
+    for (final left in [_left, _left + 0.29, _left + 7.61]) {
+      await at(left);
+      frame -= 1;
+      for (var row = 0; row < 4; row += 1) {
+        final box = tester.renderObject(find.byKey(ValueKey(row)));
+        final whole = RasterGridFit.of(box, ratio);
+        expect(whole, isNotNull);
+        expect(
+          RasterGridFit.ofPainted(box, ratio, frame: frame),
+          whole,
+          reason: 'row $row at $left',
+        );
+      }
+    }
   });
 
   testWidgets('a region under a scale moves when an ancestor and a '
