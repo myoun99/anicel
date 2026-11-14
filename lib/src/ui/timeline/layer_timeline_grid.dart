@@ -700,6 +700,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   Widget _buildGridSheet(
     List<TimelineDisplayRow> rows,
     TimelineRowEdges edges,
+    double viewportWidth,
   ) {
     return TimelineRowsGridSheet(
       key: const ValueKey<String>('timeline-grid-sheet'),
@@ -708,6 +709,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       frameCellExtent: _metrics.frameCellWidth,
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
+      window: (bucket: _frameWindowBucket, viewportMainExtent: viewportWidth),
     );
   }
 
@@ -820,7 +822,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                   // one sheet under EVERY
                   // row — grounds, lines
                   // and seams.
-                  gridSheet: _buildGridSheet(rows, window.edges),
+                  gridSheet: _buildGridSheet(
+                    rows,
+                    window.edges,
+                    viewportWidth,
+                  ),
                   // UI-R18 #14: the end
                   // line grows a trim
                   // grip and follows the

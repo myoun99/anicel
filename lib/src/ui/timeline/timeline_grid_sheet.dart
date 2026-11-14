@@ -65,6 +65,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
     required this.activeLayer,
     this.standing,
     this.axis = Axis.horizontal,
+    this.window,
   });
 
   final List<TimelineDisplayRow> rows;
@@ -80,6 +81,9 @@ class TimelineRowsGridSheet extends StatelessWidget {
   final ValueListenable<TimelineRowAddress?>? standing;
   final Axis axis;
 
+  /// The rows' window ([TimelineGridSheet.window]).
+  final TimelineGridSheetWindow? window;
+
   @override
   Widget build(BuildContext context) {
     final standing = this.standing;
@@ -94,6 +98,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
     return TimelineGridSheet(
       frameCellExtent: frameCellExtent,
       axis: axis,
+      window: window,
       // No ground = rows lying on the artwork: nothing to paint under them
       // and, by the same law, no seam between them.
       rows: hostGround == null

@@ -539,6 +539,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
   Widget _buildGridSheet(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
+    double bodyViewportHeight,
   ) {
     return TimelineRowsGridSheet(
       key: const ValueKey<String>('xsheet-grid-sheet'),
@@ -548,6 +549,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       frameCellExtent: _metrics.frameCellWidth,
       activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
+      window: (
+        bucket: _frameWindowBucket,
+        viewportMainExtent: bodyViewportHeight,
+      ),
     );
   }
 
@@ -584,7 +589,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                 geometry.totalFrameContentHeight,
               ),
             ),
-            gridSheet: _buildGridSheet(entries, geometry.columnEdges),
+            gridSheet: _buildGridSheet(
+              entries,
+              geometry.columnEdges,
+              bodyViewportHeight,
+            ),
             playheadExtent: geometry.totalFrameContentHeight,
             playhead: _buildCursorLayer(
               entries,

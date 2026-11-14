@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -8,8 +8,10 @@ import '../../models/app_frame_grid_settings.dart';
 import '../../models/inbetween_mark.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
+import 'memo_token.dart' show ByIdentity;
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
+import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_grid_metrics.dart'
     show timelineFirstOnStride, timelineStrideHolding;
 import 'timeline_second.dart';
@@ -748,6 +750,14 @@ class TimelineGridRows {
   int get hashCode => Object.hash(Object.hashAll(rows), Object.hashAll(dashes));
 }
 
+/// What of its axis a grid sheet draws where its host windows its rows: the
+/// host's bucket, and how far the host's view reaches along the frame axis
+/// ([visibleFrameWindowFor]).
+typedef TimelineGridSheetWindow = ({
+  ValueListenable<int> bucket,
+  double viewportMainExtent,
+});
+
 /// THE grid sheet — every host's frame grid, drawn once, UNDER its rows.
 ///
 /// It reads the host's law ([TimelineGridLaw]) for the ground and the
@@ -759,6 +769,7 @@ class TimelineGridSheet extends StatelessWidget {
     this.rows = TimelineGridRows.none,
     this.axis = Axis.horizontal,
     this.frameStartIndex = 0,
+    this.window,
   });
 
   final double frameCellExtent;
@@ -767,6 +778,9 @@ class TimelineGridSheet extends StatelessWidget {
 
   /// See [TimelineGridSheetPainter.frameStartIndex].
   final int frameStartIndex;
+
+  /// See [TimelineGridSheetPainter.window].
+  final TimelineGridSheetWindow? window;
 
   @override
   Widget build(BuildContext context) {
@@ -780,6 +794,7 @@ class TimelineGridSheet extends StatelessWidget {
         axis: axis,
         rows: rows,
         frameStartIndex: frameStartIndex,
+        window: window,
       ),
     );
   }
@@ -794,7 +809,8 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     this.axis = Axis.horizontal,
     this.rows = TimelineGridRows.none,
     this.frameStartIndex = 0,
-  });
+    this.window,
+  }) : super(repaint: window?.bucket);
 
   final double frameCellExtent;
   final int framesPerSecond;
@@ -840,6 +856,19 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
   /// counting from its own left edge. 0 is the whole-panel sheet.
   final int frameStartIndex;
 
+  /// Where the host windows its rows, the frames of the window its bucket
+  /// stands in — the rows' own ([visibleFrameWindowFor], Q8 「타임라인 ·
+  /// X시트 · 콘티 한 법」) — repainted as the bucket crosses a span. Null
+  /// draws the whole axis.
+  ///
+  /// 🔬↩️Every host drew the whole axis, the conte the whole film, on a
+  /// tick its dock draws live each frame: a widget test's conte sheet was
+  /// 25 KB at 30 cuts, 100 KB at 120 (11-08, card
+  /// the-grid-sheet-draws-the-whole-axis-outside-the-shared-window). Its
+  /// window, a 1600 px view at 14 px a frame: 12,392 bytes at either length,
+  /// against 103,576 for the 22,130 px axis whole (11-15).
+  final TimelineGridSheetWindow? window;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (frameCellExtent <= 0) {
@@ -847,6 +876,7 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     }
     final mainExtent = extentAlong(axis, size);
     final crossExtent = extentAcross(axis, size);
+    final ruled = _ruledIn(mainExtent);
 
     Rect across(double from, double to) => Rect.fromPoints(
       offsetAlong(axis, along: 0, across: from),
@@ -858,6 +888,7 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     _paintLines(
       canvas,
       mainExtent,
+      ruled,
       (from: 0, to: crossExtent, ground: ground),
     );
 
@@ -875,7 +906,7 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
       }
       if (stretchGround != ground) {
         canvas.drawRect(across(start, end), Paint()..color = stretchGround);
-        _paintLines(canvas, mainExtent, (
+        _paintLines(canvas, mainExtent, ruled, (
           from: start,
           to: end,
           ground: stretchGround,
@@ -898,21 +929,43 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// The frames whose boundaries this sheet rules, [mainExtent] along: its
+  /// [window]'s, or every frame of the canvas — the rows' one law
+  /// ([visibleFrameWindowFor]). ⛔Only the lines: a ground or a seam is one
+  /// rect however long, and drawn as long as the canvas it records nothing
+  /// more.
+  ({int startIndex, int endIndexExclusive}) _ruledIn(double mainExtent) =>
+      visibleFrameWindowFor(
+        bucket: window?.bucket,
+        viewportMainExtent: window?.viewportMainExtent ?? 0,
+        cellExtent: frameCellExtent,
+        frameStartIndex: frameStartIndex,
+        frameEndIndexExclusive:
+            frameStartIndex + (mainExtent / frameCellExtent).ceil(),
+      );
+
   /// The frame lines across one [stretch] of the cross axis — `from` to
-  /// `to` — in the ink its `ground` asks for.
-  void _paintLines(Canvas canvas, double mainExtent, _Stretch stretch) {
+  /// `to` — in the ink its `ground` asks for, on the boundaries of the
+  /// [ruled] frames that the canvas holds.
+  void _paintLines(
+    Canvas canvas,
+    double mainExtent,
+    ({int startIndex, int endIndexExclusive}) ruled,
+    _Stretch stretch,
+  ) {
     final (:from, :to, :ground) = stretch;
     Color inkOn(({Color color, double strokeWidth}) ink) =>
         ground == null ? ink.color : timelineGridLineInkOnGround(ink, ground);
     // The first boundary of period [period] at or after the window start —
     // the hoisted form of "which absolute frames does this canvas show".
-    int firstBoundary(int period) => frameStartIndex <= 0
+    int firstBoundary(int period) => ruled.startIndex <= 0
         ? period
-        : timelineFirstOnStride(frameStartIndex, period);
+        : timelineFirstOnStride(ruled.startIndex, period);
     final origin = timelineFrameEdge(frameStartIndex, frameCellExtent);
     double positionOf(int frame) =>
         timelineFrameBoundaryLinePosition(frame, frameCellExtent) - origin;
     bool shown(int frame) =>
+        frame <= ruled.endIndexExclusive &&
         timelineFrameEdge(frame, frameCellExtent) - origin <= mainExtent;
     void rule(double position, _Span span, Paint paint) => canvas.drawLine(
       offsetAlong(axis, along: position, across: span.from),
@@ -995,6 +1048,9 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     axis,
     frameStartIndex,
     rows,
+    // The bucket's crossings arrive through `repaint`.
+    ByIdentity(window?.bucket),
+    window?.viewportMainExtent,
   );
 }
 
