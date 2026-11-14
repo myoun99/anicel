@@ -33,18 +33,18 @@ void main() {
   ];
 
   /// A tip of [side] texels, opaque on the half in the middle each way.
-  BrushTipMask blockOf(int side) => BrushTipMask(
-    id: 'block $side',
-    size: side,
-    alpha: Uint8List.fromList([
-      for (var y = 0; y < side; y += 1)
-        for (var x = 0; x < side; x += 1)
-          x >= side ~/ 4 && x < side * 3 ~/ 4 && y >= side ~/ 4 &&
-                  y < side * 3 ~/ 4
-              ? 255
-              : 0,
-    ]),
-  );
+  BrushTipMask blockOf(int side) {
+    bool inTheMiddle(int at) => at >= side ~/ 4 && at < side * 3 ~/ 4;
+    return BrushTipMask(
+      id: 'block $side',
+      size: side,
+      alpha: Uint8List.fromList([
+        for (var y = 0; y < side; y += 1)
+          for (var x = 0; x < side; x += 1)
+            if (inTheMiddle(x) && inTheMiddle(y)) 255 else 0,
+      ]),
+    );
+  }
   final block = blockOf(32);
 
   /// One black dab of [tip] at [step] — at the sizes here a texel a pixel
