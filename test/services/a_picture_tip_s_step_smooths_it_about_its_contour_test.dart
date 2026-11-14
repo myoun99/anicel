@@ -71,8 +71,8 @@ void main() {
   );
 
   /// The alphas [dab] lays on the engine, on 0..1, row after row of the
-  /// canvas's pixels 60..139 each way.
-  List<List<double>> laid(BrushDab dab) {
+  /// canvas's pixels [from] up to [to] each way.
+  List<List<double>> laid(BrushDab dab, {int from = 60, int to = 140}) {
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
       tileSize: 128,
@@ -90,8 +90,8 @@ void main() {
     }
 
     return [
-      for (var y = 60; y < 140; y += 1)
-        [for (var x = 60; x < 140; x += 1) alphaAt(x, y)],
+      for (var y = from; y < to; y += 1)
+        [for (var x = from; x < to; x += 1) alphaAt(x, y)],
     ];
   }
 
@@ -187,6 +187,30 @@ void main() {
           reason: '$step across at $at',
         );
       }
+    }
+  });
+
+  test('a bigger tip widens a picture\'s edge by what the round tip\'s '
+      'width grows — the one width, by the size', () {
+    // The same step at radii 16 and 64, a texel a pixel, each laid whole:
+    // the row through the middle crosses two edges, and a ramp w wide is
+    // about w / 6 soft. What the bigger tip adds is held to at least half
+    // of what [brushTipEdgeWidth] grows by (H60-Q2 (a) 「연산은 하나」) — a
+    // width that stood still lays both sizes alike.
+    double softnessOf(BrushDab dab) =>
+        softness(laid(dab, from: 20, to: 180)[80]);
+    for (final step in steps) {
+      final grows =
+          brushTipEdgeWidth(step.edge, 64) - brushTipEdgeWidth(step.edge, 16);
+      expect(grows, greaterThan(0), reason: 'premise: $step grows with it');
+      final widened =
+          softnessOf(aDab(step, tip: blockOf(128), size: 128)) -
+          softnessOf(aDab(step));
+      expect(
+        widened,
+        greaterThan(2 * grows / 6 * 0.5),
+        reason: '$step',
+      );
     }
   });
 
