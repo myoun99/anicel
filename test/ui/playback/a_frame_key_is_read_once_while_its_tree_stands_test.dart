@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -63,6 +64,12 @@ void main() {
   late BrushFrameStore cels;
   late LayerFrameImageCache images;
   setUp(() {
+    // The suite stacks every tree handed back anew to check it
+    // (flutter_test_config.dart): these count the stackings themselves.
+    final checked = debugCheckFrameStanding;
+    expect(checked, isTrue, reason: 'flutter_test_config.dart turns it on');
+    debugCheckFrameStanding = false;
+    addTearDown(() => debugCheckFrameStanding = checked);
     cels = BrushFrameStore();
     ink(cels, 'a', CanvasPoint(x: 1, y: 1));
     images = LayerFrameImageCache(frameStore: cels);
@@ -215,7 +222,7 @@ void main() {
 
   test('the suite\'s check throws where an input of the tree moves past the '
       'stamp', () {
-    expect(debugCheckFrameStanding, isTrue, reason: 'flutter_test_config');
+    debugCheckFrameStanding = true;
     final cut = aCut();
     var plugin = false;
     final (:pictures, :stacked) = picturesOf(
