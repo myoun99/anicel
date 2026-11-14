@@ -859,8 +859,35 @@ import '../../tool/refactor/clone_scan.dart';
 /// where the mask has coverage; a bake grows the box of a frame's ink where
 /// its clear mask names none. ⛔Nothing to merge: the run is the loop's
 /// head, and what each does after it is its own.
+/// 81 → 82 (2026-11-14, a-selection-mask-is-built-on-the-cpu-at-every-move
+/// — an outline's edges found by line and column, not by a hashed vertex).
+/// 🔬The scan on the lane over master (`4e511fc6a`, at 80): two added, none
+/// gone —
+///
+///     51 tokens
+///       lib/src/services/pixel_run_contours.dart  _EdgeTable._placeOf
+///       lib/src/ui/timeline/timeline_row_edges.dart
+///         TimelineRowEdges._startingBefore
+///
+/// They ARE one algorithm — the lower bound of a sorted run — and its
+/// shared spelling is package:collection's (`lowerBoundByCompare`, over a
+/// range). ⛔Not taken by the outline: 🔬it walked 15–35% slower with it
+/// (an inverse 0.31 → 0.42 ms, a 3000-point lasso 3.8 → 4.4; JIT, the
+/// Surface) — two calls through closures a halving, on a path asked once
+/// an edge. ⛔Not merged, by the rule of three (CLAUDE.md): two hand
+/// spellings. 🔜A third hand-spelled lower bound merges the three into one
+/// typed helper.
+///
+///     46 tokens
+///       lib/src/services/brush_tip_mask_sampling.dart
+///         TiledMaskAxisLattice.compute
+///       lib/src/services/pixel_run_contours.dart  _EdgeTable.of
+///
+/// A candidate, not a clone: typed lists made a count long and filled in
+/// one loop over it — a lattice's texels and fractions, a sorted table's
+/// columns and places. ⛔Nothing to merge.
 void main() {
-  const ceiling = 81;
+  const ceiling = 82;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
