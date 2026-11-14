@@ -23,6 +23,7 @@ import '../../core/on_a_worker.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/canvas_size.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
+import '../media/colour_profile.dart';
 import '../media/png_reading.dart';
 import '../media/video_decode_worker.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
@@ -299,7 +300,9 @@ AnicelLaidCel cutPixels(PixelsPicture picture, PictureCut cut) => laidCelOf(
 /// Every row of the picture file [bytes] — [width] × [height], as its
 /// header said — as straight RGBA8, top to bottom: a PNG's as they are
 /// inflated ([readPngRows]); any other picture's through the image package,
-/// which turns a JPEG by its EXIF as the engine does (measured 10-20).
+/// which turns a JPEG by its EXIF as the engine does (measured 10-20) —
+/// each row turned to sRGB's colours by what the file says of its own
+/// ([toSrgbOf]), as the engine's decoder turns them.
 ///
 /// Throws when the file reads to another size than it said.
 void readFileRows(
@@ -308,15 +311,22 @@ void readFileRows(
   required int height,
   required void Function(int y, Uint8List rgba) row,
 }) {
+  final toSrgb = toSrgbOf(bytes);
+  final turned = toSrgb == null
+      ? row
+      : (int y, Uint8List rgba) {
+          toSrgb.row(rgba);
+          row(y, rgba);
+        };
   final png = readPngHeader(bytes);
   if (png != null && !png.interlaced) {
     _expectSize(png.width, png.height, width, height);
-    readPngRows(bytes, row);
+    readPngRows(bytes, turned);
     return;
   }
   final frame = _decodedByPackage(bytes, frame: 0);
   _expectSize(frame.width, frame.height, width, height);
-  _rowsOf(frame, row);
+  _rowsOf(frame, turned);
 }
 
 void _expectSize(int width, int height, int saidWidth, int saidHeight) {

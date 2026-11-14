@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/srgb_byte.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/services/photoshop/psd_pixels.dart';
 
