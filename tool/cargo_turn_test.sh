@@ -208,6 +208,14 @@ for i in 1 2 3 4 5 6 7 8; do
 done
 built "$D" few 00000000000000c1 5000
 built "$X" sample 00000000000000e9 1
+# A crate's library builds and its test binary's, nine between them: one
+# crate, which a library's lib<crate> files alone would split in two.
+for i in 1 2 3 4 5 6 7 8 9; do
+  if [ "$i" -le 5 ]; then set -- "aaa-00000000000000d$i.d" "libaaa-00000000000000d$i.rlib"
+  else set -- "aaa-00000000000000d$i.d" "aaa-00000000000000d$i.exe" "aaa-00000000000000d$i.pdb"; fi
+  for f in "$@"; do : > "$D/$f"; touch -d "$((100 - i)) minutes ago" "$D/$f"; done
+done
+set --
 (cd "$LANE" && FAKE_SECONDS=0 FAKE_BUILD="debug/deps/many-00000000000000a9.d \
   debug/deps/libmany-00000000000000a9.rlib" bash tool/cargo_turn.sh test) \
   2>/dev/null
@@ -219,6 +227,9 @@ check "and only the oldest" \
     && [ -d "$WANT_TARGET/debug/.fingerprint/many-00000000000000a2" ]; echo $?)"
 check "what the run just built stays" \
   "$([ -e "$D/many-00000000000000a9.d" ] && [ -e "$D/libmany-00000000000000a9.rlib" ]; echo $?)"
+check "a crate's library and its test binary are one crate's builds" \
+  "$([ -z "$(ls "$D" | grep 00000000000000d1)" ] \
+    && [ "$(ls "$D" | grep -c 00000000000000d2)" -eq 2 ]; echo $?)"
 check "a crate of one build stays, however old" \
   "$([ "$(ls "$D" | grep -c 00000000000000c1)" -eq 4 ]; echo $?)"
 check "an example folder keeps its last eight as well" \
