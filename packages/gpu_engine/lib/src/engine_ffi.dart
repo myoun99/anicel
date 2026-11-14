@@ -557,6 +557,16 @@ external Pointer<MaskPlane> maskNew(
 @Native<Void Function(Pointer<MaskPlane>)>(symbol: 'gpu_engine_mask_free')
 external void maskFree(Pointer<MaskPlane> mask);
 
+@Native<
+  Bool Function(Pointer<Engine>, Pointer<MaskPlane>, Pointer<Uint8>, Size)
+>(symbol: 'gpu_engine_mask_read')
+external bool maskRead(
+  Pointer<Engine> engine,
+  Pointer<MaskPlane> mask,
+  Pointer<Uint8> bytes,
+  int capacity,
+);
+
 @Native<Uint64 Function()>(symbol: 'gpu_engine_mask_bytes')
 external int maskBytes();
 
@@ -601,6 +611,21 @@ external Pointer<MaskPlane> selectionMaskNew(
   int grow,
   double feather,
   bool antiAlias,
+);
+
+@Native<
+  Pointer<MaskPlane> Function(
+    Pointer<SelectionMasks>,
+    Pointer<Engine>,
+    Pointer<MaskPlane>,
+    Pointer<MaskPlane>,
+  )
+>(symbol: 'gpu_engine_selection_mask_cut')
+external Pointer<MaskPlane> selectionMaskCut(
+  Pointer<SelectionMasks> masks,
+  Pointer<Engine> engine,
+  Pointer<MaskPlane> mask,
+  Pointer<MaskPlane> by,
 );
 
 @Native<Int32 Function(Pointer<Planned>, Pointer<MaskPlane>)>(

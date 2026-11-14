@@ -15,6 +15,7 @@
 
 pub(crate) mod abi;
 pub(crate) mod region;
+pub(crate) mod within;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -78,6 +79,27 @@ impl MaskBox {
     pub(crate) fn rows_of<'a>(&self, plane: &'a [u8]) -> impl Iterator<Item = &'a [u8]> {
         let (stride, width) = (self.stride() as usize * 4, self.width as usize);
         plane.chunks_exact(stride).take(self.height as usize).map(move |row| &row[..width])
+    }
+
+    /// `plane` — its bytes on the GPU — copied into `into` once the GPU is
+    /// done: a byte a pixel, row after row, the app's `Uint8List` as it is.
+    /// False where `into` is not the box's width × height, or on failure;
+    /// see the last error. ⛔ONE READ: the fill's finished mask was read so
+    /// on its own, and the app's masks came as a second (11-14, the same
+    /// lines).
+    pub(crate) fn read_into(&self, engine: &Engine, plane: &wgpu::Buffer, into: &mut [u8]) -> bool {
+        let width = self.width as usize;
+        if into.len() != width * self.height as usize {
+            fail::<()>(format!("{} bytes are not a mask of {self:?}", into.len()));
+            return false;
+        }
+        let Some(read) = engine.read_buffer(plane) else {
+            return false;
+        };
+        for (into, row) in into.chunks_exact_mut(width).zip(self.rows_of(&read)) {
+            into.copy_from_slice(row);
+        }
+        true
     }
 
     /// A distance plane's bytes: two distances to a word.

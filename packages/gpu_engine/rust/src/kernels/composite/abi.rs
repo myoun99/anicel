@@ -520,6 +520,28 @@ pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
     }
 }
 
+/// Copies `mask`'s bytes — a byte a pixel, row after row, the app's
+/// `Uint8List` as it is: as many as its box's width × height — into
+/// `bytes` once the GPU is done. False where `capacity` is not that many,
+/// or on failure; see the last error.
+///
+/// # Safety
+/// `engine` and `mask` are live, `mask` made on `engine`, and `bytes`
+/// holds `capacity`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_mask_read(
+    engine: *const Engine,
+    mask: *const MaskPlane,
+    bytes: *mut u8,
+    capacity: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (engine, MaskPlane { plane, size, .. }) = unsafe { (&*engine, &*mask) };
+    // SAFETY: `bytes` holds `capacity`.
+    let into = unsafe { std::slice::from_raw_parts_mut(bytes, capacity) };
+    size.read_into(engine, plane, into)
+}
+
 /// The bytes of every mask the app keeps, made and not yet freed.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_mask_bytes() -> u64 {

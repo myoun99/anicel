@@ -2125,12 +2125,12 @@ class GpuMask implements _OfAnEngine, Finalizable {
     if (made == nullptr) {
       throw GpuRefused(_lastError());
     }
-    final mask = GpuMask._(engine, made);
+    final mask = GpuMask._(engine, made, bytes);
     _freed.attach(mask, made.cast(), detach: mask, externalSize: bytes);
     return mask;
   }
 
-  GpuMask._(this._engine, this._mask);
+  GpuMask._(this._engine, this._mask, this._length);
 
   static final NativeFinalizer _freed = NativeFinalizer(
     Native.addressOf<NativeFunction<Void Function(Pointer<rust.MaskPlane>)>>(
@@ -2145,6 +2145,20 @@ class GpuMask implements _OfAnEngine, Finalizable {
   @override
   final GpuEngine _engine;
   final Pointer<rust.MaskPlane> _mask;
+
+  /// Its pixels: a byte each over its box.
+  final int _length;
+
+  /// Its bytes, a byte a pixel row after row over its box, once the GPU is
+  /// done with what put them. Waits for the GPU.
+  Uint8List read() => using((arena) {
+    final bytes = arena<Uint8>(_held(_length));
+    // ⚠️No test reaches the throw: a read fails only where the device does.
+    if (!rust.maskRead(_engine._engine, _mask, bytes, _length)) {
+      throw GpuRefused(_lastError());
+    }
+    return Uint8List.fromList(bytes.asTypedList(_length));
+  });
 
   /// Frees the mask now; a plan that names it keeps its own hold.
   void free() {
@@ -3523,6 +3537,22 @@ final class GpuSelectionMasks {
     });
     return GpuMask._kept(_engine, mask, width * height);
   }
+
+  /// [mask] cut by the selection [by] — a fill's range as its mark shows
+  /// it under a selection: whole where both take any of the pixel, nothing
+  /// elsewhere, over [mask]'s box. Kept on the GPU as [selection]'s masks
+  /// are; the work is submitted and nothing waits for it. Refused where
+  /// another engine made either ([_OfAnEngine]).
+  GpuMask cut(GpuMask mask, GpuMask by) => GpuMask._kept(
+    _engine,
+    rust.selectionMaskCut(
+      _masks,
+      _engine._engine,
+      _engine._its(mask)._mask,
+      _engine._its(by)._mask,
+    ),
+    mask._length,
+  );
 
   void free() => rust.selectionMasksFree(_masks);
 }

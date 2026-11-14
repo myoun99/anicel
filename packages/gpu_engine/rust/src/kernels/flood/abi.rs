@@ -208,20 +208,9 @@ pub unsafe extern "C" fn gpu_engine_flood_filled_read(
 ) -> bool {
     // SAFETY: see the function's contract.
     let (engine, Filled { mask, size, .. }) = unsafe { (&*engine, &*filled) };
-    let width = size.width as usize;
-    if capacity != width * size.height as usize {
-        fail::<()>(format!("{capacity} bytes are not a mask of {size:?}"));
-        return false;
-    }
-    let Some(plane) = engine.read_buffer(mask) else {
-        return false;
-    };
-    // SAFETY: `bytes` holds `capacity`, the box's rows of `width`.
+    // SAFETY: `bytes` holds `capacity`.
     let into = unsafe { std::slice::from_raw_parts_mut(bytes, capacity) };
-    for (into, row) in into.chunks_exact_mut(width).zip(size.rows_of(&plane)) {
-        into.copy_from_slice(row);
-    }
-    true
+    size.read_into(engine, mask, into)
 }
 
 /// # Safety

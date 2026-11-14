@@ -11,6 +11,7 @@
 mod tests;
 
 use super::region::{Combine, Operand, RegionMask, Step};
+use super::within::MaskWithin;
 use super::{Finish, MaskBox, MaskPasses};
 use crate::device::Engine;
 use crate::fail;
@@ -21,6 +22,7 @@ use crate::kernels::composite::abi::MaskPlane;
 pub struct SelectionMasks {
     region: RegionMask,
     passes: MaskPasses,
+    within: MaskWithin,
 }
 
 /// The selection's kernels, compiled.
@@ -34,7 +36,8 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_new(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     let (region, passes) = (RegionMask::new(engine), MaskPasses::new(engine));
-    Box::into_raw(Box::new(SelectionMasks { region, passes }))
+    let within = MaskWithin::new(engine);
+    Box::into_raw(Box::new(SelectionMasks { region, passes, within }))
 }
 
 /// # Safety
@@ -88,6 +91,31 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_new(
     let finish = Finish { grow, feather, anti_alias };
     match masked(masks, engine, program, points, (x, y), size, finish) {
         Some(plane) => MaskPlane::kept(plane, (x, y), size),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// `mask` cut by the selection `by` (within.wgsl) — a fill's range as its
+/// mark shows it under a selection: a new plane over `mask`'s box, whole
+/// where both hold any of the pixel and 0 elsewhere, kept for the app. The
+/// work is submitted, and what reads the plane after it reads it done.
+/// Null where either holds less than its box or a plane is past a
+/// binding; see the last error.
+///
+/// # Safety
+/// `masks` and `engine` are live, the masks compiled on `engine`, and
+/// `mask` and `by` are live planes made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_selection_mask_cut(
+    masks: *const SelectionMasks,
+    engine: *const Engine,
+    mask: *const MaskPlane,
+    by: *const MaskPlane,
+) -> *mut MaskPlane {
+    // SAFETY: see the function's contract.
+    let (masks, engine, mask, by) = unsafe { (&*masks, &*engine, (*mask).mask(), (*by).mask()) };
+    match masks.within.cut(engine, &mask, &by) {
+        Some(plane) => MaskPlane::kept(plane, mask.at, mask.size),
         None => std::ptr::null_mut(),
     }
 }
