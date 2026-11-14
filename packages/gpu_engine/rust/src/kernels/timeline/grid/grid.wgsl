@@ -21,7 +21,9 @@
 // Flutter reads one premultiplied; a translucent run or an edge's coverage
 // stored straight over the clear tile would show brighter than it is. The
 // wave tile is stored so still, for that reason. ↩️Stored straight before
-// that; no pixel had reached a screen yet.
+// that; no pixel had reached a screen yet. ↩️The wave tile is stored
+// straight too since its picture reached a screen through the lay
+// (wave.wgsl, 2026-11-14).
 //
 // Integers only, as fill.wgsl has why. A rounded rect's field is taken in
 // q9 — a pixel is 512 — so a q8 box's half is a whole word and a pixel's

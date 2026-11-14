@@ -46,7 +46,8 @@ import '../helpers/an_effect_sampled.dart';
 /// 컴파일 0개(시작 · S5 열기)」): once the list the app compiles ahead is
 /// through ([compileAppKernelsAhead]), a pen put down — a second while one
 /// stroke is out too —, the blur brush, the scan that finds a cel's ink, a
-/// colour verb, a paste, a grid's tile drawn and laid on a screen, and a
+/// colour verb, a paste, a grid's tile and a sound's wave drawn and laid on
+/// a screen, and a
 /// frame shown — one with an effect chain too — build none where they are
 /// asked, each screen laid as this platform lays its own
 /// ([ScreenTexture.bgra]); and the list builds none here itself.
@@ -315,7 +316,7 @@ void main() {
 
     expect(
       builtHereBy(() {
-        final (:tiles, :lay) = appGpuGridKernels.kept;
+        final (:tiles, wave: _, :lay) = appGpuGridKernels.kept;
         tiles.draw(
           picture,
           (TimelineGridTileOpWriter()..fillRect(
@@ -334,6 +335,41 @@ void main() {
       0,
     );
     expect(screen.fingerprint(), isNot(bare), reason: 'the tile is laid');
+  });
+
+  test("a sound's wave drawn and laid on a screen builds none", () {
+    final picture = GpuGridPicture(appGpuEngine, 4, 8);
+    addTearDown(picture.free);
+    final peaks = GpuWavePeaks(appGpuEngine, [
+      Uint16List.fromList([65535, 65535]),
+    ]);
+    addTearDown(peaks.free);
+    final screen = ScreenTexture.surfaceOf(appGpuEngine, 4, 8);
+    addTearDown(screen.free);
+    final bare = screen.fingerprint();
+
+    expect(
+      builtHereBy(() {
+        final (tiles: _, :wave, :lay) = appGpuGridKernels.kept;
+        wave.draw(picture, peaks, (
+          along0: 0,
+          vertical: false,
+          frameQ8: 256,
+          fpsNumerator: 1,
+          fpsDenominator: 1,
+          bucketsPerSecond: 1,
+          leadingFrames: 0,
+          acrossQ8: 8 * 256,
+          gainQ16: 65536,
+          rgba: 0xFFFFFFFF,
+        ));
+        lay.lay(screen, (0, 0, 4, 8), [
+          (picture: picture, from: (0, 0, 4, 8), onto: (0, 0, 4, 8)),
+        ]);
+      }),
+      0,
+    );
+    expect(screen.fingerprint(), isNot(bare), reason: 'the wave is laid');
   });
 
   test('a frame shown on a screen builds none', () {

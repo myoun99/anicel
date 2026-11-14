@@ -63,6 +63,9 @@ use crate::kernels::timeline::grid::abi::{
     gpu_engine_grid_free, gpu_engine_grid_lay_free, gpu_engine_grid_lay_new, gpu_engine_grid_new,
     gpu_engine_grid_picture_free, gpu_engine_grid_picture_new,
 };
+use crate::kernels::timeline::wave::abi::{
+    gpu_engine_wave_free, gpu_engine_wave_new, gpu_engine_wave_peaks_free, gpu_engine_wave_peaks_new,
+};
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
 use crate::testing::{first_engine, held, last_error};
 
@@ -100,7 +103,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 36] {
+fn frees() -> [(&'static str, fn(&'static str)); 38] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, first_engine().clone().boxed(), gpu_engine_close)
@@ -305,6 +308,17 @@ fn frees() -> [(&'static str, fn(&'static str)); 36] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_grid_picture_new(first_engine(), 4, 4) };
             gives_back(name, made, gpu_engine_grid_picture_free)
+        }),
+        ("gpu_engine_wave_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_wave_new(first_engine()) };
+            gives_back(name, made, gpu_engine_wave_free)
+        }),
+        ("gpu_engine_wave_peaks_free", |name| {
+            let peaks = [1u16, 2, 3, 4];
+            // SAFETY: the engine is live; `peaks` holds two lanes of two.
+            let made = unsafe { gpu_engine_wave_peaks_new(first_engine(), peaks.as_ptr(), 2, 2) };
+            gives_back(name, made, gpu_engine_wave_peaks_free)
         }),
         ("gpu_engine_surface_free", |name| {
             // As the platform makes the ones it shows: RGBA where it can,

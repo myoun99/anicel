@@ -3943,6 +3943,111 @@ class GpuGridLay {
   void free() => rust.gridLayFree(_lay);
 }
 
+/// Where a strip shows its sound, in the integers the waveform pass takes
+/// (rust/src/kernels/timeline/wave `WaveView`): the strip pixel the
+/// picture's first column (or row, running down) is; pixels a frame, q8;
+/// frames a second as a fraction; the peaks' buckets a second; frames into
+/// the file before the strip starts; the strip's extent across, q8; the
+/// gain, q16 (65536 is 1); the band's straight colour, r | g<<8 | b<<16 |
+/// a<<24.
+typedef GpuWaveView = ({
+  int along0,
+  bool vertical,
+  int frameQ8,
+  int fpsNumerator,
+  int fpsDenominator,
+  int bucketsPerSecond,
+  int leadingFrames,
+  int acrossQ8,
+  int gainQ16,
+  int rgba,
+});
+
+/// THE WAVEFORM PASS (rust/src/kernels/timeline/wave): a sound's peaks
+/// drawn into a frame grid's picture as a strip shows them, for the view's
+/// screen to lay as it lays the grid's tiles ([GpuGridLay.lay]).
+class GpuWave {
+  /// The pass on [engine], compiled for the pictures it draws.
+  GpuWave(GpuEngine engine) : this._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuWave> opening(GpuEngine engine) async =>
+      GpuWave._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Wave> _compiled(Pointer<rust.Engine> on) =>
+      rust.waveNew(on);
+
+  GpuWave._(this._engine, this._wave);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Wave> _wave;
+
+  /// Draws [peaks] into [picture] over clear as [view] shows them —
+  /// submitted, not waited for, as [GpuGrid.draw] is. Throws for a view
+  /// the pass refuses.
+  void draw(GpuGridPicture picture, GpuWavePeaks peaks, GpuWaveView view) =>
+      _done(
+        rust.waveDraw(
+          _wave,
+          _engine._engine,
+          _engine._its(picture)._picture,
+          _engine._its(peaks)._peaks,
+          view.along0,
+          view.vertical,
+          view.frameQ8,
+          view.fpsNumerator,
+          view.fpsDenominator,
+          view.bucketsPerSecond,
+          view.leadingFrames,
+          view.acrossQ8,
+          view.gainQ16,
+          view.rgba,
+        ),
+      );
+
+  void free() => rust.waveFree(_wave);
+}
+
+/// A sound's peaks as the engine keeps them for [GpuWave.draw]: [lanes]
+/// lanes of [buckets] q16 peaks — round(min(|s|, 1) · 65535) — each.
+class GpuWavePeaks implements _OfAnEngine {
+  /// [peaks]' lanes, all of one length, uploaded once. Throws for none, an
+  /// empty one, lanes of different lengths, or more than the pass takes.
+  factory GpuWavePeaks(GpuEngine engine, List<Uint16List> peaks) =>
+      using((arena) {
+        final buckets = peaks.isEmpty ? 0 : peaks.first.length;
+        final count = peaks.length * buckets;
+        final words = arena<Uint16>(_held(count));
+        final all = words.asTypedList(_held(count));
+        for (final (lane, values) in peaks.indexed) {
+          if (values.length != buckets) {
+            throw ArgumentError('lanes of ${values.length} and $buckets');
+          }
+          all.setAll(lane * buckets, values);
+        }
+        final made = rust.wavePeaksNew(
+          engine._engine,
+          words,
+          peaks.length,
+          buckets,
+        );
+        if (made == nullptr) {
+          throw GpuRefused(_lastError());
+        }
+        return GpuWavePeaks._(engine, made, peaks.length, buckets);
+      });
+
+  GpuWavePeaks._(this._engine, this._peaks, this.lanes, this.buckets);
+
+  @override
+  final GpuEngine _engine;
+  final Pointer<rust.WavePeaks> _peaks;
+  final int lanes;
+  final int buckets;
+
+  void free() => rust.wavePeaksFree(_peaks);
+}
+
 /// [argb] — a `Color`'s, A<<24|R<<16|G<<8|B — as the engine's colours
 /// are: straight RGBA8, A<<24|B<<16|G<<8|R.
 int gpuColourOf(int argb) =>

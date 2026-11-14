@@ -11,10 +11,15 @@
 //
 // Across, a row is covered by how much of it the band [middle − reach,
 // middle + reach] overlaps, in q8, and the band laid by the normal
-// composite (laid.wgsl), and the pixel stored premultiplied, as the grid's
-// is (grid.wgsl has why). Integers only, as fill.wgsl has why.
+// composite (laid.wgsl), and the pixel stored straight, as the grid's is
+// (grid.wgsl has why): the view's screen premultiplies it once as it lays
+// it, as it lays the grid's tiles (lay.wgsl). ↩️Stored premultiplied
+// (11-05) till its picture first reached a screen through that lay
+// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel, 2026-11-14): laid
+// so, an edge would be premultiplied twice and show darker than it is.
+// Integers only, as fill.wgsl has why.
 //
-// Needs blend/blend.wgsl, laid.wgsl and shared/premultiply.wgsl before it.
+// Needs blend/blend.wgsl and laid.wgsl before it.
 
 struct Params {
   width: u32,
@@ -104,7 +109,7 @@ fn wave(@builtin(global_invocation_id) id: vec3<u32>) {
     let rgba = params.rgba;
     pixel = laid(pixel, rgba, (u32(cover) * (rgba >> 24u) * 257u + 128u) >> 8u);
   }
-  let packed = premultiply8(blend_pack8(pixel));
+  let packed = blend_pack8(pixel);
   // The one float step, as fill.wgsl's.
   textureStore(tile, id.xy, unpack4x8unorm(packed));
 }

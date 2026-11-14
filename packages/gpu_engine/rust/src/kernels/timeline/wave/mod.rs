@@ -16,32 +16,33 @@
 //!   reach − distance + ½, which draws a line of half a pixel through
 //!   silence.
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
+// ↩️Nothing outside the tests called it until the app's bridge round
 // (gpu-int-spec-timeline, 관제 13:5x — the app connects after the bridges
-// land).
-// 🔜The lane that lays that bridge puts this pass in the list the app
+// land): its C ABI came with the card
+// the-waveform-is-drawn-on-the-cpu-beside-its-kernel (관제 2026-11-14).
+// ↩️🔜The lane that lays that bridge puts this pass in the list the app
 // compiles ahead (`compileAppKernelsAhead`, app_kernels_ahead.dart): it
 // is compiled where a tile of a format is first run
 // (`WaveTile::pipeline`), and the thread an app's frames are built on
 // compiles no kernel (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦:
 // 「선 = UI 스레드가 직접 하는 커널 컴파일 0개」; left out of card
 // a-first-mesh-warp-…, 2026-11-14 03:02, the app having no way to it
-// yet).
-#![cfg_attr(not(test), allow(dead_code))]
+// yet). It is: the grids' set (`appGpuGridKernels`), which that list
+// compiles and a grid's screen warms, has it compiled for the pictures it
+// draws ([`WaveTile::for_pictures`]).
 
+pub(crate) mod abi;
 #[cfg(test)]
 mod tests;
-
-use std::time::Instant;
-
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, PREMULTIPLY_WGSL, encode_on, flat, pipeline, storage_format, whole,
+    Encoded, ISQRT_WGSL, encode_on, flat, pipeline, storage_format, whole,
 };
 use crate::kernels::timeline::LAID_WGSL;
+use crate::kernels::timeline::grid::GridPicture;
 
 /// The most lanes a sound may bring.
 ///
@@ -197,6 +198,16 @@ impl WaveTile {
         }
     }
 
+    /// The pass with its pipeline for a frame grid's picture compiled where
+    /// the caller is — what a strip's waveform is drawn into and its screen
+    /// lays ([`GridPicture`]) — so the first sound drawn compiles nothing,
+    /// as the grid's tile pass is made (`GridTile::for_pictures`).
+    pub(crate) fn for_pictures(engine: &Engine) -> Self {
+        let mut tile = Self::new(engine);
+        tile.pipeline(engine, GridPicture::FORMAT);
+        tile
+    }
+
     fn pipeline(
         &mut self,
         engine: &Engine,
@@ -211,23 +222,25 @@ impl WaveTile {
         let body = include_str!("wave.wgsl").replace("__FORMAT__", token);
         let pipeline = pipeline(
             engine,
-            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body],
+            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, &body],
             "wave",
         );
         self.pipelines.push((format, pipeline.clone()));
         Some(pipeline)
     }
 
-    /// Draws `peaks` into `tile` as `view` shows them, and waits for the
-    /// GPU. Returns the wall time from submit to completion, in
-    /// nanoseconds; None, with the last error, for a view it refuses.
+    /// Draws `peaks` into `tile` as `view` shows them — submitted, not
+    /// waited for, as a grid's tile is (`GridTile::run` has why): what
+    /// reads the tile after comes after it on the same queue. None, with
+    /// the last error, for a view it refuses. ↩️It waited for the GPU and
+    /// gave back the wall time, which nothing read.
     pub(crate) fn run(
         &mut self,
         engine: &Engine,
         tile: &wgpu::Texture,
         peaks: &WavePeaks,
         view: &WaveView,
-    ) -> Option<u64> {
+    ) -> Option<()> {
         if let Some(fault) = fault_in(view) {
             return fail(fault);
         }
@@ -281,9 +294,7 @@ impl WaveTile {
                 groups,
             }],
         );
-        let start = Instant::now();
         engine.queue.submit([encoder.finish()]);
-        engine.wait()?;
-        Some(start.elapsed().as_nanos() as u64)
+        Some(())
     }
 }

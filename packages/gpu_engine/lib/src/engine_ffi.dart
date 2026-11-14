@@ -59,6 +59,10 @@ final class GridPicture extends Opaque {}
 
 final class GridLay extends Opaque {}
 
+final class Wave extends Opaque {}
+
+final class WavePeaks extends Opaque {}
+
 final class DabTexture extends Opaque {}
 
 final class Stroke extends Opaque {}
@@ -1916,6 +1920,62 @@ external bool gridDraw(
   Pointer<Uint8> atlas,
   int atlasWidth,
   int atlasHeight,
+);
+
+@Native<Pointer<Wave> Function(Pointer<Engine>)>(symbol: 'gpu_engine_wave_new')
+external Pointer<Wave> waveNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Wave>)>(symbol: 'gpu_engine_wave_free')
+external void waveFree(Pointer<Wave> wave);
+
+@Native<
+  Pointer<WavePeaks> Function(Pointer<Engine>, Pointer<Uint16>, Size, Size)
+>(symbol: 'gpu_engine_wave_peaks_new')
+external Pointer<WavePeaks> wavePeaksNew(
+  Pointer<Engine> engine,
+  Pointer<Uint16> peaks,
+  int lanes,
+  int buckets,
+);
+
+@Native<Void Function(Pointer<WavePeaks>)>(
+  symbol: 'gpu_engine_wave_peaks_free',
+)
+external void wavePeaksFree(Pointer<WavePeaks> peaks);
+
+@Native<
+  Bool Function(
+    Pointer<Wave>,
+    Pointer<Engine>,
+    Pointer<GridPicture>,
+    Pointer<WavePeaks>,
+    Int32,
+    Bool,
+    Int32,
+    Uint32,
+    Uint32,
+    Uint32,
+    Int32,
+    Int32,
+    Int32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_wave_draw')
+external bool waveDraw(
+  Pointer<Wave> wave,
+  Pointer<Engine> engine,
+  Pointer<GridPicture> picture,
+  Pointer<WavePeaks> peaks,
+  int along0,
+  bool vertical,
+  int frameQ8,
+  int fpsNumerator,
+  int fpsDenominator,
+  int bucketsPerSecond,
+  int leadingFrames,
+  int acrossQ8,
+  int gainQ16,
+  int rgba,
 );
 
 @Native<Pointer<GridLay> Function(Pointer<Engine>)>(

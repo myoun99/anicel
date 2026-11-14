@@ -380,8 +380,10 @@ final class FrameKernelsToCome implements Exception {
       'kernels to be compiled';
 }
 
-/// The frame grids' two passes on [appGpuEngine], for every grid: the one
-/// that draws a tile and the one that lays tiles on a screen. Warmed before
+/// The frame grids' three passes on [appGpuEngine], for every grid: the one
+/// that draws a tile, the one that draws a sound's wave into a picture as a
+/// tile is (the-waveform-is-drawn-on-the-cpu-beside-its-kernel, 2026-11-14)
+/// and the one that lays them on a screen. Warmed before
 /// a row lays on a screen (`TimelineGridScreenHost`), so the first one
 /// compiles nothing on the thread the app's frames are built on (🗣️관제
 /// 2026-11-10 18:14, gpu-canonical-store ⑦ — 🔬the lay pass's two entries
@@ -394,20 +396,27 @@ final class FrameKernelsToCome implements Exception {
 /// as the engine opened, they stood ahead of a stroke's — 0.43–0.59 s of
 /// the lay pass before the first of them on the Surface Pro 11
 /// (2026-11-11 06:41), 3.2 s of it on the main PC.
-final appGpuGridKernels = AppKernels<({GpuGrid tiles, GpuGridLay lay})>(
-  (engine) => (tiles: GpuGrid(engine), lay: GpuGridLay(engine)),
-  (engine) async {
-    await engine.compilesApartLetGo();
-    return (
-      tiles: await GpuGrid.opening(engine),
-      lay: await GpuGridLay.opening(engine, bgra: ScreenTexture.bgra),
+final appGpuGridKernels =
+    AppKernels<({GpuGrid tiles, GpuWave wave, GpuGridLay lay})>(
+      (engine) => (
+        tiles: GpuGrid(engine),
+        wave: GpuWave(engine),
+        lay: GpuGridLay(engine),
+      ),
+      (engine) async {
+        await engine.compilesApartLetGo();
+        return (
+          tiles: await GpuGrid.opening(engine),
+          wave: await GpuWave.opening(engine),
+          lay: await GpuGridLay.opening(engine, bgra: ScreenTexture.bgra),
+        );
+      },
+      (kernels) {
+        kernels.tiles.free();
+        kernels.wave.free();
+        kernels.lay.free();
+      },
     );
-  },
-  (kernels) {
-    kernels.tiles.free();
-    kernels.lay.free();
-  },
-);
 
 /// What lands a stamp on [appGpuEngine]. Warmed for the first fill or paste.
 GpuStampLanding get appGpuStampLanding => appGpuStampLandingKernels.kept;
