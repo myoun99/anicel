@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
+import 'package:anicel/src/services/brush_import_result.dart';
 import 'package:anicel/src/services/tvpx/tvpx_decoder.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -100,9 +101,35 @@ void main() {
     for (final bytes in [noPanel, Uint8List.fromList(utf8.encode('junk'))]) {
       await expectLater(
         decodeTvpxBrushFile(bytes, sourceName: 'x'),
-        throwsA(isA<TvpxDecodeException>()),
+        throwsA(
+          isA<TvpxDecodeException>().having(
+            (refusal) => refusal.reason.key,
+            'key',
+            'tvpxNoPanel',
+          ),
+        ),
       );
     }
+  });
+
+  test('a panel with not one brush it can carry is refused in the word '
+      'every brush reader says it in', () async {
+    final panel = _panelFile(
+      heading: 'H',
+      buttons: ['1_cmd0=Tool:tv_wetbrush mode "color"'],
+      tools: const {},
+    );
+
+    await expectLater(
+      decodeTvpxBrushFile(panel, sourceName: 'BRUSH'),
+      throwsA(
+        isA<TvpxDecodeException>().having(
+          (refusal) => refusal.reason,
+          'reason',
+          brushFileHoldsNothing,
+        ),
+      ),
+    );
   });
 }
 

@@ -12,6 +12,19 @@ import '../models/import/import_warning.dart';
 class BrushImportResult {
   const BrushImportResult({required this.presets, required this.warnings});
 
+  /// What a reader made of a brush file — or, where it made not one brush
+  /// of it, the refusal [refusal] makes of [brushFileHoldsNothing].
+  factory BrushImportResult.orRefused(
+    List<BrushPreset> presets,
+    List<String> warnings, {
+    required ImportRefusal Function(ImportWarning reason) refusal,
+  }) {
+    if (presets.isEmpty) {
+      throw refusal(brushFileHoldsNothing);
+    }
+    return BrushImportResult(presets: presets, warnings: warnings);
+  }
+
   /// One preset per usable brush, ready for the preset library.
   final List<BrushPreset> presets;
 

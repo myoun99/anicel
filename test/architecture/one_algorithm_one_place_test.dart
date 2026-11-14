@@ -886,8 +886,18 @@ import '../../tool/refactor/clone_scan.dart';
 /// A candidate, not a clone: typed lists made a count long and filled in
 /// one loop over it — a lattice's texels and fractions, a sorted table's
 /// columns and places. ⛔Nothing to merge.
+/// 82 → 81 (2026-11-14, card I-86 — TVPaint's brushes, the third brush
+/// reader). 🔬`clones.dart` on the lane over master (`fb9a03951`, at 80):
+/// one gone, none added —
+///
+///       lib/src/services/abr/abr_decoder.dart  decodeAbrBrushFile
+///       lib/src/services/sut/sut_decoder.dart  _decode
+///
+/// the readers' one ending — what they made, or the refusal where not one
+/// brush came of the file — now `BrushImportResult.orRefused`. Laid on
+/// master at 82 (the outline's two above), so 81.
 void main() {
-  const ceiling = 82;
+  const ceiling = 81;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+import '../../core/collection_equality.dart' show listEquals;
 import '../../models/brush_preset.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
@@ -60,10 +61,11 @@ Future<BrushImportResult> decodeTvpxBrushFile(
       ),
     );
   }
-  if (presets.isEmpty) {
-    throw const TvpxDecodeException(brushFileHoldsNothing);
-  }
-  return BrushImportResult(presets: presets, warnings: warnings);
+  return BrushImportResult.orRefused(
+    presets,
+    warnings,
+    refusal: TvpxDecodeException.new,
+  );
 }
 
 /// A tip as the worker read it: the frames' coverage, [width] × [height]
@@ -284,7 +286,7 @@ _Tip _tipOf(Uint8List dip) {
     }
     at += 8 + length + (length & 1);
   }
-  if (!_sameBytes(layout, _bgra)) {
+  if (!listEquals(layout, _bgra)) {
     throw const TvppRasterDecodeException('The tip is not 8-bit BGRA.');
   }
   if (width == 0 || height == 0 || bodies.isEmpty || bodies.length != count) {
@@ -307,18 +309,6 @@ _Tip _tipOf(Uint8List dip) {
     before = words;
   }
   return (key: getCrc32(dip), width: width, height: height, frames: frames);
-}
-
-bool _sameBytes(List<int> a, List<int> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var index = 0; index < b.length; index += 1) {
-    if (a[index] != b[index]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 Future<List<BrushTipMask>> _masksOf(_Tip tip) async => [

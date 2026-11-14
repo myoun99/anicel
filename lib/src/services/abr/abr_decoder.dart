@@ -173,10 +173,11 @@ Future<BrushImportResult> decodeAbrBrushFile(
     );
   }
 
-  if (presets.isEmpty) {
-    throw const AbrDecodeException(brushFileHoldsNothing);
-  }
-  return BrushImportResult(presets: presets, warnings: warnings);
+  return BrushImportResult.orRefused(
+    presets,
+    warnings,
+    refusal: AbrDecodeException.new,
+  );
 }
 
 /// Positions the reader at the start of the next `8BIM` signature; returns

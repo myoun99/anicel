@@ -223,11 +223,7 @@ class _PackBits {
           throw const TvppRasterDecodeException('A run record is truncated.');
         }
         if (out != null) {
-          final v =
-              (data[at + 1] << 24) |
-              (data[at + 2] << 16) |
-              (data[at + 3] << 8) |
-              data[at + 4];
+          final v = _wordAt(at + 1);
           var changed = false;
           for (var k = 0; k < run && got + k < count; k++) {
             final i = place!(got + k);
@@ -248,14 +244,9 @@ class _PackBits {
         if (out != null) {
           var changed = false;
           for (var k = 0; k < literal && got + k < count; k++) {
-            final q = at + 1 + k * 4;
             final i = place!(got + k);
             if (i >= 0) {
-              final v =
-                  (data[q] << 24) |
-                  (data[q + 1] << 16) |
-                  (data[q + 2] << 8) |
-                  data[q + 3];
+              final v = _wordAt(at + 1 + k * 4);
               changed |= out[i] != v;
               out[i] = v;
             }
@@ -270,6 +261,10 @@ class _PackBits {
       throw const TvppRasterDecodeException('A run crossed a row boundary.');
     }
   }
+
+  /// The pixel whose four bytes start at [q], as one big-endian word.
+  int _wordAt(int q) =>
+      (data[q] << 24) | (data[q + 1] << 16) | (data[q + 2] << 8) | data[q + 3];
 
   /// A `DBAN`'s `0x80`: the count byte after it passes that many pixels
   /// over, keeping the frame before's — and answers how many.

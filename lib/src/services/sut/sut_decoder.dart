@@ -279,10 +279,11 @@ Future<BrushImportResult> _decode(
     );
   }
 
-  if (presets.isEmpty) {
-    throw const SutDecodeException(brushFileHoldsNothing);
-  }
-  return BrushImportResult(presets: presets, warnings: warnings);
+  return BrushImportResult.orRefused(
+    presets,
+    warnings,
+    refusal: SutDecodeException.new,
+  );
 }
 
 BrushSettings _settingsFromVariant(
