@@ -42,7 +42,7 @@ class ViewerLoudness {
 /// zero, and the frame rate handed to the shared arming is ONE FRAME PER
 /// SECOND — which makes a frame a second exactly, with no conversion to get
 /// wrong. The waveform does the same thing for the same reason
-/// (`WaveformPainter.perSecond`).
+/// (`AudioViewerDocument.renderPage`).
 ///
 /// ⛔Nothing here opens a device, builds a mix or uploads a window of its
 /// own: [armAudioOutput] owns that order, and the transport and the

@@ -2,11 +2,15 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuGridPicture;
 
+import '../../native/app_gpu_engine.dart';
+import '../../native/engine_wave_peaks.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
-import '../audio/waveform_painter.dart';
+import '../../services/straight_rgba_image.dart';
 import '../theme/app_theme.dart';
+import '../timeline/timeline_grid_tile_ops.dart' show timelineGridPackRgba;
 
 /// A sound file, as the media viewer sees it: ONE page as wide as the sound
 /// is long — what its run counts and what its view's zoom is measured
@@ -81,34 +85,57 @@ class AudioViewerDocument implements ViewerDocument {
   @override
   bool get drawnAtAnySize => true;
 
+  /// The whole file across [width] × [height] pixels, drawn by the engine's
+  /// wave pass — the timeline's SE rows' own — into a picture of its own,
+  /// read back once: a page is asked for once and kept, so the read is no
+  /// cost a frame pays.
+  ///
+  /// ⏳관제 2026-11-14 22:4x (card the-waveform-is-drawn-on-the-cpu-beside-
+  /// its-kernel ③, 「문서 뷰어의 페이지는 (나) GpuGridPicture.read 로
+  /// 이미지」 — 유저가 뒤집을 수 있다). ↩️It was the CPU band
+  /// (`WaveformPainter.perSecond`), recorded and rasterised.
+  ///
+  /// A second is a frame here, as it was there: one frame a second, the
+  /// width over the file's seconds a frame wide — the arithmetic the
+  /// timeline's band runs on.
+  ///
+  /// ⛔No trim and no envelope: a viewer shows a whole FILE, not a clip
+  /// placed on a lane, so the leading frames are none and the gain is one.
+  /// ↩️A second painter written for the viewer would have been a clone
+  /// whatever its text (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」) —
+  /// the seconds were an entrance to the timeline's band; they are the
+  /// timeline's pass now.
   @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,
     required int height,
   }) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final size = Size(width.toDouble(), height.toDouble());
-    // ⛔THE PAINTER IS THE TIMELINE'S. Its `perSecond` entrance exists for
-    // exactly this caller; drawing the band here would be the clone the
-    // round was told to avoid.
-    WaveformPainter.perSecond(
-      peaks: peaks,
-      // The whole file across whatever pixels were asked for — the
-      // requested width IS the zoom, so the band scales with it.
-      pixelsPerSecond: peaks.durationSeconds <= 0
-          ? 0
-          : size.width / peaks.durationSeconds,
-      color: ink,
-      // Drawn at the pixels asked: one of them is a column.
-      devicePixelRatio: 1,
-    ).paint(canvas, size);
-    final picture = recorder.endRecording();
+    final kernels = await appGpuGridKernels.ready;
+    final picture = GpuGridPicture(appGpuEngine, width, height);
     try {
-      return await picture.toImage(width, height);
+      if (peaks.durationSeconds > 0) {
+        kernels.wave.draw(picture, EngineWavePeaks.of(peaks), (
+          along0: 0,
+          length: width,
+          vertical: false,
+          frameQ8: (width / peaks.durationSeconds * 256).round(),
+          fpsNumerator: 1,
+          fpsDenominator: 1,
+          bucketsPerSecond: peaks.bucketsPerSecond,
+          leadingFrames: 0,
+          acrossQ8: height * 256,
+          gainQ16: 1 << 16,
+          rgba: timelineGridPackRgba(ink),
+        ));
+      }
+      return await decodeStraightRgbaImageOnAWorker(
+        rgba: picture.read(),
+        width: width,
+        height: height,
+      );
     } finally {
-      picture.dispose();
+      picture.free();
     }
   }
 
