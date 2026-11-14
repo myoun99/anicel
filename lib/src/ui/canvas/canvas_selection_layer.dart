@@ -2870,24 +2870,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // down and only the release decides whether it lands.
         return;
       case MarqueeDrag():
-        // A lasso traces every point the OS saw ([PenPath]), each its
-        // own step; a box and a line end where the newest is.
-        setState(() {
-          for (final point in PenPath.eventsOf(event)) {
-            drag
-              ..screenTravel += point.delta.distance
-              ..update(
-                _toCanvas(point.localPosition),
-                keepsRatio: _shapeKeepsRatioNow,
-                shift: _shiftHeld,
-              );
-          }
-        });
-        if (widget.tool == CanvasSelectionTool.drawShape) {
-          widget.onDrawShapeDragged?.call(
-            drawnCopiesOf(drag.path(), _guideCarries),
-          );
-        }
+        _traceMarquee(drag, event);
       case MoveDrag():
         setState(() {
           drag.screenDelta += event.delta;
@@ -2920,6 +2903,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _scheduleResamples();
       case TransformDrag():
         _updateTransformDrag(drag, _toCanvas(event.localPosition));
+    }
+  }
+
+  /// A lasso traces every point the OS saw ([PenPath]), each its own step;
+  /// a box and a line end where the newest is.
+  void _traceMarquee(MarqueeDrag drag, PointerMoveEvent event) {
+    setState(() {
+      for (final point in PenPath.eventsOf(event)) {
+        drag
+          ..screenTravel += point.delta.distance
+          ..update(
+            _toCanvas(point.localPosition),
+            keepsRatio: _shapeKeepsRatioNow,
+            shift: _shiftHeld,
+          );
+      }
+    });
+    if (widget.tool == CanvasSelectionTool.drawShape) {
+      widget.onDrawShapeDragged?.call(
+        drawnCopiesOf(drag.path(), _guideCarries),
+      );
     }
   }
 
