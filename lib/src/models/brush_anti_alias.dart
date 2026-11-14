@@ -61,16 +61,19 @@ typedef BrushTipEdge = ({
 /// half-coverage width narrows with the step as Clip Studio's does. The
 /// ladder `k` below stays for a square, whose edge was never widened.
 /// ↩️It stayed for a raster tip too, until the greys of a pale tip turned
-/// out to be what it was wiping ([brushDabEdgeLaw] has the measure).
+/// out to be what it was wiping ([brushDabEdgeLaw] has the measure), and
+/// 없음's cut left a raster tip on 2026-11-15 (H60, the same place).
 enum BrushAntiAlias {
-  /// 없음 — a hard edge. The ramp collapses to a threshold at half
-  /// coverage, which is the cut this engine already uses for its own hard
-  /// edges.
+  /// 없음 — a hard edge. An analytic tip's ramp collapses to a threshold at
+  /// half coverage, which is the cut this engine already uses for its own
+  /// hard edges.
   ///
-  /// ⚠️The threshold cuts a raster tip's MASK coverage too, so a grain or
-  /// chalk tip at 없음 is binarised whole — a preset that wants a pixel line
-  /// pairs it with a plain round tip (written on Anime Pen until board
-  /// F-218 retired that preset).
+  /// 🚨A raster tip is not cut: at 없음 it lays its picture as it is
+  /// (유저 H39 · I-174 · I-86 — `brushDabEdgeLaw` has their words). A preset
+  /// that wants a pixel line pairs 없음 with a plain round tip.
+  /// ↩️Till 2026-11-15 the threshold cut a raster tip's mask too, so a grain
+  /// or chalk tip at 없음 was binarised whole — written here as a warning,
+  /// on Anime Pen until board F-218 retired that preset.
   none,
 
   /// 1단계 — `k = 4` on a square.

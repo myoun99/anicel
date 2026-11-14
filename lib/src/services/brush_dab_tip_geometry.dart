@@ -94,12 +94,24 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 
 /// 🚨★★★ONE answer for the kernel plan and the coverage reference (I-50).
 ///
-/// 없음 cuts at half coverage whatever the tip. Any other step: an ANALYTIC
-/// round tip already carries its edge in its profile ([RoundTipProfile])
-/// and takes its coverage as it is, and so does a raster tip, whose greys
-/// are its picture and not its edge. Only a square keeps the contrast
-/// ladder ([BrushAntiAlias.contrast]) — its edge was never made wider by
-/// the step.
+/// A raster tip — a picture, not a square baked into one — takes its
+/// coverage as it is at EVERY step, 없음 too: its greys are its picture,
+/// not an edge. 없음 cuts an ANALYTIC tip alone, round or square, at half
+/// coverage. Any other step: a round tip already carries its edge in its
+/// profile ([RoundTipProfile]) and takes its coverage as it is; only a
+/// square keeps the contrast ladder ([BrushAntiAlias.contrast]) — its edge
+/// was never made wider by the step.
+///
+/// 🚨★★★A RASTER TIP AT 없음 IS ITS PICTURE (유저, three times: H39
+/// 2026-09-11 「팁 이미지인 브러시는 aa off시 팁 이미지 그대로 되는거
+/// 문제없는데 … 원형인것들 … aa off시엔 진짜 안티앨리어싱 완전없었으면」 · I-174
+/// 11-14 「aa off일때 팁이 소재일때는 aa있어도되는거 잊지말고」 · I-86 11-15
+/// 「팁이 소재면 aa off하면 소재 팁 그대로인거고 거기서 aa추가하면 추가로 aa
+/// 적용되는거고」 — every brush, an imported one too). ↩️None cut every tip
+/// from the ladder's first day (`f28307f54`, 09-08), and I-50 wrote that
+/// down as the law (`818b07027`) after the user had said a picture is left
+/// alone. What 1~3단계 add on top of a picture is H60-Q1's: till it is
+/// answered they lay it as they did, as it is.
 ///
 /// 🚨★★★A RASTER TIP LEFT THE LADDER (board
 /// imported-water-blend-lays-almost-nothing, 2026-10-30, 유저 「표본을
@@ -111,11 +123,14 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 /// nothing measured had put them there (`f28307f54`: 4 and 2 are 「a
 /// geometric placing, not a measurement」).
 BrushEdgeLaw brushDabEdgeLaw(BrushDab dab) {
+  final isSquare = dab.tipShape == BrushTipShape.square;
   final contrast = dab.antiAlias.contrast;
+  if (dab.tipMask != null && !isSquare) {
+    return (threshold: false, contrast: 1.0);
+  }
   if (contrast == null) {
     return (threshold: true, contrast: 1.0);
   }
-  final isSquare = dab.tipShape == BrushTipShape.square;
   return (threshold: false, contrast: isSquare ? contrast : 1.0);
 }
 
