@@ -107,9 +107,14 @@ void main() {
     // A pool's door asks no placement's questions — they cannot be asked
     // there at all (유저 2026-10-09: 「미디어패널의 경우엔 굽기 맞춤 옵션
     // 안넣어도되」).
-    for (final id in ['bake', 'fit', 'option']) {
+    for (final id in ['bake', 'fit']) {
       expect(column(id), findsNothing, reason: id);
     }
+    // The 「옵션」 column stands, a dash on a row it asks nothing of
+    // (I-171-Q2, 유저 2026-11-14: 「넣는다 — 옵션 열만(굽기 · 맞춤은 그대로
+    // 없음)」).
+    expect(column('option'), findsOneWidget);
+    expect(cellWord(tester, 'option', png), '—');
     // Where it goes is said — the pool, locked (F-282: the strip's 「풀」
     // came down to the row).
     expect(column('into'), findsOneWidget);

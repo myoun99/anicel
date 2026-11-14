@@ -818,71 +818,85 @@ void main() {
       );
     });
 
-    testWidgets('🎯put in the pool with its picture alone, it comes in as an '
-        'MP4 cut from the movie', (tester) async {
-      final movie = await sixFrames(tester);
-      if (movie == null) {
-        return;
-      }
-      final s = await open(
-        tester,
-        [movie],
-        backend: FakeVideoBackend(frameCount: 6),
-      );
-      await answer(tester, 'into', movie, 'pool');
-      await answer(tester, 'option', movie, 'picture');
+    // 🗣️I-171-Q2 (유저 2026-11-14: 「넣는다 — 옵션 열만」): the media
+    // panel's window asks it as a row the general window sends to the
+    // pool does — one column, one answer, one piece.
+    for (final poolOnly in [false, true]) {
+      final door = poolOnly ? 'by the pool\'s door' : 'from the window';
 
-      final entry = await run(tester, s);
+      testWidgets('🎯put in the pool $door with its picture alone, it comes '
+          'in as an MP4 cut from the movie', (tester) async {
+        final movie = await sixFrames(tester);
+        if (movie == null) {
+          return;
+        }
+        final s = await open(
+          tester,
+          [movie],
+          backend: FakeVideoBackend(frameCount: 6),
+          poolOnly: poolOnly,
+        );
+        if (!poolOnly) {
+          await answer(tester, 'into', movie, 'pool');
+        }
+        await answer(tester, 'option', movie, 'picture');
 
-      expect(entry.kind, MediaAssetKind.video);
-      expect(mediaFileName(entry.path), endsWith('.mp4'));
-      expectCutFrom(entry, movie);
-      final held = await tester.runAsync(
-        () => s.projectFile.mediaByteSourceFor(entry.path).read(),
-      );
-      expect(
-        decodeAudioFile(movie),
-        isNotNull,
-        reason: 'the premise: the movie has a sound',
-      );
-      expect(
-        decodeAudioBytes(held!),
-        isNull,
-        reason: 'what the pool holds is the picture alone',
-      );
-    });
+        final entry = await run(tester, s);
 
-    testWidgets('put in the pool and pointed at, the movie is taken whole — '
-        'the row reads 「그림 + 소리」 and the parts cannot be pressed', (
-      tester,
-    ) async {
-      final movie = await writeMovie(tester, 'take.mp4');
-      await open(
-        tester,
-        [movie],
-        backend: FakeVideoBackend(frameCount: 24),
-      );
-      await answer(tester, 'into', movie, 'pool');
-      await answer(tester, 'option', movie, 'sound');
-      expect(
-        cellText(tester, 'option', movie),
-        'Sound only',
-        reason: 'CONTROL: carried, the pool takes the part it is answered',
-      );
+        expect(entry.kind, MediaAssetKind.video);
+        expect(mediaFileName(entry.path), endsWith('.mp4'));
+        expectCutFrom(entry, movie);
+        final held = await tester.runAsync(
+          () => s.projectFile.mediaByteSourceFor(entry.path).read(),
+        );
+        expect(
+          decodeAudioFile(movie),
+          isNotNull,
+          reason: 'the premise: the movie has a sound',
+        );
+        expect(
+          decodeAudioBytes(held!),
+          isNull,
+          reason: 'what the pool holds is the picture alone',
+        );
+      });
 
-      await answer(tester, 'file', movie, 'reference');
+      testWidgets('put in the pool $door and pointed at, the movie is taken '
+          'whole — the row reads 「그림 + 소리」 and the parts cannot be '
+          'pressed', (tester) async {
+        final movie = await writeMovie(tester, 'take.mp4');
+        await open(
+          tester,
+          [movie],
+          backend: FakeVideoBackend(frameCount: 24),
+          poolOnly: poolOnly,
+        );
+        if (!poolOnly) {
+          await answer(tester, 'into', movie, 'pool');
+        }
+        await answer(tester, 'option', movie, 'sound');
+        expect(
+          cellText(tester, 'option', movie),
+          'Sound only',
+          reason: 'CONTROL: carried, the pool takes the part it is answered',
+        );
 
-      expect(
-        cellText(tester, 'option', movie),
-        AppText.strings.imPictureAndSound,
-      );
-      final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
-      expect(
-        tester.widget<InkWell>(cell).onTap,
-        isNull,
-        reason: 'the whole file is the one answer left — nothing to open, as '
-            'an SE row\'s cell answers its sound alone',
-      );
-    });
+        await answer(tester, 'file', movie, 'reference');
+
+        expect(
+          cellText(tester, 'option', movie),
+          AppText.strings.imPictureAndSound,
+        );
+        final cell = find.byKey(
+          ValueKey<String>('import-cell-option-$movie'),
+        );
+        expect(
+          tester.widget<InkWell>(cell).onTap,
+          isNull,
+          reason: 'the whole file is the one answer left — nothing to open, '
+              'as an SE row\'s cell answers its sound alone',
+        );
+      });
+    }
   });
 }

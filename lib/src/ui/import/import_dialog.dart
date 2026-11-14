@@ -2968,10 +2968,16 @@ class _ImportDialogState extends State<ImportDialog> {
   /// to the no-disappearing-UI rule, and the reason was the PSD column,
   /// meaningless beside other files (유저 10-09).
   ///
-  /// ⛔Not in a window a pool's door opened ([ImportDialog.poolOnly]): every
-  /// row there registers, so the questions of a placement cannot be asked
-  /// at all (유저 2026-10-09: 「미디어패널의 경우엔 굽기 맞춤 옵션
-  /// 안넣어도되 … 임포트는 진짜 존재할일이 없는 구조잖아. 그런건 예외로」).
+  /// ⛔No bake and no fit in a window a pool's door opened
+  /// ([ImportDialog.poolOnly]): every row there registers, so a placement's
+  /// questions cannot be asked at all (유저 2026-10-09: 「미디어패널의 경우엔
+  /// 굽기 맞춤 옵션안넣어도되 … 임포트는 진짜 존재할일이 없는 구조잖아. 그런건
+  /// 예외로」). The 「옵션」 column stands there (🗣️I-171-Q2, 유저 2026-11-14:
+  /// 「넣는다 — 옵션 열만(굽기 · 맞춤은 그대로 없음)」): since I-171-Q1 a
+  /// movie's picture and sound say what the pool keeps of it, and a row the
+  /// column asks nothing of shows 「—」. ↩️From 10-09 it stood out of that
+  /// window with the other two — 「옵션은 필요할지도?」 was left for when an
+  /// option meant something there (F-282).
   ///
   /// ⚠️A value the CONTEXT answered — a new cut's 1:1, an expanded PSD's
   /// bake, a pooled file's carry in a mixed batch — shows locked
@@ -2997,8 +3003,9 @@ class _ImportDialogState extends State<ImportDialog> {
           _alsoOfTheFolder(_fileColumn(), _folderFile),
         if (placementAsked) _alsoOfTheFolder(_fitColumn(), _folderFit),
         // A run's, a Photoshop document's, a movie-with-sound's own
-        // question — one column, each row its own (F-282).
-        if (placementAsked) _alsoOfTheFolder(_optionColumn(), _folderOption),
+        // question — one column, each row its own (F-282) — in every
+        // window, a pool's door's too (I-171-Q2).
+        _alsoOfTheFolder(_optionColumn(), _folderOption),
       ])
         _settingsRows.alsoOfThem(column),
     ];
