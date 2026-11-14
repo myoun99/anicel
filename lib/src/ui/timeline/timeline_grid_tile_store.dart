@@ -1360,22 +1360,6 @@ class TimelineGridTileStore {
   @visibleForTesting
   int debugInksWritten = 0;
 
-  /// The paper, lines and rings [request]'s span bakes its ink over, as its
-  /// painter answers them ([TimelineTileRasterSource.substrateIn]) — what a
-  /// raster lays, and what a tile it holds is asked against.
-  TimelineRowSubstrate _substrateOf(_TileRequest request) {
-    debugSubstratesRead += 1;
-    return request.painter.substrateIn(
-      request.spanStartIndex,
-      request.spanEndIndexExclusive,
-    );
-  }
-
-  /// How many times a span's substrate was read ([_substrateOf]) — once an
-  /// ask, a test counts.
-  @visibleForTesting
-  int debugSubstratesRead = 0;
-
   /// The op stream [_emitForeground] writes for a span — what a tile bakes
   /// over its substrate, its words where a fresh atlas places them
   /// ([GpuGridShelves]), none where it has no room for them — readable
@@ -1595,7 +1579,12 @@ final class _SpanRead {
   final TimelineGridTileStore _store;
   final _TileRequest request;
 
-  late final TimelineRowSubstrate substrate = _store._substrateOf(request);
+  /// The paper, lines and rings the span bakes its ink over, as its painter
+  /// answers them ([TimelineTileRasterSource.substrateIn]).
+  late final TimelineRowSubstrate substrate = request.painter.substrateIn(
+    request.spanStartIndex,
+    request.spanEndIndexExclusive,
+  );
   late final _TileInk ink = _store._inkOf(request);
 }
 

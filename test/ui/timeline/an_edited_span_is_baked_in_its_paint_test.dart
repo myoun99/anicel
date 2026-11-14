@@ -18,6 +18,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/frame_name_of.dart';
@@ -64,11 +65,11 @@ void main() {
     },
   );
 
-  TimelineRowCellsPainter painterFor(
+  _CountingSubstrates painterFor(
     Layer layer, {
     int frames = 4,
     double crossAxisExtent = 28,
-  }) => TimelineRowCellsPainter(
+  }) => _CountingSubstrates(
     layer: layer,
     geometry: testFrameGeometry(
       frameCellExtent: 128,
@@ -170,13 +171,13 @@ void main() {
   test('a span its ink moved is baked from the substrate and the ink the ask '
       'read', () async {
     await landed(painterFor(rowLayer('r')));
-    final read = store.debugSubstratesRead;
     final written = store.debugInksWritten;
+    final edited = painterFor(rowLayer('r', name: null));
 
-    final baked = ask(painterFor(rowLayer('r', name: null)));
+    final baked = ask(edited);
 
     expect(baked, isNotNull, reason: 'premise: baked in the ask');
-    expect(store.debugSubstratesRead, read + 1);
+    expect(edited.substratesAnswered, 1);
     expect(store.debugInksWritten, written + 1);
   });
 
@@ -377,4 +378,28 @@ void main() {
       reason: 'four cells\' tile squeezed into three',
     );
   });
+}
+
+/// A row's painter that counts the substrates it answers
+/// ([TimelineRowCellsPainter.substrateIn]) — however the store asks.
+final class _CountingSubstrates extends TimelineRowCellsPainter {
+  _CountingSubstrates({
+    required super.layer,
+    required super.geometry,
+    required super.crossAxisExtent,
+    required super.exposureStateForLayer,
+    required super.frameNameForLayer,
+    required super.colorScheme,
+    required super.baseTextStyle,
+    required super.tileStore,
+    required super.substrateGeneration,
+  });
+
+  int substratesAnswered = 0;
+
+  @override
+  TimelineRowSubstrate substrateIn(int from, int to) {
+    substratesAnswered += 1;
+    return super.substrateIn(from, to);
+  }
 }
