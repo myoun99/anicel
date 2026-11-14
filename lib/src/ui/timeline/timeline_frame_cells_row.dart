@@ -699,13 +699,15 @@ class TimelineFrameCellsRow extends StatelessWidget {
     return timelineRowSoundsOf(
       context,
       shown,
+      (
+        frameRate: projectFrameRate,
+        audioPeaksFor: audioPeaksFor!,
+        leadInAtStart: _showsAt(context).world.spillInLeadFrames ?? 0,
+      ),
       window: (
         startIndex: frames.frameStartIndex,
         endIndexExclusive: frames.frameEndIndexExclusive,
       ),
-      frameRate: projectFrameRate,
-      audioPeaksFor: audioPeaksFor!,
-      leadInAtStart: _showsAt(context).world.spillInLeadFrames ?? 0,
     );
   }
 

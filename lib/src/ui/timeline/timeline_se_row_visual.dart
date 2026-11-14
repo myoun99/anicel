@@ -222,13 +222,15 @@ List<Widget> timelineRowAudioOverlays(
   final (:sounds, frameRate: _, :ink) = timelineRowSoundsOf(
     context,
     layer,
+    (
+      frameRate: frameRate,
+      audioPeaksFor: audioPeaksFor,
+      leadInAtStart: leadInAtStart,
+    ),
     window: (
       startIndex: frameStartIndex,
       endIndexExclusive: frameEndIndexExclusive,
     ),
-    frameRate: frameRate,
-    audioPeaksFor: audioPeaksFor,
-    leadInAtStart: leadInAtStart,
   );
   return [
     for (final sound in sounds)
@@ -269,6 +271,16 @@ typedef SeRowSound = ({
   double gain,
 });
 
+/// What an SE row's sounds are read from ([seRowSounds]): the rate its
+/// frames are counted at, each file's peaks, and how far into its sound the
+/// block at frame 0 already is — the row spills in from an earlier cut
+/// (F-113).
+typedef SeRowSoundsFrom = ({
+  ProjectFrameRate frameRate,
+  AudioPeaks? Function(String filePath) audioPeaksFor,
+  int leadInAtStart,
+});
+
 /// The sounds a row draws on its paper ([timelineRowSoundsOf]), the rate
 /// their frames are counted at, and the ink they are drawn in.
 typedef TimelineRowSounds = ({
@@ -278,49 +290,20 @@ typedef TimelineRowSounds = ({
 });
 
 /// What [layer]'s row draws on its paper over [window] — the whole row
-/// when none is given: its sounds ([seRowSounds]) at [frameRate], in the
-/// ink its look wears them in ([timelineRowLookOf], I-129). One reading for
-/// the timeline's SE rows, which bake them into their tiles, and the
-/// storyboard's S rows, which lay them as strips
+/// when none is given: its sounds read [from] ([seRowSounds]), at their
+/// rate, in the ink its look wears them in ([timelineRowLookOf], I-129).
+/// One reading for the timeline's SE rows, which bake them into their
+/// tiles, and the storyboard's S rows, which lay them as strips
 /// ([timelineRowAudioOverlays]).
 TimelineRowSounds timelineRowSoundsOf(
   BuildContext context,
-  Layer layer, {
+  Layer layer,
+  SeRowSoundsFrom from, {
   ({int startIndex, int endIndexExclusive})? window,
-  required ProjectFrameRate frameRate,
-  required AudioPeaks? Function(String filePath) audioPeaksFor,
-  int leadInAtStart = 0,
 }) => (
-  sounds: seRowSounds(
-    layer,
-    window: window,
-    frameRate: frameRate,
-    audioPeaksFor: audioPeaksFor,
-    leadInAtStart: leadInAtStart,
-  ),
-  frameRate: frameRate,
+  sounds: seRowSounds(layer, from, window: window),
+  frameRate: from.frameRate,
   ink: timelineRowLookOf(context, layer, ink: timelineSeWaveformInk).ink,
-);
-
-/// [sound] as the CPU paints its wave over a strip [pixelsPerFrame] a frame
-/// ([WaveformPainter]) — the storyboard's strips, and a timeline row's
-/// cells where no tile holds them ([TimelineRowCellsPainter.sounds]).
-WaveformPainter seRowSoundWave(
-  SeRowSound sound, {
-  required ProjectFrameRate frameRate,
-  required double pixelsPerFrame,
-  required Color color,
-  required double devicePixelRatio,
-  required Axis axis,
-}) => WaveformPainter(
-  peaks: sound.peaks,
-  frameRate: frameRate,
-  pixelsPerFrame: pixelsPerFrame,
-  color: color,
-  devicePixelRatio: devicePixelRatio,
-  axis: axis,
-  leadingFrames: sound.leadingFrames,
-  gain: sound.gain,
 );
 
 /// An SE row's sounds with the frames each covers and the name it is keyed
@@ -333,12 +316,11 @@ WaveformPainter seRowSoundWave(
 /// ↩️The storyboard's S row read them on its own, and drew no gain and no
 /// fade (I-89 ① ⓕ, 2026-10-20).
 List<SeRowSound> seRowSounds(
-  Layer layer, {
+  Layer layer,
+  SeRowSoundsFrom from, {
   ({int startIndex, int endIndexExclusive})? window,
-  required ProjectFrameRate frameRate,
-  required AudioPeaks? Function(String filePath) audioPeaksFor,
-  int leadInAtStart = 0,
 }) {
+  final (:frameRate, :audioPeaksFor, :leadInAtStart) = from;
   final sounds = <SeRowSound>[];
   for (final span in seAudioSpans(layer, leadInAtStart: leadInAtStart)) {
     // Windowed like every sibling builder: the open-ended SE display
@@ -581,8 +563,8 @@ class _AudioClipStrip extends StatelessWidget {
     final waveform = ClipRect(
       child: LayoutBuilder(
         builder: (context, constraints) => CustomPaint(
-          painter: seRowSoundWave(
-            sound,
+          painter: WaveformPainter(
+            peaks: sound.peaks,
             frameRate: frameRate,
             // Frames, not pixels: the strip reads its own box to learn what
             // a frame is worth, so a zoom step repaints it without a
@@ -592,6 +574,8 @@ class _AudioClipStrip extends StatelessWidget {
             color: color,
             devicePixelRatio: EffectiveDevicePixelRatio.of(context),
             axis: axis,
+            leadingFrames: sound.leadingFrames,
+            gain: sound.gain,
           ),
         ),
       ),

@@ -42,12 +42,11 @@ void main() {
     final peaks = AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(160));
     List<int> startsOver([({int startIndex, int endIndexExclusive})? window]) =>
         [
-          for (final sound in seRowSounds(
-            layer,
-            window: window,
+          for (final sound in seRowSounds(layer, (
             frameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (_) => peaks,
-          ))
+            leadInAtStart: 0,
+          ), window: window))
             sound.startFrame,
         ];
 

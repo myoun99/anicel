@@ -16,6 +16,7 @@ import '../../models/timeline_row_address.dart' show LayerRowAddress;
 import '../../models/timeline_repeat.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/app_input_settings.dart' show AppInput;
+import '../audio/waveform_painter.dart';
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/named.dart';
@@ -59,8 +60,7 @@ import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_screen.dart';
 import 'timeline_grid_tile_ops.dart' show timelineGridPackRgba;
 import 'timeline_grid_tile_store.dart';
-import 'timeline_se_row_visual.dart'
-    show SeRowSound, TimelineRowSounds, seRowSoundWave;
+import 'timeline_se_row_visual.dart' show SeRowSound, TimelineRowSounds;
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
@@ -414,8 +414,7 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   List<TimelineTileWave> wavesIn(int from, int to, double devicePixelRatio) {
     final row = sounds;
-    final frameQ8 = (frameCellExtent * devicePixelRatio * 256).round();
-    if (row == null || to <= from || frameQ8 <= 0) {
+    if (row == null || to <= from || frameCellExtent <= 0) {
       return const [];
     }
     return [
@@ -428,27 +427,24 @@ class TimelineRowCellsPainter extends CustomPainter
         ))
           (
             peaks: sound.peaks,
-            view: _waveViewOf(
-              sound,
-              row,
-              from: from,
-              frameQ8: frameQ8,
-              devicePixelRatio: devicePixelRatio,
-            ),
+            view: _waveViewOf(sound, row, from, devicePixelRatio),
           ),
     ];
   }
 
-  /// [sound]'s wave as the tile of the span from frame [from] shows it, a
-  /// frame [frameQ8] pixels long ([wavesIn]).
+  /// [sound]'s wave as the tile of the span from frame [from] shows it
+  /// ([wavesIn]).
   GpuWaveView _waveViewOf(
     SeRowSound sound,
-    TimelineRowSounds row, {
-    required int from,
-    required int frameQ8,
-    required double devicePixelRatio,
-  }) {
+    TimelineRowSounds row,
+    int from,
+    double devicePixelRatio,
+  ) {
     double along(int frame) => startAlong(axis, cellRectFor(frame));
+    // A frame's pixels, q8: the distance between the span's first two
+    // edges.
+    final frameQ8 = ((along(from + 1) - along(from)) * devicePixelRatio * 256)
+        .round();
     // Reckoned from the later of the span's first frame and the sound's, a
     // whole frame into the file there: a column stands on a frame edge the
     // tile holds, so a pixel's rounding never builds up along a sound
@@ -1148,13 +1144,15 @@ class TimelineRowCellsPainter extends CustomPainter
         ..save()
         ..clipRect(strip)
         ..translate(strip.left, strip.top);
-      seRowSoundWave(
-        sound,
+      WaveformPainter(
+        peaks: sound.peaks,
         frameRate: row.frameRate,
         pixelsPerFrame: extentAlong(axis, strip.size) / sound.audibleFrames,
         color: row.ink,
         devicePixelRatio: devicePixelRatio,
         axis: axis,
+        leadingFrames: sound.leadingFrames,
+        gain: sound.gain,
       ).paint(canvas, strip.size);
       canvas.restore();
     }
