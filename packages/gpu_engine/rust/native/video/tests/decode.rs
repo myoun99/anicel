@@ -24,8 +24,9 @@ use video::decode::{
 };
 use video::colour::{self, Picture, Planes};
 use video::export::{
-    qa_video_export_error, qa_video_export_finish, qa_video_export_nv12_shape, qa_video_export_open,
-    qa_video_export_probe, qa_video_export_write_audio, qa_video_export_write_frame, qa_video_export_write_nv12,
+    qa_video_export_abort, qa_video_export_error, qa_video_export_finish, qa_video_export_nv12_shape,
+    qa_video_export_open, qa_video_export_probe, qa_video_export_write_audio, qa_video_export_write_frame,
+    qa_video_export_write_nv12,
 };
 
 /// What `info` answers: the shown size, the frame count and the rate.
@@ -379,6 +380,31 @@ fn a_flat_colour_comes_back_within_three() {
             }
         }
     }
+}
+
+// An NV12 frame the open writer cannot hold is refused, and the error says
+// why — every writer that takes NV12 reads what it is handed in one place
+// (`export/nv12.rs`, `handed`).
+#[cfg(windows)]
+#[test]
+fn an_nv12_frame_of_another_shape_is_refused_and_said() {
+    let _turn = one_at_a_time();
+    let path = std::env::temp_dir().join(format!("영상-디코드-{}-shape.mp4", std::process::id()));
+    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    // SAFETY (each): the export's declarations; room for the two the shape
+    // says, and a frame of the stride handed.
+    let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, 0, 0, 0) };
+    assert_eq!(opened, 1, "{}", export_error());
+    let mut shape = [0i32; 2];
+    assert_eq!(unsafe { qa_video_export_nv12_shape(shape.as_mut_ptr()) }, 1, "the writer takes NV12");
+    let short = shape[0] as usize - 2;
+    let nv12 = vec![0u8; short * shape[1] as usize * 3 / 2];
+    let written = unsafe { qa_video_export_write_nv12(nv12.as_ptr(), short as i64) };
+    let said = export_error();
+    qa_video_export_abort();
+    std::fs::remove_file(path).ok();
+    assert_eq!(written, 0, "a stride short of the width is refused");
+    assert!(said.contains("an NV12 frame of another shape"), "{said}");
 }
 
 // A span reads as the file on disk reads, plain and framed as the archive
