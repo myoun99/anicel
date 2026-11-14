@@ -2,12 +2,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/media/movie_span.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_call_watch.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// A trimmed movie's piece is the movie's own pictures, named as the movie
@@ -30,7 +30,9 @@ void main() {
     // transfer, BT.601's matrix, studio range: not the app's law, and each
     // a code of its own, so none can be read for another.
     const pal = (primaries: 5, transfer: 1, matrix: 6, range: 0);
-    if (!writeEncodedMovie(at('source.mp4'), frames: 8, colours: pal)) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null ||
+        !writeEncodedMovie(at('source.mp4'), frames: 8, colours: pal)) {
       return;
     }
 
@@ -48,7 +50,6 @@ void main() {
     expect(cut.failure, isNull);
 
     watch.step('reading the piece');
-    final decoder = QaVideoDecoder.instance;
     final piece = decoder.openNv12Document(at('piece.mp4'));
     expect(piece, isNotNull, reason: decoder.lastError);
     addTearDown(() => decoder.closeDocument(piece!));
