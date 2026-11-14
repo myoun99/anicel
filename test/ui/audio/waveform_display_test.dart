@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 /// One second of audio at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
@@ -45,9 +46,9 @@ Layer _seLayer() => Layer(
 );
 
 void main() {
-  testWidgets('timeline SE row paints the clip waveform, and the strip is a '
-      'pure painter — R10 R3 took its context menu, so every press falls '
-      'through to the cells underneath', (tester) async {
+  testWidgets('timeline SE row draws the clip waveform on its cells, so '
+      'nothing over them answers a press — R10 R3 took the strip\'s context '
+      'menu, and the strip went into the cells', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -77,14 +78,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final strip = find.byKey(
-      const ValueKey<String>('timeline-audio-clip-wave-se-0-b0'),
+    final strip = find.byWidgetPredicate(
+      (widget) =>
+          widget is CustomPaint &&
+          widget.painter is TimelineRowCellsPainter &&
+          (widget.painter! as TimelineRowCellsPainter).layer.id ==
+              const LayerId('wave-se'),
     );
-    expect(strip, findsOneWidget);
+    final cells = tester.widget<CustomPaint>(strip).painter!;
     // The block is the window: [0, 12) of the 24-frame file at 48 px/frame.
-    expect(tester.getSize(strip).width, moreOrLessEquals(12 * 48));
+    expect(
+      [
+        for (final (:peaks, :view)
+            in (cells as TimelineRowCellsPainter).wavesIn(0, 24, 1))
+          (identical(peaks, _peaks), view.along0, view.length),
+      ],
+      [(true, 0, 12 * 48)],
+    );
 
-    // The strip is wider than the viewport — press a visible spot near its
+    // The row is wider than the viewport — press a visible spot near its
     // left edge instead of the (offscreen) center.
     await tester.longPressAt(tester.getTopLeft(strip) + const Offset(30, 10));
     await tester.pumpAndSettle();

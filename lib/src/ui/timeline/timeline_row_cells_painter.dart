@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart' show lowerBound;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuWaveView;
 import 'frame_window_semantics.dart';
 
 import '../../models/frame.dart'
@@ -13,6 +14,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart' show LayerRowAddress;
 import '../../models/timeline_repeat.dart';
+import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
@@ -55,7 +57,10 @@ import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_screen.dart';
+import 'timeline_grid_tile_ops.dart' show timelineGridPackRgba;
 import 'timeline_grid_tile_store.dart';
+import 'timeline_se_row_visual.dart'
+    show SeRowSound, TimelineRowSounds, seRowSoundWave;
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
@@ -152,6 +157,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.unnamedMark = defaultUnnamedDrawingMark,
     this.framesPerSecond = 0,
     this.shown = true,
+    this.sounds,
   }) : super(
          repaint: Listenable.merge([
            timelineFrameDrawing(geometry),
@@ -332,6 +338,19 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   final bool shown;
 
+  /// The sounds the row draws on its paper — an SE row's
+  /// ([timelineRowSoundsOf]); null for a row that draws none. A tile bakes
+  /// them over its ink ([wavesIn]), and where no tile holds a stretch the
+  /// canvas paints them there ([_paintUntiledForegrounds]).
+  ///
+  /// 🗣️the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2 (유저
+  /// 2026-11-14 「(가) SE 행의 셀 타일에 굽는다」): a screen copies what it
+  /// lays (lay.wgsl), so a wave laid as a picture of its own would clear
+  /// the paper under it — the wave is in the paper's own picture.
+  /// ↩️The row laid a strip widget a sound over its cells
+  /// ([timelineRowAudioOverlays]).
+  final TimelineRowSounds? sounds;
+
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
   // edge came over verbatim from the painter this replaced, and two numbers
@@ -389,6 +408,65 @@ class TimelineRowCellsPainter extends CustomPainter
       axis,
       along: (from: main, to: main + extent),
       across: (from: 0, to: crossAxisExtent),
+    );
+  }
+
+  @override
+  List<TimelineTileWave> wavesIn(int from, int to, double devicePixelRatio) {
+    final row = sounds;
+    final frameQ8 = (frameCellExtent * devicePixelRatio * 256).round();
+    if (row == null || to <= from || frameQ8 <= 0) {
+      return const [];
+    }
+    return [
+      for (final sound in row.sounds)
+        if (frameRangesOverlap(
+          sound.startFrame,
+          sound.startFrame + sound.audibleFrames,
+          from,
+          to,
+        ))
+          (
+            peaks: sound.peaks,
+            view: _waveViewOf(
+              sound,
+              row,
+              from: from,
+              frameQ8: frameQ8,
+              devicePixelRatio: devicePixelRatio,
+            ),
+          ),
+    ];
+  }
+
+  /// [sound]'s wave as the tile of the span from frame [from] shows it, a
+  /// frame [frameQ8] pixels long ([wavesIn]).
+  GpuWaveView _waveViewOf(
+    SeRowSound sound,
+    TimelineRowSounds row, {
+    required int from,
+    required int frameQ8,
+    required double devicePixelRatio,
+  }) {
+    double along(int frame) => startAlong(axis, cellRectFor(frame));
+    // Reckoned from the later of the span's first frame and the sound's, a
+    // whole frame into the file there: a column stands on a frame edge the
+    // tile holds, so a pixel's rounding never builds up along a sound
+    // longer than the span.
+    final base = math.max(from, sound.startFrame);
+    final end = sound.startFrame + sound.audibleFrames;
+    return (
+      along0: ((along(from) - along(base)) * devicePixelRatio).round(),
+      length: ((along(end) - along(base)) * devicePixelRatio).round(),
+      vertical: axis == Axis.vertical,
+      frameQ8: frameQ8,
+      fpsNumerator: row.frameRate.numerator,
+      fpsDenominator: row.frameRate.denominator,
+      bucketsPerSecond: sound.peaks.bucketsPerSecond,
+      leadingFrames: sound.leadingFrames + base - sound.startFrame,
+      acrossQ8: (crossAxisExtent * devicePixelRatio * 256).round(),
+      gainQ16: (sound.gain * 65536).round(),
+      rgba: timelineGridPackRgba(row.ink),
     );
   }
 
@@ -1021,7 +1099,8 @@ class TimelineRowCellsPainter extends CustomPainter
     }
   }
 
-  /// One untiled stretch [from, to) of [_paintForegrounds].
+  /// One untiled stretch [from, to) of [_paintForegrounds]: its words, and
+  /// the sounds' waves over them, as a tile bakes them ([wavesIn]).
   void _paintUntiledForegrounds(Canvas canvas, int from, int to) {
     canvas.save();
     canvas.clipRect(
@@ -1041,7 +1120,44 @@ class TimelineRowCellsPainter extends CustomPainter
     for (final frameIndex in bakedWritingCellsIn(from, to)) {
       _paintCellForeground(canvas, frameIndex);
     }
+    _paintWaves(canvas, from, to);
     canvas.restore();
+  }
+
+  /// The sounds' waves over [from, to), each over its strip — the frames of
+  /// it that are heard — under the stretch's clip.
+  void _paintWaves(Canvas canvas, int from, int to) {
+    final row = sounds;
+    if (row == null) {
+      return;
+    }
+    for (final sound in row.sounds) {
+      final end = sound.startFrame + sound.audibleFrames;
+      if (!frameRangesOverlap(sound.startFrame, end, from, to)) {
+        continue;
+      }
+      final strip = rectAlong(
+        axis,
+        along: (
+          from: startAlong(axis, cellRectFor(sound.startFrame)),
+          to: startAlong(axis, cellRectFor(end)),
+        ),
+        across: (from: 0, to: crossAxisExtent),
+      );
+      canvas
+        ..save()
+        ..clipRect(strip)
+        ..translate(strip.left, strip.top);
+      seRowSoundWave(
+        sound,
+        frameRate: row.frameRate,
+        pixelsPerFrame: extentAlong(axis, strip.size) / sound.audibleFrames,
+        color: row.ink,
+        devicePixelRatio: devicePixelRatio,
+        axis: axis,
+      ).paint(canvas, strip.size);
+      canvas.restore();
+    }
   }
 
   /// A ghost's ink over [window], laid over the tiles at every paint and
@@ -1558,6 +1674,9 @@ class TimelineRowCellsPainter extends CustomPainter
     framesPerSecond,
     shown,
     devicePixelRatio,
+    ByList(sounds?.sounds ?? const []),
+    sounds?.frameRate,
+    sounds?.ink,
   );
 
   // The row's window said in ONE node — what each non-empty cell says, in
@@ -1621,6 +1740,10 @@ Widget timelineRowCellsPaintArea({
   /// What the strip draws over its cells, for the layer the row shows.
   CustomPainter? Function(BuildContext context, Layer shown)?
   foregroundPainterFor,
+
+  /// The sounds the strip draws on its paper, for the layer the row shows
+  /// ([TimelineRowCellsPainter.sounds]).
+  TimelineRowSounds? Function(BuildContext context, Layer shown)? soundsFor,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -1749,6 +1872,7 @@ Widget timelineRowCellsPaintArea({
             crossAxisExtent: crossAxisExtent,
             axis: axis,
             foregroundPainterFor: foregroundPainterFor,
+            soundsFor: soundsFor,
             exposureStateForLayer: exposureStateForLayer,
             frameNameForLayer: frameNameForLayer,
             celContent: celContent,
@@ -1776,6 +1900,7 @@ class _RowCellsPicture extends StatelessWidget {
     required this.crossAxisExtent,
     required this.axis,
     required this.foregroundPainterFor,
+    required this.soundsFor,
     required this.exposureStateForLayer,
     required this.frameNameForLayer,
     required this.celContent,
@@ -1793,6 +1918,8 @@ class _RowCellsPicture extends StatelessWidget {
   final Axis axis;
   final CustomPainter? Function(BuildContext context, Layer shown)?
   foregroundPainterFor;
+  final TimelineRowSounds? Function(BuildContext context, Layer shown)?
+  soundsFor;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -1847,6 +1974,7 @@ class _RowCellsPicture extends StatelessWidget {
       // I-129: the eye its rail shows — heard past the row memo, as the
       // rail's own plate and name hear it.
       shown: RailEyes.of(context, layer).shown,
+      sounds: soundsFor?.call(context, layer),
     );
     // The row lays its tiles on its grid's screen, where there is one
     // ([TimelineGridScreenHost]); outside the name, which is the picture's.

@@ -187,9 +187,16 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
           end: shown.end,
           extent: extentAlong(axis, size),
         ),
+        // A device pixel short of half its share, as the engine's pass
+        // stops it (rust/src/kernels/timeline/wave `reach_q8`): the same
+        // sound looks one way, baked or painted. ↩️A logical pixel short —
+        // on a 2× screen a device pixel more than the engine's
+        // (⏳타임라인/콘티 2026-11-15, the user asleep — theirs to overturn).
         across: (
           center: share * (lane + 0.5),
-          reach: math.max(0.0, share / 2 - 1) * math.min(1.0, gain),
+          reach:
+              math.max(0.0, share / 2 - 1 / devicePixelRatio) *
+              math.min(1.0, gain),
         ),
       );
     }

@@ -490,6 +490,23 @@ void main() {
       expect(thicknessAt(halves, 0, width: 128), device(1 / 8));
       expect(thicknessAt(halves, 1, width: 128), device(1 / 8));
     });
+
+    test('🚨a lane stops a DEVICE pixel short of half its share, as the '
+        'engine\'s pass does', () async {
+      // At a ratio of 2 a 64 px lane is 128 device rows: its reach a device
+      // pixel inside 64 either side of 64 is 126 of them. ⛔A logical pixel
+      // inside is 124 — a device pixel either side short of the engine's
+      // (rust/src/kernels/timeline/wave `reach_q8`).
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..scale(2);
+      painter(devicePixelRatio: 2).paint(canvas, const Size(size, size));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(128, 128);
+      final pixels = (await image.toByteData())!.buffer.asUint32List();
+      image.dispose();
+      picture.dispose();
+      expect(thicknessAt(pixels, 0, width: 128), closeTo(126, 0.6));
+    });
   });
 }
 

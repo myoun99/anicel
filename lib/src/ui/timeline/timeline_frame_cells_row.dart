@@ -493,13 +493,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
     ];
   }
 
-  /// SE rows: audio clips painted over the paper cells (clipped to the
-  /// row's drawing blocks — no block, no waveform), the sheet's writing on
-  /// the blocks (name box at the block start plus the dialogue fitted across
-  /// the span), the cut-boundary `~` marks (UI-R7 #6: a
-  /// sound running past the cut end / spilling in from the previous cut
-  /// announces its other half), and the media-browser drop targets (sound →
-  /// block frame).
+  /// SE rows: the sheet's writing on the blocks (name box at the block start
+  /// plus the dialogue fitted across the span), the cut-boundary `~` marks
+  /// (UI-R7 #6: a sound running past the cut end / spilling in from the
+  /// previous cut announces its other half), and the media-browser drop
+  /// targets (sound → block frame). ↩️And the audio clips' strips over the
+  /// paper cells, which the cells bake into their own tiles now
+  /// ([_soundsOf], the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2).
   List<Widget> _seOverlays(
     BuildContext context,
     _Shows shows,
@@ -507,22 +507,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
   ) {
     final layer = shows.shown;
     if (!layerKindUsesSeSheetCells(layer.kind)) return const [];
-    final peaksFor = audioPeaksFor;
     final onDropAsset = onDropMediaAssetOnSeBlock;
     final spillInLeadFrames = shows.world.spillInLeadFrames;
     return [
-      if (peaksFor != null)
-        ...timelineRowAudioOverlays(
-          context,
-          layer: layer,
-          frameStartIndex: frames.frameStartIndex,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
-          axis: axis,
-          frameRate: projectFrameRate,
-          audioPeaksFor: peaksFor,
-          leadInAtStart: spillInLeadFrames ?? 0,
-          keyPrefix: keyPrefix,
-        ),
       ...timelineRowSeLabelOverlays(
         layer: layer,
         frameStartIndex: frames.frameStartIndex,
@@ -681,6 +668,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
     stepsUntilShown: stepsUntilShown,
     substrateGeneration: substrateGeneration,
     foregroundPainterFor: layer.kind.hasBlocks ? _runLabelsPainter : null,
+    soundsFor: layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null
+        ? _soundsOf
+        : null,
     // Instruction-carrying rows have no timeline entries — their events
     // adapt onto the shared exposure states so the cells paint the same
     // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
@@ -700,6 +690,24 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ? onActivateCell
         : null,
   );
+
+  /// The sounds an SE row draws on its paper, for the layer it shows: those
+  /// over the frames it builds, from where the cut's frame 0 is into the
+  /// block spilling in ([timelineRowSoundsOf]).
+  TimelineRowSounds _soundsOf(BuildContext context, Layer shown) {
+    final frames = geometry.value;
+    return timelineRowSoundsOf(
+      context,
+      shown,
+      window: (
+        startIndex: frames.frameStartIndex,
+        endIndexExclusive: frames.frameEndIndexExclusive,
+      ),
+      frameRate: projectFrameRate,
+      audioPeaksFor: audioPeaksFor!,
+      leadInAtStart: _showsAt(context).world.spillInLeadFrames ?? 0,
+    );
+  }
 
   /// R26 #7 / R27 #3: each block prints ITS OWN length at its end cell. It
   /// rides the cells painter as a FOREGROUND pass — above the tiles, so the

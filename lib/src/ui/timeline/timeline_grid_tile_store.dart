@@ -15,6 +15,7 @@ import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../native/app_gpu_engine.dart';
+import '../../native/engine_wave_peaks.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
@@ -859,6 +860,7 @@ class TimelineGridTileStore {
       shown: painter.shown,
       picture: rastered.picture,
       ink: emitted.ink,
+      waves: emitted.waves,
     );
   }
 
@@ -1282,11 +1284,17 @@ class TimelineGridTileStore {
       celContentRevision: sampledCelContentRevision,
       substrate: substrate,
       ink: ink,
+      waves: painter.wavesIn(
+        request.spanStartIndex,
+        request.spanEndIndexExclusive,
+        dpr,
+      ),
     );
   }
 
-  /// [emitted]'s span with [words] set over it ([_setWords]), drawn on
-  /// [engine] into a tile — null where the pass refused it.
+  /// [emitted]'s span with [words] set over it ([_setWords]) and its
+  /// sounds' waves over them, drawn on [engine] into a tile — null where a
+  /// pass refused it.
   TimelineGridTilePicture? _drawn(
     GpuEngine engine,
     _TileRequest request,
@@ -1305,11 +1313,15 @@ class TimelineGridTileStore {
       emitted.tileWidth,
       emitted.tileHeight,
     );
+    final kernels = appGpuGridKernels.kept;
     try {
-      appGpuGridKernels.kept.tiles.draw(picture, writer.build(), atlas: atlas);
+      kernels.tiles.draw(picture, writer.build(), atlas: atlas);
+      for (final (:peaks, :view) in emitted.waves) {
+        kernels.wave.draw(picture, EngineWavePeaks.of(peaks), view);
+      }
     } on StateError catch (error) {
       picture.free();
-      assert(false, 'the grid pass refused a tile: $error');
+      assert(false, 'a pass refused a tile: $error');
       return null;
     }
     return TimelineGridTilePicture(picture);
@@ -1593,9 +1605,9 @@ typedef _TileGlyph = ({
 typedef _GlyphBake = ({double dpr, WordFit fit, double tightening});
 
 /// A span as a raster lays it before it sets a word
-/// ([TimelineGridTileStore._emit]): the op stream, the tile's size, and the
+/// ([TimelineGridTileStore._emit]): the op stream, the tile's size, the
 /// revision, the substrate and the ink the ops describe — read in one
-/// synchronous block.
+/// synchronous block —, and the sounds' waves drawn over them.
 typedef _Emitted = ({
   TimelineGridTileOpWriter writer,
   int tileWidth,
@@ -1603,6 +1615,7 @@ typedef _Emitted = ({
   int celContentRevision,
   TimelineRowSubstrate substrate,
   _TileInk ink,
+  List<TimelineTileWave> waves,
 });
 
 /// What a raster hands its landing: the picture, and what it shows.
@@ -1660,6 +1673,7 @@ class _TileEntry {
     required this.shown,
     required this.picture,
     required this.ink,
+    required this.waves,
   });
 
   /// #29: the (project, cut) world this tile's resolvers answered from.
@@ -1735,6 +1749,10 @@ class _TileEntry {
   /// The ink `_raster` baked over [substrate] — read in the same pass.
   final _TileInk ink;
 
+  /// The sounds' waves `_raster` drew over [ink]
+  /// ([TimelineTileRasterSource.wavesIn]).
+  final List<TimelineTileWave> waves;
+
   /// Whether this tile shows [asked]'s span as the row is now. Asked
   /// alike by every asker: a span shown, past the window or a page away.
   ///
@@ -1773,6 +1791,16 @@ class _TileEntry {
     final painter = asked.painter;
     final end = asked.spanEndIndexExclusive;
     if (!_sameLook(painter, end, asked.devicePixelRatio)) {
+      return false;
+    }
+    // The waves are the look's too, asked of the span: a row's sounds move
+    // where none of its layer does — a file's peaks arrive.
+    final wavesNow = painter.wavesIn(
+      asked.spanStartIndex,
+      end,
+      asked.devicePixelRatio,
+    );
+    if (!listEquals(waves, wavesNow)) {
       return false;
     }
     final sameCells = _showsSameCellsAs(painter.layer);

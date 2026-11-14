@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuWaveView;
 
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
+import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../text/word_condensation.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -61,6 +63,11 @@ typedef TimelineRowSubstrate = ({
   List<({Rect rect, Color color})> lines,
   List<TimelineRowRing> rings,
 });
+
+/// A sound's wave a tile bakes over its ink
+/// ([TimelineTileRasterSource.wavesIn]): the file's peaks, and the stretch
+/// of its strip the tile shows.
+typedef TimelineTileWave = ({AudioPeaks peaks, GpuWaveView view});
 
 /// A block's outline over a run of its cells: [width] wide inside [rect],
 /// round where [radius] is. [open] names the sides it leaves open — where
@@ -250,6 +257,14 @@ abstract interface class TimelineTileRasterSource {
   /// has. The length stays out of the tiles, as the out-of-cut wash and the
   /// X (2026-08-02) already keep it out.
   Iterable<int> bakedWritingCellsIn(int from, int to);
+
+  /// The waves of the sounds frames [from, to) lay over their ink, each as
+  /// the span's tile shows it at [devicePixelRatio] — in the integers the
+  /// engine's waveform pass takes ([GpuWaveView]). The tile bakes exactly
+  /// these over its ink, as the classic pass paints the same sounds over
+  /// the same ink. Part of the look: a tile that holds other waves shows
+  /// another row.
+  List<TimelineTileWave> wavesIn(int from, int to, double devicePixelRatio);
 }
 
 /// #29: THE spelling of [TimelineTileRasterSource.substrateGeneration] — the
