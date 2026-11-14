@@ -585,3 +585,44 @@ fn the_last_error_is_cut_to_the_room_given() {
     // SAFETY: null is nowhere to put it.
     assert_eq!(unsafe { qa_video_export_error(std::ptr::null_mut(), 64) }, -1, "nowhere");
 }
+
+/// The `colr` box in the sample entry of `movie`'s picture track: its body,
+/// past its header — or none, where the entry carries none.
+fn colour_box(movie: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    let moov = find(movie, 0, movie.len(), &[b"moov"])?.ok_or("a movie with no moov")?;
+    for trak in children(movie, moov.body, moov.end)?.into_iter().filter(|atom| &atom.kind == b"trak") {
+        let table = find(movie, trak.body, trak.end, &[b"mdia", b"minf", b"stbl"])?.ok_or("a track with no sample table")?;
+        let stsd = find(movie, table.body, table.end, &[b"stsd"])?.ok_or("a sample table with no stsd")?;
+        let entry = *children(movie, stsd.body + 8, stsd.end)?.first().ok_or("a sample table with no entry")?;
+        if &entry.kind == b"mp4a" {
+            continue;
+        }
+        // A visual sample entry's own fields are 78 bytes; its boxes follow.
+        let colr = children(movie, entry.body + 78, entry.end)?.into_iter().find(|atom| &atom.kind == b"colr");
+        return Ok(colr.map(|colr| movie[colr.body..colr.end].to_vec()));
+    }
+    Err("a movie with no picture track".into())
+}
+
+// 🚨Every H.26x movie Windows writes names the law's four in its sample
+// entry (`colour`): SMPTE C's primaries (6, SMPTE 170M), BT.709's transfer
+// (1), BT.601's matrix (5, BT.470 BG — 6's coefficients) and studio range.
+// 🔬Named MFVideoPrimaries_SMPTE_C, Media Foundation wrote primaries 8 —
+// generic film — and only SMPTE170M comes out as 6 (Surface, 2026-11-14).
+#[cfg(windows)]
+#[test]
+fn every_h26x_movie_names_the_laws_colour_in_its_sample_entry() {
+    let _turn = one_at_a_time();
+    let law = b"nclx\x00\x06\x00\x01\x00\x05\x00";
+    for (name, shape) in [
+        ("colr-h264", Shape { channels: 0, ..MOVIE }),
+        ("colr-hevc", Shape { channels: 0, width: 1280, height: 720, codec: 1, ..MOVIE }),
+    ] {
+        if qa_video_export_probe(shape.container, shape.codec) == 0 {
+            continue;
+        }
+        let bytes = movie(&temp(name, 0), shape, 3);
+        let colr = colour_box(&bytes).unwrap_or_else(|why| panic!("{name}: {why}"));
+        assert_eq!(colr.as_deref().map(hex), Some(hex(law)), "{name}");
+    }
+}

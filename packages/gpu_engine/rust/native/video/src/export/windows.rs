@@ -211,20 +211,20 @@ fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job
         let _ = media_type.SetUINT64(&MF_MT_FRAME_RATE, (u64::from(job.fps_num as u32) << 32) | u64::from(job.fps_den as u32));
         let _ = media_type.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, (1 << 32) | 1);
         let _ = media_type.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32);
-        // 🚨WHAT THE PICTURES ARE (`colour`), ALL FOUR NAMED, OR A READER
-        // GUESSES: BT.601's matrix in studio range, SMPTE C's primaries —
-        // and sRGB's transfer, for the bytes are the canvas's own sRGB
-        // values, bent by no camera's curve. 🔬Measured on Surface
+        // 🚨WHAT THE PICTURES ARE, ALL FOUR NAMED AS EVERY WRITER NAMES
+        // THEM (`colour`), OR A READER GUESSES. 🔬Measured on Surface
         // (2026-11-14), the app's reader asking Media Foundation for RGB32:
-        // with BT.709's transfer named (Apple's writer names that one) the
-        // darks came back 16 brighter, the reader bending the curve to
-        // sRGB's; with no transfer named the matrix did not reach the
-        // movie, and a 1920×1080 one read as BT.709 — green 200 came back
-        // 173. With these four, within 3 (`tests/decode.rs`).
+        // with no transfer named the matrix did not reach the movie, and a
+        // 1920×1080 one read as BT.709 — green 200 came back 173. With all
+        // four, within 3 (`tests/decode.rs`). SMPTE C's primaries are
+        // SMPTE170M here: named SMPTE_C, the muxer wrote 8 — generic film —
+        // in the file's `colr` (export tests), and beside BT.709's transfer
+        // the reader converted from those, darks 16 brighter. ↩️So the
+        // transfer was sRGB's for a day.
         let _ = media_type.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601.0 as u32);
         let _ = media_type.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32);
-        let _ = media_type.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE_C.0 as u32);
-        let _ = media_type.SetUINT32(&MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_sRGB.0 as u32);
+        let _ = media_type.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE170M.0 as u32);
+        let _ = media_type.SetUINT32(&MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709.0 as u32);
         Ok(media_type)
     }
 }
