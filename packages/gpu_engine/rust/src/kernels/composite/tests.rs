@@ -2871,9 +2871,12 @@ fn a_row_under_a_whole_mask_lays_as_under_none() {
     let mask = masked((-256, -256), (768, 768), |_, _| 255);
     let scenes = [rows(), posed()].into_iter().chain(POSES.map(posed_alone));
     for (index, scene) in scenes.enumerate() {
-        let want = widest(&scene);
+        let (want, tiles) = (widest(&scene), scene.tiles.clone());
         let got = under(&all_masked(scene), Some(&mask.mask()), rig().composite.widest());
-        assert!(got == Some(want), "scene {index}");
+        let got = got.unwrap_or_else(|| panic!("scene {index}: nothing composited"));
+        if let Some(parted) = where_they_part(&got, &want, &tiles) {
+            panic!("scene {index}: {parted}");
+        }
     }
 }
 
