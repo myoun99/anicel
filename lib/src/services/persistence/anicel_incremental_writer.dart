@@ -27,6 +27,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart' show crc32Update;
 
 import 'anicel_project_archive.dart';
 
@@ -808,21 +809,12 @@ AnicelZipLayout _walkFromTheFront(_ReadAt readAt, int length) {
   );
 }
 
-/// CRC-32 (ZIP polynomial), table-driven.
-final Uint32List _crcTable = _buildCrcTable();
-
-Uint32List _buildCrcTable() {
-  final table = Uint32List(256);
-  for (var i = 0; i < 256; i += 1) {
-    var c = i;
-    for (var k = 0; k < 8; k += 1) {
-      c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1;
-    }
-    table[i] = c;
-  }
-  return table;
-}
-
+/// CRC-32 (ZIP polynomial) of [bytes] — the engine's ([crc32Update]).
+///
+/// 🚨ONE CRC (card crc32-is-a-dart-table-loop, 저장 2026-11-14): this was a
+/// Dart table loop a byte at a time — every entry a save writes, every
+/// PNG chunk, an import's whole file on the UI thread — beside the
+/// engine's `crc32fast`, which its fingerprints already took.
 int anicelCrc32(Uint8List bytes) =>
     anicelCrc32Finish(anicelCrc32Update(anicelCrc32Start, bytes));
 
@@ -863,14 +855,8 @@ const int anicelArchiveStreamPasses = 1;
 /// Folds [chunk] into a running CRC. Only the first [length] bytes count,
 /// so a caller reusing one buffer for a short final read does not have to
 /// trim it first.
-int anicelCrc32Update(int running, Uint8List chunk, [int? length]) {
-  var c = running;
-  final end = length ?? chunk.length;
-  for (var i = 0; i < end; i += 1) {
-    c = _crcTable[(c ^ chunk[i]) & 0xFF] ^ (c >> 8);
-  }
-  return c;
-}
+int anicelCrc32Update(int running, Uint8List chunk, [int? length]) =>
+    crc32Update(running, chunk, length ?? chunk.length);
 
 /// Turns a running CRC into the value ZIP records.
 int anicelCrc32Finish(int running) => (running ^ 0xFFFFFFFF) & 0xFFFFFFFF;

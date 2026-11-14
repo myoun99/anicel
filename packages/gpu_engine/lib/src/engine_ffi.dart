@@ -315,6 +315,12 @@ external bool surfaceRead(
 )
 external int fingerprintBytes(Pointer<Uint8> bytes, int length);
 
+@Native<Uint32 Function(Uint32, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_crc32_update',
+  isLeaf: true,
+)
+external int crc32Update(int running, Pointer<Uint8> bytes, int length);
+
 @Native<Uint32 Function()>(symbol: 'gpu_engine_tile_side')
 external int tileSide();
 

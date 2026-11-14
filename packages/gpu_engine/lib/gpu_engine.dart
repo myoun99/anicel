@@ -3917,6 +3917,31 @@ int fingerprintBytes(Uint8List bytes) => using((arena) {
   return rust.fingerprintBytes(buffer, bytes.length);
 });
 
+/// [running] with the first [length] bytes of [bytes] folded in — the CRC
+/// [fingerprintBytes] takes, kept as a chunked one is: inverted, starting
+/// from `0xFFFFFFFF`. Read where the bytes lie, without a copy.
+///
+/// ⚠️A slice at a time ([_crcSlice]): a leaf call holds its isolate out of
+/// every safepoint while it runs, so one call over a whole file would hold
+/// a collection of the isolate group — the UI's among it — for as long.
+int crc32Update(int running, Uint8List bytes, int length) {
+  RangeError.checkValueInInterval(length, 0, bytes.length, 'length');
+  var folded = running;
+  for (var at = 0; at < length; at += _crcSlice) {
+    final slice = Uint8List.sublistView(
+      bytes,
+      at,
+      at + _crcSlice < length ? at + _crcSlice : length,
+    );
+    folded = rust.crc32Update(folded, slice.address, slice.length);
+  }
+  return folded;
+}
+
+/// The most [crc32Update] reads in one leaf call: a millisecond's worth,
+/// well under a frame, at a gigabyte a second.
+const int _crcSlice = 1 << 20;
+
 /// A Flutter texture the engine presents into: a SurfaceProducer's window,
 /// whose images Flutter shows without a copy (Android).
 class GpuWindow extends GpuTarget {
