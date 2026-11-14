@@ -126,6 +126,15 @@ void main() {
       500,
       closeTo(768, 1e-9),
     ], reason: 'a point the OS gave no pressure keeps its message\'s');
+    final steps = [
+      const Offset(500, 380) - const Offset(400, 360),
+      const Offset(560, 390) - const Offset(500, 380),
+      handed - const Offset(560, 390),
+    ];
+    for (final (index, step) in steps.indexed) {
+      expect(heard[index].delta.dx, closeTo(step.dx / ratio, 1e-9));
+      expect(heard[index].delta.dy, closeTo(step.dy / ratio, 1e-9));
+    }
     expect(
       heard.last.position,
       heard.last.original!.position,
