@@ -26,7 +26,8 @@ import '../../native/engine_tile_ledger.dart';
 import '../brush_frame_store.dart';
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
-import '../persistence/brush_drawing_binary_codec.dart' show laidCelSurface;
+import '../persistence/brush_drawing_binary_codec.dart'
+    show AnicelLaidCel, laidCelSurface;
 import '../photoshop/psd_image.dart';
 import '../photoshop/psd_reader.dart';
 import '../straight_rgba_image.dart';
@@ -263,11 +264,9 @@ LayerPlacement rectPlacement(
 /// cut at the wall as ever.
 ///
 /// Laid 1:1 on whole pixels — a reference's file always is (F-374-Q1) — a
-/// picture whose pixels are the app's to read ([FilePicture],
-/// [PixelsPicture], [MovieFramePicture]) has its rows cut into the cel's
-/// tiles byte for byte where they are ([cutFileInWorker], [cutPixels],
-/// [MovieFramePicture.cut]), never held whole. Every other lay is the
-/// engine's, by the law the canvas lays a row by ([_laidOnEngine]).
+/// picture is copied into the cel's tiles byte for byte where its pixels
+/// are, never held whole ([_copied]). Every other lay is the engine's, by
+/// the law the canvas lays a row by ([_laidOnEngine]).
 Future<BitmapSurface> layCelPicture({
   required CelPicture picture,
   required CanvasSize canvas,
@@ -279,26 +278,86 @@ Future<BitmapSurface> layCelPicture({
   if (layout == null) {
     return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
   }
-  return switch (picture) {
-    final FilePicture file when _copiesPixels(placement) => laidCelSurface(
-      await cutFileInWorker(file, _cutAt(placement, layout)),
-    ),
-    final PixelsPicture pixels when _copiesPixels(placement) =>
-      laidCelSurface(cutPixels(pixels, _cutAt(placement, layout))),
-    final MovieFramePicture frame when _copiesPixels(placement) =>
-      laidCelSurface(await frame.cut(_cutAt(placement, layout))),
-    final FilePicture file => await _laidOnEngine(
-      _PictureSource(await readFileInWorker(file)),
-      placement,
-      layout,
-    ),
-    final MovieFramePicture frame => await _laidOnEngine(
-      _PictureSource(await frame.pixels()),
-      placement,
-      layout,
-    ),
-    _ => await _laidOnEngine(_PictureSource(picture), placement, layout),
-  };
+  if (_copiesPixels(placement)) {
+    return laidCelSurface(await _copied(picture, _cutAt(placement, layout)));
+  }
+  return _laidOnEngine(
+    _PictureSource(await _toResample(picture)),
+    placement,
+    layout,
+  );
+}
+
+/// [picture] laid 1:1 on whole pixels by [cut]: its rows cut into the
+/// cel's tiles where they are — a file's on a worker ([cutFileInWorker]),
+/// pixels in hand here ([cutPixels]), a movie's frame where it is decoded
+/// ([MovieFramePicture.cut]), the engine's a block at a time
+/// ([_cutEngineImage]).
+Future<AnicelLaidCel> _copied(CelPicture picture, PictureCut cut) async =>
+    switch (picture) {
+      final FilePicture file => await cutFileInWorker(file, cut),
+      final PixelsPicture pixels => cutPixels(pixels, cut),
+      final MovieFramePicture frame => await frame.cut(cut),
+      EnginePicture(:final image) => await _cutEngineImage(image, cut),
+    };
+
+/// [picture] as a lay that resamples it reads it: the engine's picture and
+/// pixels in hand as they are, a file or a movie's frame read first.
+Future<CelPicture> _toResample(CelPicture picture) async => switch (picture) {
+  final FilePicture file => await readFileInWorker(file),
+  final MovieFramePicture frame => await frame.pixels(),
+  EnginePicture() || PixelsPicture() => picture,
+};
+
+/// [image] — a picture the engine holds — laid 1:1 on whole pixels by
+/// [cut], a block of the cel's tiles at a time ([_layBlocks], so no raster
+/// passes [layRasterSide]): what of it a block covers rastered 1:1
+/// ([_rasterOver]) and its rows cut into that block's tiles. A copy, as
+/// every 1:1 lay is — no run of the engine.
+///
+/// ↩️It was laid as a picture laid otherwise is (2026-11-14, card
+/// a-raster-import-goes-gpu-cpu-gpu-cpu): each raster cut into tiles of its
+/// own on the isolate that paints, uploaded, laid on the engine, read back
+/// and searched for ink again — six runs for a 4000×3000 picture placed as
+/// a reference.
+Future<AnicelLaidCel> _cutEngineImage(ui.Image image, PictureCut cut) async {
+  final side = cut.layout.tileSize;
+  final picture = DirtyRegion.fromXYWH(
+    x: cut.left,
+    y: cut.top,
+    width: image.width,
+    height: image.height,
+  );
+  final tiles = <({int x, int y, int pixels})>[];
+  try {
+    for (final block in _layBlocks(cut.layout.tiles, side)) {
+      final over = _areaOf(block, side).intersection(picture);
+      if (over == null) {
+        continue;
+      }
+      final rows = await _rasterOver(
+        image,
+        DirtyRegion.fromXYWH(
+          x: over.left - cut.left,
+          y: over.top - cut.top,
+          width: over.width,
+          height: over.height,
+        ),
+      );
+      tiles.addAll(
+        cutRgbaRows(
+          rows.rgba,
+          width: over.width,
+          height: over.height,
+          cut: (left: over.left, top: over.top, tileSize: side, tiles: block),
+        ),
+      );
+    }
+  } on Object {
+    giveBackCut(tiles);
+    rethrow;
+  }
+  return laidCelOf(cut.layout, tiles);
 }
 
 /// [region] of [cel] — where its file lies — laid by [placement], the

@@ -1,13 +1,16 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart';
 
 import '../../helpers/checker_sampling.dart';
 
@@ -213,7 +216,6 @@ void main() {
     }
 
     for (final (how, placement) in [
-      ('copied 1:1', const GuideTransform(1, 0, 0, 1, 37, 21)),
       (
         'turned and grown',
         GuideTransform(
@@ -236,6 +238,85 @@ void main() {
           }
         });
       });
+    }
+  });
+
+  // Laid 1:1 a picture the engine holds is COPIED, as a picture in hand is:
+  // a block of the cel's tiles at a time, what of it the block covers
+  // rastered 1:1 and cut — no run of the engine (card
+  // a-raster-import-goes-gpu-cpu-gpu-cpu). ↩️It was laid on the engine
+  // like a picture turned or grown: six runs for a 4000×3000 reference.
+  group('laid 1:1, a picture the engine holds', () {
+    setUp(() => debugLayRuns = 0);
+    tearDown(() => debugLayRasterSide = null);
+
+    /// 150×90 straight RGBA that shows a slip anywhere: each pixel its own
+    /// colour, a clear corner a tile wide, a band half clear.
+    Uint8List patterned() {
+      final rgba = Uint8List(150 * 90 * 4);
+      for (var y = 0; y < 90; y += 1) {
+        for (var x = 0; x < 150; x += 1) {
+          if (x < 64 && y < 64) {
+            continue;
+          }
+          final i = (y * 150 + x) * 4;
+          rgba[i] = x * 5 % 256;
+          rgba[i + 1] = y * 9 % 256;
+          rgba[i + 2] = (x + y) * 3 % 256;
+          rgba[i + 3] = x < 80 ? 128 : 255;
+        }
+      }
+      return rgba;
+    }
+
+    for (final (dx, dy) in [(0, 0), (37, 21), (-70, -9)]) {
+      for (final whole in [false, true]) {
+        testWidgets('🎯at ($dx, $dy)${whole ? ', whole' : ''}, is copied a '
+            'block at a time — no run of the engine, each tile its own '
+            'pixels as they read back', (tester) async {
+          await tester.runAsync(() async {
+            final image = await decodeStraightRgbaImageOnAWorker(
+              rgba: patterned(),
+              width: 150,
+              height: 90,
+            );
+            final placement = GuideTransform(
+              1,
+              0,
+              0,
+              1,
+              dx.toDouble(),
+              dy.toDouble(),
+            );
+            Future<BitmapSurface> laid(CelPicture picture) => layCelPicture(
+              picture: picture,
+              canvas: const CanvasSize(width: 256, height: 256),
+              placement: placement,
+              whole: whole,
+            );
+            debugLayRasterSide = 64;
+            final ours = await laid(EnginePicture(image));
+            final read = await straightRgbaOf(image);
+            image.dispose();
+
+            expect(debugLayRuns, 0);
+            final theirs = await laid(
+              PixelsPicture(read, width: 150, height: 90),
+            );
+            expect(ours.laidBounds, theirs.laidBounds);
+            expect(ours.tiles.keys, unorderedEquals(theirs.tiles.keys));
+            expect(theirs.tiles, isNotEmpty, reason: 'premise: it lays some');
+            for (final MapEntry(key: coord, value: tile)
+                in theirs.tiles.entries) {
+              expect(
+                Uint8List.fromList(ours.tiles[coord]!.pixels),
+                orderedEquals(Uint8List.fromList(tile.pixels)),
+                reason: '$coord',
+              );
+            }
+          });
+        });
+      }
     }
   });
 }

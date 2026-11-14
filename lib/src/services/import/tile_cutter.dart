@@ -185,9 +185,14 @@ final class TileCutter {
       TileBlocks.free(open.block);
     }
     _open.clear();
-    for (final tile in _done) {
-      TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
-    }
+    giveBackCut(_done);
     _done.clear();
+  }
+}
+
+/// Every block of [tiles] given back — a cut nobody will adopt.
+void giveBackCut(CutTiles tiles) {
+  for (final tile in tiles) {
+    TileBlocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
   }
 }
