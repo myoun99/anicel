@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:anicel/src/native/qa_video_decoder.dart' show MovieColours;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'os_video_codec.dart';
@@ -19,6 +20,12 @@ typedef MovieColour = ({int red, int green, int blue});
 /// [sound]'s value on both channels; without it, the track holds nothing.
 /// Each frame's sound ends where its frame does, to the sample.
 ///
+/// With [colours] the movie names its pictures as those, as a movie made
+/// elsewhere does, and goes in as such a movie's piece does
+/// (`QaVideoEncoder.open`): of NV12 — that writer takes no RGBA — each
+/// frame flat at [encodedMovieLumaOf] its index, its chroma neutral, and
+/// [picture] not asked.
+///
 /// 🚨ONE WRITER (board test-movie-writers-with-sound-are-five-copies,
 /// 2026-10-29): six tests each opened the encoder, wrote their pictures and
 /// their sound frame by frame and finished it — one algorithm, spelled six
@@ -34,6 +41,7 @@ bool writeEncodedMovie(
   int Function(int sample)? sound,
   int sampleRate = 44100,
   int? soundFrames,
+  MovieColours? colours,
 }) {
   final encoder = osVideoEncoderOrSkip();
   if (encoder == null) {
@@ -48,16 +56,28 @@ bool writeEncodedMovie(
       fpsDenominator: fps.denominator,
       sampleRate: sampleRate,
       channels: 2,
+      colours: colours,
     ),
     isTrue,
     reason: encoder.lastError,
+  );
+  final nv12 = colours == null ? null : encoder.nv12Frame;
+  expect(
+    colours == null || nv12 != null,
+    isTrue,
+    reason: 'a writer of a movie\'s own colours takes NV12',
   );
   final heard = sound == null ? 0 : soundFrames ?? frames;
   var written = 0;
   for (var frame = 0; frame < math.max(frames, heard); frame += 1) {
     if (frame < frames) {
       expect(
-        encoder.writeFrame(_pictureOf(frame, picture)),
+        nv12 == null
+            ? encoder.writeFrame(_pictureOf(frame, picture))
+            : encoder.writeNv12(
+                _flatNv12Of(frame, nv12),
+                stride: nv12.width,
+              ),
         isTrue,
         reason: encoder.lastError,
       );
@@ -85,6 +105,19 @@ bool writeEncodedMovie(
 
 const int _width = 64;
 const int _height = 48;
+
+/// The luma every pixel of [frame] holds in a movie written with its own
+/// colours ([writeEncodedMovie]): 40 on, 12 a frame, inside studio range.
+int encodedMovieLumaOf(int frame) => 40 + 12 * (frame % 15);
+
+/// [frame] as NV12 in the writer's [shape]: its Y rows flat at
+/// [encodedMovieLumaOf], then half as many CbCr rows, neutral.
+Uint8List _flatNv12Of(int frame, ({int width, int height}) shape) {
+  final luma = shape.width * shape.height;
+  return Uint8List(luma * 3 ~/ 2)
+    ..fillRange(0, luma, encodedMovieLumaOf(frame))
+    ..fillRange(luma, luma * 3 ~/ 2, 128);
+}
 
 /// [frame]'s picture, as the encoder takes it: RGBA, [picture]'s colours
 /// opaque — or every byte grey where there is no [picture].

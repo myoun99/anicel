@@ -166,6 +166,9 @@ const _notCensused = <String, String>{
   // things are kept.
   'lib/src/models/bitmap_surface.dart → tileBytes':
       'the size of ONE tile, for the code that allocates them',
+  'lib/src/native/qa_video_decoder.dart → frameBytes':
+      'the size of ONE frame of a movie, RGBA or NV12, for the decoder\'s '
+      'scratch and the caller\'s buffer it is copied into',
   'lib/src/services/audio/conform_pcm_codec.dart → dataBytes':
       'a header field: how long this conform file is on disk',
   'lib/src/services/audio/conform_pcm_codec.dart → peaksBytes':
