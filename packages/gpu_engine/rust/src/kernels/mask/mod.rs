@@ -1,9 +1,9 @@
 //! A coverage mask's finishing passes on the GPU, by gpu-int-spec-canvas
 //! 1b S2, with no CPU copy of a formula (`kernels/mod.rs`): what the
 //! selection does to its hard mask before a verb reads it — grow or shrink
-//! (S2a, the app's `dilateMask4` · `erodeMask4`), feather (S2b, its
-//! `chamferDistance34` and `_featherMask`'s ramp) and anti-alias inside the
-//! outline (S2c, `softenMaskBoundary`), in `buildSelectionMask`'s order.
+//! (S2a), feather inward (S2b, a ramp over the 3-4 chamfer distance) and
+//! anti-alias inside the outline (S2c), in that order. ↩️The app spelled
+//! them itself (`buildSelectionMask`) till 2026-11-14.
 //! The hard mask itself is `region`'s (S1, the app's `maskFor`). A bucket
 //! fill finishes what it flooded with the same grow and soften
 //! (gpu-canonical-store stage 5), its soften past the outline as well, and
@@ -39,9 +39,9 @@ const GROUP: u32 = 8;
 /// is a word.
 const MOST_FEATHER: f64 = (u32::MAX / 3 / 256) as f64;
 /// The distance the box's edge lies at in the selection's feather — a
-/// pixel on it ramps as if the one past it were out (`_featherMask`'s
-/// `borderDistance`) — and in the fill's gap close, where the canvas edge
-/// is no barrier: none, which no distance passes.
+/// pixel on it ramps as if the one past it were out — and in the fill's
+/// gap close, where the canvas edge is no barrier: none, which no distance
+/// passes.
 const SELECTION_EDGE: u32 = 3;
 const NO_EDGE: u32 = u32::MAX;
 
@@ -123,8 +123,8 @@ impl MaskBox {
 }
 
 /// A selection as a pass reads it: a byte plane (mask.wgsl's layout) over
-/// the box `size` whose top-left pixel is `at` on the canvas — the app's
-/// `selectionMaskOnPasteboard`. A pass is given the rows of it it reads,
+/// the box `size` whose top-left pixel is `at` on the canvas — what the
+/// app's `SelectionClip` reads. A pass is given the rows of it it reads,
 /// copied on the GPU. ⛔ONE MASK: the cel pixel verbs and the lift took it
 /// from here, and the executor's masked rows came as a third (11-06).
 pub(crate) struct Mask<'a> {
@@ -197,10 +197,10 @@ impl Finish {
     }
 }
 
-/// What a run's passes read past the box — the app's arguments to the
-/// functions they are: the feather's ramp, 3 chamfer units a pixel, Q.8,
-/// softenMaskBoundary's `insideOutlineOnly`, and chamferDistance34's
-/// `zeroWhen` and `borderDistance`.
+/// What a run's passes read past the box: the feather's ramp, 3 chamfer
+/// units a pixel, Q.8, whether the soften keeps inside the outline, and
+/// where a distance starts — the byte it is measured from and the distance
+/// the box's edge lies at (mask.wgsl's `Mask`).
 #[derive(Clone, Copy)]
 struct Knobs {
     ramp: u32,
@@ -262,8 +262,8 @@ impl MaskPasses {
     }
 
     /// `mask` — bytes over `size` — finished as the selection finishes its
-    /// hard mask (`buildSelectionMask`): grown or shrunk a generation a
-    /// pixel, feathered inward over its edge, then softened inside its
+    /// hard mask: grown or shrunk a generation a pixel, feathered inward
+    /// over its edge, then softened inside its
     /// outline. A new plane — or none for a `finish` that `is_hard`, whose
     /// mask is finished as it is. Submits the work; the caller waits.
     pub(crate) fn selection(
@@ -343,7 +343,7 @@ impl MaskPasses {
         self.run(engine, mask, size, &steps, knobs)?.bytes
     }
 
-    /// The 3-4 chamfer distance (`chamferDistance34`, in mask.wgsl's layout)
+    /// The 3-4 chamfer distance (in mask.wgsl's layout)
     /// from every pixel of `mask` — bytes over `size` — to the nearest whose
     /// byte is `zero_when`, as the fill's gap close measures it: the box's
     /// edge is no barrier. Relaxed

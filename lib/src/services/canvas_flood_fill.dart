@@ -452,14 +452,9 @@ _FinishedMask _finishedWindow(
   if (options.antiAlias) {
     // ⛔UNCLAMPED, and that is the fill's meaning: paint that stops dead
     // on the outline reads as a hard edge, so the fill's ramp is allowed
-    // one pixel past its own. The SELECTION's is not — see
-    // [softenMaskBoundary].
-    softenMaskBoundary(
-      mask,
-      width: width,
-      height: height,
-      insideOutlineOnly: false,
-    );
+    // one pixel past its own. The SELECTION's is not — see the engine's
+    // `mask_softened` (mask.wgsl).
+    softenMaskBoundary(mask, width: width, height: height);
   }
   return (mask: mask, left: left, top: top, width: width);
 }

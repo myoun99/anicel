@@ -132,16 +132,15 @@ final class _OutlineClip extends SelectionClip {
   }) => _region.maskFor(left: left, top: top, width: width, height: height);
 }
 
-/// The bytes [selectionMaskOnPasteboard] reads over the selection's whole
-/// box, window for window, by reading only around the window: the passes
-/// look [SelectionMaskOptions.neighbourReach] away and no further, and the
-/// box's own edges are the same edges to a window that reaches them.
+/// A selection read at its softness inside its wall: its mask made on the
+/// engine over its whole box ([maskOnEngine]), and the windows [maskFor]
+/// reads cut from that same mask read back.
 ///
-/// ⚠️brush-fidelity-Q12 costed this as the whole selection's mask, made once
-/// and kept. That is a first stroke that waits on the selection's size and a
-/// mask held for as long as the selection stands; this one pays for the
-/// tiles a stroke touches, once each ([BrushLiveStrokeRasterizer] keeps them
-/// for the stroke), and holds nothing.
+/// ↩️Till 2026-11-14 the CPU made each window's bytes itself
+/// (`buildSelectionMask`, reading the passes' reach around the window) — a
+/// second maker of one selection, whose 8-bit fold could leave other bytes
+/// than the engine's (board `a-selection-mask-is-built-on-the-cpu-at-every-move`,
+/// L2d).
 final class _ReadClip extends SelectionClip {
   _ReadClip(
     this._region, {
@@ -167,10 +166,9 @@ final class _ReadClip extends SelectionClip {
   }
 
   /// Over the whole reading's box: the windows [maskFor] reads are cut
-  /// from it. ⚠️The whole box, which the class's note turns down for the
-  /// CPU's bytes: on the engine it is passes the UI thread does not wait
-  /// for, made once for the clip and let go of with it (2026-11-13 · 14) —
-  /// where the CPU made a window's bytes and handed them up at every move.
+  /// from it. On the engine it is passes the UI thread does not wait for,
+  /// made once for the clip and let go of with it (2026-11-13 · 14) — where
+  /// the CPU made a window's bytes and handed them up at every move.
   @override
   GpuMask _madeOnEngine() {
     final box = this.box;
@@ -186,6 +184,14 @@ final class _ReadClip extends SelectionClip {
     );
   }
 
+  /// What [maskOnEngine] made, read back the first time a window is asked
+  /// and kept with the clip. ⚠️KEPT: a clip does not change, and what asks
+  /// windows walks a tile at a time — the grid off the engine's (a colour
+  /// verb's Dart pass, a lift's Dart walk, an erase read as a picture),
+  /// which the app does not take; read again a window each, a selection's
+  /// inverse would be its wall read back a tile each.
+  late final Uint8List _read = maskOnEngine().read();
+
   @override
   Uint8List maskFor({
     required int left,
@@ -198,35 +204,21 @@ final class _ReadClip extends SelectionClip {
     if (box == null) {
       return mask;
     }
-    final boxRight = box.left + box.width;
-    final boxBottom = box.top + box.height;
     final fromX = math.max(left, box.left);
-    final toX = math.min(left + width, boxRight);
+    final toX = math.min(left + width, box.left + box.width);
     final fromY = math.max(top, box.top);
-    final toY = math.min(top + height, boxBottom);
+    final toY = math.min(top + height, box.top + box.height);
     if (toX <= fromX || toY <= fromY) {
       return mask;
     }
-    final reach = _options.neighbourReach;
-    final readLeft = math.max(fromX - reach, box.left);
-    final readTop = math.max(fromY - reach, box.top);
-    final readWidth = math.min(toX + reach, boxRight) - readLeft;
-    final readHeight = math.min(toY + reach, boxBottom) - readTop;
-    final read = buildSelectionMask(
-      region: _region,
-      options: _options,
-      left: readLeft,
-      top: readTop,
-      width: readWidth,
-      height: readHeight,
-    );
+    final read = _read;
     for (var y = fromY; y < toY; y += 1) {
       final row = (y - top) * width;
       mask.setRange(
         row + fromX - left,
         row + toX - left,
         read,
-        (y - readTop) * readWidth + fromX - readLeft,
+        (y - box.top) * box.width + fromX - box.left,
       );
     }
     return mask;

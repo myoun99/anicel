@@ -17,6 +17,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/services/wait_window.dart' show reachesManyBlocks;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -210,13 +211,20 @@ void main() {
     final surface = session.pixelEditing.coordinator!.currentSurfaceOf(
       keyOf(session, 'c0'),
     );
-    final reading = selectionMaskOnPasteboard(
+    final clip = SelectionClip.of(
       region,
       wall: surface.canvasSize.pasteboardAt(PasteboardReach.whole),
       options: soft,
-    )!;
+    );
+    final box = clip.box!;
+    final reading = clip.maskFor(
+      left: box.left,
+      top: box.top,
+      width: box.width,
+      height: box.height,
+    );
     expect(
-      reading.mask.any((coverage) => coverage > 0 && coverage < 255),
+      reading.any((coverage) => coverage > 0 && coverage < 255),
       isTrue,
       reason: '⛔premise: the marquee covers some pixel in part',
     );

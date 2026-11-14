@@ -41,9 +41,9 @@ abstract final class EngineSelectionMasks {
       _of[clip] ??= make();
 
   /// The selection [spelled] (`CanvasSelectionRegion.spelled`) over [box],
-  /// finished by [grow], [feather] and [antiAlias] — `buildSelectionMask`
-  /// over it —, on the engine. Let go of with the object ([keptFor] keeps
-  /// it for a clip).
+  /// finished by [grow], [feather] and [antiAlias], on the engine — the one
+  /// maker of a selection's mask. Let go of with the object ([keptFor]
+  /// keeps it for a clip).
   static GpuMask of(
     ({Uint32List program, Float64List points}) spelled, {
     required ({int left, int top, int width, int height}) box,

@@ -1,20 +1,19 @@
 import 'dart:typed_data';
 
-/// The two 4-neighbour morphological passes an 8-bit coverage mask goes
-/// through, in place, [passes] generations each: the fill's expand and the
-/// selection's grow are [dilateMask4]; the selection's shrink is
-/// [erodeMask4]. The caller picks the operator from the SIGN of its value
-/// — there is no mode inside these kernels.
+/// The 4-neighbour growth an 8-bit coverage mask goes through, in place,
+/// [passes] generations: an area's expand ([dilateMask4]).
 ///
-/// ⚠️THEY ARE SPELLED ONCE MORE, OUTSIDE DART: the engine's mask kernel
+/// ⚠️IT IS SPELLED ONCE MORE, OUTSIDE DART: the engine's mask kernel
 /// (`packages/gpu_engine/rust/src/kernels/mask`, WGSL) grows and shrinks
 /// the same way, and since 2026-11-12 the bucket's expand is its growth —
-/// while an area's expand (`buildRegionFillDabs`) and the selection's grow
-/// and shrink are still these. `test/native/
-/// an_area_is_finished_as_the_bucket_is_test.dart` holds [dilateMask4] to
-/// the kernel's byte for byte (board
+/// while an area's expand (`buildRegionFillDabs`) is still this one.
+/// `test/native/an_area_is_finished_as_the_bucket_is_test.dart` holds
+/// [dilateMask4] to the kernel's byte for byte (board
 /// `an-areas-finish-is-a-second-spelling-of-the-floods`). ↩️The C kernel
-/// `qa_fill_finish_mask` mode 1 was that copy till then.
+/// `qa_fill_finish_mask` mode 1 was that copy till then. ↩️A selection's
+/// grow was this one and its shrink `erodeMask4` here till 2026-11-14,
+/// when the last of the CPU's selection masks went (board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move`, L2d).
 
 /// Expand: grow the region by N pixels (covers anti-aliased ink edges).
 /// 4-neighbor generations — generation-exact like the fill expand: a zero
@@ -29,19 +28,6 @@ void dilateMask4(
   mask,
   passes,
   (src, dst) => _dilateGeneration(src, dst, width, height),
-);
-
-/// Shrink: a nonzero pixel that touches a zero pixel on a side, or sits
-/// on the canvas border, becomes 0; the rest keep their byte.
-void erodeMask4(
-  Uint8List mask, {
-  required int width,
-  required int height,
-  required int passes,
-}) => _generations(
-  mask,
-  passes,
-  (src, dst) => _erodeGeneration(src, dst, width, height),
 );
 
 /// [passes] generations of [step] over [mask], in place. Each generation
@@ -83,35 +69,6 @@ void _dilateGeneration(Uint8List src, Uint8List dst, int width, int height) {
           (y > 0 && src[index - width] != 0) ||
           (y < height - 1 && src[index + width] != 0);
       dst[index] = touches ? 255 : 0;
-    }
-  }
-}
-
-/// The border lines are written 0 outright (a border pixel always erodes,
-/// zero or not), so the per-pixel loop runs over the INTERIOR alone, where
-/// all four side neighbours exist and no bounds guard is needed.
-void _erodeGeneration(Uint8List src, Uint8List dst, int width, int height) {
-  // A 0-sized mask has no border lines to write (the old loop ran nothing).
-  if (width == 0 || height == 0) {
-    return;
-  }
-  dst.fillRange(0, width, 0);
-  dst.fillRange((height - 1) * width, height * width, 0);
-  for (var y = 1; y < height - 1; y += 1) {
-    final row = y * width;
-    dst[row] = 0;
-    dst[row + width - 1] = 0;
-    for (var index = row + 1; index < row + width - 1; index += 1) {
-      final center = src[index];
-      if (center == 0 ||
-          src[index - 1] == 0 ||
-          src[index + 1] == 0 ||
-          src[index - width] == 0 ||
-          src[index + width] == 0) {
-        dst[index] = 0;
-      } else {
-        dst[index] = center;
-      }
     }
   }
 }

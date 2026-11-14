@@ -19,6 +19,14 @@ import '../helpers/dart_sources.dart';
 /// arithmetic is shared and the clamp is an argument — and these tests exist
 /// to prove the argument still changes something.
 ///
+/// ↩️Both meanings were spelled here, the clamp an argument of
+/// `softenMaskBoundary`, till 2026-11-14: the selection's went with the
+/// last of the CPU's selection masks (board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move`, L2d), and lives
+/// where a selection is finished now — the engine's `mask_softened`
+/// (mask.wgsl), pinned by `the_soften_keeps_inside_its_outline`. What is
+/// left here is the fill's: unclamped.
+///
 /// ⚠️Outside Dart the ramp is spelled once more: in the engine's mask
 /// kernel (WGSL), which finishes the bucket's flood since 2026-11-12.
 /// `test/native/an_area_is_finished_as_the_bucket_is_test.dart` holds it
@@ -38,10 +46,10 @@ void main() {
 
   int at(Uint8List mask, int x, int y) => mask[y * 8 + x];
 
-  test('unclamped, the ramp reaches one pixel PAST the outline', () {
+  test('the ramp reaches one pixel PAST the outline', () {
     final mask = hardBlock();
     expect(at(mask, 1, 3), 0, reason: 'fixture: x=1 is outside the block');
-    softenMaskBoundary(mask, width: 8, height: 8, insideOutlineOnly: false);
+    softenMaskBoundary(mask, width: 8, height: 8);
     expect(
       at(mask, 1, 3),
       greaterThan(0),
@@ -49,49 +57,14 @@ void main() {
     );
   });
 
-  test('clamped, it never lights a pixel the outline did not', () {
+  test('an interior pixel is untouched', () {
     final mask = hardBlock();
-    softenMaskBoundary(mask, width: 8, height: 8, insideOutlineOnly: true);
+    softenMaskBoundary(mask, width: 8, height: 8);
     expect(
-      at(mask, 1, 3),
-      0,
-      reason: 'a selection that reaches one pixel past itself erases artwork '
-          'nobody selected — the skirt IS the bug (#1300)',
+      at(mask, 3, 3),
+      255,
+      reason: 'a uniform neighbourhood is skipped',
     );
-    // ⛔And it still SOFTENS, or the clamp would just be "turn the pass off".
-    expect(
-      at(mask, 2, 2),
-      lessThan(255),
-      reason: 'the corner of the block still ramps INWARD',
-    );
-  });
-
-  test('the clamp only ever darkens — every pixel is <= the unclamped one', () {
-    final loose = hardBlock();
-    final tight = hardBlock();
-    softenMaskBoundary(loose, width: 8, height: 8, insideOutlineOnly: false);
-    softenMaskBoundary(tight, width: 8, height: 8, insideOutlineOnly: true);
-    expect(loose, isNot(tight), reason: 'fixture: the two disagree somewhere');
-    for (var i = 0; i < loose.length; i += 1) {
-      expect(
-        tight[i],
-        lessThanOrEqualTo(loose[i]),
-        reason: 'clamping must not brighten anything (index $i)',
-      );
-    }
-  });
-
-  test('an interior pixel is untouched either way', () {
-    for (final inside in const [true, false]) {
-      final mask = hardBlock();
-      softenMaskBoundary(mask, width: 8, height: 8, insideOutlineOnly: inside);
-      expect(
-        at(mask, 3, 3),
-        255,
-        reason: 'a uniform neighbourhood is skipped (insideOutlineOnly: '
-            '$inside)',
-      );
-    }
   });
 
   test('nothing in lib/ writes the five-tap average by hand', () {

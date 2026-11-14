@@ -1,7 +1,8 @@
 // A coverage mask's finishing passes, by gpu-int-spec-canvas 1b S2: a
 // generation of the 4-neighbour grow or shrink (S2a — the app's
-// mask_morphology.dart), the boundary soften (S2c — softenMaskBoundary),
-// and the feather (S2b): the 3-4 chamfer distance (chamferDistance34)
+// mask_morphology.dart — its grow), the boundary soften (S2c — the app's
+// softenMaskBoundary, unclamped), and the feather (S2b): the 3-4 chamfer
+// distance (the app's chamferDistance34 till 2026-11-14)
 // relaxed a generation at a time, then the ramp over it. The fill's gap
 // close measures by the same distances.
 //
@@ -27,22 +28,21 @@ struct Mask {
   height: u32,
   stride: u32,
   ramp: u32,
-  // Whether the soften keeps inside the outline — softenMaskBoundary's
-  // `insideOutlineOnly`: the selection's does, the fill's does not.
+  // Whether the soften keeps inside the outline (`mask_softened`): the
+  // selection's does, the fill's does not.
   inside_outline_only: u32,
-  // Where a distance starts — chamferDistance34's `zeroWhen` and
-  // `borderDistance`: the byte of the pixels it is measured from, and the
-  // distance the box's edge lies at. The selection's feather measures from
-  // what is out, its edge 3 (`_featherMask`: a pixel on it ramps as if the
-  // one past it were out); the fill's gap close from what may not fill and
-  // then from what it flooded, with no edge — u32's most, which no
+  // Where a distance starts — the byte of the pixels it is measured from,
+  // and the distance the box's edge lies at. The selection's feather
+  // measures from what is out, its edge 3 (a pixel on it ramps as if the
+  // one past it were out); the fill's gap close from what may not fill
+  // and then from what it flooded, with no edge — u32's most, which no
   // distance passes (the canvas edge is no barrier).
   zero_when: u32,
   border: u32,
   unused_0: u32,
 }
 
-// The farthest distance — chamferDistance34's `infinity`.
+// The farthest distance: what a pixel no source reaches holds.
 const MASK_FAR: u32 = 60000u;
 
 @group(0) @binding(0) var<uniform> mask: Mask;
@@ -96,10 +96,16 @@ fn mask_shrunk(x: i32, y: i32) -> u32 {
 // sum is never a half over it, so + 3 rounds it as the app's double
 // rounding does. A pixel whose four sides are its own sums to its own byte
 // (the app skips it). ⚠️THE SELECTION'S INSIDE THE OUTLINE ONLY (유저
-// 2026-08-27, softenMaskBoundary's head): it never rises past the pixel's
-// own byte, so a selection lifts no ring of its neighbour's art. ⛔The
-// fill's rises (canvas_flood_fill.dart's ⛔UNCLAMPED): paint that stops dead
-// on the outline reads as a hard edge, so its ramp goes a pixel past it.
+// 2026-08-27, after looking at TVPaint: 「애초 tvp 보니까 **선택의 aa가 선택
+// 바깥에 걸리는게 아니라 선택 안쪽에 걸고있는거같거든**?」): it never rises
+// past the pixel's own byte, so a selection lifts no ring of its
+// neighbour's art — since #1288 a pixel the mask touches at all travels
+// whole. ⛔The fill's rises (canvas_flood_fill.dart's ⛔UNCLAMPED): paint
+// that stops dead on the outline reads as a hard edge, so its ramp goes a
+// pixel past it. ⛔SO THE TWO ARE NOT ONE ANSWER (the card that opened it:
+// 「억지로 하나로 만들면 안 된다 — 뜻이 둘이다」) — the arithmetic is shared and
+// the clamp is an argument. ↩️The app spelled the selection's in Dart too
+// (softenMaskBoundary's `insideOutlineOnly`) till 2026-11-14.
 fn mask_softened(x: i32, y: i32) -> u32 {
   let centre = mask_byte(x, y);
   let sides = mask_sides(x, y);

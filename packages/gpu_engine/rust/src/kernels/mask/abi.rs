@@ -54,10 +54,9 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_free(masks: *mut SelectionMa
 
 /// The mask of the selection `program` spells over `points` ([`steps_of`])
 /// on the pixel box `width` × `height` whose top-left pixel is (`x`, `y`),
-/// finished by the knobs `grow`, `feather` and `anti_alias` — the app's
-/// `buildSelectionMask` over that box —, kept as a plane for the app. The
-/// work is submitted, and what reads the plane after it reads it done: no
-/// one waits. Null where the program does not spell a selection or a box
+/// finished by the knobs `grow`, `feather` and `anti_alias`, kept as a
+/// plane for the app. The work is submitted, and what reads the plane
+/// after it reads it done: no one waits. Null where the program does not spell a selection or a box
 /// or point lies past the reach; see the last error.
 ///
 /// # Safety

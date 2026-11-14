@@ -3,16 +3,12 @@ import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
 import '../core/point_bounds.dart';
-import '../models/pasteboard_bounds.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/canvas_point.dart';
 import '../native/engine_stamp_pictures.dart';
-import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
 import 'guide_geometry.dart' show GuideTransform;
-import 'mask_morphology.dart';
-import 'mask_soft_edge.dart';
 import 'resample/resample_kernel.dart';
 import 'resample/selection_resample.dart';
 import 'selection_affine.dart';
@@ -658,8 +654,6 @@ class SelectionMaskOptions {
   /// One boundary-softening pass (the fill finish's anti-alias math).
   final bool antiAlias;
 
-  bool get isHard => growPx == 0 && featherPx <= 0 && !antiAlias;
-
   SelectionMaskOptions copyWith({
     int? growPx,
     double? featherPx,
@@ -675,159 +669,4 @@ class SelectionMaskOptions {
   /// Extra bounding-box padding the post-passes may write into.
   int get bboxPad =>
       (growPx > 0 ? growPx : 0) + featherPx.ceil() + (antiAlias ? 1 : 0);
-
-  /// How far from a pixel the post-passes read to decide it. ⚠️Not
-  /// [bboxPad]: a shrink writes nothing past the outline, and it reads as
-  /// far as a grow does.
-  int get neighbourReach =>
-      growPx.abs() + featherPx.ceil() + (antiAlias ? 1 : 0);
-}
-
-/// Inward feather: 3-4 chamfer distance from the OUTSIDE, alpha ramps
-/// over [featherPx] (chamfer units: 3 per orthogonal pixel).
-void _featherMask(Uint8List mask, int width, int height, double featherPx) {
-  const infinity = 60000;
-  final dist = Uint16List(width * height);
-  chamferDistance34(
-    dist,
-    from: mask,
-    zeroWhen: 0,
-    width: width,
-    height: height,
-    infinity: infinity,
-    // Canvas-edge pixels ramp too (border counts as outside).
-    borderDistance: 3,
-  );
-  final ramp = featherPx * 3.0;
-  for (var i = 0; i < mask.length; i += 1) {
-    if (mask[i] == 0) continue;
-    final alpha = (dist[i] / ramp * 255).round();
-    mask[i] = alpha >= 255 ? 255 : alpha;
-  }
-}
-
-/// One boundary soft pass, CLAMPED INSIDE THE OUTLINE.
-///
-/// 🚨★★★THE RAMP LIVES INSIDE THE OUTLINE. 유저 2026-08-27, after looking at
-/// TVPaint: 「애초 tvp 보니까 **선택의 aa가 선택 바깥에 걸리는게 아니라 선택
-/// 안쪽에 걸고있는거같거든**? 그렇게 하면 해결인가?」.
-///
-/// It is, and the clamp is the whole of it. A plain blur spreads both ways,
-/// so every anti-aliased selection used to carry a one-pixel skirt of mask
-/// OUTSIDE its own outline — and since #1288 a pixel the mask touches at all
-/// travels whole, that skirt is a ring of the neighbour's artwork lifted
-/// along with the selection and erased from where it was. That is the 「선택
-/// 바깥에 픽셀이 남는다」 report, arriving from the opposite direction to the
-/// one it looked like.
-///
-/// ⛔Not a wider `bboxPad`, and not a special case at the lift: the mask is
-/// what every verb reads (the pixel verbs share it), so a selection that
-/// means "these pixels" has to say so here or the meanings drift apart.
-///
-/// ⛔THE ARITHMETIC IS NOT OURS TO KEEP A COPY OF. It is the fill finish's,
-/// and it used to be written out here — where it
-/// promptly diverged, because the clamp above was added to this copy alone.
-/// [softenMaskBoundary] holds the formula; this line holds the meaning.
-void _antiAliasMask(Uint8List mask, int width, int height) {
-  softenMaskBoundary(
-    mask,
-    width: width,
-    height: height,
-    insideOutlineOnly: true,
-  );
-}
-
-/// The coverage [region] has over `[left, left+width) x [top, top+height)`,
-/// with the selection tool's mask knobs applied.
-///
-/// Even-odd scanline rasterization folded step by step (R26 #16 — the
-/// composite region's own rasterizer): O(edges × rows + pixels), where the
-/// naive per-pixel ray cast made lasso lifts quadratic. The R26 post-passes
-/// are opt-in and leave the classic hard mask byte-identical; their order
-/// is resize the region first, then soften.
-///
-/// Shared with the PIXEL verbs (색 변환 / 픽셀 비우기) so a selection means
-/// the same pixels whichever verb reads it. ⚠️Callers that rasterize the
-/// mask in pieces must pad each piece by
-/// [SelectionMaskOptions.neighbourReach] and keep only the middle, as
-/// `SelectionClip` does: the post-passes read neighbours, so a piece
-/// rasterized without padding softens against its own edge and leaves a
-/// seam where the pieces meet.
-Uint8List buildSelectionMask({
-  required CanvasSelectionRegion region,
-  required SelectionMaskOptions options,
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-}) {
-  final mask = region.maskFor(
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
-  if (!options.isHard) {
-    // The sign of growPx picks the operator; the kernels carry no mode.
-    if (options.growPx > 0) {
-      dilateMask4(mask, width: width, height: height, passes: options.growPx);
-    } else if (options.growPx < 0) {
-      erodeMask4(mask, width: width, height: height, passes: -options.growPx);
-    }
-    if (options.featherPx > 0) {
-      _featherMask(mask, width, height, options.featherPx);
-    }
-    if (options.antiAlias) {
-      _antiAliasMask(mask, width, height);
-    }
-  }
-  return mask;
-}
-
-/// A selection's mask over the box it covers — nothing is selected outside
-/// [box].
-typedef SelectionMaskReading = ({
-  Uint8List mask,
-  ({int left, int top, int width, int height}) box,
-});
-
-/// A selection READ the way every pixel reader reads one: [region]
-/// rasterized at [options] ([buildSelectionMask]) over its own box —
-/// coverage, padded for the post-passes, inside the pasteboard [wall]
-/// ([CanvasSelectionRegion.pixelBoxWithin]). Null when that
-/// box is empty.
-///
-/// ⛔ONE READING. The move's lift, the pixel verbs' walk, the copy and the
-/// paste (I-55) each computed this box and then this mask; four copies of
-/// two steps is how a selection comes to mean two things.
-///
-/// ⚠️The lift — the move's, the cut's, the copy's — and the pixel verbs'
-/// walk read through their `SelectionClip` since 2026-11-14 (L1b-2 · 3):
-/// the same box and the same bytes, made on the engine. Only tests read
-/// this now, the reference a clip's windows are held to; it goes with the
-/// CPU's mask (L2, board
-/// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
-SelectionMaskReading? selectionMaskOnPasteboard(
-  CanvasSelectionRegion region, {
-  required PasteboardWall wall,
-  SelectionMaskOptions options = SelectionMaskOptions.none,
-}) {
-  final box = region.pixelBoxWithin(
-    wall.region,
-    pad: options.bboxPad,
-  );
-  if (box == null) {
-    return null;
-  }
-  return (
-    mask: buildSelectionMask(
-      region: region,
-      options: options,
-      left: box.left,
-      top: box.top,
-      width: box.width,
-      height: box.height,
-    ),
-    box: box,
-  );
 }

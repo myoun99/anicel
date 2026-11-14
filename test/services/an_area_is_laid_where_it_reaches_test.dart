@@ -78,12 +78,7 @@ void main() {
     }
     dilateMask4(mask, width: sheetWidth, height: sheetHeight, passes: grow);
     if (options.antiAlias) {
-      softenMaskBoundary(
-        mask,
-        width: sheetWidth,
-        height: sheetHeight,
-        insideOutlineOnly: false,
-      );
+      softenMaskBoundary(mask, width: sheetWidth, height: sheetHeight);
     }
     return (
       left: left - reach,

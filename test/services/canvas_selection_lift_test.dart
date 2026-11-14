@@ -509,57 +509,6 @@ void main() {
     );
   });
 
-  test('the anti-alias MASK itself never lights a pixel the outline did not',
-      () {
-    // ⛔Asked of the mask rather than of the lift, because the mask is what
-    // every verb reads — 색 변환 and 픽셀 비우기 share it. A fix that only
-    // taught the lift to ignore the skirt would leave those two erasing a
-    // rim the selection never showed.
-    const width = 12;
-    const height = 12;
-    final hard = buildSelectionMask(
-      region: rect2to5(),
-      options: SelectionMaskOptions.none,
-      left: 0,
-      top: 0,
-      width: width,
-      height: height,
-    );
-    final soft = buildSelectionMask(
-      region: rect2to5(),
-      options: const SelectionMaskOptions(antiAlias: true),
-      left: 0,
-      top: 0,
-      width: width,
-      height: height,
-    );
-
-    expect(
-      hard.where((value) => value > 0).length,
-      greaterThan(0),
-      reason: '🚨the fixture has to be selecting something, or every '
-          'comparison below is two empty masks agreeing',
-    );
-    final leaked = <String>[];
-    for (var i = 0; i < soft.length; i += 1) {
-      if (soft[i] > hard[i]) {
-        leaked.add('(${i % width},${i ~/ width}) ${hard[i]} -> ${soft[i]}');
-      }
-    }
-    expect(
-      leaked,
-      isEmpty,
-      reason: 'anti-aliasing may only darken the edge, never widen it: '
-          '${leaked.join(', ')}',
-    );
-    expect(
-      soft.any((value) => value > 0 && value < 255),
-      isTrue,
-      reason: '⚠️and it still HAS a ramp — a clamp that flattened the pass '
-          'into the hard mask would pass the test above and do nothing',
-    );
-  });
-
   test('a FEATHERED selection still fades — that softness was asked for',
       () {
     // ⚠️The exception, and not an invented one: nobody feathers a selection

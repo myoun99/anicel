@@ -38,13 +38,11 @@ import '../helpers/selection_reads_spied.dart';
 /// 🚨★★★WHATEVER DRAWS IN A SELECTION IS CUT BY ONE EDGE
 /// (brush-fidelity-Q11 · Q12, 유저 2026-10-18).
 ///
-/// The clip reads the selection a window at a time (what a flood keeps of
-/// its fill), and the bytes must be the ones the whole box reads
-/// ([selectionMaskOnPasteboard], what a lift and a held picture go by):
-/// a window that softens against its own edge is a seam on the tile grid.
-/// On the engine the clip's mask is made once over its whole box, and a
+/// The clip's mask is made on the engine once over its whole box, and a
 /// stroke, a stamp and a stroke's buffer land under it (2026-11-14) — off
-/// the engine's grid none lands under a selection at all.
+/// the engine's grid none lands under a selection at all. What reads the
+/// selection a window at a time (a colour verb's walk, a lift's) reads that
+/// same mask, read back: the bytes must be the ones the whole box reads.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final engineTile = gpuTileSide;
@@ -110,8 +108,15 @@ void main() {
     SelectionMaskOptions(growPx: -3, featherPx: 5, antiAlias: true),
   ];
 
+  /// What [clip] made on the engine over its box, read back — null where it
+  /// can select none.
+  _Whole? wholeOf(SelectionClip clip) {
+    final box = clip.box;
+    return box == null ? null : (mask: clip.maskOnEngine().read(), box: box);
+  }
+
   /// [read] at the pixel `(x, y)`, unselected past its box.
-  int readAt(SelectionMaskReading? read, int x, int y) {
+  int readAt(_Whole? read, int x, int y) {
     if (read == null) {
       return 0;
     }
@@ -131,12 +136,8 @@ void main() {
           'aa ${options.antiAlias}';
 
       test('window for window it reads what the whole box reads: $label', () {
-        final whole = selectionMaskOnPasteboard(
-          region,
-          wall: wall,
-          options: options,
-        );
         final clip = SelectionClip.of(region, wall: wall, options: options);
+        final whole = wholeOf(clip);
         const sizes = [(w: 16, h: 16), (w: 41, h: 7), (w: 3, h: 60)];
         for (final (:w, :h) in sizes) {
           for (var top = -20; top < 215; top += 13) {
@@ -259,24 +260,6 @@ void main() {
       ).maskFor(left: 60, top: 20, width: 200, height: 160),
       region.maskFor(left: 60, top: 20, width: 200, height: 160),
     );
-  });
-
-  test('🚨a window reads around itself, not the selection: the first dab '
-      'of a stroke does not wait on how much is selected', () {
-    final asked = <int>[];
-    final spied = SelectionReadsSpied(rect(-4000, -4000, 8000, 8000), asked);
-    const options = SelectionMaskOptions(growPx: 2, featherPx: 8);
-    final clip = SelectionClip.of(
-      spied,
-      wall: const CanvasSize(
-        width: 8000,
-        height: 8000,
-      ).pasteboardAt(PasteboardReach.none),
-      options: options,
-    );
-    clip.maskFor(left: 4000, top: 4000, width: 64, height: 64);
-    final side = 64 + 2 * options.neighbourReach;
-    expect(asked, [side * side]);
   });
 
   BrushDab paintDab(double x, double y) => BrushDab(
@@ -649,10 +632,8 @@ void main() {
             'aa ${options.antiAlias}';
 
         test('a stroke is cut by the bytes the whole box reads: $label', () {
-          final whole = selectionMaskOnPasteboard(
-            region,
-            wall: wall,
-            options: options,
+          final whole = wholeOf(
+            SelectionClip.of(region, wall: wall, options: options),
           );
           final (shown, rasterizer) = strokedUnder(
             SelectionClip.of(region, wall: wall, options: options),
@@ -676,7 +657,7 @@ void main() {
 
     /// Fails at the first pixel of [landed] whose alpha is not what
     /// [whole] reads there.
-    void cutBy(SelectionMaskReading? whole, BitmapSurface landed) {
+    void cutBy(_Whole? whole, BitmapSurface landed) {
       for (var y = 0; y < 200; y += 1) {
         for (var x = 0; x < 300; x += 1) {
           final alpha = (surfaceRgbaInPlace(landed, x, y) ?? 0) & 255;
@@ -704,7 +685,7 @@ void main() {
           ).surface;
 
           cutBy(
-            selectionMaskOnPasteboard(region, wall: wall, options: options),
+            wholeOf(SelectionClip.of(region, wall: wall, options: options)),
             landed,
           );
         });
@@ -723,7 +704,7 @@ void main() {
       ).afterSurface;
 
       cutBy(
-        selectionMaskOnPasteboard(region, wall: wall, options: options),
+        wholeOf(SelectionClip.of(region, wall: wall, options: options)),
         landed,
       );
     });
@@ -751,11 +732,7 @@ void main() {
           ).surface;
       final inside = landed(soft);
       final whole = landed(null);
-      final reads = selectionMaskOnPasteboard(
-        rect(60, 20, 240, 180),
-        wall: wall,
-        options: const SelectionMaskOptions(featherPx: 8),
-      );
+      final reads = wholeOf(soft);
       expect(readAt(reads, 150, 100), 255, reason: 'fixture premise');
       expect(readAt(reads, 20, 100), 0, reason: 'fixture premise');
 
@@ -891,3 +868,9 @@ void main() {
     });
   });
 }
+
+/// A clip's mask over its box, read back from the engine.
+typedef _Whole = ({
+  Uint8List mask,
+  ({int left, int top, int width, int height}) box,
+});

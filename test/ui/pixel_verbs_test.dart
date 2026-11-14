@@ -382,9 +382,10 @@ void main() {
         isNotNull,
         reason: 'the canvas-side facts the verbs read at the press',
       );
+      final mask = session.pixelVerbs.pixelVerbCanvas!().mask;
       expect(
-        session.pixelVerbs.pixelVerbCanvas!().mask.isHard,
-        isTrue,
+        (mask.growPx, mask.featherPx, mask.antiAlias),
+        (0, 0, false),
         reason: 'every option is off by default, so nothing changes for a '
             'user who never touched them',
       );
