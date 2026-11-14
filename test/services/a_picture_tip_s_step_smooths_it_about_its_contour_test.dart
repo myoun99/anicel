@@ -167,8 +167,10 @@ void main() {
     test('on $where a squeezed picture is smoothed by the same canvas width '
         'down its minor axis', () {
       // Two tips a texel a pixel down at one radius: one pressed to half
-      // its height, one twice its texels drawn whole.
+      // its height, one twice its texels drawn whole. The first is laid
+      // whole first: the same width across, another down.
       for (final step in steps) {
+        laid(aDab(step, size: 64), tileSize: tileSize);
         final squeezed = laid(
           aDab(step, size: 64, roundness: 0.5),
           tileSize: tileSize,
