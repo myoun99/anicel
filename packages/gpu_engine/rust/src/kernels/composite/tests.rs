@@ -291,22 +291,25 @@ pub(crate) fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u
     bytes[texel * 4..texel * 4 + 4].try_into().unwrap()
 }
 
-/// Where `got` is not `want`, two pictures of the output `tiles`, tile
-/// after tile: how many pixels, and the first of them — its place on the
-/// canvas and both its bytes. None where they are the same.
-fn where_they_part(got: &[u8], want: &[u8], tiles: &[(i32, i32)]) -> Option<String> {
-    if got.len() != want.len() {
-        return Some(format!("{} bytes, not {}", got.len(), want.len()));
-    }
+/// Fails `what` unless `got` is `want`, two pictures of the output
+/// `tiles`, tile after tile — saying how many pixels part, and the first
+/// of them: its place on the canvas and both its bytes. A composite
+/// test that went red on the Surface alone, once in many runs, said no
+/// more than its name (engine-pictures-keep-to-pool-pages, 11-14).
+#[track_caller]
+fn assert_same(got: &[u8], want: &[u8], tiles: &[(i32, i32)], what: impl std::fmt::Display) {
+    assert_eq!(got.len(), want.len(), "{what}: the bytes of the pictures");
     let pixel = |bytes: &[u8], texel: usize| -> [u8; 4] { bytes[texel * 4..texel * 4 + 4].try_into().unwrap() };
     let parted: Vec<usize> = (0..want.len() / 4).filter(|&texel| pixel(got, texel) != pixel(want, texel)).collect();
-    let &first = parted.first()?;
+    let Some(&first) = parted.first() else {
+        return;
+    };
     let side = TILE as i32;
     let (tile, within) = (first / TILE_TEXELS as usize, (first % TILE_TEXELS as usize) as i32);
     let (column, row) = tiles[tile];
     let (x, y) = (column * side + within % side, row * side + within / side);
     let (holds, should) = (pixel(got, first), pixel(want, first));
-    Some(format!("{} pixels part, the first at ({x}, {y}): {holds:?}, not {should:?}", parted.len()))
+    panic!("{what}: {} pixels part, the first at ({x}, {y}): {holds:?}, not {should:?}", parted.len());
 }
 
 // ---- Keys ----
@@ -841,7 +844,7 @@ fn a_plan_cut_into_passes_composites_as_in_one() {
         }
         for pages in 1..most {
             let (cut, passes) = composite(&scene, within(pages, usize::MAX));
-            assert!(cut == whole, "{name} at {pages} pages a pass");
+            assert_same(&cut, &whole, &scene.tiles, format_args!("{name} at {pages} pages a pass"));
             if name == "spanning" && pages == 1 {
                 assert!(passes > 1, "the folder was never cut");
             }
@@ -853,7 +856,8 @@ fn a_plan_cut_into_passes_composites_as_in_one() {
                     ..within(pages, usize::MAX)
                 };
                 let (cut, _) = composite(&scene, budget);
-                assert!(cut == whole, "{name} at {levels} levels and {pages} pages a pass");
+                let what = format_args!("{name} at {levels} levels and {pages} pages a pass");
+                assert_same(&cut, &whole, &scene.tiles, what);
             }
         }
     }
@@ -869,9 +873,8 @@ fn output_tiles_taken_a_few_at_a_time_composite_as_all_at_once() {
         let whole = widest(&scene);
         for (pages, tiles) in [(most, 1), (most, 3), (1, 1), (1, 3)] {
             let (cut, passes) = composite(&scene, within(pages, tiles));
-            if let Some(parted) = where_they_part(&cut, &whole, &scene.tiles) {
-                panic!("{name} at {pages} pages and {tiles} tiles a pass: {parted}");
-            }
+            let what = format_args!("{name} at {pages} pages and {tiles} tiles a pass");
+            assert_same(&cut, &whole, &scene.tiles, what);
             let runs = scene.tiles.len().div_ceil(tiles);
             assert!(passes >= runs, "{name}: {passes} passes for {runs} runs of tiles");
         }
@@ -1289,7 +1292,7 @@ fn a_posed_row_lays_what_r1_resamples() {
     for name in POSES {
         let scene = posed_alone(name);
         let want = resampled(&pose(name), &picture, &scene.tiles);
-        assert!(widest(&scene) == want, "{name}");
+        assert_same(&widest(&scene), &want, &scene.tiles, name);
     }
 }
 
@@ -1412,7 +1415,7 @@ fn a_row_s_matrix_runs_on_what_r1_lays() {
             .map(|word| if word >> 24 == 0 { 0 } else { word })
             .flat_map(u32::to_le_bytes)
             .collect();
-        assert!(widest(&scene) == want, "{name}");
+        assert_same(&widest(&scene), &want, &scene.tiles, name);
     }
 }
 
@@ -1470,7 +1473,7 @@ fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
     let base = row(0, (2, 3), WHOLE, NORMAL);
     let laid = |steps: Vec<Step>| widest(&scene(Some(&through), [vec![base], steps].concat()));
     let want = laid(vec![row(3, (0, 0), 45000, SCREEN)]);
-    assert!(laid(buffer(45000, SCREEN, Some(0))) == want);
+    assert_same(&laid(buffer(45000, SCREEN, Some(0))), &want, &tiles, "the buffer through its matrix");
     assert!(laid(buffer(45000, SCREEN, None)) != want);
 }
 
@@ -2524,8 +2527,8 @@ fn a_mask_no_step_lies_under_changes_nothing() {
     let mut scene = red_over_blue();
     scene.steps[1] = row(1, (0, 0), WHOLE, NORMAL);
     let mask = masked((1, 1), (5, 5), |_, _| 0);
-    let got = under(&scene, Some(&mask.mask()), rig().composite.widest());
-    assert!(got == Some(widest(&scene)));
+    let got = under(&scene, Some(&mask.mask()), rig().composite.widest()).expect("composite");
+    assert_same(&got, &widest(&scene), &scene.tiles, "under the mask");
 }
 
 /// A mask's box, off the tile grid, and its bytes there, each its own.
@@ -2578,9 +2581,7 @@ fn a_posed_row_reads_its_mask_as_it_reads_its_pixels() {
         let want = widest(&over_blue(alpha, pose_row(1, name, WHOLE, NORMAL)));
         for budget in [rig().composite.widest(), within(1, 1), within(1, 3)] {
             let got = under(&white, Some(&mask.mask()), budget).expect("composite");
-            if let Some(parted) = where_they_part(&got, &want, &white.tiles) {
-                panic!("{name} at {budget:?}: {parted}");
-            }
+            assert_same(&got, &want, &white.tiles, format_args!("{name} at {budget:?}"));
         }
     }
 }
@@ -2746,8 +2747,8 @@ fn a_mark_lays_as_a_row_of_its_colours() {
         };
         let want = widest(&scene);
         scene.steps[1] = Step::Mark { map: ResampleMap::moved(0, 0), shift };
-        let got = under(&scene, Some(&range.mask()), rig().composite.widest());
-        assert!(got == Some(want), "{shift:?}");
+        let got = under(&scene, Some(&range.mask()), rig().composite.widest()).expect("composite");
+        assert_same(&got, &want, &scene.tiles, format_args!("{shift:?}"));
     }
 }
 
@@ -2871,10 +2872,7 @@ fn a_row_under_a_whole_mask_lays_as_under_none() {
     for (index, scene) in scenes.enumerate() {
         let (want, tiles) = (widest(&scene), scene.tiles.clone());
         let got = under(&all_masked(scene), Some(&mask.mask()), rig().composite.widest());
-        let got = got.unwrap_or_else(|| panic!("scene {index}: nothing composited"));
-        if let Some(parted) = where_they_part(&got, &want, &tiles) {
-            panic!("scene {index}: {parted}");
-        }
+        assert_same(&got.expect("composite"), &want, &tiles, format_args!("scene {index}"));
     }
 }
 
