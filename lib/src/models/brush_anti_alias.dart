@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// The edge an anti-alias step gives an analytic round tip
 /// ([BrushAntiAlias.edge]): a ramp [width] wide, [widthPerRadius] wider a
 /// pixel of radius up to a radius of [widthReach], ending [inset] inside
@@ -9,6 +11,17 @@ typedef BrushTipEdge = ({
   double inset,
   double insetReach,
 });
+
+/// How wide, in canvas pixels, [edge] smooths a tip of [radius]: an
+/// analytic round tip's ramp (`RoundTipProfile`), and the box a picture
+/// tip's picture is smoothed by (`brushTipGeometry`).
+///
+/// 🚨★★★ONE width for both (유저 H60-Q2 2026-11-15 「연산은 하나, 자리는
+/// 클튜대로」 · H60-Q3 「클튜랑 픽셀단위로 맞출필요는없음 … 지금 있는거
+/// 활용하면서 어느정도 해도됨」): where it lies is the tip's — a round tip's
+/// ends at its rim, a picture's sits about its own contour.
+double brushTipEdgeWidth(BrushTipEdge edge, double radius) =>
+    edge.width + edge.widthPerRadius * math.min(radius, edge.widthReach);
 
 /// How hard a brush's own edge lands (유저 2026-09-08, 클튜 4단).
 ///
@@ -63,6 +76,8 @@ typedef BrushTipEdge = ({
 /// ↩️It stayed for a raster tip too, until the greys of a pale tip turned
 /// out to be what it was wiping ([brushDabEdgeLaw] has the measure), and
 /// 없음's cut left a raster tip on 2026-11-15 (H60, the same place).
+/// The same day 1~3단계 came to smooth a picture by a round tip's width,
+/// about the picture's own contour ([brushTipEdgeWidth], H60-Q2 · Q3).
 enum BrushAntiAlias {
   /// 없음 — a hard edge. An analytic tip's ramp collapses to a threshold at
   /// half coverage, which is the cut this engine already uses for its own
@@ -101,7 +116,9 @@ enum BrushAntiAlias {
   /// [BrushTipEdge.widthReach] — that ends [BrushTipEdge.inset] inside the
   /// rim, the inset shrinking with the radius below
   /// [BrushTipEdge.insetReach], so the finest nibs are a cone to the rim.
-  /// Nothing for [none], whose cut happens after sampling.
+  /// Nothing for [none], whose cut happens after sampling. A picture tip is
+  /// smoothed by the same width, about its contour, with no inset
+  /// ([brushTipEdgeWidth]).
   ///
   /// 📏Fitted 2026-10-25 (board a-one-pixel-dab-drops-out-by-where-it-lies,
   /// Q4 「AA 가장자리는 쌓이지 않는다」 · Q5 「100 · 300px 표본을 더 준다」) to

@@ -105,6 +105,142 @@ final Expando<BoundedMemo<_MaskLevels, BrushTipMask>> _levelCache = Expando(
   'brushTipMaskLevels',
 );
 
+/// [mask] smoothed by a box [across] texels wide along its rows and [down]
+/// texels down its columns, centred on each texel, over the picture as the
+/// samplers read it — linear between texels, nothing past its square
+/// (`sampleBrushTipMaskCoverage`): what an anti-alias step lays a picture
+/// tip as (`brushTipGeometry`). Widths of 0 give the picture back as it is.
+///
+/// 🚨★★★H60 (유저 I-86 2026-11-15 「팁이 소재면 aa off하면 소재 팁
+/// 그대로인거고 거기서 aa추가하면 추가로 aa 적용되는거고」 · H60-Q2 (a)
+/// 「연산은 하나, 자리는 클튜대로」): the box sits about the picture's own
+/// contour, as in the user's Clip Studio samples of a picture tip
+/// (`参考/CSP_decode/1115_tipAA`) — its area holds, it spreads out as far
+/// as in, and the grain within is smoothed too. A round tip's ramp of the
+/// same width ends at its rim instead (I-50, `RoundTipProfile`).
+/// ⚠️What would spread past the square is cut there: the samplers read
+/// nothing past it, and a dab reaches its square (`dirtyRegionForBrushDab`)
+/// — a tip drawn to its square's edge keeps half its smoothing there.
+BrushTipMask brushTipMaskSmoothed(
+  BrushTipMask mask, {
+  required double across,
+  required double down,
+}) {
+  if (across == 0.0 && down == 0.0) {
+    return mask;
+  }
+  final size = mask.size;
+  final line = Float64List(size);
+  final smoothed = Float64List(size);
+  final rising = Float64List(size + 2);
+  final rows = Float64List(size * size);
+  final source = mask.alphaNormalized;
+  for (var row = 0; row < size; row += 1) {
+    line.setRange(0, size, source, row * size);
+    _smoothedLine(line, across, smoothed, rising);
+    rows.setRange(row * size, row * size + size, smoothed);
+  }
+  final alpha = Uint8List(size * size);
+  for (var column = 0; column < size; column += 1) {
+    for (var row = 0; row < size; row += 1) {
+      line[row] = rows[row * size + column];
+    }
+    _smoothedLine(line, down, smoothed, rising);
+    for (var row = 0; row < size; row += 1) {
+      alpha[row * size + column] = (smoothed[row] * 255.0).round().clamp(
+        0,
+        255,
+      );
+    }
+  }
+  return BrushTipMask(id: '${mask.id}~smoothed', size: size, alpha: alpha);
+}
+
+/// [line] — texels, linear between them and to nothing past either end —
+/// under a box [width] texels wide centred on each, into [into]: the area
+/// under it across the box, over the box's width. [rising] holds the area
+/// up to each texel's centre, the one before the first's first.
+void _smoothedLine(
+  Float64List line,
+  double width,
+  Float64List into,
+  Float64List rising,
+) {
+  final count = line.length;
+  if (width == 0.0) {
+    into.setRange(0, count, line);
+    return;
+  }
+  double texel(int at) => at < 0 || at >= count ? 0.0 : line[at];
+  rising[0] = 0.0;
+  for (var at = 0; at <= count; at += 1) {
+    rising[at + 1] = rising[at] + (texel(at - 1) + texel(at)) * 0.5;
+  }
+  double upTo(double x) {
+    if (x <= -1.0) {
+      return 0.0;
+    }
+    if (x >= count) {
+      return rising[count + 1];
+    }
+    final before = x.floor();
+    final past = x - before;
+    final from = texel(before);
+    return rising[before + 1] +
+        from * past +
+        (texel(before + 1) - from) * past * past * 0.5;
+  }
+
+  final half = width * 0.5;
+  for (var at = 0; at < count; at += 1) {
+    into[at] = (upTo(at + half) - upTo(at - half)) / width;
+  }
+}
+
+/// [brushTipMaskSmoothed] at the widths a dab asks, each rounded to an
+/// eighth of an octave, baked at most once per (mask, widths) — [mask]
+/// itself at widths of 0.
+///
+/// The three cache questions:
+/// ① The key is the mask by identity and both rounded widths — nothing
+///    else goes into the bake.
+/// ② A miss costs one bake, what the uncached call always paid.
+/// ③ It hangs off the mask, so its entries go with it.
+/// 📏An eighth of an octave lays a width at most 4.4% off the one asked
+/// (H60-Q3 「클튜랑 픽셀단위로 맞출필요는없음」): a pressure stroke whose size
+/// moves over two octaves meets about [_smoothingsPerMaskLimit] of them.
+BrushTipMask brushTipMaskSmoothedCached(
+  BrushTipMask mask, {
+  required double across,
+  required double down,
+}) {
+  if (across == 0.0 && down == 0.0) {
+    return mask;
+  }
+  int eighths(double width) =>
+      width == 0.0 ? _noWidth : (math.log(width) / math.ln2 * 8).round();
+  double widthOf(int eighths) =>
+      eighths == _noWidth ? 0.0 : math.pow(2.0, eighths / 8).toDouble();
+  final key = (eighths(across), eighths(down));
+  return (_smoothedCache[mask] ??= BoundedMemo(_smoothingsPerMaskLimit))
+      .resolve(
+        key,
+        () => brushTipMaskSmoothed(
+          mask,
+          across: widthOf(key.$1),
+          down: widthOf(key.$2),
+        ),
+      );
+}
+
+const int _smoothingsPerMaskLimit = 16;
+
+/// An eighth-octave count no width rounds to: a width of 0.
+const int _noWidth = -1 << 30;
+
+final Expando<BoundedMemo<(int, int), BrushTipMask>> _smoothedCache =
+    Expando('brushTipMaskSmoothed');
+
 
 /// A sampled (bitmap) brush tip: a square grayscale alpha mask.
 ///

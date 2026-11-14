@@ -46,10 +46,15 @@ typedef BrushTipNumbers = ({
 ///
 /// An analytic round tip is its [RoundTipProfile] — two ramps and a pixel's
 /// square, read along its radius, the law and its reasons written there.
+///
+/// A picture tip is its picture as the step smooths it
+/// ([brushTipMaskSmoothed]) by the width a round tip's ramp is
+/// ([brushTipEdgeWidth]) — in canvas pixels, so across a texel's share of
+/// them on each of its axes, the minor's pressed by the roundness.
 BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final radius = tip.size / 2.0;
   final isRound = tip.tipShape == BrushTipShape.round;
-  final tipMask = tip.tipMask;
+  final tipMask = _pictureLaid(tip, radius);
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
   final profile = isRound && tipMask == null
       ? RoundTipProfile.of(
@@ -76,6 +81,28 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
     inverseRoundness: turns ? 1.0 / tip.roundness : 1.0,
   );
 }
+
+/// [tip]'s mask as a dab of [radius] reads it: a picture's, smoothed by the
+/// step; any other's as it is.
+BrushTipMask? _pictureLaid(BrushTipNumbers tip, double radius) {
+  final mask = tip.tipMask;
+  if (!tipIsAPicture(mask, tip.tipShape)) {
+    return mask;
+  }
+  final across =
+      brushTipEdgeWidth(tip.edge, radius) * mask!.size / (2.0 * radius);
+  return brushTipMaskSmoothedCached(
+    mask,
+    across: across,
+    down: across / tip.roundness,
+  );
+}
+
+/// Whether a tip of [mask] and [shape] is a picture — not a square baked
+/// into one (`BrushTipStampCache`): its greys are what it holds, not an
+/// edge ([brushDabEdgeLaw]).
+bool tipIsAPicture(BrushTipMask? mask, BrushTipShape shape) =>
+    mask != null && shape != BrushTipShape.square;
 
 BrushDabTipGeometry brushDabTipGeometry(BrushDab dab) => brushTipGeometry((
   size: dab.size,
@@ -110,8 +137,11 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 /// 적용되는거고」 — every brush, an imported one too). ↩️None cut every tip
 /// from the ladder's first day (`f28307f54`, 09-08), and I-50 wrote that
 /// down as the law (`818b07027`) after the user had said a picture is left
-/// alone. What 1~3단계 add on top of a picture is H60-Q1's: till it is
-/// answered they lay it as they did, as it is.
+/// alone. 1~3단계 add their smoothing to the picture before it is sampled
+/// ([brushTipGeometry], H60-Q2 · Q3), so the coverage the sampler reads
+/// is laid as it is at every step here.
+/// ↩️Till 2026-11-15 1~3단계 laid the picture as 없음 did: what they add was
+/// H60-Q1's, unanswered.
 ///
 /// 🚨★★★A RASTER TIP LEFT THE LADDER (board
 /// imported-water-blend-lays-almost-nothing, 2026-10-30, 유저 「표본을
@@ -125,7 +155,7 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 BrushEdgeLaw brushDabEdgeLaw(BrushDab dab) {
   final isSquare = dab.tipShape == BrushTipShape.square;
   final contrast = dab.antiAlias.contrast;
-  if (dab.tipMask != null && !isSquare) {
+  if (tipIsAPicture(dab.tipMask, dab.tipShape)) {
     return (threshold: false, contrast: 1.0);
   }
   if (contrast == null) {

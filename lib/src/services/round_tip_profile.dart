@@ -323,9 +323,7 @@ class _RampPair {
   _RampPair(this.radius, double hardness, BrushTipEdge edge)
     : hardRadius = radius * hardness,
       edgeRim = radius - edge.inset * math.min(1.0, radius / edge.insetReach) {
-    final width =
-        edge.width + edge.widthPerRadius * math.min(radius, edge.widthReach);
-    edgeHard = math.max(0.0, edgeRim - width);
+    edgeHard = math.max(0.0, edgeRim - brushTipEdgeWidth(edge, radius));
     turn = _turn();
   }
 
