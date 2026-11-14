@@ -107,6 +107,9 @@
 #    Surface on C:, neither on the default PATH — and a land that cannot
 #    find cargo refuses rather than skipping. `bash tool/lane.sh crate
 #    <name>` runs the same thing without landing.
+#    🆕AND NOT TWICE (2026-11-14): a profile green on this machine with the
+#    same input is not run again — by `crate`, or by a land after it
+#    (cmd_crate says what the same input is).
 #
 # ⚠️WHAT THIS CANNOT DO FOR YOU: judge a LAW COLLISION. Two lanes that never
 # touch the same file still invent the same law under two names — seven times in
@@ -215,6 +218,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LANES="$ROOT/.claude/worktrees"
 TRUNK=master
+. "$ROOT/tool/machine_folder.sh"
 # THE MIRROR. ⛔Not a second trunk, and `.githooks/pre-push` lets it through
 # ungated precisely because it runs no CI.
 # ↩️Until 2026-10-07 this said 「nothing is ever pulled from it」. 유저 that
@@ -804,6 +808,56 @@ host_triple() {
   rustc -vV | tr -d '\r' | sed -n 's/^host: //p'
 }
 
+# What changing makes a lane pay refusal 8: the crate, its ledger and the
+# fx SDK (crate_gate; the header says why each).
+CRATE_SOURCES=(packages/gpu_engine/rust test/fixtures/fingerprints.json sdk/fx)
+# What the crate's tests read besides, from outside its tree: the movies and
+# the letters' clusters in test/fixtures, the fonts the app ships, and two
+# Dart files a pin holds the Rust to. A green was measured on them too, so
+# they are in its key (crate_input) — and only there: what makes a lane pay
+# is the header's law, not this list's.
+# ⛔A Rust test that reads one more file outside its tree is refused until
+# it is here (a_land_takes_only_what_its_gates_measured_test.dart walks
+# them).
+CRATE_READS=(test/fixtures assets/fonts lib/src/native/qa_tablet_bridge.dart
+  lib/src/services/audio/audio_resample_stream.dart)
+
+# What the crate's tests in the lane at $1 answer to, as one word: this
+# machine (its GPU answers), its toolchain, and what they read as the
+# lane's commit holds it — or nothing while any of that holds an edit nobody
+# committed, for then the commit is not what ran.
+crate_input() {
+  local p="$1" path
+  [ -z "$(git -C "$p" status --porcelain -- "${CRATE_SOURCES[@]}" "${CRATE_READS[@]}")" ] \
+    || return 0
+  {
+    echo "${MACHINE:-trunk}"
+    rustc -vV
+    for path in "${CRATE_SOURCES[@]}" "${CRATE_READS[@]}"; do
+      echo "$path $(git -C "$p" rev-parse -q --verify "HEAD:$path" 2>/dev/null)"
+    done
+  } | git hash-object --stdin
+}
+
+# Where this machine keeps the crate's greens.
+crate_greens() { echo "$MACHINE_FOLDER/crate_greens.tsv"; }
+
+# When the profile $2 was green here with the input $1, and what passed —
+# or nothing.
+crate_green() {
+  [ -n "$1" ] || return 0
+  grep -aF "$1 $2	" "$(crate_greens)" 2>/dev/null | tail -n 1 | cut -f2
+}
+
+# Keeps the profile $2 green with the input $1, $3 having passed. ⛔Only a
+# green: a red is asked again, every time.
+keep_crate_green() {
+  [ -n "$1" ] || return 0
+  mkdir -p "$MACHINE_FOLDER"
+  printf '%s %s\t%s, %s passed\n' "$1" "$2" "$(date '+%Y-%m-%d %H:%M')" "$3" \
+    >>"$(crate_greens)"
+}
+
 # Refusal 8, runnable on its own. The header says why it is there.
 cmd_crate() {
   local name="${1:-}"; [ -n "$name" ] || die "crate needs a name"
@@ -816,6 +870,29 @@ cmd_crate() {
   local log="$p/build/lane-crate.log" profile flag from passed red=
   mkdir -p "$p/build"
   : >"$log"
+  # 🆕THE SAME INPUT, GREEN HERE, IS NOT ASKED AGAIN (관제 2026-11-14, card
+  # a-land-runs-the-crate-tests-the-lane-already-passed-here; 유저 「레인
+  # 보낼때도 검사하고 착지때도 검사하는건가? 비효율적아닌가?」): a lane run
+  # with `crate` before it landed, or a land whose rebase changed nothing
+  # the tests read, asked this GPU the same question twice — the picture
+  # pool's land that day ran both profiles again on a rebase that changed
+  # no Rust. A profile green on this machine with the same input
+  # (crate_input) answers for itself, as the test cache's green does for a
+  # suite; everything else runs as it always did. Another machine's green
+  # answers for nothing here (the header: A STAMP DOES NOT STAND FOR IT).
+  # ⚖️What the input leaves out: the GPU's driver. A driver Windows updated
+  # under a green is not asked until the input changes.
+  local input todo= green
+  input="$(crate_input "$p")"
+  for profile in debug release; do
+    green="$(crate_green "$input" "$profile")"
+    if [ -n "$green" ]; then
+      echo "lane: crate — $profile green here with the same input ($green) — not run again"
+    else
+      todo="$todo $profile"
+    fi
+  done
+  [ -n "$todo" ] || return 0
   # The fx SDK example as WebAssembly, the module the fx tests open on each
   # WebAssembly host (native/fx_sdk_example/Cargo.toml says why it is a
   # crate of its own) — built once, release, for both runs to read (유저
@@ -852,7 +929,7 @@ cmd_crate() {
   # debug, as the GPU engine's CI runs them (.github/workflows/gpu-engine.yml
   # says why) — a gate that named the first red alone refused again, for
   # the next one, once that was fixed.
-  for profile in debug release; do
+  for profile in $todo; do
     flag=; [ "$profile" = release ] && flag=--release
     still_landing
     echo "lane: crate — the GPU engine's tests ($profile)"
@@ -886,6 +963,7 @@ cmd_crate() {
     [ "$passed" -gt 0 ] \
       || die "the GPU engine crate ran no test in $profile — this is refusal 8; the whole log: $log"
     echo "lane: crate — $profile green ($passed passed)"
+    keep_crate_green "$input" "$profile" "$passed"
   done
   [ -z "$red" ] \
     || die "the GPU engine crate's tests are red in$red — this is refusal 8; the whole log: $log"
@@ -1051,8 +1129,7 @@ crate_gate() {
   # sdk/fx: the fx SDK's spec crate and example are the fx tests' source
   # as well (native/fx_plugin and native/fx_sdk_example build them), and a
   # lane that changed them alone ran none (2026-11-07).
-  if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json \
-    sdk/fx; then
+  if lane_touched "$p" "${CRATE_SOURCES[@]}"; then
     cmd_crate "$name"
   fi
 }

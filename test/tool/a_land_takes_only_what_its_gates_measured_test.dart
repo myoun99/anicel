@@ -59,14 +59,14 @@ void main() {
       );
       expect(all, contains(r'crate_gate "$name" "$p"'));
       final crate = codeOf('crate_gate').join('\n');
+      expect(crate, contains(r'lane_touched "$p" "${CRATE_SOURCES[@]}"; then'));
       expect(
-        crate,
+        File('tool/lane.sh').readAsStringSync(),
         contains(
-          r'lane_touched "$p" packages/gpu_engine/rust '
-          'test/fixtures/fingerprints.json',
+          'CRATE_SOURCES=(packages/gpu_engine/rust '
+          'test/fixtures/fingerprints.json sdk/fx)',
         ),
       );
-      expect(crate, contains('    sdk/fx; then'));
       expect(crate, contains(r'cmd_crate "$name"'));
     });
 
@@ -146,6 +146,12 @@ void main() {
     test('🚨the crate\'s tests run in release as well as debug', () {
       final crate = codeOf('cmd_crate');
       expect(at(crate, 'for profile in debug release; do'), isNot(-1));
+      expect(
+        at(crate, r'for profile in $todo; do'),
+        greaterThan(at(crate, 'for profile in debug release; do')),
+        reason: 'each is asked, and whichever this machine has not seen '
+            'green with the same input runs',
+      );
       expect(
         at(crate, r'[ "$profile" = release ] && flag=--release'),
         isNot(-1),
@@ -305,11 +311,11 @@ void main() {
       expect(
         between(
           crateRun,
-          at(crateRun, 'for profile in debug release'),
+          at(crateRun, r'for profile in $todo; do'),
           at(crateRun, 'test --locked --offline --no-fail-fast'),
         ),
         isTrue,
-        reason: 'before each of debug and release',
+        reason: 'before each of debug and release that runs',
       );
 
       // While the crate's run waits for the shared target, in the script
@@ -587,4 +593,96 @@ void main() {
     expect(at(check, 'checkout -- linux macos windows'), before);
     expect(at(check, 'update-index -q --really-refresh'), before);
   });
+
+  // 관제 2026-11-14, a-land-runs-the-crate-tests-the-lane-already-passed-here:
+  // a profile green here with the same input is not run again, so the input
+  // has to be all the crate's tests read — they read a movie, the fonts and
+  // two Dart files from outside the crate's tree.
+  test('⛔what the crate\'s tests read outside its tree is all in what a '
+      'green is kept for, and nothing else is', () {
+    final script = File('tool/lane.sh').readAsStringSync();
+    List<String> words(String name) => RegExp('^$name=\\(([^)]*)\\)', multiLine: true)
+        .firstMatch(script)![1]!
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final kept = [...words('CRATE_SOURCES'), ...words('CRATE_READS')];
+    final read = <String>{};
+    for (final file in _rustSources('packages/gpu_engine/rust')) {
+      final crate = _crateOf(file.parent);
+      for (final line in file.readAsLinesSync()) {
+        if (line.trimLeft().startsWith('//')) continue;
+        for (final literal in _climbingLiteral.allMatches(line)) {
+          final placeholder = RegExp(r'^\{([^}]*)\}/').firstMatch(literal[2]!);
+          // `{checkout}` is .cargo/config.toml's QA_CHECKOUT: the workspace's
+          // folder, which the ledger reads from at any crate's depth.
+          final base = literal[1] != null
+              ? file.parent.path
+              : placeholder?[1] == 'checkout'
+              ? 'packages/gpu_engine/rust'
+              : crate.path;
+          final path = _resolved(
+            base,
+            literal[2]!.substring(placeholder?.end ?? 0),
+          );
+          if (!path.startsWith('packages/gpu_engine/rust/')) read.add(path);
+        }
+      }
+    }
+    expect(read, contains('lib/src/native/qa_tablet_bridge.dart'));
+    expect(
+      [
+        for (final path in read)
+          if (!kept.any((k) => path == k || path.startsWith('$k/'))) path,
+      ],
+      isEmpty,
+      reason: 'a green would answer for a file it was not measured on',
+    );
+    expect(
+      [
+        for (final k in words('CRATE_READS'))
+          if (!read.any((path) => path == k || path.startsWith('$k/'))) k,
+      ],
+      isEmpty,
+      reason: 'a file no test reads any more is no input',
+    );
+  });
+}
+
+/// A string literal that climbs a folder — an `include!`'s or a module's
+/// `#[path]` (group 1) from the source file's own folder, any other from its
+/// crate's.
+final _climbingLiteral = RegExp(
+  r'(include(?:_str|_bytes)?!\(\s*|#\[path\s*=\s*)?"([^"\n]*\.\./[^"\n]*)"',
+);
+
+/// The Rust sources under [root], past the build folders.
+Iterable<File> _rustSources(String root) sync* {
+  for (final entity in Directory(root).listSync()) {
+    final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+    if (entity is Directory && !name.startsWith('target')) {
+      yield* _rustSources(entity.path);
+    } else if (entity is File && name.endsWith('.rs')) {
+      yield entity;
+    }
+  }
+}
+
+/// The folder of the crate [folder] is in: the nearest with a manifest.
+Directory _crateOf(Directory folder) =>
+    File('${folder.path}/Cargo.toml').existsSync()
+    ? folder
+    : _crateOf(folder.parent);
+
+/// [relative] from [base], as a path from the repository's root.
+String _resolved(String base, String relative) {
+  final parts = <String>[];
+  for (final part in '$base/$relative'.replaceAll(r'\', '/').split('/')) {
+    if (part == '..') {
+      parts.removeLast();
+    } else if (part.isNotEmpty && part != '.') {
+      parts.add(part);
+    }
+  }
+  return parts.join('/');
 }

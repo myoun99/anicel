@@ -191,7 +191,8 @@ EOF
 # absent, a crate is not downloaded: offline it fails as cargo does, and
 # online it downloads — which it writes down where no section clears it.
 # When it says nowasm, the machine lacks the WebAssembly target: that
-# build fails as cargo does there, and the tests still pass.
+# build fails as cargo does there, and the tests still pass. When it says
+# redrelease, the tests fail in release alone.
 cat > "$E/bin/cargo" <<'EOF'
 #!/bin/bash
 echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
@@ -220,6 +221,9 @@ if [ "${LANE_TEST_CARGO:-ok}" = nowasm ] && [ "$1" = build ]; then
   exit 101
 fi
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
+if [ "${LANE_TEST_CARGO:-ok}" = redrelease ] && [ "$1" = test ]; then
+  case " $* " in *" --release "*) echo "test grid ... FAILED"; exit 101 ;; esac
+fi
 [ "${LANE_TEST_CARGO:-ok}" = empty ] || echo "test result: ok. 2 passed; 0 failed"
 echo "test result: ok. 0 passed; 0 failed"
 EOF
@@ -257,6 +261,10 @@ for LANE_TEST_DART in "${REAL_FLUTTER%/*}/cache/dart-sdk/bin/dart.exe" \
 done
 export LANE_TEST_DART
 export PATH="$E/bin:$PATH"
+# The machine's folder (tool/machine_folder.sh), the run's own: the crate
+# greens kept there would answer for the next run's scratch commits, which
+# are the same bytes every time.
+export LOCALAPPDATA="$E/cache"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 FAILS=0
 say() { echo; echo "== $*"; }
@@ -289,13 +297,13 @@ mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/hom
 # works out the crates a build takes, with the bracket reading it cuts a
 # cfg by.
 cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" \
-  "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
+  "$(dirname "${BASH_SOURCE[0]}")/machine_folder.sh" "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
   "$(dirname "${BASH_SOURCE[0]}")/source_brackets.dart" "$E/home/tool/"
 # And the packages the app does not depend on, with one to resolve.
 cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
 mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh \
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/machine_folder.sh tool/cargo_turn.sh \
   tool/crates_for_host.dart tool/source_brackets.dart tool/resolve_packages.sh \
   packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
 git -C "$E/home" commit -q -m first
@@ -631,6 +639,50 @@ O=$(LANE_TEST_CARGO=empty out "$E/home" land none)
 has "a crate run that passed no test is refused, though it exits 0" \
   "$O" "ran no test in debug — this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+say "T THE SAME INPUT, GREEN HERE, IS NOT ASKED AGAIN — by a crate run, or by the land after it"
+quiet "$E/home" open twice; mkdir -p "$HW/lane-twice/packages/gpu_engine/rust"
+commit "$HW/lane-twice" packages/gpu_engine/rust/t.wgsl "a kernel tested before it lands"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" crate twice)
+check "a crate run asks this GPU, debug and release" "$(cargo_runs lane-twice)" 2
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" crate twice)
+check "asked again with the same input, it runs none" "$(cargo_runs lane-twice)" 0
+has "and says when it was green, debug" "$O" "debug green here with the same input ("
+has "and release" "$O" "release green here with the same input ("
+check "nor builds the module only the tests open" "$(grep -c 'lane-twice cargo build' "$LANE_TEST_LOG")" 0
+commit "$E/home" moved.txt "the trunk moves on, with no Rust"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land twice)
+has "its land, rebased onto that trunk, lands" "$O" "merged work/twice"
+check "and runs the crate's tests no more" "$(cargo_runs lane-twice)" 0
+quiet "$E/home" open half; mkdir -p "$HW/lane-half/packages/gpu_engine/rust"
+commit "$HW/lane-half" packages/gpu_engine/rust/h.wgsl "a kernel release disagrees with"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_CARGO=redrelease out "$E/home" crate half)
+has "a crate run red in release is refused" "$O" "tests are red in release — this is refusal 8"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" crate half)
+has "asked again, the debug green answers for itself" "$O" "debug green here with the same input ("
+check "and the release red is asked again" "$(grep -c 'lane-half cargo test .*--release' "$LANE_TEST_LOG")" 1
+check "alone" "$(cargo_runs lane-half)" 1
+commit "$HW/lane-half" packages/gpu_engine/rust/h2.wgsl "one more line of Rust"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" crate half)
+check "a line of Rust more is asked again, debug and release" "$(cargo_runs lane-half)" 2
+mkdir -p "$HW/lane-half/test/fixtures"
+commit "$HW/lane-half" test/fixtures/clusters.json "a fixture the crate's tests read"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" crate half)
+check "and so is a file they read outside the crate" "$(cargo_runs lane-half)" 2
+commit "$HW/lane-half" packages/gpu_engine/rust/h3.wgsl "a kernel never asked of this GPU"
+echo "an edit nobody committed" >> "$HW/lane-half/packages/gpu_engine/rust/h3.wgsl"
+quiet "$E/home" crate half
+git -C "$HW/lane-half" checkout -q -- packages/gpu_engine/rust/h3.wgsl
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" crate half)
+check "a run of an edit nobody committed answers for no commit" "$(cargo_runs lane-half)" 2
+quiet "$E/home" drop half
 # A lock of seven crates from the registry and the workspace's own, and a
 # machine that downloaded one of them. Of the six not here, four are built
 # for this machine's platform — cpal; windows-only, which the member
