@@ -245,6 +245,22 @@ void main() {
       );
     });
 
+    test('are read from wherever their bytes start — a float need not start '
+        'where one may', () {
+      final bytes = encodeConform(
+        samples: wobble(5000 * 2),
+        channels: 2,
+        sampleRate: 48000,
+        bucketsPerSecond: 80,
+      );
+      final head = ConformHeader.parse(bytes);
+      final trailer = Uint8List.sublistView(bytes, head.peaksOffset);
+      // One byte in, so the floats start where none may.
+      final shifted = Uint8List(trailer.length + 1)..setAll(1, trailer);
+      final peaks = head.peaksFrom(Uint8List.sublistView(shifted, 1));
+      expect(peaks.lanes, head.peaksFrom(Uint8List.fromList(trailer)).lanes);
+    });
+
     test('a conform cut short of them does not read them', () {
       final bytes = conform(frames: 5000);
       final cut = Uint8List.sublistView(bytes, 0, bytes.length - 4);
