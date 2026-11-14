@@ -56,6 +56,10 @@ FrameInk? inkOfFrame(GpuExport export, GpuShown frame) {
 /// [height] — or null where it names every one. [clear] is a bit a pixel,
 /// set where the pixel is clear: pixel i is bit i % 8 of byte i ~/ 8, low
 /// bit first, row after row with nothing between ([GpuExport.clear]).
+///
+/// ⛔Not `inkBoundsOfWords`, the box a picture's own pixels give: those
+/// pixels are what this box is found to spare reading — of a frame only a
+/// bit a pixel crosses.
 DirtyRegion? inkBoxOf(Uint8List clear, int width, int height) {
   final pixels = width * height;
   var (left, top, right, bottom) = (width, height, -1, -1);

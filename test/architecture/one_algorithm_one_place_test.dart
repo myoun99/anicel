@@ -846,8 +846,21 @@ import '../../tool/refactor/clone_scan.dart';
 /// with the grid's own average (it draws its picture a cell a byte).
 /// 🔬`clones.dart` on the lane over master (`b2f068f57`, at 82): those two
 /// gone, none added.
+/// 80 → 81 (2026-11-14, the-attach-row-bake-test-waits-a-gpu-read-a-frame-
+/// under-load). 🔬`clones.dart` on the lane over master (`b61324025`, at
+/// 80): one added, none gone —
+///
+///     43 tokens
+///       lib/src/services/canvas_flood_fill.dart  _colorStampDab
+///       lib/src/ui/timeline/baked_frame_ink.dart  inkBoxOf
+///
+/// A candidate, not a clone: the same walk over a mask — skip the empty,
+/// act on the rest — with two algorithms in it. A fill stamps its colour
+/// where the mask has coverage; a bake grows the box of a frame's ink where
+/// its clear mask names none. ⛔Nothing to merge: the run is the loop's
+/// head, and what each does after it is its own.
 void main() {
-  const ceiling = 80;
+  const ceiling = 81;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

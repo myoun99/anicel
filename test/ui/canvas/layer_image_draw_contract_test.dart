@@ -383,7 +383,12 @@ void main() {
 /// **19** on 2026-11-13 (the-flutter-fx-chain-is-a-second-chain): −4 in
 /// canvas/subtree_image_composite — a chain's steps, its pictures and its
 /// buffers went with the Flutter chain; the engine runs a row's chain.
-const int _knownRawDraws = 19;
+/// **18** on 2026-11-14 (the-attach-row-bake-test-waits-a-gpu-read-a-
+/// frame-under-load): −1 in timeline/merge_layer_rows — a block merge's
+/// cels are stacked on the engine as the canvas stacks rows
+/// (`ExportFrameRenderer.frameOfCels`), not drawn one over another on a
+/// Flutter canvas.
+const int _knownRawDraws = 18;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'

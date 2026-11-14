@@ -134,6 +134,13 @@ void main() {
           'a block the copy found blank hangs in a synced row\'s cel as a '
           'picture with nothing on it — no text to lose (F-545)',
     ),
+    'lib/src/ui/timeline/merge_layer_rows.dart': (
+      count: 1,
+      why:
+          'a bake whose frame holds no ink lays a cel with nothing on it, '
+          'as `layCelPicture` does of a picture that lands nowhere — the '
+          'texts it was drawn of are pixels of that frame, and none show',
+    ),
     'lib/src/native/engine_letters.dart': (
       count: 1,
       why:
@@ -218,7 +225,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 25);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 26);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '
