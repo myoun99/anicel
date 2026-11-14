@@ -3,13 +3,14 @@
 // is the engine's `crc32fast`, folded a slice at a time. ↩️It was a Dart
 // table loop a byte at a time beside it.
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show fingerprintBytes;
 
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+
+import '../../helpers/dart_sources.dart';
 
 /// [length] bytes no two neighbouring runs of which repeat.
 Uint8List _pattern(int length) => Uint8List.fromList([
@@ -57,17 +58,21 @@ void main() {
     );
   });
 
+  test('a length past the bytes is refused, never read past', () {
+    expect(
+      () => anicelCrc32Update(anicelCrc32Start, Uint8List(4), 5),
+      throwsRangeError,
+    );
+  });
+
   test('⛔no CRC table of the app\'s own in its Dart', () {
     final tables = [
-      for (final root in ['lib', 'packages/gpu_engine/lib'])
-        for (final file in Directory(root).listSync(recursive: true))
-          if (file is File &&
-              file.path.endsWith('.dart') &&
-              file
-                  .readAsStringSync()
-                  .toLowerCase()
-                  .contains('0xedb88320'))
-            file.path,
+      for (final file in [
+        ...dartFilesUnder('lib'),
+        ...dartFilesUnder('packages/gpu_engine/lib'),
+      ])
+        if (file.readAsStringSync().toLowerCase().contains('0xedb88320'))
+          file.path,
     ];
     expect(tables, isEmpty);
   });
