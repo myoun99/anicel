@@ -228,13 +228,19 @@ void main() {
       final here = (await direct.open(movie))!;
       final cut = cutOf(here.info);
       final fromHere = await direct.cutFrame(here.token, 3, tileCutOf(cut));
+      // Read before anything else is asked of the decoder: the next call
+      // says its own.
+      final hereSaid = await direct.lastError();
       await direct.close(here.token);
 
       final worker = IsolateVideoDecodeBackend();
       final there = (await worker.open(movie))!;
       final fromThere = await worker.cutFrame(there.token, 3, tileCutOf(cut));
+      final thereSaid = await worker.lastError();
       await worker.close(there.token);
 
+      expect(fromHere, isNotNull, reason: 'cut here: $hereSaid');
+      expect(fromThere, isNotNull, reason: 'cut on the worker: $thereSaid');
       expectSameCel(
         laidCelSurface(laidCelOf(cut.layout, fromHere!)),
         laidCelSurface(laidCelOf(cut.layout, fromThere!)),
