@@ -1077,6 +1077,16 @@ void main() {
   /// and the radius floor. 🔬`clean_code_diff` against master
   /// (`b2f068f57`) names those. ⛔Not bundled to fit: the arguments
   /// are what the contracts it carries are stated in.
+  ///
+  /// ⚠️449 → 450 on 2026-11-14 under the same ceiling, one named as the
+  /// rule above asks (F-586 — 유저 「포인트별로 좌표 둔다거나」): `_boxNumber`
+  /// (six) is the one number box the Transform tool's settings show the
+  /// box's numbers in — an affine value's, and each warp point's coordinate
+  /// (`_WarpPointList`): the channel a scrub announces its one step on, the
+  /// box's key, name and text, and what a scrub and a typed number do.
+  /// 🔬`clean_code_diff` against master (`d8b474794`) names that one.
+  /// ⛔Not bundled to fit: a scrub and a typed number are two answers, and
+  /// the affine's and a point's differ in both.
   const wideSignatures = 451;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
