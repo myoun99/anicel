@@ -25,13 +25,16 @@
 //! settings and Android's formats offer no sRGB one. The bytes are the
 //! canvas's own values all the same: this law's own reader reads them back
 //! as they are, and so does Media Foundation's, the primaries named right.
-//! 🔬Measured on Surface (2026-11-14, `tests/decode.rs`): Windows' writer
-//! named the primaries SMPTE_C, which its muxer writes as 8 — generic
-//! film — and with BT.709's transfer named beside them its reader came
-//! back 16 brighter in the darks, converting from those primaries; with
-//! sRGB's transfer it did not. Named SMPTE170M (6), BT.709's transfer
-//! reads back within 3 with the reader asked nothing. ↩️So Windows' writer
-//! named sRGB's transfer for a day. Android's writer names them
+//! 🔬WHAT BROKE, ONE CAUSE ON TWO MACHINES (2026-11-14, `tests/decode.rs`):
+//! Windows' writer named the primaries SMPTE_C, which its muxer writes as
+//! 8 — generic film. On Surface (Intel) its reader then came back 16
+//! brighter in the darks wherever BT.709's transfer was named beside
+//! them, converting from those primaries; on the main PC (NVIDIA RTX
+//! 4080) it let the whole colour description go, whatever the transfer,
+//! and read a 1920×1080 movie as BT.709's matrix — green +13. Named
+//! SMPTE170M (6), the four read back within 3 on both, the reader asked
+//! nothing. ↩️So Windows' writer named sRGB's transfer for a day — which
+//! hid the first and not the second. Android's writer names them
 //! too since that day (it had named none — an HD movie it wrote read as
 //! BT.709 on Windows); ⚠️no device read one back where this was measured.
 

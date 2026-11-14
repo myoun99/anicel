@@ -218,9 +218,11 @@ fn video_type(subtype: &GUID, bitrate: Option<u32>, width: i32, height: i32, job
         // 1920×1080 one read as BT.709 — green 200 came back 173. With all
         // four, within 3 (`tests/decode.rs`). SMPTE C's primaries are
         // SMPTE170M here: named SMPTE_C, the muxer wrote 8 — generic film —
-        // in the file's `colr` (export tests), and beside BT.709's transfer
-        // the reader converted from those, darks 16 brighter. ↩️So the
-        // transfer was sRGB's for a day.
+        // in the file's `colr` (export tests), and the readers took those
+        // two ways: Surface's (Intel) converted from them beside BT.709's
+        // transfer, darks 16 brighter; the main PC's (NVIDIA) dropped the
+        // colour named and read HD as BT.709's matrix, green +13, whatever
+        // the transfer. ↩️So the transfer was sRGB's for a day.
         let _ = media_type.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601.0 as u32);
         let _ = media_type.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32);
         let _ = media_type.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE170M.0 as u32);
