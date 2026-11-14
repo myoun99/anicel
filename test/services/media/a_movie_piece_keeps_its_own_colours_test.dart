@@ -26,9 +26,11 @@ void main() {
     deleteAfterSessionEnds(directory);
     String at(String name) =>
         '${directory.path}${Platform.pathSeparator}$name';
-    // BT.709 studio, as a camera names its pictures: not the app's law.
-    const bt709 = (primaries: 1, transfer: 1, matrix: 1, range: 0);
-    if (!writeEncodedMovie(at('source.mp4'), frames: 8, colours: bt709)) {
+    // As a PAL camera names its pictures — its primaries, BT.709's
+    // transfer, BT.601's matrix, studio range: not the app's law, and each
+    // a code of its own, so none can be read for another.
+    const pal = (primaries: 5, transfer: 1, matrix: 6, range: 0);
+    if (!writeEncodedMovie(at('source.mp4'), frames: 8, colours: pal)) {
       return;
     }
 
@@ -50,7 +52,7 @@ void main() {
     final piece = decoder.openNv12Document(at('piece.mp4'));
     expect(piece, isNotNull, reason: decoder.lastError);
     addTearDown(() => decoder.closeDocument(piece!));
-    expect(piece!.colours, bt709, reason: 'the movie named BT.709');
+    expect(piece!.colours, pal, reason: 'what the movie named');
     final (width, height) = (piece.info.width, piece.info.height);
     final frame = Uint8List(piece.frameBytes);
     for (var index = 0; index < 4; index += 1) {
