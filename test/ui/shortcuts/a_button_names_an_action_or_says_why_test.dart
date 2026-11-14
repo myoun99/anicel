@@ -159,6 +159,9 @@ const ledger = <String, Why>{
   // and runs nothing.
   "brush/brush_settings_panel.dart | 'brush-detail-button'":
       Why.aSecondLevel,
+  // The tool size rack's ＋ (I-170): it opens the number pad on the size in
+  // hand and runs nothing — the rack takes what the pad's ✓ hands back.
+  'panels/tool_size_preset_panel.dart | addKey': Why.aSecondLevel,
 
   // ── IN A WINDOW ─────────────────────────────────────────────────────
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,
@@ -247,6 +250,9 @@ const ledger = <String, Why>{
   "timesheet_tab_host.dart | 'timesheet-format-button'": Why.declined,
   "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'":
       Why.declined,
+  // The tool size rack's delete (I-170, 2026-11-14): a button inside a
+  // panel, as the pool's import above is — F-580's 「패널 안 항목」.
+  'panels/tool_size_preset_panel.dart | deleteKey': Why.declined,
 };
 
 void main() {
