@@ -26,11 +26,10 @@ List<List<CanvasPoint>> pixelRunContours(
   if (width <= 0 || rows.isEmpty) {
     return <List<CanvasPoint>>[];
   }
-  final edges = _boundaryEdges(rows, width);
-  CanvasPoint at(int v) => CanvasPoint(
-    x: (left + v % (width + 1)).toDouble(),
-    y: (top + v ~/ (width + 1)).toDouble(),
-  );
+  final laid = _boundaryEdges(rows, width);
+  final edges = _EdgeTable.of(laid, width: width, lines: rows.length + 1);
+  CanvasPoint at(int x, int y) =>
+      CanvasPoint(x: (left + x).toDouble(), y: (top + y).toDouble());
   final contours = <List<CanvasPoint>>[];
   // Every vertex in the order its first edge was laid, walked from for as
   // long as it still has an edge — the very starts the walk always took,
@@ -38,21 +37,28 @@ List<List<CanvasPoint>> pixelRunContours(
   // before each contour: a removed key kept its place in the map's order,
   // so every ask walked past every vertex already consumed — quadratic in
   // the outline (🔬I-160, a 4K range with 5000 small holes: 730 ms).
-  for (final start in edges.starts) {
-    while (edges.has(start)) {
-      contours.add(_closedContour(edges, start, at));
+  for (var edge = 0; edge < laid.length; edge += 1) {
+    final line = laid.ys[edge];
+    final start = edges.placeFirstLaidBy(edge, line);
+    if (start < 0) {
+      continue;
+    }
+    while (edges.hasAt(start, line)) {
+      contours.add(_closedContour(edges, laid.xs[edge], line, at));
     }
   }
   return contours;
 }
 
-/// The contour walked from [start] ([_walkContour]), its join merged.
+/// The contour walked from vertex ([x], [y]) ([_walkContour]), its join
+/// merged.
 List<CanvasPoint> _closedContour(
   _EdgeTable edges,
-  int start,
-  CanvasPoint Function(int vertex) at,
+  int x,
+  int y,
+  CanvasPoint Function(int x, int y) at,
 ) {
-  final contour = _walkContour(edges, start, at);
+  final contour = _walkContour(edges, x, y, at);
   // ⚠️And once more AROUND the join. The walk starts wherever the edge
   // map happened to hand it a vertex, which is usually the middle of a
   // straight run, and the segment that closes the contour is implied
@@ -103,10 +109,8 @@ List<CanvasPoint> _closedContour(
 /// ↩️A pixel's edge each, every pixel along a stretch a vertex: an
 /// inverse's outline was some twenty thousand edges to lay and walk (L2e,
 /// board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
-_EdgeTable _boundaryEdges(List<List<int>> rows, int width) {
-  final edges = _EdgeTable(width + 1);
-  void edge(int x, int y, int way, int span) =>
-      edges.add(y * (width + 1) + x, way, span);
+_LaidEdges _boundaryEdges(List<List<int>> rows, int width) {
+  final edges = _LaidEdges();
 
   for (var y = 0; y < rows.length; y += 1) {
     final above = _RunCursor(y > 0 ? rows[y - 1] : const []);
@@ -123,13 +127,13 @@ _EdgeTable _boundaryEdges(List<List<int>> rows, int width) {
           end,
           math.min(above.changesAfter(x), below.changesAfter(x)),
         );
-        if (!up) edge(x, y, _right, to - x);
-        if (x == end - 1) edge(x + 1, y, _down, 1);
-        if (!down) edge(x + 1, y + 1, _left, 1);
-        if (x == start) edge(x, y + 1, _up, 1);
+        if (!up) edges.add(x, y, _right, to - x);
+        if (x == end - 1) edges.add(x + 1, y, _down, 1);
+        if (!down) edges.add(x + 1, y + 1, _left, 1);
+        if (x == start) edges.add(x, y + 1, _up, 1);
         if (to - 1 > x) {
-          if (to == end) edge(to, y, _down, 1);
-          if (!down) edge(to, y + 1, _left, to - 1 - x);
+          if (to == end) edges.add(to, y, _down, 1);
+          if (!down) edges.add(to, y + 1, _left, to - 1 - x);
         }
         x = to;
       }
@@ -149,125 +153,181 @@ const _down = 1;
 const _left = 2;
 const _up = 3;
 
-/// The boundary's edges in one flat table: per vertex, the ways its edges
-/// go as a stack — the last laid is the first taken, as the walk always
-/// took them — and the vertices in the order their first edge was laid
-/// ([starts]). A vertex of a pixel boundary has at most two edges out (two
-/// pixels touching only at a corner), so both fit beside it in its slot.
-///
-/// ↩️A map of a list per vertex until I-160 walked a fill's range with it:
-/// 🔬a 4K range with 20000 small holes spent 650–730 ms on the outline
-/// (now 210–280; 5000 holes, 95–165 → 26–42), most of it on where the
-/// lookups landed rather than on the lists. So one
-/// read finds a vertex and its edges, and a slot is found from the vertex
-/// in blocks of sixteen along a row: a contour, whose vertices sit a pixel
-/// apart, keeps landing in the slots it just used, and a long straight
-/// edge still spreads over the table rather than piling into one run of
-/// slots (🔬the vertex itself as the slot: a plain 4K range took 20 ms
-/// instead of 2).
-final class _EdgeTable {
-  _EdgeTable(int stride) : steps = [1, stride, -1, -stride];
+/// How far an edge's every step moves its vertex, across and down, each
+/// way ([_right], [_down], [_left], [_up]).
+const _acrossBy = [1, 0, -1, 0];
+const _downBy = [0, 1, 0, -1];
 
-  /// How far each way ([_right], [_down], [_left], [_up]) moves a vertex.
-  final List<int> steps;
+/// The boundary's edges in the order they were laid: the vertex each
+/// starts from — its column and line — and its way and span.
+final class _LaidEdges {
+  Int32List xs = Int32List(1024);
+  Int32List ys = Int32List(1024);
+
+  /// The way in bits 0–1, the span — in vertices — above them.
+  Int32List ways = Int32List(1024);
 
   /// How many edges were laid.
   int length = 0;
 
-  /// Open addressing by vertex: per slot, the vertex (-1 for none), then
-  /// its untaken edges — the count in bits 4 and up, the first edge's way
-  /// in bits 0–1 and the second's in bits 2–3 — then each one's span, in
-  /// vertices.
-  Int32List _slots = Int32List(4 << 10)..fillRange(0, 4 << 10, -1);
-  int _bits = 10;
-  int _used = 0;
-
-  /// The vertices in the order their first edge was laid.
-  final List<int> starts = [];
-
-  void add(int from, int way, int span) {
-    var slot = _slotOf(from);
-    if (_slots[slot] < 0) {
-      if ((_used + 1) * 2 > 1 << _bits) {
-        _grow();
-        slot = _slotOf(from);
-      }
-      _slots[slot] = from;
-      _slots[slot + 1] = 0;
-      _used += 1;
-      starts.add(from);
+  void add(int x, int y, int way, int span) {
+    if (length == xs.length) {
+      xs = _grown(xs);
+      ys = _grown(ys);
+      ways = _grown(ways);
     }
-    final held = _slots[slot + 1];
-    final count = held >> 4;
-    // Two out is a corner two pixels share; a third would mean two runs
-    // that touch, which [pixelRunContours]' rows never hold.
-    assert(count < 2, 'a third edge out of vertex $from');
-    _slots[slot + 1] = (count + 1) << 4 | (held & 15) | way << (count * 2);
-    _slots[slot + 2 + count] = span;
+    xs[length] = x;
+    ys[length] = y;
+    ways[length] = span << 2 | way;
     length += 1;
   }
 
-  /// Whether an edge from [vertex] is still untaken.
-  bool has(int vertex) {
-    final slot = _slotOf(vertex);
-    return _slots[slot] >= 0 && _slots[slot + 1] >> 4 > 0;
+  static Int32List _grown(Int32List list) =>
+      Int32List(list.length * 2)..setRange(0, list.length, list);
+}
+
+/// The laid edges found by the vertex they start from: sorted by line, then
+/// column, then the order they were laid — a counting sort each, so a
+/// vertex's edges sit side by side, the last laid last, the first taken as
+/// the walk always took them — and a vertex found in its line by halving.
+/// A vertex of a pixel boundary has at most two edges out (two pixels
+/// touching only at a corner).
+///
+/// ↩️A table hashed by vertex until L2e — I-160 had made it one flat table
+/// of open addressing from a map of a list per vertex (🔬a 4K range with
+/// 20000 small holes: 650–730 ms → 210–280) — and its lookups were three
+/// quarters of laying a jagged outline (🔬a 12000-point lasso: 2.5 ms of
+/// 10.4) and slowed as each slot grew to hold a span (board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+final class _EdgeTable {
+  _EdgeTable._(this.length, this._lineStarts, this._xs, this._ways, this._at);
+
+  factory _EdgeTable.of(
+    _LaidEdges laid, {
+    required int width,
+    required int lines,
+  }) {
+    final length = laid.length;
+    final (byColumn, _) = _sortedBy(laid.xs, length, width + 1, null);
+    final (sorted, lineStarts) = _sortedBy(laid.ys, length, lines, byColumn);
+    final xs = Int32List(length);
+    final ways = Int32List(length);
+    final at = Int32List(length);
+    for (var place = 0; place < length; place += 1) {
+      final edge = sorted[place];
+      xs[place] = laid.xs[edge];
+      ways[place] = laid.ways[edge];
+      at[edge] = place;
+    }
+    return _EdgeTable._(length, lineStarts, xs, ways, at);
   }
 
-  /// Takes the last untaken edge laid from [vertex] — the way it goes in
-  /// bits 0–1 and its span above them, or -1 when none is left.
-  int take(int vertex) {
-    final slot = _slotOf(vertex);
-    if (_slots[slot] < 0) {
+  /// How many edges were laid.
+  final int length;
+
+  /// Where each line's places begin, and a line past the last ends them.
+  final Int32List _lineStarts;
+
+  /// Per place: the column its edge starts at, and its way and span
+  /// ([_LaidEdges.ways]) — -1 once taken.
+  final Int32List _xs;
+  final Int32List _ways;
+
+  /// Per laid edge, its place.
+  final Int32List _at;
+
+  /// [edge]'s place, when it is the first laid from its vertex on [line];
+  /// -1 when one was laid from there before it.
+  int placeFirstLaidBy(int edge, int line) {
+    final place = _at[edge];
+    return place == _lineStarts[line] || _xs[place - 1] != _xs[place]
+        ? place
+        : -1;
+  }
+
+  /// Whether an edge from the vertex whose first place is [place], on
+  /// [line], is still untaken.
+  bool hasAt(int place, int line) =>
+      _ways[place] >= 0 || _paired(place, line) && _ways[place + 1] >= 0;
+
+  /// Takes the last untaken edge laid from vertex ([x], [line]) — its way
+  /// and span ([_LaidEdges.ways]) — or -1 when none is left.
+  int take(int x, int line) {
+    final place = _placeOf(x, line);
+    if (place < 0) {
       return -1;
     }
-    final held = _slots[slot + 1];
-    final count = held >> 4;
-    if (count == 0) {
-      return -1;
-    }
-    _slots[slot + 1] = (count - 1) << 4 | (held & 15);
-    return _slots[slot + 1 + count] << 2 | held >> ((count - 1) * 2) & 3;
+    return _paired(place, line) && _ways[place + 1] >= 0
+        ? _taken(place + 1)
+        : _taken(place);
   }
 
-  /// [vertex]'s slot (its index in [_slots]), or the empty slot it would
-  /// take: its block of sixteen scattered by a multiplicative hash, its
-  /// place in the block kept.
-  int _slotOf(int vertex) {
-    final mask = (1 << _bits) - 1;
-    final block = ((vertex >> 4) * 0x9E3779B1 & 0xFFFFFFFF) >> (32 - _bits);
-    var slot = (block ^ (vertex & 15)) & mask;
-    while (true) {
-      final there = _slots[slot * 4];
-      if (there < 0 || there == vertex) {
-        return slot * 4;
-      }
-      slot = (slot + 1) & mask;
-    }
+  int _taken(int place) {
+    final way = _ways[place];
+    _ways[place] = -1;
+    return way;
   }
 
-  void _grow() {
-    final slots = _slots;
-    _bits += 1;
-    _slots = Int32List(4 << _bits)..fillRange(0, 4 << _bits, -1);
-    for (var slot = 0; slot < slots.length; slot += 4) {
-      final vertex = slots[slot];
-      if (vertex >= 0) {
-        final into = _slotOf(vertex);
-        _slots.setRange(into, into + 4, slots, slot);
+  /// Whether the vertex whose first place is [place] has a second edge.
+  bool _paired(int place, int line) =>
+      place + 1 < _lineStarts[line + 1] && _xs[place + 1] == _xs[place];
+
+  /// The first place of vertex ([x], [line]), or -1 when no edge starts
+  /// there.
+  int _placeOf(int x, int line) {
+    final end = _lineStarts[line + 1];
+    var low = _lineStarts[line];
+    var high = end;
+    while (low < high) {
+      final middle = (low + high) >> 1;
+      if (_xs[middle] < x) {
+        low = middle + 1;
+      } else {
+        high = middle;
       }
     }
+    return low < end && _xs[low] == x ? low : -1;
   }
 }
 
-/// One closed contour of [edges], walked from [start] and consumed as it
-/// goes — [at] is a vertex's canvas point.
+/// [order] — laid edges, or every one in the order laid when null — sorted
+/// stably by their [keys], each below [range]: the edges sorted, and where
+/// each key's begin, a key past the last ending them.
+(Int32List, Int32List) _sortedBy(
+  Int32List keys,
+  int length,
+  int range,
+  Int32List? order,
+) {
+  final starts = Int32List(range + 1);
+  for (var edge = 0; edge < length; edge += 1) {
+    starts[keys[edge] + 1] += 1;
+  }
+  for (var key = 0; key < range; key += 1) {
+    starts[key + 1] += starts[key];
+  }
+  final next = Int32List.fromList(starts);
+  final sorted = Int32List(length);
+  for (var place = 0; place < length; place += 1) {
+    final edge = order == null ? place : order[place];
+    final key = keys[edge];
+    sorted[next[key]] = edge;
+    next[key] += 1;
+  }
+  return (sorted, starts);
+}
+
+/// One closed contour of [edges], walked from vertex ([startX], [startY])
+/// and consumed as it goes — [at] is a vertex's canvas point.
 List<CanvasPoint> _walkContour(
   _EdgeTable edges,
-  int start,
-  CanvasPoint Function(int vertex) at,
+  int startX,
+  int startY,
+  CanvasPoint Function(int x, int y) at,
 ) {
-  var current = start;
-  final contour = <CanvasPoint>[at(start)];
+  var x = startX;
+  var y = startY;
+  final contour = <CanvasPoint>[at(x, y)];
   // ⚠️STRAIGHT RUNS COLLAPSE. The walk steps a side a pixel's edge at a
   // time, so a plain rectangle would arrive with thousand-point sides and
   // be rebuilt into a `Path` on every animation tick. Merging while
@@ -279,35 +339,37 @@ List<CanvasPoint> _walkContour(
   // was some twenty thousand points made for eight kept (L2e, board
   // `a-selection-mask-is-built-on-the-cpu-at-every-move`).
   var lastWay = -1;
-  // Whether the contour's last point is behind [current] on a straight run.
+  // Whether the contour's last point is behind (x, y) on a straight run.
   var behind = false;
   // ⚠️Bounded by the edge count rather than trusted to close: a
   // malformed walk must end, not hang the paint thread.
   var guard = edges.length + 8;
   while (guard-- > 0) {
-    final taken = edges.take(current);
+    final taken = edges.take(x, y);
     if (taken < 0) {
       break;
     }
     final way = taken & 3;
-    final next = current + edges.steps[way] * (taken >> 2);
-    if (next == start) {
+    final nextX = x + _acrossBy[way] * (taken >> 2);
+    final nextY = y + _downBy[way] * (taken >> 2);
+    if (nextX == startX && nextY == startY) {
       break;
     }
     if (way == lastWay) {
       behind = true;
     } else {
       if (behind) {
-        contour[contour.length - 1] = at(current);
+        contour[contour.length - 1] = at(x, y);
         behind = false;
       }
-      contour.add(at(next));
+      contour.add(at(nextX, nextY));
     }
     lastWay = way;
-    current = next;
+    x = nextX;
+    y = nextY;
   }
   if (behind) {
-    contour[contour.length - 1] = at(current);
+    contour[contour.length - 1] = at(x, y);
   }
   return contour;
 }
