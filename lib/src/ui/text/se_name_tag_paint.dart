@@ -82,9 +82,18 @@ typedef SeNameTagLaid = ({
 /// — two fifths.
 const double _deliveryShare = 0.4;
 
-/// How thick the rule between the name and the delivery is, as a share of
-/// the name's letters.
-const double _ruleShare = 0.06;
+/// How large the name's letters are for each pixel of the rule between the
+/// name and the delivery.
+///
+/// 🗣️I-173-Q5 (유저 2026-11-14, of a black rule of 2 px, a black rule of
+/// 1 px, a gap and a white rule drawn on the default tag for the choice):
+/// 「검정 가는 선 (1 px)」 — a pixel on the default's 34 px letters
+/// (`SeNameTag.defaultStyle`), and the same share of larger or smaller
+/// ones. ⏳(밤 규칙) Not a pixel at every size: every part of the tag is a
+/// share of the name's letters as they are drawn ([_deliveryShare]), so a
+/// tag set larger or shrunk to its budget is the same tag. ↩️0.06 of the
+/// letters — 2 px on the default's.
+const double _lettersPerRulePixel = 34;
 
 /// The rule's colour.
 ///
@@ -160,7 +169,9 @@ SeNameTagLaid _laidOf(
       _ => null,
     };
     final lettered = typed == null ? null : at(typed, anchor);
-    final ruled = lettered == null ? 0.0 : measured.letterSize * _ruleShare;
+    final ruled = lettered == null
+        ? 0.0
+        : measured.letterSize / _lettersPerRulePixel;
     final storey = ruled + (lettered?.textSize.height ?? 0);
     name = at(
       tag.content,

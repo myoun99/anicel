@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_line_type.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart'
@@ -159,6 +160,32 @@ void main() {
     expect(
       both.name!.box.center.dy,
       closeTo(anchor.dy - storey / 2, 0.001),
+    );
+  });
+
+  test('the rule is a pixel thick on the default name\'s letters — and the '
+      'same share of the name as it is DRAWN, shrunk to its budget', () {
+    final tag = tagFor(SeLineType.off);
+    expect(tag.content.style.fontSize, SeNameTag.defaultStyle.fontSize);
+    expect(
+      laid(tag).rule!.height,
+      closeTo(1, 0.001),
+      reason: '「검정 가는 선 (1 px)」 (I-173-Q5)',
+    );
+
+    final shrunk = laid(
+      ResolvedSeNameTag(
+        layerId: tag.layerId,
+        content: tag.content,
+        delivery: tag.delivery,
+        widthBudget: 40,
+        shot: tag.shot,
+      ),
+    );
+    expect(shrunk.name!.letterSize, lessThan(tag.content.style.fontSize));
+    expect(
+      shrunk.rule!.height,
+      closeTo(shrunk.name!.letterSize / tag.content.style.fontSize, 0.001),
     );
   });
 
