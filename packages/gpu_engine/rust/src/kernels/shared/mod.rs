@@ -62,8 +62,8 @@ use crate::device::{CompilerTurn, Engine, KernelSource};
 
 pub(crate) use counted::Counted;
 pub(crate) use dispatch::{
-    Encoded, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
-    whole, words_buffer,
+    Encoded, aligned, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room, tiles_a_page,
+    tiles_a_pass, whole, words_buffer,
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
 pub(crate) use pages::{NO_PAGE, Own, Pages, page_table, runs};

@@ -493,6 +493,11 @@ pub(crate) struct Placed<'a> {
 /// (to_tiles.wgsl) — so what an earlier run left is nothing to the next.
 /// And a run is one submit, so two runs' uses of it never cross.
 ///
+/// The frame grid's pass and the wave's keep one each of their own, a
+/// batch's words and streams on it (`GridTile::encode`): a batch writes
+/// it on the queue ahead of its one submit, so it cannot share the
+/// composite's, which a run's submit between would see written over.
+///
 /// ↩️Made for each run and dropped with it till 2026-11-13: 15 to 22 MiB a
 /// picture of S5_BA cut 352, each through the device's allocator (🔬캔버스
 /// 베이스, H57 — what [`crate::kernels::pool::Pictures`] says of the stops).
@@ -501,13 +506,13 @@ pub(crate) struct Work(Arc<Mutex<Option<wgpu::Buffer>>>);
 
 impl Work {
     /// A work buffer of `size` bytes at least.
-    fn of(&self, engine: &Engine, size: u64) -> wgpu::Buffer {
+    pub(crate) fn of(&self, engine: &Engine, size: u64) -> wgpu::Buffer {
         let mut kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(work) = kept.as_ref().filter(|work| work.size() >= size) {
             return work.clone();
         }
         let work = engine.device().create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite work"),
+            label: Some("work"),
             size,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC

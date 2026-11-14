@@ -19,8 +19,9 @@ mod tests;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::composite::Work;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, encode_on, flat, pipeline, storage_format, whole,
+    Encoded, ISQRT_WGSL, aligned, encode_on, fits, flat, pipeline, range, storage_format,
 };
 use crate::kernels::timeline::LAID_WGSL;
 
@@ -84,61 +85,45 @@ impl GridPicture {
     }
 }
 
-/// The atlas a stream's letters are read from: `bytes`, `width` across
-/// and `height` down, row by row — None for one of no side, and None with
-/// the last error for one past what the device makes or one its bytes do
-/// not match.
+/// How far across and down the letters' atlas is ([`GridTile::put_letters`]):
+/// one R8 square a grid pass holds for as long as it is, its words put on
+/// it once each and read by every tile drawn after.
 ///
-/// ↩️It was laid here from the words and their places (23c70b786): the
-/// tile store lays its atlas itself, as the C rasterizer read one
-/// (timeline_grid_tile_store.dart `_setWords`), and keeps its words as the
-/// app's bytes — so the engine takes that atlas, and one place lays it.
-pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -> Option<Option<wgpu::Texture>> {
-    if width == 0 || height == 0 {
-        return Some(None);
-    }
-    let most = engine.device().limits().max_texture_dimension_2d;
-    if width > most || height > most {
-        return fail(format!("a letters' atlas {width} × {height}: a side is 1 to {most} pixels"));
-    }
-    if bytes.len() as u64 != u64::from(width) * u64::from(height) {
-        return fail(format!("a letters' atlas {width} × {height} of {} bytes", bytes.len()));
-    }
-    let size = wgpu::Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-    };
-    let texture = engine.device().create_texture(&wgpu::TextureDescriptor {
-        label: Some("grid atlas"),
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::R8Uint,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-    engine.queue.write_texture(
-        texture.as_image_copy(),
-        bytes,
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(width),
-            rows_per_image: Some(height),
-        },
-        size,
-    );
-    Some(Some(texture))
+/// ⏳Mine (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q2,
+/// 유저 2026-11-15 「(라)」 — the engine holds the atlas for the session,
+/// not one a tile): never grown, so its 4 MiB is all it ever holds (관제
+/// 06:1x: a kept byte that grows grows unseen). The app's ledger starts it
+/// over when it fills, its batch drawn first. ↩️Each tile brought an atlas
+/// of its own words, made and uploaded with it (`atlas_of`): 🔬with its
+/// stream's buffer and its submit, 2.1 ms of a cold tile's 3.3 on the main
+/// PC (measure-cold-tiles, 11-15).
+pub(crate) const ATLAS_SIDE: u32 = 2048;
+
+/// Letters a batch puts on the atlas before it draws: `bytes`, a coverage
+/// a pixel row by row, over `at` — [x, y, width, height].
+#[derive(Clone, Copy)]
+pub(crate) struct Put<'a> {
+    pub(crate) at: [u32; 4],
+    pub(crate) bytes: &'a [u8],
+}
+
+/// A tile a batch draws: `ops` into `tile` over `background` (an RGBA
+/// word).
+pub(crate) struct Drawn<'a> {
+    pub(crate) tile: &'a wgpu::Texture,
+    pub(crate) background: u32,
+    pub(crate) ops: &'a [i32],
 }
 
 /// A frame grid's tile pass, one pipeline per texture format: compiled
 /// where the pass first runs on one, or ahead of it for a tile's picture
 /// ([`GridTile::for_pictures`]).
 pub(crate) struct GridTile {
-    params: wgpu::Buffer,
-    /// What the atlas binding holds for a stream with no letters.
+    /// What the atlas binding holds where no letters were put yet.
     no_atlas: wgpu::Texture,
+    atlas: Option<wgpu::Texture>,
+    /// The plane a batch's words and streams lie on, a part a tile.
+    work: Work,
     pipelines: Vec<(wgpu::TextureFormat, wgpu::ComputePipeline)>,
 }
 
@@ -200,14 +185,22 @@ fn fault_in(ops: &[i32], has_atlas: bool) -> Option<String> {
     None
 }
 
+/// Why `put` cannot go on the atlas, if it cannot: a box past its sides,
+/// or bytes that are not the box's.
+fn put_fault(put: &Put) -> Option<String> {
+    let [x, y, width, height] = put.at;
+    let inside = |from: u32, side: u32| from.checked_add(side).is_some_and(|to| to <= ATLAS_SIDE);
+    if !inside(x, width) || !inside(y, height) {
+        return Some(format!("letters {width} × {height} at ({x}, {y}) are past the atlas's {ATLAS_SIDE}"));
+    }
+    if put.bytes.len() as u64 != u64::from(width) * u64::from(height) {
+        return Some(format!("letters {width} × {height} of {} bytes", put.bytes.len()));
+    }
+    None
+}
+
 impl GridTile {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let params = engine.device().create_buffer(&wgpu::BufferDescriptor {
-            label: Some("grid params"),
-            size: 32,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
         let no_atlas = engine.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("grid no atlas"),
             size: wgpu::Extent3d {
@@ -223,8 +216,9 @@ impl GridTile {
             view_formats: &[],
         });
         Self {
-            params,
             no_atlas,
+            atlas: None,
+            work: Work::default(),
             pipelines: Vec::new(),
         }
     }
@@ -262,78 +256,186 @@ impl GridTile {
         Some(pipeline)
     }
 
-    /// Draws `ops` into `tile` over `background` (an RGBA word), the
-    /// letters from `atlas` (an `R8Uint` texture of coverages) — submitted,
-    /// not waited for: what reads the tile after comes after it on the same
-    /// queue, and the screen it is laid on ([`lay::GridLay::lay`]) is put up
-    /// once the GPU has finished all of it (`Engine::done_then`), as a read
-    /// back waits for itself (`Engine::read_texture`). None, with the last
-    /// error, for a stream it refuses. ↩️The lay waited before the screen
-    /// was shown, on the UI thread, till 2026-11-12
-    /// (the-grid-lay-waits-on-the-ui-thread).
-    ///
-    /// ↩️It waited for the GPU after each tile: 🔬a zoom across S5_BA's cut
-    /// 352 draws some 16 tiles a frame, in the row's paint, and the UI
-    /// thread's build stood at a median of 11.6 ms a frame of it against 3.1
-    /// with the rows drawing their own cells (main PC, profile, 11-09).
-    pub(crate) fn run(
-        &mut self,
-        engine: &Engine,
-        tile: &wgpu::Texture,
-        background: u32,
-        ops: &[i32],
-        atlas: Option<&wgpu::Texture>,
-    ) -> Option<()> {
-        if let Some(fault) = fault_in(ops, atlas.is_some()) {
+    /// Puts each of `puts` on the atlas, made here the first time — on the
+    /// queue, ahead of what is submitted next. None, with the last error,
+    /// for one past the atlas or one whose bytes are not its box's: none is
+    /// put then.
+    pub(crate) fn put_letters(&mut self, engine: &Engine, puts: &[Put]) -> Option<()> {
+        if let Some(fault) = puts.iter().find_map(put_fault) {
             return fail(fault);
         }
-        let pipeline = self.pipeline(engine, tile.format())?;
-        let atlas = atlas.unwrap_or(&self.no_atlas);
-        let params: Vec<u8> = [
-            tile.width(),
-            tile.height(),
-            background,
-            ops.len() as u32,
-            atlas.width(),
-            atlas.height(),
-            0,
-            0,
-        ]
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
-        engine.queue.write_buffer(&self.params, 0, &params);
-        // A binding holds at least a word: an empty stream binds one it
-        // never reads.
-        let words: Vec<u8> = if ops.is_empty() { &[0][..] } else { ops }
+        if puts.is_empty() {
+            return Some(());
+        }
+        let atlas = self.atlas.get_or_insert_with(|| {
+            engine.device().create_texture(&wgpu::TextureDescriptor {
+                label: Some("grid atlas"),
+                size: wgpu::Extent3d {
+                    width: ATLAS_SIDE,
+                    height: ATLAS_SIDE,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Uint,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
+        });
+        for put in puts {
+            let [x, y, width, height] = put.at;
+            if width == 0 || height == 0 {
+                continue;
+            }
+            engine.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: atlas,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x, y, z: 0 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                put.bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width),
+                    rows_per_image: Some(height),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        Some(())
+    }
+
+    /// The bytes it keeps between its batches: the atlas, and the plane.
+    pub(crate) fn kept_bytes(&self) -> u64 {
+        let atlas = self.atlas.as_ref().map_or(0, |_| u64::from(ATLAS_SIDE) * u64::from(ATLAS_SIDE));
+        atlas + self.work.bytes()
+    }
+
+    /// What it keeps between its batches, let go: the next makes its own,
+    /// and the atlas holds no letters till they are put again.
+    pub(crate) fn let_go_kept(&mut self) {
+        self.atlas = None;
+        self.work.let_go();
+    }
+
+    /// Encodes each of `drawn` on `encoder`, its letters read from the
+    /// atlas ([`GridTile::put_letters`]): one compute pass, a dispatch a
+    /// tile, each tile's words and stream a part of the one plane the
+    /// batch's dispatches share ([`Work`], [`range`]) — the caller submits.
+    /// None, with the last error, where the pass refuses any stream or the
+    /// batch is past what the device binds: nothing is encoded then.
+    ///
+    /// ↩️A tile was drawn and submitted alone, its stream on a buffer of
+    /// its own (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-
+    /// Q2, 유저 2026-11-15 「(라)」: a frame's cold tiles in one submit).
+    /// ↩️It waited for the GPU after each tile: 🔬a zoom across S5_BA's cut
+    /// 352 draws some 16 tiles a frame, in the row's paint, and the UI
+    /// thread's build stood at a median of 11.6 ms a frame of it against
+    /// 3.1 with the rows drawing their own cells (main PC, profile, 11-09).
+    pub(crate) fn encode(
+        &mut self,
+        engine: &Engine,
+        encoder: &mut wgpu::CommandEncoder,
+        drawn: &[Drawn],
+    ) -> Option<()> {
+        let has_atlas = self.atlas.is_some();
+        for (index, tile) in drawn.iter().enumerate() {
+            if let Some(fault) = fault_in(tile.ops, has_atlas) {
+                return fail(format!("tile {index}: {fault}"));
+            }
+        }
+        if drawn.is_empty() {
+            return Some(());
+        }
+        let align = engine.device().limits().min_storage_buffer_offset_alignment as usize;
+        let atlas = self.atlas.as_ref().unwrap_or(&self.no_atlas);
+        let mut bytes = Vec::new();
+        let mut parts = Vec::with_capacity(drawn.len());
+        for tile in drawn {
+            let words_at = aligned(&mut bytes, align);
+            for value in [
+                tile.tile.width(),
+                tile.tile.height(),
+                tile.background,
+                tile.ops.len() as u32,
+                atlas.width(),
+                atlas.height(),
+                0,
+                0,
+            ] {
+                bytes.extend(value.to_le_bytes());
+            }
+            let stream_at = aligned(&mut bytes, align);
+            // A binding holds at least a word: an empty stream binds one
+            // it never reads.
+            for word in if tile.ops.is_empty() { &[0][..] } else { tile.ops } {
+                bytes.extend(word.to_le_bytes());
+            }
+            parts.push((words_at..stream_at, stream_at..bytes.len() as u64));
+        }
+        let groups: Vec<(u32, u32)> = drawn
             .iter()
-            .flat_map(|word| word.to_le_bytes())
+            .map(|tile| (tile.tile.width().div_ceil(8), tile.tile.height().div_ceil(8)))
             .collect();
-        let stream = engine.filled("grid ops", &words, wgpu::BufferUsages::STORAGE);
+        fits(engine, &[bytes.len() as u64], groups.iter().copied())?;
+        let mut pipelines = Vec::with_capacity(drawn.len());
+        for tile in drawn {
+            pipelines.push(self.pipeline(engine, tile.tile.format())?);
+        }
+        let plane = self.work.of(engine, bytes.len() as u64);
+        engine.queue.write_buffer(&plane, 0, &bytes);
+        let atlas = self.atlas.as_ref().unwrap_or(&self.no_atlas);
         let atlas_view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
-        let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut bound = whole(&[(0, &self.params), (1, &stream)]);
-        bound.push(wgpu::BindGroupEntry {
-            binding: 2,
-            resource: wgpu::BindingResource::TextureView(&atlas_view),
-        });
-        bound.push(wgpu::BindGroupEntry {
-            binding: 3,
-            resource: wgpu::BindingResource::TextureView(&tile_view),
-        });
-        let groups = flat((tile.width().div_ceil(8), tile.height().div_ceil(8)));
+        let tile_views: Vec<wgpu::TextureView> = drawn
+            .iter()
+            .map(|tile| tile.tile.create_view(&wgpu::TextureViewDescriptor::default()))
+            .collect();
+        let encoded: Vec<Encoded> = parts
+            .into_iter()
+            .zip(&pipelines)
+            .zip(&tile_views)
+            .zip(groups)
+            .map(|((((words, stream), pipeline), tile_view), groups)| Encoded {
+                pipeline,
+                bound: vec![
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: range(&plane, words),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: range(&plane, stream),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&atlas_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(tile_view),
+                    },
+                ],
+                groups: flat(groups),
+            })
+            .collect();
+        encode_on(engine, encoder, &encoded);
+        Some(())
+    }
+
+    /// `ops` drawn into `tile` over `background` alone — a batch of one,
+    /// submitted.
+    #[cfg(test)]
+    pub(crate) fn run(&mut self, engine: &Engine, tile: &wgpu::Texture, background: u32, ops: &[i32]) -> Option<()> {
         let mut encoder = engine
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encode_on(
-            engine,
-            &mut encoder,
-            &[Encoded {
-                pipeline: &pipeline,
-                bound,
-                groups,
-            }],
-        );
+        self.encode(engine, &mut encoder, &[Drawn { tile, background, ops }])?;
         engine.queue.submit([encoder.finish()]);
         Some(())
     }

@@ -2,7 +2,7 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why). Each hand case writes its sums out.
 
-use super::{GridTile, MOST_RADIUS_Q9, atlas_of};
+use super::{ATLAS_SIDE, Drawn, GridTile, MOST_RADIUS_Q9, Put};
 use crate::device::{Engine, storage_texture};
 use crate::testing::{assert_pinned, first_engine, last_error};
 
@@ -28,30 +28,36 @@ fn q8(pixels: f64) -> i32 {
     (pixels * 256.0).round() as i32
 }
 
-/// An `R8Uint` atlas of `coverage`, rows top to bottom, as the pass's own
-/// takes one ([`atlas_of`]).
-fn atlas(engine: &Engine, width: u32, height: u32, coverage: &[u8]) -> wgpu::Texture {
-    atlas_of(engine, coverage, width, height).expect("an atlas").expect("of a side")
+/// Letters of `coverage`, `width` × `height`, rows top to bottom, at the
+/// atlas's corner.
+fn atlas(width: u32, height: u32, coverage: &[u8]) -> Put<'_> {
+    Put {
+        at: [0, 0, width, height],
+        bytes: coverage,
+    }
 }
 
 /// A `width` x `height` tile of `ops` over `background`, as `format`
-/// stores it — None where the pass refuses the stream.
+/// stores it, by a pass whose atlas holds `letters` — None where the pass
+/// refuses the stream.
 fn tile(
     engine: &Engine,
     (width, height): (u32, u32),
     format: wgpu::TextureFormat,
     background: u32,
     ops: &[i32],
-    letters: Option<&wgpu::Texture>,
+    letters: &[Put],
 ) -> Option<Vec<u8>> {
     let texture = storage_texture(engine.device(), width, height, format);
-    GridTile::new(engine).run(engine, &texture, background, ops, letters)?;
+    let mut grid = GridTile::new(engine);
+    grid.put_letters(engine, letters)?;
+    grid.run(engine, &texture, background, ops)?;
     engine.read_texture(&texture)
 }
 
 /// An RGBA tile with no atlas over a clear background.
 fn clear_tile(engine: &Engine, size: (u32, u32), ops: &[i32]) -> Vec<u8> {
-    tile(engine, size, RGBA, 0, ops, None).expect("the pass draws the stream")
+    tile(engine, size, RGBA, 0, ops, &[]).expect("the pass draws the stream")
 }
 
 /// The pixel at (x, y) of a tile `width` across.
@@ -70,7 +76,7 @@ fn white(alpha: u8) -> [u8; 4] {
 #[test]
 fn an_empty_stream_is_the_background_word() {
     let engine = first_engine();
-    let bytes = tile(engine, (5, 3), RGBA, 0x8040_2010, &[], None).unwrap();
+    let bytes = tile(engine, (5, 3), RGBA, 0x8040_2010, &[], &[]).unwrap();
     assert!(bytes.chunks_exact(4).all(|pixel| pixel == [0x10, 0x20, 0x40, 0x80]));
 }
 
@@ -120,16 +126,23 @@ fn a_vertical_line_runs_its_length_down_and_a_horizontal_one_across() {
 }
 
 #[test]
-fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_match_is_refused() {
+fn letters_past_the_atlas_or_whose_bytes_are_not_their_box_are_refused() {
     let engine = first_engine();
-    for (width, height) in [(0, 3), (3, 0)] {
-        assert!(atlas_of(engine, &[], width, height).expect("no atlas").is_none(), "{width} × {height}");
-    }
+    let mut grid = GridTile::new(engine);
+    let put = |grid: &mut GridTile, at: [u32; 4], bytes: &[u8]| grid.put_letters(engine, &[Put { at, bytes }]);
     for length in [5, 7] {
-        assert!(atlas_of(engine, &vec![0; length], 3, 2).is_none(), "{length}");
-        assert!(last_error().contains(&format!("a letters' atlas 3 × 2 of {length} bytes")), "{}", last_error());
+        assert!(put(&mut grid, [0, 0, 3, 2], &vec![0; length]).is_none(), "{length}");
+        assert!(last_error().contains(&format!("letters 3 × 2 of {length} bytes")), "{}", last_error());
     }
-    assert!(atlas_of(engine, &[0; 6], 3, 2).expect("an atlas").is_some(), "{}", last_error());
+    let side = ATLAS_SIDE;
+    for at in [[side - 2, 0, 3, 2], [0, side - 1, 3, 2], [u32::MAX, 0, 3, 2]] {
+        assert!(put(&mut grid, at, &[0; 6]).is_none(), "{at:?}");
+        assert!(last_error().contains("past the atlas"), "{}", last_error());
+    }
+    assert_eq!(grid.kept_bytes(), 0, "nothing refused is kept");
+    assert!(put(&mut grid, [side - 3, side - 2, 3, 2], &[0; 6]).is_some(), "{}", last_error());
+    assert!(put(&mut grid, [0, 0, 0, 3], &[]).is_some(), "letters of no side");
+    assert_eq!(grid.kept_bytes(), u64::from(side) * u64::from(side), "the atlas, once");
 }
 
 // (10, 20, 30) opaque, its alpha scaled by the coverage: 65535 times
@@ -138,17 +151,26 @@ fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_match_is_refused() {
 #[test]
 fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     let engine = first_engine();
-    let letters = atlas(engine, 3, 2, &[0, 128, 255, 255, 64, 0]);
+    let coverage = [0, 128, 255, 255, 64, 0];
+    // The same letters at the atlas's left and at its right edge.
+    let right = (ATLAS_SIDE - 3) as i32;
+    let letters = [
+        atlas(3, 2, &coverage),
+        Put {
+            at: [ATLAS_SIDE - 3, 0, 3, 2],
+            bytes: &coverage,
+        },
+    ];
     let ink = rgba(10, 20, 30, 255);
     let ops = [
         [GLYPH, 1, 1, 0, 0, 3, 2, ink],
         // Its window runs a column past the atlas.
-        [GLYPH, 0, 3, 1, 0, 3, 1, ink],
+        [GLYPH, 0, 3, right + 1, 0, 3, 1, ink],
         // And this one starts a column before it.
         [GLYPH, 3, 0, -1, 1, 2, 1, ink],
     ]
     .concat();
-    let bytes = tile(engine, (5, 4), RGBA, 0, &ops, Some(&letters)).unwrap();
+    let bytes = tile(engine, (5, 4), RGBA, 0, &ops, &letters).unwrap();
     assert_eq!(at(&bytes, 5, 1, 1), [0; 4]);
     assert_eq!(at(&bytes, 5, 2, 1), [10, 20, 30, 128]);
     assert_eq!(at(&bytes, 5, 3, 1), [10, 20, 30, 255]);
@@ -355,17 +377,17 @@ fn the_largest_corner_is_taken_whole_and_a_larger_one_is_refused() {
     assert_eq!(at(&bytes, 24, 19, 19), white(39));
     assert_eq!(at(&bytes, 24, 23, 23), [255; 4]);
 
-    let past = tile(engine, (24, 24), RGBA, 0, &corner(largest + 1, 129.0), None);
+    let past = tile(engine, (24, 24), RGBA, 0, &corner(largest + 1, 129.0), &[]);
     assert!(past.is_none(), "a corner past 64 pixels is refused");
     // One the box holds to less is drawn as the box holds it.
-    let held = tile(engine, (24, 24), RGBA, 0, &corner(q8(100.0), 16.0), None);
+    let held = tile(engine, (24, 24), RGBA, 0, &corner(q8(100.0), 16.0), &[]);
     assert!(held.is_some());
 }
 
 #[test]
 fn a_stream_the_pass_cannot_draw_is_refused() {
     let engine = first_engine();
-    let refused = |ops: &[i32]| tile(engine, (4, 4), RGBA, 0, ops, None).is_none();
+    let refused = |ops: &[i32]| tile(engine, (4, 4), RGBA, 0, ops, &[]).is_none();
     assert!(refused(&[FILL_RECT, 0, 0]), "cut short");
     assert!(refused(&[9, 0, 0, 0, 0, 0]), "no such op");
     assert!(refused(&[GLYPH, 0, 0, 0, 0, 1, 1, WHITE]), "a letter, no atlas");
@@ -379,8 +401,8 @@ fn a_stream_the_pass_cannot_draw_is_refused() {
 fn a_place_or_length_past_the_reach_is_refused() {
     let engine = first_engine();
     let reach = 1 << 28;
-    let letters = atlas(engine, 1, 1, &[255]);
-    let drawn = |ops: &[i32]| tile(engine, (4, 4), RGBA, 0, ops, Some(&letters)).is_some();
+    let letters = [atlas(1, 1, &[255])];
+    let drawn = |ops: &[i32]| tile(engine, (4, 4), RGBA, 0, ops, &letters).is_some();
     let ops: [&[i32]; 6] = [
         &[FILL_RECT, 0, 0, 1, 1, WHITE],
         &[HLINE, 0, 0, 1, 1, WHITE],
@@ -426,7 +448,7 @@ fn mixed(engine: &Engine, format: wgpu::TextureFormat) -> Vec<u8> {
     let coverage: Vec<u8> = (0..64u32)
         .map(|i| (((i % 8) * 7 + (i / 8) * 13) * 3 % 256) as u8)
         .collect();
-    let letters = atlas(engine, 8, 8, &coverage);
+    let letters = [atlas(8, 8, &coverage)];
     let (gold, teal) = (rgba(200, 180, 120, 255), rgba(120, 200, 180, 200));
     let (violet, ring) = (rgba(180, 120, 200, 255), rgba(250, 250, 250, 230));
     let ops = [
@@ -443,7 +465,7 @@ fn mixed(engine: &Engine, format: wgpu::TextureFormat) -> Vec<u8> {
         &[GLYPH, 9, 10, 2, 1, 6, 7, rgba(255, 64, 32, 128)],
     ]
     .concat();
-    tile(engine, (96, 28), format, 0, &ops, Some(&letters)).unwrap()
+    tile(engine, (96, 28), format, 0, &ops, &letters).unwrap()
 }
 
 #[test]
@@ -466,4 +488,88 @@ fn the_two_orders_differ_only_by_red_and_blue() {
         .flat_map(|texel| [texel[2], texel[1], texel[0], texel[3]])
         .collect();
     assert_eq!(swapped, mixed(engine, RGBA));
+}
+
+// Tiles of a batch each drawn as alone, whatever their order or the batch
+// beside them: one pass, a dispatch a tile, each its own part of the plane
+// — the first and the last of a part, where a neighbour's would show.
+#[test]
+fn a_batch_draws_each_tile_as_it_is_drawn_alone() {
+    let engine = first_engine();
+    let coverage: Vec<u8> = (0..64u32).map(|i| (i * 37 % 256) as u8).collect();
+    let letters = [atlas(8, 8, &coverage)];
+    let streams: [Vec<i32>; 4] = [
+        vec![FILL_RECT, 0, 0, 5, 3, rgba(200, 10, 10, 255), GLYPH, 1, 0, 0, 0, 8, 8, WHITE],
+        vec![],
+        vec![VLINE, 2, 0, 7, 1, rgba(10, 200, 10, 128), HLINE, 0, 5, 9, 2, rgba(10, 10, 200, 255)],
+        vec![RRECT_FILL, q8(0.5), q8(0.5), q8(6.0), q8(4.0), q8(2.0), 15, rgba(90, 90, 90, 255)],
+    ];
+    let sizes = [(6, 4), (3, 3), (9, 7), (7, 5)];
+    let alone: Vec<Vec<u8>> = streams
+        .iter()
+        .zip(sizes)
+        .map(|(ops, size)| tile(engine, size, RGBA, 0, ops, &letters).unwrap())
+        .collect();
+    let mut grid = GridTile::new(engine);
+    grid.put_letters(engine, &letters).unwrap();
+    let textures: Vec<wgpu::Texture> = sizes
+        .iter()
+        .map(|&(width, height)| storage_texture(engine.device(), width, height, RGBA))
+        .collect();
+    for order in [[0, 1, 2, 3], [3, 2, 1, 0]] {
+        let drawn: Vec<Drawn> = order
+            .iter()
+            .map(|&i| Drawn {
+                tile: &textures[i],
+                background: 0,
+                ops: &streams[i],
+            })
+            .collect();
+        let mut encoder = engine
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        grid.encode(engine, &mut encoder, &drawn).unwrap();
+        engine.queue.submit([encoder.finish()]);
+        for (i, texture) in textures.iter().enumerate() {
+            assert_eq!(engine.read_texture(texture).unwrap(), alone[i], "tile {i} in {order:?}");
+        }
+    }
+}
+
+// A stream the pass refuses refuses its batch: nothing of it is encoded.
+#[test]
+fn a_batch_with_a_stream_refused_draws_none_of_it() {
+    let engine = first_engine();
+    let mut grid = GridTile::new(engine);
+    let first = storage_texture(engine.device(), 2, 2, RGBA);
+    let second = storage_texture(engine.device(), 2, 2, RGBA);
+    let fill = [FILL_RECT, 0, 0, 2, 2, WHITE];
+    let drawn = [
+        Drawn { tile: &first, background: 0, ops: &fill },
+        Drawn { tile: &second, background: 0, ops: &[9, 0, 0, 0, 0, 0] },
+    ];
+    let mut encoder = engine
+        .device()
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    assert!(grid.encode(engine, &mut encoder, &drawn).is_none());
+    assert!(last_error().starts_with("tile 1: "), "{}", last_error());
+    engine.queue.submit([encoder.finish()]);
+    assert!(engine.read_texture(&first).unwrap().iter().all(|&byte| byte == 0));
+}
+
+// What a batch keeps — its plane — goes when it is let go of, and the
+// atlas with it: a letter drawn after reads none till it is put again.
+#[test]
+fn what_a_batch_keeps_is_let_go_of_whole() {
+    let engine = first_engine();
+    let mut grid = GridTile::new(engine);
+    let letters = [atlas(1, 1, &[255])];
+    grid.put_letters(engine, &letters).unwrap();
+    let texture = storage_texture(engine.device(), 2, 2, RGBA);
+    let letter = [GLYPH, 0, 0, 0, 0, 1, 1, WHITE];
+    grid.run(engine, &texture, 0, &letter).unwrap();
+    assert!(grid.kept_bytes() > u64::from(ATLAS_SIDE) * u64::from(ATLAS_SIDE), "the atlas and the plane");
+    grid.let_go_kept();
+    assert_eq!(grid.kept_bytes(), 0);
+    assert!(grid.run(engine, &texture, 0, &letter).is_none(), "a letter, no atlas");
 }

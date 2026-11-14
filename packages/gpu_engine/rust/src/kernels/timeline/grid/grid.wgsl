@@ -44,7 +44,8 @@ struct Params {
   pad1: u32,
 }
 
-@group(0) @binding(0) var<uniform> params: Params;
+// A part of the batch's one plane, as the stream is (mod.rs, `GridTile::encode`).
+@group(0) @binding(0) var<storage, read> params: Params;
 @group(0) @binding(1) var<storage, read> ops: array<i32>;
 @group(0) @binding(2) var atlas: texture_2d<u32>;
 @group(0) @binding(3) var tile: texture_storage_2d<__FORMAT__, write>;

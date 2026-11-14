@@ -112,6 +112,17 @@ pub(crate) fn whole<'a>(bound: &[(u32, &'a wgpu::Buffer)]) -> Vec<wgpu::BindGrou
         .collect()
 }
 
+/// Where the next part of a plane whose parts so far are `bytes` may start
+/// as a binding of its own: `bytes` padded with zeros to a multiple of
+/// `align` — a device's `min_storage_buffer_offset_alignment` — and that
+/// place. ⚠️The frame grid's tiles and the waves laid over them, each
+/// dispatch's words and stream a part ([`range`]); the dabs place their
+/// dispatches' uniforms on their plan in words, apart (dab/mod.rs, blur.rs).
+pub(crate) fn aligned(bytes: &mut Vec<u8>, align: usize) -> u64 {
+    bytes.resize(bytes.len().next_multiple_of(align), 0);
+    bytes.len() as u64
+}
+
 /// `bytes` of `buffer` as a binding — a pass's part of a plane its passes
 /// share. ⛔ONE: the blur's cel passes and its dispatches' words, the
 /// pile's passes' words, the cel pixel verbs and the lift each wrote it,

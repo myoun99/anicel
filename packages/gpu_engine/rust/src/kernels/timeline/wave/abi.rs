@@ -4,15 +4,16 @@
 //! (`GridPicture`) over what it holds — the row's own tile, which the
 //! view's screen lays (`gpu_engine_grid_lay`): nothing comes back but
 //! whether it drew. ↩️Over clear, a picture of the wave's own, till the
-//! card's Q2 (유저 2026-11-14 「(가)」).
+//! card's Q2 (유저 2026-11-14 「(가)」). A sound is drawn as a batch of the
+//! grid's draws (`gpu_engine_grid_flush`). ↩️It was drawn alone
+//! (`gpu_engine_wave_draw`), and submitted.
 
 #[cfg(test)]
 mod tests;
 
 use crate::device::{Engine, let_go, let_go_unwaited};
-use crate::kernels::timeline::grid::GridPicture;
 
-use super::{WavePeaks, WaveTile, WaveView};
+use super::{WavePeaks, WaveTile};
 
 /// The waveform pass, compiled here for the pictures it draws
 /// ([`WaveTile::for_pictures`]): an app asks off the thread its frames are
@@ -72,56 +73,4 @@ pub unsafe extern "C" fn gpu_engine_wave_peaks_new(
 pub unsafe extern "C" fn gpu_engine_wave_peaks_free(peaks: *mut WavePeaks) {
     // SAFETY: see the function's contract.
     unsafe { let_go_unwaited(peaks) };
-}
-
-/// Draws `peaks` into `picture` over what it holds as the strip shows them
-/// ([`WaveView`]'s fields, in its order) — submitted, not waited for
-/// ([`WaveTile::run`]). False for a view the pass refuses, and on failure;
-/// see the last error.
-///
-/// ⚠️Over clear, always, as a grid's tile is (`gpu_engine_grid_draw`): the
-/// picture lays over what the strip stands on. ↩️Over what the picture
-/// holds since a sound's wave is baked into its row's cell tile
-/// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2, 유저 2026-11-14
-/// 「(가)」): a screen copies what it lays (lay.wgsl), so a picture of the
-/// wave's own laid over the cells' would clear them.
-///
-/// # Safety
-/// Every pointer is live, made on `engine`.
-#[unsafe(no_mangle)]
-#[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_wave_draw(
-    wave: *mut WaveTile,
-    engine: *const Engine,
-    picture: *const GridPicture,
-    peaks: *const WavePeaks,
-    along0: i32,
-    length: i32,
-    vertical: bool,
-    frame_q8: i32,
-    fps_numerator: u32,
-    fps_denominator: u32,
-    buckets_per_second: u32,
-    leading_frames: i32,
-    across_q8: i32,
-    gain_q16: i32,
-    rgba: u32,
-) -> bool {
-    // SAFETY: see the function's contract.
-    let (wave, engine, picture, peaks) = unsafe { (&mut *wave, &*engine, &*picture, &*peaks) };
-    engine.on_thread(|| {
-        let view = WaveView {
-            along0,
-            length,
-            vertical,
-            frame_q8,
-            fps: (fps_numerator, fps_denominator),
-            buckets_per_second,
-            leading_frames,
-            across_q8,
-            gain_q16,
-            rgba,
-        };
-        wave.run(engine, &picture.texture, peaks, &view).is_some()
-    })
 }

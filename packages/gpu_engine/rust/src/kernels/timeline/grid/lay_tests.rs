@@ -33,7 +33,7 @@ fn picture(engine: &Engine, (width, height): (u32, u32), fills: &[(i32, i32, i32
         .iter()
         .flat_map(|&(x, y, w, h, colour)| [FILL_RECT, x, y, w, h, word(colour)])
         .collect();
-    GridTile::new(engine).run(engine, &picture.texture, 0, &ops, None).expect("the tile pass draws");
+    GridTile::new(engine).run(engine, &picture.texture, 0, &ops).expect("the tile pass draws");
     picture
 }
 

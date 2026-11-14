@@ -61,7 +61,7 @@ use crate::kernels::plugin::abi::{gpu_engine_plugin_free, gpu_engine_plugin_open
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::kernels::timeline::grid::abi::{
     gpu_engine_grid_free, gpu_engine_grid_lay_free, gpu_engine_grid_lay_new, gpu_engine_grid_new,
-    gpu_engine_grid_picture_free, gpu_engine_grid_picture_new,
+    gpu_engine_grid_picture_free, gpu_engine_grid_pictures_new,
 };
 use crate::kernels::timeline::wave::abi::{
     gpu_engine_wave_free, gpu_engine_wave_new, gpu_engine_wave_peaks_free, gpu_engine_wave_peaks_new,
@@ -305,8 +305,9 @@ fn frees() -> [(&'static str, fn(&'static str)); 38] {
             gives_back(name, made, gpu_engine_grid_lay_free)
         }),
         ("gpu_engine_grid_picture_free", |name| {
-            // SAFETY: the engine is live.
-            let made = unsafe { gpu_engine_grid_picture_new(first_engine(), 4, 4) };
+            let mut made = std::ptr::null_mut();
+            // SAFETY: the engine is live, and `made` holds one.
+            assert!(unsafe { gpu_engine_grid_pictures_new(first_engine(), [4, 4].as_ptr(), 1, &mut made) });
             gives_back(name, made, gpu_engine_grid_picture_free)
         }),
         ("gpu_engine_wave_free", |name| {

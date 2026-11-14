@@ -46,7 +46,8 @@ struct Params {
   pad2: u32,
 }
 
-@group(0) @binding(0) var<uniform> params: Params;
+// A part of the batch's one plane, as the edges are (mod.rs, `WaveTile::encode`).
+@group(0) @binding(0) var<storage, read> params: Params;
 // The range table, two u16 a word: lane, then level, then bucket.
 @group(0) @binding(1) var<storage, read> peaks: array<u32>;
 // Where each column's edge stands: (bucket, how far on to the next, q16),

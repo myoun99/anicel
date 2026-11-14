@@ -8,10 +8,12 @@
 mod tests;
 
 use crate::device::{Engine, let_go};
+use crate::fail;
+use crate::kernels::timeline::wave::{WavePeaks, WaveTile, WaveView, Waved};
 use crate::platform::surface_format;
 
 use super::lay::{GridLay, Laid};
-use super::{GridPicture, GridTile, atlas_of};
+use super::{Drawn, GridPicture, GridTile, Put};
 
 /// The tile pass, compiled here for the pictures it draws
 /// (`gpu_engine_grid_picture_new`) on the calling thread
@@ -37,22 +39,8 @@ pub unsafe extern "C" fn gpu_engine_grid_free(grid: *mut GridTile) {
     unsafe { let_go(grid) };
 }
 
-/// A clear tile `width` × `height` pixels. Null on failure; see the last
-/// error.
-///
 /// # Safety
-/// `engine` is live; the tile is freed before it.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_grid_picture_new(engine: *const Engine, width: u32, height: u32) -> *mut GridPicture {
-    // SAFETY: see the function's contract.
-    let engine = unsafe { &*engine };
-    engine.on_thread(|| {
-        GridPicture::new(engine, width, height).map_or(std::ptr::null_mut(), |picture| engine.hands(picture))
-    })
-}
-
-/// # Safety
-/// `picture` came from `gpu_engine_grid_picture_new`.
+/// `picture` came from `gpu_engine_grid_pictures_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_grid_picture_free(picture: *mut GridPicture) {
     // SAFETY: see the function's contract.
@@ -85,46 +73,206 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_read(
     })
 }
 
-/// Draws `ops` — `count` words — into `picture` over clear, its letters
-/// read from `atlas`, `atlas_width` × `atlas_height` A8 bytes row by row —
-/// none where a side is 0 —; submitted, not waited for ([`GridTile::run`]).
-/// False for a stream the pass refuses, and on failure; see the last error.
+/// Makes `count` clear pictures, the i-th `sizes[2i]` × `sizes[2i + 1]`
+/// pixels, into `made` — on one trip to the engine's thread for all of
+/// them. False, with none made, where a side is none or past what the
+/// device makes; see the last error.
+///
+/// ↩️One picture a trip (`gpu_engine_grid_picture_new`): 🔬0.41 ms of a
+/// cold tile's 3.3 on the main PC (measure-cold-tiles, 11-15).
+///
+/// # Safety
+/// `engine` is live, `sizes` holds `2 × count` words and `made` room
+/// for `count` pictures; each is freed before the engine.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_pictures_new(
+    engine: *const Engine,
+    sizes: *const u32,
+    count: usize,
+    made: *mut *mut GridPicture,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.on_thread(|| {
+        if count == 0 {
+            return true;
+        }
+        // SAFETY: see the function's contract.
+        let sizes = unsafe { std::slice::from_raw_parts(sizes, 2 * count) };
+        let Some(pictures) = sizes
+            .chunks_exact(2)
+            .map(|side| GridPicture::new(engine, side[0], side[1]))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
+        // SAFETY: see the function's contract.
+        let made = unsafe { std::slice::from_raw_parts_mut(made, count) };
+        for (slot, picture) in made.iter_mut().zip(pictures) {
+            *slot = engine.hands(picture);
+        }
+        true
+    })
+}
+
+/// A sound's view as `gpu_engine_grid_flush` hands it — eleven words, in
+/// [`WaveView`]'s order, a bool and the unsigned ones as their bits.
+fn view_of(words: &[i32]) -> WaveView {
+    WaveView {
+        along0: words[0],
+        length: words[1],
+        vertical: words[2] != 0,
+        frame_q8: words[3],
+        fps: (words[4] as u32, words[5] as u32),
+        buckets_per_second: words[6] as u32,
+        leading_frames: words[7],
+        across_q8: words[8],
+        gain_q16: words[9],
+        rgba: words[10] as u32,
+    }
+}
+
+/// THE GRID'S BATCH: puts `put_count` letters on `grid`'s atlas — the i-th
+/// over `puts[4i .. 4i + 4]` (x, y, width, height), its bytes the next
+/// width × height of `put_bytes` —, then draws `tile_count` streams into
+/// their pictures over clear, the i-th `ops[ends[i - 1] .. ends[i]]`
+/// (from 0) into `tiles[i]`, then lays `wave_count` sounds, the i-th
+/// `peaks[i]` over what `waved[i]` holds as `views[11i .. 11i + 11]` shows
+/// it ([`view_of`]): one trip to the engine's thread and one submit, not
+/// waited for — what reads a picture after comes after it on the same
+/// queue ([`GridTile::encode`], [`WaveTile::encode`]). False, with nothing
+/// drawn, for letters, a stream or a view the passes refuse, and on
+/// failure; see the last error. The letters are put then all the same.
 ///
 /// ⚠️Over clear, always: a tile lays over its view's sheet (the store's
 /// contract, timeline_grid_tile_store.dart), so the pass's background word
-/// is nobody's to hand.
+/// is nobody's to hand. A sound lays over what its picture holds: it is
+/// baked into its row's cell tile (the-waveform-is-drawn-on-the-cpu-beside-
+/// its-kernel-Q2, 유저 2026-11-14 「(가)」), and a screen copies what it
+/// lays (lay.wgsl) — a picture of the wave's own laid over the cells'
+/// would clear them.
+///
+/// ↩️A tile and a sound each were drawn on a trip and a submit of their own
+/// (`gpu_engine_grid_draw`, `gpu_engine_wave_draw`; a-grid-row-paints-its-
+/// cells-on-a-canvas-beside-its-tiles-Q2, 유저 2026-11-15 「(라)」).
 ///
 /// # Safety
-/// Every pointer is live, made on `engine`; `ops` holds `count` words and
-/// `atlas` `atlas_width × atlas_height` bytes.
+/// Every pointer is live, made on `engine`; `puts` holds `4 × put_count`
+/// words and `put_bytes` their bytes, `tiles` and `ends` `tile_count`
+/// each and `ops` the last end's words, `waved` and `peaks` `wave_count`
+/// each and `views` `11 × wave_count` words.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_grid_draw(
+pub unsafe extern "C" fn gpu_engine_grid_flush(
     grid: *mut GridTile,
+    wave: *mut WaveTile,
     engine: *const Engine,
-    picture: *const GridPicture,
+    puts: *const u32,
+    put_count: usize,
+    put_bytes: *const u8,
+    tiles: *const *const GridPicture,
+    ends: *const u32,
+    tile_count: usize,
     ops: *const i32,
-    count: usize,
-    atlas: *const u8,
-    atlas_width: u32,
-    atlas_height: u32,
+    waved: *const *const GridPicture,
+    peaks: *const *const WavePeaks,
+    views: *const i32,
+    wave_count: usize,
 ) -> bool {
     // SAFETY: see the function's contract.
-    let (grid, engine, picture) = unsafe { (&mut *grid, &*engine, &*picture) };
+    let (grid, wave, engine) = unsafe { (&mut *grid, &mut *wave, &*engine) };
     engine.on_thread(|| {
-        // SAFETY: see the function's contract.
-        let ops = unsafe { std::slice::from_raw_parts(ops, count) };
-        let bytes = match atlas_width as usize * atlas_height as usize {
-            // No atlas: its pointer may be null, which no slice may be.
-            0 => &[][..],
-            // SAFETY: see the function's contract.
-            length => unsafe { std::slice::from_raw_parts(atlas, length) },
-        };
-        let Some(atlas) = atlas_of(engine, bytes, atlas_width, atlas_height) else {
-            return false;
-        };
-        grid.run(engine, &picture.texture, 0, ops, atlas.as_ref()).is_some()
+        // A slice of none: its pointer may be null, which no slice may be.
+        fn held<'a, T>(from: *const T, count: usize) -> &'a [T] {
+            match count {
+                0 => &[],
+                // SAFETY: the caller's contract holds `count` there.
+                count => unsafe { std::slice::from_raw_parts(from, count) },
+            }
+        }
+        let boxes = held(puts, 4 * put_count);
+        let lengths: Vec<usize> = boxes.chunks_exact(4).map(|at| at[2] as usize * at[3] as usize).collect();
+        let bytes = held(put_bytes, lengths.iter().sum());
+        let mut from = 0;
+        let letters: Vec<Put> = boxes
+            .chunks_exact(4)
+            .zip(&lengths)
+            .map(|(at, &length)| {
+                from += length;
+                Put {
+                    at: [at[0], at[1], at[2], at[3]],
+                    bytes: &bytes[from - length..from],
+                }
+            })
+            .collect();
+        let ends = held(ends, tile_count);
+        if ends.windows(2).any(|pair| pair[0] > pair[1]) {
+            return fail("a batch's streams end before they begin");
+        }
+        let ops = held(ops, ends.last().map_or(0, |&end| end as usize));
+        let tiles = held(tiles, tile_count);
+        let drawn: Vec<Drawn> = tiles
+            .iter()
+            .zip(ends)
+            .scan(0, |from, (&tile, &end)| {
+                let stream = &ops[*from..end as usize];
+                *from = end as usize;
+                // SAFETY: each picture is live (the function's contract).
+                let tile = unsafe { &(*tile).texture };
+                Some(Drawn { tile, background: 0, ops: stream })
+            })
+            .collect();
+        let sounds = held(peaks, wave_count);
+        let waves: Vec<Waved> = held(waved, wave_count)
+            .iter()
+            .zip(sounds)
+            .zip(held(views, 11 * wave_count).chunks_exact(11))
+            .map(|((&tile, &peaks), view)| Waved {
+                // SAFETY: each picture and sound is live (the contract).
+                tile: unsafe { &(*tile).texture },
+                peaks: unsafe { &*peaks },
+                view: view_of(view),
+            })
+            .collect();
+        grid.put_letters(engine, &letters)?;
+        let mut encoder = engine
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        grid.encode(engine, &mut encoder, &drawn)?;
+        wave.encode(engine, &mut encoder, &waves)?;
+        engine.queue.submit([encoder.finish()]);
+        Some(())
     })
+    .is_some()
+}
+
+/// The bytes `grid` and `wave` keep between their batches — the atlas,
+/// the planes, the unders — for the memory census: their own counts, no
+/// device asked.
+///
+/// # Safety
+/// `grid` and `wave` are live, and no batch of theirs is under way.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_kept_bytes(grid: *const GridTile, wave: *const WaveTile) -> u64 {
+    // SAFETY: see the function's contract.
+    let (grid, wave) = unsafe { (&*grid, &*wave) };
+    grid.kept_bytes() + wave.kept_bytes()
+}
+
+/// Lets go of what `grid` and `wave` keep between their batches — the OS
+/// says memory is tight: the next batch makes its own, and the atlas holds
+/// no letters till they are put again.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_let_go_kept(grid: *mut GridTile, wave: *mut WaveTile, engine: *const Engine) {
+    // SAFETY: see the function's contract.
+    let (grid, wave, engine) = unsafe { (&mut *grid, &mut *wave, &*engine) };
+    engine.on_thread(|| {
+        grid.let_go_kept();
+        wave.let_go_kept();
+    });
 }
 
 /// The screen pass that lays tiles on a view's screen ([`GridLay`]),
