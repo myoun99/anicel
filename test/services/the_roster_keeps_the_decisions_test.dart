@@ -577,10 +577,10 @@ void main() {
     tipMask: settings.tipMask,
   );
 
-  /// How wide and tall one [sidewaysDabOf] [settings] stands.
-  ({int wide, int tall}) standsOnASidewaysSweep(BrushSettings settings) {
+  /// How wide and tall [dab] stands.
+  ({int wide, int tall}) standsOnASidewaysSweep(BrushDab dab) {
     var (left, right, top, bottom) = (1 << 30, -1, 1 << 30, -1);
-    forEachBrushPixelCoverage(sidewaysDabOf(settings), (x, y, coverage, _) {
+    forEachBrushPixelCoverage(dab, (x, y, coverage, _) {
       if (coverage > 0.5) {
         (left, right) = (math.min(left, x), math.max(right, x));
         (top, bottom) = (math.min(top, y), math.max(bottom, y));
@@ -596,7 +596,14 @@ void main() {
   test('🚨a grass tuft stands up on a sideways sweep and fans out', () {
     // Its own comment's law ("Tufts stand UP"). ↩️It landed round dots:
     // a roundness that squeezed the leaf along its length (10-24).
-    final grass = settingsOf('builtin-grass');
+    // 🗣️H60-Q4 (유저 2026-11-15 07:20, 「3단계 그대로」, its cost shown: the
+    // tuft's shape changes): the grass names no step and draws at the three
+    // every such brush does, which smooth a picture's tip as wide as a round
+    // one (H60-Q2) — so the TIP these ask of is read with none.
+    // ↩️Till then a picture's tip laid whole at every step.
+    final grass = sidewaysDabOf(
+      settingsOf('builtin-grass'),
+    ).copyWith(antiAlias: BrushAntiAlias.none);
     final (:wide, :tall) = standsOnASidewaysSweep(grass);
     expect(tall, greaterThan(wide), reason: '$wide wide, $tall tall');
     // F-462 ③ (유저 2026-10-25): 「팁이 너무 일직선 … 한 소재끼리 다른곳
@@ -606,7 +613,7 @@ void main() {
     // column, as heavy above as below.
     expect(wide, greaterThan(tall * 0.6), reason: '$wide wide, $tall tall');
     var (above, below) = (0, 0);
-    forEachBrushPixelCoverage(sidewaysDabOf(grass), (x, y, coverage, _) {
+    forEachBrushPixelCoverage(grass, (x, y, coverage, _) {
       if (coverage <= 0.5) return;
       if (y < 64) above += 1;
       if (y > 64) below += 1;
@@ -645,7 +652,7 @@ void main() {
     final wash = settingsOf('builtin-flat-wash');
     expect(wash.rotationMode, BrushTipRotationMode.fixed);
     // A sideways sweep paints as tall a band as one dab stands.
-    final (:wide, :tall) = standsOnASidewaysSweep(wash);
+    final (:wide, :tall) = standsOnASidewaysSweep(sidewaysDabOf(wash));
     expect(tall, greaterThan(wide * 3), reason: '$wide wide, $tall tall');
   });
 }
