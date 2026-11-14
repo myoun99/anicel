@@ -17,6 +17,7 @@ import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ExportLayerFx;
 import '../../models/frame.dart';
+import '../../models/frame_id.dart';
 import '../../models/fx_plugin_binding.dart';
 import '../../models/import/import_warning.dart'
     show ImportWarning, layerEffectsNotApplied, unsupportedLayerKind;
@@ -1015,23 +1016,67 @@ class ExportFrameRenderer {
 
   /// [cut]'s rows at [frameIndex] over the canvas [region], a pixel a
   /// pixel — a camera standing square over it ([cameraViewOver]), and the
-  /// pasteboard it takes in kept: what a merge lays as the one cel its rows
-  /// become (`merge_layer_rows`).
+  /// pasteboard it takes in kept — as a frame on the engine, for the caller
+  /// to free: what a merge lays as the one cel its rows become
+  /// (`merge_layer_rows`), read back where its ink is and nowhere else
+  /// (`inkOfFrame`).
   ///
   /// ↩️It was a panel's picture too — at a panel's width, through the
   /// camera where no region was given — until a panel was cut from the
   /// frame's one picture (F-533-Q8, `PanelPictures`).
-  Future<ui.Image> renderOver(Cut cut, int frameIndex, ui.Rect region) async {
+  ///
+  /// ↩️`renderOver` read the frame back WHOLE as a picture, which the merge
+  /// made a GPU picture again and rastered back a block at a time
+  /// (🔬2026-11-14: the default canvas's wall is 7020×4962 — 139 MB a cel,
+  /// 41 s for thirteen cels of a 20×20 sheet under load). The cel it lays
+  /// now holds the engine's `straight` of the frame where the old road held
+  /// Flutter's unpremultiply of it: 🔬over every alpha × every colour byte
+  /// its tiles and its alpha are the same, what it SHOWS is the frame to the
+  /// byte either way, and the stored colour is one level apart in 1,877 of
+  /// 65,280 pixels (alphas 6–252, the even ones) — 🧭관제 2026-11-14 ⏳
+  /// 「받는다 — 풀기가 두 벌이던 것이 엔진 한 벌이 된다」, which the user
+  /// can turn back.
+  Future<GpuShown> frameOver(Cut cut, int frameIndex, ui.Rect region) async {
     final view = cameraViewOver(region);
     _startFrame();
     await _hydrate(cut, frameIndex);
-    return pictureOfShot(_shot(
+    return _shot(
       cut,
       frameIndex,
       _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
       view: view,
       cutsToTheCanvas: false,
-    ));
+    );
+  }
+
+  /// [cels] of [cut]'s [row] stacked bottom → top over the canvas [region]
+  /// as the canvas stacks rows — each a row of its own, as it is: no look of
+  /// the row's, in the normal blend at full strength — through the camera
+  /// [frameOver] stands, as a frame on the engine for the caller to free:
+  /// what a block merge lays as the one cel the cels become
+  /// (`merge_layer_rows`).
+  Future<GpuShown> frameOfCels(
+    Cut cut,
+    LayerId row,
+    List<FrameId> cels,
+    ui.Rect region,
+  ) {
+    _startFrame();
+    return _shot(
+      cut,
+      0,
+      [
+        for (final cel in cels)
+          CompositeLeaf<CanvasStackRow>(
+            CanvasLayerImageRequest(
+              frameKey: session.brushFrameKeyForCut(cut, row, cel),
+              opacity: 1,
+            ),
+          ),
+      ],
+      view: cameraViewOver(region),
+      cutsToTheCanvas: false,
+    );
   }
 
   /// What a render of [cut] at [frameIndex] looks through in [mode]: its

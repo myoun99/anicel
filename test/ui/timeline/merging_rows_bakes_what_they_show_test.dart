@@ -15,6 +15,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
@@ -372,6 +373,207 @@ void main() {
       [at(mergedCel(s), 288, 40), at(mergedCel(s), 40, 160)],
       [green, blue],
     );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  /// A cel of straight [shade]s in each tile at [coords] — clear wherever
+  /// the shade's alpha is nothing.
+  BitmapSurface shadedAt(
+    List<TileCoord> coords,
+    List<int> Function(int x, int y) shade,
+  ) {
+    final pixels = Uint8List(tile * tile * 4);
+    for (var y = 0; y < tile; y += 1) {
+      for (var x = 0; x < tile; x += 1) {
+        final rgba = shade(x, y);
+        if (rgba[3] > 0) {
+          pixels.setRange((y * tile + x) * 4, (y * tile + x + 1) * 4, rgba);
+        }
+      }
+    }
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tile,
+      tiles: {
+        for (final coord in coords)
+          coord: BitmapTile(size: tile, pixels: Uint8List.fromList(pixels)),
+      },
+    );
+  }
+
+  /// Every alpha across a tile, the colours down it — and [turned], the
+  /// alphas down and the colours across, so that where the two lie one
+  /// over the other every alpha meets every alpha.
+  List<int> Function(int x, int y) everyShade({bool turned = false}) =>
+      (x, y) {
+        final (along, across) = turned ? (y, x) : (x, y);
+        return [
+          across * 2,
+          255 - across * 2,
+          (along + across * 3) & 255,
+          along * 255 ~/ (tile - 1),
+        ];
+      };
+
+  testWidgets('🎯a row\'s blocks merged lay its cels as a merge of rows lays '
+      'the same cels each on a row of its own, in the same order — to the '
+      'byte, where a half-clear cel lies over another and at the wall\'s '
+      'edges (🧭관제 2026-11-14 (1): 「블록 머지 = 레이어 머지」)', (
+    tester,
+  ) async {
+    final context = await hostedContext(tester);
+    // `b` under `a`, each a cel of its own.
+    final byRows = sessionOf([row('b'), row('a')]);
+    addTearDown(byRows.dispose);
+    final rowsCut = byRows.requireActiveCut;
+    final wall = byRows.pasteboardOf(canvasSize);
+    // Where both lie: a tile inside the canvas, and the tiles the wall's
+    // left and right edges run through.
+    final coords = [
+      TileCoord(x: 1, y: 0),
+      TileCoord(x: (wall.left / tile).floor(), y: 1),
+      TileCoord(x: ((wall.rightExclusive - 1) / tile).floor(), y: 2),
+    ];
+    final under = shadedAt(coords, everyShade());
+    final over = shadedAt(coords, everyShade(turned: true));
+    for (final (id, cel) in [('b', under), ('a', over)]) {
+      bakeCelSurface(
+        byRows.renderCaches.brushFrameStore,
+        byRows.brushFrameKeyForCut(rowsCut, LayerId(id), FrameId('$id-1')),
+        cel,
+      );
+    }
+    byRows.rowSelection.value = const [
+      LayerRowAddress(LayerId('a')),
+      LayerRowAddress(LayerId('b')),
+    ];
+    unawaited(mergeLayerRows(context, byRows));
+    await settleBehindTheWaitWindow(tester, () => merged(byRows));
+
+    // `a`'s two blocks: the leftmost lies on top (Q17).
+    final byBlocks = sessionOf([parted(row('a'))]);
+    addTearDown(byBlocks.dispose);
+    final blocksCut = byBlocks.requireActiveCut;
+    for (final (cel, surface) in [('1', over), ('2', under)]) {
+      bakeCelSurface(
+        byBlocks.renderCaches.brushFrameStore,
+        byBlocks.brushFrameKeyForCut(
+          blocksCut,
+          const LayerId('a'),
+          FrameId('a-$cel'),
+        ),
+        surface,
+      );
+    }
+    byBlocks.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('a'),
+      startIndex: 0,
+      endIndexExclusive: 2,
+    );
+    unawaited(mergeBlocks(context, byBlocks));
+    await settleBehindTheWaitWindow(tester, () => blocksMerged(byBlocks));
+
+    final (rows, blocks) = (mergedCel(byRows), mergedCel(byBlocks));
+    expect(
+      at(rows, tile + 100, 100)?[3],
+      inExclusiveRange(0, 255),
+      reason: '⛔premise: half-clear over half-clear',
+    );
+    expect(
+      rows.tiles.keys.toSet(),
+      containsAll(coords),
+      reason: '⛔premise: the wall\'s edges are in it',
+    );
+    expect(blocks.tiles.keys.toSet(), rows.tiles.keys.toSet());
+    var apart = 0;
+    String? first;
+    for (final MapEntry(key: coord, value: laid) in rows.tiles.entries) {
+      final other = blocks.tiles[coord]!.pixels;
+      for (var byte = 0; byte < laid.pixels.length; byte += 1) {
+        if (laid.pixels[byte] != other[byte]) {
+          apart += 1;
+          first ??= '$coord byte $byte: ${laid.pixels[byte]} by rows, '
+              '${other[byte]} by blocks';
+        }
+      }
+    }
+    expect(apart, 0, reason: first);
+    byRows.playbackRig.prerenderScheduler.cancel();
+    byBlocks.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a row\'s blocks merged lay its cels as they are — its keys '
+      'and its fx stay on the row — and a synced row riding it merges its '
+      'cels in the same order, the leftmost on top (Q18 ⓐ · ⓔ)', (
+    tester,
+  ) async {
+    final a = parted(row('a')).copyWith(
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 384, y: 192),
+        ),
+      ),
+      effects: [
+        LayerEffect(
+          id: const EffectId('e-darker'),
+          kind: EffectKind.brightnessContrast,
+          parameters: {'brightness': EffectParameter(value: -40)},
+        ),
+      ],
+    );
+    final riding = Layer(
+      id: const LayerId('r'),
+      name: 'r',
+      attachedToLayerId: const LayerId('a'),
+      frames: [
+        for (final cel in ['1', '2'])
+          Frame(id: FrameId('r-$cel'), duration: 1, name: cel, strokes: []),
+      ],
+      baseFrameLinks: {
+        const FrameId('a-1'): const FrameId('r-1'),
+        const FrameId('a-2'): const FrameId('r-2'),
+      },
+      timeline: const {},
+    );
+    final s = sessionOf([a, riding]);
+    addTearDown(s.dispose);
+    final cut = s.requireActiveCut;
+    for (final (id, cel, coords, rgba) in [
+      ('a', '1', [TileCoord(x: 2, y: 0)], green),
+      ('a', '2', [TileCoord(x: 2, y: 0), TileCoord(x: 0, y: 1)],
+          blue),
+      ('r', '1', [TileCoord(x: 1, y: 1)], red),
+      ('r', '2', [TileCoord(x: 1, y: 1), TileCoord(x: 3, y: 2)],
+          blue),
+    ]) {
+      bakeCelSurface(
+        s.renderCaches.brushFrameStore,
+        s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-$cel')),
+        inkAt(coords, rgba),
+      );
+    }
+    s.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('a'),
+      startIndex: 0,
+      endIndexExclusive: 2,
+    );
+    final context = await hostedContext(tester);
+
+    unawaited(mergeBlocks(context, s));
+    await settleBehindTheWaitWindow(tester, () => blocksMerged(s));
+
+    final after = s.requireActiveCut.layers.byId(const LayerId('a'))!;
+    expect(after.transformTrack, a.transformTrack, reason: 'on the row');
+    expect(after.effects, a.effects, reason: 'on the row');
+    final cel = mergedCel(s);
+    expect(
+      [at(cel, 288, 40), at(cel, 40, 160)],
+      [green, blue],
+      reason: 'where they lie, as they are: not moved, not darkened',
+    );
+    final ridden = mergedCel(s, 'r');
+    expect([at(ridden, 160, 160), at(ridden, 416, 288)], [red, blue]);
     s.playbackRig.prerenderScheduler.cancel();
   });
 

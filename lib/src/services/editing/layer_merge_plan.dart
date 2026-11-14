@@ -1678,13 +1678,16 @@ class BlockMergePlan {
   }
 }
 
-/// One new cel of a block merge: of [rowId], laid of [layers] — each the
-/// cut holding one of the cels it is made of, alone and as it is, drawn at
-/// its first frame — bottom → top.
+/// One new cel of a block merge: [frameId] of [rowId], laid of [cels] — the
+/// row's cels it is made of, each as it is, bottom → top: no look of the
+/// row's, which stays on the row (Q18).
+///
+/// ↩️Each was a cut holding that cel alone, drawn by itself, until the cels
+/// were stacked as the canvas stacks rows (2026-11-14, `merge_layer_rows`).
 typedef BlockMergePicture = ({
   LayerId rowId,
   FrameId frameId,
-  List<Cut> layers,
+  List<FrameId> cels,
 });
 
 /// The blocks ONE press of MERGE takes of a band — what lights its button
@@ -1737,12 +1740,12 @@ BlockMergePlan planBlockMerge(
   final rows = <Layer>[];
   final pictures = <BlockMergePicture>[];
   for (final MapEntry(key: row, value: starts) in taking._starts.entries) {
-    final merged = _blocksMerged(cut, row, starts, mintFrameId(row.id));
+    final merged = _blocksMerged(row, starts, mintFrameId(row.id));
     rows.add(merged.row);
     pictures.add(merged.picture);
     for (final rider in attachedLayersOf(row.id, cut.layers)) {
       if (isSyncedAttachedLayer(rider)) {
-        final ridden = _riderMerged(cut, rider, merged);
+        final ridden = _riderMerged(rider, merged);
         rows.add(ridden.row);
         pictures.addAll(ridden.pictures);
       }
@@ -1763,7 +1766,6 @@ typedef _BlocksMerged = ({
 
 /// [row]'s blocks at [starts] made one block over the new cel [celId].
 _BlocksMerged _blocksMerged(
-  Cut cut,
   Layer row,
   List<int> starts,
   FrameId celId,
@@ -1808,7 +1810,7 @@ _BlocksMerged _blocksMerged(
     picture: (
       rowId: row.id,
       frameId: celId,
-      layers: [for (final cel in cels.reversed) _celAlone(cut, row, cel)],
+      cels: cels.reversed.toList(),
     ),
   );
 }
@@ -1817,7 +1819,6 @@ _BlocksMerged _blocksMerged(
 /// cel laid of its own for the run's, and its mirrors of the cels the base
 /// lets go gone with them.
 ({Layer row, List<BlockMergePicture> pictures}) _riderMerged(
-  Cut cut,
   Layer rider,
   _BlocksMerged merged,
 ) {
@@ -1853,9 +1854,7 @@ _BlocksMerged _blocksMerged(
         (
           rowId: rider.id,
           frameId: celId,
-          layers: [
-            for (final cel in laid.reversed) _celAlone(cut, rider, cel),
-          ],
+          cels: laid.reversed.toList(),
         ),
     ],
   );
@@ -1910,17 +1909,3 @@ String? _nameKept(String? name, List<Frame> kept) {
   }
   return tailClearOf({for (final cel in kept) ?celNumberOf(cel.name)}, shown);
 }
-
-/// [cut] holding [cel] of [row] alone and as it is — no look of the row's,
-/// no folder over it — shown at its first frame.
-Cut _celAlone(Cut cut, Layer row, FrameId cel) => cut.copyWith(
-  layers: [
-    Layer(
-      id: row.id,
-      name: row.name,
-      kind: row.kind,
-      frames: [row.frameById(cel)!],
-      timeline: {0: TimelineExposure.drawing(cel, length: 1)},
-    ),
-  ],
-);

@@ -2,25 +2,27 @@ import 'dart:ui' as ui;
 
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
 import '../../core/progress_share.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardWall;
 import '../../models/pill_subject.dart';
+import '../../native/app_gpu_engine.dart' show appGpuExport;
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/guide_geometry.dart' show GuideTransform;
-import '../../services/import/cel_picture.dart' show EnginePicture;
 import '../../services/import/raster_cel_import.dart' show layCelPicture;
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart';
-import '../export/offscreen_raster.dart' show rasterizeOffscreen;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
+import 'baked_frame_ink.dart';
 
 /// MERGE (I-78): the selected rows made one row — asked first where the
 /// merge changes how they look (Q1 「포토샵 · 클튜처럼 (+경고)」), each of
@@ -221,7 +223,7 @@ Future<void> layBakedPictures(
         await laying.lay(
           picture.rowId,
           picture.frameId,
-          await laying.draw(picture.from, picture.frameIndex),
+          laying.draw(picture.from, picture.frameIndex),
         );
         laid += 1;
         report(doneShare(laid, pictures.length));
@@ -232,8 +234,17 @@ Future<void> layBakedPictures(
   }
 }
 
-/// Each of [plan]'s new cels laid of the cels it is made of, each drawn
-/// alone and then laid over the one under it.
+/// Each of [plan]'s new cels laid of the cels it is made of, stacked as the
+/// canvas stacks rows ([_Laying.stack]).
+///
+/// ↩️Each cel was drawn alone and read back whole, and Flutter drew them
+/// one over another (`rasterizeOffscreen`): 🔬over two pictures where every
+/// alpha meets every alpha (65,536 pixels, 2026-11-14) the canvas's stack
+/// shows 37,031 of them apart from that, by 2 levels at most — none where
+/// either is opaque or alone. A block merge's overlap is a picture nobody
+/// saw (Q18 ⓐ), and the app has one law of laying one over another: the
+/// canvas's, which a merge of rows is laid by — 🧭관제 2026-11-14 ⏳
+/// 「(나) 캔버스가 줄을 쌓는 법으로」, which the user can turn back.
 Future<void> _layBlockPictures(
   EditorSessionManager session,
   BlockMergePlan plan,
@@ -242,30 +253,11 @@ Future<void> _layBlockPictures(
   final laying = _Laying(session, plan.cut);
   try {
     for (final (index, picture) in plan.pictures.indexed) {
-      final layers = [
-        for (final layer in picture.layers) await laying.draw(layer, 0),
-      ];
-      try {
-        await laying.lay(
-          picture.rowId,
-          picture.frameId,
-          await rasterizeOffscreen(
-            width: layers.first.width,
-            height: layers.first.height,
-            paint: (canvas) {
-              // 1:1 — each drawn over the same wall, one texel to a pixel.
-              final blit = Paint()..filterQuality = FilterQuality.none;
-              for (final layer in layers) {
-                canvas.drawImage(layer, Offset.zero, blit);
-              }
-            },
-          ),
-        );
-      } finally {
-        for (final layer in layers) {
-          layer.dispose();
-        }
-      }
+      await laying.lay(
+        picture.rowId,
+        picture.frameId,
+        laying.stack(picture.rowId, picture.cels),
+      );
       report(doneShare(index + 1, plan.pictures.length));
     }
   } finally {
@@ -289,33 +281,47 @@ final class _Laying {
   final PasteboardWall wall;
   final ExportFrameRenderer _renderer;
 
-  /// [from] at [frameIndex], over the whole wall.
-  Future<ui.Image> draw(Cut from, int frameIndex) =>
-      _renderer.renderOver(from, frameIndex, wall.rect);
+  /// [from] at [frameIndex], over the whole wall: a frame on the engine.
+  Future<GpuShown> draw(Cut from, int frameIndex) =>
+      _renderer.frameOver(from, frameIndex, wall.rect);
 
-  /// [image] laid as [cut]'s cel [frameId] of [rowId], where it lies.
-  Future<void> lay(LayerId rowId, FrameId frameId, ui.Image image) async {
-    final drawn = EnginePicture(image);
+  /// [cels] of [cut]'s [rowId] stacked bottom → top over the whole wall
+  /// ([ExportFrameRenderer.frameOfCels]): a frame on the engine.
+  Future<GpuShown> stack(LayerId rowId, List<FrameId> cels) =>
+      _renderer.frameOfCels(cut, rowId, cels, wall.rect);
+
+  /// The frame [drawn] laid as [cut]'s cel [frameId] of [rowId], where it
+  /// lies — read back where its ink is ([inkOfFrame]), an empty cel where
+  /// it holds none — and freed.
+  Future<void> lay(
+    LayerId rowId,
+    FrameId frameId,
+    Future<GpuShown> drawn,
+  ) async {
+    final frame = await drawn;
     try {
+      final ink = inkOfFrame(appGpuExport, frame);
       session.layerMerging.layPicture(
         cut,
         rowId,
         frameId,
-        await layCelPicture(
-          picture: drawn,
-          canvas: cut.canvasSize,
-          placement: GuideTransform(
-            1,
-            0,
-            0,
-            1,
-            wall.left.toDouble(),
-            wall.top.toDouble(),
-          ),
-        ),
+        ink == null
+            ? BitmapSurface(canvasSize: cut.canvasSize)
+            : await layCelPicture(
+                picture: ink.pixels,
+                canvas: cut.canvasSize,
+                placement: GuideTransform(
+                  1,
+                  0,
+                  0,
+                  1,
+                  (wall.left + ink.left).toDouble(),
+                  (wall.top + ink.top).toDouble(),
+                ),
+              ),
       );
     } finally {
-      drawn.dispose();
+      frame.free();
     }
   }
 

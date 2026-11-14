@@ -1955,10 +1955,9 @@ void main() {
             );
     }
 
-    /// The cel each of [picture]'s layers holds, bottom → top.
+    /// The cels [picture] is laid of, bottom → top.
     List<String> laidOf(BlockMergePicture picture) => [
-      for (final layer in picture.layers)
-        layer.layers.single.frames.single.id.value,
+      for (final cel in picture.cels) cel.value,
     ];
 
     /// [id]'s blocks `start: (length, cel name)`, each [marks] as given.

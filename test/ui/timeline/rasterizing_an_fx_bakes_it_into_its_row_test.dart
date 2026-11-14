@@ -40,6 +40,7 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show appGpuExport;
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show exposedCelIdAt, referenceMoveAt;
@@ -245,9 +246,9 @@ void main() {
     return hosted;
   }
 
-  /// What [s]'s cut — [of], where given — shows on [frame], drawn as an
-  /// export draws it: the wall's pixels row by row, [width] to a row, the
-  /// first at canvas ([left], [top]).
+  /// What [s]'s cut — [of], where given — shows on [frame], drawn as a bake
+  /// draws it: the wall's pixels row by row, straight as the engine reads
+  /// them, [width] to a row, the first at canvas ([left], [top]).
   Future<({List<int> rgba, int width, int left, int top})> wallAt(
     WidgetTester tester,
     EditorSessionManager s,
@@ -262,19 +263,17 @@ void main() {
         ground: const ui.Color(0x00000000),
       );
       try {
-        final image = await renderer.renderOver(cut, frame, wall.rect);
+        final shown = await renderer.frameOver(cut, frame, wall.rect);
         try {
-          final bytes = (await image.toByteData(
-            format: ui.ImageByteFormat.rawStraightRgba,
-          ))!;
           return (
-            rgba: bytes.buffer
-                .asUint8List(bytes.offsetInBytes, bytes.lengthInBytes)
+            rgba: appGpuExport
+                .straight(shown, shown.width, shown.height)
+                .take()
                 .toList(),
-            width: image.width,
+            width: shown.width,
           );
         } finally {
-          image.dispose();
+          shown.free();
         }
       } finally {
         renderer.dispose();
