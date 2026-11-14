@@ -71,7 +71,7 @@ impl MaskRuns {
         let put = whole(&[(0, words), (1, &folded.plane), (2, &offsets), (3, &ends)]);
         let readback = engine.readback(offset_bytes + room * 4);
         let mut encoder = engine
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encode_on(
             engine,
