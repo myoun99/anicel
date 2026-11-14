@@ -26,7 +26,6 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
 import '../../helpers/exposure_of.dart';
-import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🗣️the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2 (유저 2026-11-14
@@ -111,13 +110,14 @@ void main() {
         devicePixelRatio: 1.0,
       );
 
-  /// The row's span, cold, landed off-frame.
+  /// The row's span, cold: baked in the ask, as a span nothing stands in
+  /// for is — an SE row sets no word to wait for.
   Future<TimelineGridTilePicture> landed(
     TimelineRowCellsPainter painter,
   ) async {
-    expect(ask(painter), isNull, reason: 'premise: cold');
-    await tileStoreIdle(store);
-    return ask(painter)!;
+    final tile = ask(painter);
+    expect(tile, isNotNull, reason: 'premise: cold, baked in the ask');
+    return tile!;
   }
 
   /// The pixel at (x, y) of a picture [width] across.

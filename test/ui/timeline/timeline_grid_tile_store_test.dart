@@ -103,6 +103,21 @@ void main() {
   // open here stays open.
   setUpAll(openAppGpuEngine);
 
+  // ⛔premise: the word a block of [blockLayer] sets, baked once at the
+  // ratio the tests ask for — the one wait left for a span nothing stands
+  // in for, which they would otherwise meet in whichever of them runs first.
+  setUpAll(() async {
+    final store = TimelineGridTileStore.instance;
+    store.tileFor(
+      painter: painterFor(blockLayer(), store: store),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    await tileStoreIdle(store);
+    store.clear();
+  });
+
   setUp(TimelineGridTileStore.instance.clear);
   tearDown(TimelineGridTileStore.instance.clear);
 
@@ -378,8 +393,8 @@ void main() {
     expect(drawn, greaterThan(before), reason: 'it was baked, and refused');
   });
 
-    test('a cold span rasters off-frame, lands as a physical-resolution '
-      'image, and a changed LOOK invalidates it', () async {
+  test('a cold span is baked in the ask as a physical-resolution image, and '
+      'a changed LOOK invalidates it', () async {
     final store = TimelineGridTileStore.instance;
     final layer = blockLayer();
     final painter = painterFor(layer, store: store);
@@ -387,18 +402,7 @@ void main() {
     var landings = 0;
     store.revision.addListener(() => landings += 1);
 
-    // Cold: null now, raster scheduled.
-    expect(
-      store.tileFor(
-        painter: painter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 2.0,
-      ),
-      isNull,
-    );
-    await pollUntil(() => landings > 0);
-
+    // Cold: nothing stands in for it, so the ask bakes it.
     final image = store.tileFor(
       painter: painter,
       spanStartIndex: 0,
@@ -406,6 +410,7 @@ void main() {
       devicePixelRatio: 2.0,
     );
     expect(image, isNotNull);
+    expect(landings, 1, reason: 'it landed in the ask');
     expect(image!.width, 4 * 24 * 2, reason: 'span cells × extent × DPR');
     expect(image.height, 28 * 2);
 
@@ -515,8 +520,8 @@ void main() {
       reason: 'a 2× zoom step keeps showing the stale tile, scaled',
     );
 
-    // Bounded, though: an extreme jump would show mush, so that still
-    // takes the crisp classic path.
+    // Bounded, though: an extreme jump would show mush, so nothing stands
+    // in past it.
     expect(
       store.tileFor(
         painter: zoomedTo(4),
@@ -524,8 +529,8 @@ void main() {
         spanEndIndexExclusive: 4,
         devicePixelRatio: 2.0,
       ),
-      isNull,
-      reason: 'past the rescale band the classic paint takes over',
+      isNot(same(reRastered)),
+      reason: 'past the rescale band no tile stands in',
     );
   });
 
@@ -543,12 +548,9 @@ void main() {
       devicePixelRatio: 2.0,
     );
 
-    // Waited for by what lands, not by a landing count: a raster the last
-    // test left in flight can bump the revision first.
     final plain = painterFor(layer, store: store);
-    expect(tile(plain), isNull, reason: 'cold');
-    expect(await pollUntil(() => tile(plain) != null), isTrue);
-    final first = tile(plain)!;
+    final first = tile(plain);
+    expect(first, isNotNull, reason: 'cold: baked in the ask');
 
     final grounded = painterFor(
       layer,
@@ -563,7 +565,7 @@ void main() {
           'a fresh raster is baked for it',
     );
     expect(identical(fresh, first), isFalse);
-    expect(first.debugHolds, 0, reason: 'the tile it replaced went');
+    expect(first!.debugHolds, 0, reason: 'the tile it replaced went');
   });
 
   // 🗣️I-129: a folder's flip hides its rows without making a new layer of
@@ -581,9 +583,8 @@ void main() {
     );
 
     final shown = painterFor(layer, store: store);
-    expect(tile(shown), isNull, reason: 'cold');
-    expect(await pollUntil(() => tile(shown) != null), isTrue);
-    final first = tile(shown)!;
+    final first = tile(shown);
+    expect(first, isNotNull, reason: 'cold: baked in the ask');
     expect(
       tile(painterFor(layer, store: store, shown: true)),
       same(first),
@@ -593,7 +594,7 @@ void main() {
     final hidden = painterFor(layer, store: store, shown: false);
     await pollUntil(() => !identical(tile(hidden), first));
     expect(tile(hidden), isNotNull, reason: 'a fresh raster landed for it');
-    expect(first.debugHolds, 0, reason: 'the tile it replaced went');
+    expect(first!.debugHolds, 0, reason: 'the tile it replaced went');
   });
 
   test('🚨past its capacity the tile asked for longest ago goes, its picture '

@@ -111,11 +111,13 @@ void main() {
           ),
     };
 
-    expect(paint().values, everyElement(isNull), reason: 'all cold');
-    await waitIdle();
-    expect(landings, 4);
     final warm = paint();
-    expect(warm.values, everyElement(isNotNull));
+    expect(
+      warm.values,
+      everyElement(isNotNull),
+      reason: 'all cold: nothing stands in, so each ask bakes its span',
+    );
+    expect(landings, 4);
 
     // ① The pen goes down on a cel that is already drawn: the revision
     // moves, no answer does.

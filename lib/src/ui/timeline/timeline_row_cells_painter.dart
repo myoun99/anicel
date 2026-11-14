@@ -884,12 +884,13 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// The substrate through the tile store: a tile is one lay on [laying] —
-  /// baked in this paint where an edit moved the span
-  /// ([TimelineGridTileStore.tileFor]) — a cold span the tiles kept over its
-  /// frames stand in for, scaled, while it is rastered
-  /// ([TimelineGridTileStore.standInFor]), and one they do not cover keeps
-  /// the classic paint underneath while its raster lands off-frame; the two
-  /// spans past the window are asked for so a scroll finds them warm.
+  /// baked in this paint where an edit moved the span or nothing stands in
+  /// for it ([TimelineGridTileStore.tileFor]) — a span the tiles kept over
+  /// its frames stand in for, scaled, while it is rastered
+  /// ([TimelineGridTileStore.standInFor]), and one the engine cannot answer
+  /// this frame keeps the classic paint underneath while its raster lands
+  /// off-frame; the two spans past the window are asked for so a scroll
+  /// finds them warm.
   /// Answers the spans whose tiles already carry the foreground ink.
   List<(int, int)> _paintTiledSubstrate(
     Canvas canvas,

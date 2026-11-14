@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
+import '../../helpers/frame_name_of.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/tiles_drawn_off_the_paint.dart';
 import '../../helpers/tiles_laid.dart';
@@ -43,18 +44,34 @@ import 'timeline_frame_geometry_probe.dart';
 /// the store rastered a second time: with a row repainting on every landing
 /// of its own, that fed itself (900 rasters of 19 tiles in the third case
 /// here, before the store stopped asking twice).
+///
+/// What a queue holds is what a paint cannot bake in its ask
+/// ([TimelineGridTileStore.tileFor]) — here, a span whose word no tile has
+/// baked yet: each row sets one of its own ([unbaked]).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
 
   final store = TimelineGridTileStore.instance;
 
+  /// A word no tile has baked yet, each time.
+  var words = 0;
+  String unbaked() => 'U${words++}';
+
   /// A row [frames] long with a block of two at every fourth frame — four
-  /// frames to a span at 128px (`timelineFrameWindowSpanFor`).
+  /// frames to a span at 128px (`timelineFrameWindowSpanFor`) — its cel
+  /// named a word of its own ([unbaked]).
   Layer rowLayer(String id, {required int frames}) => Layer(
     id: LayerId(id),
     name: id,
-    frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
+    frames: [
+      Frame(
+        id: FrameId('$id-f'),
+        duration: 1,
+        strokes: const [],
+        name: unbaked(),
+      ),
+    ],
     timeline: {
       for (var start = 0; start < frames; start += 4)
         start: TimelineExposure.drawing(FrameId('$id-f'), length: 2),
@@ -70,6 +87,7 @@ void main() {
         ),
         crossAxisExtent: 28,
         exposureStateForLayer: exposureOf,
+        frameNameForLayer: frameNameOf,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
         tileStore: store,
@@ -203,6 +221,7 @@ void main() {
           ),
           crossAxisExtent: 28,
           exposureStateForLayer: exposureOf,
+          frameNameForLayer: frameNameOf,
           colorScheme: const ColorScheme.dark(),
           baseTextStyle: const TextStyle(fontSize: 11),
           tileStore: store,
@@ -273,9 +292,16 @@ void main() {
     // raster land.
     store.clear();
     expect(store.debugBusy, isFalse, reason: 'the raster out is not counted');
-    paintRow(a, 4);
-    await pollUntil(() => out.length > 1);
-    expect(out, hasLength(2), reason: 'its key is asked for again at once');
+    // Its word was baked before the raster's drawing was held: the key is
+    // asked for again at once, and baked in that ask.
+    final asked = store.tileFor(
+      painter: a,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1,
+    );
+    expect(asked, isNotNull, reason: 'its key is asked for again at once');
+    expect(store.debugBusy, isFalse);
 
     final live = TimelineGridTilePicture.debugLive;
     land(0);
@@ -286,9 +312,16 @@ void main() {
       live,
       reason: 'and what it drew is freed',
     );
-    land(1);
-    await tileStoreIdle(store);
-    expect(landings, 1, reason: 'the one asked for after it does');
+    expect(
+      store.tileFor(
+        painter: a,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1,
+      ),
+      same(asked),
+      reason: 'the one asked for after it stays',
+    );
   });
 
   test('a row is come back to with its NEWEST painter — once a tile of its '
@@ -302,6 +335,7 @@ void main() {
     var landings = 0;
     void repaintBefore() {}
     show(before, repaintBefore);
+    final landedBefore = store.revision.value;
 
     paintRow(before, 40);
     paintRow(filler, 128);
@@ -317,10 +351,14 @@ void main() {
 
     paintRow(after, 40);
     expect(store.debugBusy, isFalse, reason: 'the new painter is warm');
+    expect(landings, isPositive, reason: 'a tile of its landed off the paint');
+    // The queue kept thirty-two: the new painter's ten and twenty-two of the
+    // filler's — whose other ten nothing shows, so nothing comes back to.
+    // A span its landing's repaint finds queued is baked in that ask.
     expect(
-      landings,
-      10,
-      reason: 'each of its ten spans rastered once, for the new painter — '
+      store.revision.value - landedBefore,
+      22 + 10,
+      reason: 'each of its ten spans baked once, for the new painter — '
           'never again for the old layer, over what the new one had shown',
     );
   });

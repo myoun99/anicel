@@ -107,7 +107,9 @@ void main() {
     var landings = 0;
     store.revision.addListener(() => landings += 1);
 
-    // The gesture: cut A's row asks for a tile...
+    // The gesture: cut A's row asks for a tile — queued, its word baked the
+    // first time (a paint bakes what it can in its ask, and a paint is the
+    // live state's)...
     expect(
       store.tileFor(
         painter: painterFor(
@@ -120,6 +122,7 @@ void main() {
         devicePixelRatio: 1.0,
       ),
       isNull,
+      reason: '⛔premise: the first ask of this file, its word never baked',
     );
     // ...and the user switches cuts before the drain reaches it. The next
     // paint carries the new generation — that IS the liveness signal.
@@ -158,18 +161,11 @@ void main() {
       isNotNull,
       reason: 'the live generation landed normally',
     );
+    // Asked for nothing: an ask is a paint's, and would bake cut A's row as
+    // the live one's.
     expect(
-      store.tileFor(
-        painter: painterFor(
-          blockLayer(),
-          generation: 'p:cut-a',
-          store: store,
-        ),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      ),
-      isNull,
+      store.debugRowsKept,
+      1,
       reason: 'nothing was stored for the dead generation',
     );
   });
@@ -217,6 +213,12 @@ void main() {
       generation: 'p:cut-b',
       store: store,
     );
+    final aTile = store.tileFor(
+      painter: cutA,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
     expect(
       store.tileFor(
         painter: cutB,
@@ -224,7 +226,7 @@ void main() {
         spanEndIndexExclusive: 4,
         devicePixelRatio: 1.0,
       ),
-      isNull,
+      isNot(same(aTile)),
       reason: 'cut B must go cold rather than wear cut A\'s pixels — '
           'this is the arm that turned a mid-drain grey into a resident',
     );

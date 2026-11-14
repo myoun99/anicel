@@ -108,14 +108,24 @@ void main() {
     addTearDown(() => painter.removeListener(onLanding));
   }
 
-  /// The first span of [painter]'s row, cold, landed off-frame.
+  /// The first span of [painter]'s row, cold: baked in the ask, as a span
+  /// nothing stands in for is — its words baked before ([setUpAll]).
   Future<TimelineGridTilePicture> landed(
     TimelineRowCellsPainter painter,
   ) async {
-    expect(ask(painter), isNull, reason: 'premise: cold');
-    await tileStoreIdle(store);
-    return ask(painter)!;
+    final tile = ask(painter);
+    expect(tile, isNotNull, reason: 'premise: cold, baked in the ask');
+    return tile!;
   }
+
+  // ⛔premise: the word the rows set but where a test renames them, baked
+  // once — the one wait left for a span nothing stands in for, which the
+  // tests below would otherwise meet in whichever of them runs first.
+  setUpAll(() async {
+    ask(painterFor(rowLayer('warm')));
+    await tileStoreIdle(store);
+    store.clear();
+  });
 
   var landings = 0;
   void countLanding() => landings += 1;
@@ -154,6 +164,19 @@ void main() {
     expect(drawnOff(), 0, reason: 'drawn in the ask, none off the paint');
   });
 
+  // The ink an ask tells a moved span by is the ink its bake writes.
+  // ↩️It was written again by the bake (a-grid-row-paints-its-cells-on-a-
+  // canvas-beside-its-tiles, 11-15).
+  test('a span its ink moved is baked from the ink the ask read', () async {
+    await landed(painterFor(rowLayer('r')));
+    final written = store.debugInksWritten;
+
+    final baked = ask(painterFor(rowLayer('r', name: null)));
+
+    expect(baked, isNotNull, reason: 'premise: baked in the ask');
+    expect(store.debugInksWritten, written + 1);
+  });
+
   test('the tile baked in the ask is the one drawn off the paint, to the '
       'last byte', () async {
     Uint8List bytesOf(TimelineGridTilePicture tile) => tile.picture.read();
@@ -164,10 +187,18 @@ void main() {
     final baked = ask(painterFor(rowLayer('r', name: null, length: 3)))!;
     expect(landings, 2, reason: 'premise: baked in the ask');
 
-    // The same cells on a row of their own, cold: drawn off the paint.
-    final offThePaint = bytesOf(
-      await landed(painterFor(rowLayer('twin', name: null, length: 3))),
+    // The same cells on a row of their own, warmed: drawn off the paint.
+    final twin = painterFor(rowLayer('twin', name: null, length: 3));
+    final drawnOff = countTilesDrawnOffThePaint(store);
+    store.warmAhead(
+      painter: twin,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
     );
+    await tileStoreIdle(store);
+    expect(drawnOff(), 1, reason: 'premise: drawn off the paint');
+    final offThePaint = bytesOf(ask(twin)!);
     var partlyClear = 0;
     for (var alpha = 3; alpha < offThePaint.length; alpha += 4) {
       if (offThePaint[alpha] != 0 && offThePaint[alpha] != 255) {
@@ -301,14 +332,19 @@ void main() {
 
   test('a row the store comes back to with nothing baked in that ask is not '
       'repainted for it — its landings repaint it, once each', () async {
-    // Two cold spans, turned away by thirty-two queued after them: the
-    // store comes back to them cold, and queues them.
-    final row = painterFor(rowLayer('r', frames: 8), frames: 8);
+    // Two cold spans whose word no tile has baked yet, turned away by
+    // thirty-two queued after them for a word of their own: the store comes
+    // back to them with their word still unbaked, and queues them.
+    final row = painterFor(rowLayer('r', frames: 8, name: 'V1'), frames: 8);
     var repaints = 0;
     show(row, () => repaints += 1);
-    final filler = painterFor(rowLayer('filler', frames: 128), frames: 128);
+    final filler = painterFor(
+      rowLayer('filler', frames: 128, name: 'V2'),
+      frames: 128,
+    );
     paintRow(row, 8);
     paintRow(filler, 128);
+    expect(store.debugBusy, isTrue, reason: 'premise: queued');
     await tileStoreIdle(store);
 
     expect(repaints, 2, reason: 'a repaint of a row with cold spans is the '

@@ -149,16 +149,25 @@ void main() {
       substrateGeneration: 'p:cut-a',
     );
 
+    // A warm-up rasters only for the live world, which is the one a paint
+    // last asked in: cut A's — the span beside the probed one, baked in its
+    // ask, and not counted.
+    store.tileFor(
+      painter: painterA,
+      spanStartIndex: 4,
+      spanEndIndexExclusive: 8,
+      devicePixelRatio: 1.0,
+    );
+    landings = 0;
+
     flipAtFrame = 1; // the stretch after the first cell of [0, 4)
-    expect(
-      store.tileFor(
-        painter: painterA,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      ),
-      isNull,
-      reason: 'cold span: the classic paint covers this frame',
+    // Warmed: a raster off the paint, whose awaits a crossing lands among —
+    // a paint bakes a cold span in its ask, with none.
+    store.warmAhead(
+      painter: painterA,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
     );
     await waitForLandings(1);
     expect(

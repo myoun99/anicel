@@ -471,7 +471,7 @@ void main() {
         reason: 'premise: the comma is where the two may part',
       );
 
-      expect(paint(before).values, everyElement(isNull));
+      paint(before);
       await waitIdle();
       final warm = paint(before);
       expect(warm.values, everyElement(isNotNull));

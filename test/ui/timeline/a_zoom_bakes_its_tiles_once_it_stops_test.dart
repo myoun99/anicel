@@ -91,13 +91,52 @@ void main() {
     devicePixelRatio: 2.0,
   );
 
-  /// The span from [start], baked at [extent] — the tiles a zoom stretches.
+  /// The span from [start], baked at [extent] — the tiles a zoom stretches:
+  /// in the ask, as a span nothing stands in for is.
   Future<TimelineGridTilePicture> baked(double extent, {int start = 0}) async {
     final before = landings;
-    expect(ask(extent, start: start), isNull, reason: '⛔전제: a cold span');
-    expect(await pollUntil(() => landings > before), isTrue);
-    return ask(extent, start: start)!;
+    final tile = ask(extent, start: start);
+    expect(tile, isNotNull, reason: '⛔전제: nothing stands in for the span');
+    expect(landings, before + 1, reason: '⛔전제: baked in the ask');
+    return tile!;
   }
+
+  // ⛔전제: every word this file sets, baked once — the one wait left for a
+  // span nothing stands in for, which the tests below would otherwise meet
+  // in whichever of them runs first.
+  setUpAll(() async {
+    final edited = Layer(
+      id: layer.id,
+      name: layer.name,
+      frames: layer.frames,
+      timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 3)},
+    );
+    for (final (painter, dpr) in [
+      for (final extent in const [24.0, 20.0, 16.0, 14.0, 12.0, 10.0])
+        (at(extent), 2.0),
+      (at(20), 1.0),
+      (at(20, across: 40), 2.0),
+      (at(24, of: edited), 2.0),
+    ]) {
+      // One cut of the row at a time: a tile of another cut over the span
+      // stands in for it, as a zoom's.
+      for (final spans in [
+        painter.tileSpans.shown,
+        [for (final start in const [0, 4, 8]) (start, start + 4)],
+      ]) {
+        for (final (start, end) in spans) {
+          store.tileFor(
+            painter: painter,
+            spanStartIndex: start,
+            spanEndIndexExclusive: end,
+            devicePixelRatio: dpr,
+          );
+        }
+        await tileStoreIdle(store);
+        store.clear();
+      }
+    }
+  });
 
   /// Lets the store's drain and warm-ups run a while, short of any stop.
   Future<void> aWhile() =>
@@ -142,21 +181,23 @@ void main() {
     expect(landings, 2, reason: 'once');
   });
 
-  test('past twice the old tile\'s extent a step is rastered then', () async {
+  // ↩️Past twice a step was rastered off the paint, the classic paint
+  // covering it meanwhile (a-grid-row-paints-its-cells-on-a-canvas-beside-
+  // its-tiles-Q1 (다), 11-15).
+  test('past twice the old tile\'s extent a step is baked in its ask', () async {
     await baked(24);
 
-    expect(ask(10), isNull, reason: 'the classic paint covers the step');
-    expect(await pollUntil(() => landings == 2), isTrue);
-    expect(ask(10)!.width, 4 * 10 * 2);
+    expect(ask(10)?.width, 4 * 10 * 2, reason: 'nothing stands in for it');
+    expect(landings, 2);
   });
 
   test('a span a zoom left waiting and a jump then took past twice is '
-      'rastered at the jump, and not again when the zoom stops', () async {
+      'baked at the jump, and not again when the zoom stops', () async {
     await baked(24);
 
     ask(16);
-    expect(ask(10), isNull);
-    expect(await pollUntil(() => landings == 2), isTrue);
+    expect(ask(10), isNotNull);
+    expect(landings, 2);
     stop();
     await aWhile();
     expect(landings, 2, reason: 'the stop finds nothing waiting');
@@ -303,18 +344,19 @@ void main() {
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
-  test('a span queued at a jump and stretched by the next step waits for '
-      'the stop — the jump\'s raster is not made', () async {
+  test('a span baked at a jump and stretched by the next step waits for '
+      'the stop', () async {
     await baked(24);
 
-    expect(ask(10), isNull, reason: '⛔전제: queued, past twice');
-    ask(16);
+    final jumped = ask(10);
+    expect(landings, 2, reason: '⛔전제: baked at the jump, past twice');
+    expect(ask(16), same(jumped), reason: 'the jump\'s tile, scaled');
     await aWhile();
-    expect(landings, 1, reason: 'the jump\'s raster is not made');
+    expect(landings, 2, reason: 'nothing rastered at the step');
     stop();
-    expect(await pollUntil(() => landings == 2), isTrue);
+    expect(await pollUntil(() => landings == 3), isTrue);
     await aWhile();
-    expect(landings, 2, reason: 'one raster, at the stop');
+    expect(landings, 3, reason: 'one raster, at the stop');
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
@@ -519,18 +561,18 @@ void main() {
   test('a tile the store let go stands in for nothing', () async {
     store.debugCapacity = 1;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
-    tilesLaidBy(
-      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
-    );
-    await tileStoreIdle(store);
     final shown = tilesLaidBy(
       () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
     );
-    await tileStoreIdle(store);
+    final letGo = {
+      for (final draw in shown)
+        if (draw.picture.debugHolds == 0) draw.picture,
+    };
     expect(
-      shown.single.picture.debugHolds,
-      0,
-      reason: '⛔전제: the tile shown was let go when the other landed',
+      letGo,
+      hasLength(1),
+      reason: '⛔전제: the paint baked both, and the first was let go as the '
+          'other landed',
     );
 
     final step = tilesLaidBy(
@@ -539,7 +581,7 @@ void main() {
     expect(
       [
         for (final draw in step)
-          if (draw.picture.debugHolds == 0) draw.onto,
+          if (letGo.contains(draw.picture)) draw.onto,
       ],
       isEmpty,
       reason: 'no let-go tile is laid',
@@ -571,24 +613,27 @@ void main() {
       'as its own', () async {
     final old = await baked(24);
     expect(ask(20), same(old), reason: '⛔CONTROL: but for the extent, it does');
-    expect(
-      store.tileFor(
-        painter: at(20),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 1.0,
-      ),
-      isNull,
-      reason: 'at another pixel ratio',
+    // Nothing standing in, each is baked in its ask at its own size.
+    final otherRatio = store.tileFor(
+      painter: at(20),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
     );
     expect(
-      store.tileFor(
-        painter: at(20, across: 40),
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 2.0,
-      ),
-      isNull,
+      (otherRatio?.width, otherRatio?.height),
+      (4 * 20, 28),
+      reason: 'at another pixel ratio',
+    );
+    final thicker = store.tileFor(
+      painter: at(20, across: 40),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(
+      (thicker?.width, thicker?.height),
+      (4 * 20 * 2, 40 * 2),
       reason: 'in a thicker row',
     );
   });

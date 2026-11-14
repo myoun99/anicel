@@ -204,7 +204,14 @@ void main() {
       blockFrameLines: true,
     );
 
-    // One span, asked for directly: every read below is the raster's.
+    Map<int, int> twice() => {
+      for (final MapEntry(key: frame, value: times) in asked.entries)
+        if (times > 1) frame: times,
+    };
+
+    // One span, asked for directly: the ask is a pass — inside a paint, the
+    // paint's — and so is the raster its word, baked the first time, sends
+    // off the paint.
     const span = (start: 0, end: 24);
     expect(
       store.tileFor(
@@ -214,17 +221,14 @@ void main() {
         devicePixelRatio: 1,
       ),
       isNull,
-      reason: 'premise: cold',
+      reason: 'premise: its word is baked the first time',
     );
+    expect(asked, isNotEmpty, reason: 'premise: the ask read the row');
+    expect(twice(), isEmpty, reason: 'the ask');
+    asked.clear();
     await tileStoreIdle(store);
 
     expect(asked, isNotEmpty, reason: 'premise: the raster read the row');
-    expect(
-      {
-        for (final MapEntry(key: frame, value: times) in asked.entries)
-          if (times > 1) frame: times,
-      },
-      isEmpty,
-    );
+    expect(twice(), isEmpty, reason: 'the raster');
   });
 }

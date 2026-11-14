@@ -41,20 +41,23 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 2)},
   );
 
+  /// A row of [layer].
+  TimelineRowCellsPainter row() => TimelineRowCellsPainter(
+    layer: layer,
+    geometry: testFrameGeometry(
+      frameCellExtent: 24,
+      frameEndIndexExclusive: 40,
+    ),
+    crossAxisExtent: 28,
+    exposureStateForLayer: exposureOf,
+    colorScheme: const ColorScheme.dark(),
+    baseTextStyle: const TextStyle(fontSize: 11),
+    tileStore: store,
+  );
+
   /// The tile the store answers a row of [layer] with, for its first span.
   TimelineGridTilePicture? tile() => store.tileFor(
-    painter: TimelineRowCellsPainter(
-      layer: layer,
-      geometry: testFrameGeometry(
-        frameCellExtent: 24,
-        frameEndIndexExclusive: 40,
-      ),
-      crossAxisExtent: 28,
-      exposureStateForLayer: exposureOf,
-      colorScheme: const ColorScheme.dark(),
-      baseTextStyle: const TextStyle(fontSize: 11),
-      tileStore: store,
-    ),
+    painter: row(),
     spanStartIndex: 0,
     spanEndIndexExclusive: 4,
     devicePixelRatio: 1.0,
@@ -98,7 +101,13 @@ void main() {
     addTearDown(() => store.debugBeforeDrawing = null);
     final live = TimelineGridTilePicture.debugLive;
 
-    expect(tile(), isNull, reason: '⛔premise: asked for, drawn off the paint');
+    // Warmed: drawn off the paint — a paint bakes a cold span in its ask.
+    store.warmAhead(
+      painter: row(),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
     expect(await pollUntil(() => lost), isTrue, reason: '⛔premise');
     // What the raster would do after is done by now.
     await Future<void>.delayed(const Duration(milliseconds: 25));

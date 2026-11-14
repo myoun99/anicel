@@ -347,11 +347,12 @@ class TimelineGridTileStore {
 
   /// The substrate tile for [painter]'s span starting at [spanStartIndex]:
   /// the one it holds where that shows the span, one baked in this call
-  /// where the span's look or content moved — or a stand-in while a word
-  /// it sets is baked the first time, scaled while a zoom is under way and
-  /// until its raster lands, and null for a cold span (the classic paint
-  /// covers this frame). What is not baked here is scheduled off the paint
-  /// phase — what a zoom stretched, once it stops.
+  /// where the span's look or content moved or nothing stands in for it —
+  /// or a stand-in while a word it sets is baked the first time, scaled
+  /// while a zoom is under way and until its raster lands, and null where
+  /// nothing stands in and the engine cannot answer this frame (the
+  /// classic paint covers it). What is not baked here is scheduled off the
+  /// paint phase — what a zoom stretched, once it stops.
   TimelineGridTilePicture? tileFor({
     required TimelineTileRasterSource painter,
     required int spanStartIndex,
@@ -386,8 +387,12 @@ class TimelineGridTileStore {
     );
     final key = asked.key;
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
+    // The ink a moved span is told by is the ink it bakes: written once.
+    // ↩️It was written again by the bake (🔬95–206µs a span, debug — 11-15).
+    _TileInk? ink;
     final entry = _touched(key);
-    if (entry != null && _shows(entry, asked)) {
+    if (entry != null &&
+        entry.showsNow(asked, inkNow: () => ink ??= _inkOf(asked))) {
       return entry.picture;
     }
     // 🚨F-314 (유저 2026-10-08: 「코마 바꿀때 +나 N이나 코마텍스트 이런 위젯이랑
@@ -399,11 +404,18 @@ class TimelineGridTileStore {
     // to another row; Surface, 10-25), each tile ~0.3ms of ops and ~70µs of
     // raster through the door's picture (`pictureOf`, the C raster's before
     // grid-on-the-engine ⑤), ~1.5 tiles a step.
+    // 🗣️a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q1 (유저
+    // 2026-11-14 「(다) 차가운 구간도 이 프레임에 엔진으로」): A SPAN NOTHING
+    // STANDS IN FOR IS BAKED THERE TOO, not painted on a canvas beside the
+    // tiles. 🔬Q2 (라), 11-15: the 136 spans of a cut shaped as S5_BA's 352
+    // baked in one frame at 1.4–2.1× the canvas pass's recording (debug) —
+    // 15× while each tile took a trip and a submit of its own.
     // A word never baked before is the one wait left: its bake reads the
     // word back ([bakeWordCoverage]), which a paint cannot wait for.
     final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
-    if (stale != null) {
-      final baked = _landNow(asked);
+    final standIn = stale == null ? _standInFor(asked) : null;
+    if (standIn == null) {
+      final baked = _landNow(asked, ink: ink);
       if (baked != null) {
         return baked;
       }
@@ -425,7 +437,6 @@ class TimelineGridTileStore {
     // A span a warm-up still holds becomes a shown one's to raster first; one
     // a warm-up has in flight tells this row when it lands. One a zoom under
     // way stretched waits for it to stop ([_stretched]).
-    final standIn = stale == null ? _standInFor(asked) : null;
     if (!_inFlight.contains(key)) {
       _warming.remove(key);
       _ahead.remove(key);
@@ -602,9 +613,10 @@ class TimelineGridTileStore {
   /// Bakes [asked]'s span in this call and keeps it — the picture the paint
   /// asking draws — or null while a word it sets has never been baked.
   /// What was asked for it before is answered by it, and a raster of it in
-  /// flight lands nothing ([_overtaken]).
-  TimelineGridTilePicture? _landNow(_TileRequest asked) {
-    final rastered = _rasterNow(asked);
+  /// flight lands nothing ([_overtaken]). [ink] is the span's, where the
+  /// ask has written it already.
+  TimelineGridTilePicture? _landNow(_TileRequest asked, {_TileInk? ink}) {
+    final rastered = _rasterNow(asked, ink: ink);
     if (rastered == null) {
       return null;
     }
@@ -979,7 +991,8 @@ class TimelineGridTileStore {
       return;
     }
     final entry = _touched(key);
-    if (entry != null && _shows(entry, request)) {
+    if (entry != null &&
+        entry.showsNow(request, inkNow: () => _inkOf(request))) {
       return;
     }
     _warming.remove(key);
@@ -1211,8 +1224,8 @@ class TimelineGridTileStore {
 
   /// [_raster] within the call — or null while a word the span sets has
   /// never been baked.
-  _Rastered? _rasterNow(_TileRequest request) {
-    final emitted = _emit(request);
+  _Rastered? _rasterNow(_TileRequest request, {_TileInk? ink}) {
+    final emitted = _emit(request, ink: ink);
     if (emitted == null) {
       return null;
     }
@@ -1227,8 +1240,9 @@ class TimelineGridTileStore {
   /// The request's span laid as ops up to its words ([_setWords]) — its
   /// tile's size, and the revision, the substrate and the ink the ops
   /// describe — or null for a span with no pixels. ⛔Synchronous, every
-  /// answer of it read in one block.
-  _Emitted? _emit(_TileRequest request) {
+  /// answer of it read in one block — [ink] too, where its caller wrote it
+  /// in the block it emits in.
+  _Emitted? _emit(_TileRequest request, {_TileInk? ink}) {
     final painter = request.painter;
     final dpr = request.devicePixelRatio;
     final spanCells = request.spanEndIndexExclusive - request.spanStartIndex;
@@ -1258,7 +1272,7 @@ class TimelineGridTileStore {
     final sampledCelContentRevision = painter.celContentRevision;
     // ONE pass over the span's cells for the paper and the ink both — every
     // cell the two ask for is resolved once, as in a paint.
-    final (:substrate, :ink) = painter.readInOnePass(
+    final (:substrate, ink: inked) = painter.readInOnePass(
       () => (
         substrate: timelineGridEmitSubstrate(
           writer,
@@ -1267,22 +1281,17 @@ class TimelineGridTileStore {
           spanEndIndexExclusive: request.spanEndIndexExclusive,
           devicePixelRatio: dpr,
         ),
-        ink: _inkOf(
-          painter,
-          spanStartIndex: request.spanStartIndex,
-          spanEndIndexExclusive: request.spanEndIndexExclusive,
-          devicePixelRatio: dpr,
-        ),
+        ink: ink ?? _inkOf(request),
       ),
     );
-    writer.append(ink.ops);
+    writer.append(inked.ops);
     return (
       writer: writer,
       tileWidth: tileWidth,
       tileHeight: tileHeight,
       celContentRevision: sampledCelContentRevision,
       substrate: substrate,
-      ink: ink,
+      ink: inked,
       waves: painter.wavesIn(
         request.spanStartIndex,
         request.spanEndIndexExclusive,
@@ -1329,38 +1338,29 @@ class TimelineGridTileStore {
     return TimelineGridTilePicture(picture);
   }
 
-  /// The ink [painter]'s span [spanStartIndex, spanEndIndexExclusive) bakes
-  /// over its substrate: the ops of its marks, and the words it sets — what
-  /// a raster writes, and what a tile it holds is asked against
-  /// ([_TileEntry.showsNow]).
-  _TileInk _inkOf(
-    TimelineTileRasterSource painter, {
-    required int spanStartIndex,
-    required int spanEndIndexExclusive,
-    required double devicePixelRatio,
-  }) => painter.readInOnePass(() {
-    final writer = TimelineGridTileOpWriter();
-    final glyphs = _emitForeground(
-      writer,
-      painter: painter,
-      spanStartIndex: spanStartIndex,
-      spanEndIndexExclusive: spanEndIndexExclusive,
-      devicePixelRatio: devicePixelRatio,
-    );
-    return (ops: writer.build(), glyphs: glyphs);
-  });
+  /// The ink [request]'s span bakes over its substrate: the ops of its
+  /// marks, and the words it sets — what a raster writes, and what a tile
+  /// it holds is asked against ([_TileEntry.showsNow]).
+  _TileInk _inkOf(_TileRequest request) {
+    debugInksWritten += 1;
+    final painter = request.painter;
+    return painter.readInOnePass(() {
+      final writer = TimelineGridTileOpWriter();
+      final glyphs = _emitForeground(
+        writer,
+        painter: painter,
+        spanStartIndex: request.spanStartIndex,
+        spanEndIndexExclusive: request.spanEndIndexExclusive,
+        devicePixelRatio: request.devicePixelRatio,
+      );
+      return (ops: writer.build(), glyphs: glyphs);
+    });
+  }
 
-  /// Whether [entry] shows what [asked] would bake now — its ink read only
-  /// when the answer turns on it.
-  bool _shows(_TileEntry entry, _TileRequest asked) => entry.showsNow(
-    asked,
-    inkNow: () => _inkOf(
-      asked.painter,
-      spanStartIndex: asked.spanStartIndex,
-      spanEndIndexExclusive: asked.spanEndIndexExclusive,
-      devicePixelRatio: asked.devicePixelRatio,
-    ),
-  );
+  /// How many times a span's ink was written ([_inkOf]) — once an ask, a
+  /// test counts.
+  @visibleForTesting
+  int debugInksWritten = 0;
 
   /// The op stream [_emitForeground] writes for a span — what a tile bakes
   /// over its substrate, its words where a fresh atlas places them
@@ -1374,10 +1374,13 @@ class TimelineGridTileStore {
     required double devicePixelRatio,
   }) async {
     final ink = _inkOf(
-      painter,
-      spanStartIndex: spanStartIndex,
-      spanEndIndexExclusive: spanEndIndexExclusive,
-      devicePixelRatio: devicePixelRatio,
+      _TileRequest(
+        row: _rowKey(painter.substrateGeneration, painter.layer.id, painter.axis),
+        painter: painter,
+        spanStartIndex: spanStartIndex,
+        spanEndIndexExclusive: spanEndIndexExclusive,
+        devicePixelRatio: devicePixelRatio,
+      ),
     );
     final writer = TimelineGridTileOpWriter()..append(ink.ops);
     final lettered = _setWords(

@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
+import '../../helpers/frame_name_of.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/tiles_drawn_off_the_paint.dart';
 import '../../helpers/tiles_laid.dart';
@@ -38,6 +39,10 @@ import 'timeline_frame_geometry_probe.dart';
 /// refresh late at every turn of the first loop. The page after the one
 /// shown is now asked for a few spans at a time, after each frame the run
 /// changes its film frame in, and its landings repaint nothing.
+///
+/// A warm-up is a queue's, and a queue holds what a paint cannot bake in
+/// its ask ([TimelineGridTileStore.tileFor]) — here, a span whose word no
+/// tile has baked yet: each block sets one of its own ([rowLayer]).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
@@ -50,15 +55,33 @@ void main() {
   const cell = 128.0;
   const viewport = 1280.0;
 
-  Layer rowLayer(String id, {int length = 2}) => Layer(
-    id: LayerId(id),
-    name: id,
-    frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
-    timeline: {
-      for (var start = 0; start < frames; start += 4)
-        start: TimelineExposure.drawing(FrameId('$id-f'), length: length),
-    },
-  );
+  var rows = 0;
+
+  /// A row of a block every four frames, each block's cel named a word no
+  /// tile has baked yet.
+  Layer rowLayer(String id, {int length = 2}) {
+    final word = 'P${rows++}';
+    return Layer(
+      id: LayerId(id),
+      name: id,
+      frames: [
+        for (var start = 0; start < frames; start += 4)
+          Frame(
+            id: FrameId('$id-f$start'),
+            duration: 1,
+            strokes: const [],
+            name: '$word-$start',
+          ),
+      ],
+      timeline: {
+        for (var start = 0; start < frames; start += 4)
+          start: TimelineExposure.drawing(
+            FrameId('$id-f$start'),
+            length: length,
+          ),
+      },
+    );
+  }
 
   /// Where a run of all [frames] turns the axis next from where [bucket]
   /// stands it — the page law's own answer ([nextPageScrollOffset]), on an
@@ -91,6 +114,7 @@ void main() {
     ),
     crossAxisExtent: 28,
     exposureStateForLayer: exposureOf,
+    frameNameForLayer: frameNameOf,
     colorScheme: const ColorScheme.dark(),
     baseTextStyle: const TextStyle(fontSize: 11),
     tileStore: store,
@@ -222,6 +246,7 @@ void main() {
       ),
       crossAxisExtent: 28,
       exposureStateForLayer: exposureOf,
+      frameNameForLayer: frameNameOf,
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,
