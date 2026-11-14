@@ -1,3 +1,4 @@
+import '../brush_import_result.dart';
 import '../brush_preset_id_mint.dart';
 import '../brush_tip_coverage.dart' show brushTipMaskFromCoverage;
 import 'dart:math' as math;
@@ -17,17 +18,6 @@ import '../photoshop/photoshop_byte_reader.dart';
 import 'photoshop_descriptor.dart';
 import 'photoshop_pattern.dart';
 
-/// Result of decoding a Photoshop `.abr` brush file.
-class AbrImportResult {
-  const AbrImportResult({required this.presets, required this.warnings});
-
-  /// One preset per usable brush, ready for the preset library.
-  final List<BrushPreset> presets;
-
-  /// Human-readable notes about entries that could not be fully imported.
-  final List<String> warnings;
-}
-
 /// Thrown when the file cannot be read as a supported ABR at all.
 class AbrDecodeException extends ImportRefusal {
   const AbrDecodeException(super.reason);
@@ -42,7 +32,7 @@ class AbrDecodeException extends ImportRefusal {
 /// brushes, joined to their bitmaps by the sampled-data UUID. When the
 /// descriptor cannot be parsed, the tip bitmaps still import with default
 /// settings and a warning.
-Future<AbrImportResult> decodeAbrBrushFile(
+Future<BrushImportResult> decodeAbrBrushFile(
   Uint8List bytes, {
   required String sourceName,
 }) async {
@@ -184,14 +174,9 @@ Future<AbrImportResult> decodeAbrBrushFile(
   }
 
   if (presets.isEmpty) {
-    throw const AbrDecodeException(
-      ImportWarning(
-        'abrNothingImportable',
-        'The ABR file contained no importable brushes.',
-      ),
-    );
+    throw const AbrDecodeException(brushFileHoldsNothing);
   }
-  return AbrImportResult(presets: presets, warnings: warnings);
+  return BrushImportResult(presets: presets, warnings: warnings);
 }
 
 /// Positions the reader at the start of the next `8BIM` signature; returns

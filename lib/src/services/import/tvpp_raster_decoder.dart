@@ -195,10 +195,16 @@ Uint8List _reassembleZchk(Uint8List bytes, int offset, int length) {
 // ---------------------------------------------------------------------------
 
 class _PackBits {
-  _PackBits(this.data, this.at);
+  _PackBits(this.data, this.at, {this.skips = false});
 
   final Uint8List data;
   int at;
+
+  /// Whether `0x80` passes pixels over ([_takeSkip]) — a DEEP animation
+  /// frame's (`DBAN`) dialect — rather than running one 129 times. ⛔Off for
+  /// a .tvpp record: no run there is 129 long (the longest is 124), and
+  /// nothing here may change how a measured record reads.
+  final bool skips;
 
   /// Decodes exactly [count] pixels into [out] (32-bit words) through
   /// [place] — or just consumes them when [out] is null.
@@ -209,7 +215,9 @@ class _PackBits {
         throw const TvppRasterDecodeException('The record ended with rows still to read.');
       }
       final c = data[at];
-      if (c >= 0x80) {
+      if (skips && c == 0x80) {
+        got += _takeSkip();
+      } else if (c >= 0x80) {
         final run = 257 - c;
         if (at + 5 > data.length) {
           throw const TvppRasterDecodeException('A run record is truncated.');
@@ -220,12 +228,15 @@ class _PackBits {
               (data[at + 2] << 16) |
               (data[at + 3] << 8) |
               data[at + 4];
+          var changed = false;
           for (var k = 0; k < run && got + k < count; k++) {
             final i = place!(got + k);
             if (i >= 0) {
+              changed |= out[i] != v;
               out[i] = v;
             }
           }
+          _refuseStale(changed);
         }
         got += run;
         at += 5;
@@ -235,17 +246,21 @@ class _PackBits {
           throw const TvppRasterDecodeException('A literal record is truncated.');
         }
         if (out != null) {
+          var changed = false;
           for (var k = 0; k < literal && got + k < count; k++) {
             final q = at + 1 + k * 4;
             final i = place!(got + k);
             if (i >= 0) {
-              out[i] =
+              final v =
                   (data[q] << 24) |
                   (data[q + 1] << 16) |
                   (data[q + 2] << 8) |
                   data[q + 3];
+              changed |= out[i] != v;
+              out[i] = v;
             }
           }
+          _refuseStale(changed);
         }
         got += literal;
         at += 1 + literal * 4;
@@ -253,6 +268,42 @@ class _PackBits {
     }
     if (got != count) {
       throw const TvppRasterDecodeException('A run crossed a row boundary.');
+    }
+  }
+
+  /// A `DBAN`'s `0x80`: the count byte after it passes that many pixels
+  /// over, keeping the frame before's — and answers how many.
+  ///
+  /// 🚨BOTH SIGNS OF THE COUNT KEEP (measured 2026-11-14 on the user's
+  /// BRUSH.tvpx, card I-86). A count byte from `0x80` up passes `256 - n`,
+  /// one below it `n`, which ends every row of all 29 tips at its width. With
+  /// both keeping, no run or literal in any frame of the 23×23 pencil tips
+  /// writes only what the frame before held. Read as clearing, 377 of the
+  /// first frames' writes would change nothing, every zero run among them
+  /// three bytes dearer than the skip it repeats. ⚠️What the sign tells
+  /// TVPaint is not known: skips of both signs stand side by side.
+  int _takeSkip() {
+    if (at + 2 > data.length) {
+      throw const TvppRasterDecodeException('A skip record is truncated.');
+    }
+    final n = data[at + 1];
+    at += 2;
+    return n >= 0x80 ? 256 - n : n;
+  }
+
+  /// Refuses a frame one of whose writes changed nothing, where [skips] —
+  /// an encoder that keeps with a skip writes only what differs.
+  ///
+  /// 🚨IT IS HOW A READING OTHER THAN TVPAINT'S SHOWS (card I-86): the
+  /// user's other tips — 93×84, 67×80, 89×91 and more — make such writes
+  /// from their second `DBAN` on under every reading tried, so how their
+  /// frames chain is not yet known, and a tip read wrong would not be the
+  /// tip («팁은 … 진짜 하나도 안틀리도록», 유저 2026-11-14).
+  void _refuseStale(bool changed) {
+    if (skips && !changed) {
+      throw const TvppRasterDecodeException(
+        'A frame wrote over pixels what they already held.',
+      );
     }
   }
 }
@@ -279,11 +330,29 @@ Uint32List _decodeRecord(Uint8List record, int width, int height) {
   throw TvppRasterDecodeException('Unknown raster magic «$magic».');
 }
 
-Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) {
-  final img = Uint32List(width * height);
-  final pb = _PackBits(record, 8);
-  for (var y = 0; y < height; y++) {
-    final row = y * width;
+Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) =>
+    _readRows(_PackBits(record, 8), Uint32List(width * height), width);
+
+/// One frame of a DEEP animation — a TVPaint brush tip's `.dip` — as
+/// premultiplied BGRA words: a `DBOD` [body] read as a whole canvas, or a
+/// `DBAN` [body] read over [before], the frame it follows, whose pixels its
+/// skips keep ([_PackBits.skips]).
+///
+/// The rows are a .tvpp `DBOD`'s, the same walker's — `DBAN` adds the skip.
+Uint32List decodeDeepFrameWords(
+  Uint8List body, {
+  required int width,
+  required int height,
+  Uint32List? before,
+}) => _readRows(
+  _PackBits(body, 0, skips: before != null),
+  before == null ? Uint32List(width * height) : Uint32List.fromList(before),
+  width,
+);
+
+/// [img]'s rows, [width] pixels each, read from [pb] in order.
+Uint32List _readRows(_PackBits pb, Uint32List img, int width) {
+  for (var row = 0; row < img.length; row += width) {
     pb.take(width, img, (nth) => row + nth);
   }
   return img;

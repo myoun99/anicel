@@ -13,11 +13,13 @@ import '../../models/brush_preset_id.dart';
 import '../../models/brush_library_tabs.dart';
 import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
+import '../../services/brush_import_result.dart';
 import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/brush_tip_thumbnails.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
+import '../../services/tvpx/tvpx_decoder.dart';
 import '../dialogs/handed_text_file.dart';
 import '../dialogs/open_file_flow.dart' show fileIsSupported;
 import 'brush_import_merge.dart';
@@ -487,15 +489,8 @@ class BrushPresetLibrary extends ChangeNotifier {
       if (lowerName.endsWith('.$anicelBrushExtension')) {
         imported = brushesAsHanded(decodeBrushPack(utf8.decode(pick.bytes)));
         warnings = const [];
-      } else if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
-        final result = await decodeSutBrushFile(
-          pick.bytes,
-          sourceName: baseName,
-        );
-        imported = result.presets;
-        warnings = result.warnings;
       } else {
-        final result = await decodeAbrBrushFile(
+        final result = await _brushReaderFor(lowerName)(
           pick.bytes,
           sourceName: baseName,
         );
@@ -549,4 +544,17 @@ class BrushPresetLibrary extends ChangeNotifier {
   /// ([saveVersionedSettings]), and a failed one never reaches the editor.
   void _persist() =>
       unawaited(_fileService.save((groups: _groups, presets: _presets)));
+}
+
+/// The reader a brush file of [lowerName] is read by — every one answers
+/// the same [BrushImportResult], so the library takes them alike. Photoshop's
+/// reads what no other claims, as before there were three.
+BrushFileReader _brushReaderFor(String lowerName) {
+  if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
+    return decodeSutBrushFile;
+  }
+  if (lowerName.endsWith('.tvpx')) {
+    return decodeTvpxBrushFile;
+  }
+  return decodeAbrBrushFile;
 }

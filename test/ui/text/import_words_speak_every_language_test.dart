@@ -29,8 +29,10 @@ void main() {
   /// own — `psd*` the Photoshop reader and its layer plan, `folder*` the
   /// cut folder's parse and plan, `tvp*`/`tvpp*` the TVPaint planner,
   /// parser and converter, three the .tvpp door itself, `clip*` the CLIP
-  /// STUDIO planner and door, `brushPack*` · `abr*` · `sut*` the brush file
-  /// readers' refusals (F-273) — and `unsupportedLayerKind` ·
+  /// STUDIO planner and door, `brushPack*` · `abr*` · `sut*` · `tvpx*` the
+  /// brush file readers' refusals (F-273) and `brushNothingImportable` the
+  /// one they all say (`brush_import_result.dart`) — and
+  /// `unsupportedLayerKind` ·
   /// `layerEffectsNotApplied` · `clippingNotApplied` · `layerMaskNotApplied`
   /// · `lockNotImported` every decoder's one word for each
   /// (`import_warning.dart`).
@@ -88,10 +90,10 @@ void main() {
     'abrUnknownVersion',
     'abrCorruptSection',
     'abrNoBrushes',
-    'abrNothingImportable',
     'sutUnreadable',
     'sutNoBrushData',
-    'sutNothingImportable',
+    'brushNothingImportable',
+    'tvpxNoPanel',
     'unsupportedLayerKind',
     'layerEffectsNotApplied',
     'clippingNotApplied',
