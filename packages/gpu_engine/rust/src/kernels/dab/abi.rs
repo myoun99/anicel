@@ -862,16 +862,19 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
 ) -> isize {
     // SAFETY: see the function's contract.
     let (landing, engine, composite, pool, coverage) =
-        unsafe { (&*landing, &*engine, &*composite, &mut *pool, (*coverage).mask()) };
-    // SAFETY: see the function's contract.
-    let asked = unsafe { asked_of(asks, under, count) };
-    // SAFETY: see the function's contract.
-    let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
-    let laid = Laid { opacity, mode, mask: mask.as_ref() };
-    let [red, green, blue, _] = colour.to_le_bytes();
-    let paint = Paint::Colour([red, green, blue]);
-    let source = Source::Mask { mask: &coverage, paint: &paint, whole };
-    let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
-    // SAFETY: see the function's contract.
-    unsafe { reported(landed, places, changes) }
+        unsafe { (&*landing, &*engine, &*composite, &mut *pool, &*coverage) };
+    engine.on_thread(|| {
+        let coverage = coverage.mask();
+        // SAFETY: see the function's contract.
+        let asked = unsafe { asked_of(asks, under, count) };
+        // SAFETY: see the function's contract.
+        let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        let [red, green, blue, _] = colour.to_le_bytes();
+        let paint = Paint::Colour([red, green, blue]);
+        let source = Source::Mask { mask: &coverage, paint: &paint, whole };
+        let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
+    })
 }

@@ -15,7 +15,7 @@ use super::source_scan::files_where;
 /// The verbs that stay on their caller's thread, each with why: none takes
 /// the device in hand, and none hands the engine's thread anything it
 /// waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 10] = [
+const ON_THEIR_CALLERS: [(&str, &str); 11] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     ("gpu_engine_video_memory", "asks the OS of the adapter's memory (DXGI), not the device"),
     ("gpu_engine_gone", "reads the engine's own word of its device (`Refusals`)"),
@@ -33,6 +33,12 @@ const ON_THEIR_CALLERS: [(&str, &str); 10] = [
         "waits till the holds are let go: on the engine's thread every verb would stand behind it",
     ),
     ("gpu_engine_apart_held", "the engine's own count (`Apart`)"),
+    (
+        "gpu_engine_pictures_idle_bytes",
+        "the engine's own counts of the pictures' idle slots and its work buffer \
+         (`Pictures::idle_bytes`, `Work::bytes`): no device is asked, and the memory census \
+         asks it on the UI's thread, which behind a compile would stand",
+    ),
 ];
 
 /// The verbs `text` exports that are handed the engine, each with its body:

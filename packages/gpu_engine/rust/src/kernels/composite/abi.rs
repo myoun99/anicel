@@ -1356,10 +1356,12 @@ pub unsafe extern "C" fn gpu_engine_pictures_idle_bytes(engine: *const Engine) -
 pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, most_idle: u64) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.pictures.give_back(engine, most_idle);
-    if engine.pictures.idle_bytes() + engine.work.bytes() > most_idle {
-        engine.work.let_go();
-    }
+    engine.on_thread(|| {
+        engine.pictures.give_back(engine, most_idle);
+        if engine.pictures.idle_bytes() + engine.work.bytes() > most_idle {
+            engine.work.let_go();
+        }
+    })
 }
 
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the
