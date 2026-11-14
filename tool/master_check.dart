@@ -36,6 +36,7 @@ import 'dart:io';
 
 import 'bash_executable.dart';
 import 'import_graph.dart';
+import 'process_tree.dart';
 import 'test_seconds.dart';
 
 /// The lane the check runs in.
@@ -199,6 +200,7 @@ int? importsAway(
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final records = MasterRecords.of(Platform.environment);
   if (records == null) {
     stderr.writeln('master_check: this machine names no folder to keep in.');

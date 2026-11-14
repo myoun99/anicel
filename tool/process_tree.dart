@@ -18,6 +18,53 @@ void cutTree(int pid) {
   }
 }
 
+/// Makes every process this one starts from here on — and every process
+/// those start — end when this one ends, however it ends. The job that
+/// holds them, or null where none was made; the run goes on either way.
+///
+/// 🚨A RUN NOBODY WAITS FOR (card
+/// a-wide-check-cut-by-an-outer-timeout-leaves-its-runner-running): on
+/// 2026-11-13 an outer `timeout` ended `master_check` at 23:57 and it said
+/// 「stopped」, while the `affected_tests` it had started at 19:57 was still
+/// launching batch 27 at 00:30 — holding the machine's line and the engine
+/// hook's turn for a verdict nobody would read, beside a second check in
+/// the same worktree. ⇒ Not a [cutTree] on the way out: a process that is
+/// killed says no last words. The operating system ends them — a job that
+/// kills its processes when its last handle closes, and this process holds
+/// its only handle (not one a child inherits).
+///
+/// ⛔NO WAY OUT OF IT, not even for a process that asks to break away —
+/// measured 2026-11-14 on the main PC: with breakaway allowed, the program
+/// a bash `exec`ed (as `run.sh` does) left the job and outlived a starter
+/// that was killed, the bash itself going with the job. A detached start
+/// (`ProcessStartMode.detached`) is still made inside it, and ends with it.
+/// ⚠️Off Windows nothing is made — there a tool takes its shell's place
+/// (`run.sh` execs it), and a shell's or a `timeout`'s signal reaches the
+/// process group the run is in.
+int? endWhatThisStartsWithIt() {
+  if (!Platform.isWindows) return null;
+  final job = _createJob(nullptr, nullptr);
+  if (job == 0) return null;
+  final limits = calloc<_JobLimits>();
+  try {
+    limits.ref.basic.flags = _killOnJobClose;
+    final made =
+        _setJobInformation(
+              job,
+              _extendedLimitInformation,
+              limits,
+              sizeOf<_JobLimits>(),
+            ) !=
+            0 &&
+        _assignToJob(job, _thisProcess) != 0;
+    if (made) return job;
+    _closeHandle(job);
+    return null;
+  } finally {
+    calloc.free(limits);
+  }
+}
+
 /// One process of the machine, as [readProcessTable] found it: what it has
 /// committed in [bytes] (the figure the machine runs out of), and when it
 /// began in [born], which only ever orders two rows of one table.
@@ -204,6 +251,41 @@ const _maxPath = 260;
 const _snapProcesses = 2;
 const _invalidHandle = -1;
 const _queryLimited = 0x1000;
+const _thisProcess = -1;
+const _extendedLimitInformation = 9;
+const _killOnJobClose = 0x2000;
+
+/// `JOBOBJECT_EXTENDED_LIMIT_INFORMATION`, whose basic `LimitFlags` is all
+/// [endWhatThisStartsWithIt] sets.
+final class _JobLimits extends Struct {
+  external _BasicJobLimits basic;
+  @Array(6)
+  external Array<Uint64> ioCounters;
+  @Array(4)
+  external Array<IntPtr> memoryLimitsAndPeaks;
+}
+
+/// `JOBOBJECT_BASIC_LIMIT_INFORMATION`.
+final class _BasicJobLimits extends Struct {
+  @Int64()
+  external int perProcessUserTimeLimit;
+  @Int64()
+  external int perJobUserTimeLimit;
+  @Uint32()
+  external int flags;
+  @IntPtr()
+  external int minimumWorkingSetSize;
+  @IntPtr()
+  external int maximumWorkingSetSize;
+  @Uint32()
+  external int activeProcessLimit;
+  @IntPtr()
+  external int affinity;
+  @Uint32()
+  external int priorityClass;
+  @Uint32()
+  external int schedulingClass;
+}
 
 /// `PROCESSENTRY32W`.
 final class _ProcessEntry extends Struct {
@@ -289,3 +371,17 @@ final _memoryInfo = _kernel32
 final _processTimes = _kernel32.lookupFunction<_TimesNative, _TimesDart>(
   'GetProcessTimes',
 );
+final _createJob = _kernel32
+    .lookupFunction<
+      IntPtr Function(Pointer<Void>, Pointer<Utf16>),
+      int Function(Pointer<Void>, Pointer<Utf16>)
+    >('CreateJobObjectW');
+final _setJobInformation = _kernel32
+    .lookupFunction<
+      Int32 Function(IntPtr, Int32, Pointer<_JobLimits>, Uint32),
+      int Function(int, int, Pointer<_JobLimits>, int)
+    >('SetInformationJobObject');
+final _assignToJob = _kernel32
+    .lookupFunction<Int32 Function(IntPtr, IntPtr), int Function(int, int)>(
+      'AssignProcessToJobObject',
+    );

@@ -164,6 +164,7 @@ List<Mutation> spreadOrder(List<Mutation> all) {
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final sample = int.tryParse(_flag(args, '--sample') ?? '') ?? 5;
   final maxNamers = int.tryParse(_flag(args, '--max-namers') ?? '') ?? 6;
   final outPath = _flag(args, '--out');

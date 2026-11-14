@@ -383,6 +383,7 @@ Set<String> selectTests({
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
   final wide = args.contains('--wide');

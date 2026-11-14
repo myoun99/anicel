@@ -1236,6 +1236,7 @@ String _about(File ticket) {
 }
 
 Future<void> main(List<String> args) async {
+  endWhatThisStartsWithIt();
   final line = queueFolder(Platform.environment);
   if (args.length == 1 && args.first == '--list') {
     if (line == null) {
