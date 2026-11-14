@@ -801,10 +801,11 @@ typedef SelectionMaskReading = ({
 /// paste (I-55) each computed this box and then this mask; four copies of
 /// two steps is how a selection comes to mean two things.
 ///
-/// ⚠️The lift — the move's, the cut's, the copy's — reads through its
-/// `SelectionClip` since 2026-11-14 (L1b-2): the same box and the same
-/// bytes, made on the engine. The pixel verbs go there next (L1b-3), and
-/// then this goes (L2, board
+/// ⚠️The lift — the move's, the cut's, the copy's — and the pixel verbs'
+/// walk read through their `SelectionClip` since 2026-11-14 (L1b-2 · 3):
+/// the same box and the same bytes, made on the engine. Only tests read
+/// this now, the reference a clip's windows are held to; it goes with the
+/// CPU's mask (L2, board
 /// `a-selection-mask-is-built-on-the-cpu-at-every-move`).
 SelectionMaskReading? selectionMaskOnPasteboard(
   CanvasSelectionRegion region, {

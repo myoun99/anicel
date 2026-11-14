@@ -106,14 +106,11 @@ void main() {
     );
   }
 
-  /// Every allocated tile, at full coverage — `mask: null` is the pass's
+  /// Every allocated tile, at full coverage — no selection is the pass's
   /// own "all 255" shortcut, so this is the cheapest possible walk and the
   /// remaining cost is the per-pixel work itself.
-  CelPixelWalk wholeCel(BitmapSurface surface) => (visit) {
-    for (final coord in surface.tiles.keys) {
-      visit(coord, null);
-    }
-  };
+  CelPixelWalk wholeCel(BitmapSurface surface) =>
+      (tiles: surface.tiles.keys.toList(), clip: null);
 
   ({Duration forward, Duration undo, int tiles, String recipe}) timeOnePass(
     CanvasSize canvas,

@@ -37,16 +37,20 @@ void main() {
         ]),
       );
 
-  /// Everything the walk hands over, in order.
-  List<(TileCoord, Uint8List?)> collect(CelPixelWalk walk) {
-    final visited = <(TileCoord, Uint8List?)>[];
-    walk((TileCoord coord, Uint8List? mask) {
-      // The buffer is reused between tiles, so a test that wants to compare
-      // two tiles has to take its own copy.
-      visited.add((coord, mask == null ? null : Uint8List.fromList(mask)));
-    });
-    return visited;
-  }
+  /// Everything the walk hands a pass, in order: each tile, and the window
+  /// of its selection over it as the pass off the engine reads it.
+  List<(TileCoord, Uint8List?)> collect(CelPixelWalk walk) => [
+    for (final coord in walk.tiles)
+      (
+        coord,
+        walk.clip?.maskFor(
+          left: coord.x * 256,
+          top: coord.y * 256,
+          width: 256,
+          height: 256,
+        ),
+      ),
+  ];
 
   int maskAt(Uint8List mask, int x, int y) => mask[(y * 256) + x];
 

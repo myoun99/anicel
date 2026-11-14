@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart' show IterableIntegerExtension;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -10,10 +9,10 @@ import '../models/bitmap_tile.dart';
 import '../models/bitmap_tile_rewrite.dart';
 import '../models/brush_frame_key.dart';
 import '../models/tile_coord.dart';
-import '../native/app_gpu_engine.dart';
 import '../native/engine_cel_pixels.dart';
 import '../native/engine_tile_ledger.dart';
 import 'cel_source_effect_pass.dart';
+import 'selection_clip.dart';
 
 /// The five PIXEL VERBS the timeline's 색 편집 popover runs.
 ///
@@ -739,12 +738,17 @@ class _RestoreBuilder {
   }
 }
 
-/// The tiles one pass covers, each with the coverage over it.
+/// The tiles one pass covers, and the selection over them.
 ///
-/// A `null` mask means the whole tile is covered — the "범위는 전체" case,
-/// which is the default gesture and would otherwise pay for a 64 KB buffer
-/// of 255s per tile. Otherwise the mask is one byte per tile pixel, in the
-/// tile's own row-major order.
+/// A `null` [clip] means every pixel of each tile is covered — the "범위는
+/// 전체" case, which is the default gesture. Otherwise the selection says
+/// how much of each pixel: on the engine's grid the mask it made there
+/// ([SelectionClip.maskOnEngine]), the pass reading 0 past its box; off it
+/// a tile's window of it ([SelectionClip.maskFor]).
+///
+/// ↩️Till 2026-11-14 the walk handed each tile its mask's bytes, sliced out
+/// of one the CPU made of the whole selection at every press — and on the
+/// engine's grid glued back into one plane and handed up.
 ///
 /// ⛔TILE-GRANULAR ON PURPOSE, not pixel-granular. A whole-canvas pass over
 /// a shipping cel visits ~4 million pixels; handing those over one callback
@@ -757,8 +761,7 @@ class _RestoreBuilder {
 /// the pass off the per-pixel [TileCoord] allocation and map lookup that
 /// made whole-picture lifts quadratic — the lesson
 /// `gatherMaskedSurfacePixels` records at length.
-typedef CelPixelWalk =
-    void Function(void Function(TileCoord coord, Uint8List? mask) visit);
+typedef CelPixelWalk = ({List<TileCoord> tiles, SelectionClip? clip});
 
 /// Applies [channel] over [surface] wherever [walk] reaches, writing
 /// [value] (blended by mask coverage) and returning the new surface
@@ -810,21 +813,29 @@ typedef CelPixelWalk =
     return _overwriteOnEngine(surface, walk, pass);
   }
   final rewrite = _dartTileRewrite(pass);
+  final (:tiles, :clip) = walk;
+  final side = surface.tileSize;
 
   final rebuilt = <TileCoord, BitmapTile>{};
-  walk((coord, mask) {
+  for (final coord in tiles) {
     // Absent tile: nothing has ever been drawn here, so 색 변환 has no
     // colour to replace and 비우기 has nothing to empty. It stays absent
     // rather than materializing 256 KB of zeroes.
     final tile = surface.tileAt(coord);
     if (tile == null) {
-      return;
+      continue;
     }
+    final mask = clip?.maskFor(
+      left: coord.x * side,
+      top: coord.y * side,
+      width: side,
+      height: side,
+    );
     final rewritten = rewrite(tile, mask);
     if (rewritten != null) {
       rebuilt[coord] = rewritten;
     }
-  });
+  }
 
   return (
     surface: surface.withRebuiltTiles(rebuilt),
@@ -837,45 +848,36 @@ typedef CelPixelWalk =
 @visibleForTesting
 bool debugCelPixelsInDart = false;
 
-/// A tile the walk reached, and what covers it — its own copy, a walk
-/// handing the same buffer over from tile to tile.
-typedef _Walked = ({TileCoord coord, BitmapTile tile, Uint8List? mask});
+/// A tile the walk reached.
+typedef _Walked = ({TileCoord coord, BitmapTile tile});
 
 /// The pass on the engine (flip lane ⓒ): the law in the kernel
 /// (rust/src/kernels/cel_pixel), over the tiles where the pool has them,
-/// each tile a pixel of took part in landing as a new one and nothing read
-/// back. The RECIPE stays here: the kernel hands back what the pixels held
-/// as RUNS and [_RestoreBuilder] — the one place a recipe's shape is chosen
-/// — takes them a run at a time, so the compression is never written twice
-/// (the card's fork ②, from when the kernel was C's: the kernel speaks the
+/// under the mask the walk's selection made there — each tile a pixel of
+/// took part in landing as a new one and nothing read back. The RECIPE
+/// stays here: the kernel hands back what the pixels held as RUNS and
+/// [_RestoreBuilder] — the one place a recipe's shape is chosen — takes
+/// them a run at a time, so the compression is never written twice (the
+/// card's fork ②, from when the kernel was C's: the kernel speaks the
 /// bytes, Dart compresses).
 ({BitmapSurface surface, CelPixelRestore? restore}) _overwriteOnEngine(
   BitmapSurface surface,
   CelPixelWalk walk,
   _Pass pass,
 ) {
-  final walked = <_Walked>[];
-  walk((coord, mask) {
-    final tile = surface.tileAt(coord);
-    if (tile != null) {
-      walked.add((
-        coord: coord,
-        tile: tile,
-        mask: mask == null ? null : Uint8List.fromList(mask),
-      ));
-    }
-  });
+  final (:tiles, :clip) = walk;
+  final walked = <_Walked>[
+    for (final coord in tiles)
+      if (surface.tileAt(coord) case final tile?) (coord: coord, tile: tile),
+  ];
   if (walked.isEmpty) {
     return (surface: surface, restore: null);
   }
   final ledger = EngineTileLedger.instance;
-  final mask = _maskOver(walked);
-  final GpuCelPassed passed;
-  try {
-    passed = ledger.held((hold) => _ran(hold, ledger.pool, walked, mask, pass));
-  } finally {
-    mask?.free();
-  }
+  final mask = clip?.maskOnEngine();
+  final passed = ledger.held(
+    (hold) => _ran(hold, ledger.pool, walked, mask, pass),
+  );
   try {
     _keepWhatTheyHeld(passed.runs, pass);
     // Nothing under a tile is asked: a pass's landing compares with nothing
@@ -947,51 +949,6 @@ GpuCelPassed _ran(
     mask: mask,
     selector: selector == null ? null : _selectorOf(selector),
     threshold: threshold,
-  );
-}
-
-({int x0, int y0, int columns, int rows}) _boxOf(List<_Walked> walked) {
-  final x0 = walked.map((one) => one.coord.x).min;
-  final y0 = walked.map((one) => one.coord.y).min;
-  return (
-    x0: x0,
-    y0: y0,
-    columns: walked.map((one) => one.coord.x).max - x0 + 1,
-    rows: walked.map((one) => one.coord.y).max - y0 + 1,
-  );
-}
-
-/// What covers [walked], glued into one plane over their box — a tile of no
-/// mask covered whole, one the walk did not go to not at all — or null where
-/// none of them has a mask.
-GpuMask? _maskOver(List<_Walked> walked) {
-  if (walked.every((one) => one.mask == null)) {
-    return null;
-  }
-  final (:x0, :y0, :columns, :rows) = _boxOf(walked);
-  final side = gpuTileSide;
-  final width = columns * side;
-  final height = rows * side;
-  final plane = Uint8List(width * height);
-  for (final (:coord, tile: _, :mask) in walked) {
-    final left = (coord.x - x0) * side;
-    final top = (coord.y - y0) * side;
-    for (var row = 0; row < side; row += 1) {
-      final at = (top + row) * width + left;
-      if (mask == null) {
-        plane.fillRange(at, at + side, 255);
-      } else {
-        plane.setRange(at, at + side, mask, row * side);
-      }
-    }
-  }
-  return GpuMask(
-    appGpuComposite,
-    plane,
-    x: x0 * side,
-    y: y0 * side,
-    width: width,
-    height: height,
   );
 }
 

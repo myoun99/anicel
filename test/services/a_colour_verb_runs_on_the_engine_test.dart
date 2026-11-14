@@ -10,16 +10,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show CanvasSelectionShape, SelectionMaskOptions;
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
+import 'package:anicel/src/services/cel_pixel_region.dart';
 import 'package:anicel/src/services/cel_source_effect_pass.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 /// 색 편집's verbs ON THE ENGINE (flip lane ⓒ): on the app's grid the pass is
 /// the kernel's (rust/src/kernels/cel_pixel), over the tiles where the pool
 /// has them — what it leaves, what undoes it and what the undo gives back
-/// held byte for byte to the Dart pass, over every axis the law has.
+/// held byte for byte to the Dart pass, over every axis the law has —
+/// under the mask the selection made there, the selections a user makes.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const side = 128;
@@ -83,26 +90,62 @@ void main() {
     offStage: tileOf(1),
   });
 
-  Uint8List softMask() {
-    final mask = Uint8List(side * side);
-    for (var i = 0; i < mask.length; i += 1) {
-      mask[i] = switch (i % 5) {
-        0 => 0,
-        1 => 255,
-        _ => (i * 37) % 256,
-      };
-    }
-    return mask;
-  }
+  /// The wall every surface here stands in.
+  final wall = surfaceOf(const {}).pasteboard;
 
-  /// The order the app walks them in ([celPixelWalkFor]).
-  CelPixelWalk walkOf(Map<TileCoord, Uint8List?> masks) => (visit) {
-    final coords = masks.keys.toList()
-      ..sort((a, b) => a.y != b.y ? a.y - b.y : a.x - b.x);
-    for (final coord in coords) {
-      visit(coord, masks[coord]);
-    }
-  };
+  CanvasSelectionRegion rect(
+    double left,
+    double top,
+    double right,
+    double bottom,
+  ) => CanvasSelectionRegion.shape(
+    CanvasSelectionShape.rect(
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+    ),
+  );
+
+  CanvasSelectionRegion ellipse(
+    double left,
+    double top,
+    double right,
+    double bottom,
+  ) => CanvasSelectionRegion.shape(
+    CanvasSelectionShape.ellipse(
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+    ),
+  );
+
+  CanvasSelectionRegion lasso(List<(double, double)> points) =>
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape([
+          for (final (x, y) in points) CanvasPoint(x: x, y: y),
+        ]),
+      );
+
+  List<TileCoord> inOrder(Iterable<TileCoord> tiles) =>
+      tiles.toList()..sort((a, b) => a.y != b.y ? a.y - b.y : a.x - b.x);
+
+  /// Every pixel of [tiles], in the order the app walks them
+  /// ([celPixelWalkFor]).
+  CelPixelWalk whole(Iterable<TileCoord> tiles) =>
+      (tiles: inOrder(tiles), clip: null);
+
+  /// [tiles] in that order, under [region] read as a selection at
+  /// [options] — tiles the selection's box may not meet among them.
+  CelPixelWalk under(
+    CanvasSelectionRegion region,
+    Iterable<TileCoord> tiles, [
+    SelectionMaskOptions options = SelectionMaskOptions.none,
+  ]) => (
+    tiles: inOrder(tiles),
+    clip: SelectionClip.of(region, wall: wall, options: options),
+  );
 
   Map<TileCoord, List<int>> bytesOf(BitmapSurface surface) => {
     for (final entry in surface.tiles.entries)
@@ -198,19 +241,74 @@ void main() {
     ),
   };
 
-  final soft = softMask();
-  final regions = <String, Map<TileCoord, Uint8List?>>{
-    'every tile whole': {origin: null, beside: null, offStage: null},
-    'a soft mask on each': {origin: soft, beside: soft, offStage: soft},
-    'one tile whole, the others masked': {
-      origin: soft,
-      beside: null,
-      offStage: soft,
-    },
-    'one tile of them walked': {beside: soft},
-    'one off the top-left, none of them at 0': {offStage: soft},
-    'two a gap apart': {offStage: null, beside: soft},
-  };
+  // The selections a user makes — a rectangle, an ellipse, a lasso that
+  // folds in on itself — at every softness they take, over tile edges and
+  // past the canvas's top-left. ⚠️A mask of any bytes at all is the
+  // kernel's to pin (rust/src/kernels/cel_pixel/tests.rs,
+  // `every_device_puts_the_verbs_under_a_mask` and
+  // `a_mask_blends_the_value_by_its_coverage`): a walk holds a selection,
+  // not bytes, since 2026-11-14.
+  final acrossTiles = rect(-200, 60, 200, 200);
+  final overAnEdge = ellipse(90.5, 10.25, 170.75, 70.5);
+  final concave = lasso([
+    (-230, 240),
+    (40, 15),
+    (250, 60),
+    (60, 60),
+    (-120, 250),
+  ]);
+  final ofBesideAlone = rect(140, 10, 240, 100);
+  const feathered = SelectionMaskOptions(featherPx: 4);
+  final selections =
+      <
+        String,
+        ({CanvasSelectionRegion? region, SelectionMaskOptions options})
+      >{
+        'every tile whole': (region: null, options: SelectionMaskOptions.none),
+        'a rectangle across the tiles': (
+          region: acrossTiles,
+          options: SelectionMaskOptions.none,
+        ),
+        'a rectangle across the tiles, grown': (
+          region: acrossTiles,
+          options: const SelectionMaskOptions(growPx: 3),
+        ),
+        'an ellipse over a tile edge, feathered': (
+          region: overAnEdge,
+          options: feathered,
+        ),
+        'an ellipse over a tile edge, anti-aliased': (
+          region: overAnEdge,
+          options: const SelectionMaskOptions(antiAlias: true),
+        ),
+        'a concave lasso': (
+          region: concave,
+          options: SelectionMaskOptions.none,
+        ),
+        'a concave lasso, grown, feathered and anti-aliased': (
+          region: concave,
+          options: const SelectionMaskOptions(
+            growPx: 2,
+            featherPx: 3,
+            antiAlias: true,
+          ),
+        ),
+        'one tile of them, feathered': (
+          region: ofBesideAlone,
+          options: const SelectionMaskOptions(featherPx: 2),
+        ),
+        'one off the top-left, none of them at 0': (
+          region: lasso([(-250, 135), (-140, 150), (-180, 250)]),
+          options: const SelectionMaskOptions(featherPx: 2),
+        ),
+        'two a gap apart': (
+          region: CanvasSelectionRegion.unionOf([
+            rect(-256, 128, -128, 256),
+            ellipse(150, 20, 230, 110),
+          ])!,
+          options: const SelectionMaskOptions(antiAlias: true),
+        ),
+      };
 
   // First here: every pass after it leaves pages a landing could find room
   // on.
@@ -242,7 +340,7 @@ void main() {
     final first = overwriteCelPixels(
       surface: surfaceOf({origin: tileOf(0)}),
       channel: CelPixelChannel.alpha,
-      walk: walkOf({origin: null}),
+      walk: whole([origin]),
       value: bytes([255]),
     );
     expect(first.restore, isNotNull);
@@ -250,7 +348,7 @@ void main() {
     final made = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
-      walk: walkOf({for (final coord in tiles.keys) coord: null}),
+      walk: whole(tiles.keys),
       value: bytes([77]),
     );
     expect(
@@ -273,12 +371,17 @@ void main() {
     expect(next, across * across);
   });
 
-  group('every verb over every region, as the Dart pass:', () {
+  group('every verb under every selection, as the Dart pass:', () {
     for (final MapEntry(key: verb, value: spec) in verbs.entries) {
-      for (final MapEntry(key: region, value: masks) in regions.entries) {
-        test('$verb, $region', () {
+      for (final MapEntry(key: name, value: (:region, :options))
+          in selections.entries) {
+        test('$verb, $name', () {
           final surface = artwork();
-          final walk = walkOf(masks);
+          final walk = celPixelWalkFor(
+            surface: surface,
+            region: region,
+            options: options,
+          );
           final (:channel, :value) = spec.of;
           final (forward: inDart, recipe: inDartRecipe, undone: _) = run(
             onEngine: false,
@@ -311,29 +414,10 @@ void main() {
     final result = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
-      walk: walkOf({origin: null}),
+      walk: whole([origin]),
       value: bytes([0]),
     );
     expect(result.surface.tileAt(origin)!.isOnEngine, isTrue);
-  });
-
-  test('🚨a walk hands one buffer over from tile to tile, as the app\'s does: '
-      'each tile keeps the coverage it was walked with', () {
-    final surface = artwork();
-    final coverage = Uint8List(side * side);
-    final result = overwriteCelPixels(
-      surface: surface,
-      channel: CelPixelChannel.alpha,
-      walk: (visit) {
-        coverage.fillRange(0, coverage.length, 255);
-        visit(offStage, coverage);
-        coverage.fillRange(0, coverage.length, 0);
-        visit(beside, coverage);
-      },
-      value: bytes([0]),
-    );
-    expect(identical(result.surface.tileAt(beside), surface.tileAt(beside)), isTrue);
-    expect(identical(result.surface.tileAt(offStage), surface.tileAt(offStage)), isFalse);
   });
 
   test('a tile no pixel of took part in stays the very tile, and one the '
@@ -342,10 +426,9 @@ void main() {
     final result = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
-      walk: walkOf({
-        origin: Uint8List(side * side),
-        beside: soft,
-      }),
+      // The origin walked, past the box of what the selection made: the
+      // pass reads 0 there.
+      walk: under(ofBesideAlone, [origin, beside], feathered),
       value: bytes([0]),
     );
     expect(identical(result.surface.tileAt(origin), surface.tileAt(origin)), isTrue);
@@ -358,7 +441,7 @@ void main() {
     final missed = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
-      walk: walkOf({origin: Uint8List(side * side)}),
+      walk: under(ofBesideAlone, [origin]),
       value: bytes([0]),
     );
     expect(identical(missed.surface, surface), isTrue);
@@ -366,7 +449,7 @@ void main() {
     final none = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
-      walk: (visit) {},
+      walk: whole(const []),
       value: bytes([0]),
     );
     expect(identical(none.surface, surface), isTrue);
@@ -379,7 +462,7 @@ void main() {
     final result = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
-      walk: walkOf({origin: null, at: null}),
+      walk: whole([origin, at]),
       value: bytes([0]),
     );
     expect(result.surface.tileAt(at), isNull);
@@ -401,7 +484,7 @@ void main() {
       0xFFC8280A,
       tolerance: 0,
     );
-    final walk = walkOf({origin: null});
+    final walk = whole([origin]);
     final forward = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
@@ -431,7 +514,7 @@ void main() {
       () => overwriteCelPixels(
         surface: surface,
         channel: CelPixelChannel.alpha,
-        walk: walkOf({origin: null}),
+        walk: whole([origin]),
         restore: UniformCelPixelRestore(bytes([9]), touchedPixelCount: 3),
       ),
       throwsA(
@@ -446,7 +529,7 @@ void main() {
 
   test('a pass over what a pass left reads none of it back', () {
     final surface = artwork();
-    final walk = walkOf({origin: null, beside: null, offStage: null});
+    final walk = whole([origin, beside, offStage]);
     final forward = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.colour,
@@ -476,7 +559,7 @@ void main() {
       0xFFC8280A,
       tolerance: 0,
     );
-    final walk = walkOf({origin: soft, beside: null});
+    final walk = under(overAnEdge, [origin, beside], feathered);
     final forward = overwriteCelPixels(
       surface: surface,
       channel: CelPixelChannel.alpha,
