@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import '../../services/brush_frame_store.dart';
-import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/history_manager.dart';
 import '../../services/memory_allowance.dart';
@@ -63,9 +62,15 @@ enum CacheBudgetLine {
   /// ↩️`nativeUploads` stood before this one till 2026-11-12: the C
   /// engine's copies of stamps and of mask alphas, which went with the
   /// last kernel that read them (C ABI 80).
+  ///
+  /// ↩️`liveStroke` stood after this one till 2026-11-14: 96MB of the
+  /// allowance for the live stroke's resident Dart results
+  /// (`BrushLiveStrokeRasterizer.residentResultByteBudget`), which the app
+  /// had not held since its strokes went to the engine — and no census row
+  /// counted. They went with the last route that kept them (board
+  /// `the-off-engine-cpu-commit-lives-only-for-tests`); the engine's
+  /// strokes are its pool's.
   brushTips({'brushTips'}),
-
-  liveStroke({'liveStroke'}),
 
   /// The framework's own image cache — `Image.asset` and its kind. This app
   /// decodes its own pixels, so the ceiling suits a cache that is nearly
@@ -121,8 +126,6 @@ enum CacheBudgetLine {
       physicalMemoryBytes: physicalMemoryBytes,
     ),
     CacheBudgetLine.brushTips => BrushTipStampCache.defaultByteBudget,
-    CacheBudgetLine.liveStroke =>
-      BrushLiveStrokeRasterizer.defaultResidentResultByteBudget,
     CacheBudgetLine.imageCache => frameworkImageCacheBytes,
     CacheBudgetLine.enginePool => engineTilePoolBytes,
     CacheBudgetLine.tileImages => TilePictureBudget.deviceScaledByteBudget(
@@ -142,7 +145,6 @@ enum CacheBudgetLine {
     CacheBudgetLine.sheetImages => viewerPageBytesAtCap,
     CacheBudgetLine.sheetInk ||
     CacheBudgetLine.brushTips ||
-    CacheBudgetLine.liveStroke ||
     CacheBudgetLine.imageCache ||
     CacheBudgetLine.enginePool ||
     CacheBudgetLine.tileImages => 0,
@@ -198,7 +200,6 @@ class CacheBudgets {
   int get storyboardThumbnails => this[CacheBudgetLine.storyboardThumbnails];
   int get sheetImages => this[CacheBudgetLine.sheetImages];
   int get brushTips => this[CacheBudgetLine.brushTips];
-  int get liveStroke => this[CacheBudgetLine.liveStroke];
   int get imageCache => this[CacheBudgetLine.imageCache];
   int get enginePool => this[CacheBudgetLine.enginePool];
   int get tileImages => this[CacheBudgetLine.tileImages];

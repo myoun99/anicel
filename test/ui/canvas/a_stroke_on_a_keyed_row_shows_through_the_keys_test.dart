@@ -12,7 +12,6 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
@@ -221,32 +220,10 @@ void main() {
     );
   });
 
-  test('the classic snapshot road — a source that is not the rasterizer — '
-      'shows them too', () async {
-    final base = cel();
-    final model = overlayOn(base);
-
-    model.updateRegion(
-      source: _NoStroke(),
-      region: DirtyRegion(
-        left: 0,
-        top: 0,
-        rightExclusive: tileSize,
-        bottomExclusive: tileSize * 2,
-      ),
-    );
-
-    // No stroke at all, so the result is the cel's own tile — and the
-    // picture is that tile as the row lays it.
-    final shown = celSurfaceWithTextsLaid(base);
-    for (final coord in [sheet, underText]) {
-      expect(
-        await bytesOfPicture(model.tileImages[coord]!),
-        pictured(shown.tileAt(coord)!),
-        reason: '$coord',
-      );
-    }
-  });
+  // ↩️A case held the classic snapshot road — a source that is not the
+  // rasterizer — too, till 2026-11-14: a pre-blend is the engine's now, and
+  // that road blended on the CPU (board
+  // `the-off-engine-cpu-commit-lives-only-for-tests`).
 
   test('a dragged shape\'s stroke, made off screen and shown whole, shows '
       'them too', () async {
@@ -279,16 +256,4 @@ void main() {
       );
     }
   });
-}
-
-/// A stroke source with nothing painted — every pixel transparent.
-class _NoStroke implements ActiveStrokePixelSource {
-  @override
-  PasteboardWall get pasteboard =>
-      celTextTestCanvas.pasteboardAt(PasteboardReach.whole);
-
-  @override
-  void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {
-    target.fillRange(targetOffset, targetOffset + count * 4, 0);
-  }
 }

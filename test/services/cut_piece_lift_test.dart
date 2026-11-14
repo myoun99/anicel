@@ -36,7 +36,7 @@ void main() {
       rgba[i * 4 + 3] = 255;
     }
     return materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 128),
       sequence: BrushDabSequence([
         BrushDab(
           center: CanvasPoint(x: left + 2, y: top + 2),

@@ -18,9 +18,11 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 
 /// 🚨H60 (유저 three times — H39 09-11 · I-174 11-14 · I-86 11-15 「팁이
 /// 소재면 aa off하면 소재 팁 그대로인거고」): a raster tip at 없음 lays its
-/// picture as it is, on the engine and on the tile kernel. A tip of one grey
-/// lays that grey: the cut at half coverage laid a grey under half as
-/// nothing and one over it as whole.
+/// picture as it is. A tip of one grey lays that grey: the cut at half
+/// coverage laid a grey under half as nothing and one over it as whole.
+/// ↩️It was held on the tile kernel (a 64 grid) as well till 2026-11-14,
+/// when that kernel went with the commit off the engine's grid (board
+/// `the-off-engine-cpu-commit-lives-only-for-tests`).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvas = CanvasSize(width: 256, height: 256);
@@ -31,12 +33,10 @@ void main() {
     alpha: Uint8List.fromList(List.filled(16 * 16, grey)),
   );
 
-  /// The highest alpha one black dab of [tip] at 없음 lays, on the engine
-  /// (a 128 tile) or the tile kernel (any other).
-  int highest(BrushTipMask tip, {required int tileSize}) {
+  /// The highest alpha one black dab of [tip] at 없음 lays.
+  int highest(BrushTipMask tip) {
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
-      tileSize: tileSize,
     );
     addTearDown(rasterizer.clear);
     rasterizer.blendFrom([
@@ -62,14 +62,9 @@ void main() {
     return most;
   }
 
-  for (final (where, tileSize) in [
-    ('the engine', 128),
-    ('the tile kernel', 64),
-  ]) {
-    for (final grey in [64, 200]) {
-      test('a tip of grey $grey lays grey $grey on $where', () {
-        expect(highest(flat(grey), tileSize: tileSize), closeTo(grey, 1));
-      });
-    }
+  for (final grey in [64, 200]) {
+    test('a tip of grey $grey lays grey $grey', () {
+      expect(highest(flat(grey)), closeTo(grey, 1));
+    });
   }
 }

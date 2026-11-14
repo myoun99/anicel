@@ -716,16 +716,19 @@ class _BrushEditStroke {
     if (rasterizer == null) {
       return;
     }
-    final promotable = base != null && base.tileSize == rasterizer.tileSize;
     final sourceDabs = List.of(_state._collectedDabs);
     // Where the line went last — through the lock, the stabiliser's catch-up
     // and the tool's waypoints alike — and so where the next line from the
     // last stroke starts (I-119).
     final end = _state._previousRawCanvasPosition;
-    if (!promotable) {
-      // Without promotion (a host whose overlay grid differs from its
-      // surface's) the classic payload still commits correctly: a
-      // bounds-local row-major stroke buffer the commit composites.
+    if (base == null) {
+      // Without a pre-blend base (a host whose overlay shows the stroke
+      // alone) there is nothing to promote, and the stroke's own buffer
+      // commits: a bounds-local row-major stroke buffer the commit lays.
+      // ↩️It was asked of a host whose overlay grid differed from its
+      // surface's too, till 2026-11-14: the stroke, the overlay and the
+      // cel are all on the engine's grid, or refused (board
+      // `the-off-engine-cpu-commit-lives-only-for-tests`).
       _state.widget.onSourceStrokeCommitted(
         BrushStrokeCommitData(
           sourceDabs: sourceDabs,

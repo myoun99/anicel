@@ -434,34 +434,25 @@ void main() {
     });
   });
 
-  test('on a grid of another side than the engine\'s, a plate is the stamp '
-      'the commit lands there', () {
+  // ↩️Till 2026-11-14 a plate on a grid of another side than the engine's
+  // was laid there as the commit laid a stamp, on the CPU; a cel is drawn
+  // by the engine alone now, and a plate is turned away like every stroke
+  // (board `the-off-engine-cpu-commit-lives-only-for-tests`).
+  test('on a grid of another side than the engine\'s, a plate is turned '
+      'away as every stroke is', () {
     const side = 64;
-    BitmapTile filled(List<int> rgba) => BitmapTile(
-      size: side,
-      pixels: Uint8List.fromList([
-        for (var at = 0; at < side * side; at += 1) ...rgba,
-      ]),
-    );
     final grid = BitmapSurface(canvasSize: celTextTestCanvas, tileSize: side);
-    final under = filled([10, 20, 30, 255]);
-    final plate = filled([200, 100, 50, 128]);
-
-    final laid = celTilesWithPlatesLaid(grid, {a: under}, [
-      (plate: {a: plate}, dx: 0, dy: 0),
-    ]);
-
-    final committed = compositeStrokePixelsOntoBitmapSurface(
-      surface: grid.putTiles([(coord: a, tile: under)]),
-      strokePixels: Uint8List.fromList(plate.pixels),
-      bounds: DirtyRegion(
-        left: 0,
-        top: 0,
-        rightExclusive: side,
-        bottomExclusive: side,
-      ),
-    ).surface;
-    expect(laid[a]!.pixels, committed.tileAt(a)!.pixels);
-    expect(laid[a]!.pixels, isNot(under.pixels), reason: 'the plate landed');
+    final under = BitmapTile.blank(size: side);
+    // Inked: a plate tile with no ink lays nothing, and is not asked.
+    final plate = BitmapTile(
+      size: side,
+      pixels: Uint8List(side * side * 4)..setAll(0, const [9, 8, 7, 255]),
+    );
+    expect(
+      () => celTilesWithPlatesLaid(grid, {a: under}, [
+        (plate: {a: plate}, dx: 0, dy: 0),
+      ]),
+      throwsStateError,
+    );
   });
 }

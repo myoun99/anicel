@@ -108,28 +108,30 @@ void main() {
     expect(ledger.slotCount, 3, reason: 'asked again, stored once');
   });
 
-  test('a stroke on a surface of another grid stays on the CPU', () {
-    final tiles = materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(
-        canvasSize: const CanvasSize(width: 64, height: 64),
-        tileSize: 64,
-      ),
-      sequence: BrushDabSequence([
-        BrushDab(
-          center: CanvasPoint(x: 32, y: 32),
-          color: 0xFF0000FF,
-          size: 12,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: 0,
+  test('a stroke on a surface of another grid is refused — the engine\'s '
+      'grid is the only one a commit lands on', () {
+    expect(
+      () => materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(
+          canvasSize: const CanvasSize(width: 64, height: 64),
+          tileSize: 64,
         ),
-      ]),
-    ).surface.tiles;
-
-    expect(tiles.values.single.isOnEngine, isFalse);
+        sequence: BrushDabSequence([
+          BrushDab(
+            center: CanvasPoint(x: 32, y: 32),
+            color: 0xFF0000FF,
+            size: 12,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ]),
+      ),
+      throwsStateError,
+    );
   });
 
   test('a tile of another side is refused, and nothing the call asks for '

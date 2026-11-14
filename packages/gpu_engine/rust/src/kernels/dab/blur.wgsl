@@ -1,4 +1,4 @@
-// The blur brush's dab (I-75 흐리기 — BrushBlurPicture.blurDab): the
+// The blur brush's dab (I-75 흐리기 — the law beside BrushBlurPicture): the
 // stroke's picture under the dab moved toward its blur by
 // what the dab would lay as paint onto nothing,
 //

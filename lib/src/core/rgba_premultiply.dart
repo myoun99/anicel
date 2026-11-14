@@ -33,7 +33,7 @@ void premultiplyRgbaInPlace(Uint8List bytes) {
 /// with.
 ///
 /// ONE law for a clear pixel's bytes. A stroke's landing writes one so
-/// (its srcOver skips α==0 — `preBlendStrokeOverlayPixels` mirrors it), and
+/// (blend.wgsl's `blend_pack8`), and
 /// the engine's decoder hands one back so, as the app's own decoders of a
 /// picture past its side do (`readPngRows`, `readFramesByPackage`) — the
 /// third to carry the loop (2026-10-20), so it is one.

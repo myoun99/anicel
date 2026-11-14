@@ -37,7 +37,7 @@ void main() {
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: 128,
       ),
       historyPolicy: BrushHistoryPolicy(
         retainedSessionLimit: retainedSessionLimit,
@@ -217,7 +217,7 @@ void main() {
           frameStore: store,
           sessionStore: BrushFrameEditSessionStore(
             canvasSize: canvasSize,
-            tileSize: 4,
+            tileSize: 128,
           ),
           historyPolicy: const BrushHistoryPolicy(),
         );

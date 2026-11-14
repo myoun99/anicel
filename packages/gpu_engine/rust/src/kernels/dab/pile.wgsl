@@ -72,7 +72,7 @@ fn walk(
       continue;
     }
     // A second tip's dab piles its plane as any dab piles its alpha. On a
-    // stroke with no second plane it lays nothing (`blendDabTilesDart`).
+    // stroke with no second plane it lays nothing.
     let source = dab_source(at, x, y, level, paper);
     if (source != NOTHING) {
       level = blend_alpha_over(source, level);

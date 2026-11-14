@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 /// result bytes exactly. ↩️That call was the flush until F-533; a flush
 /// nothing reads pictures nothing now.
 void main() {
-  const tileSize = 8;
+  const tileSize = 128;
   const canvasSize = CanvasSize(width: 32, height: 32);
 
   List<BrushDab> strokeDabs() {
@@ -69,8 +69,16 @@ void main() {
 
     final rasterizer = stroke(model);
 
-    final pictured = model.tileImages.length;
-    expect(pictured, greaterThan(0), reason: 'the flush pictured the tiles');
+    // The read a screen that draws pictures makes of each: a picture is
+    // made when a screen asks for one. ↩️On the 8px Dart grid every
+    // coordinate was pictured on the spot, till 2026-11-14 (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`).
+    final coords = model.tileImages.keys.toList();
+    for (final coord in coords) {
+      expect(model.tileImages[coord], isNotNull, reason: '$coord: read');
+    }
+    final pictured = coords.length;
+    expect(pictured, greaterThan(0), reason: 'the read pictured the tiles');
     final promoted = rasterizer.promoteStrokeTiles(
       base: base,
       mode: BrushBlendMode.color,

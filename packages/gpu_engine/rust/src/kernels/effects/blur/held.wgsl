@@ -4,8 +4,7 @@
 // channel; and the pixel between them, premultiplied on the 16-bit scale —
 // read from a stored word and stored back as every blur reads and stores
 // one (blend.wgsl's blend_unpack8_premultiplied and
-// blend_pack8_premultiplied — `BrushBlurPicture`'s `_premultiplied` and
-// `resultTile`).
+// blend_pack8_premultiplied).
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl and shared/tile.wgsl before it.
 // The pass that follows binds 3 and up.

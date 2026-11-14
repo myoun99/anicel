@@ -25,17 +25,16 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 ///    would expose a promoted tile being fed back in as blend input;
 ///  * a coordinate promoted mid-stroke and then painted over again (the
 ///    result must re-blend, not ship stale);
-///  * a memory budget so small that results are dropped behind the brush
-///    (pen-up must re-blend exactly those);
 ///  * tiles the stroke touched but did not change (they must stay out of
 ///    the commit entirely, keeping their identity and their image).
+///
+/// ↩️A starved resident budget and its least-recently-shown order were
+/// pinned here till 2026-11-14: they were the Dart results', which went
+/// with the commit off the engine's grid — the engine's strokes are its
+/// pool's.
 void main() {
   const canvasSize = CanvasSize(width: 192, height: 128);
-  const tileSize = 64;
-
-  tearDown(() {
-    BrushLiveStrokeRasterizer.residentResultByteBudget = 96 * 1024 * 1024;
-  });
+  const tileSize = 128;
 
   BrushDab dab({
     required double x,
@@ -238,62 +237,6 @@ void main() {
   });
 
   test(
-    'a starved resident budget still promotes the right pixels — dropped '
-    'results simply re-blend at pen-up',
-    () {
-      // Room for ONE tile: every coordinate the brush leaves behind is
-      // dropped, so pen-up re-blends nearly the whole stroke.
-      BrushLiveStrokeRasterizer.residentResultByteBudget =
-          tileSize * tileSize * 4;
-
-      final base = paintedBase();
-      const mode = BrushBlendMode.multiply;
-      final dabs = loopBackStroke();
-
-      final live = drawWithLivePreBlend(
-        dabs: dabs,
-        base: base,
-        mode: mode,
-        erase: false,
-      );
-      expect(
-        live.residentResultTileCount,
-        lessThanOrEqualTo(2),
-        reason: 'the budget must actually bite',
-      );
-      final promotedSurface = base.putTiles([
-        for (final entry in live.promoteStrokeTiles(
-          base: base,
-          mode: mode,
-          erase: false,
-        ))
-          (coord: entry.coord, tile: entry.tile),
-      ]);
-      live.clear();
-
-      final reference = drawWithLivePreBlend(
-        dabs: dabs,
-        base: base,
-        mode: mode,
-        erase: false,
-      );
-      final referenceSurface = referenceCommit(
-        rasterizer: reference,
-        base: base,
-        mode: mode,
-        erase: false,
-      );
-      reference.clear();
-
-      expectSameArtwork(
-        promotedSurface,
-        referenceSurface,
-        'starved budget: promoted == re-blended',
-      );
-    },
-  );
-
-  test(
     'a coordinate promoted after being painted over again ships the NEW '
     'pixels, not the stale resident result',
     () {
@@ -406,49 +349,5 @@ void main() {
       expect(entry.tile, isA<BitmapTile>());
       expect(entry.tile.size, tileSize);
     }
-  });
-
-  test('the budget lets the least recently SHOWN result go — one shown '
-      'again is the newest', () {
-    // Room for two results. One dab a coordinate along the top row, each
-    // shown as it lands, and the first shown again before the third — so
-    // the third lets the second go.
-    BrushLiveStrokeRasterizer.residentResultByteBudget =
-        2 * tileSize * tileSize * 4;
-    final base = paintedBase();
-    final rasterizer = BrushLiveStrokeRasterizer(
-      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-      tileSize: tileSize,
-    );
-    final dabs = <BrushDab>[];
-    void land(int tileX) {
-      dabs.add(dab(x: tileX * 64 + 32.5, y: 32.5, sequence: dabs.length));
-      rasterizer.blendFrom(dabs, from: dabs.length - 1);
-    }
-
-    void show(int tileX) => rasterizer.preBlendedOverlayTile(
-      tileX: tileX,
-      tileY: 0,
-      base: base,
-      mode: BrushBlendMode.color,
-      erase: false,
-    );
-
-    land(0);
-    show(0);
-    land(1);
-    show(1);
-    show(0);
-    land(2);
-    show(2);
-
-    expect(rasterizer.holdsResultAt(0, 0), isTrue, reason: 'shown again');
-    expect(
-      rasterizer.holdsResultAt(1, 0),
-      isFalse,
-      reason: 'the least recently shown',
-    );
-    expect(rasterizer.holdsResultAt(2, 0), isTrue, reason: 'the newest');
-    rasterizer.clear();
   });
 }

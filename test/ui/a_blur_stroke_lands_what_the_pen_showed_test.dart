@@ -24,14 +24,14 @@ import 'brush_canvas_test_helpers.dart';
 /// is that cel rewritten, the same bytes its dabs re-derive.
 void main() {
   const canvasSize = CanvasSize(width: 48, height: 16);
-  const tileSize = 16;
+  const tileSize = 128;
 
   /// Black on the left, nothing on the right: an edge for the pen to rub.
   BitmapSurface edgeCel() => BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSize,
     tiles: {
-      for (var tileX = 0; tileX < 3; tileX += 1)
+      for (var tileX = 0; tileX * tileSize < canvasSize.width; tileX += 1)
         TileCoord(x: tileX, y: 0): BitmapTile(
           size: tileSize,
           pixels: Uint8List.fromList([

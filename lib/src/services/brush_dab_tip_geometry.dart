@@ -182,9 +182,10 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
 /// until 2026-10-01, and this is now the one place the choice is made. The
 /// three are one body so the per-pixel loop still makes one call.
 /// ↩️The tile kernel's loop (`blendDabTilesDart`) wrote the cascade out a
-/// fourth time; it calls this now wherever it does not read an unrotated
+/// fourth time, then called this wherever it did not read an unrotated
 /// raster tip off its lattices (board
-/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`).
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`), till it
+/// went on 2026-11-14 with the commit off the engine's grid.
 @pragma('vm:prefer-inline')
 double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) =>
     _tipAt(tip, dx, dy, pile: false);

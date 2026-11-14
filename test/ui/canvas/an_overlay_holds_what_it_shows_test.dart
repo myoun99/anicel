@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// coordinate shows no more is let go, and a stroke is in hand for as long
 /// as anything is shown.
 void main() {
-  const tileSize = 8;
+  const tileSize = 128;
   const canvas = CanvasSize(width: 32, height: 32);
   final coord = TileCoord(x: 0, y: 0);
 

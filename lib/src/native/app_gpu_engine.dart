@@ -36,6 +36,36 @@ _AppsEngine _its = _AppsEngine();
 /// engine, and the tiles its pool holds, are the main isolate's.
 bool get appGpuEngineIsHere => RootIsolateToken.instance != null;
 
+/// ⛔A brush, a stamp and a stroke's picture land on a cel by the engine
+/// alone — on its grid ([gpuTileSide]), on the isolate that has it
+/// ([appGpuEngineIsHere]); a cel of [tileSize] off that is refused here,
+/// not drawn another way (2026-11-14, board
+/// `the-off-engine-cpu-commit-lives-only-for-tests`): the app's cels are on
+/// that grid, drawn on that isolate, and the CPU route that drew the
+/// others was asked by tests alone — 60 files measured that day, each
+/// moved onto the engine's grid.
+///
+/// ↩️A selection was refused off the grid first (2026-11-14, board
+/// `a-selection-mask-is-built-on-the-cpu-at-every-move` ④ — 관제's call,
+/// handed the night's decisions by 유저 「판단생기면 알아서해줘」, on reading
+/// the app's grids and its workers): no road of the app draws under one
+/// anywhere else, and a rule of its own off it cut the same selection to
+/// other bytes (the CPU's 8-bit fold against the engine's 16-bit cover: 2
+/// levels at a feathered edge, measured that day). The CPU folded the
+/// selection's mask in there: into a stamp's picture
+/// (`clipStampDabToSelection`), a stroke's buffer
+/// (`clipStrokePixelsToSelection`) and the live stroke's tiles, a mask a
+/// tile.
+void drawnByTheEngineAlone(int tileSize) {
+  if (tileSize != gpuTileSide || !appGpuEngineIsHere) {
+    throw StateError(
+      'a cel is drawn by the engine alone, on its $gpuTileSide-pixel grid '
+      'on the isolate that has it: not a $tileSize-pixel grid'
+      '${appGpuEngineIsHere ? '' : ' on a worker'}',
+    );
+  }
+}
+
 /// Whether the app has opened its engine and that device is gone
 /// ([GpuEngine.isGone]) — asked without opening one. Every job is refused
 /// from then on, whatever the job: one cause, for what tells a refusal

@@ -21,9 +21,7 @@ import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 /// The levels are chosen off the half: a byte that lands on .5 would pin a
 /// rounding, not the law.
 ///
-/// The grid is not the engine's, so the tile kernel answers
-/// (`blendDabTilesDart`); the engine's is held to it
-/// (`a_dab_reaches_the_engine_whole_test`).
+/// Every case runs on the engine's grid, the only one a stroke lands on.
 void main() {
   const canvasSize = CanvasSize(width: 64, height: 64);
   final origin = TileCoord(x: 0, y: 0);
@@ -52,7 +50,7 @@ void main() {
   /// The RGBA at the middle of the dab after [dabs] pile up there.
   List<int> pixelAfter(List<BrushDab> dabs) {
     final surface = materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 64),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 128),
       sequence: BrushDabSequence(dabs),
     ).surface;
     final tile = surface.tileAt(origin)!;

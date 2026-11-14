@@ -3,6 +3,7 @@
 @Timeout(Duration(minutes: 3))
 library;
 
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -514,33 +515,68 @@ void main() {
     }
   });
 
-  test('off the engine\'s grid a selection is turned away — by the commit, '
-      'a stamp\'s landing and the live stroke alike', () {
+  // ↩️Till 2026-11-14 only a stroke WITH a selection was turned away off
+  // the engine's grid; every stroke is now, the one refusal answering both
+  // (절대명령 2 — board `the-off-engine-cpu-commit-lives-only-for-tests`).
+  test('off the engine\'s grid a stroke is turned away, selection or none — '
+      'by the commit, a stamp\'s landing, a buffer\'s, a picture laid over '
+      'given tiles and the live stroke alike', () {
     final small = BitmapSurface(canvasSize: canvas, tileSize: 64);
+    for (final selection in [null, soft]) {
+      expect(
+        () => brushCommitResultForBrushDabSequenceOnBitmapSurface(
+          surface: small,
+          sequence: BrushDabSequence([paintDab(150, 100)]),
+          layerId: layerId,
+          frameId: frameId,
+          selection: selection,
+        ),
+        throwsStateError,
+        reason: '$selection',
+      );
+      expect(
+        () => materializeBrushDabSequenceOnBitmapSurface(
+          surface: small,
+          sequence: BrushDabSequence([opaqueStamp()]),
+          selection: selection,
+        ),
+        throwsStateError,
+        reason: '$selection',
+      );
+    }
     expect(
-      () => brushCommitResultForBrushDabSequenceOnBitmapSurface(
+      () => BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: 64),
+      throwsStateError,
+    );
+    // A stroke's own buffer, and a picture laid over given tiles (a text's).
+    expect(
+      () => compositeStrokePixelsOntoBitmapSurface(
         surface: small,
-        sequence: BrushDabSequence([paintDab(150, 100)]),
-        layerId: layerId,
-        frameId: frameId,
-        selection: soft,
+        strokePixels: Uint8List.fromList(const [255, 0, 0, 255]),
+        bounds: DirtyRegion(
+          left: 150,
+          top: 100,
+          rightExclusive: 151,
+          bottomExclusive: 101,
+        ),
       ),
       throwsStateError,
     );
     expect(
-      () => materializeBrushDabSequenceOnBitmapSurface(
-        surface: small,
-        sequence: BrushDabSequence([opaqueStamp()]),
-        selection: soft,
+      () => stampLaidOver(
+        small,
+        opaqueStamp().stamp!,
+        left: 0,
+        top: 0,
+        unders: const {},
       ),
       throwsStateError,
     );
-    expect(
-      () => BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: 64)
-        ..selectionClip = soft
-        ..blendFrom([paintDab(150, 100)], from: 0),
-      throwsStateError,
-    );
+  });
+
+  test('on a worker a stroke is turned away on the grid too: the engine is '
+      'the main isolate\'s', () async {
+    await expectLater(Isolate.run(_aStrokeOnAWorker), throwsStateError);
   });
 
   test('a blur handed to the commit with its selection rubs nothing the '
@@ -874,3 +910,13 @@ typedef _Whole = ({
   Uint8List mask,
   ({int left, int top, int width, int height}) box,
 });
+
+/// A live stroke begun where it runs — on a worker, here.
+void _aStrokeOnAWorker() {
+  BrushLiveStrokeRasterizer(
+    pasteboard: const CanvasSize(
+      width: 300,
+      height: 200,
+    ).pasteboardAt(PasteboardReach.none),
+  );
+}

@@ -130,7 +130,7 @@ BitmapSurface _laid(BrushDab first, BrushDab last, int width, int height) {
   return materializeBrushDabSequenceOnBitmapSurface(
     surface: BitmapSurface(
       canvasSize: CanvasSize(width: width, height: height),
-      tileSize: 64,
+      tileSize: 128,
     ),
     sequence: BrushDabSequence(BrushTipStampCache().resolveDabs(dabs)),
   ).surface;

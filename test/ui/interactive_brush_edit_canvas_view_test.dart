@@ -1981,10 +1981,10 @@ Future<void> _timedStroke(
 /// a mixing brush has something to lift.
 BrushEditSessionState _paintedSessionState(List<int> rgba) {
   const size = 8;
-  const tileSize = 2;
+  const tileSize = 128;
   final tiles = <TileCoord, BitmapTile>{};
-  for (var tileY = 0; tileY < size ~/ tileSize; tileY += 1) {
-    for (var tileX = 0; tileX < size ~/ tileSize; tileX += 1) {
+  for (var tileY = 0; tileY * tileSize < size; tileY += 1) {
+    for (var tileX = 0; tileX * tileSize < size; tileX += 1) {
       final pixels = Uint8List(tileSize * tileSize * 4);
       for (var index = 0; index < tileSize * tileSize; index += 1) {
         pixels.setRange(index * 4, index * 4 + 4, rgba);
@@ -2022,7 +2022,7 @@ BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
     canvasState: CanvasSurfaceState(
       currentSurface: BitmapSurface(
         canvasSize: CanvasSize(width: width, height: height),
-        tileSize: 2,
+        tileSize: 128,
       ),
     ),
     materializationHistoryState: BrushBitmapMaterializationHistoryState(),

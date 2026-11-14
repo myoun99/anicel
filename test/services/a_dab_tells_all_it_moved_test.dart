@@ -28,8 +28,8 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 /// `a_step_writes_what_its_dabs_moved_test` does that.
 void main() {
   const canvasSize = CanvasSize(width: 96, height: 64);
-  const tileSize = 16;
-  const reach = 2 * tileSize;
+  const tileSize = 128;
+  const reach = tileSize;
   final wall = canvasSize.pasteboardAt(PasteboardReach.whole);
   final width = canvasSize.width + 2 * reach;
   final height = canvasSize.height + 2 * reach;
@@ -80,8 +80,8 @@ void main() {
 
   /// The cel a stroke shows over, every pixel of it something to move.
   final celPixels = {
-    for (var y = 0; y < 4; y += 1)
-      for (var x = 0; x < 6; x += 1)
+    for (var y = 0; y * tileSize < canvasSize.height; y += 1)
+      for (var x = 0; x * tileSize < canvasSize.width; x += 1)
         TileCoord(x: x, y: y): Uint8List.fromList([
           for (var index = 0; index < tileSize * tileSize; index += 1) ...[
             (index * 11) % 256,

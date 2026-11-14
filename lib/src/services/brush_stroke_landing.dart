@@ -10,8 +10,7 @@ import 'selection_clip.dart';
 /// (`BrushLiveStrokeRasterizer`) and laid once over [surface] — the cel as
 /// it stands now — capped by the stroke's opacity and by [selection]
 /// exactly as a live stroke is, erasing where its dabs erase. So what lands
-/// is what a pen drawing the same dabs would have shown, on whichever grid
-/// the surface is.
+/// is what a pen drawing the same dabs would have shown.
 ///
 /// I-75: a BLUR stroke re-derived from its dabs — the commit when the cel
 /// moved under its promotion, a selection's cut of it, 확정 laying it on

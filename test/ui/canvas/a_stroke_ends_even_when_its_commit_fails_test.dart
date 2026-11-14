@@ -24,7 +24,7 @@ void main() {
     var commits = 0;
     final cel = BitmapSurface(
       canvasSize: const CanvasSize(width: 64, height: 64),
-      tileSize: 16,
+      tileSize: 128,
     );
     await tester.pumpWidget(
       MaterialApp(

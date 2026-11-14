@@ -32,7 +32,7 @@ void main() {
       rgba[i * 4 + 3] = 255;
     }
     return materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 128),
       sequence: BrushDabSequence([
         BrushDab(
           center: CanvasPoint(x: 4, y: 4),
@@ -142,12 +142,19 @@ void main() {
 
     // A cel with ink in several tiles including negative coordinates, so
     // the sweep below really does cross tile edges with content on both
-    // sides of them.
-    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 8);
+    // sides of them — on the engine's grid, around its edges at 0 and 128.
+    // ↩️An 8-pixel grid on a 16-pixel canvas till 2026-11-14 (board
+    // `the-off-engine-cpu-commit-lives-only-for-tests`); the scene moved by
+    // `edge` to keep crossing what it crossed.
+    const edge = 120;
+    var surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 256, height: 256),
+      tileSize: 128,
+    );
     for (final centre in [
-      CanvasPoint(x: 3, y: 3),
-      CanvasPoint(x: 9, y: 5),
-      CanvasPoint(x: 7.5, y: 8.5),
+      CanvasPoint(x: edge + 3, y: edge + 3),
+      CanvasPoint(x: edge + 9, y: edge + 5),
+      CanvasPoint(x: edge + 7.5, y: edge + 8.5),
       CanvasPoint(x: -5, y: -3),
       CanvasPoint(x: -2, y: 6),
     ]) {
@@ -170,14 +177,14 @@ void main() {
     }
 
     const cases = <({int left, int top, int width, int height})>[
-      (left: 1, top: 1, width: 5, height: 5), // inside one tile
-      (left: 5, top: 2, width: 7, height: 4), // crosses a vertical edge
-      (left: 2, top: 5, width: 4, height: 7), // crosses a horizontal edge
-      (left: 8, top: 8, width: 6, height: 6), // starts ON a boundary
-      (left: 3, top: 3, width: 11, height: 11), // spans four tiles
+      (left: edge + 1, top: edge + 1, width: 5, height: 5), // inside one tile
+      (left: edge + 5, top: edge + 2, width: 7, height: 4), // a vertical edge
+      (left: edge + 2, top: edge + 5, width: 4, height: 7), // a horizontal one
+      (left: edge + 8, top: edge + 8, width: 6, height: 6), // ON a boundary
+      (left: edge + 3, top: edge + 3, width: 11, height: 11), // four tiles
       (left: -7, top: -5, width: 9, height: 9), // pasteboard, negative
       (left: -3, top: 2, width: 8, height: 8), // straddles x = 0
-      (left: 12, top: 12, width: 4, height: 4), // over an empty coordinate
+      (left: -20, top: 200, width: 4, height: 4), // over an empty coordinate
     ];
 
     for (final box in cases) {

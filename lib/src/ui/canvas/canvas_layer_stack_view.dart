@@ -306,7 +306,7 @@ typedef LiveRows = ({
 /// its slot draws it ([_SurfaceSlot.floated]).
 /// ↩️The stamp's ghost was the first (F-33 drew it inside the painter),
 /// until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved it to the
-/// overlay's CPU pre-blended tiles, which [overlay] carries.
+/// overlay's pre-blended tiles, which [overlay] carries.
 ///
 /// 🚨★★★AND THE ROWS A LIFT HOLDS BESIDE THE LIVE ONE, BY THE SAME LAW
 /// ([lifted]): each by its cel, its surface's tiles and its float

@@ -360,21 +360,19 @@ void main() {
       // that included them could be paid down by translating elsewhere while
       // a dialog quietly went back to English.
       //
-      // ⛔AND THE BRUSH SMOKE SCREEN IS NOT UI. `brush_v1_scope_guard_test`
-      // proves it is wired into no production route; its six buttons are a
-      // developer's harness. `ui/debug/` is there for the same reason — the
-      // Input Inspector is one of the `edit-*` menu toggles nobody tabled,
-      // and translating a diagnostic would make it
-      // read differently depending on who opened it.
+      // ⛔AND `ui/debug/` IS NOT UI: the Input Inspector is one of the
+      // `edit-*` menu toggles nobody tabled, and translating a diagnostic
+      // would make it read differently depending on who opened it.
+      // ↩️The brush smoke screen stood here for the same reason — a
+      // developer's harness no route wired — till it went on 2026-11-14
+      // (board `the-off-engine-cpu-commit-lives-only-for-tests`).
       //
       // ↩️The TOGGLES are tabled now (유저 2026-09-15,
       // diagnostic-menu-language-Q1: 「메뉴 항목만 번역」): the seven `edit-*`
       // entries speak the program language like every menu entry, and what
       // they open — the overlays under `ui/debug/` — stays English, which is
       // what this exclusion still keeps.
-      if (path.contains('/ui/dialogs/') ||
-          path.endsWith('/brush_canvas_smoke_screen.dart') ||
-          path.contains('/ui/debug/')) {
+      if (path.contains('/ui/dialogs/') || path.contains('/ui/debug/')) {
         continue;
       }
       final source = file.readAsStringSync();

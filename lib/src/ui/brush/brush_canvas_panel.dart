@@ -1212,7 +1212,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// hover repainted the painter instead of making a new one per position
   /// ([_activeSurfacePainter]'s token) — holding an image borrowed from the
   /// piece, until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved
-  /// the stamp ghost to the overlay's CPU pre-blended tiles.
+  /// the stamp ghost to the overlay's pre-blended tiles.
   final ValueNotifier<CutStampPreview?> _stampPreview =
       ValueNotifier<CutStampPreview?>(null);
 
@@ -2837,7 +2837,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// dragged shape is: the last whole ghost stays up until the next is
   /// whole, while the cursor keeps its own pace.
   /// 🗣️brush-fidelity-Q9 (유저 2026-10-18): 「통일하면 좋음」 — every mode,
-  /// normal too, pre-blended on the CPU; Q10: the shape tool's law.
+  /// normal too, pre-blended (on the CPU then, by the engine now); Q10: the
+  /// shape tool's law.
   ///
   /// ↩️It was drawn on the GPU, `preBlended: false` on purpose: a hover
   /// ghost has no committed tiles to stand for, so pre-blending (what buys

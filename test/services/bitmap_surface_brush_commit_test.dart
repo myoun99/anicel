@@ -10,32 +10,42 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
-import 'package:anicel/src/services/bitmap_tile_operation_apply.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
-import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
 
 void main() {
   group('materializeBrushDabSequenceOnBitmapSurface', () {
     BitmapSurface surface({
       int width = 4,
       int height = 4,
-      int tileSize = 2,
       Map<TileCoord, BitmapTile> tiles = const {},
     }) {
       return BitmapSurface(
         canvasSize: CanvasSize(width: width, height: height),
-        tileSize: tileSize,
+        tileSize: 128,
         tiles: tiles,
       );
     }
 
-    PlacedTile blankTile(int x, int y, {int size = 2}) {
+    PlacedTile blankTile(int x, int y) {
       return (
         coord: TileCoord(x: x, y: y),
-        tile: BitmapTile.blank(size: size),
+        tile: BitmapTile.blank(size: 128),
       );
+    }
+
+    int inkedPixels(BitmapSurface surface) {
+      var inked = 0;
+      for (final tile in surface.tiles.values) {
+        for (var y = 0; y < tile.size; y += 1) {
+          for (var x = 0; x < tile.size; x += 1) {
+            if (readRgbaColorFromBitmapTile(tile: tile, x: x, y: y).a > 0) {
+              inked += 1;
+            }
+          }
+        }
+      }
+      return inked;
     }
 
     BrushDab onePixelDab({
@@ -136,10 +146,10 @@ void main() {
     });
 
     test('handles multi-tile dab deterministically', () {
-      final original = surface(width: 4, height: 4, tileSize: 2);
+      final original = surface(width: 256, height: 4);
       final result = materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
-        sequence: BrushDabSequence([squareDab(centerX: 2, centerY: 1)]),
+        sequence: BrushDabSequence([squareDab(centerX: 128, centerY: 1)]),
       );
 
       expect(result.dirtyTiles.coords.toList(), [
@@ -151,7 +161,7 @@ void main() {
     test('paints pasteboard pixels beyond the canvas edge', () {
       // Canvas 1×1 → pasteboard [-1, 2)². A square dab over [-1, 1)²
       // paints all four pasteboard pixels; nothing clips at the canvas.
-      final original = surface(width: 1, height: 1, tileSize: 1);
+      final original = surface(width: 1, height: 1);
       final result = materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
         sequence: BrushDabSequence([squareDab(centerX: 0, centerY: 0)]),
@@ -163,20 +173,22 @@ void main() {
         TileCoord(x: -1, y: 0),
         TileCoord(x: 0, y: 0),
       });
-      expect(result.surface.tiles.length, 4);
+      expect(inkedPixels(result.surface), 4);
     });
 
     test('ignores pixels outside the pasteboard', () {
       // Canvas 1×1 → 3×3 pasteboard [-1, 2)² (H2, 2026-08-22). A square
       // dab over [-2, 0)² clips to it: only the [-1, 0)² pixel survives.
-      final original = surface(width: 1, height: 1, tileSize: 1);
+      final original = surface(width: 1, height: 1);
       final result = materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
         sequence: BrushDabSequence([squareDab(centerX: -1, centerY: -1)]),
       );
 
       expect(result.dirtyTiles.coords, {TileCoord(x: -1, y: -1)});
-      expect(result.surface.tiles.length, 1);
+      final tile = result.surface.tileAt(TileCoord(x: -1, y: -1))!;
+      expect(readRgbaColorFromBitmapTile(tile: tile, x: 127, y: 127).a, 255);
+      expect(inkedPixels(result.surface), 1);
     });
 
     test('stops at the wall of the pasteboard\'s size (I-109)', () {
@@ -191,11 +203,11 @@ void main() {
           surface: BitmapSurface(
             canvasSize: const CanvasSize(width: 4, height: 4),
             pasteboardReach: reach,
-            tileSize: 1,
+            tileSize: 128,
           ),
           sequence: BrushDabSequence([squareDab(centerX: -1, centerY: -1)]),
         );
-        expect(result.surface.tiles.length, inked, reason: '$reach');
+        expect(inkedPixels(result.surface), inked, reason: '$reach');
         expect(result.surface.pasteboardReach, reach);
       }
     });
@@ -233,7 +245,10 @@ void main() {
           x: 0,
           y: 0,
         );
-        expect(pixel.a, 128);
+        // Half on the 16-bit scale is 32767 of 65535, which stores as 127
+        // — dab/tests.rs `an_erase_takes_its_alpha_and_keeps_the_colour`.
+        // ↩️128 till 2026-11-14, by the Dart tile kernel of a small grid.
+        expect(pixel.a, 127);
         expect(pixel.r, 255);
         expect(erased.dirtyTiles.contains(TileCoord(x: 0, y: 0)), isTrue);
       });
@@ -276,31 +291,10 @@ void main() {
         expect(result.surface, original);
       });
 
-      test('hot path matches the per-pixel oracle for mixed sequences', () {
-        final sequence = BrushDabSequence([
-          onePixelDab(globalX: 0, globalY: 0),
-          onePixelDab(globalX: 1, globalY: 0, opacity: 0.6, sequence: 1),
-          eraseDab(globalX: 0, globalY: 0, opacity: 0.4, sequence: 2),
-          eraseDab(globalX: 1, globalY: 0, sequence: 3),
-        ]);
-
-        final hot = materializeBrushDabSequenceOnBitmapSurface(
-          surface: surface(),
-          sequence: sequence,
-        ).surface;
-        var oracleTile = blankTile(0, 0).tile;
-        final operations = brushPixelBlendOperationsForDabSequence(
-          sequence: sequence,
-          destinationAt: (x, y) => RgbaColor(r: 0, g: 0, b: 0, a: 0),
-        );
-        oracleTile = applyBrushPixelBlendOperationsToBitmapTile(
-          coord: TileCoord(x: 0, y: 0),
-          tile: oracleTile,
-          operations: operations,
-        );
-
-        expect(hot.tileAt(TileCoord(x: 0, y: 0))!.pixels, oracleTile.pixels);
-      });
+      // ↩️A mixed sequence was held against the per-pixel CPU reference till
+      // 2026-11-14; the engine's own pins hold it now (dab/tests.rs
+      // `an_erase_takes_its_alpha_and_keeps_the_colour`,
+      // `a_light_press_settles_at_its_opacity`).
     });
 
     test('does not mutate original BitmapSurface', () {

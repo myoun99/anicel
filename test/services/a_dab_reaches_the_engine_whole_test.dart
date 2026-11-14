@@ -19,22 +19,20 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 
-/// 🚨EVERYTHING A DAB IS REACHES THE ENGINE (flip lane ⓒ): one stroke of each
-/// kind piled on the engine and on the tile kernel that answers on any other
-/// grid (`blendDabTilesDart`) gives the same picture within rounding — the
-/// kernels round apart, the engine's in integers, the tile kernel's in
-/// floats — so no number was lost on the way to the engine: the tip, its
-/// turn and squeeze, the edge, the paper, the second tip.
+/// 🚨EVERYTHING A DAB IS REACHES THE ENGINE (flip lane ⓒ): the tip, its
+/// turn and squeeze, the edge, the paper, the second tip — each case lays
+/// a stroke with one thing about its dabs and the same stroke without it,
+/// and the two pictures part, so no number is lost on the way to the
+/// engine. What each lays is the engine's own pins' (dab/tests.rs).
 ///
-/// ↩️The oracle was the C kernel till it went (ABI 80), and the tile kernel
-/// was held to that byte for byte. ⏳Its premise goes with the tile kernel
-/// (`the-cpu-brush-is-asked-by-tests-alone`).
+/// ↩️The engine's picture was held to the tile kernel's within rounding
+/// till 2026-11-14 (and the tile kernel to the C kernel's byte before ABI
+/// 80); the tile kernel went with the commit off the engine's grid (board
+/// `the-off-engine-cpu-commit-lives-only-for-tests`), and a field the
+/// engine dropped is caught by its picture not moving.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvas = CanvasSize(width: 320, height: 256);
-
-  /// The most two rounding routes part, in levels of a premultiplied byte.
-  const roundsApart = 1;
 
   BrushDab dab(
     int sequence, {
@@ -93,98 +91,111 @@ void main() {
 
   final tip = speckled('tip', 32, 1);
   final paper = speckled('paper', 24, 2);
+  const overlay = BrushDualView(
+    compositeMode: SeparableBlendMode.overlay,
+    density: 0.5,
+  );
 
-  final kinds = <String, List<BrushDab>>{
-    'a soft round tip': [dab(0, size: 90, hardness: 0.2)],
-    'a hard round tip across tiles': [dab(0, x: 128, y: 128, hardness: 1)],
-    'a turned, squeezed round tip': [
-      dab(0, roundness: 0.4, angleDegrees: 33),
-    ],
-    'a square tip': [dab(0, tipShape: BrushTipShape.square)],
-    'a colour\'s alpha, opacity and flow': [
-      dab(0, color: 0x80206040, opacity: 0.6, flow: 0.4),
-      dab(1, x: 100, color: 0x80206040, opacity: 0.6, flow: 0.4),
-    ],
-    'a bitmap tip': [dab(0, tipMask: tip, size: 64)],
-    'a turned, squeezed bitmap tip': [
-      dab(0, tipMask: tip, size: 64, roundness: 0.5, angleDegrees: 70),
-    ],
-    'no anti-alias': [dab(0, antiAlias: BrushAntiAlias.none)],
-    // Under squareReadRadius, their tables read by the pixel's square.
-    'small round tips': [
-      for (final (at, size) in const [(0, 1.0), (1, 2.0), (2, 3.0), (3, 5.0)])
-        dab(at, x: 90.37 + 12.0 * at, y: 70.81, size: size, hardness: 1),
-    ],
-    'paper that multiplies': [
-      dab(0, textureMask: paper, textureScale: 2, textureDensity: 0.7),
-    ],
-    'paper that cuts by height': [
-      dab(
-        0,
-        textureMask: paper,
-        textureDensity: 0.6,
-        textureMode: BrushTextureMode.height,
-      ),
-    ],
-    'a second tip': [
-      dab(0, dual: const BrushDualView()),
-      dab(1, x: 96, dual: const BrushDualView(), second: true, size: 30),
-    ],
-    'a second tip shown otherwise, thin': [
-      dab(
-        0,
-        dual: const BrushDualView(
-          compositeMode: SeparableBlendMode.overlay,
-          density: 0.5,
+  /// Each case: the stroke with the thing, and the same stroke without it.
+  final cases = <String, (List<BrushDab>, List<BrushDab>)>{
+    'hardness': (
+      [dab(0, size: 90, hardness: 0.2)],
+      [dab(0, size: 90)],
+    ),
+    'a round tip\'s squeeze': ([dab(0, roundness: 0.4)], [dab(0)]),
+    'a round tip\'s turn': (
+      [dab(0, roundness: 0.4, angleDegrees: 33)],
+      [dab(0, roundness: 0.4)],
+    ),
+    'a square tip': ([dab(0, tipShape: BrushTipShape.square)], [dab(0)]),
+    'a colour\'s alpha': (
+      [dab(0, color: 0x80206040)],
+      [dab(0, color: 0xFF206040)],
+    ),
+    'opacity': ([dab(0, opacity: 0.6)], [dab(0)]),
+    'flow': ([dab(0, flow: 0.4)], [dab(0)]),
+    'a bitmap tip': ([dab(0, tipMask: tip, size: 64)], [dab(0, size: 64)]),
+    'a bitmap tip\'s squeeze': (
+      [dab(0, tipMask: tip, size: 64, roundness: 0.5)],
+      [dab(0, tipMask: tip, size: 64)],
+    ),
+    'a bitmap tip\'s turn': (
+      [dab(0, tipMask: tip, size: 64, roundness: 0.5, angleDegrees: 70)],
+      [dab(0, tipMask: tip, size: 64, roundness: 0.5)],
+    ),
+    'no anti-alias': (
+      [dab(0, hardness: 1, antiAlias: BrushAntiAlias.none)],
+      [dab(0, hardness: 1)],
+    ),
+    'paper': ([dab(0, textureMask: paper, textureDensity: 0.7)], [dab(0)]),
+    'the paper\'s scale': (
+      [dab(0, textureMask: paper, textureScale: 2, textureDensity: 0.7)],
+      [dab(0, textureMask: paper, textureDensity: 0.7)],
+    ),
+    'the paper\'s density': (
+      [dab(0, textureMask: paper, textureDensity: 0.4)],
+      [dab(0, textureMask: paper, textureDensity: 0.7)],
+    ),
+    'paper that cuts by height': (
+      [
+        dab(
+          0,
+          textureMask: paper,
+          textureDensity: 0.6,
+          textureMode: BrushTextureMode.height,
         ),
-      ),
-      dab(
-        1,
-        x: 100,
-        dual: const BrushDualView(
-          compositeMode: SeparableBlendMode.overlay,
-          density: 0.5,
-        ),
-        second: true,
-      ),
-    ],
-    'the share a step is worth': [
-      dab(0, opacity: 0.5, flow: 0.5, pathStep: 1),
-      dab(1, x: 91, opacity: 0.5, flow: 0.5, pathStep: 1),
-    ],
+      ],
+      [dab(0, textureMask: paper, textureDensity: 0.6)],
+    ),
+    'a second tip': (
+      [
+        dab(0, dual: const BrushDualView()),
+        dab(1, x: 96, dual: const BrushDualView(), second: true, size: 30),
+      ],
+      [dab(0, dual: const BrushDualView())],
+    ),
+    'a second tip shown otherwise, thin': (
+      [dab(0, dual: overlay), dab(1, x: 100, dual: overlay, second: true)],
+      [
+        dab(0, dual: const BrushDualView()),
+        dab(1, x: 100, dual: const BrushDualView(), second: true),
+      ],
+    ),
+    'the share a step is worth': (
+      [
+        dab(0, opacity: 0.5, flow: 0.5, pathStep: 1),
+        dab(1, x: 91, opacity: 0.5, flow: 0.5, pathStep: 1),
+      ],
+      [
+        dab(0, opacity: 0.5, flow: 0.5),
+        dab(1, x: 91, opacity: 0.5, flow: 0.5),
+      ],
+    ),
   };
 
-  /// How far apart two pictures' premultiplied levels are at the most.
-  int farthest(Uint8List a, Uint8List b) {
-    var most = 0;
-    for (var at = 0; at < a.length; at += 4) {
-      for (var channel = 0; channel < 4; channel += 1) {
-        int level(Uint8List bytes) => channel == 3
-            ? bytes[at + 3]
-            : (bytes[at + channel] * bytes[at + 3] / 255).round();
-        most = max(most, (level(a) - level(b)).abs());
-      }
-    }
-    return most;
-  }
-
-  Uint8List? stroke(List<BrushDab> dabs, {required int tileSize}) {
+  /// The stroke the engine piles, over the whole pasteboard row by row.
+  Uint8List picture(List<BrushDab> dabs) {
+    final wall = canvas.pasteboardAt(PasteboardReach.whole);
     final rasterizer = BrushLiveStrokeRasterizer(
-      pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
-      tileSize: tileSize,
+      pasteboard: wall,
+      tileSize: 128,
     )..blendFrom(dabs, from: 0);
-    final pixels = rasterizer.strokePixelsWithinBounds();
+    final width = wall.rightExclusive - wall.left;
+    final height = wall.bottomExclusive - wall.top;
+    final pixels = Uint8List(width * height * 4);
+    for (var y = 0; y < height; y += 1) {
+      final row = y * width * 4;
+      rasterizer.copyRow(wall.left, wall.top + y, width, pixels, row);
+    }
     rasterizer.clear();
     return pixels;
   }
 
-  for (final MapEntry(key: name, value: dabs) in kinds.entries) {
+  for (final MapEntry(key: name, value: (withIt, without)) in cases.entries) {
     test(name, () {
-      final onEngine = stroke(dabs, tileSize: 128)!;
-      expect(onEngine.any((byte) => byte != 0), isTrue);
-      final offEngine = stroke(dabs, tileSize: 64)!;
-      expect(onEngine.length, offEngine.length);
-      expect(farthest(onEngine, offEngine), lessThanOrEqualTo(roundsApart));
+      final laid = picture(withIt);
+      expect(laid.any((byte) => byte != 0), isTrue, reason: 'it lays');
+      expect(laid, isNot(equals(picture(without))));
     });
   }
 }

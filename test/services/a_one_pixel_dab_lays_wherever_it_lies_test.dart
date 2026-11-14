@@ -49,7 +49,7 @@ List<int> _alpha(List<BrushDab> dabs) {
   final surface = materializeBrushDabSequenceOnBitmapSurface(
     surface: BitmapSurface(
       canvasSize: const CanvasSize(width: _side, height: _side),
-      tileSize: 64,
+      tileSize: 128,
     ),
     sequence: BrushDabSequence(BrushTipStampCache().resolveDabs(dabs)),
   ).surface;

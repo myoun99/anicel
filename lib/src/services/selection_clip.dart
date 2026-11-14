@@ -224,22 +224,3 @@ final class _ReadClip extends SelectionClip {
     return mask;
   }
 }
-
-/// ⛔A selection cuts on the engine's grid alone (2026-11-14, board
-/// `a-selection-mask-is-built-on-the-cpu-at-every-move` ④ — 관제's call,
-/// handed the night's decisions by 유저 「판단생기면 알아서해줘」, on reading
-/// the app's grids and its workers): no road of the app draws under one
-/// anywhere else — its cels are on that grid, on the isolate that has the
-/// engine — and a rule of its own off it cut the same selection to other
-/// bytes (the CPU's 8-bit fold against the engine's 16-bit cover: 2 levels
-/// at a feathered edge, measured that day).
-///
-/// ↩️The CPU folded the selection's mask in there: into a stamp's picture
-/// (`clipStampDabToSelection`), a stroke's buffer
-/// (`clipStrokePixelsToSelection`) and the live stroke's tiles, a mask a
-/// tile.
-void cutOnTheEngineOnly(SelectionClip? selection) {
-  if (selection != null) {
-    throw StateError('a selection cuts on the engine\'s grid alone');
-  }
-}

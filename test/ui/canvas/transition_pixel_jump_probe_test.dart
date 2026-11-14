@@ -9,6 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/dirty_region.dart';
@@ -17,7 +20,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
-    show ActiveStrokePixelSource;
+    show BrushLiveStrokeRasterizer;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -302,17 +305,39 @@ void main() {
     overlay.preBlendBase = surface1;
     report('pen-down-arm(preBlendBase)', await paintBytes(tester, painter1));
 
-    // 3. first dab, zero ink: a transparent stroke snapshot pre-blends to
-    //    exactly the committed bytes, so the overlay tile REPLACES the
-    //    committed tile with identical content: the pen-down frame.
-    overlay.updateRegion(
-      source: _TransparentStrokeSource(canvasSize),
-      region: DirtyRegion(
-        left: 10,
-        top: 10,
-        rightExclusive: 11,
-        bottomExclusive: 11,
+    // 3. first dab, zero ink: a dab of no colour pre-blends to exactly the
+    //    committed bytes, so the overlay tile REPLACES the committed tile
+    //    with identical content: the pen-down frame. ↩️A source of its own
+    //    whose every pixel was clear till 2026-11-14 — a pre-blend is the
+    //    engine's now (board
+    //    `the-off-engine-cpu-commit-lives-only-for-tests`).
+    final stroke = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
+    addTearDown(stroke.clear);
+    final inkless = stroke.blendFrom([
+      BrushDab(
+        center: CanvasPoint(x: 10.5, y: 10.5),
+        color: 0x00000000,
+        size: 1,
+        opacity: 1,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 0,
       ),
+    ], from: 0);
+    overlay.updateRegion(
+      source: stroke,
+      region:
+          inkless ??
+          DirtyRegion(
+            left: 10,
+            top: 10,
+            rightExclusive: 11,
+            bottomExclusive: 11,
+          ),
     );
 
     // 4. pen-up: the commit lands (tile 0,0 replaced by an identical-bytes
@@ -354,24 +379,4 @@ void main() {
       viewport: CanvasViewport(zoom: 1.5, panX: 10, panY: 4),
     );
   });
-}
-
-
-/// A stroke source whose every pixel is transparent: the pre-blend of
-/// "no ink yet" against the committed tile is exactly the committed tile,
-/// so the overlay's replacement tile carries identical bytes and any
-/// screen diff is the compose path's own doing.
-class _TransparentStrokeSource implements ActiveStrokePixelSource {
-  _TransparentStrokeSource(this.canvasSize);
-
-  final CanvasSize canvasSize;
-
-  @override
-  PasteboardWall get pasteboard =>
-      canvasSize.pasteboardAt(PasteboardReach.whole);
-
-  @override
-  void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {
-    target.fillRange(targetOffset, targetOffset + count * 4, 0);
-  }
 }

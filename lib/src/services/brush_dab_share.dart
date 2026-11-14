@@ -100,10 +100,10 @@ Float64List? eveningTableOf(BrushDab dab) {
 }
 
 /// `1 − (1 − a)^share` at `a = i / eveningTableSteps` — built once per
-/// share, and the ONE place `pow` is called: the Dart kernel, the
-/// reference and the swatch all read these numbers through [evenedLaid], so
-/// they agree to the byte, the engine's kernel is handed the same table
-/// (`dab_even`, dab.wgsl), and no pixel pays a power.
+/// share, and the ONE place `pow` is called: the ground's colour mix and
+/// the swatch read these numbers through [evenedLaid], the engine's kernel
+/// is handed the same table by the dab's plan (`dab_even`, dab.wgsl), so
+/// they agree and no pixel pays a power.
 Float64List eveningTableFor(double share) {
   final last = _lastTable;
   if (last != null && share == _lastShare) {

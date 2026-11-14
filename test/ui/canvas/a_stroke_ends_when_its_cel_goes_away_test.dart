@@ -37,7 +37,7 @@ void main() {
         child: InteractiveBrushEditCanvasView(
           celNow: blankCel(
             const CanvasSize(width: 64, height: 64),
-            tileSize: 16,
+            tileSize: 128,
           ),
           layerId: const LayerId('layer-a'),
           frameId: const FrameId('frame-a'),

@@ -12,6 +12,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
+import '../../native/app_gpu_engine.dart' show drawnByTheEngineAlone;
 import '../../native/engine_tile_ledger.dart';
 import '../../services/brush_live_stroke_rasterizer.dart'
     show
@@ -19,8 +20,6 @@ import '../../services/brush_live_stroke_rasterizer.dart'
         BrushLiveStrokeRasterizer,
         PreBlendedOverlayTile,
         PromotedStrokeTile;
-import '../../services/brush_stroke_blend.dart'
-    show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
 import '../../services/cel_surface_as_shown.dart' show celTileAsShown;
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_tile_image_cache.dart';
@@ -114,7 +113,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   bool erase = false;
 
   /// The stroke's BRUSH blend (BB-1, R26 #9). With [preBlendBase] set the
-  /// mode feeds the CPU pre-blend below and the GPU never blends at all;
+  /// mode feeds the engine's pre-blend below and Flutter never blends it;
   /// only plain color-mode strokes still preview through ui.BlendMode.
   BrushBlendMode blendMode = BrushBlendMode.color;
 
@@ -334,21 +333,21 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }
 
   /// [result] — a whole tile of the stroke's result, pre-blended against
-  /// the cel — as a tile of its own: the rasterizer's resident bytes are
-  /// blended again in place.
-  BitmapTile _tileOf(PictureBytes result) =>
-      (result is PreBlendedOverlayTile ? result.landed : null) ??
-      BitmapTile.written(
-        size: tileSize,
-        write: (bytes) =>
-            result.readStraight((straight) => bytes.setAll(0, straight)),
-      );
+  /// the cel — as a tile: the one the engine laid it in, or one of its own
+  /// written from its bytes.
+  BitmapTile _tileOf(PictureBytes result) => result is PreBlendedOverlayTile
+      ? result.landed
+      : BitmapTile.written(
+          size: tileSize,
+          write: (bytes) =>
+              result.readStraight((straight) => bytes.setAll(0, straight)),
+        );
 
   /// [updateRegion]'s pictures for [coords], made OFF SCREEN and kept for
   /// [showStaged] — a dragged shape's stroke is pictured a few tiles a frame
   /// and comes up whole (I-69-Q4ⓒ). Answers false, staging nothing, where
-  /// [source] does not pre-blend at this overlay's grid: there the pictures
-  /// are made as they are shown, and nothing can be made ahead.
+  /// the overlay has no [preBlendBase]: there the pictures are made as they
+  /// are shown, and nothing can be made ahead.
   bool stageRegion({
     required ActiveStrokePixelSource source,
     required List<TileCoord> coords,
@@ -392,17 +391,27 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   @visibleForTesting
   int get stagedCount => _staged.length;
 
-  /// [source] when its tiles picture through the pre-blend at this grid —
-  /// the road [pictureOwed] takes for a whole region in one kernel call —
-  /// or null.
+  /// [source] when the overlay pre-blends — the road [pictureOwed] takes
+  /// for a whole region in one kernel call — or null where it has no
+  /// [preBlendBase].
+  ///
+  /// ⛔A pre-blend is the engine's, on its cel's grid: a stroke, an overlay
+  /// or a cel on another is refused as an off-grid commit is
+  /// ([drawnByTheEngineAlone]). ↩️Till 2026-11-14 one whose grids parted
+  /// was blended here on the CPU (`preBlendStrokeOverlayPixels`) — a road
+  /// the app never took, its stroke, overlay and cel all on the cel's grid
+  /// (board `the-off-engine-cpu-commit-lives-only-for-tests`).
   BrushLiveStrokeRasterizer? _preBlendedFrom(ActiveStrokePixelSource source) {
     final preBlendBase = this.preBlendBase;
-    return preBlendBase != null &&
-            source is BrushLiveStrokeRasterizer &&
-            source.tileSize == tileSize &&
-            preBlendBase.tileSize == tileSize
-        ? source
-        : null;
+    if (preBlendBase == null) {
+      return null;
+    }
+    drawnByTheEngineAlone(tileSize);
+    drawnByTheEngineAlone(preBlendBase.tileSize);
+    if (source is! BrushLiveStrokeRasterizer) {
+      throw StateError('a stroke pre-blends by the engine: not $source');
+    }
+    return source;
   }
 
   /// [coords] pre-blended against [preBlendBase] by [source], each handed
@@ -443,21 +452,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     final top = coord.y * tileSize;
     // Snapshot clamps at the PASTEBOARD edge, not the canvas — live
     // strokes paint (and must display) past the canvas rect.
-    //
-    // A PRE-BLENDED tile is the exception: it REPLACES the committed tile
-    // at its coordinate, so it has to cover the whole tile. A clamped
-    // edge tile would leave the rest of that coordinate showing nothing
-    // (the base pass skipped it) — a transparent strip through committed
-    // artwork while stroking near the pasteboard wall. Committed tiles
-    // are full too, and the painter's pasteboard clip crops both alike;
-    // the extra pixels are just base bytes copied through.
     final wall = source.pasteboard;
-    final width = preBlendBase != null
-        ? tileSize
-        : math.min(tileSize, wall.rightExclusive - left);
-    final height = preBlendBase != null
-        ? tileSize
-        : math.min(tileSize, wall.bottomExclusive - top);
     _install(
       coord,
       _shownOf(
@@ -466,11 +461,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
           source: source,
           coord: coord,
           tileSize: tileSize,
-          width: width,
-          height: height,
-          preBlend: preBlendBase,
-          mode: blendMode,
-          erase: erase,
+          width: math.min(tileSize, wall.rightExclusive - left),
+          height: math.min(tileSize, wall.bottomExclusive - top),
         ),
         revision: null,
       ),
@@ -543,7 +535,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     }
     final landed = _tileOf(result);
     final shown = tileShownFor(coord, landed);
-    if (result is PreBlendedOverlayTile && result.landed != null) {
+    if (result is PreBlendedOverlayTile) {
       // No picture: the screen lays the tile, and one read back to make a
       // picture of it would cost every tile of every frame ([_imageAt]).
       return (image: null, tile: shown, landed: landed, revision: revision);
@@ -713,10 +705,10 @@ final class _PicturesOf extends UnmodifiableMapBase<TileCoord, ui.Image> {
 /// [ActiveStrokeOverlayModel.movedSince] tells.
 typedef OverlayMoveMark = ({List<DirtyRegion> moves, int count});
 
-/// One overlay tile of the CLASSIC route (a host whose overlay grid differs
-/// from its surface's, or a plain colour-mode stroke), as the door reads
-/// it: the straight rows snapshotted from the live stroke — pre-blended
-/// against the cel when the overlay replaces coordinates.
+/// One overlay tile of the stroke-only route — an overlay with no
+/// [ActiveStrokeOverlayModel.preBlendBase], a host's or a test's (the app
+/// pre-blends every stroke, R27 #4) — as the door reads it: the straight
+/// rows snapshotted from the live stroke.
 class _SnapshotBytes implements PictureBytes {
   _SnapshotBytes({
     required this.source,
@@ -724,9 +716,6 @@ class _SnapshotBytes implements PictureBytes {
     required this.tileSize,
     required this.width,
     required this.height,
-    required this.preBlend,
-    required this.mode,
-    required this.erase,
   });
 
   final ActiveStrokePixelSource source;
@@ -736,14 +725,7 @@ class _SnapshotBytes implements PictureBytes {
   final int width;
   @override
   final int height;
-  final BitmapSurface? preBlend;
-  final BrushBlendMode mode;
-  final bool erase;
 
-  /// The straight-alpha rows, then — R27 #4 — the COMMIT's result,
-  /// computed by the commit's own math against the cel's committed bytes
-  /// where the overlay replaces coordinates: the painter replaces the base
-  /// with it, and pen-up lands the exact same bytes.
   Uint8List _straight() {
     final left = coord.x * tileSize;
     final top = coord.y * tileSize;
@@ -751,25 +733,7 @@ class _SnapshotBytes implements PictureBytes {
     for (var y = 0; y < height; y += 1) {
       source.copyRow(left, top + y, width, straight, y * width * 4);
     }
-    final preBlend = this.preBlend;
-    if (preBlend == null) {
-      return straight;
-    }
-    return preBlendStrokeOverlayPixels(
-      dst: bitmapSurfaceRegionPixels(
-        preBlend,
-        DirtyRegion(
-          left: left,
-          top: top,
-          rightExclusive: left + width,
-          bottomExclusive: top + height,
-        ),
-      ),
-      src: straight,
-      mode: mode,
-      erase: erase,
-      pixelCount: width * height,
-    );
+    return straight;
   }
 
   @override

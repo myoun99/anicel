@@ -1,11 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/floor_math.dart';
-import '../core/lru.dart';
 import '../core/rgba_premultiply.dart';
 import '../core/sync_image_upload.dart';
 import '../models/bitmap_surface.dart';
@@ -25,13 +23,7 @@ import 'brush_dab_dirty_region.dart';
 import 'brush_dab_kernel.dart';
 import 'selection_clip.dart';
 import 'brush_stroke_blend.dart'
-    show
-        bitmapSurfaceRegionPixels,
-        engineBlendModeOf,
-        preBlendStrokeOverlayPixels,
-        separableBlendModeNativeId,
-        strokeCoverageMask,
-        strokeOpacityCoverage;
+    show engineBlendModeOf, separableBlendModeNativeId;
 
 /// A pre-blended overlay tile — the bytes the door ([pictureOf]) turns
 /// into the coordinate's picture — and the stroke [revision] they were
@@ -46,20 +38,10 @@ import 'brush_stroke_blend.dart'
 class PreBlendedOverlayTile implements PictureBytes {
   /// A result the engine laid: [landed], its tile, the bytes read from it
   /// only where a caller on the CPU asks.
-  PreBlendedOverlayTile._landed(this.landed, this.size, this.revision)
-    : _straight = Uint8List(0);
+  PreBlendedOverlayTile._landed(this.landed, this.size, this.revision);
 
-  /// A result blended here, on a grid that is not the engine's.
-  PreBlendedOverlayTile._resident(this._straight, this.size, this.revision)
-    : landed = null;
-
-  /// The tile the engine laid this result in; null on the route that holds
-  /// its bytes here.
-  final BitmapTile? landed;
-
-  /// The resident straight result — the rasterizer's own buffer, valid
-  /// until the next blend at this coordinate.
-  final Uint8List _straight;
+  /// The tile the engine laid this result in.
+  final BitmapTile landed;
   final int size;
   final int revision;
 
@@ -70,22 +52,12 @@ class PreBlendedOverlayTile implements PictureBytes {
   int get height => size;
 
   @override
-  T readStraight<T>(T Function(Uint8List straight) use) {
-    final tile = landed;
-    return tile == null
-        ? use(_straight)
-        : tile.readPixels((_, straight) => use(straight));
-  }
+  T readStraight<T>(T Function(Uint8List straight) use) =>
+      landed.readPixels((_, straight) => use(straight));
 
   @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
-    final tile = landed;
-    return tile == null
-        ? use(premultipliedRgbaCopy(_straight))
-        : tile.readPixels(
-            (_, straight) => use(premultipliedRgbaCopy(straight)),
-          );
-  }
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
+      landed.readPixels((_, straight) => use(premultipliedRgbaCopy(straight)));
 }
 
 /// A finished stroke tile handed to the cel surface, with the stroke
@@ -102,32 +74,6 @@ class PromotedStrokeTile {
   final int revision;
 }
 
-/// A tile's stroke coverage off the engine's grid — the opacity ceiling
-/// (F-12): 1 byte per pixel on the stroke grid, built once per stroke.
-///
-/// [allOutside]: a ceiling of nothing needs no blend at all. ↩️It held a
-/// selection's coverage too till 2026-11-14 ([cutOnTheEngineOnly]).
-class _MaskTile {
-  _MaskTile({required this.bytes, required this.allOutside});
-
-  final Uint8List bytes;
-  final bool allOutside;
-}
-
-/// One resident pre-blended result: straight-alpha bytes, the stroke
-/// revision they cover, and whether they differ from the base at all.
-class _ResultTile {
-  _ResultTile({
-    required this.bytes,
-    required this.revision,
-    required this.changed,
-  });
-
-  final Uint8List bytes;
-  final int revision;
-  final bool changed;
-}
-
 /// Read access to the in-progress stroke's straight-alpha pixels — what
 /// the live overlay snapshots its tile images from.
 abstract interface class ActiveStrokePixelSource {
@@ -140,27 +86,27 @@ abstract interface class ActiveStrokePixelSource {
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset);
 }
 
-/// Rasterizes the in-progress stroke incrementally into SPARSE
-/// straight-alpha RGBA tiles allocated on demand.
+/// The in-progress stroke, piled on the engine ([GpuStroke]) a tile at a
+/// time as it reaches them, and laid over the cel by the very call that
+/// lands it at pen-up — what the user watched is what lands (유저 09-17
+/// 「보이는 중이랑 결과랑 절대로 다르면 안 되」). A cel off the engine's
+/// grid is refused ([drawnByTheEngineAlone]).
 ///
-/// Storage is tile-sparse so the cost of a stroke scales with the region
-/// it actually paints, never with the canvas: the old canvas-sized buffer
+/// Its tiles are sparse so the cost of a stroke scales with the region it
+/// actually paints, never with the canvas: the old canvas-sized buffer
 /// made big logical surfaces (the timesheet ink planes at high resolution)
 /// pay tens/hundreds of MB per stroke.
 ///
-/// This runs the exact blend math of the commit rasterizer
-/// (`materializeBrushDabSequenceOnBitmapSurface`) — same coverage sampling of
-/// pixel centers against the true fractional dab center, same floating-point
-/// grouping, same rounding — so the pixels painted while drawing are
-/// byte-identical to the committed result. The live display and the commit
-/// fast-path both consume these pixels, which is what unifies the on-screen
-/// stroke with the committed artwork. Equivalence with the commit rasterizer
-/// is locked by `active_stroke_overlay_parity_test.dart` (byte-exact).
+/// ↩️Till 2026-11-14 a grid off the engine's ran the commit's own Dart
+/// kernels here, byte for byte the commit's (board
+/// `the-off-engine-cpu-commit-lives-only-for-tests`): asked by tests alone.
 class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   BrushLiveStrokeRasterizer({
     required this.pasteboard,
     this.tileSize = defaultTileSize,
-  });
+  }) {
+    drawnByTheEngineAlone(tileSize);
+  }
 
   /// Edge length of a sparse stroke tile in canvas pixels when the caller
   /// states none — the committed surface's own default.
@@ -180,50 +126,31 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   @override
   final PasteboardWall pasteboard;
 
-  /// Straight-alpha RGBA tile buffers keyed by `tileY * tilesPerRow +
-  /// tileX`, allocated (zeroed) the first time a dab touches the tile — on
-  /// a grid that is not the engine's, where the dab kernel runs here
-  /// ([blendDabTilesDart]).
+  /// The stroke's straight-alpha RGBA tiles as the engine reads them back,
+  /// keyed by `tileY * tilesPerRow + tileX` ([_viewsFromEngine]): for what
+  /// reads the stroke on the CPU ([copyRow]).
   ///
   /// ↩️R21, till 2026-11-12: with the C engine loaded these were its
   /// buffers and a call's dabs went through its kernel — a 1000px dab is
   /// ~1M pixels, and this loop was the reported big-brush stall on the UI
-  /// thread. The app's grid is the engine's since ([_onEngine]).
-  /// ⏳What still asks this route are tests, on grids of 1 to 256 — 66
-  /// suites that day (card `the-cpu-brush-is-asked-by-tests-alone`).
+  /// thread. Till 2026-11-14 a grid off the engine's piled them here, in
+  /// the Dart kernel (`blendDabTilesDart`), with a 16-bit plane and a
+  /// second tip's beside each.
   final Map<int, Uint8List> _tiles = <int, Uint8List>{};
 
-  /// Each stroke tile's 16-bit plane, what its dabs pile up in
-  /// ([BrushDabTileBuffers], ABI 40); [_tiles] holds its 8-bit view, which
-  /// is all the display and the commit read.
-  final Map<int, Uint16List> _wides = <int, Uint16List>{};
-
-  /// Each stroke tile's SECOND plane, alpha * 65535 a pixel, where a second
-  /// tip's stroke piles (ABI 60, `dualViewAlpha`) — made beside the other
-  /// two for every tile of a stroke that has a second tip ([_secondTip]),
-  /// and for no other.
-  final Map<int, Uint16List> _seconds = <int, Uint16List>{};
-
-  /// The stroke on the engine: any on its grid, a blur's rubbing its picture
-  /// where another piles its dabs. Null till its first dab, and where this
-  /// grid is not the engine's, which keeps to the route here.
+  /// The stroke on the engine: a blur's rubbing its picture where another
+  /// piles its dabs. Null till its first dab.
   GpuStroke? _engineStroke;
-
-  bool get _onEngine => tileSize == gpuTileSide;
 
   /// The dabs a [blendFrom] call lays, piled together when it ends.
   final List<GpuDab> _engineDabs = [];
 
-  /// Under a blur ([_blur]), the call's dabs in their stead, rubbed
+  /// Under a blur ([_blurBase]), the call's dabs in their stead, rubbed
   /// together when it ends.
   final List<GpuRub> _engineRubs = [];
 
   /// The call's paper and second tip, which every dab of a stroke shares.
   BrushDabPlan? _engineDabsOf;
-
-  /// Whether the stroke has a second tip — the first dab says so, as every
-  /// dab of such a stroke carries its view ([BrushDab.dual]).
-  bool _secondTip = false;
 
   /// Tile coordinate per linear key — the promotion pass walks the
   /// touched tiles and needs their coordinates back. Its keys ARE the
@@ -238,9 +165,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// The mask reaches the KERNEL (it scales the accumulated stroke's
   /// alpha), so the pre-blended result equals the base wherever the
   /// selection excludes it — which is what lets the overlay keep
-  /// replacing whole coordinates instead of falling back to a clip. On the
-  /// engine's grid alone ([cutOnTheEngineOnly]): the engine's stroke lands
-  /// under [SelectionClip.maskOnEngine].
+  /// replacing whole coordinates instead of falling back to a clip: the
+  /// engine's stroke lands under [SelectionClip.maskOnEngine].
   SelectionClip? selectionClip;
 
   /// 🚨★F-12 — the stroke's opacity CEILING, in the same channel and by the
@@ -267,15 +193,16 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// stroke's whole life.
   double strokeOpacity = 1;
 
-  /// I-75: the cel a BLUR stroke rewrites ([BrushBlurPicture]) — set by
-  /// [blurOver] before the first dab, as [selectionClip] is; null for a
-  /// stroke that paints.
+  /// I-75: the cel a BLUR stroke rewrites — set by [blurOver] before the
+  /// first dab, as [selectionClip] is; null for a stroke that paints. The
+  /// engine rubs the stroke's picture, made of this cel's tiles where it
+  /// first reads them ([_rubOnEngine]).
   ///
   /// A blur stroke keeps no stroke tiles: its result at a coordinate is the
   /// picture's, capped by the same mask a paint stroke's is, and everything
   /// downstream — the display's tiles, their revisions, the promotion at
   /// pen-up — is this rasterizer's as it is for paint.
-  BrushBlurPicture? _blur;
+  BitmapSurface? _blurBase;
 
   /// Makes this stroke a blur over [base], the cel as the stroke finds it.
   void blurOver(BitmapSurface base) {
@@ -283,55 +210,19 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       base.tileSize == tileSize,
       'a blur rewrites the cel on the cel grid, which is the stroke grid',
     );
-    _blur = BrushBlurPicture(base: base, wall: pasteboard);
+    _blurBase = base;
   }
 
-  /// The ceiling's mask ([_maskTile]).
+  /// How many times a dab has touched each tile: the revision a tile shown
+  /// at a coordinate carries, which pen-up matches to hand the screen's
+  /// picture to the committed tile. (Conservative: a dab that writes no
+  /// pixel still bumps.)
   ///
-  /// ONE tile for the whole stroke rather than one per coordinate: every
-  /// tile's coverage is the same constant, so a per-tile copy would cost
-  /// 64KB per touched tile to hold identical bytes. Read-only for the
-  /// stroke's whole life, which is what makes sharing it safe.
-  _MaskTile? _uniformMask;
-
-  /// How many times a dab has touched each tile. A RESULT tile
-  /// ([_results]) blended at revision R is current only while the stroke
-  /// tile still reads R; anything else must re-blend before it can be
-  /// displayed or promoted. (Conservative: a dab that writes no pixel
-  /// still bumps, costing at most one redundant re-blend.)
+  /// ↩️Till 2026-11-14 it also told a resident Dart result (`_results`,
+  /// under `residentResultByteBudget` — the memory allowance's
+  /// `liveStroke` line) whether it had to blend again: off the engine's
+  /// grid alone, where that route is gone.
   final Map<int, int> _tileRevisions = <int, int>{};
-
-  /// Resident PRE-BLENDED result tiles (base ⊕ stroke, straight alpha) in
-  /// insertion/refresh order — the exact bytes the commit holds at that
-  /// coordinate, kept alive so pen-up can ADOPT them instead of blending
-  /// the whole stroke a second time.
-  ///
-  /// Budget: the LEAST recently blended results go (the ones the brush has
-  /// moved past). Their coordinates simply re-blend at pen-up — the stroke
-  /// tiles and the base are both still here, so nothing is lost but the
-  /// work. A result is one tile's bytes, whichever path blended it.
-  late final Lru<int, _ResultTile> _results = Lru(
-    limit: () => residentResultByteBudget,
-    costOf: (_) => tileSize * tileSize * 4,
-  );
-
-  /// Resident-result byte budget (the round's one real cost: while a
-  /// stroke runs, a touched coordinate holds its stroke tile AND its
-  /// result tile). Past it the LEAST RECENTLY blended results drop —
-  /// they are behind the brush, and pen-up re-blends exactly those. The
-  /// frontier (what the user is watching) always stays resident.
-  ///
-  /// 96MB ≈ 384 tiles at 256px: a full-screen scribble keeps its whole
-  /// visible neighbourhood, an 8K canvas-covering stroke degrades to
-  /// "re-blend the part you left behind" instead of holding 512MB.
-  ///
-  /// The memory tab's allowance scales it ([CacheBudgets.liveStroke]) —
-  /// a production knob now, no longer one for tests alone.
-  static int residentResultByteBudget = defaultResidentResultByteBudget;
-
-  /// [residentResultByteBudget] at the automatic allowance — the memory
-  /// tab scales it ([CacheBudgets.liveStroke]).
-  static const int defaultResidentResultByteBudget = 96 * 1024 * 1024;
 
   // The linear key grid spans the PASTEBOARD (strokes reach the wall, not
   // the canvas edge), offset so keys stay non-negative.
@@ -351,8 +242,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   DirtyRegion? get strokeBounds => _strokeBounds;
 
   /// Number of allocated stroke tiles (test/debug oracle for sparseness).
-  int get allocatedTileCount =>
-      _onEngine ? _tileCoords.length : _tiles.length;
+  int get allocatedTileCount => _tileCoords.length;
 
   /// Drops the stroke's tiles so the rasterizer can host the next stroke
   /// (the engine's stroke goes back to be piled on again).
@@ -367,37 +257,16 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _engineDabsOf = null;
     _viewsAt = null;
     _tiles.clear();
-    _wides.clear();
-    _seconds.clear();
-    _secondTip = false;
     _tileCoords.clear();
     _tileRevisions.clear();
-    _uniformMask = null;
-    _results.clear();
-    _blur?.dispose();
-    _blur = null;
+    _blurBase = null;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
 
-  /// Resident result tiles (test/debug oracle for the memory budget).
-  @visibleForTesting
-  int get residentResultTileCount => _results.length;
-
-  /// Whether the result at the coordinate is resident (test oracle for the
-  /// order the budget lets results go in).
-  @visibleForTesting
-  bool holdsResultAt(int tileX, int tileY) =>
-      _results.containsKey(_tileKey(tileX, tileY));
-
-  /// Pre-blends the stroke tile at ([tileX], [tileY]) against [base]
-  /// through the COMMIT'S OWN KERNELS and returns it for display — while
-  /// the STRAIGHT result stays resident, so pen-up promotes it into the
-  /// surface instead of blending the whole stroke a second time.
-  ///
-  /// On the engine's grid the engine lays it ([_landedOnEngine]); on
-  /// another the same math runs here, through
-  /// [preBlendStrokeOverlayPixels], parity-pinned to the commit.
+  /// Pre-blends the stroke tile at ([tileX], [tileY]) against [base] and
+  /// returns it for display: the engine lays it as pen-up lands it
+  /// ([_landedOnEngine]).
   ///
   /// Null when the tile is untouched (nothing to show there: the base
   /// tile the painter already draws IS the result).
@@ -420,51 +289,17 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// pointer move touches a whole neighbourhood of tiles.
   ///
   /// Entries are null where the tile has nothing to show: untouched by
-  /// the stroke, entirely outside the selection, or left equal to the base
-  /// — every stroke pixel there masked away, or landed on nothing; showing
-  /// it would draw the committed tile a second time. (Such a result stays
-  /// resident: it is already current, and pen-up skips it for the same
-  /// reason.)
+  /// the stroke, or one the selection takes none of ([_lands]).
   List<PreBlendedOverlayTile?> preBlendedOverlayTiles({
     required List<TileCoord> coords,
     required BitmapSurface base,
     required BrushBlendMode mode,
     required bool erase,
   }) {
-    if (_engineStroke != null) {
-      return _landedOnEngine(coords, base, mode, erase);
+    if (_engineStroke == null) {
+      return List.filled(coords.length, null);
     }
-    final results = List<PreBlendedOverlayTile?>.filled(coords.length, null);
-    final mask = _maskTile();
-    if (mask != null && mask.allOutside) {
-      // A ceiling of nothing: every result would equal the base, so there
-      // is nothing to show or promote.
-      return results;
-    }
-    for (var slot = 0; slot < coords.length; slot += 1) {
-      final coord = coords[slot];
-      final key = _tileKey(coord.x, coord.y);
-      if (!_tileCoords.containsKey(key)) {
-        continue;
-      }
-      final result = _blendResultTile(
-        key: key,
-        tileX: coord.x,
-        tileY: coord.y,
-        base: base,
-        mode: mode,
-        erase: erase,
-        mask: mask,
-      );
-      if (result.changed) {
-        results[slot] = PreBlendedOverlayTile._resident(
-          result.bytes,
-          tileSize,
-          result.revision,
-        );
-      }
-    }
-    return results;
+    return _landedOnEngine(coords, base, mode, erase);
   }
 
   /// The results at [coords] on the engine: a coordinate the stroke has not
@@ -488,8 +323,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     );
     for (var at = 0; at < slots.length; at += 1) {
       final coord = coords[slots[at]];
+      // A tile the landing left empty is the stroke's nothing, shown as one.
       results[slots[at]] = PreBlendedOverlayTile._landed(
-        landed[at].tile,
+        landed[at].tile ?? BitmapTile.blank(size: tileSize),
         tileSize,
         _tileRevisions[_tileKey(coord.x, coord.y)] ?? 0,
       );
@@ -532,7 +368,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         for (final coord in coords)
           (column: coord.x, row: coord.y, under: base.tileAt(coord)),
       ],
-      by: (pool, cel, asked) => _blur == null
+      by: (pool, cel, asked) => _blurBase == null
           ? stroke.land(
               appGpuComposite,
               pool,
@@ -625,9 +461,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final mask = first.textureMask;
     final paper = mask == null ? null : _textureOf(mask);
     final stroke = _engineStroke ??= EngineStrokes.take();
-    final blur = _blur;
-    if (blur != null) {
-      _rubOnEngine(stroke, blur.base, first, paper);
+    final blurBase = _blurBase;
+    if (blurBase != null) {
+      _rubOnEngine(stroke, blurBase, first, paper);
     } else {
       final dual = first.dual;
       stroke.pile(
@@ -672,113 +508,14 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     );
   }
 
-  /// The stroke's coverage on a tile off the engine's grid — its opacity
-  /// ceiling — built once per stroke; null at full opacity, nothing to
-  /// mask. The ceiling is fixed at pen-down, so one build lasts the stroke.
-  ///
-  /// ↩️It folded a selection's mask in, a tile at a time, till 2026-11-14:
-  /// a selection cuts on the engine alone ([cutOnTheEngineOnly]).
-  _MaskTile? _maskTile() {
-    final coverage = strokeOpacityCoverage(strokeOpacity);
-    if (coverage >= 255) {
-      return null;
-    }
-    return _uniformMask ??= _MaskTile(
-      bytes: strokeCoverageMask(
-        pixelCount: tileSize * tileSize,
-        opacity: strokeOpacity,
-      )!,
-      allOutside: coverage == 0,
-    );
-  }
-
-  /// (Re)computes the resident RESULT tile for [key] — base bytes staged
-  /// fresh, then the stroke blended in place. The blend is not
-  /// incremental by design: its input is always (original base,
-  /// accumulated stroke), which is what makes a promoted tile impossible
-  /// to double-apply — re-running it over its own output is never a
-  /// state the pipeline can reach.
-  _ResultTile _blendResultTile({
-    required int key,
-    required int tileX,
-    required int tileY,
-    required BitmapSurface base,
-    required BrushBlendMode mode,
-    required bool erase,
-    _MaskTile? mask,
-  }) {
-    final revision = _tileRevisions[key] ?? 0;
-    final existing = _results.peek(key);
-    if (existing != null && existing.revision == revision) {
-      // Refreshed by use: the frontier keeps its results, the tail drops
-      // first when the budget bites.
-      _results.use(key);
-      return existing;
-    }
-    final blur = _blur;
-    if (blur != null) {
-      final made = blur.resultTile(
-        TileCoord(x: tileX, y: tileY),
-        mask: mask?.bytes,
-      );
-      final result = _ResultTile(
-        bytes: made?.bytes ?? Uint8List(0),
-        revision: revision,
-        changed: made?.changed ?? false,
-      );
-      _results.keep(key, result);
-      return result;
-    }
-    final tileLeft = tileX * tileSize;
-    final tileTop = tileY * tileSize;
-    final byteLength = tileSize * tileSize * 4;
-    // The straight result is a fresh buffer each time (the blend is
-    // functional), so the resident entry simply swaps — which is exactly
-    // what the region gather returns: the base's bytes for this tile
-    // rect, with missing base tiles left as zeros. The base grid is the
-    // surface's own tile size; a stroke tile can overlap up to four base
-    // tiles when the two grids differ, and the walk handles that.
-    final staged = bitmapSurfaceRegionPixels(
-      base,
-      DirtyRegion(
-        left: tileLeft,
-        top: tileTop,
-        rightExclusive: tileLeft + tileSize,
-        bottomExclusive: tileTop + tileSize,
-      ),
-    );
-    final blended = preBlendStrokeOverlayPixels(
-      dst: staged,
-      src: _tiles[key]!,
-      mode: mode,
-      erase: erase,
-      pixelCount: tileSize * tileSize,
-      mask: mask?.bytes,
-    );
-    var changed = false;
-    for (var offset = 0; offset < byteLength; offset += 1) {
-      if (blended[offset] != staged[offset]) {
-        changed = true;
-        break;
-      }
-    }
-    final result = _ResultTile(
-      bytes: blended,
-      revision: revision,
-      changed: changed,
-    );
-    _results.keep(key, result);
-    return result;
-  }
-
   /// The finished tiles of this stroke, ready to be ADOPTED by the cel
   /// surface — the pen-up commit in one move.
   ///
-  /// Every touched coordinate whose resident result is stale (dropped by
-  /// the budget, or touched after its last blend) re-blends here; a
-  /// coordinate whose result is byte-identical to the base is left out
-  /// entirely, so the dirty set stays the TRUE change set and untouched
-  /// tiles keep their identity (and their decoded image).
+  /// Every coordinate the stroke reached is laid again on the engine,
+  /// compared with the tile under it ([_promotedFromEngine]); one left
+  /// byte-identical to the base is left out entirely, so the dirty set
+  /// stays the TRUE change set and untouched tiles keep their identity (and
+  /// their decoded image).
   ///
   /// The returned tiles are the surface's from here on; [clear] afterwards
   /// lets go of what the stroke still holds.
@@ -791,39 +528,10 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       base.tileSize == tileSize,
       'promotion requires the stroke grid to be the surface grid',
     );
-    if (_engineStroke != null) {
-      return _promotedFromEngine(base, mode, erase);
+    if (_engineStroke == null) {
+      return [];
     }
-    final promoted = <PromotedStrokeTile>[];
-    final mask = _maskTile();
-    if (mask != null && mask.allOutside) {
-      // A ceiling of nothing: the stroke contributes nothing, so every
-      // committed tile must stay as it is.
-      return promoted;
-    }
-    for (final key in _tileCoords.keys.toList()) {
-      final coord = _tileCoords[key]!;
-      final result = _blendResultTile(
-        key: key,
-        tileX: coord.x,
-        tileY: coord.y,
-        base: base,
-        mode: mode,
-        erase: erase,
-        mask: mask,
-      );
-      if (!result.changed) {
-        continue;
-      }
-      promoted.add(
-        PromotedStrokeTile(
-          coord,
-          BitmapTile(size: tileSize, pixels: result.bytes),
-          result.revision,
-        ),
-      );
-    }
-    return promoted;
+    return _promotedFromEngine(base, mode, erase);
   }
 
   /// The finished tiles on the engine: the same call that showed the stroke
@@ -852,8 +560,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     ];
   }
 
-  /// A blur dab rewrote [region]: every tile it reaches is touched, and its
-  /// resident result stale — what [_tilePlanes] does for a paint dab.
+  /// A blur dab rewrote [region]: every tile it reaches is touched, at a
+  /// revision past what it showed — what a paint dab's tiles get
+  /// ([_blendDab]).
   void _touch(DirtyRegion region) {
     final range = region.tileRange(tileSize: tileSize);
     for (var tileY = range.firstY; tileY <= range.lastY; tileY += 1) {
@@ -863,24 +572,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         _tileCoords[key] ??= TileCoord(x: tileX, y: tileY);
       }
     }
-  }
-
-  BrushDabTileBuffers _tilePlanes(int tileX, int tileY) {
-    final key = _tileKey(tileX, tileY);
-    // A dab is about to write here: the coordinate's resident result (if
-    // any) is now stale. Over-bumping is safe — the counter is only ever
-    // compared for equality, and a redundant re-blend costs one tile.
-    _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
-    final bytes = _tiles.putIfAbsent(key, () {
-      _tileCoords[key] = TileCoord(x: tileX, y: tileY);
-      final values = tileSize * tileSize * 4;
-      _wides[key] = Uint16List(values);
-      return Uint8List(values);
-    });
-    if (_secondTip) {
-      _seconds[key] ??= Uint16List(tileSize * tileSize);
-    }
-    return (bytes: bytes, wide: _wides[key]!, second: _seconds[key]);
   }
 
   @override
@@ -920,7 +611,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// on the CPU: a host whose overlay grid is not its surface's.
   void _viewsFromEngine() {
     final stroke = _engineStroke;
-    if (stroke == null || _blur != null || _viewsAt == _blendedDabCount) {
+    if (stroke == null || _blurBase != null || _viewsAt == _blendedDabCount) {
       return;
     }
     _viewsAt = _blendedDabCount;
@@ -1015,50 +706,39 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   DirtyRegion? _blendDab(BrushDab dab) {
     // Stamp dabs never reach the LIVE rasterizer: they only enter through
     // programmatic commits (fill, lift, paste, the stroke-blend landing),
-    // which call the materializer directly and route stamps to the
-    // dedicated 1:1 blend. There is no live stamp path, so refuse rather
-    // than fall through — the tip kernel would paint the dab's flat
-    // COLOUR where the stamp's bitmap belongs, and the overlay would show
-    // a solid blob until pen-up corrected it.
+    // which call the materializer directly, and it lays each stamp by
+    // itself. There is no live stamp path, so refuse rather than fall
+    // through — the tip would paint the dab's flat COLOUR where the
+    // stamp's bitmap belongs, and the overlay would show a solid blob until
+    // pen-up corrected it.
     if (dab.stamp != null) {
       assert(false, 'the live rasterizer has no stamp path');
       return null;
     }
 
-    final selection = selectionClip;
-    if (!_onEngine) {
-      cutOnTheEngineOnly(selection);
-    }
     // A dab the selection cannot reach is never accumulated: the mask
     // would zero every pixel of it, so the tiles it would touch hold
     // exactly what they hold without it. That is what keeps one stroke
     // over a sheet's windows (each hearing it, each confined to its own
     // slice) at the cost of one stroke rather than one per window.
+    final selection = selectionClip;
     final reach = selection == null ? null : dirtyRegionForBrushDab(dab);
     if (selection != null && (reach == null || !selection.mayCover(reach))) {
       return null;
     }
 
     if (dab.blurs) {
-      final blur = _blur;
-      if (blur == null) {
+      if (_blurBase == null) {
         assert(false, 'a blur dab needs the cel it blurs ([blurOver])');
         return null;
       }
-      if (_onEngine) {
-        return _rubbedOnEngine(dab);
-      }
-      final rewritten = blur.blurDab(dab);
-      if (rewritten != null) {
-        _touch(rewritten);
-      }
-      return rewritten;
+      return _rubbedOnEngine(dab);
     }
 
-    // ONE dab kernel (see brush_dab_kernel.dart) — the same hoists,
-    // lattices and clip the commit resolves. erase is false always: the
-    // live overlay never carries the erase flag, because erase strokes
-    // composite at display time.
+    // ONE dab plan (see brush_dab_kernel.dart) — the same hoists, lattices
+    // and clip the commit resolves. erase is false always: the live overlay
+    // never carries the erase flag, because erase strokes composite at
+    // display time.
     final plan = BrushDabPlan.of(
       dab,
       wall: pasteboard,
@@ -1068,33 +748,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (plan == null) {
       return null;
     }
-    if (dab.dual != null) {
-      _secondTip = true;
-    }
-    if (_onEngine) {
-      _engineDabs.add(_gpuDabOf(plan));
-      _engineDabsOf ??= plan;
-      for (var tileY = plan.tileYStart; tileY <= plan.tileYEnd; tileY += 1) {
-        for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
-          final key = _tileKey(tileX, tileY);
-          _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
-          _tileCoords[key] ??= TileCoord(x: tileX, y: tileY);
-        }
+    _engineDabs.add(_gpuDabOf(plan));
+    _engineDabsOf ??= plan;
+    for (var tileY = plan.tileYStart; tileY <= plan.tileYEnd; tileY += 1) {
+      for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
+        final key = _tileKey(tileX, tileY);
+        _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
+        _tileCoords[key] ??= TileCoord(x: tileX, y: tileY);
       }
-      return plan.clip;
     }
-
-    // Not the engine's grid: the dab kernel here, the same one the commit
-    // runs on such a grid. _tilePlanes creates the tile and bumps its
-    // revision, which is exactly what the old inline loop did per (row,
-    // tile).
-    blendDabTilesDart(plan, tileSize: tileSize, bufferFor: _tilePlanes);
-
-    return DirtyRegion(
-      left: plan.left,
-      top: plan.top,
-      rightExclusive: plan.rightExclusive,
-      bottomExclusive: plan.bottomExclusive,
-    );
+    return plan.clip;
   }
 }

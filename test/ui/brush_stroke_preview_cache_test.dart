@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
@@ -13,8 +14,9 @@ import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/rgba_color.dart';
-import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
@@ -496,19 +498,25 @@ void main() {
       for (final placed in dabs) {
         layPreviewDab(swatch, width, height, placed);
       }
-      final canvas = Uint8List(width * height);
-      for (final operation in brushPixelBlendOperationsForDabSequence(
+      // ↩️The canvas was the per-pixel reference pipeline till 2026-11-14;
+      // it is the engine now, the only one a stroke lands on (board
+      // `the-off-engine-cpu-commit-lives-only-for-tests`).
+      final canvas = materializeBrushDabSequenceOnBitmapSurface(
+        surface: BitmapSurface(
+          canvasSize: const CanvasSize(width: width, height: height),
+          tileSize: 128,
+        ),
         sequence: BrushDabSequence(BrushTipStampCache().resolveDabs(dabs)),
-        destinationAt: (_, _) => RgbaColor.fromArgbInt(0),
-      )) {
-        canvas[operation.y * width + operation.x] = operation.after.a;
-      }
-      for (var index = 0; index < canvas.length; index += 1) {
-        expect(
-          (swatch[index] * 255).round(),
-          closeTo(canvas[index], 1),
-          reason: 'hardness ${dabs.first.hardness}, pixel $index',
-        );
+      ).surface.tileAt(TileCoord(x: 0, y: 0))!;
+      for (var y = 0; y < height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          final alpha = canvas.byteOffsetForPixel(x: x, y: y) + 3;
+          expect(
+            (swatch[y * width + x] * 255).round(),
+            closeTo(canvas.pixels[alpha], 1),
+            reason: 'hardness ${dabs.first.hardness}, pixel ($x, $y)',
+          );
+        }
       }
     }
   });

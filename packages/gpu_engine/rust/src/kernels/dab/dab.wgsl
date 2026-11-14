@@ -7,6 +7,16 @@
 // this file has what a dab lays, which the blur brush's dab reads too
 // (blur.wgsl).
 //
+// 🚨A STROKE PILES UP ON A 16-BIT PLANE (ABI 40; board
+// `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
+// 제안한대로 16비트?」). Every dab rounded what it left to a byte and the
+// next dab read that byte back, so a soft tail laying under half a level a
+// dab never piled up at all, and the rest piled up one rounding a dab — 10
+// levels off a float pile at flow 3%, size 160 (measured). The bytes are
+// the plane's view (blend_pack8). ↩️The law's text stood beside the Dart
+// reference's `StrokePixel` till 2026-11-14, which went with the commit
+// off the engine's grid.
+//
 // Integers only, every intermediate inside u32 or i32, as blend.wgsl. A dab
 // comes as integers — mod.rs turns the app's numbers into them, the one
 // place a float becomes one —: its centre in 1/256 px, its tables on the
@@ -147,8 +157,7 @@ fn dab_square(table: u32, row: u32, across: vec2<u32>, down: vec2<u32>) -> u32 {
 }
 
 // (dx, dy) in the tip's own frame: turned, its minor axis stretched to the
-// major — or nothing past the tip, as `blendDabTilesDart` culls it: either
-// axis past the major's reach. The minor is first held to its own reach,
+// major — or nothing past the tip: either axis past the major's reach. The minor is first held to its own reach,
 // which keeps the stretch's product in u32. |dx|, |dy| are under the guard,
 // under 2^15, so each product of the turn stays under 2^30. A circle turns
 // by nothing and stretches by 1 (cos 32768, sin 0, inverse 65536), and
@@ -228,8 +237,9 @@ fn dab_paper_along(phase: u32, local: u32, side: u32) -> vec2<u32> {
 
 // What the paper stands at pixel (lx, ly) of the tile at `tile`: between
 // its four nearest texels, along the row, then down, wrapping as it tiles
-// the canvas (sampleBrushTipMaskTiledCoverageLattice). Every dab on the
-// pixel meets the same paper, so it is read once, before the walk.
+// the canvas (sampleBrushTipMaskTiledCoverage's law — ↩️the Dart dab loop
+// held it in a lattice per axis till 2026-11-14). Every dab on the pixel
+// meets the same paper, so it is read once, before the walk.
 fn dab_paper(tile: u32, lx: u32, ly: u32) -> u32 {
   let paper = plan[HEAD_PAPER];
   let side = plan[HEAD_PAPER_SIDE];
@@ -282,8 +292,14 @@ fn dab_round(at: u32, flags: u32, u: i32, v: i32) -> vec2<u32> {
   return vec2<u32>(dab_between(plan[at + DAB_COVERAGE] + entry.x, entry.y), pile);
 }
 
-// The brush's edge on a coverage (`blendDabTilesDart`'s): a cut at half, or a
-// contrast about half — 256, a contrast of 1, gives the coverage back.
+// The brush's own EDGE on a coverage, before anything tiles over it (유저
+// 확정): a cut at half, or a contrast about half — 256, a contrast of 1,
+// gives the coverage back. ⚠️Laid here and nowhere else: ahead of the
+// second tip and the paper (`dab_source`), so tightening the edge hardens
+// the SILHOUETTE and leaves the texture inside it soft. Behind them it
+// would binarize a textured brush whole, which is a different brush.
+// ↩️The law's text stood in the app's Dart tile kernel
+// (`blendDabTilesDart`) till 2026-11-14, when that kernel went.
 fn dab_edge(at: u32, flags: u32, cover: u32) -> u32 {
   if ((flags & DAB_THRESHOLD) != 0u) {
     return select(0u, W_ONE, cover >= 32768u);
@@ -306,8 +322,8 @@ fn dab_even(at: u32, whole: u32) -> u32 {
   return dab_between(table + index, f15);
 }
 
-// Whether the dab erases: a second tip's dab piles over, never erases
-// (`blendDabTilesDart`).
+// Whether the dab erases: a second tip's dab piles on its plane as any dab
+// piles over its alpha — over, never an erase — and the view shows it.
 fn dab_erases(flags: u32) -> bool {
   return (flags & (DAB_ERASE | DAB_SECOND)) == DAB_ERASE;
 }
@@ -354,13 +370,18 @@ fn dab_source(at: u32, x: i32, y: i32, under: u32, paper: u32) -> u32 {
   if (cover == 0u) {
     return NOTHING;
   }
-  // 🚨THE EDGE DOES NOT PILE (`edgeCeiling`, the app's): the share of
-  // the dab's opacity the stroke may come up to here.
+  // 🚨★★★THE EDGE DOES NOT PILE (board a-one-pixel-dab-drops-out-by-
+  // where-it-lies Q4, 유저 2026-10-25 「AA 가장자리는 쌓이지 않는다」;
+  // `edgeCeiling`, the app's): of what the tip covers here only its PILE
+  // adds up where dabs overlap; the rest is its edge, and sets how high the
+  // stroke may come here — this share of the dab's opacity. Over nothing a
+  // dab lays its coverage, as it always did; a line's cross-section is one
+  // dab's.
   var ceiling = W_ONE;
   if ((flags & DAB_EDGE_HELD) != 0u && pile > cover) {
     ceiling = blend_div(cover, pile);
   }
-  // The paper, after the edge and its ceiling (`blendDabTilesDart`): it
+  // The paper, after the edge and its ceiling (`dab_edge` has why): it
   // takes from what the dab covers, not from how high the stroke may come.
   let density = plan[at + DAB_DENSITY];
   if (plan[HEAD_PAPER] != NO_TABLE && density != NO_TABLE) {

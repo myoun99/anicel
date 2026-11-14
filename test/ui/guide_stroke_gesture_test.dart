@@ -49,7 +49,7 @@ void main() {
             width: canvasSize.width.toDouble(),
             height: canvasSize.height.toDouble(),
             child: InteractiveBrushEditCanvasView(
-              celNow: blankCel(canvasSize, tileSize: 32),
+              celNow: blankCel(canvasSize, tileSize: 128),
               layerId: layerId,
               frameId: frameId,
               // The pen's own line: a steadied one runs on the events'

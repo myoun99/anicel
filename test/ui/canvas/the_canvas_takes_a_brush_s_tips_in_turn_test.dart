@@ -115,7 +115,7 @@ void main() {
 
 final _cel = BitmapSurface(
   canvasSize: const CanvasSize(width: 160, height: 64),
-  tileSize: 16,
+  tileSize: 128,
 );
 
 Future<void> _pump(

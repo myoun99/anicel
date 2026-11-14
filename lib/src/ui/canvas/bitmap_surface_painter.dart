@@ -278,28 +278,38 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     ]);
   }
 
-  /// A PRE-BLENDED overlay on the SAME grid: the base pass skips the
-  /// committed tile where an overlay image exists and the overlay pass lays
-  /// the result tile with plain srcOver.
+  /// A PRE-BLENDED overlay: the base pass skips the committed tile where an
+  /// overlay image exists and lays the result tile in its place.
+  ///
+  /// ⛔It is on its cel's grid, which this painter draws: the overlay
+  /// pre-blends by the engine alone, on the engine's grid
+  /// (`drawnByTheEngineAlone`). ↩️One on another grid was composed in an
+  /// isolation layer, its tiles laid `src`, till 2026-11-14, when that
+  /// pre-blend was refused (board
+  /// `the-off-engine-cpu-commit-lives-only-for-tests`).
   bool get _overlayReplacesCoords {
     final overlay = overlayModel;
-    return overlay != null &&
-        overlay.preBlended &&
-        overlay.hasStrokeContent &&
-        overlay.tileSize == surface.tileSize;
+    if (overlay == null || !overlay.preBlended || !overlay.hasStrokeContent) {
+      return false;
+    }
+    assert(
+      overlay.tileSize == surface.tileSize,
+      'a pre-blended overlay is on the grid of the cel it replaces',
+    );
+    return true;
   }
 
-  /// The isolation-layer route, for overlays that cannot replace a whole
-  /// coordinate.
+  /// The isolation-layer route, for an eraser's overlay: its dstOut
+  /// composes against the committed pixels alone.
   bool get _overlayBlendsInLayer {
     final overlay = overlayModel;
-    // ↩️A brush blend drawn on the GPU (BB-1) took this route too; since
-    // brush-fidelity-Q9 nothing draws one, so only a pre-blended result
-    // and an eraser's dstOut compose against the committed pixels here.
+    // ↩️A brush blend drawn on the GPU (BB-1) took this route too, till
+    // brush-fidelity-Q9 left none drawn there; and a pre-blended result on
+    // another grid than the surface's, till 2026-11-14.
     return overlay != null &&
-        !_overlayReplacesCoords &&
+        !overlay.preBlended &&
         overlay.hasStrokeContent &&
-        (overlay.preBlended || overlay.erase);
+        overlay.erase;
   }
 
   /// 🚨★★★WHETHER EVERY DEVICE PIXEL THIS PAINTER TOUCHES, IT TOUCHES ONCE.
@@ -318,7 +328,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// draws blend each pixel exactly once)."* This is that sentence asked
   /// about the LAYER's paint instead of the stroke's. ↩️That sentence went
   /// with brush-fidelity-Q9: nothing draws a brush blend on the GPU now —
-  /// strokes pre-blend on the CPU (R27 #4), and so does the stamp ghost,
+  /// strokes pre-blend by the engine (R27 #4), and so does the stamp ghost,
   /// the last that did not.
   ///
   /// 🧪Measured on the test VM: with the tile paint this class actually uses

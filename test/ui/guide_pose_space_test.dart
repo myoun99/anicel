@@ -185,7 +185,7 @@ void main() {
   }) async {
     final commits = <BrushStrokeCommitData>[];
     final viewport = CanvasViewport();
-    final cel = BitmapSurface(canvasSize: canvasSize, tileSize: 32);
+    final cel = BitmapSurface(canvasSize: canvasSize, tileSize: 128);
     final placement = placementOf(placed, canvasSize);
 
     await tester.pumpWidget(

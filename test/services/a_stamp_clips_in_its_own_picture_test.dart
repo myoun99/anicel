@@ -34,7 +34,7 @@ import '../helpers/surface_rgba_in_place.dart';
 /// then clipped and composited: a second rounding. It clips in its own
 /// picture now and lands 1:1 either way (절대명령 2: 선택이 있든 없든 같은
 /// 코드가 답한다) — on the engine's grid, where a selection cuts
-/// (`cutOnTheEngineOnly`, 2026-11-14).
+/// (`drawnByTheEngineAlone`, 2026-11-14).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 192, height: 128);

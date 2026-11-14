@@ -4,26 +4,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
-import 'package:anicel/src/models/brush_pixel_coverage.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/rgba_color.dart';
-import 'package:anicel/src/models/stroke_pixel.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
-import 'package:anicel/src/services/brush_pixel_blend.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
 /// 🗣️유저 2026-10-01 (board `one-pixel-steps-change-a-brush-with-its-size`
 /// Q2, 「a는 제안한대로 16비트?」): a stroke piles up on a 16-bit plane beside
-/// its bytes (`StrokePixel`, ABI 40). A dab used to round what it left to a
+/// its bytes (dab.wgsl's head, ABI 40). A dab used to round what it left to a
 /// byte and the next dab read that byte back, so a soft tail laying under
 /// half a level a dab never piled up at all.
 ///
-/// Every case runs on the Dart tile kernel (the grid is not the engine's),
-/// built on an empty buffer the way a stroke is.
+/// Every case runs on the engine's grid, built on an empty cel the way a
+/// stroke is.
 void main() {
   const canvasSize = CanvasSize(width: 64, height: 64);
   final origin = TileCoord(x: 0, y: 0);
@@ -44,15 +40,19 @@ void main() {
         sequence: sequence,
       );
 
-  List<int> pixelAfter(List<BrushDab> dabs) {
-    final surface = materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 64),
-      sequence: BrushDabSequence(dabs),
-    ).surface;
+  BitmapSurface laid(List<BrushDab> dabs, {BitmapSurface? on}) =>
+      materializeBrushDabSequenceOnBitmapSurface(
+        surface: on ?? BitmapSurface(canvasSize: canvasSize, tileSize: 128),
+        sequence: BrushDabSequence(dabs),
+      ).surface;
+
+  List<int> pixelOf(BitmapSurface surface) {
     final tile = surface.tileAt(origin)!;
     final at = tile.byteOffsetForPixel(x: 32, y: 32);
     return tile.pixels.sublist(at, at + 4);
   }
+
+  List<int> pixelAfter(List<BrushDab> dabs) => pixelOf(laid(dabs));
 
   test('a dab laying a quarter of a level still piles up', () {
     // Flow 0.001 lays 0.255 of a level over nothing: on bytes it rounded to
@@ -91,9 +91,9 @@ void main() {
   });
 
   test('a dab after a stamp piles over what the stamp left', () {
-    // The stamp writes the bytes alone, so the plane under them goes stale:
-    // a dab after it must read the stamp's picture, not the plane the dabs
-    // before the stamp left (`CommitTileScratch`).
+    // The stamp writes the bytes alone, so the plane the dabs before it left
+    // goes stale: a dab after it piles from the stamp's picture, as it does
+    // laid by itself on what the stamp left.
     const side = 20;
     final stamp = BrushStampImage(
       id: 'wide-plane-stamp',
@@ -116,30 +116,14 @@ void main() {
       stamp: stamp,
     );
     final after = dab(flow: 0.37, color: 0xFF10E060, sequence: 4);
-    final underStamp = pixelAfter([
+    final underStamp = [
       for (var i = 0; i < 3; i += 1) dab(flow: 0.2, sequence: i),
       stampDab,
-    ]);
-    final expected = blendBrushDabStrokePixel(
-      dab: after,
-      coverage: BrushPixelCoverage(x: 32, y: 32, coverage: 1),
-      destination: StrokePixel.widened(
-        RgbaColor(
-          r: underStamp[0],
-          g: underStamp[1],
-          b: underStamp[2],
-          a: underStamp[3],
-        ),
-      ),
-    ).bytes;
+    ];
 
     expect(
-      pixelAfter([
-        for (var i = 0; i < 3; i += 1) dab(flow: 0.2, sequence: i),
-        stampDab,
-        after,
-      ]),
-      [expected.r, expected.g, expected.b, expected.a],
+      pixelAfter([...underStamp, after]),
+      pixelOf(laid([after], on: laid(underStamp))),
     );
   });
 }

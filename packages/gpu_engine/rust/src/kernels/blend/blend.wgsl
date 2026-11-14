@@ -236,7 +236,8 @@ fn blend_channel(mode: u32, cs: u32, cd: u32) -> u32 {
 
 // ---- The six that mix the three channels ----
 // W3C Compositing Level 1's Lum, ClipColor, SetLum, Sat, SetSat, and
-// Photoshop's darker / lighter colour (`_ChannelMix`, the app's).
+// Photoshop's darker / lighter colour. ↩️The app's CPU mirror of the six
+// (`_ChannelMix`, brush_stroke_blend.dart) went 2026-11-14.
 
 // Lum with the weights 0.3 / 0.59 / 0.11 as 19661 / 38666 / 7209 — they sum
 // to 65536, so Lum(c + d) is Lum(c) + d for any whole d, exactly.
@@ -373,8 +374,11 @@ fn blend_alpha_over(a_s: u32, a_d: u32) -> u32 {
 // third weight is taken as as - as(1-ad), so the three sum to ao with no
 // rounding between them: a dab over its own colour, or over nothing, lands
 // its own colour exactly (ABI 40's rule, here by the formula and not by a
-// shortcut beside it). Normal is the mode whose B is cs. src's alpha
-// carries its opacity already.
+// shortcut beside it). ↩️The Dart reference took that shortcut
+// (`strokeSourceOverAt`: the three divisions it skipped were most of what
+// the 16-bit plane cost a soft size-100 stroke, 9.6 → 24.1 ms, 2026-10-01)
+// till it went on 2026-11-14 with the commit off the engine's grid. Normal
+// is the mode whose B is cs. src's alpha carries its opacity already.
 fn blend_composite(mode: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
   let a_s = src.w;
   let a_d = dst.w;
@@ -515,6 +519,12 @@ fn blend_pack16(pixel: vec4<u32>) -> vec2<u32> {
 // A pixel on the 16-bit scale as it is stored, each channel rounded once
 // (blend_to8); one whose alpha rounds to no byte holds no colour either
 // (blend_settled), so a stored pixel never keeps a colour no one sees.
+// Why (2026-10-25): a round tip's square reaches half a pixel past its
+// rim, and what a dab lays there rounds to an alpha of 0 while its
+// channels stand — the premultiplied copies downstream drop such a colour
+// where a straight composite keeps it, so one stroke landed as two
+// artworks (measured). The plane keeps its colour: the dabs that pile on
+// read it there.
 fn blend_pack8(pixel: vec4<u32>) -> u32 {
   let a = blend_to8(pixel.w);
   if (a == 0u) {
@@ -526,8 +536,7 @@ fn blend_pack8(pixel: vec4<u32>) -> u32 {
 
 // A stored pixel premultiplied on the 16-bit scale, as every blur reads one
 // (effects/blur/held.wgsl, the blur brush's picture — kernels/dab/
-// blur_cel.wgsl): `BrushBlurPicture._premultiplied`, round(c·a·257 / 255),
-// which is
+// blur_cel.wgsl): round(c·a·257 / 255), which is
 // blend_mul(c·257, a·257) exactly. So a transparent pixel carries no colour
 // into its neighbours.
 fn blend_unpack8_premultiplied(texel: u32) -> vec4<u32> {
@@ -540,8 +549,8 @@ fn blend_unpack8_premultiplied(texel: u32) -> vec4<u32> {
   );
 }
 
-// A premultiplied pixel as every blur stores one — as
-// `BrushBlurPicture.resultTile` stores it: its alpha rounded to a byte, each
+// A premultiplied pixel as every blur stores one — as the blur brush's
+// picture lands on the cel: its alpha rounded to a byte, each
 // channel over that alpha rounded once, and nothing where the alpha rounds
 // to none. (Its (2a + 257) / 514 is blend_to8's (a + 128) / 257, and its
 // (510c + a) / 2a is blend_over_alpha's (255c + ⌊a/2⌋) / a: for an odd a

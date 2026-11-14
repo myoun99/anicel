@@ -12,8 +12,6 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
-import 'package:anicel/src/models/brush_texture_mode.dart';
-import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -37,12 +35,21 @@ import 'package:anicel/src/services/selection_clip.dart';
 /// is a tile the engine laid — the same call showing it and finishing it
 /// (유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
 ///
-/// The law is pinned byte for byte on the kernel (dab/blur_tests.rs), and
-/// against what it replaced here.
+/// The law is pinned byte for byte on the kernel (dab/blur_tests.rs).
+///
+/// ↩️Till 2026-11-14 a group here held the engine within a level of the CPU
+/// route it replaced, dab kind by dab kind. That route is gone (the commit
+/// lands on the engine's grid alone), and each kind's law is a kernel pin:
+/// a square tip `a_dab_at_full_flow_puts_the_blur_itself` ·
+/// `a_dab_moves_its_pixels_by_what_it_lays`, across tiles
+/// `a_window_across_tiles_reads_each_by_its_slot`, along a stroke
+/// `each_dab_reads_what_the_one_before_it_moved`, a soft round tip at part
+/// flow and paper that multiplies `every_device_blurs_the_pinned_strokes`,
+/// paper by height the dab's own `the_papers_height_cuts_where_it_stands_
+/// below_the_dab` (the blur lays by the dab's `dab_paper`).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const side = 128;
-  const small = 64;
   const canvas = CanvasSize(width: 512, height: 512);
   final wall = canvas.pasteboardAt(PasteboardReach.whole);
   final origin = TileCoord(x: 0, y: 0);
@@ -54,60 +61,48 @@ void main() {
     double x,
     double y, {
     double size = 24,
-    double flow = 1,
     int sequence = 0,
-    BrushTipShape tip = BrushTipShape.square,
-    double hardness = 1,
-    BrushTipMask? textureMask,
-    double textureScale = 1,
-    BrushTextureMode textureMode = BrushTextureMode.multiply,
   }) => BrushDab(
     sequence: sequence,
     pressure: 1,
     center: CanvasPoint(x: x, y: y),
     size: size,
-    hardness: hardness,
+    hardness: 1,
     opacity: 1,
-    flow: flow,
+    flow: 1,
     color: 0xFF000000,
-    tipShape: tip,
+    tipShape: BrushTipShape.square,
     blurs: true,
-    textureMask: textureMask,
-    textureScale: textureScale,
-    textureDensity: textureMask == null ? 1 : 0.7,
-    textureMode: textureMode,
   );
 
   BrushLiveStrokeRasterizer rubbedOver(
     BitmapSurface base, {
-    int grid = side,
     double opacity = 1,
     SelectionClip? selection,
-  }) => BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: grid)
+  }) => BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: side)
     ..selectionClip = selection
     ..strokeOpacity = opacity
     ..blurOver(base);
 
-  BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles, {int grid = side}) =>
-      BitmapSurface(canvasSize: canvas, tileSize: grid).putTiles([
+  BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
+      BitmapSurface(canvasSize: canvas, tileSize: side).putTiles([
         for (final MapEntry(key: coord, value: tile) in tiles.entries)
           (coord: coord, tile: tile),
       ]);
 
-  BitmapTile tileOf(List<int> Function(int x, int y) pixel, {int grid = side}) =>
-      BitmapTile(
-        size: grid,
-        pixels: Uint8List.fromList([
-          for (var y = 0; y < grid; y++)
-            for (var x = 0; x < grid; x++) ...pixel(x, y),
-        ]),
-      );
+  BitmapTile tileOf(List<int> Function(int x, int y) pixel) => BitmapTile(
+    size: side,
+    pixels: Uint8List.fromList([
+      for (var y = 0; y < side; y++)
+        for (var x = 0; x < side; x++) ...pixel(x, y),
+    ]),
+  );
 
   /// Ink on its left half, nothing on its right.
   BitmapTile edge() => tileOf((x, y) => x < 64 ? ink : nothing);
 
-  List<int> at(Uint8List bytes, int x, int y, {int grid = side}) =>
-      bytes.sublist((y * grid + x) * 4, (y * grid + x) * 4 + 4);
+  List<int> at(Uint8List bytes, int x, int y) =>
+      bytes.sublist((y * side + x) * 4, (y * side + x) * 4 + 4);
 
   List<PromotedStrokeTile> promoted(
     BrushLiveStrokeRasterizer stroke,
@@ -152,7 +147,7 @@ void main() {
       erase: false,
     );
     expect(
-      shown.single!.landed!.pixels,
+      shown.single!.landed.pixels,
       promoted(stroke, base).single.tile.pixels,
     );
     stroke.clear();
@@ -384,126 +379,4 @@ void main() {
     );
     expect(landed.tileAt(shown.coord)!.pixels, shown.tile.pixels);
   });
-
-  group('on the engine as on the route it replaced', () {
-    /// A busy picture on a cel of [grid]: no two pixels near each other
-    /// alike, some of it clear.
-    BitmapSurface busy(int grid) {
-      List<int> pixel(int x, int y) {
-        final h = (x * 7 + y * 13) ^ (x * y);
-        return [h & 0xFF, (h >> 2) & 0xFF, (h >> 4) & 0xFF, h % 5 * 63];
-      }
-
-      return surfaceOf(grid: grid, {
-        for (var row = 0; row < 256 ~/ grid; row++)
-          for (var column = 0; column < 256 ~/ grid; column++)
-            TileCoord(x: column, y: row): tileOf(
-              grid: grid,
-              (x, y) => pixel(column * grid + x, row * grid + y),
-            ),
-      });
-    }
-
-    /// What [dabs] make of the busy picture, by canvas pixel.
-    Map<(int, int), List<int>> landed(List<BrushDab> dabs, int grid) {
-      final base = busy(grid);
-      final stroke = rubbedOver(base, grid: grid)..blendFrom(dabs, from: 0);
-      final pixels = <(int, int), List<int>>{};
-      for (final entry in promoted(stroke, base)) {
-        final bytes = entry.tile.pixels;
-        for (var y = 0; y < grid; y++) {
-          for (var x = 0; x < grid; x++) {
-            final where = (entry.coord.x * grid + x, entry.coord.y * grid + y);
-            pixels[where] = at(bytes, x, y, grid: grid);
-          }
-        }
-      }
-      stroke.clear();
-      return pixels;
-    }
-
-    BitmapSurface surfaceFrom(int grid) => busy(grid);
-
-    List<int> stood(BitmapSurface surface, (int, int) where, int grid) {
-      final (x, y) = where;
-      final tile = surface.tileAt(TileCoord(x: x ~/ grid, y: y ~/ grid));
-      return at(tile!.pixels, x % grid, y % grid, grid: grid);
-    }
-
-    final paper = BrushTipMask(
-      id: 'speckled',
-      size: 24,
-      alpha: Uint8List.fromList([
-        for (var i = 0; i < 24 * 24; i++)
-          if (i.isEven) 255 else 64,
-      ]),
-    );
-
-    final kinds = <String, List<BrushDab>>{
-      'a square tip': [rubbing(100, 100)],
-      'a round soft tip at half flow': [
-        rubbing(
-          100,
-          100,
-          size: 40,
-          flow: 0.5,
-          tip: BrushTipShape.round,
-          hardness: 0.3,
-        ),
-      ],
-      'a dab across four tiles': [rubbing(127.5, 127.5, size: 30)],
-      'dabs along a stroke': [
-        for (var i = 0; i < 12; i++)
-          rubbing(
-            60.0 + i * 5,
-            90.5,
-            size: 18,
-            flow: 0.6,
-            sequence: i,
-            tip: BrushTipShape.round,
-          ),
-      ],
-      'paper that multiplies': [
-        rubbing(100, 100, size: 36, textureMask: paper, textureScale: 2),
-      ],
-      'paper that cuts by height': [
-        rubbing(
-          100,
-          100,
-          size: 36,
-          textureMask: paper,
-          textureMode: BrushTextureMode.height,
-        ),
-      ],
-    };
-
-    for (final MapEntry(key: name, value: dabs) in kinds.entries) {
-      test(name, () {
-        final engine = landed(dabs, side);
-        final old = landed(dabs, small);
-        final (engineBase, oldBase) = (surfaceFrom(side), surfaceFrom(small));
-        expect(engine, isNotEmpty);
-        var worst = 0;
-        for (final where in {...engine.keys, ...old.keys}) {
-          final mine = engine[where] ?? stood(engineBase, where, side);
-          final theirs = old[where] ?? stood(oldBase, where, small);
-          // A colour behind no alpha is stored as nothing here.
-          if (mine[3] == 0 && theirs[3] == 0) {
-            continue;
-          }
-          for (var channel = 0; channel < 4; channel++) {
-            final apart = (mine[channel] - theirs[channel]).abs();
-            if (apart > worst) {
-              worst = apart;
-            }
-          }
-        }
-        expect(worst, lessThanOrEqualTo(roundsApart));
-      });
-    }
-  });
 }
-
-/// How far apart, in levels of a byte, the engine's blur may come from the
-/// route it replaced.
-const roundsApart = 1;

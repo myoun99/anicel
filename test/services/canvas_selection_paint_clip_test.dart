@@ -32,8 +32,8 @@ import '../helpers/surface_rgba_in_place.dart';
 
 /// R26 #18: painting clips to the selection — the funnel names the
 /// selection a stroke lands through, and the commit cuts it there, on the
-/// engine (`cutOnTheEngineOnly`). Off the engine's grid what scales a
-/// stroke's alpha is its opacity ceiling, by the one coverage rule.
+/// engine (`drawnByTheEngineAlone`). What scales a stroke buffer's alpha is
+/// its opacity ceiling, by the one coverage rule.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   CanvasSelectionRegion regionRect(double l, double t, double r, double b) =>
@@ -97,7 +97,7 @@ void main() {
       BitmapSurface commit(Uint8List pixels) => materializeBrushDabSequenceOnBitmapSurface(
         surface: BitmapSurface(
           canvasSize: const CanvasSize(width: 8, height: 8),
-          tileSize: 8,
+          tileSize: 128,
         ),
         sequence: BrushDabSequence([
           BrushDab(
@@ -146,7 +146,7 @@ void main() {
       final rasterized = rasterizeStrokeCoverage(
         dabs: [dab(20, 20)],
         canvasSize: const CanvasSize(width: 64, height: 64),
-        tileSize: 32,
+        tileSize: 128,
       )!;
       expect(rasterized.bounds.width, greaterThan(0));
       expect(alphaAt(rasterized.pixels, rasterized.bounds, 20, 20), 255);
@@ -157,7 +157,7 @@ void main() {
       final erased = rasterizeStrokeCoverage(
         dabs: [dab(20, 20, erase: true)],
         canvasSize: const CanvasSize(width: 64, height: 64),
-        tileSize: 32,
+        tileSize: 128,
       );
       // Erasing an EMPTY scratch surface would produce nothing at all; the
       // helper flips the flag so the coverage is there to clip.
@@ -268,7 +268,7 @@ void main() {
               strokeBounds: bounds,
             ),
             clip: SelectionClip.outline(region),
-            surface: BitmapSurface(canvasSize: canvas, tileSize: 32),
+            surface: BitmapSurface(canvasSize: canvas, tileSize: 128),
           );
 
       expect(funneled(regionRect(50, 50, 60, 60)), isNull);
@@ -278,7 +278,7 @@ void main() {
     test('promoted tiles pass straight through on the surface they were '
         'blended against — the kernel already masked them — and the '
         'stroke carries its selection all the same', () {
-      final surface = BitmapSurface(canvasSize: canvas, tileSize: 32);
+      final surface = BitmapSurface(canvasSize: canvas, tileSize: 128);
       final data = promotedOn(surface, [dab(10, 10)]);
       final clip = SelectionClip.outline(regionRect(0, 0, 20, 64));
       final passed = clipStrokeCommitToSelection(
@@ -306,7 +306,7 @@ void main() {
 
     test('once something has landed on the cel in between, the commit cuts '
         'the stroke where it lands — the whole stroke never lands', () {
-      // The selection cuts on the engine's grid (`cutOnTheEngineOnly`).
+      // The selection cuts on the engine's grid (`drawnByTheEngineAlone`).
       final base = BitmapSurface(canvasSize: canvas, tileSize: gpuTileSide);
       final landedSince = BitmapSurface(
         canvasSize: canvas,

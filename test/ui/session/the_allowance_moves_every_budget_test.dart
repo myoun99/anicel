@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/tile_blocks.dart';
-import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/memory_allowance.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
@@ -61,10 +60,6 @@ void main() {
       budgets.playback,
     );
     expect(BrushTipStampCache.instance.byteBudget, budgets.brushTips);
-    expect(
-      BrushLiveStrokeRasterizer.residentResultByteBudget,
-      budgets.liveStroke,
-    );
     expect(frameworkImageCache.maximumSizeBytes, budgets.imageCache);
     expect(
       MemoryAllowance.factor.value,
@@ -138,10 +133,6 @@ void main() {
       reason: 'a fixed 600MB that ignored the allowance would make it a lie',
     );
     expect(BrushTipStampCache.instance.byteBudget, half.brushTips);
-    expect(
-      BrushLiveStrokeRasterizer.residentResultByteBudget,
-      half.liveStroke,
-    );
     // 유저 2026-09-16 (memory-allowance-Q2): the framework's image cache
     // was ceilinged once by the binding and never moved with the rest.
     expect(frameworkImageCache.maximumSizeBytes, half.imageCache);

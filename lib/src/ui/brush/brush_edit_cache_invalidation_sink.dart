@@ -4,8 +4,7 @@ import '../../models/layer_tile_cache_key.dart';
 import '../../services/cache_invalidation_executor.dart';
 
 /// Debug/manual cache invalidation recorder for standalone Brush hosts
-/// (the timesheet ink stack and the smoke screens run without the editor
-/// session's hub).
+/// (the timesheet ink stack runs without the editor session's hub).
 ///
 /// The recording is BOUNDED: the hosts using this sink live for the whole
 /// session, and an unbounded per-stroke key log is exactly the kind of

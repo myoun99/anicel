@@ -711,7 +711,7 @@ impl Composite {
     /// nothing lays them: their stored bytes, tile after tile in `tiles`'
     /// order, nothing for a tile the set has none of, and no edge — a
     /// stroke reaches past the canvas onto the pasteboard
-    /// (BrushBlurPicture's wall), where a cel has tiles too. The blur
+    /// (the stroke's wall), where a cel has tiles too. The blur
     /// brush's picture is made of it (dab/blur.rs), and a row whose pages
     /// under one output tile a pass cannot bind is read from it
     /// ([`Composite::gathered`]). Submits the work; the caller waits.

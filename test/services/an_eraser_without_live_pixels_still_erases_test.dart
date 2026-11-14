@@ -50,7 +50,7 @@ void main() {
   ).copyWith(erase: erase);
 
   BitmapSurface painted() => materializeBrushDabSequenceOnBitmapSurface(
-    surface: BitmapSurface(canvasSize: canvas, tileSize: 4),
+    surface: BitmapSurface(canvasSize: canvas, tileSize: 128),
     sequence: BrushDabSequence([dabAt(0, 0), dabAt(3, 3)]),
   ).surface;
 

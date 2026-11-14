@@ -43,7 +43,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 40, height: 40);
   // One tile covers the canvas: the aligned grid — the engine's, where a
-  // selection cuts (`cutOnTheEngineOnly`).
+  // selection cuts (`drawnByTheEngineAlone`).
   final tileSize = gpuTileSide;
 
   BrushDab dab(double x, double y) => BrushDab(

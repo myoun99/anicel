@@ -388,11 +388,11 @@ bool _textsTouch(BitmapSurface holed, Rect rect) {
 ///
 /// Exact, because a stamp is a byte copy where it is opaque, and lands as
 /// the float surface itself holds it where nothing is under it
-/// (`BrushStampBlitter`, the landing's own kernel) — so where no partly
-/// clear pixel meets ink, the landed cel IS the float surface, pixel for
-/// pixel, and the keys are each pixel's own answer. The row is cleared
-/// first where the float covers, because the landing replaces what was
-/// there and a keyed pixel may be clear.
+/// (blend/tests.rs `over_nothing_every_mode_lands_the_source`) — so where
+/// no partly clear pixel meets ink, the landed cel IS the float surface,
+/// pixel for pixel, and the keys are each pixel's own answer. The row is
+/// cleared first where the float covers, because the landing replaces
+/// what was there and a keyed pixel may be clear.
 class _FloatOnNothing implements LandingPreview {
   _FloatOnNothing(this._float);
 

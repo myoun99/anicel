@@ -32,7 +32,7 @@ void main() {
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: 128,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     );
@@ -133,7 +133,7 @@ void main() {
         frameStore: c.frameStore,
         sessionStore: BrushFrameEditSessionStore(
           canvasSize: const CanvasSize(width: 16, height: 16),
-          tileSize: 4,
+          tileSize: 128,
         ),
         historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(sourceDabs: [_dab(x: 13, y: 13)]);

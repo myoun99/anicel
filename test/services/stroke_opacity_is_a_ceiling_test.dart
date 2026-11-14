@@ -39,7 +39,7 @@ void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   BitmapSurface emptySurface() =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: 8);
+      BitmapSurface(canvasSize: canvasSize, tileSize: 128);
 
   /// Paint over (2, 2), laid [flow] deep — the pixel well inside the nib.
   ///
@@ -142,7 +142,7 @@ void main() {
 
       final rasterizer = BrushLiveStrokeRasterizer(
         pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-        tileSize: 8,
+        tileSize: 128,
       )..strokeOpacity = opacity;
       rasterizer.blendFrom(dabs, from: 0);
       final live = rasterizer.preBlendedOverlayTile(
@@ -172,12 +172,16 @@ void main() {
 
       // The overlay uploads premultiplied bytes, so compare the one channel
       // the ceiling moves and the only one premultiplication leaves alone.
-      for (var i = 0; i < 64; i += 1) {
-        expect(
-          live!.readPremultiplied(Uint8List.fromList)[i * 4 + 3],
-          expected[i * 4 + 3],
-          reason: 'pixel $i: what is on screen IS what commits',
-        );
+      // The live tile is the engine's, a row of it 128 pixels.
+      final shown = live!.readPremultiplied(Uint8List.fromList);
+      for (var y = 0; y < 8; y += 1) {
+        for (var x = 0; x < 8; x += 1) {
+          expect(
+            shown[(y * 128 + x) * 4 + 3],
+            expected[(y * 8 + x) * 4 + 3],
+            reason: 'pixel ($x, $y): what is on screen IS what commits',
+          );
+        }
       }
     });
 
@@ -188,7 +192,7 @@ void main() {
     test('with no selection the ceiling still reaches the kernel', () {
       final rasterizer = BrushLiveStrokeRasterizer(
         pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-        tileSize: 8,
+        tileSize: 128,
       )..strokeOpacity = 0.5;
       rasterizer.blendFrom([
         for (var i = 0; i < 30; i += 1) pixelDab(i),
@@ -202,7 +206,7 @@ void main() {
       )!;
 
       expect(
-        live.readPremultiplied(Uint8List.fromList)[(2 * 8 + 2) * 4 + 3],
+        live.readPremultiplied(Uint8List.fromList)[(2 * 128 + 2) * 4 + 3],
         lessThanOrEqualTo(128),
         reason:
             'the mask is built from the ceiling alone when there is no '

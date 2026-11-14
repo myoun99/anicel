@@ -33,11 +33,11 @@ void main() {
         '(${steadied ? 'a steadied line' : 'a line as the pen went'})', (
       tester,
     ) async {
-      final overlay = ActiveStrokeOverlayModel(tileSize: 16);
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
       addTearDown(overlay.dispose);
       final cel = BitmapSurface(
         canvasSize: const CanvasSize(width: 200, height: 40),
-        tileSize: 16,
+        tileSize: 128,
       );
       await tester.pumpWidget(
         MaterialApp(

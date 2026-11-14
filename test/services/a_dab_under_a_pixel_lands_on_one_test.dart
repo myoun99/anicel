@@ -223,7 +223,7 @@ void main() {
     final surface = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(
         canvasSize: const CanvasSize(width: 64, height: 64),
-        tileSize: 64,
+        tileSize: 128,
       ),
       sequence: BrushDabSequence(BrushTipStampCache.instance.resolveDabs(dabs)),
     ).surface;
@@ -231,7 +231,7 @@ void main() {
     for (final tile in surface.tiles.values) {
       tile.readPixels((_, view) {
         for (var i = 0; i < alpha.length; i += 1) {
-          alpha[i] = view[i * 4 + 3];
+          alpha[i] = view[((i ~/ 64) * tile.size + i % 64) * 4 + 3];
         }
       });
     }

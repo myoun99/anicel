@@ -98,7 +98,7 @@ void main() {
       mode: BrushBlendMode.color,
       erase: false,
     );
-    final shown = live.single!.landed!.pixels;
+    final shown = live.single!.landed.pixels;
     expect(promoted(stroke, base).single.tile.pixels, shown);
     stroke.clear();
   });

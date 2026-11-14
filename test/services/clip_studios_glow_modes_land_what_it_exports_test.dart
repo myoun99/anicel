@@ -1,12 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
-import 'package:anicel/src/services/brush_stroke_blend.dart';
 import 'package:anicel/src/services/import/clip_import_planner.dart';
 import 'package:anicel/src/services/photoshop/psd_blend_modes.dart';
+
+import '../helpers/pixels_laid_in_a_mode.dart';
 
 /// 🔬WHAT CLIP STUDIO EXPORTS (brush-fidelity Q3 · Q6, 유저 2026-10-17: 「13개
 /// + 클튜의 발광 둘」): one flat stroke over a grey ramp, exported under each
@@ -52,18 +51,18 @@ const _exported = <BrushBlendMode, List<({int source, int ground, int landed})>>
   ],
 };
 
-/// [source] at [alpha] blended onto [ground] at [groundAlpha], grey.
+/// [source] at [alpha] laid on [ground] at [groundAlpha] by the engine,
+/// grey ([pixelsLaidInAMode]).
 List<int> _land(
   BrushBlendMode mode, {
   required int source,
   required int alpha,
   required int ground,
   int groundAlpha = 255,
-}) => blendStrokeRegionPixels(
-  dst: Uint8List.fromList([ground, ground, ground, groundAlpha]),
-  src: Uint8List.fromList([source, source, source, alpha]),
-  mode: mode,
-  pixelCount: 1,
+}) => pixelsLaidInAMode(
+  mode,
+  src: [source, source, source, alpha],
+  dst: [ground, ground, ground, groundAlpha],
 );
 
 void main() {

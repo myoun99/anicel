@@ -100,7 +100,6 @@ import 'canvas/stroke_in_flight.dart';
 import 'session/cache_budgets.dart';
 import '../services/memory_allowance.dart';
 import '../services/brush_tip_stamp_cache.dart';
-import '../services/brush_live_stroke_rasterizer.dart';
 import '../services/history_manager.dart';
 import '../services/history_places.dart';
 import '../services/project_repository.dart';
@@ -458,7 +457,6 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.byteBudget = budgets.undo;
     playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
-    BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
     // The two the allowance did not reach until 2026-09-16 (Q2): the
     // framework's image cache, seeded by the binding before any session,
     // and the engine's parked tile blocks, a compile-time cap until then.

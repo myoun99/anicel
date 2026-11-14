@@ -137,7 +137,7 @@ void main() {
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(
         canvasSize: const CanvasSize(width: 32, height: 32),
-        tileSize: 32,
+        tileSize: 128,
       ),
       sequence: BrushDabSequence([resolved]),
     );
@@ -171,7 +171,7 @@ void main() {
         materializeBrushDabSequenceOnBitmapSurface(
           surface: BitmapSurface(
             canvasSize: const CanvasSize(width: 64, height: 64),
-            tileSize: 64,
+            tileSize: 128,
           ),
           sequence: BrushDabSequence([BrushTipStampCache().resolveDab(dab)]),
         ).surface;

@@ -32,7 +32,7 @@ import 'package:anicel/src/services/selection_clip.dart';
 /// once now, which is what the overlay does.
 void main() {
   const canvasSize = CanvasSize(width: 192, height: 128);
-  const tileSize = 64;
+  const tileSize = 128;
   const layerId = LayerId('l');
   const frameId = FrameId('f');
 

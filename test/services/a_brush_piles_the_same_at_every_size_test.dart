@@ -97,7 +97,7 @@ double _pile(List<BrushDab> dabs) {
   final surface = materializeBrushDabSequenceOnBitmapSurface(
     surface: BitmapSurface(
       canvasSize: const CanvasSize(width: 400, height: 400),
-      tileSize: 64,
+      tileSize: 128,
     ),
     sequence: BrushDabSequence(BrushTipStampCache().resolveDabs(dabs)),
   ).surface;

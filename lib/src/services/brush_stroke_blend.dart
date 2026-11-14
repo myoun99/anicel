@@ -3,7 +3,6 @@ import '../models/tiles_covering.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
@@ -16,30 +15,17 @@ import '../models/dirty_region.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuBlend;
 
 import '../native/engine_tile_ledger.dart';
-import 'brush_stamp_span_kernel.dart';
 
-/// BB-1 (R26 #9): the stroke-level blend kernel.
-///
-/// A brush blend applies ONCE per stroke: the live rasterizer's
-/// straight-alpha stroke buffer blends against the cel's pixels within
-/// the stroke bounds, and the RESULT lands through the ordinary stamp
-/// kernels (an erase-rect pass then a source-over pass — see
-/// `compositeStrokePixelsOntoBitmapSurface`). Never dab-by-dab:
-/// overlapping dabs inside one stroke must not double-apply the mode.
-///
-/// Math: the W3C/Skia separable-blend equation on straight alpha —
-///   αo = αs + αd(1-αs)
-///   Co = [ αs(1-αd)Cs + αd(1-αs)Cd + αs·αd·B(Cs,Cd) ] / αo
-/// in doubles per channel (softLight needs floats anyway; this is a
-/// one-shot pen-up pass over stroke bounds, not a per-frame path). The
-/// live overlay runs the SAME math per dirty tile (R27 #4,
-/// [preBlendStrokeOverlayPixels]) — live and committed pixels are one
-/// set of bytes, no GPU approximation anywhere.
-///
-/// Untouched pixels stay BYTE-EXACT: source alpha 0 copies the
-/// destination verbatim (the erase-rect landing pass covers the whole
-/// bounds, so any drift here would corrupt pixels the stroke never
-/// touched).
+// BB-1 (R26 #9): a brush blend applies ONCE per stroke — the stroke's
+// buffer laid on the cel in its mode, never dab by dab (overlapping dabs
+// inside one stroke must not double-apply the mode). The engine lays it,
+// the live overlay's pre-blend and the pen-up landing alike
+// (`compositeStrokePixelsOntoBitmapSurface`, blend.wgsl's `blend_laid`),
+// so what shows is what lands. ↩️Till 2026-11-14 the stroke-level blend
+// was written here too, in doubles (`blendStrokeRegionPixels`), with the
+// overlay's pre-blend beside it (`preBlendStrokeOverlayPixels`, R27 #4) —
+// for an overlay on a grid parted from its cel's, a road the app never
+// took (board `the-off-engine-cpu-commit-lives-only-for-tests`).
 
 /// The surface's straight-RGBA pixels within [bounds], BOUNDS-LOCAL
 /// (row-major, stride = bounds width). Missing tiles read transparent.
@@ -111,7 +97,7 @@ int strokeOpacityCoverage(double opacity) =>
 ///
 /// ↩️It folded a selection's mask in till 2026-11-14 — into the MASK, not
 /// as a second pass, so that every road computed `mul255(a, mul255(m, o))`
-/// — and a selection cuts on the engine alone now (`cutOnTheEngineOnly`).
+/// — and a selection cuts on the engine alone now (`drawnByTheEngineAlone`).
 Uint8List? strokeCoverageMask({
   required int pixelCount,
   required double opacity,
@@ -125,16 +111,17 @@ Uint8List? strokeCoverageMask({
 
 /// THE coverage rule (R26 #18): scales a straight-alpha stroke buffer's
 /// ALPHA by [mask]'s coverage, in place — the stroke's opacity ceiling
-/// (F-12) off the engine's grid, which the commit's buffer and the live
-/// pre-blend both go through, so the preview, the committed pixels and a
-/// redo round it the same (Skia's mul-div-255).
+/// (F-12) on a stroke handed over as a buffer, which the commit's buffer
+/// goes through, so the committed pixels and a redo round it the same
+/// (Skia's mul-div-255). ↩️The overlay's Dart pre-blend went through it
+/// too till 2026-11-14.
 ///
 /// ↩️It was THE selection rule till 2026-11-14: every path that confined
 /// a stroke to a selection went through it — the live pre-blend, the
 /// commit's buffer, a fill's stamp bytes — where three rules had agreed
 /// only while masks were binary ("zero the texel" and "scale alpha by 0"
 /// part the moment a mask goes soft). A selection cuts on the engine
-/// alone now (`cutOnTheEngineOnly`).
+/// alone now (`drawnByTheEngineAlone`).
 ///
 /// RGB is left alone deliberately. Alpha 0 is the documented "the
 /// destination survives untouched" input of every commit kernel — none
@@ -262,7 +249,7 @@ int nonSeparableBlendModeNativeId(NonSeparableBlendMode mode) {
 /// `BrushBlendMode` share by construction ([BrushBlendMode.separable]).
 ///
 /// A mode that [SeparableBlendMode.glows] has the B of the mode it glows:
-/// what differs is what its composite hands in ([blendStrokeRegionPixels]).
+/// what differs is what its composite hands in (blend.wgsl).
 double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
   switch (mode) {
     case SeparableBlendMode.darken:
@@ -360,305 +347,6 @@ double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
   }
 }
 
-/// The six that mix the three channels (brush-fidelity) — their B is a
-/// COLOUR of three, so they are not in [blendSeparableChannel]: W3C
-/// Compositing and Blending Level 1's non-separable modes (Lum, ClipColor,
-/// SetLum, Sat, SetSat) plus Photoshop's darker/lighter colour, which keep
-/// one of the two colours whole. SetSat is written the way Skia writes it
-/// (every channel (c - min) * s / (max - min)): the spec's max/mid/min
-/// assignment without ranking the three, ties included.
-///
-/// ↩️Till 2026-11-12 the C held a mirror (`qa_stroke_blend_triple`), every
-/// expression in the same grouping; the engine's six are blend.wgsl's.
-final class _ChannelMix {
-  final b = Float64List(3);
-  final _cs = Float64List(3);
-  final _cd = Float64List(3);
-
-  /// B for [mode] from the stroke pixel at [s] in [src] and the cel pixel at
-  /// [d] in [dst], into [b]. Reads the BYTES because darker/lighter colour
-  /// compare the two colours' channel totals, and a total of thirds of 255
-  /// in doubles can call two equal totals unequal.
-  void blend(BrushBlendMode mode, Uint8List src, int s, Uint8List dst, int d) {
-    final cs = _cs;
-    final cd = _cd;
-    for (var k = 0; k < 3; k += 1) {
-      cs[k] = src[s + k] / 255.0;
-      cd[k] = dst[d + k] / 255.0;
-    }
-    final sourceTotal = src[s] + src[s + 1] + src[s + 2];
-    final destTotal = dst[d] + dst[d + 1] + dst[d + 2];
-    switch (mode) {
-      case BrushBlendMode.darkerColor:
-        // A tie keeps what is there.
-        b.setAll(0, sourceTotal < destTotal ? cs : cd);
-      case BrushBlendMode.lighterColor:
-        b.setAll(0, sourceTotal > destTotal ? cs : cd);
-      case BrushBlendMode.hue:
-        b.setAll(0, cs);
-        _setSat(b, _sat(cd));
-        _setLum(b, _lum(cd));
-      case BrushBlendMode.saturation:
-        b.setAll(0, cd);
-        _setSat(b, _sat(cs));
-        _setLum(b, _lum(cd));
-      case BrushBlendMode.chroma:
-        b.setAll(0, cs);
-        _setLum(b, _lum(cd));
-      case BrushBlendMode.luminosity:
-        b.setAll(0, cd);
-        _setLum(b, _lum(cs));
-      case BrushBlendMode.color ||
-          BrushBlendMode.behind ||
-          BrushBlendMode.erase ||
-          BrushBlendMode.darken ||
-          BrushBlendMode.multiply ||
-          BrushBlendMode.colorBurn ||
-          BrushBlendMode.linearBurn ||
-          BrushBlendMode.subtract ||
-          BrushBlendMode.lighten ||
-          BrushBlendMode.screen ||
-          BrushBlendMode.colorDodge ||
-          BrushBlendMode.glowDodge ||
-          BrushBlendMode.add ||
-          BrushBlendMode.glowAdd ||
-          BrushBlendMode.overlay ||
-          BrushBlendMode.softLight ||
-          BrushBlendMode.hardLight ||
-          BrushBlendMode.difference ||
-          BrushBlendMode.vividLight ||
-          BrushBlendMode.linearLight ||
-          BrushBlendMode.pinLight ||
-          BrushBlendMode.hardMix ||
-          BrushBlendMode.exclusion ||
-          BrushBlendMode.divide:
-        throw ArgumentError.value(mode, 'mode', 'mixes no channels');
-    }
-  }
-
-  static double _min(Float64List c) {
-    final low = c[0] < c[1] ? c[0] : c[1];
-    return low < c[2] ? low : c[2];
-  }
-
-  static double _max(Float64List c) {
-    final high = c[0] > c[1] ? c[0] : c[1];
-    return high > c[2] ? high : c[2];
-  }
-
-  static double _lum(Float64List c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
-
-  /// ⚠️The two `!= 0` guards are Skia's: a grey whose luminosity landed an
-  /// ulp under 0 (or over 1) would otherwise divide 0 by 0, and
-  /// [_clampByte]'s `round()` throws on NaN.
-  static void _clip(Float64List c) {
-    final l = _lum(c);
-    final low = _min(c);
-    final high = _max(c);
-    for (var k = 0; k < 3; k += 1) {
-      var v = c[k];
-      if (low < 0 && l - low != 0) {
-        v = l + (v - l) * l / (l - low);
-      }
-      if (high > 1 && high - l != 0) {
-        v = l + (v - l) * (1 - l) / (high - l);
-      }
-      c[k] = v;
-    }
-  }
-
-  static void _setLum(Float64List c, double l) {
-    final d = l - _lum(c);
-    c[0] = c[0] + d;
-    c[1] = c[1] + d;
-    c[2] = c[2] + d;
-    _clip(c);
-  }
-
-  static double _sat(Float64List c) => _max(c) - _min(c);
-
-  static void _setSat(Float64List c, double s) {
-    final low = _min(c);
-    final sat = _max(c) - low;
-    for (var k = 0; k < 3; k += 1) {
-      c[k] = sat > 0 ? (c[k] - low) * s / sat : 0.0;
-    }
-  }
-}
-
-int _clampByte(double value) {
-  final rounded = (value * 255).round();
-  return rounded < 0 ? 0 : (rounded > 255 ? 255 : rounded);
-}
-
-/// R27 #4: the live overlay's PRE-BLEND — the exact bytes the pen-up
-/// commit will land for the region, computed the moment the tile shows.
-///
-/// The GPU preview approximated non-plain modes within ±1/255 because it
-/// re-derived the blend in float; the user's rule is ZERO drift in every
-/// mode. So the overlay stops handing the GPU anything to blend: this
-/// runs the SAME per-pixel math the commit runs — [blendStrokeRegionPixels]
-/// for the kernel modes, and for color/erase the stamp blitter ITSELF
-/// ([BrushStampBlitter]) at opacity 1, because that landing IS one
-/// stamp of the stroke buffer (see
-/// `compositeStrokePixelsOntoBitmapSurface`).
-/// The result draws as a plain REPLACEMENT tile, so pen-up cannot move a
-/// byte: identical bytes flow into identical composites.
-///
-/// [dst]/[src] are BOUNDS-LOCAL straight RGBA; [erase] covers both the
-/// eraser tool and the 소거 blend mode (the tool locks the mode, so the
-/// two arrive together). [BrushBlendMode.color] is that same stamp
-/// blitter's srcOver at opacity 1 (the color landing is one stamp of the
-/// stroke buffer) — every stroke mode pre-blends now (user rule 07-23:
-/// ONE display pipeline, live == commit unconditionally).
-/// [mask] (R28): 1 byte of coverage per pixel — the stroke's opacity
-/// ceiling ([applyCoverageToStrokeAlpha]) — scaling the STROKE's alpha
-/// before the composite, `a = mul255(a, mask)`, the same rounding the
-/// kernel uses. Null means nothing to scale and is byte-for-byte the
-/// pre-mask path. It applies to the ACCUMULATED stroke, never per dab:
-/// masking dabs individually would break soft masks, because
-/// srcOver(a₁·m, a₂·m) ≠ srcOver(a₁, a₂)·m.
-Uint8List preBlendStrokeOverlayPixels({
-  required Uint8List dst,
-  required Uint8List src,
-  required BrushBlendMode mode,
-  required bool erase,
-  required int pixelCount,
-  Uint8List? mask,
-}) {
-  if (mask != null) {
-    // One masked copy up front keeps the kernels below untouched — they
-    // are the commit's own code and must stay byte-identical to it.
-    final masked = Uint8List.fromList(src);
-    applyCoverageToStrokeAlpha(
-      pixels: masked,
-      mask: mask,
-      pixelCount: pixelCount,
-    );
-    src = masked;
-  }
-  final stampErase = erase || mode == BrushBlendMode.erase;
-  if (stampErase || mode == BrushBlendMode.color) {
-    // The color/erase landing IS one stamp of the stroke buffer at
-    // opacity 1, so this runs THE stamp blitter rather than a hand-kept
-    // mirror of it: sa==0 leaves the pixel verbatim (junk alpha==0 RGB
-    // included, exactly like the commit's skip), sa==255 copies or zeroes
-    // it byte-hard, and the general case runs the same double expressions
-    // in the same order — because it is the same code. The parity test
-    // pins the result against the real commit.
-    //
-    // The blitter writes IN PLACE, over the destination the commit is
-    // about to change. Here the caller wants a fresh buffer instead (the
-    // live rasterizer diffs the result against `dst` to decide whether
-    // the tile moved), so a copy of `dst` is what it blends into.
-    final result = Uint8List.fromList(dst);
-    BrushStampBlitter(
-      rgba: src,
-      dabOpacity: 1.0,
-      erase: stampErase,
-    ).blendSpanInPlace(result, 0, 0, pixelCount);
-    return result;
-  }
-  final result = blendStrokeRegionPixels(
-    dst: dst,
-    src: src,
-    mode: mode,
-    pixelCount: pixelCount,
-  );
-  // Mirror the LANDING normalization: the commit lands the kernel result
-  // through an erase-clear + srcOver stamp, whose srcOver skips α==0
-  // pixels — a fully transparent result pixel therefore lands as
-  // (0,0,0,0) whatever RGB the kernel's verbatim-copy rule carried.
-  // Without this the straight
-  // bytes differ where the base held α==0 junk RGB, even though both
-  // display identically after premultiply.
-  zeroFullyClearPixels(result);
-  return result;
-}
-
-/// Blends the stroke buffer [src] against the cel region [dst] (both
-/// BOUNDS-LOCAL straight RGBA of [pixelCount] pixels) through [mode],
-/// returning the RESULT region the landing pass writes verbatim.
-Uint8List blendStrokeRegionPixels({
-  required Uint8List dst,
-  required Uint8List src,
-  required BrushBlendMode mode,
-  required int pixelCount,
-}) {
-  assert(mode != BrushBlendMode.color && mode != BrushBlendMode.erase,
-      'color/erase land through the ordinary stamp kernels');
-  final result = Uint8List(pixelCount * 4);
-  // Null for the six that mix the channels — their B comes from [mix].
-  final separable = mode.separable;
-  final mix = separable == null ? _ChannelMix() : null;
-  final glows = separable?.glows ?? false;
-  for (var i = 0; i < pixelCount; i += 1) {
-    final o = i * 4;
-    final sa = src[o + 3];
-    if (sa == 0) {
-      result[o] = dst[o];
-      result[o + 1] = dst[o + 1];
-      result[o + 2] = dst[o + 2];
-      result[o + 3] = dst[o + 3];
-      continue;
-    }
-    final da = dst[o + 3];
-    if (mode == BrushBlendMode.behind) {
-      if (da == 255) {
-        result[o] = dst[o];
-        result[o + 1] = dst[o + 1];
-        result[o + 2] = dst[o + 2];
-        result[o + 3] = 255;
-        continue;
-      }
-      if (da == 0) {
-        result[o] = src[o];
-        result[o + 1] = src[o + 1];
-        result[o + 2] = src[o + 2];
-        result[o + 3] = sa;
-        continue;
-      }
-      // destination-over on straight alpha.
-      final as_ = sa / 255.0;
-      final ad = da / 255.0;
-      final ao = ad + as_ * (1 - ad);
-      for (var c = 0; c < 3; c += 1) {
-        result[o + c] = _clampByte(
-          (ad * dst[o + c] / 255.0 + (1 - ad) * as_ * src[o + c] / 255.0) / ao,
-        );
-      }
-      result[o + 3] = _clampByte(ao);
-      continue;
-    }
-    if (da == 0) {
-      result[o] = src[o];
-      result[o + 1] = src[o + 1];
-      result[o + 2] = src[o + 2];
-      result[o + 3] = sa;
-      continue;
-    }
-    final as_ = sa / 255.0;
-    final ad = da / 255.0;
-    final ao = as_ + ad * (1 - as_);
-    // One composite for both kinds of B: per channel, or a colour of three.
-    mix?.blend(mode, src, o, dst, o);
-    for (var c = 0; c < 3; c += 1) {
-      final cs = src[o + c] / 255.0;
-      final cd = dst[o + c] / 255.0;
-      final b = mix == null
-          ? blendSeparableChannel(separable!, glows ? cs * as_ : cs, cd)
-          : mix.b[c];
-      result[o + c] = _clampByte(
-        glows
-            ? (as_ * (1 - ad) * cs + ad * b) / ao
-            : (as_ * (1 - ad) * cs + ad * (1 - as_) * cd + as_ * ad * b) / ao,
-      );
-    }
-    result[o + 3] = _clampByte(ao);
-  }
-  return result;
-}
-
 /// The byte alpha a stroke with a second tip shows where its first plane
 /// holds [firstWide] and its second [secondWide] (both alpha * 65535) —
 /// the view the bytes are rebuilt through. A channel's byte is its
@@ -725,8 +413,8 @@ double dualViewLevel(double first, double second, BrushDualView view) {
 /// above that floor — fully once the paper stands [paperHeightBand] above
 /// it.
 ///
-/// The tile kernel and the reference both read this (`blendDabTilesDart`,
-/// `forEachBrushPixelCoverage`); the engine's is `dab.wgsl`'s.
+/// The reference reads this (`forEachBrushPixelCoverage`); the engine's is
+/// `dab.wgsl`'s.
 double paperHeightCoverage(double coverage, double sample, double density) {
   final touched = (sample + density * coverage - 1.0) / paperHeightBand;
   if (touched <= 0.0) {
