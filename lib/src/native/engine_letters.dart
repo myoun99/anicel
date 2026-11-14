@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/lru.dart';
@@ -19,6 +17,7 @@ import '../ui/text/se_name_tag_paint.dart' show seNameTagShapes;
 import '../ui/text/text_measure.dart' show TextMeasure;
 import '../ui/theme/app_theme.dart' show AppTypography;
 import 'engine_faces.dart';
+import 'engine_tile_ledger.dart';
 
 /// THE GPU ENGINE'S LETTERS (rust/src/kernels/letters): a cel number's
 /// letters set by the engine itself, in the app's canvas letters' faces
@@ -33,8 +32,22 @@ import 'engine_faces.dart';
 /// row's placement, as it lays the row's picture.
 ///
 /// The plate is a surface of tiles while the app's tiles are the pixels the
-/// pool keeps (`TileHold.slotsOf`): the engine's raster read back, kept
-/// here by the letters, laid by the plan as any row's tiles are.
+/// pool keeps (`TileHold.slotsOf`): the engine's raster put in the pool's
+/// slots, the engine's alone, as a stroke's result lands
+/// ([EngineTileLedger.land]) — kept here by the letters, laid by the plan
+/// as any row's tiles are.
+///
+/// 🚨★NOT READ BACK (the-ui-thread-never-enters-the-driver B1-c,
+/// 2026-11-15; 🗣️유저 「근본적으로 고치는게 젤 좋으니까」, 관제 relaying): a
+/// picture the engine made is laid by the tiles it made, by the one door
+/// every such picture goes through — a plugin's output and a picture
+/// fetched in go the same way. ↩️The raster was read back to bytes here
+/// and stored in the pool again where the plan laid it: GPU → CPU → GPU,
+/// with this isolate waiting for the GPU at each plate. 🔬On the Surface
+/// Pro 11 (H57 c10, 서피스 · 캔버스 베이스 패널, the green band filling
+/// untouched) that read was 49 of the 64 stops past 100 ms on this isolate,
+/// 9,770 of their 12,994 ms — 351–425 ms at its longest, 99% of it the
+/// wait for what the GPU had queued before it; on the main PC 5–7 ms.
 class EngineLetters {
   EngineLetters._(this._composite, this._faces);
 
@@ -121,19 +134,20 @@ class EngineLetters {
       }
       try {
         final (:x0, :y0, :columns, :rows) = lettered.rect;
-        final bytes = lettered.read();
+        final asks = <TileAsk>[
+          for (var down = 0; down < rows; down++)
+            for (var across = 0; across < columns; across++)
+              (column: x0 + across, row: y0 + down, under: null),
+        ];
+        final landed = EngineTileLedger.instance.land(
+          EngineTileLedger.landedCel,
+          asks,
+          by: lettered.land,
+        );
         return on(
           tiles: {
-            for (var down = 0; down < rows; down++)
-              for (var across = 0; across < columns; across++)
-                TileCoord(x: x0 + across, y: y0 + down): BitmapTile(
-                  size: gpuTileSide,
-                  pixels: Uint8List.sublistView(
-                    bytes,
-                    (down * columns + across) * gpuTileBytes,
-                    (down * columns + across + 1) * gpuTileBytes,
-                  ),
-                ),
+            for (final (at, (:column, :row, under: _)) in asks.indexed)
+              TileCoord(x: column, y: row): landed[at].tile!,
           },
           // A picture laid, kept whole wherever its letters stand — as the
           // walk's plate is, which no pasteboard cuts.

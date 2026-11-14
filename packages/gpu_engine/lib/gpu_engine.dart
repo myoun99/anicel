@@ -4401,17 +4401,25 @@ class GpuLettered {
   final Pointer<rust.Lettered> _lettered;
   final ({int x0, int y0, int columns, int rows}) rect;
 
-  /// Its pixels once the GPU is done — tile after tile, row by row of
-  /// [rect], each [gpuTileSide] rows of [gpuTileSide].
-  Uint8List read() => using((arena) {
-    final count = rect.columns * rect.rows * gpuTileBytes;
-    final bytes = arena<Uint8>(_held(count));
-    // ⚠️No test reaches the throw: a read fails only where the device does.
-    if (!rust.letteredRead(_engine._engine, _lettered, bytes, count)) {
-      throw GpuRefused(_lastError());
-    }
-    return Uint8List.fromList(bytes.asTypedList(count));
-  });
+  /// Puts each of its tiles [asks] names — by their column and row on the
+  /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing
+  /// puts what it made: the engine's alone, with no wait for the GPU. Each
+  /// landed is [GpuChange.inked]. As many of [asks], the first, as [pool]
+  /// has room for.
+  List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
+      _landed(
+        asks,
+        (_, coordinates, _, places, changes) => rust.letteredLand(
+          _engine._engine,
+          _lettered,
+          _engine._its(pool)._pool,
+          cel,
+          coordinates,
+          asks.length,
+          places,
+          changes,
+        ),
+      );
 
   void free() => rust.letteredFree(_lettered);
 }

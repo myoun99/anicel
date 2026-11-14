@@ -3,7 +3,7 @@
 //! passes built in Rust do, and what is refused says why.
 
 use super::*;
-use crate::kernels::composite::TILE_BYTES;
+use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::composite::tests::rig;
 use crate::kernels::letters::glyphs_tests::{faces, file, here, run};
 use crate::testing::{last_error, read_buffer};
@@ -65,12 +65,35 @@ fn run_of(letters: *mut Lettering, text: &str, at: [f32; 6]) -> bool {
     }
 }
 
-/// The straight RGBA8 tiles `lettered` holds, and where.
+/// The straight RGBA8 tiles `lettered` holds, and where: each of `rect`'s
+/// landed in a slot of a pool of its own through the ABI, and read there.
 fn read(engine: &Engine, lettered: *mut Lettered, rect: [i32; 4]) -> ([i32; 4], Vec<u8>) {
-    let mut bytes = vec![0; rect[2] as usize * rect[3] as usize * TILE_BYTES as usize];
-    // SAFETY: `bytes` holds every tile of `rect`.
-    let read = unsafe { gpu_engine_lettered_read(engine, lettered, bytes.as_mut_ptr(), bytes.len()) };
-    assert!(read, "{}", last_error());
+    let [x0, y0, columns, rows] = rect;
+    let asks: Vec<i32> =
+        (0..rows).flat_map(|down| (0..columns).flat_map(move |across| [x0 + across, y0 + down])).collect();
+    let count = asks.len() / 2;
+    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let (mut places, mut changes) = (vec![0; count], vec![0; count]);
+    // SAFETY: every pointer is live, `asks` holds `2 × count` and the rest
+    // `count`.
+    let landed = unsafe {
+        gpu_engine_lettered_land(
+            engine,
+            lettered,
+            &mut pool,
+            cel.0,
+            asks.as_ptr(),
+            count,
+            places.as_mut_ptr(),
+            changes.as_mut_ptr(),
+        )
+    };
+    assert_eq!(landed, count as isize, "{}", last_error());
+    assert!(changes.iter().all(|&change| change == 1), "each landed inked");
+    let places: Vec<TileAt> = places.into_iter().map(|word| TileAt::of_word(word).expect("a slot")).collect();
+    let mut bytes = vec![0; count * TILE_BYTES as usize];
+    pool.read(engine, &places, &mut bytes).expect("read");
     // SAFETY: made by `gpu_engine_letters_set`.
     unsafe { gpu_engine_lettered_free(lettered) };
     (rect, bytes)

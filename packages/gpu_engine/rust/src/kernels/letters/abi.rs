@@ -1,9 +1,9 @@
 //! The letters' C ABI (cel-number-on-the-engine-letters): the app hands
 //! the engine its faces once — each family's files, families in the order
 //! a letter goes down them — and a picture of letters a pass at a time,
-//! each run as the app's layout set it, and reads back what they make: the
-//! straight RGBA8 tiles of one rectangle of the grid, which the app holds
-//! as it holds a row's picture. Where a letter stands is the app's to say
+//! each run as the app's layout set it, and lands what they make — the
+//! straight RGBA8 tiles of one rectangle of the grid — in a pool's slots,
+//! which the app holds as it holds a row's picture. Where a letter stands is the app's to say
 //! ([`Run`]); which glyphs it takes and how they raster, the engine's.
 
 #[cfg(test)]
@@ -12,6 +12,10 @@ mod tests;
 use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, taken_bytes};
 use crate::fail;
 use crate::kernels::composite::Composite;
+use crate::kernels::dab::abi::reported;
+use crate::kernels::dab::landing::placed;
+use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::write::Change;
 
 use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
 use super::{Lettered, Pass, set};
@@ -348,29 +352,43 @@ pub unsafe extern "C" fn gpu_engine_letters_set(
     })
 }
 
-/// Copies `lettered`'s pixels — straight RGBA8, tile after tile, row by
-/// row of its rectangle — into `bytes` once the GPU is done, `capacity` of
-/// them at most. False on failure; see the last error.
+/// Puts each of `lettered`'s tiles that `asks` names — its column and row
+/// on the grid, `count` of them — in a fresh slot of `cel`, as a landing
+/// puts what it made ([`placed`]): the engine's alone, with no wait for the
+/// GPU. Returns as [`gpu_engine_stroke_land`] does, each landed inked.
+///
+/// [`gpu_engine_stroke_land`]: crate::kernels::dab::abi::gpu_engine_stroke_land
 ///
 /// # Safety
-/// `engine` and `lettered` are live and `bytes` holds `capacity`.
+/// `engine`, `lettered` and `pool` are live, the pool made on `engine`;
+/// `asks` holds `2 × count`, and `places` and `changes` hold `count`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_lettered_read(
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_lettered_land(
     engine: *const Engine,
     lettered: *const Lettered,
-    bytes: *mut u8,
-    capacity: usize,
-) -> bool {
+    pool: *mut Pool,
+    cel: u32,
+    asks: *const i32,
+    count: usize,
+    places: *mut u32,
+    changes: *mut u8,
+) -> isize {
     // SAFETY: see the function's contract.
-    let (engine, lettered) = unsafe { (&*engine, &*lettered) };
+    let (engine, lettered, pool) = unsafe { (&*engine, &*lettered, &mut *pool) };
     engine.on_thread(|| {
-        let Some(read) = engine.read_buffer(&lettered.tiles) else {
-            return false;
-        };
-        let count = read.len().min(capacity);
-        // SAFETY: `bytes` holds `capacity`, and `count` is no more.
-        unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
-        true
+        // SAFETY: see the function's contract.
+        let asks = unsafe { std::slice::from_raw_parts(asks, 2 * count) };
+        let landed = asks
+            .chunks_exact(2)
+            .map(|tile| lettered.index_of(tile[0], tile[1]))
+            .collect::<Option<Vec<usize>>>()
+            .and_then(|indices| {
+                let inked = indices.into_iter().map(|index| (index, Change::Inked));
+                placed(engine, (pool, Cel(cel)), &lettered.tiles, inked)
+            });
+        // SAFETY: see the function's contract.
+        unsafe { reported(landed, places, changes) }
     })
 }
 

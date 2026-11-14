@@ -136,6 +136,21 @@ pub(crate) struct Lettered {
     pub(crate) tiles: wgpu::Buffer,
 }
 
+impl Lettered {
+    /// The place among its tiles of the tile at (`column`, `row`) of the
+    /// grid — none, the last error, off its rectangle.
+    pub(crate) fn index_of(&self, column: i32, row: i32) -> Option<usize> {
+        let TileRect { x0, y0, columns, rows } = self.rect;
+        let (across, down) = (column - x0, row - y0);
+        if !(0..columns as i32).contains(&across) || !(0..rows as i32).contains(&down) {
+            return fail(format!(
+                "tile ({column}, {row}) is off the letters' {columns} × {rows} at ({x0}, {y0})"
+            ));
+        }
+        Some(down as usize * columns as usize + across as usize)
+    }
+}
+
 /// `layers`, bottom to top, laid over nothing into the tiles of the one
 /// rectangle that holds every pixel they cover. Submits the work; the
 /// caller waits.

@@ -1779,13 +1779,26 @@ external Pointer<Lettered> lettersSet(
 );
 
 @Native<
-  Bool Function(Pointer<Engine>, Pointer<Lettered>, Pointer<Uint8>, Size)
->(symbol: 'gpu_engine_lettered_read')
-external bool letteredRead(
+  IntPtr Function(
+    Pointer<Engine>,
+    Pointer<Lettered>,
+    Pointer<Pool>,
+    Uint32,
+    Pointer<Int32>,
+    Size,
+    Pointer<Uint32>,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_lettered_land')
+external int letteredLand(
   Pointer<Engine> engine,
   Pointer<Lettered> lettered,
-  Pointer<Uint8> bytes,
-  int capacity,
+  Pointer<Pool> pool,
+  int cel,
+  Pointer<Int32> asks,
+  int count,
+  Pointer<Uint32> places,
+  Pointer<Uint8> changes,
 );
 
 @Native<Void Function(Pointer<Lettered>)>(symbol: 'gpu_engine_lettered_free')
