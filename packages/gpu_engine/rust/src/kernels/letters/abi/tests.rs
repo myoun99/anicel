@@ -160,6 +160,37 @@ fn a_picture_built_call_by_call_is_the_one_built_in_rust() {
 }
 
 #[test]
+fn each_tile_lands_in_its_place_across_and_down() {
+    let rig = rig();
+    let handed_faces = handed();
+    assert!(!handed_faces.is_null(), "{}", last_error());
+    let letters = gpu_engine_letters_new();
+    // SAFETY: `letters` is live; the rect holds four words.
+    unsafe {
+        assert!(gpu_engine_letters_pass(letters, 0xFF20_2020, false, 0));
+        assert!(gpu_engine_letters_rect(letters, WORDS.as_ptr(), [10 * 64, 20 * 64, 300 * 64, 200 * 64].as_ptr()));
+    }
+    let mut rect = [0; 4];
+    // SAFETY: every pointer is live.
+    let lettered = unsafe {
+        gpu_engine_letters_set(letters, rig.engine, &rig.composite, handed_faces, WORDS.as_ptr(), rect.as_mut_ptr())
+    };
+    assert!(!lettered.is_null(), "{}", last_error());
+    assert_eq!(rect[2..], [3, 2], "⛔premise: three columns of tiles and two rows");
+    // SAFETY: made by `gpu_engine_letters_set`, freed by `read`.
+    let set = read_buffer(rig.engine, unsafe { &(*lettered).tiles });
+
+    let (_, landed) = read(rig.engine, lettered, rect);
+
+    assert!(landed == set, "a tile landed in another's place");
+    // SAFETY: each came from its `_new`.
+    unsafe {
+        gpu_engine_letters_free(letters);
+        gpu_engine_faces_free(handed_faces);
+    }
+}
+
+#[test]
 fn faces_handed_over_in_no_family_order_are_refused() {
     let biz = file("BIZUDPGothic-Regular.ttf");
     assert!(faces_of(&[(biz.clone(), 1)]).is_null());
