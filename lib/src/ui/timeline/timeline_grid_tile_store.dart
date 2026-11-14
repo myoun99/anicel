@@ -389,7 +389,9 @@ class TimelineGridTileStore {
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     // What a moved span is told by is what it bakes: its substrate and its
     // ink, each read once. ↩️The bake read both again (🔬the ink 48–57µs a
-    // span, the substrate 39–72µs, debug — 11-15).
+    // span, the substrate 39–72µs, debug, asked outside a paint — 11-15;
+    // inside a paint's one pass, which reads each cell once anyway, the two
+    // reads were within the noise between runs).
     final read = _SpanRead(this, asked);
     final entry = _touched(key);
     if (entry != null && entry.showsNow(read)) {
