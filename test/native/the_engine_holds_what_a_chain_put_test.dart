@@ -21,12 +21,16 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/engine_chain_holds.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/a_shown_surface.dart';
 import '../helpers/an_effect_sampled.dart';
 import '../helpers/engine_screen_pins.dart';
@@ -471,5 +475,57 @@ void main() {
       expect(holds.idOf('a'), isNot(id));
       holds.settleOnce(null);
     });
+
+    // 🗣️유저 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서
+    // 전부」 — the frames' pictures made ahead give way on the playback line
+    // to what a stroke's steps kept (`FramePictures.giveWayToSteps`).
+    test('🚨the frames\' pictures give way on the line to what a step kept '
+        'once its run is done, not before, nor again for no more', () async {
+      final line = _LineGivenWayOn();
+      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+      addTearDown(images.dispose);
+      final store = aStoreOfPictures();
+      addTearDown(store.dispose);
+      final pictures = runOver(
+        images,
+        store,
+        canvasSize: canvas,
+        stackOf: (_) => const [],
+        line: line,
+      ).pictures;
+      addTearDown(pictures.dispose);
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+
+      final run = screen.compose(frameOf(5), holds: pictures.heldNodes);
+      pictures.giveWayToSteps();
+      expect(line.givenWay, 0, reason: 'what the step kept is still to weigh');
+      await run;
+      await pumpEventQueue();
+
+      expect(
+        pictures.heldNodes.heldBytes,
+        greaterThan(0),
+        reason: '⛔premise: the folder\'s chain kept what it put',
+      );
+      expect(line.givenWay, 1);
+      pictures.giveWayToSteps();
+      expect(line.givenWay, 1, reason: 'nothing more kept');
+    });
   });
+}
+
+/// A playback line with room for all, counting each time the frames'
+/// pictures gave way on it.
+final class _LineGivenWayOn implements HeldNodesLine {
+  int givenWay = 0;
+
+  @override
+  int get bytesForNodes => 1 << 30;
+
+  @override
+  int get bytesLeftFree => 1 << 30;
+
+  @override
+  void giveWayToNodes() => givenWay += 1;
 }
