@@ -87,9 +87,24 @@ List<CanvasPoint> _closedContour(
 /// ⛔In exactly the order the pixel-by-pixel scan this replaced emitted
 /// them — row-major, then top, right, bottom, left within a pixel — so
 /// every contour starts where it always did and the dashes stay put.
+///
+/// A row's run is taken a STRETCH at a time — pixels the rows above and
+/// below cover alike — and a stretch's top and bottom are laid an edge
+/// each rather than a pixel's each: its top from its first pixel's corner,
+/// as that pixel laid its own; its bottom as its first pixel laid its own,
+/// then the rest from the stretch's end, as its last pixel laid its own.
+/// So every vertex an edge still starts from is laid when the scan laid
+/// it, beside the others there in the same order — where each contour
+/// starts and which way a corner turns stay put; a vertex an edge now
+/// passes over had the one boundary through it, and was laid after a
+/// vertex on the same contour that stays.
+/// ↩️A pixel's edge each, every pixel along a stretch a vertex: an
+/// inverse's outline was some twenty thousand edges to lay and walk (L2e,
+/// board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
 _EdgeTable _boundaryEdges(List<List<int>> rows, int width) {
   final edges = _EdgeTable(width + 1);
-  void edge(int x, int y, int way) => edges.add(y * (width + 1) + x, way);
+  void edge(int x, int y, int way, int span) =>
+      edges.add(y * (width + 1) + x, way, span);
 
   for (var y = 0; y < rows.length; y += 1) {
     final above = _RunCursor(y > 0 ? rows[y - 1] : const []);
@@ -102,18 +117,19 @@ _EdgeTable _boundaryEdges(List<List<int>> rows, int width) {
       while (x < end) {
         final up = above.covers(x);
         final down = below.covers(x);
-        if (!up) edge(x, y, _right);
-        if (x == end - 1) edge(x + 1, y, _down);
-        if (!down) edge(x + 1, y + 1, _left);
-        if (x == start) edge(x, y + 1, _up);
-        if (up && down) {
-          // Covered above and below, nothing has an edge until one of
-          // the three runs ends.
-          final next = math.min(math.min(above.end, below.end), end - 1);
-          x = math.max(x + 1, next);
-        } else {
-          x += 1;
+        final to = math.min(
+          end,
+          math.min(above.changesAfter(x), below.changesAfter(x)),
+        );
+        if (!up) edge(x, y, _right, to - x);
+        if (x == end - 1) edge(x + 1, y, _down, 1);
+        if (!down) edge(x + 1, y + 1, _left, 1);
+        if (x == start) edge(x, y + 1, _up, 1);
+        if (to - 1 > x) {
+          if (to == end) edge(to, y, _down, 1);
+          if (!down) edge(to, y + 1, _left, to - 1 - x);
         }
+        x = to;
       }
     }
   }
@@ -153,15 +169,16 @@ final class _EdgeTable {
 
   /// Open addressing by vertex: per slot, the vertex (-1 for none), then
   /// its untaken edges — the count in bits 4 and up, the first edge's way
-  /// in bits 0–1 and the second's in bits 2–3.
-  Int32List _slots = Int32List(2 << 10)..fillRange(0, 2 << 10, -1);
+  /// in bits 0–1 and the second's in bits 2–3 — then each one's span, in
+  /// vertices.
+  Int32List _slots = Int32List(4 << 10)..fillRange(0, 4 << 10, -1);
   int _bits = 10;
   int _used = 0;
 
   /// The vertices in the order their first edge was laid.
   final List<int> starts = [];
 
-  void add(int from, int way) {
+  void add(int from, int way, int span) {
     var slot = _slotOf(from);
     if (_slots[slot] < 0) {
       if ((_used + 1) * 2 > 1 << _bits) {
@@ -179,6 +196,7 @@ final class _EdgeTable {
     // that touch, which [pixelRunContours]' rows never hold.
     assert(count < 2, 'a third edge out of vertex $from');
     _slots[slot + 1] = (count + 1) << 4 | (held & 15) | way << (count * 2);
+    _slots[slot + 2 + count] = span;
     length += 1;
   }
 
@@ -188,8 +206,8 @@ final class _EdgeTable {
     return _slots[slot] >= 0 && _slots[slot + 1] >> 4 > 0;
   }
 
-  /// Takes the last untaken edge laid from [vertex] — the way it goes, or
-  /// -1 when none is left.
+  /// Takes the last untaken edge laid from [vertex] — the way it goes in
+  /// bits 0–1 and its span above them, or -1 when none is left.
   int take(int vertex) {
     final slot = _slotOf(vertex);
     if (_slots[slot] < 0) {
@@ -201,7 +219,7 @@ final class _EdgeTable {
       return -1;
     }
     _slots[slot + 1] = (count - 1) << 4 | (held & 15);
-    return held >> ((count - 1) * 2) & 3;
+    return _slots[slot + 1 + count] << 2 | held >> ((count - 1) * 2) & 3;
   }
 
   /// [vertex]'s slot (its index in [_slots]), or the empty slot it would
@@ -212,9 +230,9 @@ final class _EdgeTable {
     final block = ((vertex >> 4) * 0x9E3779B1 & 0xFFFFFFFF) >> (32 - _bits);
     var slot = (block ^ (vertex & 15)) & mask;
     while (true) {
-      final there = _slots[slot * 2];
+      final there = _slots[slot * 4];
       if (there < 0 || there == vertex) {
-        return slot * 2;
+        return slot * 4;
       }
       slot = (slot + 1) & mask;
     }
@@ -223,13 +241,12 @@ final class _EdgeTable {
   void _grow() {
     final slots = _slots;
     _bits += 1;
-    _slots = Int32List(2 << _bits)..fillRange(0, 2 << _bits, -1);
-    for (var slot = 0; slot < slots.length; slot += 2) {
+    _slots = Int32List(4 << _bits)..fillRange(0, 4 << _bits, -1);
+    for (var slot = 0; slot < slots.length; slot += 4) {
       final vertex = slots[slot];
       if (vertex >= 0) {
         final into = _slotOf(vertex);
-        _slots[into] = vertex;
-        _slots[into + 1] = slots[slot + 1];
+        _slots.setRange(into, into + 4, slots, slot);
       }
     }
   }
@@ -244,32 +261,46 @@ List<CanvasPoint> _walkContour(
 ) {
   var current = start;
   final contour = <CanvasPoint>[at(start)];
-  // ⚠️STRAIGHT RUNS COLLAPSE. The walk emits one vertex per pixel edge,
-  // so a plain rectangle would arrive as four thousand-point sides and
+  // ⚠️STRAIGHT RUNS COLLAPSE. The walk steps a side a pixel's edge at a
+  // time, so a plain rectangle would arrive with thousand-point sides and
   // be rebuilt into a `Path` on every animation tick. Merging while
   // walking makes an axis-aligned outline four points again; a true
   // staircase (a rotated or lassoed edge) keeps its steps, because
   // those steps ARE the answer.
+  // A run's end is made a point once, where the walk turns off it.
+  // ↩️It was made again at every step along the run: an inverse's outline
+  // was some twenty thousand points made for eight kept (L2e, board
+  // `a-selection-mask-is-built-on-the-cpu-at-every-move`).
   var lastWay = -1;
+  // Whether the contour's last point is behind [current] on a straight run.
+  var behind = false;
   // ⚠️Bounded by the edge count rather than trusted to close: a
   // malformed walk must end, not hang the paint thread.
   var guard = edges.length + 8;
   while (guard-- > 0) {
-    final way = edges.take(current);
-    if (way < 0) {
+    final taken = edges.take(current);
+    if (taken < 0) {
       break;
     }
-    final next = current + edges.steps[way];
+    final way = taken & 3;
+    final next = current + edges.steps[way] * (taken >> 2);
     if (next == start) {
       break;
     }
     if (way == lastWay) {
-      contour[contour.length - 1] = at(next);
+      behind = true;
     } else {
+      if (behind) {
+        contour[contour.length - 1] = at(current);
+        behind = false;
+      }
       contour.add(at(next));
     }
     lastWay = way;
     current = next;
+  }
+  if (behind) {
+    contour[contour.length - 1] = at(current);
   }
   return contour;
 }
@@ -296,6 +327,15 @@ final class _RunCursor {
     return _at + 1 < _runs.length && _runs[_at] <= x;
   }
 
-  /// Where the run [covers] last found ends — asked only after a yes.
-  int get end => _runs[_at + 1];
+  /// The first column past [x] that [covers] answers otherwise for than it
+  /// just did for [x] — asked only right after it.
+  int changesAfter(int x) {
+    if (_at + 1 >= _runs.length) {
+      return _never;
+    }
+    return _runs[_at] <= x ? _runs[_at + 1] : _runs[_at];
+  }
+
+  /// Past every column: no run is left to change [covers]' answer.
+  static const _never = 0x7FFFFFFF;
 }
