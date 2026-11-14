@@ -2329,15 +2329,15 @@ class BrushFrameStore {
   /// cels out ahead — the pasteboard's ([cutCelsAhead]) and the canvas
   /// resize's, which thaws them hot before this pass ever sees them
   /// ([moveCutCelsAhead]). What is left comes here:
-  /// • a sheet's ink taking its new size as its panel builds
-  ///   ([resizeAllBakedSurfacesSingleCanvas]) — no step, so no window to
-  ///   work behind; ⏳its own card;
   /// • an open healing a cel kept at a size its cut no longer has;
   /// • a cel kept anew while the window was up — cooled behind the cut the
   ///   ahead made of it hot — whose ref the ahead does not hold: an answer
   ///   can go stale, and never wrong.
   /// The canvas host's own resize passes here too, and finds every cel at
-  /// its size already: the resize step laid them there.
+  /// its size already: the resize step laid them there. ↩️A sheet's ink
+  /// came here too, every kept cel of every cut as its panel built, until
+  /// 2026-11-14 — it rewrites none now, and lays a cel on its paper as a
+  /// brush comes to it (`BrushFrameEditingCoordinator._laysCelsOnItsCanvas`).
   Map<BrushFrameKey, BitmapSurface> _rewriteKeptCels({
     required bool Function(BrushFrameKey key, AnicelCelFileRef ref) skips,
     required KeptCelRemake remake,
