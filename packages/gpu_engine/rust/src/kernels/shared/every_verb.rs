@@ -57,7 +57,7 @@ const ON_THEIR_CALLERS: [(&str, &str); 11] = [
 /// hand on the device — each named, under why: its body was read for it
 /// (2026-11-14), and a verb that comes after is read for it before it is
 /// written here.
-const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 10] = [
+const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
     (
         "opens an engine, on a thread made for it (`opened`)",
         &["gpu_engine_open", "gpu_engine_open_sole", "gpu_engine_open_first"],
@@ -78,6 +78,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 10] = [
             "gpu_engine_fingerprint_bytes",
             "gpu_engine_export_png_row_bytes",
             "gpu_engine_composited_bytes",
+            "gpu_engine_crc32_update",
         ],
     ),
     (
@@ -167,6 +168,11 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 10] = [
         &["gpu_engine_readout_rows"],
     ),
     ("the plug-in's reach, run on the CPU (fx_wgsl's `Kernel::reach`)", &["gpu_engine_plugin_reach"]),
+    (
+        "copies a face's file into the faces being handed, on its caller's heap: no device \
+         is asked till they are set up (`gpu_engine_faces_of`)",
+        &["gpu_engine_faces_file"],
+    ),
 ];
 
 /// Whether `verb` is handed the engine.

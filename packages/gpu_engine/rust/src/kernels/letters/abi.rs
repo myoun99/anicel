@@ -68,7 +68,7 @@ pub struct FacesHanded {
 /// into, and [`gpu_engine_faces_of`] takes.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_faces_handed() -> *mut FacesHanded {
-    Box::into_raw(Box::default())
+    hands_bytes(FacesHanded::default())
 }
 
 /// Copies a file — `length` bytes at `bytes`, alive for the call — into
