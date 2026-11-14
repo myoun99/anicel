@@ -318,7 +318,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 38] {
             let peaks = [1u16, 2, 3, 4];
             // SAFETY: the engine is live; `peaks` holds two lanes of two.
             let made = unsafe { gpu_engine_wave_peaks_new(first_engine(), peaks.as_ptr(), 2, 2) };
-            gives_back(name, made, gpu_engine_wave_peaks_free)
+            gives_back_unwaited(name, made, gpu_engine_wave_peaks_free)
         }),
         ("gpu_engine_surface_free", |name| {
             // As the platform makes the ones it shows: RGBA where it can,

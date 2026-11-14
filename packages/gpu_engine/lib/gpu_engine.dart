@@ -3952,13 +3952,16 @@ class GpuGridLay {
 
 /// Where a strip shows its sound, in the integers the waveform pass takes
 /// (rust/src/kernels/timeline/wave `WaveView`): the strip pixel the
-/// picture's first column (or row, running down) is; pixels a frame, q8;
+/// picture's first column (or row, running down) is; how many pixels long
+/// the strip is, a column before its first or past its last showing what
+/// the picture holds; pixels a frame, q8;
 /// frames a second as a fraction; the peaks' buckets a second; frames into
 /// the file before the strip starts; the strip's extent across, q8; the
 /// gain, q16 (65536 is 1); the band's straight colour, r | g<<8 | b<<16 |
 /// a<<24.
 typedef GpuWaveView = ({
   int along0,
+  int length,
   bool vertical,
   int frameQ8,
   int fpsNumerator,
@@ -3989,8 +3992,8 @@ class GpuWave {
   final GpuEngine _engine;
   final Pointer<rust.Wave> _wave;
 
-  /// Draws [peaks] into [picture] over clear as [view] shows them —
-  /// submitted, not waited for, as [GpuGrid.draw] is. Throws for a view
+  /// Draws [peaks] into [picture] over what it holds as [view] shows them
+  /// — submitted, not waited for, as [GpuGrid.draw] is. Throws for a view
   /// the pass refuses.
   void draw(GpuGridPicture picture, GpuWavePeaks peaks, GpuWaveView view) =>
       _done(
@@ -4000,6 +4003,7 @@ class GpuWave {
           _engine._its(picture)._picture,
           _engine._its(peaks)._peaks,
           view.along0,
+          view.length,
           view.vertical,
           view.frameQ8,
           view.fpsNumerator,
@@ -4016,8 +4020,10 @@ class GpuWave {
 }
 
 /// A sound's peaks as the engine keeps them for [GpuWave.draw]: [lanes]
-/// lanes of [buckets] q16 peaks — round(min(|s|, 1) · 65535) — each.
-class GpuWavePeaks implements _OfAnEngine {
+/// lanes of [buckets] q16 peaks — round(min(|s|, 1) · 65535) — each, let go
+/// of with the object, as a stamp's picture is ([GpuStampPicture]): they
+/// are the sound's as long as the sound is.
+final class GpuWavePeaks implements Finalizable, _OfAnEngine {
   /// [peaks]' lanes, all of one length, uploaded once. Throws for none, an
   /// empty one, lanes of different lengths, or more than the pass takes.
   factory GpuWavePeaks(GpuEngine engine, List<Uint16List> peaks) =>
@@ -4041,7 +4047,15 @@ class GpuWavePeaks implements _OfAnEngine {
         if (made == nullptr) {
           throw GpuRefused(_lastError());
         }
-        return GpuWavePeaks._(engine, made, peaks.length, buckets);
+        final kept = GpuWavePeaks._(engine, made, peaks.length, buckets);
+        // Its table's bytes (rust WavePeaks::new): a level a doubling of
+        // the buckets it holds the most of.
+        _freed.attach(
+          kept,
+          made.cast(),
+          externalSize: count * buckets.bitLength * 2,
+        );
+        return kept;
       });
 
   GpuWavePeaks._(this._engine, this._peaks, this.lanes, this.buckets);
@@ -4052,7 +4066,11 @@ class GpuWavePeaks implements _OfAnEngine {
   final int lanes;
   final int buckets;
 
-  void free() => rust.wavePeaksFree(_peaks);
+  static final NativeFinalizer _freed = NativeFinalizer(
+    Native.addressOf<NativeFunction<Void Function(Pointer<rust.WavePeaks>)>>(
+      rust.wavePeaksFree,
+    ).cast(),
+  );
 }
 
 /// [argb] — a `Color`'s, A<<24|R<<16|G<<8|B — as the engine's colours

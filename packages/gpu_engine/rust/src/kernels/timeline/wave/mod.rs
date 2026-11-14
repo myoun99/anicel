@@ -123,6 +123,10 @@ impl WavePeaks {
 pub(crate) struct WaveView {
     /// The strip pixel the tile's first column (or row, running down) is.
     pub along0: i32,
+    /// How many pixels long the strip is: a column before its first or past
+    /// its last shows what the tile holds — a tile of a row's frames ends
+    /// where it ends, and a sound's strip where its block does.
+    pub length: i32,
     pub vertical: bool,
     /// Pixels a frame, q8.
     pub frame_q8: i32,
@@ -137,8 +141,6 @@ pub(crate) struct WaveView {
     pub gain_q16: i32,
     /// The band's straight colour, r | g<<8 | b<<16 | a<<24.
     pub rgba: u32,
-    /// The tile's bytes before the band, as an RGBA word.
-    pub background: u32,
 }
 
 /// Why `view` cannot be drawn, if it cannot.
@@ -154,6 +156,9 @@ fn fault_in(view: &WaveView) -> Option<String> {
     }
     if view.gain_q16 < 0 {
         return Some(format!("a gain of {} is below none", view.gain_q16));
+    }
+    if view.length < 0 {
+        return Some(format!("a strip {} long is shorter than none", view.length));
     }
     None
 }
@@ -175,6 +180,22 @@ fn edge_of(view: &WaveView, buckets: u32, e: i64) -> [u32; 2] {
         return [buckets - 1, 0];
     }
     [bucket as u32, (((numer % denom) << 16) / denom) as u32]
+}
+
+/// What `tile` holds is read from as the band is laid over it: a texture
+/// as big and of its format, which the run copies it into before the pass
+/// — a storage texture is not read where it is written.
+fn under_of(engine: &Engine, tile: &wgpu::Texture) -> wgpu::Texture {
+    engine.device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("wave under"),
+        size: tile.size(),
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: tile.format(),
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
 }
 
 /// A waveform tile's pass, one pipeline per texture format it has been run
@@ -229,11 +250,12 @@ impl WaveTile {
         Some(pipeline)
     }
 
-    /// Draws `peaks` into `tile` as `view` shows them — submitted, not
-    /// waited for, as a grid's tile is (`GridTile::run` has why): what
+    /// Lays `peaks` over what `tile` holds as `view` shows them — submitted,
+    /// not waited for, as a grid's tile is (`GridTile::run` has why): what
     /// reads the tile after comes after it on the same queue. None, with
-    /// the last error, for a view it refuses. ↩️It waited for the GPU and
-    /// gave back the wall time, which nothing read.
+    /// the last error, for a view it refuses. `tile` is copied from, as
+    /// every grid picture may be. ↩️It waited for the GPU and gave back the
+    /// wall time, which nothing read.
     pub(crate) fn run(
         &mut self,
         engine: &Engine,
@@ -261,7 +283,7 @@ impl WaveTile {
             view.across_q8 as u32,
             scale_q8,
             view.rgba,
-            view.background,
+            0,
             0,
             0,
         ]
@@ -270,21 +292,35 @@ impl WaveTile {
         .collect();
         engine.queue.write_buffer(&self.params, 0, &params);
         let along = if view.vertical { tile.height() } else { tile.width() };
+        // A column past either end of the strip has its two edges at the
+        // same place, and shows nothing of the band.
         let edges: Vec<u8> = (0..=along as i64)
-            .flat_map(|x| edge_of(view, peaks.buckets, view.along0 as i64 + x))
+            .map(|x| (view.along0 as i64 + x).clamp(0, view.length as i64))
+            .flat_map(|e| edge_of(view, peaks.buckets, e))
             .flat_map(|word| word.to_le_bytes())
             .collect();
         let edges = engine.filled("wave edges", &edges, wgpu::BufferUsages::STORAGE);
         let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
+        let under = under_of(engine, tile);
+        let under_view = under.create_view(&wgpu::TextureViewDescriptor::default());
         let mut bound = whole(&[(0, &self.params), (1, &peaks.words), (2, &edges)]);
         bound.push(wgpu::BindGroupEntry {
             binding: 3,
             resource: wgpu::BindingResource::TextureView(&tile_view),
         });
+        bound.push(wgpu::BindGroupEntry {
+            binding: 4,
+            resource: wgpu::BindingResource::TextureView(&under_view),
+        });
         let groups = flat((tile.width().div_ceil(8), tile.height().div_ceil(8)));
         let mut encoder = engine
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_texture(
+            tile.as_image_copy(),
+            under.as_image_copy(),
+            tile.size(),
+        );
         encode_on(
             engine,
             &mut encoder,

@@ -7,8 +7,9 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 
 /// A sound's wave reaches a frame grid's picture through the package's Dart
 /// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel ①): its peaks kept
-/// once ([GpuWavePeaks]) and drawn ([GpuWave.draw]) straight over clear, as
-/// the strip shows them — each field of the view where the pass takes it.
+/// once ([GpuWavePeaks]) and drawn ([GpuWave.draw]) straight over a fresh
+/// picture's clear, as the strip shows them — each field of the view where
+/// the pass takes it.
 /// How the band lands on pixels is the crate's to pin, and these are its
 /// hand cases (rust/src/kernels/timeline/wave/tests.rs, which writes out
 /// their sums) — here, what Dart hands it.
@@ -26,6 +27,7 @@ void main() {
   /// frame — on one lane 8 pixels across, white, unless said otherwise.
   GpuWaveView view({
     int along0 = 0,
+    int length = 1 << 20,
     bool vertical = false,
     int frameQ8 = 4 * 256,
     int fpsNumerator = 1,
@@ -37,6 +39,7 @@ void main() {
     int rgba = 0xFFFFFFFF,
   }) => (
     along0: along0,
+    length: length,
     vertical: vertical,
     frameQ8: frameQ8,
     fpsNumerator: fpsNumerator,
@@ -61,7 +64,6 @@ void main() {
     final peaks = GpuWavePeaks(appGpuEngine, [
       for (final lane in lanes) Uint16List.fromList(lane),
     ]);
-    addTearDown(peaks.free);
     wave.draw(picture, peaks, shown);
     return picture.read();
   }
@@ -129,6 +131,25 @@ void main() {
       none,
       none,
     ]);
+  });
+
+  // A strip 3 pixels long from the picture's column 2: the sound goes on
+  // either side of it, the band only where it is.
+  test('a column past either end of the strip is left as it was', () {
+    final bytes = drawn(
+      [List.filled(8, full)],
+      view(along0: -2, length: 3),
+      8,
+      8,
+    );
+    final band = [none, for (var y = 1; y < 7; y++) all, none];
+    for (var x = 0; x < 8; x++) {
+      expect(
+        column(bytes, 8, 8, x),
+        x >= 2 && x < 5 ? band : List.filled(8, none),
+        reason: 'column $x',
+      );
+    }
   });
 
   test('running down, the strip is the picture turned', () {

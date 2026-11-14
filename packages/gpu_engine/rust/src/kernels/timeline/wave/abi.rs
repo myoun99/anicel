@@ -1,14 +1,15 @@
 //! The waveform's C ABI (the-waveform-is-drawn-on-the-cpu-beside-its-kernel,
 //! 관제 2026-11-14): a sound's peaks handed over once and kept on the GPU,
 //! and a strip's stretch of them drawn into a frame grid's picture
-//! (`GridPicture`) over clear — which the view's screen lays as it lays the
-//! grid's tiles (`gpu_engine_grid_lay`): nothing comes back but whether it
-//! drew.
+//! (`GridPicture`) over what it holds — the row's own tile, which the
+//! view's screen lays (`gpu_engine_grid_lay`): nothing comes back but
+//! whether it drew. ↩️Over clear, a picture of the wave's own, till the
+//! card's Q2 (유저 2026-11-14 「(가)」).
 
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, let_go, let_go_unwaited};
 use crate::kernels::timeline::grid::GridPicture;
 
 use super::{WavePeaks, WaveTile, WaveView};
@@ -62,21 +63,28 @@ pub unsafe extern "C" fn gpu_engine_wave_peaks_new(
     })
 }
 
+/// The GC lets go of a sound's peaks (`GpuWavePeaks`), so this waits for
+/// none of it ([`let_go_unwaited`] has why); they count nothing.
+///
 /// # Safety
 /// `peaks` came from `gpu_engine_wave_peaks_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_wave_peaks_free(peaks: *mut WavePeaks) {
     // SAFETY: see the function's contract.
-    unsafe { let_go(peaks) };
+    unsafe { let_go_unwaited(peaks) };
 }
 
-/// Draws `peaks` into `picture` over clear as the strip shows them
+/// Draws `peaks` into `picture` over what it holds as the strip shows them
 /// ([`WaveView`]'s fields, in its order) — submitted, not waited for
 /// ([`WaveTile::run`]). False for a view the pass refuses, and on failure;
 /// see the last error.
 ///
 /// ⚠️Over clear, always, as a grid's tile is (`gpu_engine_grid_draw`): the
-/// picture lays over what the strip stands on.
+/// picture lays over what the strip stands on. ↩️Over what the picture
+/// holds since a sound's wave is baked into its row's cell tile
+/// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel-Q2, 유저 2026-11-14
+/// 「(가)」): a screen copies what it lays (lay.wgsl), so a picture of the
+/// wave's own laid over the cells' would clear them.
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`.
@@ -88,6 +96,7 @@ pub unsafe extern "C" fn gpu_engine_wave_draw(
     picture: *const GridPicture,
     peaks: *const WavePeaks,
     along0: i32,
+    length: i32,
     vertical: bool,
     frame_q8: i32,
     fps_numerator: u32,
@@ -103,6 +112,7 @@ pub unsafe extern "C" fn gpu_engine_wave_draw(
     engine.on_thread(|| {
         let view = WaveView {
             along0,
+            length,
             vertical,
             frame_q8,
             fps: (fps_numerator, fps_denominator),
@@ -111,7 +121,6 @@ pub unsafe extern "C" fn gpu_engine_wave_draw(
             across_q8,
             gain_q16,
             rgba,
-            background: 0,
         };
         wave.run(engine, &picture.texture, peaks, &view).is_some()
     })

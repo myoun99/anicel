@@ -28,7 +28,7 @@ fn view(vertical: bool) -> WaveView {
         across_q8: 20 * 256 + 31,
         gain_q16: 52429,
         rgba: 0xc8_30_a0_ff,
-        background: 0,
+        length: 31,
     }
 }
 
@@ -53,6 +53,7 @@ fn through_the_abi(peaks: &[u16], lanes: usize, view: &WaveView, (width, height)
             picture,
             kept,
             view.along0,
+            view.length,
             view.vertical,
             view.frame_q8,
             view.fps.0,

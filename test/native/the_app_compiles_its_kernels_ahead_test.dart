@@ -343,7 +343,6 @@ void main() {
     final peaks = GpuWavePeaks(appGpuEngine, [
       Uint16List.fromList([65535, 65535]),
     ]);
-    addTearDown(peaks.free);
     final screen = ScreenTexture.surfaceOf(appGpuEngine, 4, 8);
     addTearDown(screen.free);
     final bare = screen.fingerprint();
@@ -353,6 +352,7 @@ void main() {
         final (tiles: _, :wave, :lay) = appGpuGridKernels.kept;
         wave.draw(picture, peaks, (
           along0: 0,
+          length: 4,
           vertical: false,
           frameQ8: 256,
           fpsNumerator: 1,
