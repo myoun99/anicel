@@ -65,6 +65,23 @@ abstract final class EngineSelectionMasks {
     );
   }
 
+  /// The selection [spelled] (`CanvasSelectionRegion.spelled`) over [box]
+  /// as its hard mask's runs, a row each — its selected pixels' starts and
+  /// ends in turn, columns from the box's left (`GpuSelectionMasks.runs`):
+  /// what reads a selection on the CPU (`CanvasSelectionRegion
+  /// .pixelRunsFor`). Waits for the GPU.
+  static List<Uint32List> runs(
+    ({Uint32List program, Float64List points}) spelled, {
+    required ({int left, int top, int width, int height}) box,
+  }) => kernels.runs(
+    program: spelled.program,
+    points: spelled.points,
+    x: box.left,
+    y: box.top,
+    width: box.width,
+    height: box.height,
+  );
+
   /// The pixels of [bytes] — a byte each over [box], row after row — that
   /// the selection [by] takes any of, whole, and none elsewhere: cut on the
   /// engine (`GpuSelectionMasks.cut`) and read back for the CPU, what a

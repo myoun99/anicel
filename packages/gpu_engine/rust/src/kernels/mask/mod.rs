@@ -15,6 +15,7 @@
 
 pub(crate) mod abi;
 pub(crate) mod region;
+pub(crate) mod runs;
 pub(crate) mod within;
 #[cfg(test)]
 pub(crate) mod tests;

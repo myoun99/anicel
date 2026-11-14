@@ -11,6 +11,7 @@
 mod tests;
 
 use super::region::{Combine, Operand, RegionMask, Step};
+use super::runs::{MaskRuns, SelectionRuns};
 use super::within::MaskWithin;
 use super::{Finish, MaskBox, MaskPasses};
 use crate::device::Engine;
@@ -23,6 +24,7 @@ pub struct SelectionMasks {
     region: RegionMask,
     passes: MaskPasses,
     within: MaskWithin,
+    runs: MaskRuns,
 }
 
 /// The selection's kernels, compiled.
@@ -36,8 +38,8 @@ pub unsafe extern "C" fn gpu_engine_selection_masks_new(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     let (region, passes) = (RegionMask::new(engine), MaskPasses::new(engine));
-    let within = MaskWithin::new(engine);
-    Box::into_raw(Box::new(SelectionMasks { region, passes, within }))
+    let (within, runs) = (MaskWithin::new(engine), MaskRuns::new(engine));
+    Box::into_raw(Box::new(SelectionMasks { region, passes, within, runs }))
 }
 
 /// # Safety
@@ -117,6 +119,87 @@ pub unsafe extern "C" fn gpu_engine_selection_mask_cut(
     match masks.within.cut(engine, &mask, &by) {
         Some(plane) => MaskPlane::kept(plane, mask.at, mask.size),
         None => std::ptr::null_mut(),
+    }
+}
+
+/// The hard mask of the selection `program` spells over `points`
+/// ([`steps_of`]) on the pixel box `width` × `height` whose top-left pixel
+/// is (`x`, `y`), read back as its runs ([`SelectionRuns`]) — where each
+/// row's selected pixels start and end, what the app's CPU readers of a
+/// selection ask. Writes how many ends they hold to `ends`. Waits for the
+/// GPU. Null where the program does not spell a selection or a box or
+/// point lies past the reach; see the last error.
+///
+/// # Safety
+/// `masks` and `engine` are live, the masks compiled on `engine`;
+/// `program` holds `program_length` words and `points` `points_length`;
+/// `ends` is a place to write.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_selection_runs(
+    masks: *const SelectionMasks,
+    engine: *const Engine,
+    program: *const u32,
+    program_length: usize,
+    points: *const f64,
+    points_length: usize,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    ends: *mut usize,
+) -> *mut SelectionRuns {
+    // SAFETY: see the function's contract.
+    let (masks, engine, program, points) = unsafe {
+        (
+            &*masks,
+            &*engine,
+            std::slice::from_raw_parts(program, program_length),
+            std::slice::from_raw_parts(points, points_length),
+        )
+    };
+    let size = MaskBox { width, height };
+    let read = steps_of(program, points)
+        .and_then(|steps| masks.region.folded(engine, &steps, (x, y), size))
+        .and_then(|folded| masks.runs.read(engine, &folded, size));
+    let Some(runs) = read else {
+        return std::ptr::null_mut();
+    };
+    // SAFETY: see the function's contract.
+    unsafe { ends.write(runs.ends.len()) };
+    Box::into_raw(Box::new(runs))
+}
+
+/// Writes `runs`' rows' offsets — the box's height and one more — to
+/// `offsets` and their ends to `ends`: row r's are `ends[offsets[r] ..
+/// offsets[r + 1]]`, a start and an end in turn, columns from the box's
+/// left.
+///
+/// # Safety
+/// `runs` is live; `offsets` holds a word more than its box has rows and
+/// `ends` as many as [`gpu_engine_selection_runs`] wrote.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_selection_runs_read(
+    runs: *const SelectionRuns,
+    offsets: *mut u32,
+    ends: *mut u32,
+) {
+    // SAFETY: see the function's contract.
+    let runs = unsafe { &*runs };
+    // SAFETY: see the function's contract.
+    unsafe {
+        offsets.copy_from_nonoverlapping(runs.offsets.as_ptr(), runs.offsets.len());
+        ends.copy_from_nonoverlapping(runs.ends.as_ptr(), runs.ends.len());
+    }
+}
+
+/// # Safety
+/// `runs` came from `gpu_engine_selection_runs`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_selection_runs_free(runs: *mut SelectionRuns) {
+    if !runs.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(runs) });
     }
 }
 

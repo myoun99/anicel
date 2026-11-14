@@ -90,9 +90,29 @@ impl RegionMask {
         &self,
         engine: &Engine,
         steps: &[Step],
-        (left, top): (i32, i32),
+        at: (i32, i32),
         size: MaskBox,
     ) -> Option<wgpu::Buffer> {
+        let out = (size.width.div_ceil(4).div_ceil(GROUP), size.height.div_ceil(GROUP));
+        fits(engine, &[size.bytes()], std::iter::once(out))?;
+        let folded = self.folded(engine, steps, at, size)?;
+        let bytes = plane(engine, "region mask", size.bytes());
+        let words = region_words(engine, at, size, folded.stride, (0, 0, 0));
+        let bound = [(0, &words), (4, &folded.plane), (5, &bytes)];
+        encode(engine, &[Encoded { pipeline: &self.bytes, bound: whole(&bound), groups: flat(out) }]);
+        Some(bytes)
+    }
+
+    /// The selection `steps` over the pixel box `size` whose top-left pixel
+    /// is (`left`, `top`) on the canvas, as a bit plane ([`Folded`]), or
+    /// none when the box or a point is past the reach. Submits the work.
+    pub(crate) fn folded(
+        &self,
+        engine: &Engine,
+        steps: &[Step],
+        (left, top): (i32, i32),
+        size: MaskBox,
+    ) -> Option<Folded> {
         let spans = |from: i32, length: u32| {
             length > 0
                 && -REACH <= i64::from(from)
@@ -104,21 +124,22 @@ impl RegionMask {
         let mut vertices = Vec::new();
         let mut passes = Vec::new();
         let deepest = laid(steps, 1, &mut vertices, &mut passes)?;
-        self.run(engine, (left, top), size, &vertices, &passes, deepest + 1)
+        let crossings = crossings(&vertices, &passes, top, size.height);
+        let plane = self.run(engine, (left, top), size, &vertices, &passes, deepest + 1)?;
+        Some(Folded { plane, stride: stride_of(size), crossings })
     }
 
-    /// Runs `passes` over `planes` bit planes, then puts the selection —
-    /// plane 1 — as bytes.
+    /// Runs `passes` over `planes` bit planes: the selection is plane 1.
     fn run(
         &self,
         engine: &Engine,
-        (left, top): (i32, i32),
+        at: (i32, i32),
         size: MaskBox,
         vertices: &[u32],
         passes: &[Pass],
         planes: usize,
     ) -> Option<wgpu::Buffer> {
-        let stride = size.width / 32 + 1;
+        let stride = stride_of(size);
         let bits = u64::from(stride) * u64::from(size.height) * 4;
         let words_across = stride.div_ceil(GROUP);
         let down = size.height.div_ceil(GROUP);
@@ -127,11 +148,9 @@ impl RegionMask {
             Pass::Scan { .. } => (size.height.div_ceil(ROWS), 1),
             Pass::Clear { .. } | Pass::Fold { .. } => (words_across, down),
         };
-        let out = (size.width.div_ceil(4).div_ceil(GROUP), down);
-        let all = passes.iter().map(groups).chain([out]);
         let vertex_bytes = vertices.len() as u64 * 4;
-        fits(engine, &[bits, vertex_bytes, size.bytes()], all)?;
-        let planes: Vec<wgpu::Buffer> =
+        fits(engine, &[bits, vertex_bytes], passes.iter().map(groups))?;
+        let mut planes: Vec<wgpu::Buffer> =
             (0..planes).map(|_| plane(engine, "region", bits)).collect();
         let toggles = plane(engine, "region toggles", bits);
         // A pass binds a whole buffer: a selection of no polygon still has
@@ -141,30 +160,18 @@ impl RegionMask {
             [] => words_buffer(engine, "region vertices", &[0, 0], storage),
             _ => words_buffer(engine, "region vertices", vertices, storage),
         };
-        let bytes = plane(engine, "region mask", size.bytes());
-        let uniform = |first: u32, count: u32, op: u32| {
-            let words = [
-                left as u32,
-                top as u32,
-                size.width,
-                size.height,
-                stride,
-                first,
-                count,
-                op,
-            ];
-            words_buffer(engine, "region pass", &words, wgpu::BufferUsages::UNIFORM)
-        };
         let words: Vec<wgpu::Buffer> = passes
             .iter()
-            .map(|pass| match *pass {
-                Pass::Toggle { first, count } => uniform(first, count, 0),
-                Pass::Fold { combine, .. } => uniform(0, 0, combine as u32),
-                Pass::Clear { .. } | Pass::Scan { .. } => uniform(0, 0, 0),
+            .map(|pass| {
+                let pass_words = match *pass {
+                    Pass::Toggle { first, count } => (first, count, 0),
+                    Pass::Fold { combine, .. } => (0, 0, combine as u32),
+                    Pass::Clear { .. } | Pass::Scan { .. } => (0, 0, 0),
+                };
+                region_words(engine, at, size, stride, pass_words)
             })
-            .chain([uniform(0, 0, 0)])
             .collect();
-        let mut encoded: Vec<Encoded> = passes
+        let encoded: Vec<Encoded> = passes
             .iter()
             .zip(&words)
             .map(|(pass, words)| {
@@ -188,14 +195,65 @@ impl RegionMask {
                 }
             })
             .collect();
-        encoded.push(Encoded {
-            pipeline: &self.bytes,
-            bound: whole(&[(0, &words[passes.len()]), (4, &planes[1]), (5, &bytes)]),
-            groups: flat(out),
-        });
         encode(engine, &encoded);
-        Some(bytes)
+        drop(encoded);
+        Some(planes.swap_remove(1))
     }
+}
+
+/// A selection folded into a bit plane: region.wgsl's, a bit a pixel of
+/// its box, `stride` words a row and the leftmost pixel the low bit — and
+/// as many crossings as its rows can have ([`crossings`]).
+pub(crate) struct Folded {
+    pub(crate) plane: wgpu::Buffer,
+    pub(crate) stride: u32,
+    pub(crate) crossings: u64,
+}
+
+/// A bit plane's words a row over `size`: room for a bit past the box,
+/// where a crossing right of every centre toggles.
+fn stride_of(size: MaskBox) -> u32 {
+    size.width / 32 + 1
+}
+
+/// A pass's words (region.wgsl's `Region`): the box at `(left, top)`, the
+/// planes' `stride`, and the pass's own — the polygon it lays, as its
+/// first vertex and their count, and how it folds.
+fn region_words(
+    engine: &Engine,
+    (left, top): (i32, i32),
+    size: MaskBox,
+    stride: u32,
+    (first, count, op): (u32, u32, u32),
+) -> wgpu::Buffer {
+    let words = [left as u32, top as u32, size.width, size.height, stride, first, count, op];
+    words_buffer(engine, "region pass", &words, wgpu::BufferUsages::UNIFORM)
+}
+
+/// How many times the rows of the box from `top`, `height` of them, can
+/// cross the polygons `passes` lay of `vertices` — which no row's runs
+/// outnumber, every run's ends being where an edge crosses it (runs.wgsl).
+/// An edge from height A to height B crosses the rows whose scanline,
+/// (2r + 1)·128 in Q.8, lies in [A, B): counted here from a row before
+/// ⌊A/256⌋ to a row past ⌊B/256⌋, which holds them all.
+fn crossings(vertices: &[u32], passes: &[Pass], top: i32, height: u32) -> u64 {
+    let (first_row, last_row) = (i64::from(top), i64::from(top) + i64::from(height) - 1);
+    let y = |at: u32| i64::from(vertices[at as usize * 2 + 1].cast_signed());
+    let rows = |a: i64, b: i64| {
+        let from = (a.min(b).div_euclid(256) - 1).max(first_row);
+        let to = (a.max(b).div_euclid(256) + 1).min(last_row);
+        u64::try_from(to - from + 1).unwrap_or(0)
+    };
+    let edges = |first: u32, count: u32| {
+        (0..count).map(move |i| (y(first + i), y(first + (i + count - 1) % count)))
+    };
+    passes
+        .iter()
+        .map(|pass| match *pass {
+            Pass::Toggle { first, count } => edges(first, count).map(|(a, b)| rows(a, b)).sum(),
+            _ => 0,
+        })
+        .sum()
 }
 
 /// The passes that fold `steps` into bit plane `into`, from nothing — as

@@ -3554,6 +3554,53 @@ final class GpuSelectionMasks {
     mask._length,
   );
 
+  /// The hard mask of the selection [program] spells over [points] on the
+  /// pixel box [width] × [height] whose top-left pixel is ([x], [y]), read
+  /// back as its runs: a row each, top to bottom, its selected pixels'
+  /// starts and ends in turn — columns from the box's left, each end the
+  /// first column past its run. Waits for the GPU.
+  List<Uint32List> runs({
+    required Uint32List program,
+    required Float64List points,
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+  }) => using((arena) {
+    final words = arena<Uint32>(_held(program.length))
+      ..asTypedList(program.length).setAll(0, program);
+    final count = arena<UintPtr>();
+    final runs = rust.selectionRuns(
+      _masks,
+      _engine._engine,
+      words,
+      program.length,
+      _doubles(arena, points),
+      points.length,
+      x,
+      y,
+      width,
+      height,
+      count,
+    );
+    if (runs == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    try {
+      final offsets = arena<Uint32>(height + 1);
+      final ends = arena<Uint32>(_held(count.value));
+      rust.selectionRunsRead(runs, offsets, ends);
+      final at = offsets.asTypedList(height + 1);
+      final all = Uint32List.fromList(ends.asTypedList(count.value));
+      return [
+        for (var row = 0; row < height; row += 1)
+          Uint32List.sublistView(all, at[row], at[row + 1]),
+      ];
+    } finally {
+      rust.selectionRunsFree(runs);
+    }
+  }, malloc);
+
   void free() => rust.selectionMasksFree(_masks);
 }
 
