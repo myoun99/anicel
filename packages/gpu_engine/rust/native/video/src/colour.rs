@@ -31,8 +31,9 @@
 //! back 16 brighter in the darks, converting from those primaries; with
 //! sRGB's transfer it did not. Named SMPTE170M (6), BT.709's transfer
 //! reads back within 3 with the reader asked nothing. ↩️So Windows' writer
-//! named sRGB's transfer for a day. ⚠️Android's writer names none yet: its
-//! bindings are not on the machine this was measured on.
+//! named sRGB's transfer for a day. Android's writer names them
+//! too since that day (it had named none — an HD movie it wrote read as
+//! BT.709 on Windows); ⚠️no device read one back where this was measured.
 
 /// A straight-RGBA picture, rows top-down and packed.
 pub struct Picture<'a> {

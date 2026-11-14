@@ -21,7 +21,8 @@ use ndk_sys::{
     AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM, AMEDIACODEC_CONFIGURE_FLAG_ENCODE,
     AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED, AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED, AMEDIACODEC_INFO_TRY_AGAIN_LATER,
     AMEDIAFORMAT_KEY_AAC_PROFILE, AMEDIAFORMAT_KEY_BIT_RATE, AMEDIAFORMAT_KEY_CHANNEL_COUNT,
-    AMEDIAFORMAT_KEY_COLOR_FORMAT, AMEDIAFORMAT_KEY_FRAME_RATE, AMEDIAFORMAT_KEY_HEIGHT,
+    AMEDIAFORMAT_KEY_COLOR_FORMAT, AMEDIAFORMAT_KEY_COLOR_RANGE, AMEDIAFORMAT_KEY_COLOR_STANDARD,
+    AMEDIAFORMAT_KEY_COLOR_TRANSFER, AMEDIAFORMAT_KEY_FRAME_RATE, AMEDIAFORMAT_KEY_HEIGHT,
     AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, AMEDIAFORMAT_KEY_MIME, AMEDIAFORMAT_KEY_SAMPLE_RATE, AMEDIAFORMAT_KEY_WIDTH,
     AMediaCodec, AMediaCodec_configure, AMediaCodec_createEncoderByType, AMediaCodec_delete,
     AMediaCodec_dequeueInputBuffer, AMediaCodec_dequeueOutputBuffer, AMediaCodec_getInputBuffer,
@@ -47,6 +48,15 @@ pub const SUPPORTED: bool = true;
 /// overwhelmingly take — and COLOR_FormatYUV420Planar (I420), the fallback.
 const SEMI_PLANAR: i32 = 21;
 const PLANAR: i32 = 19;
+
+/// The colour law's four as MediaFormat names them (`colour`): BT.601 NTSC
+/// is SMPTE C's primaries with BT.601's matrix, then studio range and the
+/// SDR video curve, BT.709's — COLOR_STANDARD_BT601_NTSC,
+/// COLOR_RANGE_LIMITED and COLOR_TRANSFER_SDR_VIDEO, which the NDK keys
+/// take as plain numbers.
+const BT601_NTSC: i32 = 4;
+const LIMITED_RANGE: i32 = 2;
+const SDR_VIDEO: i32 = 3;
 
 /// How long a codec may keep us waiting for an input buffer, in µs.
 const INPUT_WAIT_US: i64 = 100_000;
@@ -165,6 +175,11 @@ impl Writer {
             );
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color_format);
+            // What the pictures are, named as every writer names them
+            // (`colour`) — ⚠️not read back on a device: none is here.
+            AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_STANDARD, BT601_NTSC);
+            AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_RANGE, LIMITED_RANGE);
+            AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_TRANSFER, SDR_VIDEO);
             let configured =
                 AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE as u32);
             AMediaFormat_delete(format);
