@@ -30,6 +30,7 @@ import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 import 'package:anicel/src/services/cel_pixel_region.dart';
 
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/selection_reads_spied.dart';
 
 /// A SELECTION'S LIFT ON THE ENGINE (flip lane ⓒ): on the app's grid what a
 /// selection takes off a cel is the kernel's (lift.wgsl), under the mask the
@@ -213,7 +214,7 @@ void main() {
   test('a lift on the engine reads the selection nowhere but there', () {
     for (final options in softnesses) {
       final asked = <int>[];
-      final region = _ReadsSpied(rect(100, 20, 160, 40), asked);
+      final region = SelectionReadsSpied(rect(100, 20, 160, 40), asked);
       final surface = artwork();
       final lifted = liftSelectionPixels(
         region: region,
@@ -389,22 +390,4 @@ void main() {
     expect(ledger.debugTileReads, reads);
     expect(lifted.rgba.sublist(0, 3), [1, 2, 3]);
   });
-}
-
-/// A region that counts every read of its coverage on the CPU.
-class _ReadsSpied extends CanvasSelectionRegion {
-  _ReadsSpied(CanvasSelectionRegion region, this.asked) : super(region.steps);
-
-  final List<int> asked;
-
-  @override
-  Uint8List maskFor({
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  }) {
-    asked.add(width * height);
-    return super.maskFor(left: left, top: top, width: width, height: height);
-  }
 }

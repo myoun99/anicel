@@ -33,6 +33,7 @@ import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/selection_reads_spied.dart';
 
 /// 🚨★★★WHATEVER DRAWS IN A SELECTION IS CUT BY ONE EDGE
 /// (brush-fidelity-Q11 · Q12, 유저 2026-10-18).
@@ -263,7 +264,7 @@ void main() {
   test('🚨a window reads around itself, not the selection: the first dab '
       'of a stroke does not wait on how much is selected', () {
     final asked = <int>[];
-    final spied = _ReadsSpied(rect(-4000, -4000, 8000, 8000), asked);
+    final spied = SelectionReadsSpied(rect(-4000, -4000, 8000, 8000), asked);
     const options = SelectionMaskOptions(growPx: 2, featherPx: 8);
     final clip = SelectionClip.of(
       spied,
@@ -332,7 +333,7 @@ void main() {
       stamp: BrushStampImage(id: 'off', width: 10, height: 10, rgba: rgba),
     );
     final clip = SelectionClip.outline(
-      _ReadsSpied(rect(60, 20, 240, 180), asked),
+      SelectionReadsSpied(rect(60, 20, 240, 180), asked),
     );
     expect(
       clipStrokeCommitToSelection(
@@ -889,22 +890,4 @@ void main() {
       expect(EngineSelectionMasks.debugMade, made + 1);
     });
   });
-}
-
-/// [CanvasSelectionRegion] saying how many pixels each read of it asked for.
-class _ReadsSpied extends CanvasSelectionRegion {
-  _ReadsSpied(CanvasSelectionRegion region, this.asked) : super(region.steps);
-
-  final List<int> asked;
-
-  @override
-  Uint8List maskFor({
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  }) {
-    asked.add(width * height);
-    return super.maskFor(left: left, top: top, width: width, height: height);
-  }
 }
