@@ -143,6 +143,9 @@ fn faces_handed_over_in_no_family_order_are_refused() {
     assert!(last_error().contains("family 1"), "{}", last_error());
     assert!(faces_of(&[(biz.clone(), 0), (biz.clone(), 2)]).is_null());
     assert!(last_error().contains("family 2"), "{}", last_error());
+    // The first refusal is the one told: the files after it are not looked at.
+    assert!(faces_of(&[(biz.clone(), 0), (biz.clone(), 2), (biz.clone(), 5)]).is_null());
+    assert!(last_error().contains("family 2"), "{}", last_error());
     assert!(faces_of(&[(biz, 0), (b"no face".to_vec(), 1)]).is_null());
     assert!(last_error().contains("family 1 holds no face"), "{}", last_error());
     assert!(faces_of(&[]).is_null());
