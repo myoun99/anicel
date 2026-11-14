@@ -3925,7 +3925,6 @@ int fingerprintBytes(Uint8List bytes) => using((arena) {
 /// every safepoint while it runs, so one call over a whole file would hold
 /// a collection of the isolate group — the UI's among it — for as long.
 int crc32Update(int running, Uint8List bytes, int length) {
-  RangeError.checkValueInInterval(length, 0, bytes.length, 'length');
   var folded = running;
   for (var at = 0; at < length; at += _crcSlice) {
     final slice = Uint8List.sublistView(
