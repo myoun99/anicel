@@ -15,7 +15,9 @@
 # let go after a run that failed too · a turn left by a dead holder is
 # taken over · it keeps no incremental cache (관제 2026-11-08 01:10) ·
 # the turn goes to the waiter that came first, and a killed waiter holds no
-# one back (2026-11-14).
+# one back (2026-11-14) · before the turn is let go, each crate keeps its
+# last 8 builds in every folder of builds, and what was just built, a crate
+# of one build, `build/` and the hook's copies stay (the same day).
 #
 # usage: bash tool/cargo_turn_test.sh
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +37,10 @@ cat > "$TMP/bin/cargo" <<CARGO
 echo "start \$\$ \$(date +%s%N) \$CARGO_TARGET_DIR \$*" >> "$LOG"
 echo "incremental \${CARGO_INCREMENTAL-unset}" >> "$TMP/env"
 sleep "\${FAKE_SECONDS:-1}"
+for f in \${FAKE_BUILD:-}; do
+  mkdir -p "\$(dirname "\$CARGO_TARGET_DIR/\$f")"
+  : > "\$CARGO_TARGET_DIR/\$f"
+done
 echo "end \$\$ \$(date +%s%N)" >> "$LOG"
 exit "\${FAKE_EXIT:-0}"
 CARGO
@@ -179,6 +185,59 @@ wait
 check "--where says the hook folder, as --hold does, and does not wait" \
   "$([ "$code" -eq 0 ] && [ "$said_where" = "$(cd "${WANT_TARGET}-hook" && { pwd -W 2>/dev/null || pwd; })" ] && ! grep -q held "$TMP/where.err"; echo $?)"
 check "and runs no cargo" "$([ ! -s "$LOG" ]; echo $?)"
+
+# 11 (the-shared-crate-target-never-shrinks-itself, 2026-11-14). A floor
+# under every folder of builds, laid before the turn is let go: eight
+# builds of a crate stand, a run builds a ninth, and the oldest goes alone.
+built() { # folder crate hash minutes-ago: a build, as cargo leaves one
+  local f
+  for f in "$2-$3.d" "lib$2-$3.rlib" "$2-$3.pdb"; do
+    : > "$1/$f"
+    touch -d "$4 minutes ago" "$1/$f"
+  done
+  mkdir -p "${1%/*}/.fingerprint/$2-$3"
+}
+D="$WANT_TARGET/debug/deps"
+X="$WANT_TARGET/debug/examples"
+B="$WANT_TARGET/debug/build/many-00000000000000b0"
+mkdir -p "$D" "$X" "$B"
+: > "$B/out"
+for i in 1 2 3 4 5 6 7 8; do
+  built "$D" many "00000000000000a$i" $((100 - i))
+  built "$X" sample "00000000000000e$i" $((100 - i))
+done
+built "$D" few 00000000000000c1 5000
+built "$X" sample 00000000000000e9 1
+(cd "$LANE" && FAKE_SECONDS=0 FAKE_BUILD="debug/deps/many-00000000000000a9.d \
+  debug/deps/libmany-00000000000000a9.rlib" bash tool/cargo_turn.sh test) \
+  2>/dev/null
+check "a ninth build takes out the oldest, its files and its fingerprint" \
+  "$([ -z "$(ls "$D" | grep 00000000000000a1)" ] \
+    && [ ! -e "$WANT_TARGET/debug/.fingerprint/many-00000000000000a1" ]; echo $?)"
+check "and only the oldest" \
+  "$([ "$(ls "$D" | grep -c '^\(lib\)\?many-00000000000000a[2-8]\.')" -eq 21 ] \
+    && [ -d "$WANT_TARGET/debug/.fingerprint/many-00000000000000a2" ]; echo $?)"
+check "what the run just built stays" \
+  "$([ -e "$D/many-00000000000000a9.d" ] && [ -e "$D/libmany-00000000000000a9.rlib" ]; echo $?)"
+check "a crate of one build stays, however old" \
+  "$([ "$(ls "$D" | grep -c 00000000000000c1)" -eq 3 ]; echo $?)"
+check "an example folder keeps its last eight as well" \
+  "$([ -z "$(ls "$X" | grep 00000000000000e1)" ] \
+    && [ "$(ls "$X" | grep -c 'sample-00000000000000e[2-9]\.')" -eq 24 ]; echo $?)"
+check "build/ is not touched" "$([ -e "$B/out" ]; echo $?)"
+H="${WANT_TARGET}-hook"
+HD="$H/x86_64-pc-windows-msvc/release/deps"
+mkdir -p "$HD" "$H/copies/0123456789abcdef/key"
+: > "$H/copies/0123456789abcdef/key/engine.dll"
+for i in 1 2 3 4 5 6 7 8 9; do
+  built "$HD" fx "00000000000000f$i" $((100 - i))
+done
+: | (cd "$LANE" && bash tool/cargo_turn.sh --folder hook --hold) >/dev/null 2>&1
+check "a target's folder in the hook's floors too, after a --hold" \
+  "$([ -z "$(ls "$HD" | grep 00000000000000f1)" ] \
+    && [ "$(ls "$HD" | grep -c '^\(lib\)\?fx-')" -eq 24 ]; echo $?)"
+check "and the hook's copies are not touched" \
+  "$([ -e "$H/copies/0123456789abcdef/key/engine.dll" ]; echo $?)"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

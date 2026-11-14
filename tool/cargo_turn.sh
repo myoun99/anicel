@@ -43,6 +43,12 @@
 # (타임라인/콘티, 14:56:40). Cargo's own lock is let go before the tests
 # that read those builds. "Run no cargo there while a gate runs" was a
 # rule written down, and it was not enough; this is the turn instead.
+# ⚠️BUT NOT EVERY CRATE (measured 2026-11-14, card
+# the-shared-crate-target-never-shrinks-itself): a path dependency outside
+# the workspace's root — sdk/fx/anicel-fx — is named by its whole path, so
+# it and every crate built on it (fx_plugin, gpu_engine_core and its test
+# binaries) get a name of their own in each checkout and replace nobody's:
+# the hook folder held 160 builds of each, the newest 60 from 60 checkouts.
 #
 # ⛔EVERY CARGO THAT BUILDS INTO THAT FOLDER TAKES IT: the land's crate gate
 # (lane.sh, cmd_crate), the engine's build hook (`--hold`) and every
@@ -75,6 +81,28 @@
 # and 00:07:12, and the later one's batch was cut by 15 minutes of silence
 # (tool/affected_tests.dart, kSilentBatch) before a test of it had run. A
 # killed waiter's ticket goes when the next waiter finds its process gone.
+#
+# 🚨A FLOOR UNDER EVERY FOLDER OF BUILDS (관제 2026-11-14 07:09 · 08:35,
+# card the-shared-crate-target-never-shrinks-itself): before a holder gives
+# the turn back, each folder of builds — a profile's `deps` and `examples`,
+# the host's and every target's — keeps each crate's last 8 builds, one
+# hash being one build, and the rest goes with its `.fingerprint`. Nothing
+# took them out: the crate folder filled C: to 99 % on 11-08, 11-12 and
+# 11-14, and each time someone ran `cargo clean` by hand — that day 16.5 GB
+# in two days, 6.5 GB of it test binaries' pdbs, three of the engine's
+# 150–163 MB each an hour. What the holder just built is the newest, and
+# stays; a crate with a build or two is not touched; `build/` and the hook's
+# `copies/` are not either. Counted per crate, as the hook keeps its copies
+# (hook/shared_copies.dart, kKeptCopies): only the builds made per checkout
+# overflow, and a toolchain's whole old set goes by the same law.
+# ⚖️「LAST」 IS WHEN IT WAS BUILT, chosen knowingly: when a build was last
+# READ cannot be told here — on Windows every look at a file through
+# bash's `stat` or `find` makes its read time now (measured that day: old,
+# then now, on the next look), so the floor's own look would make every
+# build just used. A build a checkout keeps running unchanged goes first
+# then, and costs that checkout one build.
+# ⚠️A TEST BINARY'S PDB GOES WITH IT: a dump from a binary past the floor
+# cannot be read after. Copy the pdb out before the next turn to keep it.
 # ⚠️No `set -u`: the Mac's bash 3.2 calls an empty "$@" unbound.
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -104,6 +132,8 @@ case "$FOLDER" in
 esac
 # Longer than a cold debug and release build with every test after it.
 STALE_MINUTES=120
+# The builds each crate keeps in a folder of builds (the head: A FLOOR).
+KEPT_BUILDS=8
 
 say_folder() {
   mkdir -p "$SHARED_TARGET"
@@ -137,6 +167,43 @@ first_in_line() {
   done
 }
 
+# When each file in the folder $1 was built, and its name, a line each.
+built_in() {
+  find "$1" -maxdepth 1 -type f -printf '%T@ %f\n' 2>/dev/null \
+    || (cd "$1" && stat -f '%m %N' -- * 2>/dev/null)  # the Mac's find has no -printf
+}
+
+# The hashes of the folder of builds $1 past each crate's last KEPT_BUILDS.
+# The dep-info names a build's crate as it is (a library's files are
+# lib<crate>); a build without one goes by its own name, and so is only
+# ever kept.
+builds_past_the_floor() {
+  built_in "$1" | awk '
+    match($2, /-[0-9a-f]{16}(\.|$)/) {
+      hash = substr($2, RSTART + 1, 16)
+      if ($1 > built[hash]) built[hash] = $1
+      if (substr($2, RSTART + 17) == ".d" || !(hash in crate))
+        crate[hash] = substr($2, 1, RSTART - 1)
+    }
+    END { for (hash in built) print crate[hash], built[hash], hash }
+  ' | LC_ALL=C sort -k1,1 -k2,2nr | awk -v keep="$KEPT_BUILDS" '
+    $1 != crate { crate = $1; kept = 0 }
+    ++kept > keep { print $3 }
+  '
+}
+
+floor_shared_target() {
+  local folder hash
+  for folder in "$SHARED_TARGET"/*/deps "$SHARED_TARGET"/*/examples \
+    "$SHARED_TARGET"/*/*/deps "$SHARED_TARGET"/*/*/examples; do
+    [ -d "$folder" ] || continue
+    for hash in $(builds_past_the_floor "$folder"); do
+      rm -f "$folder"/*-"$hash" "$folder"/*-"$hash".*
+      rm -rf "${folder%/*}/.fingerprint"/*-"$hash"
+    done
+  done
+}
+
 told=
 until [ "$(first_in_line "$LINE")" = "$TICKET" ] && mkdir "$TURN" 2>/dev/null; do
   holder="$(cat "$TURN/pid" 2>/dev/null || true)"
@@ -158,7 +225,7 @@ rm -f "$LINE/$TICKET"
 echo "$$" >"$TURN/pid"
 echo "$(pwd) · cargo $*" >"$TURN/what"
 # shellcheck disable=SC2064
-trap "rm -rf '$TURN'" EXIT
+trap "floor_shared_target; rm -rf '$TURN'" EXIT
 [ -z "$told" ] || echo "cargo_turn: the shared target is this run's now" >&2
 
 if [ "$1" = --hold ]; then
