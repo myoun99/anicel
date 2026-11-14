@@ -51,13 +51,15 @@ void main() {
   /// A tile on [engine], 120 × 20: red over its left half, green over its
   /// right.
   TimelineGridTilePicture tileOn(GpuEngine engine) {
-    final grid = GpuGrid(engine);
+    final batch = GpuGridBatch(engine);
     final ops = TimelineGridTileOpWriter()
       ..fillRect(0, 0, 60, 20, timelineGridPackRgba(const Color(0xFFFF0000)))
       ..fillRect(60, 0, 60, 20, timelineGridPackRgba(const Color(0xFF00FF00)));
-    final picture = GpuGridPicture(engine, 120, 20);
-    grid.draw(picture, ops.build());
-    grid.free();
+    final picture = batch.picture(120, 20);
+    batch
+      ..draw(picture, ops.build())
+      ..flush()
+      ..free();
     return TimelineGridTilePicture(picture);
   }
 

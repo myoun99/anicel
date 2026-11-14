@@ -19,7 +19,8 @@ abstract final class DrawingEngines {
   /// call), the ledger's pages nobody holds (pool-pages-given-back), and
   /// the pages of the engine's pictures nobody holds — theirs lie in a
   /// pool as the cels' do (engine-pictures-keep-to-pool-pages) — and what
-  /// the strokes and a selection's kernels keep for their next.
+  /// the strokes, a selection's kernels and the frame grids' batch keep for
+  /// their next.
   static void respondToMemoryPressure() {
     TileBlocks.trim();
     NativeScratch.releaseAll();
@@ -27,6 +28,7 @@ abstract final class DrawingEngines {
     EnginePictures.giveBackPast(0);
     EngineStrokes.letGoIdle();
     EngineSelectionMasks.letGoIdle();
+    AppGpuGridBatch.letGoKept();
   }
 
   /// Gives back what [respondToMemoryPressure] gives back once [holder] has

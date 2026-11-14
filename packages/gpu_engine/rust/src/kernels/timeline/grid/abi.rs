@@ -13,10 +13,10 @@ use crate::kernels::timeline::wave::{WavePeaks, WaveTile, WaveView, Waved};
 use crate::platform::surface_format;
 
 use super::lay::{GridLay, Laid};
-use super::{Drawn, GridPicture, GridTile, Put};
+use super::{ATLAS_SIDE, Drawn, GridPicture, GridTile, Put};
 
 /// The tile pass, compiled here for the pictures it draws
-/// (`gpu_engine_grid_picture_new`) on the calling thread
+/// (`gpu_engine_grid_pictures_new`) on the calling thread
 /// ([`GridTile::for_pictures`]): an app asks off the thread its frames are
 /// built on.
 ///
@@ -29,6 +29,13 @@ pub unsafe extern "C" fn gpu_engine_grid_new(engine: *const Engine) -> *mut Grid
     engine.on_thread(|| {
         engine.hands(GridTile::for_pictures(engine))
     })
+}
+
+/// The side of the square atlas a batch's letters are put on
+/// (`gpu_engine_grid_flush`), in pixels: where its caller places them.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_grid_atlas_side() -> u32 {
+    ATLAS_SIDE
 }
 
 /// # Safety

@@ -1885,13 +1885,22 @@ external Pointer<Grid> gridNew(Pointer<Engine> engine);
 @Native<Void Function(Pointer<Grid>)>(symbol: 'gpu_engine_grid_free')
 external void gridFree(Pointer<Grid> grid);
 
-@Native<Pointer<GridPicture> Function(Pointer<Engine>, Uint32, Uint32)>(
-  symbol: 'gpu_engine_grid_picture_new',
-)
-external Pointer<GridPicture> gridPictureNew(
+@Native<Uint32 Function()>(symbol: 'gpu_engine_grid_atlas_side')
+external int gridAtlasSide();
+
+@Native<
+  Bool Function(
+    Pointer<Engine>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Pointer<GridPicture>>,
+  )
+>(symbol: 'gpu_engine_grid_pictures_new')
+external bool gridPicturesNew(
   Pointer<Engine> engine,
-  int width,
-  int height,
+  Pointer<Uint32> sizes,
+  int count,
+  Pointer<Pointer<GridPicture>> made,
 );
 
 @Native<Void Function(Pointer<GridPicture>)>(
@@ -1912,24 +1921,50 @@ external bool gridPictureRead(
 @Native<
   Bool Function(
     Pointer<Grid>,
+    Pointer<Wave>,
     Pointer<Engine>,
-    Pointer<GridPicture>,
-    Pointer<Int32>,
+    Pointer<Uint32>,
     Size,
     Pointer<Uint8>,
-    Uint32,
-    Uint32,
+    Pointer<Pointer<GridPicture>>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Int32>,
+    Pointer<Pointer<GridPicture>>,
+    Pointer<Pointer<WavePeaks>>,
+    Pointer<Int32>,
+    Size,
   )
->(symbol: 'gpu_engine_grid_draw')
-external bool gridDraw(
+>(symbol: 'gpu_engine_grid_flush')
+external bool gridFlush(
   Pointer<Grid> grid,
+  Pointer<Wave> wave,
   Pointer<Engine> engine,
-  Pointer<GridPicture> picture,
+  Pointer<Uint32> puts,
+  int putCount,
+  Pointer<Uint8> putBytes,
+  Pointer<Pointer<GridPicture>> tiles,
+  Pointer<Uint32> ends,
+  int tileCount,
   Pointer<Int32> ops,
-  int count,
-  Pointer<Uint8> atlas,
-  int atlasWidth,
-  int atlasHeight,
+  Pointer<Pointer<GridPicture>> waved,
+  Pointer<Pointer<WavePeaks>> peaks,
+  Pointer<Int32> views,
+  int waveCount,
+);
+
+@Native<Uint64 Function(Pointer<Grid>, Pointer<Wave>)>(
+  symbol: 'gpu_engine_grid_kept_bytes',
+)
+external int gridKeptBytes(Pointer<Grid> grid, Pointer<Wave> wave);
+
+@Native<Void Function(Pointer<Grid>, Pointer<Wave>, Pointer<Engine>)>(
+  symbol: 'gpu_engine_grid_let_go_kept',
+)
+external void gridLetGoKept(
+  Pointer<Grid> grid,
+  Pointer<Wave> wave,
+  Pointer<Engine> engine,
 );
 
 @Native<Pointer<Wave> Function(Pointer<Engine>)>(symbol: 'gpu_engine_wave_new')
@@ -1952,43 +1987,6 @@ external Pointer<WavePeaks> wavePeaksNew(
   symbol: 'gpu_engine_wave_peaks_free',
 )
 external void wavePeaksFree(Pointer<WavePeaks> peaks);
-
-@Native<
-  Bool Function(
-    Pointer<Wave>,
-    Pointer<Engine>,
-    Pointer<GridPicture>,
-    Pointer<WavePeaks>,
-    Int32,
-    Int32,
-    Bool,
-    Int32,
-    Uint32,
-    Uint32,
-    Uint32,
-    Int32,
-    Int32,
-    Int32,
-    Uint32,
-  )
->(symbol: 'gpu_engine_wave_draw')
-external bool waveDraw(
-  Pointer<Wave> wave,
-  Pointer<Engine> engine,
-  Pointer<GridPicture> picture,
-  Pointer<WavePeaks> peaks,
-  int along0,
-  int length,
-  bool vertical,
-  int frameQ8,
-  int fpsNumerator,
-  int fpsDenominator,
-  int bucketsPerSecond,
-  int leadingFrames,
-  int acrossQ8,
-  int gainQ16,
-  int rgba,
-);
 
 @Native<Pointer<GridLay> Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_grid_lay_new',

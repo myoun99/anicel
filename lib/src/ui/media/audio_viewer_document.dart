@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuGridPicture;
 
 import '../../native/app_gpu_engine.dart';
 import '../../native/engine_wave_peaks.dart';
@@ -111,11 +110,11 @@ class AudioViewerDocument implements ViewerDocument {
     required int width,
     required int height,
   }) async {
-    final kernels = await appGpuGridKernels.ready;
-    final picture = GpuGridPicture(appGpuEngine, width, height);
+    final batch = (await appGpuGridKernels.ready).batch;
+    final picture = batch.picture(width, height);
     try {
       if (peaks.durationSeconds > 0) {
-        kernels.wave.draw(picture, EngineWavePeaks.of(peaks), (
+        batch.wave(picture, EngineWavePeaks.of(peaks), (
           along0: 0,
           length: width,
           vertical: false,

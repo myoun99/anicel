@@ -75,6 +75,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
         "a number reckoned of what it is handed, or a constant of the crate's",
         &[
             "gpu_engine_tile_side",
+            "gpu_engine_grid_atlas_side",
             "gpu_engine_fingerprint_bytes",
             "gpu_engine_export_png_row_bytes",
             "gpu_engine_composited_bytes",

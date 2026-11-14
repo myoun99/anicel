@@ -374,7 +374,10 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // grid (`TimelineGridScreenHost`, 관제 2026-11-09 08:07 E①). Folded
             // in for the reason `drawings` gives above; the canvas's own
             // view, when it takes one, is no timeline's and needs a row.
-            ScreenTexture.liveBytes,
+            ScreenTexture.liveBytes +
+            // And what the batch that draws them keeps between frames: the
+            // words' atlas, the planes, the waves' unders.
+            AppGpuGridBatch.keptGridBytes,
       ),
     // What a plug-in in a chain made, kept on the cel it was run over —
     // a picture a canvas's size a step (관제 2026-11-11, (2) ⓒ). Bytes in

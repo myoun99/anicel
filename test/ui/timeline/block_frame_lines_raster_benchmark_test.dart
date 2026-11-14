@@ -80,8 +80,8 @@ void main() {
   }
 
   test('bake cost: pre-I-44 / I-44 / today off / today on', () {
-    final grid = GpuGrid(appGpuEngine);
-    addTearDown(grid.free);
+    final batch = GpuGridBatch(appGpuEngine);
+    addTearDown(batch.free);
     const scheme = ColorScheme.dark();
     for (final cell in [24.0, 12.0, 8.0]) {
       TimelineRowCellsPainter painterFor({required bool lines}) =>
@@ -178,7 +178,7 @@ void main() {
 
       final width = (span * cell * dpr).ceil();
       final height = (28 * dpr).ceil();
-      final picture = GpuGridPicture(appGpuEngine, width, height);
+      final picture = batch.picture(width, height);
       final results = <String>[];
       for (final entry in model.entries) {
         final words = entry.value.fold<int>(0, (sum, ops) => sum + ops.length);
@@ -186,8 +186,9 @@ void main() {
         for (var round = 0; round < 60; round += 1) {
           final watch = Stopwatch()..start();
           for (final ops in entry.value) {
-            grid.draw(picture, ops);
+            batch.draw(picture, ops);
           }
+          batch.flush();
           samples.add(watch.elapsedMicroseconds);
         }
         samples.sort();

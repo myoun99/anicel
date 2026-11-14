@@ -7,21 +7,21 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 
 /// A sound's wave reaches a frame grid's picture through the package's Dart
 /// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel ①): its peaks kept
-/// once ([GpuWavePeaks]) and drawn ([GpuWave.draw]) straight over a fresh
-/// picture's clear, as the strip shows them — each field of the view where
-/// the pass takes it.
+/// once ([GpuWavePeaks]) and laid by a batch ([GpuGridBatch.wave])
+/// straight over a fresh picture's clear, as the strip shows them — each
+/// field of the view where the pass takes it.
 /// How the band lands on pixels is the crate's to pin, and these are its
 /// hand cases (rust/src/kernels/timeline/wave/tests.rs, which writes out
 /// their sums) — here, what Dart hands it.
 void main() {
-  late GpuWave wave;
+  late GpuGridBatch batch;
   const full = 65535;
   const none = [0, 0, 0, 0];
   const all = [255, 255, 255, 255];
   List<int> white(int alpha) => [255, 255, 255, alpha];
 
-  setUpAll(() => wave = GpuWave(appGpuEngine));
-  tearDownAll(() => wave.free());
+  setUpAll(() => batch = GpuGridBatch(appGpuEngine));
+  tearDownAll(() => batch.free());
 
   /// 4 pixels a bucket — a frame a second, a bucket a second, 4 pixels a
   /// frame — on one lane 8 pixels across, white, unless said otherwise.
@@ -59,12 +59,12 @@ void main() {
     int width,
     int height,
   ) {
-    final picture = GpuGridPicture(appGpuEngine, width, height);
+    final picture = batch.picture(width, height);
     addTearDown(picture.free);
     final peaks = GpuWavePeaks(appGpuEngine, [
       for (final lane in lanes) Uint16List.fromList(lane),
     ]);
-    wave.draw(picture, peaks, shown);
+    batch.wave(picture, peaks, shown);
     return picture.read();
   }
 

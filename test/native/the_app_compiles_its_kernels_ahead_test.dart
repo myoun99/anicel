@@ -186,9 +186,9 @@ void main() {
     // and what an engine keeps is no thread's to build.
     final engine = GpuEngine.onFirstAdapter();
     addTearDown(engine.close);
-    late final GpuGrid grid;
-    expect(builtHereBy(() => grid = GpuGrid(engine)), greaterThan(0));
-    grid.free();
+    late final GpuGridBatch batch;
+    expect(builtHereBy(() => batch = GpuGridBatch(engine)), greaterThan(0));
+    batch.free();
   });
 
   test('the list builds none on this thread', () {
@@ -308,16 +308,16 @@ void main() {
   });
 
   test('a grid tile drawn and laid on a screen builds none', () {
-    final picture = GpuGridPicture(appGpuEngine, 1, 1);
-    addTearDown(picture.free);
     final screen = ScreenTexture.surfaceOf(appGpuEngine, 1, 1);
     addTearDown(screen.free);
     final bare = screen.fingerprint();
 
     expect(
       builtHereBy(() {
-        final (:tiles, wave: _, :lay) = appGpuGridKernels.kept;
-        tiles.draw(
+        final (:batch, :lay) = appGpuGridKernels.kept;
+        final picture = batch.picture(1, 1);
+        addTearDown(picture.free);
+        batch.draw(
           picture,
           (TimelineGridTileOpWriter()..fillRect(
                 0,
@@ -338,8 +338,6 @@ void main() {
   });
 
   test("a sound's wave drawn and laid on a screen builds none", () {
-    final picture = GpuGridPicture(appGpuEngine, 4, 8);
-    addTearDown(picture.free);
     final peaks = GpuWavePeaks(appGpuEngine, [
       Uint16List.fromList([65535, 65535]),
     ]);
@@ -349,8 +347,10 @@ void main() {
 
     expect(
       builtHereBy(() {
-        final (tiles: _, :wave, :lay) = appGpuGridKernels.kept;
-        wave.draw(picture, peaks, (
+        final (:batch, :lay) = appGpuGridKernels.kept;
+        final picture = batch.picture(4, 8);
+        addTearDown(picture.free);
+        batch.wave(picture, peaks, (
           along0: 0,
           length: 4,
           vertical: false,

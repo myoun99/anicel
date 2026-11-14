@@ -57,8 +57,8 @@ void main() {
       debugAppShaderFolder = own.path;
       addTearDown(() => debugAppShaderFolder = named);
 
-      final grid = GpuGrid(appGpuEngine);
-      addTearDown(grid.free);
+      final batch = GpuGridBatch(appGpuEngine);
+      addTearDown(batch.free);
 
       expect(own.listSync().whereType<File>(), isNotEmpty);
     },

@@ -3815,81 +3815,341 @@ _clustered(Arena arena, List<GpuCluster> clusters) {
   return (text: bytes, length: text.length, ends: ends, origins: origins);
 }
 
-/// The A8 atlas a frame grid's tile reads its letters from: [alpha], row
-/// by row, [width] across and [height] down.
-typedef GpuGridAtlas = ({Uint8List alpha, int width, int height});
+/// A word's letters as a frame grid's tile reads them: A8 coverage,
+/// [alpha] row by row, [width] across and [height] down.
+typedef GpuGridLetters = ({Uint8List alpha, int width, int height});
 
-/// THE FRAME GRID'S TILE PASS (rust/src/kernels/timeline/grid): a tile's op
-/// stream — `TimelineGridTileOpWriter`'s words — drawn into a picture the
-/// engine keeps, for the view's screen to lay.
-class GpuGrid {
-  /// The pass on [engine], compiled for the pictures it draws.
-  GpuGrid(GpuEngine engine) : this._(engine, _compiled(engine._engine));
+/// The side of the square atlas a frame grid's batch puts its letters on
+/// (rust/src/kernels/timeline/grid `ATLAS_SIDE`), in pixels.
+final int gpuGridAtlasSide = rust.gridAtlasSide();
+
+/// WHERE A FRAME GRID'S LETTERS LIE on its batch's atlas: each word once,
+/// by its key, on shelves — along a shelf from the left, a shelf as tall
+/// as the tallest word on it, the next one under it. What a batch places
+/// its letters by ([GpuGridBatch.lettersAt]), and where a caller with no
+/// batch reads the places a fresh one would give.
+final class GpuGridShelves {
+  final _at = <Object, ({int x, int y})>{};
+
+  /// Where the open shelf's next word goes, and the shelf's top and height.
+  var _x = 0;
+  var _y = 0;
+  var _tallest = 0;
+
+  /// Whether [key]'s letters are on the shelves.
+  bool holds(Object key) => _at.containsKey(key);
+
+  /// Where each of [words] lies, by its key — each the shelves do not hold
+  /// put after the last, in order — or null where they do not all fit:
+  /// none is put then.
+  Map<K, ({int x, int y})>? place<K extends Object>(
+    Map<K, GpuGridLetters> words,
+  ) {
+    var (x, y, tallest) = (_x, _y, _tallest);
+    final placed = <K, ({int x, int y})>{};
+    for (final MapEntry(:key, value: (:width, :height, alpha: _))
+        in words.entries) {
+      if (_at[key] case final at?) {
+        placed[key] = at;
+        continue;
+      }
+      if (x + width > gpuGridAtlasSide) {
+        (x, y, tallest) = (0, y + tallest, 0);
+      }
+      if (width > gpuGridAtlasSide || y + height > gpuGridAtlasSide) {
+        return null;
+      }
+      placed[key] = (x: x, y: y);
+      x += width;
+      tallest = height > tallest ? height : tallest;
+    }
+    _at.addAll(placed);
+    _x = x;
+    _y = y;
+    _tallest = tallest;
+    return placed;
+  }
+
+  /// Nothing on the shelves: the next word goes top left.
+  void clear() {
+    _at.clear();
+    _x = 0;
+    _y = 0;
+    _tallest = 0;
+  }
+}
+
+/// THE FRAME GRID'S BATCH (rust/src/kernels/timeline/grid): a frame's
+/// tiles — each an op stream, `TimelineGridTileOpWriter`'s words — drawn
+/// into pictures the engine keeps, and its sounds' waves laid over them,
+/// for the view's screen to lay. What it is asked is held till it is
+/// flushed, then made, drawn and laid on one trip to the engine and one
+/// submit: the first time one of its pictures is laid
+/// ([GpuGridLay.lay]) or read ([GpuGridPicture.read]), or its atlas is full
+/// ([lettersAt]), or [flush] is called.
+///
+/// ↩️A tile and a sound each were a trip and a submit of their own
+/// (`GpuGrid.draw`, `GpuWave.draw`), a picture made on a trip of its own
+/// and a tile's letters on an atlas made for it alone
+/// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q2, 유저
+/// 2026-11-15 「(라) 엔진의 타일당 준비를 걷어내고 다시 잰다」): 🔬a cold
+/// tile's 3.3 ms on the main PC, of which the GPU's was 6–10 µs
+/// (measure-cold-tiles, 11-15).
+class GpuGridBatch {
+  /// The passes on [engine], compiled for the pictures it draws.
+  GpuGridBatch(GpuEngine engine)
+    : this._(engine, _grid(engine._engine), _wave(engine._engine));
 
   /// Compiled on [engine] off this isolate, which goes on meanwhile.
-  static Future<GpuGrid> opening(GpuEngine engine) async =>
-      GpuGrid._(engine, await _compiledOff(engine, _compiled));
+  static Future<GpuGridBatch> opening(GpuEngine engine) async =>
+      GpuGridBatch._(
+        engine,
+        await _compiledOff(engine, _grid),
+        await _compiledOff(engine, _wave),
+      );
 
-  static Pointer<rust.Grid> _compiled(Pointer<rust.Engine> on) =>
+  static Pointer<rust.Grid> _grid(Pointer<rust.Engine> on) =>
       rust.gridNew(on);
 
-  GpuGrid._(this._engine, this._grid);
+  static Pointer<rust.Wave> _wave(Pointer<rust.Engine> on) =>
+      rust.waveNew(on);
+
+  GpuGridBatch._(this._engine, this._tiles, this._sounds);
 
   final GpuEngine _engine;
-  final Pointer<rust.Grid> _grid;
+  final Pointer<rust.Grid> _tiles;
+  final Pointer<rust.Wave> _sounds;
+  final _shelves = GpuGridShelves();
 
-  /// Draws [ops] into [picture] over clear, its letters read from [atlas]
-  /// where its GLYPH ops say — submitted, not waited for: what reads the
-  /// picture after ([GpuGridLay.lay], [GpuGridPicture.read]) waits. Throws
-  /// for a stream the pass refuses.
-  void draw(GpuGridPicture picture, Int32List ops, {GpuGridAtlas? atlas}) =>
-      using((arena) {
-        final stream = arena<Int32>(_held(ops.length))
-          ..asTypedList(ops.length).setAll(0, ops);
-        final alpha = atlas?.alpha ?? Uint8List(0);
-        if (atlas != null && alpha.length != atlas.width * atlas.height) {
-          // The engine reads width × height bytes of it.
-          throw ArgumentError(
-            'an atlas ${atlas.width} × ${atlas.height} of ${alpha.length} '
-            'bytes',
-          );
-        }
-        final bytes = _bytes(arena, alpha);
-        _done(
-          rust.gridDraw(
-            _grid,
-            _engine._engine,
-            _engine._its(picture)._picture,
-            stream,
-            ops.length,
-            bytes,
-            atlas?.width ?? 0,
-            atlas?.height ?? 0,
-          ),
+  /// What the next flush makes, puts, draws and lays, in order.
+  final _pending = <GpuGridPicture>[];
+  final _puts = <({int x, int y, GpuGridLetters letters})>[];
+  final _drawn = <(GpuGridPicture, Int32List)>[];
+  final _waved = <(GpuGridPicture, GpuWavePeaks, GpuWaveView)>[];
+
+  /// How many flushes it has sent the engine.
+  int get debugFlushes => _flushes;
+  var _flushes = 0;
+
+  /// A clear picture [width] × [height], made at the next flush. Throws for
+  /// a side of none.
+  GpuGridPicture picture(int width, int height) {
+    if (width < 1 || height < 1) {
+      throw ArgumentError('a grid tile $width × $height');
+    }
+    final picture = GpuGridPicture._(this, width, height);
+    _pending.add(picture);
+    return picture;
+  }
+
+  /// Where each of [words] lies on the atlas, by its key, for a GLYPH op
+  /// to read it — put there at the next flush the first time it is asked
+  /// for. Where the atlas has no room for them all, what the batch holds is
+  /// flushed and the atlas starts over. Throws for letters whose bytes are
+  /// not their box's, or more than an empty atlas holds.
+  Map<K, ({int x, int y})> lettersAt<K extends Object>(
+    Map<K, GpuGridLetters> words,
+  ) {
+    for (final (:alpha, :width, :height) in words.values) {
+      if (alpha.length != width * height) {
+        // The engine reads width × height bytes of them.
+        throw ArgumentError(
+          'letters $width × $height of ${alpha.length} bytes',
         );
-      });
+      }
+    }
+    var fresh = [
+      for (final key in words.keys)
+        if (!_shelves.holds(key)) key,
+    ];
+    var placed = _shelves.place(words);
+    if (placed == null) {
+      flush();
+      _shelves.clear();
+      fresh = [...words.keys];
+      placed =
+          _shelves.place(words) ??
+          (throw ArgumentError('words past an atlas $gpuGridAtlasSide wide'));
+    }
+    for (final key in fresh) {
+      final (:x, :y) = placed[key]!;
+      _puts.add((x: x, y: y, letters: words[key]!));
+    }
+    return placed;
+  }
 
-  void free() => rust.gridFree(_grid);
+  /// Draws [ops] into [picture] over clear at the next flush, its letters
+  /// read where its GLYPH ops say ([lettersAt]) — the stream as it stands
+  /// then.
+  void draw(GpuGridPicture picture, Int32List ops) =>
+      _drawn.add((_engine._its(picture), ops));
+
+  /// Lays [peaks] over what [picture] holds as [view] shows them at the
+  /// next flush, after every tile it draws.
+  void wave(GpuGridPicture picture, GpuWavePeaks peaks, GpuWaveView view) =>
+      _waved.add((_engine._its(picture), _engine._its(peaks), view));
+
+  /// Makes, puts, draws and lays what it holds: one trip to the engine for
+  /// the pictures, one for the rest, and one submit — not waited for: what
+  /// reads a picture after comes after it on the GPU. Throws for a stream
+  /// or a view the passes refuse, or a picture the device cannot make:
+  /// nothing of the batch is drawn then, it holds nothing after, and the
+  /// words it is asked for next are put again.
+  void flush() {
+    if (_pending.isEmpty &&
+        _puts.isEmpty &&
+        _drawn.isEmpty &&
+        _waved.isEmpty) {
+      return;
+    }
+    final pending = [..._pending];
+    final puts = [..._puts];
+    final drawn = [..._drawn];
+    final waved = [..._waved];
+    _pending.clear();
+    _puts.clear();
+    _drawn.clear();
+    _waved.clear();
+    _flushes += 1;
+    try {
+      using((arena) {
+        final made = arena<Pointer<rust.GridPicture>>(_held(pending.length));
+        final sizes = arena<Uint32>(_held(2 * pending.length));
+        for (final (index, picture) in pending.indexed) {
+          sizes[2 * index] = picture.width;
+          sizes[2 * index + 1] = picture.height;
+        }
+        _done(
+          rust.gridPicturesNew(_engine._engine, sizes, pending.length, made),
+        );
+        for (final (index, picture) in pending.indexed) {
+          picture._made = made[index];
+        }
+        final boxes = arena<Uint32>(_held(4 * puts.length));
+        final length = puts.fold(
+          0,
+          (sum, put) => sum + put.letters.alpha.length,
+        );
+        final bytes = arena<Uint8>(_held(length));
+        var end = 0;
+        for (final (index, (:x, :y, :letters)) in puts.indexed) {
+          boxes
+              .asTypedList(4 * puts.length)
+              .setAll(4 * index, [x, y, letters.width, letters.height]);
+          bytes.asTypedList(length).setAll(end, letters.alpha);
+          end += letters.alpha.length;
+        }
+        final tiles = arena<Pointer<rust.GridPicture>>(_held(drawn.length));
+        final ends = arena<Uint32>(_held(drawn.length));
+        final words = drawn.fold(0, (sum, tile) => sum + tile.$2.length);
+        final stream = arena<Int32>(_held(words));
+        end = 0;
+        for (final (index, (picture, ops)) in drawn.indexed) {
+          tiles[index] = picture._picture;
+          stream.asTypedList(words).setAll(end, ops);
+          end += ops.length;
+          ends[index] = end;
+        }
+        final under = arena<Pointer<rust.GridPicture>>(_held(waved.length));
+        final peaks = arena<Pointer<rust.WavePeaks>>(_held(waved.length));
+        final views = arena<Int32>(_held(11 * waved.length));
+        for (final (index, (picture, sound, view)) in waved.indexed) {
+          under[index] = picture._picture;
+          peaks[index] = sound._peaks;
+          views.asTypedList(11 * waved.length).setAll(11 * index, [
+            view.along0,
+            view.length,
+            if (view.vertical) 1 else 0,
+            view.frameQ8,
+            view.fpsNumerator,
+            view.fpsDenominator,
+            view.bucketsPerSecond,
+            view.leadingFrames,
+            view.acrossQ8,
+            view.gainQ16,
+            view.rgba,
+          ]);
+        }
+        final flushed = rust.gridFlush(
+          _tiles,
+          _sounds,
+          _engine._engine,
+          boxes,
+          puts.length,
+          bytes,
+          tiles,
+          ends,
+          drawn.length,
+          stream,
+          under,
+          peaks,
+          views,
+          waved.length,
+        );
+        // Their peaks were read on the engine's thread: none is let go of
+        // before (a list on the stack keeps nothing alive — [Finalizable]
+        // holds a variable).
+        for (final (_, sound, _) in waved) {
+          _reachable(sound);
+        }
+        _done(flushed);
+      });
+    } on Object {
+      // Its letters may not be on the atlas: every word is put again.
+      _shelves.clear();
+      rethrow;
+    }
+  }
+
+  /// The bytes it keeps between its flushes — its letters' atlas, its
+  /// planes, the waves' unders — for the memory census.
+  int get keptBytes => rust.gridKeptBytes(_tiles, _sounds);
+
+  /// What it keeps between its flushes, let go of once what it holds is
+  /// flushed: the next makes its own, and puts its letters again.
+  void letGoKept() {
+    flush();
+    rust.gridLetGoKept(_tiles, _sounds, _engine._engine);
+    _shelves.clear();
+  }
+
+  /// [picture] freed: nothing of it is made, drawn or laid after.
+  void _drop(GpuGridPicture picture) {
+    _pending.remove(picture);
+    _drawn.removeWhere((drawn) => identical(drawn.$1, picture));
+    _waved.removeWhere((waved) => identical(waved.$1, picture));
+  }
+
+  void free() {
+    rust.gridFree(_tiles);
+    rust.waveFree(_sounds);
+  }
 }
 
 /// A frame grid's tile as the engine keeps it: [width] × [height] pixels,
-/// straight, drawn by [GpuGrid.draw] and laid by [GpuGridLay.lay].
+/// straight, asked of a batch ([GpuGridBatch.picture]) and made at its
+/// flush, drawn by it and laid by [GpuGridLay.lay].
 class GpuGridPicture implements _OfAnEngine {
-  factory GpuGridPicture(GpuEngine engine, int width, int height) {
-    final picture = rust.gridPictureNew(engine._engine, width, height);
-    if (picture == nullptr) {
-      throw GpuRefused(_lastError());
-    }
-    return GpuGridPicture._(engine, picture, width, height);
-  }
+  GpuGridPicture._(this._batch, this.width, this.height);
 
-  GpuGridPicture._(this._engine, this._picture, this.width, this.height);
-
-  @override
-  final GpuEngine _engine;
-  final Pointer<rust.GridPicture> _picture;
+  final GpuGridBatch _batch;
   final int width;
   final int height;
+
+  /// Its picture on the engine, once its batch has made it.
+  Pointer<rust.GridPicture>? _made;
+
+  @override
+  GpuEngine get _engine => _batch._engine;
+
+  /// Its picture on the engine: made by flushing its batch where it is not
+  /// yet. ⛔No pass is handed a picture its batch holds unmade.
+  Pointer<rust.GridPicture> get _picture {
+    if (_made == null) {
+      _batch.flush();
+    }
+    return _made ?? (throw GpuRefused('a grid tile its batch did not make'));
+  }
 
   /// Its pixels once the GPU is done — straight RGBA8, row by row.
   Uint8List read() => using((arena) {
@@ -3902,8 +4162,17 @@ class GpuGridPicture implements _OfAnEngine {
     return Uint8List.fromList(bytes.asTypedList(count));
   });
 
-  void free() => rust.gridPictureFree(_picture);
+  void free() {
+    _batch._drop(this);
+    if (_made case final made?) {
+      rust.gridPictureFree(made);
+    }
+    _made = null;
+  }
 }
+
+/// [held] kept alive up to this call ([Finalizable]'s rule).
+void _reachable(Finalizable held) {}
 
 /// A tile laid on a view's screen: the part [from] of its [picture], in its
 /// pixels, onto the part [onto] of the screen, in the screen's — each
@@ -4007,56 +4276,10 @@ typedef GpuWaveView = ({
   int rgba,
 });
 
-/// THE WAVEFORM PASS (rust/src/kernels/timeline/wave): a sound's peaks
-/// drawn into a frame grid's picture as a strip shows them, for the view's
-/// screen to lay as it lays the grid's tiles ([GpuGridLay.lay]).
-class GpuWave {
-  /// The pass on [engine], compiled for the pictures it draws.
-  GpuWave(GpuEngine engine) : this._(engine, _compiled(engine._engine));
-
-  /// Compiled on [engine] off this isolate, which goes on meanwhile.
-  static Future<GpuWave> opening(GpuEngine engine) async =>
-      GpuWave._(engine, await _compiledOff(engine, _compiled));
-
-  static Pointer<rust.Wave> _compiled(Pointer<rust.Engine> on) =>
-      rust.waveNew(on);
-
-  GpuWave._(this._engine, this._wave);
-
-  final GpuEngine _engine;
-  final Pointer<rust.Wave> _wave;
-
-  /// Draws [peaks] into [picture] over what it holds as [view] shows them
-  /// — submitted, not waited for, as [GpuGrid.draw] is. Throws for a view
-  /// the pass refuses.
-  void draw(GpuGridPicture picture, GpuWavePeaks peaks, GpuWaveView view) =>
-      _done(
-        rust.waveDraw(
-          _wave,
-          _engine._engine,
-          _engine._its(picture)._picture,
-          _engine._its(peaks)._peaks,
-          view.along0,
-          view.length,
-          view.vertical,
-          view.frameQ8,
-          view.fpsNumerator,
-          view.fpsDenominator,
-          view.bucketsPerSecond,
-          view.leadingFrames,
-          view.acrossQ8,
-          view.gainQ16,
-          view.rgba,
-        ),
-      );
-
-  void free() => rust.waveFree(_wave);
-}
-
-/// A sound's peaks as the engine keeps them for [GpuWave.draw]: [lanes]
-/// lanes of [buckets] q16 peaks — round(min(|s|, 1) · 65535) — each, let go
-/// of with the object, as a stamp's picture is ([GpuStampPicture]): they
-/// are the sound's as long as the sound is.
+/// A sound's peaks as the engine keeps them for [GpuGridBatch.wave]:
+/// [lanes] lanes of [buckets] q16 peaks — round(min(|s|, 1) · 65535) —
+/// each, let go of with the object, as a stamp's picture is
+/// ([GpuStampPicture]): they are the sound's as long as the sound is.
 final class GpuWavePeaks implements Finalizable, _OfAnEngine {
   /// [peaks]' lanes, all of one length, uploaded once. Throws for none, an
   /// empty one, lanes of different lengths, or more than the pass takes.

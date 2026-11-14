@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:typed_data' show Uint8List;
 
-import 'package:flutter/foundation.dart' hide Uint8List;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -35,16 +34,17 @@ import '../../services/playback/let_go_wanted_latest.dart';
 /// A row's cells — its paper and the frame lines on it
 /// ([TimelineTileRasterSource.substrateIn]), plus the ink over them —
 /// are drawn ONCE per (row, span, look) on the app's GPU engine
-/// ([GpuGrid]) into a picture that stays there
+/// ([GpuGridBatch]) into a picture that stays there
 /// ([TimelineGridTilePicture]); the row painter then lays one per span on
 /// its grid's screen (`TimelineGridScreenSlot.laying`) instead of 2-3 canvas
 /// calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
-/// the foreground — the in-between marks inline, glyph text through the A8
-/// atlas (T3), a ghost's aside (F-446) — into one op stream, and `_paint` skips
-/// its Dart foreground pass for any span a tile covers. This doc used to say
-/// the opposite ("foreground ink stays the painter's Dart pass on top"),
+/// the foreground — the in-between marks inline, glyph text through the
+/// batch's A8 atlas (T3), a ghost's aside (F-446) — into one op stream, and
+/// `_paint` skips its Dart foreground pass for any span a tile covers. This
+/// doc used to say the opposite ("foreground ink stays the painter's Dart
+/// pass on top"),
 /// which was true of the tile's first shape and has misled at least one
 /// reader into costing a text-layering round wrongly; the
 /// stale-while-revalidate note below is the honest description, naming the
@@ -358,8 +358,7 @@ class TimelineGridTileStore {
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) {
-    final engine = appGpuEngineOpen.value;
-    if (engine == null) {
+    if (appGpuEngineOpen.value == null) {
       return null;
     }
     if (painter.followsTheLiveCut) {
@@ -404,7 +403,7 @@ class TimelineGridTileStore {
     // word back ([bakeWordCoverage]), which a paint cannot wait for.
     final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
     if (stale != null) {
-      final baked = _landNow(engine, asked);
+      final baked = _landNow(asked);
       if (baked != null) {
         return baked;
       }
@@ -604,8 +603,8 @@ class TimelineGridTileStore {
   /// asking draws — or null while a word it sets has never been baked.
   /// What was asked for it before is answered by it, and a raster of it in
   /// flight lands nothing ([_overtaken]).
-  TimelineGridTilePicture? _landNow(GpuEngine engine, _TileRequest asked) {
-    final rastered = _rasterNow(engine, asked);
+  TimelineGridTilePicture? _landNow(_TileRequest asked) {
+    final rastered = _rasterNow(asked);
     if (rastered == null) {
       return null;
     }
@@ -1199,8 +1198,7 @@ class TimelineGridTileStore {
     if (!identical(engine, appGpuEngineOpen.value)) {
       return null;
     }
-    final picture = _drawn(engine, request, emitted, words);
-    return picture == null ? null : (picture: picture, emitted: emitted);
+    return (picture: _drawn(request, emitted, words), emitted: emitted);
   }
 
   /// What a raster off the paint waits on before it draws: a test counts
@@ -1212,7 +1210,7 @@ class TimelineGridTileStore {
 
   /// [_raster] within the call — or null while a word the span sets has
   /// never been baked.
-  _Rastered? _rasterNow(GpuEngine engine, _TileRequest request) {
+  _Rastered? _rasterNow(_TileRequest request) {
     final emitted = _emit(request);
     if (emitted == null) {
       return null;
@@ -1221,8 +1219,7 @@ class TimelineGridTileStore {
     if (words == null) {
       return null;
     }
-    final picture = _drawn(engine, request, emitted, words);
-    return picture == null ? null : (picture: picture, emitted: emitted);
+    return (picture: _drawn(request, emitted, words), emitted: emitted);
   }
 
   /// The request's span laid as ops up to its words ([_setWords]) — its
@@ -1293,36 +1290,32 @@ class TimelineGridTileStore {
   }
 
   /// [emitted]'s span with [words] set over it ([_setWords]) and its
-  /// sounds' waves over them, drawn on [engine] into a tile — null where a
-  /// pass refused it.
-  TimelineGridTilePicture? _drawn(
-    GpuEngine engine,
+  /// sounds' waves over them, a tile of the frame's batch: drawn as the
+  /// batch is flushed ([GpuGridBatch]). A pass that refuses it refuses
+  /// the batch, there.
+  ///
+  /// ↩️A tile was drawn on a trip and a submit of its own, a pass's refusal
+  /// asserted here and the tile let go of
+  /// (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q2, 유저
+  /// 2026-11-15 「(라)」).
+  TimelineGridTilePicture _drawn(
     _TileRequest request,
     _Emitted emitted,
     Map<String, BakedWordCoverage> words,
   ) {
     final writer = emitted.writer;
-    final atlas = _setWords(
+    final batch = appGpuGridKernels.kept.batch;
+    _setWords(
       writer,
       emitted.ink.glyphs,
       words,
       devicePixelRatio: request.devicePixelRatio,
+      placed: batch.lettersAt,
     );
-    final picture = GpuGridPicture(
-      engine,
-      emitted.tileWidth,
-      emitted.tileHeight,
-    );
-    final kernels = appGpuGridKernels.kept;
-    try {
-      kernels.tiles.draw(picture, writer.build(), atlas: atlas);
-      for (final (:peaks, :view) in emitted.waves) {
-        kernels.wave.draw(picture, EngineWavePeaks.of(peaks), view);
-      }
-    } on StateError catch (error) {
-      picture.free();
-      assert(false, 'a pass refused a tile: $error');
-      return null;
+    final picture = batch.picture(emitted.tileWidth, emitted.tileHeight);
+    batch.draw(picture, writer.build());
+    for (final (:peaks, :view) in emitted.waves) {
+      batch.wave(picture, EngineWavePeaks.of(peaks), view);
     }
     return TimelineGridTilePicture(picture);
   }
@@ -1361,7 +1354,8 @@ class TimelineGridTileStore {
   );
 
   /// The op stream [_emitForeground] writes for a span — what a tile bakes
-  /// over its substrate, readable without a native engine.
+  /// over its substrate, its words where a fresh atlas places them
+  /// ([GpuGridShelves]) — readable without a native engine.
   @visibleForTesting
   Future<Int32List> debugForegroundOps({
     required TimelineTileRasterSource painter,
@@ -1381,6 +1375,7 @@ class TimelineGridTileStore {
       ink.glyphs,
       await _bakedWords(ink.glyphs),
       devicePixelRatio: devicePixelRatio,
+      placed: (words) => GpuGridShelves().place(words)!,
     );
     return writer.build();
   }
@@ -1498,44 +1493,31 @@ class TimelineGridTileStore {
     return baked;
   }
 
-  /// Writes the GLYPH ops of the [glyphs] [baked] holds — returns the
-  /// transient atlas those ops reference, or null (no word to set).
-  static GpuGridAtlas? _setWords(
+  /// Writes the GLYPH ops of the [glyphs] [baked] holds, each word read
+  /// where [placed] says it lies on the atlas — a word's key is its bake's
+  /// ([_glyphKey]), the same bytes wherever it is set.
+  ///
+  /// ↩️A tile's words were stacked on an atlas of its own, handed in with
+  /// its stream (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-
+  /// Q2, 유저 2026-11-15 「(라)」).
+  static void _setWords(
     TimelineGridTileOpWriter writer,
     List<_TileGlyph> glyphs,
     Map<String, BakedWordCoverage> baked, {
     required double devicePixelRatio,
+    required Map<String, ({int x, int y})> Function(
+      Map<String, GpuGridLetters> words,
+    )
+    placed,
   }) {
     final dpr = devicePixelRatio;
     if (baked.isEmpty) {
-      return null;
+      return;
     }
-
-    // Transient atlas: the span's distinct glyphs stacked vertically.
-    var atlasWidth = 0;
-    var atlasHeight = 0;
-    final rowOf = <String, int>{};
-    for (final entry in baked.entries) {
-      rowOf[entry.key] = atlasHeight;
-      atlasHeight += entry.value.height;
-      if (entry.value.width > atlasWidth) {
-        atlasWidth = entry.value.width;
-      }
-    }
-    final atlas = Uint8List(atlasWidth * atlasHeight);
-    for (final entry in baked.entries) {
-      final glyph = entry.value;
-      final rowStart = rowOf[entry.key]!;
-      for (var y = 0; y < glyph.height; y += 1) {
-        atlas.setRange(
-          (rowStart + y) * atlasWidth,
-          (rowStart + y) * atlasWidth + glyph.width,
-          glyph.alpha,
-          y * glyph.width,
-        );
-      }
-    }
-
+    final at = placed({
+      for (final MapEntry(:key, value: glyph) in baked.entries)
+        key: (alpha: glyph.alpha, width: glyph.width, height: glyph.height),
+    });
     for (final cell in glyphs) {
       final glyph = baked[cell.key];
       if (glyph == null) {
@@ -1544,17 +1526,9 @@ class TimelineGridTileStore {
       // The bake pads 1 physical px on each side.
       final destX = (cell.origin.dx * dpr).round() - 1;
       final destY = (cell.origin.dy * dpr).round() - 1;
-      writer.glyph(
-        destX,
-        destY,
-        0,
-        rowOf[cell.key]!,
-        glyph.width,
-        glyph.height,
-        cell.rgba,
-      );
+      final (:x, :y) = at[cell.key]!;
+      writer.glyph(destX, destY, x, y, glyph.width, glyph.height, cell.rgba);
     }
-    return (alpha: atlas, width: atlasWidth, height: atlasHeight);
   }
 }
 

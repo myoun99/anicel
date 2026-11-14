@@ -380,10 +380,11 @@ final class FrameKernelsToCome implements Exception {
       'kernels to be compiled';
 }
 
-/// The frame grids' three passes on [appGpuEngine], for every grid: the one
-/// that draws a tile, the one that draws a sound's wave into a picture as a
-/// tile is (the-waveform-is-drawn-on-the-cpu-beside-its-kernel, 2026-11-14)
-/// and the one that lays them on a screen. Warmed before
+/// The frame grids' passes on [appGpuEngine], for every grid: the batch
+/// that draws a tile and lays a sound's wave over it
+/// (the-waveform-is-drawn-on-the-cpu-beside-its-kernel, 2026-11-14), a
+/// frame's tiles at a time, and the pass that lays them on a screen. Warmed
+/// before
 /// a row lays on a screen (`TimelineGridScreenHost`), so the first one
 /// compiles nothing on the thread the app's frames are built on (🗣️관제
 /// 2026-11-10 18:14, gpu-canonical-store ⑦ — 🔬the lay pass's two entries
@@ -397,26 +398,31 @@ final class FrameKernelsToCome implements Exception {
 /// the lay pass before the first of them on the Surface Pro 11
 /// (2026-11-11 06:41), 3.2 s of it on the main PC.
 final appGpuGridKernels =
-    AppKernels<({GpuGrid tiles, GpuWave wave, GpuGridLay lay})>(
-      (engine) => (
-        tiles: GpuGrid(engine),
-        wave: GpuWave(engine),
-        lay: GpuGridLay(engine),
-      ),
+    AppKernels<({GpuGridBatch batch, GpuGridLay lay})>(
+      (engine) => (batch: GpuGridBatch(engine), lay: GpuGridLay(engine)),
       (engine) async {
         await engine.compilesApartLetGo();
         return (
-          tiles: await GpuGrid.opening(engine),
-          wave: await GpuWave.opening(engine),
+          batch: await GpuGridBatch.opening(engine),
           lay: await GpuGridLay.opening(engine, bgra: ScreenTexture.bgra),
         );
       },
       (kernels) {
-        kernels.tiles.free();
-        kernels.wave.free();
+        kernels.batch.free();
         kernels.lay.free();
       },
     );
+
+/// What the frame grids' batch keeps between its flushes, for the memory
+/// census and for the OS's word that memory is tight.
+abstract final class AppGpuGridBatch {
+  /// Its letters' atlas, its planes and its waves' unders.
+  static int get keptGridBytes =>
+      appGpuGridKernels.compiled?.batch.keptBytes ?? 0;
+
+  /// Memory is tight: what it keeps goes, once what it holds is drawn.
+  static void letGoKept() => appGpuGridKernels.compiled?.batch.letGoKept();
+}
 
 /// What lands a stamp on [appGpuEngine]. Warmed for the first fill or paste.
 GpuStampLanding get appGpuStampLanding => appGpuStampLandingKernels.kept;
