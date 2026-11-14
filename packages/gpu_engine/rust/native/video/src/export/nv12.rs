@@ -1,8 +1,7 @@
 //! A frame handed as NV12, laid into the buffer an encoder takes: an
 //! export's as the GPU engine made it (gpu_engine `kernels/export/nv12`) —
-//! the colour law's bytes already, the kernel making what
-//! `colour::from_rgba` makes, held to it byte for byte by the kernel's
-//! tests — or a trimmed piece's as its movie's decoder made it
+//! the colour law's bytes already, the kernel's own sums held to the law's
+//! worked by hand in its tests — or a trimmed piece's as its movie's decoder made it
 //! (`colour::nv12_of`). All that is left here is where they lie: no sum
 //! (gpu-export-path ⑶, 2026-11-12).
 

@@ -4,8 +4,6 @@
 
 use std::sync::OnceLock;
 
-use video::colour;
-
 use super::{Clear, Frame, Lay, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter, Straight};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
@@ -115,7 +113,7 @@ fn sample(bytes: &[u8], shape: Nv12Shape, x: u32, y: u32) -> (u8, u8, u8) {
     (bytes[y as usize * stride + x as usize], bytes[chroma], bytes[chroma + 1])
 }
 
-// ---- By hand, from the law (video's colour.rs) ----
+// ---- By hand, from the law (nv12.wgsl has its numbers) ----
 
 // White: Y = ((220·255 + 128) >> 8) + 16 = (56228 >> 8) + 16 = 219 + 16;
 // both differences are 0·255 + 128 >> 8 = 0, + 128.
@@ -147,6 +145,31 @@ fn red_and_blue_floor_their_negative_differences_as_the_law_does() {
     let bytes = nv12(&frame(4, 2, |x, _| if x < 2 { RED } else { BLUE }), shape);
     assert_eq!(sample(&bytes, shape, 0, 0), (82, 90, 240));
     assert_eq!(sample(&bytes, shape, 2, 0), (41, 240, 110));
+}
+
+// The rest of the colours the law was checked by on the CPU till its copy
+// there went (2026-11-15), each worked as above. Green: Y = (33023 >> 8) +
+// 16 = 144; Cb = (−18742 >> 8) + 128 = 54; Cr = (−23842 >> 8) + 128 = 34.
+// (200, 100, 50): Y = (27478 >> 8) + 16 = 123; Cb = (−9272 >> 8) + 128 =
+// 91; Cr = (12228 >> 8) + 128 = 175. Grey 32: Y = (7168 >> 8) + 16 = 44, no
+// colour. And a channel's least, its difference under one: red 8, Y =
+// (656 >> 8) + 16 = 18, Cb = (−176 >> 8) + 128 = 127, Cr = (1024 >> 8) +
+// 128 = 132; blue 8, Y = (328 >> 8) + 16 = 17, Cb = 132, Cr = (−16 >> 8) +
+// 128 = 127.
+#[test]
+fn the_law_s_other_worked_colours_come_as_worked() {
+    let worked: [(u32, (u8, u8, u8)); 5] = [
+        (0xff00_ff00, (144, 54, 34)),
+        (0xff32_64c8, (123, 91, 175)),
+        (0xff20_2020, (44, 128, 128)),
+        (0xff00_0008, (18, 127, 132)),
+        (0xff08_0000, (17, 132, 127)),
+    ];
+    let shape = shape(10, 2);
+    let bytes = nv12(&frame(10, 2, |x, _| worked[x as usize / 2].0), shape);
+    for (block, (pixel, ycc)) in worked.iter().enumerate() {
+        assert_eq!(sample(&bytes, shape, block as u32 * 2, 0), *ycc, "{pixel:#010x}");
+    }
 }
 
 // A 2 x 2 block takes its chroma from its top-left pixel, not an average.
@@ -224,53 +247,6 @@ fn every_device_writes_the_pinned_nv12() {
         };
         let id = format!("export/nv12-{width}x{height}-stride{y_stride}");
         assert_pinned(&id, &nv12(&frame(width, height, mixed(7)), shape));
-    }
-}
-
-// ---- The writers' own law, while they run it ----
-
-// Not an oracle written for these tests: `from_rgba` is the law the app's
-// movie writers run on the CPU today, and two copies of one law give one
-// frame until 7′ deletes it — this test goes with it (공통, gpu-export-path
-// 2026-11-07 23:20 ④). A row is compared over the frame's width: past it
-// the pass lays white and the writer leaves its buffer as it was.
-#[test]
-fn nv12_is_the_movie_writers_own_byte_for_byte() {
-    for (width, height, y_stride) in [(197, 131, 200), (256, 128, 256), (3, 3, 8)] {
-        let shape = Nv12Shape {
-            y_stride,
-            ..shape(width, height)
-        };
-        let pixel = mixed(7);
-        let gpu = nv12(&frame(width, height, &pixel), shape);
-        let mut rgba = Vec::new();
-        for y in 0..height {
-            for x in 0..width {
-                rgba.extend(pixel(x, y).to_le_bytes());
-            }
-        }
-        let (stride, rows) = (y_stride as usize, shape.height as usize);
-        let mut cpu = vec![0; stride * rows * 3 / 2];
-        let (y, chroma) = cpu.split_at_mut(stride * rows);
-        let picture = colour::Picture {
-            rgba: &rgba,
-            width: width as usize,
-            height: height as usize,
-        };
-        let mut planes = colour::Planes {
-            y,
-            y_stride: stride,
-            chroma,
-            cb: 0,
-            cr: 1,
-            chroma_stride: stride,
-            chroma_step: 2,
-        };
-        colour::from_rgba(&picture, shape.width as usize, rows, &mut planes);
-        let within = |bytes: &[u8]| -> Vec<Vec<u8>> {
-            bytes.chunks(stride).map(|row| row[..shape.width as usize].to_vec()).collect()
-        };
-        assert!(within(&gpu) == within(&cpu), "{width}x{height}, rows of {y_stride}");
     }
 }
 

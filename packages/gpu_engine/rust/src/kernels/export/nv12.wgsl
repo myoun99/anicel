@@ -1,8 +1,10 @@
 // A frame as a movie encoder takes it: NV12 — 4:2:0 BT.601 studio range,
-// the app's colour law for movies (video's `colour::from_rgba`,
-// packages/gpu_engine/rust/native/video/src/colour.rs) — converted before
-// the readback, so 1.5 bytes a pixel cross to the CPU instead of 4
-// (gpu-export-path ①a).
+// the app's colour law for movies — converted before the readback, so 1.5
+// bytes a pixel cross to the CPU instead of 4 (gpu-export-path ①a). Every
+// H.264 and H.265 the app writes of its own pictures is this pass's; the
+// law's reader is video's `colour::to_rgba`. ↩️video's `colour::from_rgba`
+// wrote the law on the CPU too, and this pass was held to it byte for
+// byte, till 2026-11-15 (board trimmed-movie-decodes-to-nv12-Q2).
 //
 // The law's numbers, all of them:
 //   Y  = ((66R + 129G + 25B + 128) >> 8) + 16
@@ -10,7 +12,8 @@
 //   Cr = ((112R - 94G - 18B + 128) >> 8) + 128
 // a 2x2 block's chroma from its top-left pixel, and white past the picture
 // — the encoder's even size. WGSL's `>>` on an i32 is arithmetic (§8.10),
-// as the law's Rust `>>` on an i32 is, so a negative sum floors alike.
+// so a negative sum floors, as the law's shift does (↩️as Rust's on an i32
+// did in `from_rgba`).
 // Integers only: a float step may be fused or reassociated on one device
 // and not another (fill.wgsl).
 //

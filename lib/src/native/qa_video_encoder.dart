@@ -115,10 +115,10 @@ final class QaVideoEncoder {
   /// for ProRes 4444, [bitrateBps] 0 = the encoder's own budget).
   /// Returns false with [lastError] readable on any refusal.
   ///
-  /// [colours]: none for pictures the app made, written in its colour law;
-  /// a piece's movie's ([QaVideoDocument.colours]) for that movie's own
-  /// NV12, handed to [writeNv12] as its decoder made it and named as the
-  /// movie names it — such a writer takes no RGBA (`colour.rs`).
+  /// [colours]: none for pictures the app made, written in its colour law
+  /// (the GPU engine's NV12); a piece's movie's ([QaVideoDocument.colours])
+  /// for that movie's own NV12, handed to [writeNv12] as its decoder made
+  /// it and named as the movie names it.
   bool open({
     required String path,
     required int width,
@@ -158,7 +158,10 @@ final class QaVideoEncoder {
         0;
   });
 
-  /// Writes one top-down RGBA frame of the size [open] was given.
+  /// Writes one top-down RGBA frame of the size [open] was given, to a
+  /// ProRes writer, which converts it itself: H.264 and H.265 refuse it,
+  /// and say so — they take [writeNv12]'s. ↩️Till 2026-11-15 they took RGBA
+  /// too, made NV12 on the CPU (board trimmed-movie-decodes-to-nv12-Q2).
   bool writeFrame(Uint8List rgba) =>
       withNativeBytes(rgba, (buffer) => _writeFrame(buffer) != 0);
 

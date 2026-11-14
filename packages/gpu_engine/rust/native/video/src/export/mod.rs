@@ -23,13 +23,15 @@
 //!     movie, the colours that movie names (`colour`). The audio codec
 //!     follows the video codec: ProRes carries PCM (the delivery
 //!     convention), H.264/H.265 carry AAC.
-//!   - `write_frame()` takes top-down RGBA; a BGRA or YCbCr conversion
-//!     happens HERE, beside the encoder that wants it. `nv12_shape()` says
-//!     whether the open writer takes NV12 instead, and `write_nv12()` takes
-//!     it as it was made — every H.26x writer: an export's frames as the GPU
-//!     engine made them (gpu-export-path ⑶; Windows' since 2026-11-14), a
-//!     trimmed piece's as its movie's decoder did (2026-11-15; ↩️they came
-//!     as RGBA, converted twice — board trimmed-movie-decodes-to-nv12).
+//!   - `nv12_shape()` says whether the open writer takes NV12, and
+//!     `write_nv12()` takes it as it was made — every H.26x writer: an
+//!     export's frames as the GPU engine made them (gpu-export-path ⑶;
+//!     Windows' since 2026-11-14), a trimmed piece's as its movie's decoder
+//!     did (2026-11-15; ↩️they came as RGBA, converted twice — board
+//!     trimmed-movie-decodes-to-nv12). `write_frame()` takes top-down RGBA
+//!     where the writer takes no NV12: ProRes, BGRA for its OS to convert.
+//!     ↩️H.26x took RGBA too, made NV12 here, till 2026-11-15
+//!     ([`H26X_TAKES_NV12`]).
 //!   - `write_audio()` takes interleaved int16 PCM chunks, interleaved with
 //!     the frames by the caller so no side buffers the whole track. Windows
 //!     puts a frame before the first (`windows.rs`, `AUDIO_LEAD`):
@@ -114,8 +116,7 @@ struct Job<'a> {
     /// a piece of, its own YCbCr handed as NV12 and named as that movie
     /// names it (`colour`: 유저 2026-11-14, trimmed-movie-decodes-to-nv12-
     /// Q1) — or none, for pictures the app made, written in the app's law
-    /// and named [`Colours::LAW`]. A piece's writer takes no RGBA
-    /// ([`Job::takes_rgba`]).
+    /// and named [`Colours::LAW`].
     #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
     colours: Option<Colours>,
 }
@@ -177,19 +178,18 @@ impl Job<'_> {
     fn named(&self) -> Colours {
         self.colours.unwrap_or(Colours::LAW)
     }
-
-    /// Whether RGBA may be handed to this job: only where it is written in
-    /// the app's law, which is the only YCbCr RGBA becomes here
-    /// (`colour::from_rgba`) — a piece's pictures are its movie's NV12.
-    #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
-    fn takes_rgba(&self) -> bool {
-        self.colours.is_none()
-    }
 }
 
-/// What a writer says of RGBA handed to a piece ([`Job::takes_rgba`]).
+/// What a writer says of RGBA handed to H.264 or H.265: their frames come
+/// as NV12 (`qa_video_export_write_nv12`) — an export's made by the GPU
+/// engine's pass in the app's law, a piece's by its movie's decoder. RGBA
+/// goes only to ProRes, which its OS converts (`export/apple.rs`).
+/// ↩️Till 2026-11-15 RGBA was made NV12 in the app's law on the CPU
+/// (`colour::from_rgba`) — refused for a piece alone, and handed by
+/// nothing the app made once the export and the piece came as NV12 (board
+/// trimmed-movie-decodes-to-nv12-Q2).
 #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
-const A_PIECE_TAKES_NV12: &str = "video export: a piece of a movie is written of its NV12, not of RGBA";
+const H26X_TAKES_NV12: &str = "video export: H.264 and H.265 are written of NV12, not of RGBA";
 
 /// What the C's buffer held: the message's first 255 bytes.
 const ERROR_BYTES: usize = 255;
@@ -292,6 +292,9 @@ pub unsafe extern "C" fn qa_video_export_open(
     os::open(&job) as i32
 }
 
+/// A ProRes writer's next frame, of `rgba`; H.264 and H.265 refuse it
+/// ([`H26X_TAKES_NV12`]).
+///
 /// # Safety
 /// `rgba` is null or holds the frame `open` was given, top-down RGBA.
 #[unsafe(no_mangle)]
@@ -312,8 +315,8 @@ pub unsafe extern "C" fn qa_video_export_write_audio(interleaved: *const i16, fr
 /// ([`qa_video_export_write_nv12`]) — 1, its frame's width and height into
 /// `shape` — or as RGBA ([`qa_video_export_write_frame`]), 0. Every H.26x
 /// writer takes the engine's NV12 (gpu-export-path ⑶, 2026-11-12): the
-/// colour law's bytes (`colour::from_rgba`), made on the GPU before the
-/// readback — and a piece's movie's own. ProRes is not 4:2:0. ↩️Media
+/// colour law's bytes (`colour`), made on the GPU before the readback —
+/// and a piece's movie's own. ProRes is not 4:2:0. ↩️Media
 /// Foundation kept its own conversion until 2026-11-14 (`windows.rs` says
 /// why it no longer does).
 ///
@@ -321,11 +324,7 @@ pub unsafe extern "C" fn qa_video_export_write_audio(interleaved: *const i16, fr
 /// `shape` is null or holds two.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_video_export_nv12_shape(shape: *mut i32) -> i32 {
-    #[cfg(any(windows, target_os = "android", target_vendor = "apple"))]
-    let taken = os::nv12_shape();
-    #[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
-    let taken: Option<(usize, usize)> = None;
-    let Some((width, height)) = taken.filter(|_| !shape.is_null()) else {
+    let Some((width, height)) = os::nv12_shape().filter(|_| !shape.is_null()) else {
         return 0;
     };
     // SAFETY: the caller's contract.
@@ -344,15 +343,8 @@ pub unsafe extern "C" fn qa_video_export_nv12_shape(shape: *mut i32) -> i32 {
 /// `bytes` is null or holds that frame.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_video_export_write_nv12(bytes: *const u8, stride: i64) -> i32 {
-    #[cfg(any(windows, target_os = "android", target_vendor = "apple"))]
     // SAFETY: the caller's contract.
-    return unsafe { os::write_nv12(bytes, stride) as i32 };
-    #[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
-    {
-        let _ = (bytes, stride);
-        set_error("video export: this writer takes RGBA, not NV12");
-        0
-    }
+    unsafe { os::write_nv12(bytes, stride) as i32 }
 }
 
 /// The frames of sound this build's writer puts before the mix, for the

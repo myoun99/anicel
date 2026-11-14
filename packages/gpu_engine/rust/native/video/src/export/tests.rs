@@ -17,9 +17,9 @@ use std::sync::{Mutex, MutexGuard};
 use media::iso_box::{self, Atom};
 
 use super::{
-    qa_video_export_abort, qa_video_export_audio_lead, qa_video_export_error, qa_video_export_finish, qa_video_export_open,
-    qa_video_export_probe, qa_video_export_supported, qa_video_export_write_audio, qa_video_export_write_frame,
-    qa_video_export_write_lead,
+    qa_video_export_abort, qa_video_export_audio_lead, qa_video_export_error, qa_video_export_finish,
+    qa_video_export_nv12_shape, qa_video_export_open, qa_video_export_probe, qa_video_export_supported,
+    qa_video_export_write_audio, qa_video_export_write_frame, qa_video_export_write_lead, qa_video_export_write_nv12,
 };
 
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
@@ -112,9 +112,8 @@ fn movie(file: &PathBuf, shape: Shape, frames: i32) -> Vec<u8> {
 fn written(file: &PathBuf, shape: Shape, frames: i32) -> Vec<u8> {
     let per_frame = if shape.channels > 0 { shape.sample_rate * shape.fps.1 / shape.fps.0 } else { 0 };
     for frame in 0..frames {
-        let rgba = moving(shape.width as usize, shape.height as usize, frame as usize);
-        // SAFETY: a whole frame of the opened size.
-        assert_eq!(unsafe { qa_video_export_write_frame(rgba.as_ptr()) }, 1, "frame {frame}: {}", last_error());
+        let wrote = hand(shape, frame as usize);
+        assert_eq!(wrote, 1, "frame {frame}: {}", last_error());
         if per_frame > 0 {
             let pcm = saw(per_frame as usize, shape.channels as usize, frame as usize);
             // SAFETY: `per_frame` frames of the opened channels.
@@ -135,6 +134,23 @@ fn moving(width: usize, height: usize, frame: usize) -> Vec<u8> {
         pixel.copy_from_slice(&[((index + frame * 8) % 256) as u8, (index * 2 % 256) as u8, 255 - (frame * 8 % 256) as u8, 255]);
     }
     rgba
+}
+
+/// Moving frame `frame` handed as the open writer takes it: as NV12 where
+/// it says so — every H.26x writer — rows its width apart, or as RGBA
+/// (ProRes). What it answers.
+fn hand(shape: Shape, frame: usize) -> i32 {
+    let mut taken = [0i32; 2];
+    // SAFETY: room for the two it says.
+    if unsafe { qa_video_export_nv12_shape(taken.as_mut_ptr()) } == 1 {
+        let (width, height) = (taken[0] as usize, taken[1] as usize);
+        let nv12: Vec<u8> = (0..width * height * 3 / 2).map(|at| ((at + frame * 8) % 256) as u8).collect();
+        // SAFETY: the frame it says, rows its width apart.
+        return unsafe { qa_video_export_write_nv12(nv12.as_ptr(), width as i64) };
+    }
+    let rgba = moving(shape.width as usize, shape.height as usize, frame);
+    // SAFETY: a whole frame of the opened size.
+    unsafe { qa_video_export_write_frame(rgba.as_ptr()) }
 }
 
 /// A saw, opposite in each channel of a pair.
@@ -528,23 +544,25 @@ fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
     std::fs::remove_file(&file).ok();
 }
 
-// Nothing open: nothing written, nothing finished, an abort that does
-// nothing — and an open job takes no null frame, no sound when silent, and
-// opens again after an abort. Where [`HELD`], the platform's own answers,
-// none of them saying anything: what is left to read is the open turned
-// away before. ↩️Each was also the C's answer until the connection round
-// deleted the C (H, 2026-11-08).
+// Nothing open: nothing written, as RGBA or as NV12, nothing finished, an
+// abort that does nothing — and an open job takes no null frame of either,
+// no sound when silent, and opens again after an abort. Where [`HELD`], the
+// platform's own answers, none of them saying anything: what is left to
+// read is the open turned away before. ↩️Each was also the C's answer until
+// the connection round deleted the C (H, 2026-11-08).
 #[test]
 fn a_call_out_of_turn_is_answered_in_the_platform_s_words() {
     let _one = one_at_a_time();
     let file = temp("out-of-turn", 0);
     let path = file.to_str().unwrap();
     let frame = moving(64, 48, 0);
+    let nv12 = vec![0u8; 64 * 48 * 3 / 2];
     let pcm = saw(10, 2, 0);
     // SAFETY: each pointer is null or holds what the call reads.
     let said = say(|| unsafe {
         qa_video_export_abort();
-        qa_video_export_write_frame(frame.as_ptr()) * 100
+        qa_video_export_write_frame(frame.as_ptr()) * 1000
+            + qa_video_export_write_nv12(nv12.as_ptr(), 64) * 100
             + qa_video_export_write_audio(pcm.as_ptr(), 10) * 10
             + qa_video_export_finish()
     });
@@ -554,9 +572,10 @@ fn a_call_out_of_turn_is_answered_in_the_platform_s_words() {
         if open(Some(path), Shape { channels: 0, ..MOVIE }) == 0 {
             return -1;
         }
-        let answers = qa_video_export_write_frame(std::ptr::null()) * 1000
+        let answers = qa_video_export_write_frame(std::ptr::null()) * 10000
+            + qa_video_export_write_nv12(std::ptr::null(), 64) * 1000
             + qa_video_export_write_audio(pcm.as_ptr(), 10) * 100
-            + qa_video_export_write_frame(frame.as_ptr()) * 10;
+            + hand(MOVIE, 0) * 10;
         qa_video_export_abort();
         let again = open(Some(path), MOVIE);
         qa_video_export_abort();

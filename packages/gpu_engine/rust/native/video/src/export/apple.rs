@@ -5,8 +5,8 @@
 //! through AudioToolbox, muxing included. Our pixel job: for H.26x, NV12
 //! laid into the two planes as it is — an export's from the GPU engine, a
 //! trimmed piece's as its movie's decoder made it, named as that movie
-//! names it — or RGBA → NV12 in the app's colour law; RGBA → BGRA for
-//! ProRes; and the even-size pad.
+//! names it; RGBA → BGRA for ProRes; and the even-size pad. ↩️RGBA was
+//! made NV12 here in the app's colour law for H.26x too, till 2026-11-15.
 
 use std::ffi::c_void;
 use std::ptr::{self, NonNull};
@@ -50,11 +50,11 @@ use objc2_core_video::{
 use objc2_foundation::{NSDictionary, NSFileManager, NSNumber, NSString, NSURL};
 
 use super::{
-    A_PIECE_TAKES_NV12, BAD_OPEN, CODEC_H264, CODEC_HEVC, CODEC_PRORES_4444, CODEC_PRORES_422, CODEC_PRORES_HQ,
-    CODEC_PRORES_LT, CODEC_PRORES_PROXY, CONTAINER_MOV, CONTAINER_MP4, Job, lock, set_error,
+    BAD_OPEN, CODEC_H264, CODEC_HEVC, CODEC_PRORES_4444, CODEC_PRORES_422, CODEC_PRORES_HQ,
+    CODEC_PRORES_LT, CODEC_PRORES_PROXY, CONTAINER_MOV, CONTAINER_MP4, H26X_TAKES_NV12, Job, lock, set_error,
 };
 use super::nv12::{self, Nv12};
-use crate::colour::{self, Colours, Picture, Planes, core_video};
+use crate::colour::{Colours, Planes, core_video};
 
 pub const SUPPORTED: bool = true;
 
@@ -81,13 +81,12 @@ struct Writer {
     channels: usize,
     /// ProRes 4444 asked to keep the picture's alpha.
     keep_alpha: bool,
-    /// Frames go to the encoder as NV12 made here (`colour`) rather than
-    /// BGRA for VideoToolbox to convert — every codec but ProRes.
+    /// Frames go to the encoder as NV12 the app made (`colour`) rather than
+    /// BGRA for VideoToolbox to convert — every codec but ProRes, which is
+    /// handed RGBA alone ([`write_frame`]) as H.26x is NV12 alone.
     ycbcr: bool,
     /// What the NV12 is named, on every buffer (`Job::named`).
     colours: Colours,
-    /// Whether RGBA may be handed (`Job::takes_rgba`).
-    takes_rgba: bool,
 }
 
 // SAFETY: the one export is called from whichever thread Dart is on, one
@@ -427,7 +426,6 @@ fn writer(path: Option<&str>, job: &Job) -> Result<Writer, &'static str> {
         keep_alpha: job.codec == CODEC_PRORES_4444 && job.alpha,
         ycbcr,
         colours: job.named(),
-        takes_rgba: job.takes_rgba(),
     })
 }
 
@@ -472,13 +470,6 @@ fn fill_bgra(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
         padding.fill(pad);
     }
     true
-}
-
-/// `rgba` into `pixels` as NV12 in the app's colour law (`colour`) — a
-/// picture the app made, on the H.26x road.
-fn fill_ycbcr(writer: &Writer, pixels: &CVPixelBuffer, rgba: &[u8]) -> bool {
-    let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
-    into_two_planes(writer, pixels, |planes| colour::from_rgba(&picture, writer.width, writer.height, planes))
 }
 
 /// `frame` into `pixels` as it is — an export's frames on the H.26x road,
@@ -650,17 +641,13 @@ pub unsafe fn write_frame(rgba: *const u8) -> bool {
     let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
         return false;
     };
-    if !writer.takes_rgba {
-        set_error(A_PIECE_TAKES_NV12);
+    if writer.ycbcr {
+        set_error(H26X_TAKES_NV12);
         return false;
     }
     // SAFETY: the caller's contract.
     let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
-    autoreleasepool(|_| {
-        writer.frame(|writer, pixels| {
-            if writer.ycbcr { fill_ycbcr(writer, pixels, rgba) } else { fill_bgra(writer, pixels, rgba) }
-        })
-    })
+    autoreleasepool(|_| writer.frame(|writer, pixels| fill_bgra(writer, pixels, rgba)))
 }
 
 /// The frame the open writer takes as NV12 — the H.26x road's, padded

@@ -81,12 +81,13 @@ void main() {
       codec: 1,
     );
     if (opened) {
-      // Drive a real tiny encode so "openable" is proven end-to-end.
-      final frame = Uint8List.fromList(
-        List<int>.filled(width * height * 4, 0x80),
-      );
+      // Drive a real tiny encode so "openable" is proven end-to-end: a grey
+      // frame of the NV12 the writer takes, as every H.26x writer does.
+      final shape = encoder.nv12Frame!;
+      final bytes = shape.width * shape.height * 3 ~/ 2;
+      final frame = Uint8List(bytes)..fillRange(0, bytes, 0x80);
       watch.step('writing a frame');
-      expect(encoder.writeFrame(frame), isTrue);
+      expect(encoder.writeNv12(frame, stride: shape.width), isTrue);
       watch.step('finishing the movie');
       expect(encoder.finish(), isTrue);
       expect(File(path).lengthSync(), greaterThan(500));

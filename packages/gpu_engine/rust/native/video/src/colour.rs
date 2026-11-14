@@ -1,7 +1,13 @@
-//! The app's colour law for movies: BT.601, studio range, 4:2:0 — how a
-//! picture becomes YCbCr when this app writes a movie, and how YCbCr becomes
-//! a picture where this app converts one back itself. BOTH DIRECTIONS HERE,
-//! so the matrix one side writes is the matrix the other side reads.
+//! The app's colour law for movies: BT.601, studio range, 4:2:0 — what a
+//! picture the app drew becomes as YCbCr when it writes a movie, and how
+//! YCbCr becomes a picture where the app converts one back itself. The
+//! writing side is the GPU engine's NV12 pass (`gpu_engine`
+//! `kernels/export/nv12.wgsl`), the reading side is here ([`to_rgba`]), and
+//! both are held to the same sums worked out by hand, so the matrix one
+//! side writes is the matrix the other reads. ↩️Both directions were here
+//! till 2026-11-15 — the writing one as `from_rgba`, the pass's twin on the
+//! CPU (board trimmed-movie-decodes-to-nv12-Q2: 「지운다 — 테스트도 엔진의
+//! NV12 로 옮긴다」).
 //!
 //! 🚨★★★**THE WRITERS CONVERT, NOT THE OS.** Apple's writer handed its
 //! encoder BGRA and let VideoToolbox turn it into YCbCr, and what came back
@@ -12,8 +18,9 @@
 //! (2026-09-24, board `trimmed-piece-apple-parity`). Naming BT.601 in the
 //! writer's colour properties moved none of those numbers, so the matrix is
 //! not the writer's to choose that way — it is chosen by handing the encoder
-//! YCbCr made HERE. The Android writer always converted by hand; this is now
-//! that conversion, for every writer. ↩️Media Foundation's writer kept its
+//! YCbCr the app made itself: the GPU engine's NV12 pass, for every writer
+//! (gpu-export-path ⑶; the Android writer always converted by hand, and
+//! this module did it on the CPU till 2026-11-15). ↩️Media Foundation's writer kept its
 //! own until 2026-11-14 — its writer and reader agreed with each other
 //! within 3 — and takes this law's NV12 since, which its reader reads as
 //! closely (`export/windows.rs`).
@@ -45,8 +52,6 @@
 //! hands the movie's 4:2:0 as it is ([`nv12_of`]) and says what the movie
 //! calls it ([`Colours`]); its writer lays those bytes and names those
 //! colours, and names nothing the movie did not. No sum either way.
-//! ⚠️So a piece's writer takes no RGBA (`export`): RGBA becomes YCbCr in
-//! this law only, which is not what the piece says it holds.
 
 /// What a movie says its pictures are, in the code points every container
 /// and bitstream spell them in (ITU-T H.273 — an MP4's `colr`, H.264's
@@ -92,13 +97,6 @@ pub fn name_of<T: Copy>(named: &[(T, u8)], code: u8) -> Option<T> {
     named.iter().find(|&&(_, known)| known == code && code != UNSPECIFIED).map(|&(name, _)| name)
 }
 
-/// A straight-RGBA picture, rows top-down and packed.
-pub struct Picture<'a> {
-    pub rgba: &'a [u8],
-    pub width: usize,
-    pub height: usize,
-}
-
 /// Where a 4:2:0 frame's planes lie, because every buffer this fills lays
 /// them out its own way: `y` rows are `y_stride` bytes apart, and the
 /// chroma sample for 2×2 pixels lands at
@@ -113,46 +111,6 @@ pub struct Planes<'a> {
     pub cr: usize,
     pub chroma_stride: usize,
     pub chroma_step: usize,
-}
-
-/// `width`×`height` of 4:2:0 BT.601 studio range from `picture`, which fills
-/// the top-left of the frame; the rest is PADDING, painted white (an encoder
-/// takes even sizes; the picture may be odd).
-///
-/// ⚠️Each 2×2 block takes its chroma from its top-left pixel rather than an
-/// average: it is what the Android writer always did, and a flat picture —
-/// what every test of this reads — is the same either way.
-///
-/// 🚨★★★TWO SPELLINGS OF ONE CONVERSION, ON PURPOSE (관제 2026-11-12,
-/// gpu-export-path ⑶-3 ①). The GPU engine's NV12 pass
-/// (`gpu_engine` `kernels/export/nv12.wgsl`) makes these same bytes for an
-/// export's frames, and the writers only lay them (`export/nv12.rs`). The
-/// pass's tests hold it to this byte for byte (`kernels/export/tests.rs`,
-/// this their oracle) — ⛔change one and the other goes with it.
-/// ↩️It stayed for a trimmed movie, re-encoded on a worker that has no GPU
-/// engine — till that movie's piece was cut of its own YCbCr (board
-/// `trimmed-movie-decodes-to-nv12`, 2026-11-15). No frame the app makes
-/// comes here since: what still does is the tests' movies, written of
-/// RGBA (`test/helpers/encoded_movie.dart`, the encoder's own tests), and
-/// the pass's oracle — whether it goes with them is board
-/// `trimmed-movie-decodes-to-nv12-Q2`.
-pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Planes) {
-    for y in 0..height {
-        for x in 0..width {
-            let (r, g, b) = if x < picture.width && y < picture.height {
-                let pixel = &picture.rgba[(y * picture.width + x) * 4..];
-                (i32::from(pixel[0]), i32::from(pixel[1]), i32::from(pixel[2]))
-            } else {
-                (255, 255, 255)
-            };
-            planes.y[y * planes.y_stride + x] = (((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) as u8;
-            if x & 1 == 0 && y & 1 == 0 {
-                let at = (y / 2) * planes.chroma_stride + (x / 2) * planes.chroma_step;
-                planes.chroma[planes.cb + at] = (((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128) as u8;
-                planes.chroma[planes.cr + at] = (((112 * r - 94 * g - 18 * b + 128) >> 8) + 128) as u8;
-            }
-        }
-    }
 }
 
 /// Where a decoder's 4:2:0 frame lies, to be read — what [`Planes`] is to
@@ -245,7 +203,8 @@ pub fn nv12_of(frame: &Decoded, width: usize, height: usize, out: &mut [u8]) -> 
     true
 }
 
-/// YUV420 → RGBA, BT.601 studio range — the inverse of [`from_rgba`].
+/// YUV420 → RGBA, BT.601 studio range — the inverse of the GPU engine's
+/// NV12 pass (`kernels/export/nv12.wgsl`).
 ///
 /// `data` lies as [`Decoded::in_one_buffer`] reads it: `stride` bytes a
 /// luma row, `slice` rows to the chroma, `semi_planar` NV12 over I420.
@@ -255,7 +214,7 @@ pub fn nv12_of(frame: &Decoded, width: usize, height: usize, out: &mut [u8]) -> 
 /// every PR and executed on no machine anybody has — the card
 /// `android-decoder-branch-never-runs` is about exactly that gap. Nothing in
 /// it touches a platform: it reads bytes and writes bytes, so it can be
-/// proven on the bench, round trip included.
+/// proven on the bench.
 ///
 /// ⛔The picture size comes in as ARGUMENTS. It used to read the decoder's
 /// global document, which is what tied a pure calculation to a backend

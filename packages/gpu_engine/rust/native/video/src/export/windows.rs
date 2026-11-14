@@ -2,9 +2,9 @@
 //! AAC encoder MFTs AND the MP4 muxing. Its pictures go in as NV12, each
 //! padded even as H.264 requires, and its types say what they are: an
 //! export's in the app's colour law (`colour`, BT.601 studio range) as the
-//! GPU engine made them (`write_nv12`) or made here of RGBA
-//! (`write_frame`); a trimmed piece's as its movie's decoder made them
-//! (`write_nv12`), named as that movie names them.
+//! GPU engine made them, a trimmed piece's as its movie's decoder made
+//! them, named as that movie names them — both through `write_nv12`.
+//! ↩️RGBA was made NV12 here too (`write_frame`) till 2026-11-15.
 //!
 //! ↩️Till 2026-11-14 the RGBA of both went in as RGB32 — made BGRA here,
 //! then YUV by Media Foundation's own converter: two passes on the CPU a
@@ -24,8 +24,8 @@ use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{GUID, PCWSTR, Result};
 
 use super::nv12::{self, Nv12};
-use super::{A_PIECE_TAKES_NV12, BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, edit_list, lock, set_error};
-use crate::colour::{self, Picture, Planes, media_foundation};
+use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, H26X_TAKES_NV12, Job, bitrate, edit_list, lock, set_error};
+use crate::colour::{Planes, media_foundation};
 use crate::hardware_law;
 
 pub const SUPPORTED: bool = true;
@@ -40,13 +40,9 @@ struct Writer {
     path: PathBuf,
     video_stream: u32,
     audio_stream: u32,
-    src_width: usize,
-    src_height: usize,
     /// Padded even.
     width: usize,
     height: usize,
-    /// Whether RGBA may be handed (`Job::takes_rgba`).
-    takes_rgba: bool,
     fps_num: i64,
     fps_den: i64,
     frame_index: i64,
@@ -156,11 +152,8 @@ pub fn open(job: &Job) -> bool {
         path: file,
         video_stream,
         audio_stream,
-        src_width: job.width as usize,
-        src_height: job.height as usize,
         width: width as usize,
         height: height as usize,
-        takes_rgba: job.takes_rgba(),
         fps_num: i64::from(job.fps_num),
         fps_den: i64::from(job.fps_den),
         frame_index: 0,
@@ -355,26 +348,19 @@ fn picture(writer: &mut Writer, fill: impl FnOnce(&mut Planes)) -> bool {
     false
 }
 
-/// A frame the app made, made NV12 here in its colour law — the padding
-/// white, so an odd canvas gains a hairline of paper, not garbage. A
-/// piece's writer refuses it (`Job::takes_rgba`).
+/// Refused: this writer writes H.264 and H.265 alone, and they come as NV12
+/// ([`write_nv12`], `H26X_TAKES_NV12`) — said where a job is open and a
+/// frame handed; out of turn, refused without a word, as before. ↩️Till
+/// 2026-11-15 RGBA was made NV12 here in the app's colour law, the
+/// padding white.
 ///
 /// # Safety
-/// `rgba` is null or holds the frame `open` was given.
+/// Nothing is read of `rgba`.
 pub unsafe fn write_frame(rgba: *const u8) -> bool {
-    let mut held = lock(&WRITER);
-    let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
-        return false;
-    };
-    if !writer.takes_rgba {
-        set_error(A_PIECE_TAKES_NV12);
-        return false;
+    if lock(&WRITER).is_some() && !rgba.is_null() {
+        set_error(H26X_TAKES_NV12);
     }
-    // SAFETY: the caller's contract.
-    let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
-    let picture_of = Picture { rgba, width: writer.src_width, height: writer.src_height };
-    let (width, height) = (writer.width, writer.height);
-    picture(writer, |planes| colour::from_rgba(&picture_of, width, height, planes))
+    false
 }
 
 /// The frame the open writer takes as NV12: the encoder's, padded even.

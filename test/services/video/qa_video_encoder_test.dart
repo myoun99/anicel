@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
+import 'package:gpu_engine/gpu_engine.dart' show GpuExport, GpuShown;
 import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/decode_audio_file.dart';
+import '../../helpers/encoded_movie.dart' show engineNv12Of;
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/temp_dir.dart';
@@ -117,11 +118,14 @@ void main() {
       isTrue,
       reason: encoder.lastError,
     );
+    final frameShape = encoder.nv12Frame!;
+    final stride = GpuExport.nv12RowBytes(frameShape.width);
     const samplesPerFrame = 48000 ~/ 24;
     for (var frame = 0; frame < 24; frame += 1) {
       watch.step('a real MP4: writing frame $frame');
+      final nv12 = engineNv12Of(rgbaFrame(64, 48, frame), 64, 48, frameShape);
       expect(
-        encoder.writeFrame(rgbaFrame(64, 48, frame)),
+        encoder.writeNv12(nv12, stride: stride),
         isTrue,
         reason: 'frame $frame: ${encoder.lastError}',
       );
@@ -167,9 +171,13 @@ void main() {
       isTrue,
       reason: encoder.lastError,
     );
+    final frameShape = encoder.nv12Frame;
+    expect(frameShape, (width: 64, height: 48), reason: 'padded even');
+    final stride = GpuExport.nv12RowBytes(frameShape!.width);
     for (var frame = 0; frame < 6; frame += 1) {
       watch.step('an odd canvas: writing frame $frame');
-      expect(encoder.writeFrame(rgbaFrame(63, 47, frame)), isTrue);
+      final nv12 = engineNv12Of(rgbaFrame(63, 47, frame), 63, 47, frameShape);
+      expect(encoder.writeNv12(nv12, stride: stride), isTrue);
     }
     watch.step('an odd canvas: finishing the movie');
     expect(encoder.finish(), isTrue, reason: encoder.lastError);

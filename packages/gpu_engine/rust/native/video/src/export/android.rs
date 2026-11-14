@@ -2,8 +2,8 @@
 //! — the NDK's own headers, never a hand table (media's `served_span.rs`).
 //! An export's frames come as the GPU engine's NV12 and a trimmed piece's
 //! as its movie's decoder made it, each only laid (`nv12`) and named as
-//! it is (`crate::colour`); RGBA is converted here in the app's colour
-//! law. Hardware encoders overwhelmingly accept
+//! it is (`crate::colour`); ↩️RGBA was converted here in the app's colour
+//! law till 2026-11-15. Hardware encoders overwhelmingly accept
 //! COLOR_FormatYUV420SemiPlanar; the planar variant is the fallback.
 //!
 //! 🪦The C once resolved its own NDK table, and its constants were wrong
@@ -33,9 +33,9 @@ use ndk_sys::{
     OutputFormat, media_status_t,
 };
 
-use super::{A_PIECE_TAKES_NV12, BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
+use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, H26X_TAKES_NV12, Job, bitrate, lock, set_error};
 use super::nv12;
-use crate::colour::{self, Colours, Picture, Planes, media_format};
+use crate::colour::{Colours, Planes, media_format};
 
 const AMEDIA_OK: media_status_t = media_status_t::AMEDIA_OK;
 
@@ -80,8 +80,6 @@ struct Writer {
     /// codec took.
     yuv: Vec<u8>,
     semi_planar: bool,
-    src_width: usize,
-    src_height: usize,
     width: usize,
     height: usize,
     fps_num: i64,
@@ -92,8 +90,6 @@ struct Writer {
     channels: usize,
     /// What the pictures are named (`Job::named`).
     colours: Colours,
-    /// Whether RGBA may be handed (`Job::takes_rgba`).
-    takes_rgba: bool,
 }
 
 // SAFETY: the codecs and the muxer are called one call at a time under the
@@ -326,8 +322,6 @@ pub fn open(job: &Job) -> bool {
         pending: VecDeque::new(),
         yuv: vec![0; width * height * 3 / 2],
         semi_planar: true,
-        src_width: job.width as usize,
-        src_height: job.height as usize,
         width,
         height,
         fps_num: i64::from(job.fps_num),
@@ -337,7 +331,6 @@ pub fn open(job: &Job) -> bool {
         sample_rate: i64::from(job.sample_rate),
         channels: job.channels as usize,
         colours: job.named(),
-        takes_rgba: job.takes_rgba(),
     };
     // SAFETY: a NUL-terminated path; the fd is the writer's to close.
     writer.fd = unsafe { libc::open(path.as_ptr(), libc::O_CREAT | libc::O_TRUNC | libc::O_RDWR, 0o644 as libc::c_uint) };
@@ -376,26 +369,19 @@ pub fn open(job: &Job) -> bool {
     true
 }
 
+/// Refused: this writer writes H.264 and H.265 alone, and they come as NV12
+/// ([`write_nv12`], `H26X_TAKES_NV12`) — said where a job is open and a
+/// frame handed; out of turn, refused without a word, as before. ↩️Till
+/// 2026-11-15 RGBA was made YUV 4:2:0 here in the app's colour law, the
+/// padding white.
+///
 /// # Safety
-/// `rgba` is null or holds the frame `open` was given.
+/// Nothing is read of `rgba`.
 pub unsafe fn write_frame(rgba: *const u8) -> bool {
-    let mut held = lock(&WRITER);
-    let Some(writer) = held.as_mut().filter(|_| !rgba.is_null()) else {
-        return false;
-    };
-    if !writer.takes_rgba {
-        set_error(A_PIECE_TAKES_NV12);
-        return false;
+    if lock(&WRITER).is_some() && !rgba.is_null() {
+        set_error(H26X_TAKES_NV12);
     }
-    // RGBA → YUV420 in the app's colour law (BT.601 studio range — the
-    // convention H.264 players assume for unflagged content). Pad pixels
-    // render white.
-    // SAFETY: the caller's contract.
-    let rgba = unsafe { std::slice::from_raw_parts(rgba, writer.src_width * writer.src_height * 4) };
-    let picture = Picture { rgba, width: writer.src_width, height: writer.src_height };
-    let (width, height) = (writer.width, writer.height);
-    colour::from_rgba(&picture, width, height, &mut planes_of(writer));
-    queue(writer)
+    false
 }
 
 /// The frame the open writer takes as NV12: the codec's, padded even.

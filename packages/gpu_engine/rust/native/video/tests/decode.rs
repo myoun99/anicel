@@ -23,7 +23,7 @@ use video::decode::{
     qa_video_decode_info, qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_nv12,
     qa_video_decode_open_span, qa_video_decode_supported,
 };
-use video::colour::{self, Picture, Planes};
+use video::colour;
 use video::export::{
     qa_video_export_abort, qa_video_export_error, qa_video_export_finish, qa_video_export_nv12_shape,
     qa_video_export_open, qa_video_export_probe, qa_video_export_write_audio, qa_video_export_write_frame,
@@ -78,29 +78,55 @@ fn one_at_a_time() -> MutexGuard<'static, ()> {
 const WIDTH: usize = 64;
 const HEIGHT: usize = 48;
 const FRAMES: usize = 30;
-
-/// Frame `k`'s red and green: red rising and green falling, so each frame
-/// is nearest its own and a frame read for the wrong index shows.
-fn colour(k: usize) -> [u8; 2] {
-    [(k * 8) as u8, (255 - k * 8) as u8]
+/// Frame `k`'s luma: rising frame by frame, so each frame is nearest its
+/// own and a frame read for the wrong index shows.
+fn luma(k: usize) -> u8 {
+    (40 + k * 6) as u8
 }
 
-/// Frame `k` whole, `width` × `height`: its colour, and blue rising down the
-/// rows — so a picture read upside down, or with its channels swapped, is
-/// not the same bytes.
-fn picture(width: usize, height: usize, k: usize) -> Vec<u8> {
-    let [r, g] = colour(k);
-    (0..height).flat_map(|y| [r, g, (20 + y * 200 / height) as u8, 255].repeat(width)).collect()
+/// The Cb of chroma row `row` of a frame `height` tall: rising down the
+/// rows — blue, read back — so a picture read upside down, or with its
+/// channels swapped, is not the same bytes.
+fn cb_at(row: usize, height: usize) -> u8 {
+    (70 + row * 2 * 120 / height) as u8
 }
 
-/// What `frame`, read `width` × `height`, shows: the frame whose colour
-/// is nearest its middle's, whether it is the right way up, and whether it
-/// is opaque.
+/// Frame `k` whole as NV12, `width` × `height` (even), rows `stride` apart:
+/// its luma, Cb rising down the rows and Cr neutral — YCbCr made by hand,
+/// as an H.26x writer is handed it.
+fn picture(width: usize, height: usize, stride: usize, k: usize) -> Vec<u8> {
+    let mut nv12 = vec![0u8; stride * height * 3 / 2];
+    let (y, chroma) = nv12.split_at_mut(stride * height);
+    for row in y.chunks_exact_mut(stride) {
+        row[..width].fill(luma(k));
+    }
+    for (row, bytes) in chroma.chunks_exact_mut(stride).enumerate() {
+        for pair in bytes[..width].chunks_exact_mut(2) {
+            pair.copy_from_slice(&[cb_at(row, height), 128]);
+        }
+    }
+    nv12
+}
+
+/// What the law's own reader ([`colour::to_rgba`]) makes of frame `k` on
+/// chroma row `row`, the frame `height` tall.
+fn read_as(k: usize, row: usize, height: usize) -> [u8; 3] {
+    let frame = [luma(k), luma(k), luma(k), luma(k), cb_at(row, height), 128];
+    let mut rgba = [0u8; 2 * 2 * 4];
+    assert!(colour::to_rgba(&frame, 2, 2, 2, 2, true, &mut rgba), "a 2×2 frame");
+    [rgba[0], rgba[1], rgba[2]]
+}
+
+/// What `frame`, read `width` × `height`, shows: the frame whose colour is
+/// nearest its middle's, whether it is the right way up, and whether it is
+/// opaque.
 fn shows(frame: &[u8], width: usize, height: usize) -> (usize, bool, bool) {
     let at = |y: usize| &frame[(y * width + width / 2) * 4..][..4];
-    let middle = &at(height / 2)[..2];
-    let distance =
-        |k: usize| colour(k).iter().zip(middle).map(|(a, b)| (i32::from(*a) - i32::from(*b)).pow(2)).sum::<i32>();
+    let middle = &at(height / 2)[..3];
+    let distance = |k: usize| {
+        let was = read_as(k, height / 2 / 2, height);
+        was.iter().zip(middle).map(|(a, b)| (i32::from(*a) - i32::from(*b)).pow(2)).sum::<i32>()
+    };
     let nearest = (0..FRAMES).min_by_key(|&k| distance(k)).expect("frames");
     (nearest, u16::from(at(2)[2]) + 100 < u16::from(at(height - 3)[2]), at(2)[3] == 255)
 }
@@ -127,29 +153,35 @@ const SILENT: Asked =
 /// export — None where it has none — and the file it is in.
 fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
     static MOVIE: OnceLock<Option<(PathBuf, Vec<u8>)>> = OnceLock::new();
-    MOVIE.get_or_init(|| write_movie("silent", SILENT, FRAMES, 0, Feed::Rgba, picture)).as_ref()
+    MOVIE.get_or_init(|| write_movie("silent", SILENT, FRAMES, 0, Feed::Nv12, picture)).as_ref()
 }
 
-/// How a frame is handed to the export: as the RGBA a trimmed movie's
-/// frames are, or as the NV12 the GPU engine makes of an export's.
+/// How a frame is handed to the export: as the NV12 an H.26x writer takes
+/// — the GPU engine's of an export's frames, a decoder's of a piece's — or
+/// as the RGBA ProRes takes, its OS converting it. ↩️H.26x took RGBA too,
+/// made NV12 in the app's law on the CPU, till 2026-11-15.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Feed {
     Rgba,
     Nv12,
 }
 
-/// The H.26x codecs, which every writer takes the engine's NV12 for —
-/// ProRes takes RGBA alone.
-fn takes_nv12(codec: i32) -> bool {
-    codec == 0 || codec == 1
+/// How the export takes `codec`'s frames: H.26x as NV12, ProRes as RGBA.
+fn feed_of(codec: i32) -> Feed {
+    if codec == 0 || codec == 1 { Feed::Nv12 } else { Feed::Rgba }
 }
 
-/// `rgba`, `width` × `height`, handed to the open job as `feed` says: as it
-/// is, or as the engine's NV12 of it — the colour law's bytes
-/// (`colour::from_rgba`), padded to the writer's frame, on rows longer than
-/// the frame as the engine's readback rows are. What the export answers.
-fn hand(feed: Feed, rgba: &[u8], width: usize, height: usize) -> i32 {
+/// Frame `k` that `paint` makes (`width`, `height`, `stride`, frame) of a
+/// picture `width` × `height`, handed to the open job as `feed` says: as
+/// NV12 in the writer's frame, on rows longer than it as the engine's
+/// readback rows are — or as the RGBA the law's own reader makes of it
+/// ([`colour::to_rgba`]). What the export answers.
+fn hand(feed: Feed, paint: &impl Fn(usize, usize, usize, usize) -> Vec<u8>, width: usize, height: usize, k: usize) -> i32 {
     if feed == Feed::Rgba {
+        let (even_width, even_height) = (width + (width & 1), height + (height & 1));
+        let nv12 = paint(even_width, even_height, even_width, k);
+        let mut rgba = vec![0u8; width * height * 4];
+        assert!(colour::to_rgba(&nv12, width, height, even_width, even_height, true, &mut rgba), "its own frame");
         // SAFETY: a whole frame of the size opened.
         return unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
     }
@@ -158,15 +190,12 @@ fn hand(feed: Feed, rgba: &[u8], width: usize, height: usize) -> i32 {
     assert_eq!(unsafe { qa_video_export_nv12_shape(shape.as_mut_ptr()) }, 1, "the writer takes NV12");
     let (frame_width, frame_height) = (shape[0] as usize, shape[1] as usize);
     let stride = frame_width + 64;
-    let mut nv12 = vec![0u8; stride * frame_height * 3 / 2];
-    let (y, chroma) = nv12.split_at_mut(stride * frame_height);
-    let mut planes = Planes { y, y_stride: stride, chroma, cb: 0, cr: 1, chroma_stride: stride, chroma_step: 2 };
-    colour::from_rgba(&Picture { rgba, width, height }, frame_width, frame_height, &mut planes);
+    let nv12 = paint(frame_width, frame_height, stride, k);
     // SAFETY: the frame it says, rows `stride` apart.
     unsafe { qa_video_export_write_nv12(nv12.as_ptr(), stride as i64) }
 }
 
-/// `frames` pictures `paint` makes (`width`, `height`, frame) as the movie
+/// `frames` pictures `paint` makes (`width`, `height`, `stride`, frame) as the movie
 /// `asked` this build's export writes, each handed as `feed` says, and the
 /// file — None where it does not write it. Under silence of the sound's
 /// rate, if it has one, that runs `sound_past` samples past the last
@@ -177,7 +206,7 @@ fn write_movie(
     frames: usize,
     sound_past: usize,
     feed: Feed,
-    paint: impl Fn(usize, usize, usize) -> Vec<u8>,
+    paint: impl Fn(usize, usize, usize, usize) -> Vec<u8>,
 ) -> Option<(PathBuf, Vec<u8>)> {
     let extension = if asked.container == 1 { "mov" } else { "mp4" };
     let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.{extension}", std::process::id()));
@@ -211,8 +240,7 @@ fn write_movie(
     };
     let per_frame = (rate * fps.1 / fps.0) as usize;
     for k in 0..frames {
-        let rgba = paint(width, height, k);
-        assert_eq!(hand(feed, &rgba, width, height), 1, "frame {k}: {}", export_error());
+        assert_eq!(hand(feed, &paint, width, height, k), 1, "frame {k}: {}", export_error());
         if channels > 0 {
             sound(per_frame);
         }
@@ -330,56 +358,77 @@ fn what_the_export_writes_reads_back_as_it_was_asked() {
         if qa_video_export_probe(asked.container, asked.codec) == 0 {
             continue;
         }
-        let feeds: &[Feed] = if takes_nv12(asked.codec) { &[Feed::Rgba, Feed::Nv12] } else { &[Feed::Rgba] };
-        for &feed in feeds {
-            let name = &format!("{name} as {feed:?}");
-            let (path, _) = write_movie(&format!("asked-{}", name.replace(' ', "-")), asked, frames, 0, feed, picture)
-                .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
-            let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
-            let even = |side: usize| (side + (side & 1)) as i32;
-            let shape = (even(asked.width), even(asked.height), frames as i64);
-            assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
-            // The rate as the reader hands it: Media Foundation's, in the 100 ns
-            // it keeps a frame's time in (24000/1001 came back 10000000/417083,
-            // 2026-11-07) — so a frame lasts as asked, to that tick.
-            let lasts = |(num, den): (i32, i32)| 1e7 * f64::from(den) / f64::from(num);
-            assert!((lasts(info.3) - lasts(asked.fps)).abs() <= 1.0, "{name}: a frame lasts as asked: {:?}", info.3);
-            // -5 and then -4 are each asked as the first: an index before it is
-            // clamped BEFORE 「already positioned」 is asked, or -4 would read as
-            // the frame after -5's.
-            let order = (0..frames).chain([frames - 1, 0, frames / 2, 3, 4, frames / 2, 0, 0]);
-            for (index, frame) in order.zip(&read) {
-                let frame = frame.as_ref().unwrap_or_else(|why| panic!("{name}: frame {index}: {why}"));
-                let shown = shows(frame, info.0 as usize, info.1 as usize);
-                assert_eq!(shown, (index, true, true), "{name}: frame {index} — its picture, the right way up, opaque");
-            }
-            std::fs::remove_file(path).ok();
+        let feed = feed_of(asked.codec);
+        let name = &format!("{name} as {feed:?}");
+        let (path, _) = write_movie(&format!("asked-{}", name.replace(' ', "-")), asked, frames, 0, feed, picture)
+            .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
+        let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
+        let even = |side: usize| (side + (side & 1)) as i32;
+        let shape = (even(asked.width), even(asked.height), frames as i64);
+        assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
+        // The rate as the reader hands it: Media Foundation's, in the 100 ns
+        // it keeps a frame's time in (24000/1001 came back 10000000/417083,
+        // 2026-11-07) — so a frame lasts as asked, to that tick.
+        let lasts = |(num, den): (i32, i32)| 1e7 * f64::from(den) / f64::from(num);
+        assert!((lasts(info.3) - lasts(asked.fps)).abs() <= 1.0, "{name}: a frame lasts as asked: {:?}", info.3);
+        // -5 and then -4 are each asked as the first: an index before it is
+        // clamped BEFORE 「already positioned」 is asked, or -4 would read as
+        // the frame after -5's.
+        let order = (0..frames).chain([frames - 1, 0, frames / 2, 3, 4, frames / 2, 0, 0]);
+        for (index, frame) in order.zip(&read) {
+            let frame = frame.as_ref().unwrap_or_else(|why| panic!("{name}: frame {index}: {why}"));
+            let shown = shows(frame, info.0 as usize, info.1 as usize);
+            assert_eq!(shown, (index, true, true), "{name}: frame {index} — its picture, the right way up, opaque");
         }
+        std::fs::remove_file(path).ok();
     }
 }
 
+/// NV12 of `width` × `height` (even), one colour — its Y, Cb and Cr — all
+/// over, rows `stride` apart.
+fn flat_nv12(width: usize, height: usize, stride: usize, [y, cb, cr]: [u8; 3]) -> Vec<u8> {
+    let mut nv12 = vec![0u8; stride * height * 3 / 2];
+    let (luma, chroma) = nv12.split_at_mut(stride * height);
+    for row in luma.chunks_exact_mut(stride) {
+        row[..width].fill(y);
+    }
+    for row in chroma.chunks_exact_mut(stride) {
+        for pair in row[..width].chunks_exact_mut(2) {
+            pair.copy_from_slice(&[cb, cr]);
+        }
+    }
+    nv12
+}
+
 // 🚨A flat colour comes back through the reader within 3 a channel, HD and
-// SD, handed either way — the writer's pictures and the names it gives
-// them agreeing with what the reader makes of them. ⚠️Measured on Windows
-// alone (2026-11-14, `export/windows.rs` says what each name kept off).
+// SD — the names the writer gives its pictures agreeing with what the
+// reader makes of them. Each colour is handed as the law's YCbCr of it,
+// worked by hand (BT.601 studio, as `kernels/export/tests.rs` works its
+// own). ⚠️Measured on Windows alone (2026-11-14, `export/windows.rs` says
+// what each name kept off). ↩️Each was also handed as RGBA, the law made
+// on the CPU, till that went (2026-11-15).
 #[cfg(windows)]
 #[test]
 fn a_flat_colour_comes_back_within_three() {
     let _turn = one_at_a_time();
+    let colours: [([u8; 3], [u8; 3]); 4] = [
+        ([110, 60, 200], [94, 182, 140]),
+        ([30, 200, 30], [127, 79, 66]),
+        ([30, 30, 200], [58, 202, 116]),
+        ([128, 128, 128], [126, 128, 128]),
+    ];
     for (width, height) in [(1920, 1080), (256, 144)] {
-        for feed in [Feed::Rgba, Feed::Nv12] {
-            for rgb in [[110u8, 60, 200], [30, 200, 30], [30, 30, 200], [128, 128, 128]] {
-                let asked = Asked { width, height, ..SILENT };
-                let flat = |width: usize, height: usize, _| [rgb[0], rgb[1], rgb[2], 255].repeat(width * height);
-                let name = format!("flat-{width}-{feed:?}-{}", rgb[0]);
-                let (path, _) = write_movie(&name, asked, 3, 0, feed, flat).expect("it writes an MP4 of H.264");
-                let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
-                std::fs::remove_file(path).ok();
-                let frame = read[1].as_ref().expect("the second frame");
-                let middle = &frame[((info.1 as usize / 2) * info.0 as usize + info.0 as usize / 2) * 4..][..3];
-                let off = middle.iter().zip(rgb).map(|(back, was)| back.abs_diff(was)).max();
-                assert!(off <= Some(3), "{width}×{height} as {feed:?}: {rgb:?} came back {middle:?}");
-            }
+        for (rgb, ycc) in colours {
+            let asked = Asked { width, height, ..SILENT };
+            let flat = |width: usize, height: usize, stride: usize, _| flat_nv12(width, height, stride, ycc);
+            let name = format!("flat-{width}-{}", rgb[0]);
+            let (path, _) = write_movie(&name, asked, 3, 0, Feed::Nv12, flat).expect("it writes an MP4 of H.264");
+            let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
+            std::fs::remove_file(path).ok();
+            let frame = read[1].as_ref().expect("the second frame");
+            let middle = &frame[((info.1 as usize / 2) * info.0 as usize + info.0 as usize / 2) * 4..][..3];
+            let off = middle.iter().zip(rgb).map(|(back, was)| back.abs_diff(was)).max();
+            assert!(off <= Some(3), "{width}×{height}: {rgb:?} came back {middle:?}");
         }
     }
 }
@@ -483,7 +532,7 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // it until the connection round deleted the C (H, 2026-11-08).
     let _turn = one_at_a_time();
     let sounding = Asked { sound: Some((48_000, 2)), ..SILENT };
-    let Some((longer, _)) = write_movie("sound-past", sounding, 12, 12_000, Feed::Rgba, picture) else {
+    let Some((longer, _)) = write_movie("sound-past", sounding, 12, 12_000, Feed::Nv12, picture) else {
         return;
     };
     // This checkout's, read when the test runs (gpu_engine's
@@ -519,14 +568,6 @@ fn open_nv12(path: &std::path::Path) -> i32 {
     let path = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
     // SAFETY: a NUL-terminated path.
     unsafe { qa_video_decode_open_nv12(path.as_ptr()) }
-}
-
-/// NV12 of `width` × `height` (even), one colour — its Y, Cb and Cr — all
-/// over.
-fn flat_nv12(width: usize, height: usize, [y, cb, cr]: [u8; 3]) -> Vec<u8> {
-    let mut nv12 = vec![y; width * height];
-    nv12.extend([cb, cr].repeat(width * height / 4));
-    nv12
 }
 
 /// A movie at 24 of `frames` NV12, `width` × `height` (even), written as a
@@ -610,7 +651,7 @@ fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
     let size = (1920, 1080);
     let bt709 = [1, 1, 1, 0];
     let written = [[120, 90, 170], [60, 160, 100], [200, 128, 128]];
-    let frames: Vec<_> = written.iter().map(|&ycc| flat_nv12(size.0, size.1, ycc)).collect();
+    let frames: Vec<_> = written.iter().map(|&ycc| flat_nv12(size.0, size.1, size.0, ycc)).collect();
     let movie = write_named("bt709", size, bt709, &frames);
     let (named, decoded) = read_nv12(&movie);
     assert_eq!(named, bt709, "the movie says what it was named");
@@ -637,8 +678,7 @@ fn a_piece_is_its_movies_own_bytes_named_as_the_movie_names_them() {
 }
 
 // A movie that names nothing makes a piece that names nothing — the reader
-// of either guesses alike — and a piece's writer takes no RGBA: RGBA
-// becomes YCbCr in the app's law only, which is not what a piece holds.
+// of either guesses alike.
 #[test]
 fn a_piece_of_a_movie_that_names_nothing_names_nothing() {
     let _turn = one_at_a_time();
@@ -646,24 +686,42 @@ fn a_piece_of_a_movie_that_names_nothing_names_nothing() {
         return;
     }
     let unnamed = [2, 2, 2, 2];
-    let frames = vec![flat_nv12(64, 48, [120, 90, 170]); 3];
+    let frames = vec![flat_nv12(64, 48, 64, [120, 90, 170]); 3];
     let movie = write_named("unnamed", (64, 48), unnamed, &frames);
     let (named, _) = read_nv12(&movie);
     std::fs::remove_file(movie).ok();
     assert_eq!(named, unnamed, "nothing named, nothing said");
+}
 
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-piece-rgba.mp4", std::process::id()));
-    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
-    let bt709 = [1, 1, 1, 0];
-    // SAFETY (each): the export's declarations; four colours, and a whole
-    // frame of the size opened.
-    let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, 0, 0, 0, bt709.as_ptr()) };
-    assert_eq!(opened, 1, "{}", export_error());
-    let rgba = picture(64, 48, 0);
-    let refused = unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
-    let said = export_error();
-    qa_video_export_abort();
-    std::fs::remove_file(path).ok();
-    assert_eq!(refused, 0, "a piece's writer takes no RGBA");
-    assert!(said.contains("a piece of a movie is written of its NV12"), "{said}");
+// H.264 and H.265 are written of NV12 alone, whoever writes them — an
+// export's frames as the GPU engine made them, a piece's as its decoder
+// did — so RGBA handed to either is refused, and the error says why: no
+// writer of them has a sum of its own to make YCbCr of it (board
+// trimmed-movie-decodes-to-nv12-Q2, 2026-11-15). ↩️A piece's writer alone
+// refused it till then.
+#[test]
+fn h26x_takes_no_rgba_whoever_writes_it() {
+    let _turn = one_at_a_time();
+    for codec in [0, 1] {
+        if qa_video_export_probe(0, codec) == 0 {
+            continue;
+        }
+        let bt709 = [1, 1, 1, 0];
+        for (who, colours) in [("an export", std::ptr::null()), ("a piece", bt709.as_ptr())] {
+            let name = format!("{}-{codec}-rgba", who.replace(' ', "-"));
+            let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.mp4", std::process::id()));
+            let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+            // SAFETY (each): the export's declarations; four colours or
+            // none, and a whole frame of the size opened.
+            let opened = unsafe { qa_video_export_open(utf8.as_ptr(), 64, 48, 24, 1, 0, 0, 0, codec, 0, 0, colours) };
+            assert_eq!(opened, 1, "{name}: {}", export_error());
+            let rgba = [128u8; 64 * 48 * 4];
+            let refused = unsafe { qa_video_export_write_frame(rgba.as_ptr()) };
+            let said = export_error();
+            qa_video_export_abort();
+            std::fs::remove_file(path).ok();
+            assert_eq!(refused, 0, "{name}: RGBA is refused");
+            assert!(said.contains("written of NV12"), "{name}: {said}");
+        }
+    }
 }
