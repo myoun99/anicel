@@ -216,7 +216,7 @@ class _PackBits {
       }
       final c = data[at];
       if (skips && c == 0x80) {
-        got += _takeSkip();
+        got += _takeSkip(out, place, got, count);
       } else if (c >= 0x80) {
         final run = 257 - c;
         if (at + 5 > data.length) {
@@ -267,23 +267,43 @@ class _PackBits {
       (data[q] << 24) | (data[q + 1] << 16) | (data[q + 2] << 8) | data[q + 3];
 
   /// A `DBAN`'s `0x80`: the count byte after it passes that many pixels
-  /// over, keeping the frame before's — and answers how many.
+  /// from the [got]th of the row's [count] — kept as the frame before had
+  /// them where the count is positive, made clear where it is negative —
+  /// and answers how many.
   ///
-  /// 🚨BOTH SIGNS OF THE COUNT KEEP (measured 2026-11-14 on the user's
-  /// BRUSH.tvpx, card I-86). A count byte from `0x80` up passes `256 - n`,
-  /// one below it `n`, which ends every row of all 29 tips at its width. With
-  /// both keeping, no run or literal in any frame of the 23×23 pencil tips
-  /// writes only what the frame before held. Read as clearing, 377 of the
-  /// first frames' writes would change nothing, every zero run among them
-  /// three bytes dearer than the skip it repeats. ⚠️What the sign tells
-  /// TVPaint is not known: skips of both signs stand side by side.
-  int _takeSkip() {
+  /// 🚨A POSITIVE COUNT KEEPS, A NEGATIVE ONE CLEARS (measured 2026-11-14
+  /// on the user's BRUSH.tvpx, card I-86). A count byte below `0x80` passes
+  /// `n`, one from it up `256 - n`, which ends every row of all 29 tips at
+  /// its width. Read so, the 23×23 pencil tips' frames hold 218 to 288
+  /// inked pixels about their first frame's 264, and of all the tips' writes
+  /// the fewest change nothing. ↩️Read as keeping too, as it was that
+  /// afternoon, the pencil's ink grew frame by frame from 264 to 373 — the
+  /// writes that would change nothing were none either way on those tips,
+  /// so they could not tell the two apart. Read as a whole frame, both
+  /// clearing, the other tips lost their ink after the first.
+  /// ⚠️Not yet held to TVPaint's own stamps (card I-86-Q1).
+  int _takeSkip(
+    Uint32List? out,
+    int Function(int nth)? place,
+    int got,
+    int count,
+  ) {
     if (at + 2 > data.length) {
       throw const TvppRasterDecodeException('A skip record is truncated.');
     }
     final n = data[at + 1];
     at += 2;
-    return n >= 0x80 ? 256 - n : n;
+    if (n < 0x80) {
+      return n;
+    }
+    final passed = 256 - n;
+    for (var k = 0; out != null && k < passed && got + k < count; k++) {
+      final i = place!(got + k);
+      if (i >= 0) {
+        out[i] = 0;
+      }
+    }
+    return passed;
   }
 
   /// Refuses a frame one of whose writes changed nothing, where [skips] —
@@ -331,7 +351,7 @@ Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) =>
 /// One frame of a DEEP animation — a TVPaint brush tip's `.dip` — as
 /// premultiplied BGRA words: a `DBOD` [body] read as a whole canvas, or a
 /// `DBAN` [body] read over [before], the frame it follows, whose pixels its
-/// skips keep ([_PackBits.skips]).
+/// positive skips keep and its negative ones clear ([_PackBits.skips]).
 ///
 /// The rows are a .tvpp `DBOD`'s, the same walker's — `DBAN` adds the skip.
 Uint32List decodeDeepFrameWords(

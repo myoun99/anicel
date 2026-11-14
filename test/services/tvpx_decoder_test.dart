@@ -14,8 +14,8 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('a button under a heading is a brush of its tip\'s frames, the '
-      'skips of either sign keeping the frame before', () async {
+  test('a button under a heading is a brush of its tip\'s frames, a positive '
+      'skip keeping the frame before and a negative one clearing', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'カスタム鉛筆  HB',
@@ -30,7 +30,7 @@ void main() {
     final settings = preset.settings;
     expect([for (final tip in settings.tips) tip.alpha.toList()], [
       [10, 20, 30, 40, 50, 60, 70, 80, 90],
-      [10, 20, 30, 99, 50, 60, 70, 0, 0],
+      [10, 20, 30, 99, 0, 0, 70, 0, 0],
     ]);
     expect(settings.tips.first.size, 3);
     expect(settings.size, 16);
@@ -157,8 +157,8 @@ List<int> _skip(int count, {bool negative = false}) => [
 ];
 
 /// Frame 0 a literal row each; frame 1 keeps row 0 by a skip, writes 99 and
-/// keeps the rest of row 1 by a negative skip, keeps one pixel of row 2 and
-/// clears the other two.
+/// clears the rest of row 1 by a negative skip, keeps one pixel of row 2 and
+/// writes the other two clear.
 final Uint8List _pencilDip = _dip([
   [
     ..._literal([10, 20, 30]),
