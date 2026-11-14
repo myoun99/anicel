@@ -13,14 +13,20 @@ import 'package:flutter/widgets.dart';
 /// ★What answers for THE FRAME THE PLAYHEAD STANDS ON keeps the answer it
 /// had when the run began, and is asked again as the run ends: the command
 /// bars' groups and their shift pair, and on a lane's row the key buttons,
-/// the value, a group's preview, its presses and its ⚠. Each hands [of] to
-/// the one law they are all built again by
-/// ([SlicedListenableBuilder.stillWhile]) — so the answer is not asked at
-/// all while the run plays, whichever way the news reaches it (the cursor,
-/// a notify, a pass from above as a film crosses into its next cut).
+/// the value, a group's preview and its presses. Each hands [of] to the one
+/// law they are all built again by ([SlicedListenableBuilder.stillWhile]) —
+/// so the answer is not asked at all while the run plays, whichever way the
+/// news reaches it (the cursor, a notify, a pass from above as a film
+/// crosses into its next cut).
 ///
 /// ⛔The run's own display never asks here: the playhead and its column,
 /// the ruler's frame, the canvas, the meter. They are what is playing.
+///
+/// ⛔Nor does a plugin's ⚠ and the grey of its header's name: a warning,
+/// lit the moment a plugin fails under the run. 🗣️유저 11-14 F-587-Q1:
+/// 「전부 멈추되 ⚠ 만 재생 중에도 켠다」 — it turns only where a failure
+/// does, so it hardly flickers. ↩️It was held with the rest when F-587
+/// landed (the decision's 「전부 멈춘다」, recommended and not chosen).
 ///
 /// No press is lost to a held answer. The first actuation while a run
 /// plays stops it and does nothing else (T28-c, [PlaybackActuationGate]),

@@ -270,7 +270,7 @@ void main() {
   /// F-587 (유저 2026-11-13): 「재생중에는 바꾸지않고 재생전 마지막 상태
   /// 유지하도록」 — everything a row shows of the frame, each asked where it
   /// stands: none is built while a run moves the cursor, and each reads
-  /// the frame the run left it on as the run ends.
+  /// the frame the run left it on as the run ends — but a plugin's ⚠.
   group('while a run plays', () {
     Future<void> turn(
       WidgetTester tester,
@@ -362,8 +362,12 @@ void main() {
       expect(weight(), FontWeight.w700);
     });
 
-    testWidgets("a plugin's header keeps its ⚠ — as the cursor reaches a "
-        'frame it drew at, and as a failure is told', (tester) async {
+    // 🗣️유저 11-14 F-587-Q1: 「전부 멈추되 ⚠ 만 재생 중에도 켠다」 — the one
+    // thing on the row the run does not hold.
+    testWidgets("a plugin's header lights its ⚠ under the run — as the "
+        'cursor reaches a frame it failed at, and as a failure is told', (
+      tester,
+    ) async {
       final told = ValueNotifier<int>(0);
       addTearDown(told.dispose);
       var failsFrom = 3;
@@ -382,26 +386,19 @@ void main() {
       );
       bool marked() => tester.widget<Icon>(mark).color != Colors.transparent;
       final playing = aRun();
-      final cursor = await pumpRow(tester, lane, at: 4, playing: playing);
-      expect(marked(), isTrue);
-
-      await turn(tester, playing, on: true);
-      final markBefore = tester.widget(mark);
-      await moveTo(tester, cursor, 1);
-      expect(identical(tester.widget(mark), markBefore), isTrue);
-      expect(marked(), isTrue, reason: 'frame 1 drew, and the run goes on');
-
-      await turn(tester, playing, on: false);
+      final cursor = await pumpRow(tester, lane, at: 1, playing: playing);
       expect(marked(), isFalse);
 
       await turn(tester, playing, on: true);
+      await moveTo(tester, cursor, 4);
+      expect(marked(), isTrue, reason: 'frame 4 failed, and the run goes on');
+      await moveTo(tester, cursor, 1);
+      expect(marked(), isFalse, reason: 'frame 1 drew');
+
       failsFrom = 0;
       told.value += 1;
       await tester.pump();
-      expect(marked(), isFalse, reason: 'told of a failure under the run');
-
-      await turn(tester, playing, on: false);
-      expect(marked(), isTrue);
+      expect(marked(), isTrue, reason: 'told of a failure under the run');
     });
 
     testWidgets('a group header keeps its RESET lit or out', (tester) async {

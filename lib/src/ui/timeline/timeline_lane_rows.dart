@@ -1039,10 +1039,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// name never narrows and widens with it.
   ///
   /// Whether it failed at that frame is one more thing the row shows of the
-  /// frame: built again where the answer turns, and kept through a run as
-  /// the rest of the row's are (F-587, [_onTheFrame]) — it is asked on the
+  /// frame: built again where the answer turns — it is asked on the
   /// failures' own news too ([PluginRunFailures]), which the cursor alone
-  /// does not carry.
+  /// does not carry. ⛔Not kept through a run as the rest of the row's are
+  /// ([_onTheFrame]): a warning lights the moment a plugin fails under the
+  /// run (🗣️유저 11-14 F-587-Q1, [PlaybackStillness]).
   Widget _headerName(ColorScheme colorScheme) {
     final failures = lane.pluginFailures;
     if (failures == null) {
@@ -1054,7 +1055,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           ? failures.changes
           : Listenable.merge([failures.changes, cursor]),
       slice: () => failures.failedAt(laneRowFrame(cursor)),
-      stillWhile: PlaybackStillness.of(context),
       builder: (context, failed) => Flex(
         direction: widget.axis,
         children: [
