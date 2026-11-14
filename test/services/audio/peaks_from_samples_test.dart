@@ -159,8 +159,8 @@ void main() {
   });
 
   test('🎯folded a window at a time, the envelope is the whole buffer\'s — a '
-      'bucket runs on across a window\'s edge (a long conform is measured '
-      'so)', () {
+      'bucket runs on across a window\'s edge (a conform\'s making measures '
+      'its sound so)', () {
     final samples = Float32List(2 * 1001);
     for (var index = 0; index < samples.length; index += 1) {
       samples[index] = ((index * 37) % 199 - 99) / 100.0;
@@ -173,18 +173,17 @@ void main() {
       sampleRate: 300,
     );
     const cuts = [0, 3, 7, 10, 11, 500, 1001];
-    final folded = peaksFromWindows(
-      windows: [
-        for (var index = 1; index < cuts.length; index += 1)
-          Float32List.sublistView(
-            samples,
-            cuts[index - 1] * 2,
-            cuts[index] * 2,
-          ),
-      ],
+    final fold = AudioPeaksOfWindows(
       channels: 2,
       sampleRate: 300,
+      bucketsPerSecond: 40,
     );
+    for (var index = 1; index < cuts.length; index += 1) {
+      fold.add(
+        Float32List.sublistView(samples, cuts[index - 1] * 2, cuts[index] * 2),
+      );
+    }
+    final folded = fold.finish();
 
     expect(folded.peaks, whole.peaks);
     expect(folded.lanes, whole.lanes);

@@ -93,11 +93,13 @@ void main() {
     final path = writeRamp(4000);
     final reader = ConformPcmStreamReader.open(path)!;
     final full = decodeConform(File(path).readAsBytesSync());
-    // The file loses its tail after the reader has opened it: the read
-    // past sample 3000 comes back short.
+    // The file loses its tail after the reader has opened it — the peaks
+    // behind the PCM and its last thousand frames: the read past sample
+    // 3000 comes back short.
     final bytes = File(path).readAsBytesSync();
+    final pcmEnd = ConformHeader.parse(bytes).peaksOffset;
     File(path).writeAsBytesSync(
-      Uint8List.sublistView(bytes, 0, bytes.length - 1000 * 2 * 2),
+      Uint8List.sublistView(bytes, 0, pcmEnd - 1000 * 2 * 2),
     );
 
     final window = reader.readWindow(2500, 1000);

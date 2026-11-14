@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../media/media_byte_source.dart';
+import 'audio_peaks_extractor.dart' show AudioPeaks;
 import 'conform_pcm_codec.dart';
 import 'wav16_header.dart';
 
@@ -188,6 +189,23 @@ class ConformPcmStreamReader {
       // decompress: the caller falls back exactly as for a foreign file.
       return null;
     }
+  }
+
+  /// The waveform's peaks the conform was made with, read from behind its
+  /// PCM — none of which is read ([ConformHeader.peaksFrom]); null over a
+  /// WAV ([overWav16]), which holds none. Throws [ConformFormatException]
+  /// where they do not read whole.
+  AudioPeaks? peaks() {
+    final header = this.header;
+    if (header == null) {
+      return null;
+    }
+    final bytes = Uint8List(header.peaksBytes);
+    if (_source.readIntoSync(bytes, header.peaksOffset, bytes.length) <
+        bytes.length) {
+      throw const ConformFormatException('the peaks do not read whole');
+    }
+    return header.peaksFrom(bytes);
   }
 
   /// [startSample] and [sampleCount] CLAMPED into the file: where a window

@@ -83,7 +83,7 @@ void main() {
     expect(wav.dataBytes, header.dataBytes);
     expect(
       wav.pcm,
-      Uint8List.sublistView(conform, ConformHeader.length, header.totalBytes),
+      Uint8List.sublistView(conform, ConformHeader.length, header.peaksOffset),
       reason:
           '⚡not a sample is converted — a conform already holds interleaved '
           'int16 at the project rate, which is what a 16-bit WAV holds',
@@ -118,7 +118,7 @@ void main() {
     final header = ConformHeader.parse(conform);
     expect(
       readWav(out).pcm,
-      Uint8List.sublistView(conform, ConformHeader.length, header.totalBytes),
+      Uint8List.sublistView(conform, ConformHeader.length, header.peaksOffset),
     );
   });
 

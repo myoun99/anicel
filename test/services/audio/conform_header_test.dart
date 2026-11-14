@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/audio/audio_peaks_extractor.dart'
+    show peaksFromSamples;
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
@@ -74,7 +76,7 @@ void main() {
     test('is a fixed 64 bytes and the PCM starts on that boundary', () {
       final bytes = conform(frames: 100);
       expect(ConformHeader.length, 64);
-      expect(bytes.length, 64 + 100 * 2 * 2);
+      expect(ConformHeader.parse(bytes).peaksOffset, 64 + 100 * 2 * 2);
       // 🔑Not decoration: an EVEN start is what lets the converter take an
       // Int16List.view instead of pulling every sample through ByteData.
       expect(ConformHeader.length.isEven, isTrue);
@@ -177,6 +179,87 @@ void main() {
       expect(looksLikeConform(conform(frames: 4)), isTrue);
       expect(looksLikeConform(Uint8List.fromList([0x52, 0x49, 0x46])), isFalse);
       expect(looksLikeConform(const <int>[]), isFalse);
+    });
+  });
+
+  group('the peaks', () {
+    // Floats of their own, not 16-bit steps: what the making folds is the
+    // sound before it is written down as PCM.
+    Float32List wobble(int n) {
+      final out = Float32List(n);
+      for (var i = 0; i < n; i += 1) {
+        out[i] = ((i * 7919) % 2003 - 1001) / 1001.0 * 0.8 + 1e-5;
+      }
+      return out;
+    }
+
+    test('say their bucket rate and how many — and end the file, right '
+        'behind the PCM', () {
+      // 600 frames a bucket at 48k and 80 a second: 5,000 frames are eight
+      // whole buckets and a part.
+      final bytes = encodeConform(
+        samples: wobble(5000 * 2),
+        channels: 2,
+        sampleRate: 48000,
+        bucketsPerSecond: 80,
+      );
+      final head = ConformHeader.parse(bytes);
+      expect(head.peaksPerSecond, 80);
+      expect(head.peakBuckets, 9);
+      expect(head.peaksOffset, 64 + 5000 * 2 * 2);
+      expect(head.peaksBytes, 9 * 2 * 4);
+      expect(bytes.length, head.totalBytes);
+    });
+
+    test('🎯are each channel\'s own, to the float, as they were folded — '
+        'and read without a sample of the PCM', () {
+      final samples = wobble(5000 * 2);
+      final bytes = encodeConform(
+        samples: samples,
+        channels: 2,
+        sampleRate: 48000,
+        bucketsPerSecond: 80,
+      );
+      final folded = peaksFromSamples(
+        samples: samples,
+        channels: 2,
+        sampleRate: 48000,
+        bucketsPerSecond: 80,
+      );
+      final head = ConformHeader.parse(bytes);
+      final silenced = Uint8List.fromList(bytes)
+        ..fillRange(ConformHeader.length, head.peaksOffset, 0);
+
+      for (final (name, file) in [('as made', bytes), ('silenced', silenced)]) {
+        final peaks = ConformPcmStreamReader.over(sourceOf(file))!.peaks()!;
+        expect(peaks.bucketsPerSecond, 80, reason: name);
+        expect(peaks.lanes, hasLength(2), reason: name);
+        for (final (channel, lane) in folded.lanes.indexed) {
+          expect(peaks.lanes[channel], lane, reason: '$name: lane $channel');
+        }
+      }
+      expect(
+        folded.lanes.first.any((peak) => peak * 32768 % 1 != 0),
+        isTrue,
+        reason: 'premise: the folded floats are not 16-bit steps',
+      );
+    });
+
+    test('a conform cut short of them does not read them', () {
+      final bytes = conform(frames: 5000);
+      final cut = Uint8List.sublistView(bytes, 0, bytes.length - 4);
+      expect(
+        () => ConformPcmStreamReader.over(sourceOf(cut))!.peaks(),
+        throwsA(isA<ConformFormatException>()),
+      );
+    });
+
+    test('a WAV holds none', () {
+      final wav = Uint8List.fromList([
+        ...wav16HeaderBytes(dataBytes: 128, sampleRate: 48000, channels: 2),
+        ...List<int>.filled(128, 0),
+      ]);
+      expect(ConformPcmStreamReader.overWav16(sourceOf(wav))!.peaks(), isNull);
     });
   });
 
