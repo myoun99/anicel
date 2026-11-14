@@ -65,6 +65,36 @@ abstract final class EngineSelectionMasks {
     );
   }
 
+  /// The pixels of [bytes] — a byte each over [box], row after row — that
+  /// the selection [by] takes any of, whole, and none elsewhere: cut on the
+  /// engine (`GpuSelectionMasks.cut`) and read back for the CPU, what a
+  /// held fill's mark outlines (`FillRange.coveredWithin`). Waits for the
+  /// GPU.
+  static Uint8List cut(
+    Uint8List bytes, {
+    required ({int left, int top, int width, int height}) box,
+    required GpuMask by,
+  }) {
+    final mask = GpuMask(
+      appGpuComposite,
+      bytes,
+      x: box.left,
+      y: box.top,
+      width: box.width,
+      height: box.height,
+    );
+    try {
+      final cut = kernels.cut(mask, by);
+      try {
+        return cut.read();
+      } finally {
+        cut.free();
+      }
+    } finally {
+      mask.free();
+    }
+  }
+
   /// Test seam: the kernels gone, as at launch.
   @visibleForTesting
   static void debugForget() => _kernels.debugForget();

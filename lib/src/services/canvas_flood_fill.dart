@@ -17,6 +17,7 @@ import '../models/drawing_guide.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tiles_covering.dart';
 import '../native/engine_floods.dart';
+import '../native/engine_selection_masks.dart';
 import '../core/dev_profile.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection_region.dart';
@@ -580,19 +581,13 @@ final class FillRange {
       return null;
     }
     final width = finished.width;
-    final cut = within?.maskFor(
-      left: finished.left,
-      top: finished.top,
-      width: width,
-      height: finished.height,
-    );
-    final mask = finished.mask;
+    final mask = within == null ? finished.mask : _within(finished, within);
     final cover = Uint8List(mask.length);
     // Four bytes at a time where the four are one answer — all ink inside a
     // run, all empty outside one — and a byte at a time where they are not
     // (🔬I-160: a 4K range read a byte each was 25 ms of rows). Only where
-    // the mask's words line up, and never under a cut, which reads its own.
-    final words = cut == null && mask.offsetInBytes % 4 == 0
+    // the mask's words line up.
+    final words = mask.offsetInBytes % 4 == 0
         ? (
             mask: mask.buffer.asUint32List(
               mask.offsetInBytes,
@@ -605,7 +600,6 @@ final class FillRange {
       width: width,
       mask: mask,
       cover: cover,
-      cut: cut,
       words: words,
     );
     final outline = pixelRunContours(
@@ -627,6 +621,39 @@ final class FillRange {
   }
 }
 
+/// [finished]'s pixels [within] takes any of, whole, and none elsewhere —
+/// cut on the engine under the mask the selection made there
+/// ([SelectionClip.maskOnEngine]), as the fill lands under it.
+///
+/// ↩️Till 2026-11-14 the CPU read the selection over the range's box at
+/// every region a held press reached (`SelectionClip.maskFor`, its grow,
+/// feather and anti-alias run there) and cut the range here a byte at a
+/// time.
+Uint8List _within(FloodFillRegion finished, SelectionClip within) {
+  final box = (
+    left: finished.left,
+    top: finished.top,
+    width: finished.width,
+    height: finished.height,
+  );
+  final meets = within.mayCover(
+    DirtyRegion.fromXYWH(
+      x: box.left,
+      y: box.top,
+      width: box.width,
+      height: box.height,
+    ),
+  );
+  if (!meets) {
+    return Uint8List(finished.mask.length);
+  }
+  return EngineSelectionMasks.cut(
+    finished.mask,
+    box: box,
+    by: within.maskOnEngine(),
+  );
+}
+
 /// The rows of a fill's [mask] read for what they cover
 /// ([FillRange.coveredWithin]), each covered pixel marked in [cover].
 final class _RowsCovered {
@@ -634,20 +661,17 @@ final class _RowsCovered {
     required this.width,
     required this.mask,
     required this.cover,
-    required this.cut,
     required this.words,
   });
 
   final int width;
   final Uint8List mask;
   final Uint8List cover;
-  final Uint8List? cut;
   final ({Uint32List mask, Uint32List cover})? words;
 
   /// The covered runs of the row that starts at [offset] in the mask.
   List<int> from(int offset) {
     final wordsNow = words;
-    final cutNow = cut;
     final runs = <int>[];
     var inside = false;
     var x = 0;
@@ -661,7 +685,7 @@ final class _RowsCovered {
           continue;
         }
       }
-      final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
+      final covered = mask[at] > 0;
       if (covered) {
         cover[at] = 255;
       }

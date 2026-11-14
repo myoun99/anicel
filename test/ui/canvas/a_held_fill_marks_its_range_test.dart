@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/selection_reads_spied.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -20,6 +21,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show SelectionMaskOptions;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/selection_clip.dart';
@@ -460,6 +463,42 @@ void main() {
         for (var at = 0; at < 36; at += 1)
           if (at % 6 < 3) 255 else 0,
       ]);
+    });
+
+    test('🚨its cover under a grown, feathered, anti-aliased selection is '
+        'the range\'s pixels the selection takes any of — cut on the engine, '
+        'the selection read on the CPU nowhere', () {
+      final asked = <int>[];
+      final clip = SelectionClip.of(
+        SelectionReadsSpied(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(left: 1, top: 1, right: 4, bottom: 5),
+          ),
+          asked,
+        ),
+        wall: const CanvasSize(
+          width: 64,
+          height: 64,
+        ).pasteboardAt(PasteboardReach.none),
+        options: const SelectionMaskOptions(
+          growPx: 1,
+          featherPx: 2,
+          antiAlias: true,
+        ),
+      );
+      final cover = FillRange.over(
+        square(0, 0, 6),
+      ).coveredWithin(clip)!.cover;
+      // The rectangle grown a pixel by its four sides — its corners not —
+      // and every pixel of that taking some of the feather inward.
+      bool takes(int x, int y) =>
+          (x >= 1 && x <= 3 && y >= 0 && y <= 5) ||
+          (x >= 0 && x <= 4 && y >= 1 && y <= 4);
+      expect(cover.mask, [
+        for (var at = 0; at < 36; at += 1)
+          if (takes(at % 6, at ~/ 6)) 255 else 0,
+      ]);
+      expect(asked, isEmpty, reason: 'the selection is the engine\'s to read');
     });
   });
 }
