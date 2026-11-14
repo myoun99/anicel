@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/engine_screen_texture.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart'
+    show debugCheckFrameStanding;
 import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
@@ -190,6 +192,11 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // named: what the test engine measures, 65536 — it cuts no picture a test
   // makes. A test that stands at another side puts this one back.
   debugPictureSideLimit = 1 << 16;
+  // 🚨SET: a frame's key is read once while what its tree reads stays
+  // (`FramePictures.treeStamp`) — so every one kept is stacked anew as
+  // it is handed out here, and an input of the tree that moves past
+  // the stamp throws in whichever test moves it.
+  debugCheckFrameStanding = true;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;

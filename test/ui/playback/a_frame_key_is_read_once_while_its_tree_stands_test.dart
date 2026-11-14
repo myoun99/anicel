@@ -1,0 +1,232 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/a_plugin_that_shifts.dart';
+import '../../helpers/draw_on_current_frame.dart';
+
+/// 🔬H57 (11-14, S5_BA cut 352 · 68 rows, windowless): the walk, the
+/// ruler's bar and the weighing asked every frame's standing, and each
+/// asking stacked the frame's tree and signed it anew — 42% of the UI
+/// thread's samples while the frames refilled after a stroke. A frame's key
+/// is read once while what its tree reads stays (`FramePictures.treeStamp`)
+/// and its cut, its page and every cel it stacks stand as they did.
+void main() {
+  opensTheEnginesScreens();
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
+
+  Cut aCut() => Cut(
+    id: const CutId('c'),
+    name: 'c',
+    duration: 4,
+    canvasSize: canvasSize,
+    layers: const [],
+  );
+
+  BrushFrameKey keyOf(String cel) => BrushFrameKey(
+    projectId: const ProjectId('p'),
+    trackId: const TrackId('t'),
+    cutId: const CutId('c'),
+    layerId: const LayerId('l'),
+    frameId: FrameId(cel),
+  );
+
+  void ink(BrushFrameStore store, String cel, CanvasPoint at) => inkCelIn(
+    store,
+    keyOf(cel),
+    canvasSize: canvasSize,
+    at: at,
+    size: 2,
+    tipShape: BrushTipShape.square,
+    tileSize: tileSize,
+  );
+
+  late BrushFrameStore cels;
+  late LayerFrameImageCache images;
+  setUp(() {
+    cels = BrushFrameStore();
+    ink(cels, 'a', CanvasPoint(x: 1, y: 1));
+    images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+  });
+
+  /// Pictures whose frames stack cel a — under a plugin's chain where
+  /// [plugin] says — counting each stacking in [stacked], under the stamp
+  /// [stamp] answers; [paper] is the page's.
+  ({FramePictures pictures, List<int> stacked}) picturesOf({
+    required Object? Function() stamp,
+    bool Function()? plugin,
+    ProjectBackground Function()? paper,
+  }) {
+    final stacked = [0];
+    final store = aStoreOfPictures();
+    addTearDown(store.dispose);
+    final pictures = FramePictures(
+      store: store,
+      layerImages: images,
+      stackOf: (picture) {
+        stacked[0] += 1;
+        return [
+          CompositeLeaf(
+            CanvasLayerImageRequest(
+              frameKey: keyOf('a'),
+              opacity: 1,
+              effects: [
+                if (plugin?.call() ?? false)
+                  ResolvedLayerEffect(
+                    kind: EffectKind.plugin,
+                    plugin: shiftingFxPluginDescription,
+                    values: const [],
+                    run: fxPluginRunOf(ShiftingFxPlugin()),
+                  ),
+              ],
+            ),
+          ),
+        ];
+      },
+      pageOf: (picture) => (
+        canvasSize: picture.cut.canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: picture.paintPaper,
+        paperBackground:
+            paper?.call() ?? ProjectBackground.defaultBackground,
+      ),
+      treeStamp: () => stamp() ?? Object(),
+    );
+    return (pictures: pictures, stacked: stacked);
+  }
+
+  DemandedPicture at(Cut cut, int frame) => (
+    cut: cut,
+    frameIndex: frame,
+    paintPaper: true,
+    ghosts: FrameGhosts.none,
+  );
+
+  test('a frame\'s tree is stacked once while nothing it reads moves — the '
+      'walk, the bar and the weighing ask one reading', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+
+    final key = pictures.keyOf(at(cut, 0));
+    pictures.standingOf(at(cut, 0));
+    pictures.has(at(cut, 0));
+    pictures.partsToMake(at(cut, 0));
+
+    expect(stacked.single, 1);
+    expect(pictures.keyOf(at(cut, 0)), key);
+    pictures.keyOf(at(cut, 1));
+    expect(stacked.single, 2, reason: 'each frame its own reading');
+  });
+
+  test('LIVENESS — a stamp that is never the same stacks the frame at every '
+      'asking, as the rig did before it said one', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(stamp: () => null);
+
+    pictures.keyOf(at(cut, 0));
+    pictures.standingOf(at(cut, 0));
+    pictures.has(at(cut, 0));
+
+    expect(stacked.single, 3);
+  });
+
+  test('a stamp that moves stacks every frame anew', () {
+    final cut = aCut();
+    var news = 0;
+    final (:pictures, :stacked) = picturesOf(stamp: () => news);
+
+    pictures.keyOf(at(cut, 0));
+    news += 1;
+    pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+  });
+
+  test('a cel that moves is read anew, and the key moves with it', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+    final before = pictures.keyOf(at(cut, 0));
+
+    ink(cels, 'a', CanvasPoint(x: 3, y: 3));
+    final after = pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+    expect(after, isNot(before), reason: 'the cel\'s revision signs it');
+  });
+
+  test('a cut written anew is read anew — the same id, another cut', () {
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+
+    pictures.keyOf(at(aCut(), 0));
+    pictures.keyOf(at(aCut(), 0));
+
+    expect(stacked.single, 2);
+  });
+
+  test('a page that moves is read anew — its paper signs the key', () {
+    final cut = aCut();
+    var paper = ProjectBackground.defaultBackground;
+    final (:pictures, :stacked) = picturesOf(
+      stamp: () => 'still',
+      paper: () => paper,
+    );
+    final before = pictures.keyOf(at(cut, 0));
+
+    paper = const ProjectBackground.color(0xFF102030);
+    final after = pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+    expect(after, isNot(before));
+  });
+
+  test('a frame whose chain runs a plugin is stacked at every asking — its '
+      'key signs the run, which no stamp follows', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(
+      stamp: () => 'still',
+      plugin: () => true,
+    );
+
+    pictures.keyOf(at(cut, 0));
+    pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+  });
+
+  test('the suite\'s check throws where an input of the tree moves past the '
+      'stamp', () {
+    expect(debugCheckFrameStanding, isTrue, reason: 'flutter_test_config');
+    final cut = aCut();
+    var plugin = false;
+    final (:pictures, :stacked) = picturesOf(
+      stamp: () => 'still',
+      plugin: () => plugin,
+    );
+    pictures.keyOf(at(cut, 0));
+
+    // The tree reads a plugin now, and the stamp did not move.
+    plugin = true;
+
+    expect(() => pictures.keyOf(at(cut, 0)), throwsStateError);
+  });
+}

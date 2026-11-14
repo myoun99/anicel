@@ -113,6 +113,7 @@ import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_frame_ruler_painter.dart'
     show timelineFramePlaceLabel;
+import 'timeline/memo_token.dart' show ByIdentity;
 import 'timeline/timeline_grid_tile_store.dart';
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
@@ -619,6 +620,15 @@ class EditorSessionManager extends ChangeNotifier
         ghostsInPlace: true,
       ),
     },
+    // What those trees read past their cut, page and cels: the project
+    // (a new one at every write), the cut stood in (its SE rows join
+    // its frames alone), and every other word a screen is told of
+    // ([newsRevision] — a stand moves none of it).
+    treeStamp: () => (
+      ByIdentity(repository.currentProject),
+      newsRevision,
+      editingSession.activeCutId,
+    ),
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,

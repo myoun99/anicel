@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/lru.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../native/engine_chain_holds.dart';
 import '../../services/cel_content_notes.dart';
@@ -31,6 +35,24 @@ typedef FrameDrawingNow = ({
 /// ([FramePictures.celNow]): whether the picture is made of it, and at
 /// which revision.
 typedef CelAsOf = ({BrushFrameKey cel, bool drawn, int revision});
+
+/// A frame's key as [FramePictures._standing] read it: of [cut] as it was,
+/// on [page], with each cel its tree stacks as it stood then — and whether
+/// it is [kept] for the next asking.
+typedef _Stood = ({
+  Cut cut,
+  FramePage page,
+  FramePictureKey key,
+  List<({BrushFrameKey cel, int revision, bool drawn})> cels,
+  bool kept,
+});
+
+/// Whether every frame's key kept is checked against its tree stacked anew
+/// as it is handed out ([FramePictures.treeStamp]) — the test suite's
+/// (`flutter_test_config.dart`): an input of the tree that moves past the
+/// stamp throws there, in whichever test moves it.
+@visibleForTesting
+bool debugCheckFrameStanding = false;
 
 /// The line the nodes of a frame a canvas stands on are held on
 /// ([FramePictures.heldNodes]) — the playback line (`PlaybackCacheBudget`),
@@ -63,6 +85,7 @@ class FramePictures implements PlaybackPictures {
     required this.layerImages,
     required this.stackOf,
     required this.pageOf,
+    this.treeStamp,
     this.line,
     QuietTurns? quietTurns,
   }) : quietTurns = quietTurns ?? QuietTurns.instance;
@@ -87,6 +110,14 @@ class FramePictures implements PlaybackPictures {
   /// project's pasteboard and paper, and whether its screen paints that
   /// paper ([DemandedPicture.paintPaper]).
   final FramePage Function(DemandedPicture picture) pageOf;
+
+  /// What every tree [stackOf] stacks reads past its cut, its page and its
+  /// cels — the project, the cut the session stands in, all else a screen
+  /// is told of — as one value, the same (`==`) while none of it moved: a
+  /// frame's key is read once for as long as it stays ([_standing]). Null
+  /// where the host cannot say so — then every reading stacks the frame
+  /// anew.
+  final Object Function()? treeStamp;
 
   /// Where a frame takes its turn to be rastered ([make]).
   final QuietTurns quietTurns;
@@ -282,8 +313,96 @@ class FramePictures implements PlaybackPictures {
   );
 
   /// The key [picture]'s picture is kept under.
-  FramePictureKey keyOf(DemandedPicture picture) =>
-      keyOfStack(stackOf(picture), picture);
+  FramePictureKey keyOf(DemandedPicture picture) => _standing(picture).key;
+
+  /// The frames read under [_stoodUnder] ([_standing]).
+  final Map<
+    ({CutId cut, int frame, bool paper, FrameGhosts ghosts}),
+    _Stood
+  >
+  _stood = {};
+
+  /// The [treeStamp] [_stood] was read under.
+  Object? _stoodUnder;
+
+  /// [picture]'s key and the cels its tree stacks, read once while what the
+  /// tree reads stays ([treeStamp]): kept where [picture]'s cut is the one
+  /// it was read of, on the same page, each cel at the revision and the
+  /// drawn-ness it stood at; stacked and signed anew where any moved.
+  ///
+  /// ⛔Not kept: a frame whose chains run a plugin ([waitsForItsPlugins]) —
+  /// its key signs each run, which carries the rows' live surfaces and how
+  /// the run went last, and no stamp follows those.
+  ///
+  /// 🔬The walk, the ruler's bar and the weighing ask it of every frame
+  /// (11-14, S5_BA cut 352 · 68 rows, its frames refilled after a stroke,
+  /// windowless): the tree stacked and signed anew at every asking was 42%
+  /// of the UI thread's samples, the engine's verbs 6%.
+  _Stood _standing(DemandedPicture picture) {
+    final stamp = treeStamp?.call();
+    if (stamp == null) {
+      return _stoodNow(picture);
+    }
+    if (_stoodUnder != stamp) {
+      _stood.clear();
+      _stoodUnder = stamp;
+    }
+    final ask = (
+      cut: picture.cut.id,
+      frame: picture.frameIndex,
+      paper: picture.paintPaper,
+      ghosts: picture.ghosts,
+    );
+    final kept = _stood[ask];
+    if (kept != null &&
+        identical(kept.cut, picture.cut) &&
+        kept.page == pageOf(picture) &&
+        kept.cels.every(
+          (at) =>
+              at.revision == _revisionOf(at.cel) && at.drawn == _drawn(at.cel),
+        )) {
+      assert(!debugCheckFrameStanding || _standsAsRead(kept, picture));
+      return kept;
+    }
+    final now = _stoodNow(picture);
+    if (now.kept) {
+      _stood[ask] = now;
+    } else {
+      _stood.remove(ask);
+    }
+    return now;
+  }
+
+  /// [picture]'s key as its tree stacks now ([_standing]).
+  _Stood _stoodNow(DemandedPicture picture) {
+    final nodes = stackOf(picture);
+    final page = pageOf(picture);
+    return (
+      cut: picture.cut,
+      page: page,
+      key: keyOfStack(nodes, picture, page: page),
+      cels: [
+        for (final cel in stackedCelsOf(nodes))
+          (cel: cel, revision: _revisionOf(cel), drawn: _drawn(cel)),
+      ],
+      kept: !waitsForItsPlugins(nodes),
+    );
+  }
+
+  /// Whether [kept] is what [picture]'s tree stacks now — a test's word
+  /// that no input of the tree moved past [treeStamp]
+  /// ([debugCheckFrameStanding]).
+  bool _standsAsRead(_Stood kept, DemandedPicture picture) {
+    final now = _stoodNow(picture);
+    if (now.key != kept.key) {
+      throw StateError(
+        'frame ${picture.frameIndex} of ${picture.cut.id} was kept under '
+        '${kept.key}, and stacks ${now.key} now — an input of its tree '
+        'moved past the stamp',
+      );
+    }
+    return true;
+  }
 
   /// [cel] as a frame's key reads it now ([keyOfStack]).
   CelAsOf celNow(BrushFrameKey cel) =>
@@ -338,10 +457,10 @@ class FramePictures implements PlaybackPictures {
   /// Its red: a cel it shows that [LayerFrameImageCache.unreadable] holds.
   @override
   PictureStanding standingOf(DemandedPicture picture) {
-    final nodes = stackOf(picture);
+    final stood = _standing(picture);
     return (
-      state: _stateAt(keyOfStack(nodes, picture)),
-      cannotRead: stackedCelsOf(nodes).any(layerImages.unreadable.has),
+      state: _stateAt(stood.key),
+      cannotRead: stood.cels.any((at) => layerImages.unreadable.has(at.cel)),
     );
   }
 

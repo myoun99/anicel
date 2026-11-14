@@ -68,7 +68,9 @@ class PlaybackRig implements PlaybackRun {
       DemandedPicture picture,
     )
     stackOf,
+    required Object Function() treeStamp,
   }) : _stackOf = stackOf,
+       _treeStamp = treeStamp,
        _project = project,
        _selection = selection,
        _changes = changes,
@@ -108,6 +110,10 @@ class PlaybackRig implements PlaybackRun {
   final List<CompositeNode<CanvasStackRow>> Function(DemandedPicture picture)
   _stackOf;
 
+  /// What the trees [_stackOf] stacks read past their cut, page and
+  /// cels ([FramePictures.treeStamp]).
+  final Object Function() _treeStamp;
+
   // ── what the screen shows a frame from ──────────────────────────────
 
   /// A frame as every screen shows it — the canvas a cut, the track stack
@@ -119,6 +125,7 @@ class PlaybackRig implements PlaybackRun {
     store: _renderCaches.framePictureStore,
     layerImages: _renderCaches.layerFrameImageCache,
     stackOf: _stackOf,
+    treeStamp: _treeStamp,
     pageOf: (picture) => (
       canvasSize: picture.cut.canvasSize,
       pasteboardReach: _project.repository.requireProject().pasteboardReach,
