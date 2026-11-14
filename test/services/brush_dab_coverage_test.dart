@@ -342,21 +342,35 @@ void main() {
       expect(coords, isNot(contains((10, 8)))); // above center -> transparent
     });
 
-    test('sampled tip ignores hardness and tipShape', () {
+    test('sampled tip ignores hardness', () {
       final soft = brushPixelCoveragesForDab(
         dab(x: 10.5, y: 10.5, size: 8, tipMask: halfMask, hardness: 0.0),
       );
-      final hardSquare = brushPixelCoveragesForDab(
+      final hard = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 8, tipMask: halfMask, hardness: 1.0),
+      );
+      expect(soft, hard);
+    });
+
+    // ↩️This said 「and tipShape」 from P17 (`faea21102`, 07-06), before a
+    // mask under a square came to be a square baked into one
+    // (`BrushTipStampCache`): a picture's step smooths it (H60, 11-15), a
+    // baked square is laid as it was baked.
+    test('a mask under a square is a square baked into one — laid as it was '
+        'baked, as a picture is at 없음 alone', () {
+      final square = brushPixelCoveragesForDab(
         dab(
           x: 10.5,
           y: 10.5,
           size: 8,
           tipMask: halfMask,
-          hardness: 1.0,
           tipShape: BrushTipShape.square,
         ),
       );
-      expect(soft, hardSquare);
+      final picture = brushPixelCoveragesForDab(
+        dab(x: 10.5, y: 10.5, size: 8, tipMask: halfMask, antiAlias: noEdge),
+      );
+      expect(square, picture);
     });
 
     test('fractional center includes pixels exactly on radius boundary', () {

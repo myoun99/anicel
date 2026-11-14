@@ -130,48 +130,49 @@ BrushTipMask brushTipMaskSmoothed(
     return mask;
   }
   final size = mask.size;
-  final line = Float64List(size);
-  final smoothed = Float64List(size);
   final rising = Float64List(size + 2);
   final rows = Float64List(size * size);
-  final source = mask.alphaNormalized;
-  for (var row = 0; row < size; row += 1) {
-    line.setRange(0, size, source, row * size);
-    _smoothedLine(line, across, smoothed, rising);
-    rows.setRange(row * size, row * size + size, smoothed);
+  final both = Float64List(size * size);
+  for (var at = 0; at < size; at += 1) {
+    final row = (first: at * size, step: 1, count: size);
+    _smoothedLine(mask.alphaNormalized, rows, row, across, rising);
+  }
+  for (var at = 0; at < size; at += 1) {
+    final column = (first: at, step: size, count: size);
+    _smoothedLine(rows, both, column, down, rising);
   }
   final alpha = Uint8List(size * size);
-  for (var column = 0; column < size; column += 1) {
-    for (var row = 0; row < size; row += 1) {
-      line[row] = rows[row * size + column];
-    }
-    _smoothedLine(line, down, smoothed, rising);
-    for (var row = 0; row < size; row += 1) {
-      alpha[row * size + column] = (smoothed[row] * 255.0).round().clamp(
-        0,
-        255,
-      );
-    }
+  for (var at = 0; at < alpha.length; at += 1) {
+    alpha[at] = (both[at] * 255.0).round().clamp(0, 255);
   }
   return BrushTipMask(id: '${mask.id}~smoothed', size: size, alpha: alpha);
 }
 
-/// [line] — texels, linear between them and to nothing past either end —
-/// under a box [width] texels wide centred on each, into [into]: the area
-/// under it across the box, over the box's width. [rising] holds the area
-/// up to each texel's centre, the one before the first's first.
+/// A line of a mask's texels: [count] of them from [first], [step] apart —
+/// a row, or a column.
+typedef _Line = ({int first, int step, int count});
+
+/// [line] of [from] — texels, linear between them and to nothing past
+/// either end — under a box [width] texels wide centred on each, into the
+/// same places of [into]: the area under it across the box, over the box's
+/// width. [rising] holds the area up to each texel's centre, the one before
+/// the first's first.
 void _smoothedLine(
-  Float64List line,
-  double width,
+  Float64List from,
   Float64List into,
+  _Line line,
+  double width,
   Float64List rising,
 ) {
-  final count = line.length;
+  final (:first, :step, :count) = line;
+  double texel(int at) =>
+      at < 0 || at >= count ? 0.0 : from[first + at * step];
   if (width == 0.0) {
-    into.setRange(0, count, line);
+    for (var at = 0; at < count; at += 1) {
+      into[first + at * step] = texel(at);
+    }
     return;
   }
-  double texel(int at) => at < 0 || at >= count ? 0.0 : line[at];
   rising[0] = 0.0;
   for (var at = 0; at <= count; at += 1) {
     rising[at + 1] = rising[at] + (texel(at - 1) + texel(at)) * 0.5;
@@ -185,15 +186,15 @@ void _smoothedLine(
     }
     final before = x.floor();
     final past = x - before;
-    final from = texel(before);
+    final low = texel(before);
     return rising[before + 1] +
-        from * past +
-        (texel(before + 1) - from) * past * past * 0.5;
+        low * past +
+        (texel(before + 1) - low) * past * past * 0.5;
   }
 
   final half = width * 0.5;
   for (var at = 0; at < count; at += 1) {
-    into[at] = (upTo(at + half) - upTo(at - half)) / width;
+    into[first + at * step] = (upTo(at + half) - upTo(at - half)) / width;
   }
 }
 

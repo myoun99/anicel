@@ -22,7 +22,7 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 /// 클튜대로」): each step past 없음 smooths a picture tip by a round tip's
 /// width, in canvas pixels, about the picture's own contour — its ink as it
 /// was, its half-coverage line where it was, its edge softer at every step
-/// and as soft each way — on the engine and on the tile kernel alike.
+/// and as soft each way — on the engine, the app's one brush.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvas = CanvasSize(width: 256, height: 256);
@@ -70,13 +70,12 @@ void main() {
     antiAlias: step,
   );
 
-  /// The alphas [dab] lays, on 0..1, row after row of the canvas's pixels
-  /// 60..139 each way, on the engine (a 128 tile) or the tile kernel (any
-  /// other).
-  List<List<double>> laid(BrushDab dab, {required int tileSize}) {
+  /// The alphas [dab] lays on the engine, on 0..1, row after row of the
+  /// canvas's pixels 60..139 each way.
+  List<List<double>> laid(BrushDab dab) {
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
-      tileSize: tileSize,
+      tileSize: 128,
     );
     addTearDown(rasterizer.clear);
     rasterizer.blendFrom([dab], from: 0);
@@ -120,100 +119,73 @@ void main() {
     throw StateError('no half line');
   }
 
-  for (final (where, tileSize) in [
-    ('the engine', 128),
-    ('the tile kernel', 64),
-  ]) {
-    test('on $where each step lays the picture softer, its ink and its '
-        'half line as 없음 lays them', () {
-      final none = laid(aDab(BrushAntiAlias.none), tileSize: tileSize);
+  test('each step lays the picture softer, its ink and its '
+      'half line as 없음 lays them', () {
+    final none = laid(aDab(BrushAntiAlias.none));
+    expect(
+      softness(rowOf(none)),
+      0,
+      reason: 'premise: the texels as they are',
+    );
+    var softer = 0.0;
+    for (final step in steps) {
+      final alphas = laid(aDab(step));
+      expect(softness(rowOf(alphas)), greaterThan(softer), reason: '$step');
+      softer = softness(rowOf(alphas));
       expect(
-        softness(rowOf(none)),
-        0,
-        reason: 'premise: the texels as they are',
+        ink(alphas),
+        closeTo(ink(none), ink(none) * 0.01),
+        reason: '$step: about its contour, as far out as in',
       );
-      var softer = 0.0;
-      for (final step in steps) {
-        final alphas = laid(aDab(step), tileSize: tileSize);
-        expect(softness(rowOf(alphas)), greaterThan(softer), reason: '$step');
-        softer = softness(rowOf(alphas));
+      expect(
+        halfLine(rowOf(alphas)),
+        closeTo(halfLine(rowOf(none)), 0.1),
+        reason: '$step',
+      );
+    }
+  });
+
+  test('a step smooths a picture as much down as across', () {
+    for (final step in steps) {
+      final alphas = laid(aDab(step));
+      final (row, column) = (rowOf(alphas), columnOf(alphas));
+      for (var at = 0; at < row.length; at += 1) {
         expect(
-          ink(alphas),
-          closeTo(ink(none), ink(none) * 0.01),
-          reason: '$step: about its contour, as far out as in',
-        );
-        expect(
-          halfLine(rowOf(alphas)),
-          closeTo(halfLine(rowOf(none)), 0.1),
-          reason: '$step',
+          column[at],
+          closeTo(row[at], 1.5 / 255),
+          reason: '$step at $at',
         );
       }
-    });
+    }
+  });
 
-    test('on $where a step smooths a picture as much down as across', () {
-      for (final step in steps) {
-        final alphas = laid(aDab(step), tileSize: tileSize);
-        final (row, column) = (rowOf(alphas), columnOf(alphas));
-        for (var at = 0; at < row.length; at += 1) {
-          expect(
-            column[at],
-            closeTo(row[at], 1.5 / 255),
-            reason: '$step at $at',
-          );
-        }
-      }
-    });
-
-    test('on $where a squeezed picture is smoothed by the same canvas width '
-        'down its minor axis', () {
-      // Two tips a texel a pixel down at one radius: one pressed to half
-      // its height, one twice its texels drawn whole. The first is laid
-      // whole first — the same width across, another down — and across it
-      // lays as it did.
-      for (final step in steps) {
-        final unpressed = laid(aDab(step, size: 64), tileSize: tileSize);
-        final squeezed = laid(
-          aDab(step, size: 64, roundness: 0.5),
-          tileSize: tileSize,
-        );
-        final whole = laid(
-          aDab(step, tip: blockOf(64), size: 64),
-          tileSize: tileSize,
-        );
-        final soft = softness(columnOf(whole));
-        expect(soft, greaterThan(0), reason: 'premise: $step smooths it');
+  test('a squeezed picture is smoothed by the same canvas width '
+      'down its minor axis', () {
+    // Two tips a texel a pixel down at one radius: one pressed to half
+    // its height, one twice its texels drawn whole. The first is laid
+    // whole first — the same width across, another down — and across it
+    // lays as it did.
+    for (final step in steps) {
+      final unpressed = laid(aDab(step, size: 64));
+      final squeezed = laid(aDab(step, size: 64, roundness: 0.5));
+      final whole = laid(aDab(step, tip: blockOf(64), size: 64));
+      final soft = softness(columnOf(whole));
+      expect(soft, greaterThan(0), reason: 'premise: $step smooths it');
+      expect(
+        softness(columnOf(squeezed)),
+        closeTo(soft, soft * 0.02),
+        reason: '$step',
+      );
+      final (across, unpressedAcross) = (
+        rowOf(squeezed),
+        rowOf(unpressed),
+      );
+      for (var at = 0; at < across.length; at += 1) {
         expect(
-          softness(columnOf(squeezed)),
-          closeTo(soft, soft * 0.02),
-          reason: '$step',
+          across[at],
+          closeTo(unpressedAcross[at], 1.5 / 255),
+          reason: '$step across at $at',
         );
-        final (across, unpressedAcross) = (
-          rowOf(squeezed),
-          rowOf(unpressed),
-        );
-        for (var at = 0; at < across.length; at += 1) {
-          expect(
-            across[at],
-            closeTo(unpressedAcross[at], 1.5 / 255),
-            reason: '$step across at $at',
-          );
-        }
-      }
-    });
-  }
-
-  test('the engine and the tile kernel lay a step\'s picture alike', () {
-    for (final step in BrushAntiAlias.values) {
-      final engine = laid(aDab(step), tileSize: 128);
-      final kernel = laid(aDab(step), tileSize: 64);
-      for (var y = 0; y < engine.length; y += 1) {
-        for (var x = 0; x < engine[y].length; x += 1) {
-          expect(
-            engine[y][x],
-            closeTo(kernel[y][x], 1.5 / 255),
-            reason: '$step at (${x + 60}, ${y + 60})',
-          );
-        }
       }
     }
   });
