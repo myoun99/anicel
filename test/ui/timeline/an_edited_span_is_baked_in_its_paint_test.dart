@@ -167,13 +167,16 @@ void main() {
   // The ink an ask tells a moved span by is the ink its bake writes.
   // ↩️It was written again by the bake (a-grid-row-paints-its-cells-on-a-
   // canvas-beside-its-tiles, 11-15).
-  test('a span its ink moved is baked from the ink the ask read', () async {
+  test('a span its ink moved is baked from the substrate and the ink the ask '
+      'read', () async {
     await landed(painterFor(rowLayer('r')));
+    final read = store.debugSubstratesRead;
     final written = store.debugInksWritten;
 
     final baked = ask(painterFor(rowLayer('r', name: null)));
 
     expect(baked, isNotNull, reason: 'premise: baked in the ask');
+    expect(store.debugSubstratesRead, read + 1);
     expect(store.debugInksWritten, written + 1);
   });
 

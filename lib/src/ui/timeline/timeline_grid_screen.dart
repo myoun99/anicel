@@ -515,21 +515,18 @@ class TimelineGridScreenSlot extends SingleChildRenderObjectWidget {
     return slot != null && (slot._screen?.lays ?? false) ? slot : null;
   }
 
-  /// Runs [paint] — a row a test paints by hand, outside any slot — as a
-  /// row whose grid's screen takes its tiles through [laying].
+  /// A slot on no screen, for a row a test paints by hand: it takes the
+  /// row's tiles as a slot on a screen takes them — its own
+  /// [TimelineGridScreenLaying.lay], held till the row paints through it
+  /// again ([TimelineGridScreenDebugSlot.paintThrough]).
+  /// ↩️A test laid them through a laying of its own, which took a tile
+  /// without holding it: the store's letting go of a tile the row had laid
+  /// freed it there, where the screen keeps it till the row paints again
+  /// (관제 2026-11-15 —
+  /// a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles).
   @visibleForTesting
-  static void debugLayThrough(
-    TimelineGridScreenLaying laying,
-    void Function() paint,
-  ) {
-    final outer = _debugLaying;
-    _debugLaying = laying;
-    try {
-      paint();
-    } finally {
-      _debugLaying = outer;
-    }
-  }
+  static TimelineGridScreenDebugSlot debugSlot() =>
+      _RenderGridScreenSlot(null, null);
 
   static TimelineGridScreenLaying? _debugLaying;
 
@@ -571,8 +568,20 @@ abstract interface class TimelineGridScreenLaying {
   void lay(TimelineGridScreenTile tile);
 }
 
+/// A slot on no screen that a test paints a row through by hand
+/// ([TimelineGridScreenSlot.debugSlot]).
+abstract interface class TimelineGridScreenDebugSlot {
+  /// Paints a row through the slot — [paint] paints it — as a paint of the
+  /// slot does, letting go of what it laid before: answers what it lays
+  /// now, held till it paints again or [letGo].
+  List<TimelineGridScreenTile> paintThrough(void Function() paint);
+
+  /// Lets go of what the row laid.
+  void letGo();
+}
+
 class _RenderGridScreenSlot extends RenderProxyBox
-    implements TimelineGridScreenLaying {
+    implements TimelineGridScreenLaying, TimelineGridScreenDebugSlot {
   _RenderGridScreenSlot(this._screen, this._clip);
 
   /// The slot whose row is painting.
@@ -697,16 +706,36 @@ class _RenderGridScreenSlot extends RenderProxyBox
   }
 
   @override
-  void paint(PaintingContext context, Offset offset) {
+  void paint(PaintingContext context, Offset offset) =>
+      _paintRow(() => super.paint(context, offset));
+
+  /// The row under the slot painted by [paint], laying its tiles here: what
+  /// it laid before is let go.
+  void _paintRow(void Function() paint) {
     _letGo();
     _clipRects = null;
     _screen?._rowChanged();
     final outer = _painting;
     _painting = this;
     try {
-      super.paint(context, offset);
+      paint();
     } finally {
       _painting = outer;
     }
   }
+
+  @override
+  List<TimelineGridScreenTile> paintThrough(void Function() paint) {
+    final outer = TimelineGridScreenSlot._debugLaying;
+    TimelineGridScreenSlot._debugLaying = this;
+    try {
+      _paintRow(paint);
+    } finally {
+      TimelineGridScreenSlot._debugLaying = outer;
+    }
+    return [..._laid];
+  }
+
+  @override
+  void letGo() => _letGo();
 }

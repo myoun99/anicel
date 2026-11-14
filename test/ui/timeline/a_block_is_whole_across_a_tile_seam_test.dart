@@ -11,7 +11,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -20,6 +19,7 @@ import 'dart:async';
 
 import '../../helpers/a_shown_surface.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_laid.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨A BLOCK IS WHOLE ACROSS A TILE'S SEAM (서피스 검증 2026-11-09, card
@@ -140,9 +140,7 @@ void main() {
     final row = aBlockRow(Axis.horizontal);
     await tile(row, 0, 18);
     await tile(row, 18, 36);
-    final laid = <TimelineGridScreenTile>[];
-    TimelineGridScreenSlot.debugLayThrough(
-      _Into(laid),
+    final laid = tilesLaidBy(
       () => row.paint(_noCanvas(), const Size(60 * cell, 28)),
     );
 
@@ -152,12 +150,3 @@ void main() {
 }
 
 Canvas _noCanvas() => Canvas(PictureRecorder());
-
-class _Into implements TimelineGridScreenLaying {
-  _Into(this.laid);
-
-  final List<TimelineGridScreenTile> laid;
-
-  @override
-  void lay(TimelineGridScreenTile tile) => laid.add(tile);
-}

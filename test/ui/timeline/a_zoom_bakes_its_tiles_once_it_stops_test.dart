@@ -561,27 +561,25 @@ void main() {
   test('a tile the store let go stands in for nothing', () async {
     store.debugCapacity = 1;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
-    final shown = tilesLaidBy(
+    final row = rowSlot();
+    final shown = row.paintThrough(
       () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
     );
-    final letGo = {
-      for (final draw in shown)
-        if (draw.picture.debugHolds == 0) draw.picture,
-    };
     expect(
-      letGo,
-      hasLength(1),
-      reason: '⛔전제: the paint baked both, and the first was let go as the '
-          'other landed',
+      [for (final draw in shown) draw.picture.debugHolds],
+      [1, 2],
+      reason: '⛔전제: the paint baked both, and the store let go of the first '
+          'as the other landed — the row alone holds it',
     );
 
-    final step = tilesLaidBy(
+    // The row paints again: the screen lets go of what it laid.
+    final step = row.paintThrough(
       () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
     );
     expect(
       [
         for (final draw in step)
-          if (letGo.contains(draw.picture)) draw.onto,
+          if (draw.picture.debugHolds == 0) draw.onto,
       ],
       isEmpty,
       reason: 'no let-go tile is laid',
