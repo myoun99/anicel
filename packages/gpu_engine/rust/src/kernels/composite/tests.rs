@@ -1353,29 +1353,38 @@ fn a_row_is_keyed_before_its_pose() {
             .collect(),
         ..picture
     };
-    let tiles = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
-    for name in ["move", "turn", "turn-pick", "shrink", "squeeze", "tilt", "blur"] {
-        let map = match name {
-            "move" => ResampleMap::moved(17, -5),
-            _ => pose(name),
-        };
-        let mut pool = Pool::default();
-        let sets = vec![pool.drawn(|x, y| spotted(53, x, y), (0, 0), (2, 2), |c, r| {
-            Some((r * 2 + c) as u16)
-        })];
-        let scene = Scene {
-            chains: Vec::new(),
-            pool,
-            sets,
-            keys: vec![KeyChain {
-                runs: vec![key_run(KEY_RED, false, half)],
-            }],
-            matrices: Vec::new(),
-            steps: vec![keyed(with_map(0, map, WHOLE, NORMAL), 0)],
-            tiles: tiles.clone(),
-        };
-        assert!(widest(&scene) == resampled(&map, &keyed_picture, &tiles), "{name}");
+    for name in KEYED_POSES {
+        let (map, scene) = keyed_in(name);
+        assert!(widest(&scene) == resampled(&map, &keyed_picture, &scene.tiles), "{name}");
     }
+}
+
+/// The poses a keyed row is laid in.
+const KEYED_POSES: [&str; 7] = ["move", "turn", "turn-pick", "shrink", "squeeze", "tilt", "blur"];
+
+/// The map of the pose `name`, and the spotted picture's row under a red
+/// key in it, over its two tiles by two.
+fn keyed_in(name: &str) -> (ResampleMap, Scene) {
+    let map = match name {
+        "move" => ResampleMap::moved(17, -5),
+        _ => pose(name),
+    };
+    let mut pool = Pool::default();
+    let sets = vec![pool.drawn(|x, y| spotted(53, x, y), (0, 0), (2, 2), |c, r| {
+        Some((r * 2 + c) as u16)
+    })];
+    let scene = Scene {
+        chains: Vec::new(),
+        pool,
+        sets,
+        keys: vec![KeyChain {
+            runs: vec![key_run(KEY_RED, false, half)],
+        }],
+        matrices: Vec::new(),
+        steps: vec![keyed(with_map(0, map, WHOLE, NORMAL), 0)],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    };
+    (map, scene)
 }
 
 // A row's colour matrix runs on what R1 lays — the app's paint filter runs
@@ -2198,6 +2207,33 @@ fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
     let passes = &apart().composite.passes;
     assert!(passes.made(copies).is_some());
     assert!(passes.made(masked_turn).is_some());
+}
+
+// A keyed row in every pose comes out the same from the full pass and from
+// its plan's own once made. On a composite asked for nothing yet, the first
+// plan of each pass is the full pass's — blur's of Blend, turn-pick's of
+// Pick, move's of the copies.
+// 🔬The keyed blur went red on the Surface alone, in the whole crate's run
+// and never in the composite's tests five times over (캔버스 베이스,
+// 11-14/15): there the one thread that compiles plans' passes has every
+// test's, so which pass the shared rig's run took was the run's timing.
+// The main PC's two passes laid the same bytes in every pose (11-15).
+#[test]
+fn a_keyed_row_composites_as_the_full_pass_through_its_plans_own() {
+    let rig = Rig::new();
+    assert!(rig.composite.passes.asked_for().is_empty());
+    let first_of_each = ["blur", "turn-pick", "move"];
+    let rest = KEYED_POSES.into_iter().filter(|name| !first_of_each.contains(name));
+    let by_the_full: Vec<(&str, Vec<u8>)> = first_of_each
+        .into_iter()
+        .chain(rest)
+        .map(|name| (name, widest_on(&rig, &keyed_in(name).1)))
+        .collect();
+    rig.composite.settle();
+    for (name, by_the_full) in &by_the_full {
+        let (_, scene) = keyed_in(name);
+        assert_same(&widest_on(&rig, &scene), by_the_full, &scene.tiles, format_args!("keyed {name}"));
+    }
 }
 
 // ---- Where a row is live ----
