@@ -191,7 +191,7 @@ check "and runs no cargo" "$([ ! -s "$LOG" ]; echo $?)"
 # builds of a crate stand, a run builds a ninth, and the oldest goes alone.
 built() { # folder crate hash minutes-ago: a build, as cargo leaves one
   local f
-  for f in "$2-$3.d" "lib$2-$3.rlib" "$2-$3.pdb"; do
+  for f in "$2-$3.d" "lib$2-$3.rlib" "$2-$3.pdb" "$2-$3"; do
     : > "$1/$f"
     touch -d "$4 minutes ago" "$1/$f"
   done
@@ -215,15 +215,15 @@ check "a ninth build takes out the oldest, its files and its fingerprint" \
   "$([ -z "$(ls "$D" | grep 00000000000000a1)" ] \
     && [ ! -e "$WANT_TARGET/debug/.fingerprint/many-00000000000000a1" ]; echo $?)"
 check "and only the oldest" \
-  "$([ "$(ls "$D" | grep -c '^\(lib\)\?many-00000000000000a[2-8]\.')" -eq 21 ] \
+  "$([ "$(ls "$D" | grep -c '^\(lib\)\?many-00000000000000a[2-8]')" -eq 28 ] \
     && [ -d "$WANT_TARGET/debug/.fingerprint/many-00000000000000a2" ]; echo $?)"
 check "what the run just built stays" \
   "$([ -e "$D/many-00000000000000a9.d" ] && [ -e "$D/libmany-00000000000000a9.rlib" ]; echo $?)"
 check "a crate of one build stays, however old" \
-  "$([ "$(ls "$D" | grep -c 00000000000000c1)" -eq 3 ]; echo $?)"
+  "$([ "$(ls "$D" | grep -c 00000000000000c1)" -eq 4 ]; echo $?)"
 check "an example folder keeps its last eight as well" \
   "$([ -z "$(ls "$X" | grep 00000000000000e1)" ] \
-    && [ "$(ls "$X" | grep -c 'sample-00000000000000e[2-9]\.')" -eq 24 ]; echo $?)"
+    && [ "$(ls "$X" | grep -c 'sample-00000000000000e[2-9]')" -eq 32 ]; echo $?)"
 check "build/ is not touched" "$([ -e "$B/out" ]; echo $?)"
 H="${WANT_TARGET}-hook"
 HD="$H/x86_64-pc-windows-msvc/release/deps"
@@ -235,7 +235,7 @@ done
 : | (cd "$LANE" && bash tool/cargo_turn.sh --folder hook --hold) >/dev/null 2>&1
 check "a target's folder in the hook's floors too, after a --hold" \
   "$([ -z "$(ls "$HD" | grep 00000000000000f1)" ] \
-    && [ "$(ls "$HD" | grep -c '^\(lib\)\?fx-')" -eq 24 ]; echo $?)"
+    && [ "$(ls "$HD" | grep -c '^\(lib\)\?fx-')" -eq 32 ]; echo $?)"
 check "and the hook's copies are not touched" \
   "$([ -e "$H/copies/0123456789abcdef/key/engine.dll" ]; echo $?)"
 
