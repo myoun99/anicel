@@ -115,6 +115,22 @@ void main() {
       expect(await lookAhead('a'), same(hot));
     });
 
+    test('a look at a hot cel keeps no shell — the store holds its tiles '
+        'already', () async {
+      await store.thawAhead(key('a'), canvasSize: canvasSize);
+      final hot = store.hotBakedSurfaceOrNull(key('a'));
+      expect(hot, isNotNull, reason: '⛔premise: made hot');
+
+      store.keepShellOf(
+        key('a'),
+        hot!,
+        canvasSize: canvasSize,
+        revision: store.sourceRevisionOf(key('a')),
+      );
+
+      expect(shells.made, isEmpty);
+    });
+
     test('a closed project keeps no shell', () async {
       await lookedAndLetGo('a');
       expect(store.shells, [same(shells.made.single)], reason: '⛔premise');
