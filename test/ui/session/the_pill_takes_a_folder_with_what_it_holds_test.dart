@@ -391,6 +391,31 @@ void main() {
       expect(stack(s).sublist(1, 4), ['a<F', 'c<G', 'G<F']);
     });
 
+    test('a folder holding a direction row, put down over a direction row, '
+        'lands whole at the top of the pictures — the direction row in it',
+        () {
+      final s = sessionOf([
+        row('note', inside: 'F', kind: LayerKind.instruction),
+        row('a', inside: 'F'),
+        row('F', kind: LayerKind.folder),
+        row('over'),
+        row('d2', kind: LayerKind.instruction),
+      ]);
+      select(s, ['F']);
+      pill(s).copyFrame();
+      s.clearRowSelection();
+      s.selectLayer(const LayerId('d2'));
+
+      pill(s).pasteIndependentFrame();
+
+      expect(
+        stack(s),
+        ['note<F', 'a<F', 'F', 'over', 'note<F', 'a<F', 'F', 'd2'],
+        reason: '↩️F-596: the held direction row went over the direction row '
+            'stood on, which put it over its folder — held by no one',
+      );
+    });
+
     test('on a base it lands past the whole attach group', () {
       final s = sessionOf([row('under'), row('base'), row('over')]);
       s.selectLayer(const LayerId('base'));

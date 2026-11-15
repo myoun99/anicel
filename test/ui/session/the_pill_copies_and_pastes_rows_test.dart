@@ -226,6 +226,22 @@ void main() {
       expect(names(r.s).sublist(names(r.s).length - 2), ['A', 'B']);
     });
 
+    test('rows of two places land each in its own: the drawing row right '
+        'above the row you stand on, though the direction row went first', () {
+      final r = threeRows();
+      final direction = r.s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.instruction,
+      );
+      select(r.s, [r.a, direction.id]);
+      pill(r.s).copyFrame();
+      r.s.clearRowSelection();
+      r.s.selectLayer(r.a);
+
+      pill(r.s).pasteIndependentFrame();
+
+      expect(names(r.s), ['A', 'A', 'B', 'C']);
+    });
+
     test('in another PROJECT they paste independent only', () {
       final a = threeRows();
       final b = threeRows(board: a.s.appClipboard);
@@ -393,7 +409,7 @@ void main() {
       final direction = r.s.requireActiveCut.layers.firstWhere(
         (layer) => layer.kind == LayerKind.instruction,
       );
-      select(r.s, [r.a, r.b]);
+      select(r.s, [r.a, r.b, r.c]);
       pill(r.s).copyFrame();
       r.s.clearRowSelection();
       r.s.selectLayer(direction.id);
@@ -403,10 +419,28 @@ void main() {
 
       expect(
         names(r.s),
-        ['A', 'B', 'C', 'A', 'B'],
+        ['A', 'B', 'C', 'A', 'B', 'C'],
         reason: '↩️F-596: each went over the direction row again and was '
-            'carried over the one before it — B, A',
+            'carried over the one before it — C, B, A',
       );
+    });
+
+    test('a row with an attach row UNDER it keeps the rows after it under '
+        'its whole group', () {
+      final r = threeRows();
+      r.s.selectLayer(r.b);
+      r.s.createDrawingAtCurrentFrame();
+      r.s.folders.addAttachedLayer(AttachedPlacement.below);
+      final rider = drawingRows(r.s)[1];
+      expect(rider.attachedToLayerId, r.b, reason: '⛔전제: under B');
+      select(r.s, [r.a, r.b]);
+      pill(r.s).copyFrame();
+      r.s.clearRowSelection();
+      r.s.selectLayer(r.c);
+
+      pill(r.s).pasteLinkedFrame();
+
+      expect(names(r.s), ['A', rider.name, 'B', 'C', 'A', rider.name, 'B']);
     });
 
     test('a row that is gone has nothing to share: the linked paste goes '
