@@ -534,7 +534,14 @@ LayerMergePlan planLayerMerge(
   for (final layer in layers) {
     final first = all[layer.first];
     final keptUnder = _resultIdIn(takings, first, first);
-    final synced = SyncedCelIds(keptUnder, () => mintFrameId(keptUnder));
+    final synced = SyncedCelIds(
+      keptUnder,
+      () => mintFrameId(keptUnder),
+      held: [
+        for (final index in layer)
+          for (final cel in all[index]._keeper.frames) cel.id,
+      ],
+    );
     final bank = _bankOf(
       [for (final index in layer) parts[index]],
       (part, spans) => switch (part.follows) {

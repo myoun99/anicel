@@ -1094,6 +1094,12 @@ _ridersBaked(_Riders taking, List<_Ridden> ridden, _Minting minting) {
     final synced = SyncedCelIds(
       mintedUnder,
       () => minting.mintFrameId(mintedUnder),
+      held: [
+        for (final riding in ridings)
+          for (final cel in riding.rider.frames) cel.id,
+        for (final self in selves)
+          for (final cel in self.row.frames) cel.id,
+      ],
     );
     final bank = _bankOf(
       [

@@ -16,14 +16,30 @@ import '../../models/layer_id.dart';
 ///
 /// ⛔ONE LAW FOR THE MERGE AND THE FX BAKE — each minted a synced row's
 /// cels by the mirror alone, the same algorithm written twice.
+///
+/// 🚨A NEW CEL TAKES NO ID ITS BANK HOLDS ([held]) — card
+/// a-synced-row-added-in-one-pair-cut-shows-another-rows-picture
+/// (검증/서피스 2026-11-16 07:39). A synced row the app makes holds its
+/// mirrors already, and a merge's result is kept under the topmost row's
+/// id: its mirror of a panel was that row's own cel. The merged picture was
+/// laid over it, and an undo gives back rows, not pictures — 🧪measured: a
+/// merge of the conte's rows undone, the kept row showed both rows'
+/// pictures, and in a 겸용 pair the other cut's row too.
 final class SyncedCelIds {
-  SyncedCelIds(this.mintedUnder, this._mintOwn);
+  SyncedCelIds(
+    this.mintedUnder,
+    this._mintOwn, {
+    required Iterable<FrameId> held,
+  }) : _taken = {...held};
 
   /// The row the bank's cels are minted under ([attachedMirrorCelId]).
   final LayerId mintedUnder;
 
   final FrameId Function() _mintOwn;
-  final Set<FrameId> _taken = {};
+
+  /// The ids no new cel of this bank may take: those it held before, and
+  /// those its new cels took.
+  final Set<FrameId> _taken;
 
   /// The id of a new cel of this bank, standing over [baseCel] — asked
   /// once for each picture the bank takes.
