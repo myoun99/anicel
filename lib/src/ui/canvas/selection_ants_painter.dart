@@ -167,23 +167,40 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
   Offset _map(CanvasPoint point) => viewport.canvasToViewportOffset(point);
 
-  /// The committed region's pixel-edge outline, in SCREEN space: its
-  /// canvas-space path ([CanvasSelectionRegion.pixelOutline]) moved whole
-  /// through the view and [screenOffset], in one native transform.
+  /// The committed region's ants: its pixel-edge outline
+  /// ([CanvasSelectionRegion.pixelContours]) and its dashes, cut in CANVAS
+  /// space along its sides ([dashedPolygons]) at the pattern `1 / zoom` as
+  /// long, and both moved whole through the view and [screenOffset] — the
+  /// view moves, turns, flips and scales evenly, so a dash [antsDashes]
+  /// long on the canvas's scale is that long on the screen.
   ///
   /// ⚠️No cache HERE. The expensive half — the mask and the boundary walk,
   /// and the path laid from it — is memoised on the region itself, which is
   /// immutable and therefore an exact key. A cache in this class would
   /// either vanish every tick (the painter is rebuilt per frame) or be a
-  /// global that the two painters on screen take turns evicting.
-  /// ↩️Till 2026-11-16 each point was mapped here, every tick
+  /// global that the two painters on screen take turns evicting. The dashes
+  /// are cut every tick: the march moves them.
+  /// ↩️Till 2026-11-16 each point was mapped here every tick and the dashes
+  /// cut from the screen path a native path each
   /// (pixel-ants-cost-a-frame-while-moving).
-  Path _committedOutline(CanvasSelectionRegion region) =>
-      region.pixelOutline.transform(
+  void _paintCommitted(
+    Canvas canvas,
+    CanvasSelectionRegion region,
+    double phase,
+  ) {
+    final contours = region.pixelContours;
+    final toScreen =
         (Matrix4.translationValues(screenOffset.dx, screenOffset.dy, 0)
               ..multiply(viewportTransformMatrix(viewport)))
-            .storage,
-      );
+            .storage;
+    final dashes = antsDashes.marchedBy(phase).scaledBy(1 / viewport.zoom);
+    paintCutOutline(
+      canvas,
+      contours.path.transform(toScreen),
+      dashedPolygons(contours.starts, contours.xy, dashes).transform(toScreen),
+      color: antsColour,
+    );
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -228,7 +245,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
       // 상관없는데」 was read as covering it. That sentence is about a
       // selection still being DRAWN — the marquee and the open trails below,
       // which keep `pathIn`.
-      _paintAnts(canvas, _committedOutline(committed), phase);
+      _paintCommitted(canvas, committed, phase);
     }
     if (marqueeShapes.isNotEmpty) {
       // Copies UNION, the same way the committed fold does — two copies

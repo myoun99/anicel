@@ -229,7 +229,7 @@ void main() {
 
     test('the memo is what the entry actually holds', () {
       final region = regionOf(64);
-      expect(region.pixelOutlineContours, isNotEmpty);
+      expect(region.pixelContours.points, isNotEmpty);
       expect(region.estimatedRetainedBytes, greaterThan(0));
     });
   });

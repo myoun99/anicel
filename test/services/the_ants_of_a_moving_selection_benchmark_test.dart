@@ -89,7 +89,7 @@ void main() {
       final region = lasso(cx: cx, cy: cy, rx: rx, ry: ry);
       var contours = 0;
       final pixels = perFrame(region, cx, cy, (moved) {
-        contours = moved.pixelOutlineContours.length;
+        contours = moved.pixelContours.starts.length - 1;
       });
       // The engine's half alone — the mask's runs, read back — of the walk
       // above, so the rest is the contours' on the CPU.

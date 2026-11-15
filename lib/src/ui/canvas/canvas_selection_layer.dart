@@ -4047,7 +4047,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The selection as a session shows it, by the selection and what moves
   /// it — the SAME region for the same of them (F-591). The ants walk its
-  /// pixels, once a region ([CanvasSelectionRegion.pixelOutline]), and a
+  /// pixels, once a region ([CanvasSelectionRegion.pixelContours]), and a
   /// build that moves nothing — a pan, a hover — would walk them again for
   /// a region made anew.
   final _shown = IdentityMemo<CanvasSelectionRegion?>();

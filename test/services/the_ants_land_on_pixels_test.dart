@@ -92,7 +92,7 @@ void main() {
   });
 
   test('the committed outline lands on the pixel grid', () {
-    final outline = fractionalRect().pixelOutline;
+    final outline = fractionalRect().pixelContours.path;
 
     expect(
       outline.getBounds(),
@@ -105,7 +105,7 @@ void main() {
 
   test('every pixel the mask selects is inside the outline, and no other', () {
     final region = fractionalRect();
-    final outline = region.pixelOutline;
+    final outline = region.pixelContours.path;
     final pixels = selectedPixels(region);
 
     // ⛔The whole point of the round: the ants and the lift must answer the
@@ -130,7 +130,7 @@ void main() {
         CanvasSelectionShape.rect(left: 9.4, top: 9.6, right: 14.2, bottom: 15),
       ], SelectionCombineMode.subtract),
     ]);
-    final outline = region.pixelOutline;
+    final outline = region.pixelContours.path;
     final pixels = selectedPixels(region);
 
     expect(
@@ -152,7 +152,7 @@ void main() {
   // a `Path` on every animation tick. 🧪Measured by turning the merge off:
   // every other test in this file stayed green.
   test('straight runs collapse — a rectangle is four points', () {
-    final contours = fractionalRect().pixelOutlineContours;
+    final contours = fractionalRect().pixelContours.points;
 
     expect(contours, hasLength(1), reason: 'one component, one contour');
     expect(
@@ -173,7 +173,7 @@ void main() {
         CanvasPoint(x: 4, y: 24),
       ]),
     );
-    final points = region.pixelOutlineContours.single;
+    final points = region.pixelContours.points.single;
 
     expect(
       points.length,
@@ -191,13 +191,13 @@ void main() {
       fractionalRect(),
       wall,
     )!;
-    final contours = inverse.pixelOutlineContours;
+    final contours = inverse.pixelContours.points;
 
     expect(contours, hasLength(2), reason: 'the wall, and the hole in it');
     for (final contour in contours) {
       expect(contour, hasLength(4), reason: 'both are rectangles');
     }
-    final outline = inverse.pixelOutline;
+    final outline = inverse.pixelContours.path;
     final pixels = selectedPixels(
       inverse,
       left: -2,
@@ -234,7 +234,7 @@ void main() {
       hasLength(200),
       reason: 'the premise: the sliver took no pixel — 20 × 10',
     );
-    final contours = region.pixelOutlineContours;
+    final contours = region.pixelContours.points;
     expect(contours, hasLength(1));
     expect(contours.single, hasLength(4));
   });
@@ -250,7 +250,7 @@ void main() {
     ]);
     expect(
       region
-          .pixelOutline
+          .pixelContours.path
           .getBounds()
           .isEmpty,
       isTrue,

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 /// HOW A LINE IS DASHED: [on] of line and then [off] of none, the pattern
@@ -36,6 +37,27 @@ class DashPattern {
   /// This pattern, slid [phase] back.
   DashPattern marchedBy(double phase) =>
       DashPattern(on: on, off: off, phase: phase);
+
+  /// This pattern with every length [factor] times — the same dashes in
+  /// another space's units: the ants' are cut in the canvas's, `1 / zoom`
+  /// of the screen's, and moved to the screen whole ([dashedPolygons]).
+  DashPattern scaledBy(double factor) =>
+      DashPattern(on: on * factor, off: off * factor, phase: phase * factor);
+
+  /// WHERE EACH DASH LIES along a contour [length] long, in order: [span]
+  /// is told each one's start and end — from [firstDashStart] a [period]
+  /// apart, [on] long, the last cut short where the contour ends.
+  ///
+  /// 🚨THE ONE ANSWER every walk cuts by ([dashesAlong], [dashedPolygons]):
+  /// they differ in how a dash is cut out of a line, never in where it is.
+  void spansAlong(
+    double length,
+    void Function(double start, double end) span,
+  ) {
+    for (var start = firstDashStart; start < length; start += period) {
+      span(start, math.min(start + on, length));
+    }
+  }
 }
 
 /// 🚨★★★THE ANTS ARE BLACK — 유저 (F-65): 「선택툴의 개미행렬 색을 앱
@@ -59,7 +81,7 @@ const Color antsColour = Color(0xFF000000);
 const DashPattern antsDashes = DashPattern(on: 5, off: 4);
 
 /// THE DASHES OF A LINE: [source] walked contour by contour as [dashes]
-/// says, each dash a path of its own.
+/// says ([DashPattern.spansAlong]), each dash a path of its own.
 ///
 /// 🚨ONE WALK. Three painters each walked a path this way by hand — the
 /// selection's ants, the timeline's repeat span and its drop silhouette —
@@ -68,19 +90,107 @@ const DashPattern antsDashes = DashPattern(on: 5, off: 4);
 /// text looks like). They differ in what they do WITH a dash — stroke each,
 /// or gather them into one path — and in nothing about where a dash is, so
 /// where a dash is, is what is here.
-Iterable<Path> dashesAlong(Path source, DashPattern dashes) sync* {
+Iterable<Path> dashesAlong(Path source, DashPattern dashes) {
+  final pieces = <Path>[];
   for (final metric in source.computeMetrics()) {
-    for (
-      var start = dashes.firstDashStart;
-      start < metric.length;
-      start += dashes.period
-    ) {
-      yield metric.extractPath(
-        start,
-        math.min(start + dashes.on, metric.length),
-      );
+    dashes.spansAlong(
+      metric.length,
+      (start, end) => pieces.add(metric.extractPath(start, end)),
+    );
+  }
+  return pieces;
+}
+
+/// THE DASHES OF AN OUTLINE OF STRAIGHT SIDES, laid into ONE path: each
+/// closed polygon of [xy] — polygon `c` its points `starts[c]` up to
+/// `starts[c + 1]`, a column and a line each — cut where [dashes] says
+/// ([DashPattern.spansAlong]), the very dashes [dashesAlong] cuts from the
+/// same polygons drawn as a path.
+///
+/// 🔬WHY A SECOND WAY TO CUT (card pixel-ants-cost-a-frame-while-moving,
+/// 2026-11-16): the ants march, so their dashes are cut anew every tick,
+/// and a 4K lasso's outline is twenty thousand pixel steps — [dashesAlong]
+/// made a native path of each of its 3,155 dashes and copied it into one:
+/// 2.65 ms a tick on the Surface (profile), standing or dragged. Walked
+/// along the sides here and laid by `moveTo`/`lineTo`: 0.58. ⛔Not a
+/// second answer to where a dash is — both read [DashPattern.spansAlong].
+/// Only a line of straight sides can be cut this way; a curve (a rounded
+/// box) still goes by [dashesAlong].
+Path dashedPolygons(Uint32List starts, Int32List xy, DashPattern dashes) {
+  final dashed = Path();
+  for (var polygon = 0; polygon + 1 < starts.length; polygon += 1) {
+    _Sides(xy, starts[polygon], starts[polygon + 1]).cut(dashed, dashes);
+  }
+  return dashed;
+}
+
+/// One closed polygon of [dashedPolygons]' points, walked a side at a time.
+final class _Sides {
+  _Sides(this._xy, this._first, int end) : _count = end - _first;
+
+  final Int32List _xy;
+  final int _first;
+  final int _count;
+
+  /// The side the walk is on — from point [_side] to the next —, where
+  /// along the polygon it begins, and how long it is.
+  int _side = 0;
+  double _sideStart = 0;
+  double _sideLength = 0;
+
+  double _x(int point) => _xy[2 * (_first + point % _count)].toDouble();
+  double _y(int point) => _xy[2 * (_first + point % _count) + 1].toDouble();
+
+  double _lengthOf(int side) {
+    final dx = _x(side + 1) - _x(side);
+    final dy = _y(side + 1) - _y(side);
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// The polygon's dashes, laid into [dashed].
+  void cut(Path dashed, DashPattern dashes) {
+    if (_count < 2) {
+      return;
+    }
+    var length = 0.0;
+    for (var side = 0; side < _count; side += 1) {
+      length += _lengthOf(side);
+    }
+    _sideLength = _lengthOf(0);
+    dashes.spansAlong(length, (start, end) {
+      _onTo(start);
+      dashed.moveTo(_xAt(start), _yAt(start));
+      while (_sideStart + _sideLength < end && _side < _count - 1) {
+        dashed.lineTo(_x(_side + 1), _y(_side + 1));
+        _next();
+      }
+      dashed.lineTo(_xAt(end), _yAt(end));
+    });
+  }
+
+  /// Walks on to the side [distance] along the polygon lies on.
+  void _onTo(double distance) {
+    while (_sideStart + _sideLength < distance && _side < _count - 1) {
+      _next();
     }
   }
+
+  void _next() {
+    _sideStart += _sideLength;
+    _side += 1;
+    _sideLength = _lengthOf(_side);
+  }
+
+  /// How far along the side the walk is on [distance] lies, 0 to 1.
+  double _along(double distance) => _sideLength == 0
+      ? 0
+      : ((distance - _sideStart) / _sideLength).clamp(0.0, 1.0);
+
+  double _xAt(double distance) =>
+      _x(_side) + (_x(_side + 1) - _x(_side)) * _along(distance);
+
+  double _yAt(double distance) =>
+      _y(_side) + (_y(_side + 1) - _y(_side)) * _along(distance);
 }
 
 /// Draws [outline] as a dashed line that reads on ANY artwork: white along
@@ -97,14 +207,26 @@ void paintDashedOutline(
   required Color color,
   required DashPattern dashes,
 }) {
-  Paint stroke(Color color) => Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 1
-    ..color = color;
-  canvas.drawPath(outline, stroke(const Color(0xFFFFFFFF)));
   final dashed = Path();
   for (final dash in dashesAlong(outline, dashes)) {
     dashed.addPath(dash, Offset.zero);
   }
-  canvas.drawPath(dashed, stroke(color));
+  paintCutOutline(canvas, outline, dashed, color: color);
+}
+
+/// [paintDashedOutline] of a line whose dashes are already cut ([dashed]) —
+/// the ants' outline of pixels, cut by [dashedPolygons].
+void paintCutOutline(
+  Canvas canvas,
+  Path outline,
+  Path dashed, {
+  required Color color,
+}) {
+  Paint stroke(Color color) => Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1
+    ..color = color;
+  canvas
+    ..drawPath(outline, stroke(const Color(0xFFFFFFFF)))
+    ..drawPath(dashed, stroke(color));
 }

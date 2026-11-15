@@ -1,6 +1,6 @@
 //! The closed contours of the pixels a box's runs hold, on the pixel grid
 //! ([`walked`]): one walk for every outline drawn round pixels — a
-//! selection's ants (`CanvasSelectionRegion.pixelOutlineIn`) and the range a
+//! selection's ants (`CanvasSelectionRegion.pixelContours`) and the range a
 //! held fill will cover (I-160), each from its own runs
 //! ([`super::runs::SelectionRuns`] · the fill's).
 //!

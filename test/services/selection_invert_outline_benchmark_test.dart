@@ -13,7 +13,7 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 ///
 /// Two numbers, measured side by side in one run:
 ///
-///   1. the ants: `pixelOutlineContours`, walked from each row's runs —
+///   1. the ants: `pixelContours`, walked from each row's runs —
 ///      the engine's, read back as runs (`pixelRunsFor`). It used to
 ///      allocate a mask over the selected box and read every byte of it,
 ///      and an inverse's box is the whole wall — ~18.7M bytes on the paint
@@ -66,7 +66,7 @@ void main() {
 
     var contours = 0;
     final outline = medianMicros(() {
-      contours = inverse().pixelOutlineContours.length;
+      contours = inverse().pixelContours.starts.length - 1;
     });
     var cornerByte = 0;
     final mask = medianMicros(() {

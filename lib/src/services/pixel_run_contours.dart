@@ -10,7 +10,7 @@ import '../models/canvas_point.dart';
 /// box [width] pixels wide — on the pixel grid, in CANVAS space.
 ///
 /// One walk for every outline drawn around pixels: a selection's committed
-/// ants (`CanvasSelectionRegion.pixelOutline`) and the range a fill held
+/// ants (`CanvasSelectionRegion.pixelContours`) and the range a fill held
 /// down will cover (I-160). ↩️It was the selection's own until the fill
 /// needed the same outline of its flood.
 ///
@@ -68,16 +68,19 @@ PixelContours pixelRunContours(
 /// ints, once ([path]); a reader that moves it to the screen transforms
 /// that path (`Path.transform`) rather than mapping a point at a time.
 final class PixelContours {
-  PixelContours._(this._starts, this._points);
+  PixelContours._(this.starts, this.xy);
 
   /// No contour.
   static final none = PixelContours._(Uint32List(1), Int32List(0));
 
-  final Uint32List _starts;
-  final Int32List _points;
+  /// Where each contour's points begin in [xy], and one past the last.
+  final Uint32List starts;
+
+  /// The points, a column and a line each, in CANVAS pixels.
+  final Int32List xy;
 
   /// How many points the contours hold, all told.
-  int get pointCount => _points.length ~/ 2;
+  int get pointCount => xy.length ~/ 2;
 
   /// Every contour as one closed path, in CANVAS space — laid once, on the
   /// first ask.
@@ -88,17 +91,17 @@ final class PixelContours {
 
   ui.Path _laid() {
     final path = ui.Path();
-    for (var contour = 0; contour + 1 < _starts.length; contour += 1) {
-      final end = _starts[contour + 1];
-      var at = _starts[contour];
+    for (var contour = 0; contour + 1 < starts.length; contour += 1) {
+      final end = starts[contour + 1];
+      var at = starts[contour];
       if (at == end) {
         continue;
       }
-      path.moveTo(_points[2 * at].toDouble(), _points[2 * at + 1].toDouble());
+      path.moveTo(xy[2 * at].toDouble(), xy[2 * at + 1].toDouble());
       for (at += 1; at < end; at += 1) {
         path.lineTo(
-          _points[2 * at].toDouble(),
-          _points[2 * at + 1].toDouble(),
+          xy[2 * at].toDouble(),
+          xy[2 * at + 1].toDouble(),
         );
       }
       path.close();
@@ -109,12 +112,12 @@ final class PixelContours {
   /// The contours a point each — for the tests that pin which points the
   /// walk keeps; the straight-run merge shows only in the count.
   List<List<CanvasPoint>> get points => [
-    for (var contour = 0; contour + 1 < _starts.length; contour += 1)
+    for (var contour = 0; contour + 1 < starts.length; contour += 1)
       [
-        for (var at = _starts[contour]; at < _starts[contour + 1]; at += 1)
+        for (var at = starts[contour]; at < starts[contour + 1]; at += 1)
           CanvasPoint(
-            x: _points[2 * at].toDouble(),
-            y: _points[2 * at + 1].toDouble(),
+            x: xy[2 * at].toDouble(),
+            y: xy[2 * at + 1].toDouble(),
           ),
       ],
   ];

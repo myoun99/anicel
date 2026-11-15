@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -749,7 +748,10 @@ class CanvasSelectionRegion {
     return combined;
   }
 
-  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65), in CANVAS space.
+  /// 🚨★★★THE COMMITTED OUTLINE, ON THE PIXEL GRID (F-65), in CANVAS space:
+  /// the closed contours of the selected pixels, their path laid once
+  /// ([PixelContours.path]) and the ants' dashes cut along their sides
+  /// (`dashedPolygons`).
   ///
   /// 유저: 「라이브로 선택중일땐 선이 픽셀에 안착안된 벡터로 보여도 상관없는데,
   /// **선택 커밋될떈 픽셀에 제대로 안착한 상태로**. 지금은 **변형되는 픽셀
@@ -766,21 +768,32 @@ class CanvasSelectionRegion {
   /// a second one written next to it would be a rule that can drift.
   /// ↩️It read [maskFor] itself — one byte per pixel of the selected box —
   /// until an inverse made that box the whole pasteboard wall (I-23); the
-  /// runs are the same answer without the bytes. ⚠️It still folds every row
-  /// of the selected box, so callers cache the result rather than asking
-  /// per frame.
+  /// runs are the same answer without the bytes.
   ///
   /// 🚨IN CANVAS SPACE, AND MOVED WHOLE (card
-  /// pixel-ants-cost-a-frame-while-moving, 2026-11-16): a painter draws it
-  /// through its canvas→screen matrix (`Path.transform`). ↩️It was laid
-  /// anew in screen space at every tick through a map a point at a time
-  /// (`pixelOutlineIn`) — twenty thousand points mapped and made objects
-  /// a tick for a 4K lasso, standing or moving.
+  /// pixel-ants-cost-a-frame-while-moving, 2026-11-16): a painter moves the
+  /// path and the dashes to the screen through its canvas→screen matrix
+  /// (`Path.transform`). ↩️The outline was laid anew in screen space at
+  /// every tick through a map a point at a time (`pixelOutlineIn`) — twenty
+  /// thousand points mapped and made objects a tick for a 4K lasso,
+  /// standing or moving.
   ///
   /// The contours are CLOSED and walk consistently, so a dash phase runs
   /// around a whole component (and around a hole) exactly as it did around
   /// [pathIn]'s contours.
-  ui.Path get pixelOutline => _pixelContours.path;
+  ///
+  /// ⚠️Memoised, and that is not an optimisation but the condition of
+  /// calling it from a painter at all: the walk folds every row of the
+  /// selected box, while the ants repaint on every animation tick. A region
+  /// is immutable, so this can never go stale — the same reasoning
+  /// `layerContentBoundsAt` states for its own memo, one field over.
+  ///
+  /// ⛔On the REGION rather than in the painter: the painter is rebuilt per
+  /// tick and there is more than one of them on screen (the selection layer
+  /// and the panel's idle outline), so a cache living there would either
+  /// vanish every frame or be a global two painters take turns evicting.
+  PixelContours get pixelContours =>
+      _pixelContoursCache ??= _walkPixelContours();
 
   PixelContours? _pixelContoursCache;
 
@@ -802,27 +815,6 @@ class CanvasSelectionRegion {
   /// needs the ORDER of the number, and zero was the wrong order.
   /// ↩️32 while each point was a [CanvasPoint] on the Dart heap.
   static const int _bytesPerContourPoint = 8 + 8 + 1;
-
-  /// The closed contours of [pixelOutline], in CANVAS space.
-  ///
-  /// ⚠️Memoised, and that is not an optimisation but the condition of
-  /// calling it from a painter at all: the walk folds every row of the
-  /// selected box, while the ants repaint on every animation tick. A region
-  /// is immutable, so this can never go stale — the same reasoning
-  /// `layerContentBoundsAt` states for its own memo, one field over.
-  ///
-  /// ⛔On the REGION rather than in the painter: the painter is rebuilt per
-  /// tick and there is more than one of them on screen (the selection layer
-  /// and the panel's idle outline), so a cache living there would either
-  /// vanish every frame or be a global two painters take turns evicting.
-  PixelContours get _pixelContours =>
-      _pixelContoursCache ??= _walkPixelContours();
-
-  /// The contours [pixelOutline] draws, for the test that pins how many
-  /// POINTS they hold — the straight-run merge is invisible in the shape
-  /// and only shows up in the count, so nothing else can measure it.
-  @visibleForTesting
-  List<List<CanvasPoint>> get pixelOutlineContours => _pixelContours.points;
 
   PixelContours _walkPixelContours() {
     final bounds = selectedBounds;
@@ -876,7 +868,7 @@ class CanvasSelectionRegion {
   ///
   /// The answer without a byte per pixel of the box — for a reader that
   /// wants WHERE the pixels are rather than the pixels: the outline walk
-  /// ([pixelOutline]), and an area laid in pieces (`buildRegionFillDabs`),
+  /// ([pixelContours]), and an area laid in pieces (`buildRegionFillDabs`),
   /// which finds the tiles it reaches from these and fills only theirs.
   ///
   /// ↩️Till 2026-11-14 the CPU folded each row's crossings here in f64
