@@ -75,22 +75,23 @@ impl Plugin {
         self.kernel.reach(frame)
     }
 
-    /// Runs the render over `frame`'s output into `output` — its pixels as
-    /// the host started them, so a pixel nothing wrote keeps its word —, as
-    /// the CPU's `Kernel::render` does, in chunks the device's pace sizes
-    /// for `frame`'s share — for a kernel opened uncut, what the chunks are
-    /// sized for alone; none where the device could not (the last error
-    /// says why). A run cut leaves `output` as it was. The tests' run from
-    /// words, beside the CPU's: the app's runs are over a chain's tiles
-    /// ([`Self::render_tiled`]), the chunks one loop for both ([`Self::chunked`]).
+    /// [`Self::run`] in chunks the device's pace sizes for `frame`'s share
+    /// — for a kernel opened uncut, what the chunks are sized for alone:
+    /// the tests' run from words, beside the CPU's.
     #[cfg(test)]
     pub(crate) fn render(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32]) -> Option<Result<(), Cut>> {
         let most = self.most(engine, frame)?;
         self.run(engine, frame, output, most)
     }
 
-    /// [`Self::render`] in chunks of `most` workgroups at most.
-    #[cfg(test)]
+    /// Runs the render over `frame`'s output into `output` — its pixels as
+    /// the host started them, so a pixel nothing wrote keeps its word —, as
+    /// the CPU's `Kernel::render` does, in chunks of `most` workgroups at
+    /// most; none where the device could not (the last error says why). A
+    /// run cut leaves `output` as it was. The run from words — what the
+    /// pace's probe times ([`pace`]) and the tests hold to the CPU's: the
+    /// app's runs are over a chain's tiles ([`Self::render_tiled`]), the
+    /// chunks one loop for both ([`Self::chunked`]).
     fn run(&self, engine: &Engine, frame: &Frame<'_>, output: &mut [u32], most: u64) -> Option<Result<(), Cut>> {
         let bindings = self.kernel.bindings();
         let words: Vec<Cow<[u32]>> = bindings
