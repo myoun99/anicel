@@ -7,7 +7,9 @@ use std::sync::OnceLock;
 use super::super::region::Combine::{Add, Replace, Subtract};
 use super::super::region::{Operand, Step};
 use super::super::{Finish, MaskBox};
-use super::{SelectionMasks, gpu_engine_selection_mask_new, gpu_engine_selection_masks_new};
+use super::{
+    SelectionMasks, gpu_engine_area_masks_new, gpu_engine_selection_mask_new, gpu_engine_selection_masks_new,
+};
 use crate::device::Engine;
 use crate::kernels::composite::abi::{MaskPlane, gpu_engine_mask_free};
 use crate::testing::{first_engine, read_buffer};
@@ -78,11 +80,16 @@ fn program() -> (Vec<u32>, Vec<f64>) {
 
 /// A plane's bytes over [`SIZE`], row after row.
 fn bytes_of(engine: &Engine, plane: &wgpu::Buffer) -> Vec<u8> {
-    let stride = (SIZE.width.div_ceil(4) * 4) as usize;
+    bytes_over(engine, plane, SIZE)
+}
+
+/// A plane's bytes over `size`, row after row.
+fn bytes_over(engine: &Engine, plane: &wgpu::Buffer, size: MaskBox) -> Vec<u8> {
+    let stride = (size.width.div_ceil(4) * 4) as usize;
     read_buffer(engine, plane)
         .chunks(stride)
-        .take(SIZE.height as usize)
-        .flat_map(|row| row[..SIZE.width as usize].to_vec())
+        .take(size.height as usize)
+        .flat_map(|row| row[..size.width as usize].to_vec())
         .collect()
 }
 
@@ -208,4 +215,140 @@ fn the_plane_is_the_box_it_was_asked_for() {
     assert_eq!((mask.at, mask.size.width, mask.size.height), (AT, SIZE.width, SIZE.height));
     // SAFETY: made above.
     unsafe { gpu_engine_mask_free(plane) };
+}
+
+/// A part an area is cut into: its left, top, width and height, canvas
+/// pixels.
+type Asked = [i32; 4];
+
+/// A plane the app got: its bytes, row after row, with the corner and the
+/// box it says it has.
+type Got = (Vec<u8>, (i32, i32), (u32, u32));
+
+/// [`SIZE`] at [`AT`] in three parts that hold every pixel of it, out of
+/// their order on the box: its bottom, then its top's right and left —
+/// the top cut where no word of four pixels ends.
+const PARTS: [Asked; 3] = [[-3, 15, 37, 16], [15, 2, 19, 13], [-3, 2, 18, 13]];
+
+/// What the app gets for the area `words` spell over `points`, finished by
+/// `expand` and `anti_alias` over `parts` and cut a plane a part — or none
+/// where it was refused, and then no plane was made.
+fn area_asked(words: &[u32], points: &[f64], (expand, anti_alias): (u32, bool), parts: &[Asked]) -> Option<Vec<Got>> {
+    let Rig { engine, masks } = rig();
+    let mut planes = vec![std::ptr::null_mut::<MaskPlane>(); parts.len()];
+    // SAFETY: the rig is live; the slices hold what they say, and `planes`
+    // room for a plane a part.
+    let made = unsafe {
+        gpu_engine_area_masks_new(
+            *masks,
+            *engine,
+            words.as_ptr(),
+            words.len(),
+            points.as_ptr(),
+            points.len(),
+            AT.0,
+            AT.1,
+            SIZE.width,
+            SIZE.height,
+            expand,
+            anti_alias,
+            parts.as_ptr().cast(),
+            parts.len(),
+            planes.as_mut_ptr(),
+        )
+    };
+    if !made {
+        assert!(planes.iter().all(|plane| plane.is_null()), "a refusal made a plane");
+        return None;
+    }
+    let got = |plane: *mut MaskPlane| {
+        // SAFETY: made above, freed below.
+        let mask = unsafe { &*plane }.mask();
+        let got = (bytes_over(engine, mask.plane, mask.size), mask.at, (mask.size.width, mask.size.height));
+        // SAFETY: made above.
+        unsafe { gpu_engine_mask_free(plane) };
+        got
+    };
+    Some(planes.into_iter().map(got).collect())
+}
+
+/// [`steps`]' whole box finished as a fill finishes what it flooded —
+/// grown `expand` generations, softened where `anti_alias` — in one part,
+/// and `part` of it cut out here.
+fn area_made((expand, anti_alias): (u32, bool), [left, top, width, height]: Asked) -> Vec<u8> {
+    let Rig { engine, masks } = rig();
+    let hard = masks.region.selection(engine, &steps(), AT, SIZE).expect("a hard mask");
+    let whole = if expand == 0 && !anti_alias {
+        bytes_of(engine, &hard)
+    } else {
+        let finished = masks.passes.fill(engine, &hard, SIZE, expand, anti_alias, &[SIZE.whole()]);
+        bytes_of(engine, &finished.expect("a finish"))
+    };
+    let (x, y) = ((left - AT.0) as usize, (top - AT.1) as usize);
+    let rows = whole.chunks(SIZE.width as usize).skip(y).take(height as usize);
+    rows.flat_map(|row| row[x..x + width as usize].to_vec()).collect()
+}
+
+const AS_IT_IS: (u32, bool) = (0, false);
+
+/// An area's planes are its whole box finished and cut: each part's own
+/// bytes, at its corner, in the order the parts were asked — whichever way
+/// it is finished.
+#[test]
+fn an_area_is_finished_and_cut_a_plane_a_part() {
+    let (words, points) = program();
+    for finish in [AS_IT_IS, (2, false), (0, true), (3, true)] {
+        let planes = area_asked(&words, &points, finish, &PARTS).expect("planes");
+        assert_eq!(planes.len(), PARTS.len());
+        let mut finished = false;
+        for ((bytes, at, size), part) in planes.into_iter().zip(PARTS) {
+            let [left, top, width, height] = part;
+            assert_eq!((at, size), ((left, top), (width as u32, height as u32)), "{part:?} at {finish:?}");
+            assert!(bytes == area_made(finish, part), "{part:?} at {finish:?}: not the box's bytes there");
+            assert!(bytes.contains(&255), "{part:?} at {finish:?}: the area lies in it");
+            finished |= bytes != area_made(AS_IT_IS, part);
+        }
+        assert_eq!(finished, finish != AS_IT_IS, "{finish:?}: and it is finished");
+    }
+}
+
+/// A part that is no part of the box — before it, past it, or holding no
+/// pixel — is refused by name, whether or not the area is finished, and
+/// so is an area asked over no part at all.
+#[test]
+fn a_part_that_is_none_of_the_box_is_refused() {
+    let (words, points) = program();
+    let refused = |finish, parts: &[Asked]| {
+        assert_eq!(area_asked(&words, &points, finish, parts), None, "{parts:?}");
+        crate::last_error()
+    };
+    let after_one = |part: Asked| refused((1, true), &[PARTS[0], part]);
+    assert_eq!(after_one([-4, 2, 5, 5]), "the part [-4, 2, 5, 5] lies before the box at (-3, 2)");
+    assert_eq!(after_one([-3, 1, 5, 5]), "the part [-3, 1, 5, 5] lies before the box at (-3, 2)");
+    assert_eq!(after_one([0, 5, -1, 5]), "the part [0, 5, -1, 5] holds no pixel");
+    assert_eq!(after_one([0, 5, 5, -1]), "the part [0, 5, 5, -1] holds no pixel");
+    let of_the_box = |part: &str| format!("Part {{ {part} }} is no part of {SIZE:?}");
+    assert_eq!(after_one([0, 5, 0, 5]), of_the_box("left: 3, top: 3, right: 3, bottom: 8"));
+    assert_eq!(after_one([30, 5, 5, 5]), of_the_box("left: 33, top: 3, right: 38, bottom: 8"));
+    assert_eq!(after_one([0, 27, 5, 5]), of_the_box("left: 3, top: 25, right: 8, bottom: 30"));
+    // A part past what a pixel count holds is past the box, not a wrap
+    // back into it.
+    let far = of_the_box("left: 2147483650, top: 3, right: 4294967295, bottom: 2147483650");
+    assert_eq!(after_one([i32::MAX, 5, i32::MAX, i32::MAX]), far);
+    // The cut refuses what the finish would have, where nothing finishes.
+    let past = of_the_box("left: 33, top: 3, right: 38, bottom: 8");
+    assert_eq!(refused(AS_IT_IS, &[[30, 5, 5, 5]]), past);
+    assert_eq!(refused(AS_IT_IS, &[]), "a pass over no part of its box");
+    assert_eq!(refused((1, true), &[]), "a pass over no part of its box");
+}
+
+/// An area's program is read as a selection's is: one that spells less
+/// than it holds is refused.
+#[test]
+fn an_area_whose_program_spells_no_selection_is_refused() {
+    let (words, points) = program();
+    for finish in [AS_IT_IS, (1, true)] {
+        assert_eq!(area_asked(&words[..words.len() - 1], &points, finish, &PARTS), None);
+        assert_eq!(area_asked(&words, &points[..points.len() - 2], finish, &PARTS), None);
+    }
 }

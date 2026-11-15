@@ -231,7 +231,9 @@ fn parts_of(parts: &[i32], (x, y): (i32, i32)) -> Option<Vec<Part>> {
             let (Ok(width), Ok(height)) = (u32::try_from(width), u32::try_from(height)) else {
                 return fail(format!("the part {part:?} holds no pixel"));
             };
-            Some(Part { left, top, right: left + width, bottom: top + height })
+            // Past what a pixel count holds is past every box: held there,
+            // never wrapped back into one.
+            Some(Part { left, top, right: left.saturating_add(width), bottom: top.saturating_add(height) })
         })
         .collect()
 }
