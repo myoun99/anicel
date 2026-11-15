@@ -826,14 +826,15 @@ void main() {
     /// and inside its canvas, so each frame has a picture of the canvas's
     /// size ([pictureBytes]) to make — but [gone]'s, kept as an opened
     /// project keeps a cel, in a stretch of a file that is no longer there:
-    /// its bytes cannot be read.
+    /// its bytes cannot be read. Kept [into] the store a test counts the
+    /// readings of, where it gives one.
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
       FramePictures pictures,
     })
-    inked({FrameId? gone}) {
-      final store = BrushFrameStore();
+    inked({FrameId? gone, BrushFrameStore? into}) {
+      final store = into ?? BrushFrameStore();
       if (gone != null) {
         keepInAFileThatIsGone(store, {
           frameKey(four(), const LayerId('layer'), gone): inkedOut(0),
@@ -1562,12 +1563,10 @@ void main() {
     testWidgets('a picture whose compose throws is not waited for, and is '
         'not paid for twice', (tester) async {
       await tester.runAsync(() async {
-        final f = inked(gone: const FrameId('f1'));
-        final layerImages = _CountsReadings(
-          const FrameId('f1'),
-          frameStore: f.store,
-        );
-        final pictures = picturesOver(layerImages);
+        final reads = _CountsReads(const FrameId('f1'));
+        final f = inked(gone: const FrameId('f1'), into: reads);
+        final layerImages = f.layerImages;
+        final pictures = f.pictures;
         final reported = <Object>[];
         final previous = FlutterError.onError;
         FlutterError.onError = (details) => reported.add(details.exception);
@@ -1640,9 +1639,15 @@ void main() {
           reason: 'one frame\'s failure is one frame\'s: the walk went on',
         );
 
+        final readOnce = reads.asked;
+        expect(readOnce, greaterThan(0), reason: '⛔premise: it was read');
         scheduler.wake(fromTheStart: true);
         await patiently(scheduler.idle);
-        expect(layerImages.asked, 1, reason: 'the same content is not retried');
+        expect(
+          reads.asked,
+          readOnce,
+          reason: 'the same content is not retried',
+        );
         scheduler.dispose();
         layerImages.dispose();
       });
@@ -1711,27 +1716,34 @@ class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
   static bool _stays() => false;
 }
 
-/// An image cache that counts the readings of the cel [frameId]'s stored
-/// pixels.
+/// A store that counts the readings of the cel [frameId]'s pixels here —
+/// a frame made ahead looks at its cels in the store itself ([CelRead.look],
+/// card `one-cut-of-fnk02-holds-nine-gigabytes`), ahead of its drawing and
+/// as it draws.
 ///
-/// ⚠️IT READS THEM AS ANY CACHE DOES: what a cel that could not be read is
-/// remembered by is the cache's record ([LayerFrameImageCache.unreadable]),
-/// kept by its reading — a stand-in for the reading would stand in for the
-/// record as well.
-class _CountsReadings extends LayerFrameImageCache {
-  _CountsReadings(this.frameId, {required super.frameStore});
+/// ⚠️IT READS THEM AS THE STORE DOES: what a cel that could not be read is
+/// remembered by is the image cache's record
+/// ([LayerFrameImageCache.unreadable]), kept by the drawing's reading — a
+/// stand-in for the reading would stand in for the record as well.
+class _CountsReads extends BrushFrameStore {
+  _CountsReads(this.frameId);
 
   final FrameId frameId;
   int asked = 0;
 
   @override
-  BitmapSurface? storedSurfaceOrNull(
+  BitmapSurface? currentSurfaceWithoutReplay(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
+    CelRead read = CelRead.use,
   }) {
     if (key.frameId == frameId) {
       asked += 1;
     }
-    return super.storedSurfaceOrNull(key, canvasSize: canvasSize);
+    return super.currentSurfaceWithoutReplay(
+      key,
+      canvasSize: canvasSize,
+      read: read,
+    );
   }
 }

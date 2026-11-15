@@ -18,6 +18,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:anicel/src/services/persistence/thaw_in_worker.dart'
+    show celThawTurns;
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
@@ -409,6 +411,27 @@ void main() {
 
       expect(pixelsOf((await look)!), pixelsOf(drawn));
       expect(store.bakedSurfaceOrNull(k), same(drawn));
+    });
+
+    test('🚨a cel a use is thawing ahead is thawed once — a look of it '
+        'waits for that thaw and reads the cel hot', () async {
+      final store = BrushFrameStore();
+      final k = key('a');
+      parkCold(store, {k: inkSurface()});
+
+      final thaw = store.thawAhead(k, canvasSize: canvasSize);
+      final look = store.lookAhead(k, canvasSize: canvasSize);
+
+      expect(
+        celThawTurns.running,
+        1,
+        reason: 'one worker thaws it (⚠️a machine of one worker says so '
+            'either way)',
+      );
+      await thaw;
+      final looked = await look;
+      expect(looked, isNotNull);
+      expect(looked, same(store.hotBakedSurfaceOrNull(k)));
     });
 
     test('🚨bytes that will not decode: the look throws what the read here '

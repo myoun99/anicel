@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show FrameGhosts;
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
@@ -33,8 +38,25 @@ void main() {
       selection.frameId,
     );
     final store = session.renderCaches.brushFrameStore;
-    // Kept as an opened project keeps it: in its file, nothing hot.
-    keepInAFile(store, {drawn: store.bakedSurfaceOrNull(drawn)!});
+    // Kept as an opened project keeps it: in its file, nothing hot — a tile
+    // of more than one colour, which weighs its block whatever a tile of one
+    // colour comes to weigh.
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
+    for (var i = 0; i < pixels.length; i += 1) {
+      pixels[i] = (i * 7 + 1) & 0xFF;
+    }
+    keepInAFile(store, {
+      drawn: BitmapSurface(
+        canvasSize: cut.canvasSize,
+        tileSize: defaultCelTileSize,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            size: defaultCelTileSize,
+            pixels: pixels,
+          ),
+        },
+      ),
+    });
     // The walk the session began makes what it will and rests.
     await pumpEventQueue();
     session.playbackRig.prerenderScheduler.cancel();

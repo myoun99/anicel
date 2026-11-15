@@ -690,7 +690,9 @@ final class _AskedAhead {
       _onTheirWay[picture]?.landing;
 
   /// Asks for the missing pictures past [from], in the pass's order, until
-  /// [_most] are on their way. [making] is what the walk makes itself;
+  /// [_most] are on their way — none while the pictures have no room for
+  /// what another reads to be drawn ([PlaybackPictures.roomToAskAhead]).
+  /// [making] is what the walk makes itself;
   /// [waitingFor], one asked ahead that the walk waits for now — its own
   /// now, not one ahead of it.
   ///
@@ -724,6 +726,7 @@ final class _AskedAhead {
     }
     for (var look = from;
         ahead() < _most &&
+            scheduler.pictures.roomToAskAhead &&
             look < from + PlaybackPrerenderScheduler._walkBurst;
         look += 1) {
       final shown = pass.at(look);

@@ -157,9 +157,9 @@ void main() {
         layerId: const LayerId('m'),
         frameId: const FrameId('b'),
       );
-      final store = BrushFrameStore();
+      final store = _LooksRecorded();
       keepInAFile(store, {key: inACorner(), other: inACorner()});
-      final images = _ReadsRecorded(frameStore: store);
+      final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(
         images,
@@ -171,7 +171,7 @@ void main() {
       );
       await pictures.readIn(picture);
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
-      images.read.clear();
+      store.looked.clear();
 
       await pictures.readIn((
         cut: cut,
@@ -180,16 +180,16 @@ void main() {
         ghosts: FrameGhosts.none,
       ));
 
-      expect(images.read, [other]);
+      expect(store.looked, [other]);
     });
   });
 
   testWidgets('🚨a walk reading its picture in asks the room for nothing once '
       'it has been replaced', (tester) async {
     await tester.runAsync(() async {
-      final store = BrushFrameStore();
+      final store = _LookAheadHeld();
       keepInAFile(store, {key: inACorner()});
-      final images = _ReadInHeld(frameStore: store);
+      final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final room = _Asked();
       final scheduler = PlaybackPrerenderScheduler(
@@ -214,10 +214,10 @@ void main() {
           playlistFrameOf: (_, frame) => frame,
         ),
       );
-      await images.asked.future;
+      await store.asked.future;
       scheduler.cancel();
-      images.held.complete();
-      await images.reading;
+      store.held.complete();
+      await store.reading;
       await pumpEventQueue();
 
       expect(room.asked, isEmpty);
@@ -265,36 +265,39 @@ void main() {
   });
 }
 
-/// An image cache whose reading in waits for [held], saying when it is
-/// asked.
-class _ReadInHeld extends LayerFrameImageCache {
-  _ReadInHeld({required super.frameStore});
-
+/// A store whose look ahead waits for [held], saying when it is asked —
+/// a walk reads its picture's cels in as looks (card
+/// `one-cut-of-fnk02-holds-nine-gigabytes`, Q1).
+class _LookAheadHeld extends BrushFrameStore {
   final Completer<void> asked = Completer();
   final Completer<void> held = Completer();
-  late Future<void> reading;
+  late Future<BitmapSurface?> reading;
 
   @override
-  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) {
+  Future<BitmapSurface?> lookAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) {
     if (!asked.isCompleted) {
       asked.complete();
     }
     return reading = held.future.then(
-      (_) => super.readIn(key, canvasSize: canvasSize),
+      (_) => super.lookAhead(key, canvasSize: canvasSize),
     );
   }
 }
 
-/// An image cache saying which cels it was asked to read in.
-class _ReadsRecorded extends LayerFrameImageCache {
-  _ReadsRecorded({required super.frameStore});
-
-  final List<BrushFrameKey> read = [];
+/// A store saying which cels it was asked to look at ahead.
+class _LooksRecorded extends BrushFrameStore {
+  final List<BrushFrameKey> looked = [];
 
   @override
-  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) {
-    read.add(key);
-    return super.readIn(key, canvasSize: canvasSize);
+  Future<BitmapSurface?> lookAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) {
+    looked.add(key);
+    return super.lookAhead(key, canvasSize: canvasSize);
   }
 }
 

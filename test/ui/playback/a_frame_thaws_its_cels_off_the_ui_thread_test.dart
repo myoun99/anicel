@@ -216,6 +216,12 @@ void main() {
       // …while two frames are made: the looks have gone on twice.
       expect(await pictures.make(frame(0), shouldAbort: () => false), isTrue);
       expect(await pictures.make(frame(1), shouldAbort: () => false), isTrue);
+      expect(
+        pictures.celsLookedAtAhead,
+        hasLength(2),
+        reason: 'b, for the frame after it — and c, counted while its frame '
+            'still reads: the looks hold it no more',
+      );
       gate.complete();
 
       expect(await third, isTrue);
@@ -259,6 +265,62 @@ void main() {
 
       pictures.rest();
       expect(pictures.celsLookedAtAhead, isEmpty);
+    });
+  });
+
+  testWidgets('🚨what the walk reads in for a frame is counted while it '
+      'reads, whatever frames the looks go on to meanwhile', (tester) async {
+    await tester.runAsync(() async {
+      final store = _ThawAsks();
+      keepInTheFile(store, ['a', 'b', 'c', 'late']);
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final pictures = picturesOfFrames(
+        images,
+        (index) => const [
+          ['a'],
+          ['b'],
+          ['c', 'late'],
+        ][index],
+      );
+
+      // The third frame's cels are read in, and [late] waits…
+      final gate = store.holdBack(keyOf('late'));
+      final reading = pictures.readIn(frame(2));
+      await store.landed(keyOf('c'));
+      // …while two frames are made: the looks have gone on twice.
+      expect(await pictures.make(frame(0), shouldAbort: () => false), isTrue);
+      expect(await pictures.make(frame(1), shouldAbort: () => false), isTrue);
+
+      expect(
+        pictures.celsLookedAtAhead,
+        hasLength(2),
+        reason: 'b, for the frame after it — and c, counted while the '
+            'reading in goes on: the looks hold it no more',
+      );
+      gate.complete();
+      await reading;
+    });
+  });
+
+  testWidgets('🚨there is room to ask for a frame ahead only while the hot '
+      'cels and what the looks hold beside them weigh under the hot '
+      'budget', (tester) async {
+    await tester.runAsync(() async {
+      final store = _ThawAsks();
+      keepInTheFile(store, ['a']);
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images, ['a']);
+      store.hotCelByteBudget = 1;
+      expect(pictures.roomToAskAhead, isTrue, reason: '⛔premise');
+
+      await pictures.readIn(frame(0));
+      expect(store.hotBakedBytes, 0, reason: '⛔premise: looked at, not kept');
+      expect(pictures.roomToAskAhead, isFalse);
+
+      pictures.rest();
+      expect(pictures.roomToAskAhead, isTrue);
     });
   });
 

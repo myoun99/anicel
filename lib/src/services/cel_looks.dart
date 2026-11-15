@@ -70,6 +70,29 @@ class CelLooks {
     ..._frameBefore.values.nonNulls,
   ];
 
+  /// The bytes this and [frames] — the frames reading ahead through it, by
+  /// what each holds ([LooksAhead]) — hold BESIDE the store: a surface
+  /// once, however many of them hold it, and none the store holds hot,
+  /// which is in the store's own count ([BrushFrameStore.hotBakedBytes]).
+  int bytesBesideTheStore(Iterable<LooksAhead> frames) {
+    final weighed = Set<BitmapSurface>.identity();
+    var bytes = 0;
+    for (final read in [
+      _thisFrame,
+      _frameBefore,
+      for (final frame in frames) frame._read,
+    ]) {
+      for (final MapEntry(key: looked, value: surface) in read.entries) {
+        if (surface != null &&
+            !identical(store.hotBakedSurfaceOrNull(looked.cel), surface) &&
+            weighed.add(surface)) {
+          bytes += surface.tiles.length * surface.tileBytes;
+        }
+      }
+    }
+    return bytes;
+  }
+
   /// [cel]'s pixels at [canvasSize] as a look reads them
   /// ([BrushFrameStore.currentSurfaceWithoutReplay]) — this frame's, or the
   /// frame before's, or what its frame read [ahead], else read now — or
@@ -113,17 +136,22 @@ class CelLooks {
   ///
   /// Never throws: a cel that will not read is left to the drawing, which
   /// reads it and says why ([surfaceOf]). A movie's is the movie tier's.
+  ///
+  /// Read [into] the hold the frame made before the read, where it made
+  /// one: a frame weighed while it reads counts each cel from the moment it
+  /// is read ([LooksAhead.new]).
   Future<LooksAhead> ahead(
     Iterable<BrushFrameKey> cels, {
     required CanvasSize canvasSize,
+    LooksAhead? into,
   }) async {
-    final read = <_Looked, BitmapSurface?>{};
+    final hold = into ?? LooksAhead();
     await Future.wait([
       for (final cel in cels)
         if (!store.hasMovieCel(cel, canvasSize))
-          _readAheadInto(read, cel, canvasSize),
+          _readAheadInto(hold._read, cel, canvasSize),
     ]);
-    return LooksAhead._(read);
+    return hold;
   }
 
   Future<void> _readAheadInto(
@@ -216,7 +244,11 @@ typedef _Looked = ({BrushFrameKey cel, int revision, CanvasSize canvasSize});
 /// meanwhile, and let go with the frame that holds it — nobody is told, so
 /// nobody can forget to.
 final class LooksAhead {
-  LooksAhead._(this._read);
+  /// A frame's hold with nothing read yet ([CelLooks.ahead] reads into
+  /// it). ⛔Not made by the read and handed back when every cel is in: a
+  /// cel read while the frame's others were still to come was held by a map
+  /// nobody could weigh once the looks had gone on two frames.
+  LooksAhead() : _read = {};
 
   final Map<_Looked, BitmapSurface?> _read;
 

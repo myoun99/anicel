@@ -45,6 +45,11 @@ abstract interface class PlaybackPictures {
   /// then did not make ([readIn]) is let go.
   void rest();
 
+  /// Whether a picture past the one the walk makes may be asked for now:
+  /// false while what the pictures in the making read to be drawn leaves
+  /// no room for what another would.
+  bool get roomToAskAhead;
+
   /// The bytes [picture] holds that [seen] has not counted, which it adds to
   /// [seen]: a walk weighs the window it has passed over by this, each
   /// picture's parts counted once however many frames show them.

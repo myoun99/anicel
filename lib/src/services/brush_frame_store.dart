@@ -1115,6 +1115,10 @@ class BrushFrameStore {
     required CanvasSize canvasSize,
   }) async {
     key = _canonicalize(key);
+    // A use thawing it ahead ([thawAhead]) thaws it for this look too: the
+    // cel is read hot once that lands, where both at once thawed it twice
+    // and let one go (저장 2026-11-15 20:12). That thaw never throws.
+    await _thawing.runOf(key);
     final thawed = _thawsAt(key, canvasSize)
         ? await _thawOnAWorker(
             key,

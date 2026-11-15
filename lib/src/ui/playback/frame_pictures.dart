@@ -136,11 +136,12 @@ class FramePictures implements PlaybackPictures {
   );
 
   /// 🚨★★★A FRAME MADE AHEAD LOOKS AT ITS CELS AND LETS GO (card
-  /// `one-cut-of-fnk02-holds-nine-gigabytes`, Q1 — the render's law
-  /// ([CelLooks], `gpu-canonical-store-Q10`) reaching the walk): what the
-  /// walk reads to make a frame's picture ahead of a screen leaves the cel
-  /// store as it stood, and is held here outside its budgets. The cels of
-  /// the frame a canvas stands on are that canvas's, read as a use
+  /// `one-cut-of-fnk02-holds-nine-gigabytes`, Q1, 유저 2026-11-15: 「굽고
+  /// 나면 놓는다 (같은 법을 재생 그림에도)」 — the render's law ([CelLooks],
+  /// `gpu-canonical-store-Q10`) reaching the walk): what the walk reads to
+  /// make a frame's picture ahead of a screen leaves the cel store as it
+  /// stood, and is held here outside its budgets. The cels of the frame a
+  /// canvas stands on are that canvas's, read as a use
   /// (`FramePictureView`).
   ///
   /// ↩️Read as a use ([LayerFrameImageCache.readIn]), every frame's cels
@@ -150,14 +151,16 @@ class FramePictures implements PlaybackPictures {
   /// frames under a ceiling of 6.83 GB — its pictures 0.67 GB.
   ///
   /// ⚖️As many frames' cels as the walk makes at a time — its own and the
-  /// ones it asks for ahead (`PlaybackPrerenderScheduler`) — and the frame
-  /// before them, so a drawing held over the next frame is read once; none
-  /// once the walk rests ([rest]). Weighed with the drawings
-  /// ([celsLookedAtAhead], `collectMemoryCensus`).
+  /// ones it asks for ahead (`PlaybackPrerenderScheduler`), those only
+  /// while there is room ([roomToAskAhead]) — and the frame before them, so
+  /// a drawing held over the next frame is read once; none once the walk
+  /// rests ([rest]). Weighed with the drawings ([celsLookedAtAhead],
+  /// `collectMemoryCensus`).
   late final CelLooks _aheadLooks = CelLooks(layerImages.frameStore);
 
-  /// What the frames in the making read ahead of their drawing ([_make]):
-  /// theirs until they are laid, whatever frames the looks have gone on to.
+  /// What the frames in the making read ahead of their drawing ([_make],
+  /// [readIn]) — theirs until they are laid, whatever frames the looks have
+  /// gone on to — each here from before its first cel is read.
   final Set<LooksAhead> _inTheMaking = Set.identity();
 
   /// The cels' pixels the frames made ahead hold now — the looks'
@@ -548,30 +551,64 @@ class FramePictures implements PlaybackPictures {
   /// UI thread — as the looks of a frame made ahead ([_aheadLooks]): none
   /// another frame holds is read again.
   @override
-  Future<void> readIn(DemandedPicture picture) =>
-      readInStack(stackOf(picture), picture, looks: _aheadLooks);
+  Future<void> readIn(DemandedPicture picture) async {
+    final ahead = LooksAhead();
+    _inTheMaking.add(ahead);
+    try {
+      await readInStack(
+        stackOf(picture),
+        picture,
+        looks: _aheadLooks,
+        into: ahead,
+      );
+    } finally {
+      _inTheMaking.remove(ahead);
+    }
+  }
 
   /// The walk rests: what it read for a picture it then did not make, and
   /// the last frames' cels, are let go.
   @override
   void rest() => _aheadLooks.letGo();
 
+  /// 🚨WHAT THE FRAMES MADE AHEAD HOLD STANDS IN THE HOT CELS' ROOM (저장
+  /// 2026-11-15 20:12, reading this law's first cut: 「묶음이 프레임 수이고
+  /// 바이트가 아니다」). The looks hold their cels outside the store's
+  /// budgets, a frame's worth for each frame in the making and for the two
+  /// the looks keep: where every row draws a canvas-wide cel anew each
+  /// frame, five frames' cels stood beside a store whose hot budget had
+  /// stood over every one of them. So a frame past the walk's own is asked
+  /// for only while the hot cels and what the looks hold beside them weigh
+  /// under that budget — the one allowance for thawed cels, no number of
+  /// its own. The walk's own frame is made whatever they weigh: a frame is
+  /// drawn of all its cels at once.
+  @override
+  bool get roomToAskAhead {
+    final store = layerImages.frameStore;
+    final held =
+        store.hotBakedBytes + _aheadLooks.bytesBesideTheStore(_inTheMaking);
+    return held < store.hotCelByteBudget;
+  }
+
   /// Reads the cels [nodes] — a screen's own stack, or a frame's as it is
   /// made — draw, at once, off the UI thread, on [picture]'s page or [page]
   /// ([keyOfStack]): thawed hot where a screen stands on them, each not in
   /// hand already ([LayerFrameImageCache.readIn]) — or through [looks],
   /// where a render or the walk makes the picture ([CelLooks.ahead]), and
-  /// what was read handed back for the drawing ([drawingNow]).
+  /// what was read handed back for the drawing ([drawingNow]) — read
+  /// [into] the hold its frame counts already, where it has one
+  /// ([_inTheMaking]).
   Future<LooksAhead?> readInStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     FramePage? page,
     CelLooks? looks,
+    LooksAhead? into,
   }) async {
     final canvasSize = (page ?? pageOf(picture)).canvasSize;
     final cels = stackedCelsOf(_drawnOf(nodes));
     if (looks != null) {
-      return looks.ahead(cels, canvasSize: canvasSize);
+      return looks.ahead(cels, canvasSize: canvasSize, into: into);
     }
     await Future.wait([
       for (final cel in cels)
@@ -739,16 +776,19 @@ class FramePictures implements PlaybackPictures {
     if (shouldAbort()) {
       return false;
     }
-    final ahead = await readInStack(
-      nodesOf(),
-      picture,
-      page: page,
-      looks: looks,
-    );
+    // In the count before its first cel is read ([LooksAhead.new]).
+    final ahead = looks == null ? null : LooksAhead();
     if (ahead != null) {
       _inTheMaking.add(ahead);
     }
     try {
+      await readInStack(
+        nodesOf(),
+        picture,
+        page: page,
+        looks: looks,
+        into: ahead,
+      );
       return await _drawAndLay(
         nodesOf,
         picture,

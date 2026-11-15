@@ -49,6 +49,12 @@ final class _HeldPictures implements PlaybackPictures {
   @override
   void rest() => rests += 1;
 
+  /// Whether these have room for a picture asked for ahead.
+  bool roomAhead = true;
+
+  @override
+  bool get roomToAskAhead => roomAhead;
+
   @override
   int weighNew(DemandedPicture picture, Set<Object> seen) => 0;
 
@@ -121,6 +127,49 @@ void main() {
 
     playhead = 1;
     expect(pictures.dueOf[2]!(), isTrue, reason: 'the run shows it next');
+  });
+
+  test('🚨a walk asks for no picture ahead while its pictures have no room '
+      'for what another reads, and for them again once they have', () async {
+    final cut = Cut(
+      id: const CutId('c'),
+      name: 'c',
+      duration: 8,
+      canvasSize: const CanvasSize(width: 4, height: 4),
+      layers: const [],
+    );
+    final pictures = _HeldPictures()..roomAhead = false;
+    final scheduler = PlaybackPrerenderScheduler(
+      pictures: pictures,
+      resolveCut: (_) => cut,
+    );
+    addTearDown(scheduler.dispose);
+
+    scheduler.follow(
+      PlayingDemand(
+        totalFrames: 8,
+        loops: () => true,
+        playhead: () => 0,
+        picturesOf: (frame) => [(
+          cut: cut,
+          frameIndex: frame,
+          paintPaper: true,
+          ghosts: FrameGhosts.none,
+        )],
+        playlistFrameOf: (_, frame) => frame,
+      ),
+    );
+    await pumpEventQueue();
+    expect(pictures.dueOf.keys, [0], reason: 'the walk makes its own alone');
+
+    pictures.land(0);
+    await pumpEventQueue();
+    expect(pictures.dueOf.keys, [0, 1]);
+
+    pictures.roomAhead = true;
+    pictures.land(1);
+    await pumpEventQueue();
+    expect(pictures.dueOf.keys, containsAll([2, 3, 4]));
   });
 
   test('🚨a walk that rests tells its pictures — what they read in for a '

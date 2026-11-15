@@ -210,6 +210,53 @@ void main() {
       );
     });
 
+    test('🚨what is held beside the store is weighed a surface once, and '
+        'none the store holds hot', () async {
+      // A tile of more than one colour.
+      BitmapSurface shaded(int seed) {
+        final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
+        for (var i = 0; i < pixels.length; i += 1) {
+          pixels[i] = (i * 7 + seed) & 0xFF;
+        }
+        return BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: defaultCelTileSize,
+          tiles: {origin: BitmapTile(size: defaultCelTileSize, pixels: pixels)},
+        );
+      }
+
+      parkCold(store, {key('p'): shaded(1), key('q'): shaded(2)});
+      store.storeBakedSurface(key('h'), shaded(3));
+      final each = store.hotBakedBytes;
+      expect(each, greaterThan(0), reason: '⛔premise');
+
+      final mine = await readAhead(['p', 'q', 'h']);
+
+      expect(
+        looks.bytesBesideTheStore([mine]),
+        2 * each,
+        reason: 'p and q, each held by the looks and by the frame',
+      );
+      looks.letGo();
+      expect(looks.bytesBesideTheStore(const []), 0);
+      expect(looks.bytesBesideTheStore([mine]), 2 * each);
+    });
+
+    test('🚨a frame that made its hold before the read holds each cel from '
+        'the moment it is read', () async {
+      final mine = LooksAhead();
+      expect(mine.surfaces, isEmpty);
+
+      final read = await looks.ahead(
+        [key('a')],
+        canvasSize: canvasSize,
+        into: mine,
+      );
+
+      expect(read, same(mine));
+      expect(mine.surfaces, hasLength(1));
+    });
+
     test('what the looks hold is theirs to tell, for whoever weighs '
         'it', () async {
       final mine = await readAhead(['a', 'b']);

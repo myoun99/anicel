@@ -90,9 +90,10 @@ void main() {
   }
 
   /// A store keeping [cel] as an opened project keeps one — a stretch of a
-  /// file — and that file since gone: its bytes cannot be read.
-  BrushFrameStore storeWithGone(String cel) {
-    final store = BrushFrameStore();
+  /// file — and that file since gone: its bytes cannot be read. Kept [into]
+  /// the store a test counts the readings of, where it gives one.
+  BrushFrameStore storeWithGone(String cel, {BrushFrameStore? into}) {
+    final store = into ?? BrushFrameStore();
     keepInAFileThatIsGone(store, {
       keyOf(cel): storeOf([cel]).bakedSurfaceOrNull(keyOf(cel))!,
     });
@@ -397,8 +398,9 @@ void main() {
       'it, its throw handed on, and it is not read again', (tester) async {
     await tester.runAsync(() async {
       // a's file gone; b drawn.
-      final store = storeOf(['b'], store: storeWithGone('a'));
-      final images = _CountsReadings(keyOf('a'), frameStore: store);
+      final reads = _CountsReads(keyOf('a'));
+      final store = storeOf(['b'], store: storeWithGone('a', into: reads));
+      final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(images, both: true);
 
@@ -406,6 +408,8 @@ void main() {
         pictures.make(at(3), shouldAbort: () => false),
         throwsA(anything),
       );
+      final readOnce = reads.read;
+      expect(readOnce, greaterThan(0), reason: '⛔premise: it was read');
       expect(images.unreadable.has(keyOf('a')), isTrue);
       expect(pictures.has(at(3)), isTrue, reason: 'b is in it');
       expect(
@@ -429,7 +433,11 @@ void main() {
       pictures.partsToMake(at(3));
       pictures.bytesToMake(at(3));
       await pictures.readIn(at(3));
-      expect(images.read, 1, reason: '⛔not read again at the same content');
+      expect(
+        reads.read,
+        readOnce,
+        reason: '⛔not read again at the same content',
+      );
 
       pictures.store.letGo(pictures.keyOf(at(3)));
       expect(
@@ -872,26 +880,34 @@ void main() {
   });
 }
 
-/// A layer image cache that counts the readings of [key]'s stored pixels.
+/// A store that counts the readings of [key]'s pixels here — a frame made
+/// ahead looks at its cels in the store itself ([CelRead.look], card
+/// `one-cut-of-fnk02-holds-nine-gigabytes`), ahead of its drawing and as
+/// it draws.
 ///
-/// ⚠️IT READS THEM AS ANY CACHE DOES: what a cel that could not be read is
-/// remembered by is the cache's record ([LayerFrameImageCache.unreadable]),
-/// kept by its reading — a stand-in for the reading would stand in for the
-/// record as well.
-class _CountsReadings extends LayerFrameImageCache {
-  _CountsReadings(this.key, {required super.frameStore});
+/// ⚠️IT READS THEM AS THE STORE DOES: what a cel that could not be read is
+/// remembered by is the image cache's record
+/// ([LayerFrameImageCache.unreadable]), kept by the drawing's reading — a
+/// stand-in for the reading would stand in for the record as well.
+class _CountsReads extends BrushFrameStore {
+  _CountsReads(this.key);
 
   final BrushFrameKey key;
   int read = 0;
 
   @override
-  BitmapSurface? storedSurfaceOrNull(
+  BitmapSurface? currentSurfaceWithoutReplay(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
+    CelRead read = CelRead.use,
   }) {
     if (key == this.key) {
-      read += 1;
+      this.read += 1;
     }
-    return super.storedSurfaceOrNull(key, canvasSize: canvasSize);
+    return super.currentSurfaceWithoutReplay(
+      key,
+      canvasSize: canvasSize,
+      read: read,
+    );
   }
 }
