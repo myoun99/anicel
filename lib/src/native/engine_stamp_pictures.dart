@@ -6,6 +6,15 @@ import 'package:gpu_engine/gpu_engine.dart';
 import '../models/brush_stamp_image.dart';
 import 'app_gpu_engine.dart';
 
+/// What a stamp made of a mask is made of on the engine
+/// ([EngineStampPictures.ofMask]): its coverage as the engine has it, laid
+/// under its paint, a pixel it covers taken wholly where `whole`.
+typedef StampOfMask = ({
+  GpuMask Function() coverage,
+  bool whole,
+  GpuPaint paint,
+});
+
 /// The pictures of the stamps the engine lands, each on it once: a selection
 /// moved lands the same one at each step of the drag. On the engine the
 /// app has ([KeptOnTheAppsEngine]): once the app lets this one go, a stamp
@@ -150,40 +159,44 @@ abstract final class EngineStampPictures {
   /// The stamps made of a mask rather than of a picture (stamp.rs
   /// `Source::Mask`), and what each is made of on the engine
   /// ([madeOfMask]).
-  static final Expando<({GpuMask Function() coverage, bool whole})> _masks =
-      Expando();
+  static final Expando<StampOfMask> _masks = Expando();
 
   /// A stamp named [id], [width] × [height], made of a mask: what
   /// [coverage] makes on the engine — on the engine the app has, as it asks
-  /// —, a pixel it covers at all taken wholly where [whole], else by its
-  /// byte; [rgba] its bytes for what reads them here. A selection's erase
+  /// —, laid under [paint], a pixel it covers at all taken wholly where
+  /// [whole], else by its byte; [rgba] its bytes for what reads them here.
+  /// A fill's pieces in their colour or under their gradient
+  /// (`canvas_flood_fill.dart`), and a selection's erase
   /// (`selectionEraseDab`): the selection's own mask, laid by the eraser
   /// ([GpuStampLanding.landMask]).
   ///
   /// ↩️Till 2026-11-14 the erase was a picture: the CPU made the
   /// selection's mask, built an RGBA image of it and handed it up, at every
   /// lift and every cut that takes — as much work as the selection is large
-  /// (board `a-selection-mask-is-built-on-the-cpu-at-every-move`).
+  /// (board `a-selection-mask-is-built-on-the-cpu-at-every-move`). Till
+  /// 2026-11-15 a fill's pieces were too, painted a pixel at a time — under
+  /// a gradient at every frame it was dragged (board
+  /// `a-gradient-fill-preview-paints-its-range-on-the-cpu-every-frame`).
   static BrushStampImage ofMask({
     required String id,
     required int width,
     required int height,
     required GpuMask Function() coverage,
     required bool whole,
+    required GpuPaint paint,
     required Uint8List Function() rgba,
   }) => _withoutBytes(
     id: id,
     width: width,
     height: height,
     rgba: (_) => rgba(),
-    keep: (made) => _masks[made] = (coverage: coverage, whole: whole),
+    keep: (made) =>
+        _masks[made] = (coverage: coverage, whole: whole, paint: paint),
   );
 
   /// What [stamp] is made of on the engine if it is made of a mask
   /// ([ofMask]) — null where it is a picture ([of]).
-  static ({GpuMask Function() coverage, bool whole})? madeOfMask(
-    BrushStampImage stamp,
-  ) => _masks[stamp];
+  static StampOfMask? madeOfMask(BrushStampImage stamp) => _masks[stamp];
 
   /// A stamp named [id], [width] × [height], whose bytes [rgba] reads the
   /// first time anything asks for them, and what made it [keep]s — the one

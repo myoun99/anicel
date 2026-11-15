@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/canvas/view_hand.dart';
 
+import '../../helpers/fill_pieces.dart';
 import '../brush_canvas_test_helpers.dart';
 
 /// I-69 (유저 2026-10-04): 「브러시 상태를 그대로 사용해서 도형그림. 샤프
@@ -941,9 +942,15 @@ void main() {
       expect(alphaAt(30, 50), lessThan(255), reason: 'the selection\'s ramp');
       expect(alphaAt(30, 65), 255, reason: 'deep inside it');
 
-      final piece = data.sourceDabs.single.stamp!;
+      final dab = data.sourceDabs.single;
+      final alone = [dab];
+      final piece = dab.stamp!.landingRect(dab.center);
       expect(
-        [for (var i = 3; i < piece.rgba.length; i += 4) piece.rgba[i]],
+        [
+          for (var y = piece.top; y < piece.bottomExclusive; y += 1)
+            for (var x = piece.left; x < piece.rightExclusive; x += 1)
+              piecesAlphaAt(alone, x, y),
+        ],
         everyElement(255),
         reason: 'the dab the commit would cut again is the whole piece',
       );

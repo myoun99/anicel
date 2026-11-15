@@ -1,9 +1,5 @@
-import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:ui' show Offset;
+import 'package:gpu_engine/gpu_engine.dart' show GpuGradient, GpuGradientShape;
 
-import '../core/argb_channels.dart';
-import '../core/segment_share.dart';
 import '../models/canvas_point.dart';
 
 /// The shapes a fill's gradient takes — 유저 답 I-160-Q4 「직선 + 원형」, the
@@ -92,8 +88,7 @@ final class FillGradient {
     required this.to,
     required this.startColor,
     required this.endColor,
-  }) : _a = Offset(from.x, from.y),
-       _b = Offset(to.x, to.y);
+  });
 
   final FillGradientShape shape;
   final CanvasPoint from;
@@ -103,73 +98,26 @@ final class FillGradient {
   final int startColor;
   final int endColor;
 
-  final Offset _a;
-  final Offset _b;
-
-  /// Where ([x], [y]) lies along the gradient: 0 at [from], 1 at [to] and
-  /// past it.
+  /// This gradient as the engine paints it ([GpuGradient]): each pixel the
+  /// colour at its centre — along a line its projection, held to the two
+  /// ends; in a circle its distance over the radius; a press that never
+  /// moved its start colour whatever the shape (I-160-Q5) — each straight
+  /// channel between the two, rounded.
   ///
-  /// A line's is the point's projection onto it — the one projection
-  /// ([shareAlongSegment]), whose answer for a line of no length is 0. A
-  /// circle's is its distance from [from] over the radius, and a circle of
-  /// no radius answers as that line does: a press that never moved lays
-  /// [startColor] whatever the shape (I-160-Q5 — a press that never moved
-  /// is a gradient too, made nothing special of).
-  double at(double x, double y) {
-    final one = Float64List(1);
-    rowInto(one, x, y);
-    return one.single;
-  }
-
-  /// [at] for a row of pixels one apart, the first at ([x], [y]) — into
-  /// [along], as many as it holds. A line's projection moves by the same
-  /// share at each pixel, so it is projected twice a row rather than once
-  /// a pixel.
-  void rowInto(Float64List along, double x, double y) {
-    switch (shape) {
-      case FillGradientShape.linear:
-        final start = shareAlongSegment(Offset(x, y), _a, _b);
-        final step = shareAlongSegment(Offset(x + 1, y), _a, _b) - start;
-        for (var i = 0; i < along.length; i += 1) {
-          along[i] = math.min(math.max(start + step * i, 0.0), 1.0);
-        }
-      case FillGradientShape.radial:
-        final radius = _radius;
-        if (radius == 0) {
-          along.fillRange(0, along.length, 0);
-          return;
-        }
-        final dy = y - _a.dy;
-        final dySquared = dy * dy;
-        for (var i = 0; i < along.length; i += 1) {
-          final dx = x + i - _a.dx;
-          along[i] = math.min(math.sqrt(dx * dx + dySquared) / radius, 1.0);
-        }
-    }
-  }
-
-  late final double _radius = (_b - _a).distance;
-
-  /// The colour [t] of the way along — each straight channel between the
-  /// two, rounded.
-  int colorAt(double t) {
-    int channel(int Function(int argb) of) {
-      final start = of(startColor);
-      return (start + (of(endColor) - start) * t).round();
-    }
-
-    return channel(argbAlpha) << 24 |
-        channel(argbRed) << 16 |
-        channel(argbGreen) << 8 |
-        channel(argbBlue);
-  }
-
-  /// [colorAt] at [steps] even stops from 0 to 1 — what a stamp looks a
-  /// pixel's colour up in, so a pixel pays one [at] and not four channels
-  /// mixed.
-  Uint32List stops(int steps) => Uint32List.fromList([
-    for (var i = 0; i < steps; i += 1) colorAt(i / (steps - 1)),
-  ]);
+  /// ↩️Till 2026-11-15 that was worked out here, a pixel at a time, at
+  /// every frame a gradient was dragged (board `a-gradient-fill-preview-
+  /// paints-its-range-on-the-cpu-every-frame`): the engine's stamp.wgsl is
+  /// the one spelling of it now.
+  GpuGradient get onEngine => GpuGradient(
+    shape: switch (shape) {
+      FillGradientShape.linear => GpuGradientShape.line,
+      FillGradientShape.radial => GpuGradientShape.circle,
+    },
+    from: (from.x, from.y),
+    to: (to.x, to.y),
+    start: startColor,
+    end: endColor,
+  );
 
   @override
   bool operator ==(Object other) =>

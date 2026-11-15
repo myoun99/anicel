@@ -8,6 +8,7 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 
 import '../helpers/a_canvas_standing_on_a_frame.dart';
 import '../helpers/a_fill_on_the_engine.dart';
+import '../helpers/fill_pieces.dart';
 
 /// **A symmetry guide replicates FILLS, not just strokes.**
 ///
@@ -92,7 +93,7 @@ void main() {
     expect(dab.center, CanvasPoint(x: 8, y: 4));
 
     // Coverage: both interiors painted, the ink and the gap untouched.
-    int alphaAt(int x, int y) => stamp.rgba[((y - 3) * 10 + (x - 3)) * 4 + 3];
+    int alphaAt(int x, int y) => piecesAlphaAt([dab], x, y);
     for (final (x, y) in <(int, int)>[
       (3, 3), (4, 3), (3, 4), (4, 4), // the seed's box
       (11, 3), (12, 3), (11, 4), (12, 4), // the mirror's box
@@ -107,10 +108,9 @@ void main() {
   });
 
   test('the mirrored copy carries the same colour, at full coverage', () {
-    final stamp = fill(symmetry: mirrorDownTheMiddle()).single.stamp!;
+    final dab = fill(symmetry: mirrorDownTheMiddle()).single;
 
-    const at = ((3 - 3) * 10 + (11 - 3)) * 4;
-    expect(stamp.rgba.sublist(at, at + 4), [0x33, 0x66, 0xCC, 255]);
+    expect(piecesRgbaAt([dab], 11, 3), [0x33, 0x66, 0xCC, 255]);
   });
 
   test('an OPEN copy is refused alone — it does not veto the seed side', () {

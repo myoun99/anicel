@@ -35,9 +35,11 @@ abstract final class EngineSelectionMasks {
 
   static Expando<GpuMask> get _of => _masks.of(Expando.new);
 
-  /// [clip]'s mask on the engine the app has: [make]'s the first time it is
-  /// asked there, and let go of with [clip] — what reads a selection on the
-  /// engine (a stroke's landings, a stamp's) asks its clip at each landing,
+  /// [clip]'s mask on the engine the app has — a selection's, or a fill
+  /// piece's coverage (`canvas_flood_fill.dart`): [make]'s the first time
+  /// it is asked there, and let go of with [clip] — what reads a selection
+  /// on the engine (a stroke's landings, a stamp's) asks its clip at each
+  /// landing,
   /// and the clip holds what was made, as a stamp holds its picture
   /// (`EngineStampPictures`).
   ///

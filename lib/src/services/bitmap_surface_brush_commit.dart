@@ -119,7 +119,7 @@ BrushSurfaceMaterialization _materializedOnEngine(
 }
 
 /// [dab]'s [stamp] laid on [surface] by the engine, under [selection]'s
-/// mask where there is one: a picture, or a mask in the dab's colour
+/// mask where there is one: a picture, or a mask under its paint
 /// ([EngineStampPictures.madeOfMask]).
 List<PlacedTile> _stampDabOnEngine(
   BitmapSurface surface,
@@ -146,7 +146,6 @@ List<PlacedTile> _stampDabOnEngine(
           )
         : _ofMask(
             ofMask,
-            colour: dab.color,
             opacity: opacity,
             mode: mode,
             mask: mask,
@@ -219,11 +218,10 @@ LandedBy _picture(
 );
 
 /// A stamp [made] of a mask ([EngineStampPictures.ofMask]) — its box made
-/// to the wall — as the engine lays it in [colour] at [opacity] (65535
+/// to the wall — as the engine lays it under its paint at [opacity] (65535
 /// whole) in [mode], under [mask] if any.
 LandedBy _ofMask(
-  ({GpuMask Function() coverage, bool whole}) made, {
-  required int colour,
+  StampOfMask made, {
   required int opacity,
   required int mode,
   required GpuMask? mask,
@@ -234,7 +232,7 @@ LandedBy _ofMask(
     pool,
     cel,
     coverage,
-    colour: colour,
+    paint: made.paint,
     whole: made.whole,
     asks: asked,
     opacity: opacity,

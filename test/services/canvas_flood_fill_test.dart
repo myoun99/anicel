@@ -68,9 +68,9 @@ void main() {
       expect(dab.opacity, 1);
       final stamp = dab.stamp!;
       expect((stamp.width, stamp.height), (2, 2));
-      for (var index = 0; index < 4; index += 1) {
+      for (final (x, y) in [(3, 3), (4, 3), (3, 4), (4, 4)]) {
         expect(
-          stamp.rgba.sublist(index * 4, index * 4 + 4),
+          piecesRgbaAt([dab], x, y),
           [0x33, 0x66, 0xCC, 255],
           reason: 'fill color at full mask coverage, byte-exact',
         );
@@ -616,8 +616,7 @@ void main() {
         reason: 'a corner is inside a box',
       );
       expect(piecesAlphaAt(dabs, 5, 20), 0, reason: 'outside stays out');
-      final stamp = dabs.single.stamp!;
-      expect(stamp.rgba[3 * 4 + 0], anyOf(0, 0x33));
+      expect(piecesRgbaAt(dabs, 13, 10)[0], anyOf(0, 0x33));
       expect({for (final piece in dabs) piece.color}, {0xFF3366CC});
     });
 

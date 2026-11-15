@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:gpu_engine/gpu_engine.dart' show gpuTileSide;
+import 'package:gpu_engine/gpu_engine.dart' show GpuColour, gpuTileSide;
 
 import '../core/rgba_premultiply.dart' show copyRgb;
 import '../models/bitmap_surface.dart';
@@ -350,6 +350,8 @@ BrushDab selectionEraseDab(SelectionPixels lifted, {required String id}) {
       height: height,
       coverage: clip.maskOnEngine,
       whole: takeWholePixels,
+      // The eraser reads no colour: the mask's byte is all it takes.
+      paint: const GpuColour(0xFF000000),
       rgba: () => _eraseAlpha(
         clip.maskFor(left: left, top: top, width: width, height: height),
         whole: takeWholePixels,

@@ -1,23 +1,23 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:gpu_engine/gpu_engine.dart' show GpuFloodPicture;
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuColour, GpuFloodPicture, GpuMask, GpuPaint;
 
-import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
-import '../core/rgba_premultiply.dart' show copyRgb, mul255Round;
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart' show defaultCelTileSize;
 import '../models/brush_dab.dart';
-import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/drawing_guide.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tiles_covering.dart';
+import '../native/app_gpu_engine.dart' show appGpuComposite;
 import '../native/engine_floods.dart';
 import '../native/engine_selection_masks.dart';
+import '../native/engine_stamp_pictures.dart';
 import '../core/dev_profile.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection_region.dart';
@@ -493,6 +493,38 @@ final class FillRange {
   final double _opacity;
   final void Function()? _onOpenRegion;
 
+  /// The pieces of [region] made so far, and what makes the rest
+  /// ([_pieces]).
+  final List<_Piece> _made = [];
+  Iterator<_Piece>? _making;
+
+  /// [region]'s pieces ([_piecesOf]), each made once — and its coverage
+  /// moved to the engine once — however often the range is laid: a
+  /// gradient dragged over it lays it at every frame under new ends, and
+  /// its commit lays it once more. An ask reads what the asks before made
+  /// and makes on from where they stopped, so it is still laid a share at
+  /// a time where a share is asked.
+  Iterable<_Piece> _pieces(FloodFillRegion finished) sync* {
+    for (var at = 0; ; at += 1) {
+      if (at == _made.length) {
+        final making = _making ??= _piecesOf(
+          _boxOf(finished),
+          finishedAround: (_) => (
+            mask: finished.mask,
+            left: finished.left,
+            top: finished.top,
+            width: finished.width,
+          ),
+        ).iterator;
+        if (!making.moveNext()) {
+          return;
+        }
+        _made.add(making.current);
+      }
+      yield _made[at];
+    }
+  }
+
   /// Whether nothing fills because the region is not closed — an EXTENDED
   /// fill's flood reached the apron wall.
   bool get open => region == null;
@@ -537,9 +569,10 @@ final class FillRange {
   List<BrushDab> dabsIn(int color) => _laid(color: color).toList();
 
   /// The range laid under [gradient] (I-160) — the stamp pieces [dabsIn]
-  /// lays, each pixel the gradient's colour at its centre. Made as they are
-  /// asked for, afresh at each ask: what a dragged shape lays a share of a
-  /// frame at a time ([ShapeArea]'s `pieces`).
+  /// lays, each pixel the gradient's colour at its centre. Asked afresh at
+  /// each frame a gradient is dragged, and laid a share of a frame at a
+  /// time where a share is asked ([ShapeArea]'s `pieces`) — the pieces
+  /// themselves made once ([_pieces]): a new frame is the gradient's ends.
   Iterable<BrushDab> piecesUnder(FillGradient gradient) =>
       _laid(color: gradient.startColor, gradient: gradient);
 
@@ -549,21 +582,9 @@ final class FillRange {
       _onOpenRegion?.call();
       return const [];
     }
-    final mask = (
-      mask: finished.mask,
-      left: finished.left,
-      top: finished.top,
-      width: finished.width,
-    );
-    return _stampPieces(
-      DirtyRegion(
-        left: finished.left,
-        top: finished.top,
-        rightExclusive: finished.left + finished.width,
-        bottomExclusive: finished.top + finished.height,
-      ),
-      paint: (color: color, gradient: gradient, opacity: _opacity),
-      finishedAround: (_) => mask,
+    return _dabsOf(
+      _pieces(finished),
+      (color: color, gradient: gradient, opacity: _opacity),
     );
   }
 
@@ -932,11 +953,49 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 /// [opacity].
 typedef _Paint = ({int color, FillGradient? gradient, double opacity});
 
-/// A finished coverage mask painted as [paint] says and handed over as STAMP
-/// PIECES: one dab for each run of cel tiles of [box] that the mask covers
-/// at all, along a tile row, in row-major order. [finishedAround] hands
-/// the finished mask over a tile, or null for a tile it knows is empty.
-/// Empty when no tile has a covered pixel.
+/// A run of a fill's cel tiles along one tile row that its finished mask
+/// covers at all ([_piecesOf]): the mask's bytes over `[left, left+width) ×
+/// [top, top+height)`, the run's first tile at ([column], [row]).
+final class _Piece {
+  _Piece({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.column,
+    required this.row,
+    required this.coverage,
+  });
+
+  final int left;
+  final int top;
+  final int width;
+  final int height;
+  final int column;
+  final int row;
+  final Uint8List coverage;
+
+  /// [coverage] on the engine the app has: moved there the first time it
+  /// is asked, however often the piece is laid after
+  /// ([EngineSelectionMasks.keptFor]).
+  GpuMask onEngine() => EngineSelectionMasks.keptFor(
+    this,
+    () => GpuMask(
+      appGpuComposite,
+      coverage,
+      x: left,
+      y: top,
+      width: width,
+      height: height,
+    ),
+  );
+}
+
+/// A finished coverage mask cut into STAMP PIECES: one for each run of cel
+/// tiles of [box] that the mask covers at all, along a tile row, in
+/// row-major order. [finishedAround] hands the finished mask over a tile,
+/// or null for a tile it knows is empty. Empty when no tile has a covered
+/// pixel.
 ///
 /// 🚨★★★EVERY MASK A FILL LAYS IS CUT HERE — the bucket's flood and an
 /// area alike (board `an-area-dab-costs-its-box`, 2026-10-09). A piece lands
@@ -958,54 +1017,137 @@ typedef _Paint = ({int color, FillGradient? gradient, double opacity});
 /// calls and landed it in 28 ms where the one stamp had taken 12 (the VM on
 /// the desktop); a run of the row's covered tiles takes one call per run,
 /// and a thin line still carries only the tiles it crosses.
-Iterable<BrushDab> _stampPieces(
+Iterable<_Piece> _piecesOf(
   DirtyRegion box, {
-  required _Paint paint,
   required _FinishedMask? Function(TileSpan tile) finishedAround,
 }) sync* {
-  // ⚠️ONE id per fill, and a piece's first tile in it. Pieces are made
-  // inside one microsecond, and a stamp is equal to another by id, size and
-  // bytes — two solid pieces sharing an id would be one stamp to any set of
-  // them (the 확정 slot counts its stamps' bytes as a set).
-  final id = 'fill-${DateTime.now().microsecondsSinceEpoch}';
-  var sequence = 0;
   final run = <({TileSpan tile, Uint8List coverage})>[];
-  BrushDab laid() {
+  _Piece cut() {
     final first = run.first.tile;
-    final dab = _colorStampDab(
+    final piece = _Piece(
       left: first.left,
       top: first.top,
       width: run.last.tile.rightExclusive - first.left,
       height: first.bottomExclusive - first.top,
-      mask: _joined(run),
-      color: paint.color,
-      gradient: paint.gradient,
-      opacity: paint.opacity,
-      id: '$id-${first.coord.x}.${first.coord.y}',
-      sequence: sequence,
+      column: first.coord.x,
+      row: first.coord.y,
+      coverage: _joined(run),
     );
-    sequence += 1;
     run.clear();
-    return dab;
+    return piece;
   }
 
   for (final tile in tileSpansOf(box, tileSize: _pieceSize)) {
     if (run.isNotEmpty && run.last.tile.coord.y != tile.coord.y) {
-      yield laid();
+      yield cut();
     }
     final finished = finishedAround(tile);
     final coverage = finished == null ? null : _coverageOf(tile, finished);
     if (coverage == null) {
       if (run.isNotEmpty) {
-        yield laid();
+        yield cut();
       }
       continue;
     }
     run.add((tile: tile, coverage: coverage));
   }
   if (run.isNotEmpty) {
-    yield laid();
+    yield cut();
   }
+}
+
+/// [box]'s pieces ([_piecesOf]) laid as [paint] says ([_dabsOf]).
+Iterable<BrushDab> _stampPieces(
+  DirtyRegion box, {
+  required _Paint paint,
+  required _FinishedMask? Function(TileSpan tile) finishedAround,
+}) => _dabsOf(_piecesOf(box, finishedAround: finishedAround), paint);
+
+/// The box [region] lies in.
+DirtyRegion _boxOf(FloodFillRegion region) => DirtyRegion(
+  left: region.left,
+  top: region.top,
+  rightExclusive: region.left + region.width,
+  bottomExclusive: region.top + region.height,
+);
+
+/// How many fills have been laid as dabs ([_dabsOf]) since the app began.
+var _fillsLaid = 0;
+
+/// [pieces] laid as [paint] says, a stamp dab each.
+Iterable<BrushDab> _dabsOf(Iterable<_Piece> pieces, _Paint paint) sync* {
+  // ⚠️ONE id per fill, and a piece's first tile in it. A stamp is equal to
+  // another by id, size and bytes — two solid pieces sharing an id would be
+  // one stamp to any set of them (the 확정 slot counts its stamps' sizes as
+  // a set). ⛔And a fill's pieces have no bytes here to tell them apart
+  // ([_pieceDab]): two fills laid within one microsecond must not share
+  // one, so the count of fills is in it too.
+  final id = 'fill-${DateTime.now().microsecondsSinceEpoch}-$_fillsLaid';
+  _fillsLaid += 1;
+  final onEngine = paint.gradient?.onEngine ?? GpuColour(paint.color);
+  var sequence = 0;
+  for (final piece in pieces) {
+    yield _pieceDab(
+      piece,
+      paint: onEngine,
+      color: paint.color,
+      opacity: paint.opacity,
+      id: '$id-${piece.column}.${piece.row}',
+      sequence: sequence,
+    );
+    sequence += 1;
+  }
+}
+
+/// [piece] handed over as a stamp dab landing on its own pixels, its
+/// coverage laid under [paint] by the engine
+/// ([EngineStampPictures.ofMask]).
+///
+/// The fill lands as a STAMP (R15-⑥), drawn 1:1 by the stamp blend path.
+/// The old square-padded tip-mask dab re-sampled the giant mask bilinearly
+/// per pixel at every materialization — a multi-second slice on large
+/// fills — and the stamp is byte-exact by construction.
+///
+/// ↩️Till 2026-11-15 the CPU painted each piece a pixel at a time and
+/// handed the picture up — under a gradient at every frame it was dragged
+/// (board `a-gradient-fill-preview-paints-its-range-on-the-cpu-every-
+/// frame`). 🗣️브러시/렌더링 2026-11-15 08:30: the plain fill goes by the
+/// same door — 「CPU 가 RGBA 를 안 만드는 길이 하나가 된다」 — so no byte of
+/// a piece's picture is made here, and nothing reads one.
+BrushDab _pieceDab(
+  _Piece piece, {
+  required GpuPaint paint,
+  required int color,
+  required double opacity,
+  required String id,
+  required int sequence,
+}) {
+  final _Piece(:left, :top, :width, :height) = piece;
+  return BrushDab(
+    // Centred on the piece: a stamp lands at its centre less half its size
+    // ([BrushStampImage.landingRect]), which is the piece's own corner.
+    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
+    color: color,
+    size: math.max(width, height).toDouble(),
+    opacity: opacity,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: sequence,
+    stamp: EngineStampPictures.ofMask(
+      id: id,
+      width: width,
+      height: height,
+      coverage: piece.onEngine,
+      whole: false,
+      paint: paint,
+      rgba: () => throw StateError(
+        'a fill piece is painted on the engine; its picture is never made '
+        'here',
+      ),
+    ),
+  );
 }
 
 /// [finished]'s bytes over [tile], or null when not one of them is
@@ -1055,123 +1197,4 @@ Uint8List _joined(List<({TileSpan tile, Uint8List coverage})> run) {
     }
   }
   return joined;
-}
-
-/// One piece of a fill's coverage painted [color] and handed over as a
-/// stamp dab landing on the pixels `[left, left+width) × [top,
-/// top+height)`.
-///
-/// The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
-/// coverage, drawn 1:1 by the stamp blend path. The old square-padded
-/// tip-mask dab re-sampled the giant mask bilinearly per pixel at every
-/// materialization — a multi-second slice on large fills — and the stamp
-/// is byte-exact by construction.
-///
-/// Under a [gradient] (I-160) each pixel is the gradient's colour at its
-/// centre instead, its alpha times the coverage ([_gradientRgba]).
-BrushDab _colorStampDab({
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-  required Uint8List mask,
-  required int color,
-  FillGradient? gradient,
-  required double opacity,
-  required String id,
-  required int sequence,
-}) {
-  final r = argbRed(color);
-  final g = argbGreen(color);
-  final b = argbBlue(color);
-  final rgba = labProbe('fill.stamp-build', () {
-    if (gradient != null) {
-      return _gradientRgba((
-        mask: mask,
-        left: left,
-        top: top,
-        width: width,
-      ), gradient);
-    }
-    final bytes = Uint8List(width * height * 4);
-    if (Endian.host == Endian.little) {
-      // One word store per pixel (R19-8K): the four byte stores below
-      // were a 197ms term on an 8000² fill. Little-endian word layout
-      // [r, g, b, coverage] is byte-identical to the byte loop.
-      final words = Uint32List.view(bytes.buffer, 0, mask.length);
-      final baseRgb = r | (g << 8) | (b << 16);
-      for (var index = 0; index < mask.length; index += 1) {
-        final coverage = mask[index];
-        if (coverage == 0) {
-          continue;
-        }
-        words[index] = baseRgb | (coverage << 24);
-      }
-      return bytes;
-    }
-    for (var index = 0; index < mask.length; index += 1) {
-      final coverage = mask[index];
-      if (coverage == 0) {
-        continue;
-      }
-      final offset = index * 4;
-      bytes[offset] = r;
-      bytes[offset + 1] = g;
-      bytes[offset + 2] = b;
-      bytes[offset + 3] = coverage;
-    }
-    return bytes;
-  });
-  return BrushDab(
-    // Centred on the piece: a stamp lands at its centre less half its size
-    // ([BrushStampImage.landingRect]), which is the piece's own corner.
-    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
-    color: color,
-    size: math.max(width, height).toDouble(),
-    opacity: opacity,
-    flow: 1,
-    hardness: 1,
-    tipShape: BrushTipShape.square,
-    pressure: 1,
-    sequence: sequence,
-    stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
-  );
-}
-
-/// How finely [_gradientRgba] looks a pixel's colour up along its gradient
-/// ([FillGradient.stops]) — four stops to each level a channel can take.
-const int _gradientStops = 1024;
-
-/// [piece] — the coverage of a piece of a fill, where its corner sits —
-/// painted with [gradient]: each covered pixel the gradient's colour at its
-/// centre, that colour's alpha times the coverage.
-Uint8List _gradientRgba(_FinishedMask piece, FillGradient gradient) {
-  final (:mask, :left, :top, :width) = piece;
-  // The stops as the stamp's own bytes, so a pixel copies three of them
-  // rather than taking a colour apart.
-  final stops = Uint8List(_gradientStops * 4);
-  for (final (i, argb) in gradient.stops(_gradientStops).indexed) {
-    stops
-      ..[i * 4] = argbRed(argb)
-      ..[i * 4 + 1] = argbGreen(argb)
-      ..[i * 4 + 2] = argbBlue(argb)
-      ..[i * 4 + 3] = argbAlpha(argb);
-  }
-  final bytes = Uint8List(mask.length * 4);
-  final along = Float64List(width);
-  for (var start = 0; start < mask.length; start += width) {
-    gradient.rowInto(along, left + 0.5, top + start ~/ width + 0.5);
-    for (var column = 0; column < width; column += 1) {
-      final coverage = mask[start + column];
-      if (coverage == 0) {
-        continue;
-      }
-      // Rounded: [along] is never below 0.
-      final stop = (along[column] * (_gradientStops - 1) + 0.5).toInt() * 4;
-      final offset = (start + column) * 4;
-      copyRgb(bytes, offset, stops, stop);
-      bytes[offset + 3] = mul255Round(stops[stop + 3], coverage);
-    }
-  }
-  return bytes;
 }

@@ -1,26 +1,43 @@
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+
+import 'surface_rgba_in_place.dart';
 
 /// What a fill's stamp pieces lay, read where the canvas lands them
 /// ([BrushStampImage.landingRect]) — a fill and an area arrive as one stamp
-/// per cel tile they cover (`FillRange.dabsIn` · `buildRegionFillDabs`), and a
-/// reader that asks 「what lands at this pixel」 or 「how far does it reach」
-/// asks every piece.
+/// per run of cel tiles they cover (`FillRange.dabsIn` ·
+/// `buildRegionFillDabs`), and a reader that asks 「what lands at this
+/// pixel」 or 「how far does it reach」 asks every piece.
+///
+/// ⚠️On the engine, which is what paints a piece: no byte of its picture is
+/// made anywhere else (`_pieceDab`, 2026-11-15). A file reading them opens
+/// the engine first (`opensTheEnginesScreens`).
 
-/// The RGBA the pieces lay at canvas ([x], [y]): the one piece that covers
-/// it, or transparent where none does.
+/// [pieces] landed at full strength on a blank cel by the commit's own
+/// road ([materializeBrushDabSequenceOnBitmapSurface]) — what their stamps
+/// are, whatever opacity they are laid at. Landed once for the list,
+/// however many of its pixels are read.
+BitmapSurface piecesLanded(List<BrushDab> pieces) =>
+    _landed[pieces] ??= materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: _room),
+      sequence: BrushDabSequence([
+        for (final piece in pieces) piece.copyWith(opacity: 1),
+      ]),
+    ).surface;
+
+final _landed = Expando<BitmapSurface>();
+
+/// A cel larger than any a test fills, its pasteboard round it.
+const _room = CanvasSize(width: 4096, height: 4096);
+
+/// The RGBA the pieces lay at canvas ([x], [y]), transparent where none
+/// does.
 List<int> piecesRgbaAt(List<BrushDab> pieces, int x, int y) {
-  for (final piece in pieces) {
-    final stamp = piece.stamp!;
-    final landing = stamp.landingRect(piece.center);
-    final lx = x - landing.left;
-    final ly = y - landing.top;
-    if (lx < 0 || ly < 0 || lx >= stamp.width || ly >= stamp.height) {
-      continue;
-    }
-    final at = (ly * stamp.width + lx) * 4;
-    return stamp.rgba.sublist(at, at + 4);
-  }
-  return const [0, 0, 0, 0];
+  final word = surfaceRgbaInPlace(piecesLanded(pieces), x, y) ?? 0;
+  return [word >> 24 & 0xFF, word >> 16 & 0xFF, word >> 8 & 0xFF, word & 0xFF];
 }
 
 /// The coverage the pieces lay at canvas ([x], [y]).

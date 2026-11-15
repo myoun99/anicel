@@ -1,11 +1,15 @@
 //! A stroke's C ABI (flip lane ⓒ): the app piles its dabs on a stroke, and
 //! asks it what it makes of the tiles of a cel.
 
+#[cfg(test)]
+#[path = "abi_tests.rs"]
+mod tests;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
 use super::landing::{Asked, Laid};
-use super::stamp::{Paint, Source, StampLanding};
+use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::Stroke;
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
@@ -825,15 +829,89 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     })
 }
 
-/// Lays `coverage` in `colour` — red, green and blue its low three bytes —
-/// on the `count` tiles asked as [`gpu_engine_stroke_land`] says, compared:
-/// a pixel it covers at all wholly where `whole`, else its byte for an
-/// alpha, at `opacity` in `mode`, under `mask` if not null. A selection's
-/// erase (the app's `selectionEraseDab`): the selection's own mask on the
-/// engine, laid by the eraser, its colour never read. Returns as it does.
+/// What a mask is laid under, as the app hands it: a run of numbers whose
+/// first is its tag, which says how many follow and what each is.
+/// [`COLOUR`]: one, the colour — a pixel's word, red in its low byte, its
+/// alpha unread. [`GRADIENT`]: seven — its shape ([`LINE`] or [`CIRCLE`]),
+/// `from`'s x and y, `to`'s x and y (canvas pixels), and its start's and
+/// its end's colours, a straight pixel's word each ([`Gradient`]).
+enum PaintOf {
+    Colour([u8; 3]),
+    Gradient(Gradient),
+}
+
+/// [`PaintOf`]'s tags.
+const COLOUR: f64 = 0.0;
+const GRADIENT: f64 = 1.0;
+/// A gradient's shapes.
+const LINE: f64 = 0.0;
+const CIRCLE: f64 = 1.0;
+
+impl PaintOf {
+    /// The paint at `paint`, or none where its tag or a number is none the
+    /// host knows (the last error says which).
+    ///
+    /// # Safety
+    /// `paint` holds its tag and the numbers that tag reads.
+    unsafe fn read(paint: *const f64) -> Option<Self> {
+        // SAFETY: see the function's contract — a tag first.
+        let tag = unsafe { *paint };
+        let word = |x: f64| {
+            let whole = x.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(&x);
+            if whole { Some((x as u32).to_le_bytes()) } else { fail(format!("{x} is no pixel's word")) }
+        };
+        if tag == COLOUR {
+            // SAFETY: see the function's contract — the colour after its tag.
+            let [red, green, blue, _] = word(unsafe { *paint.add(1) })?;
+            return Some(PaintOf::Colour([red, green, blue]));
+        }
+        if tag != GRADIENT {
+            return fail(format!("a paint tagged {tag}, none the host knows"));
+        }
+        // SAFETY: see the function's contract — a gradient's seven after its tag.
+        let [shape, from_x, from_y, to_x, to_y, start, end] = unsafe { *paint.add(1).cast::<[f64; 7]>() };
+        let shape = if shape == LINE {
+            GradientShape::Line
+        } else if shape == CIRCLE {
+            GradientShape::Circle
+        } else {
+            return fail(format!("a gradient of shape {shape}, none the host knows"));
+        };
+        Some(PaintOf::Gradient(Gradient {
+            shape,
+            from: (from_x, from_y),
+            to: (to_x, to_y),
+            start: word(start)?,
+            end: word(end)?,
+        }))
+    }
+
+    fn paint(&self) -> Paint<'_> {
+        match self {
+            PaintOf::Colour(colour) => Paint::Colour(*colour),
+            PaintOf::Gradient(gradient) => Paint::Gradient(gradient),
+        }
+    }
+}
+
+/// Lays `coverage` under `paint` ([`PaintOf`]) on the `count` tiles asked
+/// as [`gpu_engine_stroke_land`] says, compared: a pixel it covers at all
+/// wholly where `whole`, else its byte for an alpha, at `opacity` in
+/// `mode`, under `mask` if not null — null where the paint is none the
+/// host knows (the last error says). A fill's pieces in their colour or
+/// under their gradient (the app's `FillRange`), and a selection's erase
+/// (`selectionEraseDab`): the selection's own mask, laid by the eraser,
+/// its colour never read. Returns as it does.
+///
+/// 🗣️브러시/렌더링 2026-11-15 08:30 (a-gradient-fill-preview-paints-its-
+/// range-on-the-cpu-every-frame): ONE entry, the paint one argument that
+/// mirrors [`Paint`] — its tag says which numbers follow. ⛔No sibling
+/// entry (the mask, the asks and the report a second time) and no
+/// gradient's places held empty under a colour.
 ///
 /// # Safety
-/// As [`gpu_engine_stroke_land`]'s, `coverage` live on `engine`.
+/// As [`gpu_engine_stroke_land`]'s, `coverage` live on `engine`; `paint`
+/// holds its tag and the numbers that tag reads.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
@@ -843,7 +921,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
     pool: *mut Pool,
     cel: u32,
     coverage: *const MaskPlane,
-    colour: u32,
+    paint: *const f64,
     whole: bool,
     asks: *const i32,
     under: *const u32,
@@ -857,6 +935,10 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
     // SAFETY: see the function's contract.
     let (landing, engine, composite, pool, coverage) =
         unsafe { (&*landing, &*engine, &*composite, &mut *pool, &*coverage) };
+    // SAFETY: see the function's contract.
+    let Some(painted) = (unsafe { PaintOf::read(paint) }) else {
+        return -1;
+    };
     engine.on_thread(|| {
         let coverage = coverage.mask();
         // SAFETY: see the function's contract.
@@ -864,8 +946,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         let laid = Laid { opacity, mode, mask: mask.as_ref() };
-        let [red, green, blue, _] = colour.to_le_bytes();
-        let paint = Paint::Colour([red, green, blue]);
+        let paint = painted.paint();
         let source = Source::Mask { mask: &coverage, paint: &paint, whole };
         let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
         // SAFETY: see the function's contract.

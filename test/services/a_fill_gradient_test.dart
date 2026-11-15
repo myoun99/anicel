@@ -1,14 +1,22 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/fill_gradient.dart';
 
+import '../helpers/engine_pixels.dart';
+import '../helpers/fill_pieces.dart';
+
 /// I-160: a held range laid under a gradient — its colours, its two shapes
 /// (Q4 「직선 + 원형」) and its two ends (Q3 「메인 → 서브」 · 「메인 → 투명」,
-/// 「반전」), pixel by pixel as the stamp carries them.
+/// 「반전」), pixel by pixel as the engine paints them. Where a pixel's
+/// centre lies along a gradient, and each stop's colour, are the engine's
+/// alone (rust/src/kernels/dab/stamp_tests.rs): here, that the fill hands
+/// it the gradient in hand.
 void main() {
   FillGradient gradient(
     FillGradientShape shape, {
@@ -23,59 +31,6 @@ void main() {
     startColor: start,
     endColor: end,
   );
-
-  group('where a point lies along it', () {
-    test('a line: the projection, held to its two ends', () {
-      final line = gradient(
-        FillGradientShape.linear,
-        from: CanvasPoint(x: 0, y: 0),
-        to: CanvasPoint(x: 10, y: 0),
-      );
-      expect(line.at(0, 0), 0);
-      expect(line.at(5, 3), 0.5, reason: 'across the line, the same');
-      expect(line.at(-4, 0), 0, reason: 'behind the start: the start');
-      expect(line.at(20, 9), 1, reason: 'past the end: the end');
-    });
-
-    test('a circle: the distance over the radius, the end beyond it', () {
-      final circle = gradient(
-        FillGradientShape.radial,
-        from: CanvasPoint(x: 0, y: 0),
-        to: CanvasPoint(x: 10, y: 0),
-      );
-      expect(circle.at(0, 6), closeTo(0.6, 1e-9));
-      expect(circle.at(-6, 0), closeTo(0.6, 1e-9), reason: 'any way round');
-      expect(circle.at(8, 6), 1);
-      expect(circle.at(30, 0), 1);
-    });
-
-    test('🚨I-160-Q5: a press that never moved lays the start colour, '
-        'whatever the shape', () {
-      for (final shape in FillGradientShape.values) {
-        final still = gradient(
-          shape,
-          from: CanvasPoint(x: 4, y: 4),
-          to: CanvasPoint(x: 4, y: 4),
-        );
-        expect(still.at(4, 4), 0, reason: '$shape');
-        expect(still.at(40, -9), 0, reason: '$shape');
-      }
-    });
-  });
-
-  test('the colour between: each straight channel, rounded', () {
-    final ramp = gradient(
-      FillGradientShape.linear,
-      from: CanvasPoint(x: 0, y: 0),
-      to: CanvasPoint(x: 1, y: 0),
-      start: 0xFF102030,
-      end: 0x00F0E0D0,
-    );
-    expect(ramp.colorAt(0), 0xFF102030);
-    expect(ramp.colorAt(1), 0x00F0E0D0);
-    expect(ramp.colorAt(0.5), 0x80808080);
-    expect(ramp.stops(3), [0xFF102030, 0x80808080, 0x00F0E0D0]);
-  });
 
   group('I-160-Q3: the two ends and the swap', () {
     final from = CanvasPoint(x: 0, y: 0);
@@ -128,37 +83,45 @@ void main() {
   });
 
   group('a range laid under it', () {
-    FillRange row(List<int> coverage, {int left = 0, int top = 0}) =>
+    FillRange rows(List<List<int>> coverage, {int left = 0, int top = 0}) =>
         FillRange.over(
           FloodFillRegion(
             left: left,
             top: top,
-            width: coverage.length,
-            height: 1,
-            mask: Uint8List.fromList(coverage),
+            width: coverage.first.length,
+            height: coverage.length,
+            mask: Uint8List.fromList([for (final row in coverage) ...row]),
           ),
         );
 
-    List<int> pixels(Iterable<BrushDab> pieces) {
-      final stamp = pieces.single.stamp!;
+    /// What [pieces] lay over [width] × [height] from ([left], [top]), as
+    /// the engine paints them: a pixel's straight RGBA, R in the high byte.
+    List<int> pixels(
+      Iterable<BrushDab> pieces, {
+      required int width,
+      int height = 1,
+      int left = 0,
+      int top = 0,
+    }) {
+      final laid = pieces.toList();
       return [
-        for (var i = 0; i < stamp.width * stamp.height; i += 1)
-          stamp.rgba[i * 4] << 24 |
-              stamp.rgba[i * 4 + 1] << 16 |
-              stamp.rgba[i * 4 + 2] << 8 |
-              stamp.rgba[i * 4 + 3],
+        for (var y = top; y < top + height; y += 1)
+          for (var x = left; x < left + width; x += 1)
+            piecesRgbaAt(laid, x, y).fold(0, (word, byte) => word << 8 | byte),
       ];
     }
 
     test('each pixel the colour at its centre', () {
-      final laid = row([255, 255, 255, 255], left: 20).piecesUnder(
+      final laid = rows([
+        [255, 255, 255, 255],
+      ], left: 20).piecesUnder(
         gradient(
           FillGradientShape.linear,
           from: CanvasPoint(x: 20.5, y: 0.5),
           to: CanvasPoint(x: 23.5, y: 0.5),
         ),
       );
-      expect(pixels(laid), [
+      expect(pixels(laid, left: 20, width: 4), [
         0x000000FF,
         0x555555FF,
         0xAAAAAAFF,
@@ -168,18 +131,50 @@ void main() {
 
     test('the halfway pixel the halfway colour — the table spans the ramp',
         () {
-      final laid = row([255, 255, 255]).piecesUnder(
+      final laid = rows([
+        [255, 255, 255],
+      ]).piecesUnder(
         gradient(
           FillGradientShape.linear,
           from: CanvasPoint(x: 0.5, y: 0.5),
           to: CanvasPoint(x: 2.5, y: 0.5),
         ),
       );
-      expect(pixels(laid), [0x000000FF, 0x808080FF, 0xFFFFFFFF]);
+      expect(pixels(laid, width: 3), [0x000000FF, 0x808080FF, 0xFFFFFFFF]);
+    });
+
+    test('Q4: a line lays the same across it, a circle by the distance', () {
+      final range = rows([
+        [255],
+        [255],
+      ]);
+      List<int> under(FillGradientShape shape) => pixels(
+        range.piecesUnder(
+          gradient(
+            shape,
+            from: CanvasPoint(x: 0.5, y: 0.5),
+            to: CanvasPoint(x: 3.5, y: 0.5),
+          ),
+        ),
+        width: 1,
+        height: 2,
+      );
+      expect(
+        under(FillGradientShape.linear),
+        [0x000000FF, 0x000000FF],
+        reason: 'below the start of a line: its start',
+      );
+      expect(
+        under(FillGradientShape.radial),
+        [0x000000FF, 0x555555FF],
+        reason: 'a pixel below the centre of a circle: a third of its radius',
+      );
     });
 
     test('its alpha under the coverage — a soft edge stays soft', () {
-      final laid = row([255, 128, 0]).piecesUnder(
+      final laid = rows([
+        [255, 128, 0],
+      ]).piecesUnder(
         gradient(
           FillGradientShape.linear,
           from: CanvasPoint(x: 0, y: 0),
@@ -187,18 +182,43 @@ void main() {
           start: 0x80336699,
         ),
       );
-      expect(pixels(laid), [0x33669980, 0x33669940, 0x00000000]);
+      Uint8List bytesOf(List<int> words) => Uint8List.fromList([
+        for (final word in words)
+          for (final shift in [24, 16, 8, 0]) word >> shift & 0xFF,
+      ]);
+      expectSamePixels(
+        bytesOf([0x33669980, 0x33669940, 0x00000000]),
+        bytesOf(pixels(laid, width: 3)),
+      );
     });
 
-    test('pieces made afresh at each ask — a shape area asks again', () {
-      final range = row([255, 255]);
-      final under = gradient(
-        FillGradientShape.radial,
-        from: CanvasPoint(x: 0, y: 0),
-        to: CanvasPoint(x: 4, y: 0),
+    test('a range dragged under new ends moves its coverage to the engine '
+        'once — a frame is the gradient\'s ends, not the range', () {
+      final range = rows([
+        [255, 255],
+      ]);
+      GpuMask coverageOf(Iterable<BrushDab> pieces) =>
+          EngineStampPictures.madeOfMask(pieces.single.stamp!)!.coverage();
+      final first = coverageOf(
+        range.piecesUnder(
+          gradient(
+            FillGradientShape.radial,
+            from: CanvasPoint(x: 0, y: 0),
+            to: CanvasPoint(x: 4, y: 0),
+          ),
+        ),
       );
-      expect(pixels(range.piecesUnder(under)),
-          pixels(range.piecesUnder(under)));
+      final next = coverageOf(
+        range.piecesUnder(
+          gradient(
+            FillGradientShape.linear,
+            from: CanvasPoint(x: 1, y: 0),
+            to: CanvasPoint(x: 2, y: 0),
+          ),
+        ),
+      );
+      expect(identical(first, next), isTrue);
+      expect(identical(first, coverageOf(range.dabsIn(0xFF336699))), isTrue);
     });
   });
 }

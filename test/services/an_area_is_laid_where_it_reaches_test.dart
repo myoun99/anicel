@@ -27,6 +27,8 @@ import 'package:anicel/src/services/mask_soft_edge.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 
+import '../helpers/fill_pieces.dart';
+
 /// 🚨★★★board `an-area-dab-costs-its-box` (2026-10-09): an area — what the
 /// shape tool lays without the brush, and the fill tool's shape fill — was
 /// finished as ONE SHEET over its whole box, so a thin line across a big box
@@ -215,6 +217,7 @@ void main() {
             reason: why,
           );
           var anything = false;
+          final alone = [piece];
           for (var y = 0; y < stamp.height; y += 1) {
             for (var x = 0; x < stamp.width; x += 1) {
               final at =
@@ -222,18 +225,25 @@ void main() {
                   (landing.left - sheet.left + x);
               expect(written[at], 0, reason: '$why: a pixel laid twice');
               written[at] = 1;
-              final alpha = stamp.rgba[(y * stamp.width + x) * 4 + 3];
+              final rgba = piecesRgbaAt(
+                alone,
+                landing.left + x,
+                landing.top + y,
+              );
+              final alpha = rgba[3];
               laid[at] = alpha;
               if (alpha != 0) {
                 anything = true;
-                expect(
-                  stamp.rgba.sublist(
-                    (y * stamp.width + x) * 4,
-                    (y * stamp.width + x) * 4 + 3,
-                  ),
-                  [0x33, 0x66, 0x99],
-                  reason: why,
-                );
+                // Off by what a step of alpha spans where it is partly
+                // clear: the engine keeps it premultiplied on the way.
+                final slack = alpha == 255 ? 0 : 255 ~/ alpha + 1;
+                for (final (c, want) in [0x33, 0x66, 0x99].indexed) {
+                  expect(
+                    (rgba[c] - want).abs(),
+                    lessThanOrEqualTo(slack),
+                    reason: why,
+                  );
+                }
               }
             }
           }

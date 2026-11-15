@@ -45,8 +45,9 @@ use crate::kernels::shared::{
 use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::kernels::write::{Change, Write};
 
-/// The stops a gradient is looked up in, `FillGradient.stops`' count
-/// (`_gradientStops`): four to each level a channel takes.
+/// The stops a gradient is looked up in: four to each level a channel
+/// takes — the count the app looked its gradient up in, when it painted
+/// one (↩️till 2026-11-15).
 const STOPS: i32 = 1024;
 /// How far from the canvas's corner a gradient's ends and a graded mask's
 /// box may lie, in pixels: a pixel's offset from an end in 1/256 px is then
@@ -360,7 +361,7 @@ impl StampLanding {
 /// `gradient` as stamp.wgsl reads it over `mask`: its shape, its `from` and
 /// `to − from` in 1/256 px — each rounded once —, and its stops, each
 /// channel start + round((end − start) · i / 1023): 1023 is odd, so no
-/// share is a half and the rounding is the app's (`FillGradient.colorAt`).
+/// share is a half, and no way of rounding one is chosen.
 /// Nothing where an end or the box lies past [`GRADED_REACH`].
 fn graded(gradient: &Gradient, mask: &Mask) -> Option<([u32; 5], Vec<u32>)> {
     // No NaN or infinity is within a reach either.

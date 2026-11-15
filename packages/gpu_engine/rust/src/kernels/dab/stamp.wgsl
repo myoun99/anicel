@@ -51,7 +51,7 @@ struct Stamp {
 // The mask's words, or the picture's.
 @group(0) @binding(1) var<storage, read> given: array<u32>;
 @group(0) @binding(2) var<storage, read_write> page: array<u32>;
-// The gradient's stops, straight RGBA8 (`FillGradient.stops`).
+// The gradient's stops, straight RGBA8 (stamp.rs `graded`).
 @group(0) @binding(3) var<storage, read> stops: array<u32>;
 
 const STAMP_LINE: u32 = 1u;
@@ -107,9 +107,9 @@ fn stamp_picture(@builtin(global_invocation_id) id: vec3<u32>) {
   stamp_put(id, word);
 }
 
-// The stop canvas pixel (x, y)'s centre lies at (`FillGradient.rowInto`):
+// The stop canvas pixel (x, y)'s centre lies at (`FillGradient.onEngine`):
 // 0 at `from`, the last at `to` and past it, each the nearest — a half
-// goes up, as the app's `+ 0.5` does. A line's is the centre's projection
+// goes up. A line's is the centre's projection
 // onto it, 0 behind `from`; a circle's its distance from `from` over the
 // radius. A gradient of no length lays its first (I-160-Q5).
 fn stamp_stop(x: i32, y: i32) -> u32 {

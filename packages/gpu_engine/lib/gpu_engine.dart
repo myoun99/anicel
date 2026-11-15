@@ -1445,17 +1445,17 @@ class GpuStampLanding {
     },
   );
 
-  /// Lays [coverage] in [colour] — 0xRRGGBB, the alpha byte unread — on the
-  /// tiles [asks], as [land] lays a picture: a pixel it covers at all
-  /// wholly where [whole], else its byte for an alpha, at [opacity] in
-  /// [mode], under [mask] if any. A selection's erase: the selection's own
-  /// mask, laid by the eraser.
+  /// Lays [coverage] under [paint] on the tiles [asks], as [land] lays a
+  /// picture: a pixel it covers at all wholly where [whole], else its byte
+  /// for an alpha, at [opacity] in [mode], under [mask] if any. A fill's
+  /// pieces in their colour or under their gradient, and a selection's
+  /// erase: the selection's own mask, laid by the eraser.
   List<GpuLanded> landMask(
     GpuComposite composite,
     GpuPool pool,
     int cel,
     GpuMask coverage, {
-    required int colour,
+    required GpuPaint paint,
     required bool whole,
     required List<GpuTileAsk> asks,
     int opacity = 65535,
@@ -1470,7 +1470,7 @@ class GpuStampLanding {
       _engine._its(pool)._pool,
       cel,
       _engine._its(coverage)._mask,
-      colour & 0xFFFFFF,
+      _doubles(arena, paint._numbers),
       whole,
       coordinates,
       under,
@@ -4369,6 +4369,62 @@ final class GpuWavePeaks implements Finalizable, _OfAnEngine {
 /// are: straight RGBA8, A<<24|B<<16|G<<8|R.
 int gpuColourOf(int argb) =>
     argb & 0xFF00FF00 | (argb >> 16 & 0xFF) | (argb & 0xFF) << 16;
+
+/// What a mask is laid under ([GpuStampLanding.landMask]): a colour, or a
+/// gradient's colour at each pixel — rust/src/kernels/dab/abi.rs's
+/// `PaintOf`, a tag and the numbers it reads.
+sealed class GpuPaint {
+  const GpuPaint();
+
+  List<double> get _numbers;
+}
+
+/// [argb] — a `Color`'s — its alpha unread: a mask's byte is the alpha.
+final class GpuColour extends GpuPaint {
+  const GpuColour(this.argb);
+
+  final int argb;
+
+  @override
+  List<double> get _numbers => [0, gpuColourOf(argb).toDouble()];
+}
+
+/// The shapes of a [GpuGradient].
+enum GpuGradientShape { line, circle }
+
+/// [start] at [from], [end] at [to] and past it — and, along a line,
+/// [start] behind [from] —, canvas pixels; each colour a `Color`'s ARGB,
+/// straight.
+final class GpuGradient extends GpuPaint {
+  const GpuGradient({
+    required this.shape,
+    required this.from,
+    required this.to,
+    required this.start,
+    required this.end,
+  });
+
+  final GpuGradientShape shape;
+  final (double, double) from;
+  final (double, double) to;
+  final int start;
+  final int end;
+
+  @override
+  List<double> get _numbers => [
+    1,
+    switch (shape) {
+      GpuGradientShape.line => 0,
+      GpuGradientShape.circle => 1,
+    },
+    from.$1,
+    from.$2,
+    to.$1,
+    to.$2,
+    gpuColourOf(start).toDouble(),
+    gpuColourOf(end).toDouble(),
+  ];
+}
 
 /// [values] as floats of [arena]'s.
 Pointer<Float> _floats(Arena arena, List<double> values) =>
