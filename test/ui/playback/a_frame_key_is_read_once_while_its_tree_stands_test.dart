@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/a_fill_on_a_session.dart';
 import '../../helpers/a_plugin_that_shifts.dart';
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/fx_plugin_file.dart';
 
@@ -145,6 +146,59 @@ void main() {
     expect(pictures.keyOf(at(cut, 0)), key);
     pictures.keyOf(at(cut, 1));
     expect(stacked.single, 2, reason: 'each frame its own reading');
+  });
+
+  // 🔬The band asked the frames it shows at every landing, and each
+  // asking read every row's cel again — 8,179 readings, 77 µs each, while
+  // S5_BA cut 352's band filled (11-15, main PC, debug).
+  test('🚨a frame asked again while nothing its cels move with moved reads '
+      'none of them again', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+
+    pictures.keyOf(at(cut, 0));
+    pictures.keyOf(at(cut, 0));
+    pictures.has(at(cut, 0));
+
+    expect(stacked.single, 1);
+    expect(pictures.celsReadAgain, 0);
+  });
+
+  test('a cel another frame stacks moving reads this frame\'s cels once '
+      'more — and they stand, and are not read again after', () {
+    final cut = aCut();
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+    final key = pictures.keyOf(at(cut, 0));
+
+    ink(cels, 'b', CanvasPoint(x: 5, y: 5));
+    expect(pictures.keyOf(at(cut, 0)), key);
+    pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 1);
+    expect(pictures.celsReadAgain, 1);
+  });
+
+  // A copy kept at its source's size gives its cel a revision and announces
+  // no pixels (the store's `_keepCopy`): a key kept under that bump alone
+  // would go on naming the cel it was.
+  test('🚨a cel another was copied onto is read anew — its revision moved '
+      'with no pixels announced', () {
+    final cut = aCut();
+    ink(cels, 'b', CanvasPoint(x: 5, y: 5));
+    parkCold(cels, {
+      keyOf('a'): cels.bakedSurfaceOrNull(keyOf('a'))!,
+      keyOf('b'): cels.bakedSurfaceOrNull(keyOf('b'))!,
+    });
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+    final before = pictures.keyOf(at(cut, 0));
+    final pixels = cels.celPixelRevision.value;
+
+    cels.copyCel(keyOf('b'), keyOf('a'));
+    expect(cels.celPixelRevision.value, pixels, reason: '⛔premise: no bump');
+    final after = pictures.keyOf(at(cut, 0));
+
+    expect(stacked.single, 2);
+    expect(after, isNot(before));
   });
 
   test('LIVENESS — a stamp that is never the same stacks the frame at every '

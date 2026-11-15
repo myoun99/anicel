@@ -404,6 +404,28 @@ class BrushFrameStore {
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
 
+  /// How many times a cel's revision has moved here ([sourceRevisionOf]) —
+  /// an edit's new one, an undo's way back, a copy, a move to another key,
+  /// a whole store laid anew: for whoever keeps what it read of the cels'
+  /// revisions, and reads them again only once this moved
+  /// (`FramePictures`' kept keys). Every state is put through [_put].
+  ///
+  /// ⛔Not [celPixelRevision]: a copy kept at its source's size gives its
+  /// cel a revision and announces no pixels (`_keepCopy`), and a reader
+  /// waiting on that bump would go on reading the revision it had.
+  int get revisionsMoved => _revisionsMoved;
+  int _revisionsMoved = 0;
+
+  /// [state] made [key]'s — what moves [revisionsMoved] where its revision
+  /// is not the one [key] had.
+  void _put(BrushFrameKey key, BrushFrameDrawingState state) {
+    final had = _frames[key]?.sourceRevision ?? 0;
+    _frames[key] = state;
+    if (state.sourceRevision != had) {
+      _revisionsMoved += 1;
+    }
+  }
+
   /// R27 #13: bumps whenever a cel crosses the EMPTY ↔ has-picture line.
   ///
   /// The timeline's "no picture yet" tint reads [celHasRenderableContent],
@@ -662,7 +684,7 @@ class BrushFrameStore {
     _displayCaches.remove(key);
     final state = getOrCreateFrame(key);
     _leave(state.sourceRevision);
-    _frames[key] = state.copyWith(sourceRevision: _nextRevision());
+    _put(key, state.copyWith(sourceRevision: _nextRevision()));
     _announcePixels();
   }
 
@@ -1456,6 +1478,7 @@ class BrushFrameStore {
 
   void _letGoOfEveryCel() {
     _frames.clear();
+    _revisionsMoved += 1;
     clearDisplayCaches();
     _bakedSurfaces.clear();
     _coldCels.clear();
@@ -1504,9 +1527,9 @@ class BrushFrameStore {
     _clearAllTiers();
     _pasteboardReach = reach;
     for (final entry in cels.entries) {
-      _frames[entry.key] = BrushFrameDrawingState(
-        key: entry.key,
-        sourceRevision: _seeded,
+      _put(
+        entry.key,
+        BrushFrameDrawingState(key: entry.key, sourceRevision: _seeded),
       );
       place(entry.key, entry.value);
       _noteCelContent(entry.key);
@@ -2047,8 +2070,9 @@ class BrushFrameStore {
       final state = _frames.remove(from);
       final revision = state == null ? null : _nextRevision();
       if (state != null) {
+        _revisionsMoved += 1;
         _leave(state.sourceRevision);
-        _frames[to] = state.copyWithKey(to).copyWith(sourceRevision: revision);
+        _put(to, state.copyWithKey(to).copyWith(sourceRevision: revision));
       }
       // 🚨F-313 (유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로
       // 만드는 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」): the
@@ -2572,7 +2596,7 @@ class BrushFrameStore {
       return cache;
     }
     _putDisplayCache(key, cache);
-    _frames[key] = state.copyWith(inactivePreviewDirty: false);
+    _put(key, state.copyWith(inactivePreviewDirty: false));
     return cache;
   }
 
@@ -2640,7 +2664,7 @@ class BrushFrameStore {
     BrushFrameDrawingState Function(BrushFrameDrawingState state) update,
   ) {
     final next = update(getOrCreateFrame(key));
-    _frames[key] = next;
+    _put(key, next);
     return next;
   }
 }

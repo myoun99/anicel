@@ -45,7 +45,13 @@ typedef _Stood = ({
   FramePictureKey key,
   List<({BrushFrameKey cel, int revision, bool drawn})> cels,
   bool kept,
+  _CelsStamp celsRead,
 });
+
+/// What a frame's key read of its cels moves with ([FramePictures._celsNow]):
+/// any cel's revision, any crossing empty ↔ drawn, any cel noted as one
+/// that will not read or holds pixels of another size, or let go as one.
+typedef _CelsStamp = (int, int, int, int);
 
 /// Whether every frame's key kept is checked against its tree stacked anew
 /// as it is handed out ([FramePictures.treeStamp]) — the test suite's
@@ -401,14 +407,22 @@ class FramePictures implements PlaybackPictures {
       ghosts: picture.ghosts,
     );
     final kept = _stood[ask];
+    final cels = _celsNow();
     if (kept != null &&
         identical(kept.cut, picture.cut) &&
         kept.page == pageOf(picture) &&
-        kept.cels.every(
-          (at) =>
-              at.revision == _revisionOf(at.cel) && at.drawn == _drawn(at.cel),
-        )) {
+        (kept.celsRead == cels || _celsStand(kept))) {
       assert(!debugCheckFrameStanding || _standsAsRead(kept, picture));
+      if (kept.celsRead != cels) {
+        _stood[ask] = (
+          cut: kept.cut,
+          page: kept.page,
+          key: kept.key,
+          cels: kept.cels,
+          kept: kept.kept,
+          celsRead: cels,
+        );
+      }
       return kept;
     }
     final now = _stoodNow(picture);
@@ -420,8 +434,39 @@ class FramePictures implements PlaybackPictures {
     return now;
   }
 
+  /// Whether each cel [kept]'s tree stacks stands at the revision and the
+  /// drawn-ness it was read at — asked where something a cel's reading
+  /// moves with moved since ([_CelsStamp]), and only there: 🔬asked at every
+  /// asking, it was 8,179 readings of every row of the frame, 77 µs each,
+  /// while S5_BA cut 352's band filled (11-15, main PC, debug).
+  bool _celsStand(_Stood kept) {
+    _celsReadAgain += 1;
+    return kept.cels.every(
+      (at) => at.revision == _revisionOf(at.cel) && at.drawn == _drawn(at.cel),
+    );
+  }
+
+  /// How many times a kept key's cels were read again ([_celsStand]) — a
+  /// test's word that nothing they move with moved.
+  @visibleForTesting
+  int get celsReadAgain => _celsReadAgain;
+  int _celsReadAgain = 0;
+
+  /// What a key's cels are read under now ([_CelsStamp]): what [_revisionOf]
+  /// and [_drawn] read moves one of these.
+  _CelsStamp _celsNow() {
+    final cels = layerImages.frameStore;
+    return (
+      cels.revisionsMoved,
+      cels.celContentRevision.value,
+      layerImages.unreadable.revision.value,
+      _drawnNothing.revision.value,
+    );
+  }
+
   /// [picture]'s key as its tree stacks now ([_standing]).
   _Stood _stoodNow(DemandedPicture picture) {
+    final celsRead = _celsNow();
     final nodes = stackOf(picture);
     final page = pageOf(picture);
     return (
@@ -433,6 +478,7 @@ class FramePictures implements PlaybackPictures {
           (cel: cel, revision: _revisionOf(cel), drawn: _drawn(cel)),
       ],
       kept: !waitsForItsPlugins(nodes),
+      celsRead: celsRead,
     );
   }
 
