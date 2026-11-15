@@ -249,18 +249,28 @@ class StandingDemand implements FrameDemand {
     final frameIndex = own
         ? standingFrameAt(step, center: _center, count: _frameCount)!
         : step - _frameCount;
-    // Both cuts are the canvas's: the one it stands on, and the one it shows
-    // next — each frame on its paper as a run plays it, and the pictures a
-    // canvas standing there shows ([standingPicturesOf]). A frame nothing
-    // ghosts at draws no row, and is there (`FramePictures.drawsOnlyItsPage`);
-    // one whose ghosts lie in place is the frame's own picture where no row
-    // ghosts — the same key, one picture.
     final played = (
       cut: cut,
       frameIndex: frameIndex,
       paintPaper: true,
       ghosts: FrameGhosts.none,
     );
+    // 🚨THE CUT SHOWN NEXT IS WANTED AS A RUN PLAYS IT, AND NO MORE (card
+    // `one-cut-of-fnk02-holds-nine-gigabytes`, Q2, 유저 2026-11-15: 「다음
+    // 컷의 고스트는 안 굽고, 끈 뒤의 그림은 남긴다」): its ghosts are made
+    // once a canvas stands on it, as the band fills again there.
+    // ↩️Both cuts were the canvas's, each with the pictures a canvas standing
+    // there shows — 🔬main PC, S5_BA cut 352 with every row's onion on: 45
+    // of the 165 pictures held, about 1.0 GB, were the next cut's ghosts.
+    if (!own) {
+      return [played];
+    }
+    // The cut the canvas stands on: each frame on its paper as a run plays
+    // it, and the pictures a canvas standing there shows
+    // ([standingPicturesOf]). A frame nothing ghosts at draws no row, and is
+    // there (`FramePictures.drawsOnlyItsPage`); one whose ghosts lie in
+    // place is the frame's own picture where no row ghosts — the same key,
+    // one picture.
     final standing = standingPicturesOf(cut, frameIndex, placement);
     return [
       played,
