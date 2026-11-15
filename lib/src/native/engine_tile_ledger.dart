@@ -27,13 +27,15 @@ import 'app_gpu_engine.dart';
 /// objects. The door a tile's picture comes through keeps the same law.
 ///
 /// ⛔THE SLOTS A CALL IS HANDED STAY TILL IT RETURNS ([held], ⓓ). Only a
-/// store the pool is full at lets slots go, and only the ones no open hold
-/// has: a tile whose bytes are here is stored again when asked, never read
-/// back (screen-on-the-engine c4, 관제 2026-11-07). The tiles a hold has
-/// are then stored past [byteBudget], as the pictures' budget lets go what
-/// nobody shows and never what a paint did (`TilePictureBudget`): a budget
-/// refusing what a call holds would be a failure with no fallback — a cel
-/// of 5800² inked whole is past the 128 MB it gives a device of 2 GB.
+/// store the pool is full at lets slots go, only the ones no open hold
+/// has, and only as many as it is short — the ones stored longest ago
+/// first ([_shortAsRoomIsMade]): a tile whose bytes are here is stored
+/// again when asked, never read back (screen-on-the-engine c4, 관제
+/// 2026-11-07). The tiles a hold has are then stored past [byteBudget], as
+/// the pictures' budget lets go what nobody shows and never what a paint
+/// did (`TilePictureBudget`): a budget refusing what a call holds would be
+/// a failure with no fallback — a cel of 5800² inked whole is past the
+/// 128 MB it gives a device of 2 GB.
 ///
 /// 🚨A TILE THE ENGINE ALONE HOLDS GIVES ITS SLOT ONLY ONCE ITS BYTES ARE
 /// HERE ([BitmapTile.isOnlyOnEngine]), and a pool still full reads them
@@ -165,13 +167,27 @@ final GpuEngine _engine;
     pool.giveBackPast(bytes);
   }
 
-  final Expando<_Slot> _slots = Expando<_Slot>('engineTileSlots');
+  /// The place of every tile given a slot here ([_give]), by the tile.
+  final Expando<_Place> _places = Expando<_Place>('engineTilePlaces');
 
-  /// Every slot handed out here and not yet swept — the walk a full pool
-  /// and a give-back let slots go by, since [_slots] cannot be walked.
+  /// The slot [tile] has now, or null: never stored, or let go since.
+  _Slot? _slotNow(BitmapTile tile) => _places[tile]?.slot;
+
+  /// Every slot handed out here and not yet swept, the one stored longest
+  /// ago first — the walk a full pool and a give-back let slots go by,
+  /// since [_places] cannot be walked.
   final List<_Slot> _stored = [];
 
-  late final Finalizer<_Slot> _letGoWithTile = Finalizer<_Slot>(_letGo);
+  /// Lets a tile's slot go with the tile: handed its place once the
+  /// collector finds the tile, it lets go the slot that holds — none where
+  /// a full pool came first. Attached once a tile ([_give]), with no token
+  /// to detach it by ([_Place]).
+  late final Finalizer<_Place> _letGoWithTile = Finalizer<_Place>((place) {
+    final slot = place.slot;
+    if (slot != null) {
+      _letGo(slot);
+    }
+  });
 
   /// How many slots tiles have here — let go of with their tile or by a
   /// full pool. A probe.
@@ -189,12 +205,10 @@ final GpuEngine _engine;
   /// frame. Asked for pixels after this, the tile throws. Its collection
   /// would be seconds away, and a stroke's slots a frame's worth each.
   void retire(BitmapTile tile) {
-    final slot = _slots[tile];
+    final slot = _slotNow(tile);
     if (slot == null) {
       return;
     }
-    _slots[tile] = null;
-    _letGoWithTile.detach(slot);
     _letGo(slot);
     _retired += 1;
     if (_retired > _retiredSwept) {
@@ -211,7 +225,7 @@ final GpuEngine _engine;
   @override
   void readInto(BitmapTile tile, Pointer<Uint8> into) {
     debugTileReads += 1;
-    final slot = _slots[tile];
+    final slot = _slotNow(tile);
     if (slot == null) {
       throw StateError('a tile the engine made was read after it was let go');
     }
@@ -274,12 +288,22 @@ final GpuEngine _engine;
       on: this,
       hasInk: hasInk,
     );
-    final slot = _Slot(tile, at)..under = under;
-    _slots[tile] = slot;
-    _letGoWithTile.attach(tile, slot, detach: slot);
+    _give(tile, at).under = under;
+    return tile;
+  }
+
+  /// Gives [tile] the slot [at], in its place — made, and the tile's
+  /// finalizer attached, where this is the first slot it is given.
+  _Slot _give(BitmapTile tile, GpuTile at) {
+    var place = _places[tile];
+    if (place == null) {
+      place = _places[tile] = _Place();
+      _letGoWithTile.attach(tile, place);
+    }
+    final slot = place.slot = _Slot(tile, at, place);
     _stored.add(slot);
     _slotCount += 1;
-    return tile;
+    return slot;
   }
 
   /// Test seam: [tile]'s pixels as a tile the engine alone holds, as a
@@ -321,7 +345,7 @@ final GpuEngine _engine;
         by(pool, _cels.putIfAbsent(cel, pool.cel), asked);
     final landed = landOf(asked);
     if (landed.length < asked.length) {
-      final short = _shortAsRoomIsMade(() {
+      final short = _shortAsRoomIsMade(asked.length - landed.length, () {
         landed.addAll(landOf(asked.sublist(landed.length)));
         return asked.length - landed.length;
       });
@@ -379,14 +403,16 @@ final GpuEngine _engine;
     };
   }
 
-  /// Lets [slot] go, once: its tile's finalizer and a walk that found the
-  /// tile collected first both come to it.
+  /// Lets [slot] go, once — its tile's finalizer and a walk that found the
+  /// tile collected first both come to it —, and its tile's place empty:
+  /// the tile has no slot till it is stored again.
   void _letGo(_Slot slot) {
     if (slot.out) {
       return;
     }
     slot.out = true;
     slot.under = null;
+    slot.place.slot = null;
     pool.release(slot.at);
     _slotCount -= 1;
   }
@@ -547,12 +573,12 @@ final GpuEngine _engine;
 
   /// The slot [tile] has, or null — nothing is stored here. A probe: a
   /// call that runs over slots asks [held].
-  GpuTile? slotOf(BitmapTile tile) => _slots[tile]?.at;
+  GpuTile? slotOf(BitmapTile tile) => _slotNow(tile)?.at;
 
   /// The record of the slot [tile] has, or null — a probe of what holds a
   /// record once its slot goes, which a test reads off the heap.
   @visibleForTesting
-  Object? recordOf(BitmapTile tile) => _slots[tile];
+  Object? recordOf(BitmapTile tile) => _slotNow(tile);
 
   static void _refuseOtherGrids(List<BitmapTile> tiles) {
     for (final tile in tiles) {
@@ -570,12 +596,12 @@ final GpuEngine _engine;
     final asked = Set<BitmapTile>.identity();
     final missing = [
       for (final tile in tiles)
-        if (_slots[tile] == null && asked.add(tile)) tile,
+        if (_slotNow(tile) == null && asked.add(tile)) tile,
     ];
     if (missing.isNotEmpty) {
       _store(_cels.putIfAbsent(cel, pool.cel), missing);
     }
-    return [for (final tile in tiles) _slots[tile]!.at];
+    return [for (final tile in tiles) _slotNow(tile)!.at];
   }
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the
@@ -585,7 +611,7 @@ final GpuEngine _engine;
     if (stored == tiles.length) {
       return;
     }
-    final short = _shortAsRoomIsMade(() {
+    final short = _shortAsRoomIsMade(tiles.length - stored, () {
       stored += _put(cel, tiles.sublist(stored));
       return tiles.length - stored;
     });
@@ -598,16 +624,27 @@ final GpuEngine _engine;
     }
   }
 
-  /// How many tiles are still without a slot once room is made for them:
-  /// [placeRest] places what is left and answers how many still are, asked
-  /// again after each step — the slots no hold has, of tiles whose bytes
-  /// are here, let go and [byteBudget] lifted; the bytes of tiles the engine
-  /// alone holds moved here ([_moveBytesHere]); a page past the OS's budget.
-  int _shortAsRoomIsMade(int Function() placeRest) {
-    _letGoWhere((tile, _) => _noHoldHas(tile));
+  /// How many of the [short] tiles a store had no slot for are still
+  /// without one once room is made for them: [placeRest] places what is
+  /// left and answers how many still are, asked again after each step —
+  /// the slots no hold has, of tiles whose bytes are here, let go, as many
+  /// as the store is short and the ones stored longest ago first, and
+  /// [byteBudget] lifted; the bytes of tiles the engine alone holds moved
+  /// here ([_moveBytesHere]); a page past the OS's budget.
+  ///
+  /// ↩️Till 2026-11-15 the first step let go EVERY slot no hold had (캔버스
+  /// 베이스's own, 11-08 — nobody's order): the pictures' budget, which it
+  /// was written after, lets go the least recently shown till the rest fit
+  /// (`TilePictureBudget.letGo`), not all of them. 🔬The Surface, FNK_02
+  /// cut 59 as the onion's ghosts were laid (2026-11-15, card
+  /// a-picture-lay-holds-the-raster-thread): the pool was let go whole four
+  /// times a pass, some 21,000 slots each and 10.9 to 22.8 ms of the UI
+  /// thread a time.
+  int _shortAsRoomIsMade(int short, int Function() placeRest) {
+    _letGoWhere((tile, _) => _noHoldHas(tile), most: short);
     pool.makeNoPagePast(_unbounded);
     try {
-      var short = placeRest();
+      short = placeRest();
       if (short > 0 && _moveBytesHere(short)) {
         short = placeRest();
       }
@@ -667,7 +704,7 @@ final GpuEngine _engine;
       // landed on, its device gone ([readInto]).
       if (tile.isOnlyOnEngine) {
         tile.keepBytesHere(bytes);
-        _slots[tile]?.under = null;
+        _slotNow(tile)?.under = null;
       }
     });
   }
@@ -829,13 +866,8 @@ final GpuEngine _engine;
   int _put(int cel, List<BitmapTile> tiles) {
     final slots = pool.store(cel, tiles, _bytesOf);
     for (var at = 0; at < slots.length; at++) {
-      final tile = tiles[at];
-      final slot = _Slot(tile, slots[at]);
-      _slots[tile] = slot;
-      _letGoWithTile.attach(tile, slot, detach: slot);
-      _stored.add(slot);
+      _give(tiles[at], slots[at]);
     }
-    _slotCount += slots.length;
     return slots.length;
   }
 
@@ -849,29 +881,30 @@ final GpuEngine _engine;
 
   /// Lets go the slot of every tile [goes] names — null for a tile
   /// collected —, at its place, but one the engine alone holds, which has no
-  /// bytes to be stored again from, and sweeps what is let go out of
-  /// [_stored].
-  void _letGoWhere(bool Function(BitmapTile? tile, GpuTile at) goes) {
-    _stored.removeWhere((slot) {
+  /// bytes to be stored again from: the ones stored longest ago first and
+  /// no more than [most] of them, where given. What is let go is swept out
+  /// of [_stored], as far as the walk went.
+  void _letGoWhere(
+    bool Function(BitmapTile? tile, GpuTile at) goes, {
+    int? most,
+  }) {
+    var gone = 0;
+    var kept = 0;
+    var walked = 0;
+    for (; walked < _stored.length && gone != most; walked++) {
+      final slot = _stored[walked];
       if (slot.out) {
-        return true;
+        continue;
       }
       final tile = slot.tile.target;
       if ((tile != null && tile.isOnlyOnEngine) || !goes(tile, slot.at)) {
-        return false;
-      }
-      if (tile != null) {
-        _slots[tile] = null;
-        // The finalizer holds a record strongly and its tile weakly: left
-        // attached, a tile that lives on would keep one record each time a
-        // full pool let it go and it was stored again. No pixel tells —
-        // the slot goes once whichever comes to it ([_letGo]) — so the
-        // heap does (mutant D10, 관제 11-08 07:11).
-        _letGoWithTile.detach(slot);
+        _stored[kept++] = slot;
+        continue;
       }
       _letGo(slot);
-      return true;
-    });
+      gone += 1;
+    }
+    _stored.removeRange(kept, walked);
   }
 }
 
@@ -887,13 +920,38 @@ typedef LandedTile = ({GpuChange change, BitmapTile? tile});
 typedef LandedBy =
     List<GpuLanded> Function(GpuPool pool, int cel, List<GpuTileAsk> asked);
 
+/// What a tile has here for as long as it lives: the slot it has now — none
+/// once a full pool, a give-back or [EngineTileLedger.retire] let that go,
+/// till it is stored again. One a tile, made at its first store, and what
+/// its finalizer is handed: attached once, and never detached.
+///
+/// ↩️Till 2026-11-15 the finalizer was handed the slot — attached at every
+/// store, the slot its own token, and detached where a full pool let it
+/// go: left attached, a tile that lived on kept one record each time a
+/// full pool let it go and it was stored again (mutant D10, 관제 11-08
+/// 07:11). A detach looks its token up in a table of the finalizer's and a
+/// store writes it there, and a full pool did both for every slot it had:
+/// 🔬the Surface, FNK_02 cut 59 as the onion's ghosts were laid (캔버스
+/// 베이스 2026-11-15, card a-picture-lay-holds-the-raster-thread) — four
+/// times a pass, some 21,000 slots each, 10.9 to 22.8 ms of the UI thread
+/// a time. With one place a tile nothing piles up to detach: a slot let go
+/// leaves the place empty ([EngineTileLedger._letGo]) and the next store
+/// fills it — what the heap is still asked
+/// (a_tile_collected_lets_its_engine_slot_go_test.dart).
+final class _Place {
+  _Slot? slot;
+}
+
 /// A slot a tile has here, its tile held weakly: being stored must not keep
 /// a tile alive.
 final class _Slot {
-  _Slot(BitmapTile tile, this.at) : tile = WeakReference(tile);
+  _Slot(BitmapTile tile, this.at, this.place) : tile = WeakReference(tile);
 
   final WeakReference<BitmapTile> tile;
   final GpuTile at;
+
+  /// Its tile's place, which holds it till it is let go.
+  final _Place place;
 
   /// The tile [tile] landed on — null where it landed on none, or was not
   /// landed — kept while the engine holds the only copy of [tile]'s pixels:

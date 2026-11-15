@@ -190,6 +190,51 @@ void main() {
     expect(ledger.slotCount, rest.length + 2);
   });
 
+  // 🔬What it is for: the Surface, FNK_02 cut 59 as the onion's ghosts were
+  // laid (캔버스 베이스 2026-11-15, card
+  // a-picture-lay-holds-the-raster-thread) — a full pool let go every slot
+  // no hold had, some 21,000 a time and 10.9 to 22.8 ms of the UI thread.
+  test('🚨a full pool lets go as many slots as the store is short — the ones '
+      'stored longest ago that no hold has, and no more', () {
+    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
+    final first = tileOf(12);
+    ledger.held((hold) => hold.slotsOf(a, [first]));
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = blanks(slots - 1);
+    ledger.held((hold) => hold.slotsOf(a, rest));
+
+    ledger.held((hold) => hold.slotsOf(b, blanks(3)));
+
+    expect(ledger.pool.bytes, slots * gpuTileBytes, reason: 'room, no page');
+    expect(
+      [first, rest[0], rest[1]].map(ledger.slotOf),
+      everyElement(isNull),
+      reason: 'the three stored longest ago',
+    );
+    expect(
+      rest.skip(2).map(ledger.slotOf),
+      everyElement(isNotNull),
+      reason: 'no more than the store was short',
+    );
+    expect(ledger.slotCount, slots);
+
+    // The one stored longest ago is a hold's: the next after it goes.
+    ledger.held((hold) {
+      hold.slotsOf(a, [rest[2]]);
+      hold.slotsOf(c, blanks(1));
+    });
+    expect(ledger.slotOf(rest[2]), isNotNull, reason: 'a hold had it');
+    expect(ledger.slotOf(rest[3]), isNull);
+    expect(ledger.slotOf(rest[4]), isNotNull);
+
+    // Passed over, it is still the one stored longest ago.
+    ledger.held((hold) => hold.slotsOf(c, blanks(1)));
+    expect(ledger.slotOf(rest[2]), isNull, reason: 'no hold has it now');
+    expect(ledger.slotOf(rest[4]), isNotNull);
+    expect(ledger.pool.bytes, slots * gpuTileBytes);
+    expect(ledger.slotCount, slots);
+  });
+
   test('🚨a pool at the line the OS gives moves here the oldest tiles the '
       'engine alone holds, one read of them, and their slots go', () {
     addTearDown(() => EngineTileLedger.debugBeforeRead = null);
@@ -519,12 +564,11 @@ void main() {
     expect(ledger.slotOf(one), isNotNull);
 
     ledger.byteBudget = 0;
+    // One more than the second page has room for.
     ledger.held((hold) => hold.slotsOf(c, blanks(slots)));
 
     expect(ledger.byteBudget, 0);
-    expect(ledger.slotOf(one), isNull);
-    expect(ledger.slotOf(two), isNull);
-    expect(rest.map(ledger.slotOf), everyElement(isNull));
+    expect(ledger.slotOf(one), isNull, reason: 'room made, not a page');
     expect(ledger.pool.bytes, made);
   });
 

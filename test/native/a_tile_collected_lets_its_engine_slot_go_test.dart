@@ -87,25 +87,26 @@ void main() {
       () async {
     final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
     BitmapTile? gone = aTile();
-    ledger.held((hold) => hold.slotsOf(a, [gone!]));
+    final [first] = ledger.held((hold) => hold.slotsOf(a, [gone!]));
     // The rest of its page, so the next cel finds the pool full.
     final slots = ledger.pool.bytes ~/ gpuTileBytes;
     final rest = [for (var n = 1; n < slots; n++) aTile()];
     ledger.held((hold) => hold.slotsOf(a, rest));
     final kept = aTile();
     final [slot] = ledger.held((hold) => hold.slotsOf(b, [kept]));
-    expect(ledger.slotOf(kept), slot);
-    expect(rest.map(ledger.slotOf), everyElement(isNull));
-    expect(ledger.slotCount, 1);
+    expect(slot, first, reason: 'the premise: let go, its slot handed out');
+    expect(ledger.slotCount, slots);
 
     gone = null;
     // Bounded: what is waited for must not come.
-    await collectGarbageUntil(() => ledger.slotCount != 1, rounds: 3);
+    await collectGarbageUntil(() => ledger.slotCount != slots, rounds: 3);
 
-    expect(ledger.slotCount, 1, reason: 'its slot went with the full pool');
+    expect(ledger.slotCount, slots, reason: 'its slot went with the full pool');
+    // Read here, [rest] is alive past the collection: their slots stand.
+    expect(rest.map(ledger.slotOf), everyElement(isNotNull));
     expect(
-      ledger.held((hold) => hold.slotsOf(b, [aTile()])),
-      isNot([slot]),
+      ledger.slotOf(kept),
+      slot,
       reason: "the slot handed out again is still the kept tile's",
     );
   });
