@@ -523,8 +523,7 @@ class LayerClipboard implements BringsMedia {
     LayerId? folderId,
   }) => seatUnderBlock(
     _project.requireActiveCut.layers,
-    over: standing,
-    down: down,
+    (over: standing, down: down),
     kind: kind,
     folderId: folderId,
   );

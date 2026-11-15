@@ -313,35 +313,30 @@ class LayerVerbs {
       layerId,
     ) {
       copies.add(
-        _duplicate(cutId, layerId, over: (row: stack.last, block: copies)),
+        _duplicate(cutId, layerId, block: (over: stack.last, down: copies)),
       );
       return copies.first;
     });
   }
 
   /// Duplicates [layerId] in [cutId] — right above it, or as the next row
-  /// of a block put down [over] a row ([seatUnderBlock]) — and brings its
-  /// pictures over: the copy mints every cel afresh, and a picture lives
-  /// under its cel's id (F-62's law at the layer's scale). ↩️Nothing did
-  /// until 2026-09-26 — a duplicated row came out with no drawing at all
-  /// (measured; card `duplicates-lose-their-pictures`).
+  /// of a [block] ([seatUnderBlock]) — and brings its pictures over: the
+  /// copy mints every cel afresh, and a picture lives under its cel's id
+  /// (F-62's law at the layer's scale). ↩️Nothing did until 2026-09-26 — a
+  /// duplicated row came out with no drawing at all (measured; card
+  /// `duplicates-lose-their-pictures`).
   LayerId _duplicate(
     CutId cutId,
     LayerId layerId, {
-    ({LayerId row, List<LayerId> block})? over,
+    ({LayerId? over, Iterable<LayerId> down})? block,
   }) {
     final stack = _project.requireActiveCut.layers;
     final copy = _project.cutCommandCoordinator.duplicateLayer(
       cutId: cutId,
       sourceLayerId: layerId,
-      insertionIndex: over == null
+      insertionIndex: block == null
           ? null
-          : seatUnderBlock(
-              stack,
-              over: over.row,
-              down: over.block,
-              kind: stack.byId(layerId)!.kind,
-            ),
+          : seatUnderBlock(stack, block, kind: stack.byId(layerId)!.kind),
     );
     final cut = _project.requireActiveCut;
     copyBakedPictures(

@@ -108,18 +108,18 @@ int seatAboveRow(List<Layer> stack, LayerId? row) {
   return index == -1 ? stack.length : index + 1;
 }
 
-/// Where the next row of a BLOCK put down over [over] goes in [stack] as
-/// it stands NOW — a row of [kind], in the folder [folderId] when the block
-/// names one for it (the rows of a folder it put down), the block put down
-/// TOP FIRST: right under the lowest row of the block already [down] in the
-/// place it will stand in ([sectionPlaceIn]), so the block reads as it was
-/// copied; the first of its place right above [over] ([seatAboveRow]). A
-/// row of the block counts with the attach group it brought — a linked
-/// paste lands a whole group.
+/// Where the next row of a [block] goes in [stack] as it stands NOW — a
+/// row of [kind], in the folder [folderId] when the block names one for it
+/// (the rows of a folder it put down), the block put down TOP FIRST over
+/// the row `over` names: right under the lowest row of the block already
+/// `down` in the place it will stand in ([sectionPlaceIn]), so the block
+/// reads as it was copied; the first of its place right above `over`
+/// ([seatAboveRow]). A row of the block counts with the attach group it
+/// brought — a linked paste lands a whole group.
 ///
 /// A row the block names no folder for takes the folder of the row below
 /// its seat ([newRowPlacement]) — but the only rows of the block that stand
-/// in that folder's place are ones aimed there too, right above [over]: so
+/// in that folder's place are ones aimed there too, right above `over`: so
 /// its own kind's place answers the same.
 ///
 /// ONE answer for every block of rows a verb lands over a row: a paste
@@ -128,30 +128,29 @@ int seatAboveRow(List<Layer> stack, LayerId? row) {
 ///
 /// 🚨F-596: a cut's rows stand in section order, so a row put down above a
 /// row of ANOTHER place is carried to the near end of its own — and the
-/// next one, put down right above [over] again, was carried past it. Two
+/// next one, put down right above `over` again, was carried past it. Two
 /// rows pasted while standing on the direction row came out upside down
 /// over the ACTION rows, a direction row duplicated with a drawing row went
 /// under its source, and a direction row a pasted folder held stood over
 /// the folder, held by no one (2026-11-16 — the first found by
-/// 타임라인/콘티's wide run). ↩️Every row went right above [over], which
-/// held only while the rows put down before it stood right above [over]
+/// 타임라인/콘티's wide run). ↩️Every row went right above `over`, which
+/// held only while the rows put down before it stood right above `over`
 /// too.
 int seatUnderBlock(
-  List<Layer> stack, {
-  required LayerId? over,
-  required Iterable<LayerId> down,
+  List<Layer> stack,
+  ({LayerId? over, Iterable<LayerId> down}) block, {
   required LayerKind kind,
   LayerId? folderId,
 }) {
   final placeOf = sectionPlaceIn(stack);
   final place = placeOf(kind, folderId);
-  final block = down.toSet();
+  final down = block.down.toSet();
   for (var index = 0; index < stack.length; index += 1) {
     final row = stack[index];
-    if (block.contains(_attachGroupOf(row, stack)) &&
+    if (down.contains(_attachGroupOf(row, stack)) &&
         placeOf(row.kind, row.folderId) == place) {
       return index;
     }
   }
-  return seatAboveRow(stack, over);
+  return seatAboveRow(stack, block.over);
 }
