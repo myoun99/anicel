@@ -544,6 +544,12 @@ impl Engine {
         self.thread.run_lent(work)
     }
 
+    /// Whether the calling thread is the engine's — the one a verb's body
+    /// runs on ([`Self::on_thread`]).
+    pub(crate) fn is_its_thread(&self) -> bool {
+        self.thread.is_here()
+    }
+
     /// `body`, run on the engine's thread in its turn, its caller waiting
     /// for none of it ([`EngineThread::posts`]) — stage 2's door
     /// (the-ui-thread-never-enters-the-driver B1-a): for a verb whose

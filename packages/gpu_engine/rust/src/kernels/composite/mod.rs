@@ -491,7 +491,8 @@ pub(crate) struct Placed<'a> {
 /// run copies in, the stack levels a pass saves for the next, the output
 /// tiles the last pass puts whole, nothing where a pixel lies outside
 /// (to_tiles.wgsl) — so what an earlier run left is nothing to the next.
-/// And a run is one submit, so two runs' uses of it never cross.
+/// And a run is one submit, walked on the engine's thread
+/// ([`Composite::walk`]), so two runs' uses of it never cross.
 ///
 /// The frame grid's pass and the wave's keep one each of their own, a
 /// batch's words and streams on it (`GridTile::encode`): a batch writes
@@ -883,6 +884,16 @@ impl Composite {
     /// pixel to `target` — the output tiles, or a surface of the format
     /// `surface` names —, inside `extent` as it is and outside nothing or
     /// nowhere, and submits the work; returns how many passes it took.
+    ///
+    /// 🚨ON THE ENGINE'S THREAD, WHOEVER ASKS — as every run of the app's
+    /// already is (abi.rs: each verb's body). The crate's tests asked on
+    /// theirs, many at once on one device, and composites came out empty or
+    /// in another test's colours, on the Surface alone and only so (🔬저장,
+    /// engine-pictures-keep-to-pool-pages 2026-11-15 09:22: master 2/6 red,
+    /// one test thread 2/2 green, a work buffer of each run's own still 1/4
+    /// red). Walked here, 6/6 green under the same load (09:49). ⏳Why the
+    /// device parts them is not known — wgpu's or the driver's — and not
+    /// the app's to know while nothing of it records on two threads at once.
     fn walk(
         &self,
         engine: &Engine,
@@ -893,6 +904,20 @@ impl Composite {
         target: &Target,
         budget: Budget,
     ) -> Option<usize> {
+        engine.on_thread(|| self.walk_here(engine, plan, tiles, extent, surface, target, budget))
+    }
+
+    fn walk_here(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        extent: [i32; 4],
+        surface: Option<&'static str>,
+        target: &Target,
+        budget: Budget,
+    ) -> Option<usize> {
+        debug_assert!(engine.is_its_thread(), "a walk off the engine's thread");
         let pages_per_pass = budget.pages;
         if pages_per_pass == 0 || pages_per_pass > self.pages.per_pass() {
             return fail(format!(
