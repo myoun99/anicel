@@ -82,7 +82,9 @@ class EngineTileLedger implements TilePixelsOnEngine {
   EngineTileLedger(GpuEngine engine, {int? byteBudget})
     : _engine = engine,
       pool = GpuPool(engine, byteBudget ?? _unbounded),
-      _byteBudget = byteBudget;
+      _byteBudget = byteBudget {
+    pool.onUnwritten = _letGoUnwritten;
+  }
 
   /// The app's, on its engine — opened the first time anything asks, and
   /// another on the next engine once the app lets this one go
@@ -159,7 +161,7 @@ final GpuEngine _engine;
   void respondToMemoryPressure() => _giveBackPast(0);
 
   void _giveBackPast(int bytes) {
-    _letGoWhere((tile) => tile == null);
+    _letGoWhere((tile, _) => tile == null);
     pool.giveBackPast(bytes);
   }
 
@@ -284,11 +286,14 @@ final GpuEngine _engine;
   /// landing leaves one.
   @visibleForTesting
   BitmapTile debugOnEngine(BitmapTile tile) => _adopted(
-    tile.readPixels(
-      (pointer, _) =>
-          pool.store(_cels.putIfAbsent(landedCel, pool.cel), [pointer]).single,
-    ),
+    pool.store(_cels.putIfAbsent(landedCel, pool.cel), [tile], _bytesOf).single,
   );
+
+  /// Where [tile]'s bytes are, for a store that holds [tile] while they are
+  /// read ([GpuPool.store]) — the one way a pointer outlives the read it
+  /// comes from (BitmapTile.readPixels).
+  static Pointer<Uint8> _bytesOf(BitmapTile tile) =>
+      tile.readPixels((pointer, _) => pointer);
 
   /// The pages what lands takes: every stroke's and stamp's result, a few
   /// pages between them, whatever cels they land on.
@@ -568,7 +573,7 @@ final GpuEngine _engine;
   /// are here, let go and [byteBudget] lifted; the bytes of tiles the engine
   /// alone holds moved here ([_moveBytesHere]); a page past the OS's budget.
   int _shortAsRoomIsMade(int Function() placeRest) {
-    _letGoWhere(_noHoldHas);
+    _letGoWhere((tile, _) => _noHoldHas(tile));
     pool.makeNoPagePast(_unbounded);
     try {
       var short = placeRest();
@@ -605,7 +610,7 @@ final GpuEngine _engine;
       return false;
     }
     _copyHere(going);
-    _letGoWhere(_noHoldHas);
+    _letGoWhere((tile, _) => _noHoldHas(tile));
     return true;
   }
 
@@ -791,12 +796,7 @@ final GpuEngine _engine;
   /// Stores [tiles] in one store and gives each landed its slot; how many
   /// landed, the first of them.
   int _put(int cel, List<BitmapTile> tiles) {
-    // ⚠️Each pointer outlives the read it comes from, as `readPixels` lets
-    // one where the tile stays reachable while it is used: the loop below
-    // reads [tiles] after the store, and the callers read it after this.
-    final slots = pool.store(cel, [
-      for (final tile in tiles) tile.readPixels((pointer, _) => pointer),
-    ]);
+    final slots = pool.store(cel, tiles, _bytesOf);
     for (var at = 0; at < slots.length; at++) {
       final tile = tiles[at];
       final slot = _Slot(tile, slots[at]);
@@ -808,16 +808,25 @@ final GpuEngine _engine;
     return slots.length;
   }
 
+  /// Lets go the slots whose copy the engine's thread did not write
+  /// ([GpuPool.onUnwritten]): their tiles are stored again where they are
+  /// next asked for, from the bytes they still hold.
+  void _letGoUnwritten(List<GpuTile> unwritten) {
+    final places = unwritten.toSet();
+    _letGoWhere((_, at) => places.contains(at));
+  }
+
   /// Lets go the slot of every tile [goes] names — null for a tile
-  /// collected — but one the engine alone holds, which has no bytes to be
-  /// stored again from, and sweeps what is let go out of [_stored].
-  void _letGoWhere(bool Function(BitmapTile? tile) goes) {
+  /// collected —, at its place, but one the engine alone holds, which has no
+  /// bytes to be stored again from, and sweeps what is let go out of
+  /// [_stored].
+  void _letGoWhere(bool Function(BitmapTile? tile, GpuTile at) goes) {
     _stored.removeWhere((slot) {
       if (slot.out) {
         return true;
       }
       final tile = slot.tile.target;
-      if ((tile != null && tile.isOnlyOnEngine) || !goes(tile)) {
+      if ((tile != null && tile.isOnlyOnEngine) || !goes(tile, slot.at)) {
         return false;
       }
       if (tile != null) {

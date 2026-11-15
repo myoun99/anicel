@@ -39,7 +39,7 @@ void main() {
         words[y * side + x] = 0xFF0000FF;
       }
     }
-    return pool.store(pool.cel(), tiles);
+    return pool.store(pool.cel(), tiles, (tile) => tile);
   }
 
   // A 3 × 2 cel from (−2, −1), its second tile missing: each box unlike the

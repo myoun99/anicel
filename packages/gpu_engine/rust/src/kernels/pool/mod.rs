@@ -53,7 +53,7 @@ mod tests;
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, Sent, let_go};
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
 use crate::kernels::export::abi::{Readout, readout};
@@ -114,6 +114,65 @@ pub(crate) struct Pool {
     /// the OS's where none ([`Pool::set_budget_instead`]).
     budget_instead: Option<u64>,
     cels: u32,
+    /// The places a store handed over unwaited held and its write did not
+    /// fill ([`Writing::write`]), till its caller asks
+    /// ([`gpu_engine_pool_unwritten`]).
+    unwritten: Unwritten,
+}
+
+/// The places stores handed over unwaited could not write, said where the
+/// engine's thread learns it and taken where the store's caller asks.
+#[derive(Clone, Default)]
+struct Unwritten(Arc<Mutex<Vec<TileAt>>>);
+
+impl Unwritten {
+    fn held(&self) -> MutexGuard<'_, Vec<TileAt>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// A store's write, held apart from its pool for the engine's thread: the
+/// pages as they stood, the places its books gave, and where to say it
+/// failed.
+struct Writing {
+    pages: Vec<wgpu::Buffer>,
+    places: Vec<TileAt>,
+    unwritten: Unwritten,
+}
+
+impl Writing {
+    /// Copies `tiles` — straight RGBA8, a tile's bytes each, one a place —
+    /// into the places, by the write path in one submit.
+    fn write(&self, engine: &Engine, tiles: &[&[u8]]) -> Option<()> {
+        let staging = engine.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tiles stored"),
+            size: self.places.len() as u64 * TILE_BYTES,
+            usage: wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: true,
+        });
+        let copied = match staging.get_mapped_range_mut(..) {
+            Ok(mut mapped) => {
+                let bytes = TILE_BYTES as usize;
+                for (at, tile) in tiles[..self.places.len()].iter().enumerate() {
+                    mapped.slice(at * bytes..(at + 1) * bytes).copy_from_slice(tile);
+                }
+                Some(())
+            }
+            Err(error) => fail(format!("get_mapped_range_mut: {error}")),
+        };
+        staging.unmap();
+        let writes: Vec<(usize, TileAt)> = self.places.iter().copied().enumerate().collect();
+        copied.and_then(|()| Write::put(engine, &self.pages, &staging, &writes))
+    }
+
+    /// [`Writing::write`], its places said unwritten where it fails.
+    fn write_or_say(&self, engine: &Engine, tiles: &[&[u8]]) -> Option<()> {
+        let written = self.write(engine, tiles);
+        if written.is_none() {
+            self.unwritten.held().extend_from_slice(&self.places);
+        }
+        written
+    }
 }
 
 impl Pool {
@@ -140,7 +199,16 @@ impl Pool {
             return fail(format!("a page of {slots} tiles; one holds 1 to {MOST_NAMED}"));
         }
         let pages = Vec::new();
-        Some(Self { buffers: Vec::new(), pages, slots, most_pages, most_bytes, budget_instead: None, cels: 0 })
+        Some(Self {
+            buffers: Vec::new(),
+            pages,
+            slots,
+            most_pages,
+            most_bytes,
+            budget_instead: None,
+            cels: 0,
+            unwritten: Unwritten::default(),
+        })
     }
 
     /// The pages, as a plan and the write path take them.
@@ -241,47 +309,45 @@ impl Pool {
         Ok(TileAt { page: page as u16, slot })
     }
 
-    /// `tiles` — straight RGBA8, a tile's bytes each — each in a fresh slot
-    /// of `cel`, copied there by the write path in one submit: as many of
-    /// them, the first, as the pool has room for. A tile is never written
-    /// where one is stored ([`Write::put`] where it is told).
-    pub(crate) fn store(&mut self, engine: &Engine, cel: Cel, tiles: &[&[u8]]) -> Option<Vec<TileAt>> {
-        if let Some(tile) = tiles.iter().find(|tile| tile.len() as u64 != TILE_BYTES) {
-            return fail(format!("a tile of {} bytes; one holds {TILE_BYTES}", tile.len()));
-        }
-        let mut places = Vec::with_capacity(tiles.len());
-        while places.len() < tiles.len() {
+    /// `count` fresh slots of `cel`, held: as many of them, the first, as
+    /// the pool has room for — the books of a store ([`Pool::store`]).
+    pub(crate) fn places(&mut self, engine: &Engine, cel: Cel, count: usize) -> Vec<TileAt> {
+        let mut places = Vec::with_capacity(count);
+        while places.len() < count {
             match self.fresh(engine, cel) {
                 Ok(at) => places.push(at),
                 Err(Full) => break,
             }
         }
+        places
+    }
+
+    /// The write of tiles into `places`, held apart from the pool: what a
+    /// store hands the engine's thread.
+    fn writing(&self, places: Vec<TileAt>) -> Writing {
+        Writing { pages: self.buffers.clone(), places, unwritten: self.unwritten.clone() }
+    }
+
+    /// `tiles` — straight RGBA8, a tile's bytes each — each in a fresh slot
+    /// of `cel`, copied there by the write path in one submit: as many of
+    /// them, the first, as the pool has room for. A tile is never written
+    /// where one is stored ([`Write::put`] where it is told). The crate's
+    /// tests' store, on whatever thread they call it — the app's hands its
+    /// copy to the engine's thread (`gpu_engine_pool_store`).
+    #[cfg(test)]
+    pub(crate) fn store(&mut self, engine: &Engine, cel: Cel, tiles: &[&[u8]]) -> Option<Vec<TileAt>> {
+        if let Some(tile) = tiles.iter().find(|tile| tile.len() as u64 != TILE_BYTES) {
+            return fail(format!("a tile of {} bytes; one holds {TILE_BYTES}", tile.len()));
+        }
+        let places = self.places(engine, cel, tiles.len());
         if places.is_empty() {
             return Some(places);
         }
-        let staging = engine.device().create_buffer(&wgpu::BufferDescriptor {
-            label: Some("tiles stored"),
-            size: places.len() as u64 * TILE_BYTES,
-            usage: wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: true,
-        });
-        let copied = match staging.get_mapped_range_mut(..) {
-            Ok(mut mapped) => {
-                let bytes = TILE_BYTES as usize;
-                for (at, tile) in tiles[..places.len()].iter().enumerate() {
-                    mapped.slice(at * bytes..(at + 1) * bytes).copy_from_slice(tile);
-                }
-                Some(())
-            }
-            Err(error) => fail(format!("get_mapped_range_mut: {error}")),
-        };
-        staging.unmap();
-        let writes: Vec<(usize, TileAt)> = places.iter().copied().enumerate().collect();
         // ⚠️No test reaches the release below: `put` refuses only what this
         // store never hands it (a tile past the staging, a place past the
         // pages — a mutant of it lived, 11-07). It stands so a refusal the
         // write path learns later holds no slot for a tile that never landed.
-        if copied.and_then(|()| Write::put(engine, &self.buffers, &staging, &writes)).is_none() {
+        if self.writing(places.clone()).write(engine, tiles).is_none() {
             for &at in &places {
                 self.release(at);
             }
@@ -410,24 +476,38 @@ impl Pool {
             return Ok(page);
         }
         let given_back = self.pages.iter().position(Option::is_none);
-        // ⚠️No test lowers the budget the OS gives: `fits` is tried on the
-        // numbers, and a page here against a budget kept to in its place
-        // ([`Pool::set_budget_instead`]).
-        let memory = platform::video_memory(&engine.adapter);
-        let grows = self.page_bytes() - given_back.map_or(0, |page| self.buffers[page].size());
-        if (given_back.is_none() && self.pages.len() >= self.most_pages) || !self.fits(memory, grows) {
+        if given_back.is_none() && self.pages.len() >= self.most_pages {
             return Err(Full);
         }
-        // The OS's budget is asked here, not set on the instance as wgpu's
-        // `memory_budget_thresholds`: a threshold refuses whatever the
-        // engine makes, its other makes have no error scope, and wgpu's
-        // default for an error none catches panics
-        // (wgpu-30.0.1/src/backend/wgpu_core.rs:692) — past the FFI, the
-        // app aborts. A pool refusing at the budget lets a pass's own
-        // buffers go over it a while instead. Nor `for_device_loss`: the
-        // canonical tiles are on the device (브러시/렌더링 11-07, 관제
-        // 09:04).
-        let buffer = made(engine, "pool page", self.page_bytes()).ok_or(Full)?;
+        let grows = self.page_bytes() - given_back.map_or(0, |page| self.buffers[page].size());
+        // 🚨The budget is asked and the page made on the engine's thread,
+        // where a store's books are kept on its caller's (B1-b of
+        // the-ui-thread-never-enters-the-driver, 2026-11-15): the OS's count
+        // and the driver's allocator are the device's. 🔬Six stores of 371
+        // made a page, S5_BA cut 352 filling its band — 11 to 28 ms each for
+        // a page of 128 MiB, the store's caller waiting (k884). ⏳That wait
+        // stays till a page is had ahead some other way — one kept spare
+        // holds 128 MiB of a weak device's memory for nothing meanwhile.
+        let buffer = engine.on_thread(|| {
+            // ⚠️No test lowers the budget the OS gives: `fits` is tried on
+            // the numbers, and a page here against a budget kept to in its
+            // place ([`Pool::set_budget_instead`]).
+            let memory = platform::video_memory(&engine.adapter);
+            if !self.fits(memory, grows) {
+                return None;
+            }
+            // The OS's budget is asked here, not set on the instance as
+            // wgpu's `memory_budget_thresholds`: a threshold refuses whatever
+            // the engine makes, its other makes have no error scope, and
+            // wgpu's default for an error none catches panics
+            // (wgpu-30.0.1/src/backend/wgpu_core.rs:692) — past the FFI, the
+            // app aborts. A pool refusing at the budget lets a pass's own
+            // buffers go over it a while instead. Nor `for_device_loss`: the
+            // canonical tiles are on the device (브러시/렌더링 11-07, 관제
+            // 09:04).
+            made(engine, "pool page", self.page_bytes())
+        });
+        let buffer = buffer.ok_or(Full)?;
         // The first slot first: the one handed out last is first in line.
         let free = (0..self.slots).rev().map(|slot| slot as u16).collect();
         let book = Some(Page { holds: vec![0; self.slots], free, cel: Some(cel) });
@@ -723,16 +803,36 @@ pub unsafe extern "C" fn gpu_engine_pool_cel(pool: *mut Pool) -> u32 {
     pool.cel().0
 }
 
-/// Stores the `count` tiles at `tiles` — straight RGBA8, a tile's bytes at
-/// each — in fresh slots of the cel `cel` ([`Pool::store`]), and writes
-/// each one stored's place to `pages` and `slots`. Returns how many it
-/// stored, the first of them: all, or fewer where the pool is full at the
-/// next; -1 on failure, nothing stored — see the last error.
+/// Gives the `count` tiles at `tiles` — straight RGBA8, a tile's bytes at
+/// each — fresh slots of the cel `cel` ([`Pool::places`]), writes each
+/// one's place to `pages` and `slots`, and hands their copy there to the
+/// engine's thread, waiting for none of it ([`Engine::posted`]). Returns
+/// how many it gave a slot, the first of them: all, or fewer where the pool
+/// is full at the next. Once the copy has read the bytes, `told` is called
+/// — from the engine's thread — with `number` and whether it was written;
+/// one that was not is told by the caller's next done too, and its places
+/// by [`gpu_engine_pool_unwritten`]. None stored, nothing is handed over
+/// and `told` is not called.
+///
+/// ⛔Told by a call of its own, not the caller's done: a done is told of
+/// the first body handed over that failed since the last, whoever asks it
+/// (`Engine::done_then`), and a store asking one would take what the
+/// screen's present is to be told of its compose.
+///
+/// 🚨WHY UNWAITED (B1-b of the-ui-thread-never-enters-the-driver,
+/// 2026-11-15): after the screen's compose and show were handed over, the
+/// store was what the UI's thread waited on most — 395 calls and 630 ms of
+/// S5_BA cut 352 filling its band, up to 30.6 ms one (k851); of its body,
+/// the staging made, mapped and filled took 68%, the put and submit 22%
+/// (k884). The books stay the caller's, so its slots are told at once, as
+/// before. ⛔The bytes are not copied here first: that copy is the staging's
+/// own, which the caller would then pay.
 ///
 /// # Safety
 /// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
-/// holds `count` pointers to a tile's bytes each, alive for the call; and
-/// `pages` and `slots` hold `count` each.
+/// holds `count` pointers to a tile's bytes each, alive till `told` is
+/// called — the engine's thread reads them then; `pages` and `slots` hold
+/// `count` each; and `told` is one any thread may call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_pool_store(
     pool: *mut Pool,
@@ -742,26 +842,70 @@ pub unsafe extern "C" fn gpu_engine_pool_store(
     count: usize,
     pages: *mut u16,
     slots: *mut u16,
-) -> isize {
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) -> usize {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    engine.on_thread(|| {
-        let tiles: Vec<&[u8]> = (0..count)
-            // SAFETY: a tile's bytes at each pointer, alive for the call.
-            .map(|at| unsafe { std::slice::from_raw_parts(*tiles.add(at), TILE_BYTES as usize) })
-            .collect();
-        let Some(places) = pool.store(engine, Cel(cel), &tiles) else {
-            return -1;
-        };
-        for (at, place) in places.iter().enumerate() {
-            // SAFETY: `pages` and `slots` hold `count` each, and no more are stored.
-            unsafe {
-                *pages.add(at) = place.page;
-                *slots.add(at) = place.slot;
-            }
+    let places = pool.places(engine, Cel(cel), count);
+    for (at, place) in places.iter().enumerate() {
+        // SAFETY: `pages` and `slots` hold `count` each, and no more are given.
+        unsafe {
+            *pages.add(at) = place.page;
+            *slots.add(at) = place.slot;
         }
-        places.len() as isize
-    })
+    }
+    let stored = places.len();
+    if stored == 0 {
+        return 0;
+    }
+    // SAFETY: `tiles` holds `count` pointers, and `stored` is no more.
+    let bytes: Vec<*const u8> = (0..stored).map(|at| unsafe { *tiles.add(at) }).collect();
+    let handed = Sent((engine.clone(), pool.writing(places), bytes));
+    engine.posted(move || {
+        let (engine, writing, bytes) = handed.taken();
+        let tiles: Vec<&[u8]> = bytes
+            .iter()
+            // SAFETY: a tile's bytes at each pointer, alive till `told` is
+            // called (the function's contract).
+            .map(|&at| unsafe { std::slice::from_raw_parts(at, TILE_BYTES as usize) })
+            .collect();
+        let written = writing.write_or_say(&engine, &tiles);
+        told(number, written.is_some());
+        written
+    });
+    stored
+}
+
+/// Writes to `pages` and `slots` the places stores handed over unwaited
+/// held and did not write since this was last asked — `capacity` at most,
+/// the rest kept for the next ask — and returns how many it wrote: theirs
+/// to let go, whose tiles are not there ([`gpu_engine_pool_store`]).
+///
+/// # Safety
+/// `pool` is live, and `pages` and `slots` hold `capacity` each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_unwritten(
+    pool: *mut Pool,
+    pages: *mut u16,
+    slots: *mut u16,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &mut *pool };
+    let unwritten: Vec<TileAt> = {
+        let mut held = pool.unwritten.held();
+        let taken = held.len().min(capacity);
+        held.drain(..taken).collect()
+    };
+    for (at, place) in unwritten.iter().enumerate() {
+        // SAFETY: `pages` and `slots` hold `capacity` each, and no more are written.
+        unsafe {
+            *pages.add(at) = place.page;
+            *slots.add(at) = place.slot;
+        }
+    }
+    unwritten.len()
 }
 
 /// Lets the slot at (`page`, `slot`) go — the store let its tile go. False

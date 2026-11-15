@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
@@ -64,12 +65,12 @@ void main() {
   // On an engine of its own: nothing made on a device that is gone is of
   // use again, and the app has one.
   test('a device that is gone refuses what waits for it, by name, and ends '
-      'no process at what does not wait', () {
+      'no process at what does not wait', () async {
     final engine = GpuEngine.onFirstAdapter();
     addTearDown(engine.close);
     final pool = GpuPool(engine, 1 << 30);
     addTearDown(pool.free);
-    final stored = pool.store(pool.cel(), [tileOf(7)]);
+    final stored = pool.store(pool.cel(), [tileOf(7)], (tile) => tile);
     expect(refusedReading(pool, stored), isNull, reason: '⛔premise: read');
     expect(engine.debugTakeNoted(), isNull, reason: '⛔premise: none raised');
     expect(engine.isGone, isFalse);
@@ -92,12 +93,15 @@ void main() {
     final picture = GpuStampPicture(engine, Uint8List(2 * 2 * 4), 2, 2);
     expect(picture.pixels, throwsA(isA<GpuReadFailed>()));
     // What does not wait is refused where the engine meets what it cannot
-    // do — a store has no buffer to lay its tiles in — and returns as if
-    // it had worked elsewhere, told by what next waits.
-    expect(
-      () => pool.store(pool.cel(), [tileOf(9)]),
-      throwsA(isA<GpuRefused>()),
-    );
+    // do — a store's copy, handed over (B1-b), has no buffer to lay its
+    // tiles in — and returns as if it had worked: the places it gave are
+    // said unwritten, and what next waits is told.
+    final unwritten = Completer<List<GpuTile>>();
+    pool.onUnwritten = unwritten.complete;
+    final given = pool.store(pool.cel(), [tileOf(9)], (tile) => tile);
+    expect(given, hasLength(1), reason: 'its books are the caller\'s');
+    expect(await unwritten.future, given);
+    await expectLater(engine.done(), throwsA(isA<GpuRefused>()));
 
     // What the lost device raised at each of those is noted, and taken by
     // the one asking.

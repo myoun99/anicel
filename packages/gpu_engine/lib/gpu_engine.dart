@@ -335,6 +335,12 @@ class GpuEngine {
   void debugLose({bool forMemory = false}) =>
       rust.engineLose(_engine, forMemory);
 
+  /// Test seam: the engine's thread stands still for [time] in its turn,
+  /// this isolate waiting for none of it — what a test does meanwhile
+  /// meets what is handed over behind it before it has run.
+  void debugStandStill(Duration time) =>
+      rust.engineStandStill(_engine, time.inMilliseconds);
+
   /// Ends once the GPU has finished all that was submitted on this engine,
   /// with no wait on this isolate, which goes on meanwhile: the engine's
   /// thread for waits does (rust/src/device.rs, `gpu_engine_done_then`) —
@@ -642,18 +648,28 @@ class GpuPool implements _OfAnEngine {
   /// any page with room (rust/src/kernels/pool/mod.rs).
   int cel() => rust.poolCel(_pool);
 
-  /// Stores [tiles] — [gpuTileBytes] at each, alive for the call — under
-  /// [cel], each in a fresh slot, and returns where each landed, in order:
-  /// all of them, or the first few where the pool is full at the next.
-  List<GpuTile> store(int cel, List<Pointer<Uint8>> tiles) {
+  /// Gives [tiles] fresh slots of [cel] and returns where each goes, in
+  /// order: all of them, or the first few where the pool is full at the
+  /// next. The bytes of each — [gpuTileBytes] at the pointer [bytesOf]
+  /// reads of it — are copied there on the engine's thread, this isolate
+  /// waiting for none of it (rust/src/kernels/pool/mod.rs,
+  /// `gpu_engine_pool_store`, has why): so [tiles], what keeps their bytes
+  /// where [bytesOf] says, are held here till that copy has read them, and
+  /// the places of a copy that failed are handed to [onUnwritten].
+  List<GpuTile> store<T extends Object>(
+    int cel,
+    List<T> tiles,
+    Pointer<Uint8> Function(T tile) bytesOf,
+  ) {
     return using((arena) {
       final count = tiles.length;
       final at = arena<Pointer<Uint8>>(_held(count));
       for (var tile = 0; tile < count; tile++) {
-        at[tile] = tiles[tile];
+        at[tile] = bytesOf(tiles[tile]);
       }
       final pages = arena<Uint16>(_held(count));
       final slots = arena<Uint16>(_held(count));
+      final number = _numbered++;
       final stored = rust.poolStore(
         _pool,
         _engine._engine,
@@ -662,9 +678,17 @@ class GpuPool implements _OfAnEngine {
         count,
         pages,
         slots,
+        _read.nativeFunction,
+        number,
       );
-      if (stored < 0) {
-        throw GpuRefused(_lastError());
+      if (stored > 0) {
+        // 🚨A REAL HOLD, in a map no tile is let out of before its copy is
+        // told of ([_readThen]): a pointer [bytesOf] read keeps nothing
+        // alive, and a tile collected meanwhile hands its block to the next
+        // tile made (BitmapTile.readPixels). ⛔No assert: it goes from a
+        // release build, and so would the hold.
+        _reading[number] = (pool: this, held: tiles.sublist(0, stored));
+        _read.keepIsolateAlive = true;
       }
       return [
         for (var tile = 0; tile < stored; tile++)
@@ -672,6 +696,48 @@ class GpuPool implements _OfAnEngine {
       ];
     });
   }
+
+  /// Handed the places whose copy the engine's thread could not write
+  /// ([store]): theirs to let go, whose tiles are not there.
+  void Function(List<GpuTile> unwritten)? onUnwritten;
+
+  /// What the stores on their way hold ([store]), each under the number it
+  /// was handed over by, till its copy has read them.
+  static final Map<int, ({GpuPool pool, List<Object> held})> _reading = {};
+  static int _numbered = 0;
+
+  /// How the engine's thread tells this isolate a store's copy has read
+  /// its tiles, by its number and whether it wrote them: one for every
+  /// store of the isolate, kept alive while one is on its way.
+  static final NativeCallable<Void Function(Uint64, Bool)> _read =
+      NativeCallable<Void Function(Uint64, Bool)>.listener(_readThen);
+
+  static void _readThen(int number, bool written) {
+    final (:pool, held: _) = _reading.remove(number)!;
+    _read.keepIsolateAlive = _reading.isNotEmpty;
+    if (written || pool._freed) {
+      return;
+    }
+    final unwritten = pool._unwritten();
+    if (unwritten.isNotEmpty) {
+      pool.onUnwritten?.call(unwritten);
+    }
+  }
+
+  /// The places stores handed over held and did not write, taken.
+  List<GpuTile> _unwritten() => using((arena) {
+    const capacity = 256;
+    final pages = arena<Uint16>(capacity);
+    final slots = arena<Uint16>(capacity);
+    return [
+      for (
+        var taken = rust.poolUnwritten(_pool, pages, slots, capacity);
+        taken > 0;
+        taken = rust.poolUnwritten(_pool, pages, slots, capacity)
+      )
+        for (var at = 0; at < taken; at++) (page: pages[at], slot: slots[at]),
+    ];
+  });
 
   /// Lets [tile] go; false where no tile is held there.
   bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
@@ -725,7 +791,13 @@ class GpuPool implements _OfAnEngine {
   int get bytes => rust.poolBytes(_pool);
 
   /// Frees the pool's pages; before its engine is closed.
-  void free() => rust.poolFree(_pool);
+  void free() {
+    _freed = true;
+    rust.poolFree(_pool);
+  }
+
+  /// Freed: a store's copy told of after asks the pool nothing.
+  bool _freed = false;
 }
 
 /// A bitmap dabs read — a tip's or the paper's — kept for the piles that read

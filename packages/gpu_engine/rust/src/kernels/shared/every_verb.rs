@@ -164,6 +164,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 11] = [
         &[
             "gpu_engine_pool_cel",
             "gpu_engine_pool_release",
+            "gpu_engine_pool_unwritten",
             "gpu_engine_pool_most_bytes",
             "gpu_engine_pool_budget_instead",
         ],

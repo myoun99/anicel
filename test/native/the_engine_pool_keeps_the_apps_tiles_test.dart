@@ -49,8 +49,8 @@ void main() {
       'room', () {
     final a = pool.cel();
     final b = pool.cel();
-    final first = pool.store(a, made(3));
-    final second = pool.store(b, made(1));
+    final first = pool.store(a, made(3), (tile) => tile);
+    final second = pool.store(b, made(1), (tile) => tile);
 
     expect(first.toSet(), hasLength(3));
     expect({for (final tile in first) tile.page}, hasLength(1));
@@ -62,22 +62,22 @@ void main() {
     final none = GpuPool(appGpuEngine, 0);
     addTearDown(none.free);
 
-    expect(none.store(none.cel(), made(2)), isEmpty);
+    expect(none.store(none.cel(), made(2), (tile) => tile), isEmpty);
   });
 
   test('a slot let go is free once, and handed out again', () {
     final cel = pool.cel();
-    final [kept, let] = pool.store(cel, made(2));
+    final [kept, let] = pool.store(cel, made(2), (tile) => tile);
 
     expect(pool.release(let), isTrue);
     expect(pool.release(let), isFalse);
-    expect(pool.store(cel, made(1)), [let]);
+    expect(pool.store(cel, made(1), (tile) => tile), [let]);
     expect(pool.release(kept), isTrue);
   });
 
   test('the pages nobody holds go back till the pages hold the bytes asked',
       () {
-    final [tile] = pool.store(pool.cel(), made(1));
+    final [tile] = pool.store(pool.cel(), made(1), (tile) => tile);
     final page = pool.bytes;
 
     pool.giveBackPast(0);
@@ -96,7 +96,7 @@ void main() {
         ..fillRange(0, gpuTileBytes, tile + 1)
         ..[tile * 4 + 1] = 0xC3;
     }
-    final [first, second] = pool.store(pool.cel(), bytes);
+    final [first, second] = pool.store(pool.cel(), bytes, (tile) => tile);
     final into = calloc<Uint8>(2 * gpuTileBytes);
     addTearDown(() => calloc.free(into));
 

@@ -234,6 +234,11 @@ external int doneFailure(
 @Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_lose')
 external void engineLose(Pointer<Engine> engine, bool forMemory);
 
+@Native<Void Function(Pointer<Engine>, Uint32)>(
+  symbol: 'gpu_engine_stand_still',
+)
+external void engineStandStill(Pointer<Engine> engine, int millis);
+
 @Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool)>(
   symbol: 'gpu_engine_surface_new',
 )
@@ -344,7 +349,7 @@ external void poolFree(Pointer<Pool> pool);
 external int poolCel(Pointer<Pool> pool);
 
 @Native<
-  IntPtr Function(
+  Size Function(
     Pointer<Pool>,
     Pointer<Engine>,
     Uint32,
@@ -352,6 +357,8 @@ external int poolCel(Pointer<Pool> pool);
     Size,
     Pointer<Uint16>,
     Pointer<Uint16>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
   )
 >(symbol: 'gpu_engine_pool_store')
 external int poolStore(
@@ -362,6 +369,18 @@ external int poolStore(
   int count,
   Pointer<Uint16> pages,
   Pointer<Uint16> slots,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<Size Function(Pointer<Pool>, Pointer<Uint16>, Pointer<Uint16>, Size)>(
+  symbol: 'gpu_engine_pool_unwritten',
+)
+external int poolUnwritten(
+  Pointer<Pool> pool,
+  Pointer<Uint16> pages,
+  Pointer<Uint16> slots,
+  int capacity,
 );
 
 @Native<Bool Function(Pointer<Pool>, Uint16, Uint16)>(

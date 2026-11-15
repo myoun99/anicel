@@ -52,7 +52,7 @@ void main() {
           ),
     ];
     held.addAll(tiles);
-    return pool.store(pool.cel(), tiles);
+    return pool.store(pool.cel(), tiles, (tile) => tile);
   }
 
   /// [count] opaque tiles of bytes no two neighbours share.

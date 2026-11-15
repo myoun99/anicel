@@ -429,6 +429,11 @@ fn a_cel_on_more_pages_than_a_pass_binds_composites_as_in_one_pass() {
     }
 }
 
+/// What a store through the C ABI tells where its tiles' bytes are read
+/// (`gpu_engine_pool_store`) and a test that keeps them for its run asks
+/// nothing of.
+extern "C" fn told_nothing(_: u64, _: bool) {}
+
 /// What `places` of `pool` hold, read as a pass reads them: one row of
 /// output tiles, a stored tile each.
 fn read_back(pool: &Pool, places: &[TileAt]) -> Vec<u8> {
@@ -514,6 +519,8 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
             2,
             pages.as_mut_ptr(),
             slots.as_mut_ptr(),
+            told_nothing,
+            0,
         );
         assert_eq!(stored, 2);
         assert_eq!((pages, slots), ([0, 0], [0, 1]));
@@ -521,16 +528,16 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
         assert!(gpu_engine_pool_release(pool, 0, 0));
         assert!(!gpu_engine_pool_release(pool, 0, 0), "let go twice");
         let again =
-            gpu_engine_pool_store(pool, engine, a, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+            gpu_engine_pool_store(pool, engine, a, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!((again, pages[0], slots[0]), (1, 0, 0));
-        let none = gpu_engine_pool_store(pool, engine, b, tiles.as_ptr(), 0, pages.as_mut_ptr(), slots.as_mut_ptr());
+        let none = gpu_engine_pool_store(pool, engine, b, tiles.as_ptr(), 0, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(none, 0);
         gpu_engine_pool_free(pool);
         gpu_engine_pool_free(std::ptr::null_mut());
         let full = gpu_engine_pool_new(engine, 0);
         let cel = gpu_engine_pool_cel(full);
         let stored =
-            gpu_engine_pool_store(full, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr());
+            gpu_engine_pool_store(full, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(stored, 0, "a pool given no bytes stores none of the two");
         gpu_engine_pool_free(full);
     }
@@ -554,12 +561,12 @@ fn the_c_abi_moves_a_pool_s_bytes_counts_its_pages_and_gives_them_back() {
         let pool = gpu_engine_pool_new(engine, 0);
         let cel = gpu_engine_pool_cel(pool);
         let none =
-            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(none, 0, "given no bytes, it stores none");
         assert_eq!(gpu_engine_pool_bytes(pool), 0);
         gpu_engine_pool_most_bytes(pool, u64::MAX);
         let one =
-            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(one, 1);
         assert_eq!(gpu_engine_pool_bytes(pool), (*pool).slots() as u64 * TILE_BYTES);
         assert!(read_back(&*pool, &[at(pages[0], slots[0])]) == bytes);
@@ -591,10 +598,10 @@ fn the_c_abi_keeps_a_pool_to_a_budget_in_the_os_s_place() {
         let cel = gpu_engine_pool_cel(pool);
         gpu_engine_pool_budget_instead(pool, 0);
         let none =
-            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(none, 0, "kept to nothing, it stores none");
         gpu_engine_pool_budget_instead(pool, i64::MAX);
-        let one = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+        let one = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(one, 1, "kept to more than any device has, it stores");
         gpu_engine_pool_budget_instead(pool, -1);
         assert!((*pool).budget_instead.is_none(), "the OS's again");
@@ -670,7 +677,7 @@ fn the_c_abi_reads_back_the_tiles_its_words_name() {
     unsafe {
         let pool = gpu_engine_pool_new(engine, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
-        let stored = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr());
+        let stored = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr(), told_nothing, 0);
         assert_eq!(stored, 2);
         let words = [at(pages[1], slots[1]).word(), at(pages[0], slots[0]).word()];
         assert!(gpu_engine_pool_read(pool, engine, words.as_ptr(), 2, into.as_mut_ptr()));
@@ -785,7 +792,7 @@ fn the_c_abi_reads_out_the_tiles_its_words_name_and_who_asks_waits_for_no_gpu() 
         let cel = gpu_engine_pool_cel(pool);
         let (to_pages, to_slots) = (pages.as_mut_ptr(), slots.as_mut_ptr());
         let stored =
-            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, to_pages, to_slots);
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, to_pages, to_slots, told_nothing, 0);
         assert_eq!(stored, 2);
         let words = [at(pages[1], slots[1]).word(), at(pages[0], slots[0]).word()];
         let readout = gpu_engine_pool_readout(pool, engine, words.as_ptr(), 2);
@@ -846,7 +853,7 @@ fn a_readout_whose_device_is_gone_is_told_all_the_same_and_its_rows_fail_by_why(
         let pool = gpu_engine_pool_new(engine, u64::MAX);
         let cel = gpu_engine_pool_cel(pool);
         let stored =
-            gpu_engine_pool_store(pool, engine, cel, &bytes.as_ptr(), 1, &mut page, &mut slot);
+            gpu_engine_pool_store(pool, engine, cel, &bytes.as_ptr(), 1, &mut page, &mut slot, told_nothing, 0);
         assert_eq!(stored, 1);
         let word = at(page, slot).word();
         let readout = gpu_engine_pool_readout(pool, engine, &word, 1);
@@ -905,4 +912,95 @@ fn the_engines_pictures_pool_makes_a_page_past_the_oss_budget() {
     let said = Some(VideoMemory { used: 11, budget: Some(10) });
     let fits = engine.pictures.with(engine, |pool| Some(pool.fits(said, pool.page_bytes())));
     assert_eq!(fits, Some(true));
+}
+
+/// What stores through the C ABI told of their copies: each one's number
+/// and whether it wrote (`gpu_engine_pool_store`).
+static READ: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());
+
+extern "C" fn read(number: u64, written: bool) {
+    READ.lock().unwrap().push((number, written));
+}
+
+fn was_read(number: u64) -> Option<bool> {
+    READ.lock().unwrap().iter().find(|&&(told, _)| told == number).map(|&(_, written)| written)
+}
+
+// A store's copy is the engine's thread's, its caller waiting for none of
+// it (the-ui-thread-never-enters-the-driver B1-b): its slot is told while
+// that thread stands still, and the copy is told read — and its bytes are
+// there — once the thread goes on.
+#[test]
+fn a_store_tells_its_slot_while_the_engines_thread_stands_still() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_read, gpu_engine_pool_store};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(5));
+    let tiles = [bytes.as_ptr()];
+    let (mut page, mut slot) = (u16::MAX, u16::MAX);
+    let mut into = vec![0; TILE_BYTES as usize];
+    // SAFETY: the engine is this test's own, live till its close; the tile,
+    // page, slot and word are one each, and `into` holds a tile's bytes —
+    // `bytes` outlives every copy told of.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        // ⛔premise: a page with room — a page is made on the engine's
+        // thread, which stands still below.
+        assert_eq!(gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, &mut page, &mut slot, read, 101), 1);
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(was_read(101), Some(true), "⛔premise: a copy is told");
+        gpu_engine_stand_still(engine, 2_000);
+        assert_eq!(gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, &mut page, &mut slot, read, 102), 1);
+        assert_eq!(was_read(102), None, "told its slot before its copy ran");
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(was_read(102), Some(true));
+        let word = at(page, slot).word();
+        assert!(gpu_engine_pool_read(pool, engine, &word, 1, into.as_mut_ptr()), "{}", last_error());
+        assert!(into == bytes, "its slot holds its bytes");
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// A store's copy the device refuses says so: its slot was told, as the
+// books are the caller's, the copy is told unwritten and its place is the
+// caller's to let go — taken once — and the caller's next done fails.
+#[test]
+fn a_store_whose_copy_the_device_refuses_says_its_place_unwritten() {
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_store,
+        gpu_engine_pool_unwritten,
+    };
+    use crate::device::{gpu_engine_close, gpu_engine_lose, gpu_engine_open_first};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(6));
+    let tiles = [bytes.as_ptr()];
+    let (mut page, mut slot) = (u16::MAX, u16::MAX);
+    let (mut pages, mut slots) = ([u16::MAX; 2], [u16::MAX; 2]);
+    // SAFETY: the engine is this test's own, live till its close; the tile,
+    // page and slot are one each, `pages` and `slots` two each — `bytes`
+    // outlives every copy told of.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        assert_eq!(gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, &mut page, &mut slot, read, 201), 1);
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(gpu_engine_pool_unwritten(pool, pages.as_mut_ptr(), slots.as_mut_ptr(), 2), 0, "⛔premise");
+        gpu_engine_lose(engine, false);
+        assert_eq!(gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, &mut page, &mut slot, read, 202), 1);
+        assert!(done_here(&*engine).is_err(), "the next done is told");
+        assert_eq!(was_read(202), Some(false));
+        assert_eq!(gpu_engine_pool_unwritten(pool, pages.as_mut_ptr(), slots.as_mut_ptr(), 2), 1);
+        assert_eq!((pages[0], slots[0]), (page, slot));
+        assert_eq!(gpu_engine_pool_unwritten(pool, pages.as_mut_ptr(), slots.as_mut_ptr(), 2), 0, "taken once");
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
 }

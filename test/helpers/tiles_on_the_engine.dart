@@ -1,6 +1,3 @@
-import 'dart:ffi';
-
-import 'package:ffi/ffi.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -39,16 +36,18 @@ List<BitmapTile> landedOn(
         (column: column, row: 0, under: under),
     ],
     by: (pool, cel, asked) {
-      final bytes = calloc<Uint8>(gpuTileBytes);
-      try {
-        bytes.asTypedList(gpuTileBytes).fillRange(0, gpuTileBytes, value);
-        return [
-          for (final at in pool.store(cel, [for (final _ in asked) bytes]))
-            (change: GpuChange.inked, tile: at),
-        ];
-      } finally {
-        calloc.free(bytes);
-      }
+      // A tile, not bytes of this call's: the store's copy reads them once
+      // it returns, holding what keeps them (GpuPool.store).
+      final tile = BitmapTile.written(
+        size: gpuTileSide,
+        write: (pixels) => pixels.fillRange(0, gpuTileBytes, value),
+      );
+      return [
+        for (final at in pool.store(cel, [
+          for (final _ in asked) tile,
+        ], (tile) => tile.readPixels((pointer, _) => pointer)))
+          (change: GpuChange.inked, tile: at),
+      ];
     },
     compared: true,
   ))

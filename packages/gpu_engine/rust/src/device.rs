@@ -1909,6 +1909,23 @@ pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool
     })
 }
 
+/// Test seam: `engine`'s thread stands still for `millis` ms in its turn,
+/// its caller waiting for none of it ([`Engine::posted`]) — what a test
+/// does meanwhile meets a body handed over behind it before it has run
+/// (`gpu_engine_pool_store`'s tiles, held till their copy reads them).
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_stand_still(engine: *const Engine, millis: u32) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.posted(move || {
+        std::thread::sleep(Duration::from_millis(u64::from(millis)));
+        Some(())
+    });
+}
+
 /// Test seam: `engine` keeps none of its kernels ([`Kernels`]), as a launch
 /// finds it. For the app's pins of what is compiled where and when, which
 /// a kernel an earlier test compiled would answer for.
