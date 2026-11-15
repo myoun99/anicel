@@ -194,7 +194,15 @@ void main() {
     await tester.pump();
     final firstFrame = await bluePixels(tester);
     await drainWarming(tester);
-    return (shown, firstFrame, await bluePixels(tester));
+    final landed = await bluePixels(tester);
+    // 🚨A test that lends the real clock ends by stopping playback's warmer
+    // (test/helpers/wait_window.dart): its walk, caught between two
+    // pictures, held its yield's timer past the body — 「A Timer is still
+    // pending」, the Surface's alone (11-16, on the card
+    // a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles). The case
+    // that draws over a cel below stopped it already.
+    s.playbackRig.prerenderScheduler.cancel();
+    return (shown, firstFrame, landed);
   }
 
   testWidgets('🚨링크 독립 leaves the attach row\'s picture on the screen — on '
