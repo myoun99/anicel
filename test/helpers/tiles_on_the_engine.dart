@@ -53,3 +53,14 @@ List<BitmapTile> landedOn(
   ))
     landed.tile!,
 ];
+
+/// A tile of bytes of its own — nothing but its first pixel, barely there:
+/// not of one colour, every tile of which shares that colour's slot on the
+/// engine (`BitmapTile.pixelsKey`). What a test that fills or counts slots
+/// asks for: each of these is one.
+BitmapTile aTileOfItsOwn() => BitmapTile.written(
+  size: gpuTileSide,
+  write: (pixels) => pixels
+    ..fillRange(0, gpuTileBytes, 0)
+    ..[BitmapTile.bytesPerPixel - 1] = 1,
+);

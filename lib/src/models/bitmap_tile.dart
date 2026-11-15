@@ -387,6 +387,21 @@ class BitmapTile implements Finalizable {
   /// it did before this was asked.
   int get ownBytes => _here is _ColourBlock ? 0 : bytesFor(size);
 
+  /// What a store of this tile's pixels elsewhere is found by: the tile
+  /// itself, or — where its pixels are its colour's block — that block,
+  /// the one object every tile of the colour alive holds ([_ColourBlock]).
+  /// The engine's tile ledger keys its slots by it
+  /// (`EngineTileLedger._slotNow`): the tiles of one colour are one slot.
+  ///
+  /// Never changes while the tile lives: a tile is of one colour as it is
+  /// made and never after, and one the engine made is never one
+  /// ([BitmapTile.onEngine]). The same identity [==] reads unread
+  /// ([_samePixelsAs]) — no pixel is compared to find it.
+  Object get pixelsKey => switch (_here) {
+    final _ColourBlock colour => colour,
+    _ => this,
+  };
+
   final int size;
 
   /// Where a tile the engine made reads its pixels from; null for one made

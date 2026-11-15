@@ -19,6 +19,17 @@ import 'app_gpu_engine.dart';
 /// (캔버스 베이스 2026-11-08 00:27 ⓐ). `==` compares pixels and is not
 /// asked: two tiles alike are two slots.
 ///
+/// 🚨BUT THE TILES OF ONE COLOUR ARE ONE SLOT (card
+/// uniform-tiles-take-a-pool-slot-each, 관제 2026-11-16 「① 네가 먼저」):
+/// a tile of one colour holds its colour's block, one object for every
+/// tile of the colour alive, and the block is their key
+/// ([BitmapTile.pixelsKey]) — what a hold holds, what a full pool lets go
+/// once no hold has it, and what lets the slot go as it is collected, with
+/// the last tile of the colour. No pixel is compared for it, still: two
+/// tiles alike of bytes of their own are two slots. 🔬Why: a user's file
+/// kept 30,536 tiles of one clear word and 8,753 of one opaque colour
+/// (`BitmapTile`'s note), and each was a slot of its own and a copy up.
+///
 /// 🚨A TILE IS STORED INSIDE THE CALL THAT ASKS FOR ITS SLOT
 /// ([TileHold.slotsOf]), not at the commit that made it (ⓑ, 브러시/렌더링
 /// 01:10): a commit makes the tiles of surfaces nothing shows or scans — an
@@ -172,34 +183,37 @@ final GpuEngine _engine;
   void respondToMemoryPressure() => _giveBackPast(0);
 
   void _giveBackPast(int bytes) {
-    _letGoWhere((tile, _) => tile == null);
+    _letGoWhere((key, _) => key == null);
     pool.giveBackPast(bytes);
   }
 
-  /// The place of every tile given a slot here ([_give]), by the tile.
+  /// The place of every key given a slot here ([_give]): a tile, or the
+  /// block every tile of a colour holds ([BitmapTile.pixelsKey]).
   final Expando<_Place> _places = Expando<_Place>('engineTilePlaces');
 
-  /// The slot [tile] has now, or null: never stored, or let go since.
-  _Slot? _slotNow(BitmapTile tile) => _places[tile]?.slot;
+  /// The slot [tile] has now, or null: never stored, or let go since — its
+  /// colour's, for a tile of one colour.
+  _Slot? _slotNow(BitmapTile tile) => _places[tile.pixelsKey]?.slot;
 
   /// Every slot handed out here and not yet swept, the one stored longest
   /// ago first — the walk a full pool and a give-back let slots go by,
   /// since [_places] cannot be walked.
   final List<_Slot> _stored = [];
 
-  /// Lets a tile's slot go with the tile: handed its place once the
-  /// collector finds the tile, it lets go the slot that holds — none where
-  /// a full pool came first. Attached once a tile ([_give]), with no token
-  /// to detach it by ([_Place]).
-  late final Finalizer<_Place> _letGoWithTile = Finalizer<_Place>((place) {
+  /// Lets a key's slot go with the key: handed its place once the
+  /// collector finds the key — a tile, or a colour's block once the last
+  /// tile of the colour is —, it lets go the slot that holds, none where a
+  /// full pool came first. Attached once a key ([_give]), with no token to
+  /// detach it by ([_Place]).
+  late final Finalizer<_Place> _letGoWithKey = Finalizer<_Place>((place) {
     final slot = place.slot;
     if (slot != null) {
       _letGo(slot);
     }
   });
 
-  /// How many slots tiles have here — let go of with their tile or by a
-  /// full pool. A probe.
+  /// How many slots tiles have here — let go of with their key or by a
+  /// full pool: one for every tile of a colour. A probe.
   int get slotCount => _slotCount;
   int _slotCount = 0;
 
@@ -213,9 +227,15 @@ final GpuEngine _engine;
   /// nothing reads again — the result a stroke showed, made anew at the next
   /// frame. Asked for pixels after this, the tile throws. Its collection
   /// would be seconds away, and a stroke's slots a frame's worth each.
+  ///
+  /// ⛔A TILE OF ONE COLOUR LETS NOTHING GO: its slot is its colour's
+  /// ([BitmapTile.pixelsKey]), which other tiles of the colour may be
+  /// drawing from inside a call that holds them — one tile cannot say
+  /// nothing reads the rest (uniform-tiles-take-a-pool-slot-each, 11-16).
+  /// It goes with the colour, or by a full pool.
   void retire(BitmapTile tile) {
     final slot = _slotNow(tile);
-    if (slot == null) {
+    if (slot == null || !identical(tile.pixelsKey, tile)) {
       return;
     }
     _letGo(slot);
@@ -301,15 +321,17 @@ final GpuEngine _engine;
     return tile;
   }
 
-  /// Gives [tile] the slot [at], in its place — made, and the tile's
-  /// finalizer attached, where this is the first slot it is given.
+  /// Gives [tile] the slot [at], in its key's place — made, and the key's
+  /// finalizer attached, where this is the first slot the key is given:
+  /// every tile of [tile]'s colour has it, for a tile of one colour.
   _Slot _give(BitmapTile tile, GpuTile at) {
-    var place = _places[tile];
+    final key = tile.pixelsKey;
+    var place = _places[key];
     if (place == null) {
-      place = _places[tile] = _Place();
-      _letGoWithTile.attach(tile, place);
+      place = _places[key] = _Place();
+      _letGoWithKey.attach(key, place);
     }
-    final slot = place.slot = _Slot(tile, at, place);
+    final slot = place.slot = _Slot(key, at, place);
     _stored.add(slot);
     _slotCount += 1;
     return slot;
@@ -595,10 +617,11 @@ final GpuEngine _engine;
   @visibleForTesting
   Object? recordOf(BitmapTile tile) => _slotNow(tile);
 
-  /// The place [tile] has, or null before its first store — a probe: a
-  /// tile stored again is in the one it had, its finalizer attached once.
+  /// The place [tile]'s key has ([BitmapTile.pixelsKey]), or null before
+  /// its first store — a probe: a key stored again is in the one it had,
+  /// its finalizer attached once.
   @visibleForTesting
-  Object? placeOf(BitmapTile tile) => _places[tile];
+  Object? placeOf(BitmapTile tile) => _places[tile.pixelsKey];
 
   static void _refuseOtherGrids(List<BitmapTile> tiles) {
     for (final tile in tiles) {
@@ -612,11 +635,12 @@ final GpuEngine _engine;
 
   List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
     _refuseOtherGrids(tiles);
-    hold._tiles.addAll(tiles);
-    final asked = Set<BitmapTile>.identity();
+    hold._keys.addAll(tiles.map((tile) => tile.pixelsKey));
+    // Once a key: two tiles of a colour asked together are one store.
+    final asked = Set<Object>.identity();
     final missing = [
       for (final tile in tiles)
-        if (_slotNow(tile) == null && asked.add(tile)) tile,
+        if (_slotNow(tile) == null && asked.add(tile.pixelsKey)) tile,
     ];
     if (missing.isNotEmpty) {
       _store(_cels.putIfAbsent(cel, pool.cel), missing);
@@ -667,7 +691,7 @@ final GpuEngine _engine;
   /// pass, 1.2 ms a time (6.6 once) and 18 to 29 ms a pass.
   int _shortAsRoomIsMade(int short, int Function() placeRest) {
     _letGoWhere(
-      (tile, _) => _noHoldHas(tile),
+      (key, _) => _noHoldHas(key),
       most: math.max(short, _roomBatch),
     );
     pool.makeNoPagePast(_unbounded);
@@ -706,7 +730,7 @@ final GpuEngine _engine;
       return false;
     }
     _copyHere(going);
-    _letGoWhere((tile, _) => _noHoldHas(tile));
+    _letGoWhere((key, _) => _noHoldHas(key));
     return true;
   }
 
@@ -714,8 +738,8 @@ final GpuEngine _engine;
   /// first.
   Iterable<({BitmapTile tile, _Slot slot})> get _engineAlone sync* {
     for (final slot in _stored) {
-      final tile = slot.out ? null : slot.tile.target;
-      if (tile != null && tile.isOnlyOnEngine) {
+      final tile = slot.out ? null : slot.onlyOnEngine;
+      if (tile != null) {
         yield (tile: tile, slot: slot);
       }
     }
@@ -886,8 +910,8 @@ final GpuEngine _engine;
     while (_atRest == null && await copyHereABatch()) {}
   }
 
-  bool _noHoldHas(BitmapTile? tile) =>
-      !_holds.any((hold) => hold._tiles.contains(tile));
+  bool _noHoldHas(Object? key) =>
+      !_holds.any((hold) => hold._keys.contains(key));
 
   /// Stores [tiles] in one store and gives each landed its slot; how many
   /// landed, the first of them.
@@ -907,13 +931,13 @@ final GpuEngine _engine;
     _letGoWhere((_, at) => places.contains(at));
   }
 
-  /// Lets go the slot of every tile [goes] names — null for a tile
-  /// collected —, at its place, but one the engine alone holds, which has no
+  /// Lets go the slot of every key [goes] names — null for a key collected
+  /// —, at its place, but a tile's the engine alone holds, which has no
   /// bytes to be stored again from: the ones stored longest ago first and
   /// no more than [most] of them, where given. What is let go is swept out
   /// of [_stored], as far as the walk went.
   void _letGoWhere(
-    bool Function(BitmapTile? tile, GpuTile at) goes, {
+    bool Function(Object? key, GpuTile at) goes, {
     int? most,
   }) {
     var gone = 0;
@@ -924,8 +948,7 @@ final GpuEngine _engine;
       if (slot.out) {
         continue;
       }
-      final tile = slot.tile.target;
-      if ((tile != null && tile.isOnlyOnEngine) || !goes(tile, slot.at)) {
+      if (slot.onlyOnEngine != null || !goes(slot.key.target, slot.at)) {
         _stored[kept++] = slot;
         continue;
       }
@@ -948,10 +971,11 @@ typedef LandedTile = ({GpuChange change, BitmapTile? tile});
 typedef LandedBy =
     List<GpuLanded> Function(GpuPool pool, int cel, List<GpuTileAsk> asked);
 
-/// What a tile has here for as long as it lives: the slot it has now — none
-/// once a full pool, a give-back or [EngineTileLedger.retire] let that go,
-/// till it is stored again. One a tile, made at its first store, and what
-/// its finalizer is handed: attached once, and never detached.
+/// What a key has here for as long as it lives — a tile, or a colour's
+/// block ([BitmapTile.pixelsKey]): the slot it has now — none once a full
+/// pool, a give-back or [EngineTileLedger.retire] let that go, till it is
+/// stored again. One a key, made at its first store, and what its
+/// finalizer is handed: attached once, and never detached.
 ///
 /// ↩️Till 2026-11-15 the finalizer was handed the slot — attached at every
 /// store, the slot its own token, and detached where a full pool let it
@@ -970,25 +994,35 @@ final class _Place {
   _Slot? slot;
 }
 
-/// A slot a tile has here, its tile held weakly: being stored must not keep
-/// a tile alive.
+/// A slot a key has here — a tile, or a colour's block
+/// ([BitmapTile.pixelsKey]) —, its key held weakly: being stored must not
+/// keep a tile, or a colour, alive.
 final class _Slot {
-  _Slot(BitmapTile tile, this.at, this.place) : tile = WeakReference(tile);
+  _Slot(Object key, this.at, this.place) : key = WeakReference(key);
 
-  final WeakReference<BitmapTile> tile;
+  final WeakReference<Object> key;
   final GpuTile at;
 
-  /// Its tile's place, which holds it till it is let go.
+  /// Its key's place, which holds it till it is let go.
   final _Place place;
 
-  /// The tile [tile] landed on — null where it landed on none, or was not
-  /// landed — kept while the engine holds the only copy of [tile]'s pixels:
-  /// what [tile] reads as where a device goes with them
-  /// (`EngineTileLedger._layThePictureUnder`). Let go once [tile]'s bytes
-  /// are here, and with the slot.
+  /// Its tile, where the engine holds the only copy of that tile's pixels
+  /// ([BitmapTile.isOnlyOnEngine]) — null for a tile collected or one whose
+  /// pixels are here, and for a colour's block, whose tiles' pixels are
+  /// here from the start.
+  BitmapTile? get onlyOnEngine => switch (key.target) {
+    final BitmapTile tile when tile.isOnlyOnEngine => tile,
+    _ => null,
+  };
+
+  /// The tile [onlyOnEngine] landed on — null where it landed on none, or
+  /// was not landed — kept while the engine holds the only copy of its
+  /// pixels: what it reads as where a device goes with them
+  /// (`EngineTileLedger._layThePictureUnder`). Let go once its bytes are
+  /// here, and with the slot.
   BitmapTile? under;
 
-  /// Let go already — by its tile's finalizer, a full pool or a give-back.
+  /// Let go already — by its key's finalizer, a full pool or a give-back.
   bool out = false;
 
   /// Asked for by a copy that is still on its way
@@ -1013,9 +1047,9 @@ final class TileHold {
 
   final EngineTileLedger _ledger;
 
-  /// Every tile asked for through this hold — by identity, as `==` reads
-  /// every pixel.
-  final Set<BitmapTile> _tiles = Set<BitmapTile>.identity();
+  /// The key of every tile asked for through this hold
+  /// ([BitmapTile.pixelsKey]) — by identity, as `==` reads every pixel.
+  final Set<Object> _keys = Set<Object>.identity();
 
   bool _open = true;
 

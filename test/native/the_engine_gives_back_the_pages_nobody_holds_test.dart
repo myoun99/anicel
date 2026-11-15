@@ -13,6 +13,7 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 
 import '../helpers/census_where_textures_are_ram.dart';
 import '../helpers/collect_garbage.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// The ledger gives back the engine's pages nobody holds
 /// (pool-pages-given-back): on the memory warning and once a closed
@@ -29,7 +30,6 @@ import '../helpers/collect_garbage.dart';
 void main() {
   const a = (1, 1);
 
-  BitmapTile aTile() => BitmapTile.blank(size: gpuTileSide);
 
   /// [tile] stored in [ledger] and read by its copy, as a closed project's
   /// tiles long are: a store holds its tiles till then (GpuPool.store), and
@@ -49,7 +49,7 @@ void main() {
   /// A ledger whose one tile was stored and collected, its slot let go: a
   /// page made that nobody holds.
   Future<EngineTileLedger> aPageNobodyHolds(EngineTileLedger ledger) async {
-    BitmapTile? tile = aTile();
+    BitmapTile? tile = aTileOfItsOwn();
     await storedAndRead(ledger, tile);
     tile = null;
     await collectGarbageUntil(() => ledger.slotCount == 0);
@@ -66,13 +66,13 @@ void main() {
     ledger.respondToMemoryPressure();
 
     expect(ledger.pool.bytes, 0);
-    ledger.held((hold) => hold.slotsOf(a, [aTile()]));
+    ledger.held((hold) => hold.slotsOf(a, [aTileOfItsOwn()]));
     expect(ledger.pool.bytes, page);
   });
 
   test('a page a tile is held on stays', () {
     final ledger = EngineTileLedger(appGpuEngine);
-    final kept = aTile();
+    final kept = aTileOfItsOwn();
     ledger.held((hold) => hold.slotsOf(a, [kept]));
     final page = ledger.pool.bytes;
 
@@ -98,7 +98,7 @@ void main() {
   test("a collected tile's page goes back before its finalizer runs, and "
       'the finalizer lets nothing go again', () async {
     final ledger = EngineTileLedger(appGpuEngine);
-    BitmapTile? tile = aTile();
+    BitmapTile? tile = aTileOfItsOwn();
     await storedAndRead(ledger, tile);
     tile = null;
 
@@ -109,12 +109,12 @@ void main() {
     expect(ledger.pool.bytes, 0);
     expect(ledger.slotCount, 0);
     // The slot it had, handed out again before its finalizer runs.
-    final kept = aTile();
+    final kept = aTileOfItsOwn();
     ledger.held((hold) => hold.slotsOf(a, [kept]));
     // Bounded: what is waited for must not come.
     await collectGarbageUntil(() => ledger.slotCount != 1, rounds: 3);
     expect(ledger.slotCount, 1, reason: 'its slot went once');
-    final other = aTile();
+    final other = aTileOfItsOwn();
     ledger.held((hold) => hold.slotsOf(a, [other]));
     expect(
       ledger.slotOf(other),
@@ -188,7 +188,7 @@ void main() {
         () async {
       Object? project = Object();
       DrawingEngines.giveBackOnceCollected(project);
-      BitmapTile? tile = aTile();
+      BitmapTile? tile = aTileOfItsOwn();
       await storedAndRead(EngineTileLedger.instance, tile);
       expect(EngineTileLedger.appPoolBytes, isPositive, reason: 'premise');
       // Both through collections first, as a closed project's surfaces and
@@ -209,10 +209,10 @@ void main() {
     /// suspended async body keeps what its frame held, and a tile kept
     /// there would keep its page.
     void storePastHalfAPage(EngineTileLedger ledger, List<BitmapTile> into) {
-      into.add(aTile());
+      into.add(aTileOfItsOwn());
       ledger.held((hold) => hold.slotsOf(a, into));
       final past = ledger.pool.bytes ~/ gpuTileBytes ~/ 2;
-      final rest = [for (var n = 0; n < past; n++) aTile()];
+      final rest = [for (var n = 0; n < past; n++) aTileOfItsOwn()];
       ledger.held((hold) => hold.slotsOf(a, rest));
       into.addAll(rest);
     }

@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../helpers/census_where_textures_are_ram.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// The app's tiles get their slots on the engine through the ledger
 /// (screen-on-the-engine c4): stored inside the call that asks, once a
@@ -56,11 +57,10 @@ void main() {
     },
   );
 
-  /// [count] tiles of nothing, objects of their own: a page's worth fills
-  /// it, as a cel's tiles share one till none has room.
-  List<BitmapTile> blanks(int count) => [
-    for (var tile = 0; tile < count; tile++)
-      BitmapTile.blank(size: gpuTileSide),
+  /// [count] tiles of bytes of their own ([aTileOfItsOwn]), a slot each: a
+  /// page's worth fills it, as a cel's tiles share one till none has room.
+  List<BitmapTile> tilesOfTheirOwn(int count) => [
+    for (var tile = 0; tile < count; tile++) aTileOfItsOwn(),
   ];
 
   /// What a row of [slots] lays back copied over nothing: their bytes, as
@@ -106,6 +106,78 @@ void main() {
       ledger.slotOf(second),
     ]);
     expect(ledger.slotCount, 3, reason: 'asked again, stored once');
+  });
+
+  // 🗣️uniform-tiles-take-a-pool-slot-each (관제 2026-11-16): a tile of one
+  // colour holds its colour's block, and the block is its key — found
+  // unread, as `==` finds two such tiles alike.
+  BitmapTile ofColour(int word) =>
+      BitmapTile.ofOneColour(size: gpuTileSide, word: word);
+
+  test('🚨the tiles of one colour are one slot, holding their bytes — '
+      'another colour one of its own', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final white = ofColour(0xFFFFFFFF);
+    final again = ofColour(0xFFFFFFFF);
+    final clear = ofColour(0x00FFFFFF);
+    expect(identical(white, again), isFalse, reason: 'premise: two tiles');
+
+    ledger.held((hold) {
+      final slots = hold.slotsOf(a, [white, clear, again]);
+
+      expect(slots[2], slots[0]);
+      expect(slots.toSet(), hasLength(2));
+      expect(laidBack(ledger, [slots[0]]), white.pixels);
+    });
+    expect(ledger.slotCount, 2);
+    expect(ledger.held((hold) => hold.slotsOf(b, [ofColour(0xFFFFFFFF)])), [
+      ledger.slotOf(white),
+    ]);
+    expect(ledger.slotCount, 2, reason: 'a third of the colour, the same');
+  });
+
+  test("🚨a tile of one colour retired lets its colour's slot stay — the "
+      'others of it draw on it', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final retired = ofColour(0xFF336699);
+    final drawn = ofColour(0xFF336699);
+    final [slot, _] = ledger.held(
+      (hold) => hold.slotsOf(a, [retired, drawn]),
+    );
+
+    ledger.retire(retired);
+
+    expect(ledger.slotOf(drawn), slot);
+    expect(ledger.slotCount, 1);
+    // A tile of its own retired lets its own go, as ever.
+    final own = aTileOfItsOwn();
+    ledger.held((hold) => hold.slotsOf(a, [own]));
+    ledger.retire(own);
+    expect(ledger.slotOf(own), isNull);
+    expect(ledger.slotCount, 1);
+  });
+
+  test('🚨a full pool lets go no colour a hold has, through whichever tile '
+      'of it', () {
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      byteBudget: 0,
+      roomBatch: 1,
+    );
+    final first = ofColour(0xFF808080);
+    ledger.held((hold) => hold.slotsOf(a, [first]));
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = tilesOfTheirOwn(slots - 1);
+    ledger.held((hold) => hold.slotsOf(a, rest));
+
+    ledger.held((hold) {
+      hold.slotsOf(a, [ofColour(0xFF808080)]);
+      hold.slotsOf(b, tilesOfTheirOwn(1));
+    });
+
+    expect(ledger.slotOf(first), isNotNull, reason: 'a hold had its colour');
+    expect(ledger.slotOf(rest[0]), isNull, reason: 'the next oldest went');
+    expect(ledger.pool.bytes, slots * gpuTileBytes, reason: 'room, no page');
   });
 
   test('a stroke on a surface of another grid is refused — the engine\'s '
@@ -167,7 +239,7 @@ void main() {
     final page = ledger.pool.bytes;
     expect(ledger.slotOf(one), isNotNull, reason: 'a call is never refused');
     expect(page, greaterThan(0));
-    final rest = blanks(page ~/ gpuTileBytes - 1);
+    final rest = tilesOfTheirOwn(page ~/ gpuTileBytes - 1);
     ledger.held((hold) => hold.slotsOf(a, rest));
     expect(ledger.pool.bytes, page, reason: 'the page has room for them');
 
@@ -206,10 +278,10 @@ void main() {
     final first = tileOf(12);
     ledger.held((hold) => hold.slotsOf(a, [first]));
     final slots = ledger.pool.bytes ~/ gpuTileBytes;
-    final rest = blanks(slots - 1);
+    final rest = tilesOfTheirOwn(slots - 1);
     ledger.held((hold) => hold.slotsOf(a, rest));
 
-    ledger.held((hold) => hold.slotsOf(b, blanks(3)));
+    ledger.held((hold) => hold.slotsOf(b, tilesOfTheirOwn(3)));
 
     expect(ledger.pool.bytes, slots * gpuTileBytes, reason: 'room, no page');
     expect(
@@ -227,14 +299,14 @@ void main() {
     // The one stored longest ago is a hold's: the next after it goes.
     ledger.held((hold) {
       hold.slotsOf(a, [rest[2]]);
-      hold.slotsOf(c, blanks(1));
+      hold.slotsOf(c, tilesOfTheirOwn(1));
     });
     expect(ledger.slotOf(rest[2]), isNotNull, reason: 'a hold had it');
     expect(ledger.slotOf(rest[3]), isNull);
     expect(ledger.slotOf(rest[4]), isNotNull);
 
     // Passed over, it is still the one stored longest ago.
-    ledger.held((hold) => hold.slotsOf(c, blanks(1)));
+    ledger.held((hold) => hold.slotsOf(c, tilesOfTheirOwn(1)));
     expect(ledger.slotOf(rest[2]), isNull, reason: 'no hold has it now');
     expect(ledger.slotOf(rest[4]), isNotNull);
     expect(ledger.pool.bytes, slots * gpuTileBytes);
@@ -323,7 +395,7 @@ void main() {
     expect(theirs.every((tile) => tile.isOnlyOnEngine), isTrue);
     expect(ledger.slotCount, theirs.length + 1);
 
-    final rest = blanks(page ~/ gpuTileBytes - 1);
+    final rest = tilesOfTheirOwn(page ~/ gpuTileBytes - 1);
     ledger.held((hold) => hold.slotsOf(c, rest));
     expect(ledger.pool.bytes, 2 * page, reason: 'the page has room for them');
     expect(
@@ -568,7 +640,7 @@ void main() {
     ledger.held((hold) => hold.slotsOf(a, [one]));
     final slots = ledger.pool.bytes ~/ gpuTileBytes;
     expect(slots, EngineTileLedger.roomBatch, reason: 'the premise: a page');
-    final rest = blanks(slots - 1);
+    final rest = tilesOfTheirOwn(slots - 1);
     ledger.held((hold) => hold.slotsOf(a, rest));
     ledger.held((hold) => hold.slotsOf(b, [two]));
     final made = ledger.pool.bytes;
@@ -577,7 +649,7 @@ void main() {
 
     ledger.byteBudget = 0;
     // One more than the second page has room for.
-    final last = blanks(slots);
+    final last = tilesOfTheirOwn(slots);
     ledger.held((hold) => hold.slotsOf(c, last));
 
     expect(ledger.byteBudget, 0);
