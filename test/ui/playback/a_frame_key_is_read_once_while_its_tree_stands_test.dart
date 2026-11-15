@@ -267,6 +267,35 @@ void main() {
     expect(after, isNot(before), reason: 'a is drawn no more');
   });
 
+  // The making notes such a cel as drawing nothing, with no revision and
+  // no content of the store moved: only that note says it is no part of
+  // the frame.
+  testWidgets('🚨a cel the making found recorded at another canvas size is '
+      'read anew — and the key leaves it out', (tester) async {
+    await tester.runAsync(() async {
+      final cut = Cut(
+        id: const CutId('c'),
+        name: 'c',
+        duration: 4,
+        canvasSize: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
+        layers: const [],
+      );
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final before = pictures.keyOf(at(cut, 0));
+      final moved = (cels.revisionsMoved, cels.celContentRevision.value);
+
+      expect(await pictures.make(at(cut, 0), shouldAbort: () => false), isTrue);
+      expect(
+        (cels.revisionsMoved, cels.celContentRevision.value),
+        moved,
+        reason: '⛔premise',
+      );
+      final after = pictures.keyOf(at(cut, 0));
+
+      expect(after, isNot(before), reason: 'a is no part of it');
+    });
+  });
+
   test('LIVENESS — a stamp that is never the same stacks the frame at every '
       'asking, as the rig did before it said one', () {
     final cut = aCut();
