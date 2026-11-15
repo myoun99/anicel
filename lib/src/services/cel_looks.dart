@@ -72,8 +72,10 @@ class CelLooks {
 
   /// The bytes this and [frames] — the frames reading ahead through it, by
   /// what each holds ([LooksAhead]) — hold BESIDE the store: a surface
-  /// once, however many of them hold it, and none the store holds hot,
-  /// which is in the store's own count ([BrushFrameStore.hotBakedBytes]).
+  /// once, however many of them hold it, by what it keeps as the store
+  /// weighs a hot one ([BitmapSurface.keptTileBytes]), and none the store
+  /// holds hot, which is in the store's own count
+  /// ([BrushFrameStore.hotBakedBytes]).
   int bytesBesideTheStore(Iterable<LooksAhead> frames) {
     final weighed = Set<BitmapSurface>.identity();
     var bytes = 0;
@@ -86,7 +88,7 @@ class CelLooks {
         if (surface != null &&
             !identical(store.hotBakedSurfaceOrNull(looked.cel), surface) &&
             weighed.add(surface)) {
-          bytes += surface.tiles.length * surface.tileBytes;
+          bytes += surface.keptTileBytes;
         }
       }
     }

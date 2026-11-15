@@ -80,8 +80,13 @@ void main() {
     expect(looked, hasLength(1), reason: '⛔premise: the frame draws the cel');
     expect(store.hotBakedBytes, 0, reason: 'a look keeps nothing hot');
     expect(
+      ownBytesOf(looked.single.tiles.values),
+      greaterThan(0),
+      reason: '⛔premise: the cel owns its tiles — none of one colour',
+    );
+    expect(
       drawingsRow(),
-      before + looked.single.tiles.length * looked.single.tileBytes,
+      before + ownBytesOf(looked.single.tiles.values),
     );
 
     pictures.rest();
