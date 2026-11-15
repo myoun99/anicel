@@ -52,6 +52,17 @@ void main() {
   /// before it was cut: the coverage box grown by all the finish reaches,
   /// and the engine's finish — the expand's generations, then the soften —
   /// over all of it, in one part.
+  ///
+  /// ⚠️NOT A PIN OF THE ARITHMETIC (관제 2026-11-15, board
+  /// `an-areas-finish-is-a-second-spelling-of-the-floods`): the sheet and
+  /// the pieces are both the engine's finish, so a sum that is wrong is
+  /// wrong in both and they agree still — what is asked here is that parts
+  /// cut and laid are the whole, with no seam. The sums are pinned a layer
+  /// down, and this reference stands on them: the values counted by hand
+  /// (`kernels/flood/tests.rs` — 36 · 109 · 146 · 182) and the bytes a
+  /// bucket lays being an area's
+  /// (`an_area_is_finished_as_the_bucket_is_test.dart`). ⛔Neither is a pin
+  /// said twice: take one away and this reference holds nothing up.
   ({int left, int top, int width, int height, Uint8List mask}) sheetOf(
     CanvasSelectionRegion region,
     FloodFillOptions options,
