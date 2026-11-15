@@ -518,7 +518,7 @@ class ProjectFile {
   /// holds its movie for the session, so a save that had to write whole
   /// went to the failed copy for as long as the row was there (card
   /// `rewrite-under-offset-readers`). The session's own cel handle already
-  /// lets go first ([AnicelFileService.renameWithRetry]); this is the same
+  /// lets go first ([AnicelFileService.replaceWithRetry]); this is the same
   /// for the readers, told [HeldBytesMove.replacing] — and each opens again
   /// once the save has ended, because the next hold waits for it
   /// ([holdMediaBytes]).

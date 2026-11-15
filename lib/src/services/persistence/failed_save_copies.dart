@@ -48,7 +48,7 @@ final class FailedSaveCopies {
       await Isolate.run(() {
         File(copyPath).copySync(neighbour);
       });
-      AnicelFileService.renameWithRetry(File(neighbour), destination);
+      await AnicelFileService.replaceWithRetry(File(neighbour), destination);
     } on Object {
       try {
         File(neighbour).deleteSync();

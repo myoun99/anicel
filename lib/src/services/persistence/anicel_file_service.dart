@@ -26,6 +26,7 @@ import 'save_failure.dart' show SaveNotSwappedIn;
 import 'save_stretch.dart';
 import 'scratch_file.dart';
 import 'session_scratch.dart';
+import 'worker_file_reads.dart';
 import '../media/media_moves.dart';
 import 'anicel_project_archive.dart';
 
@@ -542,7 +543,7 @@ class AnicelFileService {
     /// unaffected: it wrote into [filePath] and there is nothing to swap.
     ///
     /// Why a callback and not a return: the swap is synchronous below for a
-    /// reason ([renameWithRetry] — the refs carry the OLD layout until the
+    /// reason ([replaceWithRetry] — the refs carry the OLD layout until the
     /// caller adopts), and a coordinated replace is a channel call that
     /// cannot be. So the caller takes the swap, and with it the shape the
     /// staging road already had: adopt the temp, replace, repoint.
@@ -552,7 +553,7 @@ class AnicelFileService {
     /// readers holding that file open let go of it
     /// (`ProjectFile.readersLetGoOf`) — Windows refuses a rename onto a file
     /// anything in this process holds open. The session's own cel handle is
-    /// [renameWithRetry]'s to let go; the media readers are the session's.
+    /// [replaceWithRetry]'s to let go; the media readers are the session's.
     Future<void> Function()? beforeReplacing,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
@@ -1490,9 +1491,10 @@ class AnicelFileService {
     // awaited here, before the swap, where the refs still read the old file
     // in its place; nothing may wait between the swap and the adopt below.
     await beforeReplacing?.call();
-    // SYNC rename: existing refs into the replaced file carry offsets of
-    // the OLD layout, so no event may run between the swap and the
-    // caller's adoptSavedFile — sync-to-return is microtask-tight.
+    // The rename itself is SYNC, run the moment no worker reads the file
+    // ([replaceWithRetry]): existing refs into the replaced file carry
+    // offsets of the OLD layout, so no event may run between the swap and
+    // the caller's adoptSavedFile — swap-to-return is microtask-tight.
     //
     // Retried on failure: the moment after a file changes is exactly when
     // a sync client, indexer or AV holds it — and cloud-synced folders are
@@ -1503,7 +1505,7 @@ class AnicelFileService {
     // only then lets the temp go (유저 2026-09-23, whole-write-temp-beside-
     // the-file: 「실패 시 앱 룸으로 옮겨 보관」, never beside the file).
     try {
-      renameWithRetry(temp, filePath);
+      await replaceWithRetry(temp, filePath);
     } on FileSystemException catch (error) {
       throw SaveNotSwappedIn(archive: tempPath, error: error);
     }
@@ -1511,11 +1513,30 @@ class AnicelFileService {
     return refs;
   }
 
+  /// [temp] put in [filePath]'s place ([_renameWithRetry]) once no worker
+  /// reads [filePath] — the ONE door a file is replaced by a rename
+  /// through.
+  ///
+  /// 🚨★★★A WORKER THAT READS A KEPT CEL HOLDS THE FILE OPEN WHILE IT DOES
+  /// ([WorkerFileReads], card a-thawed-cel-is-adopted-on-the-ui-thread),
+  /// and that handle is this process's as the session's is: Windows
+  /// refuses the rename under it. ⛔Not left to the retry below — its
+  /// sleeps would outlast one read, and a frame's rows thawing one after
+  /// another could hold a handle at every attempt; then the save fails
+  /// and blames a sync client. So the reads in flight end first, none
+  /// begins meanwhile, and the rename runs with nothing between
+  /// ([WorkerFileReads.replacing]).
+  static Future<void> replaceWithRetry(File temp, String filePath) =>
+      WorkerFileReads.replacing(
+        filePath,
+        () => _renameWithRetry(temp, filePath),
+      );
+
   /// [temp] onto [filePath], absorbing the moment-after-write lock a sync
   /// client or scanner can hold on the destination. Bounded: this blocks
   /// the UI isolate on purpose (the swap must stay microtask-tight), so
   /// the worst case is a beat, not a hang.
-  static void renameWithRetry(File temp, String filePath) {
+  static void _renameWithRetry(File temp, String filePath) {
     // 🚨★★★**OUR OWN HANDLE FIRST, OR THE RETRY BELOW IS RETRYING US.**
     // The session holds the project file open so the user cannot delete the
     // cold tier out from under it ([OpenProjectFile]) — and renaming ONTO a
