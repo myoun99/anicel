@@ -24,7 +24,8 @@ import 'package:gpu_engine/gpu_engine.dart';
 ///
 /// Laid as the frame a canvas stands on to draw is — what its steps make
 /// kept on the cel — or, [ofThePensFrame] false, as a frame made ahead is
-/// (`PlanPlugins`).
+/// (`PlanPlugins`). Its tiles lie on the engine through
+/// [ledger], one of its own where it is given none.
 ///
 /// The one way a test lays a row on the engine, a plug-in on it or not.
 /// ↩️`aRowLaidThroughItsPlugins` while a row without one was laid through
@@ -39,9 +40,9 @@ Future<Uint8List> aRowLaidOnTheEngine(
   void Function()? recorded,
   void Function(bool waits)? waitsForKernels,
   bool ofThePensFrame = true,
+  EngineTileLedger? ledger,
 }) async {
-  final ledger = EngineTileLedger(appGpuEngine);
-  addTearDown(ledger.pool.free);
+  final tiles = _ledgerOf(ledger);
   late Uint8List pixels;
   await FxPluginStages.recordedThrough<void>(
     () {
@@ -58,7 +59,7 @@ Future<Uint8List> aRowLaidOnTheEngine(
             engine: appGpuEngine,
             ofThePensFrame: ofThePensFrame,
           ),
-          ledger: ledger,
+          ledger: tiles,
         );
       } finally {
         recorded?.call();
@@ -85,10 +86,7 @@ Uint8List aRowLaidOnce(
   EngineTileLedger? ledger,
 }) {
   final canvas = surface.canvasSize;
-  final tiles = ledger ?? EngineTileLedger(appGpuEngine);
-  if (ledger == null) {
-    addTearDown(tiles.pool.free);
-  }
+  final tiles = _ledgerOf(ledger);
   return tiles.held((hold) {
     final plan = GpuPlan(appGpuEngine);
     try {
@@ -125,4 +123,15 @@ Uint8List aRowLaidOnce(
       plan.free();
     }
   });
+}
+
+/// [given], or a ledger of the test's own on the app's engine, its pool
+/// freed with the test.
+EngineTileLedger _ledgerOf(EngineTileLedger? given) {
+  if (given != null) {
+    return given;
+  }
+  final own = EngineTileLedger(appGpuEngine);
+  addTearDown(own.pool.free);
+  return own;
 }

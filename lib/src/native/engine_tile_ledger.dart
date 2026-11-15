@@ -348,6 +348,37 @@ final GpuEngine _engine;
     ];
   });
 
+  /// Every tile of [rect] — a rectangle of tiles on the canvas's grid: its
+  /// first tile's column and row, and how many columns and rows it spans —
+  /// landed by [by] on the pages of what lands ([landedCel]), each a tile
+  /// where it lies: a picture the engine made whole over its rectangle,
+  /// landed as it lies on the device — the letters' plate
+  /// (`EngineLetters`), what a plug-in's step made (`GpuFxPlugin`).
+  ///
+  /// ⚠️One at the second, not the third (캔버스 베이스 2026-11-15): the
+  /// plug-in's landing spelled the plate's steps token for token, and all
+  /// that differs between the two is what [land] takes already ([by]) —
+  /// nothing to reconcile and no flag to invent, so the clone ratchet read
+  /// the pair as what it was (`one_algorithm_one_place_test`). The engine's
+  /// two doors stay two: each lands a thing of its own (`GpuLettered.land` ·
+  /// `GpuPluginMade.land`).
+  Map<TileCoord, BitmapTile> landWhole(
+    ({int x0, int y0, int columns, int rows}) rect, {
+    required LandedBy by,
+  }) {
+    final (:x0, :y0, :columns, :rows) = rect;
+    final asks = <TileAsk>[
+      for (var down = 0; down < rows; down++)
+        for (var across = 0; across < columns; across++)
+          (column: x0 + across, row: y0 + down, under: null),
+    ];
+    final landed = land(landedCel, asks, by: by);
+    return {
+      for (final (at, (:column, :row, under: _)) in asks.indexed)
+        TileCoord(x: column, y: row): landed[at].tile!,
+    };
+  }
+
   /// Lets [slot] go, once: its tile's finalizer and a walk that found the
   /// tile collected first both come to it.
   void _letGo(_Slot slot) {

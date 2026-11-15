@@ -4779,10 +4779,15 @@ class GpuPlugin {
   final GpuEngine _engine;
   final Pointer<rust.Plugin> _plugin;
 
-  /// It as any isolate runs it ([GpuPluginRenderer]) — for as long as it
-  /// is not freed.
-  GpuPluginRenderer get renderer =>
-      GpuPluginRenderer._(_plugin.address, _engine._engine.address);
+  /// It as any isolate runs it over [read] ([GpuPluginRenderer]) — for as
+  /// long as neither is freed. Refused where another engine made [read]
+  /// ([_OfAnEngine]): the worker's job names both by their addresses, and
+  /// this is where they are asked of the engine it is on.
+  GpuPluginRenderer rendererOver(GpuChainRead read) => GpuPluginRenderer._(
+    _plugin.address,
+    _engine._engine.address,
+    _engine._its(read)._read.address,
+  );
 
   /// What [run] of it made ([GpuPluginRenderer.renderRead]), taken in hand
   /// on the isolate that lands it.
@@ -4833,28 +4838,29 @@ class GpuPlugin {
   void free() => rust.pluginFree(_plugin);
 }
 
-/// A [GpuPlugin] as any isolate runs it: plain numbers, the plugin's
-/// address and its engine's, so it crosses to a worker — where the waits
-/// of a run are that worker's, not the asker's ([debugWaitsHere]).
+/// A [GpuPlugin] as any isolate runs it over what a chain kept for it
+/// ([GpuPlugin.rendererOver]): plain numbers, the plugin's address, its
+/// engine's and the read's, so it crosses to a worker — where the waits of
+/// a run are that worker's, not the asker's ([debugWaitsHere]).
 final class GpuPluginRenderer {
-  const GpuPluginRenderer._(this._plugin, this._engine);
+  const GpuPluginRenderer._(this._plugin, this._engine, this._read);
 
   final int _plugin;
   final int _engine;
+  final int _read;
 
-  /// The plugin's picture over what [read] kept of a chain — its tiles,
+  /// The plugin's picture over what its read kept of a chain — its tiles,
   /// and its rows' as the layers its layer values name, by slot — at
   /// [picture], its place in the plug-in's pixels (the paper's), which lie
   /// [at] from the tiles' grid; with [asked], each pixel spending no more
   /// than [share]: the chain's rectangle of tiles on the device, clear
   /// past the picture and wherever its alpha is 0 — for the isolate that
   /// lands it ([GpuPlugin.made]) — or why not thrown: a value past what
-  /// the plugin reads, a side below 0, no plan ran through [read], the run
-  /// cut, or the device failed. A plugin opened not to be cut runs whole,
-  /// in chunks sized as [share]'s are. ⚠️Waits for the GPU, a chunk at a
-  /// time.
+  /// the plugin reads, a side below 0, no plan ran through the read, the
+  /// run cut, or the device failed. A plugin opened not to be cut runs
+  /// whole, in chunks sized as [share]'s are. ⚠️Waits for the GPU, a chunk
+  /// at a time.
   GpuPluginRun renderRead(
-    GpuChainReader read,
     ({int left, int top, int width, int height}) picture,
     (int, int) at,
     GpuPluginAsked asked, {
@@ -4870,7 +4876,7 @@ final class GpuPluginRenderer {
     final made = rust.pluginRenderRead(
       Pointer.fromAddress(_plugin),
       Pointer.fromAddress(_engine),
-      Pointer.fromAddress(read._read),
+      Pointer.fromAddress(_read),
       place,
       shift,
       _doubles(arena, asked.values),
@@ -4910,6 +4916,10 @@ class GpuPluginMade {
   final GpuEngine _engine;
   final Pointer<rust.PluginMade> _made;
   final ({int x0, int y0, int columns, int rows}) rect;
+
+  /// The engine that made it — what the app asks before it lands it
+  /// (`isTheAppsEngine`): what an engine the app let go made lands nowhere.
+  GpuEngine get engine => _engine;
 
   /// Puts each of its tiles [asks] names — by their column and row on the
   /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing

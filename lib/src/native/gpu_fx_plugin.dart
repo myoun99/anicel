@@ -8,7 +8,6 @@ import '../models/app_gpu_settings.dart';
 import '../models/effect_parameter_spec.dart';
 import '../models/fx_plugin_description.dart';
 import '../models/fx_plugin_run.dart';
-import '../models/tile_coord.dart';
 import 'app_gpu_engine.dart';
 import 'engine_tile_ledger.dart';
 import 'plan_plugins.dart' show EngineFxPluginInput;
@@ -141,11 +140,9 @@ final class GpuFxPlugin implements FxPluginRunner {
     // engine holds its tiles.
     final EngineFxPluginInput(:read, :picture, :paperOnTheGrid) =
         input as EngineFxPluginInput;
-    final engine = appGpuEngineOpen.value;
     _running += 1;
     try {
-      final run = await _renderedOnAWorker(plugin.renderer, (
-        read: read.reader,
+      final run = await _renderedOnAWorker(plugin.rendererOver(read), (
         picture: picture,
         at: paperOnTheGrid,
         asked: _asked(values, moment),
@@ -155,11 +152,13 @@ final class GpuFxPlugin implements FxPluginRunner {
         return null;
       }
       final made = plugin.made(run);
-      // ⚠️Asked of the engine too, as the screen's texture is: what a run
-      // made on an engine the app let go meanwhile lands nowhere — the
-      // next one's pool is not its (a-lost-gpu-device-keeps-the-unsaved-
-      // tiles (C3) ④).
-      if (!identical(engine, appGpuEngineOpen.value)) {
+      // ⚠️What a run made on an engine the app let go meanwhile lands
+      // nowhere — the next one's pool is not its
+      // (a-lost-gpu-device-keeps-the-unsaved-tiles (C3) ④). Asked of the
+      // engine that made it ([isTheAppsEngine]) — ⛔not of
+      // [appGpuEngineOpen], which says nothing of an engine opened without
+      // a word ([appGpuEngine]): none before, none after, and so the same.
+      if (!isTheAppsEngine(made.engine)) {
         made.free();
         return null;
       }
@@ -198,12 +197,11 @@ final class GpuFxPlugin implements FxPluginRunner {
   bool get debugLetGo => _letGo;
 }
 
-/// What a run of a plugin is asked with: what the chain kept for it, its
-/// picture's place in the plug-in's pixels and theirs on the tiles' grid,
-/// its values and moment, and each pixel's share — plain values, as a
-/// worker is handed them.
+/// What a run of a plugin is asked with: its picture's place in the
+/// plug-in's pixels and theirs on the tiles' grid, its values and moment,
+/// and each pixel's share — plain values, as a worker is handed them. What
+/// the chain kept for it the renderer holds ([GpuPlugin.rendererOver]).
 typedef _Run = ({
-  GpuChainReader read,
   ({int left, int top, int width, int height}) picture,
   (int, int) at,
   GpuPluginAsked asked,
@@ -219,7 +217,6 @@ Future<GpuPluginRun?> _renderedOnAWorker(
 ) => onAWorker(() {
   try {
     return renderer.renderRead(
-      run.read,
       run.picture,
       run.at,
       run.asked,
@@ -231,28 +228,11 @@ Future<GpuPluginRun?> _renderedOnAWorker(
 });
 
 /// Each tile of [made] in a slot of the engine's pool, by where it lies on
-/// the canvas's grid — [made] let go of once they are.
-///
-/// ⚠️`EngineLetters._plateOf` lands a plate's tiles by the same steps: the
-/// second picture landed whole over its rectangle — a third makes the
-/// three one (rule of three), as [GpuPluginMade.land] says of the engine's.
+/// the canvas's grid ([EngineTileLedger.landWhole]) — [made] let go of once
+/// they are.
 FxPluginTiles _landed(GpuPluginMade made) {
   try {
-    final (:x0, :y0, :columns, :rows) = made.rect;
-    final asks = <TileAsk>[
-      for (var down = 0; down < rows; down++)
-        for (var across = 0; across < columns; across++)
-          (column: x0 + across, row: y0 + down, under: null),
-    ];
-    final landed = EngineTileLedger.instance.land(
-      EngineTileLedger.landedCel,
-      asks,
-      by: made.land,
-    );
-    return {
-      for (final (at, (:column, :row, under: _)) in asks.indexed)
-        TileCoord(x: column, y: row): landed[at].tile!,
-    };
+    return EngineTileLedger.instance.landWhole(made.rect, by: made.land);
   } finally {
     made.free();
   }

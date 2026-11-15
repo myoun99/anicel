@@ -134,23 +134,11 @@ class EngineLetters {
       }
       try {
         final (:x0, :y0, :columns, :rows) = lettered.rect;
-        // ⚠️What a plug-in's step made lands by the same steps
-        // (gpu_fx_plugin.dart's `_landed`) — a third makes the three one.
-        final asks = <TileAsk>[
-          for (var down = 0; down < rows; down++)
-            for (var across = 0; across < columns; across++)
-              (column: x0 + across, row: y0 + down, under: null),
-        ];
-        final landed = EngineTileLedger.instance.land(
-          EngineTileLedger.landedCel,
-          asks,
-          by: lettered.land,
-        );
         return on(
-          tiles: {
-            for (final (at, (:column, :row, under: _)) in asks.indexed)
-              TileCoord(x: column, y: row): landed[at].tile!,
-          },
+          tiles: EngineTileLedger.instance.landWhole(
+            lettered.rect,
+            by: lettered.land,
+          ),
           // A picture laid, kept whole wherever its letters stand — as the
           // walk's plate is, which no pasteboard cuts.
           laid: DirtyRegion(

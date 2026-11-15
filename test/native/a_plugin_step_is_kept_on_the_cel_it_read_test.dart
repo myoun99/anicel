@@ -59,14 +59,20 @@ void main() {
   test("what a step kept lies in the engine's pool: a slot a tile it "
       'made', () async {
     final cel = oneTile((3, 3), const [200, 10, 10, 255]);
-    final before = EngineTileLedger.instance.slotCount;
+    final ledger = EngineTileLedger(appGpuEngine);
+    addTearDown(ledger.pool.free);
+    expect(ledger.slotCount, 0, reason: '⛔premise: a ledger of no tile');
 
-    await aRowLaidOnTheEngine(composite, letters, cel, [
-      through(ShiftingFxPlugin(by: 0)),
-    ]);
+    await aRowLaidOnTheEngine(
+      composite,
+      letters,
+      cel,
+      [through(ShiftingFxPlugin(by: 0))],
+      ledger: ledger,
+    );
 
     expect(
-      EngineTileLedger.instance.slotCount - before,
+      ledger.slotCount,
       2,
       reason: "the cel's one tile, and the one its step made",
     );
