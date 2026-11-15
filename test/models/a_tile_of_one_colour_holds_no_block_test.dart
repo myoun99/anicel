@@ -62,6 +62,36 @@ void main() {
       }
     });
 
+    test('🚨an odd number of pixels: they are asked two at a time, and the '
+        'last one alone', () {
+      Uint8List pixels(int count) {
+        final bytes = Uint8List(count * 4);
+        for (var at = 0; at < bytes.length; at += 1) {
+          bytes[at] = opaqueRed[at % 4];
+        }
+        return bytes;
+      }
+
+      for (final count in [1, 3, 5]) {
+        expect(
+          oneWordOf(pixels(count)),
+          oneWordOf(filled(opaqueRed)),
+          reason: '$count pixels of one colour',
+        );
+        for (var pixel = 1; pixel < count; pixel += 1) {
+          for (var channel = 0; channel < 4; channel += 1) {
+            final bytes = pixels(count);
+            bytes[pixel * 4 + channel] ^= 1;
+            expect(
+              oneWordOf(bytes),
+              isNull,
+              reason: '$count pixels, pixel $pixel, byte $channel',
+            );
+          }
+        }
+      }
+    });
+
     test('none of no pixel at all', () {
       expect(oneWordOf(Uint8List(0)), isNull);
     });

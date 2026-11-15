@@ -69,18 +69,28 @@ abstract interface class TilePixelsOnEngine {
 /// read is in place of the block it would have copied them into.
 ///
 /// Through a [ByteData] because [pixels] may lie anywhere in a file's
-/// payload, not on a word's edge.
+/// payload, not on a word's edge — and two pixels at a time, against the
+/// word twice over: 🔬a tile of 128² that is one colour answers in 6.7 µs
+/// so, 13.5 µs a pixel at a time (2026-11-15, the Surface, compiled ahead;
+/// copying it was 2.4). A last odd pixel is asked alone.
 int? oneWordOf(Uint8List pixels) {
   if (pixels.length < BitmapTile.bytesPerPixel) {
     return null;
   }
   final words = ByteData.sublistView(pixels);
   final first = words.getUint32(0, Endian.host);
-  for (
-    var at = BitmapTile.bytesPerPixel;
-    at < pixels.length;
-    at += BitmapTile.bytesPerPixel
-  ) {
+  // The word in both halves, so which half a machine reads first is all
+  // one.
+  final twice = (first << 32) | first;
+  const pair = BitmapTile.bytesPerPixel * 2;
+  final pairsEnd = pixels.length - pixels.length % pair;
+  var at = 0;
+  for (; at < pairsEnd; at += pair) {
+    if (words.getInt64(at, Endian.host) != twice) {
+      return null;
+    }
+  }
+  for (; at < pixels.length; at += BitmapTile.bytesPerPixel) {
     if (words.getUint32(at, Endian.host) != first) {
       return null;
     }
