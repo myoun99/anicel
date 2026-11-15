@@ -272,9 +272,9 @@ class CanvasSelectionLayer extends StatefulWidget {
 
   /// The line Shift holds past a stroke ([ShiftLine], I-121), the drawing
   /// view's own: a lasso pressed under the same hold starts on it and goes
-  /// along it. Its owner hears the keyboard let go of it; this layer says,
-  /// at a drag's press and as the modifier finger lifts, whether Shift is
-  /// held now. Null — each lasso's Shift is its own.
+  /// along it. Between drags the line asks for itself whether Shift is
+  /// still held, as its owner has it ask; this layer says so at a drag's
+  /// press and at each point of it. Null — each lasso's Shift is its own.
   final ShiftLine? shiftLine;
 
   final CanvasSelectionCommands? selectionCommands;

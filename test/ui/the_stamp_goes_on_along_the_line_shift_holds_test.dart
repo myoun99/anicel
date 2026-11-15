@@ -6,10 +6,12 @@ import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -207,12 +209,15 @@ void main() {
     });
   }
 
-  testWidgets('🚨Shift pressed anew between them is a new hold: the press '
-      'stamps where it is', (tester) async {
+  // A hand's release lasts longer than the line's question takes to come
+  // round (`ShiftLine`): time passes between the two.
+  testWidgets('🚨let go and pressed again between them is a new hold: the '
+      'press stamps where it is', (tester) async {
     await pumpStamp(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await alongTheDiagonal(tester);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump(const Duration(milliseconds: 20));
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await stampAlong(tester, const [Offset(100, 120)]);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
@@ -220,6 +225,36 @@ void main() {
     final box = ink();
     expect(box.bottomExclusive, inInclusiveRange(120, 123));
     expect(box.rightExclusive, inInclusiveRange(100, 103));
+  });
+
+  // 🗣️F-592 (유저 2026-11-15): 「쉬프트 누른채로 다음 선 그릴때 가까워야만?
+  // 빨라야만? 같은스냅으로 선 그려지는데 그게 아니라 … 어디에 뭘 어떻게
+  // 그리던 거기에 스냅이된단거임. 이상한 규칙 만들지말고」 — on Windows a pen
+  // hovering lets Shift go in the engine's record with the key still down,
+  // and the key's own repeat then comes as a key-down like any other, some
+  // thirty times a second (`ShiftLine`). Windows holds Shift all along: so
+  // does the panel's line.
+  testWidgets('🚨held, the next press stamps on the line however long after, '
+      'whatever the keyboard said of Shift meanwhile', (tester) async {
+    ModifierKeys.debugWindowsKeyDown = (key) => key == vkShift;
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+    await pumpStamp(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await alongTheDiagonal(tester);
+    for (var repeat = 0; repeat < 3; repeat += 1) {
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump(const Duration(milliseconds: 30));
+    }
+    // (100, 120) falls across y = x at (110, 110).
+    await stampAlong(tester, const [Offset(100, 120)]);
+    ModifierKeys.debugWindowsKeyDown = null;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    final box = ink();
+    expect(box.rightExclusive, inInclusiveRange(110, 113));
+    expect(box.bottomExclusive, inInclusiveRange(110, 113));
   });
 
   testWidgets('what the lock still held when the hand lifted is stamped', (
@@ -388,8 +423,9 @@ void main() {
       expect(ink().bottomExclusive, inInclusiveRange(110, 113));
     });
 
-    // Lifting it is letting the key go, and the panel — the line's owner —
-    // hears it from the count ([CanvasTouchContacts]).
+    // Lifting it is letting the key go: the one question the panel's line
+    // asks counts the fingers on the glass with the key
+    // ([CanvasTouchContacts.shiftIsHeld]).
     testWidgets('🚨lifted and laid down again, it is a new hold: the press '
         'stamps where it is', (tester) async {
       fingers(shift: true, draw: false);
@@ -401,6 +437,7 @@ void main() {
         Offset(62, 60),
       ], kind: PointerDeviceKind.stylus);
       await lift(tester, first);
+      await tester.pump(const Duration(milliseconds: 20));
       final again = await rest(tester, pointer: 10);
       await stampAlong(tester, const [
         Offset(100, 120),

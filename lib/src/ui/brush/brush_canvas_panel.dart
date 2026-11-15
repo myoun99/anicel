@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
 import '../canvas/stroke_in_flight.dart';
@@ -2746,33 +2745,25 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// The line Shift holds on this canvas (I-121) — ONE for every path the
   /// hand draws here, the stroke's, the lasso's and the stamp's, so a line
-  /// a hold kept goes on whichever of them draws next. The panel hears the
-  /// keyboard for it, for its life ([ShiftLine.heardKey]), and the glass
-  /// ([_heardAFingerLift]).
-  final ShiftLine _shiftLine = ShiftLine();
-
-  /// A finger left the glass: the line goes unless Shift is still held —
-  /// by the key, or by a finger still resting
-  /// ([CanvasTouchContacts.aFingerDownBesides]).
-  void _heardAFingerLift() => _shiftLine.heldNow(
-    ModifierKeys.isShiftPressed || CanvasTouchContacts.aFingerDownBesides(null),
+  /// a hold kept goes on whichever of them draws next. It asks whether
+  /// Shift is still held, by the key or by a finger resting on the glass
+  /// ([CanvasTouchContacts.shiftIsHeld]), for as long as it keeps one
+  /// (F-592), and goes with the panel ([_stopHearingTheHand]).
+  final ShiftLine _shiftLine = ShiftLine(
+    held: CanvasTouchContacts.shiftIsHeld,
   );
 
   /// The hand as the app hears it beyond this canvas, for the panel's life:
-  /// a finger landing anywhere, and the key and the glass that say whether
-  /// Shift still holds [_shiftLine].
+  /// a finger landing anywhere.
   void _hearTheHand() {
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
     CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
-    HardwareKeyboard.instance.addHandler(_shiftLine.heardKey);
-    CanvasTouchContacts.addAppWideLiftListener(_heardAFingerLift);
   }
 
   void _stopHearingTheHand() {
     CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
-    HardwareKeyboard.instance.removeHandler(_shiftLine.heardKey);
-    CanvasTouchContacts.removeAppWideLiftListener(_heardAFingerLift);
+    _shiftLine.letGo();
   }
 
   /// What a save lands first (R9-rest): the stroke the view's pen is in

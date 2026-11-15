@@ -17,8 +17,7 @@ import 'package:anicel/src/ui/debug/input_inspector.dart'
     show InputInspectorHost;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'
-    show HardwareKeyboard, LogicalKeyboardKey;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'brush_canvas_test_helpers.dart';
@@ -537,19 +536,58 @@ void main() {
       );
     });
 
-    testWidgets('🚨Shift pressed anew between the strokes is a new hold: the '
-        'next stroke picks its own way', (tester) async {
-      HardwareKeyboard.instance.addHandler(line.heardKey);
-      addTearDown(() => HardwareKeyboard.instance.removeHandler(line.heardKey));
+    // Between strokes the line asks whether Shift is held, as its owners
+    // have it ask ([CanvasTouchContacts.shiftIsHeld]) — a hand's release
+    // lasts longer than the question takes to come round (`ShiftLine`).
+    testWidgets('🚨let go and pressed again between the strokes is a new hold: '
+        'the next stroke picks its own way', (tester) async {
+      final line = ShiftLine(held: CanvasTouchContacts.shiftIsHeld);
+      addTearDown(line.letGo);
       await tester.pumpWidget(app(CutGuides.empty, line: line));
       await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
       await alongTheDiagonal(tester);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump(const Duration(milliseconds: 20));
       await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
       await nearlyLevel(tester);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      line.letGo();
 
       pickedItsOwnWay(stroke(1));
+    });
+
+    // 🗣️F-592 (유저 2026-11-15): 「쉬프트 누른채로 다음 선 그릴때 가까워야만?
+    // 빨라야만? 같은스냅으로 선 그려지는데 그게 아니라 … 어디에 뭘 어떻게
+    // 그리던 거기에 스냅이된단거임. 이상한 규칙 만들지말고」 — on Windows a
+    // pen hovering lets Shift go in the engine's record with the key still
+    // down, and the key's own repeat then comes as a key-down like any
+    // other, some thirty times a second (`ShiftLine`). Windows holds Shift
+    // all along: so does the line.
+    testWidgets('🚨held, the next stroke starts on the line however long '
+        'after, whatever the keyboard said of Shift meanwhile', (tester) async {
+      ModifierKeys.debugWindowsKeyDown = (key) => key == vkShift;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      final line = ShiftLine(held: CanvasTouchContacts.shiftIsHeld);
+      addTearDown(line.letGo);
+      await tester.pumpWidget(app(CutGuides.empty, line: line));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await alongTheDiagonal(tester);
+      for (var repeat = 0; repeat < 3; repeat += 1) {
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      await nearlyLevel(tester);
+      ModifierKeys.debugWindowsKeyDown = null;
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      line.letGo();
+
+      expect(commits, hasLength(2));
+      expect(stroke(1).first.center.x, closeTo(60, 1e-6));
+      for (final dab in stroke(1)) {
+        expect(dab.center.y, closeTo(dab.center.x, 1e-6), reason: '$dab');
+      }
     });
   });
   });

@@ -315,10 +315,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final GuideSpace guideSpace;
 
   /// The line Shift holds past a stroke ([ShiftLine], I-121): a stroke
-  /// pressed under the same hold starts on it and goes along it. Its owner
-  /// hears the keyboard let go of it; this view says, at each press and as
-  /// each finger holding Shift lifts, whether Shift is held now. Null — a
-  /// surface that keeps none — and each stroke's Shift is its own.
+  /// pressed under the same hold starts on it and goes along it. Between
+  /// strokes the line asks for itself whether Shift is still held, as its
+  /// owner has it ask; this view says so at each press and at each point
+  /// of a stroke. Null — a surface that keeps none — and each stroke's
+  /// Shift is its own.
   final ShiftLine? shiftLine;
 
   /// The cel's pixels AS THEY STAND — asked at the moment they are used,
