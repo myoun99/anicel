@@ -203,5 +203,39 @@ void main() {
 
       expect(EngineTileLedger.appPoolBytes, 0);
     });
+
+    /// Tiles stored in [ledger] past half its first page, so that a page is
+    /// made ahead of the next — held [into] alone. In a call of its own: a
+    /// suspended async body keeps what its frame held, and a tile kept
+    /// there would keep its page.
+    void storePastHalfAPage(EngineTileLedger ledger, List<BitmapTile> into) {
+      into.add(aTile());
+      ledger.held((hold) => hold.slotsOf(a, into));
+      final past = ledger.pool.bytes ~/ gpuTileBytes ~/ 2;
+      final rest = [for (var n = 0; n < past; n++) aTile()];
+      ledger.held((hold) => hold.slotsOf(a, rest));
+      into.addAll(rest);
+    }
+
+    // 🗣️관제 (2026-11-15, a-picture-lay-holds-the-raster-thread): the page
+    // its pool makes ahead of the store that needs it is on the census's
+    // books with its pages. The pool's own `bytes` leaves it to its budget,
+    // and a share of the GPU no row names is what the census is there to
+    // end. The census reads this number on its tile pictures' row.
+    test('the bytes the census reads count the page made ahead', () async {
+      final ledger = EngineTileLedger.instance;
+      final held = <BitmapTile>[];
+      storePastHalfAPage(ledger, held);
+      final page = ledger.pool.bytes;
+      await appGpuEngine.done();
+      expect(ledger.pool.aheadBytes, page, reason: 'the premise: one made');
+
+      expect(EngineTileLedger.appPoolBytes, 2 * page);
+
+      held.clear();
+      await collectGarbageUntil(() => ledger.slotCount == 0);
+      DrawingEngines.respondToMemoryPressure();
+      expect(EngineTileLedger.appPoolBytes, 0, reason: 'given back with them');
+    });
   });
 }

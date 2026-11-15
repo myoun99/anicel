@@ -1264,3 +1264,42 @@ fn a_give_back_lets_the_page_made_ahead_go_past_the_bytes_asked_for() {
         gpu_engine_close(engine);
     }
 }
+
+// A page made ahead is counted on its own, not among the pages a store
+// took: the census reads both, the budget the pages alone
+// ([`Pool::ahead_bytes`]) — and once taken it is counted once, a page.
+#[test]
+fn a_page_made_ahead_is_counted_apart_from_the_pages_taken() {
+    use super::{
+        gpu_engine_pool_ahead_bytes, gpu_engine_pool_bytes, gpu_engine_pool_cel, gpu_engine_pool_free,
+        gpu_engine_pool_new,
+    };
+    use crate::device::{gpu_engine_close, gpu_engine_open_first};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(14));
+    // SAFETY: the engine is this test's own, live till its close; each
+    // store's copy has read `bytes` by the done after it.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let slots = (*pool).slots();
+        let page = slots as u64 * TILE_BYTES;
+        let half = slots / 2;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, half), half);
+        assert_eq!(gpu_engine_pool_ahead_bytes(pool), 0, "none made ahead");
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, 1), 1);
+        assert_eq!(ahead(pool), "made", "premise");
+        assert_eq!(gpu_engine_pool_ahead_bytes(pool), page, "the page made ahead");
+        assert_eq!(gpu_engine_pool_bytes(pool), page, "and the page taken, alone");
+        let into_the_next = slots - half;
+        assert_eq!(stored_and_done(pool, engine, cel, &bytes, into_the_next), into_the_next);
+        assert_eq!(gpu_engine_pool_bytes(pool), 2 * page, "premise: the page made ahead taken");
+        assert_eq!(gpu_engine_pool_ahead_bytes(pool), 0, "counted once, among the pages");
+        assert_eq!(done_here(&*engine), Ok(()));
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}

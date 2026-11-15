@@ -264,7 +264,8 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // (2026-09-16) the row also held the LEVEL TILES — the same pictures
     // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
     // The engine's slots of the same tiles ride it (screen-on-the-engine
-    // c4): its pool's pages, each whole — what the pictures become, under
+    // c4): its pool's pages, each whole, and the page it made ahead of the
+    // store that needs it (2026-11-15) — what the pictures become, under
     // the same line. So do the masks a canvas verb keeps there — a
     // selection's, which its clip holds (2026-11-14), a held fill's — and
     // the bit planes a selection is folded in, kept for the next fold. So

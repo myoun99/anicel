@@ -790,6 +790,11 @@ class GpuPool implements _OfAnEngine {
   /// the tile's stand-in left in its place.
   int get bytes => rust.poolBytes(_pool);
 
+  /// The bytes of the page made ahead of the store that needs it — none
+  /// till it is made. Not among [bytes], which a store's budget counts
+  /// (rust/src/kernels/pool/mod.rs).
+  int get aheadBytes => rust.poolAheadBytes(_pool);
+
   /// Frees the pool's pages; before its engine is closed.
   void free() {
     _freed = true;

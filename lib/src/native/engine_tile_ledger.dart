@@ -128,8 +128,14 @@ class EngineTileLedger implements TilePixelsOnEngine {
   static int? _appByteBudget;
 
   /// The bytes of the pages the app's ledger has made — none before
-  /// anything asks it — for the memory census.
-  static int get appPoolBytes => opened?.pool.bytes ?? 0;
+  /// anything asks it — for the memory census: the page its pool made ahead
+  /// of the store that needs it among them (관제 2026-11-15,
+  /// a-picture-lay-holds-the-raster-thread), which the pool's own `bytes`
+  /// leaves to its budget.
+  static int get appPoolBytes => switch (opened?.pool) {
+    null => 0,
+    final pool => pool.bytes + pool.aheadBytes,
+  };
 
   /// The most a pool is told it may make: past any device.
   static const int _unbounded = 0x7fffffffffffffff;

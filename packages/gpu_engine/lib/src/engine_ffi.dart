@@ -442,6 +442,9 @@ external void poolGiveBack(
 @Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_bytes')
 external int poolBytes(Pointer<Pool> pool);
 
+@Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_ahead_bytes')
+external int poolAheadBytes(Pointer<Pool> pool);
+
 @Native<Pointer<Planned> Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_plan_new',
 )

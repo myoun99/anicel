@@ -316,6 +316,20 @@ impl Pool {
         self.buffers.iter().map(wgpu::Buffer::size).sum()
     }
 
+    /// The bytes of the page made ahead of the store that needs it
+    /// ([`Pool::make_a_page_ahead`]) — none till it is made.
+    ///
+    /// ⛔Not among [`Pool::bytes`], which the budget and the give-back read
+    /// as the pages a store took. ★Counted beside them for the memory census
+    /// (관제 2026-11-15, a-picture-lay-holds-the-raster-thread): off the books
+    /// it would be a share of the GPU's memory that no row names.
+    pub(crate) fn ahead_bytes(&self) -> u64 {
+        match &*self.ahead.held() {
+            Ahead::Made(page, _) => page.size(),
+            Ahead::Unasked | Ahead::Making | Ahead::Refused(_) => 0,
+        }
+    }
+
     /// The bytes of the slots nobody holds on the pages made — a page given
     /// back's stand-in among them: made, and no tile's.
     pub(crate) fn idle_bytes(&self) -> u64 {
@@ -1277,4 +1291,16 @@ pub unsafe extern "C" fn gpu_engine_pool_bytes(pool: *const Pool) -> u64 {
     // SAFETY: see the function's contract.
     let pool = unsafe { &*pool };
     pool.bytes()
+}
+
+/// The bytes of the page a pool made ahead of the store that needs it
+/// ([`Pool::ahead_bytes`]).
+///
+/// # Safety
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_ahead_bytes(pool: *const Pool) -> u64 {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &*pool };
+    pool.ahead_bytes()
 }
