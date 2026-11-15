@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -353,7 +352,7 @@ class _RenderGridScreen extends RenderBox {
     final laid = screen._laid;
     if (laid == null ||
         !_covers(MatrixUtils.transformRect(toView, laid), shown)) {
-      final window = _windowOf(texture, shown);
+      final window = EngineScreenTexture.windowOf(texture, shown);
       final at = MatrixUtils.inverseTransformRect(toView, window);
       _layAt(
         window.topLeft,
@@ -381,21 +380,6 @@ class _RenderGridScreen extends RenderBox {
       laid.top.roundToDouble() <= shown.top &&
       laid.right.roundToDouble() >= shown.right &&
       laid.bottom.roundToDouble() >= shown.bottom;
-
-  /// A rect as big as [texture] around [shown], on device pixels: what it
-  /// spares of the texture half to either side, on an axis where it spares
-  /// any — from its start where it is the bigger.
-  static Rect _windowOf(ScreenTexture texture, Rect shown) {
-    double startOf(double from, double to, int side) =>
-        from - (math.max(side - (to - from), 0) / 2).floorToDouble();
-
-    return Rect.fromLTWH(
-      startOf(shown.left, shown.right, texture.width),
-      startOf(shown.top, shown.bottom, texture.height),
-      texture.width.toDouble(),
-      texture.height.toDouble(),
-    );
-  }
 
   /// Presents every slot's tiles on [texture], from [origin] in the device
   /// pixels of [view] — what of them it holds, the rest of it clear — drawn

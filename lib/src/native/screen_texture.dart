@@ -105,6 +105,11 @@ sealed class ScreenTexture {
   /// What the frame put up was drawn for ([present]).
   Object? get shownFor => _frames.shown?.drawnFor;
 
+  /// What the frame drawn last was drawn for — the one the GPU has still
+  /// to finish, else the one up: null where none has been drawn, or the
+  /// one drawn was never finished and none is up.
+  Object? get drawnLastFor => (_frames.laying ?? _frames.shown)?.drawnFor;
+
   /// Ends once the GPU has finished what a frame submitted: null where a
   /// frame is shown as soon as it is drawn ([debugOnSurface]).
   final Future<void> Function()? _done;

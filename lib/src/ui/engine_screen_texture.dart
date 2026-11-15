@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/rendering.dart' show Layer, TextureLayer;
@@ -86,28 +87,52 @@ final class EngineScreenTexture {
         texture.height >= height;
   }
 
-  /// [draw] presented on the texture open, [draw] told its size — and the
-  /// layer of the frame up on it, from [offset], one texel a device pixel:
-  /// the one drawn, once the GPU has finished it ([ScreenTexture.present]).
+  /// [draw] presented on the texture open, [draw] told its size, as drawn
+  /// for [drawnFor] — and the layer of the frame up on it, one texel a
+  /// device pixel, its corner where [from] says for what THAT frame was
+  /// drawn for ([ScreenTexture.shownFor]; null where none is up): the one
+  /// drawn, once the GPU has finished it ([ScreenTexture.present]).
   Layer presented(
     void Function(GpuTarget next, (int, int) size) draw, {
-    required Offset offset,
+    required Object drawnFor,
+    required Offset Function(Object? shownFor) from,
     required double devicePixelRatio,
   }) {
     final texture = _texture!;
-    texture.present((next) => draw(next, (texture.width, texture.height)));
+    texture.present(
+      (next) => draw(next, (texture.width, texture.height)),
+      drawnFor: drawnFor,
+    );
     // After it is presented: a frame that failed, or is still being drawn,
     // stands as it stood.
-    return _layerOf(texture, offset, devicePixelRatio);
+    return _layerOf(texture, from(texture.shownFor), devicePixelRatio);
   }
 
   /// The frame the texture open shows already, nothing drawn, by a layer
   /// as [presented]'s: null where none has been presented on it.
-  Layer? standing({required Offset offset, required double devicePixelRatio}) {
+  Layer? standing({
+    required Offset Function(Object? shownFor) from,
+    required double devicePixelRatio,
+  }) {
     final texture = _texture;
     return texture == null || !texture.showsAFrame
         ? null
-        : _layerOf(texture, offset, devicePixelRatio);
+        : _layerOf(texture, from(texture.shownFor), devicePixelRatio);
+  }
+
+  /// A rect as big as [texture] around [shown], on device pixels: what it
+  /// spares of the texture half to either side, on an axis where it spares
+  /// any — from its start where it is the bigger.
+  static Rect windowOf(ScreenTexture texture, Rect shown) {
+    double startOf(double from, double to, int side) =>
+        from - (math.max(side - (to - from), 0) / 2).floorToDouble();
+
+    return Rect.fromLTWH(
+      startOf(shown.left, shown.right, texture.width),
+      startOf(shown.top, shown.bottom, texture.height),
+      texture.width.toDouble(),
+      texture.height.toDouble(),
+    );
   }
 
   /// What [texture] shows now, from [offset], one texel a device pixel.

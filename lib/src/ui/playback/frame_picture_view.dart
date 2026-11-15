@@ -13,6 +13,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/app_kernels_ahead.dart' show appEngineGetsReady;
+import '../../native/screen_texture.dart' show ScreenTexture;
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart'
     show
@@ -24,6 +25,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         LiveSurfaceTokens,
         StackedFrame,
         waitsForItsPlugins;
+import '../canvas/viewport_canvas_transform.dart' show renderSnappedViewport;
 import '../effective_device_pixel_ratio.dart';
 import '../engine_screen_texture.dart';
 import 'camera_shot.dart' show canvasCutOnScreen;
@@ -1048,13 +1050,14 @@ class _FramePictureViewState extends State<FramePictureView> {
   ///
   /// The frame as it is drawn now — what [frame] stands for where no
   /// picture is shown — through [viewport] at [devicePixelRatio] onto
-  /// [target] of [size] texels.
+  /// [target] of [size] texels, the view's corner on its texel [corner].
   void _show(
     StackedFrame? frame,
     GpuTarget target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
+    required (int, int) corner,
   }) {
     final shown = _drawnPicture;
     if (shown != null) {
@@ -1063,6 +1066,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         size,
         viewport: viewport,
         devicePixelRatio: devicePixelRatio,
+        corner: corner,
       );
       _standingOn?.free();
       _standingOn = null;
@@ -1075,6 +1079,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       size,
       viewport: viewport,
       devicePixelRatio: devicePixelRatio,
+      corner: corner,
     );
   }
 
@@ -1208,6 +1213,24 @@ class _FramePictureViewState extends State<FramePictureView> {
   );
 }
 
+/// How far past its box a view's screen holds, in device pixels, along an
+/// axis — half to either side ([EngineScreenTexture.windowOf]): what a pan
+/// uncovers of the box before the next frame is up is of the frame that
+/// is, moved with the view ([_RenderFrameScreen._standingFrom]), and not
+/// bare of any picture.
+const int _screenRoom = 256;
+
+/// How much of that room is to spare on every side of the box for the
+/// frame drawn last to serve a view panned since
+/// ([_RenderFrameScreen._servedByTheFrameDrawnLast]): past it the next is
+/// asked for, while what is up still holds the box.
+const int _screenMargin = _screenRoom ~/ 4;
+
+/// What a frame of a view's screen was drawn for: the view it was drawn
+/// through, as every painter under it snaps it ([renderSnappedViewport]),
+/// and the texel of the screen the view's corner stood on.
+typedef _DrawnFor = ({CanvasViewport viewport, (int, int) corner});
+
 /// The box a [FramePictureView] shows its frame in.
 class _FrameScreen extends LeafRenderObjectWidget {
   const _FrameScreen({
@@ -1246,6 +1269,29 @@ class _FrameScreen extends LeafRenderObjectWidget {
 /// [_FrameScreen.ground] lies under it across the box; the texture is cut
 /// to the box, and to [_FrameScreen.cutAtCanvas] where one is named, and
 /// not the ground.
+///
+/// 🚨★★★THE FRAME UP STANDS WHERE IT WAS DRAWN FOR, AND A PAN MOVES IT WITH
+/// THE VIEW ([_standingFrom]) — the frame grid's law on the canvas
+/// (`timeline_grid_screen.dart`: a screen wider than what the view shows,
+/// laid where it was drawn for, a scroll moving it layer and all; 관제
+/// 2026-11-09 08:07 F).
+///
+/// 🗣️유저 2026-11-15, 최신 빌드 실기: 「캔버스 화면 팬으로 움직일때 카메라
+/// 오버레이? 위젯이랑 캔버스랑 어긋나거든? … 더 빠릿하게 따라오고 캔버스는 …
+/// 더 늦게 따라오는느낌. 이런 캔버스에 보이는건 동일하게 했으면좋겟는데. 거기서
+/// 더 가볍게하는식으로」 — what is seen on the canvas moves as one body: the
+/// picture, and what Flutter draws over it for the view as it stands (the
+/// camera's frame, the guides, the SE tags, the fade).
+/// ↩️The frame up was laid at the box's corner whatever view it was drawn
+/// through: a frame is up once the GPU has finished it
+/// ([ScreenTexture.present]) — a frame of the app's or more after it was
+/// asked for — so through a pan the picture stood a step or more behind
+/// everything drawn over it, further the busier the engine.
+///
+/// ⚠️Not what a-float-in-hand-draws-the-frame-as-it-stands-Q2 let be
+/// (「어긋나는거 ok」): that is a picture made again under a box that
+/// follows the hand. A pan makes nothing again — the same picture, seen
+/// from another place (관제 2026-11-15).
 class _RenderFrameScreen extends RenderBox {
   _RenderFrameScreen(this._view);
 
@@ -1287,14 +1333,13 @@ class _RenderFrameScreen extends RenderBox {
   Listenable? _repaint;
 
   void takeFrom(_FrameScreen screen) {
-    if (!identical(screen.shown, _shown) ||
+    final changed =
+        !identical(screen.shown, _shown) ||
         !identical(screen.asItStands, _asItStands) ||
         screen.ground != _ground ||
         screen.cutAtCanvas != _cutAtCanvas ||
-        screen.devicePixelRatio != _devicePixelRatio ||
-        !identical(screen.viewport, _viewportOrNull)) {
-      markNeedsPaint();
-    }
+        screen.devicePixelRatio != _devicePixelRatio;
+    final moved = !identical(screen.viewport, _viewportOrNull);
     if (screen.devicePixelRatio != _devicePixelRatio) {
       markNeedsLayout();
     }
@@ -1305,6 +1350,13 @@ class _RenderFrameScreen extends RenderBox {
     _viewportOrNull = screen.viewport;
     _viewport = screen.viewport;
     _devicePixelRatio = screen.devicePixelRatio;
+    if (changed || (moved && !_servedByTheFrameDrawnLast)) {
+      markNeedsPaint();
+    } else if (moved) {
+      // The view alone, and the frame drawn last serves it yet: painted to
+      // move what is up with it, nothing drawn.
+      super.markNeedsPaint();
+    }
     if (attached) {
       _repaint?.removeListener(markNeedsPaint);
       screen.repaint.addListener(markNeedsPaint);
@@ -1343,11 +1395,98 @@ class _RenderFrameScreen extends RenderBox {
   @override
   void performResize() {
     super.performResize();
-    _shownThrough.wanted = (
-      (size.width * _devicePixelRatio).ceil(),
-      (size.height * _devicePixelRatio).ceil(),
-    );
+    final (width, height) = _sidesInDevicePixels;
+    _shownThrough.wanted = (width + _screenRoom, height + _screenRoom);
     unawaited(_shownThrough.open());
+  }
+
+  /// This box's sides, in whole device pixels.
+  (int, int) get _sidesInDevicePixels => (
+    (size.width * _devicePixelRatio).ceil(),
+    (size.height * _devicePixelRatio).ceil(),
+  );
+
+  /// The texel of [texture] this box's corner stands on: what the texture
+  /// spares of the box, half to either side
+  /// ([EngineScreenTexture.windowOf]).
+  (int, int) _cornerOn(ScreenTexture texture) {
+    final (width, height) = _sidesInDevicePixels;
+    final window = EngineScreenTexture.windowOf(
+      texture,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    );
+    return (-window.left.toInt(), -window.top.toInt());
+  }
+
+  /// 🚨A PAN THE FRAME DRAWN LAST STILL SERVES DRAWS NOTHING: the frame up
+  /// is moved with the view ([_standingFrom]) and the engine is asked for
+  /// no other — 「거기서 더 가볍게」 (유저 2026-11-15), the frame grid's law
+  /// (관제 2026-11-09 08:07 F: 「픽셀 스크롤은 레이어째 따라가니 다시 깔지
+  /// 않고」). Whether the frame drawn last — up, or still on the GPU
+  /// ([ScreenTexture.drawnLastFor]) — serves the view as it stands: drawn
+  /// through this view a whole number of device pixels of pan away, and
+  /// the box still within what it holds, [_screenMargin] to spare on
+  /// every side.
+  /// ↩️Every step of a pan asked the engine for a frame, a body on its
+  /// thread behind whatever else it had been handed.
+  ///
+  /// ⚠️A view turned pans by parts of a pixel
+  /// ([renderSnappedViewport] snaps none of it): moved by the whole pixels
+  /// nearest, the frame up would stand that part off what is drawn over it
+  /// for as long as nothing else drew it — so it is drawn at every step,
+  /// as it was.
+  bool get _servedByTheFrameDrawnLast {
+    final texture = _shownThrough.texture;
+    final drawnFor = texture?.drawnLastFor;
+    if (texture == null || drawnFor is! _DrawnFor) {
+      return false;
+    }
+    final (:viewport, corner: (cornerX, cornerY)) = drawnFor;
+    final ratio = _devicePixelRatio;
+    final now = renderSnappedViewport(_viewport, ratio);
+    if (viewport.copyWith(panX: now.panX, panY: now.panY) != now) {
+      return false;
+    }
+    final (pannedX, pannedY) = (
+      (now.panX - viewport.panX) * ratio,
+      (now.panY - viewport.panY) * ratio,
+    );
+    final (movedX, movedY) = (pannedX.roundToDouble(), pannedY.roundToDouble());
+    // A float's worth off a whole pixel is the snap's own arithmetic.
+    if ((pannedX - movedX).abs() > 1e-6 || (pannedY - movedY).abs() > 1e-6) {
+      return false;
+    }
+    final (width, height) = _sidesInDevicePixels;
+    final (left, top) = (movedX - cornerX, movedY - cornerY);
+    return left <= -_screenMargin &&
+        top <= -_screenMargin &&
+        left + texture.width >= width + _screenMargin &&
+        top + texture.height >= height + _screenMargin;
+  }
+
+  /// Where the frame up on the screen stands, this box painting from
+  /// [offset]: where it was drawn for ([_DrawnFor]) — its view's corner on
+  /// the box's, and a pan away from there where the view has panned since.
+  ///
+  /// ⚠️A zoom, a turn or a flip since it was drawn moves it nowhere: it
+  /// stands as drawn till the next is up. Moved with the view there, it
+  /// would be shown stretched or turned by Flutter meanwhile.
+  Offset _standingFrom(Offset offset, Object? shownFor) {
+    if (shownFor is! _DrawnFor) {
+      return offset;
+    }
+    final (:viewport, corner: (cornerX, cornerY)) = shownFor;
+    final ratio = _devicePixelRatio;
+    final now = renderSnappedViewport(_viewport, ratio);
+    final panned = viewport.copyWith(panX: now.panX, panY: now.panY) == now;
+    // On whole device pixels: a texel stays a device pixel.
+    final (movedX, movedY) = panned
+        ? (
+            ((now.panX - viewport.panX) * ratio).roundToDouble(),
+            ((now.panY - viewport.panY) * ratio).roundToDouble(),
+          )
+        : (0.0, 0.0);
+    return offset + Offset(movedX - cornerX, movedY - cornerY) / ratio;
   }
 
   bool get _drawsAnything =>
@@ -1363,6 +1502,11 @@ class _RenderFrameScreen extends RenderBox {
   /// (🗣️I-132-Q34 a). Null where it has shown none; [refused] where the
   /// frame waits so.
   ({Layer? layer, bool refused}) _layerNow(Offset offset) {
+    final corner = _cornerOn(_shownThrough.texture!);
+    final _DrawnFor drawnFor = (
+      viewport: renderSnappedViewport(_viewport, _devicePixelRatio),
+      corner: corner,
+    );
     try {
       return (
         layer: _shownThrough.presented(
@@ -1372,8 +1516,10 @@ class _RenderFrameScreen extends RenderBox {
             size,
             viewport: _viewport,
             devicePixelRatio: _devicePixelRatio,
+            corner: corner,
           ),
-          offset: offset,
+          drawnFor: drawnFor,
+          from: (shownFor) => _standingFrom(offset, shownFor),
           devicePixelRatio: _devicePixelRatio,
         ),
         refused: false,
@@ -1382,7 +1528,7 @@ class _RenderFrameScreen extends RenderBox {
       _view._paintOnceCompiled(wait.compiled);
       return (
         layer: _shownThrough.standing(
-          offset: offset,
+          from: (shownFor) => _standingFrom(offset, shownFor),
           devicePixelRatio: _devicePixelRatio,
         ),
         refused: true,
@@ -1403,7 +1549,7 @@ class _RenderFrameScreen extends RenderBox {
         ? _layerNow(offset)
         : (
             layer: _shownThrough.standing(
-              offset: offset,
+              from: (shownFor) => _standingFrom(offset, shownFor),
               devicePixelRatio: _devicePixelRatio,
             ),
             refused: false,

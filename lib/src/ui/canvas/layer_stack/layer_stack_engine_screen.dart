@@ -137,12 +137,16 @@ final class EngineStackScreen {
   /// The kept frame through [viewport] at [devicePixelRatio] onto [target]
   /// of [size] texels, columns by rows, one a device pixel — the camera a
   /// view's content stands under ([applyViewportTransform]), its pan snapped
-  /// to whole device pixels — waiting for the GPU ([GpuScreen.show]).
+  /// to whole device pixels — the view's corner on the texel [corner] of
+  /// it, columns by rows: a target that holds room around its view stands
+  /// the view inside (`_RenderFrameScreen`). Its work is handed to the
+  /// engine, waited for by none ([GpuScreen.show]).
   void show(
     GpuTarget target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
+    (int, int) corner = (0, 0),
   }) {
     final screen =
         _screen ??
@@ -154,15 +158,19 @@ final class EngineStackScreen {
     final per = 1 / devicePixelRatio;
     final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
     final (columns, rows) = size;
+    // The view's pixel a texel is: the texel less the corner.
+    final (cornerX, cornerY) = corner;
+    final (a, b) = (camera[0] * per, camera[4] * per);
+    final (c, d) = (camera[1] * per, camera[5] * per);
     screen.show(
       target,
       inverse: [
-        camera[0] * per,
-        camera[4] * per,
-        camera[12],
-        camera[1] * per,
-        camera[5] * per,
-        camera[13],
+        a,
+        b,
+        camera[12] - a * cornerX - b * cornerY,
+        c,
+        d,
+        camera[13] - c * cornerX - d * cornerY,
       ],
       scale: scale,
       sampling: gpuSamplingOf(filterQualityForDisplayScale(scale)),

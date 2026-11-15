@@ -325,8 +325,9 @@ void main() {
         );
 
     /// The canvas standing on [nodes] — the cel [key] keeps blue at the
-    /// corner — over [float], once its picture is made.
-    Future<void> standOver(
+    /// corner — over [float], once its picture is made: answers how the
+    /// same canvas is seen through another view.
+    Future<Future<void> Function(CanvasViewport view)> standOver(
       WidgetTester tester,
       SelectionFloatOverlay float,
     ) async {
@@ -344,24 +345,24 @@ void main() {
         canvasSize: canvasSize,
         stackOf: (_) => nodes,
       );
-      await tester.pumpWidget(
-        onAScreen(
-          screen,
-          size: viewSize,
-          under: const Color(0xFF00FF00),
-          view: standingOn(
-            run,
-            picture: picture,
-            nodes: nodes,
-            viewport: CanvasViewport(),
-            live: (
-              activeSurfacePainter: painterOf(solid(blue)),
-              floatOverlay: float,
-              liftedRows: const {},
-            ),
-          ),
+      final LiveRows live = (
+        activeSurfacePainter: painterOf(solid(blue)),
+        floatOverlay: float,
+        liftedRows: const {},
+      );
+      Widget seenThrough(CanvasViewport view) => onAScreen(
+        screen,
+        size: viewSize,
+        under: const Color(0xFF00FF00),
+        view: standingOn(
+          run,
+          picture: picture,
+          nodes: nodes,
+          viewport: view,
+          live: live,
         ),
       );
+      await tester.pumpWidget(seenThrough(CanvasViewport()));
       final shown = run.pictures.keyOfStack(nodes, picture);
       expect(
         await settleAsync(tester, () => store.bytesOf(shown) != null),
@@ -369,6 +370,7 @@ void main() {
         reason: 'LIVENESS: the frame\'s picture is made',
       );
       await lendBothClocks(tester, rounds: 2);
+      return (view) => tester.pumpWidget(seenThrough(view));
     }
 
     SelectionFloatPaint redAt(double at) => SelectionFloatPaint(
@@ -390,6 +392,165 @@ void main() {
         return ScreenTexture.debugOnSurface(surface, id: id, done: done);
       };
     }
+
+    /// Where each layer a screen is shown by from here on was laid, in
+    /// the order they were — shown as the app shows them, read back by
+    /// none.
+    List<Rect> layersLaid() {
+      final laid = <Rect>[];
+      final shows = debugLayerOfScreen;
+      addTearDown(() => debugLayerOfScreen = shows);
+      debugLayerOfScreen =
+          ({required rect, required textureId, required filterQuality}) {
+            laid.add(rect);
+            return TextureLayer(
+              rect: rect,
+              textureId: textureId,
+              filterQuality: filterQuality,
+            );
+          };
+      return laid;
+    }
+
+    /// The GPU finishing each frame at once till [hold] is called, then
+    /// as the test opens each frame's gate, in order.
+    ({List<Completer<void>> gates, void Function() hold}) aGpuHeld() {
+      var holding = false;
+      final gates = <Completer<void>>[];
+      screensFinishedBy(() {
+        if (!holding) {
+          return Future.value();
+        }
+        gates.add(Completer<void>());
+        return gates.last.future;
+      });
+      return (gates: gates, hold: () => holding = true);
+    }
+
+    // 🗣️유저 2026-11-15 (card a-pan-moves-the-overlays-before-the-canvas):
+    // 「캔버스 화면 팬으로 움직일때 카메라 오버레이? 위젯이랑 캔버스랑
+    // 어긋나거든? … 이런 캔버스에 보이는건 동일하게 했으면좋겟는데」 — what
+    // Flutter draws over the picture is drawn for the view as it stands,
+    // every frame; the frame up is laid where it was drawn for, a pan away.
+    testWidgets('🚨a pan moves the frame up with the view, drawing nothing '
+        'while the frame drawn last serves it — and past that, the frame '
+        'that comes up stands where it was drawn for', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final seenThrough = await standOver(tester, float);
+      final laid = layersLaid();
+      await seenThrough(CanvasViewport());
+      await tester.pump();
+      // Where a frame drawn for the view as it stands is laid.
+      final home = laid.last;
+      expect(
+        home.left < 0 && home.top < 0,
+        isTrue,
+        reason: '⛔premise: the screen holds room before the box — $home',
+      );
+      expect(
+        home.right > viewSize.width && home.bottom > viewSize.height,
+        isTrue,
+        reason: '⛔premise: and past it — $home',
+      );
+      hold();
+
+      // Within what the screen spares of its box.
+      await seenThrough(CanvasViewport(panX: 10, panY: 6));
+      expect(gates, isEmpty, reason: 'a pan the frame up serves drew one');
+      expect(
+        laid.last,
+        home.shift(const Offset(10, 6)),
+        reason: 'the frame up did not move with the view',
+      );
+
+      // Past it — as far as the frame up still holds the box's corner.
+      final far = -home.left;
+      await seenThrough(CanvasViewport(panX: far, panY: 6));
+      expect(gates, hasLength(1), reason: 'the next frame is asked for');
+      expect(
+        laid.last,
+        home.shift(Offset(far, 6)),
+        reason: 'what is up moves on with the view meanwhile',
+      );
+
+      await seenThrough(CanvasViewport(panX: far + 20, panY: 6));
+      expect(gates, hasLength(1), reason: 'the frame on the GPU serves it');
+      expect(laid.last, home.shift(Offset(far + 20, 6)));
+
+      gates.last.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(gates, hasLength(1), reason: 'a frame up that serves drew one');
+      expect(
+        laid.last,
+        home.shift(const Offset(20, 0)),
+        reason: 'the frame drawn a step back stands a step from the view',
+      );
+    });
+
+    testWidgets('a view turned draws every step of a pan: it pans by parts '
+        'of a pixel, and a frame moved by whole ones would stand off what '
+        'is drawn over it', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final seenThrough = await standOver(tester, float);
+      await seenThrough(CanvasViewport(rotationDegrees: 30));
+      await tester.pump();
+      hold();
+
+      await seenThrough(
+        CanvasViewport(rotationDegrees: 30, panX: 10.4, panY: 6),
+      );
+
+      expect(gates, hasLength(1));
+    });
+
+    testWidgets('a zoom since the frame up was drawn moves it nowhere: it '
+        'stands as drawn till the next is up', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final seenThrough = await standOver(tester, float);
+      final laid = layersLaid();
+      await seenThrough(CanvasViewport());
+      await tester.pump();
+      final home = laid.last;
+      hold();
+
+      await seenThrough(CanvasViewport(zoom: 2, panX: 10, panY: 6));
+
+      expect(gates, hasLength(1), reason: '⛔premise: the step is on the GPU');
+      expect(laid.last, home);
+    });
+
+    testWidgets('what a pan shows is the picture through the view, the '
+        'screen\'s room past the box shown nowhere', (tester) async {
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      final seenThrough = await standOver(tester, float);
+      bool blueAt(Shot shot, int x, int y) {
+        final at = (y * shot.width + x) * 4;
+        return shot.rgba[at + 2] > 200 && shot.rgba[at + 1] < 50;
+      }
+
+      final stood = await shotOf(tester, screen);
+      expect(
+        blueAt(stood, 0, 0) && !blueAt(stood, 1, 1),
+        isTrue,
+        reason: 'drawn with room about it, the view\'s corner is the box\'s',
+      );
+
+      await seenThrough(CanvasViewport(panX: 10, panY: 6));
+      await tester.pump();
+
+      final shot = await shotOf(tester, screen);
+      expect(blueAt(shot, 10, 6), isTrue, reason: 'the cel\'s corner, panned');
+      expect(blueAt(shot, 0, 0), isFalse, reason: 'it stood where it was');
+      expect(blueAt(shot, 11, 7), isFalse, reason: 'one pixel of it alone');
+    });
 
     testWidgets('🚨a float dragged over it waits for no GPU on the thread '
         'that paints it', (tester) async {
