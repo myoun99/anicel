@@ -228,6 +228,60 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // A modifier is asked which are held, each its own (card
+  // a-held-modifiers-repeat-is-heard-as-a-press): one held as the canvas
+  // started is no press of it, and one gone down while another is held is
+  // alone of its own.
+  testWidgets('🚨Shift held as the canvas starts to play is no press — let '
+      'go, the canvas plays on', (tester) async {
+    final session = await pumpEditor(tester);
+    var held = true;
+    ModifierKeys.debugWindowsKeyDown = (asked) => held && asked == vkShift;
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await playCanvas(tester, session);
+    held = false;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(
+      session.playbackRig.playback.isPlaying,
+      isTrue,
+      reason: 'it went down before anything played',
+    );
+
+    session.playbackRig.transports.stopAll();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('…and Ctrl gone down and let go alone while that Shift is '
+      'held was a press of its own: the canvas stops', (tester) async {
+    final session = await pumpEditor(tester);
+    var (shift, ctrl) = (true, false);
+    ModifierKeys.debugWindowsKeyDown = (asked) =>
+        (shift && asked == vkShift) || (ctrl && asked == vkControl);
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await playCanvas(tester, session);
+    ctrl = true;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(session.playbackRig.playback.isPlaying, isTrue, reason: 'premise');
+    ctrl = false;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      session.playbackRig.playback.isPlaying,
+      isFalse,
+      reason: 'Ctrl pressed and released with nothing after it, Shift or no',
+    );
+
+    shift = false;
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+  });
+
   // 🚨Card a-held-modifiers-repeat-is-heard-as-a-press (2026-11-15). On
   // Windows a pen's or a finger's move lets go of Shift and Ctrl in the
   // engine's record with the key still down — a key-up no hand made — the
