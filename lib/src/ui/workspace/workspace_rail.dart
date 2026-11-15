@@ -465,10 +465,11 @@ class _WorkspaceRail {
   /// from it by hand, the app's window drawn shorter — and the rail would
   /// jump to it then.
   ///
-  /// ⛔ONLY A GROUP THE WINDOW SHOWS NONE OF. One it shows a part of opened
-  /// so before 2026-11-15 and opens so still — the rail stays where the hand
-  /// left it, over heights the hand set (whether such a group should come in
-  /// whole too is asked on the card: …-no-media-panel-shows-Q1).
+  /// ⛔ONLY A GROUP THE WINDOW SHOWS NONE OF — 🗣️유저 2026-11-15
+  /// (the-media-button-lights-but-no-media-panel-shows-Q1: 「a 하나도 안
+  /// 보일 때만 데려온다(지금 넣은 것)」). One it shows a part of opens where
+  /// the hand left the rail, over heights the hand set, as it opened before
+  /// 2026-11-15 — ⛔not brought in whole.
   ///
   /// It comes in whole, by the law a walk keeps its step in view by
   /// ([revealScrollOffset]), measured where its column lays it.
