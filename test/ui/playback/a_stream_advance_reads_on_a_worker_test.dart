@@ -298,6 +298,7 @@ void main() {
     late List<Completer<List<AudioMixSource>?>> readings;
     late List<List<StreamWindowRead>> asked;
     late int landings;
+    late int ticksThatPut;
     ({QaAudioDevice device, int deviceRate})? carrying;
 
     setUp(() async {
@@ -306,6 +307,7 @@ void main() {
       readings = [];
       asked = [];
       landings = 0;
+      ticksThatPut = 0;
       window = AudioStreamingWindow(
         readWindows: (reads, _) {
           asked.add(reads);
@@ -332,14 +334,19 @@ void main() {
       await pumpEventQueue();
     }
 
-    /// The device at [at], and the tick that follows it there.
+    /// The device at [at], and the tick that follows it there — counted
+    /// where it goes on to upload: a tick asks who carries the window only
+    /// then.
     void tickAt(int at) {
       device.seek(at);
       window.followPlayback(
         positionSamples: at,
         deviceRate: sampleRate,
         conformStore: store,
-        current: () => carrying,
+        current: () {
+          ticksThatPut += 1;
+          return carrying;
+        },
       );
     }
 
@@ -428,6 +435,82 @@ void main() {
       expect(asked.last, hasLength(2), reason: 'the new mix\'s two windows');
     });
 
+    test('🚨an edit mid-run — another mix put where the stream stands: the '
+        'tick after its windows land puts them, though the stream wants no '
+        'window moved (AudioDeviceTransport.refreshSchedule)', () async {
+      await armedAtZero();
+      window.mix = mixOf(['a', 'b']);
+      expect(uploadAt(10), isA<OutputComing>(), reason: 'the new mix\'s');
+      expect(asked, hasLength(2));
+      expect(asked.last, hasLength(2), reason: 'its two windows');
+
+      await land(1);
+      expect(window.centerSample, 0, reason: 'put by a tick, not the landing');
+      tickAt(20);
+      expect(
+        window.centerSample,
+        10,
+        reason: 'the edit is heard at the next look — ↩️a tick put only a '
+            'window it wanted moved, and the old mix played on till the '
+            'stream got past half of it, up to fifteen seconds',
+      );
+      expect(asked, hasLength(2), reason: 'out of what landed');
+    });
+
+    test('🚨windows a tick put are on the device: the ticks after it put '
+        'nothing again', () async {
+      await armedAtZero();
+      tickAt(5000);
+      await land(1);
+      tickAt(5010);
+      expect(window.centerSample, 5000, reason: 'fixture: put');
+      final put = ticksThatPut;
+
+      tickAt(5020);
+      tickAt(5030);
+      expect(
+        ticksThatPut,
+        put,
+        reason: '↩️kept as landed and not yet put, they were put again at '
+            'every look of the run',
+      );
+    });
+
+    test('🚨a mix with no stream put in lets go of the windows read for the '
+        'one before: no tick puts for them', () async {
+      await armedAtZero();
+      tickAt(5000);
+      await land(1); // landed, and not put yet
+      window.mix = mixOf([]);
+      expect(uploadAt(5000), isA<OutputArmed>(), reason: 'nothing to read');
+      expect(window.hasStreaming, isFalse);
+      final put = ticksThatPut;
+
+      tickAt(5010);
+      expect(
+        ticksThatPut,
+        put,
+        reason: '↩️what had landed for the stream stood as not yet put, and '
+            'every tick put the mix again',
+      );
+      expect(window.centerSample, 5000, reason: 'where the upload put it');
+    });
+
+    test('🚨and of those still on their way: nobody is told they landed, '
+        'and nothing is kept of them', () async {
+      await armedAtZero();
+      tickAt(5000);
+      window.mix = mixOf([]);
+      expect(uploadAt(5000), isA<OutputArmed>());
+      final told = landings;
+      final put = ticksThatPut;
+
+      await land(1);
+      expect(landings, told, reason: 'no one waits for a stream that is gone');
+      tickAt(5010);
+      expect(ticksThatPut, put, reason: 'nor is there anything to put');
+    });
+
     test('🚨windows that did not land whole are not put by a tick — the old '
         'window still has fifteen seconds to play — and the next reads '
         'again', () async {
@@ -488,6 +571,9 @@ void main() {
       expect(covers(4850), isTrue, reason: 'inside its trailing edge');
       expect(asked, hasLength(2), reason: 'moved there all the same');
       expect(covers(4700), isFalse, reason: 'past it: silence till it lands');
+      // And leads 3000, moving 1500 ahead.
+      expect(covers(7000), isTrue, reason: 'inside its leading edge');
+      expect(covers(8100), isFalse, reason: 'past that one too');
     });
   });
 }
