@@ -480,6 +480,17 @@ impl Pool {
             return Err(Full);
         }
         let grows = self.page_bytes() - given_back.map_or(0, |page| self.buffers[page].size());
+        // 🚨Its own bytes are asked here, on the caller's thread: only the
+        // OS's count is the device's. 🔬The Surface, FNK_02 cut 59 as the
+        // onion's ghosts were laid (2026-11-15, card
+        // a-picture-lay-holds-the-raster-thread): a pool full by its bytes
+        // went to the engine's thread to be told so, behind the copies
+        // handed over unwaited — at each of the 567 stores a pass its
+        // ledger made room for, 692 ms of the UI's thread a pass against
+        // 41, one up to 27.7 ms.
+        if !self.within_its_bytes(grows) {
+            return Err(Full);
+        }
         // 🚨The budget is asked and the page made on the engine's thread,
         // where a store's books are kept on its caller's (B1-b of
         // the-ui-thread-never-enters-the-driver, 2026-11-15): the OS's count
@@ -533,7 +544,14 @@ impl Pool {
         let used = memory.as_ref().map_or(self.bytes(), |memory| memory.used);
         let budget = self.budget_instead.or(memory.as_ref().and_then(|memory| memory.budget));
         let within_budget = budget.is_none_or(|budget| used.checked_add(grows).is_some_and(|sum| sum <= budget));
-        self.bytes() + grows <= self.most_bytes && within_budget
+        self.within_its_bytes(grows) && within_budget
+    }
+
+    /// Whether the pool's bytes grown by `grows` keep within the bytes it
+    /// may make ([`Pool::set_most_bytes`]): its own numbers, whatever
+    /// thread asks.
+    fn within_its_bytes(&self, grows: u64) -> bool {
+        self.bytes() + grows <= self.most_bytes
     }
 
     fn page_bytes(&self) -> u64 {

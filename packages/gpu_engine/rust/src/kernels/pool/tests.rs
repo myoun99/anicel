@@ -6,7 +6,7 @@
 
 use std::sync::{Condvar, Mutex};
 use std::thread::ThreadId;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::{Full, MOST_NAMED, Pictures, Pool};
 use crate::kernels::blend::mode::NORMAL;
@@ -961,6 +961,38 @@ fn a_store_tells_its_slot_while_the_engines_thread_stands_still() {
         let word = at(page, slot).word();
         assert!(gpu_engine_pool_read(pool, engine, &word, 1, into.as_mut_ptr()), "{}", last_error());
         assert!(into == bytes, "its slot holds its bytes");
+        gpu_engine_pool_free(pool);
+        gpu_engine_close(engine);
+    }
+}
+
+// A pool full by its own bytes says so on its caller's thread: a store is
+// told none has a slot while the engine's thread stands still — only the
+// OS's count is asked there ([`Pool::claimed`]).
+#[test]
+fn a_pool_full_by_its_bytes_says_so_while_the_engines_thread_stands_still() {
+    use super::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_store};
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::testing::{a_device_of_its_own, done_here, last_error};
+    let _turn = a_device_of_its_own();
+    let bytes = le_bytes(&tile(7));
+    let tiles = [bytes.as_ptr()];
+    let (mut page, mut slot) = (u16::MAX, u16::MAX);
+    // SAFETY: the engine is this test's own, live till its close; the tile,
+    // page and slot are one each, and no copy is handed over to read
+    // `bytes`: none is stored.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        // Given no bytes, it makes no page: full before its first tile.
+        let pool = gpu_engine_pool_new(engine, 0);
+        let cel = gpu_engine_pool_cel(pool);
+        gpu_engine_stand_still(engine, 2_000);
+        let asked = Instant::now();
+        assert_eq!(gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, &mut page, &mut slot, read, 301), 0);
+        let told = asked.elapsed();
+        assert!(told < Duration::from_millis(1_000), "told after {told:?}, the thread standing 2 s");
+        assert_eq!(done_here(&*engine), Ok(()));
         gpu_engine_pool_free(pool);
         gpu_engine_close(engine);
     }
