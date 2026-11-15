@@ -10,6 +10,7 @@ import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/brush_preset.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
+import '../../models/brush_texture_mode.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
 import '../../models/import/import_warning.dart';
@@ -248,23 +249,30 @@ Map<String, String>? _paperWordsOf(String command) {
   };
 }
 
-/// The app's paper laid for a TVPaint one, and how: TVPaint's own [size]
-/// and hardness ([density]), and whether it is turned over ([invert]).
-typedef _Paper = ({
-  _NearestPaper nearest,
-  double size,
-  double density,
-  bool invert,
-});
+/// The app's paper laid for a TVPaint one, and how: TVPaint's own [size],
+/// and whether it is turned over ([invert]).
+typedef _Paper = ({_NearestPaper nearest, double size, bool invert});
 
 /// The paper [words] say, as the app's nearest — null where it is off, or
 /// is one the app has no nearest for; a warning says what is not carried.
 ///
 /// 🗣️유저 2026-11-15 (I-86-Q3): 「우리 질감 중 가장 가까운 것을 대서
 /// 넣는다」 — TVPaint's paper is its own, not in the file, and may not ship
-/// with the app (`ip-review-clean`). Hardness is the paper's opacity, its
-/// page says, so it is the texture's density; its blending, 乗算, is the
-/// texture's multiply, the default.
+/// with the app (`ip-review-clean`).
+///
+/// Hardness is how much the paper tells on the paint, its panel says, and
+/// the nearest is matched at one hardness ([_NearestPaper.hardness]): at
+/// another the paper is laid as matched, and a warning says so. ↩️It was
+/// read as the texture's density, 70 as 0.7 — which the user's own hand
+/// set to 100% for a paper of hardness 70 (2026-11-15, the words beside
+/// [_nearestPaperTo]); one matched point is no scale to read others off.
+///
+/// `BlendingMode` is how a second paper (`Name2`, `DualPaper`) meets the
+/// first — the menu TVPaint 12's paper window has for its two papers
+/// (doc.tvpaint.com, Papers) — so with `DualPaper` 0 it says nothing: the
+/// user's BRUSH.tvpx writes 乗算 on some pencils and 背後に描画 on others,
+/// one paper each. ↩️Any but 乗算 was warned of as the paper's own
+/// blending.
 _Paper? _paperOf(
   Map<String, String> words, {
   required String name,
@@ -286,54 +294,86 @@ _Paper? _paperOf(
     'Button "$name": paper "$paper" is TVPaint\'s own and not in the file; '
     'the nearest of the app\'s papers is laid instead.',
   );
-  for (final key in const ['Angle', 'OffsetX', 'OffsetY', 'FlipX', 'FlipY']) {
+  final hardness = double.tryParse(words['Hardness'] ?? '');
+  if (hardness != null && hardness != nearest.hardness) {
+    warnings.add(
+      'Button "$name": paper Hardness ${words['Hardness']} is not carried; '
+      'the paper is laid as at ${nearest.hardness.round()}.',
+    );
+  }
+  for (final key in const [
+    'Angle',
+    'OffsetX',
+    'OffsetY',
+    'FlipX',
+    'FlipY',
+    'DualPaper',
+  ]) {
     if ((double.tryParse(words[key] ?? '') ?? 0) != 0) {
       warnings.add('Button "$name": paper $key ${words[key]} is not carried.');
     }
   }
-  if (words['BlendingMode'] case final blend? when blend != '乗算') {
-    warnings.add('Button "$name": paper blending $blend is not carried.');
-  }
   return (
     nearest: nearest,
     size: double.tryParse(words['Size'] ?? '') ?? 1,
-    density: ((double.tryParse(words['Hardness'] ?? '') ?? 100) / 100).clamp(
-      0.0,
-      1.0,
-    ),
     invert: words['Invert'] == '1',
   );
 }
 
-/// One of the app's papers made to stand for a TVPaint one: its [mask],
-/// [scale] canvas pixels a texel, and the levels ([contrast], [brightness])
-/// that bring its values where the TVPaint paper's are.
+/// One of the app's papers made to stand for a TVPaint one at one
+/// [hardness] of it: its [mask], [scale] canvas pixels a texel, the levels
+/// ([contrast], [brightness]) that bring its values where the TVPaint
+/// paper's are, and how it meets a dab ([mode], [density]).
 typedef _NearestPaper = ({
   BrushTipMask mask,
   double scale,
   double contrast,
   double brightness,
+  BrushTextureMode mode,
+  double density,
+  double hardness,
 });
 
-/// The app's paper nearest TVPaint's [paper] — null for one not measured.
+/// The app's paper nearest TVPaint's [paper] — null for one not matched.
 ///
-/// 🔬Cement Hard (the Surface's TVPaint 12, 2026-11-15, numbers only): its
-/// grain falls to half its likeness at 2.3 pixels across and 1.6 down and
-/// fades on with no repeat; its values average 0.57, spread 0.11. Of the
-/// app's four papers, [graphiteToothTextureMask] at 3.5 pixels a texel
-/// follows that fall closest — 0.034 apart over twelve pixels, where cold
-/// press is 0.098, paper grain 0.168 and canvas weave 0.183 (a weave's
-/// threads repeat) — and repeats only every 900 pixels. Its own values
-/// spread 0.30, so they are drawn in to the paper's: 0.11 about 0.43.
+/// 🗣️유저 2026-11-15 (I-86, 실기 — カスタム鉛筆 HB, Cement Hard at
+/// hardness 70): 「구조 자체는 우리구조 유지하되 예를들어 커스텀연필 HB로
+/// 치면 질감쪽에서 배율 100%, 농도 100%, 텍스처 합성 높이로 하는게 제일
+/// 근접했어」 · 「흑연결 그대로 두고 대비 밝기도 그대로였어」 — the tooth a
+/// texel a pixel, at full density, met by height
+/// ([BrushTextureMode.height]), its levels as they were.
+/// ↩️The tooth was laid 3.5 pixels a texel and multiplied, the hardness
+/// its density — the scale that followed the fall of Cement Hard's grain
+/// closest (🔬the Surface's TVPaint 12, 2026-11-15, numbers only: half
+/// its likeness at 2.3 pixels across and 1.6 down, no repeat; of the
+/// app's four papers the tooth 0.034 apart over twelve pixels, cold press
+/// 0.098, paper grain 0.168, canvas weave 0.183) — and the user's hand
+/// found it short (「재현도가 부족해」): the stroke is what is matched, not
+/// the paper's own statistics.
+///
+/// 🔬Beside the user's TVPaint pictures (2026-11-15; the ink a row of the
+/// stroke holds — theirs · this · the multiplied one before): HB 20 2.86 ·
+/// 2.75 · 3.60, and how the rows differ (cv) 0.38 · 0.19 · 0.03; at the
+/// tip's own size the share of pixels neither bare nor full 0.06 · 0.09 ·
+/// 0.26. ⚠️HB 8, a tip under two pixels across: 0.78 · 0.15 · 1.54 — the
+/// height takes nearly all of so thin a dab (card I-86); from HB 10 up it
+/// holds (0.96, 1.57, 1.88, 2.70, 3.73 at 10, 12.5, 15, 20, 25).
+///
+/// 🔬The levels are the paper measure's still: the paper's values average 0.57
+/// and spread 0.11, the tooth's own spread 0.30, so they are drawn in to
+/// 0.11 about 0.43.
 /// ⏳Which way round a TVPaint paper lays ink is not on its page: read
 /// as the paint it resists, its rare darkest texels are pits a lead
 /// skips, as the tooth's bare share is — so the tooth stands unturned.
 _NearestPaper? _nearestPaperTo(String paper) => switch (paper) {
   'Cement Hard' => (
     mask: graphiteToothTextureMask,
-    scale: 3.5,
+    scale: 1,
     contrast: -0.54,
     brightness: 0.2,
+    mode: BrushTextureMode.height,
+    density: 1,
+    hardness: 70,
   ),
   _ => null,
 };
@@ -519,7 +559,8 @@ BrushSettings _settingsOf(
     textureContrast: nearest.contrast,
     textureBrightness: nearest.brightness,
     textureScale: nearest.scale * laid.size,
-    textureDensity: laid.density,
+    textureDensity: nearest.density,
+    textureMode: nearest.mode,
   );
 }
 

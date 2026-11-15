@@ -71,9 +71,12 @@ void main() {
     );
   });
 
-  test('🎯TVPaint\'s Cement Hard is laid as the nearest of the app\'s papers, '
-      'its hardness the density, its size and turn as said; a paper off is '
-      'no paper, and said nothing of', () async {
+  test('🎯TVPaint\'s Cement Hard is laid as the nearest of the app\'s papers '
+      'the way the user\'s hand matched it at hardness 70 — a texel a pixel, '
+      'at full density, met by height — its size and turn as said; another '
+      'hardness and a second paper are said to be not carried, the blending '
+      'of a second paper there is none of is said nothing of, and a paper '
+      'off is no paper', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'H',
@@ -87,17 +90,19 @@ void main() {
               size: '2.000000',
               invert: '1',
               angle: '15.000000',
+              dual: '1',
               blending: 'Screen',
             ),
           ),
           _button('c', 'pencil', paper: 'Active 0'),
+          _button('d', 'pencil', paper: _paper(blending: '背後に描画')),
         ],
         tools: {'pencil': (tool: _tool(), dip: _pencilDip)},
       ),
       sourceName: 'BRUSH',
     );
 
-    final [a, b, c] = [for (final p in result.presets) p.settings];
+    final [a, b, c, d] = [for (final p in result.presets) p.settings];
     expect(a.textureMaskSource, same(graphiteToothTextureMask));
     expect(
       [
@@ -106,23 +111,32 @@ void main() {
         a.textureContrast,
         a.textureBrightness,
       ],
-      [3.5, 0.7, -0.54, 0.2],
+      [1.0, 1.0, -0.54, 0.2],
     );
     expect(a.textureInvert, isFalse);
-    expect(a.textureMode, BrushTextureMode.multiply);
+    expect(a.textureMode, BrushTextureMode.height);
     expect(a.tips, hasLength(2), reason: 'the tip is kept beside the paper');
     expect(a.size, 3 * 8 / 100);
-    expect([b.textureScale, b.textureDensity], [7.0, 0.4]);
+    expect([b.textureScale, b.textureDensity], [2.0, 1.0]);
+    expect(b.textureMode, BrushTextureMode.height);
     expect(b.textureInvert, isTrue);
     expect(c.textureMaskSource, isNull);
+    expect(
+      [d.textureScale, d.textureDensity, d.textureMode],
+      [a.textureScale, a.textureDensity, a.textureMode],
+      reason: 'the blending is a second paper\'s, and there is none',
+    );
     const laid =
         'is TVPaint\'s own and not in the file; the nearest of the app\'s '
         'papers is laid instead.';
     expect(result.warnings, [
       'Button "H a": paper "Cement Hard" $laid',
       'Button "H b": paper "Cement Hard" $laid',
+      'Button "H b": paper Hardness 40 is not carried; the paper is laid as '
+          'at 70.',
       'Button "H b": paper Angle 15.000000 is not carried.',
-      'Button "H b": paper blending Screen is not carried.',
+      'Button "H b": paper DualPaper 1 is not carried.',
+      'Button "H d": paper "Cement Hard" $laid',
     ]);
   });
 
@@ -365,11 +379,12 @@ String _paper({
   String size = '1.000000',
   String invert = '0',
   String angle = '0.000000',
+  String dual = '0',
   String blending = '乗算',
 }) =>
     'Hardness $hardness Invert $invert Size $size Angle $angle '
     'OffsetX 0.000000 OffsetY 0.000000 FlipX 0 FlipY 0 Active 1 '
-    'Name "$name" Name2 "/" BlendingMode $blending';
+    'Name "$name" Name2 "/" DualPaper $dual BlendingMode $blending';
 
 /// The tar of a panel: a heading over [buttons] (each item's keys numbered
 /// in order after it), and each of [tools] as an INI and a tip.
