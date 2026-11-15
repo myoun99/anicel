@@ -299,6 +299,19 @@ void main() {
       expect(_row(session, 'f').collapsed, isTrue);
     });
 
+    testWidgets('🚨Q3: a sweep from a half folds only that side of a base it '
+        'crosses — one holding rows on both sides keeps the other', (
+      tester,
+    ) async {
+      final session = await _pump(tester);
+
+      await _sweep(tester, _half('above', 'o'), _half('above', 'b'));
+
+      expect(_sides(session, 'o'), {AttachedPlacement.above});
+      expect(_sides(session, 'b'), {AttachedPlacement.above});
+      expect(_rowOf('b-1'), findsOneWidget, reason: 'its side stays open');
+    });
+
     testWidgets('🚨Q5: a sweep from a folder\'s twirl folds the bases it '
         'crosses on every side they have rows on', (tester) async {
       final session = await _pump(tester);
