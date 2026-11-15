@@ -137,11 +137,11 @@ void main() {
   });
 
   group('every number field keeps this law', () {
-    test('a filter of what is typed is a number field\'s, run on what the '
-        'IME commits — no file but the law hands one to a field', () {
+    test('a filter of what is typed runs on what the IME commits — no file '
+        'but a law that leaves its draft hands one to a field', () {
       final strays = [
         for (final file in dartFilesUnder('lib'))
-          if (libPath(file) != 'lib/src/ui/text/full_width_numerals.dart' &&
+          if (!_lawsThatLeaveTheDraft.containsKey(libPath(file)) &&
               file.readAsStringSync().contains('FilteringTextInputFormatter'))
             libPath(file),
       ];
@@ -171,3 +171,14 @@ void main() {
     });
   });
 }
+
+/// The files that hand a field a filter — each a law that leaves the draft
+/// the IME is composing as it is, and says where that is pinned.
+const _lawsThatLeaveTheDraft = <String, String>{
+  'lib/src/ui/text/full_width_numerals.dart':
+      "a number field's: its numerals made half-width once committed — "
+      'this file',
+  'lib/src/ui/text/typed_text.dart':
+      "every field's: no carriage return (F-584) — "
+      'a_carriage_return_is_never_typed_text_test',
+};
