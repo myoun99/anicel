@@ -164,6 +164,26 @@ void main() {
     );
   });
 
+  test('🚨a cel drawn on while it is LAID — its bytes read already — keeps '
+      'the drawing: the thaw is let go, never written over it', () async {
+    final store = BrushFrameStore();
+    final k = key('f');
+    keepInAFile(store, {k: inkSurface()});
+    final drawn = inkSurface(salt: 9);
+
+    final thaw = store.thawAhead(k, canvasSize: paper);
+    // The read has ended once it is in flight no more, and the turn that
+    // ended it handed the bytes to the worker that lays them.
+    while (WorkerFileReads.inFlight > 0) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(store.hotBakedSurfaceOrNull(k), isNull, reason: 'premise: not yet');
+    store.storeBakedSurface(k, drawn);
+    await thaw;
+
+    expect(store.bakedSurfaceOrNull(k), same(drawn));
+  });
+
   group('a ref that moved while its bytes were read', () {
     /// What the rounds worked out ahead have parked in the room, once what
     /// was let go is gone. ⚠️The room is the run's: a test before this one
