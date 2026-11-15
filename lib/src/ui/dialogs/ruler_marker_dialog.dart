@@ -11,6 +11,7 @@ import '../widgets/app_window.dart';
 import '../widgets/frame_count_field.dart';
 import '../widgets/pill_strip.dart';
 import 'instance_edit_dialog.dart';
+import '../text/typed_text.dart';
 
 /// What the marker window resolved to: the marker as the window left it, or
 /// its removal.
@@ -132,6 +133,7 @@ class _RulerMarkerDialogState extends State<RulerMarkerDialog> {
               controller: _textController,
               autofocus: true,
               onSubmitted: (_) => _submit(),
+              inputFormatters: typedText(),
             ),
           ),
           const SizedBox(height: 12),

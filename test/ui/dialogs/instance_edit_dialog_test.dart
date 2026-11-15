@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/pasted_from_the_clipboard.dart';
 import '../../helpers/text_finders.dart';
 
 /// The preview's paper — the timeline's own row painter.
@@ -360,6 +361,32 @@ void main() {
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
       '응\n그래',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result!.dialogue, '응그래');
+  });
+
+  // 🐛F-584 (검증/서피스 2026-11-15, 서피스 프로 11): two lines copied on
+  // Windows and pasted into the dialogue left a ⊠ where they broke, on the
+  // field and on the block — the clipboard ends a line in CR LF, and the
+  // one-line field let the CR through.
+  testWidgets('SE dialog: two lines pasted from a Windows clipboard are one '
+      'line too — no CR is left where they broke', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (r) => result = r,
+    );
+
+    await pasteInto(
+      tester,
+      find.byKey(const ValueKey<String>('se-dialogue-field')),
+      windowsLines(['응', '그래']),
     );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),

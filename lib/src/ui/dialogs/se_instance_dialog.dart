@@ -18,6 +18,7 @@ import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 import 'se_offset_strip.dart';
 import '../input/control_press_claim.dart';
+import '../text/typed_text.dart';
 
 /// A sound the edited SE instance carries: what to show, and the opaque
 /// token the host uses to find it again (R5 #19) — and, for its start
@@ -402,6 +403,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
               key: const ValueKey<String>('se-name-field'),
               controller: _seNameController,
               onSubmitted: (_) => _submit(),
+              inputFormatters: typedText(),
             ),
           ),
           const SizedBox(height: 12),
@@ -415,6 +417,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
               controller: _dialogueController,
               autofocus: true,
               onSubmitted: (_) => _submit(),
+              inputFormatters: typedText(),
             ),
           ),
           const SizedBox(height: 12),

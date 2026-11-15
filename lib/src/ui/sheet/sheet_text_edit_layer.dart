@@ -8,6 +8,7 @@ import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/cursor_notice.dart' show cursorNotices;
 import 'sheet_line.dart';
+import '../text/typed_text.dart';
 
 /// The frame an open field stands in, on the screen ([SheetTextEditLayer]).
 const sheetTextEditFrameKey = ValueKey<String>('sheet-text-edit-frame');
@@ -337,6 +338,7 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
               errorBorder: InputBorder.none,
               focusedErrorBorder: InputBorder.none,
             ),
+            inputFormatters: typedText(),
           ),
         ),
       ),

@@ -16,6 +16,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../input/control_press_claim.dart';
+import '../text/typed_text.dart';
 
 /// The project's settings — its frame rate, its audio sample rate, its
 /// camera frame and how its playback waits for a picture — as rows of the
@@ -383,7 +384,7 @@ class _FpsWindowState extends State<_FpsWindow> {
               key: const ValueKey<String>('project-fps-field'),
               controller: _customController,
               keyboardType: TextInputType.number,
-              inputFormatters: halfWidthDigitsOnly,
+              inputFormatters: typedText(halfWidthDigitsOnly),
               onChanged: (_) => setState(() {}),
             ),
           ),

@@ -10,6 +10,7 @@ import '../../text/cel_text_layout.dart';
 import '../../timeline/axis_turn.dart' show partAlong;
 import 'cel_text_editing_controller.dart';
 import 'cel_text_stage.dart';
+import '../../text/typed_text.dart';
 
 /// THE FIELD THE KEYBOARD TYPES INTO while a text's letters are held
 /// (R9-rest) — there for the keyboard and never seen.
@@ -155,6 +156,7 @@ class CelTextField extends StatelessWidget {
       // tool's to say (the press table), and it says so by unmounting this.
       onTapOutside: _keepTheKeyboard,
       onTapUpOutside: _keepTheKeyboard,
+      inputFormatters: typedText(),
     );
     return wrapWidth == null
         ? field

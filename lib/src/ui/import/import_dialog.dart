@@ -74,6 +74,7 @@ import '../widgets/panel_flyout.dart'
     show PanelFlyoutChoice, PanelFlyoutValueChoices, showPanelFlyout;
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import '../text/model_vocabulary.dart';
+import '../text/typed_text.dart';
 
 part 'import_settings_rows.dart';
 
@@ -3670,6 +3671,7 @@ class _ImportDialogState extends State<ImportDialog> {
           decoration: InputDecoration(
             hintText: const CutFolderEdits().nameOf(parsed),
           ),
+          inputFormatters: typedText(),
         ),
       ),
     ];

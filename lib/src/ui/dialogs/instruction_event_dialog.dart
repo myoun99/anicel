@@ -7,6 +7,7 @@ import 'instance_edit_preview.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
+import '../text/typed_text.dart';
 
 /// What the instruction event dialog resolved to: an event to apply, a
 /// deletion, or (when the user edited the vocabulary meanwhile) the edited
@@ -219,6 +220,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                 key: const ValueKey<String>('instruction-text-field'),
                 controller: _textController,
                 onSubmitted: (_) => _submit(),
+                inputFormatters: typedText(),
               ),
             ),
             const SizedBox(height: 12),
@@ -232,6 +234,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                       key: const ValueKey<String>('instruction-value-a-field'),
                       controller: _valueAController,
                       onSubmitted: (_) => _submit(),
+                      inputFormatters: typedText(),
                     ),
                   ),
                 ),
@@ -243,6 +246,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                       key: const ValueKey<String>('instruction-value-b-field'),
                       controller: _valueBController,
                       onSubmitted: (_) => _submit(),
+                      inputFormatters: typedText(),
                     ),
                   ),
                 ),

@@ -34,6 +34,7 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../theme/app_theme.dart';
+import '../text/typed_text.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
 /// shelved by where each key's button stands ([ShortcutShelf]),
@@ -556,6 +557,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                         isDense: true,
                       ),
                       onChanged: (_) => setState(_openFoundBundles),
+                      inputFormatters: typedText(),
                     ),
                   ),
                   const SizedBox(width: 8),

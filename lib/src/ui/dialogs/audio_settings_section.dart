@@ -16,6 +16,7 @@ import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
+import '../text/typed_text.dart';
 
 /// Audio program 2D: the A/V offset and the sync inspector
 /// (Preferences ▸ Audio).
@@ -547,7 +548,7 @@ class _OffsetFieldState extends State<_OffsetField> {
       controller: _controller,
       focusNode: _focus,
       keyboardType: const TextInputType.numberWithOptions(signed: true),
-      inputFormatters: halfWidthNumerals,
+      inputFormatters: typedText(halfWidthNumerals),
       textAlign: TextAlign.end,
       style: const TextStyle(fontSize: 12),
       decoration: const InputDecoration(isDense: true),

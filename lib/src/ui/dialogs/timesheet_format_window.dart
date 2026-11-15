@@ -9,6 +9,7 @@ import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../widgets/pill_strip.dart';
 import 'work_and_cut_setting_field.dart';
+import '../text/typed_text.dart';
 
 /// What the 「타임시트 서식」 window answers: the work's sheet format and the
 /// paper of the cut the sheet shows — null in the gap, where there is no
@@ -216,7 +217,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
                   controller: line.n,
                   enabled: line.on,
                   keyboardType: TextInputType.number,
-                  inputFormatters: halfWidthDigitsOnly,
+                  inputFormatters: typedText(halfWidthDigitsOnly),
                   decoration: const InputDecoration(prefixText: 'N  '),
                 ),
               ),

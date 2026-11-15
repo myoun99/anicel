@@ -4,6 +4,7 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'app_prompt_dialog.dart';
 import 'app_confirm_dialog.dart';
+import '../text/typed_text.dart';
 
 /// Rename dialog for a cut. Pops the trimmed new name, or nothing on
 /// cancel. Rejects an empty name inline — the cut's name IS its number on
@@ -76,5 +77,6 @@ class _SceneFieldState extends State<_SceneField> {
     controller: _scene,
     textInputAction: TextInputAction.next,
     onChanged: widget.onChanged,
+    inputFormatters: typedText(),
   );
 }

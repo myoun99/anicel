@@ -7,6 +7,7 @@ import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../repaint_props.dart';
 import '../widgets/ellipsis_text.dart';
+import '../text/typed_text.dart';
 
 /// One grid cell: the cut — or the 겸용 group — it stands for. [ids] toggle
 /// together, [label] is what the cell prints (one cut's name, or the
@@ -145,7 +146,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
                 controller: _rangeController,
                 enabled: widget.enabled,
                 style: theme.textTheme.labelSmall,
-                inputFormatters: halfWidthNumberRanges,
+                inputFormatters: typedText(halfWidthNumberRanges),
                 decoration: const InputDecoration(
                   isDense: true,
                   hintText: '1-200',

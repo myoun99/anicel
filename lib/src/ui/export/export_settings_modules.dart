@@ -21,6 +21,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/settings_rows.dart' show settingsHelpTooltip;
+import '../text/typed_text.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, pill strips, and the shared Format module.
@@ -1174,6 +1175,7 @@ class ExportFileNameModule extends StatelessWidget {
               enabled: enabled,
               decoration: InputDecoration(hintText: ghost),
               onChanged: (_) => onChanged(),
+              inputFormatters: typedText(),
             ),
           ),
           const SizedBox(width: 6),
@@ -1226,6 +1228,7 @@ class ExportSequenceNamingModule extends StatelessWidget {
               decoration: InputDecoration(hintText: ghost),
               onChanged: (value) =>
                   onChanged(naming.copyWith(baseName: value.trim())),
+              inputFormatters: typedText(),
             ),
           ),
         ),
@@ -1281,7 +1284,7 @@ class _DigitsFieldState extends State<_DigitsField> {
         controller: _controller,
         enabled: widget.enabled,
         keyboardType: TextInputType.number,
-        inputFormatters: halfWidthDigitsOnly,
+        inputFormatters: typedText(halfWidthDigitsOnly),
         onChanged: (value) {
           final parsed = halfWidthInt(value);
           if (parsed != null) {
@@ -1379,6 +1382,7 @@ class ExportCelNamingModule extends StatelessWidget {
           controller: prefixControllers[kind],
           enabled: enabled,
           onChanged: (value) => onChanged(naming.withPrefix(kind, value)),
+          inputFormatters: typedText(),
         ),
       ),
     );
@@ -1470,6 +1474,7 @@ class ExportCelNamingModule extends StatelessWidget {
           controller: controller,
           enabled: enabled && made,
           onChanged: (value) => onChanged(named(typed(value))),
+          inputFormatters: typedText(),
         ),
       ),
     );
@@ -1573,6 +1578,7 @@ class ExportCelNamingModule extends StatelessWidget {
                   enabled: enabled,
                   onChanged: (value) =>
                       onChanged(naming.copyWith(suffix: value.trim())),
+                  inputFormatters: typedText(),
                 ),
               ),
             ),

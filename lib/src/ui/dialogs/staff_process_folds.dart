@@ -5,6 +5,7 @@ import '../../models/layer_process.dart';
 import '../export/export_settings_modules.dart' show ExportAccordion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../text/typed_text.dart';
 
 /// One name field per colour label [holder] keeps ([staffHolderOf]), in
 /// the order the label popover lists them ([everyLayerMark] — the one
@@ -136,6 +137,7 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
                   key: ValueKey<String>('$prefix-staff-${mark.keySlug}'),
                   controller: widget.fields[mark],
                   onSubmitted: (_) => widget.onSubmitted?.call(),
+                  inputFormatters: typedText(),
                 ),
               ),
               const SizedBox(height: 6),
