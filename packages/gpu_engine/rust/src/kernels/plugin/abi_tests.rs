@@ -107,11 +107,24 @@ impl Opened {
         if reach < 0 { Err(last_error()) } else { Ok(reach) }
     }
 
-    /// The plugin's picture of `pictures`' first over the rest as its
-    /// layers, each its rect — laid on the tiles under them all as a chain
-    /// keeps its read ([`ChainRead`]), the plug-in told the tiles' own
-    /// places — read back off the tiles it made at the first's place.
+    /// [`Opened::render_from`], the paper at the origin of the tiles' grid.
     fn render(&self, pictures: &[([i32; 4], Vec<u32>)], values: &[f64], kinds: &[u32], share: u32) -> Result<Vec<u32>, String> {
+        self.render_from([0, 0], pictures, values, kinds, share)
+    }
+
+    /// The plugin's picture of `pictures`' first over the rest as its
+    /// layers, each its rect on the tiles' grid — laid on the tiles under
+    /// them all as a chain keeps its read ([`ChainRead`]), the plug-in told
+    /// the first's place on the paper, which lies `at` from the grid's —
+    /// read back off the tiles it made at the first's place.
+    fn render_from(
+        &self,
+        at: [i32; 2],
+        pictures: &[([i32; 4], Vec<u32>)],
+        values: &[f64],
+        kinds: &[u32],
+        share: u32,
+    ) -> Result<Vec<u32>, String> {
         let engine = first_engine();
         let edges = |[left, top, width, height]: [i32; 4]| [left, top, left + width.max(0), top + height.max(0)];
         let rect = tiles_under(pictures.iter().map(|(at, _)| edges(*at)));
@@ -120,6 +133,8 @@ impl Opened {
             return Err(last_error());
         };
         let rows = pictures[1..].iter().map(laid).collect::<Option<Vec<_>>>().ok_or_else(last_error)?;
+        let [left, top, width, height] = pictures[0].0;
+        let told = [left - at[0], top - at[1], width, height];
         let read = ChainRead::kept_as(Kept { tiles, rect, rows });
         let mut made_rect = [0; 4];
         // SAFETY: each holds what its count says, the engine is live and
@@ -129,8 +144,8 @@ impl Opened {
                 self.0,
                 engine,
                 &read,
-                pictures[0].0.as_ptr(),
-                [0, 0].as_ptr(),
+                told.as_ptr(),
+                at.as_ptr(),
                 values.as_ptr(),
                 kinds.as_ptr(),
                 kinds.len(),
@@ -316,6 +331,16 @@ fn a_render_lays_its_picture_and_layers_where_the_app_placed_them() {
     }
 }
 
+/// The plug-in is told its picture's place on the paper, which lies `at`
+/// from the tiles' grid: it reads the tiles where they lie, and what it
+/// made lies there.
+#[test]
+fn a_render_told_the_papers_place_reads_the_tiles_where_they_lie() {
+    let (rect, input) = ([5, -3, 37, 23], hashed(37 * 23, 4));
+    let drawn = Opened::of(INVERT).render_from([-6, 4], &[(rect, input.clone())], &[], &[], PLENTY);
+    assert_eq!(drawn, Ok(input.iter().map(|&pixel| as_laid(inverted(pixel))).collect::<Vec<_>>()));
+}
+
 #[test]
 fn a_pixel_the_render_writes_none_of_is_transparent() {
     let drawn = Opened::of(EVERY_OTHER).render(&[([0, 0, 16, 1], vec![0xFF00_00FF; 16])], &[], &[], PLENTY);
@@ -413,6 +438,11 @@ fn what_it_made_lands_tile_by_tile_where_it_lies() {
 
     assert_eq!(land(&mut pool, &[2, 0]).0, -1);
     assert_eq!(last_error(), "tile (2, 0) is off the 2 × 2 tiles at (0, 0)");
+    // Off it down as well, and before its first tile.
+    assert_eq!(land(&mut pool, &[0, 2]).0, -1);
+    assert_eq!(last_error(), "tile (0, 2) is off the 2 × 2 tiles at (0, 0)");
+    assert_eq!(land(&mut pool, &[-1, 1]).0, -1);
+    assert_eq!(last_error(), "tile (-1, 1) is off the 2 × 2 tiles at (0, 0)");
     // SAFETY: made above.
     unsafe { gpu_engine_plugin_made_free(made) };
 }
