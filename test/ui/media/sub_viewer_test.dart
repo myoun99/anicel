@@ -99,10 +99,17 @@ Future<void> _tapPill(WidgetTester tester, String keyValue) async {
   await tester.pumpAndSettle();
 }
 
+/// Opens [asset]'s row menu in the media pool.
+///
+/// ⚠️The pool is brought back into the rail's window first, as
+/// [_tapPill] brings a pill: the sub viewer opens below it, and a rail too
+/// short to show both went down to the viewer when it opened
+/// (the-media-button-lights-but-no-media-panel-shows, 2026-11-15).
 Future<void> _openRowMenu(WidgetTester tester, MediaAsset asset) async {
-  await tester.tap(
-    find.byKey(ValueKey<String>('media-asset-menu-${asset.path}')),
-  );
+  final row = find.byKey(ValueKey<String>('media-asset-menu-${asset.path}'));
+  await tester.ensureVisible(row);
+  await tester.pumpAndSettle();
+  await tester.tap(row);
   await tester.pumpAndSettle();
 }
 

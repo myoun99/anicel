@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +14,7 @@ import 'package:anicel/src/ui/color/color_wheel_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
@@ -32,8 +35,11 @@ import '../helpers/rail_group_button.dart';
 /// that all of them share, and a panel dragged onto a button joins that
 /// group.
 void main() {
-  Future<void> pumpApp(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    Size size = const Size(1600, 1000),
+  }) async {
+    await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
@@ -683,6 +689,278 @@ void main() {
       // minting a second one.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(find.byType(BrushSettingsPanel), findsNothing);
+    });
+  });
+
+  // 🚨A GROUP OPENED IS A GROUP ON SCREEN (card
+  // the-media-button-lights-but-no-media-panel-shows, 2026-11-15, a Surface
+  // at 2880×1814 · 150%: 「버튼만 켜진 색이 되고 소재 목록 패널은 어디에도 안
+  // 뜬다」). A group keeps its height and the rail scrolls, so the media
+  // pool — third on its rail — opened below the window, its button lit.
+  //
+  // ⛔Only a group the window shows NONE of: one it shows a part of opens
+  // where it always did.
+  //
+  // ⚠️What the rail does once it is asked — in the frame the content grows
+  // in, once for each asking — is `ScrollStoodInLayout`'s, pinned beside it
+  // (test/ui/layout). Here: who asks, and for where.
+  group('a group opened is brought into its rail\'s window', () {
+    // The Surface's window, in logical pixels.
+    const surface = Size(1920, 1209);
+    final sheets = EditorWorkspace.railGroupId(right: true, slot: 2);
+    final media = EditorWorkspace.railGroupId(right: true, slot: 3);
+    final onion = EditorWorkspace.railGroupId(right: true, slot: 4);
+
+    Finder railScroll() =>
+        find.byKey(const ValueKey<String>('rail-scroll-right'));
+    Rect bodyOf(WidgetTester tester, String railId) => tester.getRect(
+      find.byKey(ValueKey<String>('rail-group-body-$railId')),
+    );
+    ScrollPosition railPosition(WidgetTester tester) => tester
+        .widget<SingleChildScrollView>(railScroll())
+        .controller!
+        .position;
+
+    void expectInTheWindow(WidgetTester tester, String railId) {
+      final window = tester.getRect(railScroll());
+      final body = bodyOf(tester, railId);
+      expect(
+        body.top,
+        greaterThanOrEqualTo(window.top - 0.5),
+        reason: '$railId begins above the rail\'s window: $body in $window',
+      );
+      expect(
+        body.bottom,
+        lessThanOrEqualTo(window.bottom + 0.5),
+        reason: '$railId runs below the rail\'s window: $body in $window',
+      );
+    }
+
+    // ONE frame: the frame the group opens in is the frame it is seen in.
+    Future<void> press(WidgetTester tester, String railId) async {
+      await tester.tap(railGroupButton(railId));
+      await tester.pump();
+    }
+
+    testWidgets('its button never lights over nothing: the third group of a '
+        'rail whose first two fill the window', (tester) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      // The colours and the sheets already run past the window's end.
+      expect(
+        bodyOf(tester, sheets).bottom,
+        greaterThan(tester.getRect(railScroll()).bottom),
+      );
+
+      await press(tester, media);
+
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
+      expectInTheWindow(tester, media);
+      await tester.pumpAndSettle();
+      expectInTheWindow(tester, media);
+    });
+
+    testWidgets('by the least scroll — its far edge comes to the window\'s, '
+        'and no further', (tester) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      await press(tester, onion);
+      // Back at the top, with room left to scroll past the media pool once
+      // it opens between the sheets and the onion.
+      railPosition(tester).jumpTo(0);
+      await tester.pumpAndSettle();
+
+      await press(tester, media);
+
+      expectInTheWindow(tester, media);
+      expect(
+        bodyOf(tester, media).bottom,
+        closeTo(tester.getRect(railScroll()).bottom, 0.5),
+        reason: 'it came in from below, so it stands at the window\'s end',
+      );
+      expect(
+        railPosition(tester).pixels,
+        lessThan(railPosition(tester).maxScrollExtent - 1),
+        reason: 'the rail could have gone further, and did not',
+      );
+    });
+
+    testWidgets('a group the window shows a part of stays where it opens — '
+        'the settings under the library, as they always opened', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      final leftRail = find.byKey(const ValueKey<String>('rail-scroll-left'));
+
+      await pressToolSettingsButton(tester);
+      await tester.pumpAndSettle();
+
+      final window = tester.getRect(leftRail);
+      final settings = bodyOf(tester, toolSettingsGroupId);
+      expect(settings.top, lessThan(window.bottom), reason: 'premise: shown');
+      expect(
+        settings.bottom,
+        greaterThan(window.bottom),
+        reason: 'premise: and cut by the window\'s end',
+      );
+      expect(
+        tester
+            .widget<SingleChildScrollView>(leftRail)
+            .controller!
+            .position
+            .pixels,
+        0,
+        reason: 'the rail is where the hand left it',
+      );
+    });
+
+    testWidgets('it is the group asked for that comes, not another the '
+        'window does not show', (tester) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      await press(tester, media);
+      await press(tester, onion);
+      // Four groups, and the rail between its ends: the colours above the
+      // window, the onion below it.
+      railPosition(tester).jumpTo(330);
+      await tester.pumpAndSettle();
+      expect(
+        bodyOf(tester, EditorWorkspace.rightGroupId).bottom,
+        lessThan(tester.getRect(railScroll()).top),
+        reason: 'premise',
+      );
+      expect(
+        bodyOf(tester, onion).top,
+        greaterThan(tester.getRect(railScroll()).bottom),
+        reason: 'premise',
+      );
+
+      // The tool sizes ride with the onion: hidden and asked for again,
+      // they land in the group below the window.
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-tool-size');
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-tool-size');
+
+      expectInTheWindow(tester, onion);
+    });
+
+    testWidgets('a group already in view leaves the rail where it was', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      await press(tester, media);
+      // The sheets, between the colours and the media pool: all of them in
+      // the window, at neither of its edges.
+      railPosition(tester).jumpTo(200);
+      await tester.pumpAndSettle();
+      expectInTheWindow(tester, sheets);
+      expect(
+        bodyOf(tester, sheets).top,
+        greaterThan(tester.getRect(railScroll()).top + 1),
+      );
+
+      // The cut envelope is one of the sheets' three panels: hidden and
+      // asked for again, it lands in a group that is in view.
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-envelope');
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-envelope');
+
+      expect(railPosition(tester).pixels, 200);
+    });
+
+    testWidgets('an asking the window answers by showing its group is spent: '
+        'the rail is not brought back to it once scrolled away from', (
+      tester,
+    ) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      await press(tester, media);
+      railPosition(tester).jumpTo(0);
+      await tester.pumpAndSettle();
+      expectInTheWindow(tester, EditorWorkspace.rightGroupId);
+
+      // Asked for where the window shows all of it: there is nothing to
+      // answer.
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-color-rgb');
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-color-rgb');
+      expect(railPosition(tester).pixels, 0);
+
+      // Scrolled away from by hand — the colours out of the window by its
+      // top — and the workspace built again, as a window drawn a pixel
+      // shorter builds it.
+      final position = railPosition(tester);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+      final left = position.pixels;
+      expect(
+        bodyOf(tester, EditorWorkspace.rightGroupId).bottom,
+        lessThan(tester.getRect(railScroll()).top),
+        reason: '⛔premise: the window shows none of the colours',
+      );
+      await tester.binding.setSurfaceSize(
+        Size(surface.width, surface.height - 1),
+      );
+      await tester.pump();
+
+      expect(position.pixels, left);
+    });
+
+    testWidgets('a panel put back into a CLOSED group below the window is '
+        'on screen', (tester) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      expect(find.byType(MediaPoolPanel), findsNothing);
+
+      // Hidden, then asked for again: its home group — third on the rail —
+      // is still closed.
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-media');
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-media');
+
+      expect(find.byType(MediaPoolPanel), findsOneWidget);
+      expectInTheWindow(tester, media);
+    });
+
+    testWidgets('a panel put back into an OPEN group scrolled out of the '
+        'window is on screen', (tester) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      await press(tester, media);
+      // The rail went down to the media pool, and the colours left the
+      // window by its top.
+      expect(
+        bodyOf(tester, EditorWorkspace.rightGroupId).top,
+        lessThan(tester.getRect(railScroll()).top),
+      );
+
+      // The RGB bars are one of the colour group's three panels: hidden,
+      // the group stays open on the other two; asked for again, they land
+      // in a group that is open and out of sight.
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-color-rgb');
+      await tapPanelsDrawerRow(tester, 'panels-menu-item-color-rgb');
+
+      expectInTheWindow(tester, EditorWorkspace.rightGroupId);
+    });
+
+    testWidgets('a rail still moving stops for it', (tester) async {
+      await pumpApp(tester, size: surface);
+      await press(tester, EditorWorkspace.rightGroupId);
+      await tester.pumpAndSettle();
+      // On its way back to the top from as far down as two groups let it go.
+      final position = railPosition(tester);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+      unawaited(
+        position.animateTo(
+          0,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.linear,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await press(tester, media);
+      await tester.pumpAndSettle();
+
+      expectInTheWindow(tester, media);
     });
   });
 }

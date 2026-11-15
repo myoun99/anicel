@@ -101,6 +101,7 @@ import 'media/media_viewer_tab_host.dart';
 import 'media/viewer_ink.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
+import 'layout/scroll_stood_in_layout.dart';
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
@@ -200,7 +201,7 @@ import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_edge_auto_pan.dart'
-    show keptAxisWindows, revealKeptAxis;
+    show ScrollWindow, keptAxisWindows, revealKeptAxis, revealScrollOffset;
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
