@@ -61,12 +61,18 @@ abstract final class TileBlocks {
   /// rebuilt whole each time the tiles that came and went fill it, a weak
   /// reference made anew for every tile alive: on the thread that was
   /// adopting a thawed cel's tiles.
-  /// 🔬A script of the same attach (2026-11-15; 150,000 alive, 700 made and
-  /// 700 let go, 300 times, each told 64 KB; JIT, not the app): with the
-  /// token the bursts took 16.5–17.0 s in all, a tenth of them over 164 ms;
-  /// without it 4.2–5.6 s, a tenth over 41–60 ms — the collector's work in
-  /// both. Told no weight, so that the tables alone are timed: 5 bursts of
-  /// 300 over 8 ms, the longest 23–59 ms, against 1 of 17–20 ms.
+  /// 🔬The app (2026-11-15; Surface Pro 11, profile build, a cut of 78
+  /// frames whose onion, turned on, adopts some 80,000 thawed tiles a
+  /// round; one quiet run each way, 캔버스 베이스): stops of the UI thread
+  /// over 33 ms — one row's onion 8, the longest 76 ms, → 3; every row's
+  /// 6 → 0; every row's laid on top 12, the longest 119 ms, → 0. Of the 19
+  /// samples inside that 76 ms, 8 stood in `Expando._rehash` under this
+  /// attach. The collector's pauses 504–1495 ms a run → 171–283 ms, and
+  /// the Dart heap 108–114 MB → 92–95 MB: a set and a weak property a tile.
+  /// ⚠️Not settled by it: whether the collector runs less often for the
+  /// weight told here — once for every 110 tiles or so (7 MB) with the
+  /// token; without it as often in one pair of runs, a third to a half
+  /// less often in the other.
   /// ↩️A tile passed itself as the token from R19-Z (2026-07-14) on.
   static void freeWith(
     Finalizable holder,
