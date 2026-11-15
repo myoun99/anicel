@@ -104,6 +104,7 @@ fn each_orientation_shows_its_blocks_where_exif_says() {
         let (width, height) = (rows[0].len() * 16, rows.len() * 16);
         assert_eq!(decoded.shown(), (width, height), "orientation {orientation}: its size");
         let rgba = rows_of(&decoded);
+        assert!(rgba.chunks_exact(4).all(|pixel| pixel[3] == 255), "orientation {orientation}: opaque");
         for (row, blocks) in rows.iter().enumerate() {
             for (column, &block) in blocks.iter().enumerate() {
                 let at = ((row * 16 + 8) * width + column * 16 + 8) * 4;
