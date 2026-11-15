@@ -184,8 +184,9 @@ void main() {
   });
 
   test('what a brush sets and this reader does not carry is said — a brush '
-      'that smears comes in by its tip, its smear said to be left — and a '
-      'button whose tip it cannot carry is left out', () async {
+      'that smears comes in mixing with what is under it, its smear how far '
+      'a colour is drawn out, a source it would smear said to be its cel — '
+      'and a button whose tip it cannot carry is left out', () async {
     final result = await decodeTvpxBrushFile(
       _panelFile(
         heading: 'H',
@@ -203,7 +204,7 @@ void main() {
             dip: _pencilDip,
           ),
           'origin': (tool: _tool(stamp: '0'), dip: _pencilDip),
-          'smear': (tool: _tool(stamp: '6'), dip: _pencilDip),
+          'smear': (tool: _tool(stamp: '6', smear: '20.0000'), dip: _pencilDip),
           'source': (tool: _tool(stamp: '7'), dip: _pencilDip),
           'hue': (tool: _tool(stamp: '5'), dip: _pencilDip),
         },
@@ -219,16 +220,23 @@ void main() {
       for (final preset in result.presets) preset.settings,
     ];
     expect(pencil.textureMaskSource, isNull);
+    expect(
+      [pencil.mixesGroundColor, pencil.colorStretch],
+      [false, 0.0],
+      reason: 'an Alpha brush\'s smear is not read',
+    );
     for (final smears in [smear, source]) {
       expect(smears.tips, hasLength(2), reason: 'its tip, as a pencil\'s');
       expect([smears.size, smears.opacity], [pencil.size, pencil.opacity]);
-      expect(smears.mixesGroundColor, isFalse, reason: 'the smear is left');
+      expect(smears.shape.picksUpGround, isTrue);
+      expect(smears.paintAmount, pencil.paintAmount, reason: 'its own, full');
     }
+    expect([smear.colorStretch, source.colorStretch], [0.2, 0.5]);
     expect(result.warnings, [
       'Button "H" is not a custom brush; not imported.',
       'Button "H origin": stamp mode 0 is not Alpha; not imported.',
-      'Button "H smear": stamp mode 6 smears; its smear is not carried.',
-      'Button "H source": stamp mode 7 smears; its smear is not carried.',
+      'Button "H source": stamp mode 7 smears a source picture; it smears '
+          'its own cel here.',
       'Button "H hue": stamp mode 5 is not Alpha; not imported.',
       'Button "H 8": paper "Rough" is TVPaint\'s own and not in the file; '
           'imported without it.',
@@ -396,6 +404,7 @@ String _tool({
   String stamp = '1',
   String angle = '0.000000',
   String sizeCurve = '0;2 0 1 0 0 1 1 ',
+  String smear = '50.0000',
 }) => [
   '﻿[tvp tool]',
   'angle=$angle',
@@ -403,7 +412,7 @@ String _tool({
   'c_size2=$sizeCurve',
   'opacity=60.000000',
   'size=$size',
-  'smear=50.0000',
+  'smear=$smear',
   'stamp=$stamp',
   'stepon=0',
   '',

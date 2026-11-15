@@ -210,27 +210,24 @@ _ButtonRead? _readButton(
   // tip's alpha coloured with the A colour, which is what a tip mask is
   // (card I-86). Smear is, the page says, like Alpha but smearing the tip's
   // pixels onto the picture, and Smear Source the same onto a source
-  // picture: the same mask, and a smear this reader does not carry —
-  // ⏳which of the app's mixing a `smear` of 0, 20 or 100 is is on no page
-  // (I-86-Q6), and the app has no source picture to smear.
+  // picture: the same mask, mixing with what is under it ([_smears]) — and
+  // the app has no source picture, so a brush of the second smears its cel.
   // 🗣️유저 2026-11-15: 「누리용 Azi이런거 안들어왔는데 커스텀연필외
   // 임포트는 아직인가?」 · 「브러시는 커스텀브러시만」 — the custom brushes
   // come in, all a mask can hold. ↩️Only Alpha did.
   // The others colour the tip by its own pixels, which a mask cannot hold.
-  switch (tool['stamp']) {
-    case '1':
-      break;
-    case '6' || '7':
-      warnings.add(
-        'Button "$name": stamp mode ${tool['stamp']} smears; its smear is '
-        'not carried.',
-      );
-    default:
-      warnings.add(
-        'Button "$name": stamp mode ${tool['stamp']} is not Alpha; '
-        'not imported.',
-      );
-      return null;
+  if (tool['stamp'] != '1' && !_smears(tool)) {
+    warnings.add(
+      'Button "$name": stamp mode ${tool['stamp']} is not Alpha; '
+      'not imported.',
+    );
+    return null;
+  }
+  if (tool['stamp'] == '7') {
+    warnings.add(
+      'Button "$name": stamp mode 7 smears a source picture; it smears '
+      'its own cel here.',
+    );
   }
   final _Tip tip;
   try {
@@ -497,6 +494,21 @@ Future<List<BrushTipMask>> _masksOf(_Tip tip) async => [
     ),
 ];
 
+/// Whether [tool]'s stamp mode smears — 6 Smear, 7 Smear Source
+/// ([_readButton]) — which here is the app's mixing with the picture under
+/// the brush (下地混色): its `smear`, a percent, is how far a colour picked
+/// up is drawn out ([BrushShape.colorStretch]), and the paint the brush is
+/// loaded with stays a brush's own, full, so it lays its colour whatever
+/// the smear.
+///
+/// 🗣️유저 2026-11-15 (I-86-Q6): 「그냥 우리식대로? 클튜기준대로? 적절히
+/// 구현. 이런 커스텀브러시의 속성 하나하나 클튜때처럼 맞추는거 힘들고
+/// tvp브러시는 그정도로 브러시 기능 뛰어난게아니라 가치가 낮음」 — laid by
+/// the app's own mixing, and not measured against TVPaint's: what a smear
+/// of 0, 20 or 100 does there is on no page of its manual.
+bool _smears(Map<String, String> tool) =>
+    tool['stamp'] == '6' || tool['stamp'] == '7';
+
 /// The settings a TVPaint value of zero leaves alone and any other changes,
 /// none of which this reader carries yet — each one set is a warning.
 const List<String> _notCarried = [
@@ -534,8 +546,8 @@ const List<String> _notCarried = [
 /// keeps its own soft edge whatever TVPaint's own setting
 /// (유저 2026-11-14 「팁이 소재일때는 aa있어도되는거 … 괜히 aa없애는거 목표로
 /// 하란게 아니란거임」) — at none the engine would threshold the mask.
-/// `smear` is left unread: it is the Smear stamp modes', which come in
-/// without it ([_readButton]).
+/// `smear` is a smearing stamp mode's alone ([_smears]); an Alpha brush's
+/// is left unread.
 BrushSettings _settingsOf(
   Map<String, String> tool, {
   required List<BrushTipMask> tips,
@@ -564,6 +576,10 @@ BrushSettings _settingsOf(
     opacity: (opacity / 100).clamp(0.0, 1.0),
     spacing: BrushShape.generalSpacing,
     tips: tips,
+    mixesGroundColor: _smears(tool),
+    colorStretch: _smears(tool)
+        ? ((double.tryParse(tool['smear'] ?? '') ?? 0) / 100).clamp(0.0, 1.0)
+        : 0,
     tipOrder: _tipOrderOf(
       tool['anim'],
       tips: tips,
