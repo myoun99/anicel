@@ -22,7 +22,9 @@ import '../../helpers/text_finders.dart';
 /// must answer alike.
 void main() {
   group('the writing stands where a Padding round an Align stood it', () {
-    const inset = EdgeInsets.symmetric(horizontal: 6);
+    // Where the writing fits between the insets — where it does not, it
+    // takes them (a_bar_writes_into_its_insets_test, F-577-Q1).
+    const inset = 6.0;
     const oneInk = <GroundInkRun>[(end: 1.0, ink: Color(0xFFFFFFFF))];
     const twoInks = <GroundInkRun>[
       (end: 0.4, ink: Color(0xFF000000)),
@@ -45,7 +47,7 @@ void main() {
 
     Widget placed(List<GroundInkRun> runs, Alignment? at) => GroundInkWriting(
       runs: runs,
-      padding: inset,
+      inset: inset,
       alignment: at,
       builder: (context, ink) => write(ink, at),
     );
@@ -54,7 +56,7 @@ void main() {
     Widget wrapped(List<GroundInkRun> runs, Alignment? at) => _OldWriting(
       runs: runs,
       builder: (context, ink) => Padding(
-        padding: inset,
+        padding: const EdgeInsets.symmetric(horizontal: inset),
         child: at == null
             ? write(ink, at)
             : Align(alignment: at, child: write(ink, at)),

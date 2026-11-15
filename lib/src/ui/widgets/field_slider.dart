@@ -505,7 +505,9 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
   ).lineGrowthOf(TextMeasure.everyScript);
 
-  /// What the writing stands in from each end of the track.
+  /// What the writing stands in from each end of the track while it fits
+  /// there — every bar's writing takes it, as far as the track's ends, where
+  /// it does not ([insetGivenWay], F-577-Q1: 「모든막대 공용」).
   static const double inset = 8;
 
   /// The least a name and its number stand apart and still read as two —
@@ -1372,7 +1374,7 @@ class _FieldSliderWriting extends StatelessWidget {
     final labelStyle = Theme.of(context).textTheme.labelSmall;
     final row = GroundInkWriting(
       runs: runs,
-      padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+      inset: FieldSlider.inset,
       alignment: _rowAt,
       builder: (context, ink) => _rowIn(
         value: valueStyle?.merge(ink) ?? ink,

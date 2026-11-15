@@ -272,19 +272,32 @@ void main() {
       expect(SummonedTooltip.debugTarget, isNull);
     });
 
-    testWidgets('its bar\'s insets are off its run', (tester) async {
-      await pump(
-        tester,
-        const SizedBox(
-          width: 20,
-          height: 3 * 12 * 1.15,
-          child: VerticalWritingText(
-            text: '가나다',
-            style: TextStyle(fontSize: 12),
-            endInset: 4,
-          ),
-        ),
-      );
+    // ↩️F-577-Q1 (유저 2026-11-16: 「여백까지 다 쓸수있게하도록. 모든막대
+    // 공용」): a bar's insets were off its run whatever the column needed,
+    // and a column that fitted the box without them said itself cut. They
+    // give way to it now; what it says reads the run it is painted in.
+    Widget threeIn(double height) => SizedBox(
+      width: 20,
+      height: height,
+      child: const VerticalWritingText(
+        text: '가나다',
+        style: TextStyle(fontSize: 12),
+        endInset: 4,
+      ),
+    );
+
+    testWidgets("its bar's insets give way before it says itself cut", (
+      tester,
+    ) async {
+      await pump(tester, threeIn(3 * 12 * 1.15));
+      await hover(tester, find.byType(VerticalWritingText));
+      expect(SummonedTooltip.debugTarget, isNull);
+    });
+
+    testWidgets("past the box's ends, with its insets gone, it is cut", (
+      tester,
+    ) async {
+      await pump(tester, threeIn(3 * 12 * 1.15 - 1));
       await hover(tester, find.byType(VerticalWritingText));
       expect(SummonedTooltip.debugShownMessage, '가나다');
     });

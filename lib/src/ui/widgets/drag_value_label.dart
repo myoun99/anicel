@@ -13,6 +13,7 @@ import '../theme/text_on_ground.dart';
 import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'axis_bar_gesture.dart';
 import 'field_slider.dart';
+import 'ground_ink_writing.dart';
 import 'number_pad.dart';
 import 'owning_axis_grip.dart';
 import 'value_hands.dart';
@@ -400,13 +401,6 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// number pad's top is that field now, and it opens on the number alone.
   Widget _box(BuildContext context) {
     const height = FieldSlider.defaultHeight;
-    final ink = TextStyle(
-      color: dimmedIfDisabled(
-        textOnColor(AppColors.surface),
-        enabled: widget.enabled,
-      ),
-    );
-    final numberStyle = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
     final name = widget.name;
     return DecoratedBox(
       decoration: FieldSlider.frameOf(
@@ -416,9 +410,21 @@ class _DragValueLabelState extends State<DragValueLabel> {
       ),
       child: SizedBox(
         height: height,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
-          child: Row(
+        // A bar's writing on a ground that does not change, standing in as
+        // a bar's stands and taking its insets as a bar's takes them
+        // (F-577-Q1: 「여백까지 다 쓸수있게하도록. 모든막대 공용」).
+        child: GroundInkWriting(
+          runs: [
+            (
+              end: 1.0,
+              ink: dimmedIfDisabled(
+                textOnColor(AppColors.surface),
+                enabled: widget.enabled,
+              ),
+            ),
+          ],
+          inset: FieldSlider.inset,
+          builder: (context, ink) => Row(
             children: [
               if (name != null)
                 Text(
@@ -433,7 +439,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
                   widget.text,
                   maxLines: 1,
                   textAlign: TextAlign.right,
-                  style: numberStyle,
+                  style: FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink,
                 ),
               ),
             ],
